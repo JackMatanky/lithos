@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:pkg.go.dev)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

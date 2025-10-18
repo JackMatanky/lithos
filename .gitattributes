@@ -1,0 +1,100 @@
+# -----------------------------------------------------------------------------
+# Filename:     lithos/.gitattributes
+# Docs:         https://git-scm.com/docs/gitattributes
+# Description:  Defines Git behavior for diffing, merging, and cross-platform
+#               compatibility
+# -----------------------------------------------------------------------------
+
+# ------------------------------------------------------------ #
+#               Line Endings & Text Normalization              #
+# ------------------------------------------------------------ #
+# Ensures cross-platform LF line-ending consistency
+* text=auto eol=lf
+
+
+# ------------------------------------------------------------ #
+#                      Text Based Formats                      #
+# ------------------------------------------------------------ #
+
+# -------------------------- Images -------------------------- #
+# SVG is text-based XML, not binary
+*.svg         text
+
+# ----------------- Tabular & Structured Data ---------------- #
+*.csv         text
+*.json        text
+# *.geojson     text
+
+# --------------------- Jupyter Notebooks -------------------- #
+# Use JupyText diffing when not ignored
+*.ipynb       diff=jupytext
+*.ipynb       linguist-documentation
+
+# ------------------- Dependency Lockfiles ------------------- #
+# Helps reduce merge conflicts
+poetry.lock   merge=union
+uv.lock       merge=union
+
+
+# ------------------------------------------------------------ #
+#                 Binary & Non-Diffable Formats                #
+# ------------------------------------------------------------ #
+
+# -------------------------- Images -------------------------- #
+*.avif        binary
+*.gif         binary
+*.ico         binary
+*.jpeg        binary
+*.jpg         binary
+*.png         binary
+*.webp        binary
+
+# ------------------------- Documents ------------------------ #
+# *.pdf         binary
+
+# -------------------- Archives & Packages ------------------- #
+*.tar.gz      binary
+*.whl         binary
+*.zip         binary
+
+# ----------------- Cache & Columnar Storage ----------------- #
+# Parquet is used for persistent versioned cache (Git),
+#       Feather is used for fast local/session caching.
+# *.parquet     binary
+# *.feather     binary
+
+# ------------------------- Database ------------------------- #
+*.db          binary
+*.sqlite      binary
+
+# Geospatial Database
+# GDB (ESRI Geodatabase) and GPKG are treated as binary blobs
+# *.gdb         binary
+*.gpkg        binary
+
+
+# ----------------- ESRI Shapefile Components ---------------- #
+# All components of a shapefile must be treated as binary
+*.cpg         binary
+*.dbf         binary
+*.prj         binary
+*.shp         binary
+*.shx         binary
+# Metadata sidecars (optional)
+*.xml         binary
+
+# ------------- Geospatial Web-Compatible Formats ------------ #
+*.kml         binary
+*.kmz         binary
+
+# ------------------------------------------------------------ #
+#                 Optional: Git LFS Integration                #
+# ------------------------------------------------------------ #
+# Uncomment these if using Git LFS for large binary formats
+
+*.txt         filter=lfs diff=lfs merge=lfs -text
+*.pdf         filter=lfs diff=lfs merge=lfs -text
+*.gdb         filter=lfs diff=lfs merge=lfs -text
+*.geojson     filter=lfs diff=lfs merge=lfs -text
+*.parquet     filter=lfs diff=lfs merge=lfs -text
+*.feather     filter=lfs diff=lfs merge=lfs -text

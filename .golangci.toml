@@ -1,0 +1,351 @@
+# -----------------------------------------------------------------------------
+# Filename:     lithos/.golangci.toml
+# Docs:         https://golangci-lint.run/docs/configuration/file/
+# Description:  golangci-lint v2 config for the Lithos Framework. Used to set
+#               consistent, enforceable style with minimal noise.
+# -----------------------------------------------------------------------------
+
+version = "2"
+
+# ------------------------------------------------------------ #
+#                           Execution                          #
+# ------------------------------------------------------------ #
+# Docs: https://golangci-lint.run/docs/configuration/file/#run-configuration
+# Options for analysis running.
+[run]
+
+# Timeout for total work, e.g. 30s, 5m, 5m30s. Default: 0 (disabled)
+timeout = "5m" # Fail fast in CI.
+
+# The mode used to evaluate relative paths, by exclusions, Go plugins, and some
+# linters. The value can be:
+# - `cfg` (Default): the paths will be relative to the configuration file.
+# - `gomod`: the paths will be relative to the directory of the `go.mod` file.
+# - `gitroot`: the paths will be relative to the git root (the parent directory
+#              of `.git`).
+# - `wd`: (NOT recommended) the paths will be relative to the place where
+#         golangci-lint is run.
+relative-path-mode = "gomod"
+
+# Exit code when at least one issue was found. Default: 1
+# Non-zero when issues are present.
+# issues-exit-code = 1
+
+# Include test files or not. Default: true
+# tests = true
+
+# List of build tags, all linters use it. Default: []
+# build-tags: []
+
+# Default: ""; Allowed values: readonly|vendor|mod
+modules-download-mode = "readonly" # No implicit module changes.
+
+# Allow multiple parallel golangci-lint instances running.
+# If false, golangci-lint acquires file lock on start.
+# Default: false
+allow-parallel-runners = true
+
+# skip-dirs = [
+#   "vendor",
+#   "tests/contract",
+#   "tests/integration",
+#   "tests/security",
+# ] # Do not lint vendored deps and external test suites.
+
+
+# ------------------------------------------------------------ #
+#                            Linters                           #
+# ------------------------------------------------------------ #
+# Docs: https://golangci-lint.run/docs/configuration/file/#linters-configuration
+[linters]
+default = "none" # Opt-in only: explicit enables below.
+enable = [
+  # ------------------ Correctness & Safety ------------------ #
+  "asasalint",     # Disallow passing []any as any to variadic ...any.
+  "bidichk",       # Detect dangerous Unicode bidi codepoints.
+  "copyloopvar",   # Catch unsafe loop variable copies (Go 1.22+).
+  "durationcheck", # Forbid multiplying two time.Duration values.
+  "errcheck",      # Report unchecked errors (bugs hide here).
+  "errname",       # Enforce naming: errors start with Err, types end with Error.
+  "errorlint",     # Enforce proper error wrapping/unwrapping (Go 1.13+).
+  "exptostd",      # Prefer stdlib over golang.org/x/exp functions.
+  "gocheckcompilerdirectives", # Validate //go: compiler/linker pragmas.
+  "govet",         # Go’s official analyzers (fmt, shadowing, etc.).
+  "gosec",         # Security heuristics for common pitfalls.
+  "ineffassign",   # Detect assignments whose values are never used.
+  "intrange",      # Prefer range loops over classic for for ints.
+  "nilerr",        # Disallow returning nil when err was non-nil.
+  "nilnesserr",    # Detect mismatched nilness in error handling.
+  "nilnil",        # Forbid returning (nil, nil) for invalid results.
+  "staticcheck",   # High-signal static analysis (extends vet).
+  "unused",        # Detect unused consts, funcs, types, vars.
+
+  # ----------- I/O, Concurrency & Resource Hygiene ---------- #
+  "bodyclose",       # Ensure *http.Response.Body is closed.
+  "canonicalheader", # Enforce canonical HTTP header casing.
+  "noctx",           # Disallow HTTP requests without context.
+  "rowserrcheck",    # Ensure rows.Err() is checked after iteration.
+  "sqlclosecheck",   # Ensure sql.Rows and sql.Stmt are closed.
+
+  # ---------------- Code Style & Readability ---------------- #
+  "dogsled",     # Warn on many blank identifiers in assignment.
+  "goconst",     # Suggest factoring repeated literals into consts.
+  "gocritic",    # Curated bug/perf/style diagnostics (tuned via tags).
+  "godot",       # Doc comments must end with a period.
+  "importas",    # Enforce consistent import aliases.
+  "lll",         # Enforce max line length (matches formatter policy).
+  "misspell",    # Spell-check comments/strings (US English).
+  "mnd",         # Flag magic numbers (ignoring 0,1,2).
+  "nakedret",    # Discourage naked returns in longer funcs.
+  "nestif",      # Warn on deeply nested if statements.
+  "nolintlint",  # Require specific, explained //nolint usage.
+  "unconvert",   # Remove unnecessary type conversions.
+  "unparam",     # Report unused function parameters.
+  "whitespace",  # Enforce consistent blank lines/spacing.
+
+  # -------------- Complexity & Maintainability -------------- #
+  "cyclop",    # Cyclomatic complexity (with package avg budget).
+  "dupl",      # Detect duplicated code regions.
+  "funlen",    # Function size limits (lines & statements).
+  "gocognit",  # Cognitive complexity (branch nesting, flow readability).
+
+  # --------------- Dependency & Module Policy --------------- #
+  "depguard",        # Restrict/deny problematic dependencies.
+  "gomoddirectives", # Flag risky go.mod directives.
+  "nosprintfhostport", # Prevent constructing host:port using fmt.Sprintf.
+
+  # ------------ Design & Architecture Discipline ------------ #
+  "decorder",       # Enforce declaration order for consts, vars, types, funcs.
+  "exhaustruct",    # Require struct literals to init all fields.
+  "funcorder",      # Require exported funcs/methods before unexported ones.
+  "iface",          # Warn on interface pollution or poor interface use.
+  "interfacebloat", # Enforce max method count for interfaces.
+
+  # -------------- Stack-Specific / Conditional -------------- #
+  "sloglint",    # Enforce consistent log/slog usage (context-friendly).
+  "testifylint", # Enforce consistent usage of stretchr/testify in tests.
+  "zerologlint", # Enforce correct zerolog usage patterns.
+]
+
+# ------------------------ Exclusions ------------------------ #
+[linters.exclusions]
+# Log a warning if an exclusion rule is unused.
+# true  - Catch dead exclusions early.
+warn-unused = true
+
+# Paths to exclude: they will be analyzed, but issues will not be reported.
+# "/" will be replaced by the current OS file path separator to properly work on Windows.
+paths = [
+  "^bin(/|$)",
+  "^dist(/|$)",
+  "^generated(/|$)",
+  "^vendor(/|$)",
+]
+
+# Relaxations for specific files.
+# Tests: relax noisy rules (+ cyclop here instead of the removed skip-tests).
+[[linters.exclusions.rules]]
+path = "_test\\.go"
+linters = ["cyclop", "dupl", "funlen", "mnd"]
+
+# Only suppress G204/G304 from gosec in *_test.go files.
+[[linters.exclusions.rules]]
+path = "_test\\.go$"
+linters = ["gosec"]
+text = "^(G204|G304):"
+
+[[linters.exclusions.rules]]
+path = "tools\\.go"  # Tool markers commonly trip "unused".
+linters = ["unused"]
+
+# ------------------- Linter Configuration ------------------- #
+# Cyclop replaces gocyclo; supports package-level budgets.
+[linters.settings.cyclop]
+max-complexity = 10
+package-average = 3.0
+
+# decorder: declaration-order policy
+# NOTE: Some versions of `decorder` have no user options; if your version
+# supports `order`, the list should be a permutation of: const, var, type, func.
+# If your golangci-lint build errors on this key, comment it out.
+[linters.settings.decorder]
+dec-order = ["const", "var", "type", "func"]
+
+[linters.settings.depguard.rules."deprecated"]
+files = ["$all"]
+deny = [
+  { pkg = "github.com/golang/protobuf", desc = "Use google.golang.org/protobuf" },
+  { pkg = "github.com/satori/go.uuid",  desc = "Use github.com/google/uuid" },
+  { pkg = "log$",                       desc = "Use log/slog" },
+]
+
+[linters.settings.dupl]
+threshold = 100 # Only flag substantial clones.
+
+[linters.settings.exhaustruct]
+# Require struct literals to initialize ALL fields.
+# Exclude common std/3p types to avoid constant churn in config/HTTP/proto/etc.
+exclude = [
+  # ---- Standard library types that are commonly partial-initialized ----
+  "^net/http\\.Client$",
+  "^net/http\\.Request$",
+  "^net/http\\.Response$",
+  "^net/http\\.Server$",
+  "^net/url\\.URL$",
+  "^os/exec\\.Cmd$",
+  "^reflect\\.StructField$",
+  # ---- Common third-party "options" and builder-style types ----
+  "^github.com/spf13/cobra\\.Command$",
+  "^github.com/stretchr/testify/mock\\.Mock$",
+  "^gopkg.in/yaml.v3\\.Node$",
+]
+# Allow returning empty struct literals from functions without triggering a finding.
+allow-empty-returns = true
+
+[linters.settings.funlen]
+lines = 60
+statements = 30
+
+[linters.settings.funcorder]
+# Place exported funcs/methods before unexported.
+# Keep struct-method ordering relaxed to avoid noise in impl-heavy types.
+struct-method = false
+
+[linters.settings.gocognit]
+# Cognitive complexity threshold (readability-focused).
+# Typical range: 15–30. Start higher to avoid churn, ratchet later.
+min-complexity = 20
+
+[linters.settings.goconst]
+min-len = 2         # Small literals (len≥2) can be consts.
+min-occurrences = 3 # Trigger only if repeated ≥3 times.
+
+[linters.settings.gocritic]
+enabled-tags = [
+  "diagnostic",
+  "experimental",
+  "opinionated",
+  "performance",
+  "style",
+]
+
+[linters.settings.govet]
+enable-all = true
+disable = ["fieldalignment"]
+[linters.settings.govet.settings.shadow]
+strict = true
+
+# importas: enforce consistent import aliases
+[linters.settings.importas]
+# rules = [
+#   { path = "context", alias = "context" },
+#   { path = "encoding/json", alias = "json" },
+#   { path = "golang.org/x/sync/errgroup", alias = "errgroup" },
+#   { path = "k8s.io/client-go/kubernetes", alias = "kubernetes" },
+# ]
+
+# interfacebloat: limit interface size
+# If your version supports configuration, `max` sets the allowed method count.
+# Start generous, tighten later if needed.
+[linters.settings.interfacebloat]
+max = 8
+
+[linters.settings.lll]
+line-length = 100
+
+[linters.settings.misspell]
+locale = "US"
+
+[linters.settings.mnd]
+checks = ["argument", "case", "condition", "operation", "return", "assign"]
+ignored-numbers = ["0", "1", "2"]
+ignored-functions = [
+  "flag.Arg",
+  "flag.Duration.*",
+  "flag.Float.*",
+  "flag.Int.*",
+  "flag.Uint.*",
+  "os.Chmod",
+  "os.Mkdir.*",
+  "os.OpenFile",
+  "os.WriteFile",
+  "prometheus.ExponentialBuckets.*",
+  "prometheus.LinearBuckets",
+]
+
+[linters.settings.nestif]
+# Maximum allowed nested `if` levels before warning.
+# 3 encourages guard clauses / early returns without being draconian.
+min-complexity = 3
+
+[linters.settings.nolintlint]
+allow-no-explanation = ["funlen", "gocognit", "golines"]
+require-explanation = true
+require-specific = true
+
+[linters.settings.sloglint]
+no-global = "all"
+context = "scope"
+
+
+# ------------------------------------------------------------ #
+#                          Formatters                          #
+# ------------------------------------------------------------ #
+# Docs: https://golangci-lint.run/docs/configuration/file/#formatters-configuration
+[formatters]
+enable = ["gci", "gofmt", "goimports", "golines"]
+
+[formatters.exclusions]
+warn-unused = true
+paths = [
+  "^vendor(/|$)",
+  "^generated(/|$)",
+  "^dist(/|$)",
+  "^bin(/|$)",
+]
+
+# Settings: https://golangci-lint.run/docs/formatters/configuration/
+# gci doesn't accept local-prefixes; configure sections/custom-order instead.
+[formatters.settings.gci]
+custom-order = false
+# sections = [
+#   "standard",
+#   "default",
+#   "prefix(flowforge)", # group your local module before 'localmodule' if desired
+#   "localmodule",
+# ]
+
+[formatters.settings.goimports]
+local-prefixes = ["flowforge"]
+
+[formatters.settings.golines]
+# Target maximum line length. Default: 100
+max-len = 80
+# Length of a tabulation. Default: 4
+# tab-len = 8
+# Shorten single-line comments. Default: false
+shorten-comments = true
+# Default: true
+# reformat-tags: false
+# Split chained methods on the dots as opposed to the arguments. Default: true
+# chain-split-dots: false
+
+# ------------------------------------------------------------ #
+#                            Issues                            #
+# ------------------------------------------------------------ #
+[issues]
+# Maximum count of issues with the same text. Default: 3; Set to 0 to disable.
+max-same-issues = 50
+
+# Maximum issues count per one linter.
+max-issues-per-linter = 0 # No per-linter cap (show all signals).
+
+# Exclude external test suites that are not yet aligned to current APIs
+# to keep repository linting actionable while we migrate them.
+# exclude-dirs = ["tests/contract", "tests/integration", "tests/security"]
+
+
+# ------------------------------------------------------------ #
+#                            Output                            #
+# ------------------------------------------------------------ #
+# Using default output settings for now
