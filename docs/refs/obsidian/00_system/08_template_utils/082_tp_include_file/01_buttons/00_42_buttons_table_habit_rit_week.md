@@ -1,0 +1,3 @@
+| Daily  | -    | `BUTTON[button-habit-daily]` |    `BUTTON[button-morn-rit-daily]`    | `BUTTON[button-work-start-daily]` |  `BUTTON[button-work-shut-daily]`   | `BUTTON[button-eve-rit-daily]` |
+| ------ | ---- |:--------------------:|:-----------------------------:|:-------------------------:|:---------------------------:|:----------------------:|
+| Weekly | ---- | `BUTTON[button-habit-week]`  | `BUTTON[button-morn-work-start-week]` |             <             | `BUTTON[button-eve-work-shut-week]` |           <            |

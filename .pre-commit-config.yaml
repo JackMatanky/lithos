@@ -1,0 +1,69 @@
+# -----------------------------------------------------------------------------
+# Filename: lithos/.pre-commit-config.yaml
+# Docs: https://pre-commit.com/
+# Description: Pre-commit hooks for code quality, notebook sync, and hygiene
+# -----------------------------------------------------------------------------
+
+exclude: (^|/)vendor/
+
+repos:
+  # -------------------- Pre-Commit Hooks -------------------- #
+  # Docs: https://github.com/pre-commit/pre-commit-hooks/tree/main/pre_commit_hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-added-large-files
+        name: Prevent Large Files in Git
+        args: ["--maxkb=500"]
+      - id: check-executables-have-shebangs
+        name: Ensure Executable Scripts Have Shebangs
+      - id: check-json
+        name: Validate JSON Files
+      - id: check-merge-conflict
+        name: Detect Merge Conflict Markers
+      - id: check-toml
+        name: Validate TOML Files
+      - id: check-yaml
+        name: Validate YAML Files
+      - id: detect-private-key
+        name: Detect Accidental Private Keys
+      - id: end-of-file-fixer
+        name: Ensure Final Newline
+      - id: mixed-line-ending
+        name: Fix Mixed Line Endings
+        args: [--fix=lf]
+      - id: trailing-whitespace
+        name: Remove Trailing Whitespace
+
+  # ---------------------- Gitleaks Scan --------------------- #
+  # Docs: https://github.com/gitleaks/gitleaks?tab=readme-ov-file#pre-commit
+  - repo: "https://github.com/gitleaks/gitleaks"
+    rev: v8.28.0
+    hooks:
+      - id: gitleaks
+        name: gitleaks (secrets scan)
+        args: ["--no-banner"]
+
+  # ------------------------- GoLang ------------------------- #
+  # Docs: https://github.com/TekWizely/pre-commit-golang
+  - repo: https://github.com/tekwizely/pre-commit-golang
+    rev: v1.0.0-rc.2
+    hooks:
+      - id: go-fmt
+        name: Go formatting (gofmt)
+        exclude: (^|/)vendor/
+      - id: go-imports
+        name: Go imports (goimports)
+        exclude: (^|/)vendor/
+      - id: go-vet-mod
+        name: Go static analysis (go vet)
+        exclude: (^|/)vendor/
+
+  # Official golangci-lint pre-commit hooks
+  # Docs: https://github.com/golangci/golangci-lint
+  - repo: https://github.com/golangci/golangci-lint
+    rev: v2.4.0
+    hooks:
+      - id: golangci-lint
+        name: Go linting (golangci-lint)
+        exclude: (^|/)vendor/

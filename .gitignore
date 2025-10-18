@@ -1,0 +1,159 @@
+# -----------------------------------------------------------------------------
+# Filename:     lithos/.gitignore
+# Docs:         https://git-scm.com/docs/gitignore
+# Description:  Prevents Git from tracking system, environment, editor,
+#               build, and cache files
+# -----------------------------------------------------------------------------
+
+# -------------------- MacOS System Files -------------------- #
+DS_Store
+.DS_Store
+__MACOSX/
+.Spotlight-V100
+.Trashes
+._*
+
+# ------------------- Windows System Files ------------------- #
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# --------------------- Google Drive Sync -------------------- #
+.tmp.driveupload/
+.tmp.drivedownload/
+
+
+# ----------------- Temporary & Backup Files ----------------- #
+*.sw?
+*.swp
+*.bak
+*.tmp
+*.temp
+~*
+
+# ------------------ Editors & IDE Settings ------------------ #
+.vscode/
+.idea/
+.kiro/
+*.sublime-project
+*.sublime-workspace
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# --------------- Environments & Secret Configs -------------- #
+# Python
+venv/
+.venv/
+.venv.bak/
+.python-version
+
+# Dotenv & Direnv
+.env*
+.direnv/
+
+# ----------------------- Dependencies ----------------------- #
+# Node
+node_modules/
+
+# Go (vendored deps)
+vendor/
+
+# ------------------- Build & Distribution ------------------- #
+/build/
+bin/
+dist/
+
+# Python Build Artifacts
+wheels/
+.eggs/
+*.egg-info/
+*.egg
+
+# Go Binaries & Native Libs
+*.exe
+*.exe~
+*.dll
+*.dylib
+*.so
+
+# Go workspace
+go.work
+
+# Project-specific Go binaries
+/cmd/flowforge/flowforge
+/flowforge
+
+# --------------------- Tests & Coverage --------------------- #
+# Reports
+test-results.txt
+coverage.xml
+htmlcov/
+
+# Coverage Data
+/coverage/
+.coverage
+.coverage.*
+*.coverprofile
+coverage.out
+
+# Python
+.pytest_cache/
+.hypothesis/
+.hypothesis
+.tox/
+.nox/
+
+# Go
+*.test
+
+# -------------- Language / Tool Caches & State -------------- #
+.cache/
+
+# Python Bytecode & Caches
+__pycache__/
+*.py[cod]
+.benchmarks
+.ropeproject/
+
+# Python Type-Checkers / Linters
+.dmypy.json
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+
+# Jupyter & IPython
+*.ipynb
+*.ipynb_checkpoints/
+.ipython/
+.jupyter/
+
+# Go Build Cache
+.gocache/
+
+# --------------------------- Logs --------------------------- #
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+dev-debug.log
+
+# ------------------------- AI Rules ------------------------- #
+# Symlink all AI rules and instructions files to a AGENTS.md file
+.github/copilot-instructions.md
+CLAUDE.md
+GEMINI.md
+WARP.md
+
+# -------------- Repository Summarization Output ------------- #
+*digest.txt
+codebase.xml
+codebase.stats.md
+
+# ------------------------- Archives ------------------------- #
+.ignore/
+_old/
+_archive/
+artifacts/

@@ -1,0 +1,75 @@
+# -----------------------------------------------------------------------------
+# Filename:     lithos/.editorconfig
+# Docs:         https://editorconfig.org
+# Spec:         https://spec.editorconfig.org/
+# Description:  General formatting rules for configuration and documentation
+#               files for Claude Code Hooks Framework.
+# -----------------------------------------------------------------------------
+
+root = true
+
+# ------------------------------------------------------------ #
+#                       Default Settings                       #
+# ------------------------------------------------------------ #
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+
+# ------------------------------------------------------------ #
+#                              Go                              #
+# ------------------------------------------------------------ #
+[*.go]
+indent_style = tab
+indent_size = 4
+
+
+# ------------------------------------------------------------ #
+#                             YAML                             #
+# ------------------------------------------------------------ #
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+
+
+# ------------------------------------------------------------ #
+#                      JSON, JSONC & TOML                      #
+# ------------------------------------------------------------ #
+[*.{json,jsonc,toml}]
+indent_style = space
+indent_size = 2
+
+
+# ------------------------------------------------------------ #
+#                           Markdown                           #
+# ------------------------------------------------------------ #
+[*.md]
+trim_trailing_whitespace = false
+indent_style = space
+indent_size = 2
+
+
+# ------------------------------------------------------------ #
+#                           Justfile                           #
+# ------------------------------------------------------------ #
+[{justfile,Justfile}]
+indent_style = tab
+indent_size = 4
+
+
+# ------------------------------------------------------------ #
+#                         Shell Scripts                        #
+# ------------------------------------------------------------ #
+[*.sh]
+indent_size = 4
+
+
+# ------------------------------------------------------------ #
+#                    Git Configuration Files                   #
+# ------------------------------------------------------------ #
+[*.{gitignore,gitattributes}]
+trim_trailing_whitespace = false
