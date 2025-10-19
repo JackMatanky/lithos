@@ -17,6 +17,7 @@ __MACOSX/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+desktop.ini
 
 # --------------------- Google Drive Sync -------------------- #
 .tmp.driveupload/
@@ -26,10 +27,12 @@ Desktop.ini
 # ----------------- Temporary & Backup Files ----------------- #
 *.sw?
 *.swp
+*.swo
 *.bak
 *.tmp
 *.temp
 ~*
+/tmp/
 
 # ------------------ Editors & IDE Settings ------------------ #
 .vscode/
@@ -81,9 +84,9 @@ wheels/
 # Go workspace
 go.work
 
-# Project-specific Go binaries
-/cmd/flowforge/flowforge
-/flowforge
+# Lithos-specific
+.lithos/
+testdata/vault-copies/
 
 # --------------------- Tests & Coverage --------------------- #
 # Reports
@@ -97,6 +100,7 @@ htmlcov/
 .coverage.*
 *.coverprofile
 coverage.out
+coverage.txt
 
 # Python
 .pytest_cache/
@@ -157,3 +161,4 @@ codebase.stats.md
 _old/
 _archive/
 artifacts/
+vendor/

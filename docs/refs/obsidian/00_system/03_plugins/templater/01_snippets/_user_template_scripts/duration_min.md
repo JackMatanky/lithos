@@ -6,8 +6,8 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
-description: 
+module:
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -20,11 +20,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return the duration as a number of minutes from a suggester.
 
 ---
@@ -175,11 +175,11 @@ module.exports = duration_min;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // DURATION MINUTES
 //---------------------------------------------------------
 const duration_min = await tp.user.duration_min(tp);
@@ -232,7 +232,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -253,7 +253,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

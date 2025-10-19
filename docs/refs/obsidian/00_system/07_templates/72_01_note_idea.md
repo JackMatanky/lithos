@@ -409,9 +409,9 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Thought]
-> 
+>
 >  `dv: split(this.file.frontmatter.about, "\n")[0]`
-> 
+>
 > `dv: split(this.file.frontmatter.about, "\n")[1]`
 
 ---

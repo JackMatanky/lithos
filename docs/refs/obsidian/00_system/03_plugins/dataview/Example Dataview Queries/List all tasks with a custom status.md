@@ -23,7 +23,7 @@ WHERE status = ">"
 
 Show only the most recent 5 todos grouped after their file day
 
-> [!hint]  
+> [!hint]
 > The first SORT (`SORT file.day DESC`) sorts the TASKS you're getting so you have the most recent at top. The second SORT (`rows.file.day DESC`) sorts your groups to have Feb 5 at the top instead of Jan 30 - try removing it!
 
 ```dataview
@@ -40,9 +40,9 @@ SORT rows.file.day DESC
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

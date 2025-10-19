@@ -36,7 +36,7 @@ The characters `<` and `^` in a cell will merge it with the cell to the left and
 
 ![[Pasted image 20230928124930.webp]]
 
-Vertical Headers are created by making a column contain only dashes, much like how native horizontal headers are made with a row containing only dashes.  
+Vertical Headers are created by making a column contain only dashes, much like how native horizontal headers are made with a row containing only dashes.
 
 ````md
 | I        | -   | have | horizontal | headers |
@@ -57,8 +57,8 @@ Use the `sheet` language tag and start using Obsidian Sheets with custom CSS! Pa
 ````md
 ```sheet
 {
-    classes: { 
-        class1: { 
+    classes: {
+        class1: {
             "color": "cyan",
         },
         class2: {

@@ -29,9 +29,9 @@ reference: [WHERE](https://blacksmithgu.github.io/obsidian-dataview/queries/data
 
 ## Description
 
-> [!info]  
-> Plugin: Dataview  
-> Module: Data Commands  
+> [!info]
+> Plugin: Dataview
+> Module: Data Commands
 > Definition:: Filter pages on fields. Only pages where the clause evaluates to `true` will be yielded.
 
 ## Syntax
@@ -52,13 +52,13 @@ WHERE <clause>
 
 ```sql
 -- Obtain all files which were modified in the last 24 hours:
-LIST 
+LIST
 WHERE file.mtime >= date(today) - dur(1 day)`
-    
+
 -- Find all projects which are not marked complete and are more than a month old:
 LIST
-FROM #projects 
-WHERE !completed 
+FROM #projects
+WHERE !completed
 	AND file.ctime <= date(today) - dur(1 month)`
 ```
 

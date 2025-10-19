@@ -26,14 +26,14 @@ tags: javascript, obsidian, obsidian/templater, obsidian/tp/file/include
 ## Description
 
 > [!function] Function Details
-> 
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Module: File  
-> Input::  
-> Output::  
-> Definition:: Includes the file's link content. Templates in the included content will be resolved.  
->  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Module: File
+> Input::
+> Output::
+> Definition:: Includes the file's link content. Templates in the included content will be resolved.
+>
 > Link: [tp.file.include](https://silentvoid13.github.io/Templater/internal-functions/internal-modules/file-module.html#tpfileincludeinclude_link-string--tfile)
 
 ---
@@ -55,7 +55,7 @@ tp.file.include(include_link: string ⎮ TFile)
 ## Examples
 
 ```javascript
-// File include: 
+// File include:
 tp.file.include("[[Template1]]")
 
 ```
@@ -75,7 +75,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -93,7 +93,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.module AS Module,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND (file.frontmatter.file_class = "pkm_code_function")
 	AND (file.frontmatter.plugin = this.file.frontmatter.plugin)
@@ -102,7 +102,7 @@ SORT file.frontmatter.module, file.name
 
 #### By Tag
 
-<!-- Add tags in contains function as needed  -->  
+<!-- Add tags in contains function as needed  -->
 <!-- Query limit 10  -->
 
 ```dataview
@@ -111,7 +111,7 @@ TABLE WITHOUT ID
 	Definition AS Definition,
 	string(file.frontmatter.language) AS Language,
 	sort(file.etags) AS Tags
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND file.frontmatter.file_class = "pkm_code_function"
 	AND contains(file.tags, "file")
@@ -125,16 +125,16 @@ LIMIT 10
 
 #### All Function Links
 
-<!-- Excluding functions of the same module  -->  
+<!-- Excluding functions of the same module  -->
 <!-- Query limit 10  -->
 
 ```dataview
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
-	AND file.frontmatter.module != this.file.frontmatter.module 
+	AND file.frontmatter.module != this.file.frontmatter.module
 	AND file.frontmatter.file_class = "pkm_code_function"
 	AND (contains(file.outlinks, this.file.link)
 	OR contains(file.inlinks, this.file.link))

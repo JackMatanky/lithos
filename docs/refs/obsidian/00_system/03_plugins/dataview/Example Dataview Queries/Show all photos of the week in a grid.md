@@ -1,5 +1,5 @@
 ---
-description: Show all images you have in your daily notes for this week in an image grid 
+description: Show all images you have in your daily notes for this week in an image grid
 topics:
   - images
   - grid view
@@ -15,12 +15,12 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!attention] Additional CSS Snippet required  
+> [!attention] Additional CSS Snippet required
 > A CSS Snippet is in place to style this query. You'll find it under `.obsidian\snippets\show-photos-of-the-week-as-grid.css` as well as below. [Read more about how to use CSS Snippets](https://help.obsidian.md/How+to/Add+custom+styles#Use+Themes+and+or+CSS+snippets)
 
-> [!info] Usage in a weekly note  
-> When you want to use this query in a weekly note and your weekly note is named like "2022W2", use this as the first line:  
-> `const yearAndWeek = dv.current().file.name.split('-W')`  
+> [!info] Usage in a weekly note
+> When you want to use this query in a weekly note and your weekly note is named like "2022W2", use this as the first line:
+> `const yearAndWeek = dv.current().file.name.split('-W')`
 >  This will retrieve the year and weeknumber information from your file name and you do not need to adjust this manually.
 
 ```dataviewjs
@@ -62,7 +62,7 @@ Remove if you want to preserve the width configured on the image link itself. */
 
 ![[What is#^dv-view]]
 
-> [!warning] Adjustment of script necessary  
+> [!warning] Adjustment of script necessary
 > For demonstration purposes, the variable "yearAndWeek" is hardcoded to ["2022", "2"]. In order to use the script inside your vault, you need to adjust this line as explained inside the script.
 
 ```dataviewjs
@@ -74,9 +74,9 @@ await dv.view('00 Meta/dataview_views/imagegrid', { current: dv.current(), daily
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

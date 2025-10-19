@@ -7,7 +7,7 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -20,11 +20,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/create_new
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description::
 
 ---
@@ -80,35 +80,35 @@ for (var i = 0; i < subdir_obj_arr.length; i++) {
   fmatter_title = `title: ${file_name}`;
   // Set the frontmatter aliases
   fmatter_alias = `aliases:  [${subdir_obj_arr[i].name}, ${subdir_obj_arr[i].value}]`;
-  
-  // set the project subdirectory 
+
+  // set the project subdirectory
   project_subdir = `${project_dir}/${file_name}`;
 
   // Create subdirectory
   await this.app.vault.createFolder(project_subdir);
-  
+
   // Unicode for backticks
   backtick = String.fromCodePoint(0x60);
   three_backtick = backtick.repeat(3);
-  
+
   // regex tags for completed and remaining task code blocks
   tag_inline_regex = `(#task)|\[.*$`;
   type_regex = `(_action_item)|(_meeting)|(_habit)|(_morning_ritual)|(_workday_startup_ritual)|(_workday_shutdown_ritual)|(_evening_ritual)`;
   task_title_regex = `^[A-Za-z0-9:;\'\-\s]*_`;
-  
+
   // Completed task code blocks
   completed_tasks = `${three_backtick}dataview
-TABLE WITHOUT ID 
+TABLE WITHOUT ID
 	regexreplace(regexreplace(T.text, "${tag_inline_regex}", ""), "${type_regex}", "") AS Task,
 	T.completion AS Completed,
 	T.time_start AS Start,
 	T.time_end AS End,
-	(date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end) - 
+	(date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end) -
 	date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_start)) AS Duration,
 	T.section AS Link
 FROM #task AND "${project_dir}"
 FLATTEN file.tasks AS T
-WHERE 
+WHERE
 	T.completed
 	AND contains(T.text, "${subdir_obj_arr[i].filter}")
 SORT T.completion, T.time_start ASC
@@ -122,21 +122,21 @@ sort by due
 ${three_backtick}`;
 
   file_content = `---
-${fmatter_title} 
-${fmatter_alias} 
-${fmatter_date_start} 
-${fmatter_date_end} 
-${fmatter_due_do} 
-${fmatter_pillar} 
-${fmatter_context} 
-${fmatter_goal} 
-${fmatter_project} 
-${fmatter_organization} 
-${fmatter_contact} 
-${fmatter_status} 
-${fmatter_type} 
-${fmatter_file_class} 
-${fmatter_date_created} 
+${fmatter_title}
+${fmatter_alias}
+${fmatter_date_start}
+${fmatter_date_end}
+${fmatter_due_do}
+${fmatter_pillar}
+${fmatter_context}
+${fmatter_goal}
+${fmatter_project}
+${fmatter_organization}
+${fmatter_contact}
+${fmatter_status}
+${fmatter_type}
+${fmatter_file_class}
+${fmatter_date_created}
 ${fmatter_date_modified}
 ---\n
 tags::\n
@@ -213,24 +213,24 @@ for (var i = 0; i < subdir_obj_arr.length; i++) {
   file_name = `${subdir_obj_arr[i].name}`;
   project_subdir = `${project_dir}/${file_name}`;
   await this.app.vault.createFolder(project_subdir);
-  
+
   fmatter_title = `title: ${file_name}`;
   fmatter_alias = `aliases:  [${subdir_obj_arr[i].name}, ${subdir_obj_arr[i].value}]`;
-  
+
   backtick = String.fromCodePoint(0x60);
   three_backtick = backtick.repeat(3);
-  
+
   tag_inline_regex = `(#task)|[.*$`;
   type_regex = `(_action_item)|(_meeting)|(_habit)|(_morning_ritual)|(_workday_startup_ritual)|(_workday_shutdown_ritual)|(_evening_ritual)`;
   task_title_regex = `^[A-Za-z0-9:;\'\-\s]*_`;
-  
+
   completed_tasks = `${three_backtick}dataview
-TABLE WITHOUT ID 
+TABLE WITHOUT ID
 	regexreplace(regexreplace(T.text, "${tag_inline_regex}", ""), "${type_regex}", "") AS Task,
 	T.completion AS Completed,
 	T.time_start AS Start,
 	T.time_end AS End,
-	(date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end) - 
+	(date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end) -
 	date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_start)) AS Duration,
 	T.section AS Link
 FROM #task AND "${project_dir}"
@@ -247,21 +247,21 @@ sort by due
 ${three_backtick}`;
 
   file_content = `---
-${fmatter_title} 
-${fmatter_alias} 
-${fmatter_date_start} 
-${fmatter_date_end} 
-${fmatter_due_do} 
-${fmatter_pillar} 
-${fmatter_context} 
-${fmatter_goal} 
-${fmatter_project} 
-${fmatter_organization} 
-${fmatter_contact} 
-${fmatter_status} 
-${fmatter_type} 
-${fmatter_file_class} 
-${fmatter_date_created} 
+${fmatter_title}
+${fmatter_alias}
+${fmatter_date_start}
+${fmatter_date_end}
+${fmatter_due_do}
+${fmatter_pillar}
+${fmatter_context}
+${fmatter_goal}
+${fmatter_project}
+${fmatter_organization}
+${fmatter_contact}
+${fmatter_status}
+${fmatter_type}
+${fmatter_file_class}
+${fmatter_date_created}
 ${fmatter_date_modified}
 ---\n
 tags::\n
@@ -327,7 +327,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -348,7 +348,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

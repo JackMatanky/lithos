@@ -13,7 +13,7 @@ tags:: #obsidian #obsidian/plugin #obsidian/annotator #pdf #epub
 
 ---
 
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/elias-sundqvist/obsidian-annotator?style=for-the-badge&sort=semver)](https://github.com/elias-sundqvist/obsidian-annotator/releases/latest)  
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/elias-sundqvist/obsidian-annotator?style=for-the-badge&sort=semver)](https://github.com/elias-sundqvist/obsidian-annotator/releases/latest)
 ![GitHub All Releases](https://img.shields.io/github/downloads/elias-sundqvist/obsidian-annotator/total?style=for-the-badge)
 
 # Obsidian Annotator
@@ -28,7 +28,7 @@ The plugin is based on <https://web.hypothes.is/,> but modified to store the ann
 
 ![annotator demo](https://user-images.githubusercontent.com/9102856/131702952-1aa76baa-a279-474c-978d-cec95a683485.gif)
 
-**Warning!** In the above gif I use **Dataview** syntax to specify the annotation-target.  
+**Warning!** In the above gif I use **Dataview** syntax to specify the annotation-target.
 If you do not have the dataview plugin installed, you must instead write the annotation-target in the **frontmatter**, like this:
 
 ```md
@@ -44,12 +44,12 @@ annotation-target: https://arxiv.org/pdf/2104.13478.pdf
 
 ## Getting Started
 
-Add the property `annotation-target` to the frontmatter of your obsidian note, with a value corresponding to the location of the EPUB/PDF file.  
+Add the property `annotation-target` to the frontmatter of your obsidian note, with a value corresponding to the location of the EPUB/PDF file.
 The location can either be a file in the vault (such as `Pdfs/mypdf.pdf`), or online (such as `https://arxiv.org/pdf/2104.13478.pdf`)
 
 Then you can, in the open note pane, select "more options" (the three dots in the top right), and a new option "annotate" should be available.
 
-The plugin automatically tries to determine whether the file is an `epub` or `pdf` based on the file path, but in case this doesn't work,  
+The plugin automatically tries to determine whether the file is an `epub` or `pdf` based on the file path, but in case this doesn't work,
 you can also add the property `annotation-target-type` and specify whether it is `epub` or `pdf` manually.
 
 If you have [dataview](https://github.com/blacksmithgu/obsidian-dataview) installed, then you can also specify the annotation target with a dataview attribute. In this case, obsidian-style links can be used instead of a plain-text path.
@@ -60,13 +60,13 @@ If you have [dataview](https://github.com/blacksmithgu/obsidian-dataview) instal
 
 Annotation is self-explanatory. Select text with your mouse to get started.
 
-In the future, it would be nice to add colored highlights and image/region highlights. These features will have to be added to hypothes.is first, however.  
+In the future, it would be nice to add colored highlights and image/region highlights. These features will have to be added to hypothes.is first, however.
 See these relevant issues: <https://github.com/hypothesis/product-backlog/issues/198,> <https://github.com/hypothesis/product-backlog/issues/669>
 
 ### The Annotations in Markdown
 
-To return to the regular obsidian markdown editing mode, you can select `more options` → `Open as MD`.  
-Each annotation has an associated quote block with a block reference. Be careful with modifying these blocks.  
+To return to the regular obsidian markdown editing mode, you can select `more options` → `Open as MD`.
+Each annotation has an associated quote block with a block reference. Be careful with modifying these blocks.
 Minor edits to PREFIX, HIGHLIGHT, and POSTFIX are typically ok. But if the edits are too major, hypothesis may no longer be able to identify the corresponding text.
 
 The COMMENT region can be freely edited. (but ensure that it is still part of the quote block.)
@@ -75,13 +75,13 @@ The TAGS region should consist of a comma-separated list of obsidian tags. (like
 
 ### Dark Mode
 
-The plugin has built-in dark mode support. To toggle dark mode, select `more options` → `Toggle Dark Mode` while annotating.  
+The plugin has built-in dark mode support. To toggle dark mode, select `more options` → `Toggle Dark Mode` while annotating.
 You can also tweak the dark mode behavior in the settings tab for the plugin.
 
 ### Linking to Annotations
 
-An obsidian link to an annotation block-reference will, when clicked, open the corresponding file and scroll to the associated highlight.  
-If the file is already open in a pane, then the link will cause the existing pane to scroll instead.  
+An obsidian link to an annotation block-reference will, when clicked, open the corresponding file and scroll to the associated highlight.
+If the file is already open in a pane, then the link will cause the existing pane to scroll instead.
 
 ## Contributing
 
@@ -202,7 +202,7 @@ Visit [CONTRIBUTING.md](./CONTRIBUTING.md) for information on building from sour
 
 ### 0.1.0 (2021-09-03) *Added Annotation Highlight Drag and drop*
 
-- By holding the <kbd>shift</kbd> key you can now drag highlights from the epub/pdf into a separate Obsidian note, and a link to the highlight will be inserted.  
+- By holding the <kbd>shift</kbd> key you can now drag highlights from the epub/pdf into a separate Obsidian note, and a link to the highlight will be inserted.
 ![highlight drag and drop](https://user-images.githubusercontent.com/9102856/132098957-e6850c9f-77a0-4fd5-91ac-e7095cfbea9d.gif)
 
 ### 0.0.9 (2021-09-03) *Quick Fix for Annotation Id bug*

@@ -86,7 +86,7 @@ const code_lang_sub = `choice(!contains(${yaml_subtopic}[0], "null"),
 // File type and subtype
 const code_type = `choice(${yaml_subtype} = "regex", "RegEx",
     choice(${yaml_subtype} = "pass_through_rawsql", "Pass-Through RAWSQL",
-    choice(${yaml_subtype} != "null", 
+    choice(${yaml_subtype} != "null",
     join(map(split(${yaml_subtype}, "_"),
       (x) => upper(substring(x, 0, 1)) + substring(x, 1)), " "), "")))
     + " " +
@@ -97,15 +97,15 @@ const code_type = `choice(${yaml_subtype} = "regex", "RegEx",
 // File subtype
 const code_subtype = `choice(${yaml_subtype} = "regex", "RegEx",
     choice(${yaml_subtype} = "pass_through_rawsql", "Pass-Through RAWSQL",
-    choice(${yaml_subtype} != "null", 
+    choice(${yaml_subtype} != "null",
     join(map(split(${yaml_subtype}, "_"),
       (x) => upper(substring(x, 0, 1)) + substring(x, 1)), " "), "")))
     AS Subtype`;
 
 // Status
-const pkm_status = `choice(${yaml_status} = "schedule", "🤷Unknown", 
-    choice(${yaml_status} = "review", "🔜Review", 
-    choice(${yaml_status} = "clarify", "🌱Clarify", 
+const pkm_status = `choice(${yaml_status} = "schedule", "🤷Unknown",
+    choice(${yaml_status} = "review", "🔜Review",
+    choice(${yaml_status} = "clarify", "🌱Clarify",
     choice(${yaml_status} = "develop", "🪴Develop",
     choice(${yaml_status} = "done", "🌳Done", "🗄️Resource")))))
 	  AS Status`;
@@ -114,9 +114,9 @@ const code_content = `${yaml_about} AS Description`;
 const code_content_md = `regexreplace(${yaml_about}, "\\n", "<br>") AS Description`;
 
 const tree_context = `choice(${yaml_subtype} = "subtopic", flat(list(${yaml_category}, ${yaml_branch}, ${yaml_field}, ${yaml_subject}, ${yaml_topic})),
-	  choice(${yaml_subtype} = "topic", flat(list(${yaml_category}, ${yaml_branch}, ${yaml_field}, ${yaml_subject})), 
+	  choice(${yaml_subtype} = "topic", flat(list(${yaml_category}, ${yaml_branch}, ${yaml_field}, ${yaml_subject})),
 	  choice(${yaml_subtype} = "subject", flat(list(${yaml_category}, ${yaml_branch}, ${yaml_field})),
-	  choice(${yaml_subtype} = "field", flat(list(${yaml_category}, ${yaml_branch})), 
+	  choice(${yaml_subtype} = "field", flat(list(${yaml_category}, ${yaml_branch})),
 	  choice(${yaml_subtype} = "branch", ${yaml_category}, "")))))
 	  AS Context`;
 

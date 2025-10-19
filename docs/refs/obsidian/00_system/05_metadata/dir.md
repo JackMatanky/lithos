@@ -2,9 +2,9 @@
 limit: 100
 mapWithTag: false
 icon: clipboard-list
-tagNames: 
-excludes: 
-extends: 
+tagNames:
+excludes:
+extends:
 version: "2.2"
 date_created: 2023-06-12T08:02
 date_modified: 2023-09-21T12:05

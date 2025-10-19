@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return the monthly habits and rituals project parent tasks folders and files.
 
 ---
@@ -41,7 +41,7 @@ const parent_habit_rit_month = "41_51_parent_habit_rit_month";
 //---------------------------------------------------------
 // HABITS AND RITUALS PARENT TASKS
 //---------------------------------------------------------
-// Retrieve the Habits and Rituals Project 
+// Retrieve the Habits and Rituals Project
 // Parent Tasks template and content
 template = await tp.file.find_tfile(habit_ritual_monthly_parent_tasks);
 content = await tp.file.include(template);
@@ -49,7 +49,7 @@ content = await tp.file.include(template);
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -350,7 +350,7 @@ for (var i = 0; i < subdir_obj_arr.length; i++) {
 >${space}
 >${space}**INCLUDED TASKS AND THEIR PURPOSE**${two_space}
 >${space}
->${space}*First Task*${two_space} 
+>${space}*First Task*${two_space}
 >${space}1.${space}habit_ritual::${two_space}
 >${space}2.${space}purpose::${two_space}
 >${space}
@@ -398,20 +398,20 @@ for (var i = 0; i < subdir_obj_arr.length; i++) {
 
   file_content = `---
 ${fmatter_title}
-${fmatter_alias} 
-${fmatter_date_start} 
-${fmatter_date_end} 
-${fmatter_due_do} 
-${fmatter_pillar} 
-${fmatter_context} 
-${fmatter_goal} 
-${fmatter_project} 
-${fmatter_organization} 
-${fmatter_contact} 
-${fmatter_status} 
-${fmatter_type} 
-${fmatter_file_class} 
-${fmatter_date_created} 
+${fmatter_alias}
+${fmatter_date_start}
+${fmatter_date_end}
+${fmatter_due_do}
+${fmatter_pillar}
+${fmatter_context}
+${fmatter_goal}
+${fmatter_project}
+${fmatter_organization}
+${fmatter_contact}
+${fmatter_status}
+${fmatter_type}
+${fmatter_file_class}
+${fmatter_date_created}
 ${fmatter_date_modified}
 ---\n
 tags::\n
@@ -498,7 +498,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -519,7 +519,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -259,7 +259,7 @@ tags:
 # <%* tR += title %>
 
 > [!journal] <%* tR += full_type_name %> Details
-> 
+>
 > - **Journal Type**:: <%* tR += type_name %>
 > - **Pillar**: `dv: this.file.frontmatter.pillar`
 > - **Project**: `dv: this.file.frontmatter.project`

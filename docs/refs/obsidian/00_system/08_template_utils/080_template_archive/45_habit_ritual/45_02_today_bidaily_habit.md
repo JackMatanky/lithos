@@ -326,7 +326,7 @@ const dynamic_stretch_callout = `${call_start}1.${space}Dynamic Stretching Routi
 const basic_strength_callout = `${call_start}2.${space}Basic Strength Routine${space}(One minute per exercise)${two_space}${new_line}${call_check_indent}Twenty Romanian Deadlifts${new_line}${call_check_indent}Seven Alternating Lunges per Side${new_line}${call_check_indent}Fifteen Pushups${new_line}${call_check_indent}Fifteen One-Arm Rows${new_line}`;
 const late_noon_move_callout = `${late_noon_move_callout_title}${dynamic_stretch_callout}${basic_strength_callout}`;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // CHILD TASK INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${child_task_info_callout}.md`;

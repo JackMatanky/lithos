@@ -33,14 +33,14 @@ WHERE !author
 
 ### Check for Empty Meta Data Fields that Are Lists
 
-> [!hint] Use case  
+> [!hint] Use case
 > This is handy when you prefill your yaml frontmatter, i.e. via a template, with something like
-> 
+>
 > ```
 > genres:
->   - 
+>   -
 > ```
-> 
+>
 > `genres` is *not* empty in this case and won't be found via `WHERE!genres`
 
 ```dataview
@@ -53,9 +53,9 @@ WHERE !genres OR (length(genres) = 1 AND contains(genres, null))
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

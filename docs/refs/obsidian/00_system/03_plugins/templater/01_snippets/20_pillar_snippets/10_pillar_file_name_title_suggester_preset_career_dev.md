@@ -27,11 +27,11 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a pillar's file name and the pillar's main title from `alias[0]`. Preset with the Career Development pillar's information.
 
 ---
@@ -45,7 +45,7 @@ const pillar_name_alias_preset_career = "20_01_pillar_name_alias_preset_career";
 //---------------------------------------------------------
 // SET PILLAR FILE AND FULL NAME; PRESET CAREER DEV.
 //---------------------------------------------------------
-// Retrieve the Pillar File Name and Title with 
+// Retrieve the Pillar File Name and Title with
 // Career Development Preset template and content
 temp_file_path = `${sys_temp_include_dir}${pillar_name_alias_preset_career}.md`;
 abstract_file = await app.vault.getAbstractFileByPath(temp_file_path);
@@ -181,7 +181,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -205,7 +205,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

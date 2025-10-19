@@ -37,10 +37,10 @@ dv.table(["Score", "Project", "Started", "Age"], projects.map(p => [p.emojiAgeSc
 function getEmojiScore(p) {
 	const age = p.age.shiftTo('months').toObject()
 	let score = "";
-	
-	score += addEmojis("👿", age.months / 6)  
+
+	score += addEmojis("👿", age.months / 6)
 	score += addEmojis("😡", (age.months % 6) / 3)
-	score += addEmojis("😒", (age.months % 6 % 3)) 
+	score += addEmojis("😒", (age.months % 6 % 3))
 
 	return score;
 }
@@ -57,9 +57,9 @@ function addEmojis(emoji, max) {
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

@@ -29,9 +29,9 @@ reference: [LIMIT](https://blacksmithgu.github.io/obsidian-dataview/queries/data
 
 ## Description
 
-> [!info]  
-> Plugin: Dataview  
-> Module: Data Command  
+> [!info]
+> Plugin: Dataview
+> Module: Data Command
 > Definition:: Restrict the results to at most N values.
 
 ## Syntax

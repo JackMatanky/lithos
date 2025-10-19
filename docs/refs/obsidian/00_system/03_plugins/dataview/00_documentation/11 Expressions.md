@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/reference/expressions/
 file_class: lib_documentation
 date_created: 2023-03-09T17:10
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Expressions](https://blacksmithgu.github.io/obsidian-dataview/reference/expressions/)
 
@@ -76,7 +76,7 @@ More detailed explanations of each follow.
 
 ### Fields as Expressions
 
-The simplest expression is one that just directly refers to a field. If you have a field called "duedate", then you can  
+The simplest expression is one that just directly refers to a field. If you have a field called "duedate", then you can
 refer to it directly by name - `duedate`.
 
 ```sql
@@ -84,12 +84,12 @@ refer to it directly by name - `duedate`.
 TABLE duedate, class, field-with-space
 ```
 
-> [!info] Field names with spaces and punctuations  
+> [!info] Field names with spaces and punctuations
 > If the field name has spaces, punctuation, or other non-letter/number characters, then you can refer to it using Dataview's simplified name, which is all lower case with spaces replaced with "-". For example, `this is a field` becomes `this-is-a-field`; `Hello!` becomes `hello`, and so on. Read more under [Field names](../annotation/add-metadata.md#field-names)
 
 ### Literals
 
-Constant values - things like `1` or `"hello"` or `date(som)` ("start of month"). There are literals for each data type  
+Constant values - things like `1` or `"hello"` or `date(som)` ("start of month"). There are literals for each data type
 that dataview supports; read more about them [here](./literals.md).
 
 ```sql
@@ -100,12 +100,12 @@ WHERE file.name = "Scribble"
 
 ### Arithmetic
 
-You can use standard arithmetic operators to combine fields: addition (`+`), subtraction (`-`), multiplication (`*`),  
+You can use standard arithmetic operators to combine fields: addition (`+`), subtraction (`-`), multiplication (`*`),
 and division (`/`). For example `field1 + field2` is an expression which computes the sum of the two fields.
 
 ```sql
 ```dataview
-TABLE start, end, (end - start) - dur(8 h) AS "Overtime" 
+TABLE start, end, (end - start) - dur(8 h) AS "Overtime"
 FROM #work
 ```
 
@@ -117,7 +117,7 @@ FROM "30 Projects"
 
 ### Comparisons
 
-You can compare most values using the various comparison operators: `<`, `>`, `<=`, `>=`, `=`, `!=`. This yields a  
+You can compare most values using the various comparison operators: `<`, `>`, `<=`, `>=`, `=`, `!=`. This yields a
 boolean true or false value which can be used in `WHERE` blocks in queries.
 
 ```sql
@@ -140,15 +140,15 @@ FROM #homework
 WHERE status != "done"
 ```
 
-> [!hint] "Comparing different types"  
-> Comparing different [data types](../annotation/types-of-metadata.md) with each other can lead to unexpected results. Take the second example: If `due` is not set (neither on page nor task level), it is `null` and `null <= date(today)` returns true, including tasks without any due date. If this is not wanted, add a type check to make sure you're always comparing the same types:  
-> 
+> [!hint] "Comparing different types"
+> Comparing different [data types](../annotation/types-of-metadata.md) with each other can lead to unexpected results. Take the second example: If `due` is not set (neither on page nor task level), it is `null` and `null <= date(today)` returns true, including tasks without any due date. If this is not wanted, add a type check to make sure you're always comparing the same types:
+>
 > ```sql
-> ```dataview  
-> TASK 
+> ```dataview
+> TASK
 > WHERE typeof(due) = "date" AND due <= date(today)
 > ```
-> 
+>
 > Most often, it is sufficient to check if the meta data is available via `WHERE due AND due <= date(today)`, but checking the type is the safer way to get foreseeable results.
 
 ### List/Object Indexing
@@ -227,5 +227,5 @@ Most dataview types have special interactions with operators, or have additional
 
 You can "index through" a link to get values on the corresponding page. For example `[[Assignment Math]].duedate` would get the value `duedate` from page `Assignment Math`.
 
-> [!note] Link Indexing in Expressions  
+> [!note] Link Indexing in Expressions
 > If your link is a field that you defined in an inline field or in front-matter, like `Class:: [[Math]]` and you want to get the field `timetable`, then you index into it by writing `Class.timetable`. Using `[[Class]].timetable` would look up the page literally called `Class`, and not `Math`!

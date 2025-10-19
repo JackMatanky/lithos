@@ -53,14 +53,14 @@ const status = `default(((x) => {
 const yaml_author = "file.frontmatter.author";
 const yaml_lecturer = "file.frontmatter.lecturer";
 const author = `choice(length(choice(contains(${yaml_type}, "course"), ${yaml_lecturer}, ${yaml_author})) < 2,
-      choice(contains(${yaml_type}, "course"), ${yaml_lecturer}[0], ${yaml_author}[0]), 
-      flat(choice(contains(${yaml_type}, "course"), ${yaml_lecturer}, ${yaml_author}))) 
+      choice(contains(${yaml_type}, "course"), ${yaml_lecturer}[0], ${yaml_author}[0]),
+      flat(choice(contains(${yaml_type}, "course"), ${yaml_lecturer}, ${yaml_author})))
     AS Creator`;
 
 // Date published
-const publish_date = `choice(contains(${yaml_type}, "book"), 
-      file.frontmatter.year_published, 
-      file.frontmatter.date_published) 
+const publish_date = `choice(contains(${yaml_type}, "book"),
+      file.frontmatter.year_published,
+      file.frontmatter.date_published)
     AS "Date Published"`;
 
 // Tags
@@ -138,8 +138,8 @@ WHERE
 	${current_file_filter}
 	AND ${in_out_link_filter}
 	AND ${class_filter}
-SORT 
-	${yaml_type},	
+SORT
+	${yaml_type},
 	${yaml_title} ASC
 ${three_backtick}`;
   } else {
@@ -160,8 +160,8 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
-	${yaml_type},	
+SORT
+	${yaml_type},
 	${yaml_title} ASC
 ${three_backtick}`;
   }

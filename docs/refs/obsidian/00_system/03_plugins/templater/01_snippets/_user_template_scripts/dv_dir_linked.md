@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a dataview table or markdown table for linked contact or organization files based on specific file class.
 
 ---
@@ -72,7 +72,7 @@ const directory_dir = `"50_directory"`;
 const current_file_filter = `file.name != this.file.name`;
 
 // File inlinks and outlinks
-const in_out_link_filter = `(contains(file.outlinks, this.file.link) 
+const in_out_link_filter = `(contains(file.outlinks, this.file.link)
 	OR contains(file.inlinks, this.file.link))`;
 
 // File class filter
@@ -112,7 +112,7 @@ WHERE
 	AND ${class_filter}
 	AND ${type_filter}
 	AND ${in_out_link_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
     } else {
@@ -132,7 +132,7 @@ WHERE
 	AND ${class_filter}
 	AND ${type_filter}
 	AND ${in_out_link_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
     }
@@ -145,7 +145,7 @@ module.exports = dv_dir_linked;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -215,7 +215,7 @@ const linked_dir_org = await tp.user.dv_dir_linked("organization", "false");
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_dir_linked.js]]
 
@@ -237,7 +237,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -258,7 +258,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -9,95 +9,11 @@ This section identifies the major logical components and services that implement
 - **API Adapters:** Application driving components (CLI, future TUI/LSP)
 - **Shared Internal Packages:** Cross-cutting concerns (logging, errors, registries) used across layers
 
-## Shared Internal Packages
-
-### Logger
-
-**Responsibility:** Centralized structured logging wrapper around zerolog. Provides consistent log formatting across all components. Supports both JSON (machine-readable) and pretty-print (human-readable) output modes. Filters sensitive data and provides context-aware logging.
-
-**Architecture Layer + Rationale:** Shared Internal Package (Cross-Cutting Concern). Used by all layers. Not domain logic or infrastructure—pure technical concern. Centralized to enforce consistent logging patterns.
-
-**Key Interfaces:**
-
-- `Log zerolog.Logger` - Global logger instance
-- `WithComponent(component string) zerolog.Logger` - Add component context
-- `WithOperation(operation string) zerolog.Logger` - Add operation context
-- `WithCorrelationID(id string) zerolog.Logger` - Add correlation ID
-
-**Dependencies:**
-
-- ConfigPort - For log level configuration
-- `golang.org/x/term` - For TTY detection (pretty-print vs JSON)
-
-**Technology Stack:**
-
-- `github.com/rs/zerolog` v1.34.0 for structured logging
-- Go stdlib `os` for stdout/stderr detection
-
----
-
-### Error Package
-
-**Responsibility:** Defines domain-specific error types for better error handling and user messaging. Implements Rust-style Result<T> pattern for functional error handling. Wraps stdlib errors with context. Provides error factories and helper functions.
-
-**Architecture Layer + Rationale:** Shared Internal Package (Cross-Cutting Concern). Used by all layers. Not domain logic or infrastructure—pure technical concern. Centralized error definitions enable consistent error handling.
-
-**Key Types:**
-
-- `ValidationError` - Schema validation failures (field, message, value)
-- `ConfigError` - Configuration issues (key, message)
-- `TemplateError` - Template syntax/execution errors (template, line, message)
-- `SchemaError` - Schema loading/resolution errors (schema, message)
-- `StorageError` - Cache access failures (operation, path, cause)
-- `FileSystemError` - File I/O failures (operation, path, cause)
-- `Result[T]` - Rust-style Result type (using go-result library)
-- Error wrapping functions: `Wrap()`, `WrapWithContext()`
-- Factory functions: `NewValidationError()`, `NewTemplateError()`, etc.
-
-**Dependencies:**
-
-- `github.com/aidantwoods/go-result` - For Result<T> implementation
-- Go stdlib `errors` package for wrapping and `errors.Join()`
-
-**Technology Stack:**
-
-- Go stdlib `errors` package
-- `github.com/aidantwoods/go-result` for Rust-style Result<T>
-- Go stdlib `fmt` for error formatting
-
----
-
-### Registry Package
-
-**Responsibility:** Generic in-memory registry implementation with CQRS-aware interfaces. Provides thread-safe storage for schemas and templates loaded at startup. Supports read-only access for validators/queries and write-only access for loaders. Generic implementation reusable across different data types.
-
-**Architecture Layer + Rationale:** Shared Internal Package (Cross-Cutting Concern). Used by Schema Service and Template Service. Not domain logic or infrastructure—pure technical pattern. Centralized to avoid code duplication.
-
-**Key Interfaces:**
-
-- `Reader[T any]` - Read-only access (`Get`, `Exists`, `ListKeys`)
-- `Writer[T any]` - Write-only access (`Register`, `Clear`)
-- `Persister` - Persistence operations (`SaveIndex`, `LoadIndex`)
-- `Registry[T any]` - Full registry combining all capabilities
-- `New[T any]() Registry[T]` - Constructor
-
-**Dependencies:**
-
-- Go stdlib `sync` package for RWMutex
-- Go stdlib `encoding/json` for Persister (optional)
-
-**Technology Stack:**
-
-- Pure Go with generics (requires Go 1.23+)
-- Go stdlib `sync.RWMutex` for thread-safe access
-
----
-
 ## Domain Services
 
 The following core services implement PRD epics inside the hexagonal domain. Method signatures below illustrate contractual expectations rather than literal Go declarations; concrete interfaces live in the architecture layer packages. All services must honor context cancellation and propagate errors without leaking infrastructure concerns.
 
-### TemplateEngineService
+### TemplateEngine
 
 **Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and schema validation.
 
@@ -106,11 +22,11 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Execute(templateID string, ctx context.Context) (RenderResult, error)`
 - `Register(template Template)`
 
-**Dependencies:** TemplateRepositoryPort, InteractivePort (PromptPort/FuzzyFinderPort), QueryService (read interface), SchemaValidatorService, Logger.
+**Dependencies:** TemplateRepositoryPort, InteractivePort (PromptPort/FuzzyFinderPort), QueryService (read interface), SchemaValidator, Logger.
 
 **Technology Stack:** Go `text/template`, custom function map (`prompt`, `suggester`, `lookup`, `query`, `now`), closures wrapping port calls, zerolog for instrumentation.
 
-### SchemaRegistryService
+### SchemaRegistry
 
 **Responsibility:** Load schemas/property banks, resolve inheritance/exclusions, and expose an immutable registry.
 
@@ -123,7 +39,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 
 **Technology Stack:** Go `encoding/json`, custom builder pattern for inheritance resolution, cycle detection via DFS, `sync.RWMutex` guarded registry.
 
-### SchemaValidatorService
+### SchemaValidator
 
 **Responsibility:** Validate frontmatter against schema rules prior to note creation or during indexing.
 
@@ -132,11 +48,11 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Validate(schemaName string, fm Frontmatter) []ValidationError`
 - `Lint(template Template) []ValidationError` (stretch goal hook)
 
-**Dependencies:** SchemaRegistryService, QueryService (for FileProperty resolution), Logger, Error package.
+**Dependencies:** SchemaRegistry, QueryService (for FileProperty resolution), Logger, Error package.
 
 **Technology Stack:** Go stdlib (`reflect`, `regexp`, `time`), PropertySpec polymorphism, structured errors enriched with remediation tips.
 
-### VaultIndexingService
+### VaultIndexer
 
 **Responsibility:** Scan vaults, parse frontmatter, and persist the hybrid cache that powers lookups.
 
@@ -145,7 +61,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Rebuild(ctx context.Context, vaultPath string) (IndexStats, error)`
 - `Refresh(paths []string) error` (post-MVP incremental updates)
 
-**Dependencies:** FileSystemPort, CacheCommandPort, SchemaValidatorService, QueryService (writer side), Logger, Config.
+**Dependencies:** FileSystemPort, CacheCommandPort, SchemaValidator, QueryService (writer side), Logger, Config.
 
 **Technology Stack:** Custom frontmatter extractor + `goccy/go-yaml`, Go filesystem walk, JSON serialization to `.lithos/cache`, zerolog metrics, atomic write pattern (temp file + rename) to guarantee readers never observe partial files.
 
@@ -172,7 +88,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Find(ctx context.Context) (RenderResult, error)`
 - `Index(ctx context.Context) (IndexStats, error)`
 
-**Dependencies:** TemplateEngineService, QueryService, VaultIndexingService, SchemaValidatorService, Logger, Config.
+**Dependencies:** TemplateEngine, QueryService, VaultIndexer, SchemaValidator, Logger, Config.
 
 **Technology Stack:** Pure Go orchestration layer, context-aware method signatures, structured result objects for adapters, zerolog-backed tracing.
 
@@ -182,7 +98,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 
 Primary (driving) ports define the contracts that adapters such as the Cobra CLI—and future TUI/LSP front-ends—use to interact with the domain core.
 
-### CommandServicePort
+### CLICommandPort
 
 **Responsibility:** Provide a stable interface for command-oriented workflows (`new`, `find`, `index`) exposed to all driving adapters.
 
@@ -192,7 +108,7 @@ Primary (driving) ports define the contracts that adapters such as the Cobra CLI
 - `Find(ctx context.Context) (RenderResult, error)`
 - `Index(ctx context.Context) (IndexStats, error)`
 
-**Dependencies:** Implemented by CommandOrchestrator, which composes TemplateEngineService, VaultIndexingService, QueryService, and SchemaValidatorService behind the scenes.
+**Dependencies:** Implemented by CommandOrchestrator, which composes TemplateEngine, VaultIndexer, QueryService, and SchemaValidator behind the scenes.
 
 **Technology Stack:** Defined in `internal/app/ports/api.go` as pure Go interfaces; shared response structs (`RenderResult`, `IndexStats`) live alongside the port for reuse by adapters.
 
@@ -328,7 +244,7 @@ Concrete adapters live in `internal/adapters/` and satisfy the driven ports with
 
 **Dependencies:** LocalFileSystemAdapter (optional composition), Go `encoding/json`, Config (cache directory), Logger.
 
-**Technology Stack:** JSON serialization/deserialization, directory management under `.lithos/cache`, path hashing for filenames, atomic write/rename workflow mirroring VaultIndexingService.
+**Technology Stack:** JSON serialization/deserialization, directory management under `.lithos/cache`, path hashing for filenames, atomic write/rename workflow mirroring VaultIndexer.
 
 ### SchemaLoaderAdapter
 
@@ -391,27 +307,27 @@ Driving adapters invoke the domain through API ports. Today only the Cobra CLI e
 
 ### CobraCLIAdapter
 
-**Responsibility:** Wire command-line interactions to `CommandServicePort`, translating flags/arguments into domain requests and presenting results.
+**Responsibility:** Wire command-line interactions to `CLICommandPort`, translating flags/arguments into domain requests and presenting results.
 
 **Key Interfaces:**
 
 - `Execute(args []string) int`
 - `registerCommands(root *cobra.Command)`
 
-**Dependencies:** `CommandServicePort`, `ConfigPort`, `github.com/spf13/cobra`, Logger.
+**Dependencies:** `CLICommandPort`, `ConfigPort`, `github.com/spf13/cobra`, Logger.
 
 **Technology Stack:** Cobra command tree, `pflag` for flag parsing, structured output helpers (human-readable + JSON), zerolog instrumentation.
 
 ### BubbleTeaTUIAdapter (Post-MVP)
 
-**Responsibility:** Planned TUI that provides rich terminal UX (status dashboard, live previews) while calling `CommandServicePort`.
+**Responsibility:** Planned TUI that provides rich terminal UX (status dashboard, live previews) while calling `CLICommandPort`.
 
 **Key Interfaces:**
 
 - `Run(ctx context.Context) error`
 - `Update(msg tea.Msg) (tea.Model, tea.Cmd)`
 
-**Dependencies:** `CommandServicePort`, `InteractivePort`, `github.com/charmbracelet/bubbletea`, Logger.
+**Dependencies:** `CLICommandPort`, `InteractivePort`, `github.com/charmbracelet/bubbletea`, Logger.
 
 **Technology Stack:** Bubble Tea state machine (`tea.Model`), `lipgloss` styling, reuse of existing prompt/fuzzy finder ports for list selections.
 
@@ -424,9 +340,93 @@ Driving adapters invoke the domain through API ports. Today only the Cobra CLI e
 - `Initialize(params protocol.InitializeParams) (protocol.InitializeResult, error)`
 - `ExecuteCommand(params protocol.ExecuteCommandParams) (interface{}, error)`
 
-**Dependencies:** `CommandServicePort`, `ConfigPort`, LSP JSON-RPC server library, Logger.
+**Dependencies:** `CLICommandPort`, `ConfigPort`, LSP JSON-RPC server library, Logger.
 
 **Technology Stack:** `golang.org/x/tools` LSP packages or `sourcegraph/jsonrpc2`, JSON message codecs, reuse of command results formatted for editor diagnostics.
+
+---
+
+## Shared Internal Packages
+
+### Logger
+
+**Responsibility:** Centralized structured logging wrapper around zerolog. Provides consistent log formatting across all components. Supports both JSON (machine-readable) and pretty-print (human-readable) output modes. Filters sensitive data and provides context-aware logging.
+
+**Architecture Layer + Rationale:** Shared Internal Package (Cross-Cutting Concern). Used by all layers. Not domain logic or infrastructure—pure technical concern. Centralized to enforce consistent logging patterns.
+
+**Key Interfaces:**
+
+- `Log zerolog.Logger` - Global logger instance
+- `WithComponent(component string) zerolog.Logger` - Add component context
+- `WithOperation(operation string) zerolog.Logger` - Add operation context
+- `WithCorrelationID(id string) zerolog.Logger` - Add correlation ID
+
+**Dependencies:**
+
+- ConfigPort - For log level configuration
+- `golang.org/x/term` - For TTY detection (pretty-print vs JSON)
+
+**Technology Stack:**
+
+- `github.com/rs/zerolog` v1.34.0 for structured logging
+- Go stdlib `os` for stdout/stderr detection
+
+---
+
+### Error Package
+
+**Responsibility:** Defines domain-specific error types for better error handling and user messaging. Implements Rust-style Result<T> pattern for functional error handling. Wraps stdlib errors with context. Provides error factories and helper functions.
+
+**Architecture Layer + Rationale:** Shared Internal Package (Cross-Cutting Concern). Used by all layers. Not domain logic or infrastructure—pure technical concern. Centralized error definitions enable consistent error handling.
+
+**Key Types:**
+
+- `ValidationError` - Schema validation failures (field, message, value)
+- `ConfigError` - Configuration issues (key, message)
+- `TemplateError` - Template syntax/execution errors (template, line, message)
+- `SchemaError` - Schema loading/resolution errors (schema, message)
+- `StorageError` - Cache access failures (operation, path, cause)
+- `FileSystemError` - File I/O failures (operation, path, cause)
+- `Result[T]` - Rust-style Result type (using go-result library)
+- Error wrapping functions: `Wrap()`, `WrapWithContext()`
+- Factory functions: `NewValidationError()`, `NewTemplateError()`, etc.
+
+**Dependencies:**
+
+- `github.com/aidantwoods/go-result` - For Result<T> implementation
+- Go stdlib `errors` package for wrapping and `errors.Join()`
+
+**Technology Stack:**
+
+- Go stdlib `errors` package
+- `github.com/aidantwoods/go-result` for Rust-style Result<T>
+- Go stdlib `fmt` for error formatting
+
+---
+
+### Registry Package
+
+**Responsibility:** Generic in-memory registry implementation with CQRS-aware interfaces. Provides thread-safe storage for schemas and templates loaded at startup. Supports read-only access for validators/queries and write-only access for loaders. Generic implementation reusable across different data types.
+
+**Architecture Layer + Rationale:** Shared Internal Package (Cross-Cutting Concern). Used by Schema Service and Template Service. Not domain logic or infrastructure—pure technical pattern. Centralized to avoid code duplication.
+
+**Key Interfaces:**
+
+- `Reader[T any]` - Read-only access (`Get`, `Exists`, `ListKeys`)
+- `Writer[T any]` - Write-only access (`Register`, `Clear`)
+- `Persister` - Persistence operations (`SaveIndex`, `LoadIndex`)
+- `Registry[T any]` - Full registry combining all capabilities
+- `New[T any]() Registry[T]` - Constructor
+
+**Dependencies:**
+
+- Go stdlib `sync` package for RWMutex
+- Go stdlib `encoding/json` for Persister (optional)
+
+**Technology Stack:**
+
+- Pure Go with generics (requires Go 1.23+)
+- Go stdlib `sync.RWMutex` for thread-safe access
 
 ---
 
@@ -441,16 +441,16 @@ graph TD
     end
 
     subgraph APIPorts
-        CSP[CommandServicePort]
+        CSP[CLICommandPort]
     end
 
     subgraph DomainCore[Domain Core]
         CO[CommandOrchestrator]
-        TE[TemplateEngineService]
+        TE[TemplateEngine]
         QS[QueryService]
-        SV[SchemaValidatorService]
-        SR[SchemaRegistryService]
-        VI[VaultIndexingService]
+        SV[SchemaValidator]
+        SR[SchemaRegistry]
+        VI[VaultIndexer]
     end
 
     subgraph SPIPorts[Driven Ports]
@@ -498,6 +498,16 @@ graph TD
     CP --> CVA
 ```
 
-**Legend:** CSP = CommandServicePort, FS = FileSystemPort, CC = CacheCommandPort, CQ = CacheQueryPort, SE = SchemaEnginePort, TR = TemplateRepositoryPort, IP = InteractivePort, CP = ConfigPort, and similarly for adapter abbreviations.
+**Legend:**
+
+- CSP = CLICommandPort,
+- FS = FileSystemPort,
+- CC = CacheCommandPort,
+- CQ = CacheQueryPort,
+- SE = SchemaEnginePort,
+- TR = TemplateRepositoryPort,
+- IP = InteractivePort,
+- CP = ConfigPort,
+  and similarly for adapter abbreviations.
 
 ---

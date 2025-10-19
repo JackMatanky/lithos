@@ -26,14 +26,14 @@ tags: javascript, obsidian, obsidian/templater, obsidian/tp/system/suggester
 ## Description
 
 > [!function] Function Details
-> 
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Module: System  
-> Input::  
-> Output::  
-> Definition:: Spawns a suggester prompt and returns the user's chosen item.  
->  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Module: System
+> Input::
+> Output::
+> Definition:: Spawns a suggester prompt and returns the user's chosen item.
+>
 > Link: [tp.system.suggester](https://silentvoid13.github.io/Templater/internal-functions/internal-modules/system-module.html#tpsystemsuggestertext_items-string--item-t--string-items-t-throw_on_cancel-boolean--false-placeholder-string---limit-number--undefined)
 
 ---
@@ -42,10 +42,10 @@ tags: javascript, obsidian, obsidian/templater, obsidian/tp/system/suggester
 
 ```javascript
 tp.system.suggester(
-  text_items: string[] | ((item: T) => string), 
-  Items: T[], 
-  throw_on_cancel: Boolean = False, 
-  Placeholder: String = "", 
+  text_items: string[] | ((item: T) => string),
+  Items: T[],
+  throw_on_cancel: Boolean = False,
+  Placeholder: String = "",
   Limit?: Number = undefined
 )
 ```
@@ -65,15 +65,15 @@ tp.system.suggester(
 ## Examples
 
 ```javascript
-// Mood today: 
+// Mood today:
 tp.system.suggester(
-	["Happy", "Sad", "Confused"], 
+	["Happy", "Sad", "Confused"],
 	["Happy", "Sad", "Confused"]
 );
 
-// Picked file: 
+// Picked file:
 await tp.system.suggester(
-	(item) => item.basename, 
+	(item) => item.basename,
 	app.vault.getMarkdownFiles()
 )).basename
 ```
@@ -93,7 +93,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -111,7 +111,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.module AS Module,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND (file.frontmatter.file_class = "pkm_code_function")
 	AND (file.frontmatter.plugin = this.file.frontmatter.plugin)
@@ -120,7 +120,7 @@ SORT file.frontmatter.module, file.name
 
 #### By Tag
 
-<!-- Add tags in contains function as needed  -->  
+<!-- Add tags in contains function as needed  -->
 <!-- Query limit 10  -->
 
 ```dataview
@@ -129,7 +129,7 @@ TABLE WITHOUT ID
 	Definition AS Definition,
 	string(file.frontmatter.language) AS Language,
 	sort(file.etags) AS Tags
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND file.frontmatter.file_class = "pkm_code_function"
 	AND contains(file.tags, "system")
@@ -143,16 +143,16 @@ LIMIT 10
 
 #### All Function Links
 
-<!-- Excluding functions of the same module  -->  
+<!-- Excluding functions of the same module  -->
 <!-- Query limit 10  -->
 
 ```dataview
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
-	AND file.frontmatter.module != this.file.frontmatter.module 
+	AND file.frontmatter.module != this.file.frontmatter.module
 	AND file.frontmatter.file_class = "pkm_code_function"
 	AND (contains(file.outlinks, this.file.link)
 	OR contains(file.inlinks, this.file.link))

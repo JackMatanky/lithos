@@ -372,30 +372,30 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Question]
-> 
-> question::  
+>
+> question::
 
 > [!Evidence]
-> 
-> evidence::  
+>
+> evidence::
 
 > [!Conclusion]
-> 
-> conclusion::  
+>
+> conclusion::
 
 ---
 
 > [!Problem]
-> 
-> problem::  
+>
+> problem::
 
 > [!Steps]
-> 
-> step::  
+>
+> step::
 
 > [!Answer]
-> 
-> answer::  
+>
+> answer::
 
 ---
 

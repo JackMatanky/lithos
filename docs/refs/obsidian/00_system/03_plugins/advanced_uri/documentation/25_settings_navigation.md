@@ -8,7 +8,7 @@ tags: obsidian, obsidian/advanced_uri, documentation
 ---
 # Settings Navigation
 
-> [!info]  
+> [!info]
 > The settings tab of every community plugin can be opened by the plugin's id. The id can be found in `<your-vault> /.obsidian/plugins/<your-plugin> /manifest.json`.
 
 ## Obsidian Settings
@@ -47,16 +47,16 @@ tags: obsidian, obsidian/advanced_uri, documentation
 
 In addition to navigating to a specific setting, you can also navigate to a specific section of a setting. This is useful if you want to open a specific setting and have it scrolled into view. Use the additional `settingsection` parameter for this purpose. The parameter's value is the exact case-sensitive section name.
 
-> [!note]  
+> [!note]
 > **Example**
-> 
+>
 > ```uri
 > obsidian://advanced-uri?vault=<'your-vault'> &settingid=editor
 > ```
-> 
+>
 > ```uri
 > obsidian://advanced-uri?vault=<'your-vault'> &settingid=editor&settingsection=Behavior
 > ```
-> 
-> [!note] Source  
+>
+> [!note] Source
 > Thanks to [hyaray](https://github.com/hyaray) for collecting all setting ids on the [Obsidian forum](https://forum-zh.obsidian.md/t/topic/7365)

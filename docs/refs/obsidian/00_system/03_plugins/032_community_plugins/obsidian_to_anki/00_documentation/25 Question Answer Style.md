@@ -11,7 +11,7 @@ url: https://github.com/Pseudonium/Obsidian_to_Anki/wiki/Question-answer-style
 file_class: lib_documentation
 date_created: 2023-05-30T19:13
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Question-Answer Style
 
@@ -58,7 +58,7 @@ A: The 'magic' of regular expressions!
 Basic =
 ```
 
-to  
+to
 
 ```
 Basic = ^Q: ((?:.+\n)*)\n*A: (.+(?:\n(?:^.{1,3}$|^.{4}(?&lt;!&lt;!--).*))*)
@@ -69,7 +69,7 @@ Basic = ^Q: ((?:.+\n)*)\n*A: (.+(?:\n(?:^.{1,3}$|^.{4}(?&lt;!&lt;!--).*))*)
 
 ### All Users
 
-1. You should see these cards in Anki: ![[Question_1.webp]]  
-   ![[Question_2.webp]]  
-   ![[Question_3.webp]]  
+1. You should see these cards in Anki: ![[Question_1.webp]]
+   ![[Question_2.webp]]
+   ![[Question_3.webp]]
    ![[Question_4.webp]]

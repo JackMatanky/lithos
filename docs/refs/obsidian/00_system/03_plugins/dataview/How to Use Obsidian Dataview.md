@@ -14,7 +14,7 @@ tags: obsidian, obsidian/plugin, obsidian/dataview, todevelop, book, tag
 
 tags:: #obsidian #obsidian/plugin #obsidian/dataview
 
-> [!Excerpt]  
+> [!Excerpt]
 > Obsidian dataview is one of the most widely used community plugins in obsidian. It turns your knowledge base into a database that you can query from. If you are a non-technical person, dataview can…
 
 ---
@@ -97,7 +97,7 @@ This metadata is what is used by obsidian dataview to query notes.
 
 Metadata is the data about data. Here’s an example of metadata.
 
-![[1hd_hRr7Os8ahTFLcF_Z2HA.webp]]  
+![[1hd_hRr7Os8ahTFLcF_Z2HA.webp]]
 (Example of Metadata)
 
 Here is a video file I took from my PC. If you go to the properties and details section, everything you see is metadata. The data about this particular video. The length, resolution, bitrate, and everything. All of this is added automatically.
@@ -128,7 +128,7 @@ This is a simple example of adding metadata in markdown notes. This metadata is 
 
 Here’s an example of the YAML frontmatter of one of my book notes. We will be using book notes in my obsidian vault for examples.
 
-![[1S5BDUefTAjo7pWXkL1R6Dg.webp]]  
+![[1S5BDUefTAjo7pWXkL1R6Dg.webp]]
 (Frontmatter added automatically with book search plugin)
 
 ## 3. How to Use Dataview
@@ -157,7 +157,7 @@ Dataview will work now. But it won’t show any result because we haven’t adde
 Simply write the following code:
 
 ```
-```dataview 
+```dataview
 List
 ```
 
@@ -205,7 +205,7 @@ The header has changed as we specified.
 I don’t use obsidian as a task manager. But if you want to use it, the obsidian dataview plugin can become handy. Here’s the dataview code you need and how it will render:
 
 ```
-```dataview  
+```dataview
 Task
 ```
 
@@ -237,8 +237,8 @@ The **from** query helps you to specify what you are looking for. Notes from a p
 Here’s an example of the previous table format query:
 
 ```
-```dataview  
-Table author as Author,category as Category, my_rate as Rating, status as Status  
+```dataview
+Table author as Author,category as Category, my_rate as Rating, status as Status
 From #book```
 ```
 
@@ -249,8 +249,8 @@ This will query notes with #book only. The results?
 If you want to **query from a particular folder**, use this: From “FOLDER\_NAME”
 
 ```
-```dataview  
-Table author as Author,category as Category, my_rate as Rating, status as Status  
+```dataview
+Table author as Author,category as Category, my_rate as Rating, status as Status
 From "003 RESOURCES"
 ```
 
@@ -307,8 +307,8 @@ To conclude from queries, look this:
 Where filter can be used to further improve your notes database. Let’s say I want to query the books that I’ve finished reading. Here’s how the where filter would be used:
 
 ```
-```dataview  
-Table author as Author,category as Category, my_rate as Rating, status as Status  
+```dataview
+Table author as Author,category as Category, my_rate as Rating, status as Status
 From #book and -"008 TEMPLATES"
 Where contains(status,"Completed")```
 ```
@@ -324,8 +324,8 @@ Note: The notes in your metadata are used for all the queries. If you don’t ha
 Let’s say you want to exclude all the notes that contain completed status. To do that you need to add the ‘!’ mark before contains like this:
 
 ```
-```dataview  
-Table author as Author,category as Category, my_rate as Rating, status as Status  
+```dataview
+Table author as Author,category as Category, my_rate as Rating, status as Status
 From #book and -"008 TEMPLATES"
 Where !contains(status,"Completed")
 ```
@@ -339,7 +339,7 @@ This will exclude notes that contain completed status:
 Find the notes that you created recently. This will list the notes that have been created in the last 1 day.
 
 ```
-```dataview 
+```dataview
 List
 From ""
 Where file.ctime >= date(today) - dur(1 day)
@@ -350,10 +350,10 @@ Where file.ctime >= date(today) - dur(1 day)
 You may have a lot of notes in your vault. If you don’t want to see all of your notes. If you want to **restrict the results to a particular number** you can use the limit function.
 
 ```
-```dataview    
-Table author as Author,category as Category, my_rate as Rating, status as Status, total_page as Pages   
-From #book and -"008 TEMPLATES"  
-Where contains(status,"Completed")  
+```dataview
+Table author as Author,category as Category, my_rate as Rating, status as Status, total_page as Pages
+From #book and -"008 TEMPLATES"
+Where contains(status,"Completed")
 Sort total_page Asc
 Limit 7
 ```
@@ -371,8 +371,8 @@ The obsidian dataview plugin is simple. **Don’t let the large setups scare you
 There is another great community plugin called sortable. It allows you to sort your database without editing it every time you want to sort it. If you don’t want to use it, you can use the code as well:
 
 ```
-```dataview  
-Table author as Author,category as Category, my_rate as Rating, status as Status  
+```dataview
+Table author as Author,category as Category, my_rate as Rating, status as Status
 From #book and -"008 TEMPLATES"
 Where contains(status,"Completed")
 Sort file.mtime DESC
@@ -381,10 +381,10 @@ Sort file.mtime DESC
 This will sort the files according to their modified time. You can use different other metadata too. For example, I’ve book notes in my vault and they also have metadata for no. of pages. I can sort them by pages using the dataview code:
 
 ```
-```dataview    
-Table author as Author,category as Category, my_rate as Rating, status as Status, total_page as Pages   
-From #book and -"008 TEMPLATES"  
-Where contains(status,"Completed")  
+```dataview
+Table author as Author,category as Category, my_rate as Rating, status as Status, total_page as Pages
+From #book and -"008 TEMPLATES"
+Where contains(status,"Completed")
 Sort total_page Asc
 ```
 

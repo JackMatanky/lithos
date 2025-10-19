@@ -1,16 +1,19 @@
 # Epic 4: Interactive Input Engine
 
-This epic brings the interactive user experience to life. It's about implementing the fuzzy finder for template discovery and adding the `prompt` and `suggester` functions to our template engine.
+This epic brings the interactive user experience to life. It's about implementing the fuzzy finder for template discovery and adding the `prompt` and `suggester` functions to our template engine. This epic implements the InteractivePort interfaces and TemplateRepositoryPort following the hexagonal architecture patterns.
 
-## Story 4.1: Implement Test Harness for Interactive CLI Components
+**Dependencies:** Epic 3 (Vault Indexing Engine)
 
-As a QA specialist, I want a reusable test harness for interactive terminal components, so that I can write automated tests for prompts and suggesters.
+## Story 4.1: Implement Interactive Testing Infrastructure
+
+As a QA specialist, I want a testing infrastructure for interactive components following the testing strategy, so that I can write automated tests for prompts and suggesters.
 
 ### Acceptance Criteria
 
-- 4.1.1: A Go package for testing terminal interactions is chosen and implemented.
-- 4.1.2: A simple test is created that successfully scripts a `promptui` interaction without hanging.
-- 4.1.3: The test harness can simulate user input and assert on the terminal output.
+- 4.1.1: Testing approach follows `docs/architecture/testing-strategy.md#interactive-component-testing` with fake adapters for interactive components.
+- 4.1.2: `internal/adapters/spi/interactive/` includes FakeInteractiveAdapter for testing purposes.
+- 4.1.3: Unit tests can simulate user input and assert on terminal output without hanging.
+- 4.1.4: Test harness integrates with table-driven test patterns specified in testing strategy.
 
 ## Story 4.2: Integrate Fuzzy Finder Library
 
@@ -32,15 +35,16 @@ As a developer, I want to add a `find` command to the CLI, so that its public AP
 - 4.3.1: A `find` subcommand is added to Cobra.
 - 4.3.2: Running `lithos find` prints a "Not Implemented" message.
 
-## Story 4.4: Implement Template Lister Utility
+## Story 4.4: Implement Template Repository Port and Adapter
 
-As a developer, I want a utility to list all available template files, so that I have a data source for the fuzzy finder.
+As a developer, I want to implement the TemplateRepositoryPort and TemplateFSAdapter, so that template discovery follows the architectural patterns.
 
 ### Acceptance Criteria
 
-- 4.4.1: An `engine/lister.go` file contains a `ListTemplates(config *Config)` function.
-- 4.4.2: It reads `templates_dir` from the config.
-- 4.4.3: It returns a slice of absolute paths to all templates.
+- 4.4.1: `internal/ports/spi/` contains TemplateRepositoryPort interface with ListTemplates and GetTemplate methods per `docs/architecture/components.md#spi-port-interfaces`.
+- 4.4.2: `internal/adapters/spi/template/` contains TemplateFSAdapter implementing TemplateRepositoryPort.
+- 4.4.3: Adapter reads templates_dir from Config and returns Template domain models per `docs/architecture/data-models.md#template`.
+- 4.4.4: Template discovery includes metadata extraction and lazy loading of template content.
 
 ## Story 4.5: Implement `find` Command Logic
 
@@ -72,42 +76,60 @@ As a developer, I want to integrate `promptui` to create a proof-of-concept inte
 - 4.7.2: A temporary `lithos poc-prompt` command displays a simple text prompt.
 - 4.7.3: The user's input is captured and printed to the console.
 
-## Story 4.8: Define Interactive Engine Interface
+## Story 4.8: Define Interactive Port Interfaces
 
-As a developer, I want to define an `Interactive` interface for terminal interactions, so that the template engine is decoupled from the specific library.
-
-### Acceptance Criteria
-
-- 4.8.1: An `interactive/interactive.go` file is created.
-- 4.8.2: It contains an `Interactive` interface with `Prompt` and `Suggest` methods.
-- 4.8.3: A `PromptUI_Backend` struct is created that implements this interface.
-
-## Story 4.9: Pass Interactive Session to Template Engine
-
-As a developer, I want to pass the `Interactive` session to the template engine, so that template functions can access it.
+As a developer, I want to define the InteractivePort interfaces, so that interactive functionality follows the hexagonal architecture patterns.
 
 ### Acceptance Criteria
 
-- 4.9.1: The template rendering engine is refactored to accept an `Interactive` interface instance.
-- 4.9.2: The `new` and `find`commands pass a `PromptUI_Backend` instance to the engine.
+- 4.8.1: `internal/ports/spi/` contains InteractivePort (PromptPort & FuzzyFinderPort) interfaces per `docs/architecture/components.md#spi-port-interfaces`.
+- 4.8.2: Interfaces include Prompt, Suggester, and Find methods with proper configuration structures.
 
-## Story 4.10: Implement `prompt()` Template Function
+## Story 4.9: Implement Interactive CLI Adapter
 
-As a template author, I want to use a `prompt()` function to ask for free-text input during note generation.
-
-### Acceptance Criteria
-
-- 4.10.1: A `prompt` function is added to the template engine's function map.
-- 4.10.2: It calls the `Prompt` method on the `Interactive` interface.
-- 4.10.3: The user's input is correctly rendered in the template's output.
-
-## Story 4.11: Implement `suggester()` Template Function
-
-As a template author, I want to use a `suggester()` function to ask the user to select from a list of options.
+As a developer, I want to implement the InteractiveCLIAdapter, so that interactive functionality is available through the CLI.
 
 ### Acceptance Criteria
 
-- 4.11.1: A `suggester` function is added to the template function map.
-- 4.11.2: It calls the `Suggest` method on the `Interactive`interface.
-- 4.11.3: A template with `{{ suggester "Select status" (list "A" "B") }}` works correctly.
-- 4.11.4: A `list` helper function is added to the engine for creating simple string slices in templates.
+- 4.9.1: `internal/adapters/spi/interactive/` contains InteractiveCLIAdapter implementing the interfaces.
+- 4.9.2: Adapter uses the specified technology stack (`promptui`, `go-fuzzyfinder`) per `docs/architecture/tech-stack.md#interactive-libraries`.
+
+## Story 4.10: Enhance Template Engine Service with Interactive Support
+
+As a developer, I want to enhance the TemplateEngine to support interactive operations, so that template functions can access interactive capabilities through proper dependency injection.
+
+### Acceptance Criteria
+
+- 4.10.1: TemplateEngine accepts InteractivePort through constructor dependency injection.
+- 4.10.2: Service creates template function map with closures wrapping InteractivePort calls.
+- 4.10.3: CommandOrchestrator passes InteractiveCLIAdapter instance to TemplateEngine.
+- 4.10.4: Template execution context includes interactive capabilities without tight coupling.
+
+## Story 4.11: Implement Prompt Template Function
+
+As a template author, I want to use `prompt()` function in templates, so that I can create interactive note generation experiences.
+
+### Acceptance Criteria
+
+- 4.11.1: TemplateEngine function map includes `prompt` function calling InteractivePort.Prompt method.
+- 4.11.2: Helper functions (`list`) support template data structure creation following Go template patterns.
+
+## Story 4.12: Implement Suggester Template Function
+
+As a template author, I want to use `suggester()` function in templates, so that I can create interactive note generation experiences with selection options.
+
+### Acceptance Criteria
+
+- 4.12.1: `suggester` function calls InteractivePort.Suggester method with proper configuration handling.
+- 4.12.2: Template functions handle both string slice and map inputs for suggester options.
+
+## Story 4.13: Add Find Command Support
+
+As a user, I want to use `lithos find` command to discover templates interactively, so that I can easily select templates through the proper CLI architecture.
+
+### Acceptance Criteria
+
+- 4.13.1: CobraCLIAdapter includes `find` subcommand calling CLICommandPort.Find method.
+- 4.13.2: CommandOrchestrator implements Find method using TemplateRepositoryPort and InteractivePort.
+- 4.13.3: Find command presents templates via fuzzy finder and executes selected template.
+- 4.13.4: Template selection integrates with TemplateEngine for consistent execution flow.

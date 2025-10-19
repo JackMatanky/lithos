@@ -9,7 +9,7 @@ language:
 module:
   - user
   - momentjs
-description: 
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, js/momentjs
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Set the start, reminder, duration, and end for tasks and events.
 
 ---
@@ -36,22 +36,22 @@ tags: obsidian/templater, javascript, js/momentjs
 <!-- Add the full code including explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET TASK START AND REMINDER TIME
 //---------------------------------------------------------
 const date = moment(<full_date_time>).format(`YYYY-MM-DD`);
 const start_time = moment(<full_date_time>).format(`HH:mm`);
-const reminder_date = moment(<full_date_time>)  
-  .subtract(10, `minutes`)  
+const reminder_date = moment(<full_date_time>)
+  .subtract(10, `minutes`)
   .format(`YYYY-MM-DD HH:mm`);
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET TASK DURATION AND END TIME
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const duration_min = await tp.user.durationMin(tp);
-const full_end_date = moment(<full_date_time>).add(  
-  Number(duration_min),  
-  `minutes`  
+const full_end_date = moment(<full_date_time>).add(
+  Number(duration_min),
+  `minutes`
 );
 const end_time = moment(full_end_date).format(`HH:mm`);
 const duration_est = moment
@@ -64,22 +64,22 @@ const duration_est = moment
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET TASK START AND REMINDER TIME
 //---------------------------------------------------------
 const date = moment(<full_date_time>).format(`YYYY-MM-DD`);
 const start_time = moment(<full_date_time>).format(`HH:mm`);
-const reminder_date = moment(<full_date_time>)  
-  .subtract(10, `minutes`)  
+const reminder_date = moment(<full_date_time>)
+  .subtract(10, `minutes`)
   .format(`YYYY-MM-DD HH:mm`);
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET TASK DURATION AND END TIME
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const duration_min = await tp.user.duration_min(tp);
-const full_end_date = moment(<full_date_time>).add(  
-  Number(duration_min),  
-  `minutes`  
+const full_end_date = moment(<full_date_time>).add(
+  Number(duration_min),
+  `minutes`
 );
 const end_time = moment(full_end_date).format(`HH:mm`);
 const duration_est = moment
@@ -129,7 +129,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	file.frontmatter.description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND contains(file.outlinks, this.file.link)
@@ -149,7 +149,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND contains(file.outlinks, this.file.link)

@@ -15,9 +15,9 @@ date_modified: 2023-10-25T16:22
 ## Basic
 
 ```dataviewjs
-const amountOfImages = 3; 
-const pathToImageFolder = '00 Meta/attachments' 
-const imageFiles = app.vault.getFiles().filter(file => file.extension !== 'md' && file.parent.path === pathToImageFolder) 
+const amountOfImages = 3;
+const pathToImageFolder = '00 Meta/attachments'
+const imageFiles = app.vault.getFiles().filter(file => file.extension !== 'md' && file.parent.path === pathToImageFolder)
 
 dv.list(dv.array(imageFiles)
 		.sort(() => 0.5 - Math.random())
@@ -29,9 +29,9 @@ dv.list(dv.array(imageFiles)
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

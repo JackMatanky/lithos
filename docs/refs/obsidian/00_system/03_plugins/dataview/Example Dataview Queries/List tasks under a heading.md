@@ -15,8 +15,8 @@ date_modified: 2023-10-25T16:22
 ## Basic
 
 ```dataview
-TASK 
-FROM "10 Example Data/projects" 
+TASK
+FROM "10 Example Data/projects"
 WHERE meta(section).subpath = "Urgent"
 ```
 
@@ -25,14 +25,14 @@ WHERE meta(section).subpath = "Urgent"
 ### List Tasks from a Certain Daily
 
 ```dataview
-TASK 
-FROM "10 Example Data/dailys" 
+TASK
+FROM "10 Example Data/dailys"
 WHERE file.day = date("2022-02-16") AND meta(section).subpath = "Gonna do this tmrw"
 ```
 
 ```dataview
-TASK 
-FROM "10 Example Data/dailys" 
+TASK
+FROM "10 Example Data/dailys"
 WHERE file.day = date("2022-02-16") AND meta(section).subpath = "Gonna do this tmrw"
 ```
 
@@ -40,9 +40,9 @@ WHERE file.day = date("2022-02-16") AND meta(section).subpath = "Gonna do this t
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

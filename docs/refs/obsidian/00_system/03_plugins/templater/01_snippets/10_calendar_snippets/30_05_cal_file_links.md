@@ -7,7 +7,7 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -20,11 +20,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Assign the links for weekly, monthly, quarterly, or yearly calendar files.
 
 ---
@@ -34,9 +34,9 @@ tags: obsidian/templater, javascript
 <!-- Add the full code including explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // CALENDAR FILE LINKS AND ALIASES
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const year_file = `${year_full}`;
 const quarter_file = `${year_full}-Q${quarter}`;
 const month_file = `${year_full}-${month_number}\|${month_short_name} '${year_short}`;
@@ -48,9 +48,9 @@ const week_file = `${year_full}-W${week_number}`;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // CALENDAR FILE LINKS AND ALIASES
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const year_file = `${year_full}`;
 const quarter_file = `${year_full}-Q${quarter}`;
 const month_file = `${year_full}-${month_number}\|${month_short_name} '${year_short}`;
@@ -110,7 +110,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -131,7 +131,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

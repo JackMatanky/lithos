@@ -9,8 +9,8 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
-description: 
+module:
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input:: Directory Path, YAML key  
-> Output:: Array  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input:: Directory Path, YAML key
+> Output:: Array
 > Description:: Return a markdown file name from a suggester filtered by directory and file status in the YAML metadata.
 
 ---
@@ -46,7 +46,7 @@ async function get_file_by_status({ dir: directory, status: yaml_value }) {
 
   const mapped_file_promises = file_paths.map(async (file) => {
     const file_cache = await app.metadataCache.getFileCache(file);
-    
+
     // If the status frontmatter value
     // equals yaml_value, mark it to be included
     file.shouldInclude = file_cache?.frontmatter.status === yaml_value;
@@ -63,9 +63,9 @@ async function get_file_by_status({ dir: directory, status: yaml_value }) {
   // Convert list of files into list of links
   const file_names = filtered_files.map((file) => file.basename).sort();
 
-  // Create an array for the filtered files 
+  // Create an array for the filtered files
   const files_arr = ["null"];
-  
+
   // Append the filtered files to the array
   files_arr.push(file_names);
 
@@ -80,7 +80,7 @@ module.exports = get_file_by_status;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -138,7 +138,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -159,7 +159,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

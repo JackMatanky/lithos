@@ -21,8 +21,8 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!info] Effect of FLATTEN  
-> `FLATTEN` is the opposite of `GROUP BY`. Instead of putting multiple notes into one row, it (potentionally) **splits up** one note into **multiple rows**. If your result contains seven notes and you use `FLATTEN` on a **multi value field**, you'll get `7 * sum of values in flattened field` results.  
+> [!info] Effect of FLATTEN
+> `FLATTEN` is the opposite of `GROUP BY`. Instead of putting multiple notes into one row, it (potentionally) **splits up** one note into **multiple rows**. If your result contains seven notes and you use `FLATTEN` on a **multi value field**, you'll get `7 * sum of values in flattened field` results.
 > [Documentation](https://blacksmithgu.github.io/obsidian-dataview/query/queries/#flatten)
 
 **Query without FLATTEN**
@@ -40,7 +40,7 @@ FROM "10 Example Data/books"
 FLATTEN genres
 ```
 
-> [!info] `FLATTEN` is a data command  
+> [!info] `FLATTEN` is a data command
 > `FLATTEN` needs to be used in combination with a [[Learn the Basics#Understanding Query Types|Query Type]]. You can use `FLATTEN` multiple times.
 
 ## Variants
@@ -77,7 +77,7 @@ FLATTEN genres
 GROUP BY genres
 ```
 
-> [!attention] Order matters!  
+> [!attention] Order matters!
 > Please mind that the **order is important** - a flattened field is only available *after* you wrote the `FLATTEN` command. **One big exception**: The Query Type command is always **the last** command to be executed - despite standing at the very top! That means **all flattened fields are available as fields for your Query Type**.
 
 If you **first group, then FLATTEN, you won't get the desired result!**
@@ -91,7 +91,7 @@ FLATTEN genres
 
 ## Use FLATTEN to Perform other Operations on Your Values
 
-> [!hint] Use function that cannot operate on lists  
+> [!hint] Use function that cannot operate on lists
 > To use functions that do not take an lists (a multi value) as an argument, you need to `FLATTEN` this value first. This is also true for functions that act differently on single values, i.e. `contains`
 
 **Use a function that only takes single values as arguments**
@@ -114,8 +114,8 @@ WHERE contains(L.text, "nul")
 
 ### Use FLATTEN to Declare a New Field
 
-> [!hint] Flattening single values  
-> `FLATTEN` splits up multi value fields into single values, but it can also be performed on values that are already single value. Doing this, the number of your result rows won't change - so it wont `FLATTEN` in the traditional sense - but you're able to *name* the flattened field and use it in your query (after the `FLATTEN` command and in your Query Type).  
+> [!hint] Flattening single values
+> `FLATTEN` splits up multi value fields into single values, but it can also be performed on values that are already single value. Doing this, the number of your result rows won't change - so it wont `FLATTEN` in the traditional sense - but you're able to *name* the flattened field and use it in your query (after the `FLATTEN` command and in your Query Type).
 > This can be handy when you performing lengthy operations on fields and want to "save" the result of that instead of typing it over and over again.
 
 ```dataview
@@ -135,7 +135,7 @@ WHERE progress < 50
 
 #### Use FLATTEN on a Multi-value Field but Calculate a Single Value
 
-> [!hint] Special case of declaring a new field  
+> [!hint] Special case of declaring a new field
 > There is one special case FLATTEN can act a bit unintuitive. When you
 
 ```dataview
@@ -159,7 +159,7 @@ FLATTEN progress + "%" AS percentage
 
 ### About Flattening Nested Fields
 
-> [!error] FLATTEN on objects has no effect  
+> [!error] FLATTEN on objects has no effect
 > `FLATTEN` works only correctly on lists or single values. A nested field, like you see in the frontmatter of this file, *is* a list, but `valueWithSubValues` is an object - and one element in the list you're flattening. Therefore, it'll appear as one row.
 
 ```dataview
@@ -176,16 +176,16 @@ FROM "10 Example Data/dailys/2022-01-05"
 FLATTEN wellbeing
 ```
 
-> [!hint] More Examples  
+> [!hint] More Examples
 > Do you want to see more examples how `FLATTEN` can be used? Head over to [[Queries by Data Command#FLATTEN]] to see all queries in this vault that use `FLATTEN`.
 
 ---
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

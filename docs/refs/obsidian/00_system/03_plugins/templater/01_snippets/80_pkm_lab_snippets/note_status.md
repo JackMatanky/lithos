@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input:: Object Array  
-> Output:: String  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input:: Object Array
+> Output:: String
 > Description:: Return the note status from a suggester.
 
 ---
@@ -54,7 +54,7 @@ const status_value = include_arr[1];
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -159,7 +159,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -180,7 +180,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

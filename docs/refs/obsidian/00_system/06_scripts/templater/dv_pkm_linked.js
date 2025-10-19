@@ -170,25 +170,25 @@ const inlink_filter = `contains(file.inlinks, this.file.link)`;
 const tree_child_filter = `(choice(contains(this.${yaml_type}, "category"), contains(${yaml_category}, this.file.name),
 		choice(contains(this.${yaml_type}, "branch"), contains(${yaml_branch}, this.file.name),
 		choice(contains(this.${yaml_type}, "field"), contains(${yaml_field}, this.file.name),
-		choice(contains(this.${yaml_type}, "subject"), 
-			contains(${yaml_subject}, this.file.name), 
+		choice(contains(this.${yaml_type}, "subject"),
+			contains(${yaml_subject}, this.file.name),
 			contains(${yaml_topic}, this.file.name))))))`;
 
 const tree_sibling_filter = `(choice(contains(this.${yaml_type}, "subtopic"), contains(this.${yaml_topic}, ${yaml_topic}),
 		choice(contains(this.${yaml_type}, "topic"), contains(this.${yaml_subject}, ${yaml_subject}),
 		choice(contains(this.${yaml_type}, "subject"), contains(this.${yaml_field}, ${yaml_field}),
-		choice(contains(this.${yaml_type}, "field"), 
-			contains(this.${yaml_branch}, ${yaml_branch}), 
+		choice(contains(this.${yaml_type}, "field"),
+			contains(this.${yaml_branch}, ${yaml_branch}),
 			contains(this.${yaml_category}, ${yaml_category}))))))`;
 
 //-------------------------------------------------------------------
 // SECT: >>>>> DATA SORTING <<<<<
 //-------------------------------------------------------------------
 const tree_type_sort = `default(((x) => {
-      "category": 1, 
-      "branch": 2, 
-      "field": 3, 
-      "subject": 4, 
+      "category": 1,
+      "branch": 2,
+      "field": 3,
+      "subject": 4,
       "topic": 5
     }[x])(${yaml_type}), 6)`;
 
@@ -343,7 +343,7 @@ async function dv_pkm_linked({
     } else if (relation.startsWith("par") || relation.startsWith("in_par")) {
       if (subtype.startsWith("branch")) {
         // Table for a BRANCHES's parent CATEGORY
-        relation_filter = `filter(this.${yaml_category}, 
+        relation_filter = `filter(this.${yaml_category},
       (x) => contains(x, file.name))`;
         type_filter = `${type_filter}
     AND (${yaml_type} = "category")`;
@@ -354,7 +354,7 @@ async function dv_pkm_linked({
       this.${yaml_branch})),
         (x) => contains(x, file.name))`;
         type_filter = `${type_filter}
-    AND filter(list("category", "branch"), 
+    AND filter(list("category", "branch"),
       (x) => ${yaml_type} = x)`;
       } else if (subtype.startsWith("subject")) {
         // Table for a SUBJECT's parent FIELD, BRANCH, and CATEGORY
@@ -364,7 +364,7 @@ async function dv_pkm_linked({
       this.${yaml_field})),
         (x) => contains(x, file.name))`;
         type_filter = `${type_filter}
-    AND filter(list("category", "branch", "field"), 
+    AND filter(list("category", "branch", "field"),
       (x) => ${yaml_type} = x)`;
       } else if (subtype.startsWith("topic")) {
         // Table for a TOPIC's parent SUBJECT, FIELD, BRANCH, and CATEGORY
@@ -375,7 +375,7 @@ async function dv_pkm_linked({
       this.${yaml_subject})),
         (x) => contains(x, file.name))`;
         type_filter = `${type_filter}
-    AND filter(list("category", "branch", "field", "subject"), 
+    AND filter(list("category", "branch", "field", "subject"),
       (x) => ${yaml_type} = x)`;
       } else if (subtype.startsWith("subtopic")) {
         // Table for a SUBTOPIC's parent TOPIC, SUBJECT, FIELD, BRANCH, and CATEGORY
@@ -387,7 +387,7 @@ async function dv_pkm_linked({
       this.${yaml_topic})),
         (x) => contains(x, file.name))`;
         type_filter = `${type_filter}
-    AND filter(list("category", "branch", "field", "subject", "topic"), 
+    AND filter(list("category", "branch", "field", "subject", "topic"),
       (x) => ${yaml_type} = x)`;
       }
       if (relation.startsWith("in_")) {
@@ -441,23 +441,23 @@ async function dv_pkm_linked({
     AND contains(${yaml_type}, "${subtype}")`;
       if (subtype.startsWith("branch")) {
         relation_filter = `!contains(this.${yaml_category}, "null")
-    AND filter(this.${yaml_category}, 
+    AND filter(this.${yaml_category},
       (x) => contains(${yaml_category}, x))`;
       } else if (subtype.startsWith("field")) {
         relation_filter = `!contains(this.${yaml_branch}, "null")
-    AND filter(this.${yaml_branch}, 
+    AND filter(this.${yaml_branch},
       (x) => contains(${yaml_branch}, x))`;
       } else if (subtype.startsWith("subject")) {
         relation_filter = `!contains(this.${yaml_field}, "null")
-    AND filter(this.${yaml_field}, 
+    AND filter(this.${yaml_field},
       (x) => contains(${yaml_field}, x))`;
       } else if (subtype.startsWith("topic")) {
         relation_filter = `!contains(this.${yaml_subject}, "null")
-    AND filter(this.${yaml_subject}, 
+    AND filter(this.${yaml_subject},
       (x) => contains(${yaml_subject}, x))`;
       } else if (subtype.startsWith("subtopic")) {
         relation_filter = `!contains(this.${yaml_topic}, "null")
-    AND filter(this.${yaml_topic}, 
+    AND filter(this.${yaml_topic},
       (x) => contains(${yaml_topic}, x))`;
       }
       if (relation.startsWith("in_")) {
@@ -496,7 +496,7 @@ FROM
     ${pkm_dir}
 WHERE
     ${filter}
-SORT 
+SORT
     ${sort}
 ${three_backtick}`;
 

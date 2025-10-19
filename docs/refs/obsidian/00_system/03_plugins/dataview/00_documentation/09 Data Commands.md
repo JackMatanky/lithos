@@ -11,17 +11,17 @@ url: https://blacksmithgu.github.io/obsidian-dataview/queries/data-commands/
 file_class: lib_documentation
 date_created: 2023-03-09T17:10
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Data Commands](https://blacksmithgu.github.io/obsidian-dataview/queries/data-commands/)
 
-The different commands that dataview queries can be made up of. Commands are  
-executed in order, and you can have duplicate commands (so multiple `WHERE`  
+The different commands that dataview queries can be made up of. Commands are
+executed in order, and you can have duplicate commands (so multiple `WHERE`
 blocks or multiple `GROUP BY` blocks, for example).
 
 ## FROM
 
-The `FROM` statement determines what pages will initially be collected and passed onto the other commands for further  
+The `FROM` statement determines what pages will initially be collected and passed onto the other commands for further
 filtering. You can select from any [source](../reference/sources), which currently means by folder, by tag, or by incoming/outgoing links.
 
 - **Tags**: To select from a tag (and all its subtags), use `FROM #tag`.
@@ -53,7 +53,7 @@ WHERE <clause>
 
 ```sql
 ```dataview
-LIST 
+LIST
 WHERE file.mtime >= date(today) - dur(1 day)
 ```
 
@@ -61,7 +61,7 @@ WHERE file.mtime >= date(today) - dur(1 day)
 
 ```sql
 ```dataview
-LIST 
+LIST
 FROM #projects
 WHERE !completed AND file.ctime <= date(today) - dur(1 month)
 ```
@@ -89,7 +89,7 @@ GROUP BY field
 GROUP BY (computed_field) AS name
 ```
 
-In order to make working with the `rows` array easier, Dataview supports field "swizzling". If you want the field `test` from every object in the `rows` array, then `rows.test` will automatically fetch the `test` field from every object in `rows`, yielding a new array.  
+In order to make working with the `rows` array easier, Dataview supports field "swizzling". If you want the field `test` from every object in the `rows` array, then `rows.test` will automatically fetch the `test` field from every object in `rows`, yielding a new array.
 You can then apply aggregation operators like `sum()` over the resulting array.
 
 ## FLATTEN
@@ -103,13 +103,13 @@ FLATTEN (computed_field) AS name
 
 For example, flatten the `authors` field in each literature note to give one row per author:
 
-> [!example] Query  
-> 
+> [!example] Query
+>
 > ```sql
-> ```dataview 
-> TABLE authors 
-> FROM #LiteratureNote  
-> FLATTEN authors  
+> ```dataview
+> TABLE authors
+> FROM #LiteratureNote
+> FLATTEN authors
 > ```
 
 ### Output
@@ -137,7 +137,7 @@ WHERE T.text
 
 ```sql
 ```dataview
-TABLE 
+TABLE
   filter(file.tasks.text, (t) => t) as "Task Text"
 FROM "Scratchpad"
 WHERE file.tasks.text

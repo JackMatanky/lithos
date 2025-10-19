@@ -489,9 +489,9 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!tree] Knowledge Tree Details
-> 
+>
 > - **Name**: `dv: choice(regextest("\w", this.file.frontmatter.url), elink(this.file.frontmatter.url, this.file.frontmatter.aliases[0]), this.file.frontmatter.aliases[0])`
-> 
+>
 > - **Description**: `dv: this.file.frontmatter.about`
 
 ---

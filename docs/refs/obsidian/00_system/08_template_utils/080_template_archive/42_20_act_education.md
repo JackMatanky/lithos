@@ -432,7 +432,7 @@ const related_task = `${head_related_task_sect}${toc}${related_child_task_sectio
 const related_pkm = `${head_related_pkm_sect}${toc}${related_pkm_section}`;
 const related_lib = `${head_related_lib_sect}${toc}${related_lib_section}`;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // CHILD TASK INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${child_task_info_callout}.md`;

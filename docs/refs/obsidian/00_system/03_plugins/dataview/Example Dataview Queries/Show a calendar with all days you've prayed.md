@@ -13,7 +13,7 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!info]  
+> [!info]
 > You'll need to go back to Januray/Februrary 2022 to see the data.
 
 ```dataview
@@ -26,9 +26,9 @@ WHERE praying = "yes"
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

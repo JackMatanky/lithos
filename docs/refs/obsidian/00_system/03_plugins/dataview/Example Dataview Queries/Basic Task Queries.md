@@ -13,7 +13,7 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!hint] Relationship between Tasks and Pages  
+> [!hint] Relationship between Tasks and Pages
 > The `TASK` query type is special, because unlike all other query types (`LIST`, `TABLE`, `CALENDAR`) `TASK` does not operate on **page level** but on **task level**. If a page contains three tasks, you'll get back **three** results instead of one, like you'd get with any other query type. This allows us to filter for task specific properties, like included tags, meta data or text. Be aware though, that **every task inherits all properties from the page it's in**. Read more about [how task queries behave](https://blacksmithgu.github.io/obsidian-dataview/query/queries/#task-queries) and [what for information you have available](https://blacksmithgu.github.io/obsidian-dataview/data-annotation/#tasks).
 
 **List tasks from a folder**
@@ -53,12 +53,12 @@ FROM "10 Example Data/assignments" OR "10 Example Data/games"
 ```
 ```dataview
 TASK
-FROM "10 Example Data/assignments" AND #later  
+FROM "10 Example Data/assignments" AND #later
 ```
 
 **List all tasks, everywhere**
 
-> [!attention] Add `dataview` to code block  
+> [!attention] Add `dataview` to code block
 > The output of this is pretty long. If you want to see it, add `dataview` to the code block - like on the examples above!
 
 ```
@@ -96,7 +96,7 @@ WHERE contains(tags, "#later")
 
 ### Show Tasks with a due Date (a Task-located Meta Data field)
 
-> [!info] Meta data on task level  
+> [!info] Meta data on task level
 > You can add meta data on tasks via the inline meta data syntax, i.e. `[duedate:: 2022-09-09]` - or `[contact:: Petro]`. Just be sure to wrap it into square brackets, so that data view can interpret it correctly.
 
 ```
@@ -108,9 +108,9 @@ WHERE duedate
 
 ### Sort Task after Completion Date
 
-> [!attention] Only possible with designated meta data  
-> A task does not know its completion date out of the box. In order to query for it, you need to add it to the task as an inline meta data field. Dataview provides an automatism for this: In the dataview options, at the very bottom, activate "Automatic Task Completion Date" to automatically append a completion date when checking a task.  
-> ![[Basic_Task_Queries_completion_screenshot.png|500]]  
+> [!attention] Only possible with designated meta data
+> A task does not know its completion date out of the box. In order to query for it, you need to add it to the task as an inline meta data field. Dataview provides an automatism for this: In the dataview options, at the very bottom, activate "Automatic Task Completion Date" to automatically append a completion date when checking a task.
+> ![[Basic_Task_Queries_completion_screenshot.png|500]]
 > ⚠ **Attention!** Dataview can only add this information **if you check a task inside a dataview output** - meaning inside a TASK Query!
 
 ```
@@ -121,16 +121,16 @@ WHERE completed
 SORT completion
 ```
 
-> [!hint] Advanced usage  
+> [!hint] Advanced usage
 > Do you want to see more advanced examples? Head over to the [[Queries by Type#Task|Query Type Overview]] to see all available TASK queries in the vault!
 
 ---
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

@@ -253,7 +253,7 @@ const morn_rit_value = morn_rit_name.replaceAll(/\s/g, "_").toLowerCase();
 const morn_rit_type = morn_rit_value.slice(0, -1);
 const morn_rit_link = `[[${short_date_value}_${morn_rit_value}\\|${full_morn_rit_name}]]`;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // CHILD TASK INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${child_task_info_callout}.md`;
@@ -321,7 +321,7 @@ tags:
 ---
 
 > [!<%* tR += morn_rit_type %> ] Today's Morning Rituals
-> 
+>
 > | `BUTTON[button-morn-rit-today]` | <%* tR += morn_rit_link %> |
 > | --------------------- | ---------------------- |
 

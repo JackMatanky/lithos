@@ -1,5 +1,5 @@
 ---
-title: note_type_subtype_file_class 
+title: note_type_subtype_file_class
 aliases:
   - Note Type, Subtype, and File Class Suggester
   - note type, subtype, and file class suggester
@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input:: Object Array  
-> Output:: String  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input:: Object Array
+> Output:: String
 > Description:: Return a note's type, subtype, and file class with a suggester.
 
 ---
@@ -129,7 +129,7 @@ const file_class = note_type_obj.file_class;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -268,7 +268,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -291,7 +291,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

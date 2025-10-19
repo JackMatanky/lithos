@@ -9,7 +9,7 @@ plugin:
   - dataview
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -25,11 +25,11 @@ tags: #obsidian/templater #obsidian/dataview #javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]], [[Dataview]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]], [[Dataview]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description::
 
 ---
@@ -59,47 +59,47 @@ const date_start = `date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_s
 const date_end = `date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end)`;
 const task_duration = `dur(${date_end} - ${date_start})`;
 const task_estimate = `dur(T.duration_est + " minutes")`;
-  
+
 // Completed task code blocks
 const completed_tasks = `${three_backtick}dataview
-TABLE WITHOUT ID 
-	link(T.section, 
+TABLE WITHOUT ID
+	link(T.section,
 		regexreplace(
-			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""), 
+			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""),
 		"_$", "")) AS Task,
-	choice(contains(T.text, "_action_item"), 
-		"🔨Task", 
-		choice(contains(T.text, "_meeting"), 
-			"🤝Meeting", 
-			choice(contains(T.text, "_habit"), 
-				"🤖Habit", 
-				choice(contains(T.text, "_morning_ritual"), 
-					"🍵Rit.", 
-					choice(contains(T.text, "_workday_startup_ritual"), 
-						"🌇Rit.", 
-						choice(contains(T.text, "_workday_shutdown_ritual"), 
-							"🌆Rit.", 
+	choice(contains(T.text, "_action_item"),
+		"🔨Task",
+		choice(contains(T.text, "_meeting"),
+			"🤝Meeting",
+			choice(contains(T.text, "_habit"),
+				"🤖Habit",
+				choice(contains(T.text, "_morning_ritual"),
+					"🍵Rit.",
+					choice(contains(T.text, "_workday_startup_ritual"),
+						"🌇Rit.",
+						choice(contains(T.text, "_workday_shutdown_ritual"),
+							"🌆Rit.",
 							"🛌Rit.")))))) AS Type,
 	T.time_start AS Start,
 	T.time_end AS End,
 	T.duration_est + " min" AS Estimate,
-	choice((${task_estimate} = ${task_duration}), 
-		"👍On Time", 
+	choice((${task_estimate} = ${task_duration}),
+		"👍On Time",
 		choice(
-			(${task_estimate} > ${task_duration}), 
-				"🟢" + (${task_estimate} - ${task_duration}), 
+			(${task_estimate} > ${task_duration}),
+				"🟢" + (${task_estimate} - ${task_duration}),
 				"❗" + (${task_duration} - ${task_estimate}))) AS Accuracy,
 	file.frontmatter.project AS Project
-FROM 
-	#task 
+FROM
+	#task
 	AND "${directory}"
-FLATTEN 
+FLATTEN
 	file.tasks AS T
-WHERE 
-	any(file.tasks, (t) => 
+WHERE
+	any(file.tasks, (t) =>
 		t.completed)
 		AND T.status != "-")
-SORT 
+SORT
 	T.completion,
 	T.time_start ASC
 ${three_backtick}`;
@@ -128,47 +128,47 @@ const date_start = `date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_s
 const date_end = `date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end)`;
 const task_duration = `dur(${date_end} - ${date_start})`;
 const task_estimate = `dur(T.duration_est + " minutes")`;
-  
+
 // Completed task code blocks
 const completed_tasks = `${three_backtick}dataview
-TABLE WITHOUT ID 
-	link(T.section, 
+TABLE WITHOUT ID
+	link(T.section,
 		regexreplace(
-			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""), 
+			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""),
 		"_$", "")) AS Task,
-	choice(contains(T.text, "_action_item"), 
-		"🔨Task", 
-		choice(contains(T.text, "_meeting"), 
-			"🤝Meeting", 
-			choice(contains(T.text, "_habit"), 
-				"🤖Habit", 
-				choice(contains(T.text, "_morning_ritual"), 
-					"🍵Rit.", 
-					choice(contains(T.text, "_workday_startup_ritual"), 
-						"🌇Rit.", 
-						choice(contains(T.text, "_workday_shutdown_ritual"), 
-							"🌆Rit.", 
+	choice(contains(T.text, "_action_item"),
+		"🔨Task",
+		choice(contains(T.text, "_meeting"),
+			"🤝Meeting",
+			choice(contains(T.text, "_habit"),
+				"🤖Habit",
+				choice(contains(T.text, "_morning_ritual"),
+					"🍵Rit.",
+					choice(contains(T.text, "_workday_startup_ritual"),
+						"🌇Rit.",
+						choice(contains(T.text, "_workday_shutdown_ritual"),
+							"🌆Rit.",
 							"🛌Rit.")))))) AS Type,
 	T.time_start AS Start,
 	T.time_end AS End,
 	T.duration_est + " min" AS Estimate,
-	choice((${task_estimate} = ${task_duration}), 
-		"👍On Time", 
+	choice((${task_estimate} = ${task_duration}),
+		"👍On Time",
 		choice(
-			(${task_estimate} > ${task_duration}), 
-				"🟢" + (${task_estimate} - ${task_duration}), 
+			(${task_estimate} > ${task_duration}),
+				"🟢" + (${task_estimate} - ${task_duration}),
 				"❗" + (${task_duration} - ${task_estimate}))) AS Accuracy,
 	file.frontmatter.project AS Project
-FROM 
-	#task 
+FROM
+	#task
 	AND ${directory}
-FLATTEN 
+FLATTEN
 	file.tasks AS T
-WHERE 
-	any(file.tasks, (t) => 
+WHERE
+	any(file.tasks, (t) =>
 		t.completed)
 		AND T.status != "-")
-SORT 
+SORT
 	T.completion,
 	T.time_start ASC
 ${three_backtick}`;
@@ -211,7 +211,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -232,7 +232,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

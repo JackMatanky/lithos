@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/reference/literals/
 file_class: lib_documentation
 date_created: 2023-03-09T17:10
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Literals](https://blacksmithgu.github.io/obsidian-dataview/reference/literals/)
 
@@ -57,7 +57,7 @@ LIST
 WHERE end - start > dur(2 days)
 ```
 
-> [!summary] Literals  
+> [!summary] Literals
 > Literals are **static values** that can be used as part of the Dataview Query Language (DQL), i.e. for comparisons.
 
 The following is an extensive, but non-exhaustive list of possible literals in DQL.
@@ -78,7 +78,7 @@ The following is an extensive, but non-exhaustive list of possible literals in D
 | `date(2021-07-14)`                              | A date (read more below)                                 |
 | `dur(2 days 4 hours)`                           | A duration (read more below)                             |
 
-> [!attention] Literals as field values  
+> [!attention] Literals as field values
 > Literals are only interpreted this way when used inside a Query, not when used as a meta data value. For possible values and their data types for fields, please refer to [Types of Metadata](../annotation/types-of-metadata.md).
 
 ## Dates

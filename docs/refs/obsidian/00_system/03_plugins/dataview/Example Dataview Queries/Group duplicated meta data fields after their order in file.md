@@ -22,7 +22,7 @@ for (let page of pages) {
 	for (let i = 0; i < length; i++) {
 		groupedValues.push([
 			page.file.link,
-			getValue(page, "bought", i), 
+			getValue(page, "bought", i),
 			getValue(page, "paid", i)
 		])
 	}
@@ -31,7 +31,7 @@ for (let page of pages) {
 dv.table(["Page", "Bought", "Paid"], groupedValues)
 
 function getValue(page, key, i) {
-	return page[key] && Array.isArray(page[key]) ? page[key][i] : page[key]; 
+	return page[key] && Array.isArray(page[key]) ? page[key][i] : page[key];
 }
 ```
 
@@ -39,9 +39,9 @@ function getValue(page, key, i) {
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

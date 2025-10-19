@@ -5,11 +5,11 @@ aliases:
   - 32 System Command User Functions
   - templater_documentation_32_system_command_user_functions
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T16:28
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # System Command User Functions
 

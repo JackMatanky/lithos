@@ -9,7 +9,7 @@ plugin: templater
 language:
   - javascript
 module:
-  - 
+  -
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a habit's task tag, context, type, and file class
 
 ---
@@ -42,7 +42,7 @@ tags: obsidian/templater, javascript
 const task_tag = `#task`;
 const context_name = `Habits and Rituals`;
 // Replace the middle "s," space, "and," and space from context_name
-// Then replace the final "s" from "Rituals" 
+// Then replace the final "s" from "Rituals"
 const context = context_name
   .replaceAll(/s\sand\s/g, "_")
   .replaceAll(/s$/g, "")
@@ -55,7 +55,7 @@ const file_class = "task_child";
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -121,7 +121,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -142,7 +142,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

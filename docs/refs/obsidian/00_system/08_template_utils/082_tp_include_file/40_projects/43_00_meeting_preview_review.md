@@ -1,7 +1,7 @@
 ### Preview
 
 > [!task_preview] Meeting Preview
-> 
+>
 > 1. What is the meeting's purpose? What problem does it address?
 >     - **Problem**::
 > 2. What do I want from this meeting?
@@ -14,9 +14,9 @@
 ### Agenda
 
 > [!task_plan] Meeting Agenda
-> 
+>
 > Write the detailed agenda formatted as questions.
-> 
+>
 > - Introduction: Meeting purpose or personal introduction
 >     - [ ] Introduction
 >     - **Purpose**::
@@ -29,7 +29,7 @@
 ### Review
 
 > [!task_review] Action Item Review
-> 
+>
 > 1. What was the outcome? How did it make me feel?
 >     - **Outcome**::
 >     - **Feeling**::

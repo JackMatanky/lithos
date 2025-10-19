@@ -9,7 +9,7 @@ language:
   - javascript
 module:
   - file
-cssclasses: 
+cssclasses:
 type: snippet
 file_class: pkm_code
 date_created: 2023-06-22T14:38
@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a callout for Book Info callout.
 
 ---
@@ -38,7 +38,7 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 // Template file to include
 const book_info_callout = "61_00_book_info_callout";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // BOOK INFO CALLOUT
 //---------------------------------------------------------
 // Retrieve the Book Info template and content
@@ -52,11 +52,11 @@ const book_info = include_arr;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // BOOK INFO CALLOUT
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${book_info_callout}.md`;
@@ -113,7 +113,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -134,7 +134,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

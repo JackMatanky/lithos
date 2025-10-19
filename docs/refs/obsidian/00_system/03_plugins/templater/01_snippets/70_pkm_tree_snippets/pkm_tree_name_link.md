@@ -24,11 +24,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input:: Object Array  
-> Output:: String  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input:: Object Array
+> Output:: String
 > Description:: Return the knowledge tree objects' name and link from a suggester.
 
 ---
@@ -61,7 +61,7 @@ const subtopic_value_link = include_arr[6];
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -161,7 +161,7 @@ if (pkm_type_value != "null") {
     .filter((file) => file.path.endsWith(`/${pkm_value_ext}`))
     .map((file) => file.path)[0];
   pkm_file_dir = pkm_file_path.replace(pkm_value_ext, "");
-  
+
   const pkm_tfile = await app.vault.getAbstractFileByPath(pkm_file_path);
   const pkm_file_cache = await app.metadataCache.getFileCache(pkm_tfile);
 
@@ -204,7 +204,7 @@ if (pkm_type_value != "null") {
       category_value = category_value_arr.join(", ");
       category_name = category_name_arr.join(", ");
       category_link = category_link_arr.join(", ");
-      
+
       category_value_link = "";
       for (var i = 0; i < category_link_arr.length; i++) {
         category = `${new_line}${ul_yaml}"${category_link_arr[i]}"`;
@@ -250,7 +250,7 @@ if (pkm_type_value != "null") {
       branch_value = branch_value_arr.join(", ");
       branch_name = branch_name_arr.join(", ");
       branch_link = branch_link_arr.join(", ");
-      
+
       branch_value_link = "";
       for (var i = 0; i < branch_link_arr.length; i++) {
         branch = `${new_line}${ul_yaml}"${branch_link_arr[i]}"`;
@@ -296,7 +296,7 @@ if (pkm_type_value != "null") {
       field_value = field_value_arr.join(", ");
       field_name = field_name_arr.join(", ");
       field_link = field_link_arr.join(", ");
-      
+
       field_value_link = "";
       for (var i = 0; i < field_link_arr.length; i++) {
         field = `${new_line}${ul_yaml}"${field_link_arr[i]}"`;
@@ -344,7 +344,7 @@ if (pkm_type_value != "null") {
       subject_value = subject_value_arr.join(", ");
       subject_name = subject_name_arr.join(", ");
       subject_link = subject_link_arr.join(", ");
-      
+
       subject_value_link = "";
       for (var i = 0; i < subject_link_arr.length; i++) {
         subject = `${new_line}${ul_yaml}"${subject_link_arr[i]}"`;
@@ -390,7 +390,7 @@ if (pkm_type_value != "null") {
       topic_value = topic_value_arr.join(", ");
       topic_name = topic_name_arr.join(", ");
       topic_link = topic_link_arr.join(", ");
-      
+
       topic_value_link = "";
       for (var i = 0; i < topic_link_arr.length; i++) {
         topic = `${new_line}${ul_yaml}"${topic_link_arr[i]}"`;
@@ -558,7 +558,7 @@ if (pkm_type_value != "null") {
       category_value = category_value_arr.join(", ");
       category_name = category_name_arr.join(", ");
       category_link = category_link_arr.join(", ");
-      
+
       category_value_link = "";
       for (var i = 0; i < category_link_arr.length; i++) {
         category = `${new_line}${ul_yaml}"${category_link_arr[i]}"`;
@@ -604,7 +604,7 @@ if (pkm_type_value != "null") {
       branch_value = branch_value_arr.join(", ");
       branch_name = branch_name_arr.join(", ");
       branch_link = branch_link_arr.join(", ");
-      
+
       branch_value_link = "";
       for (var i = 0; i < branch_link_arr.length; i++) {
         branch = `${new_line}${ul_yaml}"${branch_link_arr[i]}"`;
@@ -650,7 +650,7 @@ if (pkm_type_value != "null") {
       field_value = field_value_arr.join(", ");
       field_name = field_name_arr.join(", ");
       field_link = field_link_arr.join(", ");
-      
+
       field_value_link = "";
       for (var i = 0; i < field_link_arr.length; i++) {
         field = `${new_line}${ul_yaml}"${field_link_arr[i]}"`;
@@ -698,7 +698,7 @@ if (pkm_type_value != "null") {
       subject_value = subject_value_arr.join(", ");
       subject_name = subject_name_arr.join(", ");
       subject_link = subject_link_arr.join(", ");
-      
+
       subject_value_link = "";
       for (var i = 0; i < subject_link_arr.length; i++) {
         subject = `${new_line}${ul_yaml}"${subject_link_arr[i]}"`;
@@ -744,7 +744,7 @@ if (pkm_type_value != "null") {
       topic_value = topic_value_arr.join(", ");
       topic_name = topic_name_arr.join(", ");
       topic_link = topic_link_arr.join(", ");
-      
+
       topic_value_link = "";
       for (var i = 0; i < topic_link_arr.length; i++) {
         topic = `${new_line}${ul_yaml}"${topic_link_arr[i]}"`;
@@ -842,7 +842,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -863,7 +863,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -7,8 +7,8 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
-description: 
+module:
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, tableau, obsidian/tp/system/suggester
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:
 
 ---
@@ -1651,7 +1651,7 @@ TABLE WITHOUT ID
 	file.link AS Snippet,
 	file.frontmatter.description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND contains(file.outlinks, this.file.link)
@@ -1671,7 +1671,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND contains(file.outlinks, this.file.link)

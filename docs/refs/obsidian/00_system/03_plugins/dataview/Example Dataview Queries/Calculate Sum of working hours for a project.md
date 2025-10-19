@@ -1,5 +1,5 @@
 ---
-description: Calculate the sum of multiple times (hh:mm), i.e. the sum of hours one has spent on a project 
+description: Calculate the sum of multiple times (hh:mm), i.e. the sum of hours one has spent on a project
 topics:
   - durations
   - sums
@@ -21,16 +21,16 @@ const projects = dv.pages('"10 Example Data/projects"')
 	.mutate(p => p.workHourSum = sumUpWorkHours(p["working hours"]))
 
 
-dv.table(["Project", "Working Hours", "Sum Working Hours"], 
+dv.table(["Project", "Working Hours", "Sum Working Hours"],
 		 projects.map(p => [p.file.link, p["working hours"], p.workHourSum]))
 
 function sumUpWorkHours(workingHours) {
 	const durations = workingHours
 		.split(",")
 		.map(h => dv.luxon.Duration.fromISOTime(h.trim()));
-	
+
 	const sum = durations.reduce((acc, curr) => acc + curr, 0)
-	return dv.luxon.Duration.fromMillis(sum) 
+	return dv.luxon.Duration.fromMillis(sum)
 }
 ```
 
@@ -38,7 +38,7 @@ function sumUpWorkHours(workingHours) {
 
 ### Format Sum Output and Output More Metadata
 
-> [!info] Possible formats  
+> [!info] Possible formats
 > Have a look at the [luxon documentation](https://moment.github.io/luxon/api-docs/index.html#durationtoformat) for a reference of possible formats
 
 ```
@@ -49,14 +49,14 @@ const projects = dv.pages('"10 Example Data/projects"')
 	.sort(p => p.status, "desc")
 
 
-dv.table(["Project", "ID", "Status", "Tags", "Sum"], 
+dv.table(["Project", "ID", "Status", "Tags", "Sum"],
 		 projects.map(p => [p.file.link, p["Project ID"], p.status, p["tags"], p.workHourSum]))
 
 function sumUpWorkHours(workingHours) {
 	const durations = workingHours
 		.split(",")
 		.map(h => dv.luxon.Duration.fromISOTime(h.trim()));
-	
+
 	const sum = durations.reduce((acc, curr) => acc + curr, 0)
 	return dv.luxon.Duration.fromMillis(sum).toFormat("hh'h' mm'm'")
 }
@@ -66,9 +66,9 @@ function sumUpWorkHours(workingHours) {
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```
 > ```dataview
 > LIST

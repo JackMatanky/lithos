@@ -24,11 +24,11 @@ tags: obsidian/templater, javascript, js/momentjs
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Date variables used in the quarterly calendar file.
 
 ---
@@ -38,15 +38,15 @@ tags: obsidian/templater, javascript, js/momentjs
 <!-- Add the full code including explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // DATE VARIABLES
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const long_date = moment(full_date).format(`Qo [ Quarter of ] YYYY`);
 const med_date = moment(full_date).format(`[Q]Q YYYY`);
 const short_date = moment(full_date).format(`[Q]Q [']YY`);
 const year_full = moment(full_date).format(`YYYY`);
-const year_short = moment(full_date).format(`YY`);   
-const quarter = moment(full_date).format(`Q`);   
+const year_short = moment(full_date).format(`YY`);
+const quarter = moment(full_date).format(`Q`);
 const date_start = moment(full_date)
   .startOf(type_value)
   .format(`YYYY-MM-DD[T]HH:mm`);
@@ -66,15 +66,15 @@ const next_date = moment(full_date)
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // DATE VARIABLES
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const long_date = moment(full_date).format(`Qo [ Quarter of ] YYYY`);
 const med_date = moment(full_date).format(`[Q]Q YYYY`);
 const short_date = moment(full_date).format(`[Q]Q [']YY`);
 const year_full = moment(full_date).format(`YYYY`);
-const year_short = moment(full_date).format(`YY`);   
-const quarter = moment(full_date).format(`Q`);   
+const year_short = moment(full_date).format(`YY`);
+const quarter = moment(full_date).format(`Q`);
 const date_start = moment(full_date)
   .startOf(type_value)
   .format(`YYYY-MM-DD[T]HH:mm`);
@@ -134,7 +134,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -155,7 +155,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

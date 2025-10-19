@@ -1,5 +1,5 @@
 > [!tree] Knowledge Tree
->  
+>
 > - **1. **Category**: `dv: this.file.frontmatter.category`
 > - **2. **Branch**: `dv: this.file.frontmatter.branch`
 > - **3. **Field**: `dv: this.file.frontmatter.field`

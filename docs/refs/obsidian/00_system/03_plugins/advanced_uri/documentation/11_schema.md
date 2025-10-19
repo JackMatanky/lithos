@@ -8,7 +8,7 @@ tags: obsidian, obsidian/advanced_uri, documentation
 ---
 # Schema
 
-Passing values to the URI is handled like every other URL.  
+Passing values to the URI is handled like every other URL.
 (Almost) every URI starts with `obsidian://advanced-uri`. Values are set in key value pairs `key=value` separated from the start with `?`. The key value pairs itself are separated with `&`.
 
 An example URI looks like the following:
@@ -17,14 +17,14 @@ An example URI looks like the following:
 obsidian://advanced-uri?key1=value1&key2=value2
 ```
 
-> [!caution]  
+> [!caution]
 > Make sure your values are properly [[12 Encoding|encoded]]
 
 ## Vault Parameter
 
 **Every** Obsidian URI supports the `vault` parameter to specify the vault in which to execute the URI. By leaving it empty, your last used vault is used.
 
-> [!note] Example  
+> [!note] Example
 Specific vault:
 
 > ```uri

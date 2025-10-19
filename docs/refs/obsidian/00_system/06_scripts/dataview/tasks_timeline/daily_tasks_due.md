@@ -1,6 +1,6 @@
 ---
 title: daily_tasks_due
-aliases: 
+aliases:
   - Daily Tasks Due Timeline
   - daily tasks due timeline
   - daily tasks due

@@ -2,9 +2,9 @@
 limit: 100
 mapWithTag: false
 icon: check
-tagNames: 
-excludes: 
-extends: 
+tagNames:
+excludes:
+extends:
 version: "2.18"
 date_created: 2023-07-02T20:15
 date_modified: 2023-11-26T10:52
@@ -171,10 +171,10 @@ fields:
       label: Insert library field
     path: ""
     id: ELIEl1
-filesPaths: 
-bookmarksGroups: 
+filesPaths:
+bookmarksGroups:
 savedViews: []
-favoriteView: 
+favoriteView:
 ---
 
 date:: {"type":"Date","options":{"dateFormat":"YYYY-MM-DD","defaultInsertAsLink":"false"}}

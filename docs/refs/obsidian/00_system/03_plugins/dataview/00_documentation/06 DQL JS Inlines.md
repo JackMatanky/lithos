@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/queries/dql-js-inline/
 file_class: lib_documentation
 date_created: 2023-03-09T17:10
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [DQL, JS and Inlines](https://blacksmithgu.github.io/obsidian-dataview/queries/dql-js-inline/)
 
@@ -29,7 +29,7 @@ TABLE rating AS "Rating", summary AS "Summary" FROM #games
 SORT rating DESC
 ```
 
-> [!attention] "Use backticks"  
+> [!attention] "Use backticks"
 > A valid codeblock needs to use backticks (\`) on start and end (three each). Do not confuse the backtick with the similar looking apostrophe '!
 
 Find a explanation how to write a DQL Query under the [[07 Query Structure |query language reference]]. If you learn better by example, take a look at the [[19 Examples |query examples]].
@@ -42,7 +42,7 @@ An Inline DQL uses a inline block format instead of a code block and a configura
 `= this.file.name`
 ```
 
-> [!info] Change of DQL prefix  
+> [!info] Change of DQL prefix
 > You can change the `=` to another token (like `\dv:` or `~`) in Dataviews' settings under "Codeblock Settings" > "Inline Query Prefix"
 
 Inline DQL Queries display **exactly one value** somewhere in the middle of your note. They seamlessly blend into the content of your note:
@@ -76,7 +76,7 @@ Final paper due in `= [[Computer Science Theory]].due - date(today)`
 
 🏃‍♂️ Goal reached? `= choice(this.steps > 10000, "YES!", "**No**, get moving!")`
 
-You have `= length(filter(link(dateformat(date(today), "yyyy-MM-dd")).file.tasks, (t) => !t.completed))` tasks to do. `= choice(date(today).weekday > 5, "Take it easy!", "Time to get work done!")` 
+You have `= length(filter(link(dateformat(date(today), "yyyy-MM-dd")).file.tasks, (t) => !t.completed))` tasks to do. `= choice(date(today).weekday > 5, "Take it easy!", "Time to get work done!")`
 ```
 
 ## Dataview JS
@@ -94,7 +94,7 @@ for (let group of pages.groupBy(b => b.genre)) {
 
 Inside of a JS dataview block, you have access to the full dataview API via the `dv` variable. For an explanation of what you can do with it, see the [API documentation](../../api/code-reference), or the [API  examples](../../api/code-examples).
 
-> [!attention] "Advanced usage"  
+> [!attention] "Advanced usage"
 > Writing Javascript queries is a advanced technique that requires understanding in programming and JS. Please be aware that JS Queries have access to your file system and be cautious when using other peopless' JS Queries, especially when they are not publicy shared through the Obsidian Community.
 
 ## Inline Dataview JS
@@ -109,5 +109,5 @@ In inline DataviewJS, you have access to the `dv` variable, as in `dataviewjs` c
 
 Unlike Inline DQL queries, Inline JS queries do have access to everything a Dataview JS Query has available and can hence query and output multiple pages.
 
-> [!info] "Change of Inline JS prefix"  
+> [!info] "Change of Inline JS prefix"
 > You can change the `$=` to another token (like `dvjs:` or `$~`) in Dataviews' settings under "Codeblock Settings" > "Javascript Inline Query Prefix"

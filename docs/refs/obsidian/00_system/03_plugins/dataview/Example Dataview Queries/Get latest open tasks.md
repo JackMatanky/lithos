@@ -1,5 +1,5 @@
 ---
-description: Get the latest, not completed tasks 
+description: Get the latest, not completed tasks
 topics:
   - open tasks
   - latest items
@@ -12,7 +12,7 @@ date_modified: 2023-10-25T16:22
 
 # Get Latest Open Tasks
 
-> [!info] Difference between status and completed  
+> [!info] Difference between status and completed
 > A task only counts as completed if its status is equals to "x". If you use custom task statuses, i.e. "-", a task will appear checked but is *not* completed.
 
 ## Basic
@@ -41,9 +41,9 @@ LIMIT 10
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

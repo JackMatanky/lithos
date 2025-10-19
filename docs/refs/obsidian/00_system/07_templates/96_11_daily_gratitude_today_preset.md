@@ -155,7 +155,7 @@ const parent_task_value = `${year_month_short}_${habit_ritual_order}_${habit_rit
 const parent_task_link = `[[${parent_task_value}|${parent_task_name}]]`;
 const parent_task_value_link = yaml_li(parent_task_link);
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // PDEV JOURNAL INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${pdev_journal_info_callout}.md`;

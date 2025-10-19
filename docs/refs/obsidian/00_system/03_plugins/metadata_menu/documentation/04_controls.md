@@ -6,7 +6,7 @@ aliases:
   - metadata_menu_documentation_04_controls
 date_created: 2023-03-10T17:12
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Controls
 
@@ -89,7 +89,7 @@ these options are accessible from:
 
 1. Right-click on the link (or context menu, …)
 2. Click on " 📅 Update … "
-3. Type the date or select the date thanks to the date picker by clicking the "📅" button in the modal. If you have `Natural Language Dates` plugin installed, you can also type your date in natural language and have it parsed automatically  
+3. Type the date or select the date thanks to the date picker by clicking the "📅" button in the modal. If you have `Natural Language Dates` plugin installed, you can also type your date in natural language and have it parsed automatically
 3bis. Click on "⏭" to shift the date in the future according to the interval set
 4. Toggle `on` the `insert as link` option if you want your date to be included as a link
 
@@ -152,11 +152,11 @@ with `options: {inFrontmatter: false}` (default) a modal will be displayed to se
 
 const {fieldModifier: f} = this.app.plugins.plugins["metadata-menu"].api // destruct metadata-menu api to use fieldModifier function and give an aliases: "f"
 
-dv.table(["file", "Masterization", "Tune"], 
+dv.table(["file", "Masterization", "Tune"],
         dv.pages()
         .where(p => p.fileClass === "music")
         .map(p => [
-            p.file.link, 
+            p.file.link,
             f(dv, p, "masterization", {options: {alwaysOn: true}}),  // pass dv (dataview api instance), p (the page), the field name to fieldModifier (: "f") and an object with options: {alwaysOn: true} so taht the control is always visible
             f(dv, p, "tune") // pass dv (dataview api instance), p (the page), and the field name to fieldModifier (: "f")
             ])
@@ -244,7 +244,7 @@ If you want to force-update this lookup field you can use the command palette co
 
 ## Metadata Menu Button & Metadata Menu Modal
 
-if one or more fileClass / Supercharged tag is defined for a note, you can display a button next to the note reference everywhere in your vault.  
+if one or more fileClass / Supercharged tag is defined for a note, you can display a button next to the note reference everywhere in your vault.
 When clicking this button, a modal will display all fields defined for those fileClasses and their values.
 
 From there you can

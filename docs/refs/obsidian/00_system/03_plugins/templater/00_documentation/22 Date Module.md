@@ -5,11 +5,11 @@ aliases:
   - 22 Date Module
   - templater_documentation_22_date_module
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T15:44
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Date Module
 
@@ -26,11 +26,11 @@ Retrieves the date.
 #### Arguments
 
 - `format`: Format for the date, refer to [format reference](https://momentjs.com/docs/#/displaying/format/)
-    
+
 - `offset`: Offset for the day, e.g. set this to `-7` to get last week's date. You can also specify the offset as a string using the ISO 8601 format
-    
+
 - `reference`: The date referential, e.g. set this to the note's title
-    
+
 - `reference_format`: The date reference format.
 
 ### `tp.date.tomorrow(format: String = "YYYY-MM-DD")`
@@ -46,11 +46,11 @@ Retrieves tomorrow's date.
 #### Arguments
 
 - `format`: Format for the date, refer to [format reference](https://momentjs.com/docs/#/displaying/format/)
-    
+
 - `reference`: The date referential, e.g. set this to the note's title
-    
+
 - `reference_format`: The date reference format.
-    
+
 - `weekday`: Week day number. If the locale assigns Monday as the first day of the week, `0` will be Monday, `-7` will be last week's day.
 
 ### `tp.date.yesterday(format: String = "YYYY-MM-DD")`
@@ -83,7 +83,7 @@ Next year: <% tp.date.now("YYYY-MM-DD", "P1Y") %>
 File's title date + 1 day (tomorrow): <% tp.date.now("YYYY-MM-DD", 1, tp.file.title, "YYYY-MM-DD") %>
 File's title date - 1 day (yesterday): <% tp.date.now("YYYY-MM-DD", -1, tp.file.title, "YYYY-MM-DD") %>
 
-Date tomorrow with format: <% tp.date.tomorrow("Do MMMM YYYY") %>    
+Date tomorrow with format: <% tp.date.tomorrow("Do MMMM YYYY") %>
 
 This week's monday: <% tp.date.weekday("YYYY-MM-DD", 0) %>
 Next monday: <% tp.date.weekday("YYYY-MM-DD", 7) %>

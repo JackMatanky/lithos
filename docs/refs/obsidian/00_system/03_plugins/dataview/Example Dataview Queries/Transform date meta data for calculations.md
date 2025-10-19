@@ -13,7 +13,7 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!hint] ISO format  
+> [!hint] ISO format
 > In order to be recognizable by dataviews `date` function, that again enables us to calculate with dates, the date needs to be in [ISO format](https://en.wikipedia.org/wiki/ISO_8601), in most cases something like `2022-10-08T19:03:22`. If your date is stored in another format, you need to transform it to fit ISO.
 
 halfISO:: 2022-09-20 10:30
@@ -27,7 +27,7 @@ WHERE file = this.file
 
 ### Calculate with Dates after Transformation
 
-halfISO-start:: 2022-09-20 10:30  
+halfISO-start:: 2022-09-20 10:30
 halfISO-end:: 2022-10-01 15:00
 
 ```dataview
@@ -39,7 +39,7 @@ FLATTEN date(replace(halfISO-end, " ", "T")) AS end
 
 ### Using other Formats
 
-> [!info] Keep it as ISO as possible  
+> [!info] Keep it as ISO as possible
 > If your date format diverges a lot from the ISO format, transforming it becomes cumbersome and error-prone. For example, the following examples do not work if you have no time or do not use two-digits in the date. To keep yourself from trouble, whenever possible try to keep the ISO format as much as possible.
 
 germanformat:: 22.09.2022 11:15
@@ -60,9 +60,9 @@ WHERE germanformat
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

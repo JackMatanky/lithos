@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript, js/momentjs, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a week's calendar day files.
 
 ---
@@ -37,7 +37,7 @@ tags: obsidian/templater, javascript, js/momentjs, obsidian/tp/file/include
 <!-- Add the full code including explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY TASKS AND EVENTS DATAVIEW TABLES
 //---------------------------------------------------------
 // TASKS: "project", "parent_task", "child_task", "task"
@@ -1384,7 +1384,7 @@ const lib_file_content = `${frontmatter_lib}
 ${head_one}${lib_full_title_name}${new_line}
 ${week_sub_context}
 ${week_sub_date_prev_next}
-${hr_line}${new_line} 
+${hr_line}${new_line}
 ${week_lib}`;
 
 await tp.file.create_new(
@@ -1812,7 +1812,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -1833,7 +1833,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

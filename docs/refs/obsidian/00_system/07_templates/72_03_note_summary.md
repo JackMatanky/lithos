@@ -189,9 +189,9 @@ if (!has_title) {
   if (lib_resource_value == "null") {
     title = await tp.system.prompt(`Title of Summarized Content?`, null, true, false);
     title = title.trim();
-    
+
     const lib_content_titles = await tp.user.lib_content_titles(title);
-    
+
     const full_title_name = lib_content_titles.full_title_name;
     const full_title_value = lib_content_titles.full_title_value;
     title = `${type_name} of ${full_title_name}`;
@@ -434,9 +434,9 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Summary]
-> 
+>
 > - **Resource**: `dv: this.file.frontmatter.library[0]`
-> 
+>
 > - **Summary**: `dv: this.file.frontmatter.about`
 
 <!-- Insert full summary here -->

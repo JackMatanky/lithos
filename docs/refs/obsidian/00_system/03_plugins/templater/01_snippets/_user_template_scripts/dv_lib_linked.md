@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a dataview table or markdown table for linked library files based on specific file class and type.
 
 ---
@@ -55,18 +55,18 @@ const md_title_link = `"[[" + file.name + "\|" + ${alias} + "]]" AS Title`;
 
 // File type
 const yaml_type = `file.frontmatter.type`;
-const file_type = `choice(${yaml_type} = "book", "📚Book", 
-	choice(${yaml_type} = "book_chapter", "📑Book Chapter", 
-	choice(${yaml_type} = "journal", "📜️Journal", 
-	choice(${yaml_type} = "report", "📈Report", 
-	choice(${yaml_type} = "news", "🗞️News", 
-	choice(${yaml_type} = "magazine", "📰️Magazine", 
-	choice(${yaml_type} = "webpage", "🌐Webpage", 
-	choice(${yaml_type} = "blog", "💻Blog", 
-	choice(${yaml_type} = "video", "🎥️Video", 
-	choice(${yaml_type} = "youtube", "▶YouTube", 
-	choice(${yaml_type} = "documentary", "🖼️Documentary", 
-	choice(${yaml_type} = "audio", "🔉Audio", 
+const file_type = `choice(${yaml_type} = "book", "📚Book",
+	choice(${yaml_type} = "book_chapter", "📑Book Chapter",
+	choice(${yaml_type} = "journal", "📜️Journal",
+	choice(${yaml_type} = "report", "📈Report",
+	choice(${yaml_type} = "news", "🗞️News",
+	choice(${yaml_type} = "magazine", "📰️Magazine",
+	choice(${yaml_type} = "webpage", "🌐Webpage",
+	choice(${yaml_type} = "blog", "💻Blog",
+	choice(${yaml_type} = "video", "🎥️Video",
+	choice(${yaml_type} = "youtube", "▶YouTube",
+	choice(${yaml_type} = "documentary", "🖼️Documentary",
+	choice(${yaml_type} = "audio", "🔉Audio",
 	choice(${yaml_type} = "podcast", "🎧️Podcast", "📃Documentation")))))))))))))
 	AS Type`;
 
@@ -114,14 +114,14 @@ const class_filter = `contains(file.frontmatter.file_class, "lib")`;
 //---------------------------------------------------------
 // SECT: >>>>> DATA SORTING <<<<<
 //---------------------------------------------------------
-const lib_status_sort = `choice(${yaml_status} = "undetermined" OR ${yaml_status} = "schedule", 
-		1, 
-		choice(${yaml_status} = "to_do", 
-			2, 
-			choice(${yaml_status} = "in_progress", 
-				3, 
-				choice(${yaml_status} = "done", 
-					4, 
+const lib_status_sort = `choice(${yaml_status} = "undetermined" OR ${yaml_status} = "schedule",
+		1,
+		choice(${yaml_status} = "to_do",
+			2,
+			choice(${yaml_status} = "in_progress",
+				3,
+				choice(${yaml_status} = "done",
+					4,
 					5))))`;
 
 //---------------------------------------------------------
@@ -162,8 +162,8 @@ WHERE
 	${current_file_filter}
 	AND ${in_out_link_filter}
 	AND ${class_filter}
-SORT 
-	${yaml_type},	
+SORT
+	${yaml_type},
 	${yaml_title} ASC
 ${three_backtick}`;
   } else {
@@ -184,8 +184,8 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
-	${yaml_type},	
+SORT
+	${yaml_type},
 	${yaml_title} ASC
 ${three_backtick}`;
   }
@@ -215,7 +215,7 @@ module.exports = dv_lib_linked;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -284,7 +284,7 @@ const linked_lib_content = await tp.user.dv_lib_linked("", "", "false");
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_lib_linked.js]]
 
@@ -307,7 +307,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -328,7 +328,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

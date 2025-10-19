@@ -6,7 +6,7 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -19,11 +19,11 @@ tags: obsidian/templater, javascript, obsidian/dataviewjs, obsidian/dataview, ma
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Render a markdown table of the day's completed tasks.
 
 ---
@@ -48,20 +48,20 @@ const date_end = `date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end
 const task_duration = `dur(${date_end} - ${date_start})`;
 const task_estimate = `dur(T.duration_est + " minutes")`;
 
-const query = `TABLE WITHOUT ID 
+const query = `TABLE WITHOUT ID
 	regexreplace(regexreplace(T.text, ${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""), "_$", "") AS Task,
-	choice(contains(T.text, "_action_item"), 
-		"Action Item", 
-		choice(contains(T.text, "_meeting"), 
-			"Meeting", 
-			choice(contains(T.text, "_habit"), 
-				"Habit", 
-				choice(contains(T.text, "_morning_ritual"), 
-					"Morning Rit.", 
-					choice(contains(T.text, "_workday_startup_ritual"), 
-						"Workday Startup Rit.", 
-						choice(contains(T.text, "_workday_shutdown_ritual"), 
-							"Workday Shutdown Rit.", 
+	choice(contains(T.text, "_action_item"),
+		"Action Item",
+		choice(contains(T.text, "_meeting"),
+			"Meeting",
+			choice(contains(T.text, "_habit"),
+				"Habit",
+				choice(contains(T.text, "_morning_ritual"),
+					"Morning Rit.",
+					choice(contains(T.text, "_workday_startup_ritual"),
+						"Workday Startup Rit.",
+						choice(contains(T.text, "_workday_shutdown_ritual"),
+							"Workday Shutdown Rit.",
 							"Evening Rit.")))))) AS Type,
 	T.time_start AS Start,
 	T.time_end AS End,
@@ -76,12 +76,12 @@ const query = `TABLE WITHOUT ID
 FROM
 	#task
 	AND -"00_system/05_templates"
-FLATTEN 
+FLATTEN
 	file.tasks AS T
-WHERE 
-	any(file.tasks, (t) => 
+WHERE
+	any(file.tasks, (t) =>
 		t.completion = date(${today}))
-SORT 
+SORT
 	T.time_start ASC`
 
 const markdown = await dv.queryMarkdown(query);
@@ -90,7 +90,7 @@ tR += markdown.value
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -138,7 +138,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -149,7 +149,7 @@ LIMIT 10
 
 ### Outgoing Function Links
 
-<!-- Link related functions here -->  
+<!-- Link related functions here -->
 [[DataviewJS dv.queryMarkdown Function|The DataviewJS dv.queryMarkdown() Function]]
 
 ### All Function Links
@@ -160,7 +160,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

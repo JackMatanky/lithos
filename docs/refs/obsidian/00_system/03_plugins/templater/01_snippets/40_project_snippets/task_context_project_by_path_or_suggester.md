@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: If a task is already in a project's folder, set the task's context and project based on the folder path; otherwise, set the task context and project with the suggester.
 
 ---
@@ -62,7 +62,7 @@ let context_value;
 // Check if the parent directory equals projects_dir, 40_projects/
 // and the folder path array's length is equal to or greater than three
 if (projects_dir == `${folder_path_split[0]}/` && folder_path_length >= 3) {
-  // If true, assign the project to 
+  // If true, assign the project to
   // the split folder path array's third element
   project_obj = await tp.user.file_name_alias_by_class_type({
     dir: folder_path_split[2],
@@ -115,7 +115,7 @@ if (context_value.startsWith("habit")) {
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -225,7 +225,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -246,7 +246,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

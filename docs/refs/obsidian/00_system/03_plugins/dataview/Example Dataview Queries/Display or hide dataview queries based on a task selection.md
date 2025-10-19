@@ -35,7 +35,7 @@ if (isActive("Karl Marx")) {
 
 function isActive(name) {
 	return checklist.where(t => t.text == name)[0]
-} 
+}
 ```
 
 ## Variants
@@ -44,8 +44,8 @@ function isActive(name) {
 
 If your dataview query only differs in the field value to select, like the example above, you can do a refactoring that makes it unnecessary to touch the code again when adding new authors.
 
-> [!hint] When having "normal" tasks in the same file  
-> If you want to use "toggle tasks" along side normal tasks, the Basic approach is a bit safer. Nevertheless, you can use this one if you like, when you put your "toggle tasks" under a heading and filter for this, too, via `&& t.section.subpath === "Basic"` in the `where` function.  
+> [!hint] When having "normal" tasks in the same file
+> If you want to use "toggle tasks" along side normal tasks, the Basic approach is a bit safer. Nevertheless, you can use this one if you like, when you put your "toggle tasks" under a heading and filter for this, too, via `&& t.section.subpath === "Basic"` in the `where` function.
 > If the only tasks in your file are "toggle tasks", you don't need this additional filter.
 
 ```dataviewjs
@@ -55,7 +55,7 @@ checklist.forEach(task => showContent(task.text))
 
 function isActive(name) {
 	return checklist.where(t => t.text == name)[0]
-} 
+}
 
 function showContent(author) {
 	dv.header(2, author + " quotes")
@@ -67,9 +67,9 @@ function showContent(author) {
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

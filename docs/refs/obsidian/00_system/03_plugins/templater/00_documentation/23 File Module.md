@@ -5,11 +5,11 @@ aliases:
   - 23 File Module
   - templater_documentation_23_file_module
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T15:44
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # File Module
 
@@ -34,11 +34,11 @@ Creates a new file using a specified template or with a specified content.
 #### Arguments
 
 - `filename`: The filename of the new file, defaults to "Untitled".
-    
+
 - `folder`: The folder to put the new file in, defaults to obsidian's default location. If you want the file to appear in a different folder, specify it with `app.vault.getAbstractFileByPath("FOLDERNAME")`
-    
+
 - `open_new`: Whether to open or not the newly created file. Warning: if you use this option, since commands are executed asynchronously, the file can be opened first and then other commands are appended to that new file and not the previous file.
-    
+
 - `template`: Either the template used for the new file content, or the file content as a string. If it is the template to use, you retrieve it with `tp.file.find_tfile(TEMPLATENAME)`
 
 ### `tp.file.creation_date(format: String = "YYYY-MM-DD HH:mm")`
@@ -156,12 +156,12 @@ File creation: [[<% (await tp.file.create_new("MyFileContent", "MyFilename")).ba
 File cursor: <% tp.file.cursor(1) %>
 
 File cursor append: <% tp.file.cursor_append("Some text") %>
-    
+
 File existence: <% await tp.file.exists("MyFolder/MyFile.md") %>
 File existence of current file: <% await tp.file.exists(tp.file.folder(true)+"/"+tp.file.title+".md") %>
 
 File find TFile: <% tp.file.find_tfile("MyFile").basename %>
-    
+
 File Folder: <% tp.file.folder() %>
 File Folder with relative path: <% tp.file.folder(true) %>
 

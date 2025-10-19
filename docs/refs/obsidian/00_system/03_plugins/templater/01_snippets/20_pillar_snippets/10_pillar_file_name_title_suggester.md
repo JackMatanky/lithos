@@ -27,11 +27,11 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a pillar's file name and the pillar's main title from `alias[0]`.
 
 ---
@@ -92,9 +92,9 @@ const pillars_obj_arr = await tp.user.file_by_status({
 });
 
 const pillar_obj = await tp.system.suggester(
-  (item) => item.key, 
-  pillars_obj_arr, 
-  false, 
+  (item) => item.key,
+  pillars_obj_arr,
+  false,
   `Pillar?`
 );
 
@@ -122,9 +122,9 @@ const pillars = await tp.user.file_by_status({
 });
 
 const pillar = await tp.system.suggester(
-  pillars, 
-  pillars, 
-  false, 
+  pillars,
+  pillars,
+  false,
   `Pillar?`
 );
 
@@ -218,7 +218,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -242,7 +242,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

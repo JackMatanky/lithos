@@ -4,11 +4,11 @@ aliases:
   - Obsidian Tasks Timeline
   - obsidian_tasks_timeline
 application: dataview
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-05-01T09:36
 date_modified: 2023-09-05T19:17
-tags: 
+tags:
 ---
 # Taskido: Obsidian Tasks Timeline
 
@@ -60,18 +60,18 @@ Although I initially developed the Obsidian Tasks Calendar, I now work exclusive
 
     ```
     dv.view("YourScriptFolder", {parameter: "value", parameter: "value", parameter: true, parameter: "value value value value"})
-    
+
     For example...
-    
+
     dv.view("taskido", {pages: "", select: "Task Management/Inbox.md", inbox: "Task Management/Inbox.md", dailyNoteFolder: "Daily Notes", forward:true, options: ""})
-    
+
     To get a little structure you yan also write...
-    
+
     dv.view("taskido", {
-        pages: "", 
-        select: "Task Management/Inbox.md", 
-        inbox: "Task Management/Inbox.md", 
-        dailyNoteFolder: "Daily Notes", 
+        pages: "",
+        select: "Task Management/Inbox.md",
+        inbox: "Task Management/Inbox.md",
+        dailyNoteFolder: "Daily Notes",
         forward: true,
         options: ""
     })

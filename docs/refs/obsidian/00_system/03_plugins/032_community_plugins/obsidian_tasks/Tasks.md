@@ -4,7 +4,7 @@ aliases:
   - Tasks
   - obsidian_plugin_community_tasks
 application: tasks
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-07T20:02
 date_modified: 2023-09-05T19:17

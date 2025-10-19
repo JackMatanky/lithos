@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/prompt
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return an organization's specialties in title case, an of lowercase values, and as a list of tags
 
 ---
@@ -35,26 +35,26 @@ tags: obsidian/templater, javascript, obsidian/tp/system/prompt
 <!-- Add the full code including explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET LINKEDIN SPECIALTIES
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // Copy the specialties list from LinkedIn
-const org_specialties = await tp.system.prompt(  
-  "Organization's specialties?" 
-); 
+const org_specialties = await tp.system.prompt(
+  "Organization's specialties?"
+);
 
 // Return the organization's specialties in title case
 const specialties_name = await tp.user.title_case(org_specialties);
 
 // Remove the final "and" in the specialties list
 const specialties_value = `[${specialties_name
-  .replace(/\s(and)\s(\w+)$/g, " $2")  
+  .replace(/\s(and)\s(\w+)$/g, " $2")
   .toLowerCase()}]`;
 
 // Split the specialties string into an array
 // Concatenate a "#" to each item without any spaces
 // Join the array elements delimited by a space
-const specialties_tag = specialties_name  
+const specialties_tag = specialties_name
   .replace(/\s(and)\s(\w+)$/g, " $2")
   .split(", ")
   .map((s) => "#" + s.replaceAll(/\s/g, "_"))
@@ -64,21 +64,21 @@ const specialties_tag = specialties_name
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET LINKEDIN SPECIALTIES
-//---------------------------------------------------------  
-const org_specialties = await tp.system.prompt(  
-  "Organization's specialties?" 
-); 
+//---------------------------------------------------------
+const org_specialties = await tp.system.prompt(
+  "Organization's specialties?"
+);
 const specialties_name = await tp.user.title_case(org_specialties);
 const specialties_value = `[${specialties_name
-  .replace(/\s(and)\s(\w+)$/g, " $2")  
+  .replace(/\s(and)\s(\w+)$/g, " $2")
   .toLowerCase()}]`;
-const specialties_tag = specialties_name  
+const specialties_tag = specialties_name
   .replace(/\s(and)\s(\w+)$/g, " $2")
   .split(", ")
   .map((s) => "#" + s.replaceAll(/\s/g, "_"))
@@ -135,7 +135,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -156,7 +156,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

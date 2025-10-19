@@ -1,5 +1,5 @@
 ---
-title: dv_pdev_date 
+title: dv_pdev_date
 aliases:
   - Journals by Date Dataview List
   - Dataview List of Journals by Date
@@ -24,11 +24,11 @@ tags: obsidian/templater, obsidian/dataview, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]], [[Dataview]]  
-> Language: [[JavaScript]]  
-> Input:: Date, String  
-> Output:: Dataview Table  
+>
+> Plugin: [[Templater]], [[Dataview]]
+> Language: [[JavaScript]]
+> Input:: Date, String
+> Output:: Dataview Table
 > Description:: Return a dataview list of journals according to date.
 
 ---
@@ -55,9 +55,9 @@ async function dv_pdev_date(date) {
   dataview_journal_list = `${three_backtick}dataview
 LIST WITHOUT ID
 	${link}
-FROM 
+FROM
 	${source}
-WHERE 
+WHERE
 	${journal_filter}
 	AND contains(file.frontmatter.date_created, "${date}")
 SORT
@@ -72,7 +72,7 @@ module.exports = dv_pdev_date;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -111,13 +111,13 @@ const dv_journal_list = await tp.user.dv_pdev_date(date);
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_day_journal.js]]
 
 ### Outgoing Snippet Links
 
-<!-- Link related snippet here -->  
+<!-- Link related snippet here -->
 
 1. [[dv_proj_task|Dataview Table of Completed Project Tasks]]
 
@@ -130,7 +130,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -151,7 +151,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

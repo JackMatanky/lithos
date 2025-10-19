@@ -354,16 +354,16 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Definition]
-> 
-> term::  
-> 
-> definition::  
+>
+> term::
+>
+> definition::
 
 > [!Concept]
-> 
-> term::  
-> 
-> description::  
+>
+> term::
+>
+> description::
 
 ---
 

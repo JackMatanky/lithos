@@ -25,11 +25,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a Dataview table of Journal's written between two dates, primarily used in the weekly calendar.
 
 ---
@@ -125,11 +125,11 @@ async function dv_pdev_attr_dates({
     dataview_query = `${dataview_block}
 LIST
     rows.L.text
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     file.lists AS L
-WHERE 
+WHERE
     ${ordinal_section_filter}
     AND contains(file.frontmatter.type, "${attribute_arg}")
     AND ${class_filter}
@@ -138,18 +138,18 @@ WHERE
 GROUP BY
     ${section_group}
 SORT
-    ${yaml_date}, 
+    ${yaml_date},
     L.section ASC
 ${three_backtick}`;
   } else if (attribute_arg == "achievement") {
     dataview_query = `${dataview_block}
 LIST
     rows.L.text
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     file.lists AS L
-WHERE 
+WHERE
     ${ordinal_section_filter}
     AND contains(file.frontmatter.type, "reflection")
     AND ${class_filter}
@@ -158,18 +158,18 @@ WHERE
 GROUP BY
     ${section_group}
 SORT
-    ${yaml_date}, 
+    ${yaml_date},
     L.section ASC
 ${three_backtick}`;
   } else if (attribute_arg == "gratitude") {
     dataview_query = `${dataview_block}
 LIST
     rows.L.text
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     file.lists AS L
-WHERE 
+WHERE
     ${gratitude_filter}
     AND contains(file.frontmatter.type, "${attribute_arg}")
     AND ${class_filter}
@@ -178,18 +178,18 @@ WHERE
 GROUP BY
     ${section_group}
 SORT
-    ${yaml_date}, 
+    ${yaml_date},
     L.section ASC
 ${three_backtick}`;
   } else if (attribute_arg == "limiting_belief") {
     dataview_query = `${dataview_block}
 LIST
     rows.L.text
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     file.lists AS L
-WHERE 
+WHERE
     ${limiting_belief_filter}
     AND contains(file.frontmatter.type, "${attribute_arg}")
     AND ${class_filter}
@@ -198,18 +198,18 @@ WHERE
 GROUP BY
     ${section_group}
 SORT
-    ${yaml_date}, 
+    ${yaml_date},
     L.section ASC
 ${three_backtick}`;
   } else {
     dataview_query = `${dataview_block}
 LIST
     rows.D
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     ${attribute_arg} AS D
-WHERE 
+WHERE
     ${class_filter}
     AND ${date_start_filter}
     AND ${date_end_filter}
@@ -226,9 +226,9 @@ ${three_backtick}`;
 TABLE WITHOUT ID
     ${title_link},
     ${date}
-FROM 
+FROM
     ${insight_dir}
-WHERE 
+WHERE
     ${class_filter}
     AND ${date_start_filter}
     AND ${date_end_filter}
@@ -262,7 +262,7 @@ module.exports = dv_pdev_attr_dates;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -389,7 +389,7 @@ const week_lessons_learned = await tp.user.dv_pdev_attr_dates({
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_pdev_attr_start_end.js]]
 
@@ -408,7 +408,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -429,7 +429,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -13,7 +13,7 @@ date_modified: 2023-09-05T19:17
 
 ## Get Rid of All Redundant Plugins
 
-> [!Excerpt]  
+> [!Excerpt]
 > Obsidian is great for writing but not that much for planning and organization. But the plugin we’re talking about today fills that gap in obsidian. The plugin is called obsidian projects. And it…
 
 ---

@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/folder
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Check the file's folder path and if the file is in the wrong directory, move it to the correct folder.
 
 ---
@@ -37,14 +37,14 @@ tags: obsidian/templater, javascript, obsidian/tp/file/folder
 ```javascript
 // TODO: Define <directory> variable, include trailing backslash
 // TODO: Define <file_name> variable
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // MOVE FILE TO DIRECTORY
 //---------------------------------------------------------
 const directory = <directory>
 const folder_path = `${tp.file.folder(true)}/`;
 
-if (folder_path != directory) {  
-   await tp.file.move(`${directory}${file_name}`);  
+if (folder_path != directory) {
+   await tp.file.move(`${directory}${file_name}`);
 };
 ```
 
@@ -53,14 +53,14 @@ if (folder_path != directory) {
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // MOVE FILE TO DIRECTORY
 //---------------------------------------------------------
 const directory = <directory>
 const folder_path = `${tp.file.folder(true)}/`;
 
-if (folder_path != directory) {  
-   await tp.file.move(`${directory}${file_name}`);  
+if (folder_path != directory) {
+   await tp.file.move(`${directory}${file_name}`);
 };
 ```
 
@@ -109,7 +109,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -130,7 +130,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

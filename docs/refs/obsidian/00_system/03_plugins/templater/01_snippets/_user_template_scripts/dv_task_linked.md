@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a dataview table or markdown table for linked task and goal files based on type, status, and relation.
 
 ---
@@ -97,11 +97,11 @@ const file_status = `choice(contains(${yaml_status}, "done"), "✔️Done",
 // Date span
 const yaml_date_start = `file.frontmatter.task_start`;
 const yaml_date_end = `file.frontmatter.task_end`;
-const date_span = `choice((regextest("\d", ${yaml_date_start}) AND regextest("\d", ${yaml_date_end})), 
+const date_span = `choice((regextest("\d", ${yaml_date_start}) AND regextest("\d", ${yaml_date_end})),
 		(${yaml_date_start} + " → " + ${yaml_date_end}),
 		choice(regextest("\d", ${yaml_date_start}),
 			(${yaml_date_start} + " → Present"),
-			"null")) 
+			"null"))
 	AS Dates`;
 
 // Project
@@ -152,11 +152,11 @@ const task_type = `choice(contains(T.text, "_act"), "🔨Task",
     choice(contains(T.text, "_habit"), "🤖Habit",
     choice(contains(T.text, "_morn"), "🍵Rit.",
     choice(contains(T.text, "day_start"), "🌇Rit.",
-    choice(contains(T.text, "day_shut"), "🌆Rit.", "🛌Rit.")))))))))))) 
+    choice(contains(T.text, "day_shut"), "🌆Rit.", "🛌Rit."))))))))))))
     AS Type`;
 
 // Task status
-const task_status = `choice((T.status != "-"), 
+const task_status = `choice((T.status != "-"),
         (choice((T.status = "x"), "✔️Done", "🔜To do")),
         "❌Discard")
     AS Status`;
@@ -166,7 +166,7 @@ const task_due = "T.due";
 const task_done = "T.completion";
 const due_date = `dateformat(${task_due}, "yy-MM-dd")`;
 const done_date = `dateformat(${task_done}, "yy-MM-dd")`;
-const task_date = `choice((T.status != "-"), 
+const task_date = `choice((T.status != "-"),
         (choice((T.status = "x"), ${done_date}, ${due_date})),
         "❌Discard")
     AS Date`;
@@ -187,7 +187,7 @@ const full_task_start = `date(dateformat(${task_done}, "yyyy-MM-dd") + "T" + ${t
 const full_task_end = `date(dateformat(${task_done}, "yyyy-MM-dd") + "T" + ${task_end})`;
 const task_duration_act = `dur((${full_task_end}) - (${full_task_start}))`;
 
-const task_est_accuracy = `choice(T.status = "x", 
+const task_est_accuracy = `choice(T.status = "x",
     (choice((${task_duration_est} = ${task_duration_act}), "👍On Time",
         choice((${task_duration_est} > ${task_duration_act}),
 	  	    ("🟢" + (${task_duration_est} - ${task_duration_act}) + "➖"),
@@ -230,9 +230,9 @@ const discard_filter = `T.status != "-"`;
 // SECT: >>>>> DATA SORTING <<<<<
 //---------------------------------------------------------
 const status_sort = `choice(${yaml_status} = "done", 1,
-    choice(${yaml_status} = "in_progress", 2, 
-    choice(${yaml_status} = "to_do", 3, 
-    choice(${yaml_status} = "schedule", 4, 
+    choice(${yaml_status} = "in_progress", 2,
+    choice(${yaml_status} = "to_do", 3,
+    choice(${yaml_status} = "schedule", 4,
     choice(${yaml_status} = "on_hold", 5, 6)))))`;
 
 const type_sort = `choice(contains(${yaml_type}, "project"), 1, 2)`;
@@ -293,7 +293,7 @@ async function dv_task_linked({
     } else if (relation_arg.startsWith("child_task")) {
       if (status_arg == "due") {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
@@ -301,7 +301,7 @@ async function dv_task_linked({
     ${parent_task}`;
       } else {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${time_span},
     ${task_est_accuracy},
@@ -311,14 +311,14 @@ async function dv_task_linked({
     } else if (relation_arg.startsWith("child_hab_rit")) {
       if (status_arg == "due") {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
     ${task_estimate}`;
       } else {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${time_span},
     ${task_est_accuracy}`;
@@ -331,7 +331,7 @@ async function dv_task_linked({
       relation_arg.startsWith("child_eve_rit")
     ) {
       if (status_arg == "due") {
-        data_field = `${task_link}, 
+        data_field = `${task_link},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
@@ -366,14 +366,14 @@ async function dv_task_linked({
     } else if (relation_arg.startsWith("child_task")) {
       if (status_arg == "due") {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
     ${task_estimate}`;
       } else {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${time_span},
     ${task_est_accuracy},
@@ -382,14 +382,14 @@ async function dv_task_linked({
     } else if (relation_arg.startsWith("child_hab_rit")) {
       if (status_arg == "due") {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
     ${task_estimate}`;
       } else {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${time_span},
     ${task_est_accuracy}`;
@@ -640,7 +640,7 @@ FLATTEN
     file.tasks AS T
 WHERE
     ${filter}
-SORT 
+SORT
     ${sort}`;
   } else {
     dataview_query = `${dataview_block}
@@ -650,7 +650,7 @@ FROM
     ${proj_dir}
 WHERE
     ${filter}
-SORT 
+SORT
     ${sort}`;
   }
 
@@ -699,7 +699,7 @@ module.exports = dv_task_linked;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -856,7 +856,7 @@ const child_task_sibling = await tp.user.dv_task_linked({
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_task_linked.js]]
 
@@ -878,7 +878,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -899,7 +899,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

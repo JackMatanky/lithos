@@ -22,22 +22,22 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester
 # Contact File and Full Name Suggester
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output:: A basename of the chosen contact file  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output:: A basename of the chosen contact file
 > Description:: Return an contact's file name and the contact's main title from `alias[0]`.
 
 ---
 
 ## Snippet
 
-```javascript 
+```javascript
 // Template file to include
 const contact_name_alias = "51_contact_name_alias";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET CONTACT FILE NAME AND TITLE
 //---------------------------------------------------------
 // Retrieve the Contact File Name and Alias template and content
@@ -52,11 +52,11 @@ const contact_value_link = include_arr[1];
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET CONTACT FILE NAME, ALIAS, LINK, AND YAML LINK
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${contact_name_alias}.md`;
@@ -163,7 +163,7 @@ tR += value_link;
 <!-- If applicable, add the referenced template  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET CONTACT FILE NAME AND ALIAS
 //---------------------------------------------------------
 // Contact Files Directory
@@ -187,7 +187,7 @@ if (contact_value.includes(`_user_input`)) {
   contact_name = full_name;
   contact_value = last_first_name.replaceAll(/,/g, "").replaceAll(/[^\w]/g, "_").toLowerCase();
 };
- 
+
 tR += contact_value
 tR += ","
 tR += contact_name
@@ -263,7 +263,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -287,7 +287,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -45,9 +45,9 @@ function checkCriteria(p) {
 
 ---
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```
 > ```dataview
 > LIST

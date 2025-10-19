@@ -2,8 +2,8 @@
 limit: 100
 mapWithTag: false
 icon: tree-pine
-tagNames: 
-excludes: 
+tagNames:
+excludes:
 extends: pkm
 version: "2.1"
 date_created: 2023-08-24T21:58

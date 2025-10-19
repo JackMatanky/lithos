@@ -14,12 +14,12 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!info] Usage in daily notes  
+> [!info] Usage in daily notes
 > When used in a daily note that's named in format `YYYY-MM-DD`, you can replace the specific date information (`date("2022-11-30")`) with `this.file.day`
 
 ```
 ```dataview
-TASK 
+TASK
 WHERE !completed AND duedate AND duedate <= date("2022-11-30") AND contains(text, "due")
 ```
 
@@ -29,7 +29,7 @@ WHERE !completed AND duedate AND duedate <= date("2022-11-30") AND contains(text
 
 ```
 ```dataview
-TASK 
+TASK
 WHERE !completed AND duedate AND duedate <= date(today) AND contains(text, "due")
 ```
 
@@ -37,9 +37,9 @@ WHERE !completed AND duedate AND duedate <= date(today) AND contains(text, "due"
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

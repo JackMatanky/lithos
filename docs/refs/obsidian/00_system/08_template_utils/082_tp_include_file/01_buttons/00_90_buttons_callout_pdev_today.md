@@ -1,3 +1,3 @@
 > [!insight] Daily Journals
-> 
+>
 > `BUTTON[button-reflection-daily-preset]`|`BUTTON[button-gratitude-daily-preset]`|`BUTTON[button-detachment-daily-preset]`

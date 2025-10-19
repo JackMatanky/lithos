@@ -4,7 +4,7 @@ limit: 100
 icon: archive
 tagNames:
   - note
-excludes: 
+excludes:
 extends: pkm
 version: "2.2"
 date_created: 2023-07-16T21:02

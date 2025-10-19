@@ -312,7 +312,7 @@ Do some simple math:
 
 Reference numbers outside of the Button:
 
-    Bananas Have: 5  
+    Bananas Have: 5
     Bananas Lost: 5
 
     ```button
@@ -335,7 +335,7 @@ Natural Language Math:
     ```
     ^button-breakup
 
-The calculate button uses [math-expression-evaluator](https://github.com/bugwheels94/math-expression-evaluator), so it should support any symbol supported by that library.  
+The calculate button uses [math-expression-evaluator](https://github.com/bugwheels94/math-expression-evaluator), so it should support any symbol supported by that library.
 
 ### Swap Buttons
 
@@ -457,12 +457,12 @@ Note: swap count is reset if you close the note.
 
 ### 0.0.4: Updated Styling
 
-**This release includes a breaking change from the previous release (0.0.3)**  
+**This release includes a breaking change from the previous release (0.0.3)**
 
 - customClass argument is now class
 - customId argument is now id
-- Adding a class argument will remove default button styling. You can add that styling back by including the class names as values to the class argument:  
-`class button-default button-shine`  
+- Adding a class argument will remove default button styling. You can add that styling back by including the class names as values to the class argument:
+`class button-default button-shine`
 
 ### 0.0.3: Add `customId` Argument
 

@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a habits and rituals project's tasks and events section formatted with headings and tables.
 
 ---
@@ -42,7 +42,7 @@ const habit_rit_related_task_sect_proj = "40_20_habit_rit_project_task_event_sec
 //---------------------------------------------------------
 // HABITS AND RITUALS PROJECT TASKS AND EVENTS SECTION
 //---------------------------------------------------------
-// Retrieve the Tasks and Events Section for 
+// Retrieve the Tasks and Events Section for
 // Habits and Rituals Project template and content
 temp_file_path = `${sys_temp_include_dir}${habit_rit_related_task_sect_proj}.md`;
 abstract_file = await app.vault.getAbstractFileByPath(temp_file_path);
@@ -55,7 +55,7 @@ const project_task_event_section = include_arr;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -169,7 +169,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -192,7 +192,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

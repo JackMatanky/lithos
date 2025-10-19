@@ -170,7 +170,7 @@ if (project_value!== "null") {
 const parent_task_link = `[[${parent_task_value}|${parent_task_name}]]`;
 const parent_task_value_link = yaml_li(parent_task_link);
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // PDEV JOURNAL INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${pdev_journal_info_callout}.md`;
@@ -221,9 +221,9 @@ tags:
 ---
 
 > [!definition] Detachment
-> 
-> Detachment refers to the separation of oneself from an outside occurrence. The object of detachment can be anything about which I can ask if it was correct for me.  
-> 
+>
+> Detachment refers to the separation of oneself from an outside occurrence. The object of detachment can be anything about which I can ask if it was correct for me.
+>
 > **Questions:**
 > 1. What was/is the action, thought, or feeling?
 > 2. Was/is the effect beneficial or detrimental? Why?

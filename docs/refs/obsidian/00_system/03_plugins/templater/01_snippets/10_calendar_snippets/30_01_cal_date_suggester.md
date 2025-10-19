@@ -7,7 +7,7 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -20,11 +20,11 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Choose the date of the weekly, monthly, quarterly, or yearly calendar file.
 
 ---
@@ -34,9 +34,9 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester
 <!-- Add the full code including explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET THE DATE
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const date_obj_arr = [
   { key: `Current ${type_name}`, value: `current_${type_value}` },
   { key: `Last ${type_name}`, value: `last_${type_value}` },
@@ -53,12 +53,12 @@ const date_value = date_obj.value;
 
 let full_date = ``;
 
-if (date_value.startsWith(`current`)) {  
-  full_date = moment();  
-} else if (date_value.startsWith(`next`)) {  
-  full_date = moment().add(1, moment_var);  
-} else {  
-  full_date = moment().subtract(1, moment_var);  
+if (date_value.startsWith(`current`)) {
+  full_date = moment();
+} else if (date_value.startsWith(`next`)) {
+  full_date = moment().add(1, moment_var);
+} else {
+  full_date = moment().subtract(1, moment_var);
 };
 ```
 
@@ -67,9 +67,9 @@ if (date_value.startsWith(`current`)) {
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET THE DATE
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const date_obj_arr = [
   { key: `Current ${type_name}`, value: `current_${type_value}` },
   { key: `Last ${type_name}`, value: `last_${type_value}` },
@@ -84,12 +84,12 @@ let date_obj = await tp.system.suggester(
 const date_value = date_obj.value;
 
 let full_date = ``;
-if (date_value.startsWith(`current`)) {  
-  full_date = moment();  
-} else if (date_value.startsWith(`next`)) {  
-  full_date = moment().add(1, moment_var);  
-} else {  
-  full_date = moment().subtract(1, moment_var);  
+if (date_value.startsWith(`current`)) {
+  full_date = moment();
+} else if (date_value.startsWith(`next`)) {
+  full_date = moment().add(1, moment_var);
+} else {
+  full_date = moment().subtract(1, moment_var);
 };
 ```
 
@@ -140,7 +140,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -161,7 +161,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

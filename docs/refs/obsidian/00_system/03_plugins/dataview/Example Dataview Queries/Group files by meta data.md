@@ -17,7 +17,7 @@ date_modified: 2023-10-25T16:22
 ```
 ```dataview
 TABLE rows.file.link, rows.wellbeing.pain-type
-FROM #daily 
+FROM #daily
 WHERE wellbeing.mood-notes = "discomfort"
 GROUP BY wellbeing.pain
 ```
@@ -29,7 +29,7 @@ Add better readable table headers
 ```
 ```dataview
 TABLE WITHOUT ID row.key AS "Pain", rows.file.link AS "Dailys", rows.wellbeing.pain-type AS "Type of Pain"
-FROM #daily 
+FROM #daily
 WHERE wellbeing.mood-notes = "discomfort"
 GROUP BY wellbeing.pain
 ```
@@ -41,7 +41,7 @@ Replace pain numbers with textual information
 ```
 ```dataview
 TABLE WITHOUT ID choice(row.key = 0, "None", choice(row.key = 1, "Little", choice(row.key = 2, "Middle", choice(row.key = 3, "High", row.key))))  AS "Pain", rows.file.link AS "Dailys", rows.wellbeing.pain-type AS "Type of Pain"
-FROM #daily 
+FROM #daily
 WHERE wellbeing.mood-notes = "discomfort"
 GROUP BY wellbeing.pain
 ```
@@ -50,9 +50,9 @@ GROUP BY wellbeing.pain
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

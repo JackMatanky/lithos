@@ -16,6 +16,6 @@ const task_type = `choice(contains(T.text, "_action_item"),
 					"🌇Rit.",
 					choice(contains(T.text, "_workday_shutdown_ritual"),
 						"🌆Rit.",
-						"🛌Rit.")))))) 
+						"🛌Rit."))))))
 AS Type`
 ```

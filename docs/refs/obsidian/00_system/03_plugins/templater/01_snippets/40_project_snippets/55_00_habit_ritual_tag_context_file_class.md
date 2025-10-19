@@ -7,8 +7,8 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
-description: 
+module:
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return the habits and/or rituals task tag, context, and file class.
 
 ---
@@ -33,7 +33,7 @@ tags: obsidian/templater, javascript
 ## Snippet
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // HABIT'S AND RITUAL'S TASK TAG, CONTEXT, AND FILE CLASS
 //---------------------------------------------------------
 const task_tag = `#task`;
@@ -45,7 +45,7 @@ const file_class = `task_${context}`;
 ### Templater
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // HABIT'S AND RITUAL'S TASK TAG, CONTEXT, AND FILE CLASS
 //---------------------------------------------------------
 const task_tag = `#task`;
@@ -109,7 +109,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -130,7 +130,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

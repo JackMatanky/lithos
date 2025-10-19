@@ -72,7 +72,7 @@ Basic Field:: Some random Value
 
 All content after the `::` is the value of the field until the next line break.
 
-> [!hint] Mind the `::`  
+> [!hint] Mind the `::`
 > Note that you need to use a double colon `::` between key and value when using inline fields, contrary to YAML Frontmatter fields where one colon is enough.
 
 If you want to embed metadata inside sentences, or multiple fields on the same line, you can use the bracket syntax and wrap your field in square brackets:
@@ -81,16 +81,16 @@ If you want to embed metadata inside sentences, or multiple fields on the same l
 I would rate this a [rating:: 9]! It was [mood:: acceptable].
 ```
 
-> [!info] Fields on list items and tasks  
+> [!info] Fields on list items and tasks
 > When you want to annotate a list item, e.g. a task, with metadata, you always need to use the bracket syntax (because the field is not the only information in this line)
-> 
+>
 > ```markdown
 > - [ ] Send an mail to David about the deadline [due:: 2022-04-05].
 > ```
-> 
+>
 > Bracketed inline fields are the only way to explicitly add fields to specific list items, YAML frontmatter always applies to the whole page (but is also available in context of list items.)
 
-There is also the alternative parenthesis syntax, which hides the key when  
+There is also the alternative parenthesis syntax, which hides the key when
 rendered in Reader mode:
 
 ```markdown
@@ -123,7 +123,7 @@ Like you can see in the table, if you are using **spaces or capitalized letters*
 **Keys with spaces** cannot be used in a query as-is. You have two possibilities here:
 
 1. Use the sanitized name, that is always all lowercase and with dashes instead of spaces or
-2. use the **row** variable syntax.  
+2. use the **row** variable syntax.
 Find out more [in the FAQ](../resources/faq.md).
 
 **Keys with capitalized letters** can be used as-is, if you wish. The sanitized version allows you to query for a key independent of its capitalization and makes it easier to use: You can query the same field that's, for example, in one file named `someMetadata` and in another `someMetaData` when using the sanitized key `somemetadata`.
@@ -141,10 +141,10 @@ Noël:: Un jeu de console
 [xmas🎄:: a console game]
 ```
 
-**Using emojis as metadata keys** is possible, but it comes with some limitations. When using emojis in field names, you need to put them into square brackets so that dataview recognize them correctly.  
+**Using emojis as metadata keys** is possible, but it comes with some limitations. When using emojis in field names, you need to put them into square brackets so that dataview recognize them correctly.
 Also, please be aware when switching the OS (i.e. from Windows to Android), the same emoji could use another character code and you might not find your metadata when querying it.
 
-> [!info] Task Field Shorthands  
+> [!info] Task Field Shorthands
 > An exception to this are the [shorthand syntax](./metadata-tasks.md#field-shorthands) in Tasks. You can use shorthands without bracketing. Please mind though that this only counts for listed shorthands - every other field (if with emojis or not) need to use the `[key:: value]` syntax.
 
 ## Implicit Fields

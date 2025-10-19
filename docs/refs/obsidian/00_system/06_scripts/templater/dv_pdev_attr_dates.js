@@ -90,11 +90,11 @@ async function dv_pdev_attr_dates({
     dataview_query = `${dataview_block}
 LIST
     rows.L.text
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     ${list_item_filter} AS L
-WHERE 
+WHERE
     ${ordinal_section_filter}
     AND contains(file.frontmatter.type, "${attribute}")
     AND ${class_filter}
@@ -102,18 +102,18 @@ WHERE
 GROUP BY
     ${section_group}
 SORT
-    ${yaml_date}, 
+    ${yaml_date},
     L.section ASC
 ${three_backtick}`;
   } else if (attribute == "achievement") {
     dataview_query = `${dataview_block}
 LIST
     rows.L.text
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     ${list_item_filter} AS L
-WHERE 
+WHERE
     ${ordinal_section_filter}
     AND contains(file.frontmatter.type, "reflection")
     AND ${class_filter}
@@ -121,18 +121,18 @@ WHERE
 GROUP BY
     ${section_group}
 SORT
-    ${yaml_date}, 
+    ${yaml_date},
     L.section ASC
 ${three_backtick}`;
   } else if (attribute == "gratitude") {
     dataview_query = `${dataview_block}
 LIST
     rows.L.text
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     ${list_item_filter} AS L
-WHERE 
+WHERE
     ${gratitude_filter}
     AND contains(file.frontmatter.type, "${attribute}")
     AND ${class_filter}
@@ -140,18 +140,18 @@ WHERE
 GROUP BY
     ${section_group}
 SORT
-    ${yaml_date}, 
+    ${yaml_date},
     L.section ASC
 ${three_backtick}`;
   } else if (attribute == "limiting_belief") {
     dataview_query = `${dataview_block}
 LIST
     rows.L.text
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     ${list_item_filter} AS L
-WHERE 
+WHERE
     ${limiting_belief_filter}
     AND contains(file.frontmatter.type, "${attribute}")
     AND ${class_filter}
@@ -159,18 +159,18 @@ WHERE
 GROUP BY
     ${section_group}
 SORT
-    ${yaml_date}, 
+    ${yaml_date},
     L.section ASC
 ${three_backtick}`;
   } else {
     dataview_query = `${dataview_block}
 LIST
     rows.D
-FROM 
+FROM
     ${insight_dir}
 FLATTEN
     ${attribute} AS D
-WHERE 
+WHERE
     ${class_filter}
     AND ${date_filter}
     AND regextest(".", D)
@@ -186,9 +186,9 @@ ${three_backtick}`;
 TABLE WITHOUT ID
     ${title_link},
     ${date}
-FROM 
+FROM
     ${insight_dir}
-WHERE 
+WHERE
     ${class_filter}
     AND ${date_filter}
 SORT

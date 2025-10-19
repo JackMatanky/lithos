@@ -228,7 +228,6 @@ tags:
 ## Prompt
 
 > [!question] Prompt
-> 
+>
 > - Who are ten people I admire?
 > - What are five of their characteristics I find admirable?
-

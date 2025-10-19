@@ -224,5 +224,5 @@ tags:
 ## Prompt
 
 > [!question] Prompt
-> 
-> What are seven reasons why a company would want to hire me?  
+>
+> What are seven reasons why a company would want to hire me?

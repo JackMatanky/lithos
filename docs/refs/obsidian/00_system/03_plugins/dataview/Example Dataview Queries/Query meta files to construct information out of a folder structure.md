@@ -1,5 +1,5 @@
 ---
-description: Query a folder structure with the help of meta files and display the per ID interconnected information in a table 
+description: Query a folder structure with the help of meta files and display the per ID interconnected information in a table
 topics:
   - querying folder infos
 tags: dv/TABLE, dv/FROM, dv/FLATTEN, dv/groupby, dv/split, dv/length, dv/WHERE, dv/link, dv/filter, dv/dataviewjs, dvjs/pages, dvjs/array, dvjs/table
@@ -27,7 +27,7 @@ GROUP BY id
 
 **If language info should be extracted from path**
 
-> [!attention] Vulnerable to changes of folder structure  
+> [!attention] Vulnerable to changes of folder structure
 > Extracting the language from the folder path requires to know the exact position of the language folder - in our case, it's the **third layer** (First: 10 Example Data, Second: Folder Structure and Meta Files). If this is to change, the query won't show the correct result anymore.
 
 ```dataview
@@ -75,7 +75,7 @@ GROUP BY id
 
 ### Javascript Solution that Automatically Adds New Languages when Available in Folder Structure
 
-> [!attention] Vulnerable to changes of folder structure  
+> [!attention] Vulnerable to changes of folder structure
 > Extracting the language from the folder path requires to know the exact position of the language folder - in our case, it's the **third layer** (First: 10 Example Data, Second: Folder Structure and Meta Files). If this is to change, the query won't show the correct result anymore.
 
 ```dataviewjs
@@ -101,7 +101,7 @@ languages = dv.array(Array.from(languages))
 // The code uses the folder names for displaying, but I need to be able to match
 // What's in the meta file to the folder name.
 const langMap = {
-	'EN': "English", 
+	'EN': "English",
 	'DE': "German",
 	'FR': "French"
 }
@@ -116,8 +116,8 @@ const headers = languages
 	{
 		id: book-id,
 		titles: [
-			{ 
-				lang: language-code, 
+			{
+				lang: language-code,
 				title: book-title
 			}
 		]
@@ -144,11 +144,11 @@ allPages.forEach((p) => {
 		} else {
 			console.log(`Data has no ID: ${id}; creating new entry`)
 			const newEntry = {
-				id: id, 
+				id: id,
 				titles: [ { lang: lang, title: title } ]
 			}
 			data.push(newEntry)
-		}	
+		}
 	}
 })
 
@@ -159,7 +159,7 @@ const elems = data
 	.map( (titleEntry) => {
 		// Build a single table row
 		let items = []
-		
+
 		// Loop through all titles & langs
 		// making sure that entries are in the correct column
 		titleEntry.forEach((title) => {
@@ -182,9 +182,9 @@ dv.table(headers, elems)
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

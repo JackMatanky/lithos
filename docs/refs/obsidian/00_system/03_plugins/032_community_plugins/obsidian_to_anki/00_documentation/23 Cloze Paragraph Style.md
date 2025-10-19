@@ -11,7 +11,7 @@ url: https://github.com/Pseudonium/Obsidian_to_Anki/wiki/Cloze-Paragraph-style
 file_class: lib_documentation
 date_created: 2023-05-30T19:13
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Cloze Paragraph Style
 
@@ -39,28 +39,28 @@ but of course {{c3::Anki}}'s formatting is always an option.
 
 ### Python Script
 
-1. Run the script, and check '[[04 Config|Config]]' to open up the config file:  
+1. Run the script, and check '[[04 Config|Config]]' to open up the config file:
    ![[GUI_config.webp]]
-   
+
 2. Navigate to the "Custom Regexps" section
 3. Change the line
 
    ```
-   Cloze =  
+   Cloze =
    ```
 
-   to  
-   `Cloze = (.*{.*\n?)`  
+   to
+   `Cloze = (.*{.*\n?)`
 
 4. Also set `CurlyCloze = True` to have the above example work properly.
 5. Save the config file
-6. Run the script on the file, with 'Regex' checked:  
+6. Run the script on the file, with 'Regex' checked:
    ![[GUI_regex.webp]]
 
 ### All Users
 
-1. You should see these cards in Anki:  
-    ![[Cloze_1.webp]]  
+1. You should see these cards in Anki:
+    ![[Cloze_1.webp]]
     ![[Cloze_2.webp]]
 
 #### Highlight-cloze Style (Obsidian Plugin only)

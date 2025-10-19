@@ -460,15 +460,15 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Steps]
-> 
+>
 > - **Step(s)**: `dv: this.file.frontmatter.about`
 
 > [!note_relation] Note Relations
-> 
+>
 > **Question**:: <%* tR += question_link %>
-> 
+>
 > **Evidence**::
-> 
+>
 > **Conclusion**::
 
 ---

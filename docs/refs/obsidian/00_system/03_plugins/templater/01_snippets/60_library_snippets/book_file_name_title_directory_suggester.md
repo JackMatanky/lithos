@@ -25,11 +25,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a book's file name and title from `alias[0]` and assign a chapter's book directory with the book's file name.
 
 ---
@@ -63,7 +63,7 @@ const book_dir = `${lib_books_dir}${book_value}/`;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -99,14 +99,14 @@ const books_obj_arr = await tp.user.file_name_alias_by_class_type({
     file_class: "lib",
     type: "book",
   });
-  
+
 const books_obj = await tp.system.suggester(
   (item) => item.key,
   books_obj_arr,
   false,
   "Book?"
   );
-  
+
 const book_value = books_obj.value;
 const book_name = books_obj.key;
 
@@ -160,7 +160,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -181,7 +181,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

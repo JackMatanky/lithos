@@ -2,8 +2,8 @@
 limit: 100
 mapWithTag: true
 icon: files
-tagNames: 
-excludes: 
+tagNames:
+excludes:
 extends: lib
 version: "2.0"
 date_created: 2023-09-03T19:26

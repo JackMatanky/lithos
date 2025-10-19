@@ -223,9 +223,9 @@ if (!has_title) {
   if (book_value == "null" && chapter_value == "null") {
     title = await tp.system.prompt(`Title of Summarized Content?`, null, true, false);
     title = title.trim();
-    
+
     const lib_content_titles = await tp.user.lib_content_titles(title);
-    
+
     const full_title_name = lib_content_titles.full_title_name;
     const full_title_value = lib_content_titles.full_title_value;
     title = `${type_name} of ${full_title_name}`;

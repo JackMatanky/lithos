@@ -5,11 +5,11 @@ aliases:
   - 10 Introduction
   - templater_documentation_10_Introduction
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T15:37
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Introduction
 

@@ -5,11 +5,11 @@ aliases:
   - 18 FAQ
   - dataview_documentation_18_faq
 application: dataview
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-09T18:20
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Frequently Asked Questions](https://blacksmithgu.github.io/obsidian-dataview/resources/faq/)
 

@@ -24,11 +24,11 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a pillar's file name and the pillar's main title from `alias[0]`. Preset with the Knowledge Expansion pillar's information.
 
 ---
@@ -42,7 +42,7 @@ const pillar_name_alias_preset_know = "20_02_pillar_name_alias_preset_know";
 //---------------------------------------------------------
 // SET PILLAR FILE AND FULL NAME; PRESET KNOW. EXPANSION
 //---------------------------------------------------------
-// Retrieve the Pillar File Name and Title with 
+// Retrieve the Pillar File Name and Title with
 // Knowledge Expansion Preset template and content
 temp_file_path = `${sys_temp_include_dir}${pillar_name_alias_preset_know}.md`;
 abstract_file = await app.vault.getAbstractFileByPath(temp_file_path);
@@ -80,7 +80,7 @@ const new_line = String.fromCodePoint(0xa);
 const ul = `${String.fromCodePoint(0x2d)}${space}`;
 const ul_yaml = `${space.repeat(2)}${ul}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET PILLAR FILE AND FULL NAME; PRESET KNOW. EXPANSION
 //---------------------------------------------------------
 // Pillar Files Directory
@@ -207,7 +207,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -231,7 +231,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

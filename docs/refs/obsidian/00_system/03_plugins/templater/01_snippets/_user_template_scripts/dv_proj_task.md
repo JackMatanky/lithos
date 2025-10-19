@@ -25,11 +25,11 @@ tags: obsidian/templater, obsidian/dataview, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]], [[Dataview]]  
-> Language: [[JavaScript]]  
-> Input:: Directory Path  
-> Output:: Dataview Table  
+>
+> Plugin: [[Templater]], [[Dataview]]
+> Language: [[JavaScript]]
+> Input:: Directory Path
+> Output:: Dataview Table
 > Description:: Return a dataview table of a project's tasks according to type and status.
 
 ---
@@ -58,11 +58,11 @@ const parent_task_status = `choice(${yaml_status} = "done",
 // Date span
 const date_start = `file.frontmatter.task_start`;
 const date_end = `file.frontmatter.task_end`;
-const date_span = `choice((regextest(".", ${date_start}) AND regextest(".", ${date_end})), 
+const date_span = `choice((regextest(".", ${date_start}) AND regextest(".", ${date_end})),
 		(${date_start} + " → " + ${date_end}),
 		choice(regextest(".", ${date_start}),
 			(${date_start} + " → Present"),
-			"null")) 
+			"null"))
 	AS Dates`;
 
 const contact = `Contact AS Contact`;
@@ -79,7 +79,7 @@ const inline_field_regex = `\\[.*$`;
 const child_link = `link(T.section,
 		regexreplace(
 			regexreplace(T.text, "${child_tag_regex}|${child_type_regex}${inline_field_regex}", ""),
-		"_$", "")) 
+		"_$", ""))
 	AS Task`;
 
 // Task type
@@ -94,7 +94,7 @@ const child_type = `choice(contains(T.text, "_action_item"), "🔨Task",
 	choice(contains(T.text, "_habit"), "🤖Habit",
 	choice(contains(T.text, "_morning_ritual"),	"🍵Rit.",
 	choice(contains(T.text, "_workday_startup_ritual"), "🌇Rit.",
-	choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit.")))))))))))) 
+	choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit."))))))))))))
 	AS Type`;
 
 // Due date
@@ -117,7 +117,7 @@ const child_estimate_accuracy = `choice((${child_estimate_dur} = ${child_duratio
 	choice(
 		(${child_estimate_dur} > ${child_duration}),
 			"🟢" + (${child_estimate_dur} - ${child_duration}),
-			"❗" + (${child_duration} - ${child_estimate_dur}))) 
+			"❗" + (${child_duration} - ${child_estimate_dur})))
 AS Accuracy`;
 
 // Parent Task field
@@ -171,7 +171,7 @@ async function dv_proj_task(type, status) {
       dataview_query = `${three_backtick}dataview
 TABLE WITHOUT ID
 	${child_link},
-	${child_type}, 
+	${child_type},
 	${due_date},
 	${start} AS Start,
 	${end} AS End,
@@ -186,7 +186,7 @@ WHERE
 	AND ${child_checkbox_filter}
 	AND ${child_discard_filter}
 	AND !${status_filter}
-SORT 
+SORT
 	T.due,
 	T.time_start ASC
 ${three_backtick}`;
@@ -203,14 +203,14 @@ TABLE WITHOUT ID
 	${parent_task}
 FROM
 	${template_dir}
-FLATTEN 
+FLATTEN
 	file.tasks AS T
 WHERE
 	${folder_filter}
 	AND ${child_checkbox_filter}
 	AND ${child_discard_filter}
 	AND ${status_filter}
-SORT 
+SORT
 	T.completion,
 	T.time_start ASC
 ${three_backtick}`;
@@ -229,7 +229,7 @@ WHERE
 	${folder_filter}
 	AND ${parent_type_filter}
 	AND ${parent_discard_filter}
-SORT 
+SORT
 	date_start ASC
 ${three_backtick}`;
   }
@@ -241,7 +241,7 @@ module.exports = dv_proj_task;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -324,7 +324,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -345,7 +345,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -25,15 +25,15 @@ tags: sql, obsidian, obsidian/dataview/flatten, dv/query/flatten, data_type/arra
 ## Description
 
 > [!function] Function Details
-> 
-> Plugin: [[Dataview]]  
-> Language: [[JavaScript]]  
-> Module: Data Commands  
-> Class:  
-> Input:: Array  
-> Output::  
+>
+> Plugin: [[Dataview]]
+> Language: [[JavaScript]]
+> Module: Data Commands
+> Class:
+> Input:: Array
+> Output::
 > Definition:: Flatten an array in every row, yielding one result row per entry in the array.
->  
+>
 > Link: [FLATTEN](https://blacksmithgu.github.io/obsidian-dataview/queries/data-commands/#flatten)
 
 ---
@@ -60,10 +60,10 @@ FLATTEN (computed_field) AS name
 For example, flatten the `authors` field in each literature note to give one row per author:
 
 ```sql
-```dataview 
-TABLE authors 
-FROM #LiteratureNote  
-FLATTEN authors  
+```dataview
+TABLE authors
+FROM #LiteratureNote
+FLATTEN authors
 ```
 
 | File                                           | authors             |
@@ -89,7 +89,7 @@ WHERE T.text
 
 ```sql
 ```dataview
-TABLE 
+TABLE
   filter(file.tasks.text, (t) => t) as "Task Text"
 FROM "Scratchpad"
 WHERE file.tasks.text
@@ -110,7 +110,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -128,7 +128,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.module AS Module,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND (file.frontmatter.file_class = "pkm_code_function")
 	AND (file.frontmatter.plugin = this.file.frontmatter.plugin)
@@ -137,7 +137,7 @@ SORT file.frontmatter.module, file.name
 
 #### By Tag
 
-<!-- Add tags in contains function as needed  -->  
+<!-- Add tags in contains function as needed  -->
 <!-- Query limit 10  -->
 
 ```dataview
@@ -146,7 +146,7 @@ TABLE WITHOUT ID
 	Definition AS Definition,
 	string(file.frontmatter.language) AS Language,
 	sort(file.etags) AS Tags
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND file.frontmatter.file_class = "pkm_code_function"
 	AND contains(file.tags, "flatten")
@@ -160,16 +160,16 @@ LIMIT 10
 
 #### All Function Links
 
-<!-- Excluding functions of the same module  -->  
+<!-- Excluding functions of the same module  -->
 <!-- Query limit 10  -->
 
 ```dataview
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
-	AND file.frontmatter.module != this.file.frontmatter.module 
+	AND file.frontmatter.module != this.file.frontmatter.module
 	AND file.frontmatter.file_class = "pkm_code_function"
 	AND (contains(file.outlinks, this.file.link)
 	OR contains(file.inlinks, this.file.link))

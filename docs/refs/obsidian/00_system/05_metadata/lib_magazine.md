@@ -2,7 +2,7 @@
 limit: 100
 mapWithTag: false
 icon: newspaper
-tagNames: 
+tagNames:
 excludes:
   - city
   - edition

@@ -50,14 +50,14 @@ const lib_status = `default(((x) => {
 const yaml_author = "file.frontmatter.author";
 const yaml_lecturer = "file.frontmatter.lecturer";
 const author = `choice(length(choice(contains(${yaml_type}, "course"), ${yaml_lecturer}, ${yaml_author})) < 2,
-      choice(contains(${yaml_type}, "course"), ${yaml_lecturer}[0], ${yaml_author}[0]), 
-      flat(choice(contains(${yaml_type}, "course"), ${yaml_lecturer}, ${yaml_author}))) 
+      choice(contains(${yaml_type}, "course"), ${yaml_lecturer}[0], ${yaml_author}[0]),
+      flat(choice(contains(${yaml_type}, "course"), ${yaml_lecturer}, ${yaml_author})))
     AS Creator`;
 
 // Date published
-const publish_date = `choice(contains(${yaml_type}, "book"), 
-      file.frontmatter.year_published, 
-      file.frontmatter.date_published) 
+const publish_date = `choice(contains(${yaml_type}, "book"),
+      file.frontmatter.year_published,
+      file.frontmatter.date_published)
     AS "Date Published"`;
 
 // Tags
@@ -133,7 +133,7 @@ async function dv_lib_status_dates({
     filter = `date(${date_field}) = date(${date_start})`;
   } else {
     // BETWEEN two dates
-    filter = `date(${date_field}) >= date(${date_start}) 
+    filter = `date(${date_field}) >= date(${date_start})
     AND date(${date_field}) <= date(${date_end})`;
   }
 

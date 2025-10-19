@@ -5,11 +5,11 @@ aliases:
   - 24 Frontmatter Module
   - templater_documentation_24_frontmatter_module
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T15:45
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Frontmatter Module
 

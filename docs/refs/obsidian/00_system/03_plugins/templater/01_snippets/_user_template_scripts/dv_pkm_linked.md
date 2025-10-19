@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a dataview table or markdown table for linked personal knowledge files based on specific file class and type.
 
 ---
@@ -70,9 +70,9 @@ const yaml_topic = `file.frontmatter.topic`;
 
 // Status
 const yaml_status = `file.frontmatter.status`;
-const pkm_status = `choice(${yaml_status} = "schedule", "🤷Unknown", 
-    choice(${yaml_status} = "review", "🔜Review", 
-    choice(${yaml_status} = "clarify", "🌱Clarify", 
+const pkm_status = `choice(${yaml_status} = "schedule", "🤷Unknown",
+    choice(${yaml_status} = "review", "🔜Review",
+    choice(${yaml_status} = "clarify", "🌱Clarify",
     choice(${yaml_status} = "develop", "🪴Develop",
     choice(${yaml_status} = "done", "🌳Done", "🗄️Resource")))))
 	AS Status`;
@@ -86,7 +86,7 @@ const pkm_subtype = `choice(contains(${yaml_subtype}, "category"), "🏘️Categ
 	choice(contains(${yaml_subtype}, "branch"), "🪑Branch",
 	choice(contains(${yaml_subtype}, "field"), "🚪Field",
 	choice(contains(${yaml_subtype}, "subject"), "🗝️Subject",
-	choice(contains(${yaml_subtype}, "topic"), "🧱Topic", 
+	choice(contains(${yaml_subtype}, "topic"), "🧱Topic",
 	choice(contains(${yaml_subtype}, "subtopic"), "🔩Subtopic",
 	choice(contains(${yaml_subtype}, "question"), "❔Question",
 	choice(contains(${yaml_subtype}, "evidence"), "⚖️Evidence",
@@ -134,9 +134,9 @@ const note_content = `choice(${yaml_subtype} = "qec_question", list(Context, Que
 const tree_description = `Description AS Description`;
 
 const tree_context = `choice(${yaml_subtype} = "subtopic", flat(list(file.frontmatter.category, file.frontmatter.branch, file.frontmatter.field, file.frontmatter.subject, file.frontmatter.topic)),
-	choice(${yaml_subtype} = "topic", flat(list(file.frontmatter.category, file.frontmatter.branch, file.frontmatter.field, file.frontmatter.subject)), 
+	choice(${yaml_subtype} = "topic", flat(list(file.frontmatter.category, file.frontmatter.branch, file.frontmatter.field, file.frontmatter.subject)),
 	choice(${yaml_subtype} = "subject", flat(list(file.frontmatter.category, file.frontmatter.branch, file.frontmatter.field)),
-	choice(${yaml_subtype} = "field", flat(list(file.frontmatter.category, file.frontmatter.branch)), 
+	choice(${yaml_subtype} = "field", flat(list(file.frontmatter.category, file.frontmatter.branch)),
 	choice(${yaml_subtype} = "branch", Category, "")))))
 	AS Context`;
 
@@ -159,28 +159,28 @@ const class_filter = `contains(file.frontmatter.file_class, "pkm")`;
 const current_file_filter = `file.name != this.file.name`;
 
 // File inlinks and outlinks
-const in_out_link_filter = `(contains(file.outlinks, this.file.link) 
+const in_out_link_filter = `(contains(file.outlinks, this.file.link)
 	OR contains(file.inlinks, this.file.link))`;
 
 // Tree child filter
-const tree_child_filter = `(choice(contains(this.${yaml_subtype}, "category"), 
+const tree_child_filter = `(choice(contains(this.${yaml_subtype}, "category"),
 		contains(${yaml_category}, this.file.name),
-		choice(contains(this.${yaml_subtype}, "branch"), 
+		choice(contains(this.${yaml_subtype}, "branch"),
 			contains(${yaml_branch}, this.file.name),
-			choice(contains(this.${yaml_subtype}, "field"), 
+			choice(contains(this.${yaml_subtype}, "field"),
 				contains(${yaml_field}, this.file.name),
-				choice(contains(this.${yaml_subtype}, "subject"), 
-					contains(${yaml_subject}, this.file.name), 
+				choice(contains(this.${yaml_subtype}, "subject"),
+					contains(${yaml_subject}, this.file.name),
 					contains(${yaml_topic}, this.file.name))))))`;
 
-const tree_sibling_filter = `(choice(contains(this.${yaml_subtype}, "subtopic"), 
+const tree_sibling_filter = `(choice(contains(this.${yaml_subtype}, "subtopic"),
 		contains(this.${yaml_topic}, ${yaml_topic}),
-		choice(contains(this.${yaml_subtype}, "topic"), 
+		choice(contains(this.${yaml_subtype}, "topic"),
 			contains(this.${yaml_subject}, ${yaml_subject}),
-			choice(contains(this.${yaml_subtype}, "subject"), 
+			choice(contains(this.${yaml_subtype}, "subject"),
 				contains(this.${yaml_field}, ${yaml_field}),
-				choice(contains(this.${yaml_subtype}, "field"), 
-					contains(this.${yaml_branch}, ${yaml_branch}), 
+				choice(contains(this.${yaml_subtype}, "field"),
+					contains(this.${yaml_branch}, ${yaml_branch}),
 					contains(this.${yaml_category}, ${yaml_category}))))))`;
 
 //---------------------------------------------------------
@@ -254,7 +254,7 @@ WHERE
 	AND ${class_filter}
 	AND ${type_filter}
 	AND ${in_out_link_filter}
-SORT 
+SORT
 	${tree_subtype_sort},
 	${yaml_title} ASC
 ${three_backtick}`;
@@ -276,7 +276,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${in_out_link_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
       }
@@ -299,7 +299,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${tree_subtype_sort},
 	${yaml_title} ASC
 ${three_backtick}`;
@@ -323,7 +323,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${tree_subtype_sort},
 	${yaml_title} ASC
 ${three_backtick}`;
@@ -349,7 +349,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${tree_subtype_sort},
 	${yaml_title} ASC
 ${three_backtick}`;
@@ -377,7 +377,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${tree_subtype_sort},
 	${yaml_title} ASC
 ${three_backtick}`;
@@ -407,7 +407,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${tree_subtype_sort},
 	${yaml_title} ASC
 ${three_backtick}`;
@@ -432,7 +432,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_f")) {
@@ -453,7 +453,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_subj")) {
@@ -474,7 +474,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_t")) {
@@ -495,7 +495,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_subt")) {
@@ -516,7 +516,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         }
@@ -539,7 +539,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_subj")) {
@@ -560,7 +560,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_t")) {
@@ -581,7 +581,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_subt")) {
@@ -602,7 +602,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         }
@@ -625,7 +625,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_t")) {
@@ -646,7 +646,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_subt")) {
@@ -667,7 +667,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         }
@@ -690,7 +690,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         } else if (relation_arg.startsWith("child_subt")) {
@@ -711,7 +711,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         }
@@ -734,7 +734,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
         }
@@ -759,7 +759,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
       } else if (subtype_arg.startsWith("field")) {
@@ -781,7 +781,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
       } else if (subtype_arg.startsWith("subject")) {
@@ -803,7 +803,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
       } else if (subtype_arg.startsWith("topic")) {
@@ -825,7 +825,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
       } else if (subtype_arg.startsWith("subtopic")) {
@@ -847,7 +847,7 @@ WHERE
 	AND ${type_filter}
 	AND ${subtype_filter}
 	AND ${relation_filter}
-SORT 
+SORT
 	${yaml_title} ASC
 ${three_backtick}`;
       }
@@ -875,7 +875,7 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	${note_subtype_sort},
 	${yaml_title} ASC
 ${three_backtick}`;
@@ -898,7 +898,7 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	${note_subtype_sort},
 	${yaml_title} ASC
 ${three_backtick}`;
@@ -929,7 +929,7 @@ module.exports = dv_pkm_linked;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -1278,7 +1278,7 @@ const linked_pkm_info = await tp.user.dv_pkm_linked({
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_pkm_linked.js]]
 
@@ -1300,7 +1300,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -1321,7 +1321,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

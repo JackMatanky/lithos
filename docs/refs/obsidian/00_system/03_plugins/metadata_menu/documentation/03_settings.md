@@ -6,7 +6,7 @@ aliases:
   - metadata_menu_documentation_03_settings
 date_created: 2023-03-10T17:11
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Metadata Menu Settings
 
@@ -51,7 +51,7 @@ You can define the list of values in a note. This note must contain a value per 
 
 #### `Preset options`
 
-you can add preset values (options) directly in the setting form by clicking the `Add` button in the `Preset Options` section.  
+you can add preset values (options) directly in the setting form by clicking the `Add` button in the `Preset Options` section.
 You can rearrange the order of the options.
 
 This order is used to display the values in the dropdown lists and is the order used to cycle through values.
@@ -62,7 +62,7 @@ This order is used to display the values in the dropdown lists and is the order 
 
 Dataview query returning a list of strings. The dataview api can be accessed with the `dv` variable, and the current page (dv.page object) is available with the `current` variable
 
-example:  
+example:
 `dv.pages('#student').map(p => p.name)`
 
 #### `Cycle Begins by a Null value`
@@ -87,7 +87,7 @@ syntax: `{{level: ["Beginner", "Intermediate", "Advanced"]}}`
 
 #### Step
 
-If `step` (float) is defined, its value will be used to decrement or increment the field.  
+If `step` (float) is defined, its value will be used to decrement or increment the field.
 If `step` is not defined, increment and decrement will be done with a step of `1`
 
 #### `Min`
@@ -110,12 +110,12 @@ it takes a « source » (explained here <https://blacksmithgu.github.io/obsidian
 
 you can also improve the filtering by applying a combination of other functions to the result returned by dv.pages(source):
 
-dv.pages(…).where(…)  
-dv.pages(…).filter(…)  
-dv.pages(…).limit(…)  
-etc  
-you can combine them:  
-dv.pages(…).where(…).limit(…)  
+dv.pages(…).where(…)
+dv.pages(…).filter(…)
+dv.pages(…).limit(…)
+etc
+you can combine them:
+dv.pages(…).where(…).limit(…)
 see documentation here <https://blacksmithgu.github.io/obsidian-dataview/api/data-array/#raw-interface>
 
 A good source of help to build dataview queries is the obsidian discord server > plugin-advanced > dataview: the community is really helpful there.
@@ -195,8 +195,8 @@ You can define intervals in a cycle field, for example for increasing intervals 
 
 ### `Lookup` Options
 
-A lookup field will look for targeted fields (aka related field) in targeted notes (aka Dataview JS Query results) and display the result in a persistent manner. Unlike a dataview view, a lookup field will change the content of the file by updating the value of the lookup field.  
-So even if you disable dataview plugin, the lookup field will still contain the value.  
+A lookup field will look for targeted fields (aka related field) in targeted notes (aka Dataview JS Query results) and display the result in a persistent manner. Unlike a dataview view, a lookup field will change the content of the file by updating the value of the lookup field.
+So even if you disable dataview plugin, the lookup field will still contain the value.
 Lookup fields can therefore be "published".
 
 #### `Pages To Look for in Your Vault (DataviewJS Query)`
@@ -232,7 +232,7 @@ NB: For this option you'll have to set the name of the target field on which you
 
 ##### Custom List Rendering Function
 
-like the [Links](#links) option, but you can customize the way each value is displayed. The object `page` is available (see [Dataview page object](https://blacksmithgu.github.io/obsidian-dataview/data-annotation/#pages) for all attributes available in the `page object`) and can be used to build your output.  
+like the [Links](#links) option, but you can customize the way each value is displayed. The object `page` is available (see [Dataview page object](https://blacksmithgu.github.io/obsidian-dataview/data-annotation/#pages) for all attributes available in the `page object`) and can be used to build your output.
 The output has to be a string.
 
 ##### Custom Indented List Rendering Function
@@ -269,7 +269,7 @@ The direction of the edge connecting this node with other nodes:
 
 #### `Node Matching colors`
 
-Only the nodes connected to this node that have a color within the selected values will be triggered.  
+Only the nodes connected to this node that have a color within the selected values will be triggered.
 You can define custom color values on top of the 6 default colors available in the canvas
 
 #### `Matching files`
@@ -278,7 +278,7 @@ You can define a dvJS query that will return files. Only the nodes connected to 
 
 #### `Edge Matching color`
 
-Only the nodes connected to this node with an edge that has a color within the selected values will be triggered.  
+Only the nodes connected to this node with an edge that has a color within the selected values will be triggered.
 You can define custom color values on top of the 6 default colors available in the canvas
 
 #### `Edge Matching from side`
@@ -291,7 +291,7 @@ Only the nodes connected to this node with an edge pointing to the selected side
 
 #### `Edge Matching label`
 
-Only the nodes connected to this node with an edge that has a label within the values list will be triggered.  
+Only the nodes connected to this node with an edge that has a label within the values list will be triggered.
 You can remove a label from the list by clicking on the cross in the chip
 
 #### `Add New Matching label`
@@ -308,12 +308,12 @@ The path to canvas where you want to search for matching groups
 
 #### `Group Matching color`
 
-Only the groups surrounding this node that have a color within the selected values will be triggered.  
+Only the groups surrounding this node that have a color within the selected values will be triggered.
 You can define custom color values on top of the 6 default colors available in the canvas
 
 #### `Group Matching label`
 
-Only the groups surrounding this node with an edge that has a label within the values list will be triggered.  
+Only the groups surrounding this node with an edge that has a label within the values list will be triggered.
 You can remove a label from the list by clicking on the cross in the chip
 
 #### `Add New Matching label`
@@ -326,8 +326,8 @@ Combination of the `Canvas` and the `Canvas Group` field options. This time, the
 
 ## Fileclass Settings
 
-If you want the same field to have different behaviours depending on the note they belong to, you can define field settings based on the "class" of the "note".  
-This is a particular frontmatter attribute that you will have to give to your note.  
+If you want the same field to have different behaviours depending on the note they belong to, you can define field settings based on the "class" of the "note".
+This is a particular frontmatter attribute that you will have to give to your note.
 By default, this attribute is named `fileClass`
 
 A FileClass is a specific note located in a defined folder. In this note you will set the fields settings for each note that has a `fileClass` attribute equal to the name of the `fileClass` note (without.md extension).

@@ -227,13 +227,13 @@ sort by due
 ### Completed Tasks
 
 ```dataview
-TABLE WITHOUT ID 
+TABLE WITHOUT ID
 	regexreplace(regexreplace(T.text, "(#task)|\[.*$", ""), "(_action_item)|(_meeting)|(_habit)|(_morning_ritual)|(_workday_startup_ritual)|(_workday_shutdown_ritual)|(_evening_ritual)", "") AS Task,
 	regexreplace(regexreplace(T.text, "(#task)|\[.*$", ""), "^[A-Za-z0-9\'\-\s]*_", "") AS Type,
 	T.completion AS Completed,
 	T.time_start AS Start,
 	T.time_end AS End,
-	(date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end) - 
+	(date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end) -
 	date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_start)) AS Duration,
 	T.section AS Link
 FROM #task AND "<%* tR += parent_task_dir %>"

@@ -24,11 +24,11 @@ tags: obsidian/templater, obsidian/dataview, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]], [[Dataview]]  
-> Language: [[JavaScript]]  
-> Input:: Directory Path  
-> Output:: Dataview Table  
+>
+> Plugin: [[Templater]], [[Dataview]]
+> Language: [[JavaScript]]
+> Input:: Directory Path
+> Output:: Dataview Table
 > Description:: Return a dataview table of a habits and rituals project's tasks according to type. Primarily used to review the number of completed and discarded habits and rituals.
 
 ---
@@ -47,7 +47,7 @@ const task_type_regex = `(action_item|meeting|phone_call|interview|appointment|e
 const inline_field_regex = `\\[.*$`;
 
 // Task name and link
-const task_link = `link(T.section, regexreplace(regexreplace(T.text, "${tasl_tag_regex}|${task_type_regex}${inline_field_regex}", ""), "_$", "")) 
+const task_link = `link(T.section, regexreplace(regexreplace(T.text, "${tasl_tag_regex}|${task_type_regex}${inline_field_regex}", ""), "_$", ""))
 	AS Task`;
 
 // Task type
@@ -62,7 +62,7 @@ const task_type = `choice(contains(T.text, "_action_item"), "🔨Task",
 	choice(contains(T.text, "_habit"), "🤖Habit",
 	choice(contains(T.text, "_morning_ritual"),	"🍵Rit.",
 	choice(contains(T.text, "_workday_startup_ritual"), "🌇Rit.",
-	choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit.")))))))))))) 
+	choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit."))))))))))))
 	AS Type`;
 
 // Task status
@@ -93,13 +93,13 @@ const time_estimate = `(T.duration_est + " min") AS Estimate`;
 // Time duration
 const task_duration = `dur((date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end)) - (date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_start)))`;
 const task_estimate_dur = `dur(T.duration_est + " minutes")`;
-const task_estimate_accuracy = `choice((T.status = "x"), 
-		(choice((${task_estimate_dur} = ${task_duration}), 
+const task_estimate_accuracy = `choice((T.status = "x"),
+		(choice((${task_estimate_dur} = ${task_duration}),
 			"👍On Time",
 			choice((${task_estimate_dur} > ${task_duration}),
 				"🟢" + (${task_estimate_dur} - ${task_duration}),
 				"❗" + (${task_duration} - ${task_estimate_dur})))),
-		"❌Discarded") 
+		"❌Discarded")
 	AS Accuracy`;
 
 //---------------------------------------------------------
@@ -136,7 +136,7 @@ async function dv_proj_habit_ritual(habit_ritual) {
   const dataview_query = `${three_backtick}dataview
 TABLE WITHOUT ID
 	${task_link},
-	${task_status}, 
+	${task_status},
 	${task_date},
 	${time_span},
 	${time_estimate},
@@ -150,7 +150,7 @@ WHERE
 	AND ${checkbox_filter}
 	AND ${due_filter}
     AND ${habit_ritual_filter}
-SORT 
+SORT
 	T.due,
 	T.time_start ASC
 ${three_backtick}`;
@@ -163,7 +163,7 @@ module.exports = dv_proj_habit_ritual;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -236,7 +236,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -257,7 +257,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

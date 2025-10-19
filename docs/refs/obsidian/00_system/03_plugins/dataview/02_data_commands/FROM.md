@@ -29,9 +29,9 @@ reference: [FROM](https://blacksmithgu.github.io/obsidian-dataview/queries/data-
 
 ## Description
 
-> [!info]  
-> Plugin: Dataview  
-> Module: Data Commands  
+> [!info]
+> Plugin: Dataview
+> Module: Data Commands
 > Definition:: The `FROM` statement determines what pages will initially be collected and passed onto the other commands for further filtering.
 
 ## Syntax

@@ -457,15 +457,15 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Evidence]
-> 
+>
 > - **Evidence**: `dv: this.file.frontmatter.about`
 
 > [!note_relation] Note Relations
-> 
+>
 > **Question**:: <%* tR += question_link %>
-> 
+>
 > **Step(s)**::
-> 
+>
 > **Conclusion**::
 
 ---

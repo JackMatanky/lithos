@@ -80,7 +80,7 @@ if (name_last_value_arr.length >= 3) {
   contact_name_last_value = `${name_last_value_arr[0]}_${name_last_value_arr[1]}`;
 } else if (name_last_value_arr.length >= 1) {
   contact_name_last_value = name_last_value_arr[0];
-} 
+}
 
 //-------------------------------------------------------------------
 // SET PUBLISHED DATE

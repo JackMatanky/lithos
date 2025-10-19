@@ -2,7 +2,7 @@
 
 ## Input Validation
 
-- SchemaValidatorService enforces frontmatter schemas (required fields, enums, patterns, file references).
+- SchemaValidator enforces frontmatter schemas (required fields, enums, patterns, file references).
 - CLI flags validated via Cobra binding with explicit range/default checks.
 - Interactive prompts (promptui/fuzzy finder) sanitize input before invoking template functions.
 

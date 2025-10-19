@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return callouts of checklists for the Weekly Habits and Rituals Review and Preview Checklist.
 
 ---
@@ -37,13 +37,13 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 <!-- Add the full code including explanatory comments  -->
 
 ```javascript
-// Template file to include 
+// Template file to include
 const week_habit_ritual_review_preview = "43_10_action_week_habit_ritual_review_preview";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY HABITS AND RITUALS REVIEW AND PREVIEW CHECKLIST
 //---------------------------------------------------------
-// Retrieve the Weekly Habits and Rituals 
+// Retrieve the Weekly Habits and Rituals
 // Review and Preview Checklist template and content
 temp_file_path = `${sys_temp_include_dir}${week_habit_ritual_review_preview}.md`;
 abstract_file = await app.vault.getAbstractFileByPath(temp_file_path);
@@ -57,7 +57,7 @@ const habit_ritual_review_preview_checklist = include_arr;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY HABITS AND RITUALS REVIEW AND PREVIEW CHECKLIST
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${week_habit_ritual_review_preview}.md`;
@@ -103,7 +103,7 @@ const head_two = `${hash.repeat(2)}${space}`;
 const head_three = `${hash.repeat(3)}${space}`;
 const head_four = `${hash.repeat(4)}${space}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY HABITS AND RITUALS REVIEW AND PREVIEW CHECKLIST
 //---------------------------------------------------------
 const call_title = `${call_start}[!task_plan]${space}Weekly Habits and Rituals Review and Preview Plan${new_line}${call_start}${new_line}`;
@@ -179,7 +179,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -200,7 +200,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

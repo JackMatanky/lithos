@@ -1,5 +1,5 @@
 ---
-description: List the most recent contact with a certain person, or the most recent day you baked banana cake, or made a certain type of sports, for example. 
+description: List the most recent contact with a certain person, or the most recent day you baked banana cake, or made a certain type of sports, for example.
 topics:
   - latest items
 tags: dv/list, dv/from, dv/where, dv/sort, dv/limit, dv/inline, dvjs/pages, dvjs/where, dvjs/sort, dvjs/limit, dvjs/flatMap, dvjs/array, dvjs/last, dvjs/span
@@ -27,7 +27,7 @@ LIMIT 1
 
 ### As an Javascript Inline Field
 
-> [!hint] Usage  
+> [!hint] Usage
 > A inline query can be i.e. used as a field for the Kanban Board Plugin
 
 `$=const notes = dv.pages('"10 Example Data/dailys"').where(p => p.met).where(p => String(p.met).includes("Sophie")).sort((p) => p.file.name, 'desc').limit(1); if (notes.length) { const content = notes.flatMap(m => dv.array(m.met)).where(m => m.includes("Sophie")).last(); dv.span(notes[0].file.link + ": " + content); }`
@@ -40,14 +40,14 @@ const notes = dv.pages('"10 Example Data/dailys"')
 	.where(p => String(p.met)
 	.includes("Sophie"))
 	.sort((p) => p.file.name, 'desc')
-	.limit(1); 
-	
-if (notes.length) { 
+	.limit(1);
+
+if (notes.length) {
 	const content = notes
 		.flatMap(m => dv.array(m.met)).where(m => m.includes("Sophie"))
-		.last(); 
-	
-	dv.span(notes[0].file.link + ": " + content); 
+		.last();
+
+	dv.span(notes[0].file.link + ": " + content);
 }
 ```
 
@@ -55,9 +55,9 @@ if (notes.length) {
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

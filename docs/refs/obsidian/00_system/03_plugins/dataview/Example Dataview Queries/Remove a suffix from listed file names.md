@@ -1,5 +1,5 @@
 ---
-description: Remove a suffix or prefix from a filename delimited with certain characters 
+description: Remove a suffix or prefix from a filename delimited with certain characters
 topics:
   - suffixes and prefixes
   - custom output
@@ -14,10 +14,10 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!hint]  
-> If you have another character or character sequence that is delimiting your suffix, you need to exchange the `--` of the regular expressions. Here a few examples:  
-> If your delimiter is "\_\_" use `regexreplace(file.name, "__.*$", "")`  
-> If your delimiter is "{" use `regexreplace(file.name, "{.*$", "")`  
+> [!hint]
+> If you have another character or character sequence that is delimiting your suffix, you need to exchange the `--` of the regular expressions. Here a few examples:
+> If your delimiter is "\_\_" use `regexreplace(file.name, "__.*$", "")`
+> If your delimiter is "{" use `regexreplace(file.name, "{.*$", "")`
 > If your delimiter is "--!" use `regexreplace(file.name, "--\!.*$", "")`
 
 ```dataview
@@ -47,9 +47,9 @@ FROM "10 Example Data/prefixes and suffixes"
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

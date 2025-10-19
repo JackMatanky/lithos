@@ -1,11 +1,11 @@
 ```dataview
 LIST
     rows.L.text
-FROM 
+FROM
     "80_insight"
 FLATTEN
     filter(file.lists, (x) => regextest(":.\w", x.text)) AS L
-WHERE 
+WHERE
     contains(file.frontmatter.type, "gratitude")
     AND contains(file.frontmatter.file_class, "pdev")
     AND contains(file.frontmatter.date_created, "2024-04-09")
@@ -18,18 +18,18 @@ GROUP BY
 			    + " § "
 			    + regexreplace(string(L.section), ".+>|]]$", ""))
 SORT
-    file.frontmatter.date, 
+    file.frontmatter.date,
     L.section ASC
 ```
 
 ```dataview
 LIST
     rows.L.text
-FROM 
+FROM
     "80_insight"
 FLATTEN
     filter(file.lists, (x) => regextest(":.\w", x.text)) AS L
-WHERE 
+WHERE
     regextest("(1st)|(2nd)|(3rd)|(4th)|(5th)|(6th)|(7th)", regexreplace(string(L.section), "(.+\>\s)|(\]\]$)", ""))
     AND contains(file.frontmatter.type, "detachment")
     AND contains(file.frontmatter.file_class, "pdev")
@@ -37,18 +37,18 @@ WHERE
 GROUP BY
     link(L.section, dateformat(date(regexreplace(file.frontmatter.date, "^(\[\[)|(\]\])$", "")), "DDDD") + " § " + regexreplace(string(L.section), ".+>|\]\]$", ""))
 SORT
-    file.frontmatter.date, 
+    file.frontmatter.date,
     L.section ASC
 ```
 
 ```dataview
 LIST
     rows.week
-FROM 
+FROM
     "80_insight"
 FLATTEN
     list(sunday-best-experience, monday-best-experience, tuesday-best-experience, wednesday-best-experience, thursday-best-experience, friday-best-experience, saturday-best-experience, flat(list("> [!insight] Trends and Insight", weekly-best-experience))) AS week
-WHERE 
+WHERE
     contains(file.frontmatter.file_class, "pdev")
     AND contains(file.frontmatter.type, "reflection")
     AND contains(file.frontmatter.subtype, "weekly")

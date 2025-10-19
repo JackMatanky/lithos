@@ -1,5 +1,5 @@
 ---
-description: Show all persons in your vault and when you had last contact with them 
+description: Show all persons in your vault and when you had last contact with them
 topics:
   - contacts
   - latest items
@@ -67,9 +67,9 @@ SORT max(rows.file.day) DESC
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

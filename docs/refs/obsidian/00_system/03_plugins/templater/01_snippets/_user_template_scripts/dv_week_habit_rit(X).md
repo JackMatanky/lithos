@@ -26,11 +26,11 @@ tags: obsidian/templater, obsidian/dataview, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]], [[Dataview]]  
-> Language: [[JavaScript]]  
-> Input:: Date, String  
-> Output:: Dataview Table  
+>
+> Plugin: [[Templater]], [[Dataview]]
+> Language: [[JavaScript]]
+> Input:: Date, String
+> Output:: Dataview Table
 > Description:: Return a dataview table of weekly habit and ritual tasks according to status. Primarily used in the weekly note.
 
 ---
@@ -52,7 +52,7 @@ const inline_field_regex = `\\[.*$`;
 const task_link = `link(T.section,
 		regexreplace(
 			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""),
-		"_$", "")) 
+		"_$", ""))
 	AS Task`;
 
 // Task type
@@ -67,11 +67,11 @@ const task_type = `choice(contains(T.text, "_action_item"),	"🔨Task",
 	choice(contains(T.text, "_habit"), "🤖Habit",
 	choice(contains(T.text, "_morning_ritual"),	"🍵Rit.",
 	choice(contains(T.text, "_workday_startup_ritual"), "🌇Rit.",
-	choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit.")))))))))))) 
+	choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit."))))))))))))
 	AS Type`;
 
 // Task status
-const task_status = `choice((T.status != "-"), 
+const task_status = `choice((T.status != "-"),
 		(choice((T.status = "x"),
 			"✔️Done",
 			"🔜To do")),
@@ -100,13 +100,13 @@ const time_estimate = `(T.duration_est + " min") AS Estimate`;
 // Time duration
 const task_duration = `dur((date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end)) - (date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_start)))`;
 const task_estimate_dur = `dur(T.duration_est + " minutes")`;
-const task_estimate_accuracy = `choice((T.status = "x"), 
-		(choice((${task_estimate_dur} = ${task_duration}), 
+const task_estimate_accuracy = `choice((T.status = "x"),
+		(choice((${task_estimate_dur} = ${task_duration}),
 			"👍On Time",
 			choice((${task_estimate_dur} > ${task_duration}),
 				"🟢" + (${task_estimate_dur} - ${task_duration}),
 				"❗" + (${task_duration} - ${task_estimate_dur})))),
-		"❌Discarded") 
+		"❌Discarded")
 	AS Accuracy`;
 
 // Task parent task
@@ -164,7 +164,7 @@ async function dv_week_habit_rit({
     // Table for tasks DUE on date
     dataview_query = `${three_backtick}dataview
 TABLE WITHOUT ID
-	${task_link}, 
+	${task_link},
 	${start} AS Start,
 	${end} AS End,
 	${time_estimate},
@@ -180,7 +180,7 @@ WHERE
 	AND ${due_filter}
 	AND ${date_start_filter}
 	AND ${date_end_filter}
-SORT 
+SORT
 	${due_date},
 	${start} ASC
 ${three_backtick}`;
@@ -189,7 +189,7 @@ ${three_backtick}`;
     dataview_query = `${three_backtick}dataview
 TABLE WITHOUT ID
 	${task_link},
-	${task_status}, 
+	${task_status},
 	${task_date},
 	${time_span},
 	${time_estimate},
@@ -206,7 +206,7 @@ WHERE
 	AND ${not_due_filter}
 	AND ${date_start_filter}
 	AND ${date_end_filter}
-SORT 
+SORT
 	${due_date},
 	${start} ASC
 ${three_backtick}`;
@@ -219,7 +219,7 @@ module.exports = dv_week_habit_rit;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -346,13 +346,13 @@ const week_eve_rit_done = await tp.user.dv_week_habit_rit({
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_week_habit_rit.js]]
 
 ### Outgoing Snippet Links
 
-<!-- Link related snippet here -->  
+<!-- Link related snippet here -->
 
 1. [[dv_proj_task|Project Tasks by Status Dataview Table]]
 
@@ -365,7 +365,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -386,7 +386,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

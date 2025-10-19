@@ -9,7 +9,7 @@ language:
   - javascript
 module:
   - file
-cssclasses: 
+cssclasses:
 type: snippet
 file_class: pkm_code
 date_created: 2023-06-22T14:38
@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a callout for Project or Parent task's start and end dates Info callout section.
 
 ---
@@ -38,7 +38,7 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 // Template file to include
 const task_start_end_info_callout = "40_task_start_end_info_callout";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // TASK START AND END INFO CALLOUT
 //---------------------------------------------------------
 // Retrieve the Task Start and End Dates Info template and content
@@ -52,11 +52,11 @@ const task_start_end_info = include_arr;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // TASK START AND END INFO CALLOUT
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${task_start_end_info_callout}.md`;
@@ -122,7 +122,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -143,7 +143,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

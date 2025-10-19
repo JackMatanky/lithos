@@ -2,14 +2,14 @@
 limit: 100
 mapWithTag: false
 icon: presentation
-tagNames: 
-excludes: 
+tagNames:
+excludes:
 extends: lib_course
 version: "2.2"
-filesPaths: 
-bookmarksGroups: 
+filesPaths:
+bookmarksGroups:
 savedViews: []
-favoriteView: 
+favoriteView:
 date_created: 2023-06-12T21:03
 date_modified: 2023-09-05T19:18
 fields:

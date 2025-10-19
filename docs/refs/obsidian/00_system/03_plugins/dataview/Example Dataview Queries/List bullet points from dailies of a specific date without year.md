@@ -23,7 +23,7 @@ WHERE dateformat(file.day, "MM-dd") = "02-17"
 
 ### Description of Variant A - what Does it Differently? What Do We Achieve with That?
 
-> [!info] Usage in dailies  
+> [!info] Usage in dailies
 > When used in a daily and your dailies are named in format `YYYY-MM-DD`, the part `AND file.day.year!= this.file.day.year` will filter out the bullet points of the daily currently open. In the case of this example file it doesnt do anything, though. See [[2022-02-17]] for a working example.
 
 ```dataview
@@ -35,9 +35,9 @@ WHERE dateformat(file.day, "MM-dd") = "02-17" AND file.day.year != this.file.day
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

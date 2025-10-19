@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, js/momentjs, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return the next week's calendar day files.
 
 ---
@@ -62,191 +62,191 @@ content = await tp.file.include(template);
 #### Referenced Template
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // FOLDER PATH VARIABLES
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const sys_temp_include_dir = "00_system/06_template_include/";
-const cal_dir = "10_calendar";  
-const cal_day_dir = "10_calendar/11_days";  
-const cal_week_dir = "10_calendar/12_weeks";  
-const cal_month_dir = "10_calendar/13_months";  
-const cal_quarter_dir = "10_calendar/14_quarters";  
+const cal_dir = "10_calendar";
+const cal_day_dir = "10_calendar/11_days";
+const cal_week_dir = "10_calendar/12_weeks";
+const cal_month_dir = "10_calendar/13_months";
+const cal_quarter_dir = "10_calendar/14_quarters";
 const cal_year_dir = "10_calendar/15_years";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // TEMPLATE FILES TO INCLUDE PATH VARIABLES
-//---------------------------------------------------------   
-const buttons_table_pdev_today = "00_90_buttons_table_pdev_today";  
-const buttons_table_note = "00_80_buttons_table_notes";  
+//---------------------------------------------------------
+const buttons_table_pdev_today = "00_90_buttons_table_pdev_today";
+const buttons_table_note = "00_80_buttons_table_notes";
 const buttons_table_task_habit_today = "00_40_buttons_table_task_habit_today";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // BUTTONS TABLES
-//---------------------------------------------------------  
-template = await tp.file.find_tfile(buttons_table_pdev_today);  
-content = await tp.file.include(template);  
-include_arr = content.toString();  
+//---------------------------------------------------------
+template = await tp.file.find_tfile(buttons_table_pdev_today);
+content = await tp.file.include(template);
+include_arr = content.toString();
 const journal_buttons = include_arr;
 
-template = await tp.file.find_tfile(buttons_table_note);  
-content = await tp.file.include(template);  
-include_arr = content.toString();  
+template = await tp.file.find_tfile(buttons_table_note);
+content = await tp.file.include(template);
+include_arr = content.toString();
 const note_buttons = include_arr;
 
-template = await tp.file.find_tfile(buttons_table_task_habit_today);  
-content = await tp.file.include(template);  
-include_arr = content.toString();  
+template = await tp.file.find_tfile(buttons_table_task_habit_today);
+content = await tp.file.include(template);
+include_arr = content.toString();
 const task_habit_buttons = include_arr;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // FILE CREATION AND MODIFIED DATE
-//---------------------------------------------------------  
-const date_created = moment().format("YYYY-MM-DD[T]HH:mm");  
+//---------------------------------------------------------
+const date_created = moment().format("YYYY-MM-DD[T]HH:mm");
 const date_modified = moment().format("YYYY-MM-DD[T]HH:mm");
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET THE WEEK AND NUMBER
 //---------------------------------------------------------
 const full_date = moment().startOf("week").add(1, "weeks");
 
 const week_number = moment(full_date).format("ww");
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKDAY CALENDAR VARIABLE
-//---------------------------------------------------------  
-const sunday = moment(full_date).day(0).format("YYYY-MM-DD");  
-const monday = moment(full_date).day(1).format("YYYY-MM-DD");  
-const tuesday = moment(full_date).day(2).format("YYYY-MM-DD");  
-const wednesday = moment(full_date).day(3).format("YYYY-MM-DD");  
-const thursday = moment(full_date).day(4).format("YYYY-MM-DD");  
-const friday = moment(full_date).day(5).format("YYYY-MM-DD");  
+//---------------------------------------------------------
+const sunday = moment(full_date).day(0).format("YYYY-MM-DD");
+const monday = moment(full_date).day(1).format("YYYY-MM-DD");
+const tuesday = moment(full_date).day(2).format("YYYY-MM-DD");
+const wednesday = moment(full_date).day(3).format("YYYY-MM-DD");
+const thursday = moment(full_date).day(4).format("YYYY-MM-DD");
+const friday = moment(full_date).day(5).format("YYYY-MM-DD");
 const saturday = moment(full_date).day(6).format("YYYY-MM-DD");
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // DATE TYPE, MOMENT VARIABLE, AND FILE CLASS
-//---------------------------------------------------------  
-const type_name = "Day";  
-const type_value = type_name.toLowerCase();  
-const moment_var = `${type_value}s`;  
+//---------------------------------------------------------
+const type_name = "Day";
+const type_value = type_name.toLowerCase();
+const moment_var = `${type_value}s`;
 const file_class = `cal_${type_value}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKDAY CALENDAR FILES
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // FRONTMATTER VARIABLES
-let fmatter_title;  
-let fmatter_alias;  
-let fmatter_date;  
-let fmatter_year;  
-let fmatter_year_day;  
-let fmatter_quarter;  
-let fmatter_month_name;  
-let fmatter_month_number;  
-let fmatter_month_day;  
-let fmatter_week_number = `week_number: ${week_number}`;  
-let fmatter_weekday_name;  
-let fmatter_weekday_number;  
-let fmatter_metatable = `metatable: true`  
-let fmatter_cssclasses = `cssclasses: [\read_view_zoom, \read_wide_margin, \inline_title_hide]`;  
-let fmatter_type = `type: ${type_value}`;  
-let fmatter_file_class = `file_class: ${file_class}`;  
-let fmatter_date_created = `date_created: ${date_created}`;  
+let fmatter_title;
+let fmatter_alias;
+let fmatter_date;
+let fmatter_year;
+let fmatter_year_day;
+let fmatter_quarter;
+let fmatter_month_name;
+let fmatter_month_number;
+let fmatter_month_day;
+let fmatter_week_number = `week_number: ${week_number}`;
+let fmatter_weekday_name;
+let fmatter_weekday_number;
+let fmatter_metatable = `metatable: true`
+let fmatter_cssclasses = `cssclasses: [\read_view_zoom, \read_wide_margin, \inline_title_hide]`;
+let fmatter_type = `type: ${type_value}`;
+let fmatter_file_class = `file_class: ${file_class}`;
+let fmatter_date_created = `date_created: ${date_created}`;
 let fmatter_date_modified = `date_modified: ${date_modified}`;
 
 // DATES
-let date;  
-let long_date;  
-let short_date;  
-let year_long;  
-let year_short;  
-let year_day;  
-let quarter_num;  
-let quarter_ord;  
-let month_name_full;  
-let month_name_short;  
-let month_num_long;  
-let month_num_short;  
-let month_day_long;  
-let month_day_short;  
-let weekday_name;  
-let weekday_number;  
-let prev_date;  
+let date;
+let long_date;
+let short_date;
+let year_long;
+let year_short;
+let year_day;
+let quarter_num;
+let quarter_ord;
+let month_name_full;
+let month_name_short;
+let month_num_long;
+let month_num_short;
+let month_day_long;
+let month_day_short;
+let weekday_name;
+let weekday_number;
+let prev_date;
 let next_date;
 
 // TITLES AND ALIAS
-let full_title_name;  
-let short_title_name;  
-let full_title_value;  
-let short_title_value;  
+let full_title_name;
+let short_title_name;
+let full_title_value;
+let short_title_value;
 let alias_arr;
 
 // FILE CREATION VARIABLES
-let file_name;  
-let file_content;  
+let file_name;
+let file_content;
 const directory = cal_day_dir;
 
-const percent = String.fromCodePoint(37);  
-const comment = percent.repeat(2);  
-const backtick = String.fromCodePoint(0x60);  
+const percent = String.fromCodePoint(37);
+const comment = percent.repeat(2);
+const backtick = String.fromCodePoint(0x60);
 const three_backtick = backtick.repeat(3);
-const space = String.fromCodePoint(0x20);  
-const two_space = space.repeat(2);  
+const space = String.fromCodePoint(0x20);
+const two_space = space.repeat(2);
 const call_start = `>${space}`;
-const tbl_pipe =`${space}|${space}`;  
-const tbl_start =`|${space}`;  
+const tbl_pipe =`${space}|${space}`;
+const tbl_start =`|${space}`;
 const call_tbl_start = `${call_start}${tbl_start}`;
 const tbl_end =`${space}|`;
 const call_tbl_end = `${tbl_end}${two_space}`;
 const hr_line = "---";
 
 // WEEKDAY DATES ARRAY
-const weekday_arr = [  
-  sunday,  
-  monday,  
-  tuesday,  
-  wednesday,  
-  thursday,  
-  friday,  
-  saturday,  
+const weekday_arr = [
+  sunday,
+  monday,
+  tuesday,
+  wednesday,
+  thursday,
+  friday,
+  saturday,
 ];
 
 // LOOP THROUGH WEEKDAY DATES ARRAY
-for (let i = 0; i < weekday_arr.length; i++) {  
-  file_name = weekday_arr[i];  
+for (let i = 0; i < weekday_arr.length; i++) {
+  file_name = weekday_arr[i];
   full_date = moment(weekday_arr[i]);
 
   // DATE VARIABLES
-  date = moment(full_date).format("YYYY-MM-DD");  
-  long_date = moment(full_date).format("MMMM D, YYYY");  
-  short_date = moment(full_date).format("YY-M-D");  
-  year_long = moment(full_date).format("YYYY");  
-  year_short = moment(full_date).format("YY");  
-  year_day = moment(full_date).format("DDDD");  
-  quarter_num = moment(full_date).format("Q");  
-  quarter_ord = moment(full_date).format("Qo");  
-  month_name_full = moment(full_date).format("MMMM");  
-  month_name_short = moment(full_date).format("MMM");  
-  month_num_long = moment(full_date).format("MM");  
-  month_num_short = moment(full_date).format("M");  
-  month_day_long = moment(full_date).format("DD");  
-  month_day_short = moment(full_date).format("D");  
-  weekday_name = moment(full_date).format("dddd");  
-  weekday_number = moment(full_date).format("[0]e");  
-  prev_date = moment(full_date).subtract(1, moment_var).format("YYYY-MM-DD");  
+  date = moment(full_date).format("YYYY-MM-DD");
+  long_date = moment(full_date).format("MMMM D, YYYY");
+  short_date = moment(full_date).format("YY-M-D");
+  year_long = moment(full_date).format("YYYY");
+  year_short = moment(full_date).format("YY");
+  year_day = moment(full_date).format("DDDD");
+  quarter_num = moment(full_date).format("Q");
+  quarter_ord = moment(full_date).format("Qo");
+  month_name_full = moment(full_date).format("MMMM");
+  month_name_short = moment(full_date).format("MMM");
+  month_num_long = moment(full_date).format("MM");
+  month_num_short = moment(full_date).format("M");
+  month_day_long = moment(full_date).format("DD");
+  month_day_short = moment(full_date).format("D");
+  weekday_name = moment(full_date).format("dddd");
+  weekday_number = moment(full_date).format("[0]e");
+  prev_date = moment(full_date).subtract(1, moment_var).format("YYYY-MM-DD");
   next_date = moment(full_date).add(1, moment_var).format("YYYY-MM-DD");
 
   // DAILY CALENDAR TITLES, ALIAS, AND FILE NAME
-  full_title_name = `${weekday_name}, ${long_date}`;  
-  short_title_name = `${long_date}`;  
-  full_title_value = `${date}`;  
+  full_title_name = `${weekday_name}, ${long_date}`;
+  short_title_name = `${long_date}`;
+  full_title_value = `${date}`;
   short_title_value = `${short_date}`;
 
   alias_arr = `${new_line}${ul_yaml}"${full_title_name}"${ul_yaml}"${short_title_name}"${new_line}${ul_yaml}${full_title_value}${ul_yaml}${short_title_value}`;
 
   // CALENDAR FILE LINKS AND ALIASES
-  year_file = `[[${year_long}]]`;  
-  quarter_file = `[[${year_long}-Q${quarter_num}]]`;  
-  month_file = `[[${year_long}-${month_num_long}\|${month_name_short} '${year_short}]]`;  
+  year_file = `[[${year_long}]]`;
+  quarter_file = `[[${year_long}-Q${quarter_num}]]`;
+  month_file = `[[${year_long}-${month_num_long}\|${month_name_short} '${year_short}]]`;
   week_file = `[[${year_long}-W${week_number}]]`;
 
   // DAY CONTEXT CALLOUT
@@ -257,7 +257,7 @@ ${call_tbl_start}:---------:${tbl_pipe}:---------:${tbl_pipe}:---------:${tbl_pi
 ${call_tbl_start}${year_file}${tbl_pipe}${quarter_file}${tbl_pipe}${month_file}${tbl_pipe}${week_file}${call_tbl_end}`;
 
   prev_next_date = `<< [[${prev_date}]] | [[${next_date}]] >>`;
-  
+
   const toc_title = `${call_start}[!toc]${space}${type_name}${space}[[${file_name}#${full_title_name}\|Contents]]
 ${call_start}\n`;
   const toc_section = `${call_tbl_start}[[${file_name}#Journal Entries\|Journal Entries]]${tbl_pipe}[[${file_name}#Notes\|Notes]]${tbl_pipe}[[${file_name}#Library\|Library]]${tbl_pipe}[[${file_name}#Tasks and Events\|Tasks and Events]]${call_tbl_end}\n`;
@@ -291,7 +291,7 @@ ${call_start}\n`;
     end_date: "",
     md: "false",
   });
- 
+
   // DAILY PKM FILES DATAVIEW TABLE
   // TYPES: "pkm_tree", "permanent", "literature", "fleeting", "info"
   // STATUSES: "schedule", "review", "clarify", "develop", "done", "resource"
@@ -302,7 +302,7 @@ ${call_start}\n`;
     end_date: "",
     md: "false",
   });
-  
+
   const pkm_note_perm = await tp.user.dv_pkm_type_status_dates({
     type: "permanent",
     status: "",
@@ -310,7 +310,7 @@ ${call_start}\n`;
     end_date: "",
     md: "false",
   });
-  
+
   const pkm_note_lit = await tp.user.dv_pkm_type_status_dates({
     type: "literature",
     status: "",
@@ -356,16 +356,16 @@ ${call_start}\n`;
     md: "false",
   });
 
-  fmatter_title = `title: ${file_name}`;  
-  fmatter_alias = `aliases: ${alias_arr}`;  
-  fmatter_date = `date: ${date}`;  
-  fmatter_year = `year: ${year_long}`;  
-  fmatter_year_day = `year_day: ${year_day}`;  
-  fmatter_quarter = `quarter: ${quarter_num}`;  
-  fmatter_month_name = `month_name: ${month_name_full}`;  
-  fmatter_month_number = `month_number: ${month_num_long}`;  
-  fmatter_month_day = `month_day: ${month_day_long}`;  
-  fmatter_weekday_name = `weekday_name: ${weekday_name}`;  
+  fmatter_title = `title: ${file_name}`;
+  fmatter_alias = `aliases: ${alias_arr}`;
+  fmatter_date = `date: ${date}`;
+  fmatter_year = `year: ${year_long}`;
+  fmatter_year_day = `year_day: ${year_day}`;
+  fmatter_quarter = `quarter: ${quarter_num}`;
+  fmatter_month_name = `month_name: ${month_name_full}`;
+  fmatter_month_number = `month_number: ${month_num_long}`;
+  fmatter_month_day = `month_day: ${month_day_long}`;
+  fmatter_weekday_name = `weekday_name: ${weekday_name}`;
   fmatter_weekday_number = `weekday_number: ${weekday_number}`;
 
   file_content = `${hr_line}
@@ -435,12 +435,12 @@ ${tasks_created}\n
 ${hr_line}\n
 `;
 
-  await tp.file.create_new(  
-    file_content,  
-    file_name,  
-    false,  
-    app.vault.getAbstractFileByPath(directory)  
-  );  
+  await tp.file.create_new(
+    file_content,
+    file_name,
+    false,
+    app.vault.getAbstractFileByPath(directory)
+  );
 }
 ```
 
@@ -493,7 +493,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -514,7 +514,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

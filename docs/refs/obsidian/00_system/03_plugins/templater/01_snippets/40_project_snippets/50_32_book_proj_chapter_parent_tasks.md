@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a book project's chapter parent tasks' folders and files.
 
 ---
@@ -48,7 +48,7 @@ content = await tp.file.include(template);
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -76,7 +76,7 @@ const contacts_dir = "51_contacts/";
 const organizations_dir = "52_organizations/";
 const lib_books_dir = "60_library/71_books/";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // TEMPLATE FILES TO INCLUDE PATH VARIABLES
 //---------------------------------------------------------
 const pillar_name_alias = "20_00_pillar_name_alias";
@@ -86,7 +86,7 @@ const parent_task_preview_review = "41_parent_task_preview_review";
 const contact_name_alias = "51_contact_name_alias";
 const org_name_alias = "52_organization_name_alias";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SPECIAL CHARACTERS
 //---------------------------------------------------------
 const space = String.fromCodePoint(0x20);
@@ -99,7 +99,7 @@ const cmnt_ob_end = `${space}${comment}`;
 //---------------------------------------------------------
 // FILE CREATION AND MODIFIED DATE
 //---------------------------------------------------------
-const date_created = moment().format("YYYY-MM-DD[T]HH:mm");  
+const date_created = moment().format("YYYY-MM-DD[T]HH:mm");
 const date_modified = moment().format("YYYY-MM-DD[T]HH:mm");
 
 //---------------------------------------------------------
@@ -109,7 +109,7 @@ const date_modified = moment().format("YYYY-MM-DD[T]HH:mm");
 const child_task_remaining = await tp.user.dv_proj_task("child", "due");
 const child_task_completed = await tp.user.dv_proj_task("child", "done");
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // LINKED FILES DATAVIEW TABLE
 //---------------------------------------------------------
 // RELATED TASK TABLES
@@ -147,7 +147,7 @@ const context_name = "Education";
 const context_value = context_name.toLowerCase();
 const context_dir = education_proj_dir;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // TASK TYPE AND FILE CLASS
 //---------------------------------------------------------
 const type_name = "Parent Task";
@@ -186,7 +186,7 @@ const book_main_title_value = book_main_title.replaceAll(/\s/g, "_").toLowerCase
 const book_link = `${book_value}|${book_main_title}`;
 const book_dir = `${lib_books_dir}${book_value}/`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // BOOK PUBLISHED DATE
 //---------------------------------------------------------
 const date_published = book_file_cache?.frontmatter?.date_published;
@@ -248,7 +248,7 @@ ${info_callout_book}
 ${info_callout_chapter}
 ${info_callout_start_end_date}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // PARENT TASK PREVIEW AND REVIEW
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${parent_task_preview_review}.md`;
@@ -295,17 +295,17 @@ for (var i = 1; i < chapter_obj_arr.length; i++) {
   chapter_file_cache = await app.metadataCache.getFileCache(chapter_tfile);
   chapter_main_title = chapter_file_cache?.frontmatter?.title;
   chapter_main_title_value = chapter_main_title.replaceAll(/\s/g, "_").toLowerCase();
-  
+
   chapter_link = `${chapter_obj_arr[i].value}|${chapter_obj_arr[i].key}`;
   info_callout_chapter = `${info_callout_chapter}${chapter_link}${two_space}`;
-  
+
   // PUBLISHER ORGANIZATION FILE NAME, TITLE, AND LINK
   publisher_value = chapter_file_cache?.frontmatter?.publisher;
   publisher_tfile = tp.file.find_tfile(`${publisher_value}.md`);
   publisher_file_cache = await app.metadataCache.getFileCache(publisher_tfile);
   publisher_name = publisher_file_cache?.frontmatter?.aliases[0];
   publisher_link = `[[${publisher_value}|${publisher_name}]]`;
-  
+
   // AUTHOR CONTACT FILE NAME, TITLE, AND LINK
   author_value = chapter_file_cache?.frontmatter?.author;
   author_tfile = tp.file.find_tfile(`${author_value}.md`);
@@ -313,7 +313,7 @@ for (var i = 1; i < chapter_obj_arr.length; i++) {
   author_name = author_file_cache?.frontmatter?.aliases[0];
   author_name_last = author_file_cache?.frontmatter?.name_last;
   author_link = `[[${author_value}|${author_name}]]`;
-  
+
   // TITLES, ALIAS, AND FILE NAME
   // Titles
   full_title_name = `Learn ${author_name_last}'s ${book_main_title}: ${chapter_main_title}`;
@@ -328,7 +328,7 @@ for (var i = 1; i < chapter_obj_arr.length; i++) {
 
   fmatter_title = `${fmatter_title}${file_name}`;
   fmatter_alias = `${fmatter_alias}${alias_arr}`;
-  
+
   // SET START AND END DATES
   date_start = await tp.user.nl_date(tp, "start");
   date_end = await tp.user.nl_date(tp, "end");
@@ -346,7 +346,7 @@ for (var i = 1; i < chapter_obj_arr.length; i++) {
   pillar_value = pillar_obj.value;
   pillar_name = pillar_obj.key;
   pillar_link = `[[${pillar_value}|${pillar_name}]]`;
-  
+
   if (pillar_value != "null") {
     pillar_value = `[${pillar_value}, ${know_pillar_value}]`;
     pillar_link = `${pillar_link}, ${know_pillar_link}`;
@@ -393,7 +393,7 @@ for (var i = 1; i < chapter_obj_arr.length; i++) {
       .toLowerCase();
   }
   organization_link = `[[${organization_value}|${organization_name}]]`;
-  
+
   if (organization_value != "null") {
     organization_value = `[${organization_value}, ${publisher_value}]`;
     organization_link = `${organization_link}, ${publisher_link}`;
@@ -423,7 +423,7 @@ for (var i = 1; i < chapter_obj_arr.length; i++) {
     contact_value = last_first_name.replaceAll(/,/g, "_").replaceAll(/[^\w]/g, "_").toLowerCase();
   }
   contact_link = `[[${contact_value}|${contact_name}]]`;
-  
+
   if (contact_value != "null") {
     contact_value = `[${contact_value}, ${author_value}]`;
     contact_link = `${contact_link}, ${author_link}`;
@@ -449,20 +449,20 @@ ${info_callout_start_end_date}`;
   // FILE CONTENT
   file_content = `---
 ${fmatter_title}
-${fmatter_alias} 
-${fmatter_date_start} 
-${fmatter_date_end} 
-${fmatter_due_do} 
-${fmatter_pillar} 
-${fmatter_context} 
-${fmatter_goal} 
-${fmatter_project} 
-${fmatter_organization} 
-${fmatter_contact} 
-${fmatter_status} 
-${fmatter_type} 
-${fmatter_file_class} 
-${fmatter_date_created} 
+${fmatter_alias}
+${fmatter_date_start}
+${fmatter_date_end}
+${fmatter_due_do}
+${fmatter_pillar}
+${fmatter_context}
+${fmatter_goal}
+${fmatter_project}
+${fmatter_organization}
+${fmatter_contact}
+${fmatter_status}
+${fmatter_type}
+${fmatter_file_class}
+${fmatter_date_created}
 ${fmatter_date_modified}
 ${fmatter_tags}
 ---\n
@@ -581,7 +581,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -602,7 +602,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

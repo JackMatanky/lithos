@@ -13,8 +13,8 @@ tags: obsidian, obsidian/templater, obsidian/templater/suggester
 // SET THE FILE'S TITLE
 //-----------------------------------------
 let title = tp.file.title
- 
-// If the file's title is "Untitled", 
+
+// If the file's title is "Untitled",
 // add a new title based on user input for title
 if (title.startsWith("Untitled")) {
   title = await tp.system.prompt("Title");

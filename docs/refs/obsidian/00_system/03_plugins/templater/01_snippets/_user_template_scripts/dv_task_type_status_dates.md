@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a dataview tables for project, parent tasks, child tasks, or habit and ritual child task by types, status, date, or between dates.
 
 ---
@@ -72,11 +72,11 @@ const proj_status = `choice(contains(${yaml_status}, "done"), "✔️Done",
 // Date span
 const yaml_date_start = `file.frontmatter.task_start`;
 const yaml_date_end = `file.frontmatter.task_end`;
-const date_span = `choice((regextest(".", ${yaml_date_start}) AND regextest(".", ${yaml_date_end})), 
+const date_span = `choice((regextest(".", ${yaml_date_start}) AND regextest(".", ${yaml_date_end})),
 		(${yaml_date_start} + " → " + ${yaml_date_end}),
 		choice(regextest(".", ${yaml_date_start}),
 			(${yaml_date_start} + " → Present"),
-			"null")) 
+			"null"))
 	AS Dates`;
 
 // Context
@@ -132,11 +132,11 @@ const task_type = `choice(contains(T.text, "_action_item"), "🔨Task",
     choice(contains(T.text, "_habit"), "🤖Habit",
     choice(contains(T.text, "_morning_ritual"),    "🍵Rit.",
     choice(contains(T.text, "_workday_startup_ritual"), "🌇Rit.",
-    choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit.")))))))))))) 
+    choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit."))))))))))))
     AS Type`;
 
 // Task status
-const task_status = `choice((T.status != "-"), 
+const task_status = `choice((T.status != "-"),
         (choice((T.status = "x"),
             "✔️Done",
             "🔜To do")),
@@ -149,7 +149,7 @@ const task_due = "T.due";
 const task_done = "T.completion";
 const due_date = `dateformat(${task_due}, "yy-MM-dd")`;
 const done_date = `dateformat(${task_done}, "yy-MM-dd")`;
-const task_date = `choice((T.status != "-"), 
+const task_date = `choice((T.status != "-"),
         (choice((T.status = "x"),
             ${done_date},
             ${due_date})),
@@ -167,13 +167,13 @@ const task_estimate = `(T.duration_est + " min") AS Estimate`;
 // Time duration
 const task_duration = `dur((date(dateformat(${task_done}, "yyyy-MM-dd") + "T" + ${task_end})) - (date(dateformat(${task_done}, "yyyy-MM-dd") + "T" + ${task_start})))`;
 const task_estimate_dur = `dur(T.duration_est + " minutes")`;
-const task_estimate_accuracy = `choice((T.status = "x"), 
-    (choice((${task_estimate_dur} = ${task_duration}), 
+const task_estimate_accuracy = `choice((T.status = "x"),
+    (choice((${task_estimate_dur} = ${task_duration}),
       "👍On Time",
       choice((${task_estimate_dur} > ${task_duration}),
 	  	  ("🟢" + (${task_estimate_dur} - ${task_duration})),
 	  	  ("❗" + (${task_duration} - ${task_estimate_dur})))),
-	  "❌Discarded") 
+	  "❌Discarded")
 	  AS Accuracy`;
 
 //---------------------------------------------------------
@@ -210,9 +210,9 @@ const task_discard_filter = `T.status != "-"`;
 // SECT: >>>>> DATA SORTING <<<<<
 //---------------------------------------------------------
 const status_sort = `choice(${yaml_status} = "done", 1,
-	choice(${yaml_status} = "in_progress", 2, 
-	choice(${yaml_status} = "to_do", 3, 
-	choice(${yaml_status} = "schedule", 4, 
+	choice(${yaml_status} = "in_progress", 2,
+	choice(${yaml_status} = "to_do", 3,
+	choice(${yaml_status} = "schedule", 4,
 	choice(${yaml_status} = "on_hold", 5, 6)))))`;
 
 //---------------------------------------------------------
@@ -280,7 +280,7 @@ async function dv_task_type_status_dates({
       // HABIT AND RITUAL CHILD TASKS
 
       data_field = `${task_link},
-      ${task_status}, 
+      ${task_status},
       ${task_date},
       ${time_span},
       ${task_estimate},
@@ -309,7 +309,7 @@ async function dv_task_type_status_dates({
       ${task_end} AS End,
       ${project}`;
     } else {
-      data_field = `${task_link}, 
+      data_field = `${task_link},
       ${due_date} AS Date,
       ${task_start} AS Start,
       ${task_end} AS End,
@@ -392,7 +392,7 @@ async function dv_task_type_status_dates({
     date_filter = `date(${date_field}) = date(${start_date_arg})`;
   } else {
     // BETWEEN two dates
-    date_filter = `date(${date_field}) >= date(${start_date_arg}) 
+    date_filter = `date(${date_field}) >= date(${start_date_arg})
     AND date(${date_field}) <= date(${end_date_arg})`;
   }
 
@@ -608,7 +608,7 @@ module.exports = dv_task_type_status_dates;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -911,7 +911,7 @@ const week_eve_rit_done = await tp.user.dv_task_type_status_dates({
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_task_type_status_dates.js]]
 
@@ -933,7 +933,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -954,7 +954,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a callout for the project objective
 
 ---
@@ -38,7 +38,7 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 // Template file to include
 const project_objective_callout = "40_project_objective_callout";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // PROJECT OBJECTIVE
 //---------------------------------------------------------
 // Retrieve the Project Objective template and content
@@ -52,11 +52,11 @@ const project_objective = include_arr;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // PROJECT OBJECTIVE
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${project_objective_callout}.md`;
@@ -119,7 +119,7 @@ const call_check_indent = `${call_start}${space.repeat(4)}${checkbox}`;
 const call_tbl_start = `${call_start}${tbl_start}`;
 const call_tbl_end = `${tbl_end}${two_space}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // PROJECT OBJECTIVE
 //---------------------------------------------------------
 const call_title = `${call_start}[!objective]${space}Project Objective${two_space}${new_line}${call_start}${new_line}`;
@@ -127,7 +127,7 @@ const call_body = `${call_start}Write the objective as a sentence:${two_space}${
 
 const project_objective = `${call_title}${call_body}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // BEFORE ACTION SMART PREVIEW
 //---------------------------------------------------------
 const call_title = `${call_start}[!task_preview]${space}Project Preview${new_line}${call_start}${new_line}`;
@@ -150,7 +150,7 @@ const risk = `${call_start}8.${space}**RISKY**${new_line}${call_ul_indent}How is
 
 const project_preview = `${call_title}${need}${specific}${measure}${action}${relevant}${time}${excite}${risk}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // AFTER PROJECT KISS REVIEW
 //---------------------------------------------------------
 const three_head = `${hash.repeat(3)}${space}`;
@@ -231,7 +231,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -252,7 +252,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

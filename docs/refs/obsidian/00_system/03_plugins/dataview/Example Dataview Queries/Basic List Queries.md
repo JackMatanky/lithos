@@ -26,7 +26,7 @@ FROM "10 Example Data/games"
 ```
 ```dataview
 LIST
-FROM #type/books 
+FROM #type/books
 ```
 
 **Combine multiple tags**
@@ -34,7 +34,7 @@ FROM #type/books
 ```
 ``dataview
 LIST
-FROM #dvjs/el OR #dv/min 
+FROM #dvjs/el OR #dv/min
 ```
 
 **Combine multiple folders**
@@ -50,17 +50,17 @@ FROM "10 Example Data/books" OR "10 Example Data/games"
 ```
 ```dataview
 LIST
-FROM "10 Example Data/games" AND #genre/action  
+FROM "10 Example Data/games" AND #genre/action
 ```
 
 **List all pages**
 
-> [!attention] Add `dataview` to code block  
-> The output of this is pretty long. If you want to see it, add `dataview` to the code block - like on the examples above!  
+> [!attention] Add `dataview` to code block
+> The output of this is pretty long. If you want to see it, add `dataview` to the code block - like on the examples above!
 > Please note: There needs to be a **space** behind `LIST` to see results!
 
 ```
-LIST 
+LIST
 ```
 
 ## Variants
@@ -70,13 +70,13 @@ LIST
 ```
 ```dataview
 LIST
-FROM #type/books 
+FROM #type/books
 WHERE author = "Conrad C"
 ```
 
 ### List Pages and Show a Meta Data Field
 
-> [!attention] Only one additional information  
+> [!attention] Only one additional information
 > For lists, you can only add **one** additional output. For more, you need to use a [[Basic Table Queries|table]] or [[How to create custom outputs in queries|create a custom output]].
 
 ```
@@ -116,16 +116,16 @@ FROM "10 Example Data/books"
 SORT author
 ```
 
-> [!hint] Advanced usage  
+> [!hint] Advanced usage
 > Do you want to see more advanced examples? Head over to the [[Queries by Type#List|Query Type Overview]] to see all available LIST queries in the vault!
 
 ---
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

@@ -430,11 +430,11 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Concept]
-> 
+>
 > - **Concept**: `dv: this.file.frontmatter.aliases[0]`
-> 
+>
 >  `dv: split(this.file.frontmatter.about, "\n")[0]`
-> 
+>
 > `dv: split(this.file.frontmatter.about, "\n")[1]`
 
 ---

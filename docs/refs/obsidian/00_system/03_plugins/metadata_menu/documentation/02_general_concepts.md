@@ -14,7 +14,7 @@ Metadata Menu can manage any metadata field located in frontmatter (YAML syntax)
 
 ## Field Types
 
-Metadata Menu gives a type to each field.  
+Metadata Menu gives a type to each field.
 Available types are:
 
 - `Input` (free text): this is the default type applied to each field if nothing is set for this field (see #Field settings). it will `Accept any value`
@@ -49,7 +49,7 @@ A field setting can defined in:
 - Metadata Menu settings (see # Metadata Menu Settings)
 - in a fileClass note (see # Fileclass, Dataview plugin is required)
 
-> [!info] Priority management  
+> [!info] Priority management
 > NB: if a field has a setting defined in the Metadata Menu settings AND in a fileClass note, the setting of the fileClass will take the priority over the setting defined in Metadata Menu settings
 
 See detailed section [settings](settings.md)

@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/annotation/types-of-metada
 file_class: lib_documentation
 date_created: 2023-03-09T17:29
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Field Types](https://blacksmithgu.github.io/obsidian-dataview/annotation/types-of-metadata/)
 
@@ -23,26 +23,26 @@ Dataview provides [functions](../reference/functions.md) you can use to modify y
 
 Most of the time you do not need to worry too much about the type of your fields, but if you want to perform calculations and other magical operations on your data, you should be aware of them.
 
-> [!example] Different rendering based on type  
+> [!example] Different rendering based on type
 > If you have this file:
-> 
-> ```yaml 
-> date1:: 2021-02-26T15:15  
+>
+> ```yaml
+> date1:: 2021-02-26T15:15
 > date2:: 2021-04-17 18:00
 > ```
-> 
+>
 > ```
 > ```dataview
 > TABLE date1, date2
 > WHERE file = this.file
 > ```
-> 
+>
 > You'll see the following output (depending on your Date + Time Format Setting for dataview):
-> 
+>
 > | File (1) | date1 | date2 |
 > | -------- | ----- | ----- |
 > | Untitled 2 | 3:15 PM - February 26, 2021 | 2021-04-17 18:00 |
-> 
+>
 > `date1` is recognized as a **Date** while `date2` is a normal **Text** to dataview, that's why `date1` is parsed differently for you. Find out more on [Dates below](#date).
 
 ## Available Field Types
@@ -57,21 +57,21 @@ The default catch-all. If a field doesn't match a more specific type, it is plai
 Example:: This is some normal text.
 ```
 
-> [!hint] Multiline text  
-> Multiline text as a value is only possible via YAML Frontmatter and the pipe operator:  
-> 
-> ```yaml  
-> ---  
-> poem: |  
->    Because I could not stop for Death,  
->    He kindly stopped for me;  
->    The carriage held but just ourselves  
->    And Immortality.  
-> author: "[[Emily Dickinson]]"  
-> title: "Because I could not stop for Death"  
-> ---  
-> ```  
-> 
+> [!hint] Multiline text
+> Multiline text as a value is only possible via YAML Frontmatter and the pipe operator:
+>
+> ```yaml
+> ---
+> poem: |
+>    Because I could not stop for Death,
+>    He kindly stopped for me;
+>    The carriage held but just ourselves
+>    And Immortality.
+> author: "[[Emily Dickinson]]"
+> title: "Because I could not stop for Death"
+> ---
+> ```
+>
 > For inline fields, a line break means the end of the value.
 
 ### Number
@@ -107,7 +107,7 @@ Example:: false
 Text that matches the ISO8601 notation will be automatically transformed into a date object. [ISO8601](https://en.wikipedia.org/wiki/ISO_8601) follows the format `YYYY-MM[-DDTHH:mm:ss.nnn+ZZ]`. Everything after the month is optional.
 
 ```markdown
-Example:: 2021-04 
+Example:: 2021-04
 Example:: 2021-04-18
 Example:: 2021-04-18T04:19:35.000
 Example:: 2021-04-18T04:19:35.000+06:30
@@ -138,7 +138,7 @@ WHERE birthday.month = date(now).month
 
 gives you back all birthdays happening this month. Curious about `date(now)`? Read more about it under [literals](./../../reference/literals/#dates).
 
-> [!info] Displaying of date objects  
+> [!info] Displaying of date objects
 > Dataview renders date objects in a human readable format, i.e. `3:15 PM - Februar 26, 2021`. You can adjust how this format looks like in Dataview's Setting under "General" with "Date Format" and "Date + Time Format". If you want to adjust the format in a specific query only, use the [dateformat function](../../reference/functions/#dateformatdatedatetime-string).
 
 ### Duration
@@ -156,23 +156,23 @@ Example:: 9 yrs 8 min
 
 Find the complete list of values that are recognized as a duration on [literals](./../../reference/literals/#durations).
 
-> [!hint] "Calculations with dates and durations"  
+> [!hint] "Calculations with dates and durations"
 > Date and Duration types are compatible with each other. This means you can, for example, add durations to a date to produce a new date:
-> 
+>
 > ```
 > markdown
 > departure:: 2022-10-07T15:15
 > length of travel:: 1 day, 3 hours
-> 
+>
 > **Arrival**: `= this.departure + this.length-of-travel`
-> 
+>
 > and you get back a duration when calculating with dates:
 > markdown
 > release-date:: 2023-02-14T12:00
-> 
+>
 > `= this.release-date - date(now)` until release!!
 > ```
-> 
+>
 > Curious about `date(now)`? Read more about it under [literals](./../../reference/literals/#dates).
 
 ### Link
@@ -184,15 +184,15 @@ Example:: [[A Page]]
 Example:: [[Some Other Page|Render Text]]
 ```
 
-> [!info] "Links in YAML Frontmatter"  
+> [!info] "Links in YAML Frontmatter"
 > If you reference a link in frontmatter, you need to quote it, as so: `key: "[[Link]]"`. This is default Obsidian-supported behavior. Unquoted links lead to a invalid YAML frontmatter that cannot be parsed anymore.
-> 
+>
 > ```yaml
 > ---
 > parent: "[[parentPage]]"
 > ---
 > ```
-> 
+>
 > Please be aware that this is only a link for dataview, but not for Obsidian anymore - that means it won't show up in the outgoing links, won't be displayed on graph view and won't be updated on i.e. a rename.
 
 ### List
@@ -218,24 +218,24 @@ Example2:: "yes", "or", "no"
 
 Please be aware that in Inline fields, you need to wrap **text values into quotes** to be recognized as a list (see `Example2`). `yes, or, no` is recognized as plain text.
 
-> [!info] "Duplicated metadata keys in the same file lead to lists"  
+> [!info] "Duplicated metadata keys in the same file lead to lists"
 > If you're using a metadata key twice or more in the same note, dataview will collect all values and give you a list. For example
-> 
-> ```markdown  
-> grocery:: flour  
-> […]  
+>
+> ```markdown
+> grocery:: flour
+> […]
 > grocery:: soap
 > ```
-> 
+>
 > ```
 > ```dataview
 > LIST grocery
 > WHERE file = this.file
 > ```
-> 
+>
 > will give you a **list** out of `flour` and `soap` back.
 
-> [!hint] "Arrays are lists"  
+> [!hint] "Arrays are lists"
 > In some places of this documentation, you'll read the term "array". Array is the term for lists in Javascript - Lists and Arrays are the same. A function that needs an array as argument needs a list as argument.
 
 ### Object
@@ -247,7 +247,7 @@ Objects are a map of multiple fields under one parent field. These can only be d
 obj:
   key1: "Val"
   key2: 3
-  key3: 
+  key3:
     - "List1"
     - "List2"
     - "List3"

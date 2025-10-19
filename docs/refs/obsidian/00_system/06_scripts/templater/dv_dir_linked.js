@@ -89,7 +89,7 @@ WHERE
     AND ${class_filter}
     AND ${type_filter}
     AND ${in_out_link_filter}
-SORT 
+SORT
     ${yaml_title} ASC
 ${three_backtick}`;
   } else {
@@ -109,7 +109,7 @@ WHERE
     AND ${class_filter}
     AND ${type_filter}
     AND ${in_out_link_filter}
-SORT 
+SORT
     ${yaml_title} ASC
 ${three_backtick}`;
   }

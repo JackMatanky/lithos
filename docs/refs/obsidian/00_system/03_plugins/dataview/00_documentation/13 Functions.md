@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/reference/functions/
 file_class: lib_documentation
 date_created: 2023-03-09T17:10
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Functions](https://blacksmithgu.github.io/obsidian-dataview/reference/functions/)
 
@@ -29,7 +29,7 @@ Parameters are again [expressions](expressions.md) and you can use literals, met
 
 ## Calling Functions on Lists of Values
 
-Most functions can be applied either to single values (like `number`, `string`, `date`, etc.) OR to lists of those values. If a function is applied to a list, it also returns a list after the function is applied to each element  
+Most functions can be applied either to single values (like `number`, `string`, `date`, etc.) OR to lists of those values. If a function is applied to a list, it also returns a list after the function is applied to each element
 in the list. For example:
 
 ```js
@@ -87,7 +87,7 @@ dur(dur(8 minutes)) = dur(8 minutes) = <8 minutes>
 
 ### `number(string)`
 
-Pulls the first number out of the given string, returning it if possible. Returns null if there are no numbers in the  
+Pulls the first number out of the given string, returning it if possible. Returns null if there are no numbers in the
 string.
 
 ```js
@@ -151,7 +151,7 @@ typeof(dur(8 minutes)) => "duration"
 
 ### `round(number, [digits])`
 
-Round a number to a given number of digits. If the second argument is not specified, rounds to the nearest whole number;  
+Round a number to a given number of digits. If the second argument is not specified, rounds to the nearest whole number;
 otherwise, rounds to the given number of digits.
 
 ```js
@@ -205,7 +205,7 @@ product(nonnull([null, 1, 2, 4])) = 8
 
 ### `average(array)`
 
-Computes the numeric average of numeric values. If you have null values in your average, you can eliminate them via the  
+Computes the numeric average of numeric values. If you have null values in your average, you can eliminate them via the
 `nonnull` function.
 
 ```js
@@ -291,7 +291,7 @@ Case insensitive version of `contains()`.
 
 #### `econtains(object|list|string, value)`
 
-"Exact contains" checks if the exact match is found in the string/list.  
+"Exact contains" checks if the exact match is found in the string/list.
 This function is case sensitive.
 
 - For strings, it behaves exactly like [`contains()`](#containsobjectliststring-value).
@@ -320,7 +320,7 @@ This function is case sensitive.
 
 ### `containsword(list|string, value)`
 
-Checks if `value` has an exact word match in `string` or `list`.  
+Checks if `value` has an exact word match in `string` or `list`.
 This is case insensitive. The outputs are different for different types of input, see examples.
 
 - For strings, it checks if the word is present in the given string.
@@ -449,7 +449,7 @@ none(["Apple", "Pi", "Banana"], (x) => startswith(x, "A")) = false
 
 ### `join(array, [delimiter])`
 
-Joins elements in an array into a single string (i.e., rendering them all on the same line). If provided with a second  
+Joins elements in an array into a single string (i.e., rendering them all on the same line). If provided with a second
 argument, then each element will be separated by the given separator.
 
 ```
@@ -574,7 +574,7 @@ endswith("yes", "ye") = false
 
 ### `padleft(string, Length, [padding])`
 
-Pads a string up to the desired length by adding padding on the left side. If you omit the padding character, spaces  
+Pads a string up to the desired length by adding padding on the left side. If you omit the padding character, spaces
 will be used by default.
 
 ```js
@@ -682,7 +682,7 @@ meta([[2021-11-01]]).display = null
 
 #### `meta(link).embed`
 
-True or false depending on whether the link is an embed. Those are links that begin with an exclamation mark, like  
+True or false depending on whether the link is an embed. Those are links that begin with an exclamation mark, like
 `![[Some Link]]`.
 
 #### `meta(link).path`

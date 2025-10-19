@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/annotation/metadata-tasks/
 file_class: lib_documentation
 date_created: 2023-03-09T17:35
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Metadata on Tasks and Lists](https://blacksmithgu.github.io/obsidian-dataview/annotation/metadata-tasks/)
 
@@ -26,16 +26,16 @@ Tasks and list items are the same data wise, so all your bullet points have all 
 
 ## Field Shorthands
 
-For supporting "common use cases", Dataview understands a few shorthands for some fields you may want to annotate task  
+For supporting "common use cases", Dataview understands a few shorthands for some fields you may want to annotate task
 with:
 
 ### Example
 
 ```markdown
-- [ ] Due this Saturday 🗓️2021-08-29  
-- [x] Completed last Saturday ✅2021-08-22  
-- [ ] I made this on ➕1990-06-14  
-- [ ] Task I can start this weekend 🛫2021-08-29  
+- [ ] Due this Saturday 🗓️2021-08-29
+- [x] Completed last Saturday ✅2021-08-22
+- [ ] I made this on ➕1990-06-14
+- [ ] Task I can start this weekend 🛫2021-08-29
 - [x] Task I finished ahead of schedule ⏳2021-08-29 ✅2021-08-22
 ```
 
@@ -68,7 +68,7 @@ Which will list both variants - short hands and textual annotation:
 
 As with pages, Dataview adds a number of implicit fields to each task or list item:
 
-> [!info] Inheritance of Fields  
+> [!info] Inheritance of Fields
 > Tasks inherit *all fields* from their parent page - so if you have a `rating` field in your page, you can also access it on your task in a `TASK` Query.
 
 | Field name | Data Type | Description |

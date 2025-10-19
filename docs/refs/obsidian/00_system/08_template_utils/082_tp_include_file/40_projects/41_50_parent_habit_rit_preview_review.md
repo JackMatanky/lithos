@@ -1,9 +1,9 @@
 ### Preview
 
-> [!task_preview] Habits and Rituals Preview  
-> 
-> **INCLUDED HABITS AND RITUALS AND THEIR PURPOSE**  
-> 
+> [!task_preview] Habits and Rituals Preview
+>
+> **INCLUDED HABITS AND RITUALS AND THEIR PURPOSE**
+>
 > 1. *First Habit or Ritual*
 > 	- Action::
 > 	- Purpose::
@@ -23,7 +23,7 @@
 ### Review
 
 > [!task_review] Parent Task Review
-> 
+>
 > 1. How many time was the habit or ritual completed per total? How did it make me feel?
 >     - **Outcome**::
 >     - **Feeling**::

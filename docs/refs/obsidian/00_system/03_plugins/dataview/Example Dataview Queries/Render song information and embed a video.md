@@ -10,18 +10,18 @@ date_modified: 2023-10-25T16:22
 
 #dv/dataviewjs #dvjs/current #dvjs/span
 
-> [!hint] Contributed by Daniel.  
-> Discord: `dbarenholz#2331`  
+> [!hint] Contributed by Daniel.
+> Discord: `dbarenholz#2331`
 > Find me [here](https://www.dbarenholz.com).
 
 # `$=dv.span(dv.current().artist)` - `$=dv.span(dv.current().title)`
 
-> [!info]- Song Information  
-> title:: Never Gonna Give You Up  
-> artist:: Rick Astley  
-> vocalist:: Rick Astley  
-> album:: Whenever You Need Somebody  
-> number:: 1  
+> [!info]- Song Information
+> title:: Never Gonna Give You Up
+> artist:: Rick Astley
+> vocalist:: Rick Astley
+> album:: Whenever You Need Somebody
+> number:: 1
 > yt:: <https://www.youtube.com/embed/watch?v=dQw4w9WgXcQ>
 
 ## Basic
@@ -36,9 +36,9 @@ dv.span(`<iframe width="560" height="315" src="${me.yt}?modestbranding=1&hl=en&p
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

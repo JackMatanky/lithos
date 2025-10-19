@@ -1,6 +1,6 @@
 ---
 title: daily_tasks_done
-aliases: 
+aliases:
   - Daily Tasks Done Timeline
   - daily tasks done timeline
   - daily tasks done

@@ -16,8 +16,8 @@ date_modified: 2023-10-25T16:22
 ## Basic
 
 ```dataview
-Table finished 
-FROM "10 Example Data/projects" 
+Table finished
+FROM "10 Example Data/projects"
 WHERE dateformat(date(finished), "yyyy-MM") = "2022-07"
 ```
 
@@ -26,16 +26,16 @@ WHERE dateformat(date(finished), "yyyy-MM") = "2022-07"
 ### Show Additional Metadata
 
 ```dataview
-Table project-id, finished, tags 
-FROM "10 Example Data/projects" 
+Table project-id, finished, tags
+FROM "10 Example Data/projects"
 WHERE dateformat(date(finished), "yyyy-MM") = "2022-07"
 ```
 
 ### Show All Finished Projects Grouped by Month
 
 ```dataview
-Table rows.project-id AS "Project ID", rows.finished AS "Finished on", rows.tags AS "Tags" 
-FROM "10 Example Data/projects" 
+Table rows.project-id AS "Project ID", rows.finished AS "Finished on", rows.tags AS "Tags"
+FROM "10 Example Data/projects"
 WHERE finished
 GROUP BY dateformat(date(finished), "yyyy-MM")
 ```
@@ -44,7 +44,7 @@ GROUP BY dateformat(date(finished), "yyyy-MM")
 
 ```dataview
 Table rows.file.link AS "project", rows.finished AS "Finished on"
-FROM "10 Example Data/projects" 
+FROM "10 Example Data/projects"
 WHERE finished AND dateformat(date(finished), "yyyy") = "2022"
 GROUP BY dateformat(date(finished), "yyyy-MM")
 ```
@@ -53,9 +53,9 @@ GROUP BY dateformat(date(finished), "yyyy-MM")
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

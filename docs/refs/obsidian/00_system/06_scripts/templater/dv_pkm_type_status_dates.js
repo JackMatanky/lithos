@@ -102,7 +102,7 @@ const tree_type = `default(((x) => {
     }[x])(${yaml_type}), "🔩Subtopic")
     AS Type`;
 
-const note_type = `default(((x) => { 
+const note_type = `default(((x) => {
       "question": "❔Question",
       "evidence": "⚖️Evidence",
       "step": "🪜Step",
@@ -165,7 +165,7 @@ const pkm_sort = `default(((x) => {
       "branch": 2,
       "field": 3,
       "subject": 4,
-      "topic": 5, 
+      "topic": 5,
       "subtopic": 6,
       "question": 7,
       "evidence": 8,
@@ -180,10 +180,10 @@ const pkm_sort = `default(((x) => {
     }[x])(${yaml_type}), 17)`;
 
 const tree_type_sort = `default(((x) => {
-      "category": 1, 
-      "branch": 2, 
-      "field": 3, 
-      "subject": 4, 
+      "category": 1,
+      "branch": 2,
+      "field": 3,
+      "subject": 4,
       "topic": 5
     }[x])(${yaml_type}), 6)`;
 
@@ -247,13 +247,13 @@ async function dv_pkm_type_status_dates({
   ) {
     if (md == "true") {
       data_field = `${title_link},
-    ${note_type}, 
+    ${note_type},
     ${pkm_status},
     ${pkm_content_md},
     ${tags}`;
     } else {
       data_field = `${title_link},
-    ${note_type}, 
+    ${note_type},
     ${pkm_status},
     ${pkm_content},
     ${tags}`;
@@ -289,7 +289,7 @@ async function dv_pkm_type_status_dates({
     date_filter = `contains(${date_created}, "${date_start}")`;
   } else {
     // Completed BETWEEN dates
-    date_filter = `date(${date_created}) >= date(${date_start}) 
+    date_filter = `date(${date_created}) >= date(${date_start})
     AND date(${date_created}) <= date(${date_end})`;
   }
 

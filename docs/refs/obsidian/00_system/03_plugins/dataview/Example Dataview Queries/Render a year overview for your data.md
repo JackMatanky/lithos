@@ -41,7 +41,7 @@ while (date.year == year) {
 // == Render calendar ==
 calendar.forEach((month, i) => {
 	const monthEl = `<span style='display:inline-block;min-width:30px;font-size:small'>${dv.luxon.DateTime.utc(year, i).toFormat('MMM')}</span>`
-	
+
 	dv.el("div", monthEl + month.reduce((acc, curr) => `${acc} ${curr}`, ""))
 })
 
@@ -82,7 +82,7 @@ while (date.year == year) {
 // == Render calendar ==
 calendar.forEach((month, i) => {
 	const monthEl = `<span style='display:inline-block;min-width:30px;font-size:small'>${dv.luxon.DateTime.utc(year, i).toFormat('MMM')}</span>`
-	
+
 	dv.el("div", monthEl + month.reduce((acc, curr) => `${acc} ${curr}`, ""))
 })
 
@@ -100,13 +100,13 @@ function determineColor(date) {
 	let color = emptyColor;
 
 	if (started && finished) {
-		color = '#9959ff';	
+		color = '#9959ff';
 	} else if (started) {
 		color = '#ff5976'
 	} else if (finished) {
 		color = 'green'
 	}
-	
+
 	return color;
 }
 ```
@@ -131,7 +131,7 @@ while (date.year == year) {
 	calendar[date.month].push(getDayEl(date, determineColor(date), createTooltip()))
 
 	date = addOneDay(date);
-	
+
 	function createTooltip() {
 		let tooltip = "";
 		const vals = values.filter(p => checkDateEq(p.started, date) || checkDateEq(p.finished, date))
@@ -145,7 +145,7 @@ while (date.year == year) {
 // == Render calendar ==
 calendar.forEach((month, i) => {
 	const monthEl = `<span style='display:inline-block;min-width:30px;font-size:small'>${dv.luxon.DateTime.utc(year, i).toFormat('MMM')}</span>`
-	
+
 	dv.el("div", monthEl + month.reduce((acc, curr) => `${acc} ${curr}`, ""))
 })
 
@@ -168,13 +168,13 @@ function determineColor(date) {
 	let color = emptyColor;
 
 	if (started && finished) {
-		color = '#9959ff';	
+		color = '#9959ff';
 	} else if (started) {
 		color = '#ff5976'
 	} else if (finished) {
 		color = 'green'
 	}
-	
+
 	return color;
 }
 ```
@@ -196,7 +196,7 @@ for(let i = 1; i <= 12; i++) {
 while (date.year == year) {
 	calendar[date.month].push(
 	getDayEl(
-		date, 
+		date,
 		determineColor(date)))
 
 	date = addOneDay(date);
@@ -205,7 +205,7 @@ while (date.year == year) {
 // == Render calendar ==
 calendar.forEach((month, i) => {
 	const monthEl = `<span style='display:inline-block;min-width:30px;font-size:small'>${dv.luxon.DateTime.utc(year, i).toFormat('MMM')}</span>`
-	
+
 	dv.el("div", monthEl + month.reduce((acc, curr) => `${acc} ${curr}`, ""))
 })
 
@@ -237,7 +237,7 @@ function determineColor(date) {
 **Simple case** - input pages to display, the year to render and an "active" color
 
 ```dataviewjs
-await dv.view("00 Meta/dataview_views/year_overview", 
+await dv.view("00 Meta/dataview_views/year_overview",
 	{
 		pages: dv.pages('"10 Example Data/dailys"').where(p => p.praying === "yes"),
 		year: 2022,
@@ -250,7 +250,7 @@ await dv.view("00 Meta/dataview_views/year_overview",
 ```dataviewjs
 const pages = dv.pages('"10 Example Data/dailys"').where(p => p.wellbeing?.mood);
 
-await dv.view("00 Meta/dataview_views/year_overview", 
+await dv.view("00 Meta/dataview_views/year_overview",
 	{
 		pages: pages,
 		year: 2022,
@@ -277,8 +277,8 @@ function generateTooltip(date) {
 
 ### Render More than One Meta Data per Day
 
-> [!info] Rendering multiple values  
-> The amount of color blocks is determined by the number of colors given back, so all you need to tweak is what `determineColor` is giving back - and maybe increase the size of the day elements. 😉  
+> [!info] Rendering multiple values
+> The amount of color blocks is determined by the number of colors given back, so all you need to tweak is what `determineColor` is giving back - and maybe increase the size of the day elements. 😉
 > If you want to use intensity too, `determineColor` needs to return something like ```[`rgba(177, 200, 51, ${(page.wellbeing.mood / 4)})`, `rgba(50, 90, 220, ${(page.wellbeing.health / 4)})`]```
 
 ```dataviewjs
@@ -296,7 +296,7 @@ for(let i = 1; i <= 12; i++) {
 while (date.year === year) {
 	calendar[date.month].push(
 	getDayEl(
-		date, 
+		date,
 		determineColor(date)))
 
 	date = addOneDay(date);
@@ -305,7 +305,7 @@ while (date.year === year) {
 // == Render calendar ==
 calendar.forEach((month, i) => {
 	const monthEl = `<span style='display:inline-block;min-width:30px;font-size:small'>${dv.luxon.DateTime.utc(year, i).toFormat('MMM')}</span>`
-	
+
 	dv.el("div", monthEl + month.reduce((acc, curr) => `${acc} ${curr}`, ""))
 })
 
@@ -339,9 +339,9 @@ function determineColor(date) {
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

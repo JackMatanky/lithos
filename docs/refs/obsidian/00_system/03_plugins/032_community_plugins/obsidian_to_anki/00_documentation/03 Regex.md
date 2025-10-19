@@ -11,7 +11,7 @@ url: https://github.com/Pseudonium/Obsidian_to_Anki/wiki/Regex
 file_class: lib_documentation
 date_created: 2023-05-30T19:13
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Regex
 
@@ -48,15 +48,15 @@ Cards made using this format support tags - simply append a "Tags: {tag_list}" t
 To delete notes made using this format, remove the content before the ID and make it look like:
 
 ```
-{Delete Regex Note Line}  
-&lt;!--ID: 129840142123--&gt;  
+{Delete Regex Note Line}
+&lt;!--ID: 129840142123--&gt;
 ```
 
 With the default settings:
 
 ```
-DELETE  
-&lt;!--ID: 129414201900--&gt;  
+DELETE
+&lt;!--ID: 129414201900--&gt;
 ```
 
 Note that if you manually delete a note in Anki, you should remove the ID line from Obsidian/the file too. The script will print a message if a note is identified with an ID that doesn't exist in Anki.

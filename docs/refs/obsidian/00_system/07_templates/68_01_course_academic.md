@@ -95,10 +95,10 @@ date_modified:
 # {{title}}
 
 > [!info]- General Course Information
-> Lecturer:  
-> Phone:  
-> Email:  
-> Lecture day and time:  
+> Lecturer:
+> Phone:
+> Email:
+> Lecture day and time:
 
 ## Syllabus
 

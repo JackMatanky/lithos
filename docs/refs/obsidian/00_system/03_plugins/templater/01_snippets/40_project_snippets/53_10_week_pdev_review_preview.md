@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return callouts of checklists for the Weekly Personal Development Journals Review and Preview.
 
 ---
@@ -40,10 +40,10 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 // Template file to include
 const week_journal_review_preview = "43_10_action_week_journal_review_preview";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY PDEV REVIEW AND PREVIEW CHECKLIST
 //---------------------------------------------------------
-// Retrieve the Weekly Journal Review and 
+// Retrieve the Weekly Journal Review and
 // Preview Checklist template and content
 temp_file_path = `${sys_temp_include_dir}${week_journal_review_preview}.md`;
 abstract_file = await app.vault.getAbstractFileByPath(temp_file_path);
@@ -57,7 +57,7 @@ const journal_review_preview_checklist = include_arr;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY PDEV REVIEW AND PREVIEW CHECKLIST
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${week_journal_review_preview}.md`;
@@ -183,7 +183,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -204,7 +204,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

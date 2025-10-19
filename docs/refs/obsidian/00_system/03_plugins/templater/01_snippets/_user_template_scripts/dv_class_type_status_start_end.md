@@ -9,7 +9,7 @@ plugin: templater
 language:
   - javascript
 module:
-  - 
+  -
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a dataview table based on file class, type, status, start date, and end date.
 
 ---
@@ -51,14 +51,14 @@ const file_subtype = `file.frontmatter.subtype AS Subtype`;
 
 // File status
 const yaml_status = `file.frontmatter.status`;
-const file_status = `choice(${yaml_status} = "undetermined" OR ${yaml_status} = "schedule", 
-		"🤷Unknown", 
-		choice(${yaml_status} = "to_do", 
-			"🔜To do", 
-			choice(${yaml_status} = "in_progress", 
-				"👟In progress", 
-				choice(${yaml_status} = "done", 
-					"✔️Done", 
+const file_status = `choice(${yaml_status} = "undetermined" OR ${yaml_status} = "schedule",
+		"🤷Unknown",
+		choice(${yaml_status} = "to_do",
+			"🔜To do",
+			choice(${yaml_status} = "in_progress",
+				"👟In progress",
+				choice(${yaml_status} = "done",
+					"✔️Done",
 					"🗄️Resource"))))
 	AS Status`;
 
@@ -67,16 +67,16 @@ const tags = `file.etags AS Tags`;
 
 // SECT: >>>>> NOTES <<<<<
 
-const note_status = `choice(${yaml_status} = "schedule", 
-		"🤷Unknown", 
-		choice(${yaml_status} = "review", 
-			"🔜Review", 
-			choice(${yaml_status} = "clarify", 
-				"🌱Clarify", 
+const note_status = `choice(${yaml_status} = "schedule",
+		"🤷Unknown",
+		choice(${yaml_status} = "review",
+			"🔜Review",
+			choice(${yaml_status} = "clarify",
+				"🌱Clarify",
                 choice(${yaml_status}) = "develop",
                     "🪴Develop",
-                    choice(${yaml_status} = "done", 
-					    "🌳Done", 
+                    choice(${yaml_status} = "done",
+					    "🌳Done",
 					    "🗄️Resource")))))
 	AS Status`;
 
@@ -91,11 +91,11 @@ const date_publish = `choice(contains(file.frontmatter.type, "book"), file.front
 // Date span
 const yaml_date_start = `file.frontmatter.task_start`;
 const yaml_date_end = `file.frontmatter.task_end`;
-const date_span = `choice((regextest(".", ${yaml_date_start}) AND regextest(".", ${yaml_date_end})), 
+const date_span = `choice((regextest(".", ${yaml_date_start}) AND regextest(".", ${yaml_date_end})),
 		(${yaml_date_start} + " → " + ${yaml_date_end}),
 		choice(regextest(".", ${yaml_date_start}),
 			(${yaml_date_start} + " → Present"),
-			"null")) 
+			"null"))
 	AS Dates`;
 
 // Task context
@@ -141,14 +141,14 @@ const completion_date = `file.frontmatter.date_completed`;
 //---------------------------------------------------------
 // SECT: >>>>> DATA SORTING <<<<<
 //---------------------------------------------------------
-const status_sort = `choice(${yaml_status} = "undetermined" OR ${yaml_status} = "schedule", 
-		1, 
-		choice(${yaml_status} = "to_do", 
-			2, 
-			choice(${yaml_status} = "in_progress", 
-				3, 
-				choice(${yaml_status} = "done", 
-					4, 
+const status_sort = `choice(${yaml_status} = "undetermined" OR ${yaml_status} = "schedule",
+		1,
+		choice(${yaml_status} = "to_do",
+			2,
+			choice(${yaml_status} = "in_progress",
+				3,
+				choice(${yaml_status} = "done",
+					4,
 					5))))`;
 
 //---------------------------------------------------------
@@ -224,7 +224,7 @@ TABLE WITHOUT ID
 	${title_link} AS Project,
 	${file_status},
 	${date_span},
-	${context}, 
+	${context},
     ${org}
 FROM
 	${source}
@@ -234,7 +234,7 @@ WHERE
 	AND ${type_filter}
 	AND ${date_start_filter}
 	AND ${date_end_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
       }
@@ -259,7 +259,7 @@ WHERE
 	${class_filter}
 	AND ${type_filter}
 	AND ${active_filter}
-SORT 
+SORT
     file.frontmatter.project,
     ${yaml_date_end},
     file.frontmatter.title ASC
@@ -286,7 +286,7 @@ WHERE
     AND ${type_filter}
 	AND ${date_start_filter}
 	AND ${date_end_filter}
-SORT 
+SORT
     file.frontmatter.project,
     file.frontmatter.title ASC
 ${three_backtick}`;
@@ -303,7 +303,7 @@ ${three_backtick}`;
       dataview_note_table = `${three_backtick}dataview
 TABLE WITHOUT ID
     ${title_link},
-    ${file_subtype}, 
+    ${file_subtype},
     ${file_status},
     ${tags}
 FROM
@@ -324,7 +324,7 @@ ${three_backtick}`;
 TABLE WITHOUT ID
     ${title_link},
     ${file_type},
-    ${file_status} 
+    ${file_status}
     ${tags}
 FROM
     ${source}
@@ -346,7 +346,7 @@ ${three_backtick}`;
 TABLE WITHOUT ID
     ${title_link},
     ${file_type},
-    ${file_subtype}, 
+    ${file_subtype},
     ${tags}
 FROM
     ${source}
@@ -473,7 +473,7 @@ module.exports = dv_class_type_status_start_end;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -643,7 +643,7 @@ const week_comp_parent_task = await tp.user.dv_class_type_status_start_end({
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 1.[[dv_class_type_status_start_end.js]]
 
 ### Outgoing Snippet Links
@@ -662,7 +662,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -683,7 +683,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

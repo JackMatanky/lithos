@@ -5,11 +5,11 @@ aliases:
   - 20 Internal Functions
   - templater_documentation_20_internal_functions
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T15:44
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Internal Functions
 

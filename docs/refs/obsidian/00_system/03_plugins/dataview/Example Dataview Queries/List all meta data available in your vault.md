@@ -13,7 +13,7 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!info] Keys in lower case and without spaces  
+> [!info] Keys in lower case and without spaces
 > Keys are listed in lower case here. Due to the fact that dataview saves a "sanitized" meta data key that's all lower-case, keys containing capitalized letters would be duplicated. So `TotalPages` will show up as `totalpages`. The same counts for keys that contains spaces: The sanitized version uses dashes instead, so `go to sleep` will show up as `go-to-sleep`
 
 ```dataviewjs
@@ -35,10 +35,10 @@ dv.list(metadata.sort())
 
 ### Rendering a Table with All Meta Data Fields and the Files They Are Contained in
 
-> [!attention] Memory intensive calculation  
+> [!attention] Memory intensive calculation
 > Depending on the size of your vault and meta data usage, this query can cause your vault to freeze or crash. If you have a lot of data, better use the next variant that only shows up to 5 containing pages and is less straining on your computer.
 
-> [!missing] Add `dataviewjs` to code block  
+> [!missing] Add `dataviewjs` to code block
 > This query is disabled by default, otherwise opening up this page would take quite some time. If you want to see the result - or use the query in your own vault, be sure to add a `dataviewjs` right on the first three backticks to enable it.
 
 ```
@@ -62,7 +62,7 @@ dv.table(["meta data", "pages"], Object.keys(metadataMap).map(key => [key, metad
 
 # Rendering a Table with All Meta Data Fields and the First 5 Files They Are Contained in
 
-> [!attention] Memory intensive calculation  
+> [!attention] Memory intensive calculation
 > While this query is easier on your memory than the one listing all pages, it's still quite hungry. If the query does not render, try to reduce `pagelimit` to a smaller number.
 
 ```dataviewjs
@@ -89,9 +89,9 @@ dv.table(["meta data", "page count", `pages (first ${pagelimit})`], Object.keys(
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

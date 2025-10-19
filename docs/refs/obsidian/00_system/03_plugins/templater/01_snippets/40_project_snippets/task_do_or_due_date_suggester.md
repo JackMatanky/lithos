@@ -10,7 +10,7 @@ language:
 module:
   - system
   - file
-description: 
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:
 
 ---
@@ -40,7 +40,7 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 // Template file to include
 const do_due_date = `50_task_do_due_date`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET DO/DUE DATE
 //---------------------------------------------------------
 // Retrieve the Do or Due Date template and content
@@ -58,7 +58,7 @@ const due_do_name = include_arr[1];
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET DO/DUE DATE
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${do_due_date}.md`;
@@ -73,7 +73,7 @@ const due_do_name = include_arr[1];
 #### Referenced Template
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET DO/DUE DATE
 //---------------------------------------------------------
 const due_do_obj_arr = [
@@ -81,10 +81,10 @@ const due_do_obj_arr = [
   { key: "DUE Date", value: "due" },
 ];
 
-const due_do_obj = await tp.system.suggester(  
-  (item) => item.key,  
-  due_do_obj_arr,  
-  false,  
+const due_do_obj = await tp.system.suggester(
+  (item) => item.key,
+  due_do_obj_arr,
+  false,
   "Do or Due Date?"
 );
 
@@ -148,7 +148,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -169,7 +169,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

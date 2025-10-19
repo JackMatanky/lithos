@@ -4,7 +4,7 @@ mapWithTag: true
 icon: building
 tagNames:
   - organization
-excludes: 
+excludes:
 extends: dir
 version: "2.1"
 tags: organization

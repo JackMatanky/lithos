@@ -2,7 +2,7 @@
 limit: 100
 mapWithTag: false
 icon: calendar
-tagNames: 
+tagNames:
 excludes:
   - date_start
   - date_end

@@ -228,5 +228,5 @@ tags:
 ## Prompt
 
 > [!question] Prompt
-> 
+>
 > <%* tR += title %>

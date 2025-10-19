@@ -409,7 +409,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   short_date = moment(full_date_time).format("YY-MM-DD");
   short_date_value = moment(full_date_time).format("YY_MM_DD");
   yaml_date = `date:${space}"${date_link}"${new_line}`;
-  
+
   inline_date_data = `➕${space}${moment().format("YYYY-MM-DD")}${space}📅${space}${date}`;
 
   // DAILY HABIT AND RITUAL FILE LINKS
@@ -442,7 +442,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
     alias = `${new_line}${ul_yaml}${morn_rit_alias_arr[j]}`;
     morn_rit_alias += alias;
   }
-  
+
   morn_rit_file_name = `${short_date_value}_${morn_rit_value}`;
   yaml_morn_rit_title = `title:${space}${morn_rit_file_name}${new_line}`;
   yaml_morn_rit_alias = `aliases:${morn_rit_alias}${new_line}`;
@@ -592,22 +592,22 @@ for (let i = 0; i < weekday_arr.length; i++) {
   // TODAY'S HABITS AND RITUALS CALLOUT
   today_habit_rit_callout_buttons = call_tbl_start + [today_habit_button, today_morn_rit_button, today_work_start_button, today_work_shut_button, today_eve_rit_button].join(tbl_pipe) + call_tbl_end;
   today_habit_rit_callout_links = call_tbl_start + [habit_link, morn_rit_link, work_start_link, work_shut_link, eve_rit_link].join(tbl_pipe) + call_tbl_end;
-  today_habit_rit_callout_body = [today_habit_rit_callout_buttons, call_tbl_div(5), today_habit_rit_callout_links].join(new_line);  
+  today_habit_rit_callout_body = [today_habit_rit_callout_buttons, call_tbl_div(5), today_habit_rit_callout_links].join(new_line);
 
   today_habit_rit_callout = `${today_habit_rit_callout_title}${today_habit_rit_callout_body}`;
-  
+
   // REFLECTION FILE NAME, LINK, AND CALLOUT
   const reflection_file_name = `${short_date_value}_${reflection_alias_value}`;
   const reflection_link = `[[${reflection_file_name}\\|${reflection_alias}]]`;
   const reflection_callout_table = `${call_tbl_start}${reflection_button}${tbl_pipe}${reflection_link}${call_tbl_end}${new_line}${call_tbl_start}${tbl_left}${tbl_pipe}${tbl_cent}${call_tbl_end}`;
   const reflection_callout = `${reflection_callout_title}${reflection_callout_table}${new_line}`;
-  
+
   // GRATITUDE FILE NAME, LINK, AND CALLOUT
   const gratitude_file_name = `${short_date_value}_${gratitude_alias_value}`;
   const gratitude_link = `[[${gratitude_file_name}\\|${gratitude_alias}]]`;
   const gratitude_callout_table = `${call_tbl_start}${gratitude_button}${tbl_pipe}${gratitude_link}${call_tbl_end}${new_line}${call_tbl_start}${tbl_left}${tbl_pipe}${tbl_cent}${call_tbl_end}`;
   const gratitude_callout = `${gratitude_callout_title}${gratitude_callout_table}${new_line}`;
-  
+
   // SELF AFFIRMATION START, END, AND REMINDER TIMES
   title = "Self Affirmations";
   duration = 3;
@@ -624,7 +624,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   task_checkbox_time = `[time_start${dv_colon}${time_start}]${two_space}[time_end${dv_colon}${time_end}]${two_space}[duration_est${dv_colon}${duration}]${space}`;
   task_checkbox_reminder = `⏰${space}${reminder}${space}`;
   task_checkbox = `${task_checkbox_title}${task_checkbox_time}${task_checkbox_reminder}${inline_date_data}`;
-  
+
   heading = "### Morning Self Affirmations";
   affirm = `${heading}${two_new_line}${task_checkbox}${two_new_line}`;
 
@@ -642,7 +642,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   task_checkbox_title = `${checkbox_task_tag}${title}_${morn_rit_type}${space}`;
   task_checkbox_time = `[time_start${dv_colon}${time_start}]${two_space}[time_end${dv_colon}${time_end}]${two_space}[duration_est${dv_colon}${duration}]${space}`;
   task_checkbox = `${task_checkbox_title}${task_checkbox_time}${inline_date_data}`;
-  
+
   heading = "### Preview Today's Schedule";
   comment = "Schedule the most important and longest tasks in descending order";
   const day_task_event_link = `[[${date}_task_event#Due Today|Task Schedule]]`;
@@ -663,7 +663,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   task_checkbox_title = `${checkbox_task_tag}${title}_${morn_rit_type}${space}`;
   task_checkbox_time = `[time_start${dv_colon}${time_start}]${two_space}[time_end${dv_colon}${time_end}]${two_space}[duration_est${dv_colon}${duration}]${space}`;
   task_checkbox = `${task_checkbox_title}${task_checkbox_time}${inline_date_data}`;
-  
+
   heading = `${head_lvl(3)}Morning Journals${two_new_line}${daily_journal_button}`;
   subheading = `${head_lvl(4)}Recount Yesterday${two_new_line}`;
   reflection = `${heading}${subheading}${task_checkbox}${two_new_line}${reflection_callout}${two_new_line}`;
@@ -681,7 +681,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   task_checkbox_title = `${checkbox_task_tag}${title}_${morn_rit_type}${space}`;
   task_checkbox_time = `[time_start${dv_colon}${time_start}]${two_space}[time_end${dv_colon}${time_end}]${two_space}[duration_est${dv_colon}${duration}]${space}`;
   task_checkbox = `${task_checkbox_title}${task_checkbox_time}${inline_date_data}`;
-  
+
   heading = `${head_lvl(4)}Give Thanks${two_new_line}`;
   gratitude = `${heading}${task_checkbox}${two_new_line}${gratitude_callout}${two_new_line}`;
 
@@ -706,7 +706,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   task_checkbox_time = `[time_start${dv_colon}${time_start}]${two_space}[time_end${dv_colon}${time_end}]${two_space}[duration_est${dv_colon}${duration}]${space}`;
   task_checkbox_reminder = `⏰${space}${reminder}${space}`;
   task_checkbox = `${task_checkbox_title}${task_checkbox_time}${task_checkbox_reminder}${inline_date_data}`;
-  
+
   heading = "### Email Review";
   email = `${heading}${two_new_line}${task_checkbox}${two_new_line}`;
 
@@ -724,7 +724,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   task_checkbox_title = `${checkbox_task_tag}${title}_${work_start_type}${space}`;
   task_checkbox_time = `[time_start${dv_colon}${time_start}]${two_space}[time_end${dv_colon}${time_end}]${two_space}[duration_est${dv_colon}${duration}]${space}`;
   task_checkbox = `${task_checkbox_title}${task_checkbox_time}${inline_date_data}`;
-  
+
   heading = "### WhatsApp Review";
   whatsapp = `${heading}${two_new_line}${task_checkbox}${two_new_line}`;
 
@@ -746,7 +746,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   task_checkbox_time = `[time_start${dv_colon}${time_start}]${two_space}[time_end${dv_colon}${time_end}]${two_space}[duration_est${dv_colon}${duration}]${space}`;
   task_checkbox_reminder = `⏰${space}${reminder}${space}`;
   task_checkbox = `${task_checkbox_title}${task_checkbox_time}${task_checkbox_reminder}${inline_date_data}`;
-  
+
   heading = "### Morning Meditation";
   meditation_bell_heading = "#### Mindfulness Bell Meditation";
   meditation_bell_embed = "![[1_Five Minute Mindfulness Bell Meditation.mp3]]";

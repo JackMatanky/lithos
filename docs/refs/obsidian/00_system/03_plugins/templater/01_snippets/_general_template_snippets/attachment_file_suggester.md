@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return an attachment file, or any file depending on the directory, using a suggester.
 
 ---
@@ -77,22 +77,22 @@ const file_path = await tp.system.suggester(
 #### Examples
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET BOOK COVER IMAGE PATH
 //---------------------------------------------------------
 const sys_atch_books_dir = `00_system/02_attachments/_61_books/`;
-const book_image_files = await tp.user.vault_file(sys_attachments_books_dir);  
-const file_path = await tp.system.suggester(  
-  book_image_files,  
-  book_image_files,  
-  false,  
-  "Book Cover?"  
+const book_image_files = await tp.user.vault_file(sys_attachments_books_dir);
+const file_path = await tp.system.suggester(
+  book_image_files,
+  book_image_files,
+  false,
+  "Book Cover?"
 );
 ```
 
 ```javascript
-//---------------------------------------------------------  
-// SET CONTACT PROFILE PICTURE 
+//---------------------------------------------------------
+// SET CONTACT PROFILE PICTURE
 //---------------------------------------------------------
 const sys_atch_contacts_dir = `00_system/02_attachments/_51_contacts/`;
 const contact_picture_files = await tp.user.vault_file(
@@ -111,8 +111,8 @@ if (picture_path == "_user_input") {
 ```
 
 ```javascript
-//---------------------------------------------------------  
-// SET ORGANIZATION LOGO PICTURE 
+//---------------------------------------------------------
+// SET ORGANIZATION LOGO PICTURE
 //---------------------------------------------------------
 const sys_atch_organizations_dir = `00_system/02_attachments/_52_organizations/`;
 const organization_picture_files = await tp.user.vault_file(
@@ -173,7 +173,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -196,7 +196,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

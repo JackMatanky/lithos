@@ -9,7 +9,7 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Assign the weekly calendar's titles, alias, and file name based on daily date variables.
 
 ---
@@ -38,7 +38,7 @@ tags: obsidian/templater, javascript
 ```javascript
 // TODO: Define <long_date> variable
 // TODO: Define <short_date> variable
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const full_title_name = `${long_date}`;
@@ -54,7 +54,7 @@ const file_name = `${short_date}`;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const full_title_name = `${long_date}`;
@@ -112,7 +112,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -133,7 +133,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

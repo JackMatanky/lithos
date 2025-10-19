@@ -60,7 +60,7 @@ let comment = "";
 let query = "";
 
 //-------------------------------------------------------------------
-// RELATED DIRECTORY SECTION 
+// RELATED DIRECTORY SECTION
 //-------------------------------------------------------------------
 // Outgoing Contacts
 heading = `${head_lvl(3)}Outgoing Contact Links${two_new_line}`;

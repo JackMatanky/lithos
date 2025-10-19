@@ -5,11 +5,11 @@ aliases:
   - 13 Syntax
   - templater_documentation_13_Syntax
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T15:40
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Syntax
 
@@ -27,7 +27,7 @@ A complete command using the `tp.date.now` internal function would be: `<% tp.da
 
 ### Objects Hierarchy
 
-All of Templater's functions, whether it's an internal function or a user function, are available under the `tp` object. You could say that all our functions are children of the `tp` object. To access the "child" of an object, we have to use the dot notation `.`  
+All of Templater's functions, whether it's an internal function or a user function, are available under the `tp` object. You could say that all our functions are children of the `tp` object. To access the "child" of an object, we have to use the dot notation `.`
 
 This means that a Templater function invocation will always start with `tp.<something>`
 

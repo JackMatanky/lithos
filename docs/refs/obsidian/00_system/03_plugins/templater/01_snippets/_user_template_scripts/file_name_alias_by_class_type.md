@@ -24,11 +24,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input:: Directory Path, File Class YAML Value, Type YAML Value  
-> Output:: Array  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input:: Directory Path, File Class YAML Value, Type YAML Value
+> Output:: Array
 > Description:: Return a Markdown file name and alias from a suggester filtered by directory, file class and type in the YAML metadata.
 
 ---
@@ -134,7 +134,7 @@ module.exports = file_name_alias_by_class_type;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -209,7 +209,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -230,7 +230,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

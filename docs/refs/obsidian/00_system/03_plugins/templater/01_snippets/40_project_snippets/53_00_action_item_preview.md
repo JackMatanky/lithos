@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a callout for a Before Action Item Preview.
 
 ---
@@ -39,7 +39,7 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 // Template file to include
 const before_action_item_preview = "43_action_item_preview";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // BEFORE ACTION ITEM PREVIEW
 //---------------------------------------------------------
 // Retrieve the Action Item Preview template and content
@@ -56,7 +56,7 @@ const action_item_preview = include_arr;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // BEFORE ACTION ITEM PREVIEW
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${before_action_item_preview}.md`;
@@ -105,9 +105,9 @@ const head_two = `${hash.repeat(2)}${space}`;
 const head_three = `${hash.repeat(3)}${space}`;
 const head_four = `${hash.repeat(4)}${space}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // BEFORE ACTION ITEM PREVIEW
-//--------------------------------------------------------- 
+//---------------------------------------------------------
 const three_head = `${hash.repeat(3)}${space}`;
 const heading = `${three_head}Preview${space}${two_new_line}`;
 
@@ -172,7 +172,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -193,7 +193,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

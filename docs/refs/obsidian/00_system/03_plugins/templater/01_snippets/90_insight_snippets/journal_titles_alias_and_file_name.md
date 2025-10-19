@@ -5,8 +5,8 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
-description: 
+module:
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -19,11 +19,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Assign the journal's titles and alias based on full type name, full type value, type name, type, and date.
 
 ---
@@ -38,7 +38,7 @@ tags: obsidian/templater, javascript
 // TODO: Define <type_name> variable
 // TODO: Define <type> variable
 // TODO: Define <date> variable
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // JOURNAL TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const full_title_name = `${date} ${full_type_name}`;
@@ -57,7 +57,7 @@ const file_name = `${date}_${type_value}`;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // JOURNAL TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const full_title_name = `${date} ${full_type_name}`;
@@ -114,7 +114,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -135,7 +135,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

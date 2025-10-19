@@ -1,7 +1,7 @@
 ### Preview
 
 > [!task_preview] Action Item Preview
-> 
+>
 > 1. What is the problem to solve?
 >     - **Problem**::
 > 2. What do I want?
@@ -14,7 +14,7 @@
 ### Plan
 
 > [!task_plan] Execution Plan
-> 
+>
 > - [Monkeytype](https://monkeytype.com/) Top Words at 50 WPM
 >     - [ ] Top 250 English words
 > - [Monkeytype](https://monkeytype.com/) Top Words at 50 WPM
@@ -23,7 +23,7 @@
 ### Review
 
 > [!task_review] Action Item Review
-> 
+>
 > 1. What was the outcome? How did it make me feel?
 >     - **Outcome**:: MonkeyType: Top 1000 words at max \#\# WPM.
 >     - **Feeling**::

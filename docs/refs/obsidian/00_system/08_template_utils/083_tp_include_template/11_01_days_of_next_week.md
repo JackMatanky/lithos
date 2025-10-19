@@ -1,7 +1,7 @@
-<%*  
-//-------------------------------------------------------------------  
+<%*
+//-------------------------------------------------------------------
 // FOLDER PATH VARIABLES
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 const sys_temp_include_dir = "00_system/06_template_include/";
 const cal_dir = "10_calendar";
 const cal_day_dir = "10_calendar/11_days";
@@ -63,9 +63,9 @@ const dv_colon = `${colon.repeat(2)}${space}`;
 const snake_case_fmt = (name) =>
   name.replaceAll(/(\-\s\-)|(\s)|(\-)]/g, "_").toLowerCase();
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // TEMPLATE FILES TO INCLUDE PATH VARIABLES
-//-------------------------------------------------------------------   
+//-------------------------------------------------------------------
 const buttons_table_pdev_today = "00_90_buttons_table_pdev_today";
 const buttons_table_note = "00_80_buttons_table_notes";
 const buttons_table_task_habit_today = "00_40_buttons_table_task_habit_today";
@@ -97,38 +97,38 @@ tp_include = await tp.file.include(abstract_file);
 include_arr = tp_include.toString();
 const task_habit_buttons = include_arr;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // SET THE WEEK AND NUMBER
-//-------------------------------------------------------------------  
-const date_obj_arr = [  
+//-------------------------------------------------------------------
+const date_obj_arr = [
   { key: "Current Week", value: "current" },
   { key: "Last Week", value: "last" },
   { key: "Next Week", value: "next" },
 ];
-let date_obj = await tp.system.suggester(  
+let date_obj = await tp.system.suggester(
   (item) => item.key,
   date_obj_arr,
   false,
-  "Which Week?"  
+  "Which Week?"
 );
 
 const date_value = date_obj.value;
 
 let full_date = "";
 
-if (date_value.startsWith("current")) {  
+if (date_value.startsWith("current")) {
   full_date = moment();
-} else if (date_value.startsWith("next")) {  
+} else if (date_value.startsWith("next")) {
   full_date = moment().add(1, "week");
-} else {  
+} else {
   full_date = moment().subtract(1, "week");
 }
 
 const week_number = moment(full_date).format("ww");
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // WEEKDAY CALENDAR VARIABLE
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 const sunday = moment(full_date).day(0).format("YYYY-MM-DD");
 const monday = moment(full_date).day(1).format("YYYY-MM-DD");
 const tuesday = moment(full_date).day(2).format("YYYY-MM-DD");
@@ -137,9 +137,9 @@ const thursday = moment(full_date).day(4).format("YYYY-MM-DD");
 const friday = moment(full_date).day(5).format("YYYY-MM-DD");
 const saturday = moment(full_date).day(6).format("YYYY-MM-DD");
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // DATE TYPE, MOMENT VARIABLE, AND FILE CLASS
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 const type_name = "Day";
 const type_value = type_name.toLowerCase();
 const moment_var = `${type_value}s`;
@@ -162,7 +162,7 @@ let fmatter_month_day;
 let fmatter_week_number = `week_number: ${week_number}`;
 let fmatter_weekday_name;
 let fmatter_weekday_number;
-let fmatter_metatable = `metatable: true`  
+let fmatter_metatable = `metatable: true`
 let fmatter_cssclasses = `cssclasses: [${css_class}]`;
 let fmatter_type = `type: ${type_value}`;
 let fmatter_file_class = `file_class: ${file_class}`;
@@ -175,7 +175,7 @@ let file_content;
 const directory = cal_day_dir;
 
 // WEEKDAY DATES ARRAY
-const weekday_arr = [  
+const weekday_arr = [
   sunday,
   monday,
   tuesday,
@@ -186,7 +186,7 @@ const weekday_arr = [
 ];
 
 // LOOP THROUGH WEEKDAY DATES ARRAY
-for (let i = 0; i < weekday_arr.length; i++) {  
+for (let i = 0; i < weekday_arr.length; i++) {
   file_name = weekday_arr[i];
   full_date = moment(weekday_arr[i]);
 
@@ -229,7 +229,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
 ${call_tbl_start}${year_file}${tbl_pipe}${quarter_file}${tbl_pipe}${month_file}${tbl_pipe}${week_file}${call_tbl_end}`;
 
   prev_next_date = `<< [[${prev_date}]] | [[${next_date}]] >>`;
-  
+
   const toc_title = `${call_start}[!toc]${space}${type_name}${space}[[${file_name}${hash}${full_title_name}\|Contents]]${new_line}${call_start}${new_line}`;
   const toc_section = `${call_tbl_start}[[${file_name}${hash}Journal Entries\\|Journal Entries]]${tbl_pipe}[[${file_name}${hash}Notes\\|Notes]]${tbl_pipe}[[${file_name}${hash}Library\\|Library]]${tbl_pipe}[[${file_name}${hash}Tasks and Events\\|Tasks and Events]]${call_tbl_end}${new_line}`;
   const toc_divide = `${call_tbl_start}:---------:${tbl_pipe}:---------:${tbl_pipe}:---------:${tbl_pipe}:---------:${call_tbl_end}`
@@ -262,7 +262,7 @@ ${call_tbl_start}${year_file}${tbl_pipe}${quarter_file}${tbl_pipe}${month_file}$
     end_date: "",
     md: "false",
   });
- 
+
   // DAILY PKM FILES DATAVIEW TABLE
   // TYPES: "pkm_tree", "permanent", "literature", "fleeting", "info"
   // STATUSES: "schedule", "review", "clarify", "develop", "done", "resource"
@@ -273,7 +273,7 @@ ${call_tbl_start}${year_file}${tbl_pipe}${quarter_file}${tbl_pipe}${month_file}$
     end_date: "",
     md: "false",
   });
-  
+
   const pkm_note_perm = await tp.user.dv_pkm_type_status_dates({
     type: "permanent",
     status: "",
@@ -281,7 +281,7 @@ ${call_tbl_start}${year_file}${tbl_pipe}${quarter_file}${tbl_pipe}${month_file}$
     end_date: "",
     md: "false",
   });
-  
+
   const pkm_note_lit = await tp.user.dv_pkm_type_status_dates({
     type: "literature",
     status: "",
@@ -340,7 +340,7 @@ ${call_tbl_start}${year_file}${tbl_pipe}${quarter_file}${tbl_pipe}${month_file}$
   fmatter_weekday_number = `weekday_number: ${weekday_number}`;
 
   frontmatter = `${hr_line}${new_line}${fmatter_title}${new_line}${fmatter_alias}${new_line}${fmatter_date}${new_line}${fmatter_year}${new_line}${fmatter_year_day}${new_line}${fmatter_quarter}${new_line}${fmatter_month_name}${new_line}${fmatter_month_number}${new_line}${fmatter_month_day}${new_line}${fmatter_week_number}${new_line}${fmatter_weekday_name}${new_line}${fmatter_weekday_number}${new_line}${fmatter_metatable}${new_line}${fmatter_cssclasses}${new_line}${fmatter_type}${new_line}${fmatter_file_class}${new_line}${fmatter_date_created}${new_line}${fmatter_date_modified}${new_line}${hr_line}${new_line}`;
-  
+
   file_content = `${frontmatter}
 ${hash}${space}${full_title_name}${new_line}
 ${callout}${new_line}
@@ -389,11 +389,11 @@ ${tasks_created}${new_line}
 ${hr_line}${new_line}
 `;
 
-  await tp.file.create_new(  
+  await tp.file.create_new(
     file_content,
     file_name,
     false,
-    app.vault.getAbstractFileByPath(directory)  
+    app.vault.getAbstractFileByPath(directory)
   );
 }
 %>

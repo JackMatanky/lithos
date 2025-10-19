@@ -34,9 +34,9 @@ FLATTEN filter([gotosleep, go-to-sleep], (x) => x) as ST
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

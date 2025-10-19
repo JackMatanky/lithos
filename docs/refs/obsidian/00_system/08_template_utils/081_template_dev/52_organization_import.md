@@ -194,7 +194,7 @@ for (var i = 0; i < org_obj_arr.length; i++) {
   industry_link = org_obj_arr[i].industry;
   industry_value_link = yaml_li(industry_link);
   fmatter_industry = `industry:${space}${industry_value_link}${new_line}`;
-  
+
   //-------------------------------------------------------------------
   // SET LINKEDIN SPECIALTIES
   //-------------------------------------------------------------------
@@ -267,7 +267,7 @@ for (var i = 0; i < org_obj_arr.length; i++) {
   //-------------------------------------------------------------------
   connection_value = org_obj_arr[i].connection;
   fmatter_connection = `connection:${space}${connection_value}${new_line}`;
-  
+
   //-------------------------------------------------------------------
   // SET CONNECTION SOURCE
   //-------------------------------------------------------------------

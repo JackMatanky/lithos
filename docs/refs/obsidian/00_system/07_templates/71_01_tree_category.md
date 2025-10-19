@@ -321,7 +321,7 @@ branch:
 field:
 subject:
 topic:
-subtopic: 
+subtopic:
 about: |
  <%* tR += about_value %>
 url: <%* tR += url %>
@@ -337,9 +337,9 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!<%* tR += type_value %> ] <%* tR += type_name %> Details
-> 
+>
 > - **Name**: `dv: choice(regextest("\w", this.file.frontmatter.url), elink(this.file.frontmatter.url, this.file.frontmatter.aliases[0]), this.file.frontmatter.aliases[0])`
-> 
+>
 > - **Description**: `dv: this.file.frontmatter.about`
 
 ---

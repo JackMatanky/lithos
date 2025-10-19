@@ -26,15 +26,15 @@ tags: javascript, obsidian, obsidian/dataview/string, dv/function/string
 ## Description
 
 > [!function] Function Details
-> 
-> Plugin: [[Dataview]]  
-> Language: [[JavaScript]]  
-> Module: Query Function  
-> Class: Constructor  
-> Input::  
-> Output::  
+>
+> Plugin: [[Dataview]]
+> Language: [[JavaScript]]
+> Module: Query Function
+> Class: Constructor
+> Input::
+> Output::
 > Definition:: Converts any value into a reasonable string representation.
->  
+>
 > Link: [string](https://blacksmithgu.github.io/obsidian-dataview/reference/functions/#stringany)
 
 ---
@@ -58,8 +58,8 @@ Converts any value into a "reasonable" string representation. This sometimes pro
 ## Examples
 
 ```js
-string(18) = "18" 
-string(dur(8 hours)) = "8 hours" 
+string(18) = "18"
+string(dur(8 hours)) = "8 hours"
 string(date(2021-08-15)) = "August 15th, 2021"
 ```
 
@@ -78,7 +78,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -96,7 +96,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.module AS Module,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND (file.frontmatter.file_class = "pkm_code_function")
 	AND (file.frontmatter.plugin = this.file.frontmatter.plugin)
@@ -105,7 +105,7 @@ SORT file.frontmatter.module, file.name
 
 #### By Tag
 
-<!-- Add tags in contains function as needed  -->  
+<!-- Add tags in contains function as needed  -->
 <!-- Query limit 10  -->
 
 ```dataview
@@ -114,7 +114,7 @@ TABLE WITHOUT ID
 	Definition AS Definition,
 	string(file.frontmatter.language) AS Language,
 	sort(file.etags) AS Tags
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND file.frontmatter.file_class = "pkm_code_function"
 	AND contains(file.tags, "string")
@@ -128,16 +128,16 @@ LIMIT 10
 
 #### All Function Links
 
-<!-- Excluding functions of the same module  -->  
+<!-- Excluding functions of the same module  -->
 <!-- Query limit 10  -->
 
 ```dataview
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
-	AND file.frontmatter.module != this.file.frontmatter.module 
+	AND file.frontmatter.module != this.file.frontmatter.module
 	AND file.frontmatter.file_class = "pkm_code_function"
 	AND (contains(file.outlinks, this.file.link)
 	OR contains(file.inlinks, this.file.link))

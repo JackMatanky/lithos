@@ -13,10 +13,10 @@ tags: obsidian, obsidian/templater, obsidian/templater/suggester, obsidian/api
 Link: <https://discord.com/channels/686053708261228577/875720842443649045/1089826746259476511>
 
 ```
-<%* 
-const folders = app.vault.getAllLoadedFiles().filter(i => i.children).map(folder => folder.path); 
-const choice = await tp.system.suggester(folders, folders); 
-tR += choice 
+<%*
+const folders = app.vault.getAllLoadedFiles().filter(i => i.children).map(folder => folder.path);
+const choice = await tp.system.suggester(folders, folders);
+tR += choice
 %>
 ```
 
@@ -41,11 +41,11 @@ tR += file
 <%*
 // Get all the vault's folder paths
 const all_directory_paths = app.vault.getAllLoadedFiles().filter(i => i.children).map(folder => folder.path);
-  
+
 // Filter array to only include project folder paths
 // Extract the first subdirectory name, or the project name
 const project_directories = all_directory_paths.filter(path => path.includes('40_projects/')).map(project_path => project_path.split('/')[1]);
-  
+
 // Filter array to show unique values
 let projects = [];
 project_directories.forEach((item) => {
@@ -53,7 +53,7 @@ project_directories.forEach((item) => {
     projects.push(item);
   }
 });
-  
+
 // Choose a project
 const project = await tp.system.suggester(projects, projects);
 %>

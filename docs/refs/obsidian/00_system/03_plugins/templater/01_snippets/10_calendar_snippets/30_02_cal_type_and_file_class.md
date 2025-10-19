@@ -8,7 +8,7 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Assign the daily, weekly, monthly, quarterly, or yearly calendar type, moment variable, and file class.
 
 ---
@@ -37,9 +37,9 @@ tags: obsidian/templater, javascript
 ```javascript
 // Possible type_name assignments:
 // Year, Quarter, Month, Week, Day
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // DATE TYPE, MOMENT VARIABLE, AND FILE CLASS
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const type_name = `calendar_variable`;
 const type_value = type_name.toLowerCase();
 const moment_var = `${type_value}s`;
@@ -51,9 +51,9 @@ const file_class = `cal_${type_value}`;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // DATE TYPE, MOMENT VARIABLE, AND FILE CLASS
-//---------------------------------------------------------  
+//---------------------------------------------------------
 const type_name = `Year, Quarter, Month, Week, Day`;
 const type_value = type_name.toLowerCase();
 const moment_var = `${type_value}s`;
@@ -116,7 +116,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -137,7 +137,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

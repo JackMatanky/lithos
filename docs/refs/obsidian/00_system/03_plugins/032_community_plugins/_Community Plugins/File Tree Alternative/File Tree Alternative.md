@@ -38,11 +38,11 @@ The plugin is updated quiet regularly. You can see the details of each release u
 ![](https://raw.githubusercontent.com/ozntel/file-tree-alternative/main/images/focus-out-from-folder.png)
 
 - The plugin remembers `last expanded folders` and `last focused folder` state to load for the following session in case you relaunch your vault.
-    
+
 - You can define certain `folder paths` in plugin settings to exclude from main folder list. All subfolders are going to be excluded, as well.
-    
+
 - You can turn on/off `root folder` within the file tree.
-    
+
 - You can customize the `folder icons`. Check the available options from plugin settings:
 
 ![](https://raw.githubusercontent.com/ozntel/file-tree-alternative/main/images/folder-icons.png)
@@ -52,17 +52,17 @@ The plugin is updated quiet regularly. You can see the details of each release u
 ### File List Pane Features
 
 - The plugin lists all files including the `files under sub-folders`. You can turn off this option from plugin settings if you want to see only the files under the folder you selected. You can also turn on `toggle button` from the plugin settings and it'll include an additional button (looks like an eye) to toggle `files under sub-folders`. You can also toggle viewing direct or all files under a folder.
-    
+
 - The plugin allows you to `Pin` your favorite files to the top. They are saved for the following sessions.
-    
+
 - You can define certain `file extensions` in plugin settings to exclude from listing in file explorer.
-    
+
 - You can `star`/`unstar` your files in case you have `Starred` plugin turned on.
-    
+
 - You can drop `external files` into file list to add the files into current active folder path.
-    
+
 - You can turn on `Search` feature from plugin settings to filter files with their names.
-    
+
     - You can use `all:` syntax in search box to search files from all folders rather than the active folder.
     - You can use `tag:` syntax in search box to search files with tag. It will show all files with full or partial match.
 - You can fix the buttons and the header on the top of the file list. Not all themes are compatible with this option. You might need to add custom CSS to use this option effectively:

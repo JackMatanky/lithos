@@ -11,7 +11,7 @@ const {createButton} = app.plugins.plugins["buttons"]
 dv.table(["Name", "Status", "Project", "Due Date", ""], dv.pages("#tasks")
     .sort(t => t["due-date"], 'desc')
     .where(t => t.status != "Completed")
-    .map(t => [t.file.link, t.status, t.project, t["due-date"], 
+    .map(t => [t.file.link, t.status, t.project, t["due-date"],
     createButton({app, el: this.container, args: {name: "Done!"}, clickOverride: {click: update, params: ['Status', 'Completed', t.file.path]}})])
     )
 ```

@@ -152,7 +152,7 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!<%* tR += type_value %> ] <%* tR += type_name %> Context
-> 
+>
 > |            Year            |            Quarter            |            Month            |
 > |:--------------------------:|:-----------------------------:|:---------------------------:|
 > | [[<%* tR += year_file %>]] | [[<%* tR += quarter_file %>]] | [[<%* tR += month_file %>]] |
@@ -185,7 +185,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Title,
 	file.frontmatter.date AS Date
 FROM "80_insight"
-WHERE 
+WHERE
 	contains(file.frontmatter.file_class, "journal")
 	AND date(file.frontmatter.date_created) >= date(<%* tR += date_start %>)
 	AND date(file.frontmatter.date_created) <= date(<%* tR += date_end %>)
@@ -199,7 +199,7 @@ LIST
 	rows.best_experience
 FROM "80_insight"
 FLATTEN best_experience
-WHERE 
+WHERE
 	regextest(".", best_experience)
 	AND contains(file.frontmatter.file_class, "journal")
 	AND date(file.frontmatter.date_created) >= date(<%* tR += date_start %>)
@@ -215,7 +215,7 @@ LIST
 	rows.failure
 FROM "80_insight"
 FLATTEN failure
-WHERE 
+WHERE
 	regextest(".", failure)
 	AND contains(file.frontmatter.file_class, "journal")
 	AND date(file.frontmatter.date_created) >= date(<%* tR += date_start %>)
@@ -231,7 +231,7 @@ LIST
 	rows.achievement
 FROM "80_insight"
 FLATTEN achievement
-WHERE 
+WHERE
 	regextest(".", achievement)
 	AND contains(file.frontmatter.file_class, "journal")
 	AND date(file.frontmatter.date_created) >= date(<%* tR += date_start %>)
@@ -247,7 +247,7 @@ LIST
 	rows.L.text
 FROM "80_insight"
 FLATTEN file.lists AS L
-WHERE 
+WHERE
 	(regextest("F", regexreplace(string(L.section), "(.+\>\s)|(\]\]$)", ""))
 	OR regextest("S", regexreplace(string(L.section), "(.+\>\s)|(\]\]$)", "")))
 	AND contains(file.frontmatter.type, "detachment")
@@ -265,7 +265,7 @@ LIST
 	rows.lesson_learned
 FROM "80_insight"
 FLATTEN lesson_learned
-WHERE 
+WHERE
 	regextest(".", lesson_learned)
 	AND contains(file.frontmatter.file_class, "journal")
 	AND date(file.frontmatter.date_created) >= date(<%* tR += date_start %>)
@@ -286,7 +286,7 @@ TABLE WITHOUT ID
 	file.frontmatter.subtype AS Subtype,
 	file.tags AS Tags
 FROM -"00_system/05_templates"
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_note"
 	AND contains(file.frontmatter.type, "literature")
 	AND date(file.frontmatter.date_created) >= date(<%* tR += date_start %>)
@@ -302,7 +302,7 @@ TABLE WITHOUT ID
 	file.frontmatter.subtype AS Subtype,
 	file.tags AS Tags
 FROM -"00_system/05_templates"
-WHERE 
+WHERE
 	contains(file.frontmatter.file_class, "pkm_note")
 	AND contains(file.frontmatter.type, "fleeting")
 	AND date(file.frontmatter.date_created) >= date(<%* tR += date_start %>)
@@ -324,7 +324,7 @@ TABLE WITHOUT ID
 	regexreplace(regexreplace(file.frontmatter.file_class, "pkm", ""), "_", " ") AS "File Class",
 	file.tags AS Tags
 FROM -"00_system/05_templates"
-WHERE 
+WHERE
 	file.frontmatter.file_class != "pkm_note"
 	AND contains(file.frontmatter.file_class, "pkm")
 	AND date(file.frontmatter.date_created) >= date(<%* tR += date_start %>)
@@ -343,7 +343,7 @@ TABLE WITHOUT ID
 	regexreplace(regexreplace(file.frontmatter.file_class, "pkm", ""), "_", " ") AS "File Class",
 	file.tags AS Tags
 FROM -"00_system/05_templates"
-WHERE 
+WHERE
 	file.frontmatter.file_class != "pkm_note"
 	AND contains(file.frontmatter.file_class, "pkm")
 	AND date(file.frontmatter.date_modified) >= date(<%* tR += date_start %>)
@@ -368,19 +368,19 @@ path does not include 00_system/05_templates
 ### Completed This Week
 
 ```dataview
-TABLE WITHOUT ID 
+TABLE WITHOUT ID
 	regexreplace(regexreplace(T.text, "(#task)|\[.*$", ""), "(_action_item)|(_meeting)|(_habit)|(_morning_ritual)|(_workday_startup_ritual)|(_workday_shutdown_ritual)|(_evening_ritual)", "") AS Task,
 	regexreplace(regexreplace(T.text, "(#task)|\[.*$", ""), "^[A-Za-z0-9\'\-\s]*_", "") AS Type,
 	T.completion AS Completed,
 	T.time_start AS Start,
 	T.time_end AS End,
 	T.duration_est AS Estimate,
-	(date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end) - 
+	(date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_end) -
 	date(dateformat(T.completion, "yyyy-MM-dd") + "T" + T.time_start)) AS Duration,
 	T.section AS Link
 FROM -"00_system/05_templates" AND #task
 FLATTEN file.tasks AS T
-WHERE any(file.tasks, (t) => t.completion >= date(<%* tR += date_start %>) 
+WHERE any(file.tasks, (t) => t.completion >= date(<%* tR += date_start %>)
 	AND t.completion <= date(<%* tR += date_end %>))
 SORT T.completion, T.time_start ASC
 ```

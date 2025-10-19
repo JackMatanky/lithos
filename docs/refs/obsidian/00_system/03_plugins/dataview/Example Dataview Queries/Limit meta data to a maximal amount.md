@@ -15,10 +15,10 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!info] LIMIT data command  
+> [!info] LIMIT data command
 > If you want to limit your set of **result pages**, you can use `LIMIT` for this. See the [documentation](https://blacksmithgu.github.io/obsidian-dataview/query/queries/#limit). This page concentrates on the question of how to limit meta data fields, i.e. outlinks, you get back for a page result.
 
-> [!warning] Need a unused character  
+> [!warning] Need a unused character
 > For the following code to work, you need to declare a UTF-8 character that is **not** used in your meta data value. Otherwise, you'll end up with broken data.
 
 ```dataview
@@ -51,9 +51,9 @@ LIMIT 5
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"
@@ -73,7 +73,7 @@ if (inlinksFromUseCases.length > 1) {
 	dv.span(`${header}
     > This query is part of following use cases:
     > ${list}
-    > 
+    >
 	`)
 } else if (inlinksFromUseCases.length === 1) {
 	dv.span(`${header}

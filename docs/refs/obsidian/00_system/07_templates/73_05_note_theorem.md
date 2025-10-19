@@ -431,17 +431,17 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Question]
-> 
+>
 >  `dv: split(this.file.frontmatter.about, "\n")[0]`
-> 
+>
 > `dv: split(this.file.frontmatter.about, "\n")[1]`
 
 > [!note_relation] Note Relations
-> 
+>
 > **Evidence**::
-> 
+>
 > **Step(s)**::
-> 
+>
 > **Conclusion**::
 
 ---

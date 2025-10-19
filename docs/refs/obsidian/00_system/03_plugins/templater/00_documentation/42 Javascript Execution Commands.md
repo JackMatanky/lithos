@@ -5,11 +5,11 @@ aliases:
   - 42 Javascript Execution Commands
   - templater_documentation_42_javascript_execution_commands
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T16:47
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Javascript Execution Command
 
@@ -49,13 +49,13 @@ This is a hello file !
  <%* } else { %>
 This is a normal file !
  <%* } %>
-    
+
  <%* if (tp.frontmatter.type === "seedling") { %>
 This is a seedling file !
  <%* } else { %>
 This is a normal file !
  <%* } %>
-    
+
  <%* if (tp.file.tags.contains("#todo")) { %>
 This is a todo file !
  <%* } else { %>
@@ -70,6 +70,6 @@ function log(msg) {
 }
 %>
 <%* log("Title: " + tp.file.title) %>
-    
+
 <%* tR += tp.file.content.replace(/stuff/, "things"); %>
 ```

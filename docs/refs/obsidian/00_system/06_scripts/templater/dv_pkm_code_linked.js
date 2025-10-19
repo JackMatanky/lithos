@@ -83,7 +83,7 @@ const code_lang_sub = `choice(!contains(${yaml_subtopic}[0], "null"),
 // File type and subtype
 const code_type = `choice(${yaml_subtype} = "regex", "RegEx",
     choice(${yaml_subtype} = "pass_through_rawsql", "Pass-Through RAWSQL",
-    choice(${yaml_subtype} != "null", 
+    choice(${yaml_subtype} != "null",
     join(map(split(${yaml_subtype}, "_"),
       (x) => upper(substring(x, 0, 1)) + substring(x, 1)), " "), "")))
     + " " +
@@ -94,7 +94,7 @@ const code_type = `choice(${yaml_subtype} = "regex", "RegEx",
 // File subtype
 const code_subtype = `choice(${yaml_subtype} = "regex", "RegEx",
     choice(${yaml_subtype} = "pass_through_rawsql", "Pass-Through RAWSQL",
-    choice(${yaml_subtype} != "null", 
+    choice(${yaml_subtype} != "null",
     join(map(split(${yaml_subtype}, "_"),
       (x) => upper(substring(x, 0, 1)) + substring(x, 1)), " "), "")))
     AS Subtype`;

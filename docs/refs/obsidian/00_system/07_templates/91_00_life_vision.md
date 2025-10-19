@@ -173,7 +173,7 @@ if (project_value != "null") {
 };
 const parent_task_value_link = yaml_li(parent_task_link);
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // PDEV JOURNAL INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${pdev_journal_info_callout}.md`;
@@ -224,7 +224,7 @@ tags:
 ---
 
 > [!vision] Life Vision
-> 
+>
 > A life vision list is a collection of statements that describe your ideal life and what you want to achieve in various aspects of it. It can help you clarify your values, set your goals, and align your actions with your purpose. Writing a life vision list can be a creative and inspiring process, but it can also be challenging and overwhelming. Here are some steps you can follow to write your own life vision list:
 > - Start with free writing. Write down whatever comes to your mind when you think about your life vision. Don’t worry about grammar, structure, or coherence. Just let your thoughts flow and capture them on paper or on a digital device.
 > - Review your free writing and identify the main themes or categories that emerge. Some common categories are personal identity, companionship, family, personal growth, career, networks, friends and colleagues, recreation and renewal, spiritual growth, financial stability, health and fitness, and personal legacy. You can use these categories as a guide or create your own based on your free writing.
@@ -264,7 +264,7 @@ tags:
 	- How do you have fun?
 	- Describe your dream vacation
 
-1. Spiritual Growth 
+1. Spiritual Growth
 	- What steps will you take in order to live more authentically?
 	- How are you giving back?
 	- Do you set aside one day each week to focus on your spiritual growth and development?
@@ -272,7 +272,7 @@ tags:
 
 1. Financial Stability
 	- What are your immediate financial needs and goals?
-	- Do you have a workable budget? Does it need to be revised? 
+	- Do you have a workable budget? Does it need to be revised?
 	- Describe your retirement plan
 	- Describe your saving and investment plan
 
@@ -283,7 +283,7 @@ tags:
 
 1. Personal Legacy
 	- How do you want to be remembered?
-	- What kind of inheritance do you want to leave your children?	
+	- What kind of inheritance do you want to leave your children?
 	- How will the world know you were here? (What is the footprint you want to leave behind?)
 
 ## Interpersonal

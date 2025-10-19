@@ -5,11 +5,11 @@ aliases:
   - 19 Examples
   - dataview_documentation_19_examples
 application: dataview
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-09T18:23
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Examples](https://blacksmithgu.github.io/obsidian-dataview/resources/examples/)
 
@@ -47,7 +47,7 @@ List games which are MOBAs or CRPGs.
 
 ```sql
 ```dataview
-LIST 
+LIST
 FROM #games/mobas OR #games/crpg
 ```
 
@@ -64,7 +64,7 @@ List all tasks in un-completed projects:
 
 ```sql
 ```dataview
-TASK 
+TASK
 FROM "dataview"
 ```
 
@@ -110,7 +110,7 @@ List all files which have a date in their title (of the form `yyyy-mm-dd`), and 
 
 ```sql
 ```dataview
-LIST file.day 
+LIST file.day
 WHERE file.day
 SORT file.day DESC
 ```

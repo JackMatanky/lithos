@@ -13,7 +13,7 @@ date_modified: 2023-10-25T16:22
 
 # Render a Progress bar
 
-pagesRead:: 42  
+pagesRead:: 42
 totalPages:: 130
 
 ## Basic
@@ -41,12 +41,12 @@ TABLE pagesRead, totalPages, "<progress value='" + round(100*pagesRead/totalPage
 Thanks to Jillard and mnvwvnm!
 
 ```dataview
-TABLE pagesRead, totalPages, 
+TABLE pagesRead, totalPages,
 
-"<div style='border-style:solid; border-width:1px; border-color:#AAAAAA; display:flex;'>" + 
+"<div style='border-style:solid; border-width:1px; border-color:#AAAAAA; display:flex;'>" +
 "<div align='center' style='padding:5px; min-width:10px; background-color:" +
 	choice(percent < 50, "#d5763f", "#a8c373") + "; width:" +
-	percent + "%; color:black'>" + 
+	percent + "%; color:black'>" +
 choice(percent < 30, " </div><div style='padding:5px;'>", "") +
 percent + "%</div></div>" AS Progress
 
@@ -58,7 +58,7 @@ FLATTEN round(100*pagesRead/totalPages) as percent
 
 Also usable in tables, if put in an inline query on the source file.
 
-> [!attention]  
+> [!attention]
 > For this to work, you need **avoid** using `dv.current()` in the source files. Using `dv.current()`, you would always see the progress of the *current* file. Instead, give the explicit file, i.e. `dv.page("2022-01-03")` - have a look at the example data!
 
 ```dataview
@@ -77,19 +77,19 @@ WHERE task-completion
 
 Thanks to [Dovos!](https://discord.com/channels/686053708261228577/1014259487445622855/1018118073615650877)
 
-**Over the complete vault for all tasks that contains "priority::"  
+**Over the complete vault for all tasks that contains "priority::"
 `$= const valToSearch= "priority::"; const value = Math.round(((dv.pages().file.tasks.where(t => t.completed).where(t => t.text.includes(valToSearch)).length) / (dv.pages().file.tasks).where(t => t.text.includes(valToSearch)).length) * 100); "<progress value='" + value + "' max='100'></progress>" + "<span style='font-size:smaller;color:var(--text-muted)'> " + value + "% &nbsp;| &nbsp;" + (dv.pages().file.tasks.where(t => t.text.includes(valToSearch)).length - dv.pages().file.tasks.where(t => t.completed).where(t => t.text.includes(valToSearch)).length) + " left</span>"`
 
-**All tasks of a specific file**  
+**All tasks of a specific file**
 `$= const tasks = dv.page("10 Example Data/projects/project_9").file.tasks; const value = Math.round(tasks.where(t => t.completed).length / tasks.length * 100); "<progress value='" + value + "' max='100'></progress>" + "<span style='font-size:smaller;color:var(--text-muted)'> " + value + "% &nbsp;| &nbsp;" + (tasks.length - tasks.where(t => t.completed).length) + " left</span>"`
 
 ---
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

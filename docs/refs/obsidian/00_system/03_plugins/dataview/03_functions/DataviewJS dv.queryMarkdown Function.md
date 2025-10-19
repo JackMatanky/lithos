@@ -26,15 +26,15 @@ tags: javascript, obsidian, obsidian/dataview/dataviewjs/querymarkdown, dvjs/fun
 ## Description
 
 > [!function] Function Details
-> 
-> Plugin: [[Dataview]]  
-> Language: [[JavaScript]]  
-> Module: DataviewJS  
-> Class: Query Evaluation  
-> Input::  
-> Output::  
+>
+> Plugin: [[Dataview]]
+> Language: [[JavaScript]]
+> Module: DataviewJS
+> Class: Query Evaluation
+> Input::
+> Output::
 > Definition:: Execute a Dataview query and return the results rendered in Markdown.
->  
+>
 > Link: [dv.queryMarkdown](https://blacksmithgu.github.io/obsidian-dataview/api/code-reference/#dvquerymarkdownsource-file-settings)
 
 ---
@@ -80,7 +80,7 @@ TABLE WITHOUT ID
 	Description AS Description,
 	file.etags AS Tags
 FROM -"00_system/05_templates"
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -97,7 +97,7 @@ LIMIT 10
 
 #### By Tag
 
-<!-- Add tags in contains function as needed  -->  
+<!-- Add tags in contains function as needed  -->
 <!-- Query limit 10  -->
 
 ```dataview
@@ -107,7 +107,7 @@ TABLE WITHOUT ID
 	string(file.frontmatter.language) AS Language,
 	sort(file.etags) AS Tags
 FROM -"00_system/05_templates"
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND contains(file.tags, "table")
 	AND (file.frontmatter.file_class = "pkm_code_function")
@@ -124,7 +124,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.module AS Module,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND regextest("\w", file.frontmatter.plugin)
 	AND (file.frontmatter.plugin = this.file.frontmatter.plugin)
@@ -135,16 +135,16 @@ LIMIT 10
 
 #### All Related Function
 
-<!-- Excluding functions of the same plugin  -->  
+<!-- Excluding functions of the same plugin  -->
 <!-- Query limit 10  -->
 
 ```dataview
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	string(file.frontmatter.language) AS Language,
-	Definition AS Definition	
+	Definition AS Definition
 FROM -"00_system/05_templates"
-WHERE 
+WHERE
 	file.name != this.file.name
 	AND (contains(file.outlinks, this.file.link)
 	OR contains(file.inlinks, this.file.link))

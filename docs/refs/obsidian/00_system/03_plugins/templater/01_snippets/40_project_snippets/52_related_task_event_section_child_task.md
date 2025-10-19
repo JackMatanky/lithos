@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a child task's related tasks and events section formatted with headings and tables.
 
 ---
@@ -42,7 +42,7 @@ const related_sect_task_child = "142_00_related_sect_task_child";
 //---------------------------------------------------------
 // RELATED TASKS AND EVENTS SECTION FOR CHILD TASKS
 //---------------------------------------------------------
-// Retrieve the Related Tasks and Events Section 
+// Retrieve the Related Tasks and Events Section
 // for Child Tasks template and content
 temp_file_path = `${sys_temp_include_dir}${related_sect_task_child}.md`;
 abstract_file = await app.vault.getAbstractFileByPath(temp_file_path);
@@ -55,7 +55,7 @@ const related_task_event_section = include_arr;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -250,7 +250,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -273,7 +273,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

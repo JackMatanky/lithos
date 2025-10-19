@@ -303,7 +303,7 @@ const ritual_name = full_ritual_name
 const ritual_value = ritual_name.replaceAll(/\s/g, "_").toLowerCase();
 const ritual_link = `[[${short_date_value}_${ritual_value}\\|${full_ritual_name}]]`;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // CHILD TASK INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${child_task_info_callout}.md`;
@@ -360,8 +360,8 @@ tags:
 
 ## <%* tR += type_name %>
 
-> [!<%* tR += context_value %> ] Tomorrow's <%* tR += context_name %> 
-> 
+> [!<%* tR += context_value %> ] Tomorrow's <%* tR += context_name %>
+>
 > | <%* tR += context_name %> | Link |
 > |:-------------------------------- |:----------------------------- |
 > | `BUTTON[button-habit-tomorrow]` | <%* tR += habit_link %> |
@@ -391,7 +391,7 @@ tags:
 ---
 
 > [!<%* tR += work_start_type %> ] Today's Workday Shutdown Rituals
-> 
+>
 > | `BUTTON[button-work-shut-today]` | <%* tR += ritual_link %> |
 > | -------- | ------- |
 

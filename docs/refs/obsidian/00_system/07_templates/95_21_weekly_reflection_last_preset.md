@@ -166,7 +166,7 @@ const parent_task_name = "Weekly Reviews";
 const parent_task_link = `[[${parent_task_value}|${parent_task_name}]]`;
 const parent_task_value_link = yaml_li(parent_task_link);
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // PDEV JOURNAL INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${pdev_journal_info_callout}.md`;
@@ -222,7 +222,7 @@ tags:
 ### What Happened Last Week?
 
 > [!definition] Last Week's Experiences
-> 
+>
 > 1. Write key points from the week's recollections.
 > 2. Write insights from trends arising from the above key points.
 
@@ -249,7 +249,7 @@ tags:
 ### What Are the Best Experience From Last Week?
 
 > [!definition] Last Week's Best Experiences
-> 
+>
 > 1. Write key points from the week's best experiences.
 > 2. Write insights from trends arising from the above key points.
 
@@ -276,7 +276,7 @@ tags:
 ### What Are My Achievements From Last Week?
 
 > [!definition] Last Week's Achievements
-> 
+>
 > 1. Write key points from the week's achievement.
 > 2. Write insights from trends arising from the above key points.
 
@@ -303,7 +303,7 @@ tags:
 ### For What Am I Grateful From Last Week?
 
 > [!definition] Last Week's Gratitude
-> 
+>
 > 1. Write key points from the week's gratitude and self gratitude.
 > 2. Write insights from trends arising from the above key points.
 
@@ -330,7 +330,7 @@ tags:
 ### What Unplanned Occurrences Happened Last Week?
 
 > [!definition] Last Week's Bad Experiences
-> 
+>
 > 1. Write key points from the week's blindspots and detachments.
 > 2. Write insights from trends arising from the above key points.
 
@@ -357,7 +357,7 @@ tags:
 ### From What Did I Detach Last Week?
 
 > [!definition] Last Week's Detachment
-> 
+>
 > 1. Write key points from the week's detachments.
 > 2. Write insights from trends arising from the above key points.
 
@@ -391,7 +391,7 @@ tags:
 ### What Did I Learn Last Week?
 
 > [!definition] Last Week's Lessons Learned
-> 
+>
 > 1. Write key points from the week's lessons learned.
 > 2. Write insights from trends arising from the above key points and from the insights from above.
 

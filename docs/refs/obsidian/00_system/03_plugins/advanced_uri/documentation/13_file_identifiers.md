@@ -15,7 +15,7 @@ There are multiple ways to identify a file:
 - [Daily note](#daily-note)
 - [Key in frontmatter](#key-in-frontmatter)
 
-> [!caution]  
+> [!caution]
 > Make sure your values are properly [[12 Encoding|encoded]].
 
 ## File Path
@@ -46,10 +46,10 @@ There are multiple ways to identify a file:
 - Use case: Some users prefer navigating to specific notes per UUID instead of the file path to be able to rename these files, but to keep the link still working.
 - Note: By enabling that option in the setting, every generated command with the `filepath` parameter is replaced with the `uid` parameter. The uid is either read from the frontmatter or generated and then written to the frontmatter.
 
-> [!info]  
+> [!info]
 > [Navigation](../actions/navigation.md) with `uid` is always supported and doesn't need the setting to be enabled.
 
-> [!info]  
+> [!info]
 > By specifying `uid` and `filepath` it creates a new file, if no file with `uid` exists, at `filepath` and writes `uid` to the frontmatter.
 
 ## Examples

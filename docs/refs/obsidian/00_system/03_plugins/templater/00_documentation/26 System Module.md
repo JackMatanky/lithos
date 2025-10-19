@@ -5,11 +5,11 @@ aliases:
   - 26 System Module
   - templater_documentation_26_system_module
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T15:45
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # System Module
 
@@ -36,11 +36,11 @@ Spawns a prompt modal and returns the user's input.
 #### Arguments
 
 - `default_value`: A default value for the input field
-    
+
 - `multiline`: If set to true, the input field will be a multiline text area
-    
+
 - `prompt_text`: Text placed above the input field
-    
+
 - `throw_on_cancel`: Throws an error if the prompt is canceled, instead of returning a `null` value
 
 ### [[tp.system.suggester Templater Function]]
@@ -56,13 +56,13 @@ tp.system.suggester(text_items: string[] ⎮ ((item: T) => string), Items: T[], 
 #### Arguments
 
 - `items`: Array containing the values of each item in the correct order.
-    
+
 - `limit`: Limit the number of items rendered at once (useful to improve performance when displaying large lists)
-    
+
 - `placeholder`: Placeholder string of the prompt
-    
+
 - `text_items`: Array of strings representing the text that will be displayed for each item in the suggester prompt. This can also be a function that maps an item to its text representation.
-    
+
 - `throw_on_cancel`: Throws an error if the prompt is canceled, instead of returning a `null` value
 
 ## Examples

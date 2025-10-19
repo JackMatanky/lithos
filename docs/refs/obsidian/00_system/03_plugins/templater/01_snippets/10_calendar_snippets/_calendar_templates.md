@@ -6,7 +6,7 @@ aliases:
   - calendar_templates
 date_created: 2023-06-21T20:32
 date_modified: 2023-10-25T16:23
-tags: 
+tags:
 ---
 # Calendar Templates
 

@@ -9,7 +9,7 @@ plugin:
   - dataview
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -22,11 +22,11 @@ tags: obsidian/templater, obsidian/dataview, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]], [[Dataview]]  
-> Language: [[JavaScript]]  
-> Input:: Directory Path  
-> Output:: Dataview Table  
+>
+> Plugin: [[Templater]], [[Dataview]]
+> Language: [[JavaScript]]
+> Input:: Directory Path
+> Output:: Dataview Table
 > Description:: Return a Dataview table of remaining project tasks.
 
 ---
@@ -50,41 +50,41 @@ const task_tag_regex = `(#task)`;
 const task_type_regex = `(action_item|meeting|habit|morning_ritual|workday_startup_ritual|workday_shutdown_ritual|evening_ritual)\\s*`;
 const inline_field_regex = `\\[.*$`;
 const task_title_regex = `^[A-Za-z0-9;:\\'\\s\\-]*_`;
-  
+
 // Remaining task code blocks
 const remaining_tasks = `${three_backtick}dataview
-TABLE WITHOUT ID 
-	link(T.section, 
+TABLE WITHOUT ID
+	link(T.section,
 		regexreplace(
-			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""), 
+			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""),
 		"_$", "")) AS Task,
-	choice(contains(T.text, "_action_item"), 
-		"🔨Task", 
-		choice(contains(T.text, "_meeting"), 
-			"🤝Meeting", 
-			choice(contains(T.text, "_habit"), 
-				"🤖Habit", 
-				choice(contains(T.text, "_morning_ritual"), 
-					"🍵Rit.", 
-					choice(contains(T.text, "_workday_startup_ritual"), 
-						"🌇Rit.", 
-						choice(contains(T.text, "_workday_shutdown_ritual"), 
-							"🌆Rit.", 
+	choice(contains(T.text, "_action_item"),
+		"🔨Task",
+		choice(contains(T.text, "_meeting"),
+			"🤝Meeting",
+			choice(contains(T.text, "_habit"),
+				"🤖Habit",
+				choice(contains(T.text, "_morning_ritual"),
+					"🍵Rit.",
+					choice(contains(T.text, "_workday_startup_ritual"),
+						"🌇Rit.",
+						choice(contains(T.text, "_workday_shutdown_ritual"),
+							"🌆Rit.",
 							"🛌Rit.")))))) AS Type,
 	T.due,
 	T.time_start AS Start,
 	T.time_end AS End,
 	T.duration_est + " min" AS Estimate
-FROM 
-	#task 
+FROM
+	#task
 	AND "${directory}"
-FLATTEN 
+FLATTEN
 	file.tasks AS T
-WHERE 
-	any(file.tasks, (t) => 
+WHERE
+	any(file.tasks, (t) =>
 		! t.completed)
 		AND t.status != "-")
-SORT 
+SORT
 	T.due,
 	T.time_start ASC
 ${three_backtick}`;
@@ -110,38 +110,38 @@ const task_title_regex = `^[A-Za-z0-9;:\\'\\s\\-]*_`;
 
 // Remaining task code blocks
 const remaining_tasks = `${three_backtick}dataview
-TABLE WITHOUT ID 
-	link(T.section, 
+TABLE WITHOUT ID
+	link(T.section,
 		regexreplace(
-			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""), 
+			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""),
 		"_$", "")) AS Task,
-	choice(contains(T.text, "_action_item"), 
-		"🔨Task", 
-		choice(contains(T.text, "_meeting"), 
-			"🤝Meeting", 
-			choice(contains(T.text, "_habit"), 
-				"🤖Habit", 
-				choice(contains(T.text, "_morning_ritual"), 
-					"🍵Rit.", 
-					choice(contains(T.text, "_workday_startup_ritual"), 
-						"🌇Rit.", 
-						choice(contains(T.text, "_workday_shutdown_ritual"), 
-							"🌆Rit.", 
+	choice(contains(T.text, "_action_item"),
+		"🔨Task",
+		choice(contains(T.text, "_meeting"),
+			"🤝Meeting",
+			choice(contains(T.text, "_habit"),
+				"🤖Habit",
+				choice(contains(T.text, "_morning_ritual"),
+					"🍵Rit.",
+					choice(contains(T.text, "_workday_startup_ritual"),
+						"🌇Rit.",
+						choice(contains(T.text, "_workday_shutdown_ritual"),
+							"🌆Rit.",
 							"🛌Rit.")))))) AS Type,
 	T.due,
 	T.time_start AS Start,
 	T.time_end AS End,
 	T.duration_est + " min" AS Estimate
-FROM 
-	#task 
+FROM
+	#task
 	AND "${directory}"
-FLATTEN 
+FLATTEN
 	file.tasks AS T
-WHERE 
-	any(file.tasks, (t) => 
+WHERE
+	any(file.tasks, (t) =>
 		! t.completed)
 		AND t.status != "-")
-SORT 
+SORT
 	T.due,
 	T.time_start ASC
 ${three_backtick}`;
@@ -184,7 +184,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -205,7 +205,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

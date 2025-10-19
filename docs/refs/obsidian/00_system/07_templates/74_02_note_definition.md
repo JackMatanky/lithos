@@ -406,11 +406,11 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Definition]
-> 
+>
 > - **Term**: `dv: choice(regextest("\w", this.file.frontmatter.url), elink(this.file.frontmatter.url, this.file.frontmatter.aliases[0]), this.file.frontmatter.aliases[0])`
-> 
+>
 >  `dv: split(this.file.frontmatter.about, "\n")[0]`
-> 
+>
 > `dv: split(this.file.frontmatter.about, "\n")[1]`
 
 ---

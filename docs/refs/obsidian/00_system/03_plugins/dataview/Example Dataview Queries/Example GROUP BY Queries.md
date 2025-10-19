@@ -13,10 +13,10 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!info] Effect of `GROUP BY`  
-> Initially, a dataview results yields the pages you receive from your `FROM` and `WHERE` arguments as results - one "row", one result item, per note. When a `GROUP BY` is applied to a Query, you **bundle up** all pages after the **field you're grouping by**. This has two implications:  
-> First, after a `GROUP BY`, you have as many results as the field you grouped by has values.  
-> Secondly, the result pages are not your "first level" anymore, but the group is. When listing out a grouped query, you will not receive the files anymore, but the groups.  
+> [!info] Effect of `GROUP BY`
+> Initially, a dataview results yields the pages you receive from your `FROM` and `WHERE` arguments as results - one "row", one result item, per note. When a `GROUP BY` is applied to a Query, you **bundle up** all pages after the **field you're grouping by**. This has two implications:
+> First, after a `GROUP BY`, you have as many results as the field you grouped by has values.
+> Secondly, the result pages are not your "first level" anymore, but the group is. When listing out a grouped query, you will not receive the files anymore, but the groups.
 > [Documentation](https://blacksmithgu.github.io/obsidian-dataview/query/literals/)
 
 ```
@@ -26,10 +26,10 @@ FROM "10 Example Data/books"
 GROUP BY author
 ```
 
-> [!hint] Working with grouped pages  
-> A grouped result list is made up of result items that look like this:  
-> `Key`: `Value` of the field you used in GROUP BY  
-> `rows`: All pages that match `Key`  
+> [!hint] Working with grouped pages
+> A grouped result list is made up of result items that look like this:
+> `Key`: `Value` of the field you used in GROUP BY
+> `rows`: All pages that match `Key`
 > Before grouping, every note was a result item and file.link was the `Key`. After grouping, your file information are bundled up under the group value as key under the field `rows`. That means you need to use `rows` as a prefix when listing information.
 
 ```
@@ -43,10 +43,10 @@ GROUP BY author
 
 ### When Pages Match Multiple Groups
 
-> [!info] Duplication of entries  
+> [!info] Duplication of entries
 > If a page matches multiple groups, dataview will duplicate the page for you to put it in every matching group. Therefor, pages can show up multiple times in a grouped result list.
 
-> [!question] Why do we need to use `FLATTEN` here first?  
+> [!question] Why do we need to use `FLATTEN` here first?
 > In order to get decent groups, we need to `FLATTEN` the multi value field `genres` first. Read more about that in [[Example FLATTEN Queries#Group by a flattened field]]
 
 ```
@@ -59,7 +59,7 @@ GROUP BY genres
 
 ### Use a Calculation as a Group
 
-> [!info]  
+> [!info]
 > It's also possible to use a calculation as a group, not only a plain field.
 
 ```
@@ -81,27 +81,27 @@ WHERE progress > 50 AND progress < 100
 
 ### Group by Literals to Trim down Your Result to Exactly One Result
 
-> [!info]  
-> Beside calculations and fields, you can use a [literal](https://blacksmithgu.github.io/obsidian-dataview/query/literals/) - a fixed value - as a group. This will always result into **one group** and can be useful in certain scenarios, i.e. if you want to calculate a sum or average of your data.  
+> [!info]
+> Beside calculations and fields, you can use a [literal](https://blacksmithgu.github.io/obsidian-dataview/query/literals/) - a fixed value - as a group. This will always result into **one group** and can be useful in certain scenarios, i.e. if you want to calculate a sum or average of your data.
 > The literal itself is used as the group name, but doesn't matter otherwise. You can use it to declare a senseful prefix or omit it completely by using `WITHOUT ID`.
 
 ```
 ``dataview
-LIST length(rows) 
+LIST length(rows)
 FROM "10 Example Data/books"
 GROUP BY "Total Books in Obsidian"
 ```
 
-> [!hint] More Examples  
+> [!hint] More Examples
 > Do you want to see more examples how `GROUP BY` can be used? Head over to [[Queries by Data Command#GROUPBY]] to see all queries in this vault that use `GROUP BY`.
 
 ---
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

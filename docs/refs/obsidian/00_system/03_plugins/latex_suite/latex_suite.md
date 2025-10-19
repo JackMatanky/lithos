@@ -92,7 +92,7 @@ For example, "\dot{x}^{2} + \dot{y}^{2}" will be displayed as "ẋ² + ẏ²".
 
 To reveal the LaTeX syntax, move your cursor over it.
 
-![conceal demo 2](https://raw.githubusercontent.com/artisticat1/obsidian-latex-suite/main/gifs/conceal.gif)  
+![conceal demo 2](https://raw.githubusercontent.com/artisticat1/obsidian-latex-suite/main/gifs/conceal.gif)
 ![conceal demo](https://raw.githubusercontent.com/artisticat1/obsidian-latex-suite/main/gifs/conceal.png)
 
 ### Tabout
@@ -194,8 +194,8 @@ For examples and more details on writing snippets, including **regex** snippets 
 
 You can [view snippets written by others and share your own snippets here](https://github.com/artisticat1/obsidian-latex-suite/discussions/50).
 
-> [!WARNING]  
-> Snippet files are interpreted as JavaScript and can execute arbitrary code.  
+> [!WARNING]
+> Snippet files are interpreted as JavaScript and can execute arbitrary code.
 > Always be careful with snippets shared from others to avoid running malicious code.
 
 ## Cheatsheet
@@ -250,7 +250,7 @@ When running a snippet that **moves the cursor inside brackets {}, press <kbd>Ta
 | @o      | \\omega      |         |             |
 | ome     | \\omega      |         |             |
 
-For Greek letters with short names (2-3 characters), just type their name,  
+For Greek letters with short names (2-3 characters), just type their name,
 e.g. "pi" → "\\pi".
 
 ## Acknowledgements

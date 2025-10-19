@@ -15,26 +15,26 @@ date_modified: 2023-10-25T16:22
 
 ![[What is#^dv-view]]
 
-> [!example] Sources  
+> [!example] Sources
 > You'll find the sources of this dv.view snippet under `00 Meta/dataview_views/tagcloud`. It expects the values you want to display as an array in the second argument.
 
 ```dataviewjs
-await dv.view("00 Meta/dataview_views/tagcloud", 
+await dv.view("00 Meta/dataview_views/tagcloud",
 	{
 		values: dv.pages('"10 Example Data/dailys"').where(p => p.person).person
 	})
 ```
 
-> [!info] Usage in the dataview example vault  
+> [!info] Usage in the dataview example vault
 > This query is used to render the [[Topic Overview]]!
 
 ---
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

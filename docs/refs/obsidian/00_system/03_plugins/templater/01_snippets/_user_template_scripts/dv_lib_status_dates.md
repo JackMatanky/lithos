@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a Dataview table of content completed, created between two dates, created between two dates or on a specific date, with undetermined status, or active content.
 
 ---
@@ -52,18 +52,18 @@ const md_title_link = `"[[" + file.name + "\|" + ${alias} + "]]" AS Title`;
 
 // File type
 const yaml_type = `file.frontmatter.type`;
-const file_type = `choice(${yaml_type} = "book", "📚Book", 
-	choice(${yaml_type} = "book_chapter", "📑Book Chapter", 
-	choice(${yaml_type} = "journal", "📜️Journal", 
-	choice(${yaml_type} = "report", "📈Report", 
-	choice(${yaml_type} = "news", "🗞️News", 
-	choice(${yaml_type} = "magazine", "📰️Magazine", 
-	choice(${yaml_type} = "webpage", "🌐Webpage", 
-	choice(${yaml_type} = "blog", "💻Blog", 
-	choice(${yaml_type} = "video", "🎥️Video", 
-	choice(${yaml_type} = "youtube", "▶YouTube", 
-	choice(${yaml_type} = "documentary", "🖼️Documentary", 
-	choice(${yaml_type} = "audio", "🔉Audio", 
+const file_type = `choice(${yaml_type} = "book", "📚Book",
+	choice(${yaml_type} = "book_chapter", "📑Book Chapter",
+	choice(${yaml_type} = "journal", "📜️Journal",
+	choice(${yaml_type} = "report", "📈Report",
+	choice(${yaml_type} = "news", "🗞️News",
+	choice(${yaml_type} = "magazine", "📰️Magazine",
+	choice(${yaml_type} = "webpage", "🌐Webpage",
+	choice(${yaml_type} = "blog", "💻Blog",
+	choice(${yaml_type} = "video", "🎥️Video",
+	choice(${yaml_type} = "youtube", "▶YouTube",
+	choice(${yaml_type} = "documentary", "🖼️Documentary",
+	choice(${yaml_type} = "audio", "🔉Audio",
 	choice(${yaml_type} = "podcast", "🎧️Podcast", "📃Documentation")))))))))))))
 	AS Type`;
 
@@ -108,9 +108,9 @@ const resource_filter = `contains(${yaml_status}, "resource")`;
 // SECT: >>>>> DATA SORTING <<<<<
 //---------------------------------------------------------
 const lib_status_sort = `choice(${yaml_status} = "done", 1,
-	choice(${yaml_status} = "in_progress", 2, 
-	choice(${yaml_status} = "to_do", 3, 
-	choice(${yaml_status} = "schedule", 4, 
+	choice(${yaml_status} = "in_progress", 2,
+	choice(${yaml_status} = "to_do", 3,
+	choice(${yaml_status} = "schedule", 4,
 	choice(${yaml_status} = "resource", 5,
 	choice(${yaml_status} = "on_hold", 6, 7))))))`;
 
@@ -159,7 +159,7 @@ async function dv_lib_status_dates({
     filter = `date(${date_field}) = date(${start_date_arg})`;
   } else {
     // BETWEEN two dates
-    filter = `date(${date_field}) >= date(${start_date_arg}) 
+    filter = `date(${date_field}) >= date(${start_date_arg})
     AND date(${date_field}) <= date(${end_date_arg})`;
   }
 
@@ -222,7 +222,7 @@ module.exports = dv_lib_status_dates;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -320,7 +320,7 @@ const week_lib_undetermined = await tp.user.dv_lib_status_dates({
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_lib_status_dates.js]]
 
@@ -343,7 +343,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -364,7 +364,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -29,9 +29,9 @@ reference: [SORT](https://blacksmithgu.github.io/obsidian-dataview/queries/data-
 
 ## Description
 
-> [!info]  
-> Plugin: Dataview  
-> Module: Data Commands  
+> [!info]
+> Plugin: Dataview
+> Module: Data Commands
 > Definition:: Sorts all results by one or more fields.
 
 ## Syntax

@@ -26,7 +26,7 @@ I tried the solution proposed by [dmantula](https://github.com/Pseudonium/Obsidi
 
 > What did I do to fix the issue:
 > 1. changed my note types and fields so that they don't have any special characters other than dashes.
-> 2. Uninstalled and installed the plugin from scratch, synchronized everything again.  
+> 2. Uninstalled and installed the plugin from scratch, synchronized everything again.
 > And it worked!
 
 However, this solution did not work in my case.

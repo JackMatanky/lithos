@@ -1,13 +1,13 @@
 <%*
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // SET NOTE STATUS
-//-------------------------------------------------------------------  
-const status_obj_arr = [  
-  { key: "🌱️Review", value: "review" },  
-  { key: "🌿️Clarify", value: "clarify" },  
-  { key: "🪴Develop", value: "develop" },  
-  { key: "🌳Permanent", value: "permanent" },  
-  { key: "🗃️Resource", value: "resource" },  
+//-------------------------------------------------------------------
+const status_obj_arr = [
+  { key: "🌱️Review", value: "review" },
+  { key: "🌿️Clarify", value: "clarify" },
+  { key: "🪴Develop", value: "develop" },
+  { key: "🌳Permanent", value: "permanent" },
+  { key: "🗃️Resource", value: "resource" },
 ];
 
 const status_obj = await tp.system.suggester(

@@ -22,11 +22,11 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester, obsidian/tp/
 # Organization File Name and Title Suggester
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output:: A basename of the chosen organization file  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output:: A basename of the chosen organization file
 > Description:: Return an organization's file name and the organization's main title from `alias[0]`.
 
 ---
@@ -158,9 +158,9 @@ tR += value_link;
 ##### Previous Referenced Template
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET ORGANIZATION FILE NAME AND ALIAS
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // Organization Files Directory
 const organizations_dir = "52_organizations/";
 
@@ -177,7 +177,7 @@ let organization_name = org_obj.key;
 
 if (organization_value.includes("_user_input")) {
   organization_name = await tp.system.prompt(
-    "Organization?",  
+    "Organization?",
     "",
     false,
     false
@@ -266,7 +266,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -290,7 +290,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

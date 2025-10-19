@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Set the task status name for metadata and status symbol for the checkbox.
 
 ---
@@ -35,11 +35,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 
 <!-- Add the full code including explanatory comments  -->
 
-```javascript 
+```javascript
 // Template file to include
 const task_status = `50_task_status`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET TASK STATUS AND SYMBOL
 //---------------------------------------------------------
 // Retrieve the Task Status template and content
@@ -55,11 +55,11 @@ const status_symbol = include_arr[2];
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET TASK STATUS AND SYMBOL
 //---------------------------------------------------------
 // Retrieve the Task Status template and content
@@ -76,7 +76,7 @@ const status_symbol = include_arr[2];
 #### Referenced Template
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET TASK STATUS AND SYMBOL
 //---------------------------------------------------------
 const status_obj_arr = [
@@ -149,7 +149,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -172,7 +172,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

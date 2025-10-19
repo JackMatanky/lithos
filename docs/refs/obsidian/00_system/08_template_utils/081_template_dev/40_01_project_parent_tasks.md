@@ -258,7 +258,7 @@ for (var i = 0; i < subdir_obj_arr.length; i++) {
   //-------------------------------------------------------------------
   const callout = `> [!parent_task] Parent Task Details
 
-> 
+>
 > - **Context**: `dv: choice(this.file.frontmatter.context = "habit_ritual", "Habits and Rituals", upper(substring(this.file.frontmatter.context, 0, 1)) + substring(this.file.frontmatter.context, 1))`
 > - **Pillar**: `dv: this.file.frontmatter.pillar`
 > - **Project**: `dv: this.file.frontmatter.project`
@@ -440,10 +440,10 @@ tags:
 # <%* tR += title %>
 
 > [!<%* tR += type_value %> ] <%* tR += type_name %> Details
-> 
+>
 > - **Context**: `dv: choice(this.file.frontmatter.context = "habit_ritual", "Habits and Rituals", upper(substring(this.file.frontmatter.context, 0, 1)) + substring(this.file.frontmatter.context, 1))`
 > - **Pillar**: `dv: this.file.frontmatter.pillar`
-> Organization: [[<%* tR += organization %>]]  
+> Organization: [[<%* tR += organization %>]]
 > - **Contact**: `dv: this.file.frontmatter.contact`
 
 ## Notes

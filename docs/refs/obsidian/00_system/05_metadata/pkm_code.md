@@ -2,8 +2,8 @@
 limit: 100
 mapWithTag: false
 icon: code-2
-tagNames: 
-excludes: 
+tagNames:
+excludes:
 extends: pkm
 version: "2.0"
 date_created: 2023-09-03T19:26

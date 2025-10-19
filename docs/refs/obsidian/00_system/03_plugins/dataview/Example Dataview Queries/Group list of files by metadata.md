@@ -12,10 +12,10 @@ date_modified: 2023-10-25T16:22
 
 # Grouped List of Files by Their Metadata
 
-> [!tip] Tip  
+> [!tip] Tip
 > After using a GROUP BY statement, results will be inside an object that looks like:
 > - {key: groupName; rows: ArrayOfDataColumns}
-> 
+>
 > This means to refer to things in your TABLE/LIST after grouping, you should either use `key`, or `rows.fieldName` to access them.
 
 ## Basic
@@ -56,9 +56,9 @@ GROUP BY "**" + file.cday + "**"
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

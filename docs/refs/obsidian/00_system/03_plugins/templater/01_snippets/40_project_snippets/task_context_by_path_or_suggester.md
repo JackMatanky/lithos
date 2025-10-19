@@ -24,11 +24,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: If a task is already in a folder, set the task's context based on the folder path; otherwise, set the task context with the suggester.
 
 ---
@@ -60,19 +60,19 @@ let context_name;
 
 
 // Check if the parent directory equals projects_dir, 40_projects/
-// and the folder path array's length is equal to or greater than two 
+// and the folder path array's length is equal to or greater than two
 if (projects_dir == `${folder_path_split[0]}/` && folder_path_length >= 2) {
-  // If true, concatenate 40_projects/ and 
-  // the folder path array's second element and 
-  // assign them to the context directory 
+  // If true, concatenate 40_projects/ and
+  // the folder path array's second element and
+  // assign them to the context directory
   context_dir = `${projects_dir}${folder_path_split[1]}/`;
   // Assign the context to the split folder path array's
   // second element without the id numbers
   context_value = folder_path_split[1].slice(3);
   // If the context value starts with  "habit",
   // then assign context_name to "Habits and Rituals",
-  // otherwise context_name equals context value 
-  // with a capital first letter 
+  // otherwise context_name equals context value
+  // with a capital first letter
   if (context_value.startsWith(`habit`)) {
     context_name = `Habits and Rituals`;
   } else {
@@ -92,7 +92,7 @@ if (projects_dir == `${folder_path_split[0]}/` && folder_path_length >= 2) {
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -175,7 +175,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -196,7 +196,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

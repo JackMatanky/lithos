@@ -78,7 +78,7 @@ const context = `choice(${yaml_context} = "habit_ritual", "Habits and Rituals",
     AS Context`;
 
 // Task Hierarchy
-const task_hierarcy = `choice(contains(${yaml_parent_task}[0], "null"), 
+const task_hierarcy = `choice(contains(${yaml_parent_task}[0], "null"),
       ("**Project**: " + flat(${yaml_proj})),
       list(("**Project**: " + flat(${yaml_proj})), ("**Parent**: " + flat(${yaml_parent_task})))
     ) AS "Task Hierarchy"`;
@@ -110,11 +110,11 @@ const file_status = `default(((x) => {
     AS Status`;
 
 // Date span
-const date_span = `choice((regextest("\\d", ${yaml_task_start}) AND regextest("\\d", ${yaml_task_end})), 
+const date_span = `choice((regextest("\\d", ${yaml_task_start}) AND regextest("\\d", ${yaml_task_end})),
 		(dateformat(date(regexreplace(${yaml_task_start}, "[^\\d-]", "")), "yy-MM-dd") + " → " + dateformat(date(regexreplace(${yaml_task_end}, "[^\\d-]", "")), "yy-MM-dd")),
 		choice(regextest("\\d", ${yaml_task_start}),
 			(dateformat(date(regexreplace(${yaml_task_start}, "[^\\d-]", "")), "yy-MM-dd") + " → Present"),
-			"NULL")) 
+			"NULL"))
 	AS Dates`;
 
 // SECT: >>>>> CHILD TASK FIELDS <<<<<
@@ -164,9 +164,9 @@ const task_type = `choice(contains(T.text, "_act"), "🔨Task",
     AS Type`;
 
 // Task status
-const task_status = `choice((T.status = "-"), "❌Discard", 
-      choice((T.status = "<"), "⏹️Canceled", 
-      choice((T.status = "x"), "✔️Done", 
+const task_status = `choice((T.status = "-"), "❌Discard",
+      choice((T.status = "<"), "⏹️Canceled",
+      choice((T.status = "x"), "✔️Done",
         "🔜To do")))
     AS Status`;
 
@@ -209,7 +209,7 @@ const task_duration_act = `dur(
 const task_est_accuracy = `choice(T.status = "-", "❌Discarded",
       choice(T.status = "<", "⏹️Canceled",
       (choice(Estimate = Duration_ACT, "👍On Time",
-      choice(Estimate > Duration_ACT, 
+      choice(Estimate > Duration_ACT,
         "🟢" + (Estimate - Duration_ACT),
         "❗" + (Duration_ACT - Estimate))
       ) + " (" + Estimate_FMT + ")")

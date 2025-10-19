@@ -5,11 +5,11 @@ aliases:
   - 43 Whitespace Control
   - templater_documentation_43_whitespace_control
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-05-01T09:36
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Whitespace Control
 
@@ -20,9 +20,9 @@ It can sometimes be useful to have some whitespace control after commands are in
 Let's have an example. The following template:
 
 ```
- 
+
 This isn't my file!
- 
+
 Some content …
 ```
 

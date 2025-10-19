@@ -17,7 +17,7 @@ tags: obsidian, obsidian/plugin, obsidian/obsidian_to_anki, anki, spaced_repetit
 
 link:: <https://github.com/Pseudonium/Obsidian_to_Anki>
 
-Plugin to add flashcards from a text or markdown file to Anki. Run in Obsidian as a plugin, or from the command-line as a python script. Built with [Obsidian](https://obsidian.md/) markdown syntax in mind. Supports **user-defined custom syntax for flashcards.**  
+Plugin to add flashcards from a text or markdown file to Anki. Run in Obsidian as a plugin, or from the command-line as a python script. Built with [Obsidian](https://obsidian.md/) markdown syntax in mind. Supports **user-defined custom syntax for flashcards.**
 See the [Trello](https://trello.com/b/6MXEizGg/obsidiantoanki) for planned features.
 
 ## Getting Started
@@ -57,14 +57,14 @@ Check out the [Wiki](https://github.com/Pseudonium/Obsidian_to_Anki/wiki)! It ha
 
 You shouldn't need Anki running to load Obsidian in the future, though of course you will need it for using the plugin!
 
-To run the plugin, look for an Anki icon on your ribbon (the place where buttons such as 'open Graph view' and 'open Quick Switcher' are).  
+To run the plugin, look for an Anki icon on your ribbon (the place where buttons such as 'open Graph view' and 'open Quick Switcher' are).
 For more information on use, please check out the [Wiki](https://github.com/Pseudonium/Obsidian_to_Anki/wiki)!
 
 ### Python Script Users
 
 1. Install the latest version of [Python](https://www.python.org/downloads/).
-2. If you are a new user, download `obstoanki_setup.py` from the [releases page](https://github.com/Pseudonium/Obsidian_to_Anki/releases), and place it in the folder you want the script installed (for example your notes folder).  
-3. Run `obstoanki_setup.py`, for example by double-clicking it in a file explorer. This will download the latest version of the script and required dependencies automatically. Existing users should be able to run their existing `obstoanki_setup.py` to get the latest version of the script.  
+2. If you are a new user, download `obstoanki_setup.py` from the [releases page](https://github.com/Pseudonium/Obsidian_to_Anki/releases), and place it in the folder you want the script installed (for example your notes folder).
+3. Run `obstoanki_setup.py`, for example by double-clicking it in a file explorer. This will download the latest version of the script and required dependencies automatically. Existing users should be able to run their existing `obstoanki_setup.py` to get the latest version of the script.
 4. Check the Permissions tab below to ensure the script is able to run.
 5. Run `obsidian_to_anki.py`, for example by double-clicking it in a file explorer. This will generate a config file, `obsidian_to_anki_config.ini`.
 
@@ -98,15 +98,15 @@ Current features (check out the wiki for more details):
 - **Frozen Fields**
 - **Obsidian integration** - A link to the file that made the flashcard, full link and image embed support.
 - **Custom syntax** - Using **regular expressions**, add custom syntax to generate **notes that make sense for you.** Some examples:
-  - RemNote single-line style. `This is how to use::Remnote single-line style`  
+  - RemNote single-line style. `This is how to use::Remnote single-line style`
     ![[Remnote_1.webp]]
-    
+
    - Header paragraph style.
 
   ```
   # Style
   This style is suitable for having the header as the front, and the answer as the back
-  ```  
+  ```
 
   ![[Header_1.webp]]
 
@@ -115,30 +115,30 @@ Current features (check out the wiki for more details):
   ```
   Q: How do you use this style?
   A: Just like this.
-  ```  
+  ```
 
   ![[Question_1.webp]]
 
-  - Neuracache #flashcard style.  
+  - Neuracache #flashcard style.
 
   ```
   In Neuracache style, to make a flashcard you do #flashcard
   The next lines then become the back of the flashcard
-  ```  
+  ```
 
   ![[Neuracache_1.webp]]
 
-  - Ruled style  
+  - Ruled style
 
   ```
   How do you use ruled style?
   ---
   You need at least three '-' between the front and back of the card.
-  ```  
+  ```
 
   ![[Ruled_1.webp]]
 
-  - Markdown table style  
+  - Markdown table style
 
   ```
 
@@ -149,8 +149,8 @@ Current features (check out the wiki for more details):
   ```
 
   ![[Table_2.webp]]
-  
-  - Cloze paragraph style  
+
+  - Cloze paragraph style
 
   ```
 

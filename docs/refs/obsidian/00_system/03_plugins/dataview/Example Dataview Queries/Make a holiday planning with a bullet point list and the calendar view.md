@@ -13,7 +13,7 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!warning] Limitations  
+> [!warning] Limitations
 > The calendar is only for a rough overview and cannot display your events. The dot hover will always show you the whole page, instead of the concrete event happening.
 
 - Some cool event [when:: 2022-08-14]
@@ -47,9 +47,9 @@ SORT L.when
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

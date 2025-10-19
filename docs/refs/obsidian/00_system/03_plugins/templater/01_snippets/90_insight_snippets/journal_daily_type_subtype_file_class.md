@@ -9,8 +9,8 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
-description: 
+module:
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Assign daily journal's full type name, full type value, long type name, type name, type value, subtype name, subtype value, and file class.
 
 ---
@@ -41,9 +41,9 @@ tags: obsidian/templater, javascript
 // - Daily Reflection Journal
 // - Daily Gratitude Journal
 // - Daily Detachment Journal
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // JOURNAL TYPE, SUBTYPE, AND FILE CLASS
-//--------------------------------------------------------- 
+//---------------------------------------------------------
 const full_type_name = ">>>FULL_TYPE_NAME<<<";
 const full_type_value = full_type_name.replaceAll(/\s/g, "_").toLowerCase();
 const long_type_name = `${full_type_name.split(" ")[0]} ${full_type_name.split(" ")[1]}`;
@@ -60,9 +60,9 @@ const file_class = `pdev_${full_type_value.split("_")[2]}`;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // JOURNAL TYPE, SUBTYPE, AND FILE CLASS
-//--------------------------------------------------------- 
+//---------------------------------------------------------
 const full_type_name = ">>>FULL_TYPE_NAME<<<";
 const full_type_value = full_type_name.replaceAll(/\s/g, "_").toLowerCase();
 const long_type_name = `${full_type_name.split(" ")[0]} ${full_type_name.split(" ")[1]}`;
@@ -122,7 +122,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -143,7 +143,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

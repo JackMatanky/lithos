@@ -292,7 +292,7 @@ const null_name = "Null";
 const null_link = `[[${null_value}|${null_name}]]`;
 const null_yaml_li = yaml_li(null_link);
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // CHILD TASK INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${child_task_info_callout}.md`;
@@ -373,7 +373,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
     .format("YY_MM_DD");
 
   yaml_date = `date:${space}"${date_link}"${new_line}`;
-  
+
   inline_date_data = `➕${space}${moment().format("YYYY-MM-DD")}${space}📅${space}${date}`;
 
   // DAILY HABIT AND RITUAL FILE LINKS

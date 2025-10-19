@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include, obsidian/tp/syst
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Assign a book chapter's number.
 
 ---
@@ -38,7 +38,7 @@ tags: obsidian/templater, javascript, obsidian/tp/file/include, obsidian/tp/syst
 // Template file to include
 const book_chapter_number = `71_book_chapter_number`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET CHAPTER NUMBER
 //---------------------------------------------------------
 // Retrieve the Book Chapter Number template and content
@@ -52,11 +52,11 @@ const chapter_number = include_arr;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET CHAPTER NUMBER
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${book_chapter_number}.md`;
@@ -72,7 +72,7 @@ const chapter_number = include_arr;
 <!-- If applicable, add the referenced template  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET CHAPTER NUMBER
 //---------------------------------------------------------
 const chapter_number_arr = [
@@ -163,7 +163,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -184,7 +184,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

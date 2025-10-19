@@ -1,5 +1,5 @@
 ---
-description: Show a certain value for every day of the week, i.e. a summary of the day, or what nice happened the day 
+description: Show a certain value for every day of the week, i.e. a summary of the day, or what nice happened the day
 topics:
   - weekly aggregation
   - custom output
@@ -18,7 +18,7 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!attention] Usage in weekly note  
+> [!attention] Usage in weekly note
 > If you want to use this query in your weekly note and your weekly is named like `gggg-[W]ww`, i.e. 2022-W4, replace `fake.name` with `file.name`
 
 ```dataview
@@ -28,7 +28,7 @@ WHERE string(file.day.year) = split(this.fake.name, "-W")[0] AND string(file.day
 SORT file.name
 ```
 
-> [!hint] Alternative usage  
+> [!hint] Alternative usage
 > Instead of a summary of the day you could note down something nice that happened that day and remind yourself that the week was quite nice in retrospective!
 
 ## Variants
@@ -82,9 +82,9 @@ SORT file.name
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

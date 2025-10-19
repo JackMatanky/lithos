@@ -139,7 +139,7 @@ const toc_body_title = `${call_tbl_start}Habits${tbl_pipe}Morning${tbl_pipe}Work
 const toc_body_div = `${call_tbl_start}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${call_tbl_end}${new_line}`
 const toc_body_due = `${call_tbl_start}${toc_habit_due}${tbl_pipe}${toc_morn_rit_due}${tbl_pipe}${toc_work_start_rit_due}${tbl_pipe}${toc_work_shut_rit_due}${tbl_pipe}${toc_eve_rit_due}${call_tbl_end}${new_line}`
 const toc_body_done = `${call_tbl_start}${toc_habit_done}${tbl_pipe}${toc_morn_rit_done}${tbl_pipe}${toc_work_start_rit_done}${tbl_pipe}${toc_work_shut_rit_done}${tbl_pipe}${toc_eve_rit_done}${call_tbl_end}`;
-const toc_body = `${toc_body_title}${toc_body_div}${toc_body_due}${toc_body_done}` 
+const toc_body = `${toc_body_title}${toc_body_div}${toc_body_due}${toc_body_done}`
 
 const toc_habit_rit = `${toc_title}${toc_body}${two_new_line}`;
 

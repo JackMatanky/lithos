@@ -7,7 +7,7 @@ date_created: 2023-06-12T08:14
 date_modified: 2023-10-25T16:22
 ---
 
-#dv/table #dv/from #dv/where #dv/sort #dv/groupby  
+#dv/table #dv/from #dv/where #dv/sort #dv/groupby
 
 # Basic Table Queries
 
@@ -24,14 +24,14 @@ FROM "10 Example Data/games"
 
 ```dataview
 TABLE
-FROM #type/books 
+FROM #type/books
 ```
 
 **Combine multiple tags**
 
 ```dataview
 TABLE
-FROM #dvjs/el OR #dv/min 
+FROM #dvjs/el OR #dv/min
 ```
 
 **Combine multiple folders**
@@ -45,17 +45,17 @@ FROM "10 Example Data/books" OR "10 Example Data/games"
 
 ```dataview
 TABLE
-FROM "10 Example Data/games" AND #genre/action  
+FROM "10 Example Data/games" AND #genre/action
 ```
 
 **List all pages**
 
-> [!attention] Add `dataview` to code block  
-> The output of this is pretty long. If you want to see it, add `dataview` to the code block - like on the examples above!  
+> [!attention] Add `dataview` to code block
+> The output of this is pretty long. If you want to see it, add `dataview` to the code block - like on the examples above!
 > Please note: There needs to be a **space** behind `TABLE` to see results!
 
 ```
-TABLE 
+TABLE
 ```
 
 ## Variants
@@ -64,7 +64,7 @@ TABLE
 
 ```dataview
 TABLE
-FROM #type/books 
+FROM #type/books
 WHERE author = "Conrad C"
 ```
 
@@ -90,7 +90,7 @@ WHERE source
 **Without additional columns**
 
 ```dataview
-TABLE 
+TABLE
 FROM "10 Example Data/books"
 GROUP BY author
 ```
@@ -135,16 +135,16 @@ FROM "10 Example Data/books"
 SORT author
 ```
 
-> [!hint] Advanced usage  
+> [!hint] Advanced usage
 > Do you want to see more advanced examples? Head over to the [[Queries by Type#Table|Query Type Overview]] to see all available TABLE queries in the vault!
 
 ---
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

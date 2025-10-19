@@ -45,7 +45,7 @@ ExcaliBrain is optimized to work well with [Hover Editor](https://github.com/not
 
 ## Detailed Walkthrough
 
-YouTube:  
+YouTube:
 [![thumbnail](https://user-images.githubusercontent.com/14358394/169708346-9e41289d-9536-43ec-8f70-2d2ad2d369d6.png)](https://youtu.be/gOkniMkDPyM)
 
 ![image](https://user-images.githubusercontent.com/14358394/169708182-0096a714-4c6c-4d81-a8f0-8d2237faa300.png)

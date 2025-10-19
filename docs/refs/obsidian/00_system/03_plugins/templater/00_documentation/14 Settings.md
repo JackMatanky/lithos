@@ -5,11 +5,11 @@ aliases:
   - 14 Settings
   - templater_documentation_14_Settings
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T15:42
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Settings
 

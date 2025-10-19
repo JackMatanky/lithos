@@ -38,11 +38,11 @@ const sys_plugins_dir = "00_system/09_plugins/";
 // CALENDAR FOLDER PATHS
 //---------------------------------------------------------
 const cal_dir = "10_calendar/";
-const cal_day_dir = "10_calendar/11_days/";  
-const cal_week_dir = "10_calendar/12_weeks/";  
-const cal_month_dir = "10_calendar/13_months/";  
-const cal_quarter_dir = "10_calendar/14_quarters/";  
-const cal_year_dir = "10_calendar/15_years/"; 
+const cal_day_dir = "10_calendar/11_days/";
+const cal_week_dir = "10_calendar/12_weeks/";
+const cal_month_dir = "10_calendar/13_months/";
+const cal_quarter_dir = "10_calendar/14_quarters/";
+const cal_year_dir = "10_calendar/15_years/";
 ```
 
 ```javascript
@@ -77,7 +77,7 @@ const work_proj_dir = "44_work/";
 //---------------------------------------------------------
 // DIRECTORY FOLDER PATHS
 //---------------------------------------------------------
-const contacts_dir = "51_contacts/";  
+const contacts_dir = "51_contacts/";
 const organizations_dir = "52_organizations/";
 ```
 
@@ -85,7 +85,7 @@ const organizations_dir = "52_organizations/";
 //---------------------------------------------------------
 // LIBRARY FOLDER PATHS
 //---------------------------------------------------------
-const library_dir = "60_library/"; 
+const library_dir = "60_library/";
 const lib_books_dir = "60_library/61_books/";
 const lib_journals_dir = "60_library/62_journals/";
 const lib_reports_dir = "60_library/63_reports/";
@@ -119,7 +119,7 @@ const ms_excel_dir = "70_pkm/ms_excel/";
 const python_dir = "70_pkm/python/";
 const sql_dir = "70_pkm/sql/";
 
-// Applications 
+// Applications
 const tableau_dir = "70_pkm/tableau/";
 const ms_edge_dir = "70_pkm/ms_edge/";
 const pandoc_dir = "70_pkm/pandoc/";

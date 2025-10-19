@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a dataview table for linked files based on file class and type
 
 ---
@@ -80,7 +80,7 @@ const inline_field_regex = `\\[.*$`;
 const task_link = `link(T.section,
 		regexreplace(
 			regexreplace(T.text, "${task_tag_regex}|${task_type_regex}${inline_field_regex}", ""),
-		"_$", "")) 
+		"_$", ""))
 	AS Task`;
 
 // Task type
@@ -95,11 +95,11 @@ const task_type = `choice(contains(T.text, "_action_item"),	"🔨Task",
 	choice(contains(T.text, "_habit"), "🤖Habit",
 	choice(contains(T.text, "_morning_ritual"),	"🍵Rit.",
 	choice(contains(T.text, "_workday_startup_ritual"), "🌇Rit.",
-	choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit.")))))))))))) 
+	choice(contains(T.text, "_workday_shutdown_ritual"), "🌆Rit.", "🛌Rit."))))))))))))
 	AS Type`;
 
 // Task status
-const task_status = `choice((T.status != "-"), 
+const task_status = `choice((T.status != "-"),
 		(choice((T.status = "x"),
 			"✔️Done",
 			"🔜To do")),
@@ -109,7 +109,7 @@ const task_status = `choice((T.status != "-"),
 // Due or completed date
 const due_date = `T.due AS Due`;
 const done_date = `T.completion AS Date`;
-const task_date = `choice((T.status != "-"), 
+const task_date = `choice((T.status != "-"),
 		(choice((T.status = "x"),
 			T.completion,
 			T.due)),
@@ -124,11 +124,11 @@ const time_span = `(${start} + " - " + ${end}) AS Time`;
 // Date span
 const date_start = `file.frontmatter.task_start`;
 const date_end = `file.frontmatter.task_end`;
-const date_span = `choice((regextest(".", ${date_start}) AND regextest(".", ${date_end})), 
+const date_span = `choice((regextest(".", ${date_start}) AND regextest(".", ${date_end})),
 		(${date_start} + " → " + ${date_end}),
 		choice(regextest(".", ${date_start}),
 			(${date_start} + " → Present"),
-			"null")) 
+			"null"))
 	AS Dates`;
 
 // Time estimate
@@ -142,7 +142,7 @@ const task_estimate_accuracy = `choice((${task_estimate_dur} = ${task_duration})
 		choice(
 			(${task_estimate_dur} > ${task_duration}),
 				"🟢" + (${task_estimate_dur} - ${task_duration}),
-				"❗" + (${task_duration} - ${task_estimate_dur}))) 
+				"❗" + (${task_duration} - ${task_estimate_dur})))
 	AS Accuracy`;
 
 // Task context
@@ -177,7 +177,7 @@ const current_file_filter = `file.name != this.file.name`;
 const folder_filter = `!contains(file.path, this.file.folder)`;
 
 // File inlinks and outlinks
-const in_out_link_filter = `(contains(file.outlinks, this.file.link) 
+const in_out_link_filter = `(contains(file.outlinks, this.file.link)
 	OR contains(file.inlinks, this.file.link))`;
 
 // SECT: >>>>> TASK <<<<<
@@ -228,7 +228,7 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
     } else if (type_arg.startsWith(`par`)) {
@@ -248,12 +248,12 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
     } else {
       // Table for linked PARENT TASKS
-      type_filter = `(contains(file.frontmatter.file_class, "action_item") 
+      type_filter = `(contains(file.frontmatter.file_class, "action_item")
 	OR contains(file.frontmatter.file_class, "meeting"))`;
       // Table for linked ACTION ITEMS AND MEETINGS
       dataview_query = `${three_backtick}dataview
@@ -274,7 +274,7 @@ WHERE
 	AND ${class_filter}
 	AND ${type_filter}
 	AND ${task_checkbox_filter}
-SORT 
+SORT
 	T.due ASC
 ${three_backtick}`;
     }
@@ -298,7 +298,7 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
     } else {
@@ -317,7 +317,7 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	file.frontmatter.type,
 	file.frontmatter.title ASC
 ${three_backtick}`;
@@ -340,7 +340,7 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
     } else {
@@ -359,7 +359,7 @@ WHERE
 	${current_file_filter}
 	AND ${in_out_link_filter}
 	AND ${class_filter}
-SORT 
+SORT
 	file.frontmatter.type,
 	file.frontmatter.title ASC
 ${three_backtick}`;
@@ -380,7 +380,7 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
     } else {
@@ -399,7 +399,7 @@ WHERE
 	AND ${in_out_link_filter}
 	AND ${class_filter}
 	AND ${type_filter}
-SORT 
+SORT
 	file.frontmatter.title ASC
 ${three_backtick}`;
     }
@@ -412,7 +412,7 @@ module.exports = dv_linked_file;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -500,7 +500,7 @@ const linked_dir_org = await tp.user.dv_linked_file("dir", "organization");
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_linked_file.js.js]]
 
@@ -522,7 +522,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -543,7 +543,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

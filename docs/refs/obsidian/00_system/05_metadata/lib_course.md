@@ -2,7 +2,7 @@
 limit: 100
 mapWithTag: false
 icon: presentation
-tagNames: 
+tagNames:
 excludes:
   - date_published
   - city
@@ -10,8 +10,8 @@ excludes:
   - volume
 extends: lib
 version: "2.8"
-filesPaths: 
-bookmarksGroups: 
+filesPaths:
+bookmarksGroups:
 savedViews: []
 favoriteView:
 date_created: 2023-06-12T21:03

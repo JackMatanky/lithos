@@ -2,9 +2,9 @@
 limit: 100
 mapWithTag: false
 icon: brain
-tagNames: 
-excludes: 
-extends: 
+tagNames:
+excludes:
+extends:
 version: "2.13"
 date_created: 2023-09-03T19:26
 date_modified: 2023-09-12T18:48

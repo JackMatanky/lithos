@@ -6,7 +6,7 @@ aliases:
   - metadata_menu_documentation_01_overview
 date_created: 2023-03-10T17:11
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Overview
 
@@ -14,7 +14,7 @@ This plugin is made for data quality enthusiasts!
 
 **Access and manage the metadata of your notes in [Obsidian](https://obsidian.md).**
 
-> [!info] Metadata  
+> [!info] Metadata
 > In Obsidian, metadatas are information defined in Yaml syntax in the [front matter](https://help.obsidian.md/Advanced+topics/YAML+front+matter) section of a note. Metadata are very convenient to categorize notes and make queries to find them. Some plugins have leveraged metadata to make advanced queries against your vault, such as [Dataview](https://blacksmithgu.github.io/obsidian-dataview/). Dataview has also introduce a new syntax to define metadata anywhere in a note (not only in frontmatter but also in the body of the note) with the syntax `fieldName::value`
 
 Metadata Menu adds context menu items to modify target note's frontmatter fields and "inline fields" ([dataview](https://blacksmithgu.github.io/obsidian-dataview/) syntax) by right-clicking on the link, accessing options in the command palette, or within dataview tables.

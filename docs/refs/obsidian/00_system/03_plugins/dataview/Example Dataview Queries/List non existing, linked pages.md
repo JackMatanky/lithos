@@ -30,7 +30,7 @@ As **dataviewjs:** (for a more similar result like the DQL solution, see variant
 ```dataviewjs
 const res = Object.values(app.metadataCache.unresolvedLinks)
 .flatMap(unresolved => Object.keys(unresolved))
-.sort(); 
+.sort();
 
 const resSet = new Set(res).values();
 dv.list(resSet);
@@ -70,16 +70,16 @@ const res = {}
 
 for (let page in unresolvedLinksMap) {
 	const unresolved = Object.keys(unresolvedLinksMap[page]);
-	
+
 	if (unresolved.length === 0) {
     	continue;
     }
-    	
+
 	for (let link of unresolved) {
 		if (!res[link]) {
     		res[link] = {link, usages: []}
     	}
-    	
+
 		res[link].usages.push(dv.fileLink(page))
 	}
 }
@@ -89,7 +89,7 @@ const rows = Object.values(res)
     .sort((a, b) => a[2] > b[2] ? -1 : 1)
 
 dv.table(
-    ["Unresolved Link", "Contained in", "Count"], 
+    ["Unresolved Link", "Contained in", "Count"],
     rows
 );
 ```
@@ -109,8 +109,8 @@ GROUP BY outlinks
 
 #### As DataviewJS
 
-> [!warning] Limitation when filtering unresolved links in DataviewJS  
-> The second filter only works limited. When a file contains two unresolved links, i.e. "Fernando" and "Bob" and you're filtering after "Bob", you'll still end up with "Fernando" in the result, too - because they are both referenced from the same file and Bob's availability will keep the file and **all** its unresolved links in the filtered set.  
+> [!warning] Limitation when filtering unresolved links in DataviewJS
+> The second filter only works limited. When a file contains two unresolved links, i.e. "Fernando" and "Bob" and you're filtering after "Bob", you'll still end up with "Fernando" in the result, too - because they are both referenced from the same file and Bob's availability will keep the file and **all** its unresolved links in the filtered set.
 > In order to fix that, it'd be necessary to filter out the unresolvedLinks array and map it back to the object that'll be processed.
 
 ```dataviewjs
@@ -120,7 +120,7 @@ function process(referingFile, unresolvedLinks) {
   Object.keys(unresolvedLinks).forEach(function (link) {
     link = dv.fileLink(link);
     if (!result[link]) result[link] = [];
-    
+
     result[link].push(dv.fileLink(referingFile));
   });
 }
@@ -179,9 +179,9 @@ dv.table(
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

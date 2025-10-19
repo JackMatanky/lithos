@@ -90,8 +90,8 @@ The parser supports most date/time formats, including:
 
 <img src="https://user-images.githubusercontent.com/5426039/89716767-1d768700-d9b0-11ea-99cf-b3bb6846a872.gif" alt="demo" style="zoom:60%;" />
 
-> [!Note]  
-> The parser will replace all the selected text, meaning that in a sentence you should only select the dates to be parsed and not the full sentence.  
+> [!Note]
+> The parser will replace all the selected text, meaning that in a sentence you should only select the dates to be parsed and not the full sentence.
 > In the example sentence `Do this thing by tomorrow`, only the word `tomorrow` should be selected. Alternatively, keep in mind that you can place your cursor **on** or **next to** the word tomorrow, and it will be replaced:
 
 <img src="https://user-images.githubusercontent.com/5426039/98358876-a640a580-2027-11eb-8efc-015362a94321.gif" alt="Supported selections" style="zoom:80%;" />

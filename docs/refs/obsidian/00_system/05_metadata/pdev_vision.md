@@ -4,7 +4,7 @@ mapWithTag: true
 icon: compass
 tagNames:
   - vision
-excludes: 
+excludes:
 extends: pdev
 version: "2.0"
 date_created: 2023-11-22T12:32

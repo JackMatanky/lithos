@@ -10,7 +10,7 @@ language:
   - javascript
 module:
   - system
-description: 
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -23,11 +23,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/prompt
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Rename an untitled file based on a prompt.
 
 ---
@@ -45,11 +45,11 @@ let title;
 // If note does not have title, prompt for title
 if (!has_title) {
   title = await tp.system.prompt(
-    `Title`, 
-    null, 
-    true, 
+    `Title`,
+    null,
+    true,
     false
-  );  
+  );
 } else {
   title = tp.file.title;
 };
@@ -70,7 +70,7 @@ title = await tp.user.title_case(title);
 const has_title = !tp.file.title.startsWith(`Untitled`);
 let title;
 if (!has_title) {
-  title = await tp.system.prompt(`Title`, null, true, false);  
+  title = await tp.system.prompt(`Title`, null, true, false);
 } else {
   title = tp.file.title;
 };
@@ -121,7 +121,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -144,7 +144,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

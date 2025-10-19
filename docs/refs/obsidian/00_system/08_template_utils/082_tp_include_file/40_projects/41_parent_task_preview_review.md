@@ -1,7 +1,7 @@
 ### Preview
 
 > [!task_preview] Parent Task Preview
-> 
+>
 > 1. Which of the project's needs does the parent task address?
 >     - **Problem**::
 > 2. What is the problem's solution?
@@ -12,7 +12,7 @@
 ### Review
 
 > [!task_review] Parent Task Review
-> 
+>
 > 1. What was the outcome? How did it make me feel?
 >     - **Outcome**::
 >     - **Feeling**::

@@ -5,7 +5,7 @@ icon: edit
 tagNames:
   - journal
   - limiting_belief
-excludes: 
+excludes:
 extends: pdev
 version: "2.0"
 date_created: 2023-06-21T19:57

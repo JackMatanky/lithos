@@ -50,9 +50,9 @@ async function dv_pdev_date(date, md) {
 	dataview_query = `${dataview_block}
 LIST WITHOUT ID
 	${title_link}
-FROM 
+FROM
 	${insight_dir}
-WHERE 
+WHERE
 	${class_filter}
 	AND contains(${creation_date}, "${date}")
 SORT

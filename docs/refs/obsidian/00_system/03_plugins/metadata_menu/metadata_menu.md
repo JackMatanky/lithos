@@ -56,7 +56,7 @@ Metadata Menu can manage any metadata field located in frontmatter (YAML syntax)
 
 ## Field Types
 
-Metadata Menu gives a type to each field.  
+Metadata Menu gives a type to each field.
 Available types are:
 
 - `Input` (free text): this is the default type applied to each field if nothing is set for this field (see #Field settings). it will `Accept any value`

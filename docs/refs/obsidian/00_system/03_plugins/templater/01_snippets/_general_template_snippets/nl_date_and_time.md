@@ -22,11 +22,11 @@ tags: obsidian/templater, javascript, js/momentjs
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a full datetime from a date parsed from natural language into [[iso_8601|ISO 8601]] YYYY-MM-DD format and the time parsed from [[Natural Language Dates]].
 
 ---
@@ -36,11 +36,11 @@ tags: obsidian/templater, javascript, js/momentjs
 <!-- Add the full code including explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET DATE AND TIME
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // TYPE OPTIONS: "start", "end", ""
-// Choose the date and type 
+// Choose the date and type
 const date = await tp.user.nl_date(tp, "");
 
 // Choose the time for the action item
@@ -55,11 +55,11 @@ const full_date_time = moment(`${date}T${time}`);
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET DATE AND TIME
-//---------------------------------------------------------  
-const date = await tp.user.nl_date(tp, "");  
-const time = await tp.user.nl_time(tp, ""); 
+//---------------------------------------------------------
+const date = await tp.user.nl_date(tp, "");
+const time = await tp.user.nl_time(tp, "");
 const full_date_time = moment(`${date}T${time}`);
 ```
 
@@ -107,7 +107,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -128,7 +128,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

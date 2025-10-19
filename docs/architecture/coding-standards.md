@@ -23,7 +23,7 @@ These standards are **MANDATORY** for Lithos contributors and AI agents. They ar
 - The application core **MUST** use the Result pattern supplied by `internal/shared/errors` (Rust-like `Result[T]`). Plain `(T, error)` signatures **MUST NOT** cross port boundaries.
 - Shared logging (`internal/shared/logger`) **MUST** be the only logging facility; no `fmt.Print*` or `log.*`.
 - Functions performing I/O or long-running work **MUST** accept `context.Context` as the first parameter and abort on cancellation.
-- `VaultIndexingService` and cache adapters **MUST** continue to use atomic temp-file → rename patterns.
+- `VaultIndexer` and cache adapters **MUST** continue to use atomic temp-file → rename patterns.
 
 ## Naming Conventions
 
@@ -31,7 +31,7 @@ These standards are **MANDATORY** for Lithos contributors and AI agents. They ar
 | --------------- | ------------------------- | ------------------------ |
 | Ports           | PascalCase + `Port`       | `TemplateRepositoryPort` |
 | Adapters        | PascalCase + `Adapter`    | `TemplateFSAdapter`      |
-| Domain Services | PascalCase descriptive    | `TemplateEngineService`  |
+| Domain Services | PascalCase descriptive    | `TemplateEngine`  |
 | Result Helpers  | `errors.Ok`, `errors.Err` | `errors.Err[Note](err)`  |
 | Test Doubles    | `Fake`/`Stub` prefix      | `FakeSchemaLoader`       |
 

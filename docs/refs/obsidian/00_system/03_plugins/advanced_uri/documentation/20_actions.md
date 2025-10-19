@@ -10,8 +10,8 @@ tags: obsidian, obsidian/advanced_uri, documentation
 ---
 # Actions
 
-Actions are combinations of different parameters.  
+Actions are combinations of different parameters.
 For example if you pass a file path and content, it writes the content to the file.
 
-> [!info]  
+> [!info]
 > The `<identification> ` key should be replaced by your chosen identification as described in [[13 File identifiers|File Identifiers]]

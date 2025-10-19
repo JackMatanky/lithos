@@ -4,7 +4,7 @@ aliases:
   - Templater
   - templater_documentation
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-04T12:49
 date_modified: 2023-10-25T16:22

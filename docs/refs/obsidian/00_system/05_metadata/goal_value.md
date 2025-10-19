@@ -4,8 +4,8 @@ mapWithTag: true
 icon: mountain-snow
 tagNames:
   - value_goal
-excludes: 
-extends: 
+excludes:
+extends:
 version: "2.0"
 date_created: 2023-06-12T21:03
 date_modified: 2023-09-05T19:18

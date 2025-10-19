@@ -110,11 +110,11 @@ const task_start_datefmt = `dateformat(date(${task_start_remove_alpha}), "yy-MM-
 const task_end_re_test = `regextest("\\d", ${yaml_task_end})`;
 const task_end_remove_alpha = `regexreplace(${yaml_task_end}, "[^\\d-]", "")`;
 const task_end_datefmt = `dateformat(date(${task_end_remove_alpha}), "yy-MM-dd")`;
-const date_span = `choice((${task_start_re_test} AND ${task_end_re_test}), 
+const date_span = `choice((${task_start_re_test} AND ${task_end_re_test}),
 		(${task_start_datefmt} + " → " + ${task_end_datefmt}),
 		choice(${task_start_re_test},
 			(${task_start_datefmt} + " → Present"),
-			"NULL")) 
+			"NULL"))
 	AS Dates`;
 
 // SECT: >>>>> CHILD TASK FIELDS <<<<<
@@ -164,9 +164,9 @@ const task_type = `choice(contains(T.text, "_act"), "🔨Task",
     AS Type`;
 
 // Task status
-const task_status = `choice((T.status = "-"), "❌Discard", 
-      choice((T.status = "<"), "⏹️Canceled", 
-      choice((T.status = "x"), "✔️Done", 
+const task_status = `choice((T.status = "-"), "❌Discard",
+      choice((T.status = "<"), "⏹️Canceled",
+      choice((T.status = "x"), "✔️Done",
         "🔜To do")))
     AS Status`;
 
@@ -217,7 +217,7 @@ const task_duration_act = `dur(
 const task_est_accuracy = `choice(T.status = "-", "❌Discarded",
       choice(T.status = "<", "⏹️Canceled",
       (choice(Estimate = Duration_ACT, "👍On Time",
-      choice(Estimate > Duration_ACT, 
+      choice(Estimate > Duration_ACT,
         "🟢" + (Estimate - Duration_ACT),
         "❗" + (Duration_ACT - Estimate))
       ) + " (" + Estimate_FMT + ")")
@@ -279,9 +279,9 @@ const discard_filter = `T.status != "-"`;
 // SECT: >>>>> DATA SORTING <<<<<
 //-------------------------------------------------------------------
 const status_sort = `choice(${yaml_status} = "done", 1,
-    choice(${yaml_status} = "in_progress", 2, 
-    choice(${yaml_status} = "to_do", 3, 
-    choice(${yaml_status} = "schedule", 4, 
+    choice(${yaml_status} = "in_progress", 2,
+    choice(${yaml_status} = "to_do", 3,
+    choice(${yaml_status} = "schedule", 4,
     choice(${yaml_status} = "on_hold", 5, 6)))))`;
 
 const type_sort = `choice(contains(${yaml_type}, "project"), 1, 2)`;
@@ -350,7 +350,7 @@ async function dv_task_linked({
     ) {
       if (status_arg == "due") {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
@@ -358,7 +358,7 @@ async function dv_task_linked({
     ${parent_task}`;
       } else {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${time_span},
     ${task_est_accuracy},
@@ -371,7 +371,7 @@ async function dv_task_linked({
     ) {
       if (status_arg == "due") {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
@@ -379,7 +379,7 @@ async function dv_task_linked({
     ${parent_task}`;
       } else {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${time_span},
     ${task_est_accuracy},
@@ -398,7 +398,7 @@ async function dv_task_linked({
       relation_arg.startsWith("in_evening_ritual")
     ) {
       if (status_arg == "due") {
-        data_field = `${task_link}, 
+        data_field = `${task_link},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
@@ -442,14 +442,14 @@ async function dv_task_linked({
     ) {
       if (status_arg == "due") {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
     ${task_estimate}`;
       } else {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${time_span},
     ${task_est_accuracy},
@@ -461,14 +461,14 @@ async function dv_task_linked({
     ) {
       if (status_arg == "due") {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${task_start} AS Start,
     ${task_end} AS End,
     ${task_estimate}`;
       } else {
         data_field = `${task_link},
-    ${task_type}, 
+    ${task_type},
     ${task_date},
     ${time_span},
     ${task_est_accuracy}`;
@@ -545,13 +545,13 @@ async function dv_task_linked({
   } else if (relation_arg.startsWith("sib")) {
     if (type_arg.startsWith("par")) {
       type_filter = `contains(${yaml_class}, "parent")`;
-      relation_filter = `filter(${yaml_proj}, (project) => 
+      relation_filter = `filter(${yaml_proj}, (project) =>
       contains(this.${yaml_proj}, project))`;
     } else if (type_arg.startsWith("child")) {
       type_filter = `contains(${yaml_class}, "child")`;
-      relation_filter = `filter(${yaml_proj}, (project) => 
+      relation_filter = `filter(${yaml_proj}, (project) =>
       contains(this.${yaml_proj}, project))
-    AND filter(${yaml_parent_task}, (parent) => 
+    AND filter(${yaml_parent_task}, (parent) =>
       contains(this.${yaml_parent_task}, parent))
     AND ${task_checkbox_filter}`;
     }
@@ -941,7 +941,7 @@ FLATTEN
     file.tasks AS T
 WHERE
     ${filter}
-SORT 
+SORT
     ${sort}
 ${three_backtick}`;
     } else {
@@ -960,7 +960,7 @@ FLATTEN
     ${task_duration_act}
 WHERE
     ${filter}
-SORT 
+SORT
     ${sort}
 ${three_backtick}`;
     }
@@ -972,7 +972,7 @@ FROM
     ${projects_dir}
 WHERE
     ${filter}
-SORT 
+SORT
     ${sort}
 ${three_backtick}`;
   }

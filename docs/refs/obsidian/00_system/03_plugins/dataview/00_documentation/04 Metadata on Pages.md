@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/annotation/metadata-pages/
 file_class: lib_documentation
 date_created: 2023-03-09T17:35
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Metadata on Pages](https://blacksmithgu.github.io/obsidian-dataview/annotation/metadata-pages/)
 

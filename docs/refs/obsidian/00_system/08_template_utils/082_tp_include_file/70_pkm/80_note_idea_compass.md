@@ -1,5 +1,5 @@
 > [!tree] Knowledge Tree
->  
+>
 > - **1. **Category**: `dv: this.file.frontmatter.category`
 > - **2. **Branch**: `dv: this.file.frontmatter.branch`
 > - **3. **Field**: `dv: this.file.frontmatter.field`
@@ -10,7 +10,7 @@
 ### North
 
 > [!north] Where is the origin?
-> 
+>
 > 1. **Origin**::
 >     - **Origin Explanation**::
 > 2. **Origin**::
@@ -19,7 +19,7 @@
 ### West
 
 > [!west] What is similar?
-> 
+>
 > 1. **Similar**::
 >     - **Similar Explanation**::
 > 2. **Similar**::
@@ -28,7 +28,7 @@
 ### East
 
 > [!east] What is opposite?
-> 
+>
 > 1. **Opposite**::
 >     - **Opposite Explanation**::
 > 2. **Opposite**::
@@ -37,7 +37,7 @@
 ### South
 
 > [!south] Where does this lead?
-> 
+>
 > 1. **Destination**::
 >     - **Destination Explanation**::
 > 2. **Destination**::

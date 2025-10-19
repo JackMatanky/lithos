@@ -97,7 +97,7 @@ This is an asynchronous function, so you should `await` it.
 <%*
 const {autoprop} = this.app.plugins.plugins["metaedit"].api;
 _%>
-#tasks 
+#tasks
 Complete:: 0
 Project::
 Status:: <% await autoprop("Status") %>
@@ -131,7 +131,7 @@ const {createButton} = app.plugins.plugins["buttons"]
 dv.table(["Name", "Status", "Project", "Due Date", ""], dv.pages("#tasks")
     .sort(t => t["due-date"], 'desc')
     .where(t => t.status != "Completed")
-    .map(t => [t.file.link, t.status, t.project, t["due-date"], 
+    .map(t => [t.file.link, t.status, t.project, t["due-date"],
     createButton({app, el: this.container, args: {name: "Done!"}, clickOverride: {click: update, params: ['Status', 'Completed', t.file.path]}})])
     )
 ```
@@ -158,7 +158,7 @@ const buttonMaker = (pn, pv, fpath) => {
 dv.table(["Name", "Status", "Project", "Due Date", ""], dv.pages("#tasks")
     .sort(t => t["due-date"], 'desc')
     .where(t => t.status != "Completed")
-    .map(t => [t.file.link, t.status, t.project, t["due-date"], 
+    .map(t => [t.file.link, t.status, t.project, t["due-date"],
     buttonMaker('Status', 'Completed', t.file.path)])
     )
 ```
@@ -170,9 +170,9 @@ dv.table(["Name", "Status", "Project", "Due Date", ""], dv.pages("#tasks")
 
 ### Dev Info
 
-Made by Christian B. B. Houmann  
-Discord: Chhrriissyy#6548  
-Twitter: [https://twitter.com/chrisbbh](https://twitter.com/chrisbbh)  
+Made by Christian B. B. Houmann
+Discord: Chhrriissyy#6548
+Twitter: [https://twitter.com/chrisbbh](https://twitter.com/chrisbbh)
 Feel free to @ me if you have any questions.
 
 Also from dev: [NoteTweet: Post tweets directly from Obsidian.](https://github.com/chhoumann/notetweet_obsidian)

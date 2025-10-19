@@ -5,11 +5,11 @@ aliases:
   - 21 Resources
   - dataview_documentation_21_resources
 application: dataview
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-09T18:27
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Other Resources](https://blacksmithgu.github.io/obsidian-dataview/resources/resources-and-support/)
 
@@ -47,15 +47,15 @@ The [Obsidian Forums](https://forum.obsidian.md/) have a wealth of questions and
 
 ### Discord
 
-The [Obsidian Members Group Discord server](https://obsidian.md/community) has a `#dataview` channel.  
-Once again, more likely than not, your question has been asked before so try searching the thread though it is known that Discord's search can be spotty.  
-In case you don't find anything satisfactory,  
-This is the closest you'll get to real-time support but there are no guarantees of instant replies.  
+The [Obsidian Members Group Discord server](https://obsidian.md/community) has a `#dataview` channel.
+Once again, more likely than not, your question has been asked before so try searching the thread though it is known that Discord's search can be spotty.
+In case you don't find anything satisfactory,
+This is the closest you'll get to real-time support but there are no guarantees of instant replies.
 There are many helpful people though so don't be afraid to ask.
 
 ## Support
 
-Where do you go when you have questions?  
+Where do you go when you have questions?
 Here's what we recommend you try.
 
 1. Search GitHub Discussions and the Obsidian Forums for your question.

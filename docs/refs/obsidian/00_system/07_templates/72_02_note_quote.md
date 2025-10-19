@@ -413,11 +413,11 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Quote]
-> 
+>
 > `dv: split(this.file.frontmatter.about, "\n")[0]`
-> 
+>
 > `dv: split(this.file.frontmatter.about, "\n")[1]`
-> 
+>
 > `dv: split(this.file.frontmatter.about, "\n")[2]`
 
 ---

@@ -5,11 +5,11 @@ aliases:
   - 31 Script User Functions
   - templater_documentation_31_script_user_functions
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T16:26
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Script User Functions
 

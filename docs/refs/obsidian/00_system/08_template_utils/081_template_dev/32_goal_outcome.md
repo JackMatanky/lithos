@@ -1,18 +1,18 @@
 ---
 title: {{title}}
 type: outcome_goal
-context: 
+context:
 goal: % create dataview query for active goals %
 project: % create dataview query for active projects %
 organization:
 contact:
-due_do: 
-date_start: 
-date_end: 
-status: 
+due_do:
+date_start:
+date_end:
+status:
 file_class: task_goal_outcome
-date_created: 
-date_modified: 
+date_created:
+date_modified:
 tags:
 ---
 

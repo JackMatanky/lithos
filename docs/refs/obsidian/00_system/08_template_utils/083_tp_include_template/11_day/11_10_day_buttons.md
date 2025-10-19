@@ -19,7 +19,7 @@ const excl = String.fromCodePoint(0x21);
 /* ---------------------------------------------------------- */
 const cmnt_html = (content) =>
   [less_than + excl + two_hyphen, content, two_hyphen + great_than].join(space);
-  
+
 //-------------------------------------------------------------------
 // INSERT TEMPLATER INCLUDE TEMPLATE STRING
 //-------------------------------------------------------------------

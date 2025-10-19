@@ -252,7 +252,7 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!<%* tR += type_value %> ] <%* tR += type_name %> Context
-> 
+>
 > |            Year            |            Quarter            |            Month            |            Week            |
 > |:--------------------------:|:-----------------------------:|:---------------------------:|:--------------------------:|
 > | [[<%* tR += year_file %>]] | [[<%* tR += quarter_file %>]] | [[<%* tR += month_file %>]] | [[<%* tR += week_file %>]] |

@@ -11,7 +11,7 @@ url: https://github.com/Pseudonium/Obsidian_to_Anki/wiki/Header-paragraph-style
 file_class: lib_documentation
 date_created: 2023-05-30T19:13
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Header Paragraph Style
 
@@ -23,7 +23,7 @@ tags:
 2. Paste the following contents into the file:
 
 ```
-# Style  
+# Style
 This style is suitable for having the header as the front, and the answer as the back
 # Overall heading
 ## Subheading 1
@@ -31,9 +31,9 @@ You're allowed to nest headers within each other
 ## Subheading 2
 It'll take the deepest level for the question
 ## Subheading 3
-   
-   
-   
+
+
+
 It'll even
 Span over
 Multiple lines, and ignore preceding whitespace
@@ -55,7 +55,7 @@ Multiple lines, and ignore preceding whitespace
 Basic =
 ```
 
-to  
+to
 
 ```
 Basic = ^#+(.+)\n*((?:\n(?:^[^\n#].{0,2}$|^[^\n#].{3}(?&lt;!&lt;!--).*))+)
@@ -66,9 +66,9 @@ Basic = ^#+(.+)\n*((?:\n(?:^[^\n#].{0,2}$|^[^\n#].{3}(?&lt;!&lt;!--).*))+)
 
 ### All Users
 
-1. You should see these cards in Anki: ![[Header_1.webp]]  
-   ![[Header_2.webp]]  
-   ![[Header_3.webp]]  
+1. You should see these cards in Anki: ![[Header_1.webp]]
+   ![[Header_2.webp]]
+   ![[Header_3.webp]]
    ![[Header_4.webp]]
 
 #### Subheader Paragraph Style

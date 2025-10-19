@@ -23,16 +23,16 @@ const dailies = dv.pages('"10 Example Data/dailys"')
 	.mutate(p => p.wakingPhase = calculateWakingPhase(p["wake-up"], p["go-to-sleep"]))
 
 
-dv.table(["File", "wake-up", "go-to-sleep", "Waking Phase"], 
+dv.table(["File", "wake-up", "go-to-sleep", "Waking Phase"],
 		 dailies.map(p => [p.file.link, p["wake-up"], p["go-to-sleep"], p.wakingPhase]))
 
 function calculateWakingPhase(wakeUp, goToSleep) {
 	const isValid = isValidTime(wakeUp) && isValidTime(goToSleep)
 	if (!isValid) return '_⚠ Input times not valid_'
-	
+
 	wakeUp = dv.luxon.Duration.fromISOTime(wakeUp);
 	goToSleep = dv.luxon.Duration.fromISOTime(goToSleep);
-	return dv.luxon.Duration.fromMillis(goToSleep - wakeUp) 
+	return dv.luxon.Duration.fromMillis(goToSleep - wakeUp)
 }
 
 function isValidTime(time) {
@@ -84,16 +84,16 @@ dv.table(["File", "wake-up", "go-to-sleep", "Waking Phase"], dailies.map(p => [p
 function calculateWakingPhase(wakeUp, goToSleep) {
 	wakeUp = tryToFixUp(wakeUp);
 	goToSleep = tryToFixUp(goToSleep);
-	
+
 	const isValid = isValidTime(wakeUp) && isValidTime(goToSleep)
 	if (!isValid) return '_⚠ Input times not valid_'
-	
+
 	wakeUp = Duration.fromISOTime(wakeUp);
 	goToSleep = Duration.fromISOTime(goToSleep);
 	if (goToSleep < wakeUp) {
 		goToSleep = goToSleep.plus(Duration.fromISO("P1D"))
 	}
-	return Duration.fromMillis(goToSleep - wakeUp) 
+	return Duration.fromMillis(goToSleep - wakeUp)
 }
 
 function tryToFixUp(time) {
@@ -113,7 +113,7 @@ function isValidTime(time) {
 
 If your metadata has the format `00h00m`, i.e. `15h55m`, calculations get easier.
 
-t1:: 11h45m  
+t1:: 11h45m
 t2:: 15h55m
 
 ```
@@ -125,8 +125,8 @@ FLATTEN t2 - t1 as duration
 
 ### As Inline Statement for Current File
 
-date:: 2022-06-06  
-wake-up:: 07:35  
+date:: 2022-06-06
+wake-up:: 07:35
 go-to-sleep:: 23:50
 
 Wake time: `= date(dateformat(this.file.day, "yyyy-MM-dd") + "T" + this.go-to-sleep) - (date(dateformat(this.file.day, "yyyy-MM-dd") + "T" + this.wake-up))`
@@ -135,9 +135,9 @@ Wake time: `= date(dateformat(this.file.day, "yyyy-MM-dd") + "T" + this.go-to-sl
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

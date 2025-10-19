@@ -1,7 +1,7 @@
 ### Preview
 
 > [!task_preview] Interview Preview
-> 
+>
 > 1. What is the interview's purpose? What problem does it address?
 >     - **Problem**::
 > 2. What do I want from this interview?
@@ -14,9 +14,9 @@
 ### Plan
 
 > [!task_plan] Interview Plan
-> 
+>
 > Write potential questions and responses
-> 
+>
 > - question short description
 >     - [ ] agenda section short description
 > 	- **Question**:
@@ -37,7 +37,7 @@
 ### Review
 
 > [!task_review] Action Item Review
-> 
+>
 > 1. What was the outcome? How did it make me feel?
 >     - **Outcome**::
 >     - **Feeling**::

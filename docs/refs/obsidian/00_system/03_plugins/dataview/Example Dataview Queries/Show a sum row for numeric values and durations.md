@@ -34,7 +34,7 @@ for (let i = 1; i < DQL.headers.length; i++) {
 	for (let k = 0; k < DQL.values.length; k++) {
 		// get the current cell (row k and column i) and add it to the sum, if set
 		let currentValue = DQL.values[k][i];
-		if (currentValue) sum += currentValue 
+		if (currentValue) sum += currentValue
 	}
 	if (!sum) sum = ""
 	sums.push(sum);
@@ -77,7 +77,7 @@ for (let i = 1; i < DQL.headers.length; i++) {
 	for (let k = 0; k < DQL.values.length; k++) {
 		// get the current cell (row k and column i) and add it to the sum, if set
 		let currentValue = DQL.values[k][i];
-		if (currentValue) sum += currentValue 
+		if (currentValue) sum += currentValue
 	}
 	if (!sum) sum = ""
 	sums.push(dataType === "duration" ? luxon.Duration.fromMillis(sum) : sum);
@@ -105,9 +105,9 @@ dv.table(DQL.headers, DQL.values)
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

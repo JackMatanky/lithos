@@ -22,11 +22,11 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester, obsidian/tp/
 # Organization File Name and Title Suggester
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output:: A basename of the chosen organization file  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output:: A basename of the chosen organization file
 > Description:: Return an organization's file name and the organization's main title from `alias[0]`.
 
 ---
@@ -84,14 +84,14 @@ const books_obj_arr = await tp.user.file_name_alias_by_class_type({
     file_class: "lib",
     type: "book",
   });
-  
+
 const books_obj = await tp.system.suggester(
   (item) => item.key,
   books_obj_arr,
   false,
   "Book?"
   );
-  
+
 const book_value = books_obj.value;
 const book_name = books_obj.key;
 
@@ -149,7 +149,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -173,7 +173,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

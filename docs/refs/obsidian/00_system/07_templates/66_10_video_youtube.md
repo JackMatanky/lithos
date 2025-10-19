@@ -373,14 +373,14 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!<%* tR += class_value %> ] <%* tR += class_name %> Details
-> 
+>
 > - **Title**: `dv: choice(regextest("\w", this.file.frontmatter.url), elink(this.file.frontmatter.url, this.file.frontmatter.title), this.file.frontmatter.title)`
 > - **Author**: `dv: this.file.frontmatter.author`
 > - **Publisher**: `dv: this.file.frontmatter.publisher`
 > - **Series**: `dv: choice((regextest(".", this.file.frontmatter.series) AND regextest(".", this.file.frontmatter.series_url)), this.file.frontmatter.series + ", " + elink(this.file.frontmatter.series_url, "link"), choice(regextest(".", this.file.frontmatter.series), this.file.frontmatter.series, ""))`
 > - **Date Published**: `dv: this.file.frontmatter.year_published`
-> 
-> Completed::  
+>
+> Completed::
 
 ---
 

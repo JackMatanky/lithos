@@ -6,7 +6,7 @@ aliases:
 plugin: templater
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -19,11 +19,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Assign the daily calendar's titles, alias, and file name based on daily date variables.
 
 ---
@@ -37,7 +37,7 @@ tags: obsidian/templater, javascript
 // TODO: Define <long_date> variable
 // TODO: Define <short_date> variable
 // TODO: Define <weekday_name> variable
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // DAILY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const day_full_title_name = `"${weekday_name}, ${long_date_day}"`;
@@ -49,7 +49,7 @@ const day_alias_arr = `${new_line}${ul_yaml}${day_full_title_name}${ul_yaml}${da
 
 const day_file_name = `${med_date_day}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const week_full_title_name = `${long_date_week}`;
@@ -59,7 +59,7 @@ const week_alias_arr = `${new_line}${ul_yaml}"${week_full_title_name}"${ul_yaml}
 
 const week_file_name = `${week_short_title_value}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // MONTHLY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const month_full_title_name = `${long_date_month}`;
@@ -70,7 +70,7 @@ const month_alias_arr = `${new_line}${ul_yaml}${month_name_full}${ul_yaml}${mont
 
 const month_file_name = `${short_date_month}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // QUARTERLY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const quarter_full_title_name = `${long_date_quarter}`;
@@ -87,7 +87,7 @@ const quarter_file_name = `${quarter_short_title_name}`;
 <!-- Add the full code excluding explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // DAILY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const day_full_title_name = `"${weekday_name}, ${long_date_day}"`;
@@ -99,7 +99,7 @@ const day_alias_arr = `${new_line}${ul_yaml}${day_full_title_name}${ul_yaml}${da
 
 const day_file_name = `${med_date_day}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // WEEKLY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const week_full_title_name = `${long_date_week}`;
@@ -109,7 +109,7 @@ const week_alias_arr = `${new_line}${ul_yaml}"${week_full_title_name}"${ul_yaml}
 
 const week_file_name = `${week_short_title_value}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // MONTHLY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const month_full_title_name = `${long_date_month}`;
@@ -120,7 +120,7 @@ const month_alias_arr = `${new_line}${ul_yaml}${month_name_full}${ul_yaml}${mont
 
 const month_file_name = `${short_date_month}`;
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // QUARTERLY CALENDAR TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const quarter_full_title_name = `${long_date_quarter}`;
@@ -179,7 +179,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -200,7 +200,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

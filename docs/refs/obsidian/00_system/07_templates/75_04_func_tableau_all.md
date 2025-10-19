@@ -389,7 +389,7 @@ for (let i = 0; i < obj_arr.length; i++) {
     .replaceAll(parameter_char_include, "")
     .replaceAll(/\*/g, "\\*");
   const parameter_arr = parameters.split(",");
-  
+
   let ol_parameter_count = 0;
   let parameter_body = "";
   for (let k = 0; k < parameter_arr.length; k++) {

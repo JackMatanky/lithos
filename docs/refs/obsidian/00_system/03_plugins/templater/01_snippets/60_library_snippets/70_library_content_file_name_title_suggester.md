@@ -22,22 +22,22 @@ tags: javascript, obsidian/templater, obsidian/tp/system/suggester
 # Library Content File Name and Title Suggester
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output:: A basename of the chosen contact file  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output:: A basename of the chosen contact file
 > Description:: Return a library file's name and main title from `alias[0]`.
 
 ---
 
 ## Snippet
 
-```javascript 
+```javascript
 // Template file to include
 const lib_name_alias = "60_library_content_file_name_alias";
 
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET LIBRARY CONTENT FILE NAME AND ALIAS
 //---------------------------------------------------------
 // Retrieve the Library Content File Name and Alias template and content
@@ -53,11 +53,11 @@ const lib_resource_link = include_arr[2];
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // SET LIBRARY CONTENT FILE NAME AND ALIAS
 //---------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${lib_name_alias}.md`;
@@ -191,7 +191,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -215,7 +215,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

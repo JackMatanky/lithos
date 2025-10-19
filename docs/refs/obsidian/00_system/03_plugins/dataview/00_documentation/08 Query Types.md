@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/queries/query-types/
 file_class: lib_documentation
 date_created: 2023-03-09T17:10
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Query Types](https://blacksmithgu.github.io/obsidian-dataview/queries/query-types/)
 
@@ -21,20 +21,20 @@ The Query Type also determines which **information level** a query is executed o
 
 You can combine **every Query Type with all available [Data Commands](data-commands.md)** to refine your result set. Read more about the interconnection between Query Types and Data Commands on [How to Use Dataview](../index.md#how-to-use-dataview) and the [structure page](structure.md).
 
-> [!summary] "Query Type"  
+> [!summary] "Query Type"
 > The Query Type determines the output format of a query. It's the only mandatory information for a query.
 
 ## LIST
 
 `LIST` queries output a bullet point list consisting of your file links or the group name, if you decided to [group](data-commands.md#group-by). You can specify up to **one additional information** to output alongside your file or group information.
 
-> [!summary] "Query Type `LIST`"  
+> [!summary] "Query Type `LIST`"
 > `LIST` outputs a bullet point list of page links or Group keys. You can specify one additional information to show for each result.
 
 The simplest LIST query outputs a bullet point list of all files in your vault:
 
 ```sql
-```dataview 
+```dataview
 LIST
 ```
 
@@ -52,7 +52,7 @@ but you can, of course, use [data commands](data-commands.md) to restrict which 
 
 ```sql
 ```dataview
-LIST 
+LIST
 FROM #games/mobas OR #games/crpg
 ```
 
@@ -66,7 +66,7 @@ FROM #games/mobas OR #games/crpg
 To add a **additional information** to your query, specify it right after the `LIST` command and before possibly available data commands:
 
 ```sql
-```dataview 
+```dataview
 LIST file.folder
 ```
 
@@ -83,7 +83,7 @@ LIST file.folder
 You can only add **one** additional information, not multiple. But you can **specify a computed value** instead of a plain meta data field, which can contain information of multiple fields:
 
 ```sql
-```dataview 
+```dataview
 LIST "File Path: " + file.folder + " _(created: " + file.cday + ")_"
 FROM "Games"
 ```
@@ -99,7 +99,7 @@ FROM "Games"
 A **grouped list** shows their group keys, and only the group keys, by default:
 
 ```sql
-```dataview 
+```dataview
 LIST
 GROUP BY type
 ```
@@ -115,7 +115,7 @@ GROUP BY type
 A common use-case on grouped `LIST` queries is to add the file links to the output by specifying them as the additional information:
 
 ```sql
-```dataview 
+```dataview
 LIST rows.file.link
 GROUP BY type
 ```
@@ -189,7 +189,7 @@ GROUP BY type
 
 The `TABLE` query types outputs page data as a tabular view. You can add zero to multiple meta data fields to your `TABLE` query by adding them as a **comma separated list**. You can not only use plain meta data fields as columns, but specify **calculations** as well. Optionally, you can specify a **table header** via the `AS <header>` syntax. Like all other query types, you can refine your result set for your query with [data commands](data-commands.md).
 
-> [!summary] "`TABLE` Query Type"  
+> [!summary] "`TABLE` Query Type"
 > `TABLE` queries render a tabular view of any number of meta data values or calculations. It is possible to specify column headers via `AS <header> `.
 
 ```sql
@@ -209,14 +209,14 @@ TABLE
 | [Stardew Valley](#)            |
 | [Dashboard](#)                 |
 
-> [!hint] "Changing the first column header name"  
-> You can change the name of the first column header (by default "File" or "Group") via the Dataview Settings under Table Settings -> Primary Column Name / Group Column Name.  
+> [!hint] "Changing the first column header name"
+> You can change the name of the first column header (by default "File" or "Group") via the Dataview Settings under Table Settings -> Primary Column Name / Group Column Name.
 > If you want to change the name only for one specific `TABLE` query, have a look at `TABLE WITHOUT ID`.
 
-> [!info] "Disabling Result count"  
+> [!info] "Disabling Result count"
 > The first column always shows the result count. If you do not want to get it displayed, you can disable it in Dataview's settings ("Display result count", available since 0.5.52).
 
-Of course, a `TABLE` is made for specifying one to multiple additional information:  
+Of course, a `TABLE` is made for specifying one to multiple additional information:
 
 ```sql
 ```dataview
@@ -232,7 +232,7 @@ FROM #games
 | [Pillars of Eternity 2](#)  | 	April 21, 2022 | 	Games	 | - games/crpg |
 | [Stardew Valley](#) | 	April 04, 2021 | 	Games/finished	 |  - games/simulation |
 
-> [!hint] "Implicit fields"  
+> [!hint] "Implicit fields"
 > Curious about `file.folder` and `file.etags`? Learn more about [implicit fields on pages](../annotation/metadata-pages.md).
 
 ### Custom Column Headers
@@ -241,9 +241,9 @@ You can specify **custom headings** for your columns by using the `AS` syntax:
 
 ```sql
 ```dataview
-TABLE 
-	started, 
-	file.folder AS Path, 
+TABLE
+	started,
+	file.folder AS Path,
 	file.etags AS "File Tags"
 FROM #games
 ```
@@ -256,16 +256,16 @@ FROM #games
 | [Pillars of Eternity 2](#)  | 	April 21, 2022 | 	Games	 | - games/crpg |
 | [Stardew Valley](#) | 	April 04, 2021 | 	Games/finished	 |  - games/simulation |
 
-> [!info] "Custom headers with spaces"  
+> [!info] "Custom headers with spaces"
 > if you want to use a custom header with spaces, like `File Tags`, you need to wrap it into double quotes: `"File Tags"`.
 
 This is especially useful when you want to use **calculations or expressions as column values**:
 
 ```sql
 ```dataview
-TABLE 
-	default(finished, date(today)) - started AS "Played for", 
-	file.folder AS Path, 
+TABLE
+	default(finished, date(today)) - started AS "Played for",
+	file.folder AS Path,
 	file.etags AS "File Tags"
 FROM #games
 ```
@@ -278,7 +278,7 @@ FROM #games
 | [Pillars of Eternity 2](#)  | 	7 months, 2 days | 	Games	 | - games/crpg |
 | [Stardew Valley](#) | 	4 months, 3 weeks, 3 days | 	Games/finished	 |  - games/simulation |
 
-> [!hint] "Calculations and expressions"  
+> [!hint] "Calculations and expressions"
 > Learn more about the capability of computing expressions and calculations under [expressions](../reference/expressions.md) and [functions](../reference/functions.md).
 
 ### TABLE WITHOUT ID
@@ -321,16 +321,16 @@ FROM #games
 | [Pillars of Eternity 2](#)  | - games/crpg |
 | [Stardew Valley](#) |  - games/simulation |
 
-> [!info] "Renaming the first column in general"  
+> [!info] "Renaming the first column in general"
 > If you want to rename the first column in all cases, change the name in Dataviews settings under Table Settings.
 
 ## TASK
 
-The `TASK` Query outputs **an interactive list of all tasks in your vault** that match the given [data commands](data-commands.md) (if any). `TASK` queries are special compared to the other Query Types because they do give back **Tasks as results and not pages**. This implies that all [data commands](data-commands.md) operate on **Task level** and makes it possible to granularly filter your tasks i.e. for their status or meta data specified on the task itself.  
+The `TASK` Query outputs **an interactive list of all tasks in your vault** that match the given [data commands](data-commands.md) (if any). `TASK` queries are special compared to the other Query Types because they do give back **Tasks as results and not pages**. This implies that all [data commands](data-commands.md) operate on **Task level** and makes it possible to granularly filter your tasks i.e. for their status or meta data specified on the task itself.
 
 Also, `TASK` Queries are the only possibility to **manipulate your files through DQL**. Normally, Dataview does not touch the content of your files; however, if you check a task through a dataview query, it'll get **checked in its original file, too**. In the Dataview Settings under "Task Settings", you can opt-in to automatically set a `completion` meta data field when checking a task in dataview. Mind though that this only works if you check the task inside a dataview block.
 
-> [!summary] "`TASK` Query Type"  
+> [!summary] "`TASK` Query Type"
 > `TASK` queries render an interactive list of all tasks in your vault. `TASK` Queries are executed on **task level**, not page level, allowing for task-specific filtering. This is the only command in dataview that modifies your original files if interacted with.
 
 ```sql
@@ -357,14 +357,14 @@ WHERE !completed
 GROUP BY file.link
 ```
 
-> [!hint] Counting tasks with subtask  
+> [!hint] Counting tasks with subtask
 > Noticing the (1) on the header of `2022-07-30`? Child tasks belong to their parent task and are not counted separately. Also, they **behave differently** on filtering.
 
 ### Child Tasks
 
 A task is considered a **child task** if it is **indented by a tab** and is below an unindented task.
 
-> [!info] Childs of a bullet point item  
+> [!info] Childs of a bullet point item
 > While indented tasks under a bulleted list item are, strictly speaking, also child tasks, Dataview will handle them like normal tasks in most cases.
 
 Child Tasks **belong to their parent**. This means if you're querying for tasks, you'll get child tasks as part of their parent back.
@@ -396,7 +396,7 @@ WHERE urgent
 
 The `CALENDAR` Query outputs a monthly based calendar where every result is depicted as a dot on it referring date. The `CALENDAR` is the only Query Type that requires an additional information. This additional information needs to be a [date](../annotation/types-of-metadata.md#date) (or unset) on all queried pages.
 
-> [!summary] `CALENDAR` Query Type  
+> [!summary] `CALENDAR` Query Type
 > The `CALENDAR` Query Types renders a calendar view where every result is represented by a dot on the given meta data field date.
 
 ```sql

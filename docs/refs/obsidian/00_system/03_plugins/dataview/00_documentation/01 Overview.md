@@ -9,7 +9,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/
 file_class: lib_documentation
 date_created: 2023-03-09T17:10
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Overview](https://blacksmithgu.github.io/obsidian-dataview/)
 
@@ -25,28 +25,28 @@ You could
 
 and many more things.
 
-> [!hint]  
+> [!hint]
 > Dataview gives you a fast way to search, display and operate on indexed data in your vault!
 
 Dataview is highly generic and high performance, scaling up to hundreds of thousands of annotated notes without issue.
 
 If the built in [query language](query/queries/) is insufficient for your purpose, you can run arbitrary JavaScript against the [dataview API](api/intro/) and build whatever utility you might need yourself, right in your notes.
 
-> [!info] Dataview is about displaying, not editing  
+> [!info] Dataview is about displaying, not editing
 > Dataview is meant for displaying and calculating data. It is not meant to edit your notes/metadata and will always leave them untouched (… except if you're checking a [Task](queries/query-types.md#task-queries) through Dataview.)
 
 ## How to Use Dataview
 
 Dataview consists of two big building blocks: **Data Indexing** and **Data Querying**.
 
-> [!info] "More details on the linked documentation pages"  
+> [!info] "More details on the linked documentation pages"
 > The following sections should give you a general overview about what you can do with dataview and how. Be sure to visit the linked pages to find out more about the individual parts.
 
 ### Data Indexing
 
 Dataview operates on metadata in your Markdown files. It cannot read everything in your vault, but only specific data. Some of your content, like tags and bullet points (including tasks), are [available automatically](annotation/add-metadata.md#implicit-fields) in Dataview. You can add other data through **fields**, either on top of your file [per YAML Frontmatter](annotation/add-metadata.md#frontmatter) or in the middle of your content with [Inline Fields](annotation/add-metadata.md#inline-fields) via the `[key:: value]` syntax. Dataview *indexes* these data to make it available for you to query.
 
-> [!hint]  
+> [!hint]
 > Dataview indexes [certain information](annotation/add-metadata.md#implicit-fields) like tags and list items and the data you add via fields. Only indexed data is available in a Dataview query!"
 
 For example, a file might look like this:
@@ -79,7 +79,7 @@ Over many a quaint and curious volume of forgotten lore—
 
 In terms of indexed metadata (or what you can query), they are identical, and only differ in their annotation style. How you want to [annotate your  metadata](annotation/add-metadata.md) is up to you and your personal preference. With this file, you'd have the **metadata field** `author` available and everything Dataview provides you [automatically as implicit fields](annotation/metadata-pages.md), like the tag or note title.
 
-> [!attention] "Data needs to be indexed"  
+> [!attention] "Data needs to be indexed"
 > In the above example, you *do not* have the poem itself available in Dataview: It is a paragraph, no metadata field and nothing Dataview indexes automatically. It is not part of Dataviews index, so you won't be able to query it.
 
 ### Data Querying
@@ -105,7 +105,7 @@ LIST
 
 which list all files in your vault.
 
-> [!info] "Everything but the Query Type is optional"  
+> [!info] "Everything but the Query Type is optional"
 > The only thing you need for a valid DQL Query is the Query Type (and on [CALENDAR](queries/query-types#calendar-queries)s, a date field.)
 
  A more restricted Query might look like this:
@@ -139,7 +139,7 @@ That's not where the capabilities of dataview end, though. You can also **operat
 
 ```sql
 ```dataview
-TABLE 
+TABLE
 author, date(now).year - published AS "Age in Yrs", length(file.inlinks) AS "Counts of Mentions"
 FROM #poems
 ```

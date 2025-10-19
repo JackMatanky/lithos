@@ -73,7 +73,7 @@ let query = "";
 
 //-------------------------------------------------------------------
 // TEMPLATE FILES TO INCLUDE PATH VARIABLES
-//------------------------------------------------------------------- 
+//-------------------------------------------------------------------
 const buttons_table_pdev_today = "00_90_buttons_table_pdev_today";
 const buttons_table_task_habit_today = "00_40_buttons_table_task_habit_today";
 const buttons_table_note = "00_80_buttons_table_notes";
@@ -244,14 +244,14 @@ for (let i = 0; i < weekday_arr.length; i++) {
   day_short_title_name = long_date;
   day_full_title_value = date;
   day_short_title_value = short_date;
-  
+
   alias_arr = [day_full_title_name, day_short_title_name, day_short_title_value, day_full_title_value];
   day_file_alias = "";
   for (var j = 0; j < alias_arr.length; j++) {
     alias = yaml_li(alias_arr[j]);
     day_file_alias += alias;
   };
-  
+
   // CALENDAR FILE LINKS AND ALIASES
   year_file = `[[${year_long}]]`;
   quarter_file = `[[${year_long}-Q${quarter_num}]]`;
@@ -260,90 +260,90 @@ for (let i = 0; i < weekday_arr.length; i++) {
 
   // DAY CONTEXT CALLOUT
   context_links = `${call_tbl_start}${year_file}${tbl_pipe}${quarter_file}${tbl_pipe}${month_file}${tbl_pipe}${week_file}${call_tbl_end}`;
-  
+
   context = `${context_title}${context_header}${context_tbl_div}${context_links}${two_new_line}`;
 
   // PDEV HEADING
   heading = "Journal Entries";
   const head_pdev = `${head_lvl(2)}${heading}${two_new_line}`;
   const toc_pdev = `[[${file_section}${heading}\\|PDEV]]`;
-  
+
   // PKM HEADINGS
   heading = "Personal Knowledge Management";
   const head_pkm = `${head_lvl(2)}${heading}${two_new_line}`;
   const toc_pkm = `[[${file_section}${heading}\\|PKM]]`;
-  
+
   heading = "Knowledge Tree";
   const head_pkm_tree = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_pkm_tree = `[[${file_section}${heading}\\|Tree]]`;
-  
+
   heading = "Permanent";
   const head_pkm_perm = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_pkm_perm = `[[${file_section}${heading}\\|Permanent]]`;
-  
+
   heading = "Literature";
   const head_pkm_lit = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_pkm_lit = `[[${file_section}${heading}\\|Literature]]`;
-  
+
   heading = "Fleeting";
   const head_pkm_fleet = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_pkm_fleet = `[[${file_section}${heading}\\|Fleeting]]`;
-  
+
   heading = "General Info";
   const head_pkm_info = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_pkm_info = `[[${file_section}${heading}\\|Info]]`;
-  
+
   const toc_pkm_sect = `${call_tbl_start}${toc_pkm_tree}${tbl_pipe}${toc_pkm_perm}${tbl_pipe}${toc_pkm_lit}${tbl_pipe}${toc_pkm_fleet}${tbl_pipe}${toc_pkm_info}${call_tbl_end}${new_line}${call_tbl_start}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${call_tbl_end}${new_line}`;
-  
+
   // LIBRARY HEADINGS
   heading = "Library";
   const head_lib = `${head_lvl(2)}${heading}${two_new_line}`;
   const toc_lib = `[[${day_file_section}${heading}\\|Library]]`;
-  
+
   heading = "Completed Today";
   const head_lib_done = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_lib_done = `[[${day_file_section}${heading}\\|Done]]`;
-  
+
   heading = "Modified Today";
   const head_lib_mod = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_lib_mod = `[[${day_file_section}${heading}\\|Modified]]`;
-  
+
   heading = "Created Today";
   const head_lib_new = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_lib_new = `[[${day_file_section}${heading}\\|New]]`;
-  
+
   const toc_lib_sect = `${call_tbl_start}${toc_lib_done}${tbl_pipe}${toc_lib_mod}${tbl_pipe}${toc_lib_new}${call_tbl_end}${new_line}${call_tbl_start}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${call_tbl_end}${new_line}`;
-  
+
   // TASKS AND EVENTS HEADINGS
   heading = "Tasks and Events";
   const head_task = `${head_lvl(2)}${heading}${two_new_line}`;
   const toc_task = `[[${day_file_section}${heading}\\|Tasks and Events]]`;
-  
+
   heading = "Due Today";
   const head_task_due = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_task_due = `[[${day_file_section}${heading}\\|Due]]`;
-  
+
   heading = "Completed Today";
   const head_task_done = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_task_done = `[[${day_file_section}${heading}\\|Done]]`;
-  
+
   heading = "Created Today";
   const head_task_new = `${head_lvl(3)}${heading}${two_new_line}`;
   const toc_task_new = `[[${day_file_section}${heading}\\|New]]`;
-  
+
   const toc_task_sect = `${call_tbl_start}${toc_task_due}${tbl_pipe}${toc_task_done}${tbl_pipe}${toc_task_new}${call_tbl_end}${new_line}${call_tbl_start}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${call_tbl_end}${new_line}`;
-  
+
   // TABLE OF CONTENTS
   toc_title = `${call_start}[!toc]${space}${day_type_name}${space}[[${file_section}${day_full_title_name}\|Contents]]${new_line}${call_start}${new_line}`;
-  
+
   toc_section = `${call_tbl_start}${toc_pdev}${tbl_pipe}${toc_pkm}${tbl_pipe}${toc_lib}${tbl_pipe}${toc_task}${call_tbl_end}${new_line}${call_tbl_start}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${tbl_pipe}${tbl_cent}${call_tbl_end}`;
 
   toc = `${toc_title}${toc_section}${two_new_line}`;
-  
+
   // PDEV DATAVIEW LIST
   query = await tp.user.dv_pdev_date(date, "false");
   const pdev = `${head_pdev}${toc}${pdev_buttons_table}${query}${two_new_line}${hr_line}${new_line}`;
-  
+
   // DAILY PKM FILES DATAVIEW TABLE
   // TYPES: "pkm_tree", "permanent", "literature", "fleeting", "info"
   // STATUSES: "schedule", "review", "clarify", "develop", "done", "resource"
@@ -392,7 +392,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   });
   const pkm_info = `${head_pkm_info}${query}${two_new_line}`;
   const pkm = `${head_pkm}${toc}${note_buttons_table}${pkm_tree}${pkm_perm}${pkm_lit}${pkm_fleet}${pkm_info}${hr_line}${new_line}`;
-  
+
   // LIBRARY DATAVIEW TABLE
   // STATUS OPTIONS: 'created', 'modified'
   comment = `${cmnt_html_start}Limit 50${cmnt_html_end}${two_new_line}`;
@@ -411,7 +411,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
     md: "false",
   });
   const lib_mod = `${head_lib_mod}${comment}${query}${two_new_line}`;
-  
+
   query = await tp.user.dv_lib_status_dates({
     status: "new",
     start_date: date,
@@ -420,7 +420,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
   });
   const lib_new = `${head_lib_new}${comment}${query}${two_new_line}`;
   const lib = `${head_lib}${toc}${lib_done}${lib_mod}${lib_new}${hr_line}${new_line}`;
-  
+
   // TASKS AND EVENTS DATAVIEW TABLES
   // STATUS OPTIONS: 'due', 'done', 'new'
   query = await tp.user.dv_task_type_status_dates({
@@ -431,7 +431,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
     md: "false",
   });
   const task_due = `${head_task_due}${query}${two_new_line}`;
-  
+
   query = await tp.user.dv_task_type_status_dates({
     type: "child_task",
     status: "done",
@@ -440,7 +440,7 @@ for (let i = 0; i < weekday_arr.length; i++) {
     md: "false",
   });
   const task_done = `${head_task_done}${query}${two_new_line}`;
-  
+
   query = await tp.user.dv_task_type_status_dates({
     type: "child_task",
     status: "new",

@@ -348,15 +348,15 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!Quote]
-> 
+>
 > **Quote**::
-> 
+>
 > **Contextual Explanation**::
-> 
+>
 > **Layman Explanation**::
 
 > [!Thought]
-> 
+>
 > **Idea**::
 
 ---

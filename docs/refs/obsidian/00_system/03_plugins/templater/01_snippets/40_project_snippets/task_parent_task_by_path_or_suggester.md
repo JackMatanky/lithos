@@ -11,7 +11,7 @@ module:
   - system
   - file
   - user
-description: 
+description:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -24,11 +24,11 @@ tags: obsidian/templater, javascript, obsidian/tp/system/suggester, obsidian/tp/
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: If a task is already in a parent task's folder, set the task's parent task based on the folder path; otherwise, set the parent task with the suggester.
 
 ---
@@ -61,7 +61,7 @@ let parent_task_name;
 // Check if the parent directory equals projects_dir, 40_projects/
 // and the folder path array's length is equal to or greater than four
 if (projects_dir == `${folder_path_split[0]}/` && folder_path_length >= 4) {
-  // If true, assign the project to 
+  // If true, assign the project to
   // the split folder path array's fourth element
   parent_task_obj = await tp.user.file_name_alias_by_class_type({
     dir: folder_path_split[3],
@@ -191,7 +191,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -212,7 +212,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	file.frontmatter.definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -1,7 +1,7 @@
 # Epic List
 
-- **Epic 1: Foundational CLI & Static Template Engine.**
-  - **Goal:** Deliver a working CLI that can generate a note from a static template. This includes the basic project scaffolding, a `version` command, and the core `new <template>` command with the Go `text/template` engine.
+- **Epic 1: Foundational CLI with Hexagonal Architecture.**
+  - **Goal:** Deliver a runnable Go application that is correctly structured with a hexagonal architecture from the start. It includes the core, non-interactive template rendering capability.
 - **Epic 2: Configuration & Schema Loading.**
   - **Goal:** Introduce configuration file handling (`lithos.yaml`) and the ability to load and parse schema definition files from the vault.
 - **Epic 3: Vault Indexing Engine.**

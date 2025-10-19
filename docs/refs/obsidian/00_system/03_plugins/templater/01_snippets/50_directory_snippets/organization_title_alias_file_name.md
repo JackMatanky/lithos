@@ -8,7 +8,7 @@ plugin: templater
 language:
   - javascript
 module:
-  - 
+  -
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -21,11 +21,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin:: [[Templater]]  
-> Language:: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin:: [[Templater]]
+> Language:: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Assign an organization's title, alias, and file name.
 
 ---
@@ -37,7 +37,7 @@ tags: obsidian/templater, javascript
 ```javascript
 // >>>TODO: DEFINE <title> VARIABLE<<<
 // >>>TODO: DEFINE <context_dir> VARIABLE<<<
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // ORGANIZATION TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const full_title_name = title;
@@ -51,11 +51,11 @@ const file_name = short_title_value;
 
 ### Templater
 
-<!-- Add the full code as it appears in the template  -->  
+<!-- Add the full code as it appears in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
-//---------------------------------------------------------  
+//---------------------------------------------------------
 // ORGANIZATION TITLES, ALIAS, AND FILE NAME
 //---------------------------------------------------------
 const full_title_name = title;
@@ -120,7 +120,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -141,7 +141,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

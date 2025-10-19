@@ -347,7 +347,7 @@ const eve_rit_value = eve_rit_name.replaceAll(/\s/g, "_").toLowerCase();
 const eve_rit_type = eve_rit_value.slice(0, -1);
 const eve_rit_link = `[[${short_date_value}_${eve_rit_value}\\|${full_eve_rit_name}]]`;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // CHILD TASK INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${child_task_info_callout}.md`;
@@ -404,8 +404,8 @@ tags:
 
 ## <%* tR += type_name %>
 
-> [!<%* tR += context_value %> ] Today's <%* tR += context_name %> 
-> 
+> [!<%* tR += context_value %> ] Today's <%* tR += context_name %>
+>
 > | <%* tR += context_name %> | Link |
 > |:-------------------------- |:----------------------- |
 > | `BUTTON[button-habit-today]` | <%* tR += habit_link %> |
@@ -440,7 +440,7 @@ color yellow
 <%* tR += reflection_task_checkbox %>
 
 > [!reflection] Daily Reflection Journal
-> 
+>
 > | `BUTTON[button-reflection-daily-preset]` | <%* tR += reflection_link %> |
 > | -------------------------------- | --------------------------------- |
 
@@ -449,14 +449,14 @@ color yellow
 <%* tR += gratitude_task_checkbox %>
 
 > [!gratitude] Gratitude Journal
-> 
+>
 > | `BUTTON[button-gratitude-daily-preset]` | <%* tR += gratitude_link %> |
 > | ------------------------------- | -------------------------------- |
 
 ---
 
 > [!<%* tR += work_start_type %> ] Today's Workday Startup Rituals
-> 
+>
 > | `BUTTON[button-work-start-today]` | <%* tR += work_start_link %> |
 > | -------- | ------- |
 

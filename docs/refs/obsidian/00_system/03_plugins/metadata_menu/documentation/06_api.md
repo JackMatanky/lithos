@@ -6,7 +6,7 @@ aliases:
   - metadata_menu_documentation_06_api
 date_created: 2023-03-10T17:12
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Api
 
@@ -42,7 +42,7 @@ This is an asynchronous function, so you should await it.
 
 ## postValues
 
-creates or updates fields with values in the target note  
+creates or updates fields with values in the target note
 `postValues(fileOrFilePath: TFile | string, payload: FieldsPayload, lineNumber?: number, after?: boolean, asList?: boolean, asComment?:boolean)`
 
 ### Parameters
@@ -59,7 +59,7 @@ creates or updates fields with values in the target note
 ```typescript
 export type FieldPayload = {
     value: string, // the field's value as string
-    previousItemsCount?: number // optional, not usefull for api 
+    previousItemsCount?: number // optional, not usefull for api
 }
 
 export type FieldsPayload = Array<{
@@ -84,7 +84,7 @@ Takes a TFile or e filePath and returns all the fields in the document, both fro
 {
     (fieldName: string): {
         /* the value of the field in the file */
-        value: string | undefined, 
+        value: string | undefined,
 
         /* unicity of the field in the note: if false it means that this field appears more than once in the file */
         unique: boolean,

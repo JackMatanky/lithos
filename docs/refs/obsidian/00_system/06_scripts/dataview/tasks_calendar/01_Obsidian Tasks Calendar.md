@@ -1,7 +1,7 @@
 ---
 date_created: 2023-04-16T14:36
 date_modified: 2023-09-05T19:17
-tags: 
+tags:
 ---
 # Obsidian-Tasks-Calendar
 
@@ -123,7 +123,7 @@ By default you can click on each cell name to jump directly into the daily note.
 options: "mini"
 ```
 
-Reduces the calendar width, height and font sizes to a more compact format. This can be used to embed the calendar into a complex sidebar in Obsidian.  
+Reduces the calendar width, height and font sizes to a more compact format. This can be used to embed the calendar into a complex sidebar in Obsidian.
 On mobile devices, the font size is automatically reduced (on some views) because the limited screen size.
 
 ```

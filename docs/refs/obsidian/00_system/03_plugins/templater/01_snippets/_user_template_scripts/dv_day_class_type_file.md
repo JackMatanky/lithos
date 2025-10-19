@@ -1,5 +1,5 @@
 ---
-title: dv_class_type_date 
+title: dv_class_type_date
 aliases:
   - File by File Class, Type, and Date Dataview Table
   - Dataview Table by File Class, Type, and Date
@@ -25,11 +25,11 @@ tags: obsidian/templater, obsidian/dataview, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]], [[Dataview]]  
-> Language: [[JavaScript]]  
-> Input:: Date, String  
-> Output:: Dataview Table  
+>
+> Plugin: [[Templater]], [[Dataview]]
+> Language: [[JavaScript]]
+> Input:: Date, String
+> Output:: Dataview Table
 > Description:: Return a dataview table of files according to file class, type, and date.
 
 ---
@@ -66,18 +66,18 @@ const tags = `file.etags AS Tags`;
 
 // SECT: >>>>> LIBRARY <<<<<
 // Library file type
-const lib_file_type = `choice(${yaml_type} = "book", "📚Book", 
-	choice(${yaml_type} = "book_chapter", "📑Book Chapter", 
-	choice(${yaml_type} = "journal", "📜️Journal", 
-	choice(${yaml_type} = "report", "📈Report", 
-	choice(${yaml_type} = "news", "🗞️News", 
-	choice(${yaml_type} = "magazine", "📰️Magazine", 
-	choice(${yaml_type} = "webpage", "🌐Webpage", 
-	choice(${yaml_type} = "blog", "💻Blog", 
-	choice(${yaml_type} = "video", "🎥️Video", 
-	choice(${yaml_type} = "youtube", "▶YouTube", 
-	choice(${yaml_type} = "documentary", "🖼️Documentary", 
-	choice(${yaml_type} = "audio", "🔉Audio", 
+const lib_file_type = `choice(${yaml_type} = "book", "📚Book",
+	choice(${yaml_type} = "book_chapter", "📑Book Chapter",
+	choice(${yaml_type} = "journal", "📜️Journal",
+	choice(${yaml_type} = "report", "📈Report",
+	choice(${yaml_type} = "news", "🗞️News",
+	choice(${yaml_type} = "magazine", "📰️Magazine",
+	choice(${yaml_type} = "webpage", "🌐Webpage",
+	choice(${yaml_type} = "blog", "💻Blog",
+	choice(${yaml_type} = "video", "🎥️Video",
+	choice(${yaml_type} = "youtube", "▶YouTube",
+	choice(${yaml_type} = "documentary", "🖼️Documentary",
+	choice(${yaml_type} = "audio", "🔉Audio",
 	choice(${yaml_type} = "podcast", "🎧️Podcast", "📃Documentation")))))))))))))
 	AS Type`;
 
@@ -96,7 +96,7 @@ const pkm_subtype = `choice(contains(${yaml_subtype}, "category"), "🏘️Categ
 	choice(contains(${yaml_subtype}, "branch"), "🪑Branch",
 	choice(contains(${yaml_subtype}, "field"), "🚪Field",
 	choice(contains(${yaml_subtype}, "subject"), "🗝️Subject",
-	choice(contains(${yaml_subtype}, "topic"), "🧱Topic", 
+	choice(contains(${yaml_subtype}, "topic"), "🧱Topic",
 	choice(contains(${yaml_subtype}, "subtopic"), "🔩Subtopic"
 	choice(contains(${yaml_subtype}, "question"), "❔Question",
 	choice(contains(${yaml_subtype}, "evidence"), "⚖️Evidence",
@@ -140,7 +140,7 @@ const pkm_sort = `choice(${yaml_subtype} = "category", 1,
 	choice(${yaml_subtype} = "branch", 2,
 	choice(${yaml_subtype} = "field", 3,
 	choice(${yaml_subtype} = "subject", 4,
-	choice(${yaml_subtype} = "topic", 5, 
+	choice(${yaml_subtype} = "topic", 5,
 	choice(${yaml_subtype} = "subtopic", 6,
 	choice(${yaml_subtype} = "qec_question", 7,
 	choice(${yaml_subtype} = "qec_evidence", 8,
@@ -272,7 +272,7 @@ module.exports = dv_day_class_type_file;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -282,7 +282,7 @@ module.exports = dv_day_class_type_file;
 // VAR MD: "true", "false"
 // FILE CLASS OPTIONS: "pkm", "lib"
 // PKM TYPE OPTIONS: "pkm_tree", "permanent", "literature", "fleeting", "information"
-// LIB TYPE OPTIONS: "audio", "book", "book_chapter", "course", "documentation", "journal", "magazine", "report", "video", "webpage" 
+// LIB TYPE OPTIONS: "audio", "book", "book_chapter", "course", "documentation", "journal", "magazine", "report", "video", "webpage"
 const dataview_pkm_lib_table = await tp.user.dv_day_class_type_file({
   class: file_class,
   type: type,
@@ -375,13 +375,13 @@ const note_info_table = await tp.user.dv_day_class_type_file({
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_day_class_type_file.js]]
 
 ### Outgoing Snippet Links
 
-<!-- Link related snippet here -->  
+<!-- Link related snippet here -->
 
 1. [[dv_class_type_status_start_end|Dataview Tables by File Class, Type, Status, Start Date, and End Date]]
 2. [[dv_proj_task|Dataview Table of Completed Project Tasks]]
@@ -395,7 +395,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -416,7 +416,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

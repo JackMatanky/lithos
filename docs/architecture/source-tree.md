@@ -14,7 +14,7 @@ lithos/
 │   │   ├── schema/
 │   │   └── template/
 │   ├── ports/
-│   │   ├── api/             # CommandServicePort and related contracts
+│   │   ├── api/             # CLICommandPort and related contracts
 │   │   └── spi/             # FileSystemPort, Cache ports, SchemaEnginePort, etc.
 │   ├── adapters/
 │   │   ├── api/             # Cobra CLI today; Bubble Tea/LSP post-MVP

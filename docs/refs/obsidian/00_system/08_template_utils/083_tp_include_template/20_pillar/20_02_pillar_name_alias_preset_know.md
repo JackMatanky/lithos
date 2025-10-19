@@ -8,7 +8,7 @@ const ul_yaml = `${space.repeat(2)}${String.fromCodePoint(0x2d)}${space}`;
 const yaml_li = (value) => `${new_line}${ul_yaml}"${value}"`;
 const link_alias = (file, alias) => ["[[" + file, alias + "]]"].join("|");
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // SET PILLAR FILE AND FULL NAME; PRESET KNOW. EXPANSION
 //-------------------------------------------------------------------
 // KNOWLEDGE EXPANSION PILLAR FILE AND FULL NAME
@@ -50,7 +50,7 @@ for (let i = 0; i < 10; i++) {
   );
   file_basename = file_by_status_obj.value;
   file_alias_name = file_by_status_obj.key;
-  
+
   if (file_basename == "null") {
     break;
   }
@@ -64,7 +64,7 @@ for (let i = 0; i < 10; i++) {
     false,
     `Another ${type_name}?`
   );
-  
+
   if (bool_obj.value == "no") {
     break;
   }

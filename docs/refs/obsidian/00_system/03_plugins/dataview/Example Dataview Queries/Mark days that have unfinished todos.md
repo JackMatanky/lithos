@@ -11,7 +11,7 @@ date_modified: 2023-10-25T16:22
 
 # Mark Days that Have Unfinished Todos
 
-> [!info]  
+> [!info]
 > You'll need to go back to Januray/Februrary 2022 to see the data.
 
 ## Basic
@@ -23,7 +23,7 @@ FLATTEN all(map(file.tasks, (x) => x.completed)) AS "allCompleted"
 WHERE !allCompleted
 ```
 
-> [!tip]  
+> [!tip]
 > When you try to write complex calendar queries, write a TABLE query first to make sure your query returns the results you're expecting.
 
 ```dataview
@@ -48,9 +48,9 @@ WHERE anyEmpty
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

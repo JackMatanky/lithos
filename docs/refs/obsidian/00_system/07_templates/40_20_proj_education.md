@@ -184,7 +184,7 @@ const ed_type_obj_arr = [
 //);
 //ed_type_name = ed_type_obj.key;
 //ed_type_value = ed_type_obj.value;
-  
+
 /* ---------------------------------------------------------- */
 /*                      SET FILE'S TITLE                      */
 /* ---------------------------------------------------------- */

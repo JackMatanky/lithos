@@ -29,15 +29,15 @@ reference: [GROUP BY](https://blacksmithgu.github.io/obsidian-dataview/queries/d
 
 ## Description
 
-> [!info]  
-> Plugin: Dataview  
-> Module: Data Commands  
+> [!info]
+> Plugin: Dataview
+> Module: Data Commands
 > Definition:: Group all results on a field.
 
 ## Syntax
 
 ```sql
-GROUP BY field 
+GROUP BY field
 GROUP BY (computed_field) AS name
 ```
 

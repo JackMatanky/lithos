@@ -34,7 +34,7 @@ const notReferenced = allNonMdFiles.filter(file => !allNonMdOutlinks.includes(fi
 
 if (!notReferenced.length) {
 	dv.span(`> [!done] All good! No unused attachments found :) `)
-} 
+}
 
 dv.list(dv.array(notReferenced).map(link => dv.fileLink(link.path)))
 ```
@@ -43,9 +43,9 @@ dv.list(dv.array(notReferenced).map(link => dv.fileLink(link.path)))
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

@@ -1,5 +1,5 @@
 ---
-description: Plot the results of a Series-Category-Value structured DQL query on a line or bar chart. 
+description: Plot the results of a Series-Category-Value structured DQL query on a line or bar chart.
 topics:
   - combining plugins
   - charts
@@ -12,16 +12,16 @@ date_modified: 2023-10-25T16:22
 
 # Plot a Series-Category-Value Dataset
 
-> [!warning] Warning - Extra plugin required  
+> [!warning] Warning - Extra plugin required
 > This visualisation requires the [Obsidian Charts plugin](https://github.com/phibr0/obsidian-charts) to implement the integration between [Dataview and Charts.js](https://charts.phibr0.de/Dataview%20Integration).
-> 
+>
 > To minimise the need for additional plugins when browsing the example vault, images have been included alongside the JS code.
 
-> [!help] Help - Query Structure  
+> [!help] Help - Query Structure
 > For this type of chart, the query should return three columns representing the *Series Name*, *X-Category*, and *Y-Value*.
-> 
+>
 > To produce a table like this, often the best approach is to `GROUP BY` the first and second field in a combined way - then split these back into two columns in the TABLE statement itself. This can be done in several ways, but often it is easiest to call on `rows[0]` for these values. After a `GROUP BY` operation, `rows[0]` will represent the first result inside each group. For Series and Category values (column 1 and 2), we know that all rows in the group will have the same values - so referring directly to the first one is ok.
-> 
+>
 > This approach is used in the Basic example below, where data is grouped by Year-Month (to count how many projects are started each month), then this is plit into a Year and Month column for processing onto the chart.
 
 ## Basic
@@ -35,7 +35,7 @@ TABLE WITHOUT ID
 	dateformat(rows[0].started, "yyyy") AS Year,
 	dateformat(rows[0].started, "MMM") AS "Month",
 	length(rows) as "Projects"
-FROM "10 Example Data/projects" 
+FROM "10 Example Data/projects"
 GROUP BY dateformat(date(started), "yyyy-MM") AS YearMonth
 SORT YearMonth desc
 LIMIT 5
@@ -89,10 +89,10 @@ if (autoLabels) {
 
 //cylce through each series to produce a dataset
 var datasets = [];
-for (let i = 0; i < distinctSeries.length; i++) { 
+for (let i = 0; i < distinctSeries.length; i++) {
 	let seriesName = distinctSeries[i];
-	let backCol = colors[i%colors.length]; 
-	let bordCol = colors[i%colors.length]; 
+	let backCol = colors[i%colors.length];
+	let bordCol = colors[i%colors.length];
 	let bWidth = 1;
 
 	//get just the labels and values for this series
@@ -108,12 +108,12 @@ for (let i = 0; i < distinctSeries.length; i++) {
 	});
 
 	//create a dataset to graph
-	let chartDataset = {label: seriesName, 
-						data: dataPoints, 
+	let chartDataset = {label: seriesName,
+						data: dataPoints,
 						backgroundColor: backCol,
-						borderColor: bordCol, 
-						borderWidth: bWidth};	  
-	
+						borderColor: bordCol,
+						borderWidth: bWidth};
+
 	datasets.push(chartDataset);
 }
 
@@ -123,17 +123,17 @@ xAxis = (autoLabels ? xAxis : "xAxis: {type:'category'}");
 //graph the datasets using standard chart.js syntax
 const chartData = {
 	type: chartType,
-	data: {	
+	data: {
 		labels: labels,
 		datasets: datasets
 	},
-	options: {  
+	options: {
 		scales: { xAxis, yAxis }
 	}
 }
 window.renderChart(chartData, this.container);
 dv.span(" ");
-if (showTable) { dv.table(DQL.headers, DQL.values) } 
+if (showTable) { dv.table(DQL.headers, DQL.values) }
 
 ```
 
@@ -146,9 +146,9 @@ if (showTable) { dv.table(DQL.headers, DQL.values) }
 ``` dataview
 TABLE WITHOUT ID
       rows[0].status as "Status",
-      dateformat(date(rows[0].started), "yyyy-Qq") as "Quarter", 
- 	  length(rows) as "Projects" 
- FROM "10 Example Data/projects" 
+      dateformat(date(rows[0].started), "yyyy-Qq") as "Quarter",
+ 	  length(rows) as "Projects"
+ FROM "10 Example Data/projects"
 GROUP BY status + " " + dateformat(date(started), "yyyy-Qq")
 LIMIT 5
 ```
@@ -195,15 +195,15 @@ var distinctSeries = dv.array(allRows).map(r => r[0]).distinct();
 
 //extract labels automatically if required
 if (autoLabels) {
-	labels = allLabels.array(); 
+	labels = allLabels.array();
 }
 
 //cylce through each series to produce a dataset
 var datasets = [];
-for (let i = 0; i < distinctSeries.length; i++) { 
+for (let i = 0; i < distinctSeries.length; i++) {
 	let seriesName = distinctSeries[i];
-	let backCol = colors[i%colors.length]; 
-	let bordCol = colors[i%colors.length]; 
+	let backCol = colors[i%colors.length];
+	let bordCol = colors[i%colors.length];
 	let bWidth = 1;
 
 	//get just the labels and values for this series
@@ -219,12 +219,12 @@ for (let i = 0; i < distinctSeries.length; i++) {
 	});
 
 	//create a dataset to graph
-	let chartDataset = {label: seriesName, 
-						data: dataPoints, 
+	let chartDataset = {label: seriesName,
+						data: dataPoints,
 						backgroundColor: backCol,
-						borderColor: bordCol, 
-						borderWidth: bWidth};	  
-	
+						borderColor: bordCol,
+						borderWidth: bWidth};
+
 	datasets.push(chartDataset);
 }
 
@@ -232,11 +232,11 @@ for (let i = 0; i < distinctSeries.length; i++) {
 xAxis = (autoLabels ? xAxis : "xAxis: {type:'category'}");
 const chartData = {
 	type: chartType,
-	data: {	
+	data: {
 		labels: labels,
 		datasets: datasets
 	},
-	options: {  
+	options: {
 		scales: { xAxis, yAxis }
 	}
 }
@@ -244,7 +244,7 @@ window.renderChart(chartData, this.container);
 
 dv.span(" ");
 
-if (showTable) { dv.table(DQL.headers, DQL.values) } 
+if (showTable) { dv.table(DQL.headers, DQL.values) }
 
 ```
 
@@ -252,9 +252,9 @@ if (showTable) { dv.table(DQL.headers, DQL.values) }
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

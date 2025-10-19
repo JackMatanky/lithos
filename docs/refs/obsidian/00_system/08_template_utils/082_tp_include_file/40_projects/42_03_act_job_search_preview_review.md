@@ -1,7 +1,7 @@
 ### Preview
 
 > [!task_preview] Action Item Preview
-> 
+>
 > 1. What is the problem to solve?
 >     - **Problem**::
 > 2. What do I want?
@@ -14,7 +14,7 @@
 ### Plan
 
 > [!task_plan] Execution Plan
-> 
+>
 > - Job board search
 >     - [ ] Job board
 > - Review Companies
@@ -27,7 +27,7 @@
 ### Review
 
 > [!task_review] Action Item Review
-> 
+>
 > 1. What was the outcome? How did it make me feel?
 >     - **Outcome**:: Found \#\# jobs
 >     - **Outcome**:: Messaged \#\# people.

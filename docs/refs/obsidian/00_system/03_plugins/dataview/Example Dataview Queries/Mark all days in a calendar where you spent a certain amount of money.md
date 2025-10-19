@@ -20,10 +20,10 @@ FLATTEN round(sum(paid)) as SUM
 WHERE paid and SUM > 75
 ```
 
-bought:: Nike shoes  
+bought:: Nike shoes
 paid:: 99
 
-bought:: Delicious Cake  
+bought:: Delicious Cake
 paid:: 7
 
 ## Variants
@@ -32,7 +32,7 @@ paid:: 7
 
 ^8d9d50
 
-> [!info]  
+> [!info]
 > You'll need to go back to Januray/Februrary 2022 to see the data
 
 ```dataview
@@ -42,7 +42,7 @@ FLATTEN round(sum(map(paid, (x) => number(regexreplace(x, " ?\$", ""))))) as SUM
 WHERE paid and SUM > 75
 ```
 
-> [!tip]  
+> [!tip]
 > When you try to write complex calendar queries, write a TABLE query first to make sure your query returns the results you're expecting.
 
 ```dataview
@@ -56,9 +56,9 @@ WHERE paid and SUM > 75
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

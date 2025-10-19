@@ -15,7 +15,7 @@ date_modified: 2023-10-25T16:22
 
 ## Basic
 
-> [!attention] Crawling file content of all queried files  
+> [!attention] Crawling file content of all queried files
 > This query goes beyond the regular boundaries of dataview by crawling the raw file content. That means you can search for words independent of their usage in tags or meta data. **Crawling the page content can be a memory intense operation**, so it's important to use a path or tag in `dv.pages()` to avoid iterating over the whole vault. Except your computer can stand that, of course. 😉
 
 ```dataviewjs
@@ -23,7 +23,7 @@ const word = "Queries" // <-- Type your search between the ""
 
 // We need to double-escape \b here so it's correctly fed into RegExp after the concationation (as "\b" and not as "b").
 const regex = new RegExp("\\b" + word + "\\b", "gi")
-// Query pages and crawl their raw data content 
+// Query pages and crawl their raw data content
 const pages = await Promise.all(
     dv.pages('"30 Dataview Resources"')
     .map(async (page) => {
@@ -36,13 +36,13 @@ const pages = await Promise.all(
         };
     })
 )
-// Render the result table 
+// Render the result table
 dv.table(
         ["Note", `Matches for "${word}"`],
             pages
             .filter(p => p.count)
             .sort((a, b) => b.count - a.count)
-            .map(p => [p.link, p.count])  
+            .map(p => [p.link, p.count])
     );
 ```
 
@@ -50,7 +50,7 @@ dv.table(
 
 ### Display Matching Lines and Surrounding Words for Context
 
-> [!info] Increasing number of surrounding words  
+> [!info] Increasing number of surrounding words
 > To see more surrounding words, increase the second number in the regular expression in the curly brackets. You can set it i.e. to `{0,5}` to see up to five surrounding words.
 
 ```dataviewjs
@@ -75,7 +75,7 @@ dv.table(
             pages
             .filter(p => p.count)
             .sort((a, b) => b.count - a.count)
-            .map(p => [p.link, p.count, p.matches])  
+            .map(p => [p.link, p.count, p.matches])
     );
 ```
 
@@ -83,9 +83,9 @@ dv.table(
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

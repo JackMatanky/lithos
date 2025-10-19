@@ -75,7 +75,7 @@ Set the folder location where the new file is created. Otherwise, a new file is 
 
 ### New File name
 
-You can set the file name format. The default format is `{{title}} - {{author}}`.  
+You can set the file name format. The default format is `{{title}} - {{author}}`.
 You can use `{{DATE}}` or `{{DATE:YYYYMMDD}}` to set a unique file name.
 
 ### Template File
@@ -84,7 +84,7 @@ You can set the template file location. There is an example template at the bott
 
 ### Service Provider
 
-You can set up the services that you use to search for books. Only Google and Naver(네이버) are available now.  
+You can set up the services that you use to search for books. Only Google and Naver(네이버) are available now.
 To use Naver Book Search, clientId and clientSecret are required. I will explain how to get clientId and clientSecret from Naver on my blog.
 
 ### <strike>(Deprecated) Text to Insert into front matter</strike>

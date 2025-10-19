@@ -25,11 +25,11 @@ tags: obsidian/templater, javascript
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Return a Dataview table of pkm files by type, status, date or dates written between two dates, primarily used in the weekly calendar.
 
 ---
@@ -91,7 +91,7 @@ const pkm_subtype = `choice(contains(${yaml_subtype}, "category"), "🏘️Categ
 	choice(contains(${yaml_subtype}, "branch"), "🪑Branch",
 	choice(contains(${yaml_subtype}, "field"), "🚪Field",
 	choice(contains(${yaml_subtype}, "subject"), "🗝️Subject",
-	choice(contains(${yaml_subtype}, "topic"), "🧱Topic", 
+	choice(contains(${yaml_subtype}, "topic"), "🧱Topic",
 	choice(contains(${yaml_subtype}, "subtopic"), "🔩Subtopic",
 	choice(contains(${yaml_subtype}, "question"), "❔Question",
 	choice(contains(${yaml_subtype}, "evidence"), "⚖️Evidence",
@@ -129,9 +129,9 @@ const tree_content = `Description AS Description`;
 
 // Knowledge Tree Context
 const tree_context = `choice(${yaml_subtype} = "subtopic", flat(list(file.frontmatter.category, file.frontmatter.branch, file.frontmatter.field, file.frontmatter.subject, file.frontmatter.topic)),
-	choice(${yaml_subtype} = "topic", flat(list(file.frontmatter.category, file.frontmatter.branch, file.frontmatter.field, file.frontmatter.subject)), 
+	choice(${yaml_subtype} = "topic", flat(list(file.frontmatter.category, file.frontmatter.branch, file.frontmatter.field, file.frontmatter.subject)),
 	choice(${yaml_subtype} = "subject", flat(list(file.frontmatter.category, file.frontmatter.branch, file.frontmatter.field)),
-	choice(${yaml_subtype} = "field", flat(list(file.frontmatter.category, file.frontmatter.branch)), 
+	choice(${yaml_subtype} = "field", flat(list(file.frontmatter.category, file.frontmatter.branch)),
 	choice(${yaml_subtype} = "branch", Category, "")))))
 	AS Context`;
 
@@ -175,7 +175,7 @@ const pkm_sort = `choice(${yaml_subtype} = "category", 1,
 	choice(${yaml_subtype} = "branch", 2,
 	choice(${yaml_subtype} = "field", 3,
 	choice(${yaml_subtype} = "subject", 4,
-	choice(${yaml_subtype} = "topic", 5, 
+	choice(${yaml_subtype} = "topic", 5,
 	choice(${yaml_subtype} = "subtopic", 6,
 	choice(${yaml_subtype} = "qec_question", 7,
 	choice(${yaml_subtype} = "qec_evidence", 8,
@@ -247,7 +247,7 @@ async function dv_pkm_type_status_dates({
     type_arg.startsWith("not_tree")
   ) {
     data_field = `${title_link},
-	${note_subtype}, 
+	${note_subtype},
 	${pkm_status},
 	${pkm_content},
 	${tags}`;
@@ -261,7 +261,7 @@ async function dv_pkm_type_status_dates({
     date_filter = `date(${creation_date}) = date(${start_date_arg})`;
   } else {
     // Completed BETWEEN dates
-    date_filter = `date(${creation_date}) >= date(${start_date_arg}) 
+    date_filter = `date(${creation_date}) >= date(${start_date_arg})
     AND date(${creation_date}) <= date(${end_date_arg})`;
   }
 
@@ -362,7 +362,7 @@ module.exports = dv_pkm_type_status_dates;
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -484,7 +484,7 @@ dv_class_type_status_start_end
 
 ### Script Link
 
-<!-- Link the user template script here -->  
+<!-- Link the user template script here -->
 
 1. [[dv_pkm_type_status_dates.js]]
 
@@ -507,7 +507,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -528,7 +528,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

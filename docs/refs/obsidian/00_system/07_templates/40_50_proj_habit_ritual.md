@@ -303,7 +303,7 @@ const proj_related_pkm_section = `${head_related_pkm_sect}${toc}${related_pkm_se
 const proj_related_lib_section = `${head_related_lib_sect}${toc}${related_lib_section}`;
 const proj_related_dir_section = `${head_related_dir_sect}${toc}${related_dir_section}`;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // PROJECT INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${project_info_callout}.md`;
@@ -313,7 +313,7 @@ include_arr = tp_include.toString();
 
 const project_info = include_arr;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // TASK START AND END INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${task_start_end_info_callout}.md`;
@@ -364,12 +364,12 @@ tags:
 # <%* tR += full_title_name %>
 
 > [!<%* tR += type_value %> ] <%* tR += type_name %> Details
-> 
+>
 > - **Context**: `dv: choice(this.file.frontmatter.context = "habit_ritual", "Habits and Rituals", upper(substring(this.file.frontmatter.context, 0, 1)) + substring(this.file.frontmatter.context, 1))`
 > - **Pillar**: `dv: this.file.frontmatter.pillar`
 > - **Goal**: `dv: this.file.frontmatter.goal`
 > - **Directory**: `dv: join(filter(nonnull(flat([this.file.frontmatter.organization, this.file.frontmatter.contact])), (x) => !contains(lower(x), "null")), " | ")`
-> 
+>
 > - **Start**:: <%* tR += date_start_link %>
 > - **End**:: <%* tR += date_end_link %>
 

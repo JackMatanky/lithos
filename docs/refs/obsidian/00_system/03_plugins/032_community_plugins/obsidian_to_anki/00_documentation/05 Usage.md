@@ -11,13 +11,13 @@ url: https://github.com/Pseudonium/Obsidian_to_Anki/wiki/Usage
 file_class: lib_documentation
 date_created: 2023-05-30T19:13
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Usage
 
 **Apart from editing the config file, all operations of the script require Anki to be running.**
 
-The GUI of the script looks like this:  
+The GUI of the script looks like this:
 ![[GUI.webp]]
 
 Hopefully the options and path are self-explanatory. The 'recurse' option can be used on the top-level notes directory - it'll pick up all the notes in subfolders automatically. Note that you can run the script over the same file twice perfectly fine - it won't add duplicate cards.

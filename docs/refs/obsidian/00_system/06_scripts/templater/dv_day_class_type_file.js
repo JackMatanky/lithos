@@ -25,18 +25,18 @@ const tags = `file.etags AS Tags`;
 
 // SECT: >>>>> LIBRARY <<<<<
 // Library file type
-const lib_file_type = `choice(${yaml_type} = "book", "📚Book", 
-	choice(${yaml_type} = "book_chapter", "📑Book Chapter", 
-	choice(${yaml_type} = "journal", "📜️Journal", 
-	choice(${yaml_type} = "report", "📈Report", 
-	choice(${yaml_type} = "news", "🗞️News", 
-	choice(${yaml_type} = "magazine", "📰️Magazine", 
-	choice(${yaml_type} = "webpage", "🌐Webpage", 
-	choice(${yaml_type} = "blog", "💻Blog", 
-	choice(${yaml_type} = "video", "🎥️Video", 
-	choice(${yaml_type} = "youtube", "▶YouTube", 
-	choice(${yaml_type} = "documentary", "🖼️Documentary", 
-	choice(${yaml_type} = "audio", "🔉Audio", 
+const lib_file_type = `choice(${yaml_type} = "book", "📚Book",
+	choice(${yaml_type} = "book_chapter", "📑Book Chapter",
+	choice(${yaml_type} = "journal", "📜️Journal",
+	choice(${yaml_type} = "report", "📈Report",
+	choice(${yaml_type} = "news", "🗞️News",
+	choice(${yaml_type} = "magazine", "📰️Magazine",
+	choice(${yaml_type} = "webpage", "🌐Webpage",
+	choice(${yaml_type} = "blog", "💻Blog",
+	choice(${yaml_type} = "video", "🎥️Video",
+	choice(${yaml_type} = "youtube", "▶YouTube",
+	choice(${yaml_type} = "documentary", "🖼️Documentary",
+	choice(${yaml_type} = "audio", "🔉Audio",
 	choice(${yaml_type} = "podcast", "🎧️Podcast", "📃Documentation")))))))))))))
 	AS Type`;
 
@@ -55,7 +55,7 @@ const pkm_subtype = `choice(contains(${yaml_subtype}, "category"), "🏘️Categ
 	choice(contains(${yaml_subtype}, "branch"), "🪑Branch",
 	choice(contains(${yaml_subtype}, "field"), "🚪Field",
 	choice(contains(${yaml_subtype}, "subject"), "🗝️Subject",
-	choice(contains(${yaml_subtype}, "topic"), "🧱Topic", 
+	choice(contains(${yaml_subtype}, "topic"), "🧱Topic",
 	choice(contains(${yaml_subtype}, "subtopic"), "🔩Subtopic"
 	choice(contains(${yaml_subtype}, "question"), "❔Question",
 	choice(contains(${yaml_subtype}, "evidence"), "⚖️Evidence",
@@ -99,7 +99,7 @@ const pkm_sort = `choice(${yaml_subtype} = "category", 1,
 	choice(${yaml_subtype} = "branch", 2,
 	choice(${yaml_subtype} = "field", 3,
 	choice(${yaml_subtype} = "subject", 4,
-	choice(${yaml_subtype} = "topic", 5, 
+	choice(${yaml_subtype} = "topic", 5,
 	choice(${yaml_subtype} = "subtopic", 6,
 	choice(${yaml_subtype} = "qec_question", 7,
 	choice(${yaml_subtype} = "qec_evidence", 8,

@@ -36,7 +36,7 @@ const regex = /\[priority[^\]]+\]/g
 // assign colors according to priority
 for (let task of tasks){
 	task.visual = "";
-	
+
     if (task.priority === "high") {
         task.visual = red
     } else if (task.priority === "medium") {
@@ -75,7 +75,7 @@ const regex = /\[priority[^\]]+\]/g
 // assign colors according to priority
 for (let task of tasks){
 	task.visual = "";
-	
+
     if (task.priority === "high") {
         task.visual = red
     } else if (task.priority === "medium") {
@@ -199,9 +199,9 @@ function getColorCode(priority) {
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

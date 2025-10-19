@@ -5,11 +5,11 @@ aliases:
   - 40 Commands
   - templater_documentation_40_commands
 application: templater
-url: 
+url:
 file_class: lib_documentation
 date_created: 2023-03-10T16:38
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # Commands
 

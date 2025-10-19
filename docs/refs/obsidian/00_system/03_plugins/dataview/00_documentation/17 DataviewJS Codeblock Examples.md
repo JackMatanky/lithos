@@ -11,7 +11,7 @@ url: https://blacksmithgu.github.io/obsidian-dataview/api/code-examples/
 file_class: lib_documentation
 date_created: 2023-03-09T18:16
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # [Codeblock Examples](https://blacksmithgu.github.io/obsidian-dataview/api/code-examples/)
 

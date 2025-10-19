@@ -6,7 +6,7 @@
 > - **Publisher**: `dv: this.file.frontmatter.publisher`
 > - **Date Published**: `dv: this.file.frontmatter.year_published`
 > - **Pages**: `dv: this.file.frontmatter.page_start + " - " + this.file.frontmatter.page_end`
-> 
+>
 > **Completed**::
 
 ---

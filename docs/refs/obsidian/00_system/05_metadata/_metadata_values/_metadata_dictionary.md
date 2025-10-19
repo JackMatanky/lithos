@@ -12,7 +12,7 @@ version: "2.0"
 ---
 # Vault Metadata
 
-> [!Rule]  
+> [!Rule]
 > The first alias in the array equals the file's full name
 
 ## Task Management
@@ -36,12 +36,12 @@ version: "2.0"
 ```yaml
 legend_domain: [calendar, directory, knowledge_management, system, task_management]
 legend_division: {
-  - calendar: [daily, weekly, monthly, quarterly, yearly]; 
-  - directory: [people, organization]; 
-  - pkm: [pkm_tree, library, pkm_lab, note, thought]; 
-  - system: [attachment, obsidian, plugin, template]; 
+  - calendar: [daily, weekly, monthly, quarterly, yearly];
+  - directory: [people, organization];
+  - pkm: [pkm_tree, library, pkm_lab, note, thought];
+  - system: [attachment, obsidian, plugin, template];
   - task: [goal, project, habit]}
-legend_class: 
+legend_class:
 ```
 
 ### Task Management
@@ -197,7 +197,7 @@ status: [schedule, to_do, in_progress, awaiting_approval, done, discarded, on_ho
 ```yaml
 file_class: ritual_work_start
 typetart
-context: personal 
+context: personal
 goal: % create dataview query for active goals %
 project: % create dataview query for active projects %
 parent_task: % create dataview query for active parent tasks %
@@ -215,7 +215,7 @@ status: [schedule, to_do, in_progress, awaiting_approval, done, discarded, on_ho
 ```yaml
 file_class: ritual_work_end
 typend
-context: personal 
+context: personal
 goal: % create dataview query for active goals %
 project: % create dataview query for active projects %
 parent_task: % create dataview query for active parent tasks %
@@ -233,7 +233,7 @@ status: [schedule, to_do, in_progress, awaiting_approval, done, discarded, on_ho
 ```yaml
 file_class: ritual_evening
 typeg
-context: personal 
+context: personal
 goal: % create dataview query for active goals %
 project: % create dataview query for active projects %
 parent_task: % create dataview query for active parent tasks %
@@ -273,7 +273,7 @@ address:
 city:
 country:
 file_class: dir_contact
-date_created: 
+date_created:
 date_modified:
 ```
 
@@ -300,10 +300,10 @@ isbn13: ISBN13
 ### ExcaliBrain
 
 ```yaml
-Children: 
-Parents: 
-Friends: 
-Siblings: 
+Children:
+Parents:
+Friends:
+Siblings:
 ```
 
 ### Reminder

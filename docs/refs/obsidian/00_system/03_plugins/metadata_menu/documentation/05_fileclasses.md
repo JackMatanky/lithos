@@ -6,13 +6,13 @@ aliases:
   - metadata_menu_documentation_05_fileclass
 date_created: 2023-03-10T17:12
 date_modified: 2023-10-25T16:22
-tags: 
+tags:
 ---
 # FileClass
 
 Manage preset values based on the context of a file (fileClass)
 
-> [!info] Dependency  
+> [!info] Dependency
 > Dataview plugin required
 
 ## Define a Class for a File and Authorized Fields for This Class

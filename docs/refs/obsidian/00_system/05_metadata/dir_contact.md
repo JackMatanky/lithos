@@ -5,7 +5,7 @@ limit: 100
 icon: contact
 tagNames:
   - contact
-excludes: 
+excludes:
 extends: dir
 version: "2.2"
 date_created: 2023-09-03T19:26
@@ -230,4 +230,3 @@ email_work:: {"type":"Input","options":{}}
 organization:: {"type":"Select","options":{"valuesList":{},"sourceType":"ValuesFromDVQuery","valuesListNotePath":"","valuesFromDVQuery":"dv.pages('\"52_organizations\"').file.name"}}
 
 job_title:: {"type":"Multi","options":{"valuesList":{},"sourceType":"ValuesListNotePath","valuesListNotePath":"00_system/04_metadata_values/job_titles.md","valuesFromDVQuery":""}}
-

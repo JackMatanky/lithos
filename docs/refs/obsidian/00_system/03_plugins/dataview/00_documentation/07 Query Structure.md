@@ -19,7 +19,7 @@ Dataview offers [multiple ways](dql-js-inline.md) to write queries and the synta
 
 This page provides information on how to write a **Dataview Query Language** (**DQL**) query. If you're interested in how to write Inline Queries, refer to the [inline section on DQL, JS and Inlines](dql-js-inline.md#inline-dql). You'll find more information about **Javascript Queries** on the [Javascript Reference](../api/intro.md).
 
-**DQL** is a SQL like query language for creating different views or calculations on your data. It  
+**DQL** is a SQL like query language for creating different views or calculations on your data. It
 supports:
 
 - Choosing an **output format** of your output (the [Query Type](./query-types.md))
@@ -66,8 +66,8 @@ The output format of a query is determined by its **Query Type**. There are four
 
 The Query Type is the **only mandatory command in a query**. Everything else is optional.
 
-> [!attention] "Possibly memory intense examples"  
-> Depending on the size of your vault, executing the following examples can take long and even freeze Obsidian in extreme cases. It's recommended that you specify a `FROM` to restrict the query execution to a specific subset of your vaults' files. See next section.  
+> [!attention] "Possibly memory intense examples"
+> Depending on the size of your vault, executing the following examples can take long and even freeze Obsidian in extreme cases. It's recommended that you specify a `FROM` to restrict the query execution to a specific subset of your vaults' files. See next section.
 
 - Lists all pages in your vault as a bullet point list
 

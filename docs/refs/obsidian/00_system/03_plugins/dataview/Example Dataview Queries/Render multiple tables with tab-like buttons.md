@@ -21,7 +21,7 @@ const createButton = (name) => {
 		removeTable()
 		renderTable(name)
 	})
-	
+
 	return btn
 }
 
@@ -30,10 +30,10 @@ const buttons = ['Watching', 'Going to watch', 'Watched all', 'Stopped watching'
 
 const renderTable = (name) => {
 	const pages = dv.pages('"10 Example Data/shows"').where(page => page.status == name)
-		
+
 	dv.header(2, name)
 	dv.table(
-	['Title', 'Rating', 'Runtime', 'Seasons', 'Episodes'], 
+	['Title', 'Rating', 'Runtime', 'Seasons', 'Episodes'],
 	pages.map(page => [page.file.link, page.rating, page.runtime, page.seasons, page.episodes]))
 }
 
@@ -59,7 +59,7 @@ const createButton = (name) => {
 		removeTable()
 		renderTable(name)
 	})
-	
+
 	return btn
 }
 
@@ -68,20 +68,20 @@ const buttons = ['Watching', 'Going to watch', 'Watched all', 'Stopped watching'
 
 const renderTable = (name) => {
 	const pages = dv.pages('"10 Example Data/shows"').where(page => page.status == name)
-	
+
 	dv.header(2, name)
-	
+
 	dv.table(['Title', 'Rating', 'Runtime', 'Seasons', 'Ep watched/total'], pages.map(page => {
 	let watchedEp = 0
 	const totalEp = page.episodes
-	
+
 	page.file.tasks.values.forEach(el => {
 		if(el.checked) {
 			watchedEp += 1
 		}
 	})
 	return [page.file.link, page.rating, page.runtime, page.seasons, `${watchedEp}/${totalEp}`]
-	}))	
+	}))
 }
 
 const removeTable = () => {
@@ -116,7 +116,7 @@ const changeView = (viewName) => {
 
 const createButtons = () => {
     const buttonContainer = dv.el('div', '', {cls: 'tabButtons'})
-    
+
     views.forEach(view => {
         const button = dv.el('button', view)
 
@@ -126,7 +126,7 @@ const createButtons = () => {
         })
 
         buttonContainer.append(button)
-        
+
     })
 }
 
@@ -145,9 +145,9 @@ createButtons()
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

@@ -12,14 +12,14 @@ date_modified: 2023-10-25T16:22
 
 # Plot a Category-Series Dataset
 
-> [!warning] Warning - Extra plugin required  
+> [!warning] Warning - Extra plugin required
 > This visualisation requires the [Obsidian Charts plugin](https://github.com/phibr0/obsidian-charts) to implement the integration between [Dataview and Charts.js](https://charts.phibr0.de/Dataview%20Integration).
-> 
+>
 > To minimise the need for additional plugins when browsing the example vault, images have been included alongside the JS code.
 
-> [!help] Help - Query Structure  
+> [!help] Help - Query Structure
 > For this type of chart, the query should return at least two columns (but unlimied additional columns are supported).
-> 
+>
 > The first column should represent the *X-Category* labels for the chart, and each subsequent column should represent a different data *Series*. The column name is used as the *Series* name on the chart.
 
 ## Basic
@@ -70,7 +70,7 @@ let sDQL = '\
 	FROM "10 Example Data/dailys" \
 	WHERE date(file.name).year = 2022 \
 	SORT file.name'
-	
+
 
 // -----
 // BELOW HERE IS LARGELY AUTOMATIC
@@ -89,7 +89,7 @@ if (autoLabels) {
 
 //cylce through each series to produce a dataset
 var datasets = [];
-for (let i = 0; i < allSeries.length; i++) {	
+for (let i = 0; i < allSeries.length; i++) {
 	let seriesName = allSeries[i];
 	let backCol = colors[i%colors.length];
 	let bordCol = colors[i%colors.length];
@@ -102,19 +102,19 @@ for (let i = 0; i < allSeries.length; i++) {
 			let labelIndex = allLabels.indexOf(l);
 			if (labelIndex < 0) { return 0 }
 			else { return allRows[labelIndex][i+1] }
-		})	
+		})
 	} else {
 		//dataPoints already align with labels
 		dataPoints = allRows.map(r => r[i+1]);
 	}
 
 	//create a dataset to graph
-	let chartDataset = {label: seriesName, 
-						data: dataPoints, 
+	let chartDataset = {label: seriesName,
+						data: dataPoints,
 						backgroundColor: backCol,
-						borderColor: bordCol, 
+						borderColor: bordCol,
 						borderWidth: bWidth};
-		   
+
 	datasets.push(chartDataset);
 }
 
@@ -124,17 +124,17 @@ xAxis = (autoLabels ? xAxis : "xAxis: {type:'category'}");
 //graph the datasets using standard chart.js syntax
 const chartData = {
 	type: chartType,
-	data: {	
+	data: {
 		labels: labels,
 		datasets: datasets
 	},
-	options: {  
+	options: {
 		scales: { xAxis, yAxis }
 	}
 }
 window.renderChart(chartData, this.container);
 dv.span("");
-if (showTable) { dv.table(DQL.headers, DQL.values) } 
+if (showTable) { dv.table(DQL.headers, DQL.values) }
 
 ```
 
@@ -157,18 +157,18 @@ FLATTEN list(filter(rows.wellbeing.pain, (x) => x)) as PainValues
 SORT date(rows[0].file.name).weekday
 ```
 
-> [!tip] Tip - Calculating Averages  
+> [!tip] Tip - Calculating Averages
 > DQL does not (currently) have an `avg()` function, however `sum()/length()` can be used.
 
-> [!tip] Tip - Using FLATTEN to Clean-up Input Data  
+> [!tip] Tip - Using FLATTEN to Clean-up Input Data
 > Its possible that individual daily notes will have some, but not all, of the three values above. In these cases `sum(…)` will return an error and the entire group will be omitted from results. Additionally, `length(…)` will count the rows even when no data is present.
-> 
+>
 > To sanitise the data before calculating the average, `FLATTEN` can be used to filter out any missing data and create new sanitised arrays to perform statistics on. This process could technically be done directly in the `TABLE` statement itself; however the query becomes much harder to read.
-> 
-> The approach used here is:  
-> `FLATTEN list(filter(rows.wellbeing.mood, (x) => x)) as MoodValues`  
+>
+> The approach used here is:
+> `FLATTEN list(filter(rows.wellbeing.mood, (x) => x)) as MoodValues`
 > Which effectively reads (from the inside out), as: take all the (unsanitised) values collected for mood, filter them to only give values that 'exist', put them back into a new list, and name that list MoodValues. The `TABLE` statement is then free to perform clean statistics on the new MoodValues list.
-> 
+>
 > Handling missing data before statistic functions isn't necessary in cases where you are sure the data will exist; or that no 'undefined' data will make it to the `sum()`, `min()`, `max()`, or `length()` functions.
 
 #### Chart Results
@@ -222,7 +222,7 @@ if (autoLabels) {
 
 //cylce through each series to produce a dataset
 var datasets = [];
-for (let i = 0; i < allSeries.length; i++) {	
+for (let i = 0; i < allSeries.length; i++) {
 	let seriesName = allSeries[i];
 	let backCol = colors[i%colors.length];
 	let bordCol = colors[i%colors.length];
@@ -235,19 +235,19 @@ for (let i = 0; i < allSeries.length; i++) {
 			let labelIndex = allLabels.indexOf(l);
 			if (labelIndex < 0) { return 0 }
 			else { return allRows[labelIndex][i+1] }
-		})	
+		})
 	} else {
 		//dataPoints already align with labels
 		dataPoints = allRows.map(r => r[i+1]);
 	}
 
 	//create a dataset to graph
-	let chartDataset = {label: seriesName, 
-						data: dataPoints, 
+	let chartDataset = {label: seriesName,
+						data: dataPoints,
 						backgroundColor: backCol,
-						borderColor: bordCol, 
+						borderColor: bordCol,
 						borderWidth: bWidth};
-		   
+
 	datasets.push(chartDataset);
 }
 
@@ -257,17 +257,17 @@ xAxis = (autoLabels ? xAxis : "xAxis: {type:'category'}");
 //graph the datasets using standard chart.js syntax
 const chartData = {
 	type: chartType,
-	data: {	
+	data: {
 		labels: labels,
 		datasets: datasets
 	},
-	options: {  
+	options: {
 		scales: { xAxis, yAxis }
 	}
 }
 window.renderChart(chartData, this.container);
 dv.span("");
-if (showTable) { dv.table(DQL.headers, DQL.values) } 
+if (showTable) { dv.table(DQL.headers, DQL.values) }
 
 ```
 
@@ -275,9 +275,9 @@ if (showTable) { dv.table(DQL.headers, DQL.values) }
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

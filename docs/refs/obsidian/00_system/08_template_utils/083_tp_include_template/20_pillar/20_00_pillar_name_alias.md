@@ -42,7 +42,7 @@ for (let i = 0; i < 10; i++) {
   );
   file_basename = file_by_status_obj.value;
   file_alias_name = file_by_status_obj.key;
-  
+
   if (file_basename == "null") {
     file_obj = { key: file_alias_name, value: file_basename };
     file_obj_arr.push(file_obj);
@@ -58,7 +58,7 @@ for (let i = 0; i < 10; i++) {
     false,
     `Another ${type_name}?`
   );
-  
+
   if (bool_obj.value == "no") {
     break;
   }

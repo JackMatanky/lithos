@@ -3,54 +3,54 @@ date_created: 2023-06-12T08:14
 date_modified: 2023-10-25T16:22
 ---
 
-description: Overview of handling various types of frontmatter fields, including tricks and traps.  
+description: Overview of handling various types of frontmatter fields, including tricks and traps.
 topics:
 
   - basics
 
-emptyValue:  
-Bool: false  
-Numeric: 10.5  
+emptyValue:
+Bool: false
+Numeric: 10.5
 StringNumeric: "10.5"
 
-StringWithQuotes: "Test"  
-StringNoQuotes: Test  
-StringEscapting: "Basic 'quotes' inside \"quotes\""  
-StringHTML: "<B>That</B> text is coloured<BR><span style='color:green;'>green</span>"  
-StringMultiline:  
-  Block starts indended on a new line, and  
-  each new line starts indended by two spaces.  
-  String continues until intented lines stop.  
-StringMultiWithBreaks: |  
-  Block starts with a pipe symbol, and  
-  each new line starts indended by two spaces.  
+StringWithQuotes: "Test"
+StringNoQuotes: Test
+StringEscapting: "Basic 'quotes' inside \"quotes\""
+StringHTML: "<B>That</B> text is coloured<BR><span style='color:green;'>green</span>"
+StringMultiline:
+  Block starts indended on a new line, and
+  each new line starts indended by two spaces.
+  String continues until intented lines stop.
+StringMultiWithBreaks: |
+  Block starts with a pipe symbol, and
+  each new line starts indended by two spaces.
   String continues until intented lines stop.
 
 Date: 2022-05-06
-DateTime: 2022-05-06T10:15  
+DateTime: 2022-05-06T10:15
 Duration: 1 day
 
 Link: "[[Dataview Documentation]]"
 
-FlatArray: ["A", "B", "C"]  
+FlatArray: ["A", "B", "C"]
 BulletArray:
 
   - "A"
   - "B"
   - "C"
 
-KeyedObject: {name: "My Object", value: 7.5, occurred: 2022-01-09}  
-NestedObject: [  
-	{name: "nest1", color: "FF0000"},  
-	{name: "nest2", color: "00FF00"},  
-	{name: "next3", color: "0000FF"}  
+KeyedObject: {name: "My Object", value: 7.5, occurred: 2022-01-09}
+NestedObject: [
+	{name: "nest1", color: "FF0000"},
+	{name: "nest2", color: "00FF00"},
+	{name: "next3", color: "0000FF"}
 ]
 
 # Working with Frontmatter
 
 > [!bug] This page is a work in progress.
 
-> [!tldr] Navigation  
+> [!tldr] Navigation
 > [[#Numbers]] | [[#Strings]] | [[#Links]] | [[#Dates]] | [[#Arrays]] | [[#Objects]]
 
 ---
@@ -152,9 +152,9 @@ FLATTEN NestedObject as NObjects
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

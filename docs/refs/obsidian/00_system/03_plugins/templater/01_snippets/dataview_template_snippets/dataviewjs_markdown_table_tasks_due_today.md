@@ -6,7 +6,7 @@ aliases:
 plugin: templater, dataview
 language:
   - javascript
-module: 
+module:
 cssclasses:
 type: snippet
 file_class: pkm_code
@@ -19,11 +19,11 @@ tags: obsidian/templater, javascript, obsidian/dataviewjs, obsidian/dataview, ma
 ## Description
 
 > [!snippet] Snippet Details
->  
-> Plugin: [[Templater]], [[Dataview]]  
-> Language: [[JavaScript]]  
-> Input::  
-> Output::  
+>
+> Plugin: [[Templater]], [[Dataview]]
+> Language: [[JavaScript]]
+> Input::
+> Output::
 > Description:: Render a markdown table of tasks due that day.
 
 ---
@@ -83,7 +83,7 @@ tR += markdown.value
 
 ### Templater
 
-<!-- Add the full code as it should appear in the template  -->  
+<!-- Add the full code as it should appear in the template  -->
 <!-- Exclude explanatory comments  -->
 
 ```javascript
@@ -135,7 +135,7 @@ TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Snippet,
 	Description AS Description,
 	file.etags AS Tags
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "snippet"
 	AND (contains(file.outlinks, this.file.link)
@@ -146,7 +146,7 @@ LIMIT 10
 
 ### Outgoing Function Links
 
-<!-- Link related functions here -->  
+<!-- Link related functions here -->
 [[DataviewJS dv.queryMarkdown Function|The DataviewJS dv.queryMarkdown() Function]]
 
 ### All Function Links
@@ -157,7 +157,7 @@ LIMIT 10
 TABLE WITHOUT ID
 	link(file.link, file.frontmatter.aliases[0]) AS Function,
 	Definition AS Definition
-WHERE 
+WHERE
 	file.frontmatter.file_class = "pkm_code"
 	AND file.frontmatter.type = "function"
 	AND (contains(file.outlinks, this.file.link)

@@ -2,9 +2,9 @@
 limit: 100
 mapWithTag: false
 icon: trophy
-tagNames: 
-excludes: 
-extends: 
+tagNames:
+excludes:
+extends:
 version: "2.0"
 date_created: 2023-09-03T19:26
 date_modified: 2023-09-05T19:18

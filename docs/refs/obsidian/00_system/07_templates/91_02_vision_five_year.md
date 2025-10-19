@@ -176,7 +176,7 @@ if (project_value != "null") {
 };
 const parent_task_value_link = yaml_li(parent_task_link);
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // PDEV JOURNAL INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${pdev_journal_info_callout}.md`;
@@ -226,9 +226,9 @@ tags:
 ---
 
 > [!question] Prompt
-> 
+>
 > Write in the present tense as if it is five years in the future.
->  
+>
 > Where do I want to be and how do I want to feel in five years?
 
 ## Personal

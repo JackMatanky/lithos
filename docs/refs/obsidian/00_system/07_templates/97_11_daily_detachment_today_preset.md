@@ -85,7 +85,7 @@ const short_date_value = moment(full_date_time).format("YY_MM_DD");
 
 //-------------------------------------------------------------------
 // JOURNAL TYPE AND FILE CLASS
-//------------------------------------------------------------------- 
+//-------------------------------------------------------------------
 const full_type_name = "Daily Detachment Journal";
 const full_type_value = full_type_name.replaceAll(/\s/g, "_").toLowerCase();
 const long_type_name = `${full_type_name.split(" ")[0]} ${full_type_name.split(" ")[1]}`;
@@ -155,7 +155,7 @@ const parent_task_value = `${year_month_short}_${habit_ritual_order}_${habit_rit
 const parent_task_link = `[[${parent_task_value}|${parent_task_name}]]`;
 const parent_task_value_link = yaml_li(parent_task_link);
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // PDEV JOURNAL INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${pdev_journal_info_callout}.md`;
@@ -172,7 +172,7 @@ const info_title = `${call_start}[!${type_value}]${space}${full_type_name}${spac
 
 const info = `${info_title}${journal_info}`;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // DETACHMENT DEFINITION AND PROMPTS CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${detachment_definition_callout}.md`;

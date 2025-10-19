@@ -5,10 +5,10 @@ aliases:
   - {{title}}
 main_title:
 subtitle:
-author: 
+author:
 editor:
-date_published: 
-publisher: 
+date_published:
+publisher:
 url:
 about:
 status: resource
@@ -17,7 +17,7 @@ file_class: lib_documentation
 cssclasses:
 date_created: 2023-03-28T00:00
 date_modified: 2023-09-05T19:17
-tags: 
+tags:
 ---
 # Title: Subtitle
 

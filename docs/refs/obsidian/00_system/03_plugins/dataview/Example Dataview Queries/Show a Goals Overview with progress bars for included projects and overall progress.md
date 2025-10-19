@@ -35,9 +35,9 @@ const globalValues = DQL.values
 	.map(row =>  [
 		removeBulletpoints(row[0]), // Project links
 		removeBulletpoints(row[3]), // progress bars
-		"<progress value='" + sumUp(row[2])/sumUp(row[1]) * 100 
-		+ "' max='100'></progress><br><span style='font-size:smaller;'>" 
-		+ Math.round(sumUp(row[2])/sumUp(row[1]) * 100) + "% completed</span>" 
+		"<progress value='" + sumUp(row[2])/sumUp(row[1]) * 100
+		+ "' max='100'></progress><br><span style='font-size:smaller;'>"
+		+ Math.round(sumUp(row[2])/sumUp(row[1]) * 100) + "% completed</span>"
 	])
 
 dv.table(["Projects", "Progress", "Goal Progress"], globalValues);
@@ -92,7 +92,7 @@ TABLE WITHOUT ID
 	map(rows, (r) => r.Lt),
 	map(rows, (r) => r.Lc),
 	map(rows, (r) => "<progress style='width:80px;' value='" + (r.Lc/r.Lt)*100 + "' max='100'></progress>" + "&nbsp;&nbsp;<span style='font-size:smaller;color:var(--text-muted)'>" + round((r.Lc/r.Lt)*100) + "%</span>")
-FROM #goal 
+FROM #goal
 FLATTEN file.outlinks AS OUT
 WHERE OUT.file.tasks
 FLATTEN length(OUT.file.tasks) AS Lt
@@ -108,9 +108,9 @@ const globalValues = DQL.values
 		row[0], //Goals Link
 		removeBulletpoints(row[1]), // Project links
 		removeBulletpoints(row[4]), // progress bars
-		"<progress value='" + sumUp(row[3])/sumUp(row[2]) * 100 
-		+ "' max='100'></progress><br><span style='font-size:smaller;'>" 
-		+ Math.round(sumUp(row[3])/sumUp(row[2]) * 100) + "% completed</span>" 
+		"<progress value='" + sumUp(row[3])/sumUp(row[2]) * 100
+		+ "' max='100'></progress><br><span style='font-size:smaller;'>"
+		+ Math.round(sumUp(row[3])/sumUp(row[2]) * 100) + "% completed</span>"
 	]})
 
 dv.table(["Goals", "Projects", "Progress", "Goal Progress"], globalValues);
@@ -129,9 +129,9 @@ function sumUp(val) {
 
 <!-- === end of query page ===  -->
 
-> [!help]- Similar Queries  
+> [!help]- Similar Queries
 > Maybe these queries are of interest for you, too:
-> 
+>
 > ```dataview
 > LIST
 > FROM "20 Dataview Queries"

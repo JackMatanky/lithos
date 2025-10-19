@@ -2,4 +2,3 @@
 | ---------- | ---- | ----------------------------------- | ------------------------------------- | -------------------------------- | ------------------------------------- |
 | Fleeting   | ---- | `BUTTON[button-pkm-idea-table]`     | `BUTTON[button-pkm-summary-table]`    | `BUTTON[button-pkm-quote-table]` | <                                     |
 | Info       | ---- | `BUTTON[button-pkm-concept-table]`  | `BUTTON[button-pkm-definition-table]` | <                                | <                                     |
-

@@ -319,7 +319,7 @@ const eve_rit_value = eve_rit_name.replaceAll(/\s/g, "_").toLowerCase();
 const eve_rit_type = eve_rit_value.slice(0, -1);
 const eve_rit_link = `[[${short_date_value}_${eve_rit_value}\\|${full_eve_rit_name}]]`;
 
-//-------------------------------------------------------------------  
+//-------------------------------------------------------------------
 // CHILD TASK INFO CALLOUT
 //-------------------------------------------------------------------
 temp_file_path = `${sys_temp_include_dir}${child_task_info_callout}.md`;
@@ -412,7 +412,7 @@ daily_review::
 ---
 
 > [!<%* tR += eve_rit_type %> ] Today's Evening Rituals
-> 
+>
 > | `BUTTON[button-eve-rit-today]` | <%* tR += eve_rit_link %> |
 > | --------------------- | ---------------------- |
 

@@ -26,7 +26,7 @@ If no next instance is found, it will loop back to the beginning of the note.
 
 ### Add next Instance of Current Selection to Selections
 
-This command does mostly the same as the previous, except it keeps your previous cursor selections in place.  
+This command does mostly the same as the previous, except it keeps your previous cursor selections in place.
 Similarly, if no next instance is found, it will loop back to the beginning of the note.
 
 This does the same thing as `Ctrl + d` in VS Code.
