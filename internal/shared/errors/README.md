@@ -20,6 +20,15 @@ This package is a **shared internal package** - a cross-cutting concern used by 
 - **Dependencies**: Only Go standard library (`errors`, `fmt`)
 - **Principles**: Standard Library First, Result pattern for port boundaries
 
+## Package Structure
+
+The package is organized across multiple files for better maintainability and Single Responsibility Principle compliance:
+
+- **`errors.go`**: Package documentation and overview
+- **`result.go`**: Result[T] generic type and functional error handling methods
+- **`types.go`**: Domain-specific error types and their constructors
+- **`wrapping.go`**: Error wrapping and utility functions
+
 ## Error Types
 
 ### ValidationError
