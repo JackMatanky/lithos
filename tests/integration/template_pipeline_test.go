@@ -109,7 +109,7 @@ func executeNewCommand(
 		templateParser,
 		templateExecutor,
 	)
-	templateRepo := templaterepo.NewTemplateFSAdapter(fs, templateParser)
+	templateRepo := templaterepo.NewFSAdapter(fs, templateParser)
 
 	// Get parsed template from repository
 	tmpl, err := templateRepo.GetTemplateByPath(ctx, templatePath)

@@ -11,21 +11,21 @@ import (
 	"github.com/jack/lithos/internal/shared/errors"
 )
 
-// TemplateFSAdapter implements TemplateRepositoryPort using filesystem
+// FSAdapter implements TemplateRepositoryPort using filesystem
 // operations.
 // It provides template loading capabilities from the local filesystem.
-type TemplateFSAdapter struct {
+type FSAdapter struct {
 	fileSystemPort spi.FileSystemPort
 	parser         spi.TemplateParser
 }
 
-// NewTemplateFSAdapter creates a new filesystem-based template repository
+// NewFSAdapter creates a new filesystem-based template repository
 // adapter with injected parser dependency.
-func NewTemplateFSAdapter(
+func NewFSAdapter(
 	fileSystemPort spi.FileSystemPort,
 	parser spi.TemplateParser,
-) *TemplateFSAdapter {
-	return &TemplateFSAdapter{
+) *FSAdapter {
+	return &FSAdapter{
 		fileSystemPort: fileSystemPort,
 		parser:         parser,
 	}
@@ -34,7 +34,7 @@ func NewTemplateFSAdapter(
 // ListTemplates returns metadata for all available templates.
 // Currently returns an empty list as template enumeration is not yet
 // implemented.
-func (a *TemplateFSAdapter) ListTemplates(
+func (a *FSAdapter) ListTemplates(
 	ctx context.Context,
 ) ([]spi.TemplateMetadata, error) {
 	// TODO: Implement template enumeration from configured template directories
@@ -44,7 +44,7 @@ func (a *TemplateFSAdapter) ListTemplates(
 
 // GetTemplate retrieves a specific template by ID.
 // Currently not implemented as ID-based lookup requires template enumeration.
-func (a *TemplateFSAdapter) GetTemplate(
+func (a *FSAdapter) GetTemplate(
 	ctx context.Context,
 	id string,
 ) (*domain.Template, error) {
@@ -56,7 +56,7 @@ func (a *TemplateFSAdapter) GetTemplate(
 // GetTemplateByPath loads a template from a specific file path.
 // This method supports the current CLI workflow where users specify template
 // paths.
-func (a *TemplateFSAdapter) GetTemplateByPath(
+func (a *FSAdapter) GetTemplateByPath(
 	ctx context.Context,
 	path string,
 ) (*domain.Template, error) {
