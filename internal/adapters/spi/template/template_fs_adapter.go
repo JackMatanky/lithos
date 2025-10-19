@@ -6,7 +6,6 @@ import (
 	"context"
 	"path/filepath"
 
-	"github.com/jack/lithos/internal/app/template"
 	"github.com/jack/lithos/internal/domain"
 	"github.com/jack/lithos/internal/ports/spi"
 	"github.com/jack/lithos/internal/shared/errors"
@@ -17,17 +16,18 @@ import (
 // It provides template loading capabilities from the local filesystem.
 type TemplateFSAdapter struct {
 	fileSystemPort spi.FileSystemPort
-	parser         template.TemplateParser
+	parser         spi.TemplateParser
 }
 
 // NewTemplateFSAdapter creates a new filesystem-based template repository
-// adapter.
+// adapter with injected parser dependency.
 func NewTemplateFSAdapter(
 	fileSystemPort spi.FileSystemPort,
+	parser spi.TemplateParser,
 ) *TemplateFSAdapter {
 	return &TemplateFSAdapter{
 		fileSystemPort: fileSystemPort,
-		parser:         template.NewStaticTemplateParser(),
+		parser:         parser,
 	}
 }
 

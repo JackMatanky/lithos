@@ -4,40 +4,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 
-	"github.com/jack/lithos/internal/adapters/api/cli"
 	"github.com/jack/lithos/internal/adapters/spi/filesystem"
-	"github.com/jack/lithos/internal/app/template"
-	"github.com/jack/lithos/internal/domain"
+	templaterepo "github.com/jack/lithos/internal/adapters/spi/template"
+	templatedomain "github.com/jack/lithos/internal/app/template"
 	"github.com/jack/lithos/internal/ports/spi"
 )
-
-// findProjectRoot finds the project root directory by looking for go.mod.
-func findProjectRoot(t *testing.T) string {
-	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("Could not get caller information")
-	}
-
-	// Start from the directory containing this test file
-	dir := filepath.Dir(filename)
-
-	// Walk up directories until we find go.mod
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("Could not find project root (go.mod)")
-		}
-		dir = parent
-	}
-}
 
 // TestTemplatePipelineIntegration tests the complete template processing
 // pipeline
@@ -91,12 +65,7 @@ func TestTemplatePipelineIntegration(t *testing.T) {
 		outputFileName := "static-template.md"
 		expectedOutputFile := filepath.Join(tempDir, outputFileName)
 
-		// Execute the new command (this will create the output file)
-		cmd := cli.NewCommand(fsAdapter)
-		cmd.SetArgs([]string{templatePath})
-
-		// Capture the command execution - we need to redirect output
-		// For integration testing, we'll call the command logic directly
+		// Execute the new command logic directly for testing
 		err = executeNewCommand(
 			ctx,
 			fsAdapter,
@@ -131,42 +100,30 @@ func executeNewCommand(
 	fs spi.FileSystemPort,
 	templatePath, outputPath string,
 ) error {
-	// Read the template file
-	content, err := fs.ReadFile(templatePath)
+	// Create template parser and executor from domain services
+	templateParser := templatedomain.NewStaticTemplateParser()
+	templateExecutor := templatedomain.NewGoTemplateExecutor()
+
+	// Create template engine and repository
+	templateEngine := templatedomain.NewTemplateEngine(
+		templateParser,
+		templateExecutor,
+	)
+	templateRepo := templaterepo.NewTemplateFSAdapter(fs, templateParser)
+
+	// Get parsed template from repository
+	tmpl, err := templateRepo.GetTemplateByPath(ctx, templatePath)
 	if err != nil {
 		return err
 	}
 
-	// Parse the template
-	parser := template.NewStaticTemplateParser()
-	parseResult := parser.Parse(ctx, string(content))
-	if parseResult.IsErr() {
-		return parseResult.Error()
-	}
-
-	parsedTemplate := parseResult.Value()
-
-	// Create domain template object
-	templateName := filepath.Base(templatePath)
-	if ext := filepath.Ext(templateName); ext != "" {
-		templateName = templateName[:len(templateName)-len(ext)]
-	}
-
-	tmpl := &domain.Template{
-		FilePath: templatePath,
-		Name:     templateName,
-		Content:  string(content),
-		Parsed:   parsedTemplate,
-	}
-
-	// Execute the template
-	executor := template.NewGoTemplateExecutor()
-	renderedContent, err := executor.Execute(ctx, tmpl, nil)
+	// Execute parsed template
+	renderedContent, err := templateEngine.ExecuteParsedTemplate(ctx, tmpl)
 	if err != nil {
 		return err
 	}
 
-	// Write rendered content to file
+	// Write the output file
 	return fs.WriteFileAtomic(outputPath, []byte(renderedContent))
 }
 

@@ -1,7 +1,4 @@
-// Package template provides template parsing and execution services.
-//
-// This package implements template functionality using Go's text/template
-// with custom functions for enhanced template capabilities.
+// Package template provides domain services for template parsing and execution.
 package template
 
 import (

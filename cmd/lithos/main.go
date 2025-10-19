@@ -9,13 +9,35 @@ import (
 
 	"github.com/jack/lithos/internal/adapters/api/cli"
 	"github.com/jack/lithos/internal/adapters/spi/filesystem"
+	templaterepo "github.com/jack/lithos/internal/adapters/spi/template"
+	templatedomain "github.com/jack/lithos/internal/app/template"
 )
 
 func main() {
 	// Create filesystem adapter
 	fileSystemPort := filesystem.NewLocalFileSystemAdapter()
 
+	// Create template parser and executor from domain services
+	templateParser := templatedomain.NewStaticTemplateParser()
+	templateExecutor := templatedomain.NewGoTemplateExecutor()
+
+	// Create template engine with injected dependencies
+	templateEngine := templatedomain.NewTemplateEngine(
+		templateParser,
+		templateExecutor,
+	)
+
+	// Create template repository adapter
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		fileSystemPort,
+		templateParser,
+	)
+
 	// Create CLI adapter with injected dependencies
-	adapter := cli.NewCobraCLIAdapter(fileSystemPort)
+	adapter := cli.NewCobraCLIAdapter(
+		templateEngine,
+		templateRepo,
+		fileSystemPort,
+	)
 	os.Exit(adapter.Execute(os.Args[1:]))
 }

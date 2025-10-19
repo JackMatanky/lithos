@@ -6,29 +6,11 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/jack/lithos/internal/ports/spi"
 	"github.com/jack/lithos/internal/shared/errors"
 )
 
-// TemplateParser defines the interface for parsing template content.
-type TemplateParser interface {
-	// Parse parses the given template content and returns a parsed template.
-	// Returns an error if the template has syntax errors.
-	Parse(
-		ctx context.Context,
-		templateContent string,
-	) errors.Result[*template.Template]
-
-	// Execute executes a parsed template with the given data and returns the
-	// rendered content.
-	// Returns an error if template execution fails.
-	Execute(
-		ctx context.Context,
-		tmpl *template.Template,
-		data interface{},
-	) errors.Result[string]
-}
-
-// StaticTemplateParser implements TemplateParser using Go's text/template
+// StaticTemplateParser implements spi.TemplateParser using Go's text/template
 // engine with custom functions for enhanced template capabilities.
 type StaticTemplateParser struct{}
 
@@ -122,3 +104,6 @@ func (p *StaticTemplateParser) Execute(ctx context.Context,
 
 	return errors.Ok(result)
 }
+
+// Ensure StaticTemplateParser implements spi.TemplateParser.
+var _ spi.TemplateParser = (*StaticTemplateParser)(nil)

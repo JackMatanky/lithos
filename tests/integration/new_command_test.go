@@ -3,58 +3,69 @@ package integration
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/jack/lithos/internal/adapters/api/cli"
 	"github.com/jack/lithos/internal/adapters/spi/filesystem"
+	templaterepo "github.com/jack/lithos/internal/adapters/spi/template"
+	templatedomain "github.com/jack/lithos/internal/app/template"
 )
 
-// Note: findProjectRoot is already defined in template_pipeline_test.go
+// findProjectRoot finds the project root directory by looking for go.mod.
+func findProjectRoot(t *testing.T) string {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("Could not get caller information")
+	}
+
+	// Start from the directory containing this test file
+	dir := filepath.Dir(filename)
+
+	// Walk up directories until we find go.mod
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("Could not find project root (go.mod)")
+		}
+		dir = parent
+	}
+}
 
 func TestNewCommand_Integration_CompleteFlow(t *testing.T) {
-	// Find project root and testdata
+	// Change to project root directory for relative paths to work
 	projectRoot := findProjectRoot(t)
-	templatePath := filepath.Join(
-		projectRoot,
-		"testdata",
-		"templates",
-		"integration-test-template.txt",
-	)
-
-	// Verify test template exists
-	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-		t.Fatalf("Test template not found: %s", templatePath)
-	}
-
-	// Create a temporary directory for test output
-	tempDir, err := os.MkdirTemp("", "lithos-integration-test-")
+	originalDir, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatalf("Failed to get current directory: %v", err)
 	}
-	defer func() {
-		_ = os.RemoveAll(tempDir)
-	}()
-
-	// Change to temp directory for test
-	oldDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get current dir: %v", err)
-	}
-	defer func() {
-		_ = os.Chdir(oldDir)
-	}()
-
-	err = os.Chdir(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to change to temp dir: %v", err)
+	defer os.Chdir(originalDir) // Restore original directory
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("Failed to change to project root: %v", err)
 	}
 
+	templatePath := "testdata/templates/integration-test-template.txt"
 	// Create real filesystem adapter
 	fsAdapter := filesystem.NewLocalFileSystemAdapter()
 
-	// Create CLI adapter with real filesystem
-	adapter := cli.NewCobraCLIAdapter(fsAdapter)
+	// Create template parser and executor from domain services
+	templateParser := templatedomain.NewStaticTemplateParser()
+	templateExecutor := templatedomain.NewGoTemplateExecutor()
+
+	// Create template engine and repository
+	templateEngine := templatedomain.NewTemplateEngine(
+		templateParser,
+		templateExecutor,
+	)
+	templateRepo := templaterepo.NewTemplateFSAdapter(fsAdapter, templateParser)
+
+	// Create CLI adapter with injected dependencies
+	adapter := cli.NewCobraCLIAdapter(templateEngine, templateRepo, fsAdapter)
 
 	// Execute the new command with testdata template
 	exitCode := adapter.Execute([]string{"new", templatePath})
@@ -122,48 +133,34 @@ func TestNewCommand_Integration_CompleteFlow(t *testing.T) {
 }
 
 func TestNewCommand_Integration_AtomicWrite(t *testing.T) {
-	// Find project root and testdata
+	// Change to project root directory for relative paths to work
 	projectRoot := findProjectRoot(t)
-	templatePath := filepath.Join(
-		projectRoot,
-		"testdata",
-		"templates",
-		"large-integration-template.txt",
-	)
-
-	// Verify test template exists
-	if _, err := os.Stat(templatePath); os.IsNotExist(err) {
-		t.Fatalf("Test template not found: %s", templatePath)
-	}
-
-	// Create a temporary directory for test output
-	tempDir, err := os.MkdirTemp("", "lithos-atomic-test-")
+	originalDir, err := os.Getwd()
 	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
+		t.Fatalf("Failed to get current directory: %v", err)
 	}
-	defer func() {
-		_ = os.RemoveAll(tempDir)
-	}()
-
-	// Change to temp directory for test
-	oldDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("Failed to get current dir: %v", err)
-	}
-	defer func() {
-		_ = os.Chdir(oldDir)
-	}()
-
-	err = os.Chdir(tempDir)
-	if err != nil {
-		t.Fatalf("Failed to change to temp dir: %v", err)
+	defer os.Chdir(originalDir) // Restore original directory
+	if err := os.Chdir(projectRoot); err != nil {
+		t.Fatalf("Failed to change to project root: %v", err)
 	}
 
+	templatePath := "testdata/templates/large-integration-template.txt"
 	// Create real filesystem adapter
 	fsAdapter := filesystem.NewLocalFileSystemAdapter()
 
-	// Create CLI adapter with real filesystem
-	adapter := cli.NewCobraCLIAdapter(fsAdapter)
+	// Create template parser and executor from domain services
+	templateParser := templatedomain.NewStaticTemplateParser()
+	templateExecutor := templatedomain.NewGoTemplateExecutor()
+
+	// Create template engine and repository
+	templateEngine := templatedomain.NewTemplateEngine(
+		templateParser,
+		templateExecutor,
+	)
+	templateRepo := templaterepo.NewTemplateFSAdapter(fsAdapter, templateParser)
+
+	// Create CLI adapter with injected dependencies
+	adapter := cli.NewCobraCLIAdapter(templateEngine, templateRepo, fsAdapter)
 
 	// Execute the new command with testdata template
 	exitCode := adapter.Execute([]string{"new", templatePath})

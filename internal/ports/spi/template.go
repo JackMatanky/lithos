@@ -3,8 +3,10 @@ package spi
 
 import (
 	"context"
+	"text/template"
 
 	"github.com/jack/lithos/internal/domain"
+	"github.com/jack/lithos/internal/shared/errors"
 )
 
 // TemplateMetadata provides information about an available template.
@@ -33,4 +35,39 @@ type TemplateRepositoryPort interface {
 		ctx context.Context,
 		path string,
 	) (*domain.Template, error)
+}
+
+// TemplateParser defines the interface for parsing template content.
+// This port allows the domain to parse templates without depending on
+// specific template engines or parsing implementations.
+type TemplateParser interface {
+	// Parse parses the given template content and returns a parsed template.
+	// Returns an error if the template has syntax errors.
+	Parse(
+		ctx context.Context,
+		templateContent string,
+	) errors.Result[*template.Template]
+
+	// Execute executes a parsed template with the given data and returns the
+	// rendered content.
+	// Returns an error if template execution fails.
+	Execute(
+		ctx context.Context,
+		tmpl *template.Template,
+		data interface{},
+	) errors.Result[string]
+}
+
+// TemplateExecutor defines the interface for executing parsed templates.
+// This port allows the domain to execute templates without depending on
+// specific template execution implementations.
+type TemplateExecutor interface {
+	// Execute executes a parsed template with the given data and returns the
+	// rendered content.
+	// Returns an error if template execution fails.
+	Execute(
+		ctx context.Context,
+		tmpl *domain.Template,
+		data interface{},
+	) (string, error)
 }

@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	templaterepo "github.com/jack/lithos/internal/adapters/spi/template"
+	templatedomain "github.com/jack/lithos/internal/app/template"
 	"github.com/jack/lithos/internal/ports/spi"
 )
 
@@ -15,6 +17,19 @@ type mockFileSystemPort struct {
 	readFileFunc  func(path string) ([]byte, error)
 	writeFileFunc func(path string, data []byte) error
 	writtenFiles  map[string][]byte
+}
+
+// createTemplateEngine creates a template engine with concrete adapters for
+// testing.
+func createTemplateEngine() *templatedomain.TemplateEngine {
+	templateParser := templatedomain.NewStaticTemplateParser()
+	templateExecutor := templatedomain.NewGoTemplateExecutor()
+	return templatedomain.NewTemplateEngine(templateParser, templateExecutor)
+}
+
+// createTemplateParser creates a template parser for testing.
+func createTemplateParser() spi.TemplateParser {
+	return templatedomain.NewStaticTemplateParser()
 }
 
 func newMockFileSystemPort() *mockFileSystemPort {
@@ -45,7 +60,17 @@ func (m *mockFileSystemPort) Walk(root string, fn spi.WalkFunc) error {
 
 func TestCobraCLIAdapter_Execute_VersionCommand(t *testing.T) {
 	mockFS := newMockFileSystemPort()
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateParser := templatedomain.NewStaticTemplateParser()
+	templateExecutor := templatedomain.NewGoTemplateExecutor()
+	templateEngine := templatedomain.NewTemplateEngine(
+		templateParser,
+		templateExecutor,
+	)
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -77,7 +102,12 @@ func TestCobraCLIAdapter_Execute_VersionCommand(t *testing.T) {
 
 func TestCobraCLIAdapter_Execute_HelpCommand(t *testing.T) {
 	mockFS := newMockFileSystemPort()
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateEngine := createTemplateEngine()
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -109,7 +139,12 @@ func TestCobraCLIAdapter_Execute_HelpCommand(t *testing.T) {
 
 func TestCobraCLIAdapter_Execute_InvalidCommand(t *testing.T) {
 	mockFS := newMockFileSystemPort()
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateEngine := createTemplateEngine()
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Execute invalid command
 	exitCode := adapter.Execute([]string{"invalid-command"})
@@ -123,7 +158,12 @@ func TestCobraCLIAdapter_Execute_InvalidCommand(t *testing.T) {
 
 func TestCobraCLIAdapter_Execute_NoArgs(t *testing.T) {
 	mockFS := newMockFileSystemPort()
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateEngine := createTemplateEngine()
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -162,7 +202,12 @@ func TestCobraCLIAdapter_Execute_NewCommand_Success(t *testing.T) {
 		}
 		return nil, errors.New("file not found")
 	}
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateEngine := createTemplateEngine()
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -210,7 +255,12 @@ func TestCobraCLIAdapter_Execute_NewCommand_FileNotFound(t *testing.T) {
 	mockFS.readFileFunc = func(path string) ([]byte, error) {
 		return nil, errors.New("file not found")
 	}
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateEngine := createTemplateEngine()
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Execute new command with non-existent file
 	exitCode := adapter.Execute([]string{"new", "nonexistent.txt"})
@@ -223,7 +273,12 @@ func TestCobraCLIAdapter_Execute_NewCommand_FileNotFound(t *testing.T) {
 
 func TestCobraCLIAdapter_Execute_NewCommand_NoArgs(t *testing.T) {
 	mockFS := newMockFileSystemPort()
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateEngine := createTemplateEngine()
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Execute new command without args
 	exitCode := adapter.Execute([]string{"new"})
@@ -249,7 +304,12 @@ func TestCobraCLIAdapter_Execute_NewCommand_WriteFailure(t *testing.T) {
 		return errors.New("disk full")
 	}
 
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateEngine := createTemplateEngine()
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Execute new command
 	exitCode := adapter.Execute([]string{"new", "template.txt"})
@@ -270,7 +330,12 @@ func TestCobraCLIAdapter_Execute_NewCommand_WithFunctions(t *testing.T) {
 		return nil, errors.New("file not found")
 	}
 
-	adapter := NewCobraCLIAdapter(mockFS)
+	templateEngine := createTemplateEngine()
+	templateRepo := templaterepo.NewTemplateFSAdapter(
+		mockFS,
+		createTemplateParser(),
+	)
+	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Capture stdout
 	oldStdout := os.Stdout
@@ -351,7 +416,12 @@ func TestCobraCLIAdapter_Execute_NewCommand_FilenameGeneration(t *testing.T) {
 				return nil, errors.New("file not found")
 			}
 
-			adapter := NewCobraCLIAdapter(mockFS)
+			templateEngine := createTemplateEngine()
+			templateRepo := templaterepo.NewTemplateFSAdapter(
+				mockFS,
+				createTemplateParser(),
+			)
+			adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 			// Execute new command
 			exitCode := adapter.Execute([]string{"new", tt.templatePath})
