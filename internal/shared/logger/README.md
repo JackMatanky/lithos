@@ -29,16 +29,20 @@ logger.WithComponent("vault.indexer").
 
 ### Global Logger
 
-- `Log zerolog.Logger`: The global logger instance configured for the application
+- `Log Logger`: The global logger instance configured for the application
+
+### Types
+
+- `Logger`: Custom logger type that wraps zerolog.Logger for better encapsulation
 
 ### Context Methods
 
-- `WithComponent(component string) zerolog.Logger`: Add component context (e.g., "template.engine")
-- `WithOperation(operation string) zerolog.Logger`: Add operation context (e.g., "scan", "render")
-- `WithCorrelationID(id string) zerolog.Logger`: Add correlation ID for request tracing
-- `WithCommand(command string) zerolog.Logger`: Add CLI command context (e.g., "new", "find")
-- `WithTemplateID(id string) zerolog.Logger`: Add template ID (optional)
-- `WithFilePath(path string) zerolog.Logger`: Add file path (optional)
+- `WithComponent(component string) Logger`: Add component context (e.g., "template.engine")
+- `WithOperation(operation string) Logger`: Add operation context (e.g., "scan", "render")
+- `WithCorrelationID(id string) Logger`: Add correlation ID for request tracing
+- `WithCommand(command string) Logger`: Add CLI command context (e.g., "new", "find")
+- `WithTemplateID(id string) Logger`: Add template ID (optional)
+- `WithFilePath(path string) Logger`: Add file path (optional)
 
 ## Usage Examples
 
