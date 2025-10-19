@@ -61,24 +61,24 @@ allow-parallel-runners = true
 default = "none" # Opt-in only: explicit enables below.
 enable = [
   # ------------------ Correctness & Safety ------------------ #
-  "asasalint",     # Disallow passing []any as any to variadic ...any.
-  "bidichk",       # Detect dangerous Unicode bidi codepoints.
-  "copyloopvar",   # Catch unsafe loop variable copies (Go 1.22+).
-  "durationcheck", # Forbid multiplying two time.Duration values.
-  "errcheck",      # Report unchecked errors (bugs hide here).
-  "errname",       # Enforce naming: errors start with Err, types end with Error.
-  "errorlint",     # Enforce proper error wrapping/unwrapping (Go 1.13+).
-  "exptostd",      # Prefer stdlib over golang.org/x/exp functions.
+  "asasalint",                 # Disallow passing []any as any to variadic ...any.
+  "bidichk",                   # Detect dangerous Unicode bidi codepoints.
+  "copyloopvar",               # Catch unsafe loop variable copies (Go 1.22+).
+  "durationcheck",             # Forbid multiplying two time.Duration values.
+  "errcheck",                  # Report unchecked errors (bugs hide here).
+  "errname",                   # Enforce naming: errors start with Err, types end with Error.
+  "errorlint",                 # Enforce proper error wrapping/unwrapping (Go 1.13+).
+  "exptostd",                  # Prefer stdlib over golang.org/x/exp functions.
   "gocheckcompilerdirectives", # Validate //go: compiler/linker pragmas.
-  "govet",         # Go’s official analyzers (fmt, shadowing, etc.).
-  "gosec",         # Security heuristics for common pitfalls.
-  "ineffassign",   # Detect assignments whose values are never used.
-  "intrange",      # Prefer range loops over classic for for ints.
-  "nilerr",        # Disallow returning nil when err was non-nil.
-  "nilnesserr",    # Detect mismatched nilness in error handling.
-  "nilnil",        # Forbid returning (nil, nil) for invalid results.
-  "staticcheck",   # High-signal static analysis (extends vet).
-  "unused",        # Detect unused consts, funcs, types, vars.
+  "govet",                     # Go’s official analyzers (fmt, shadowing, etc.).
+  "gosec",                     # Security heuristics for common pitfalls.
+  "ineffassign",               # Detect assignments whose values are never used.
+  "intrange",                  # Prefer range loops over classic for for ints.
+  "nilerr",                    # Disallow returning nil when err was non-nil.
+  "nilnesserr",                # Detect mismatched nilness in error handling.
+  "nilnil",                    # Forbid returning (nil, nil) for invalid results.
+  "staticcheck",               # High-signal static analysis (extends vet).
+  "unused",                    # Detect unused consts, funcs, types, vars.
 
   # ----------- I/O, Concurrency & Resource Hygiene ---------- #
   "bodyclose",       # Ensure *http.Response.Body is closed.
@@ -88,30 +88,30 @@ enable = [
   "sqlclosecheck",   # Ensure sql.Rows and sql.Stmt are closed.
 
   # ---------------- Code Style & Readability ---------------- #
-  "dogsled",     # Warn on many blank identifiers in assignment.
-  "goconst",     # Suggest factoring repeated literals into consts.
-  "gocritic",    # Curated bug/perf/style diagnostics (tuned via tags).
-  "godot",       # Doc comments must end with a period.
-  "importas",    # Enforce consistent import aliases.
-  "lll",         # Enforce max line length (matches formatter policy).
-  "misspell",    # Spell-check comments/strings (US English).
-  "mnd",         # Flag magic numbers (ignoring 0,1,2).
-  "nakedret",    # Discourage naked returns in longer funcs.
-  "nestif",      # Warn on deeply nested if statements.
-  "nolintlint",  # Require specific, explained //nolint usage.
-  "unconvert",   # Remove unnecessary type conversions.
-  "unparam",     # Report unused function parameters.
-  "whitespace",  # Enforce consistent blank lines/spacing.
+  "dogsled",    # Warn on many blank identifiers in assignment.
+  "goconst",    # Suggest factoring repeated literals into consts.
+  "gocritic",   # Curated bug/perf/style diagnostics (tuned via tags).
+  "godot",      # Doc comments must end with a period.
+  "importas",   # Enforce consistent import aliases.
+  "lll",        # Enforce max line length (matches formatter policy).
+  "misspell",   # Spell-check comments/strings (US English).
+  "mnd",        # Flag magic numbers (ignoring 0,1,2).
+  "nakedret",   # Discourage naked returns in longer funcs.
+  "nestif",     # Warn on deeply nested if statements.
+  "nolintlint", # Require specific, explained //nolint usage.
+  "unconvert",  # Remove unnecessary type conversions.
+  "unparam",    # Report unused function parameters.
+  "whitespace", # Enforce consistent blank lines/spacing.
 
   # -------------- Complexity & Maintainability -------------- #
-  "cyclop",    # Cyclomatic complexity (with package avg budget).
-  "dupl",      # Detect duplicated code regions.
-  "funlen",    # Function size limits (lines & statements).
-  "gocognit",  # Cognitive complexity (branch nesting, flow readability).
+  "cyclop",   # Cyclomatic complexity (with package avg budget).
+  "dupl",     # Detect duplicated code regions.
+  "funlen",   # Function size limits (lines & statements).
+  "gocognit", # Cognitive complexity (branch nesting, flow readability).
 
   # --------------- Dependency & Module Policy --------------- #
-  "depguard",        # Restrict/deny problematic dependencies.
-  "gomoddirectives", # Flag risky go.mod directives.
+  "depguard",          # Restrict/deny problematic dependencies.
+  "gomoddirectives",   # Flag risky go.mod directives.
   "nosprintfhostport", # Prevent constructing host:port using fmt.Sprintf.
 
   # ------------ Design & Architecture Discipline ------------ #
@@ -135,12 +135,7 @@ warn-unused = true
 
 # Paths to exclude: they will be analyzed, but issues will not be reported.
 # "/" will be replaced by the current OS file path separator to properly work on Windows.
-paths = [
-  "^bin(/|$)",
-  "^dist(/|$)",
-  "^generated(/|$)",
-  "^vendor(/|$)",
-]
+paths = ["^bin(/|$)", "^dist(/|$)", "^generated(/|$)", "^vendor(/|$)"]
 
 # Relaxations for specific files.
 # Tests: relax noisy rules (+ cyclop here instead of the removed skip-tests).
@@ -153,6 +148,11 @@ linters = ["cyclop", "dupl", "funlen", "mnd"]
 path = "_test\\.go$"
 linters = ["gosec"]
 text = "^(G204|G304):"
+
+# Suppress exhaustruct in test files where zero values are intentionally used
+[[linters.exclusions.rules]]
+path = "_test\\.go$"
+linters = ["exhaustruct"]
 
 [[linters.exclusions.rules]]
 path = "tools\\.go"  # Tool markers commonly trip "unused".
@@ -175,8 +175,8 @@ dec-order = ["const", "var", "type", "func"]
 files = ["$all"]
 deny = [
   { pkg = "github.com/golang/protobuf", desc = "Use google.golang.org/protobuf" },
-  { pkg = "github.com/satori/go.uuid",  desc = "Use github.com/google/uuid" },
-  { pkg = "log$",                       desc = "Use log/slog" },
+  { pkg = "github.com/satori/go.uuid", desc = "Use github.com/google/uuid" },
+  { pkg = "log$", desc = "Use log/slog" },
 ]
 
 [linters.settings.dupl]
@@ -297,12 +297,7 @@ enable = ["gci", "gofmt", "goimports", "golines"]
 
 [formatters.exclusions]
 warn-unused = true
-paths = [
-  "^vendor(/|$)",
-  "^generated(/|$)",
-  "^dist(/|$)",
-  "^bin(/|$)",
-]
+paths = ["^vendor(/|$)", "^generated(/|$)", "^dist(/|$)", "^bin(/|$)"]
 
 # Settings: https://golangci-lint.run/docs/formatters/configuration/
 # gci doesn't accept local-prefixes; configure sections/custom-order instead.
