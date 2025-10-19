@@ -29,8 +29,43 @@ As a developer, I want to implement the core domain models, so that the applicat
 
 ### Acceptance Criteria
 
-- 1.3.1: The `File`, `Frontmatter`, `Note`, and `Template` models are created in `internal/domain/` as per `docs/architecture/data-models.md#file`, `#frontmatter`, `#note`, and `#template`.
-- 1.3.2: All models include basic unit tests to verify their structure and behavior.
+- 1.3.1: The `File` model is created in `internal/domain/file.go` with:
+  - `Path string` field (absolute file path, serves as primary key)
+  - `Basename string` field (computed filename without path/extension)
+  - `Folder string` field (computed parent directory path)
+  - `ModTime time.Time` field (file modification timestamp)
+  - `NewFile(path string, modTime time.Time) File` constructor function
+  - `computeBasename(path string) string` helper function
+  - `computeFolder(path string) string` helper function
+
+- 1.3.2: The `Frontmatter` model is created in `internal/domain/frontmatter.go` with:
+  - `FileClass string` field (optional schema reference)
+  - `Fields map[string]interface{}` field (complete parsed YAML frontmatter)
+  - `NewFrontmatter(fields map[string]interface{}) Frontmatter` constructor function
+  - `extractFileClass(fields map[string]interface{}) string` helper function
+  - `SchemaName() string` method returning FileClass
+
+- 1.3.3: The `Note` model is created in `internal/domain/note.go` with:
+  - Embedded `File` struct (file identity and metadata)
+  - Embedded `Frontmatter` struct (content metadata)
+  - `NewNote(file File, frontmatter Frontmatter) Note` constructor function
+  - `SchemaName() string` method returning frontmatter FileClass
+
+- 1.3.4: The `Template` model is created in `internal/domain/template.go` with:
+  - `FilePath string` field (absolute path to template file)
+  - `Name string` field (human-readable display name)
+  - `Content string` field (raw template text with Go template syntax)
+  - `Parsed *template.Template` field (optional cached AST)
+
+- 1.3.5: All models include basic unit tests in respective `*_test.go` files to verify:
+  - Constructor functions create valid instances
+  - Computed fields (Basename, Folder) work correctly
+  - Embedded structs are accessible
+  - Methods return expected values
+
+- 1.3.6: All pre-commit hooks pass (golangci-lint run and gitleaks detect)
+
+- 1.3.7: All changed files are committed with a full conventional commit message following the project standards
 
 ## Story 1.4: Implement Shared Errors Package
 

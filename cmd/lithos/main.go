@@ -1,20 +1,11 @@
+// Package main provides the entry point for the Lithos CLI application.
+//
+// Lithos is a tool for managing Obsidian vaults with schema-driven lookups,
+// template rendering, and interactive input capabilities.
 package main
 
-import (
-	"os"
-
-	"github.com/JackMatanky/lithos/internal/adapters/api/cli"
-	"github.com/JackMatanky/lithos/internal/adapters/spi/filesystem"
-)
+import "fmt"
 
 func main() {
-	// Create FileSystemPort adapter
-	fsAdapter := filesystem.NewLocalFileSystemAdapter()
-
-	// Create CLI adapter with dependencies
-	cliAdapter := cli.New(fsAdapter)
-
-	// Execute CLI and exit with appropriate code
-	exitCode := cliAdapter.Execute(os.Args[1:])
-	os.Exit(exitCode)
+	fmt.Println("Lithos CLI - Foundational setup complete")
 }

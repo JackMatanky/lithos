@@ -15,13 +15,21 @@ func TestTemplateStruct(t *testing.T) {
 	}
 
 	if tmpl.FilePath != "/vault/templates/note.md" {
-		t.Errorf("FilePath = %q, want %q", tmpl.FilePath, "/vault/templates/note.md")
+		t.Errorf(
+			"FilePath = %q, want %q",
+			tmpl.FilePath,
+			"/vault/templates/note.md",
+		)
 	}
 	if tmpl.Name != "Basic Note" {
 		t.Errorf("Name = %q, want %q", tmpl.Name, "Basic Note")
 	}
 	if tmpl.Content != "# {{.title}}\n\nContent: {{.content}}" {
-		t.Errorf("Content = %q, want %q", tmpl.Content, "# {{.title}}\n\nContent: {{.content}}")
+		t.Errorf(
+			"Content = %q, want %q",
+			tmpl.Content,
+			"# {{.title}}\n\nContent: {{.content}}",
+		)
 	}
 	if tmpl.Parsed != nil {
 		t.Errorf("Parsed = %v, want nil", tmpl.Parsed)
@@ -44,7 +52,11 @@ func TestTemplateWithParsedTemplate(t *testing.T) {
 	}
 
 	if tmpl.FilePath != "/vault/templates/greeting.md" {
-		t.Errorf("FilePath = %q, want %q", tmpl.FilePath, "/vault/templates/greeting.md")
+		t.Errorf(
+			"FilePath = %q, want %q",
+			tmpl.FilePath,
+			"/vault/templates/greeting.md",
+		)
 	}
 	if tmpl.Name != "Greeting Template" {
 		t.Errorf("Name = %q, want %q", tmpl.Name, "Greeting Template")
@@ -126,10 +138,7 @@ Author: {{.author}}
 {{end}}`
 
 	tmpl := Template{
-		FilePath: "/vault/templates/complex.md",
-		Name:     "Complex Template",
-		Content:  complexContent,
-		Parsed:   nil,
+		Content: complexContent,
 	}
 
 	if tmpl.Content != complexContent {
