@@ -22,7 +22,7 @@
 
 - **External API Errors:** None in MVP. When remote adapters arrive, they must wrap upstream errors into `TemplateError`/`StorageError` using the Result helpers and follow exponential backoff + retry guardrails defined in adapter docs.
 - **Business Logic Errors:** Validation failures include schema name, offending field, and remediation message; template parsing errors include line/column if available. CommandOrchestrator surfaces these as structured output plus exit code `1`.
-- **Data Consistency:** VaultIndexingService and JSONFileCacheAdapter always write to temp files and rename atomically; partial writes trigger rollback with warning logs. `lithos index` remains idempotent, so reruns after failures are safe.
+- **Data Consistency:** VaultIndexer and JSONFileCacheAdapter always write to temp files and rename atomically; partial writes trigger rollback with warning logs. `lithos index` remains idempotent, so reruns after failures are safe.
 - **Testing Contracts:** Unit tests assert both `Result[T]` states and logged context to ensure AI-generated code respects the error model.
 
 ---

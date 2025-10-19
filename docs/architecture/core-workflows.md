@@ -7,10 +7,10 @@ sequenceDiagram
     participant User
     participant CLI as Cobra CLI
     participant CO as CommandOrchestrator
-    participant TE as TemplateEngineService
+    participant TE as TemplateEngine
     participant INT as InteractivePort
     participant QS as QueryService
-    participant SV as SchemaValidatorService
+    participant SV as SchemaValidator
     participant FS as FileSystemPort
 
     User->>CLI: lithos new daily-note
@@ -37,11 +37,11 @@ sequenceDiagram
     participant User
     participant CLI as Cobra CLI
     participant CO as CommandOrchestrator
-    participant TE as TemplateEngineService
+    participant TE as TemplateEngine
     participant TR as TemplateRepositoryPort
     participant INT as InteractivePort
     participant QS as QueryService
-    participant SV as SchemaValidatorService
+    participant SV as SchemaValidator
     participant FS as FileSystemPort
 
     User->>CLI: lithos find
@@ -71,9 +71,9 @@ sequenceDiagram
     participant User
     participant CLI as Cobra CLI
     participant CO as CommandOrchestrator
-    participant VI as VaultIndexingService
+    participant VI as VaultIndexer
     participant FS as FileSystemPort
-    participant SV as SchemaValidatorService
+    participant SV as SchemaValidator
     participant CC as CacheCommandPort
     participant REG as QueryService (refresh)
 
