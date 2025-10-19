@@ -56,8 +56,8 @@ func TestGoModValidity(t *testing.T) {
 	}
 
 	// Check Go version
-	if !strings.Contains(contentStr, "go 1.23") {
-		t.Errorf("go.mod does not specify Go 1.23")
+	if !strings.Contains(contentStr, "go 1.24") {
+		t.Errorf("go.mod does not specify Go 1.24")
 	}
 
 	// Note: External dependencies may exist from previous stories

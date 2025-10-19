@@ -1,7 +1,4 @@
-// Package template provides template processing services for the Lithos
-// application.
-// This package handles template parsing, function registration, and execution
-// to generate rendered content from template files.
+// Package template provides domain services for template parsing and execution.
 package template
 
 import (
@@ -9,24 +6,11 @@ import (
 	"context"
 
 	"github.com/jack/lithos/internal/domain"
+	"github.com/jack/lithos/internal/ports/spi"
 	"github.com/jack/lithos/internal/shared/errors"
 )
 
-// TemplateExecutor defines the interface for template execution services.
-// It provides methods to execute parsed templates with data to generate final
-// content.
-type TemplateExecutor interface {
-	// Execute executes a parsed template with the given data and returns the
-	// rendered content.
-	// The context parameter allows for future cancellation support.
-	Execute(
-		ctx context.Context,
-		tmpl *domain.Template,
-		data interface{},
-	) (string, error)
-}
-
-// GoTemplateExecutor implements TemplateExecutor using Go's text/template
+// GoTemplateExecutor implements spi.TemplateExecutor using Go's text/template
 // package.
 // It executes templates that have been parsed with custom function maps.
 type GoTemplateExecutor struct{}
@@ -82,3 +66,6 @@ func (e *GoTemplateExecutor) Execute(
 
 	return buf.String(), nil
 }
+
+// Ensure GoTemplateExecutor implements spi.TemplateExecutor.
+var _ spi.TemplateExecutor = (*GoTemplateExecutor)(nil)

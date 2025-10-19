@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/jack/lithos/internal/app/template"
 	"github.com/jack/lithos/internal/ports/spi"
 	"github.com/spf13/cobra"
 )
@@ -16,14 +17,22 @@ import (
 // It provides a structured command-line interface for the Lithos application.
 type CobraCLIAdapter struct {
 	rootCmd        *cobra.Command
+	templateEngine *template.TemplateEngine
+	templateRepo   spi.TemplateRepositoryPort
 	fileSystemPort spi.FileSystemPort
 }
 
 // NewCobraCLIAdapter creates a new CobraCLIAdapter instance with
 // the root command and subcommands configured.
-func NewCobraCLIAdapter(fileSystemPort spi.FileSystemPort) *CobraCLIAdapter {
+func NewCobraCLIAdapter(
+	templateEngine *template.TemplateEngine,
+	templateRepo spi.TemplateRepositoryPort,
+	fileSystemPort spi.FileSystemPort,
+) *CobraCLIAdapter {
 	adapter := &CobraCLIAdapter{
 		rootCmd:        &cobra.Command{},
+		templateEngine: templateEngine,
+		templateRepo:   templateRepo,
 		fileSystemPort: fileSystemPort,
 	}
 	adapter.setupCommands()
@@ -73,7 +82,7 @@ func (a *CobraCLIAdapter) setupVersionCommand() *cobra.Command {
 
 // setupNewCommand creates and returns the new command.
 func (a *CobraCLIAdapter) setupNewCommand() *cobra.Command {
-	return NewCommand(a.fileSystemPort)
+	return NewCommand(a.templateEngine, a.templateRepo, a.fileSystemPort)
 }
 
 // registerCommands adds all subcommands to the root command.
