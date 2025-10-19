@@ -28,7 +28,7 @@ func main() {
 	)
 
 	// Create template repository adapter
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		fileSystemPort,
 		templateParser,
 	)

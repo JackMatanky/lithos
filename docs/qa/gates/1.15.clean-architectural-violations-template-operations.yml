@@ -1,0 +1,41 @@
+schema: 1
+story: '1.15'
+story_title: 'Clean Architectural Violations in Template Operations'
+gate: PASS
+status_reason: 'All acceptance criteria fully validated through comprehensive test coverage and architectural verification'
+reviewer: 'QA Agent'
+updated: '2025-10-20T12:00:00Z'
+
+top_issues: []
+waiver: { active: false }
+
+# Extended fields
+quality_score: 100
+expires: '2025-11-19T12:00:00Z'
+
+evidence:
+  tests_reviewed: 25
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+    ac_gaps: []
+  planning_ref: 'docs/qa/assessments/1.15.clean-architectural-violations-template-operations-trace-20251020.md'
+
+nfr_validation:
+  _assessed: [security, performance, reliability, maintainability]
+  security:
+    status: PASS
+    notes: 'No security implications from architectural cleanup'
+  performance:
+    status: PASS
+    notes: 'Performance unaffected by file reorganization'
+  reliability:
+    status: PASS
+    notes: 'All existing functionality preserved and tested'
+  maintainability:
+    status: PASS
+    notes: 'Architecture improved with clear separation of concerns'
+
+recommendations:
+  immediate: []
+  future: []

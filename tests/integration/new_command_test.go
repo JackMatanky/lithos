@@ -44,7 +44,9 @@ func TestNewCommand_Integration_CompleteFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get current directory: %v", err)
 	}
-	defer os.Chdir(originalDir) // Restore original directory
+	defer func() {
+		_ = os.Chdir(originalDir) // Restore original directory (ignore error)
+	}()
 	if err := os.Chdir(projectRoot); err != nil {
 		t.Fatalf("Failed to change to project root: %v", err)
 	}
@@ -62,7 +64,7 @@ func TestNewCommand_Integration_CompleteFlow(t *testing.T) {
 		templateParser,
 		templateExecutor,
 	)
-	templateRepo := templaterepo.NewTemplateFSAdapter(fsAdapter, templateParser)
+	templateRepo := templaterepo.NewFSAdapter(fsAdapter, templateParser)
 
 	// Create CLI adapter with injected dependencies
 	adapter := cli.NewCobraCLIAdapter(templateEngine, templateRepo, fsAdapter)
@@ -139,7 +141,9 @@ func TestNewCommand_Integration_AtomicWrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to get current directory: %v", err)
 	}
-	defer os.Chdir(originalDir) // Restore original directory
+	defer func() {
+		_ = os.Chdir(originalDir) // Restore original directory (ignore error)
+	}()
 	if err := os.Chdir(projectRoot); err != nil {
 		t.Fatalf("Failed to change to project root: %v", err)
 	}
@@ -157,7 +161,7 @@ func TestNewCommand_Integration_AtomicWrite(t *testing.T) {
 		templateParser,
 		templateExecutor,
 	)
-	templateRepo := templaterepo.NewTemplateFSAdapter(fsAdapter, templateParser)
+	templateRepo := templaterepo.NewFSAdapter(fsAdapter, templateParser)
 
 	// Create CLI adapter with injected dependencies
 	adapter := cli.NewCobraCLIAdapter(templateEngine, templateRepo, fsAdapter)

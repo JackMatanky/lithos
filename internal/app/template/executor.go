@@ -29,25 +29,31 @@ func (e *GoTemplateExecutor) Execute(
 	tmpl *domain.Template,
 	data interface{},
 ) (string, error) {
-	if tmpl == nil {
-		return "", errors.Wrap(
-			errors.NewTemplateError("unknown", 0, "template is nil"),
-			"cannot execute nil template",
-		)
+	if err := e.validateTemplate(tmpl); err != nil {
+		return "", err
 	}
 
-	if tmpl.Parsed == nil {
-		return "", errors.Wrap(
-			errors.NewTemplateError(tmpl.Name, 0, "template not parsed"),
-			"template must be parsed before execution",
-		)
+	if err := e.validateData(data, tmpl.Name); err != nil {
+		return "", err
 	}
 
-	// For MVP, ensure no external data is passed (data should be nil)
+	return e.executeTemplate(tmpl)
+}
+
+// validateTemplate performs validation checks on the template before execution.
+func (e *GoTemplateExecutor) validateTemplate(tmpl *domain.Template) error {
+	return validateTemplateForExecution(tmpl)
+}
+
+// validateData ensures no external data is passed for MVP.
+func (e *GoTemplateExecutor) validateData(
+	data interface{},
+	tmplName string,
+) error {
 	if data != nil {
-		return "", errors.Wrap(
+		return errors.Wrap(
 			errors.NewTemplateError(
-				tmpl.Name,
+				tmplName,
 				0,
 				"external data not supported in MVP",
 			),
@@ -55,7 +61,13 @@ func (e *GoTemplateExecutor) Execute(
 		)
 	}
 
-	// Execute template into a buffer
+	return nil
+}
+
+// executeTemplate performs the actual template execution into a buffer.
+func (e *GoTemplateExecutor) executeTemplate(
+	tmpl *domain.Template,
+) (string, error) {
 	var buf bytes.Buffer
 	if err := tmpl.Parsed.Execute(&buf, nil); err != nil {
 		return "", errors.Wrap(

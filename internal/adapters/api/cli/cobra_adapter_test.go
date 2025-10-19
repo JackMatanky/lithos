@@ -66,7 +66,7 @@ func TestCobraCLIAdapter_Execute_VersionCommand(t *testing.T) {
 		templateParser,
 		templateExecutor,
 	)
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -103,7 +103,7 @@ func TestCobraCLIAdapter_Execute_VersionCommand(t *testing.T) {
 func TestCobraCLIAdapter_Execute_HelpCommand(t *testing.T) {
 	mockFS := newMockFileSystemPort()
 	templateEngine := createTemplateEngine()
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -140,7 +140,7 @@ func TestCobraCLIAdapter_Execute_HelpCommand(t *testing.T) {
 func TestCobraCLIAdapter_Execute_InvalidCommand(t *testing.T) {
 	mockFS := newMockFileSystemPort()
 	templateEngine := createTemplateEngine()
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -159,7 +159,7 @@ func TestCobraCLIAdapter_Execute_InvalidCommand(t *testing.T) {
 func TestCobraCLIAdapter_Execute_NoArgs(t *testing.T) {
 	mockFS := newMockFileSystemPort()
 	templateEngine := createTemplateEngine()
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -203,7 +203,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_Success(t *testing.T) {
 		return nil, errors.New("file not found")
 	}
 	templateEngine := createTemplateEngine()
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -256,7 +256,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_FileNotFound(t *testing.T) {
 		return nil, errors.New("file not found")
 	}
 	templateEngine := createTemplateEngine()
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -274,7 +274,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_FileNotFound(t *testing.T) {
 func TestCobraCLIAdapter_Execute_NewCommand_NoArgs(t *testing.T) {
 	mockFS := newMockFileSystemPort()
 	templateEngine := createTemplateEngine()
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -305,7 +305,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_WriteFailure(t *testing.T) {
 	}
 
 	templateEngine := createTemplateEngine()
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -331,7 +331,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_WithFunctions(t *testing.T) {
 	}
 
 	templateEngine := createTemplateEngine()
-	templateRepo := templaterepo.NewTemplateFSAdapter(
+	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
 		createTemplateParser(),
 	)
@@ -417,7 +417,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_FilenameGeneration(t *testing.T) {
 			}
 
 			templateEngine := createTemplateEngine()
-			templateRepo := templaterepo.NewTemplateFSAdapter(
+			templateRepo := templaterepo.NewFSAdapter(
 				mockFS,
 				createTemplateParser(),
 			)
