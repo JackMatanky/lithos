@@ -12,6 +12,8 @@ import (
 	"github.com/jack/lithos/internal/ports/spi"
 )
 
+const testTemplateFile = "template.txt"
+
 // mockFileSystemPort implements spi.FileSystemPort for testing.
 type mockFileSystemPort struct {
 	readFileFunc  func(path string) ([]byte, error)
@@ -197,7 +199,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_Success(t *testing.T) {
 	expectedContent := []byte("Hello, {{.Name}}!")
 	mockFS := newMockFileSystemPort()
 	mockFS.readFileFunc = func(path string) ([]byte, error) {
-		if path == "template.txt" {
+		if path == testTemplateFile {
 			return expectedContent, nil
 		}
 		return nil, errors.New("file not found")
@@ -215,7 +217,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_Success(t *testing.T) {
 	os.Stdout = w
 
 	// Execute new command
-	exitCode := adapter.Execute([]string{"new", "template.txt"})
+	exitCode := adapter.Execute([]string{"new", testTemplateFile})
 
 	// Restore stdout
 	_ = w.Close()
@@ -295,7 +297,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_WriteFailure(t *testing.T) {
 	expectedContent := []byte("Hello, {{toLower \"WORLD\"}}!")
 	mockFS := newMockFileSystemPort()
 	mockFS.readFileFunc = func(path string) ([]byte, error) {
-		if path == "template.txt" {
+		if path == testTemplateFile {
 			return expectedContent, nil
 		}
 		return nil, errors.New("file not found")
@@ -312,7 +314,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_WriteFailure(t *testing.T) {
 	adapter := NewCobraCLIAdapter(templateEngine, templateRepo, mockFS)
 
 	// Execute new command
-	exitCode := adapter.Execute([]string{"new", "template.txt"})
+	exitCode := adapter.Execute([]string{"new", testTemplateFile})
 
 	// Verify exit code is non-zero for write failure
 	if exitCode == 0 {
@@ -324,7 +326,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_WithFunctions(t *testing.T) {
 	expectedContent := []byte("Hello, {{toLower \"WORLD\"}}!")
 	mockFS := newMockFileSystemPort()
 	mockFS.readFileFunc = func(path string) ([]byte, error) {
-		if path == "template.txt" {
+		if path == testTemplateFile {
 			return expectedContent, nil
 		}
 		return nil, errors.New("file not found")
@@ -343,7 +345,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_WithFunctions(t *testing.T) {
 	os.Stdout = w
 
 	// Execute new command
-	exitCode := adapter.Execute([]string{"new", "template.txt"})
+	exitCode := adapter.Execute([]string{"new", testTemplateFile})
 
 	// Restore stdout
 	_ = w.Close()

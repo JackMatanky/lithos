@@ -14,14 +14,7 @@ func TestTemplateEngine_ProcessTemplate(t *testing.T) {
 	engine := NewTemplateEngine(parser, executor)
 	ctx := context.Background()
 
-	tests := []struct {
-		name         string
-		content      string
-		templateName string
-		want         string
-		wantErr      bool
-		errContains  string
-	}{
+	tests := []templateTestCase{
 		{
 			name:         "successful processing of static template",
 			content:      "Hello, World!",
@@ -57,38 +50,56 @@ func TestTemplateEngine_ProcessTemplate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := engine.ProcessTemplate(ctx, tt.content, tt.templateName)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("ProcessTemplate() expected error, got nil")
-					return
-				}
-				if tt.errContains != "" &&
-					!strings.Contains(err.Error(), tt.errContains) {
-					t.Errorf(
-						"ProcessTemplate() error = %v, expected to contain %q",
-						err,
-						tt.errContains,
-					)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("ProcessTemplate() unexpected error = %v", err)
-				return
-			}
-
-			if tt.name == "successful processing with custom functions" {
-				validateTemplateEngineCustomFunctionsOutput(t, got)
-				return
-			}
-
-			if got != tt.want {
-				t.Errorf("ProcessTemplate() = %q, want %q", got, tt.want)
-			}
+			runTemplateEngineTest(t, engine, ctx, &tt)
 		})
+	}
+}
+
+type templateTestCase struct {
+	name         string
+	content      string
+	templateName string
+	want         string
+	wantErr      bool
+	errContains  string
+}
+
+func runTemplateEngineTest(
+	t *testing.T,
+	engine *TemplateEngine,
+	ctx context.Context,
+	tt *templateTestCase,
+) {
+	got, err := engine.ProcessTemplate(ctx, tt.content, tt.templateName)
+
+	if tt.wantErr {
+		if err == nil {
+			t.Errorf("ProcessTemplate() expected error, got nil")
+			return
+		}
+		if tt.errContains != "" &&
+			!strings.Contains(err.Error(), tt.errContains) {
+			t.Errorf(
+				"ProcessTemplate() error = %v, expected to contain %q",
+				err,
+				tt.errContains,
+			)
+		}
+		return
+	}
+
+	if err != nil {
+		t.Errorf("ProcessTemplate() unexpected error = %v", err)
+		return
+	}
+
+	if tt.name == "successful processing with custom functions" {
+		validateTemplateEngineCustomFunctionsOutput(t, got)
+		return
+	}
+
+	if got != tt.want {
+		t.Errorf("ProcessTemplate() = %q, want %q", got, tt.want)
 	}
 }
 

@@ -24,8 +24,8 @@ func TestLocalFileSystemAdapter_ReadFile(t *testing.T) {
 	// Test reading existing file
 	testFile := filepath.Join(tempDir, "test.txt")
 	testContent := []byte("Hello, World!")
-	if err := os.WriteFile(testFile, testContent, 0644); err != nil {
-		t.Fatalf("Failed to create test file: %v", err)
+	if err2 := os.WriteFile(testFile, testContent, 0o600); err2 != nil {
+		t.Fatalf("Failed to create test file: %v", err2)
 	}
 
 	content, err := adapter.ReadFile(testFile)
@@ -171,13 +171,13 @@ func TestLocalFileSystemAdapter_Walk(t *testing.T) {
 
 	for _, file := range testFiles {
 		fullPath := filepath.Join(tempDir, file)
-		err := os.MkdirAll(filepath.Dir(fullPath), 0755)
-		if err != nil {
-			t.Fatalf("Failed to create directory for %s: %v", file, err)
+		err2 := os.MkdirAll(filepath.Dir(fullPath), 0o750)
+		if err2 != nil {
+			t.Fatalf("Failed to create directory for %s: %v", file, err2)
 		}
-		err = os.WriteFile(fullPath, []byte("test content"), 0644)
-		if err != nil {
-			t.Fatalf("Failed to create test file %s: %v", file, err)
+		err2 = os.WriteFile(fullPath, []byte("test content"), 0o600)
+		if err2 != nil {
+			t.Fatalf("Failed to create test file %s: %v", file, err2)
 		}
 	}
 
@@ -253,9 +253,9 @@ func TestLocalFileSystemAdapter_Walk_EarlyReturn(t *testing.T) {
 	// Create test files
 	for i := 1; i <= 3; i++ {
 		filename := filepath.Join(tempDir, "file"+string(rune('0'+i))+".txt")
-		err := os.WriteFile(filename, []byte("test"), 0644)
-		if err != nil {
-			t.Fatalf("Failed to create test file: %v", err)
+		err2 := os.WriteFile(filename, []byte("test"), 0o600)
+		if err2 != nil {
+			t.Fatalf("Failed to create test file: %v", err2)
 		}
 	}
 
