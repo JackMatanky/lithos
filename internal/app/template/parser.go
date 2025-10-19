@@ -29,8 +29,7 @@ type TemplateParser interface {
 }
 
 // StaticTemplateParser implements TemplateParser using Go's text/template
-// engine
-// for static template parsing without custom functions.
+// engine with custom functions for enhanced template capabilities.
 type StaticTemplateParser struct{}
 
 // NewStaticTemplateParser creates a new StaticTemplateParser instance.
@@ -38,25 +37,65 @@ func NewStaticTemplateParser() *StaticTemplateParser {
 	return &StaticTemplateParser{}
 }
 
+// checkContextCancellation checks if the context has been canceled.
+// Returns true if canceled, false otherwise.
+func (p *StaticTemplateParser) checkContextCancellation(
+	ctx context.Context,
+) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
+}
+
+// createTemplate creates a new template with custom functions registered.
+// Returns a template ready for parsing.
+func (p *StaticTemplateParser) createTemplate() *template.Template {
+	return template.New("template").Funcs(NewFuncMap())
+}
+
+// parseTemplate parses the given content using the provided template.
+// Returns the parsed template or an error if parsing fails.
+func (p *StaticTemplateParser) parseTemplate(
+	tmpl *template.Template,
+	content string,
+) (*template.Template, error) {
+	return tmpl.Parse(content)
+}
+
+// executeTemplate executes the given template with the provided data.
+// Returns the rendered content or an error if execution fails.
+func (p *StaticTemplateParser) executeTemplate(
+	tmpl *template.Template,
+	data interface{},
+) (string, error) {
+	var buf strings.Builder
+	err := tmpl.Execute(&buf, data)
+	if err != nil {
+		return "", err
+	}
+	return buf.String(), nil
+}
+
 // Parse parses the template content using Go's text/template engine.
-// It accepts a context for cancellation support and returns a Result containing
-// the parsed template or an error if parsing fails.
+// It accepts a context for cancellation support and returns a Result
+// containing the parsed template or an error if parsing fails.
 func (p *StaticTemplateParser) Parse(
 	ctx context.Context,
 	content string,
 ) errors.Result[*template.Template] {
 	// Check for context cancellation before starting
-	select {
-	case <-ctx.Done():
+	if p.checkContextCancellation(ctx) {
 		return errors.Err[*template.Template](ctx.Err())
-	default:
 	}
 
-	// Create a new template with a generic name for parsing
-	tmpl := template.New("template")
+	// Create a new template with custom functions registered
+	tmpl := p.createTemplate()
 
 	// Parse the template content
-	parsedTemplate, err := tmpl.Parse(content)
+	parsedTemplate, err := p.parseTemplate(tmpl, content)
 	if err != nil {
 		return errors.Err[*template.Template](err)
 	}
@@ -71,20 +110,15 @@ func (p *StaticTemplateParser) Parse(
 func (p *StaticTemplateParser) Execute(ctx context.Context,
 	tmpl *template.Template, data interface{}) errors.Result[string] {
 	// Check for context cancellation before starting
-	select {
-	case <-ctx.Done():
+	if p.checkContextCancellation(ctx) {
 		return errors.Err[string](ctx.Err())
-	default:
 	}
 
-	// Create a buffer to capture the template output
-	var buf strings.Builder
-
 	// Execute the template with the provided data
-	err := tmpl.Execute(&buf, data)
+	result, err := p.executeTemplate(tmpl, data)
 	if err != nil {
 		return errors.Err[string](err)
 	}
 
-	return errors.Ok(buf.String())
+	return errors.Ok(result)
 }

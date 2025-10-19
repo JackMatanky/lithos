@@ -8,9 +8,14 @@ import (
 	"os"
 
 	"github.com/jack/lithos/internal/adapters/api/cli"
+	"github.com/jack/lithos/internal/adapters/spi/filesystem"
 )
 
 func main() {
-	adapter := cli.NewCobraCLIAdapter()
+	// Create filesystem adapter
+	fileSystemPort := filesystem.NewLocalFileSystemAdapter()
+
+	// Create CLI adapter with injected dependencies
+	adapter := cli.NewCobraCLIAdapter(fileSystemPort)
 	os.Exit(adapter.Execute(os.Args[1:]))
 }

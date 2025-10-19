@@ -8,20 +8,23 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/jack/lithos/internal/ports/spi"
 	"github.com/spf13/cobra"
 )
 
 // CobraCLIAdapter implements a CLI adapter using the Cobra framework.
 // It provides a structured command-line interface for the Lithos application.
 type CobraCLIAdapter struct {
-	rootCmd *cobra.Command
+	rootCmd        *cobra.Command
+	fileSystemPort spi.FileSystemPort
 }
 
 // NewCobraCLIAdapter creates a new CobraCLIAdapter instance with
 // the root command and subcommands configured.
-func NewCobraCLIAdapter() *CobraCLIAdapter {
+func NewCobraCLIAdapter(fileSystemPort spi.FileSystemPort) *CobraCLIAdapter {
 	adapter := &CobraCLIAdapter{
-		rootCmd: &cobra.Command{},
+		rootCmd:        &cobra.Command{},
+		fileSystemPort: fileSystemPort,
 	}
 	adapter.setupCommands()
 	return adapter
@@ -42,16 +45,23 @@ func (a *CobraCLIAdapter) Execute(args []string) int {
 
 // setupCommands initializes the root command and registers all subcommands.
 func (a *CobraCLIAdapter) setupCommands() {
-	// Create root command
+	a.setupRootCommand()
+	a.registerCommands()
+}
+
+// setupRootCommand configures the root command with basic metadata.
+func (a *CobraCLIAdapter) setupRootCommand() {
 	a.rootCmd = &cobra.Command{
 		Use:   "lithos",
 		Short: "Lithos - Obsidian vault management tool",
 		Long: `Lithos is a command-line tool for managing Obsidian vaults with
 schema-driven lookups, template rendering, and interactive input capabilities.`,
 	}
+}
 
-	// Add version command
-	versionCmd := &cobra.Command{
+// setupVersionCommand creates and returns the version command.
+func (a *CobraCLIAdapter) setupVersionCommand() *cobra.Command {
+	return &cobra.Command{
 		Use:   "version",
 		Short: "Print the version number of Lithos",
 		Long:  `Print the version number of Lithos and exit.`,
@@ -59,6 +69,15 @@ schema-driven lookups, template rendering, and interactive input capabilities.`,
 			fmt.Println("Lithos version 0.1.0")
 		},
 	}
+}
 
-	a.rootCmd.AddCommand(versionCmd)
+// setupNewCommand creates and returns the new command.
+func (a *CobraCLIAdapter) setupNewCommand() *cobra.Command {
+	return NewCommand(a.fileSystemPort)
+}
+
+// registerCommands adds all subcommands to the root command.
+func (a *CobraCLIAdapter) registerCommands() {
+	a.rootCmd.AddCommand(a.setupVersionCommand())
+	a.rootCmd.AddCommand(a.setupNewCommand())
 }

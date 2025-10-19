@@ -86,7 +86,7 @@ func TestLocalFileSystemAdapter_WriteFileAtomic(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to read nested file: %v", err)
 	}
-	if string(content) != string(nestedContent) {
+	if !bytes.Equal(content, nestedContent) {
 		t.Errorf("Nested file content = %s, want %s", content, nestedContent)
 	}
 
@@ -101,7 +101,7 @@ func TestLocalFileSystemAdapter_WriteFileAtomic(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to read overwritten file: %v", err)
 	}
-	if string(content) != string(newContent) {
+	if !bytes.Equal(content, newContent) {
 		t.Errorf("Overwritten file content = %s, want %s", content, newContent)
 	}
 }
@@ -216,7 +216,11 @@ func TestLocalFileSystemAdapter_Walk(t *testing.T) {
 	}
 
 	if len(walkResults) != len(expectedPaths) {
-		t.Errorf("Walk() found %d items, expected %d", len(walkResults), len(expectedPaths))
+		t.Errorf(
+			"Walk() found %d items, expected %d",
+			len(walkResults),
+			len(expectedPaths),
+		)
 	}
 
 	for _, result := range walkResults {
@@ -226,7 +230,12 @@ func TestLocalFileSystemAdapter_Walk(t *testing.T) {
 			continue
 		}
 		if result.isDir != expectedIsDir {
-			t.Errorf("Walk() path %s isDir = %v, want %v", result.path, result.isDir, expectedIsDir)
+			t.Errorf(
+				"Walk() path %s isDir = %v, want %v",
+				result.path,
+				result.isDir,
+				expectedIsDir,
+			)
 		}
 	}
 }
@@ -269,7 +278,10 @@ func TestLocalFileSystemAdapter_Walk_EarlyReturn(t *testing.T) {
 	}
 
 	if fileCount != 1 {
-		t.Errorf("Walk() should have stopped after 1 file, processed: %d", fileCount)
+		t.Errorf(
+			"Walk() should have stopped after 1 file, processed: %d",
+			fileCount,
+		)
 	}
 }
 
@@ -283,9 +295,12 @@ func TestLocalFileSystemAdapter_Walk_NonExistentDirectory(t *testing.T) {
 	adapter := NewLocalFileSystemAdapter()
 
 	// Try to walk a non-existent directory
-	err := adapter.Walk("/nonexistent/directory", func(path string, isDir bool) error {
-		return nil
-	})
+	err := adapter.Walk(
+		"/nonexistent/directory",
+		func(path string, isDir bool) error {
+			return nil
+		},
+	)
 
 	if err == nil {
 		t.Error("Walk() should return error for non-existent directory")
