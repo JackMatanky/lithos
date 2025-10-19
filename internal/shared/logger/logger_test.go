@@ -237,7 +237,9 @@ func TestMultipleContextFields(t *testing.T) {
 	Log = Logger{Logger: zl}
 
 	contextLogger := WithComponent("test.component")
-	contextLogger.Logger = contextLogger.With().Str("correlation_id", "test-id").Logger()
+	contextLogger.Logger = contextLogger.With().
+		Str("correlation_id", "test-id").
+		Logger()
 
 	contextLogger.Info().Msg("test message")
 

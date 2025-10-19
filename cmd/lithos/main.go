@@ -4,8 +4,13 @@
 // template rendering, and interactive input capabilities.
 package main
 
-import "fmt"
+import (
+	"os"
+
+	"github.com/jack/lithos/internal/adapters/api/cli"
+)
 
 func main() {
-	fmt.Println("Lithos CLI - Foundational setup complete")
+	adapter := cli.NewCobraCLIAdapter()
+	os.Exit(adapter.Execute(os.Args[1:]))
 }

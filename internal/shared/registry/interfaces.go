@@ -1,8 +1,9 @@
 // Package registry provides thread-safe generic storage for shared resources.
 //
 // This package implements a CQRS-aware registry pattern with separate read and
-// write interfaces. It uses sync.RWMutex for concurrent access and supports generic
-// types for type-safe storage of schemas, templates, and other shared resources.
+// write interfaces. It uses sync.RWMutex for concurrent access and supports
+// generic types for type-safe storage of schemas, templates, and other shared
+// resources.
 //
 // Thread safety is guaranteed for all operations. The registry is designed for
 // in-memory storage with optional JSON persistence for index files.
