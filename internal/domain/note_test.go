@@ -106,41 +106,54 @@ func TestNewNote(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := NewNote(tt.file, tt.frontmatter)
-
-			// Compare File fields
-			if result.File.Path != tt.expected.File.Path {
-				t.Errorf("File.Path = %q, want %q", result.File.Path, tt.expected.File.Path)
-			}
-			if result.File.Basename != tt.expected.File.Basename {
-				t.Errorf("File.Basename = %q, want %q", result.File.Basename, tt.expected.File.Basename)
-			}
-			if result.File.Folder != tt.expected.File.Folder {
-				t.Errorf("File.Folder = %q, want %q", result.File.Folder, tt.expected.File.Folder)
-			}
-			if !result.File.ModTime.Equal(tt.expected.File.ModTime) {
-				t.Errorf("File.ModTime = %v, want %v", result.File.ModTime, tt.expected.File.ModTime)
-			}
-
-			// Compare Frontmatter fields
-			if result.Frontmatter.FileClass != tt.expected.Frontmatter.FileClass {
-				t.Errorf("Frontmatter.FileClass = %q, want %q", result.Frontmatter.FileClass, tt.expected.Frontmatter.FileClass)
-			}
-
-			// Compare Fields map
-			if len(result.Frontmatter.Fields) != len(tt.expected.Frontmatter.Fields) {
-				t.Errorf("Frontmatter.Fields length = %d, want %d",
-					len(result.Frontmatter.Fields), len(tt.expected.Frontmatter.Fields))
-				return
-			}
-
-			for key, expectedValue := range tt.expected.Frontmatter.Fields {
-				if actualValue, exists := result.Frontmatter.Fields[key]; !exists {
-					t.Errorf("Frontmatter.Fields[%q] missing", key)
-				} else if actualValue != expectedValue {
-					t.Errorf("Frontmatter.Fields[%q] = %v, want %v", key, actualValue, expectedValue)
-				}
-			}
+			assertNoteEqual(t, &result, &tt.expected)
 		})
+	}
+}
+
+func assertNoteEqual(t *testing.T, result, expected *Note) {
+	t.Helper()
+
+	// Compare File fields
+	if result.Path != expected.Path {
+		t.Errorf("File.Path = %q, want %q", result.Path, expected.Path)
+	}
+	if result.Basename != expected.Basename {
+		t.Errorf(
+			"File.Basename = %q, want %q",
+			result.Basename,
+			expected.Basename,
+		)
+	}
+	if result.Folder != expected.Folder {
+		t.Errorf("File.Folder = %q, want %q", result.Folder, expected.Folder)
+	}
+	if !result.ModTime.Equal(expected.ModTime) {
+		t.Errorf("File.ModTime = %v, want %v", result.ModTime, expected.ModTime)
+	}
+
+	// Compare Frontmatter fields
+	if result.FileClass != expected.FileClass {
+		t.Errorf(
+			"Frontmatter.FileClass = %q, want %q",
+			result.FileClass,
+			expected.FileClass,
+		)
+	}
+
+	// Compare Fields map
+	if len(result.Fields) != len(expected.Fields) {
+		t.Errorf("Frontmatter.Fields length = %d, want %d",
+			len(result.Fields), len(expected.Fields))
+		return
+	}
+
+	for key, expectedValue := range expected.Fields {
+		if actualValue, exists := result.Fields[key]; !exists {
+			t.Errorf("Frontmatter.Fields[%q] missing", key)
+		} else if actualValue != expectedValue {
+			t.Errorf("Frontmatter.Fields[%q] = %v, want %v", key, actualValue, expectedValue)
+		}
 	}
 }
 
@@ -240,6 +253,10 @@ func TestNoteEmbeddedStructAccess(t *testing.T) {
 		t.Errorf("note.Fields length = %d, want %d", len(note.Fields), 2)
 	}
 	if note.Fields["title"] != "Test Project" {
-		t.Errorf("note.Fields[title] = %v, want %v", note.Fields["title"], "Test Project")
+		t.Errorf(
+			"note.Fields[title] = %v, want %v",
+			note.Fields["title"],
+			"Test Project",
+		)
 	}
 }

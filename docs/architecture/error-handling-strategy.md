@@ -2,7 +2,7 @@
 
 ## General Approach
 
-- **Explicit Results:** Domain services return `Result[T]` wrappers backed by the shared `internal/shared/errors` package (inspired by `aidanwoods.dev/go-result`) to express success or error while preserving Go’s `error` interface.
+- **Explicit Results:** Domain services return `Result[T]` wrappers backed by the shared `internal/shared/errors` package (custom implementation using Go generics) to express success or error while preserving Go’s `error` interface.
 - **Error Types:** Use domain-specific errors (`ValidationError`, `SchemaError`, `TemplateError`, `ConfigError`, `StorageError`) enriched with context (component, template path, schema name).
 - **Propagation Rules:** No panics except for programmer assertions; errors bubble upward, wrapped with additional context using `errors.Join` where appropriate. Context cancellation must be checked at key boundaries (`select { case <-ctx.Done(): ... }`).
 - **User Feedback:** CommandOrchestrator maps domain errors to CLI exit codes (`0` success, `1` validation/template issues, `2` system faults) and renders actionable remediation hints.

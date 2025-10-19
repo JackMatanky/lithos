@@ -77,12 +77,20 @@ func TestNewFrontmatter(t *testing.T) {
 			result := NewFrontmatter(tt.fields)
 
 			if result.FileClass != tt.expected.FileClass {
-				t.Errorf("FileClass = %q, want %q", result.FileClass, tt.expected.FileClass)
+				t.Errorf(
+					"FileClass = %q, want %q",
+					result.FileClass,
+					tt.expected.FileClass,
+				)
 			}
 
 			// Compare Fields map
 			if len(result.Fields) != len(tt.expected.Fields) {
-				t.Errorf("Fields length = %d, want %d", len(result.Fields), len(tt.expected.Fields))
+				t.Errorf(
+					"Fields length = %d, want %d",
+					len(result.Fields),
+					len(tt.expected.Fields),
+				)
 				return
 			}
 
@@ -151,7 +159,11 @@ func TestExtractFileClass(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractFileClass(tt.fields)
 			if result != tt.expected {
-				t.Errorf("extractFileClass() = %q, want %q", result, tt.expected)
+				t.Errorf(
+					"extractFileClass() = %q, want %q",
+					result,
+					tt.expected,
+				)
 			}
 		})
 	}
@@ -212,6 +224,10 @@ func TestFrontmatterStruct(t *testing.T) {
 	}
 
 	if frontmatter.Fields["title"] != "Test Project" {
-		t.Errorf("Fields[title] = %v, want %v", frontmatter.Fields["title"], "Test Project")
+		t.Errorf(
+			"Fields[title] = %v, want %v",
+			frontmatter.Fields["title"],
+			"Test Project",
+		)
 	}
 }

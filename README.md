@@ -1,101 +1,125 @@
 # Lithos
 
-Lithos is a Go-based CLI tool for managing Obsidian vaults with template rendering, schema validation, and vault indexing capabilities. It brings Obsidian-style templating, schema validation, and metadata automation to any terminal workflow.
+Lithos is a CLI tool for managing and processing Obsidian vaults, providing schema-driven lookups, template rendering, and interactive input capabilities.
 
 ## Prerequisites
 
-- **Go 1.23+** (minimum version required)
-- **Git** (for version control and cloning)
-- **Just** task runner (optional but recommended for automation)
-- **golangci-lint** (for code quality checks, fetched automatically by provided tasks)
-
-Verify prerequisites with:
-
-```bash
-go version
-just --version
-```
-
-## Quick Start
-
-1. **Clone the repository**
-
-   ```bash
-   git clone <repo-url>
-   cd lithos
-   ```
-
-2. **Install dependencies**
-
-   ```bash
-   go mod download
-   ```
-
-3. **Run tests and validation**
-
-   ```bash
-   # With just (recommended)
-   just verify
-
-   # OR without just
-   go test ./...
-   ```
-
-4. **Build the CLI** (available after Story 1.3)
-
-   ```bash
-   go build ./cmd/lithos
-   ```
-
-## Development Workflow
-
-| Command              | Purpose                                                    |
-|---------------------|------------------------------------------------------------|
-| `just --list`       | Discover available automation tasks                        |
-| `just verify`       | Run full test suite and linters (recommended)             |
-| `just test-unit`    | Run unit tests only                                        |
-| `just test-integration` | Run integration tests                                  |
-| `just build`        | Compile the CLI into `./bin/lithos`                       |
-| `just lint`         | Run `golangci-lint` with project rules                    |
-
-**Alternative without just:**
-```bash
-go test ./...           # Run all tests
-golangci-lint run      # Run linters
-go build ./cmd/lithos  # Build binary
-```
-
-During development, follow the epic/story sequence outlined in `docs/prd/`. All changes must pass CI pipeline validation.
+- Go 1.23 or later
+- Git for version control
 
 ## Project Structure
 
+This project follows hexagonal architecture principles to ensure clean separation of concerns and testability.
+
 ```
 lithos/
-├── cmd/lithos/main.go       # CLI entry point (Story 1.3+)
-├── internal/                # Application code following hexagonal architecture
-│   ├── domain/              # Core models (File, Note, Schema, Property)
-│   ├── app/                 # Domain services & orchestrators
-│   ├── ports/               # API/SPI contracts
-│   └── adapters/            # External integrations
-├── testdata/                # Test fixtures and golden files (Story 1.1)
-├── docs/                    # PRD and architecture documentation
-├── .lithos/                 # Runtime cache (ignored in version control)
-├── go.mod                   # Go module definition
-├── .gitignore               # Version control exclusions
-└── README.md                # This file
+├── cmd/
+│   └── lithos/
+│       └── main.go                 # Application entrypoint
+├── internal/
+│   ├── domain/                     # Core business models (File, Frontmatter, Note, Schema, Property)
+│   ├── app/                        # Domain services & orchestrators
+│   │   ├── command/                # Command orchestration
+│   │   ├── indexing/               # Vault indexing services
+│   │   ├── query/                  # Query services
+│   │   ├── schema/                 # Schema services
+│   │   └── template/               # Template services
+│   ├── ports/
+│   │   ├── api/                    # Driving port interfaces (CLICommandPort and related contracts)
+│   │   └── spi/                    # Driven port interfaces (FileSystemPort, Cache ports, SchemaEnginePort, etc.)
+│   ├── adapters/
+│   │   ├── api/                    # Driving adapters (Cobra CLI today; Bubble Tea/LSP post-MVP)
+│   │   └── spi/
+│   │       ├── cache/              # Cache adapters
+│   │       ├── config/             # Configuration adapters
+│   │       ├── filesystem/         # Filesystem adapters
+│   │       ├── interactive/        # Interactive UI adapters
+│   │       ├── schema/             # Schema loading adapters
+│   │       └── template/           # Template repository adapters
+│   └── shared/                     # Cross-cutting concerns (logger, errors, registry, utilities)
+├── pkg/                            # Reserved for future public modules
+├── templates/                      # Default template pack shipped with CLI
+├── schemas/                        # User-defined schemas + property banks
+├── testdata/                       # Golden vault used in automated tests (from Story 1.1)
+├── .lithos/                        # Runtime cache (ignored in version control)
+└── docs/                           # PRD, architecture, elicitation summaries
 ```
 
-For detailed architecture information, see `docs/architecture/source-tree.md`.
+## Architecture Principles
+
+### Hexagonal Architecture
+
+- **Domain**: Core business logic with no external dependencies
+- **Ports**: Interfaces defining contracts between layers
+- **Adapters**: Implementations of ports with external concerns
+- **Shared**: Common utilities and cross-cutting concerns
+
+### Key Principles
+
+- Clear separation between business logic and infrastructure
+- Dependency inversion through ports and adapters
+- Testability through interface-based design
+- Standard library first approach (minimal external dependencies)
+
+## Build and Development
+
+### Building
+
+```bash
+# Build the main binary
+go build ./cmd/lithos
+
+# Run tests
+go test ./...
+
+# Run with race detection
+go test -race ./...
+```
+
+### Development Setup
+
+1. Clone the repository
+2. Ensure Go 1.23+ is installed
+3. Run `go mod tidy` to download dependencies
+4. Build and test: `go build ./cmd/lithos && go test ./...`
+
+## Usage
+
+Basic usage (to be expanded as features are implemented):
+
+```bash
+# Display help
+./lithos --help
+
+# Process a vault (placeholder)
+./lithos process --vault /path/to/vault
+```
 
 ## Contributing
 
-All contributions must follow the coding standards defined in `docs/architecture/coding-standards.md`. Key requirements:
+### Code Standards
 
-- **Pre-commit hooks enforce linting and security checks** (`golangci-lint run`, `gitleaks detect`)
-- **All tests must pass** (`go test ./...` or `just verify`)
-- **Follow hexagonal architecture patterns** with Result types for error handling
-- **Use structured logging** with zerolog (no `fmt.Print*` or `log.*`)
+- Follow Go coding standards and effective Go practices
+- Use the Result pattern for error handling in application core
+- Maintain hexagonal architecture separation
+- Write comprehensive unit tests
+- Document packages and public functions
+
+### Architecture Guidelines
+
+- Domain models in `internal/domain/`
+- Business logic in `internal/app/`
+- Interfaces in `internal/ports/`
+- Implementations in `internal/adapters/`
+- No circular dependencies between adapters
+
+### Testing
+
+- Unit tests for all business logic
+- Integration tests for adapter interactions
+- Use table-driven tests where appropriate
+- Maintain high test coverage (>80%)
 
 ## License
 
-[License information to be added]
+[To be determined]

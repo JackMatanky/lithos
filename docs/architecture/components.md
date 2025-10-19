@@ -387,19 +387,20 @@ Driving adapters invoke the domain through API ports. Today only the Cobra CLI e
 - `SchemaError` - Schema loading/resolution errors (schema, message)
 - `StorageError` - Cache access failures (operation, path, cause)
 - `FileSystemError` - File I/O failures (operation, path, cause)
-- `Result[T]` - Rust-style Result type (using go-result library)
+- `Result[T]` - Custom Result type with generics (no external dependencies)
 - Error wrapping functions: `Wrap()`, `WrapWithContext()`
-- Factory functions: `NewValidationError()`, `NewTemplateError()`, etc.
+- Factory functions: `NewValidationError()`, `NewNotFoundError()`, `NewConfigurationError()`, `NewTemplateError()`, `NewSchemaError()`, `NewStorageError()`, `NewFileSystemError()`
 
 **Dependencies:**
 
-- `github.com/aidantwoods/go-result` - For Result<T> implementation
 - Go stdlib `errors` package for wrapping and `errors.Join()`
+- Go stdlib `fmt` for error formatting
 
 **Technology Stack:**
 
-- Go stdlib `errors` package
-- `github.com/aidantwoods/go-result` for Rust-style Result<T>
+- Go 1.23+ minimum version requirement (for generics support)
+- Custom Result[T] pattern using Go generics (no external dependencies)
+- Go stdlib `errors` package for error wrapping
 - Go stdlib `fmt` for error formatting
 
 ---
