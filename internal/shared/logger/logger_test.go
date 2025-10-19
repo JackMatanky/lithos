@@ -12,8 +12,8 @@ import (
 
 func TestWithComponent(t *testing.T) {
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
 	componentLogger := WithComponent("test.component")
 	componentLogger.Info().Msg("test message")
@@ -37,8 +37,8 @@ func TestWithComponent(t *testing.T) {
 
 func TestWithOperation(t *testing.T) {
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
 	opLogger := WithOperation("test.operation")
 	opLogger.Info().Msg("test message")
@@ -58,8 +58,8 @@ func TestWithOperation(t *testing.T) {
 
 func TestWithCorrelationID(t *testing.T) {
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
 	corrLogger := WithCorrelationID("test-correlation-id")
 	corrLogger.Info().Msg("test message")
@@ -79,8 +79,8 @@ func TestWithCorrelationID(t *testing.T) {
 
 func TestWithCommand(t *testing.T) {
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
 	cmdLogger := WithCommand("new")
 	cmdLogger.Info().Msg("test message")
@@ -97,8 +97,8 @@ func TestWithCommand(t *testing.T) {
 
 func TestWithTemplateID(t *testing.T) {
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
 	tmplLogger := WithTemplateID("note.md")
 	tmplLogger.Info().Msg("test message")
@@ -118,8 +118,8 @@ func TestWithTemplateID(t *testing.T) {
 
 func TestWithFilePath(t *testing.T) {
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
 	fileLogger := WithFilePath("notes/test.md")
 	fileLogger.Info().Msg("test message")
@@ -145,8 +145,8 @@ func TestLogLevels(t *testing.T) {
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
 	Log.Debug().Msg("debug message") // Should not appear
 	Log.Info().Msg("info message")   // Should appear
@@ -173,8 +173,8 @@ func TestLogLevels(t *testing.T) {
 
 func TestJSONOutput(t *testing.T) {
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
 	Log.Info().Msg("test message")
 
@@ -233,12 +233,11 @@ func TestParseLevel(t *testing.T) {
 
 func TestMultipleContextFields(t *testing.T) {
 	var buf bytes.Buffer
-	logger := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = logger
+	zl := zerolog.New(&buf).With().Timestamp().Logger()
+	Log = Logger{Logger: zl}
 
-	contextLogger := WithComponent("test.component").
-		With().Str("correlation_id", "test-id").
-		Logger()
+	contextLogger := WithComponent("test.component")
+	contextLogger.Logger = contextLogger.With().Str("correlation_id", "test-id").Logger()
 
 	contextLogger.Info().Msg("test message")
 
