@@ -12,7 +12,7 @@ import (
 	"golang.org/x/term"
 )
 
-// Logger wraps zerolog.Logger to provide our custom logging interface
+// Logger wraps zerolog.Logger to provide our custom logging interface.
 type Logger struct {
 	zerolog.Logger
 }
@@ -21,7 +21,7 @@ type Logger struct {
 // Configured for JSON output by default with TTY detection for pretty-print.
 var Log Logger
 
-// configureZerolog sets up global zerolog configuration
+// configureZerolog sets up global zerolog configuration.
 func configureZerolog() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
 	zerolog.CallerMarshalFunc = func(pc uintptr, file string, line int) string {
@@ -36,7 +36,7 @@ func configureZerolog() {
 	}
 }
 
-// setupLogLevel configures the global log level from environment variables
+// setupLogLevel configures the global log level from environment variables.
 func setupLogLevel() {
 	level := zerolog.InfoLevel
 	if envLevel := os.Getenv("LOG_LEVEL"); envLevel != "" {
@@ -47,7 +47,7 @@ func setupLogLevel() {
 	zerolog.SetGlobalLevel(level)
 }
 
-// createLogger creates and configures the logger based on TTY detection
+// createLogger creates and configures the logger based on TTY detection.
 func createLogger() Logger {
 	var zl zerolog.Logger
 	if term.IsTerminal(int(os.Stdout.Fd())) {

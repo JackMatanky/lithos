@@ -1,6 +1,8 @@
-// Package filesystem provides a local file system adapter implementing FileSystemPort.
+// Package filesystem provides a local file system adapter implementing
+// FileSystemPort.
 //
-// This adapter wraps Go's standard library filesystem operations with atomic write
+// This adapter wraps Go's standard library filesystem operations with atomic
+// write
 // guarantees and safe defaults for vault operations. It follows the hexagonal
 // architecture pattern by implementing the FileSystemPort interface.
 package filesystem
@@ -31,19 +33,19 @@ func (a *LocalFileSystemAdapter) ReadFile(path string) ([]byte, error) {
 // WriteFileAtomic writes data to a file atomically using temp file + rename.
 // This ensures that concurrent readers never see partial writes.
 // The file is created with appropriate permissions (0644) if it doesn't exist.
-func (a *LocalFileSystemAdapter) WriteFileAtomic(path string, data []byte) error {
-	// Create the directory if it doesn't exist
+func (a *LocalFileSystemAdapter) WriteFileAtomic(
+	path string,
+	data []byte,
+) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0750); err != nil {
+	if err := a.ensureDirectory(dir); err != nil {
 		return err
 	}
 
-	// Create a temporary file in the same directory as the target
-	tempFile, err := os.CreateTemp(dir, filepath.Base(path)+".tmp.*")
+	tempFile, tempPath, err := a.createTempFile(dir, filepath.Base(path))
 	if err != nil {
 		return err
 	}
-	tempPath := tempFile.Name()
 
 	// Ensure cleanup on error
 	defer func() {
@@ -53,24 +55,11 @@ func (a *LocalFileSystemAdapter) WriteFileAtomic(path string, data []byte) error
 		}
 	}()
 
-	// Write data to temp file
-	if _, writeErr := tempFile.Write(data); writeErr != nil {
+	if writeErr := a.writeAndSync(tempFile, data); writeErr != nil {
 		return writeErr
 	}
 
-	// Sync to ensure data is written to disk
-	if syncErr := tempFile.Sync(); syncErr != nil {
-		return syncErr
-	}
-
-	// Close the temp file before rename
-	if closeErr := tempFile.Close(); closeErr != nil {
-		return closeErr
-	}
-
-	// Atomically rename temp file to target
-	// This is the atomic operation that ensures consistency
-	if renameErr := os.Rename(tempPath, path); renameErr != nil {
+	if renameErr := a.atomicRename(tempPath, path); renameErr != nil {
 		return renameErr
 	}
 
@@ -79,15 +68,56 @@ func (a *LocalFileSystemAdapter) WriteFileAtomic(path string, data []byte) error
 	return nil
 }
 
+// ensureDirectory creates the directory structure if it doesn't exist.
+func (a *LocalFileSystemAdapter) ensureDirectory(dir string) error {
+	return os.MkdirAll(dir, 0o750)
+}
+
+// createTempFile creates a temporary file in the specified directory.
+func (a *LocalFileSystemAdapter) createTempFile(
+	dir, baseName string,
+) (*os.File, string, error) {
+	tempFile, err := os.CreateTemp(dir, baseName+".tmp.*")
+	if err != nil {
+		return nil, "", err
+	}
+	tempPath := tempFile.Name()
+	return tempFile, tempPath, nil
+}
+
+// writeAndSync writes data to the file and syncs it to disk.
+func (a *LocalFileSystemAdapter) writeAndSync(
+	file *os.File,
+	data []byte,
+) error {
+	if _, err := file.Write(data); err != nil {
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		return err
+	}
+	return file.Close()
+}
+
+// atomicRename performs the atomic rename operation.
+func (a *LocalFileSystemAdapter) atomicRename(
+	tempPath, targetPath string,
+) error {
+	return os.Rename(tempPath, targetPath)
+}
+
 // Walk traverses a directory tree starting at root, calling fn for each
 // file and directory encountered. The fn callback receives the file path
 // and a boolean indicating if it's a directory.
 // If fn returns an error, walking stops and the error is returned.
 func (a *LocalFileSystemAdapter) Walk(root string, fn spi.WalkFunc) error {
-	return filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		return fn(path, d.IsDir())
-	})
+	return filepath.WalkDir(
+		root,
+		func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			return fn(path, d.IsDir())
+		},
+	)
 }
