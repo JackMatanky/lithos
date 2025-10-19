@@ -1,0 +1,31 @@
+{
+  "name": "note",
+  "properties": {
+    "title": {
+      "type": "string",
+      "required": true,
+      "description": "The title of the note"
+    },
+    "author": {
+      "type": "string",
+      "required": true,
+      "description": "The author of the note"
+    },
+    "tags": {
+      "type": "string",
+      "required": false,
+      "description": "Comma-separated tags for the note"
+    },
+    "content": {
+      "type": "string",
+      "required": true,
+      "description": "The main content of the note"
+    },
+    "project": {
+      "type": "string",
+      "required": false,
+      "description": "The project this note belongs to",
+      "enum": ["lithos", "research", "personal", "work"]
+    }
+  }
+}
