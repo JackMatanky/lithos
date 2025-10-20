@@ -34,20 +34,20 @@ import (
 func main() {
     // Create adapter instance
     fs := filesystem.NewLocalFileSystemAdapter()
-    
+
     // Write file atomically
     data := []byte("Hello, World!")
     err := fs.WriteFileAtomic("/path/to/file.txt", data)
     if err != nil {
         panic(err)
     }
-    
+
     // Read file
     content, err := fs.ReadFile("/path/to/file.txt")
     if err != nil {
         panic(err)
     }
-    
+
     fmt.Printf("Content: %s\n", content)
 }
 ```
@@ -59,13 +59,13 @@ func main() {
 err := fs.Walk("/vault/root", func(path string, isDir bool) error {
     if !isDir && strings.HasSuffix(path, ".md") {
         fmt.Printf("Found markdown file: %s\n", path)
-        
+
         // Process the file
         content, err := fs.ReadFile(path)
         if err != nil {
             return err
         }
-        
+
         // Do something with content...
     }
     return nil
@@ -92,7 +92,7 @@ func NewVaultIndexer(fs spi.FileSystemPort) *VaultIndexer {
 func main() {
     fs := filesystem.NewLocalFileSystemAdapter()
     indexer := NewVaultIndexer(fs)
-    
+
     // Use indexer...
 }
 ```

@@ -11,7 +11,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jack/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 )
 
 // LocalFileSystemAdapter implements the FileSystemPort interface using the

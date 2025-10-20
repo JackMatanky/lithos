@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jack/lithos/internal/adapters/api/cli"
-	"github.com/jack/lithos/internal/adapters/spi/filesystem"
-	templaterepo "github.com/jack/lithos/internal/adapters/spi/template"
-	templatedomain "github.com/jack/lithos/internal/app/template"
+	"github.com/JackMatanky/lithos/internal/adapters/api/cli"
+	"github.com/JackMatanky/lithos/internal/adapters/spi/filesystem"
+	templaterepo "github.com/JackMatanky/lithos/internal/adapters/spi/template"
+	templatedomain "github.com/JackMatanky/lithos/internal/app/template"
 )
 
 // findProjectRoot finds the project root directory by looking for go.mod.
@@ -86,13 +86,13 @@ func TestNewCommand_Integration_CompleteFlow(t *testing.T) {
 
 	// Verify template functions were applied
 	outputStr := string(outputContent)
-	if !strings.Contains(outputStr, "Line number") {
-		t.Error("Template function not applied correctly")
+	if !strings.Contains(outputStr, "daily note") {
+		t.Error("toLower function was not applied correctly")
 	}
 
-	// Verify the rendered content includes both functions
-	if !strings.Contains(outputStr, "number") {
-		t.Error("toLower function was not applied correctly")
+	// Verify the rendered content includes toUpper function
+	if !strings.Contains(outputStr, "WORLD") {
+		t.Error("toUpper function was not applied correctly")
 	}
 
 	// Check that date function was applied

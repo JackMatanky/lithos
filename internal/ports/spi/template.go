@@ -5,8 +5,8 @@ import (
 	"context"
 	"text/template"
 
-	"github.com/jack/lithos/internal/domain"
-	"github.com/jack/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // TemplateMetadata provides information about an available template.
