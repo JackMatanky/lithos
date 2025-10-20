@@ -9,9 +9,9 @@ import (
 	"fmt"
 	"text/template"
 
-	"github.com/jack/lithos/internal/domain"
-	"github.com/jack/lithos/internal/ports/spi"
-	"github.com/jack/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // TemplateEngine provides high-level template processing operations.

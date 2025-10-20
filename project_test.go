@@ -51,7 +51,7 @@ func TestGoModValidity(t *testing.T) {
 	contentStr := string(content)
 
 	// Check module name
-	if !strings.Contains(contentStr, "module github.com/jack/lithos") {
+	if !strings.Contains(contentStr, "module github.com/JackMatanky/lithos") {
 		t.Errorf("go.mod does not contain correct module name")
 	}
 

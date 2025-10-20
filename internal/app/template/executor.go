@@ -5,9 +5,9 @@ import (
 	"bytes"
 	"context"
 
-	"github.com/jack/lithos/internal/domain"
-	"github.com/jack/lithos/internal/ports/spi"
-	"github.com/jack/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // GoTemplateExecutor implements spi.TemplateExecutor using Go's text/template

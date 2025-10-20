@@ -24,6 +24,8 @@ As a developer, I want to implement the Schema model from the architecture, so t
 - 2.2.1: `internal/domain/` contains Schema model with Name, Extends, Excludes, Properties, and ResolvedProperties fields per `docs/architecture/data-models.md#schema`.
 - 2.2.2: Schema model includes proper JSON tags for serialization.
 - 2.2.3: Schema model has unit tests for field validation and initialization.
+- 2.2.4: Schema model implements proper inheritance semantics with Extends field supporting string-based parent references.
+- 2.2.5: Schema model supports Excludes field for subtractive inheritance (removing parent properties).
 
 ## Story 2.3: Implement Property Domain Models
 
@@ -57,6 +59,8 @@ As a developer, I want to implement the basic SchemaRegistry domain service, so 
 - 2.5.1: `internal/app/schema/` contains SchemaRegistry implementing the interface from `docs/architecture/components.md#domain-services`.
 - 2.5.2: Service loads schemas via SchemaEnginePort per `docs/architecture/components.md#schemaengineport`.
 - 2.5.3: Service uses Registry package for thread-safe schema storage per `docs/architecture/components.md#shared-internal-packages`.
+- 2.5.4: SchemaRegistry provides Get(name string) method for retrieving schemas by name with proper error handling.
+- 2.5.5: Service integrates with ConfigPort to access schema directory configuration.
 
 ## Story 2.6: Implement Inheritance Resolution
 
@@ -66,6 +70,9 @@ As a developer, I want to implement inheritance resolution in the SchemaRegistry
 
 - 2.6.1: Builder pattern resolves inheritance by: loading all schemas → building dependency graph → detecting cycles → resolving in topological order.
 - 2.6.2: ResolvedProperties are computed by merging parent properties, applying Excludes, then merging child Properties.
+- 2.6.3: Inheritance resolution handles multi-level chains (C extends B, B extends A) with proper property override priority.
+- 2.6.4: Cycle detection provides clear error messages identifying the circular dependency path.
+- 2.6.5: ResolvedProperties are immutable after inheritance resolution to ensure thread safety.
 
 ## Story 2.7: Implement Schema Validator Service
 

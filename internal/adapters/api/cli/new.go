@@ -7,8 +7,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/jack/lithos/internal/app/template"
-	"github.com/jack/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/app/template"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/spf13/cobra"
 )
 

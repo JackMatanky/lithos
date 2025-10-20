@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jack/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/domain"
 )
 
 func TestTemplateEngine_ProcessTemplate(t *testing.T) {

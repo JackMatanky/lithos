@@ -6,8 +6,8 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/jack/lithos/internal/ports/spi"
-	"github.com/jack/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // StaticTemplateParser implements spi.TemplateParser using Go's text/template

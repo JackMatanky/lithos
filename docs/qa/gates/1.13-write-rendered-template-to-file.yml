@@ -2,15 +2,16 @@ schema: 1
 story: "1.13"
 story_title: "Write Rendered Template to File"
 gate: PASS
-status_reason: "All acceptance criteria met with excellent code quality and comprehensive test coverage. Implementation follows hexagonal architecture principles and includes proper error handling."
+status_reason: "All acceptance criteria met with excellent code quality and comprehensive test coverage. Implementation follows hexagonal architecture principles and includes proper error handling. Test assertions corrected during review."
 reviewer: "Quinn (Test Architect)"
-updated: "2025-10-20T12:00:00Z"
+updated: "2025-10-20T13:00:00Z"
 
 top_issues: []
 waiver: { active: false }
 
 # Extended fields
 quality_score: 95
+expires: "2025-11-19T13:00:00Z"
 evidence:
   tests_reviewed: 12
   risks_identified: 0
@@ -34,6 +35,4 @@ nfr_validation:
 
 recommendations:
   immediate: []
-  future:
-    - action: "Address minor linting issues (formatting, comment periods)"
-      refs: ["internal/adapters/api/cli/new.go", "internal/adapters/spi/template/*.go"]
+  future: []

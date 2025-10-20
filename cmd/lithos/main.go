@@ -7,10 +7,10 @@ package main
 import (
 	"os"
 
-	"github.com/jack/lithos/internal/adapters/api/cli"
-	"github.com/jack/lithos/internal/adapters/spi/filesystem"
-	templaterepo "github.com/jack/lithos/internal/adapters/spi/template"
-	templatedomain "github.com/jack/lithos/internal/app/template"
+	"github.com/JackMatanky/lithos/internal/adapters/api/cli"
+	"github.com/JackMatanky/lithos/internal/adapters/spi/filesystem"
+	templaterepo "github.com/JackMatanky/lithos/internal/adapters/spi/template"
+	templatedomain "github.com/JackMatanky/lithos/internal/app/template"
 )
 
 func main() {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jack/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 )
 
 func TestLocalFileSystemAdapter_ReadFile(t *testing.T) {

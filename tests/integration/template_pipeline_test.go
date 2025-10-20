@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jack/lithos/internal/adapters/spi/filesystem"
-	templaterepo "github.com/jack/lithos/internal/adapters/spi/template"
-	templatedomain "github.com/jack/lithos/internal/app/template"
-	"github.com/jack/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/adapters/spi/filesystem"
+	templaterepo "github.com/JackMatanky/lithos/internal/adapters/spi/template"
+	templatedomain "github.com/JackMatanky/lithos/internal/app/template"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 )
 
 // TestTemplatePipelineIntegration tests the complete template processing

@@ -198,7 +198,7 @@ This registry package is used by:
 3. **Error Handling**: Check `Exists()` before assuming non-zero values
 4. **CQRS**: Prefer read interfaces for query operations
 5. **Persistence**: Use persistence for index files, not primary storage</content>
-</xai:function_call"> 
+</xai:function_call">
 
 <xai:function_call name="bash">
 <parameter name="command">cd /Users/jack/Documents/41_personal/lithos && golangci-lint run --disable=golines ./internal/shared/registry/

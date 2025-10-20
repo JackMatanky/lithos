@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const testFileBasename = "file"
+
 func TestNewFile(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -190,7 +192,7 @@ func TestFileStruct(t *testing.T) {
 	modTime := time.Now()
 	file := File{
 		Path:     "/test/path/file.md",
-		Basename: "file",
+		Basename: testFileBasename,
 		Folder:   "/test/path",
 		ModTime:  modTime,
 	}
@@ -198,8 +200,8 @@ func TestFileStruct(t *testing.T) {
 	if file.Path != "/test/path/file.md" {
 		t.Errorf("Path = %q, want %q", file.Path, "/test/path/file.md")
 	}
-	if file.Basename != "file" {
-		t.Errorf("Basename = %q, want %q", file.Basename, "file")
+	if file.Basename != testFileBasename {
+		t.Errorf("Basename = %q, want %q", file.Basename, testFileBasename)
 	}
 	if file.Folder != "/test/path" {
 		t.Errorf("Folder = %q, want %q", file.Folder, "/test/path")
