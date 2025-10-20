@@ -54,7 +54,7 @@ graph TB
     Vault -->|notes| Notes[notes/*.md]
     Vault -->|schemas| Schemas[schemas/*.json]
     Vault -->|templates| Templates[templates/*.md]
-    Vault -->|field banks| FieldBanks[schemas/_fields/*.json]
+    Vault -->|field banks| FieldBanks[schemas/properties/*.json]
     Vault -->|cache| Cache[.lithos/cache/*.json]
 
     Lithos -.->|future| TUI[TUI Interface]

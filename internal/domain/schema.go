@@ -4,7 +4,6 @@
 package domain
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strings"
@@ -19,32 +18,32 @@ import (
 type Schema struct {
 	// Name is the schema identifier matching `fileClass` frontmatter value.
 	// Must be unique within vault. Used as key in schema registry map.
-	Name string `json:"name"`
+	Name string
 
 	// Extends is the parent schema name for inheritance chains.
 	// References another schema by Name. Can form multi-level chains.
 	// Empty string means no parent.
-	Extends string `json:"extends,omitempty"`
+	Extends string
 
 	// Excludes are parent property names to remove from inherited schema.
 	// Enables subtractive inheritance when child needs to narrow parent's
 	// property set.
 	// Applied after parent resolution, before child property merging.
 	// Property names must match exactly (case-sensitive).
-	Excludes []string `json:"excludes,omitempty"`
+	Excludes []string
 
 	// Properties are property definitions declared in this schema file.
 	// Represents the delta/override for inherited schemas, or complete property
 	// set for root schemas.
 	// Properties with same name as parent override parent definition.
-	Properties []Property `json:"properties"`
+	Properties []Property
 
 	// ResolvedProperties is the flattened property list after applying
 	// inheritance resolution, exclusions, and merging. Computed by Builder
 	// pattern during schema loading.
 	// This is the authoritative property list used by Validator.
 	// Never persisted to disk (always computed).
-	ResolvedProperties []Property `json:"-"`
+	ResolvedProperties []Property
 }
 
 // NewSchema creates a new Schema with the given name and properties.
@@ -55,6 +54,22 @@ func NewSchema(name string, properties []Property) Schema {
 		Excludes:           nil,
 		Properties:         properties,
 		ResolvedProperties: nil,
+	}
+}
+
+// NewSchemaWithExtends creates a new Schema with inheritance configuration.
+// This helper is intended for use by adapters after parsing external data.
+func NewSchemaWithExtends(
+	name, extends string,
+	excludes []string,
+	properties []Property,
+) Schema {
+	return Schema{
+		Name:               name,
+		Extends:            extends,
+		Excludes:           excludes,
+		Properties:         properties,
+		ResolvedProperties: nil, // Will be computed by SchemaRegistry
 	}
 }
 
@@ -90,124 +105,185 @@ func (s *Schema) HasProperty(name string) bool {
 	return s.GetProperty(name) != nil
 }
 
-// MarshalJSON implements custom JSON marshaling for Schema.
-// Ensures properties are properly serialized with their type discriminators.
-func (s *Schema) MarshalJSON() ([]byte, error) {
-	// Create a map to control the output structure
-	result := map[string]interface{}{
-		"name":       s.Name,
-		"properties": s.Properties,
-	}
-
-	if s.Extends != "" {
-		result["extends"] = s.Extends
-	}
-
-	if len(s.Excludes) > 0 {
-		result["excludes"] = s.Excludes
-	}
-
-	return json.Marshal(result)
+// SetResolvedProperties updates the resolved properties after inheritance
+// resolution.
+// This method is intended for use by SchemaRegistry during the build process.
+func (s *Schema) SetResolvedProperties(resolved []Property) {
+	s.ResolvedProperties = resolved
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for Schema.
-// Handles the properties array with discriminator-based unmarshaling.
-func (s *Schema) UnmarshalJSON(data []byte) error {
-	// Define a temporary struct for unmarshaling
-	type schemaJSON struct {
-		Name       string     `json:"name"`
-		Extends    string     `json:"extends,omitempty"`
-		Excludes   []string   `json:"excludes,omitempty"`
-		Properties []Property `json:"properties"`
+// GetResolvedProperties returns the computed properties after inheritance
+// resolution. Returns Properties if ResolvedProperties is nil (for schemas
+// without inheritance).
+func (s *Schema) GetResolvedProperties() []Property {
+	if s.ResolvedProperties != nil {
+		return s.ResolvedProperties
 	}
-
-	var sj schemaJSON
-	if err := json.Unmarshal(data, &sj); err != nil {
-		return err
-	}
-
-	s.Name = sj.Name
-	s.Extends = sj.Extends
-	s.Excludes = sj.Excludes
-	s.Properties = sj.Properties
-
-	return nil
+	return s.Properties
 }
 
 var identifierRegexp = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
 
-func validateSchemaName(name string) error {
-	trimmed := strings.TrimSpace(name)
+// trimIdentifier removes leading/trailing whitespace from an identifier.
+func trimIdentifier(value string) string {
+	return strings.TrimSpace(value)
+}
+
+// checkIdentifierNotEmpty validates that an identifier is not empty after
+// trimming.
+func checkIdentifierNotEmpty(fieldName, trimmed, original string) error {
 	if trimmed == "" {
-		return errors.NewValidationError("name", "cannot be empty", name)
+		return createEmptyIdentifierError(fieldName, original)
 	}
-
-	if !isValidIdentifier(trimmed) {
-		return errors.NewValidationError(
-			"name",
-			"must be valid identifier (letters, numbers, dash, underscore only)",
-			name,
-		)
-	}
-
 	return nil
 }
 
+// createEmptyIdentifierError creates an empty validation error for identifiers.
+func createEmptyIdentifierError(fieldName, original string) error {
+	return errors.NewValidationError(fieldName, "cannot be empty", original)
+}
+
+// checkIdentifierFormat validates that an identifier matches the required
+// format.
+func checkIdentifierFormat(fieldName, trimmed, original string) error {
+	if !isValidIdentifier(trimmed) {
+		return createIdentifierFormatError(fieldName, original)
+	}
+	return nil
+}
+
+// createIdentifierFormatError creates a format validation error for
+// identifiers.
+func createIdentifierFormatError(fieldName, original string) error {
+	return errors.NewValidationError(
+		fieldName,
+		"must be valid identifier (letters, numbers, dash, underscore only)",
+		original,
+	)
+}
+
+// checkSelfReference validates that an identifier does not reference itself.
+func checkSelfReference(fieldName, value, selfName, original string) error {
+	if value == selfName {
+		return errors.NewValidationError(
+			fieldName,
+			"cannot reference itself",
+			original,
+		)
+	}
+	return nil
+}
+
+// checkDuplicateInList validates that a value is not already in the provided
+// map.
+func checkDuplicateInList(
+	fieldName, value, original string,
+	seen map[string]struct{},
+) error {
+	if _, exists := seen[value]; exists {
+		return createDuplicateError(fieldName, original)
+	}
+	return nil
+}
+
+// createDuplicateError creates a duplicate validation error for excludes.
+func createDuplicateError(fieldName, original string) error {
+	return errors.NewValidationError(
+		fieldName,
+		fmt.Sprintf("duplicate exclude property: %s", original),
+		original,
+	)
+}
+
+// validateSingleExclude validates a single exclude entry and adds it to the
+// seen map.
+func validateSingleExclude(exclude string, seen map[string]struct{}) error {
+	trimmed := trimIdentifier(exclude)
+
+	if err := checkIdentifierNotEmpty("excludes", trimmed, exclude); err != nil {
+		return err
+	}
+
+	if err := checkIdentifierFormat("excludes", trimmed, exclude); err != nil {
+		return err
+	}
+
+	if err := checkDuplicateInList("excludes", trimmed, exclude, seen); err != nil {
+		return err
+	}
+
+	seen[trimmed] = struct{}{}
+	return nil
+}
+
+// validateSingleProperty validates a single property and checks for duplicates.
+func validateSingleProperty(
+	index int,
+	prop Property,
+	encountered map[string]struct{},
+) error {
+	if err := validatePropertySelf(index, prop); err != nil {
+		return err
+	}
+
+	return checkPropertyDuplicate(prop.Name, encountered)
+}
+
+// validatePropertySelf validates the property itself.
+func validatePropertySelf(index int, prop Property) error {
+	if err := prop.Validate(); err != nil {
+		return fmt.Errorf("property %d (%s): %w", index, prop.Name, err)
+	}
+	return nil
+}
+
+// checkPropertyDuplicate checks if a property name is already encountered and
+// adds it to the map.
+func checkPropertyDuplicate(
+	name string,
+	encountered map[string]struct{},
+) error {
+	if _, exists := encountered[name]; exists {
+		return errors.NewValidationError(
+			"properties",
+			fmt.Sprintf("duplicate property name: %s", name),
+			name,
+		)
+	}
+	encountered[name] = struct{}{}
+	return nil
+}
+
+func validateSchemaName(name string) error {
+	trimmed := trimIdentifier(name)
+
+	if err := checkIdentifierNotEmpty("name", trimmed, name); err != nil {
+		return err
+	}
+
+	return checkIdentifierFormat("name", trimmed, name)
+}
+
 func validateSchemaExtends(name, extends string) error {
-	trimmed := strings.TrimSpace(extends)
+	trimmed := trimIdentifier(extends)
 	if trimmed == "" {
 		return nil
 	}
 
-	if !isValidIdentifier(trimmed) {
-		return errors.NewValidationError(
-			"extends",
-			"must be valid identifier (letters, numbers, dash, underscore only)",
-			extends,
-		)
+	if err := checkIdentifierFormat("extends", trimmed, extends); err != nil {
+		return err
 	}
 
-	if trimmed == name {
-		return errors.NewValidationError(
-			"extends",
-			"cannot reference itself",
-			extends,
-		)
-	}
-
-	return nil
+	return checkSelfReference("extends", trimmed, name, extends)
 }
 
 func validateSchemaExcludes(excludes []string) error {
 	seen := make(map[string]struct{}, len(excludes))
 
 	for _, exclude := range excludes {
-		trimmed := strings.TrimSpace(exclude)
-		if trimmed == "" {
-			return errors.NewValidationError(
-				"excludes",
-				"property name cannot be empty",
-				exclude,
-			)
+		if err := validateSingleExclude(exclude, seen); err != nil {
+			return err
 		}
-
-		if !isValidIdentifier(trimmed) {
-			return errors.NewValidationError(
-				"excludes",
-				fmt.Sprintf("invalid property name: %s", exclude),
-				exclude,
-			)
-		}
-
-		if _, exists := seen[trimmed]; exists {
-			return errors.NewValidationError(
-				"excludes",
-				fmt.Sprintf("duplicate exclude property: %s", exclude),
-				exclude,
-			)
-		}
-
-		seen[trimmed] = struct{}{}
 	}
 
 	return nil
@@ -217,19 +293,9 @@ func validateSchemaProperties(properties []Property) error {
 	encountered := make(map[string]struct{}, len(properties))
 
 	for index, prop := range properties {
-		if err := prop.Validate(); err != nil {
-			return fmt.Errorf("property %d (%s): %w", index, prop.Name, err)
+		if err := validateSingleProperty(index, prop, encountered); err != nil {
+			return err
 		}
-
-		if _, exists := encountered[prop.Name]; exists {
-			return errors.NewValidationError(
-				"properties",
-				fmt.Sprintf("duplicate property name: %s", prop.Name),
-				prop.Name,
-			)
-		}
-
-		encountered[prop.Name] = struct{}{}
 	}
 
 	return nil

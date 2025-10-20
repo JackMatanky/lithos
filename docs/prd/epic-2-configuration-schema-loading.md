@@ -47,7 +47,7 @@ As a developer, I want to implement the SchemaEnginePort and SchemaLoaderAdapter
 - 2.4.1: `internal/ports/spi/` contains SchemaEnginePort interface with LoadSchemas and LoadPropertyBank methods.
 - 2.4.2: `internal/adapters/spi/schema/` contains SchemaLoaderAdapter implementing SchemaEnginePort.
 - 2.4.3: Adapter scans for `.json` files in `schemas/` directory per `docs/architecture/tech-stack.md#json-processing`.
-- 2.4.4: Property bank files are loaded from `schemas/_fields/` directory with `$ref` resolution.
+- 2.4.4: Property bank files are loaded from `schemas/properties/` directory with `$ref` resolution.
 - 2.4.5: JSON parsing uses Go stdlib `encoding/json` with structured error handling.
 
 ## Story 2.5: Implement Basic Schema Registry Service
@@ -84,14 +84,3 @@ As a developer, I want to implement the SchemaValidator as a separate domain ser
 - 2.7.2: Service validates Frontmatter against Schema using PropertySpec polymorphism.
 - 2.7.3: Validation checks Required fields, Array constraints, and type-specific PropertySpec rules.
 - 2.7.4: Returns structured ValidationError types from `internal/shared/errors/`.
-
-## Story 2.8: Implement Inheritance Resolution and Cycle Detection
-
-As a developer, I want to implement robust inheritance resolution with cycle detection, so that complex schema hierarchies are handled safely.
-
-### Acceptance Criteria
-
-- 2.8.1: Inheritance resolver detects direct (A → B, B → A) and indirect (A → B → C → A) circular dependencies.
-- 2.8.2: Resolution algorithm uses topological sorting with clear error messages for cycles.
-- 2.8.3: Multi-level inheritance chains (C extends B, B extends A) resolve correctly with proper override priority.
-- 2.8.4: Excludes field enables subtractive inheritance (child removes parent properties).

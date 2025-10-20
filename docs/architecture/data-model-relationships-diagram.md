@@ -47,7 +47,7 @@ Property 🔵
 
 PropertyBank 🔵
   ├─> Properties: map[string]Property (reusable property library)
-  ├─> Location: string (path to _properties/ directory)
+  ├─> Location: string (path to properties/ directory)
   └─> Loaded before schemas, referenced via JSON $ref
 
 Template 🔵
