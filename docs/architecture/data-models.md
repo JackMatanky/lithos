@@ -252,6 +252,8 @@ Current MVP only indexes frontmatter. Post-MVP Phase 3 (Enhanced Querying) may r
 
 Schema inheritance provides powerful reusability for similar note types. For example, a base "note" schema could define common properties (title, tags, created), while specialized schemas like "meeting-note" or "person" extend the base and add domain-specific properties. The eager resolution strategy ensures validation is fast (no runtime resolution overhead) at the cost of slightly longer startup time. For MVP with <100 schemas, this tradeoff is acceptable. The Builder pattern isolates complexity—domain validators simply receive fully-resolved schemas and don't need to understand inheritance mechanics.
 
+> **Adapter boundary reminder:** Schema definitions are serialized as JSON on disk, but decoding and discriminator handling occur in the SchemaLoader adapter (see Epic 2, Story 2.4). The domain models described here stay infrastructure-free and are instantiated via constructors that enforce the rules above.
+
 ---
 
 ## Property
@@ -378,7 +380,7 @@ PropertySpec variants provide type-safe validation without runtime type switchin
 **Key Attributes:**
 
 - `Properties` (map[string]Property) - Named property definitions keyed by unique identifier (e.g., "standard_title", "iso_date", "email_address")
-- `Location` (string) - Path to property bank directory containing JSON definition files (default: `schemas/_fields/`)
+- `Location` (string) - Path to property bank directory containing JSON definition files (default: `schemas/properties/`)
 
 **Relationships:**
 
@@ -406,7 +408,7 @@ Schemas reference property bank entries using JSON reference syntax:
 }
 ```
 
-Property bank definitions stored in `schemas/_fields/common.json`:
+Property bank definitions stored in `schemas/properties/common.json`:
 
 ```json
 {
@@ -446,7 +448,7 @@ Property bank definitions stored in `schemas/_fields/common.json`:
 
   MVP uses simple substitution (no attribute-level merging).
 
-- **Multiple property bank files:** Supports organizing property banks by domain (e.g., `_fields/common.json`, `_fields/contacts.json`, `_fields/projects.json`). All loaded into single registry keyed by property ID.
+- **Multiple property bank files:** Supports organizing property banks by domain (e.g., `properties/common.json`, `properties/contacts.json`, `properties/projects.json`). All loaded into single registry keyed by property ID.
 
 - **Load order:** PropertyBank loaded before schemas during SchemaEnginePort.LoadSchemas() call. Ensures all references can be resolved.
 
@@ -456,7 +458,7 @@ Property bank definitions stored in `schemas/_fields/common.json`:
 
 Schema Engine Adapter adds ~50 LOC for property bank loading and reference resolution:
 
-1. Scan `schemas/_fields/*.json` files
+1. Scan `schemas/properties/*.json` files
 2. Parse each file into PropertyBank structure
 3. Merge all property definitions into single registry map
 4. During schema parsing, detect `$ref` attributes

@@ -169,7 +169,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Dependencies:** SchemaLoaderAdapter.
 
-**Technology Stack:** Go filesystem abstractions, `encoding/json`, directory scanning for `schemas/*.json` and `_fields/*.json`.
+**Technology Stack:** Go filesystem abstractions, `encoding/json`, directory scanning for `schemas/*.json` and `properties/*.json`.
 
 ### TemplateRepositoryPort
 
