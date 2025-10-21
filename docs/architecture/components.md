@@ -26,19 +26,6 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 
 **Technology Stack:** Go `text/template`, custom function map (`prompt`, `suggester`, `lookup`, `query`, `now`), closures wrapping port calls, zerolog for instrumentation.
 
-### SchemaRegistry
-
-**Responsibility:** Load schemas/property banks, resolve inheritance/exclusions, and expose an immutable registry.
-
-**Key Interfaces:**
-
-- `Load(ctx context.Context) error`
-- `Get(name string) (Schema, bool)`
-
-**Dependencies:** SchemaLoaderPort (filesystem adapter), PropertyBank loader, Config (schema directory resolution), Registry package, Logger.
-
-**Technology Stack:** Go `encoding/json`, custom builder pattern for inheritance resolution, cycle detection via DFS, `sync.RWMutex` guarded registry.
-
 ### SchemaValidator
 
 **Responsibility:** Validate frontmatter against schema rules prior to note creation or during indexing.
@@ -48,7 +35,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Validate(schemaName string, fm Frontmatter) []ValidationError`
 - `Lint(template Template) []ValidationError` (stretch goal hook)
 
-**Dependencies:** SchemaRegistry, QueryService (for FileProperty resolution), Logger, Error package.
+**Dependencies:** SchemaRegistryPort, QueryService (for FileProperty resolution), Logger, Error package.
 
 **Technology Stack:** Go stdlib (`reflect`, `regexp`, `time`), PropertySpec polymorphism, structured errors enriched with remediation tips.
 
@@ -177,8 +164,8 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Key Interfaces:**
 
-- `ListTemplates(ctx context.Context) ([]TemplateMetadata, error)`
-- `GetTemplate(ctx context.Context, id string) (Template, error)`
+- `List(ctx context.Context) ([]TemplateMetadata, error)`
+- `Get(ctx context.Context, id string) (Template, error)`
 
 **Dependencies:** TemplateFSAdapter (initially), future adapters for remote packs.
 
@@ -210,6 +197,18 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 **Dependencies:** ConfigViperAdapter.
 
 **Technology Stack:** `github.com/spf13/viper`, environment variable binding, default resolution logic.
+
+### SchemaRegistryPort
+
+**Responsibility:** Provide access to loaded and resolved schemas for domain validation services.
+
+**Key Interfaces:**
+
+- `GetSchema(name string) (Schema, bool)`
+
+**Dependencies:** Implemented by SchemaRegistryAdapter.
+
+**Technology Stack:** Pure Go interface defined in `internal/ports/spi.go`; shared Schema struct.
 
 ---
 
@@ -265,8 +264,8 @@ Concrete adapters live in `internal/adapters/` and satisfy the driven ports with
 
 **Key Interfaces:**
 
-- `ListTemplates(ctx context.Context) ([]TemplateMetadata, error)`
-- `GetTemplate(ctx context.Context, id string) (Template, error)`
+- `List(ctx context.Context) ([]TemplateMetadata, error)`
+- `Get(ctx context.Context, id string) (Template, error)`
 
 **Dependencies:** LocalFileSystemAdapter, Config (templates directory), optional in-memory cache, Logger.
 
@@ -298,6 +297,18 @@ Concrete adapters live in `internal/adapters/` and satisfy the driven ports with
 **Dependencies:** `github.com/spf13/viper`, Config defaults (`lithos.yaml` schema), Logger for warning messages on missing/invalid keys.
 
 **Technology Stack:** Viper configuration bindings, environment variable mapping, optional flag integration, Go structs for strong typing.
+
+### SchemaRegistryAdapter
+
+**Responsibility:** Implement `SchemaRegistryPort` by loading schemas at startup, resolving inheritance/exclusions, and providing read-only access to the registry.
+
+**Key Interfaces:**
+
+- `GetSchema(name string) (Schema, bool)`
+
+**Dependencies:** SchemaLoaderPort, Registry package, Config (schema directory resolution), Logger.
+
+**Technology Stack:** Custom builder pattern for inheritance resolution, cycle detection via DFS, `sync.RWMutex` guarded registry, integration with shared registry package.
 
 ---
 
@@ -450,7 +461,6 @@ graph TD
         TE[TemplateEngine]
         QS[QueryService]
         SV[SchemaValidator]
-        SR[SchemaRegistry]
         VI[VaultIndexer]
     end
 
@@ -459,6 +469,7 @@ graph TD
         CC[CacheCommandPort]
         CQ[CacheQueryPort]
         SE[SchemaLoaderPort]
+        SRP[SchemaRegistryPort]
         TR[TemplateRepositoryPort]
         IP[InteractivePort]
         CP[ConfigPort]
@@ -468,6 +479,7 @@ graph TD
         LFS[LocalFileSystemAdapter]
         JFC[JSONFileCacheAdapter]
         SLA[SchemaLoaderAdapter]
+        SRA[SchemaRegistryAdapter]
         TFA[TemplateFSAdapter]
         ICA[InteractiveCLIAdapter]
         CVA[ConfigViperAdapter]
@@ -478,17 +490,18 @@ graph TD
     CSP --> CO
     CO --> TE
     CO --> VI
-    TE --> QS
-    TE --> SV
-    VI --> SV
-    TE --> IP
-    TE --> TR
-    VI --> FS
-    VI --> CC
-    QS --> CQ
-    SR --> SE
-    SR --> CP
-    CO --> CP
+     TE --> QS
+     TE --> SV
+     VI --> SV
+     TE --> IP
+     TE --> TR
+     VI --> FS
+     VI --> CC
+     QS --> CQ
+     SV --> SRP
+     CO --> CP
+     SRP --> SRA
+     SRA --> SE
 
     FS --> LFS
     CC --> JFC
@@ -506,6 +519,7 @@ graph TD
 - CC = CacheCommandPort,
 - CQ = CacheQueryPort,
 - SE = SchemaLoaderPort,
+- SRP = SchemaRegistryPort,
 - TR = TemplateRepositoryPort,
 - IP = InteractivePort,
 - CP = ConfigPort,
