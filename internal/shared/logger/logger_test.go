@@ -10,6 +10,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	testComponent = "test.component"
+	testMessage   = "test message"
+)
+
 func TestWithComponent(t *testing.T) {
 	var buf bytes.Buffer
 	zl := zerolog.New(&buf).With().Timestamp().Logger()
@@ -23,15 +28,20 @@ func TestWithComponent(t *testing.T) {
 		t.Fatalf("Failed to unmarshal log entry: %v", err)
 	}
 
-	if logEntry["component"] != "test.component" {
+	if logEntry["component"] != testComponent {
 		t.Errorf(
-			"Expected component 'test.component', got %v",
+			"Expected component '%s', got %v",
+			testComponent,
 			logEntry["component"],
 		)
 	}
 
-	if logEntry["message"] != "test message" {
-		t.Errorf("Expected message 'test message', got %v", logEntry["message"])
+	if logEntry["message"] != testMessage {
+		t.Errorf(
+			"Expected message '%s', got %v",
+			testMessage,
+			logEntry["message"],
+		)
 	}
 }
 

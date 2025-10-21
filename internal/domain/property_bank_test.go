@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+const testPropertyNameTitle = "title"
+
 func TestNewPropertyBank(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -141,8 +143,12 @@ func TestPropertyBank_GetProperty(t *testing.T) {
 					tt.exists,
 				)
 			}
-			if tt.exists && got.Name != "title" {
-				t.Errorf("GetProperty() name = %v, want title", got.Name)
+			if tt.exists && got.Name != testPropertyNameTitle {
+				t.Errorf(
+					"GetProperty() name = %v, want %s",
+					got.Name,
+					testPropertyNameTitle,
+				)
 			}
 		})
 	}

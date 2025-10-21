@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+const testRegistryValue = "value1"
+
 func TestRegistry_Get(t *testing.T) {
 	reg := New[string]()
 
@@ -16,9 +18,9 @@ func TestRegistry_Get(t *testing.T) {
 	}
 
 	// Test getting existing key
-	reg.Register("key1", "value1")
-	if got := reg.Get("key1"); got != "value1" {
-		t.Errorf("Get(key1) = %v, want value1", got)
+	reg.Register("key1", testRegistryValue)
+	if got := reg.Get("key1"); got != testRegistryValue {
+		t.Errorf("Get(key1) = %v, want %s", got, testRegistryValue)
 	}
 }
 

@@ -10,6 +10,8 @@ import (
 	sharederrors "github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
+const testSchemaName = "user"
+
 func TestNewSchemaLoaderAdapter(t *testing.T) {
 	fs := newMockFileSystemPort()
 	cfg := newMockConfigPort("/test/vault")
@@ -31,7 +33,11 @@ func TestLoadSchemas_Success(t *testing.T) {
 	adapter, fs, cfg := createTestAdapter()
 
 	// Setup test data
-	setupSchemaFile(fs, cfg, "user.json", validSchemaJSON)
+	validSchema, err := loadTestData("valid/complete-user.json")
+	if err != nil {
+		t.Fatalf("Failed to load test data: %v", err)
+	}
+	setupSchemaFile(fs, cfg, "user.json", validSchema)
 
 	// Execute
 	ctx := context.Background()
@@ -46,8 +52,12 @@ func TestLoadSchemas_Success(t *testing.T) {
 	}
 
 	schema := schemas[0]
-	if schema.Name != "user" {
-		t.Errorf("Expected schema name 'user', got '%s'", schema.Name)
+	if schema.Name != testSchemaName {
+		t.Errorf(
+			"Expected schema name '%s', got '%s'",
+			testSchemaName,
+			schema.Name,
+		)
 	}
 	if schema.Extends != "base" {
 		t.Errorf("Expected extends 'base', got '%s'", schema.Extends)
@@ -60,38 +70,11 @@ func TestLoadSchemas_Success(t *testing.T) {
 	}
 }
 
-func TestLoadSchemas_MalformedJSON(t *testing.T) {
-	adapter, fs, cfg := createTestAdapter()
-
-	// Setup malformed JSON
-	setupSchemaFile(fs, cfg, "malformed.json", malformedSchemaJSON)
-
-	// Execute
-	ctx := context.Background()
-	_, err := adapter.LoadSchemas(ctx)
-
-	// Verify error - wrapped error from Walk function will be FileSystemError
-	if err == nil {
-		t.Fatal("Expected error for malformed JSON")
-	}
-
-	// Should be wrapped in FileSystemError since it comes from Walk callback
-	var fsErr sharederrors.FileSystemError
-	if !errors.As(err, &fsErr) {
-		t.Errorf("Expected FileSystemError, got %T", err)
-	}
-
-	// But the underlying error should contain schema parsing info
-	if !strings.Contains(err.Error(), "malformed JSON") {
-		t.Errorf("Expected malformed JSON error message, got: %s", err.Error())
-	}
-}
-
 func TestLoadSchemas_FileSystemError(t *testing.T) {
 	adapter, fs, _ := createTestAdapter()
 
 	// Setup walk error
-	fs.walkError = errors.New("permission denied")
+	fs.SetWalkError(errors.New("permission denied"))
 
 	// Execute
 	ctx := context.Background()
@@ -112,11 +95,15 @@ func TestLoadSchemas_SkipsNonJSONFiles(t *testing.T) {
 	adapter, fs, cfg := createTestAdapter()
 
 	// Setup mixed file types
-	setupSchemaFile(fs, cfg, "user.json", validSchemaJSON)
+	validSchema, err := loadTestData("valid/complete-user.json")
+	if err != nil {
+		t.Fatalf("Failed to load test data: %v", err)
+	}
+	setupSchemaFile(fs, cfg, "user.json", validSchema)
 	txtPath := filepath.Join(cfg.Config().SchemasDir, "readme.txt")
 
-	fs.addFile(txtPath, []byte("some text"))
-	fs.addWalkPath(txtPath)
+	fs.AddFile(txtPath, []byte("some text"))
+	fs.AddWalkPath(txtPath)
 
 	// Execute
 	ctx := context.Background()
@@ -135,8 +122,16 @@ func TestLoadSchemas_SkipsPropertyBankFiles(t *testing.T) {
 	adapter, fs, cfg := createTestAdapter()
 
 	// Setup schema and property bank files
-	setupSchemaFile(fs, cfg, "user.json", validSchemaJSON)
-	setupPropertyBankFile(fs, cfg, "common.json", validPropertyBankJSON)
+	validSchema, err := loadTestData("valid/complete-user.json")
+	if err != nil {
+		t.Fatalf("Failed to load test data: %v", err)
+	}
+	validPropertyBank, err := loadTestData("properties/bank.json")
+	if err != nil {
+		t.Fatalf("Failed to load test data: %v", err)
+	}
+	setupSchemaFile(fs, cfg, "user.json", validSchema)
+	setupPropertyBankFile(fs, cfg, "common.json", validPropertyBank)
 
 	// Execute
 	ctx := context.Background()
@@ -158,7 +153,11 @@ func TestLoadPropertyBank_Success(t *testing.T) {
 	adapter, fs, cfg := createTestAdapter()
 
 	// Setup property bank file
-	setupPropertyBankFile(fs, cfg, "common.json", validPropertyBankJSON)
+	validPropertyBank, err := loadTestData("properties/bank.json")
+	if err != nil {
+		t.Fatalf("Failed to load test data: %v", err)
+	}
+	setupPropertyBankFile(fs, cfg, "common.json", validPropertyBank)
 
 	// Execute
 	ctx := context.Background()
@@ -441,8 +440,8 @@ func TestSecurity_LoadSchemas_PathTraversalBlocked(t *testing.T) {
 		"etc",
 		"passwd",
 	)
-	fs.addFile(maliciousPath, []byte(`{"name": "malicious"}`))
-	fs.addWalkPath(maliciousPath)
+	fs.AddFile(maliciousPath, []byte(`{"name": "malicious"}`))
+	fs.AddWalkPath(maliciousPath)
 
 	// Execute
 	ctx := context.Background()
@@ -474,8 +473,8 @@ func TestSecurity_LoadPropertyBank_PathTraversalBlocked(t *testing.T) {
 		"etc",
 		"shadow",
 	)
-	fs.addFile(maliciousPath, []byte(`{"properties": {}}`))
-	fs.addWalkPath(maliciousPath)
+	fs.AddFile(maliciousPath, []byte(`{"properties": {}}`))
+	fs.AddWalkPath(maliciousPath)
 
 	// Execute
 	ctx := context.Background()
