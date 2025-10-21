@@ -52,3 +52,20 @@ type SchemaLoaderPort interface {
 	// or validated.
 	LoadPropertyBank(ctx context.Context) (*domain.PropertyBank, error)
 }
+
+// SchemaRegistryPort provides read-only access to resolved schema definitions.
+//
+// This port exposes schema lookup capabilities to domain services while
+// keeping registry implementation details within the SPI adapter layer.
+// Implementations must ensure thread-safe access and honor hexagonal
+// architecture boundaries by depending only on domain models and shared
+// packages.
+//
+// All methods operate on fully resolved domain.Schema values (post-inheritance
+// processing) without exposing adapter-specific types.
+type SchemaRegistryPort interface {
+	// Get retrieves a schema by name.
+	// Returns the resolved schema and a boolean indicating if the schema was
+	// found in the registry.
+	Get(name string) (domain.Schema, bool)
+}
