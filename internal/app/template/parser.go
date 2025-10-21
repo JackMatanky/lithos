@@ -85,25 +85,5 @@ func (p *StaticTemplateParser) Parse(
 	return errors.Ok(parsedTemplate)
 }
 
-// Execute executes a parsed template with the given data and returns the
-// rendered content.
-// It accepts a context for cancellation support and returns a Result containing
-// the rendered string or an error if execution fails.
-func (p *StaticTemplateParser) Execute(ctx context.Context,
-	tmpl *template.Template, data interface{}) errors.Result[string] {
-	// Check for context cancellation before starting
-	if p.checkContextCancellation(ctx) {
-		return errors.Err[string](ctx.Err())
-	}
-
-	// Execute the template with the provided data
-	result, err := p.executeTemplate(tmpl, data)
-	if err != nil {
-		return errors.Err[string](err)
-	}
-
-	return errors.Ok(result)
-}
-
 // Ensure StaticTemplateParser implements spi.TemplateParser.
 var _ spi.TemplateParser = (*StaticTemplateParser)(nil)

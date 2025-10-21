@@ -21,17 +21,17 @@ type TemplateMetadata struct {
 // This port allows the domain to access templates without knowing the specific
 // storage mechanism (filesystem, remote, etc.).
 type TemplateRepositoryPort interface {
-	// ListTemplates returns metadata for all available templates.
-	ListTemplates(ctx context.Context) ([]TemplateMetadata, error)
+	// List returns metadata for all available templates.
+	List(ctx context.Context) ([]TemplateMetadata, error)
 
-	// GetTemplate retrieves a specific template by ID.
+	// Get retrieves a specific template by ID.
 	// Returns an error if the template is not found.
-	GetTemplate(ctx context.Context, id string) (*domain.Template, error)
+	Get(ctx context.Context, id string) (*domain.Template, error)
 
-	// GetTemplateByPath loads a template from a specific file path.
+	// GetByPath loads a template from a specific file path.
 	// This method supports the current CLI workflow where users specify
 	// template paths.
-	GetTemplateByPath(
+	GetByPath(
 		ctx context.Context,
 		path string,
 	) (*domain.Template, error)
@@ -47,15 +47,6 @@ type TemplateParser interface {
 		ctx context.Context,
 		templateContent string,
 	) errors.Result[*template.Template]
-
-	// Execute executes a parsed template with the given data and returns the
-	// rendered content.
-	// Returns an error if template execution fails.
-	Execute(
-		ctx context.Context,
-		tmpl *template.Template,
-		data interface{},
-	) errors.Result[string]
 }
 
 // TemplateExecutor defines the interface for executing parsed templates.
@@ -69,5 +60,5 @@ type TemplateExecutor interface {
 		ctx context.Context,
 		tmpl *domain.Template,
 		data interface{},
-	) (string, error)
+	) errors.Result[string]
 }

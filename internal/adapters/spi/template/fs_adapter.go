@@ -31,10 +31,10 @@ func NewFSAdapter(
 	}
 }
 
-// ListTemplates returns metadata for all available templates.
+// List returns metadata for all available templates.
 // Currently returns an empty list as template enumeration is not yet
 // implemented.
-func (a *FSAdapter) ListTemplates(
+func (a *FSAdapter) List(
 	ctx context.Context,
 ) ([]spi.TemplateMetadata, error) {
 	// TODO: Implement template enumeration from configured template directories
@@ -42,21 +42,21 @@ func (a *FSAdapter) ListTemplates(
 	return []spi.TemplateMetadata{}, nil
 }
 
-// GetTemplate retrieves a specific template by ID.
+// Get retrieves a specific template by ID.
 // Currently not implemented as ID-based lookup requires template enumeration.
-func (a *FSAdapter) GetTemplate(
+func (a *FSAdapter) Get(
 	ctx context.Context,
 	id string,
 ) (*domain.Template, error) {
 	// TODO: Implement ID-based template lookup
-	// This requires implementing ListTemplates first
+	// This requires implementing List first
 	return nil, errors.NewNotFoundError("template", id)
 }
 
-// GetTemplateByPath loads a template from a specific file path.
+// GetByPath loads a template from a specific file path.
 // This method supports the current CLI workflow where users specify template
 // paths.
-func (a *FSAdapter) GetTemplateByPath(
+func (a *FSAdapter) GetByPath(
 	ctx context.Context,
 	path string,
 ) (*domain.Template, error) {
