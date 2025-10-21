@@ -4,12 +4,13 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"regexp"
 	"strings"
 
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 const (
@@ -73,11 +74,15 @@ func NewProperty(
 // Validate checks if the property definition itself is valid.
 func (p Property) Validate() error {
 	if strings.TrimSpace(p.Name) == "" {
-		return errors.NewValidationError("name", "cannot be empty", p.Name)
+		return domainerrors.NewValidationError(
+			"name",
+			"cannot be empty",
+			p.Name,
+		)
 	}
 
 	if !propertyNamePattern.MatchString(p.Name) {
-		return errors.NewValidationError(
+		return domainerrors.NewValidationError(
 			"name",
 			"must be valid YAML key (letters, numbers, dash, underscore only)",
 			p.Name,
@@ -85,7 +90,7 @@ func (p Property) Validate() error {
 	}
 
 	if p.Spec == nil {
-		return errors.NewValidationError("spec", "cannot be nil", nil)
+		return domainerrors.NewValidationError("spec", "cannot be nil", nil)
 	}
 
 	normalized, err := normalizeSpec(p.Spec)
@@ -112,7 +117,7 @@ func (p Property) TypeName() (string, error) {
 // semantics and delegates to the spec for type-specific validation.
 func (p Property) ValidateValue(value interface{}) error {
 	if p.Spec == nil {
-		return errors.NewValidationError("spec", "cannot be nil", nil)
+		return domainerrors.NewValidationError("spec", "cannot be nil", nil)
 	}
 
 	if p.Array {
@@ -129,7 +134,7 @@ func (p Property) validateArrayValue(value interface{}) error {
 
 	v := reflect.ValueOf(value)
 	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
-		return errors.NewValidationError(
+		return domainerrors.NewValidationError(
 			"value",
 			"must be array or slice",
 			value,
@@ -139,9 +144,10 @@ func (p Property) validateArrayValue(value interface{}) error {
 	for i := range v.Len() {
 		elem := v.Index(i).Interface()
 		if err := p.Spec.Validate(elem); err != nil {
-			if validationErr, ok := err.(errors.ValidationError); ok {
+			var validationErr domainerrors.ValidationError
+			if errors.As(err, &validationErr) {
 				field := fmt.Sprintf("value[%d].%s", i, validationErr.Field)
-				return errors.NewValidationError(
+				return domainerrors.NewValidationError(
 					field,
 					validationErr.Message,
 					validationErr.Value,

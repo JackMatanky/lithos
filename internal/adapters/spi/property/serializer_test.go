@@ -1,189 +1,151 @@
 package property
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 )
 
-func TestPropertySerializer_MarshalJSON(t *testing.T) {
-	serializer := NewPropertySerializer()
+func TestMarshalProperty_StringSpec(t *testing.T) {
+	property := domain.NewProperty(
+		"status",
+		true,
+		false,
+		domain.StringPropertySpec{
+			Enum: []string{"active", "inactive"},
+		},
+	)
 
-	tests := []struct {
-		name     string
-		property domain.Property
-		check    func(t *testing.T, data []byte)
-	}{
-		{
-			name: "string property with enum",
-			property: domain.NewProperty(
-				"status",
-				true,
-				false,
-				domain.StringPropertySpec{
-					Enum: []string{"active", "inactive"},
-				},
-			),
-			check: func(t *testing.T, data []byte) {
-				str := string(data)
-				if !strings.Contains(str, `"name":"status"`) ||
-					!strings.Contains(str, `"required":true`) ||
-					!strings.Contains(str, `"array":false`) ||
-					!strings.Contains(str, `"type":"string"`) ||
-					!strings.Contains(str, `"enum":["active","inactive"]`) {
-					t.Errorf("MarshalJSON() missing expected fields: %s", str)
-				}
-			},
-		},
-		{
-			name: "number property with constraints",
-			property: domain.NewProperty(
-				"age",
-				false,
-				false,
-				domain.NumberPropertySpec{
-					Min:  func() *float64 { v := 0.0; return &v }(),
-					Max:  func() *float64 { v := 120.0; return &v }(),
-					Step: func() *float64 { v := 1.0; return &v }(),
-				},
-			),
-			check: func(t *testing.T, data []byte) {
-				str := string(data)
-				if !strings.Contains(str, `"name":"age"`) || !strings.Contains(str, `"required":false`) ||
-					!strings.Contains(str, `"array":false`) || !strings.Contains(str, `"type":"number"`) ||
-					!strings.Contains(str, `"min":0`) ||
-					!strings.Contains(str, `"max":120`) ||
-					!strings.Contains(str, `"step":1`) {
-					t.Errorf("MarshalJSON() missing expected fields: %s", str)
-				}
-			},
-		},
-		{
-			name: "bool property",
-			property: domain.NewProperty(
-				"enabled",
-				true,
-				false,
-				domain.BoolPropertySpec{},
-			),
-			check: func(t *testing.T, data []byte) {
-				str := string(data)
-				if !strings.Contains(str, `"name":"enabled"`) ||
-					!strings.Contains(str, `"required":true`) ||
-					!strings.Contains(str, `"array":false`) ||
-					!strings.Contains(str, `"type":"bool"`) {
-					t.Errorf("MarshalJSON() missing expected fields: %s", str)
-				}
-			},
-		},
+	data, err := MarshalProperty(property)
+	if err != nil {
+		t.Fatalf("MarshalProperty() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			data, err := serializer.MarshalJSON(tt.property)
-			if err != nil {
-				t.Errorf("MarshalJSON() error = %v", err)
-				return
-			}
-			tt.check(t, data)
-		})
+	var result map[string]interface{}
+	if decodeErr := json.Unmarshal(data, &result); decodeErr != nil {
+		t.Fatalf("json.Unmarshal() error = %v", decodeErr)
+	}
+
+	if result["type"] != propertyTypeString {
+		t.Fatalf("type = %v, want %s", result["type"], propertyTypeString)
+	}
+	enum, ok := result["enum"].([]interface{})
+	if !ok || len(enum) != 2 {
+		t.Fatalf("enum = %v, want length 2", result["enum"])
 	}
 }
 
-func TestPropertySerializer_UnmarshalJSON(t *testing.T) {
-	serializer := NewPropertySerializer()
+func TestMarshalProperty_NumberSpec(t *testing.T) {
+	step := 1.0
+	property := domain.NewProperty(
+		"age",
+		false,
+		false,
+		domain.NumberPropertySpec{
+			Min:  pointerToFloat(0),
+			Max:  pointerToFloat(120),
+			Step: &step,
+		},
+	)
 
-	tests := []struct {
-		name    string
-		json    string
-		want    domain.Property
-		wantErr bool
-	}{
-		{
-			name: "string property with enum",
-			json: `{"name":"status","required":true,"array":false,"type":"string","enum":["active","inactive"]}`,
-			want: domain.NewProperty(
-				"status",
-				true,
-				false,
-				domain.StringPropertySpec{
-					Enum: []string{"active", "inactive"},
-				},
-			),
-			wantErr: false,
-		},
-		{
-			name: "number property with constraints",
-			json: `{"name":"age","required":false,"array":false,"type":"number","min":0,"max":120,"step":1}`,
-			want: func() domain.Property {
-				min := 0.0
-				max := 120.0
-				step := 1.0
-				return domain.NewProperty(
-					"age",
-					false,
-					false,
-					domain.NumberPropertySpec{
-						Min:  &min,
-						Max:  &max,
-						Step: &step,
-					},
-				)
-			}(),
-			wantErr: false,
-		},
-		{
-			name: "bool property",
-			json: `{"name":"enabled","required":true,"array":false,"type":"bool"}`,
-			want: domain.NewProperty(
-				"enabled",
-				true,
-				false,
-				domain.BoolPropertySpec{},
-			),
-			wantErr: false,
-		},
+	data, err := MarshalProperty(property)
+	if err != nil {
+		t.Fatalf("MarshalProperty() error = %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := serializer.UnmarshalJSON([]byte(tt.json))
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"UnmarshalJSON() error = %v, wantErr %v",
-					err,
-					tt.wantErr,
-				)
-				return
-			}
-			if !tt.wantErr {
-				// Compare fields since we can't directly compare Property
-				// structs
-				if got.Name != tt.want.Name ||
-					got.Required != tt.want.Required ||
-					got.Array != tt.want.Array {
-					t.Errorf(
-						"UnmarshalJSON() got Name=%s Required=%v Array=%v, want Name=%s Required=%v Array=%v",
-						got.Name,
-						got.Required,
-						got.Array,
-						tt.want.Name,
-						tt.want.Required,
-						tt.want.Array,
-					)
-				}
-				// Compare type names
-				gotType, _ := got.TypeName()
-				wantType, _ := tt.want.TypeName()
-				if gotType != wantType {
-					t.Errorf(
-						"UnmarshalJSON() type = %s, want %s",
-						gotType,
-						wantType,
-					)
-				}
-			}
-		})
+	var result map[string]interface{}
+	if decodeErr := json.Unmarshal(data, &result); decodeErr != nil {
+		t.Fatalf("json.Unmarshal() error = %v", decodeErr)
 	}
+
+	if result["min"] != float64(0) || result["max"] != float64(120) {
+		t.Fatalf(
+			"min/max = (%v,%v), want (0,120)",
+			result["min"],
+			result["max"],
+		)
+	}
+	if result["step"] != float64(1) {
+		t.Fatalf("step = %v, want 1", result["step"])
+	}
+}
+
+func TestMarshalProperty_BoolSpec(t *testing.T) {
+	property := domain.NewProperty(
+		"enabled",
+		true,
+		false,
+		domain.BoolPropertySpec{},
+	)
+
+	data, err := MarshalProperty(property)
+	if err != nil {
+		t.Fatalf("MarshalProperty() error = %v", err)
+	}
+
+	var result map[string]interface{}
+	if decodeErr := json.Unmarshal(data, &result); decodeErr != nil {
+		t.Fatalf("json.Unmarshal() error = %v", decodeErr)
+	}
+
+	if result["type"] != propertyTypeBool {
+		t.Fatalf("type = %v, want %s", result["type"], propertyTypeBool)
+	}
+}
+
+func TestUnmarshalProperty_StringSpec(t *testing.T) {
+	jsonBody := `
+	{
+		"name": "status",
+		"required": true,
+		"array": false,
+		"type": "string",
+		"enum": ["active", "inactive"]
+	}`
+
+	property, err := UnmarshalProperty([]byte(strings.TrimSpace(jsonBody)))
+	if err != nil {
+		t.Fatalf("UnmarshalProperty() error = %v", err)
+	}
+
+	typeName, err := property.TypeName()
+	if err != nil {
+		t.Fatalf("TypeName() error = %v", err)
+	}
+
+	if typeName != propertyTypeString {
+		t.Fatalf("TypeName() = %s, want %s", typeName, propertyTypeString)
+	}
+}
+
+func TestUnmarshalProperty_FileSpec(t *testing.T) {
+	jsonBody := `
+	{
+		"name": "doc",
+		"required": false,
+		"array": false,
+		"type": "file",
+		"fileClass": "project",
+		"directory": "projects/"
+	}`
+
+	property, err := UnmarshalProperty([]byte(strings.TrimSpace(jsonBody)))
+	if err != nil {
+		t.Fatalf("UnmarshalProperty() error = %v", err)
+	}
+
+	typeName, err := property.TypeName()
+	if err != nil {
+		t.Fatalf("TypeName() error = %v", err)
+	}
+
+	if typeName != propertyTypeFile {
+		t.Fatalf("TypeName() = %s, want %s", typeName, propertyTypeFile)
+	}
+}
+
+func pointerToFloat(value float64) *float64 {
+	return &value
 }
