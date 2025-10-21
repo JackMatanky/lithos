@@ -2,7 +2,9 @@ package schema
 
 import (
 	"encoding/json"
-	"strings"
+	"os"
+	"path/filepath"
+	"runtime"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -96,16 +98,12 @@ func TestMarshalProperty_BoolSpec(t *testing.T) {
 }
 
 func TestUnmarshalProperty_StringSpec(t *testing.T) {
-	jsonBody := `
-	{
-		"name": "status",
-		"required": true,
-		"array": false,
-		"type": "string",
-		"enum": ["active", "inactive"]
-	}`
+	data, err := readTestDataFile(t, "string-property.json")
+	if err != nil {
+		t.Fatalf("Failed to read test data file: %v", err)
+	}
 
-	property, err := UnmarshalProperty([]byte(strings.TrimSpace(jsonBody)))
+	property, err := UnmarshalProperty(data)
 	if err != nil {
 		t.Fatalf("UnmarshalProperty() error = %v", err)
 	}
@@ -121,17 +119,12 @@ func TestUnmarshalProperty_StringSpec(t *testing.T) {
 }
 
 func TestUnmarshalProperty_FileSpec(t *testing.T) {
-	jsonBody := `
-	{
-		"name": "doc",
-		"required": false,
-		"array": false,
-		"type": "file",
-		"fileClass": "project",
-		"directory": "projects/"
-	}`
+	data, err := readTestDataFile(t, "file-property.json")
+	if err != nil {
+		t.Fatalf("Failed to read test data file: %v", err)
+	}
 
-	property, err := UnmarshalProperty([]byte(strings.TrimSpace(jsonBody)))
+	property, err := UnmarshalProperty(data)
 	if err != nil {
 		t.Fatalf("UnmarshalProperty() error = %v", err)
 	}
@@ -148,4 +141,41 @@ func TestUnmarshalProperty_FileSpec(t *testing.T) {
 
 func pointerToFloat(value float64) *float64 {
 	return &value
+}
+
+// findProjectRoot finds the project root directory by looking for go.mod.
+func findProjectRoot(t *testing.T) string {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("Could not get caller information")
+	}
+
+	// Start from the directory containing this test file
+	dir := filepath.Dir(filename)
+
+	// Walk up directories until we find go.mod
+	for {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatal("Could not find project root (go.mod)")
+		}
+		dir = parent
+	}
+}
+
+// readTestDataFile reads a test data file from testdata/schema/properties/.
+func readTestDataFile(t *testing.T, filename string) ([]byte, error) {
+	projectRoot := findProjectRoot(t)
+	path := filepath.Join(
+		projectRoot,
+		"testdata",
+		"schema",
+		"properties",
+		filename,
+	)
+	return os.ReadFile(path)
 }

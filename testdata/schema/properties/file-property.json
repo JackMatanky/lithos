@@ -1,0 +1,8 @@
+{
+  "name": "doc",
+  "required": false,
+  "array": false,
+  "type": "file",
+  "fileClass": "project",
+  "directory": "projects/"
+}

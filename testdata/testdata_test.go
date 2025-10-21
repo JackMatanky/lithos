@@ -16,11 +16,10 @@ func TestTestDataStructureExists(t *testing.T) {
 		path string
 	}{
 		{"testdata directory", "."},
-		{"vault directory", "vault"},
 		{"golden directory", "golden"},
-		{"templates directory", "vault/templates"},
-		{"schemas directory", "vault/schemas"},
-		{"notes directory", "vault/notes"},
+		{"templates directory", "templates"},
+		{"schemas directory", "schema"},
+		{"notes directory", "notes"},
 	}
 
 	for _, tt := range tests {
@@ -37,10 +36,10 @@ func TestSampleVaultFilesExist(t *testing.T) {
 		name string
 		path string
 	}{
-		{"basic template", "vault/templates/basic-note.md"},
-		{"note schema", "vault/schemas/note.json"},
-		{"sample note 1", "vault/notes/sample-note-1.md"},
-		{"sample note 2", "vault/notes/sample-note-2.md"},
+		{"basic template", "templates/basic-note.md"},
+		{"note schema", "schema/valid/note.json"},
+		{"sample note 1", "notes/sample-note-1.md"},
+		{"sample note 2", "notes/sample-note-2.md"},
 		{"golden output", "golden/basic-note-expected.md"},
 		{"golden input params", "golden/basic-note-input-params.json"},
 	}
@@ -55,7 +54,7 @@ func TestSampleVaultFilesExist(t *testing.T) {
 }
 
 func TestTemplateFileValidSyntax(t *testing.T) {
-	templatePath := "vault/templates/basic-note.md"
+	templatePath := "templates/basic-note.md"
 
 	content, err := os.ReadFile(templatePath)
 	if err != nil {
@@ -91,7 +90,7 @@ func TestTemplateFileValidSyntax(t *testing.T) {
 }
 
 func TestSchemaFileValidJSON(t *testing.T) {
-	schemaPath := "vault/schemas/note.json"
+	schemaPath := "schema/valid/note.json"
 
 	content, err := os.ReadFile(schemaPath)
 	if err != nil {
@@ -132,8 +131,8 @@ func TestSchemaFileValidJSON(t *testing.T) {
 
 func TestSampleNotesValidFrontmatter(t *testing.T) {
 	noteFiles := []string{
-		"vault/notes/sample-note-1.md",
-		"vault/notes/sample-note-2.md",
+		"notes/sample-note-1.md",
+		"notes/sample-note-2.md",
 	}
 
 	for _, noteFile := range noteFiles {
@@ -239,10 +238,9 @@ func TestCrossplatformPaths(t *testing.T) {
 	// Test that all paths use filepath.Join for cross-platform compatibility
 	testPaths := []string{
 		".",
-		filepath.Join("vault"),
-		filepath.Join("vault", "templates"),
-		filepath.Join("vault", "schemas"),
-		filepath.Join("vault", "notes"),
+		filepath.Join("templates"),
+		filepath.Join("schema"),
+		filepath.Join("notes"),
 		filepath.Join("golden"),
 	}
 
