@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -37,21 +38,76 @@ func findProjectRoot(t *testing.T) string {
 	}
 }
 
+// copyFile copies a file from src to dst.
+func copyFile(src, dst string) error {
+	srcFile, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = srcFile.Close()
+	}()
+
+	dstFile, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		_ = dstFile.Close()
+	}()
+
+	_, err = io.Copy(dstFile, srcFile)
+	return err
+}
+
+// copyTestDataToTemp copies required test data to the temporary directory.
+func copyTestDataToTemp(t *testing.T, tempDir string) {
+	// Create templates directory in temp dir
+	templatesDir := filepath.Join(tempDir, "templates")
+	if err := os.MkdirAll(templatesDir, 0o750); err != nil {
+		t.Fatalf("Failed to create templates dir: %v", err)
+	}
+
+	// Copy template files
+	files := []string{
+		"integration-test-template.txt",
+		"large-integration-template.txt",
+	}
+	for _, file := range files {
+		src := filepath.Join("testdata", "templates", file)
+		dst := filepath.Join(templatesDir, file)
+		if err := copyFile(src, dst); err != nil {
+			t.Fatalf("Failed to copy %s: %v", file, err)
+		}
+	}
+}
+
 func TestNewCommand_Integration_CompleteFlow(t *testing.T) {
-	// Change to project root directory for relative paths to work
+	// Create temporary directory for test isolation
+	tempDir := t.TempDir()
+
+	// Copy test data to temp directory
 	projectRoot := findProjectRoot(t)
 	originalDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Failed to get current directory: %v", err)
 	}
-	defer func() {
-		_ = os.Chdir(originalDir) // Restore original directory (ignore error)
-	}()
+	t.Cleanup(func() {
+		_ = os.Chdir(originalDir)
+	})
+
+	// Change to project root to copy test data, then to temp dir
 	if err2 := os.Chdir(projectRoot); err2 != nil {
 		t.Fatalf("Failed to change to project root: %v", err2)
 	}
+	copyTestDataToTemp(t, tempDir)
 
-	templatePath := "testdata/templates/integration-test-template.txt"
+	// Change to temp directory for test execution
+	if err2 := os.Chdir(tempDir); err2 != nil {
+		t.Fatalf("Failed to change to temp dir: %v", err2)
+	}
+
+	templatePath := "templates/integration-test-template.txt"
 	// Create real filesystem adapter
 	fsAdapter := filesystem.NewLocalFileSystemAdapter()
 
@@ -103,20 +159,31 @@ func TestNewCommand_Integration_CompleteFlow(t *testing.T) {
 }
 
 func TestNewCommand_Integration_AtomicWrite(t *testing.T) {
-	// Change to project root directory for relative paths to work
+	// Create temporary directory for test isolation
+	tempDir := t.TempDir()
+
+	// Copy test data to temp directory
 	projectRoot := findProjectRoot(t)
 	originalDir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Failed to get current directory: %v", err)
 	}
-	defer func() {
-		_ = os.Chdir(originalDir) // Restore original directory (ignore error)
-	}()
+	t.Cleanup(func() {
+		_ = os.Chdir(originalDir)
+	})
+
+	// Change to project root to copy test data, then to temp dir
 	if err2 := os.Chdir(projectRoot); err2 != nil {
 		t.Fatalf("Failed to change to project root: %v", err2)
 	}
+	copyTestDataToTemp(t, tempDir)
 
-	templatePath := "testdata/templates/large-integration-template.txt"
+	// Change to temp directory for test execution
+	if err2 := os.Chdir(tempDir); err2 != nil {
+		t.Fatalf("Failed to change to temp dir: %v", err2)
+	}
+
+	templatePath := "templates/large-integration-template.txt"
 	// Create real filesystem adapter
 	fsAdapter := filesystem.NewLocalFileSystemAdapter()
 
