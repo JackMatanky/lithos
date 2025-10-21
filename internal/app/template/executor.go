@@ -28,13 +28,13 @@ func (e *GoTemplateExecutor) Execute(
 	ctx context.Context,
 	tmpl *domain.Template,
 	data interface{},
-) (string, error) {
+) errors.Result[string] {
 	if err := e.validateTemplate(tmpl); err != nil {
-		return "", err
+		return errors.Err[string](err)
 	}
 
 	if err := e.validateData(data, tmpl.Name); err != nil {
-		return "", err
+		return errors.Err[string](err)
 	}
 
 	return e.executeTemplate(tmpl)
@@ -67,16 +67,16 @@ func (e *GoTemplateExecutor) validateData(
 // executeTemplate performs the actual template execution into a buffer.
 func (e *GoTemplateExecutor) executeTemplate(
 	tmpl *domain.Template,
-) (string, error) {
+) errors.Result[string] {
 	var buf bytes.Buffer
 	if err := tmpl.Parsed.Execute(&buf, nil); err != nil {
-		return "", errors.Wrap(
+		return errors.Err[string](errors.Wrap(
 			errors.NewTemplateError(tmpl.Name, 0, err.Error()),
 			"template execution failed",
-		)
+		))
 	}
 
-	return buf.String(), nil
+	return errors.Ok(buf.String())
 }
 
 // Ensure GoTemplateExecutor implements spi.TemplateExecutor.

@@ -163,12 +163,12 @@ func (e *TemplateEngine) executeTemplate(
 	ctx context.Context,
 	tmpl *domain.Template,
 ) (string, error) {
-	renderedContent, err := e.executor.Execute(ctx, tmpl, nil)
-	if err != nil {
+	executeResult := e.executor.Execute(ctx, tmpl, nil)
+	if executeResult.IsErr() {
 		return "", errors.Wrap(
-			err,
+			executeResult.Error(),
 			"failed to execute parsed template",
 		)
 	}
-	return renderedContent, nil
+	return executeResult.Value(), nil
 }

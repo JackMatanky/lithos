@@ -32,14 +32,6 @@ func (m *mockTemplateParser) Parse(
 	return errors.Ok(template.New("mock"))
 }
 
-func (m *mockTemplateParser) Execute(
-	ctx context.Context,
-	tmpl *template.Template,
-	data interface{},
-) errors.Result[string] {
-	return errors.Ok("mocked")
-}
-
 func (m *mockFileSystemPort) ReadFile(path string) ([]byte, error) {
 	if m.readFileFunc != nil {
 		return m.readFileFunc(path)
@@ -75,25 +67,25 @@ func TestFSAdapter_ListTemplates(t *testing.T) {
 	adapter := NewFSAdapter(mockFS, mockParser)
 	ctx := context.Background()
 
-	templates, err := adapter.ListTemplates(ctx)
+	templates, err := adapter.List(ctx)
 	if err != nil {
-		t.Errorf("ListTemplates() unexpected error = %v", err)
+		t.Errorf("List() unexpected error = %v", err)
 		return
 	}
 
 	// Currently returns empty list
 	if len(templates) != 0 {
-		t.Errorf("ListTemplates() = %v, want empty slice", templates)
+		t.Errorf("List() = %v, want empty slice", templates)
 	}
 }
 
-func TestFSAdapter_GetTemplate(t *testing.T) {
+func TestFSAdapter_Get(t *testing.T) {
 	mockFS := &mockFileSystemPort{}
 	mockParser := &mockTemplateParser{}
 	adapter := NewFSAdapter(mockFS, mockParser)
 	ctx := context.Background()
 
-	_, err := adapter.GetTemplate(ctx, "nonexistent")
+	_, err := adapter.Get(ctx, "nonexistent")
 	if err == nil {
 		t.Error(
 			"GetTemplate() expected error for nonexistent template, got nil",
@@ -101,7 +93,7 @@ func TestFSAdapter_GetTemplate(t *testing.T) {
 	}
 }
 
-func TestFSAdapter_GetTemplateByPath_Success(t *testing.T) {
+func TestFSAdapter_GetByPath_Success(t *testing.T) {
 	mockFS := &mockFileSystemPort{
 		readFileFunc: func(path string) ([]byte, error) {
 			if path == "/path/to/test-template.txt" {
@@ -115,21 +107,21 @@ func TestFSAdapter_GetTemplateByPath_Success(t *testing.T) {
 	adapter := NewFSAdapter(mockFS, mockParser)
 	ctx := context.Background()
 
-	got, err := adapter.GetTemplateByPath(ctx, "/path/to/test-template.txt")
+	got, err := adapter.GetByPath(ctx, "/path/to/test-template.txt")
 
 	if err != nil {
-		t.Errorf("GetTemplateByPath() unexpected error = %v", err)
+		t.Errorf("GetByPath() unexpected error = %v", err)
 		return
 	}
 
 	if got == nil {
-		t.Error("GetTemplateByPath() returned nil template")
+		t.Error("GetByPath() returned nil template")
 		return
 	}
 
 	if got.Name != "test-template" {
 		t.Errorf(
-			"GetTemplateByPath() template name = %q, want %q",
+			"GetByPath() template name = %q, want %q",
 			got.Name,
 			"test-template",
 		)
@@ -137,14 +129,14 @@ func TestFSAdapter_GetTemplateByPath_Success(t *testing.T) {
 
 	if got.Content != "Hello, {{.Name}}!" {
 		t.Errorf(
-			"GetTemplateByPath() template content = %q, want %q",
+			"GetByPath() template content = %q, want %q",
 			got.Content,
 			"Hello, {{.Name}}!",
 		)
 	}
 }
 
-func TestFSAdapter_GetTemplateByPath_FileReadError(t *testing.T) {
+func TestFSAdapter_GetByPath_FileReadError(t *testing.T) {
 	mockFS := &mockFileSystemPort{
 		readFileFunc: func(path string) ([]byte, error) {
 			return nil, fmt.Errorf("file not found")
@@ -155,10 +147,10 @@ func TestFSAdapter_GetTemplateByPath_FileReadError(t *testing.T) {
 	adapter := NewFSAdapter(mockFS, mockParser)
 	ctx := context.Background()
 
-	_, err := adapter.GetTemplateByPath(ctx, "/invalid/path.txt")
+	_, err := adapter.GetByPath(ctx, "/invalid/path.txt")
 
 	if err == nil {
-		t.Error("GetTemplateByPath() expected error, got nil")
+		t.Error("GetByPath() expected error, got nil")
 		return
 	}
 
@@ -171,7 +163,7 @@ func TestFSAdapter_GetTemplateByPath_FileReadError(t *testing.T) {
 	}
 }
 
-func TestFSAdapter_GetTemplateByPath_ParseError(t *testing.T) {
+func TestFSAdapter_GetByPath_ParseError(t *testing.T) {
 	mockFS := &mockFileSystemPort{
 		readFileFunc: func(path string) ([]byte, error) {
 			if path == "/path/to/invalid.txt" {
@@ -185,10 +177,10 @@ func TestFSAdapter_GetTemplateByPath_ParseError(t *testing.T) {
 	adapter := NewFSAdapter(mockFS, mockParser)
 	ctx := context.Background()
 
-	_, err := adapter.GetTemplateByPath(ctx, "/path/to/invalid.txt")
+	_, err := adapter.GetByPath(ctx, "/path/to/invalid.txt")
 
 	if err == nil {
-		t.Error("GetTemplateByPath() expected error, got nil")
+		t.Error("GetByPath() expected error, got nil")
 		return
 	}
 

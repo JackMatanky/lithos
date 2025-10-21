@@ -46,7 +46,7 @@ func executeNewCommand(
 	ctx := context.Background()
 
 	// Get parsed template from repository
-	tmpl, err := templateRepo.GetTemplateByPath(ctx, templatePath)
+	tmpl, err := templateRepo.GetByPath(ctx, templatePath)
 	if err != nil {
 		return fmt.Errorf(
 			"failed to load template %q: %w",
