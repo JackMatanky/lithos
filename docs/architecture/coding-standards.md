@@ -56,7 +56,7 @@ Names **MUST NOT** repeat package context (e.g., avoid `template.TemplateEngine`
 ## Testing
 
 - Unit tests **MUST** live beside the code under test (`*_test.go`) and use table-driven cases for branches.
-- Integration tests **MAY** reside under `tests/` when they require full vault fixtures; they **MUST** be callable via `just verify`.
+- Integration tests **MUST** reside under `tests/integration` when they require full vault fixtures; they **MUST** be callable via `just verify`.
 - Tests **MUST** cover success, validation failure, and cancellation paths for command orchestration.
 - Golden files belong under `testdata/` mirroring vault layout.
 
