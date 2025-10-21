@@ -218,7 +218,7 @@ min-complexity = 20
 
 [linters.settings.goconst]
 min-len = 2         # Small literals (len≥2) can be consts.
-min-occurrences = 3 # Trigger only if repeated ≥3 times.
+min-occurrences = 2 # Trigger only if repeated ≥3 times.
 
 [linters.settings.gocritic]
 enabled-tags = [
