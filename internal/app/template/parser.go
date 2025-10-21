@@ -3,7 +3,6 @@ package template
 
 import (
 	"context"
-	"strings"
 	"text/template"
 
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -45,20 +44,6 @@ func (p *StaticTemplateParser) parseTemplate(
 	content string,
 ) (*template.Template, error) {
 	return tmpl.Parse(content)
-}
-
-// executeTemplate executes the given template with the provided data.
-// Returns the rendered content or an error if execution fails.
-func (p *StaticTemplateParser) executeTemplate(
-	tmpl *template.Template,
-	data interface{},
-) (string, error) {
-	var buf strings.Builder
-	err := tmpl.Execute(&buf, data)
-	if err != nil {
-		return "", err
-	}
-	return buf.String(), nil
 }
 
 // Parse parses the template content using Go's text/template engine.
