@@ -1,8 +1,7 @@
-{
+ {
   "name": "malformed",
   "properties": {
     "email": {
       "type": "string"
     }
-  }
-}
+  // missing closing brace

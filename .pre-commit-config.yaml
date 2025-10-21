@@ -19,6 +19,7 @@ repos:
         name: Ensure Executable Scripts Have Shebangs
       - id: check-json
         name: Validate JSON Files
+        exclude: ^testdata/schema/invalid/
       - id: check-merge-conflict
         name: Detect Merge Conflict Markers
       - id: check-toml
