@@ -38,14 +38,14 @@ As a developer, I want to implement the Property models and PropertySpec from th
 - 2.3.3: PropertyBank model with Properties map and Location field is implemented for reusable property definitions.
 - 2.3.4: All property models include unit tests for validation and behavior.
 
-## Story 2.4: Implement Schema Engine Port and Adapter
+## Story 2.4: Implement Schema Loader Port and Adapter
 
-As a developer, I want to implement the SchemaEnginePort and SchemaLoaderAdapter, so that schemas can be loaded from JSON files following the architecture.
+As a developer, I want to implement the SchemaLoaderPort and SchemaLoaderAdapter, so that schemas can be loaded from JSON files following the architecture.
 
 ### Acceptance Criteria
 
-- 2.4.1: `internal/ports/spi/` contains SchemaEnginePort interface with LoadSchemas and LoadPropertyBank methods.
-- 2.4.2: `internal/adapters/spi/schema/` contains SchemaLoaderAdapter implementing SchemaEnginePort.
+- 2.4.1: `internal/ports/spi/` contains SchemaLoaderPort interface with LoadSchemas and LoadPropertyBank methods.
+- 2.4.2: `internal/adapters/spi/schema/` contains SchemaLoaderAdapter implementing SchemaLoaderPort.
 - 2.4.3: Adapter scans for `.json` files in `schemas/` directory per `docs/architecture/tech-stack.md#json-processing`.
 - 2.4.4: Property bank files are loaded from `schemas/properties/` directory with `$ref` resolution.
 - 2.4.5: JSON parsing uses Go stdlib `encoding/json` with structured error handling.
@@ -57,7 +57,7 @@ As a developer, I want to implement the basic SchemaRegistry domain service, so 
 ### Acceptance Criteria
 
 - 2.5.1: `internal/app/schema/` contains SchemaRegistry implementing the interface from `docs/architecture/components.md#domain-services`.
-- 2.5.2: Service loads schemas via SchemaEnginePort per `docs/architecture/components.md#schemaengineport`.
+- 2.5.2: Service loads schemas via SchemaLoaderPort per `docs/architecture/components.md#schemaloaderport`.
 - 2.5.3: Service uses Registry package for thread-safe schema storage per `docs/architecture/components.md#shared-internal-packages`.
 - 2.5.4: SchemaRegistry provides Get(name string) method for retrieving schemas by name with proper error handling.
 - 2.5.5: Service integrates with ConfigPort to access schema directory configuration.

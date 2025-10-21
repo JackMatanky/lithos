@@ -375,7 +375,7 @@ PropertySpec variants provide type-safe validation without runtime type switchin
 
 **Architecture Layer:** Domain Core
 
-**Rationale:** PropertyBank is pure domain concern—it's a registry of business rules (property constraints) that can be reused. No infrastructure dependencies. Loaded by SchemaEnginePort adapter from JSON files, but the model itself represents domain knowledge about common property patterns.
+**Rationale:** PropertyBank is pure domain concern—it's a registry of business rules (property constraints) that can be reused. No infrastructure dependencies. Loaded by SchemaLoaderPort adapter from JSON files, but the model itself represents domain knowledge about common property patterns.
 
 **Key Attributes:**
 
@@ -384,7 +384,7 @@ PropertySpec variants provide type-safe validation without runtime type switchin
 
 **Relationships:**
 
-- PropertyBank loaded before Schema definitions during startup (SchemaEnginePort orchestrates)
+- PropertyBank loaded before Schema definitions during startup (SchemaLoaderPort orchestrates)
 - Schema.Properties can reference PropertyBank entries via special `ref` attribute (resolved during schema loading)
 - Property definitions in PropertyBank are templates—schemas can override specific attributes when referencing
 
@@ -450,7 +450,7 @@ Property bank definitions stored in `schemas/properties/common.json`:
 
 - **Multiple property bank files:** Supports organizing property banks by domain (e.g., `properties/common.json`, `properties/contacts.json`, `properties/projects.json`). All loaded into single registry keyed by property ID.
 
-- **Load order:** PropertyBank loaded before schemas during SchemaEnginePort.LoadSchemas() call. Ensures all references can be resolved.
+- **Load order:** PropertyBank loaded before schemas during SchemaLoaderPort.LoadSchemas() call. Ensures all references can be resolved.
 
 - **No circular references:** Property banks cannot reference other property banks (flat structure). Post-MVP could add property inheritance if needed.
 

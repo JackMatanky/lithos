@@ -15,12 +15,12 @@ import (
 	"github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
-// SchemaLoaderAdapter implements SchemaEnginePort for filesystem-based schema
+// SchemaLoaderAdapter implements SchemaLoaderPort for filesystem-based schema
 // loading.
 // Handles JSON parsing, PropertySpec discriminator logic, $ref resolution,
 // and domain object creation.
 //
-// Architecture: SPI Adapter implementing SchemaEnginePort
+// Architecture: SPI Adapter implementing SchemaLoaderPort
 // Dependencies: FileSystemPort for file operations, ConfigPort for paths.
 type SchemaLoaderAdapter struct {
 	fs     spi.FileSystemPort
@@ -46,10 +46,10 @@ func NewSchemaLoaderAdapter(
 }
 
 /* ---------------------------------------------------------- */
-/*               SchemaEnginePort Implementation              */
+/*               SchemaLoaderPort Implementation              */
 /* ---------------------------------------------------------- */
 
-// LoadSchemas implements SchemaEnginePort.LoadSchemas.
+// LoadSchemas implements SchemaLoaderPort.LoadSchemas.
 func (s *SchemaLoaderAdapter) LoadSchemas(
 	ctx context.Context,
 ) ([]domain.Schema, error) {
@@ -68,7 +68,7 @@ func (s *SchemaLoaderAdapter) LoadSchemas(
 	return schemas, nil
 }
 
-// LoadPropertyBank implements SchemaEnginePort.LoadPropertyBank.
+// LoadPropertyBank implements SchemaLoaderPort.LoadPropertyBank.
 func (s *SchemaLoaderAdapter) LoadPropertyBank(
 	ctx context.Context,
 ) (*domain.PropertyBank, error) {

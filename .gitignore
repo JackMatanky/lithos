@@ -91,7 +91,6 @@ testdata/vault-copies/
 # --------------------- Tests & Coverage --------------------- #
 # Reports
 test-results.txt
-coverage.xml
 htmlcov/
 
 # Coverage Data
@@ -99,8 +98,10 @@ htmlcov/
 .coverage
 .coverage.*
 *.coverprofile
+coverage.html
 coverage.out
 coverage.txt
+coverage.xml
 
 # Python
 .pytest_cache/

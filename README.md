@@ -26,7 +26,7 @@ lithos/
 │   │   └── template/               # Template services
 │   ├── ports/
 │   │   ├── api/                    # Driving port interfaces (CLICommandPort and related contracts)
-│   │   └── spi/                    # Driven port interfaces (FileSystemPort, Cache ports, SchemaEnginePort, etc.)
+│   │   └── spi/                    # Driven port interfaces (FileSystemPort, Cache ports, SchemaLoaderPort, etc.)
 │   ├── adapters/
 │   │   ├── api/                    # Driving adapters (Cobra CLI today; Bubble Tea/LSP post-MVP)
 │   │   └── spi/

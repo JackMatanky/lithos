@@ -13,7 +13,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/domain"
 )
 
-// SchemaEnginePort provides schema loading operations for domain services.
+// SchemaLoaderPort provides schema loading operations for domain services.
 //
 // This port allows domain services to load schema definitions and property
 // banks
@@ -27,7 +27,7 @@ import (
 // - Converting parsed JSON to domain objects using domain constructors
 //
 // All methods return domain objects directly (no separate DTO types).
-type SchemaEnginePort interface {
+type SchemaLoaderPort interface {
 	// LoadSchemas loads all schema definitions from the configured schemas
 	// directory.
 	// Returns fully constructed domain Schema objects with properties parsed
