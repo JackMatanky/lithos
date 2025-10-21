@@ -8,12 +8,17 @@ import (
 	"github.com/spf13/viper"
 )
 
-const configContent = `vaultPath: .
+const (
+	configContent = `vaultPath: .
 templatesDir: templates
 schemasDir: schemas
 cacheDir: .lithos/cache
 logLevel: info
 `
+	testLogLevelInfo  = "info"
+	testVaultPath     = "/tmp/vault"
+	testLogLevelDebug = "debug"
+)
 
 func getTestCases(configFile string) []struct {
 	name    string
@@ -233,7 +238,7 @@ func TestSetDefaults(t *testing.T) {
 	if v.GetString("cacheDir") == "" {
 		t.Error("cacheDir default should not be empty")
 	}
-	if v.GetString("logLevel") != "info" {
+	if v.GetString("logLevel") != testLogLevelInfo {
 		t.Errorf(
 			"logLevel default = %q, want %q",
 			v.GetString("logLevel"),
@@ -259,15 +264,15 @@ func TestBuildConfigFromViper(t *testing.T) {
 		{
 			name: "absolute paths",
 			setup: func(v *viper.Viper) {
-				v.Set("vaultPath", "/tmp/vault")
+				v.Set("vaultPath", testVaultPath)
 				v.Set("templatesDir", "/tmp/templates")
 				v.Set("schemasDir", "/tmp/schemas")
 				v.Set("cacheDir", "/tmp/cache")
-				v.Set("logLevel", "debug")
+				v.Set("logLevel", testLogLevelDebug)
 			},
 			wantErr: false,
 			validate: func(t *testing.T, config *Config) {
-				if config.VaultPath != "/tmp/vault" {
+				if config.VaultPath != testVaultPath {
 					t.Errorf(
 						"VaultPath = %q, want %q",
 						config.VaultPath,
@@ -295,15 +300,19 @@ func TestBuildConfigFromViper(t *testing.T) {
 						"/tmp/cache",
 					)
 				}
-				if config.LogLevel != "debug" {
-					t.Errorf("LogLevel = %q, want %q", config.LogLevel, "debug")
+				if config.LogLevel != testLogLevelDebug {
+					t.Errorf(
+						"LogLevel = %q, want %q",
+						config.LogLevel,
+						testLogLevelDebug,
+					)
 				}
 			},
 		},
 		{
 			name: "relative paths resolved to vault path",
 			setup: func(v *viper.Viper) {
-				v.Set("vaultPath", "/tmp/vault")
+				v.Set("vaultPath", testVaultPath)
 				v.Set("templatesDir", "templates")
 				v.Set("schemasDir", "schemas")
 				v.Set("cacheDir", ".lithos/cache")
@@ -311,7 +320,7 @@ func TestBuildConfigFromViper(t *testing.T) {
 			},
 			wantErr: false,
 			validate: func(t *testing.T, config *Config) {
-				if config.VaultPath != "/tmp/vault" {
+				if config.VaultPath != testVaultPath {
 					t.Errorf(
 						"VaultPath = %q, want %q",
 						config.VaultPath,
@@ -435,7 +444,7 @@ func TestConfigViperAdapter_WithEnvironmentVariables(t *testing.T) {
 
 	// Set environment variables (viper converts camelCase keys to UPPERCASE)
 	_ = os.Setenv("LITHOS_VAULTPATH", tempDir)
-	_ = os.Setenv("LITHOS_LOGLEVEL", "debug")
+	_ = os.Setenv("LITHOS_LOGLEVEL", testLogLevelDebug)
 
 	// Change to a different directory to ensure env vars are used
 	originalDir, err := os.Getwd()
@@ -465,11 +474,11 @@ func TestConfigViperAdapter_WithEnvironmentVariables(t *testing.T) {
 			expectedVaultPath,
 		)
 	}
-	if config.LogLevel != "debug" {
+	if config.LogLevel != testLogLevelDebug {
 		t.Errorf(
-			"LogLevel = %q, want %q (from env var)",
+			"LogLevel = %q, want %q",
 			config.LogLevel,
-			"debug",
+			testLogLevelDebug,
 		)
 	}
 }

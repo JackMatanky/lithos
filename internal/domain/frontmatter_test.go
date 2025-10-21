@@ -4,6 +4,11 @@ import (
 	"testing"
 )
 
+const (
+	testFileClassProject = "project"
+	testTitleProject     = "Test Project"
+)
+
 func TestNewFrontmatter(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -211,23 +216,27 @@ func TestFrontmatterStruct(t *testing.T) {
 	}
 
 	frontmatter := Frontmatter{
-		FileClass: "project",
+		FileClass: testFileClassProject,
 		Fields:    fields,
 	}
 
-	if frontmatter.FileClass != "project" {
-		t.Errorf("FileClass = %q, want %q", frontmatter.FileClass, "project")
+	if frontmatter.FileClass != testFileClassProject {
+		t.Errorf(
+			"FileClass = %q, want %q",
+			frontmatter.FileClass,
+			testFileClassProject,
+		)
 	}
 
 	if len(frontmatter.Fields) != 3 {
 		t.Errorf("Fields length = %d, want %d", len(frontmatter.Fields), 3)
 	}
 
-	if frontmatter.Fields["title"] != "Test Project" {
+	if frontmatter.Fields["title"] != testTitleProject {
 		t.Errorf(
 			"Fields[title] = %v, want %v",
 			frontmatter.Fields["title"],
-			"Test Project",
+			testTitleProject,
 		)
 	}
 }

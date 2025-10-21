@@ -10,16 +10,13 @@ import (
 	templaterepo "github.com/JackMatanky/lithos/internal/adapters/spi/template"
 	templatedomain "github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
+	testutils "github.com/JackMatanky/lithos/tests/utils"
 )
 
 const testTemplateFile = "template.txt"
 
-// mockFileSystemPort implements spi.FileSystemPort for testing.
-type mockFileSystemPort struct {
-	readFileFunc  func(path string) ([]byte, error)
-	writeFileFunc func(path string, data []byte) error
-	writtenFiles  map[string][]byte
-}
+// Using shared mock from testutils.
+type mockFileSystemPort = testutils.MockFileSystemPort
 
 // createTemplateEngine creates a template engine with concrete adapters for
 // testing.
@@ -35,30 +32,10 @@ func createTemplateParser() spi.TemplateParser {
 }
 
 func newMockFileSystemPort() *mockFileSystemPort {
-	return &mockFileSystemPort{
-		writtenFiles: make(map[string][]byte),
-	}
+	return testutils.NewMockFileSystemPort()
 }
 
-func (m *mockFileSystemPort) ReadFile(path string) ([]byte, error) {
-	if m.readFileFunc != nil {
-		return m.readFileFunc(path)
-	}
-	return nil, errors.New("mock not configured")
-}
-
-func (m *mockFileSystemPort) WriteFileAtomic(path string, data []byte) error {
-	if m.writeFileFunc != nil {
-		return m.writeFileFunc(path, data)
-	}
-	// Default behavior: store written data
-	m.writtenFiles[path] = data
-	return nil
-}
-
-func (m *mockFileSystemPort) Walk(root string, fn spi.WalkFunc) error {
-	return errors.New("not implemented")
-}
+// Methods are implemented by the shared mock
 
 func TestCobraCLIAdapter_Execute_VersionCommand(t *testing.T) {
 	mockFS := newMockFileSystemPort()
@@ -198,12 +175,12 @@ func TestCobraCLIAdapter_Execute_NoArgs(t *testing.T) {
 func TestCobraCLIAdapter_Execute_NewCommand_Success(t *testing.T) {
 	expectedContent := []byte("Hello, {{.Name}}!")
 	mockFS := newMockFileSystemPort()
-	mockFS.readFileFunc = func(path string) ([]byte, error) {
+	mockFS.SetReadFileFunc(func(path string) ([]byte, error) {
 		if path == testTemplateFile {
 			return expectedContent, nil
 		}
 		return nil, errors.New("file not found")
-	}
+	})
 	templateEngine := createTemplateEngine()
 	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
@@ -242,7 +219,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_Success(t *testing.T) {
 	}
 
 	// Verify file was written with correct content
-	if writtenData, exists := mockFS.writtenFiles["template.md"]; !exists {
+	if writtenData, exists := mockFS.GetWrittenFiles()["template.md"]; !exists {
 		t.Error("Expected template.md to be written")
 	} else if !strings.Contains(string(writtenData), "Hello, <no value>!") {
 		t.Errorf(
@@ -254,9 +231,9 @@ func TestCobraCLIAdapter_Execute_NewCommand_Success(t *testing.T) {
 
 func TestCobraCLIAdapter_Execute_NewCommand_FileNotFound(t *testing.T) {
 	mockFS := newMockFileSystemPort()
-	mockFS.readFileFunc = func(path string) ([]byte, error) {
+	mockFS.SetReadFileFunc(func(path string) ([]byte, error) {
 		return nil, errors.New("file not found")
-	}
+	})
 	templateEngine := createTemplateEngine()
 	templateRepo := templaterepo.NewFSAdapter(
 		mockFS,
@@ -296,15 +273,15 @@ func TestCobraCLIAdapter_Execute_NewCommand_NoArgs(t *testing.T) {
 func TestCobraCLIAdapter_Execute_NewCommand_WriteFailure(t *testing.T) {
 	expectedContent := []byte("Hello, {{toLower \"WORLD\"}}!")
 	mockFS := newMockFileSystemPort()
-	mockFS.readFileFunc = func(path string) ([]byte, error) {
+	mockFS.SetReadFileFunc(func(path string) ([]byte, error) {
 		if path == testTemplateFile {
 			return expectedContent, nil
 		}
 		return nil, errors.New("file not found")
-	}
-	mockFS.writeFileFunc = func(path string, data []byte) error {
+	})
+	mockFS.SetWriteFileFunc(func(path string, data []byte) error {
 		return errors.New("disk full")
-	}
+	})
 
 	templateEngine := createTemplateEngine()
 	templateRepo := templaterepo.NewFSAdapter(
@@ -325,12 +302,12 @@ func TestCobraCLIAdapter_Execute_NewCommand_WriteFailure(t *testing.T) {
 func TestCobraCLIAdapter_Execute_NewCommand_WithFunctions(t *testing.T) {
 	expectedContent := []byte("Hello, {{toLower \"WORLD\"}}!")
 	mockFS := newMockFileSystemPort()
-	mockFS.readFileFunc = func(path string) ([]byte, error) {
+	mockFS.SetReadFileFunc(func(path string) ([]byte, error) {
 		if path == testTemplateFile {
 			return expectedContent, nil
 		}
 		return nil, errors.New("file not found")
-	}
+	})
 
 	templateEngine := createTemplateEngine()
 	templateRepo := templaterepo.NewFSAdapter(
@@ -370,7 +347,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_WithFunctions(t *testing.T) {
 	}
 
 	// Verify file was written with correct content (template functions applied)
-	if writtenData, exists := mockFS.writtenFiles["template.md"]; !exists {
+	if writtenData, exists := mockFS.GetWrittenFiles()["template.md"]; !exists {
 		t.Error("Expected template.md to be written")
 	} else if !strings.Contains(string(writtenData), "Hello, world!") {
 		t.Errorf(
@@ -411,12 +388,12 @@ func TestCobraCLIAdapter_Execute_NewCommand_FilenameGeneration(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockFS := newMockFileSystemPort()
-			mockFS.readFileFunc = func(path string) ([]byte, error) {
+			mockFS.SetReadFileFunc(func(path string) ([]byte, error) {
 				if path == tt.templatePath {
 					return []byte("Simple template"), nil
 				}
 				return nil, errors.New("file not found")
-			}
+			})
 
 			templateEngine := createTemplateEngine()
 			templateRepo := templaterepo.NewFSAdapter(
@@ -434,7 +411,7 @@ func TestCobraCLIAdapter_Execute_NewCommand_FilenameGeneration(t *testing.T) {
 			}
 
 			// Verify file was written with expected filename
-			if _, exists := mockFS.writtenFiles[tt.expectedFile]; !exists {
+			if _, exists := mockFS.GetWrittenFiles()[tt.expectedFile]; !exists {
 				t.Errorf("Expected %s to be written", tt.expectedFile)
 			}
 		})

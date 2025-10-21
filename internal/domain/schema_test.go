@@ -4,7 +4,10 @@ import (
 	"testing"
 )
 
-const testSchemaName = "test_schema"
+const (
+	testSchemaName        = "test_schema"
+	testInheritedProperty = "inherited"
+)
 
 func TestNewSchema(t *testing.T) {
 	props := []Property{
@@ -267,11 +270,11 @@ func TestSchemaSetResolvedProperties(t *testing.T) {
 			len(schema.ResolvedProperties),
 		)
 	}
-	if schema.ResolvedProperties[0].Name != "inherited" {
+	if schema.ResolvedProperties[0].Name != testInheritedProperty {
 		t.Errorf(
 			"First resolved property name = %q, want %q",
 			schema.ResolvedProperties[0].Name,
-			"inherited",
+			testInheritedProperty,
 		)
 	}
 }

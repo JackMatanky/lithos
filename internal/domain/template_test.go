@@ -5,6 +5,12 @@ import (
 	"text/template"
 )
 
+const (
+	testTemplateName    = "test"
+	testTemplateTitle   = "Test Name"
+	testTemplateContent = "Test Content"
+)
+
 func TestTemplateStruct(t *testing.T) {
 	// Test that Template struct can be created and accessed
 	tmpl := Template{
@@ -67,8 +73,12 @@ func TestTemplateWithParsedTemplate(t *testing.T) {
 	if tmpl.Parsed == nil {
 		t.Error("Parsed = nil, want non-nil")
 	}
-	if tmpl.Parsed != nil && tmpl.Parsed.Name() != "test" {
-		t.Errorf("Parsed.Name() = %q, want %q", tmpl.Parsed.Name(), "test")
+	if tmpl.Parsed != nil && tmpl.Parsed.Name() != testTemplateName {
+		t.Errorf(
+			"Parsed.Name() = %q, want %q",
+			tmpl.Parsed.Name(),
+			testTemplateName,
+		)
 	}
 }
 
@@ -99,8 +109,8 @@ func TestTemplateFieldTypes(t *testing.T) {
 
 	// Test assignment
 	tmpl.FilePath = testPath
-	tmpl.Name = "Test Name"
-	tmpl.Content = "Test Content"
+	tmpl.Name = testTemplateTitle
+	tmpl.Content = testTemplateContent
 	tmpl.Parsed = &template.Template{Tree: nil}
 
 	if tmpl.FilePath != testPath {

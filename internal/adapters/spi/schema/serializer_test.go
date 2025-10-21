@@ -98,7 +98,7 @@ func TestMarshalProperty_BoolSpec(t *testing.T) {
 }
 
 func TestUnmarshalProperty_StringSpec(t *testing.T) {
-	data, err := readTestDataFile(t, "string-property.json")
+	data, err := readTestDataFile(t, "string.json")
 	if err != nil {
 		t.Fatalf("Failed to read test data file: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestUnmarshalProperty_StringSpec(t *testing.T) {
 }
 
 func TestUnmarshalProperty_FileSpec(t *testing.T) {
-	data, err := readTestDataFile(t, "file-property.json")
+	data, err := readTestDataFile(t, "file.json")
 	if err != nil {
 		t.Fatalf("Failed to read test data file: %v", err)
 	}
