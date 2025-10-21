@@ -259,7 +259,7 @@ _coverage_html:
 
 # ----------------------- Test Recipes ----------------------- #
 
-# Run all unit tests
+# Run all tests
 [group("Testing")]
 test:
     @echo "Running tests..."
