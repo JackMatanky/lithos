@@ -35,7 +35,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Load(ctx context.Context) error`
 - `Get(name string) (Schema, bool)`
 
-**Dependencies:** SchemaEnginePort (filesystem adapter), PropertyBank loader, Config (schema directory resolution), Registry package, Logger.
+**Dependencies:** SchemaLoaderPort (filesystem adapter), PropertyBank loader, Config (schema directory resolution), Registry package, Logger.
 
 **Technology Stack:** Go `encoding/json`, custom builder pattern for inheritance resolution, cycle detection via DFS, `sync.RWMutex` guarded registry.
 
@@ -158,7 +158,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Technology Stack:** Go JSON decoding with optional in-memory memoization backed by `sync.RWMutex`.
 
-### SchemaEnginePort
+### SchemaLoaderPort
 
 **Responsibility:** Load schema and property bank definitions for the registry.
 
@@ -248,7 +248,7 @@ Concrete adapters live in `internal/adapters/` and satisfy the driven ports with
 
 ### SchemaLoaderAdapter
 
-**Responsibility:** Fulfill `SchemaEnginePort` by loading schema/property bank definitions from disk.
+**Responsibility:** Fulfill `SchemaLoaderPort` by loading schema/property bank definitions from disk.
 
 **Key Interfaces:**
 
@@ -458,7 +458,7 @@ graph TD
         FS[FileSystemPort]
         CC[CacheCommandPort]
         CQ[CacheQueryPort]
-        SE[SchemaEnginePort]
+        SE[SchemaLoaderPort]
         TR[TemplateRepositoryPort]
         IP[InteractivePort]
         CP[ConfigPort]
@@ -505,7 +505,7 @@ graph TD
 - FS = FileSystemPort,
 - CC = CacheCommandPort,
 - CQ = CacheQueryPort,
-- SE = SchemaEnginePort,
+- SE = SchemaLoaderPort,
 - TR = TemplateRepositoryPort,
 - IP = InteractivePort,
 - CP = ConfigPort,

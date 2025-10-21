@@ -1,0 +1,8 @@
+{
+  "name": "malformed",
+  "properties": {
+    "email": {
+      "type": "string"
+    }
+  }
+}

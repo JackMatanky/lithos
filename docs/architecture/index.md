@@ -42,7 +42,7 @@
       - [FileSystemPort](./components.md#filesystemport)
       - [CacheCommandPort](./components.md#cachecommandport)
       - [CacheQueryPort](./components.md#cachequeryport)
-      - [SchemaEnginePort](./components.md#schemaengineport)
+      - [SchemaLoaderPort](./components.md#schemaloaderport)
       - [TemplateRepositoryPort](./components.md#templaterepositoryport)
       - [InteractivePort (PromptPort & FuzzyFinderPort)](./components.md#interactiveport-promptport-fuzzyfinderport)
       - [ConfigPort](./components.md#configport)

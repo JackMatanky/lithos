@@ -10,7 +10,7 @@ All critical issues identified in the validation report for Stories 2.3-2.7 have
 **Status Changed**: Approved → Draft
 **Rationale**: Story was marked as approved but had incomplete tasks
 
-### Story 2.4: Schema Engine Port and Adapter
+### Story 2.4: Schema Loader Port and Adapter
 **Status Changed**: Approved → Draft
 **Rationale**: Story was marked as approved but had incomplete tasks
 
@@ -36,7 +36,7 @@ All critical issues identified in the validation report for Stories 2.3-2.7 have
 - ✅ Removed JSON handling from domain model responsibilities
 - ✅ Enhanced task descriptions to specify adapter integration requirements
 
-**Story 2.4 - Schema Engine Port and Adapter:**
+**Story 2.4 - Schema Loader Port and Adapter:**
 - ✅ Updated interface to return domain objects directly (Schema, PropertyBank vs DTOs)
 - ✅ Clarified that adapter handles JSON parsing and PropertySpec discriminator logic
 - ✅ Enhanced tasks to specify domain constructor usage pattern

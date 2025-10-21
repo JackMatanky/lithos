@@ -211,7 +211,8 @@ func validateStringPattern(str, pattern string, raw interface{}) error {
 		return nil // no pattern constraint
 	}
 
-	matched, err := regexp.MatchString(pattern, str)
+	// Compile regex once for better performance
+	compiled, err := regexp.Compile(pattern)
 	if err != nil {
 		return errors.NewValidationError(
 			"value",
@@ -220,7 +221,7 @@ func validateStringPattern(str, pattern string, raw interface{}) error {
 		)
 	}
 
-	if !matched {
+	if !compiled.MatchString(str) {
 		return errors.NewValidationError(
 			"value",
 			fmt.Sprintf("must match pattern: %s", pattern),

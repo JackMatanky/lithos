@@ -126,7 +126,7 @@ graph TB
 
 **Dependency Inversion Principle (DIP):** High-level domain modules depend on abstractions (ports), not concrete adapters. Adapters import core packages and implement port interfaces; core never imports adapters. Enables independent evolution—replace Cobra with another CLI framework by swapping one adapter. Prevents Go import cycles (mandatory for clean hexagonal architecture).
 
-**Lean Ports:** Ports have 2-4 methods representing service needs. Adapters handle complexity (file I/O, parsing, validation algorithms). Example: SchemaEnginePort has 2 methods (LoadSchemas, Validate), not 9. Prevents God Object ports.
+**Lean Ports:** Ports have 2-4 methods representing service needs. Adapters handle complexity (file I/O, parsing, validation algorithms). Example: SchemaLoaderPort has 2 methods (LoadSchemas, Validate), not 9. Prevents God Object ports.
 
 **YAGNI Over Premature Optimization:** Single Note model for MVP (not separate read/write models). Config struct passed directly (no ConfigPort). Cache adapters use os package directly (no FileRead/WritePort abstraction). Add abstraction when compelling need emerges.
 

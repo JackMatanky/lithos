@@ -1,4 +1,4 @@
-package property
+package schema
 
 import (
 	"encoding/json"
