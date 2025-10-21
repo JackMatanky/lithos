@@ -2,7 +2,7 @@
 
 ## Testing Philosophy
 
-- **Approach:** Test-after development with table-driven tests for comprehensive scenario coverage
+- **Approach:** Test-driven development with table-driven tests for comprehensive scenario coverage
 - **Coverage Goals:** ≥95% for `internal/app` and `internal/adapters` components, ≥85% overall project coverage
 - **Test Pyramid:** Unit tests (70%), Integration tests (25%), E2E/Smoke tests (5%)
 - **Quality Gates:** All tests must pass, minimum coverage thresholds enforced, no critical linting violations
