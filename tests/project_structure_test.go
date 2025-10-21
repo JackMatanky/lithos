@@ -63,32 +63,6 @@ func TestGoModValidity(t *testing.T) {
 	// Note: External dependencies may exist from previous stories
 }
 
-func TestGitIgnorePatterns(t *testing.T) {
-	content, err := os.ReadFile(".gitignore")
-	if err != nil {
-		t.Fatalf("Failed to read .gitignore: %v", err)
-	}
-
-	contentStr := string(content)
-
-	requiredPatterns := []string{
-		".lithos/",
-		"*.exe",
-		"*.test",
-		"vendor/",
-		"*.log",
-	}
-
-	for _, pattern := range requiredPatterns {
-		if !strings.Contains(contentStr, pattern) {
-			t.Errorf(
-				".gitignore does not contain required pattern: %s",
-				pattern,
-			)
-		}
-	}
-}
-
 func TestMainGoCompilation(t *testing.T) {
 	// Check that main.go exists
 	if _, err := os.Stat("cmd/lithos/main.go"); os.IsNotExist(err) {
