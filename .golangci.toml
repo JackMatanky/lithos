@@ -311,7 +311,7 @@ custom-order = false
 # ]
 
 [formatters.settings.goimports]
-local-prefixes = ["flowforge"]
+local-prefixes = ["lithos"]
 
 [formatters.settings.golines]
 # Target maximum line length. Default: 100
