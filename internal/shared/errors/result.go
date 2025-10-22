@@ -4,14 +4,25 @@
 // for better error handling ergonomics.
 //
 // The package is organized across multiple files:
-// - result.go: Result[T] type and functional error handling
-// - types.go: Domain-specific error types
+// - result.go: Result[T] type, ResultInterface, and functional error handling
+// - types.go: BaseError composition system and domain-specific error types
+// - validation.go: Comprehensive validation system with ValidationResult
 // - wrapping.go: Error wrapping and utility functions
 package errors
 
+// ResultInterface defines the common interface for result types.
+// This allows for different implementations while maintaining API compatibility.
+type ResultInterface[T any] interface {
+	IsOk() bool
+	IsErr() bool
+	Unwrap() (T, error)
+	Value() T
+	Error() error
+}
+
 // Result represents a value that can be either a success (T) or an error.
 // This implements a functional error handling pattern similar to Rust's
-// Result<T>.
+// Result<T> and satisfies the ResultInterface[T].
 type Result[T any] struct {
 	value T
 	err   error
