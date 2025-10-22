@@ -15,10 +15,10 @@
 #### Structure
 
 - **Domain**
-  - *Models (Entities/Value Objects)*
+  - _Models (Entities/Value Objects)_
     - Pure business data + invariants.
     - **MUST NOT** depend on frameworks, transport, storage, or application services.
-  - *Services (Use Cases/Application Services)*
+  - _Services (Use Cases/Application Services)_
     - Orchestrate domain behavior; enforce policies.
     - **MAY** depend on domain models and ports.
     - **MUST NOT** depend on adapters or external libraries.
