@@ -206,10 +206,10 @@ allow-empty-returns = true
 lines = 60
 statements = 30
 
-[linters.settings.funcorder]
+# [linters.settings.funcorder]
 # Place exported funcs/methods before unexported.
 # Keep struct-method ordering relaxed to avoid noise in impl-heavy types.
-struct-method = false
+# struct-method = false
 
 [linters.settings.gocognit]
 # Cognitive complexity threshold (readability-focused).
