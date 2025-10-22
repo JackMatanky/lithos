@@ -7,6 +7,11 @@ import (
 	"github.com/JackMatanky/lithos/internal/domain"
 )
 
+// Test helper to create pointer to float64.
+func ptrFloat64(f float64) *float64 {
+	return &f
+}
+
 func TestSchemaValidator_ValidateSchema(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -393,6 +398,204 @@ func TestSchemaValidator_ValidatePropertyValue(t *testing.T) {
 				domain.StringPropertySpec{},
 			),
 			value:        "single-tag",
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "valid number value passes validation",
+			property: domain.NewProperty(
+				"count",
+				false,
+				false,
+				domain.NumberPropertySpec{},
+			),
+			value:        float64(42),
+			expectValid:  true,
+			expectErrors: 0,
+		},
+		{
+			name: "number value below minimum fails validation",
+			property: domain.NewProperty(
+				"count",
+				false,
+				false,
+				domain.NumberPropertySpec{
+					Min: ptrFloat64(10),
+					Max: ptrFloat64(100),
+				},
+			),
+			value:        float64(5),
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "number value above maximum fails validation",
+			property: domain.NewProperty(
+				"count",
+				false,
+				false,
+				domain.NumberPropertySpec{
+					Min: ptrFloat64(10),
+					Max: ptrFloat64(100),
+				},
+			),
+			value:        float64(150),
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "number value violating step fails validation",
+			property: domain.NewProperty(
+				"count",
+				false,
+				false,
+				domain.NumberPropertySpec{Step: ptrFloat64(5)},
+			),
+			value:        float64(13),
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "invalid number type fails validation",
+			property: domain.NewProperty(
+				"count",
+				false,
+				false,
+				domain.NumberPropertySpec{},
+			),
+			value:        "not-a-number",
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "valid date value passes validation",
+			property: domain.NewProperty(
+				"created",
+				false,
+				false,
+				domain.DatePropertySpec{},
+			),
+			value:        "2023-10-22T15:04:05Z",
+			expectValid:  true,
+			expectErrors: 0,
+		},
+		{
+			name: "invalid date format fails validation",
+			property: domain.NewProperty(
+				"created",
+				false,
+				false,
+				domain.DatePropertySpec{Format: "2006-01-02"},
+			),
+			value:        "2023/10/22",
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "invalid date type fails validation",
+			property: domain.NewProperty(
+				"created",
+				false,
+				false,
+				domain.DatePropertySpec{},
+			),
+			value:        123,
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "valid file value passes validation",
+			property: domain.NewProperty(
+				"attachment",
+				false,
+				false,
+				domain.FilePropertySpec{},
+			),
+			value:        "path/to/file.txt",
+			expectValid:  true,
+			expectErrors: 0,
+		},
+		{
+			name: "invalid file type fails validation",
+			property: domain.NewProperty(
+				"attachment",
+				false,
+				false,
+				domain.FilePropertySpec{},
+			),
+			value:        123,
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "valid bool value passes validation",
+			property: domain.NewProperty(
+				"published",
+				false,
+				false,
+				domain.BoolPropertySpec{},
+			),
+			value:        true,
+			expectValid:  true,
+			expectErrors: 0,
+		},
+		{
+			name: "invalid bool type fails validation",
+			property: domain.NewProperty(
+				"published",
+				false,
+				false,
+				domain.BoolPropertySpec{},
+			),
+			value:        "not-a-bool",
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "string enum validation passes with valid value",
+			property: domain.NewProperty(
+				"status",
+				false,
+				false,
+				domain.StringPropertySpec{Enum: []string{"draft", "published"}},
+			),
+			value:        "draft",
+			expectValid:  true,
+			expectErrors: 0,
+		},
+		{
+			name: "string enum validation fails with invalid value",
+			property: domain.NewProperty(
+				"status",
+				false,
+				false,
+				domain.StringPropertySpec{Enum: []string{"draft", "published"}},
+			),
+			value:        "archived",
+			expectValid:  false,
+			expectErrors: 1,
+		},
+		{
+			name: "string pattern validation passes with valid pattern",
+			property: domain.NewProperty(
+				"email",
+				false,
+				false,
+				domain.StringPropertySpec{Pattern: `^[a-z]+@[a-z]+\.[a-z]+$`},
+			),
+			value:        "test@example.com",
+			expectValid:  true,
+			expectErrors: 0,
+		},
+		{
+			name: "string pattern validation fails with invalid pattern",
+			property: domain.NewProperty(
+				"email",
+				false,
+				false,
+				domain.StringPropertySpec{Pattern: `^[a-z]+@[a-z]+\.[a-z]+$`},
+			),
+			value:        "invalid-email",
 			expectValid:  false,
 			expectErrors: 1,
 		},
