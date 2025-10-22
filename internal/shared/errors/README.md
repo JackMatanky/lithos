@@ -25,7 +25,7 @@ This package is a **shared internal package** - a cross-cutting concern used by 
 The package is organized across multiple files for better maintainability and Single Responsibility Principle compliance:
 
 - **`README.md`**: Package documentation and usage guide
-- **`result.go`**: Result[T] generic type and functional error handling methods
+- **`result.go`**: Result[T] type, ResultInterface, and functional error handling methods
 - **`types.go`**: BaseError composition system and domain-specific error types with constructors
 - **`validation.go`**: Comprehensive validation error system with aggregation
 - **`wrapping.go`**: Error wrapping and utility functions
@@ -169,12 +169,21 @@ fmt.Println(fsErr.Error()) // "[FileSystemError] open '/tmp/readonly.txt': permi
 
 ## Result[T] Pattern
 
-The `Result[T]` type implements functional error handling similar to Rust's `Result<T>`.
+The `Result[T]` type implements functional error handling similar to Rust's `Result<T>` and satisfies the `ResultInterface[T]` for polymorphic usage.
 
 ```go
 type Result[T any] struct {
     value T
     err   error
+}
+
+// ResultInterface allows for different result implementations
+type ResultInterface[T any] interface {
+    IsOk() bool
+    IsErr() bool
+    Unwrap() (T, error)
+    Value() T
+    Error() error
 }
 ```
 
@@ -231,13 +240,20 @@ func validateUser(email string) Result[User] {
     return Ok(user)
 }
 
-// Usage
+// Usage with concrete type
 result := validateUser("user@example.com")
 if result.IsOk() {
     user := result.Value()
     // Use user...
 } else {
     log.Printf("Validation failed: %v", result.Error())
+}
+
+// Usage with interface (allows different implementations)
+var resultInterface ResultInterface[User] = validateUser("user@example.com")
+if resultInterface.IsOk() {
+    user := resultInterface.Value()
+    // Use user...
 }
 ```
 
