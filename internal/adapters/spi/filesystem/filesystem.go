@@ -68,6 +68,22 @@ func (a *LocalFileSystemAdapter) WriteFileAtomic(
 	return nil
 }
 
+// Walk traverses a directory tree starting at root, calling fn for each
+// file and directory encountered. The fn callback receives the file path
+// and a boolean indicating if it's a directory.
+// If fn returns an error, walking stops and the error is returned.
+func (a *LocalFileSystemAdapter) Walk(root string, fn spi.WalkFunc) error {
+	return filepath.WalkDir(
+		root,
+		func(path string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			return fn(path, d.IsDir())
+		},
+	)
+}
+
 // ensureDirectory creates the directory structure if it doesn't exist.
 func (a *LocalFileSystemAdapter) ensureDirectory(dir string) error {
 	return os.MkdirAll(dir, 0o750)
@@ -104,20 +120,4 @@ func (a *LocalFileSystemAdapter) atomicRename(
 	tempPath, targetPath string,
 ) error {
 	return os.Rename(tempPath, targetPath)
-}
-
-// Walk traverses a directory tree starting at root, calling fn for each
-// file and directory encountered. The fn callback receives the file path
-// and a boolean indicating if it's a directory.
-// If fn returns an error, walking stops and the error is returned.
-func (a *LocalFileSystemAdapter) Walk(root string, fn spi.WalkFunc) error {
-	return filepath.WalkDir(
-		root,
-		func(path string, d os.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			return fn(path, d.IsDir())
-		},
-	)
 }

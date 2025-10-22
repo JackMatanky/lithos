@@ -89,6 +89,14 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ResolvePath resolves a path relative to VaultPath if it's not absolute.
+func (c *Config) ResolvePath(path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(c.VaultPath, path)
+}
+
 // validateVaultPath checks that VaultPath exists and is a readable directory.
 func (c *Config) validateVaultPath() error {
 	if c.VaultPath == "" {
@@ -138,12 +146,4 @@ func (c *Config) validateLogLevel() error {
 		c.LogLevel,
 		allowedLevels,
 	)
-}
-
-// ResolvePath resolves a path relative to VaultPath if it's not absolute.
-func (c *Config) ResolvePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(c.VaultPath, path)
 }

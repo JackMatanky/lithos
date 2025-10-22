@@ -18,6 +18,30 @@ func NewStaticTemplateParser() *StaticTemplateParser {
 	return &StaticTemplateParser{}
 }
 
+// Parse parses the template content using Go's text/template engine.
+// It accepts a context for cancellation support and returns a Result
+// containing the parsed template or an error if parsing fails.
+func (p *StaticTemplateParser) Parse(
+	ctx context.Context,
+	content string,
+) errors.Result[*template.Template] {
+	// Check for context cancellation before starting
+	if p.checkContextCancellation(ctx) {
+		return errors.Err[*template.Template](ctx.Err())
+	}
+
+	// Create a new template with custom functions registered
+	tmpl := p.createTemplate()
+
+	// Parse the template content
+	parsedTemplate, err := p.parseTemplate(tmpl, content)
+	if err != nil {
+		return errors.Err[*template.Template](err)
+	}
+
+	return errors.Ok(parsedTemplate)
+}
+
 // checkContextCancellation checks if the context has been canceled.
 // Returns true if canceled, false otherwise.
 func (p *StaticTemplateParser) checkContextCancellation(
@@ -44,30 +68,6 @@ func (p *StaticTemplateParser) parseTemplate(
 	content string,
 ) (*template.Template, error) {
 	return tmpl.Parse(content)
-}
-
-// Parse parses the template content using Go's text/template engine.
-// It accepts a context for cancellation support and returns a Result
-// containing the parsed template or an error if parsing fails.
-func (p *StaticTemplateParser) Parse(
-	ctx context.Context,
-	content string,
-) errors.Result[*template.Template] {
-	// Check for context cancellation before starting
-	if p.checkContextCancellation(ctx) {
-		return errors.Err[*template.Template](ctx.Err())
-	}
-
-	// Create a new template with custom functions registered
-	tmpl := p.createTemplate()
-
-	// Parse the template content
-	parsedTemplate, err := p.parseTemplate(tmpl, content)
-	if err != nil {
-		return errors.Err[*template.Template](err)
-	}
-
-	return errors.Ok(parsedTemplate)
 }
 
 // Ensure StaticTemplateParser implements spi.TemplateParser.

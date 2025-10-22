@@ -45,6 +45,23 @@ func NewSchemaRegistryAdapter(
 }
 
 /* ---------------------------------------------------------- */
+/*                    SchemaRegistryPort API                  */
+/* ---------------------------------------------------------- */
+
+// Get implements SchemaRegistryPort.Get.
+func (s *SchemaRegistryAdapter) Get(name string) (domain.Schema, bool) {
+	if strings.TrimSpace(name) == "" {
+		return domain.Schema{}, false
+	}
+
+	if !s.store.Exists(name) {
+		return domain.Schema{}, false
+	}
+
+	return s.store.Get(name), true
+}
+
+/* ---------------------------------------------------------- */
 /*                    Initialization Process                  */
 /* ---------------------------------------------------------- */
 
@@ -160,21 +177,4 @@ func (s *SchemaRegistryAdapter) logCompletion(count int) {
 
 func newRegistryLogger() logger.Logger {
 	return logger.WithComponent("spi.schema.registry")
-}
-
-/* ---------------------------------------------------------- */
-/*                    SchemaRegistryPort API                  */
-/* ---------------------------------------------------------- */
-
-// Get implements SchemaRegistryPort.Get.
-func (s *SchemaRegistryAdapter) Get(name string) (domain.Schema, bool) {
-	if strings.TrimSpace(name) == "" {
-		return domain.Schema{}, false
-	}
-
-	if !s.store.Exists(name) {
-		return domain.Schema{}, false
-	}
-
-	return s.store.Get(name), true
 }
