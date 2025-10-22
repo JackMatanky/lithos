@@ -126,7 +126,8 @@ func (u propertyUnmarshaller) unmarshal() (domain.Property, error) {
 	}
 
 	property := buildProperty(pd, spec)
-	return validateProperty(property)
+	// Validation moved to SchemaEngine
+	return property, nil
 }
 
 func (u propertyUnmarshaller) decodeJSON() (*propertyDTO, error) {
@@ -154,13 +155,6 @@ func buildProperty(
 		Array:    pd.Array,
 		Spec:     spec,
 	}
-}
-
-func validateProperty(property domain.Property) (domain.Property, error) {
-	if err := property.Validate(); err != nil {
-		return domain.Property{}, err
-	}
-	return property, nil
 }
 
 func mergeFields(

@@ -196,16 +196,11 @@ func (s *SchemaLoaderAdapter) checkSelfReference(name, refName string) error {
 /* ---------------------------------------------------------- */
 
 // validateDomainSchema validates a domain schema object.
+// NOTE: Validation moved to SchemaEngine - this method is deprecated.
 func (s *SchemaLoaderAdapter) validateDomainSchema(
 	schema *domain.Schema,
 	schemaName string,
 ) error {
-	if err := schema.Validate(); err != nil {
-		return errors.NewSchemaError(
-			schemaName,
-			fmt.Sprintf("schema validation failed: %v", err),
-			err,
-		)
-	}
+	// Validation now handled by SchemaEngine.LoadSchema()
 	return nil
 }

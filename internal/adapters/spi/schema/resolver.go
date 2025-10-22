@@ -41,16 +41,8 @@ func NewInheritanceResolver(
 	lookup := make(map[string]domain.Schema, len(schemas))
 	cache := make(map[string]domain.Schema, len(schemas))
 
-	// Build lookup table and validate all schemas
+	// Build lookup table (validation moved to SchemaEngine)
 	for _, schema := range schemas {
-		if err := schema.Validate(); err != nil {
-			return nil, sharederrors.NewSchemaError(
-				schema.Name,
-				fmt.Sprintf("schema validation failed: %v", err),
-				err,
-			)
-		}
-
 		// Check for duplicate schema names
 		if _, exists := lookup[schema.Name]; exists {
 			return nil, sharederrors.NewSchemaError(

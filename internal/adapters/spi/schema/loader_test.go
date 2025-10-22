@@ -176,15 +176,15 @@ func TestLoadPropertyBank_Success(t *testing.T) {
 		t.Fatalf("LoadPropertyBank failed: %v", err)
 	}
 
-	if !bank.HasProperty("common-email") {
+	if _, exists := bank.Properties["common-email"]; !exists {
 		t.Error("Expected property 'common-email' in bank")
 	}
-	if !bank.HasProperty("user-profile") {
+	if _, exists := bank.Properties["user-profile"]; !exists {
 		t.Error("Expected property 'user-profile' in bank")
 	}
 
 	// Verify property details
-	emailProp, exists := bank.GetProperty("common-email")
+	emailProp, exists := bank.Properties["common-email"]
 	if !exists {
 		t.Fatal("common-email property not found")
 	}

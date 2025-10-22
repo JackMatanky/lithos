@@ -1,5 +1,8 @@
 package errors
 
+// Package errors provides structured error types for the Lithos application.
+// This file contains base error types and constructors.
+
 import "fmt"
 
 // BaseError is the minimal building block for all Lithos error types. It keeps
