@@ -4,12 +4,69 @@ import (
 	"fmt"
 )
 
-// ValidationError represents validation failures with field-specific
-// information.
+// BaseError provides a common structure for domain errors with consistent
+// formatting.
+type BaseError struct {
+	Type    string      // Error type identifier (e.g., "ValidationError", "NotFoundError")
+	Context string      // Primary context (field name, resource type, etc.)
+	Detail  string      // Specific error detail or message
+	Value   interface{} // Optional associated value
+	Cause   error       // Optional underlying cause
+}
+
+// NewBaseError creates a new BaseError with consistent formatting.
+func NewBaseError(
+	errType, context, detail string,
+	value interface{},
+	cause error,
+) BaseError {
+	return BaseError{
+		Type:    errType,
+		Context: context,
+		Detail:  detail,
+		Value:   value,
+		Cause:   cause,
+	}
+}
+
+// Error implements the error interface for BaseError.
+func (e BaseError) Error() string {
+	if e.Cause != nil {
+		// Avoid duplicating cause if detail already contains it
+		if e.Detail == e.Cause.Error() {
+			return fmt.Sprintf("[%s] %s: %s", e.Type, e.Context, e.Detail)
+		}
+		return fmt.Sprintf(
+			"[%s] %s: %s: %v",
+			e.Type,
+			e.Context,
+			e.Detail,
+			e.Cause,
+		)
+	}
+	if e.Value != nil {
+		return fmt.Sprintf(
+			"[%s] %s: %s (value: %v)",
+			e.Type,
+			e.Context,
+			e.Detail,
+			e.Value,
+		)
+	}
+	return fmt.Sprintf("[%s] %s: %s", e.Type, e.Context, e.Detail)
+}
+
+// Unwrap returns the underlying cause error for error chaining.
+func (e BaseError) Unwrap() error {
+	return e.Cause
+}
+
+// ValidationError represents simple validation failures with field-specific
+// information. For comprehensive validation with multiple errors, use the
+// validation.go system.
 type ValidationError struct {
-	Field   string
-	Message string
-	Value   interface{}
+	BaseError
+	Field string
 }
 
 // NewValidationError creates a new ValidationError.
@@ -18,26 +75,35 @@ func NewValidationError(
 	value interface{},
 ) ValidationError {
 	return ValidationError{
-		Field:   field,
-		Message: message,
-		Value:   value,
+		BaseError: NewBaseError(
+			"ValidationError",
+			"field '"+field+"'",
+			message,
+			nil,
+			nil,
+		),
+		Field: field,
 	}
-}
-
-// Error implements the error interface for ValidationError.
-func (e ValidationError) Error() string {
-	return fmt.Sprintf("[ValidationError] field '%s': %s", e.Field, e.Message)
 }
 
 // NotFoundError represents resource not found errors.
 type NotFoundError struct {
+	BaseError
 	Resource   string
 	Identifier string
 }
 
 // NewNotFoundError creates a new NotFoundError.
 func NewNotFoundError(resource, identifier string) NotFoundError {
+	context := fmt.Sprintf("%s '%s'", resource, identifier)
 	return NotFoundError{
+		BaseError: NewBaseError(
+			"NotFoundError",
+			context,
+			"not found",
+			nil,
+			nil,
+		),
 		Resource:   resource,
 		Identifier: identifier,
 	}
@@ -46,7 +112,8 @@ func NewNotFoundError(resource, identifier string) NotFoundError {
 // Error implements the error interface for NotFoundError.
 func (e NotFoundError) Error() string {
 	return fmt.Sprintf(
-		"[NotFoundError] %s '%s' not found",
+		"[%s] %s '%s' not found",
+		e.Type,
 		e.Resource,
 		e.Identifier,
 	)
@@ -54,129 +121,115 @@ func (e NotFoundError) Error() string {
 
 // ConfigurationError represents configuration-related errors.
 type ConfigurationError struct {
-	Key     string
-	Message string
+	BaseError
+	Key string
 }
 
 // NewConfigurationError creates a new ConfigurationError.
 func NewConfigurationError(key, message string) ConfigurationError {
 	return ConfigurationError{
-		Key:     key,
-		Message: message,
+		BaseError: NewBaseError(
+			"ConfigurationError",
+			"key '"+key+"'",
+			message,
+			nil,
+			nil,
+		),
+		Key: key,
 	}
-}
-
-// Error implements the error interface for ConfigurationError.
-func (e ConfigurationError) Error() string {
-	return fmt.Sprintf("[ConfigurationError] key '%s': %s", e.Key, e.Message)
 }
 
 // TemplateError represents template processing errors.
 type TemplateError struct {
+	BaseError
 	Template string
 	Line     int
-	Message  string
 }
 
 // NewTemplateError creates a new TemplateError.
 func NewTemplateError(template string, line int, message string) TemplateError {
+	context := fmt.Sprintf("template '%s'", template)
+	if line > 0 {
+		context = fmt.Sprintf("template '%s' line %d", template, line)
+	}
 	return TemplateError{
-		Template: template,
-		Line:     line,
-		Message:  message,
+		BaseError: NewBaseError("TemplateError", context, message, nil, nil),
+		Template:  template,
+		Line:      line,
 	}
-}
-
-// Error implements the error interface for TemplateError.
-func (e TemplateError) Error() string {
-	if e.Line > 0 {
-		return fmt.Sprintf(
-			"[TemplateError] template '%s' line %d: %s",
-			e.Template,
-			e.Line,
-			e.Message,
-		)
-	}
-	return fmt.Sprintf(
-		"[TemplateError] template '%s': %s",
-		e.Template,
-		e.Message,
-	)
 }
 
 // SchemaError represents schema-related errors.
 type SchemaError struct {
-	Schema  string
-	Message string
+	BaseError
+	Schema string
 }
 
 // NewSchemaError creates a new SchemaError.
 func NewSchemaError(schema, message string) SchemaError {
 	return SchemaError{
-		Schema:  schema,
-		Message: message,
+		BaseError: NewBaseError(
+			"SchemaError",
+			"schema '"+schema+"'",
+			message,
+			nil,
+			nil,
+		),
+		Schema: schema,
 	}
 }
 
-// Error implements the error interface for SchemaError.
-func (e SchemaError) Error() string {
-	return fmt.Sprintf("[SchemaError] schema '%s': %s", e.Schema, e.Message)
-}
-
-// StorageError represents storage operation failures.
-type StorageError struct {
+// OperationError represents operation failures with path and cause information.
+// This consolidates StorageError and FileSystemError to prevent duplication.
+type OperationError struct {
+	BaseError
 	Operation string
 	Path      string
-	Cause     error
 }
 
-// NewStorageError creates a new StorageError.
-func NewStorageError(operation, path string, cause error) StorageError {
-	return StorageError{
+// NewOperationError creates a new OperationError with the specified error type.
+func NewOperationError(
+	errType, operation, path string,
+	cause error,
+) OperationError {
+	context := fmt.Sprintf("%s '%s'", operation, path)
+	detail := "failed"
+	if cause != nil {
+		detail = cause.Error()
+	}
+	return OperationError{
+		BaseError: NewBaseError(errType, context, detail, nil, cause),
 		Operation: operation,
 		Path:      path,
-		Cause:     cause,
 	}
 }
 
-// Error implements the error interface for StorageError.
-func (e StorageError) Error() string {
+// NewStorageError creates a new storage operation error.
+func NewStorageError(operation, path string, cause error) OperationError {
+	return NewOperationError("StorageError", operation, path, cause)
+}
+
+// NewFileSystemError creates a new filesystem operation error.
+func NewFileSystemError(operation, path string, cause error) OperationError {
+	return NewOperationError("FileSystemError", operation, path, cause)
+}
+
+// Error implements the error interface for OperationError.
+func (e OperationError) Error() string {
 	if e.Cause != nil {
 		return fmt.Sprintf(
-			"[StorageError] %s '%s': %v",
+			"[%s] %s '%s': %s",
+			e.Type,
 			e.Operation,
 			e.Path,
 			e.Cause,
 		)
 	}
-	return fmt.Sprintf("[StorageError] %s '%s' failed", e.Operation, e.Path)
+	return fmt.Sprintf("[%s] %s '%s' %s", e.Type, e.Operation, e.Path, e.Detail)
 }
 
-// FileSystemError represents filesystem operation failures.
-type FileSystemError struct {
-	Operation string
-	Path      string
-	Cause     error
-}
+// StorageError alias for backward compatibility.
+type StorageError = OperationError
 
-// NewFileSystemError creates a new FileSystemError.
-func NewFileSystemError(operation, path string, cause error) FileSystemError {
-	return FileSystemError{
-		Operation: operation,
-		Path:      path,
-		Cause:     cause,
-	}
-}
-
-// Error implements the error interface for FileSystemError.
-func (e FileSystemError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf(
-			"[FileSystemError] %s '%s': %v",
-			e.Operation,
-			e.Path,
-			e.Cause,
-		)
-	}
-	return fmt.Sprintf("[FileSystemError] %s '%s' failed", e.Operation, e.Path)
-}
+// FileSystemError alias for backward compatibility.
+type FileSystemError = OperationError
