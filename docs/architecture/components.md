@@ -22,11 +22,28 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Execute(templateID string, ctx context.Context) (RenderResult, error)`
 - `Register(template Template)`
 
-**Dependencies:** TemplateRepositoryPort, InteractivePort (PromptPort/FuzzyFinderPort), QueryService (read interface), SchemaValidator, Logger.
+**Dependencies:** TemplateRepositoryPort, InteractivePort (PromptPort/FuzzyFinderPort), QueryService (read interface), FrontmatterValidator, SchemaValidator, Logger.
 
 **Technology Stack:** Go `text/template`, custom function map (`prompt`, `suggester`, `lookup`, `query`, `now`), closures wrapping port calls, zerolog for instrumentation.
 
 ### SchemaValidator
+
+**Responsibility:** Validate complete schema definitions and property banks to ensure data
+integrity before use in frontmatter validation or schema registration.
+
+**Key Interfaces:**
+
+- `ValidateSchema(ctx context.Context, schema Schema) Result[ValidationResult]`
+- `ValidatePropertyBank(ctx context.Context, bank PropertyBank) Result[ValidationResult]`
+
+**Dependencies:** Logger, Error package, Result[T] pattern.
+
+**Technology Stack:** Go stdlib validation, PropertySpec polymorphism, Result[T] pattern
+for functional error handling. All specific validation logic (property validation, spec
+validation, schema component validation) implemented as private methods behind the clean
+public API.
+
+### FrontmatterValidator
 
 **Responsibility:** Validate frontmatter against schema rules prior to note creation or during indexing.
 
@@ -35,9 +52,34 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Validate(schemaName string, fm Frontmatter) []ValidationError`
 - `Lint(template Template) []ValidationError` (stretch goal hook)
 
-**Dependencies:** SchemaRegistryPort, QueryService (for FileProperty resolution), Logger, Error package.
+**Dependencies:** SchemaEngine, QueryService (for FileProperty resolution), Logger, Error package.
 
 **Technology Stack:** Go stdlib (`reflect`, `regexp`, `time`), PropertySpec polymorphism, structured errors enriched with remediation tips.
+
+### SchemaEngine
+
+**Responsibility:** Coordinate schema loading, validation, and provide business logic
+operations for schema and property access within the application layer.
+
+**Key Interfaces:**
+
+- `LoadSchema(ctx context.Context) Result[[]Schema]` - Load and validate schemas through
+SchemaLoaderPort
+- `LoadPropertyBank(ctx context.Context) Result[*PropertyBank]` - Load and validate
+property bank through SchemaLoaderPort
+- `GetSchema(ctx context.Context, name string) Result[Schema]` - Retrieve validated schema
+by name
+- `HasSchema(ctx context.Context, name string) Result[bool]` - Check if schema exists
+- `GetProperty(ctx context.Context, name string) Result[Property]` - Retrieve property from
+property bank
+- `HasProperty(ctx context.Context, name string) Result[bool]` - Check if property exists
+in bank
+
+**Dependencies:** SchemaLoaderPort, SchemaValidator, Logger, Error package.
+
+**Technology Stack:** Coordination layer using existing SchemaLoaderAdapter logic with
+SchemaValidator injection for validation, business logic for schema/property access
+operations, Result[T] pattern for error handling.
 
 ### VaultIndexer
 
@@ -48,7 +90,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Rebuild(ctx context.Context, vaultPath string) (IndexStats, error)`
 - `Refresh(paths []string) error` (post-MVP incremental updates)
 
-**Dependencies:** FileSystemPort, CacheCommandPort, SchemaValidator, QueryService (writer side), Logger, Config.
+**Dependencies:** FileSystemPort, CacheCommandPort, FrontmatterValidator, SchemaValidator, QueryService (writer side), Logger, Config.
 
 **Technology Stack:** Custom frontmatter extractor + `goccy/go-yaml`, Go filesystem walk, JSON serialization to `.lithos/cache`, zerolog metrics, atomic write pattern (temp file + rename) to guarantee readers never observe partial files.
 
@@ -75,7 +117,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Find(ctx context.Context) (RenderResult, error)`
 - `Index(ctx context.Context) (IndexStats, error)`
 
-**Dependencies:** TemplateEngine, QueryService, VaultIndexer, SchemaValidator, Logger, Config.
+**Dependencies:** TemplateEngine, QueryService, VaultIndexer, FrontmatterValidator, SchemaValidator, SchemaEngine, Logger, Config.
 
 **Technology Stack:** Pure Go orchestration layer, context-aware method signatures, structured result objects for adapters, zerolog-backed tracing.
 
@@ -95,7 +137,7 @@ Primary (driving) ports define the contracts that adapters such as the Cobra CLI
 - `Find(ctx context.Context) (RenderResult, error)`
 - `Index(ctx context.Context) (IndexStats, error)`
 
-**Dependencies:** Implemented by CommandOrchestrator, which composes TemplateEngine, VaultIndexer, QueryService, and SchemaValidator behind the scenes.
+**Dependencies:** Implemented by CommandOrchestrator, which composes TemplateEngine, VaultIndexer, QueryService, FrontmatterValidator, and SchemaEngine behind the scenes.
 
 **Technology Stack:** Defined in `internal/app/ports/api.go` as pure Go interfaces; shared response structs (`RenderResult`, `IndexStats`) live alongside the port for reuse by adapters.
 
@@ -204,7 +246,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Key Interfaces:**
 
-- `GetSchema(name string) (Schema, bool)`
+- `Get(name string) (Schema, bool)`
 
 **Dependencies:** Implemented by SchemaRegistryAdapter.
 
@@ -304,7 +346,7 @@ Concrete adapters live in `internal/adapters/` and satisfy the driven ports with
 
 **Key Interfaces:**
 
-- `GetSchema(name string) (Schema, bool)`
+- `Get(name string) (Schema, bool)`
 
 **Dependencies:** SchemaLoaderPort, Registry package, Config (schema directory resolution), Logger.
 
@@ -392,15 +434,15 @@ Driving adapters invoke the domain through API ports. Today only the Cobra CLI e
 
 **Key Types:**
 
-- `ValidationError` - Schema validation failures (field, message, value)
-- `ConfigError` - Configuration issues (key, message)
-- `TemplateError` - Template syntax/execution errors (template, line, message)
-- `SchemaError` - Schema loading/resolution errors (schema, message)
-- `StorageError` - Cache access failures (operation, path, cause)
-- `FileSystemError` - File I/O failures (operation, path, cause)
-- `Result[T]` - Custom Result type with generics (no external dependencies)
-- Error wrapping functions: `Wrap()`, `WrapWithContext()`
-- Factory functions: `NewValidationError()`, `NewNotFoundError()`, `NewConfigurationError()`, `NewTemplateError()`, `NewSchemaError()`, `NewStorageError()`, `NewFileSystemError()`
+- `BaseError` – Lightweight foundation (message + optional cause)
+- `ValidationError` – Property-level validation failures (property, reason, value)
+- `ResourceError` – Resource operations (resource, operation, target, cause)
+- Domain-specific wrappers:
+  - `SchemaError`, `SchemaValidationError`, `SchemaNotFoundError`
+  - `RequiredFieldError`, `ArrayConstraintError`, `FieldValidation`
+  - `TemplateError`
+- `Result[T]` – Custom Result type with generics (no external dependencies)
+- Error helpers: `Wrap()`, `WrapWithContext()`, `NewFieldValidationError()`, `NewPropertySpecError()`
 
 **Dependencies:**
 
@@ -460,15 +502,17 @@ graph TD
         CO[CommandOrchestrator]
         TE[TemplateEngine]
         QS[QueryService]
+        FV[FrontmatterValidator]
         SV[SchemaValidator]
+        SE[SchemaEngine]
         VI[VaultIndexer]
     end
 
-    subgraph SPIPorts[Driven Ports]
+     subgraph SPIPorts[Driven Ports]
         FS[FileSystemPort]
         CC[CacheCommandPort]
         CQ[CacheQueryPort]
-        SE[SchemaLoaderPort]
+        SL[SchemaLoaderPort]
         SRP[SchemaRegistryPort]
         TR[TemplateRepositoryPort]
         IP[InteractivePort]
@@ -488,11 +532,16 @@ graph TD
     User --> CLI
     CLI --> CSP
     CSP --> CO
-    CO --> TE
-    CO --> VI
-     TE --> QS
-     TE --> SV
-     VI --> SV
+     CO --> TE
+     CO --> VI
+      TE --> QS
+       TE --> FV
+       TE --> SV
+       TE --> SE
+       VI --> FV
+       VI --> SV
+       VI --> SE
+       FV --> SRP
      TE --> IP
      TE --> TR
      VI --> FS
@@ -501,12 +550,12 @@ graph TD
      SV --> SRP
      CO --> CP
      SRP --> SRA
-     SRA --> SE
+      SRA --> SL
 
     FS --> LFS
     CC --> JFC
     CQ --> JFC
-    SE --> SLA
+     SL --> SLA
     TR --> TFA
     IP --> ICA
     CP --> CVA
@@ -518,8 +567,11 @@ graph TD
 - FS = FileSystemPort,
 - CC = CacheCommandPort,
 - CQ = CacheQueryPort,
-- SE = SchemaLoaderPort,
+- FV = FrontmatterValidator,
+- SE = SchemaEngine,
+- SL = SchemaLoaderPort,
 - SRP = SchemaRegistryPort,
+- SV = SchemaValidator,
 - TR = TemplateRepositoryPort,
 - IP = InteractivePort,
 - CP = ConfigPort,
