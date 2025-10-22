@@ -96,7 +96,7 @@ func (e *TemplateEngine) validateContent(
 ) error {
 	if content == "" {
 		return errors.Wrap(
-			errors.NewTemplateError(templateName, 0, "content is empty"),
+			errors.NewTemplateError(templateName, 0, "content is empty", nil),
 			"cannot process empty template content",
 		)
 	}
@@ -138,14 +138,14 @@ func (e *TemplateEngine) createDomainTemplate(
 func validateTemplateForExecution(tmpl *domain.Template) error {
 	if tmpl == nil {
 		return errors.Wrap(
-			errors.NewTemplateError("unknown", 0, "template is nil"),
+			errors.NewTemplateError("unknown", 0, "template is nil", nil),
 			"cannot execute nil template",
 		)
 	}
 
 	if tmpl.Parsed == nil {
 		return errors.Wrap(
-			errors.NewTemplateError(tmpl.Name, 0, "template not parsed"),
+			errors.NewTemplateError(tmpl.Name, 0, "template not parsed", nil),
 			"template must be parsed before execution",
 		)
 	}

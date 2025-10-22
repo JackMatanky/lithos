@@ -44,6 +44,7 @@ func (s *SchemaLoaderAdapter) createJSONParseError(
 	return errors.NewSchemaError(
 		path,
 		fmt.Sprintf("malformed JSON: %v", err),
+		err,
 	)
 }
 
@@ -80,6 +81,7 @@ func (s *SchemaLoaderAdapter) createPropertyBankJSONParseError(
 	return errors.NewSchemaError(
 		path,
 		fmt.Sprintf("malformed JSON in property bank: %v", err),
+		err,
 	)
 }
 

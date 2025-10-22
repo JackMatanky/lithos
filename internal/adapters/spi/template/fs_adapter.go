@@ -50,7 +50,7 @@ func (a *FSAdapter) Get(
 ) (*domain.Template, error) {
 	// TODO: Implement ID-based template lookup
 	// This requires implementing List first
-	return nil, errors.NewNotFoundError("template", id)
+	return nil, errors.NewTemplateError(id, 0, "not found", nil)
 }
 
 // GetByPath loads a template from a specific file path.

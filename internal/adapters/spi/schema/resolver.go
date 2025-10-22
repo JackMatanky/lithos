@@ -47,6 +47,7 @@ func NewInheritanceResolver(
 			return nil, sharederrors.NewSchemaError(
 				schema.Name,
 				fmt.Sprintf("schema validation failed: %v", err),
+				err,
 			)
 		}
 
@@ -55,6 +56,7 @@ func NewInheritanceResolver(
 			return nil, sharederrors.NewSchemaError(
 				schema.Name,
 				"duplicate schema name found",
+				nil,
 			)
 		}
 
@@ -111,6 +113,7 @@ func (r *InheritanceResolver) resolveByName(
 				"cyclic inheritance detected: %s",
 				r.formatCycle(stack, name),
 			),
+			nil,
 		)
 	}
 
@@ -120,6 +123,7 @@ func (r *InheritanceResolver) resolveByName(
 		return domain.Schema{}, sharederrors.NewSchemaError(
 			name,
 			"schema not found during resolution",
+			nil,
 		)
 	}
 

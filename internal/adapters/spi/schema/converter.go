@@ -207,6 +207,7 @@ func (s *SchemaLoaderAdapter) registerPropertyInBank(
 		return errors.NewSchemaError(
 			"property_bank",
 			fmt.Sprintf("failed to register property %s: %v", name, err),
+			err,
 		)
 	}
 	return nil
@@ -278,6 +279,7 @@ func (s *SchemaLoaderAdapter) wrapPropertyConversionError(
 	return errors.NewSchemaError(
 		schemaName,
 		fmt.Sprintf("property conversion failed: %v", err),
+		err,
 	)
 }
 

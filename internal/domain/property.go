@@ -146,11 +146,15 @@ func (p Property) validateArrayValue(value interface{}) error {
 		if err := p.Spec.Validate(elem); err != nil {
 			var validationErr domainerrors.ValidationError
 			if errors.As(err, &validationErr) {
-				field := fmt.Sprintf("value[%d].%s", i, validationErr.Field)
+				field := fmt.Sprintf(
+					"value[%d].%s",
+					i,
+					validationErr.Property(),
+				)
 				return domainerrors.NewValidationError(
 					field,
-					validationErr.Detail,
-					validationErr.Value,
+					validationErr.Reason(),
+					validationErr.Value(),
 				)
 			}
 			return err

@@ -56,6 +56,7 @@ func (e *GoTemplateExecutor) validateData(
 				tmplName,
 				0,
 				"external data not supported in MVP",
+				nil,
 			),
 			"template execution must use nil data parameter",
 		)
@@ -71,7 +72,7 @@ func (e *GoTemplateExecutor) executeTemplate(
 	var buf bytes.Buffer
 	if err := tmpl.Parsed.Execute(&buf, nil); err != nil {
 		return errors.Err[string](errors.Wrap(
-			errors.NewTemplateError(tmpl.Name, 0, err.Error()),
+			errors.NewTemplateError(tmpl.Name, 0, err.Error(), err),
 			"template execution failed",
 		))
 	}

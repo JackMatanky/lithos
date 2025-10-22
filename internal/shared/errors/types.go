@@ -1,235 +1,134 @@
 package errors
 
-import (
-	"fmt"
-)
+import "fmt"
 
-// BaseError provides a common structure for domain errors with consistent
-// formatting.
+// BaseError is the minimal building block for all Lithos error types. It keeps
+// only the information that matters everywhere: a human readable message and
+// an optional underlying cause that preserves the error chain.
 type BaseError struct {
-	Type    string      // Error type identifier (e.g., "ValidationError", "NotFoundError")
-	Context string      // Primary context (field name, resource type, etc.)
-	Detail  string      // Specific error detail or message
-	Value   interface{} // Optional associated value
-	Cause   error       // Optional underlying cause
+	message string
+	cause   error
 }
 
-// NewBaseError creates a new BaseError with consistent formatting.
-func NewBaseError(
-	errType, context, detail string,
-	value interface{},
-	cause error,
-) BaseError {
+// NewBaseError creates a BaseError with the provided message and optional
+// cause. Callers are expected to supply fully formatted messages.
+func NewBaseError(message string, cause error) BaseError {
 	return BaseError{
-		Type:    errType,
-		Context: context,
-		Detail:  detail,
-		Value:   value,
-		Cause:   cause,
+		message: message,
+		cause:   cause,
 	}
 }
 
-// Error implements the error interface for BaseError.
+// Error implements the error interface.
 func (e BaseError) Error() string {
-	if e.Cause != nil {
-		// Avoid duplicating cause if detail already contains it
-		if e.Detail == e.Cause.Error() {
-			return fmt.Sprintf("[%s] %s: %s", e.Type, e.Context, e.Detail)
-		}
-		return fmt.Sprintf(
-			"[%s] %s: %s: %v",
-			e.Type,
-			e.Context,
-			e.Detail,
-			e.Cause,
-		)
-	}
-	if e.Value != nil {
-		return fmt.Sprintf(
-			"[%s] %s: %s (value: %v)",
-			e.Type,
-			e.Context,
-			e.Detail,
-			e.Value,
-		)
-	}
-	return fmt.Sprintf("[%s] %s: %s", e.Type, e.Context, e.Detail)
+	return e.message
 }
 
-// Unwrap returns the underlying cause error for error chaining.
+// Unwrap exposes the underlying cause to support errors.Is / errors.As.
 func (e BaseError) Unwrap() error {
-	return e.Cause
+	return e.cause
 }
 
-// ValidationError represents simple validation failures with field-specific
-// information. For comprehensive validation with multiple errors, use the
-// validation.go system.
+// Message returns the human readable message attached to the error.
+func (e BaseError) Message() string {
+	return e.message
+}
+
+// Cause returns the underlying cause (may be nil).
+func (e BaseError) Cause() error {
+	return e.cause
+}
+
+// ValidationError represents a failure to satisfy a domain rule for a specific
+// property. It intentionally keeps only the property name, a short reason, and
+// the optional offending value for debuggability.
 type ValidationError struct {
 	BaseError
-	Field string
+	property string
+	reason   string
+	value    interface{}
 }
 
-// NewValidationError creates a new ValidationError.
+// NewValidationError constructs a ValidationError for the supplied property.
+// The message automatically reflects Lithos terminology (property instead of
+// field) and includes the offending value when provided.
 func NewValidationError(
-	field, message string,
+	property, reason string,
 	value interface{},
 ) ValidationError {
+	message := fmt.Sprintf("property '%s': %s", property, reason)
+	if value != nil {
+		message = fmt.Sprintf("%s (value: %v)", message, value)
+	}
+
 	return ValidationError{
-		BaseError: NewBaseError(
-			"ValidationError",
-			"field '"+field+"'",
-			message,
-			nil,
-			nil,
-		),
-		Field: field,
+		BaseError: NewBaseError(message, nil),
+		property:  property,
+		reason:    reason,
+		value:     value,
 	}
 }
 
-// NotFoundError represents resource not found errors.
-type NotFoundError struct {
+// Property returns the property name associated with the validation failure.
+func (e *ValidationError) Property() string {
+	return e.property
+}
+
+func (e *ValidationError) Reason() string {
+	return e.reason
+}
+
+// Value returns the value that triggered validation failure.
+func (e *ValidationError) Value() interface{} {
+	return e.value
+}
+
+// ResourceError captures failures while performing an operation against a
+// specific resource (files, schemas, templates, etc.).
+type ResourceError struct {
 	BaseError
-	Resource   string
-	Identifier string
+	resource  string
+	operation string
+	target    string
 }
 
-// NewNotFoundError creates a new NotFoundError.
-func NewNotFoundError(resource, identifier string) NotFoundError {
-	context := fmt.Sprintf("%s '%s'", resource, identifier)
-	return NotFoundError{
-		BaseError: NewBaseError(
-			"NotFoundError",
-			context,
-			"not found",
-			nil,
-			nil,
-		),
-		Resource:   resource,
-		Identifier: identifier,
-	}
-}
-
-// Error implements the error interface for NotFoundError.
-func (e NotFoundError) Error() string {
-	return fmt.Sprintf(
-		"[%s] %s '%s' not found",
-		e.Type,
-		e.Resource,
-		e.Identifier,
-	)
-}
-
-// ConfigurationError represents configuration-related errors.
-type ConfigurationError struct {
-	BaseError
-	Key string
-}
-
-// NewConfigurationError creates a new ConfigurationError.
-func NewConfigurationError(key, message string) ConfigurationError {
-	return ConfigurationError{
-		BaseError: NewBaseError(
-			"ConfigurationError",
-			"key '"+key+"'",
-			message,
-			nil,
-			nil,
-		),
-		Key: key,
-	}
-}
-
-// TemplateError represents template processing errors.
-type TemplateError struct {
-	BaseError
-	Template string
-	Line     int
-}
-
-// NewTemplateError creates a new TemplateError.
-func NewTemplateError(template string, line int, message string) TemplateError {
-	context := fmt.Sprintf("template '%s'", template)
-	if line > 0 {
-		context = fmt.Sprintf("template '%s' line %d", template, line)
-	}
-	return TemplateError{
-		BaseError: NewBaseError("TemplateError", context, message, nil, nil),
-		Template:  template,
-		Line:      line,
-	}
-}
-
-// SchemaError represents schema-related errors.
-type SchemaError struct {
-	BaseError
-	Schema string
-}
-
-// NewSchemaError creates a new SchemaError.
-func NewSchemaError(schema, message string) SchemaError {
-	return SchemaError{
-		BaseError: NewBaseError(
-			"SchemaError",
-			"schema '"+schema+"'",
-			message,
-			nil,
-			nil,
-		),
-		Schema: schema,
-	}
-}
-
-// OperationError represents operation failures with path and cause information.
-// This consolidates StorageError and FileSystemError to prevent duplication.
-type OperationError struct {
-	BaseError
-	Operation string
-	Path      string
-}
-
-// NewOperationError creates a new OperationError with the specified error type.
-func NewOperationError(
-	errType, operation, path string,
+// NewResourceError creates a ResourceError with consistent messaging.
+func NewResourceError(
+	resource, operation, target string,
 	cause error,
-) OperationError {
-	context := fmt.Sprintf("%s '%s'", operation, path)
-	detail := "failed"
+) ResourceError {
+	detail := "operation failed"
 	if cause != nil {
 		detail = cause.Error()
 	}
-	return OperationError{
-		BaseError: NewBaseError(errType, context, detail, nil, cause),
-		Operation: operation,
-		Path:      path,
+
+	message := fmt.Sprintf(
+		"%s %s '%s': %s",
+		resource,
+		operation,
+		target,
+		detail,
+	)
+
+	return ResourceError{
+		BaseError: NewBaseError(message, cause),
+		resource:  resource,
+		operation: operation,
+		target:    target,
 	}
 }
 
-// NewStorageError creates a new storage operation error.
-func NewStorageError(operation, path string, cause error) OperationError {
-	return NewOperationError("StorageError", operation, path, cause)
+// Resource returns the resource category (e.g. "schema", "file").
+func (e *ResourceError) Resource() string {
+	return e.resource
 }
 
-// NewFileSystemError creates a new filesystem operation error.
-func NewFileSystemError(operation, path string, cause error) OperationError {
-	return NewOperationError("FileSystemError", operation, path, cause)
+// Operation returns the attempted action (e.g. "read", "load").
+func (e *ResourceError) Operation() string {
+	return e.operation
 }
 
-// Error implements the error interface for OperationError.
-func (e OperationError) Error() string {
-	if e.Cause != nil {
-		return fmt.Sprintf(
-			"[%s] %s '%s': %s",
-			e.Type,
-			e.Operation,
-			e.Path,
-			e.Cause,
-		)
-	}
-	return fmt.Sprintf("[%s] %s '%s' %s", e.Type, e.Operation, e.Path, e.Detail)
+// Target returns the resource identifier or path.
+func (e *ResourceError) Target() string {
+	return e.target
 }
-
-// StorageError alias for backward compatibility.
-type StorageError = OperationError
-
-// FileSystemError alias for backward compatibility.
-type FileSystemError = OperationError

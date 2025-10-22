@@ -121,6 +121,7 @@ func (s *SchemaLoaderAdapter) validateFileSize(path string, data []byte) error {
 				"file size (%.1fMB) exceeds maximum allowed size (10MB)",
 				float64(len(data))/bytesToMB,
 			),
+			nil,
 		)
 	}
 
@@ -169,6 +170,7 @@ func (s *SchemaLoaderAdapter) checkCircularReferenceDepth(
 				"circular reference detected: max depth exceeded (10) for property %s",
 				name,
 			),
+			nil,
 		)
 	}
 	return nil
@@ -183,6 +185,7 @@ func (s *SchemaLoaderAdapter) checkSelfReference(name, refName string) error {
 				"circular reference detected: property %s references itself",
 				name,
 			),
+			nil,
 		)
 	}
 	return nil
@@ -201,6 +204,7 @@ func (s *SchemaLoaderAdapter) validateDomainSchema(
 		return errors.NewSchemaError(
 			schemaName,
 			fmt.Sprintf("schema validation failed: %v", err),
+			err,
 		)
 	}
 	return nil

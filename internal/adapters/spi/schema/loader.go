@@ -62,7 +62,12 @@ func (s *SchemaLoaderAdapter) LoadSchemas(
 	walkFn := s.createSchemaWalkFunction(ctx, schemasDir, &schemas)
 
 	if walkErr := s.fs.Walk(schemasDir, walkFn); walkErr != nil {
-		return nil, errors.NewFileSystemError("walk", schemasDir, walkErr)
+		return nil, errors.NewResourceError(
+			"filesystem",
+			"walk",
+			schemasDir,
+			walkErr,
+		)
 	}
 
 	return schemas, nil
@@ -104,6 +109,7 @@ func (s *SchemaLoaderAdapter) getSchemasDirectory() (string, error) {
 		return "", errors.NewSchemaError(
 			"schemas",
 			fmt.Sprintf("invalid schemas directory: %v", err),
+			err,
 		)
 	}
 
@@ -207,6 +213,7 @@ func (s *SchemaLoaderAdapter) getPropertiesDirectory() (string, error) {
 		return "", errors.NewSchemaError(
 			"properties",
 			fmt.Sprintf("invalid properties directory: %v", err),
+			err,
 		)
 	}
 
@@ -223,7 +230,12 @@ func (s *SchemaLoaderAdapter) loadAllPropertyFiles(
 	walkFn := s.createPropertyBankWalkFunction(propertiesDir, propertyFiles)
 
 	if err := s.fs.Walk(propertiesDir, walkFn); err != nil {
-		return nil, errors.NewFileSystemError("walk", propertiesDir, err)
+		return nil, errors.NewResourceError(
+			"filesystem",
+			"walk",
+			propertiesDir,
+			err,
+		)
 	}
 
 	return propertyFiles, nil
@@ -282,6 +294,7 @@ func (s *SchemaLoaderAdapter) validatePropertyBankFilePath(
 		return errors.NewSchemaError(
 			path,
 			fmt.Sprintf("security validation failed: %v", err),
+			err,
 		)
 	}
 	return nil
@@ -335,7 +348,7 @@ func (s *SchemaLoaderAdapter) readAndValidateFile(path string) ([]byte, error) {
 func (s *SchemaLoaderAdapter) readFileData(path string) ([]byte, error) {
 	data, err := s.fs.ReadFile(path)
 	if err != nil {
-		return nil, errors.NewFileSystemError("read", path, err)
+		return nil, errors.NewResourceError("filesystem", "read", path, err)
 	}
 	return data, nil
 }
