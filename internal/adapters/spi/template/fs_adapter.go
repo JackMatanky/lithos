@@ -5,6 +5,7 @@ package template
 import (
 	"context"
 	"path/filepath"
+	"text/template"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -61,7 +62,7 @@ func (a *FSAdapter) GetByPath(
 	path string,
 ) (*domain.Template, error) {
 	// Read the template file
-	content, err := a.fileSystemPort.ReadFile(path)
+	content, err := a.readTemplateFile(path)
 	if err != nil {
 		return nil, errors.WrapWithContext(
 			errors.Wrap(err, "failed to read template file"),
@@ -70,25 +71,60 @@ func (a *FSAdapter) GetByPath(
 	}
 
 	// Parse the template content
-	parseResult := a.parser.Parse(ctx, string(content))
-	if parseResult.IsErr() {
+	parsed, err := a.parseTemplateContent(ctx, content)
+	if err != nil {
 		return nil, errors.WrapWithContext(
-			errors.Wrap(parseResult.Error(), "failed to parse template"),
+			errors.Wrap(err, "failed to parse template"),
 			map[string]interface{}{"path": path},
 		)
 	}
 
 	// Extract template name from path
+	templateName := a.extractTemplateName(path)
+
+	// Create and return domain template object
+	return a.createTemplate(path, templateName, content, parsed), nil
+}
+
+// readTemplateFile reads the content of a template file from the given path.
+func (a *FSAdapter) readTemplateFile(path string) ([]byte, error) {
+	return a.fileSystemPort.ReadFile(path)
+}
+
+// parseTemplateContent parses the template content and returns the parse
+// result.
+func (a *FSAdapter) parseTemplateContent(
+	ctx context.Context,
+	content []byte,
+) (*template.Template, error) {
+	parseResult := a.parser.Parse(ctx, string(content))
+	if parseResult.IsErr() {
+		return nil, parseResult.Error()
+	}
+	return parseResult.Value(), nil
+}
+
+// extractTemplateName extracts the template name from the file path by taking
+// the base name and removing the extension.
+func (a *FSAdapter) extractTemplateName(path string) string {
 	templateName := filepath.Base(path)
 	if ext := filepath.Ext(templateName); ext != "" {
 		templateName = templateName[:len(templateName)-len(ext)]
 	}
+	return templateName
+}
 
-	// Create and return domain template object
+// createTemplate creates a new domain.Template object with the provided
+// parameters.
+func (a *FSAdapter) createTemplate(
+	path, name string,
+	content []byte,
+	parsed *template.Template,
+) *domain.Template {
 	return &domain.Template{
 		FilePath: path,
-		Name:     templateName,
+		Name:     name,
 		Content:  string(content),
-		Parsed:   parseResult.Value(),
-	}, nil
+		Parsed:   parsed,
+	}
 }
