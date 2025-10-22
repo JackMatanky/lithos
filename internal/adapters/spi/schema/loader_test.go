@@ -10,7 +10,11 @@ import (
 	sharederrors "github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
-const testSchemaName = "user"
+const (
+	testResourceFilesystem = "filesystem"
+	testOperationWalk      = "walk"
+	testSchemaName         = "user"
+)
 
 func TestNewSchemaLoaderAdapter(t *testing.T) {
 	fs := newMockFileSystemPort()
@@ -85,9 +89,13 @@ func TestLoadSchemas_FileSystemError(t *testing.T) {
 		t.Fatal("Expected error for filesystem failure")
 	}
 
-	var fsErr sharederrors.FileSystemError
-	if !errors.As(err, &fsErr) {
-		t.Errorf("Expected FileSystemError, got %T", err)
+	var resErr sharederrors.ResourceError
+	if !errors.As(err, &resErr) {
+		t.Fatalf("Expected ResourceError, got %T", err)
+	}
+	if resErr.Resource() != testResourceFilesystem ||
+		resErr.Operation() != testOperationWalk {
+		t.Fatalf("unexpected resource metadata: %+v", resErr)
 	}
 }
 
@@ -200,15 +208,18 @@ func TestLoadPropertyBank_MalformedJSON(t *testing.T) {
 	ctx := context.Background()
 	_, err := adapter.LoadPropertyBank(ctx)
 
-	// Verify error - wrapped error from Walk function will be FileSystemError
+	// Verify error - wrapped error from Walk function will be ResourceError
 	if err == nil {
 		t.Fatal("Expected error for malformed property bank JSON")
 	}
 
-	// Should be wrapped in FileSystemError since it comes from Walk callback
-	var fsErr sharederrors.FileSystemError
-	if !errors.As(err, &fsErr) {
-		t.Errorf("Expected FileSystemError, got %T", err)
+	// Should be wrapped in ResourceError since it comes from Walk callback
+	var resErr sharederrors.ResourceError
+	if !errors.As(err, &resErr) {
+		t.Fatalf("Expected ResourceError, got %T", err)
+	}
+	if resErr.Resource() != testResourceFilesystem {
+		t.Fatalf("unexpected resource error domain: %+v", resErr)
 	}
 
 	// But the underlying error should contain property bank parsing info

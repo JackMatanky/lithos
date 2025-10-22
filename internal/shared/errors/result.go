@@ -1,28 +1,8 @@
-// Package errors provides domain-specific error types and functional error
-// handling patterns for consistent error handling across the application. This
-// package implements a custom Result[T] pattern inspired by Rust's Result type
-// for better error handling ergonomics.
-//
-// The package is organized across multiple files:
-// - result.go: Result[T] type, ResultInterface, and functional error handling
-// - types.go: BaseError composition system and domain-specific error types
-// - validation.go: Comprehensive validation system with ValidationResult
-// - wrapping.go: Error wrapping and utility functions
 package errors
 
-// ResultInterface defines the common interface for result types.
-// This allows for different implementations while maintaining API compatibility.
-type ResultInterface[T any] interface {
-	IsOk() bool
-	IsErr() bool
-	Unwrap() (T, error)
-	Value() T
-	Error() error
-}
-
-// Result represents a value that can be either a success (T) or an error.
-// This implements a functional error handling pattern similar to Rust's
-// Result<T> and satisfies the ResultInterface[T].
+// Result represents a value that can be either a success (Ok) or a failure
+// (Err). It mirrors Rust's Result type to provide expressive, type-safe error
+// handling while staying idiomatic to Go.
 type Result[T any] struct {
 	value T
 	err   error
@@ -66,6 +46,70 @@ func Ok[T any](value T) Result[T] {
 
 // Err creates an error Result[T] containing the given error.
 func Err[T any](err error) Result[T] {
+	if err == nil {
+		panic("errors.Err called with nil error")
+	}
 	var zero T
 	return Result[T]{value: zero, err: err}
+}
+
+// ErrOrNil returns the contained error without panicking when Result is ok.
+func (r Result[T]) Err() error {
+	return r.err
+}
+
+// ValueOr returns the wrapped value when the Result is ok, otherwise returns
+// the provided fallback value.
+func (r Result[T]) ValueOr(fallback T) T {
+	if r.err != nil {
+		return fallback
+	}
+	return r.value
+}
+
+// OrElse allows recovery from errors by invoking fn when the Result is an
+// error. When the Result is ok the original value is preserved.
+func (r Result[T]) OrElse(fn func(error) Result[T]) Result[T] {
+	if r.err != nil {
+		return fn(r.err)
+	}
+	return r
+}
+
+// Inspect executes fn with the contained value when the Result is ok.
+// The original Result is returned to support fluent chaining.
+func (r Result[T]) Inspect(fn func(T)) Result[T] {
+	if r.err == nil && fn != nil {
+		fn(r.value)
+	}
+	return r
+}
+
+// InspectErr executes fn with the contained error when the Result is an error.
+// The original Result is returned to support fluent chaining.
+func (r Result[T]) InspectErr(fn func(error)) Result[T] {
+	if r.err != nil && fn != nil {
+		fn(r.err)
+	}
+	return r
+}
+
+// Map transforms the contained value with fn when the Result is ok. When the
+// Result is an error, the original error is propagated unchanged.
+func Map[T, U any](r Result[T], fn func(T) U) Result[U] {
+	if r.err != nil {
+		return Err[U](r.err)
+	}
+	return Ok(fn(r.value))
+}
+
+// AndThen chains computations that return Result. When the current Result is
+// ok, fn is invoked with the contained value. If fn returns an error Result,
+// that error propagates to the caller. If the current Result is already an
+// error, fn is skipped and the existing error propagates.
+func AndThen[T, U any](r Result[T], fn func(T) Result[U]) Result[U] {
+	if r.err != nil {
+		return Err[U](r.err)
+	}
+	return fn(r.value)
 }

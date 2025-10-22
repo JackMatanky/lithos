@@ -106,6 +106,7 @@ func (s *SchemaRegistryAdapter) loadPropertyBank(
 		return nil, sharederrors.NewSchemaError(
 			"property_bank",
 			"loader returned nil property bank",
+			nil,
 		)
 	}
 
