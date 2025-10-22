@@ -116,7 +116,8 @@ func (s *SchemaRegistryAdapter) loadPropertyBank(
 func (s *SchemaRegistryAdapter) ensurePropertyBankValid(
 	propertyBank *domain.PropertyBank,
 ) error {
-	return propertyBank.Validate()
+	// Validation moved to SchemaEngine.LoadPropertyBank()
+	return nil
 }
 
 func (s *SchemaRegistryAdapter) resolveSchemas(

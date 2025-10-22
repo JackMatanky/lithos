@@ -1,6 +1,10 @@
 package domain
 
-import "testing"
+import (
+	"fmt"
+	"sync"
+	"testing"
+)
 
 const testPropertyName = "test_prop"
 
@@ -30,68 +34,6 @@ func TestNewProperty(t *testing.T) {
 	}
 }
 
-func TestPropertyValidate(t *testing.T) {
-	tests := []struct {
-		name    string
-		prop    Property
-		wantErr bool
-	}{
-		{
-			name: "valid property",
-			prop: Property{
-				Name:     "valid_name",
-				Required: true,
-				Array:    false,
-				Spec:     StringPropertySpec{},
-			},
-			wantErr: false,
-		},
-		{
-			name: "empty name",
-			prop: Property{
-				Name:     "",
-				Required: true,
-				Array:    false,
-				Spec:     StringPropertySpec{},
-			},
-			wantErr: true,
-		},
-		{
-			name: "invalid name characters",
-			prop: Property{
-				Name:     "invalid name",
-				Required: true,
-				Array:    false,
-				Spec:     StringPropertySpec{},
-			},
-			wantErr: true,
-		},
-		{
-			name: "nil spec",
-			prop: Property{
-				Name:     "test",
-				Required: true,
-				Array:    false,
-				Spec:     nil,
-			},
-			wantErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.prop.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"Property.Validate() error = %v, wantErr %v",
-					err,
-					tt.wantErr,
-				)
-			}
-		})
-	}
-}
-
 func TestPropertyTypeNamePointerSpec(t *testing.T) {
 	spec := &NumberPropertySpec{}
 	prop := NewProperty("count", false, false, spec)
@@ -105,44 +47,124 @@ func TestPropertyTypeNamePointerSpec(t *testing.T) {
 	}
 }
 
-// unknownSpec is used for testing unknown spec types.
-type unknownSpec struct{}
+func TestNewPropertyBank(t *testing.T) {
+	tests := []struct {
+		name         string
+		location     string
+		wantLocation string
+	}{
+		{
+			name:         "empty location uses default",
+			location:     "",
+			wantLocation: "schemas/properties/",
+		},
+		{
+			name:         "custom location",
+			location:     "custom/path/",
+			wantLocation: "custom/path/",
+		},
+	}
 
-func (unknownSpec) Validate(interface{}) error { return nil }
-
-func TestPropertyTypeNameUnknownSpec(t *testing.T) {
-	prop := NewProperty("custom", false, false, unknownSpec{})
-	if err := prop.Validate(); err == nil {
-		t.Error("Validate() expected error for unknown spec type")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := NewPropertyBank(tt.location)
+			if got.Location != tt.wantLocation {
+				t.Errorf(
+					"NewPropertyBank() location = %v, want %v",
+					got.Location,
+					tt.wantLocation,
+				)
+			}
+			if len(got.Properties) != 0 {
+				t.Errorf(
+					"NewPropertyBank() properties should be empty, got %v",
+					got.Properties,
+				)
+			}
+		})
 	}
 }
 
-func TestPropertyValidateValue(t *testing.T) {
-	stringProp := NewProperty("tags", false, true, StringPropertySpec{})
-	if err := stringProp.ValidateValue([]interface{}{"a", "b"}); err != nil {
-		t.Fatalf("ValidateValue() error = %v, want nil", err)
+func TestPropertyBank_RegisterProperty(t *testing.T) {
+	pb := NewPropertyBank("")
+
+	stringProp := NewProperty("title", true, false, StringPropertySpec{
+		Enum: []string{"Mr", "Mrs", "Dr"},
+	})
+
+	tests := []struct {
+		name      string
+		regName   string
+		property  Property
+		wantError bool
+	}{
+		{
+			name:      "valid registration",
+			regName:   "another_title",
+			property:  stringProp,
+			wantError: false,
+		},
+		{
+			name:      "empty name",
+			regName:   "",
+			property:  stringProp,
+			wantError: true,
+		},
+		{
+			name:      "whitespace name",
+			regName:   "  test  ",
+			property:  stringProp,
+			wantError: true,
+		},
+		{
+			name:      "duplicate name",
+			regName:   "standard_title",
+			property:  stringProp,
+			wantError: true,
+		},
 	}
 
-	// Nil value is allowed for array properties (handled by presence checks
-	// elsewhere)
-	if err := stringProp.ValidateValue(nil); err != nil {
-		t.Fatalf("ValidateValue(nil) error = %v, want nil", err)
+	// Register first property
+	err := pb.RegisterProperty("standard_title", stringProp)
+	if err != nil {
+		t.Fatalf("Failed to register initial property: %v", err)
 	}
 
-	if err := stringProp.ValidateValue("not-an-array"); err == nil {
-		t.Fatal("ValidateValue() expected error for non-array value")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			regErr := pb.RegisterProperty(tt.regName, tt.property)
+			if (regErr != nil) != tt.wantError {
+				t.Errorf(
+					"RegisterProperty() error = %v, wantError %v",
+					regErr,
+					tt.wantError,
+				)
+			}
+		})
+	}
+}
+
+func TestPropertyBank_RegisterPropertyConcurrent(t *testing.T) {
+	pb := NewPropertyBank("")
+	baseProp := NewProperty("title", false, false, StringPropertySpec{})
+
+	const total = 20
+	var wg sync.WaitGroup
+
+	for i := range total {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			name := fmt.Sprintf("prop_%d", i)
+			if err := pb.RegisterProperty(name, baseProp); err != nil {
+				t.Errorf("RegisterProperty(%s) error = %v", name, err)
+			}
+		}(i)
 	}
 
-	if err := stringProp.ValidateValue([]interface{}{"a", 10}); err == nil {
-		t.Fatal("ValidateValue() expected error for mixed element types")
-	}
+	wg.Wait()
 
-	scalarProp := NewProperty("title", true, false, StringPropertySpec{})
-	if err := scalarProp.ValidateValue("hello"); err != nil {
-		t.Fatalf("ValidateValue() error = %v, want nil", err)
-	}
-
-	if err := scalarProp.ValidateValue(42); err == nil {
-		t.Fatal("ValidateValue() expected error for invalid scalar type")
+	if got := len(pb.Properties); got != total {
+		t.Errorf("len(Properties) = %d, want %d", got, total)
 	}
 }

@@ -65,22 +65,22 @@ func TestNewInheritanceResolver_Success(t *testing.T) {
 func TestNewInheritanceResolver_InvalidSchema(t *testing.T) {
 	schemas := []domain.Schema{
 		{
-			Name:       "", // Invalid: empty name
+			Name:       "", // Invalid: empty name - validation moved to SchemaEngine
 			Properties: []domain.Property{},
 		},
 	}
 
+	// Schema validation moved to SchemaEngine - resolver accepts any schemas
 	resolver, err := NewInheritanceResolver(schemas)
-	if err == nil {
-		t.Fatal("expected error for invalid schema")
+	if err != nil {
+		t.Fatalf(
+			"expected no error during resolver creation, validation moved to SchemaEngine: %v",
+			err,
+		)
 	}
 
-	if resolver != nil {
-		t.Error("expected nil resolver for invalid input")
-	}
-
-	if !strings.Contains(err.Error(), "schema validation failed") {
-		t.Errorf("expected schema validation error, got: %v", err)
+	if resolver == nil {
+		t.Error("expected valid resolver for any input schemas")
 	}
 }
 
@@ -411,22 +411,25 @@ func TestResolveAll_DetectsCycleIndirectA2B2C2A(t *testing.T) {
 
 // Test self-reference cycle detection.
 func TestResolveAll_DetectsSelfReference(t *testing.T) {
-	// The schema validation catches self-reference during construction
+	// Self-reference cycle detection happens during resolution, not
+	// construction
 	selfRefSchema := createTestSchema("self", "self", nil, []domain.Property{
 		createTestProperty("prop", true),
 	})
 
 	resolver, err := NewInheritanceResolver([]domain.Schema{selfRefSchema})
+	if err != nil {
+		t.Fatalf("expected no error during resolver creation: %v", err)
+	}
+
+	// Cycle detection happens during ResolveAll
+	_, err = resolver.ResolveAll(context.Background())
 	if err == nil {
-		t.Fatal("expected error during resolver creation for self-reference")
+		t.Fatal("expected error during resolution for self-reference cycle")
 	}
 
-	if resolver != nil {
-		t.Error("expected nil resolver for self-reference")
-	}
-
-	if !strings.Contains(err.Error(), "cannot reference itself") {
-		t.Errorf("expected self-reference validation error, got: %v", err)
+	if !strings.Contains(err.Error(), "cyclic inheritance detected") {
+		t.Errorf("expected cycle detection error, got: %v", err)
 	}
 }
 

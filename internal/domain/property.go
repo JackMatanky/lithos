@@ -4,11 +4,9 @@
 package domain
 
 import (
-	"errors"
 	"fmt"
-	"reflect"
-	"regexp"
 	"strings"
+	"sync"
 
 	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
 )
@@ -21,16 +19,10 @@ const (
 	propertyTypeBool   = "bool"
 )
 
-var propertyNamePattern = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_-]*$`)
-
-// PropertySpec defines the interface for type-specific property validation.
-// Each implementation encapsulates validation logic for a specific property
-// type.
+// PropertySpec defines the interface for type-specific property specifications.
+// Each implementation encapsulates configuration for a specific property type.
 type PropertySpec interface {
-	// Validate checks if the given value conforms to this property
-	// specification.
-	// Returns nil if valid, or a ValidationError if invalid.
-	Validate(value interface{}) error
+	// PropertySpec is now a pure data interface - validation moved to services
 }
 
 // Property defines a single metadata property with type constraints and
@@ -71,37 +63,6 @@ func NewProperty(
 	}
 }
 
-// Validate checks if the property definition itself is valid.
-func (p Property) Validate() error {
-	if strings.TrimSpace(p.Name) == "" {
-		return domainerrors.NewValidationError(
-			"name",
-			"cannot be empty",
-			p.Name,
-		)
-	}
-
-	if !propertyNamePattern.MatchString(p.Name) {
-		return domainerrors.NewValidationError(
-			"name",
-			"must be valid YAML key (letters, numbers, dash, underscore only)",
-			p.Name,
-		)
-	}
-
-	if p.Spec == nil {
-		return domainerrors.NewValidationError("spec", "cannot be nil", nil)
-	}
-
-	normalized, err := normalizeSpec(p.Spec)
-	if err != nil {
-		return err
-	}
-
-	_, typeErr := propertyTypeName(normalized)
-	return typeErr
-}
-
 // TypeName returns the semantic type name (string/number/date/file/bool) for
 // this property based on its spec.
 func (p Property) TypeName() (string, error) {
@@ -111,57 +72,6 @@ func (p Property) TypeName() (string, error) {
 	}
 
 	return propertyTypeName(normalized)
-}
-
-// ValidateValue ensures the provided value conforms to the property's array
-// semantics and delegates to the spec for type-specific validation.
-func (p Property) ValidateValue(value interface{}) error {
-	if p.Spec == nil {
-		return domainerrors.NewValidationError("spec", "cannot be nil", nil)
-	}
-
-	if p.Array {
-		return p.validateArrayValue(value)
-	}
-
-	return p.Spec.Validate(value)
-}
-
-func (p Property) validateArrayValue(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-
-	v := reflect.ValueOf(value)
-	if v.Kind() != reflect.Slice && v.Kind() != reflect.Array {
-		return domainerrors.NewValidationError(
-			"value",
-			"must be array or slice",
-			value,
-		)
-	}
-
-	for i := range v.Len() {
-		elem := v.Index(i).Interface()
-		if err := p.Spec.Validate(elem); err != nil {
-			var validationErr domainerrors.ValidationError
-			if errors.As(err, &validationErr) {
-				field := fmt.Sprintf(
-					"value[%d].%s",
-					i,
-					validationErr.Property(),
-				)
-				return domainerrors.NewValidationError(
-					field,
-					validationErr.Reason(),
-					validationErr.Value(),
-				)
-			}
-			return err
-		}
-	}
-
-	return nil
 }
 
 // Property spec normalization helpers
@@ -250,3 +160,117 @@ func propertyTypeName(spec PropertySpec) (string, error) {
 		return "", fmt.Errorf("unknown property spec type: %T", spec)
 	}
 }
+
+// PropertyBank provides a library of reusable, pre-configured Property
+// definitions that schemas can reference by name. Reduces duplication across
+// schema definitions, ensures consistency for common properties.
+type PropertyBank struct {
+	// Properties contains named property definitions keyed by unique
+	// identifier.
+	// Keys should be descriptive names like "standard_title", "iso_date".
+	Properties map[string]Property
+
+	// Location is the path to property bank JSON file.
+	// Default: "schemas/property_bank.json"
+	Location string
+	mu       sync.RWMutex
+}
+
+// NewPropertyBank creates a new PropertyBank with the given location.
+func NewPropertyBank(location string) PropertyBank {
+	trimmed := strings.TrimSpace(location)
+	if trimmed == "" {
+		trimmed = "schemas/properties/"
+	}
+
+	return PropertyBank{
+		Properties: make(map[string]Property),
+		Location:   trimmed,
+		mu:         sync.RWMutex{},
+	}
+}
+
+// RegisterProperty adds a reusable property definition to the bank.
+// Returns an error if a property with the same name already exists.
+func (pb *PropertyBank) RegisterProperty(name string, property Property) error {
+	trimmed := strings.TrimSpace(name)
+	if trimmed == "" {
+		return domainerrors.NewValidationError("name", "cannot be empty", name)
+	}
+
+	if trimmed != name {
+		return domainerrors.NewValidationError(
+			"name",
+			"cannot have leading/trailing whitespace",
+			name,
+		)
+	}
+
+	pb.mu.Lock()
+	defer pb.mu.Unlock()
+
+	if _, exists := pb.Properties[name]; exists {
+		return domainerrors.NewValidationError(
+			"name",
+			"property already exists",
+			name,
+		)
+	}
+
+	pb.Properties[name] = property
+	return nil
+}
+
+// StringPropertySpec validates string values with optional enum and pattern
+// constraints.
+type StringPropertySpec struct {
+	// Enum contains allowed values as fixed list. If non-empty, value must be
+	// in list.
+	// Empty list means no enum constraint (any string valid).
+	Enum []string
+
+	// Pattern is a regex pattern for custom string validation.
+	// If non-empty, value must match pattern. Uses Go regexp package.
+	Pattern string
+}
+
+// NumberPropertySpec validates numeric values with optional min/max/step
+// constraints.
+type NumberPropertySpec struct {
+	// Min is the minimum allowed value (inclusive). Nil means no minimum
+	// constraint.
+	Min *float64
+
+	// Max is the maximum allowed value (inclusive). Nil means no maximum
+	// constraint.
+	Max *float64
+
+	// Step is the increment/decrement amount. If 1.0, implies integer values.
+	// If nil, any precision allowed.
+	Step *float64
+}
+
+// DatePropertySpec validates date/time values with format constraints.
+type DatePropertySpec struct {
+	// Format is the Go time layout string for parsing.
+	// If empty, defaults to RFC3339.
+	Format string
+}
+
+// FilePropertySpec validates file reference values with optional
+// class/directory constraints.
+type FilePropertySpec struct {
+	// FileClass restricts valid file references to notes with specific
+	// fileClass value. Supports negation via ^ prefix. Empty string means no
+	// fileClass restriction.
+	FileClass string
+
+	// Directory restricts valid file references to notes within specific vault
+	// directory path.
+	// Path is relative to vault root. Supports negation via ^ prefix.
+	Directory string
+}
+
+// BoolPropertySpec validates boolean values. No additional configuration
+// needed.
+type BoolPropertySpec struct{}
