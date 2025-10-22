@@ -149,7 +149,7 @@ func (p Property) validateArrayValue(value interface{}) error {
 				field := fmt.Sprintf("value[%d].%s", i, validationErr.Field)
 				return domainerrors.NewValidationError(
 					field,
-					validationErr.Message,
+					validationErr.Detail,
 					validationErr.Value,
 				)
 			}

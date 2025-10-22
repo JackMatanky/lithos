@@ -24,29 +24,49 @@ This package is a **shared internal package** - a cross-cutting concern used by 
 
 The package is organized across multiple files for better maintainability and Single Responsibility Principle compliance:
 
-- **`errors.go`**: Package documentation and overview
+- **`README.md`**: Package documentation and usage guide
 - **`result.go`**: Result[T] generic type and functional error handling methods
-- **`types.go`**: Domain-specific error types and their constructors
+- **`types.go`**: BaseError composition system and domain-specific error types with constructors
+- **`validation.go`**: Comprehensive validation error system with aggregation
 - **`wrapping.go`**: Error wrapping and utility functions
+- **`*_test.go`**: Unit tests for each component
 
 ## Error Types
 
-### ValidationError
+### BaseError
 
-Represents validation failures with field-specific information.
+Provides a common structure for domain errors with consistent formatting and error chaining.
 
 ```go
-type ValidationError struct {
-    Field   string      // Field name that failed validation
-    Message string      // Validation error message
-    Value   interface{} // Invalid value that was provided
+type BaseError struct {
+    Type    string      // Error type identifier (e.g., "ValidationError")
+    Context string      // Primary context information
+    Detail  string      // Specific error detail
+    Value   interface{} // Optional associated value
+    Cause   error       // Optional underlying cause
 }
 ```
 
+### Validation System
+
+For comprehensive validation with multiple field errors, see `validation.go`:
+
+- **`ValidationResult`**: Aggregates multiple field validation errors
+- **`FieldValidationError`**: Interface for polymorphic field error handling
+- **Specific error types**: `RequiredFieldError`, `ArrayConstraintError`, `PropertySpecError`, etc.
+
 **Usage:**
 ```go
+// Single field validation
 err := NewValidationError("email", "invalid format", "user@")
-fmt.Println(err.Error()) // "[ValidationError] field 'email': invalid format"
+
+// Comprehensive validation with multiple errors
+result := ValidateFrontmatter(frontmatter, schema)
+if !result.IsValid() {
+    for _, fieldErr := range result.Errors {
+        log.Printf("Field %s: %v", fieldErr.Field(), fieldErr)
+    }
+}
 ```
 
 ### NotFoundError
@@ -121,43 +141,30 @@ err := NewSchemaError("user.schema", "invalid field type for 'age'")
 fmt.Println(err.Error()) // "[SchemaError] schema 'user.schema': invalid field type for 'age'"
 ```
 
-### StorageError
+### OperationError (StorageError/FileSystemError)
 
-Represents storage operation failures.
+Represents operation failures for storage and filesystem operations. `StorageError` and `FileSystemError` are type aliases for backward compatibility.
 
 ```go
-type StorageError struct {
-    Operation string // Operation that failed (e.g., "read", "write")
-    Path      string // Path or identifier of the storage location
+type OperationError struct {
+    Operation string // Operation that failed (e.g., "read", "write", "open")
+    Path      string // Path or identifier of the location
     Cause     error  // Underlying cause (nil if not applicable)
 }
 ```
 
 **Usage:**
 ```go
-err := NewStorageError("write", "/data/cache/users", errors.New("disk full"))
-fmt.Println(err.Error()) // "[StorageError] write '/data/cache/users': disk full"
+// Storage operations
+storageErr := NewStorageError("write", "/data/cache/users", errors.New("disk full"))
+fmt.Println(storageErr.Error()) // "[StorageError] write '/data/cache/users': disk full"
 
-err2 := NewStorageError("read", "/data/cache/users", nil)
-fmt.Println(err2.Error()) // "[StorageError] read '/data/cache/users' failed"
-```
+readErr := NewStorageError("read", "/data/cache/users", nil)
+fmt.Println(readErr.Error()) // "[StorageError] read '/data/cache/users' failed"
 
-### FileSystemError
-
-Represents filesystem operation failures.
-
-```go
-type FileSystemError struct {
-    Operation string // Operation that failed (e.g., "open", "stat")
-    Path      string // File path that caused the error
-    Cause     error  // Underlying cause (nil if not applicable)
-}
-```
-
-**Usage:**
-```go
-err := NewFileSystemError("open", "/tmp/readonly.txt", errors.New("permission denied"))
-fmt.Println(err.Error()) // "[FileSystemError] open '/tmp/readonly.txt': permission denied"
+// Filesystem operations
+fsErr := NewFileSystemError("open", "/tmp/readonly.txt", errors.New("permission denied"))
+fmt.Println(fsErr.Error()) // "[FileSystemError] open '/tmp/readonly.txt': permission denied"
 ```
 
 ## Result[T] Pattern
@@ -239,9 +246,6 @@ if result.IsOk() {
 All error types provide factory functions for consistent creation:
 
 ```go
-// Validation errors
-err := NewValidationError("field", "message", value)
-
 // Resource errors
 err := NewNotFoundError("resource", "identifier")
 
@@ -254,11 +258,13 @@ err := NewTemplateError("template", line, "message")
 // Schema errors
 err := NewSchemaError("schema", "message")
 
-// Storage errors
-err := NewStorageError("operation", "path", cause)
+// Operation errors (Storage/FileSystem consolidated)
+storageErr := NewStorageError("operation", "path", cause)
+fsErr := NewFileSystemError("operation", "path", cause)
 
-// Filesystem errors
-err := NewFileSystemError("operation", "path", cause)
+// Validation errors (comprehensive system)
+validationErr := NewValidationError("field", "message", value)
+result := ValidateFrontmatter(frontmatter, schema)
 ```
 
 ## Error Wrapping Utilities
