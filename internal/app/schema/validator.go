@@ -827,12 +827,29 @@ func (v *SchemaValidator) validateStepConstraint(
 		return nil
 	}
 
+	// Special case: step=1.0 means integer validation
 	if *step == 1.0 && value != math.Floor(value) {
 		return lithoserrors.NewValidationError(
 			"value",
 			"must be integer",
 			raw,
 		)
+	}
+
+	// General step validation: value must be a multiple of step
+	// Check if (value / step) is close to an integer within floating point
+	// precision
+	if *step != 1.0 {
+		remainder := math.Mod(value, *step)
+		// Use small epsilon for floating point comparison
+		epsilon := 1e-9
+		if remainder > epsilon && (*step-remainder) > epsilon {
+			return lithoserrors.NewValidationError(
+				"value",
+				fmt.Sprintf("must be multiple of %v", *step),
+				raw,
+			)
+		}
 	}
 
 	return nil
