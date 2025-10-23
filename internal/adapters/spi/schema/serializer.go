@@ -34,10 +34,6 @@ const (
 //                      Marshal Functions
 // ----------------------------------------------------------
 
-// ----------------------------------------------------------
-//                     Unmarshal Functions
-// ----------------------------------------------------------
-
 // MarshalProperty serializes a domain Property to JSON data.
 func MarshalProperty(property domain.Property) ([]byte, error) {
 	marshaler := newPropertyMarshaler(property)
@@ -47,6 +43,10 @@ func MarshalProperty(property domain.Property) ([]byte, error) {
 	}
 	return json.Marshal(payload)
 }
+
+// ----------------------------------------------------------
+//                     Unmarshal Functions
+// ----------------------------------------------------------
 
 // UnmarshalProperty constructs a domain Property from JSON data.
 func UnmarshalProperty(data []byte) (domain.Property, error) {
