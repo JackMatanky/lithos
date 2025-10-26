@@ -4,9 +4,9 @@ This section identifies the major logical components and services that implement
 
 - **Domain Services:** Business logic components in the core (pure, no infrastructure dependencies)
 - **API Port Interfaces:** Contracts for primary/driving adapters (CLI, TUI, LSP) defined by domain
+- **API Adapters:** Application driving components (CLI, future TUI/LSP)
 - **SPI Port Interfaces:** Contracts for secondary/driven adapters (storage, filesystem, UI, config) defined by domain
 - **SPI Adapters:** Service provider implementations (storage, filesystem, UI, config)
-- **API Adapters:** Application driving components (CLI, future TUI/LSP)
 - **Shared Internal Packages:** Cross-cutting concerns (logging, errors, registries) used across layers
 
 ## Domain Services
@@ -15,131 +15,100 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 
 ### TemplateEngine
 
-**Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and schema validation.
+**Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and frontmatter validation. Pure domain service orchestrating template execution.
 
 **Key Interfaces:**
 
-- `Execute(templateID string, ctx context.Context) (RenderResult, error)`
-- `Register(template Template)`
+- `Render(ctx context.Context, templateID TemplateID) (string, error)` - Render template to markdown string
+- `Load(ctx context.Context, templateID TemplateID) (Template, error)` - Load template via TemplateLoader port
 
-**Dependencies:** TemplateRepositoryPort, InteractivePort (PromptPort/FuzzyFinderPort), QueryService (read interface), FrontmatterValidator, SchemaValidator, Logger.
+**Dependencies:** TemplateLoader (port), InteractivePort, QueryService, FrontmatterService, Logger.
 
-**Technology Stack:** Go `text/template`, custom function map (`prompt`, `suggester`, `lookup`, `query`, `now`), closures wrapping port calls, zerolog for instrumentation.
+**Technology Stack:** Go `text/template`, custom function map (`prompt`, `suggester`, `lookup`, `query`, `now`), closures wrapping port calls for dependency injection, zerolog for instrumentation.
 
-### SchemaValidator
+### FrontmatterService
 
-**Responsibility:** Validate complete schema definitions and property banks to ensure data
-integrity before use in frontmatter validation or schema registration.
-
-**Key Interfaces:**
-
-- `ValidateSchema(ctx context.Context, schema Schema) Result[ValidationResult]`
-- `ValidatePropertyBank(ctx context.Context, bank PropertyBank) Result[ValidationResult]`
-
-**Dependencies:** Logger, Error package, Result[T] pattern.
-
-**Technology Stack:** Go stdlib validation, PropertySpec polymorphism, Result[T] pattern
-for functional error handling. All specific validation logic (property validation, spec
-validation, schema component validation) implemented as private methods behind the clean
-public API.
-
-### FrontmatterValidator
-
-**Responsibility:** Validate frontmatter against schema rules prior to note creation or during indexing.
+**Responsibility:** Extract YAML frontmatter from markdown and validate against schema rules. Single domain service handling both extraction and validation concerns.
 
 **Key Interfaces:**
 
-- `Validate(schemaName string, fm Frontmatter) []ValidationError`
-- `Lint(template Template) []ValidationError` (stretch goal hook)
+- `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content
+- `Validate(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (looked up via FileClass)
 
-**Dependencies:** SchemaEngine, QueryService (for FileProperty resolution), Logger, Error package.
+**Dependencies:** SchemaRegistry (port for schema lookup), QueryService (for FileSpec resolution), Logger.
 
-**Technology Stack:** Go stdlib (`reflect`, `regexp`, `time`), PropertySpec polymorphism, structured errors enriched with remediation tips.
+**Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`), `goccy/go-yaml` for YAML parsing, PropertySpec polymorphism for type-specific validation, YAML→JSON type coercion for validation, structured FrontmatterError with remediation hints.
 
 ### SchemaEngine
 
-**Responsibility:** Coordinate schema loading, validation, and provide business logic
-operations for schema and property access within the application layer.
+**Responsibility:** Coordinate schema loading and provide unified access to schemas and properties. Acts as facade over SchemaLoader and SchemaRegistry using Go generics for type-safe retrieval.
 
 **Key Interfaces:**
 
-- `LoadSchema(ctx context.Context) Result[[]Schema]` - Load and validate schemas through
-SchemaLoaderPort
-- `LoadPropertyBank(ctx context.Context) Result[*PropertyBank]` - Load and validate
-property bank through SchemaLoaderPort
-- `GetSchema(ctx context.Context, name string) Result[Schema]` - Retrieve validated schema
-by name
-- `HasSchema(ctx context.Context, name string) Result[bool]` - Check if schema exists
-- `GetProperty(ctx context.Context, name string) Result[Property]` - Retrieve property from
-property bank
-- `HasProperty(ctx context.Context, name string) Result[bool]` - Check if property exists
-in bank
+- `Load(ctx context.Context) error` - Load schemas and property bank through SchemaLoader port, populate SchemaRegistry
+- `Get[T Schema | Property](ctx context.Context, name string) (T, error)` - Retrieve schema or property by name using generics
+- `Has[T Schema | Property](ctx context.Context, name string) bool` - Check if schema or property exists using generics
 
-**Dependencies:** SchemaLoaderPort, SchemaValidator, Logger, Error package.
+**Dependencies:** SchemaLoader (port), SchemaRegistry (port), Logger.
 
-**Technology Stack:** Coordination layer using existing SchemaLoaderAdapter logic with
-SchemaValidator injection for validation, business logic for schema/property access
-operations, Result[T] pattern for error handling.
+**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics, delegates to SchemaLoader for loading (which handles validation and inheritance resolution) and SchemaRegistry for lookups. Idiomatic (T, error) return signatures.
+
+**Usage Examples:**
+```go
+schema, err := schemaEngine.Get[Schema](ctx, "contact")
+property, err := schemaEngine.Get[Property](ctx, "standard_title")
+exists := schemaEngine.Has[Schema](ctx, "contact")
+```
 
 ### VaultIndexer
 
-**Responsibility:** Scan vaults, parse frontmatter, and persist the hybrid cache that powers lookups.
+**Responsibility:** Orchestrate vault scanning and indexing workflow (CQRS write side). Coordinates file walking, frontmatter extraction, validation, cache persistence, and query index population.
 
 **Key Interfaces:**
 
-- `Rebuild(ctx context.Context, vaultPath string) (IndexStats, error)`
-- `Refresh(paths []string) error` (post-MVP incremental updates)
+- `Build(ctx context.Context) (IndexStats, error)` - Full vault scan, cache rebuild, and query index population
+- `Refresh(ctx context.Context, paths []string) error` - Incremental update for specific paths and indices (post-MVP)
 
-**Dependencies:** FileSystemPort, CacheCommandPort, FrontmatterValidator, SchemaValidator, QueryService (writer side), Logger, Config.
+**Dependencies:** FileWalker (port), FileReader (port), FrontmatterService, CacheWriter (port), QueryService (direct access to populate indices), Logger, Config.
 
-**Technology Stack:** Custom frontmatter extractor + `goccy/go-yaml`, Go filesystem walk, JSON serialization to `.lithos/cache`, zerolog metrics, atomic write pattern (temp file + rename) to guarantee readers never observe partial files.
+**Technology Stack:** Pure Go orchestration, delegates file operations to ports, atomic indexing with temp file + rename pattern for consistency, directly populates QueryService in-memory indices after cache write completes, zerolog for metrics and progress tracking.
+
+**Note:** VaultIndexer has direct access to QueryService's internal index structures (same package or package-private methods) to populate indices after successful cache write. This keeps write-side concerns (index building) in VaultIndexer while read-side concerns (querying) in QueryService.
 
 ### QueryService
 
-**Responsibility:** Provide fast read-side access for template functions, suggesters, and validators.
+**Responsibility:** Provide fast CQRS read-side access for template functions, suggesters, and validators. Maintains in-memory indices for optimized queries.
 
 **Key Interfaces:**
 
-- `Lookup(ctx context.Context, criteria LookupCriteria) (Note, error)`
-- `Query(ctx context.Context, filter QueryFilter) ([]Note, error)`
+- `ByID(ctx context.Context, id NoteID) (Note, error)` - Retrieve note by NoteID
+- `ByPath(ctx context.Context, path string) ([]Note, error)` - Find notes by path (returns single note if file path, multiple if directory path)
+- `ByFileClass(ctx context.Context, fileClass string) ([]Note, error)` - Find all notes with matching fileClass (convenience for common frontmatter query)
+- `ByFrontmatter(ctx context.Context, field string, value any) ([]Note, error)` - Generic frontmatter field query
 
-**Dependencies:** CacheQueryPort, Registry package, Logger.
+**Dependencies:** CacheReader (port), Logger.
 
-**Technology Stack:** In-memory indices backed by Go maps plus `sync.RWMutex` for concurrent safety, priority resolution (path > YAML `id` > basename), stale cache detection via mod-time checks, future sharding/LRU options for large vaults.
-
-### CommandOrchestrator
-
-**Responsibility:** Facade consumed by API adapters, coordinating domain services for CLI workflows.
-
-**Key Interfaces:**
-
-- `New(ctx context.Context, templateID string) (RenderResult, error)`
-- `Find(ctx context.Context) (RenderResult, error)`
-- `Index(ctx context.Context) (IndexStats, error)`
-
-**Dependencies:** TemplateEngine, QueryService, VaultIndexer, FrontmatterValidator, SchemaValidator, SchemaEngine, Logger, Config.
-
-**Technology Stack:** Pure Go orchestration layer, context-aware method signatures, structured result objects for adapters, zerolog-backed tracing.
+**Technology Stack:** In-memory indices backed by Go maps with `sync.RWMutex` for concurrent safety, multiple specialized indices (by ID, path, fileClass, frontmatter fields) for fast lookups, indices populated directly by VaultIndexer after cache write.
 
 ---
 
 ## API Port Interfaces
 
-Primary (driving) ports define the contracts that adapters such as the Cobra CLI—and future TUI/LSP front-ends—use to interact with the domain core.
+Primary (driving) ports define the contracts that domain exposes to adapters. These are the application's use cases.
 
 ### CLICommandPort
 
-**Responsibility:** Provide a stable interface for command-oriented workflows (`new`, `find`, `index`) exposed to all driving adapters.
+**Responsibility:** Define application use cases for CLI commands. Implemented directly by CLI adapter through orchestrating domain services.
 
 **Key Interfaces:**
 
-- `New(ctx context.Context, templateID string) (RenderResult, error)`
-- `Find(ctx context.Context) (RenderResult, error)`
-- `Index(ctx context.Context) (IndexStats, error)`
+- `New(ctx context.Context, templateID TemplateID) (string, error)` - Execute template to generate new note
+- `Find(ctx context.Context) ([]Template, error)` - List available templates for selection
+- `Index(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache
 
-**Dependencies:** Implemented by CommandOrchestrator, which composes TemplateEngine, VaultIndexer, QueryService, FrontmatterValidator, and SchemaEngine behind the scenes.
+**Dependencies:** Implemented by CLI adapter (CobraAdapter), which composes TemplateEngine, VaultIndexer, QueryService, FrontmatterService, and SchemaEngine via dependency injection.
 
-**Technology Stack:** Defined in `internal/app/ports/api.go` as pure Go interfaces; shared response structs (`RenderResult`, `IndexStats`) live alongside the port for reuse by adapters.
+**Technology Stack:** Defined in `internal/ports/api/` as pure Go interface. CLI adapter implements these use cases by orchestrating domain services. Dependency injection happens in main.go.
 
 ---
 
@@ -147,229 +116,267 @@ Primary (driving) ports define the contracts that adapters such as the Cobra CLI
 
 Driven ports describe how the domain expects infrastructure services to behave. Adapters implement these interfaces so the core can remain environment-agnostic.
 
-### FileSystemPort
+### CacheWriterPort
 
-**Responsibility:** Provide safe file read/write/walk operations so domain services can interact with the vault without importing `os`.
-
-**Key Interfaces:**
-
-- `ReadFile(path string) ([]byte, error)`
-- `WriteFileAtomic(path string, data []byte) error`
-- `Walk(root string, fn WalkFunc) error`
-
-**Dependencies:** Implemented by LocalFileSystemAdapter.
-
-**Technology Stack:** Go `os`, `io`, and atomic write helpers (temp file + rename); honors config-defined vault roots.
-
-### CacheCommandPort
-
-**Responsibility:** Persist index writes to the on-disk cache as part of the hybrid storage model.
+**Responsibility:** Persist indexed notes to on-disk cache (CQRS write side).
 
 **Key Interfaces:**
 
-- `Store(note Note) error`
-- `Remove(path string) error`
+- `Write(ctx context.Context, note Note) error` - Write note to cache
+- `Delete(ctx context.Context, id NoteID) error` - Remove note from cache
 
-**Dependencies:** JSONFileCacheAdapter (write view).
+**Dependencies:** Implemented by JSONFileCacheAdapter.
 
-**Technology Stack:** Go `encoding/json`, filesystem directory management under `.lithos/cache`.
+**Technology Stack:** Go `encoding/json`, `moby/sys/atomicwriter` for atomic writes, filesystem directory management under `.lithos/cache`.
 
-### CacheQueryPort
+**Note:** No separate FileWriterPort needed - adapters use `atomicwriter.WriteFile` directly. YAGNI principle - we don't have multiple cache storage implementations for MVP.
 
-**Responsibility:** Serve read-side cache access for lookup/query operations.
+### CacheReaderPort
 
-**Key Interfaces:**
-
-- `Fetch(path string) (Note, error)`
-- `List() ([]Note, error)`
-
-**Dependencies:** JSONFileCacheAdapter (read view) plus in-memory index maintained by QueryService.
-
-**Technology Stack:** Go JSON decoding with optional in-memory memoization backed by `sync.RWMutex`.
-
-### SchemaLoaderPort
-
-**Responsibility:** Load schema and property bank definitions for the registry.
+**Responsibility:** Read indexed notes from on-disk cache (CQRS read side).
 
 **Key Interfaces:**
 
-- `LoadSchemas(ctx context.Context) ([]SchemaDefinition, error)`
-- `LoadPropertyBank(ctx context.Context) ([]PropertyDefinition, error)`
+- `Read(ctx context.Context, id NoteID) (Note, error)` - Fetch single note from cache
+- `List(ctx context.Context) ([]Note, error)` - List all cached notes
 
-**Dependencies:** SchemaLoaderAdapter.
+**Dependencies:** Implemented by JSONFileCacheAdapter.
 
-**Technology Stack:** Go filesystem abstractions, `encoding/json`, directory scanning for `schemas/*.json` and `properties/*.json`.
+**Technology Stack:** Go `encoding/json`, lazy loading, optional memoization with `sync.RWMutex`.
 
-### TemplateRepositoryPort
+**Note:** No separate FileReaderPort needed - adapters use `os.ReadFile` and `filepath.Walk` directly. YAGNI principle - we don't have multiple file sources for MVP. If future needs arise (S3, HTTP, embedded), ports can be added then.
 
-**Responsibility:** Enumerate available templates and supply their content to the engine.
+### SchemaPort
 
-**Key Interfaces:**
-
-- `List(ctx context.Context) ([]TemplateMetadata, error)`
-- `Get(ctx context.Context, id string) (Template, error)`
-
-**Dependencies:** TemplateFSAdapter (initially), future adapters for remote packs.
-
-**Technology Stack:** Filesystem scanning (`templates/`), optional caching, Go `text/template` metadata helpers.
-
-### InteractivePort (PromptPort & FuzzyFinderPort)
-
-**Responsibility:** Deliver interactive UX primitives (prompts, suggesters, fuzzy finder) to the template engine.
+**Responsibility:** Load, validate, and resolve schema and property bank definitions. Handles schema inheritance resolution, $ref substitution, and circular dependency detection.
 
 **Key Interfaces:**
 
-- `Prompt(cfg PromptConfig) (string, error)`
-- `Suggester(cfg SuggesterConfig) (string, error)`
-- `Find(items []TemplateMetadata) (TemplateMetadata, error)` (fuzzy finder)
+- `Load(ctx context.Context) ([]Schema, PropertyBank, error)` - Load all schemas and property bank with full resolution
 
-**Dependencies:** InteractiveCLIAdapter; future adapters may wrap Bubble Tea or GUI libraries.
+**Dependencies:** Implemented by SchemaLoaderAdapter.
 
-**Technology Stack:** `github.com/manifoldco/promptui`, `github.com/ktr0731/go-fuzzyfinder`, terminal detection via `golang.org/x/term`.
+**Technology Stack:** Go `encoding/json`, `os.ReadFile`, `filepath.Walk` for directory scanning (`schemas/*.json` and `schemas/property_bank.json`), schema inheritance resolution algorithm, $ref resolution.
+
+**Note:** SchemaLoaderAdapter handles all validation and inheritance resolution internally. Domain receives fully resolved schemas (no Extends/Excludes, flattened properties with $ref substituted). Fails fast at startup on circular dependencies or invalid $ref. SchemaEngine consumes this port and provides generic `Get[T](name)` access to loaded schemas/properties.
+
+### TemplatePort
+
+**Responsibility:** Load template content from storage. Provides templates to TemplateEngine for rendering.
+
+**Key Interfaces:**
+
+- `List(ctx context.Context) ([]TemplateID, error)` - List available template IDs
+- `Load(ctx context.Context, id TemplateID) (Template, error)` - Load template by ID
+
+**Dependencies:** Implemented by TemplateLoaderAdapter.
+
+**Technology Stack:** Go `os.ReadFile`, `filepath.Walk` for scanning Config.TemplatesDir, FileMetadata for mapping TemplateID ↔ filesystem paths, derives TemplateID from basename (filename without extension).
+
+### PromptPort
+
+**Responsibility:** Deliver interactive UX primitives (prompts, suggesters) to template engine for `{{prompt}}` and `{{suggester}}` template functions. Segregated from FinderPort per ISP.
+
+**Key Interfaces:**
+
+- `Prompt(ctx context.Context, cfg PromptConfig) (string, error)` - Text input prompt
+- `Suggester(ctx context.Context, cfg SuggesterConfig) (string, error)` - Selection from list
+
+**Dependencies:** Implemented by PromptUIAdapter.
+
+**Technology Stack:** `github.com/manifoldco/promptui`, `golang.org/x/term` for TTY detection.
+
+**Note:** Post-MVP (Phase 4) will migrate to `charmbracelet/huh` + `charmbracelet/bubbletea` for TUI support. Port abstraction enables this swap without changing TemplateEngine.
+
+### FinderPort
+
+**Responsibility:** Provide fuzzy finder for interactive template selection in `lithos find` command. Segregated from PromptPort per ISP.
+
+**Key Interfaces:**
+
+- `Find(ctx context.Context, templates []Template) (Template, error)` - Fuzzy finder for template selection
+
+**Dependencies:** Implemented by FuzzyfindAdapter.
+
+**Technology Stack:** `github.com/ktr0731/go-fuzzyfinder`, `golang.org/x/term` for TTY detection.
+
+**Note:** Only CLI adapter depends on this port (not TemplateEngine). Post-MVP TUI will use different finder implementation.
 
 ### ConfigPort
 
-**Responsibility:** Expose resolved configuration (vault path, template/schema directories, log level) to domain services.
+**Responsibility:** Load and expose resolved configuration (vault path, directories, log level) to domain services and adapters.
 
 **Key Interfaces:**
 
-- `Config() Config`
-- `Reload(ctx context.Context) (Config, error)` (post-MVP)
+- `Load(ctx context.Context) (Config, error)` - Load config from `lithos.json`, env vars, and CLI flags with precedence
 
-**Dependencies:** ConfigViperAdapter.
+**Dependencies:** Implemented by ViperAdapter.
 
-**Technology Stack:** `github.com/spf13/viper`, environment variable binding, default resolution logic.
+**Technology Stack:** `github.com/spf13/viper`, precedence: CLI flags > env vars > config file > defaults, searches upward from CWD for `lithos.json`.
+
+**Note:** Config is value object (immutable). Loaded once at startup. Post-MVP: Add `Reload()` for dynamic config updates.
 
 ### SchemaRegistryPort
 
-**Responsibility:** Provide access to loaded and resolved schemas for domain validation services.
+**Responsibility:** Provide fast in-memory access to loaded and resolved schemas and properties. Acts as registry for schema lookups by FrontmatterService and QueryService.
 
 **Key Interfaces:**
 
-- `Get(name string) (Schema, bool)`
+- `GetSchema(ctx context.Context, name string) (Schema, error)` - Retrieve schema by name
+- `GetProperty(ctx context.Context, name string) (Property, error)` - Retrieve property from bank by name
+- `HasSchema(ctx context.Context, name string) bool` - Check if schema exists
+- `HasProperty(ctx context.Context, name string) bool` - Check if property exists in bank
 
 **Dependencies:** Implemented by SchemaRegistryAdapter.
 
-**Technology Stack:** Pure Go interface defined in `internal/ports/spi.go`; shared Schema struct.
+**Technology Stack:** In-memory map with `sync.RWMutex` for concurrent reads, populated by SchemaEngine at startup from SchemaPort.Load() results.
+
+**Note:** SchemaEngine wraps this port with generic API: `Get[T Schema | Property](name)` and `Has[T Schema | Property](name)` for convenient type-safe access. Engine translates generic calls to specific port methods (GetSchema/GetProperty).
 
 ---
 
 ## SPI Adapters
 
-Concrete adapters live in `internal/adapters/` and satisfy the driven ports with environment-specific implementations.
+Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports with environment-specific implementations.
 
-### LocalFileSystemAdapter
+**Note on Filesystem Operations:** Per YAGNI principle, no separate FileSystemAdapter for MVP. Adapters use Go stdlib (`os.ReadFile`, `filepath.Walk`) and `moby/sys/atomicwriter` directly. If future needs arise (S3, HTTP, embedded), filesystem ports can be added.
 
-**Responsibility:** Implement `FileSystemPort`, wrapping filesystem interactions with safe defaults for vault operations.
+### JSONCacheWriteAdapter
 
-**Key Interfaces:**
-
-- `ReadFile(path string) ([]byte, error)`
-- `WriteFileAtomic(path string, data []byte) error`
-- `Walk(root string, fn WalkFunc) error`
-
-**Dependencies:** Go `os`, `io`, `path/filepath`, Config (vault root), Logger for error reporting.
-
-**Technology Stack:** Stdlib-only adapter with atomic write helpers (temp file + rename); tested via temp directories to ensure portability.
-
-### JSONFileCacheAdapter
-
-**Responsibility:** Provide disk-backed persistence for both `CacheCommandPort` and `CacheQueryPort`.
+**Responsibility:** Implement `CacheWriterPort` with atomic JSON persistence (CQRS write side). Handles write concerns: atomic guarantees, consistency, error handling.
 
 **Key Interfaces:**
 
-- `Store(note Note) error`
-- `Remove(path string) error`
-- `Fetch(path string) (Note, error)`
-- `List() ([]Note, error)`
+- `Write(ctx context.Context, note Note) error` - Write note to cache with atomic guarantees
+- `Delete(ctx context.Context, id NoteID) error` - Remove note from cache
 
-**Dependencies:** LocalFileSystemAdapter (optional composition), Go `encoding/json`, Config (cache directory), Logger.
+**Dependencies:** Go `encoding/json`, `moby/sys/atomicwriter`, `os`, `filepath`, Config (cache directory), Logger.
 
-**Technology Stack:** JSON serialization/deserialization, directory management under `.lithos/cache`, path hashing for filenames, atomic write/rename workflow mirroring VaultIndexer.
+**Technology Stack:** JSON serialization, `atomicwriter.WriteFile` for atomic writes (temp + rename), directory management under `.lithos/cache`, one JSON file per note (filename: `{NoteID}.json`).
+
+**Note:** Shared helper functions (file path construction, directory creation) live in `internal/adapters/spi/cache/helper.go` to avoid duplication with read adapter.
+
+### JSONCacheReadAdapter
+
+**Responsibility:** Implement `CacheReaderPort` with JSON deserialization (CQRS read side). Handles read concerns: lazy loading, error handling, listing performance.
+
+**Key Interfaces:**
+
+- `Read(ctx context.Context, id NoteID) (Note, error)` - Fetch single note from cache
+- `List(ctx context.Context) ([]Note, error)` - List all cached notes
+
+**Dependencies:** Go `encoding/json`, `os`, `filepath`, Config (cache directory), Logger.
+
+**Technology Stack:** JSON deserialization, `os.ReadFile` for reads, `filepath.Walk` for directory listing, optional in-memory memoization with `sync.RWMutex` for frequently accessed notes.
+
+**Note:** Read adapter optimized for query performance. Can add caching layer without affecting write adapter.
 
 ### SchemaLoaderAdapter
 
-**Responsibility:** Fulfill `SchemaLoaderPort` by loading schema/property bank definitions from disk.
+**Responsibility:** Implement `SchemaPort` by loading, validating, and resolving schema and property bank definitions from disk.
 
 **Key Interfaces:**
 
-- `LoadSchemas(ctx context.Context) ([]SchemaDefinition, error)`
-- `LoadPropertyBank(ctx context.Context) ([]PropertyDefinition, error)`
+- `Load(ctx context.Context) ([]Schema, PropertyBank, error)` - Load all schemas and property bank with full resolution
 
-**Dependencies:** LocalFileSystemAdapter, Config (schemas directory), Logger for validation warnings.
+**Dependencies:** Go `encoding/json`, `os.ReadFile`, `filepath.Walk`, Config (schemas directory and property bank file), Logger.
 
-**Technology Stack:** Go filesystem globbing, `encoding/json`, optional caching to avoid repeated loads during runtime.
+**Technology Stack:** JSON deserialization, schema inheritance resolution algorithm (topological sort, DFS for cycle detection), $ref substitution from property bank, fails fast at startup on circular dependencies or invalid $ref.
 
-### TemplateFSAdapter
+**Note:** All validation and resolution happens in this adapter. Domain receives fully resolved schemas (flattened properties, no Extends/Excludes, $ref substituted).
 
-**Responsibility:** Implement `TemplateRepositoryPort`, indexing template metadata and retrieving content.
+### TemplateLoaderAdapter
 
-**Key Interfaces:**
-
-- `List(ctx context.Context) ([]TemplateMetadata, error)`
-- `Get(ctx context.Context, id string) (Template, error)`
-
-**Dependencies:** LocalFileSystemAdapter, Config (templates directory), optional in-memory cache, Logger.
-
-**Technology Stack:** Filesystem scanning, file hashing for change detection, lazy loading of template bodies.
-
-### InteractiveCLIAdapter
-
-**Responsibility:** Implement `PromptPort` and `FuzzyFinderPort` for terminal-based interactions.
+**Responsibility:** Implement `TemplatePort` by loading template content from filesystem and managing TemplateID ↔ file path mappings.
 
 **Key Interfaces:**
 
-- `Prompt(cfg PromptConfig) (string, error)`
-- `Suggester(cfg SuggesterConfig) (string, error)`
-- `Find(items []TemplateMetadata) (TemplateMetadata, error)`
+- `List(ctx context.Context) ([]TemplateID, error)` - List available template IDs
+- `Load(ctx context.Context, id TemplateID) (Template, error)` - Load template by ID
 
-**Dependencies:** `github.com/manifoldco/promptui`, `github.com/ktr0731/go-fuzzyfinder`, `golang.org/x/term`, Logger.
+**Dependencies:** Go `os.ReadFile`, `filepath.Walk`, FileMetadata (for mapping), Config (templates directory), Logger.
 
-**Technology Stack:** Prompt/fuzzy finder libraries, terminal capability detection, graceful fallback to non-interactive modes, dependency health monitoring with contingency to migrate if PromptUI stagnation becomes a blocker.
+**Technology Stack:** Filesystem scanning of Config.TemplatesDir, derives TemplateID from basename (filename without .md extension), uses FileMetadata for TemplateID ↔ Path mapping.
 
-### ConfigViperAdapter
+### PromptUIAdapter
 
-**Responsibility:** Provide configuration resolution for `ConfigPort`, combining file, environment, and flag sources.
+**Responsibility:** Implement `PromptPort` for terminal-based text input and selection interactions used by template engine.
 
 **Key Interfaces:**
 
-- `Config() Config`
-- `Reload(ctx context.Context) (Config, error)`
+- `Prompt(ctx context.Context, cfg PromptConfig) (string, error)` - Text input prompt
+- `Suggester(ctx context.Context, cfg SuggesterConfig) (string, error)` - Selection from list
 
-**Dependencies:** `github.com/spf13/viper`, Config defaults (`lithos.yaml` schema), Logger for warning messages on missing/invalid keys.
+**Dependencies:** `github.com/manifoldco/promptui`, `golang.org/x/term`, Logger.
 
-**Technology Stack:** Viper configuration bindings, environment variable mapping, optional flag integration, Go structs for strong typing.
+**Technology Stack:** `promptui` library for prompts, TTY detection via `x/term`, graceful fallback to non-interactive mode when TTY unavailable.
+
+**Note:** Post-MVP (Phase 4) will migrate to `charmbracelet/huh` for TUI support. Port abstraction enables swap without domain changes.
+
+### FuzzyfindAdapter
+
+**Responsibility:** Implement `FinderPort` for fuzzy finding template selection in `lithos find` command.
+
+**Key Interfaces:**
+
+- `Find(ctx context.Context, templates []Template) (Template, error)` - Fuzzy finder for template selection
+
+**Dependencies:** `github.com/ktr0731/go-fuzzyfinder`, `golang.org/x/term`, Logger.
+
+**Technology Stack:** `go-fuzzyfinder` library for fzf-like interface, TTY detection, fullscreen terminal mode.
+
+### ViperAdapter
+
+**Responsibility:** Implement `ConfigPort` by loading configuration from `lithos.json`, environment variables, and CLI flags with proper precedence.
+
+**Key Interfaces:**
+
+- `Load(ctx context.Context) (Config, error)` - Load and resolve configuration from all sources
+
+**Dependencies:** `github.com/spf13/viper`, Go `os`, `filepath`, Logger.
+
+**Technology Stack:** Viper configuration bindings, precedence: CLI flags > env vars > config file > defaults, searches upward from CWD for `lithos.json`, environment variable mapping (e.g., `LITHOS_VAULT_PATH`).
+
+**Note:** Config is immutable value object - loaded once at startup. Post-MVP: Add `Reload()` for dynamic configuration updates.
 
 ### SchemaRegistryAdapter
 
-**Responsibility:** Implement `SchemaRegistryPort` by loading schemas at startup, resolving inheritance/exclusions, and providing read-only access to the registry.
+**Responsibility:** Implement `SchemaRegistryPort` by providing fast in-memory registry for schema and property lookups.
 
 **Key Interfaces:**
 
-- `Get(name string) (Schema, bool)`
+- `GetSchema(ctx context.Context, name string) (Schema, error)` - Retrieve schema by name
+- `GetProperty(ctx context.Context, name string) (Property, error)` - Retrieve property from bank
+- `HasSchema(ctx context.Context, name string) bool` - Check if schema exists
+- `HasProperty(ctx context.Context, name string) bool` - Check if property exists
 
-**Dependencies:** SchemaLoaderPort, Registry package, Config (schema directory resolution), Logger.
+**Dependencies:** Go maps, `sync.RWMutex`, Logger.
 
-**Technology Stack:** Custom builder pattern for inheritance resolution, cycle detection via DFS, `sync.RWMutex` guarded registry, integration with shared registry package.
+**Technology Stack:** In-memory registry with concurrent read access via `sync.RWMutex`, populated at startup from SchemaPort.Load() results via SchemaEngine.
+
+**Note:** SchemaEngine wraps this adapter and provides generic `Get[T](name)` API. Registry is read-only after startup initialization.
 
 ---
 
 ## API Adapters
 
-Driving adapters invoke the domain through API ports. Today only the Cobra CLI exists, but future UI channels will reuse the same contracts.
+Driving adapters implement API ports and coordinate domain services. Located in `internal/adapters/api/`.
 
 ### CobraCLIAdapter
 
-**Responsibility:** Wire command-line interactions to `CLICommandPort`, translating flags/arguments into domain requests and presenting results.
+**Responsibility:** Implement `CLICommandPort` by orchestrating domain services for CLI commands. Translates flags/arguments into domain requests and presents results to users.
 
-**Key Interfaces:**
+**Key Interfaces (implements CLICommandPort):**
 
-- `Execute(args []string) int`
-- `registerCommands(root *cobra.Command)`
+- `New(ctx context.Context, templateID TemplateID) (string, error)` - Execute template to generate new note
+- `Find(ctx context.Context) ([]Template, error)` - List available templates for selection
+- `Index(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache
 
-**Dependencies:** `CLICommandPort`, `ConfigPort`, `github.com/spf13/cobra`, Logger.
+**Dependencies:** TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine (domain services), ConfigPort, FinderPort, Logger, `github.com/spf13/cobra`.
 
-**Technology Stack:** Cobra command tree, `pflag` for flag parsing, structured output helpers (human-readable + JSON), zerolog instrumentation.
+**Technology Stack:** Cobra command tree, `pflag` for flag parsing, orchestrates domain services via dependency injection (no CommandOrchestrator), structured output (human-readable + JSON), zerolog instrumentation.
+
+**Note:** CLI adapter implements use cases by composing domain services. Dependency injection happens in main.go. No facade/orchestrator layer needed—direct service composition is clean for MVP.
 
 ### BubbleTeaTUIAdapter (Post-MVP)
 

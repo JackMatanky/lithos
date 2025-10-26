@@ -27,7 +27,7 @@
     - [PropertyBank](./data-models.md#propertybank)
     - [Template](./data-models.md#template)
     - [Config](./data-models.md#config)
-  - [Data Model Relationships Diagram](./data-model-relationships-diagram.md)
+    - [Data Model Relationships Diagram](./data-models.md#data-model-relationships-diagram)
   - [Components](./components.md)
     - [Domain Services](./components.md#domain-services)
       - [TemplateEngine](./components.md#templateengineservice)
