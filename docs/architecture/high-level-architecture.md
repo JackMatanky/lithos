@@ -34,13 +34,15 @@ A **self-contained Go binary** with no external runtime dependencies, distribute
 
 - **Hexagonal Over Layered:** Chosen to isolate domain logic from framework churn (Cobra today, TUI tomorrow). Aligns with PRD Technical Assumptions: "Interface-Driven Architecture" and post-MVP vision (Phase 4: LSP, TUI). The slight upfront cost of defining ports is justified by the PRD's explicit future roadmap.
 
-- **Ports Defined by Core:** The domain defines what it needs (StoragePort, InteractivePort, FileSystemPort), not what adapters provide. This prevents core logic from coupling to adapter implementation details (e.g., core doesn't know about Cobra flags or PromptUI styling).
+- **Ports Defined by Core:** The domain defines port interfaces for what it needs (storage, user interaction, file operations), not what adapters provide. This prevents core logic from coupling to adapter implementation details (e.g., core doesn't know about CLI framework specifics or UI library styling).
 
-- **Single Binary for MVP:** While hexagonal architecture supports microservices, the PRD requires "single standalone binary" (NFR2). All adapters compile with the core. Future: Core could be extracted as a Go module consumed by multiple binaries (CLI, LSP server, TUI).
+- **Domain Uses Abstract Identifiers:** Core domain uses abstract identifiers rather than infrastructure-specific references (filesystem paths, database keys). Adapters translate between domain identifiers and infrastructure concerns. This decouples domain from storage implementation.
 
-- **Test Adapters as First-Class Citizens:** Epic 1.1 test vault and Epic 4.1 interactive test harness are implemented as test adapters. Production code and test code use the same ports, eliminating the need for mocking frameworks.
+- **Single Binary for MVP:** While hexagonal architecture supports distributed systems, the PRD requires "single standalone binary" (NFR2). All adapters compile with the core. Future: Core could be extracted as a Go module consumed by multiple binaries (CLI, LSP server, TUI).
 
-- **CQRS Applied to Storage Layer Only:** CQRS (Command Query Responsibility Segregation) pattern is applied exclusively to storage layer ports and adapters (Cache and FileSystem) for independent read/write optimization. Commands write data (indexing, file creation), queries read data (lookups, searches). Domain services coordinate CQRS storage but use single unified models (Note, Schema, Template) - not separate read/write models. This pragmatic approach provides CQRS benefits (scalability, independent optimization) without model proliferation complexity. Post-MVP: Consider true CQRS with event sourcing (separate event store for writes, materialized views for reads) if performance requirements demand it.
+- **Test Adapters as First-Class Citizens:** Test infrastructure is implemented as test adapters. Production code and test code use the same ports, eliminating the need for mocking frameworks.
+
+- **True CQRS for Storage Layer:** CQRS (Command Query Responsibility Segregation) separates write operations from read operations with distinct models and optimization strategies. Write operations optimize for validation and data integrity. Read operations use denormalized data with in-memory indices for fast queries. Synchronization service keeps read model consistent with write model. This provides independent scaling, multiple specialized indices, and supports future event sourcing.
 
 ## High Level Project Diagram
 
@@ -116,24 +118,24 @@ graph TB
 
 **5. CQRS (Command Query Responsibility Segregation)**
 
-*Separation of read and write operations for vault indexing and querying*
+*Separation of write model and read model with distinct optimization strategies*
 
-- **Rationale:** Vault indexing (write) and note querying (read) have fundamentally different optimization needs. Write operations optimize for batch processing, validation, and persistence - scans vault, parses frontmatter, builds complete index. Read operations optimize for fast O(1) lookups with in-memory indices and concurrent reads. The separation is in **operations** (dedicated logic for read vs write), not models (single Note model shared). This provides CQRS benefits (scalability, clear responsibilities, independent optimization paths) without model proliferation complexity. MVP uses single `.lithos/index/vault.json` file for persistence; post-MVP can migrate write side to append-only event store and read side to denormalized query database (e.g., BoltDB) without changing domain or interfaces. → *(Epic 3: Vault indexing requires different concerns than Epic 5: Template queries)*
+- **Rationale:** Data indexing (write) and data querying (read) have fundamentally different optimization needs. The separation is in both **models** (separate structures for writes vs reads) and **operations** (distinct port interfaces). Write model optimizes for validation and data integrity - enforces business rules and maintains canonical representation. Read model optimizes for queries - denormalized with pre-built indices. Synchronization service keeps models consistent. This true CQRS provides independent scaling, multiple specialized indices, and supports future event sourcing. → *(Epic 3: Vault indexing, Epic 5: Template queries)*
 
-*Note: The CQRS pattern future-proofs for larger vaults (>10k notes). Write side could batch and optimize filesystem scans, while read side maintains multiple specialized indices (by fileClass, by tag, by link graph) without impacting write performance.*
+*Note: The CQRS pattern future-proofs for larger datasets. Write side can add validation caching and batch processing. Read side can maintain multiple projections optimized for different query patterns without impacting write performance.*
 
 ## Design Principles
 
-**Dependency Inversion Principle (DIP):** High-level domain modules depend on abstractions (ports), not concrete adapters. Adapters import core packages and implement port interfaces; core never imports adapters. Enables independent evolution—replace Cobra with another CLI framework by swapping one adapter. Prevents Go import cycles (mandatory for clean hexagonal architecture).
+**Dependency Inversion Principle (DIP):** High-level domain modules depend on abstractions (ports), not concrete adapters. Adapters import core packages and implement port interfaces; core never imports adapters. Enables independent evolution—replace frameworks by swapping adapters. Prevents Go import cycles (mandatory for clean hexagonal architecture).
 
-**Lean Ports:** Ports have 2-4 methods representing service needs. Adapters handle complexity (file I/O, parsing, validation algorithms). Example: SchemaLoaderPort has 2 methods (LoadSchemas, Validate), not 9. Prevents God Object ports.
+**Lean Ports:** Port interfaces have 2-5 focused methods representing specific service needs. Adapters handle infrastructure complexity. Prevents God Object ports and interface bloat.
 
-**YAGNI Over Premature Optimization:** Single Note model for MVP (not separate read/write models). Config struct passed directly (no ConfigPort). Cache adapters use os package directly (no FileRead/WritePort abstraction). Add abstraction when compelling need emerges.
+**Interface Segregation Principle (ISP):** Separate interfaces for different concerns even when same adapter implements multiple interfaces. Read operations separate from write operations. User interaction separate from file operations. Services depend only on interfaces they need.
 
-**ISP Compliance:** PromptPort (5 methods for prompts) separated from FuzzyFinderPort (2 methods for fuzzy finding). Template Service depends on PromptPort only. Prevents unused method dependencies.
+**Lean Domain Models:** Domain models contain only essential data with no behavior or infrastructure dependencies. Complex operations implemented in domain services. Models are pure data structures that can be easily serialized, tested, and composed.
 
-**CQRS in Operations, Not Models:** Separate Command/Query services and ports for writes/reads. Both use single Note model. Provides CQRS benefits (independent optimization, scalability) without model proliferation complexity.
+**CQRS with Separate Models:** Write and read concerns use distinct models optimized for their respective purposes. Write models enforce validation and business rules. Read models denormalized for query performance. Synchronization layer keeps models consistent.
 
-**Dependency Injection via Constructors:** CLI adapter constructs concrete types, injects via constructors. No DI framework—Go constructors sufficient. Config struct passed to components needing configuration.
+**Dependency Injection via main.go:** All dependency wiring happens in application entry point using constructor injection. Infrastructure built first, then domain services, then application services, finally adapters. No DI framework needed—pure Go constructors. See detailed DI pattern documentation in Components section.
 
-**Ports Optimize for Common Case:** FilterByFrontmatter() for 80% of queries (frontmatter field equality), generic Filter() for remaining 20%. Enables secondary index optimization without interface bloat.
+**Idiomatic Go Error Handling:** Standard `(T, error)` return signatures throughout. Domain-specific error types implement standard `error` interface. Error wrapping using `fmt.Errorf("context: %w", err)` for proper unwrapping with `errors.Is()` and `errors.As()`.
