@@ -170,6 +170,7 @@ package-average = 3.0
 # If your golangci-lint build errors on this key, comment it out.
 [linters.settings.decorder]
 dec-order = ["const", "var", "type", "func"]
+disable-dec-order-check = false
 
 [linters.settings.depguard.rules."deprecated"]
 files = ["$all"]
@@ -248,7 +249,7 @@ strict = true
 # If your version supports configuration, `max` sets the allowed method count.
 # Start generous, tighten later if needed.
 [linters.settings.interfacebloat]
-max = 8
+max = 6
 
 [linters.settings.lll]
 line-length = 100
