@@ -95,7 +95,7 @@
 | Component              | Version Added | Epic   | Story | Status | File Path                        |
 | ---------------------- | ------------- | ------ | ----- | ------ | -------------------------------- |
 | **SchemaPort**         | v0.5.11       | Epic 2 | 2.4   | 🟡     | `internal/ports/spi/schema.go`   |
-| **SchemaRegistryPort** | v0.5.11       | Epic 2 | 2.5   | 🟡     | `internal/ports/spi/schema_registry.go`   |
+| **SchemaRegistryPort** | v0.5.11       | Epic 2 | 2.5   | 🟡     | `internal/ports/spi/schema.go`   |
 | **TemplatePort**       | v0.5.11       | Epic 1 | 1.9   | 🟡     | `internal/ports/spi/template.go` |
 
 ### 3.4 Interactive & Config Ports
