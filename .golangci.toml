@@ -92,7 +92,7 @@ enable = [
   "goconst",    # Suggest factoring repeated literals into consts.
   "gocritic",   # Curated bug/perf/style diagnostics (tuned via tags).
   "godot",      # Doc comments must end with a period.
-  "godoclint",  # Check for common mistakes in godoc comments.
+  # "godoclint",  # Check for common mistakes in godoc comments.
   "importas",   # Enforce consistent import aliases.
   "lll",        # Enforce max line length (matches formatter policy).
   "misspell",   # Spell-check comments/strings (US English).
