@@ -1461,9 +1461,9 @@ Using updated `epic-3-vault-indexing-engine.md`:
 
 **Week 4-5: Story Generation**
 
-- **PO** generates ~54-60 rigorous stories
-- **PO** quality checks all stories
-- **Dev Agent** reviews story clarity
+- **SM** generates ~54-60 rigorous stories (`.bmad-core/tasks/create-next-story.md`)
+- **SM** quality checks all stories (`.bmad-core/tasks/execute-checklist.md`)
+- **PO** reviews and validates each story clarity (`.bmad-core/tasks/validate-next-story.md`)
 - **Deliverable:** Perfect, consistent stories
 
 **Week 5-7: Re-Implementation**

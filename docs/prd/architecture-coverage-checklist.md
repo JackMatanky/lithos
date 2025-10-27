@@ -128,8 +128,8 @@
 
 | Component                 | Version Added | Epic   | Story | Status | File Path                                  |
 | ------------------------- | ------------- | ------ | ----- | ------ | ------------------------------------------ |
-| **SchemaLoaderAdapter**   | v0.5.11       | Epic 2 | 2.4   | ✅     | `internal/adapters/spi/schema/loader.go`   |
-| **SchemaRegistryAdapter** | v0.5.11       | Epic 2 | 2.5   | ✅     | `internal/adapters/spi/schema/registry.go` |
+| **SchemaLoaderAdapter**   | v0.5.11       | Epic 2 | 2.4   | 🟡     | `internal/adapters/spi/schema/loader.go`   |
+| **SchemaRegistryAdapter** | v0.5.11       | Epic 2 | 2.5   | 🟡     | `internal/adapters/spi/schema/registry.go` |
 | **TemplateLoaderAdapter** | v0.5.11       | Epic 1 | 1.9   | 🟡     | `internal/adapters/spi/template/loader.go` |
 
 ### 4.4 Interactive & Config Adapters
@@ -239,7 +239,7 @@
 | **Schema.Validate()** (rich model method)        | v0.6.0        | Epic 2 | 2.2   | ✅     | `internal/domain/schema.go`        |
 | **Property.Validate()** (rich model method)      | v0.6.0        | Epic 2 | 2.3   | ✅     | `internal/domain/property.go`      |
 | **PropertySpec.Validate()** (polymorphic)        | v0.6.0        | Epic 2 | 2.3   | ✅     | `internal/domain/property_spec.go` |
-| **SchemaValidator.ValidateAll()** (orchestrator) | v0.6.1        | Epic 2 | 2.7   | ✅     | `internal/app/schema/validator.go` |
+| **SchemaValidator.ValidateAll()** (orchestrator) | v0.6.1        | Epic 2 | 2.6   | 🟡     | `internal/app/schema/validator.go` |
 
 ### 10.2 Frontmatter Validation (Business Rules)
 
