@@ -21,7 +21,6 @@ lithos/
 │   │   └── spi/
 │   │       ├── cache/
 │   │       ├── config/
-│   │       ├── filesystem/
 │   │       ├── interactive/
 │   │       ├── schema/
 │   │       └── template/
