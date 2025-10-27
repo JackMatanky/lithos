@@ -350,18 +350,18 @@ if err != nil {
 
 ### CommandOrchestrator
 
-**Responsibility:** Orchestrate use case workflows by coordinating domain services. Acts as the application service layer that CLI, TUI, and LSP adapters invoke via CLICommandPort. Owns application startup and control flow.
+**Responsibility:** Orchestrate use case workflows by coordinating domain services. Acts as the application service layer that CLI, TUI, and LSP adapters invoke via CLIPort. Owns application startup and control flow.
 
 **Key Interfaces:**
 
-- `Run(ctx context.Context) error` - Start the application by calling CLICommandPort.Start()
-- `NewNote(ctx context.Context, templateID TemplateID) (Note, error)` - Create new note from template (implements CommandHandler)
-- `IndexVault(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache (implements CommandHandler)
-- `FindTemplates(ctx context.Context, query string) ([]Template, error)` - List available templates (implements CommandHandler)
+- `Run(ctx context.Context) error` - Start the application by calling CLIPort.Start()
+- `NewNote(ctx context.Context, templateID TemplateID) (Note, error)` - Create new note from template (implements CommandPort)
+- `IndexVault(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache (implements CommandPort)
+- `FindTemplates(ctx context.Context, query string) ([]Template, error)` - List available templates (implements CommandPort)
 
-**Dependencies:** CLICommandPort (injected API port), TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger.
+**Dependencies:** CLIPort (injected API port), TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger.
 
-**Technology Stack:** Pure Go orchestration, implements CommandHandler interface for CLI callbacks, uses dependency injection from main.go.
+**Technology Stack:** Pure Go orchestration, implements CommandPort interface for CLI callbacks, uses dependency injection from main.go.
 
 **NewNote Use Case Workflow:**
 
@@ -468,20 +468,20 @@ func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID
 
 Primary (driving) ports define the contracts that domain exposes to adapters. These are the application's use cases.
 
-### CLICommandPort
+### CLIPort
 
 **Responsibility:** Define the contract for CLI framework integration. Implemented by CLI adapter to handle command parsing, flag processing, and output formatting. Domain injects this port into CommandOrchestrator to decouple from specific CLI frameworks.
 
 **Key Interfaces:**
 
-- `Start(ctx context.Context, handler CommandHandler) error` - Start the CLI event loop, parse commands, and delegate to handler for business logic
+- `Start(ctx context.Context, handler CommandPort) error` - Start the CLI event loop, parse commands, and delegate to handler for business logic
 
-**CommandHandler Interface:**
+**CommandPort Interface:**
 
 The CLI adapter calls back to CommandOrchestrator through this interface:
 
 ```go
-type CommandHandler interface {
+type CommandPort interface {
     NewNote(ctx context.Context, templateID TemplateID) (Note, error)
     IndexVault(ctx context.Context) (IndexStats, error)
     FindTemplates(ctx context.Context, query string) ([]Template, error)
@@ -492,11 +492,11 @@ type CommandHandler interface {
 
 ```
 CommandOrchestrator (Domain)
-  └─> Calls CLICommandPort.Start(itself as CommandHandler)
+  └─> Calls CLIPort.Start(itself as CommandPort)
       └─> CobraCLIAdapter receives control
           └─> Sets up Cobra commands
           └─> Parses user input
-          └─> Calls back to CommandHandler.NewNote/IndexVault/FindTemplates
+          └─> Calls back to CommandPort.NewNote/IndexVault/FindTemplates
               └─> CommandOrchestrator orchestrates domain services
               └─> Returns result to CLI adapter
           └─> Formats and displays output
@@ -505,8 +505,8 @@ CommandOrchestrator (Domain)
 **Why This Design:**
 
 - **Decouples CLI framework from domain:** CommandOrchestrator never imports Cobra
-- **Enables multiple adapters:** TUI/LSP can implement CLICommandPort without affecting domain
-- **Testable:** Mock CLICommandPort to test CommandOrchestrator without CLI framework
+- **Enables multiple adapters:** TUI/LSP can implement CLIPort without affecting domain
+- **Testable:** Mock CLIPort to test CommandOrchestrator without CLI framework
 - **Inversion of Control:** Domain starts the application and delegates command parsing to adapter
 
 **Dependencies:** Implemented by CobraCLIAdapter. Injected into CommandOrchestrator via constructor.
@@ -618,6 +618,23 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 
 **Note:** SchemaLoaderAdapter handles all validation and inheritance resolution internally. Domain receives fully resolved schemas (no Extends/Excludes, flattened properties with $ref substituted). Fails fast at startup on circular dependencies or invalid $ref. SchemaEngine consumes this port and provides generic `Get[T](name)` access to loaded schemas/properties.
 
+### SchemaRegistryPort
+
+**Responsibility:** Provide fast in-memory access to loaded and resolved schemas and properties. Acts as registry for schema lookups by FrontmatterService and QueryService.
+
+**Key Interfaces:**
+
+- `GetSchema(ctx context.Context, name string) (Schema, error)` - Retrieve schema by name
+- `GetProperty(ctx context.Context, name string) (Property, error)` - Retrieve property from bank by name
+- `HasSchema(ctx context.Context, name string) bool` - Check if schema exists
+- `HasProperty(ctx context.Context, name string) bool` - Check if property exists in bank
+
+**Dependencies:** Implemented by SchemaRegistryAdapter.
+
+**Technology Stack:** In-memory map with `sync.RWMutex` for concurrent reads, populated by SchemaEngine at startup from SchemaPort.Load() results.
+
+**Note:** SchemaEngine wraps this port with generic API: `Get[T Schema | Property](name)` and `Has[T Schema | Property](name)` for convenient type-safe access. Engine translates generic calls to specific port methods (GetSchema/GetProperty).
+
 ### TemplatePort
 
 **Responsibility:** Load template content from storage. Provides templates to TemplateEngine for rendering.
@@ -673,23 +690,6 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 **Technology Stack:** `github.com/spf13/viper`, precedence: CLI flags > env vars > config file > defaults, searches upward from CWD for `lithos.json`.
 
 **Note:** Config is value object (immutable). Loaded once at startup. Post-MVP: Add `Reload()` for dynamic config updates.
-
-### SchemaRegistryPort
-
-**Responsibility:** Provide fast in-memory access to loaded and resolved schemas and properties. Acts as registry for schema lookups by FrontmatterService and QueryService.
-
-**Key Interfaces:**
-
-- `GetSchema(ctx context.Context, name string) (Schema, error)` - Retrieve schema by name
-- `GetProperty(ctx context.Context, name string) (Property, error)` - Retrieve property from bank by name
-- `HasSchema(ctx context.Context, name string) bool` - Check if schema exists
-- `HasProperty(ctx context.Context, name string) bool` - Check if property exists in bank
-
-**Dependencies:** Implemented by SchemaRegistryAdapter.
-
-**Technology Stack:** In-memory map with `sync.RWMutex` for concurrent reads, populated by SchemaEngine at startup from SchemaPort.Load() results.
-
-**Note:** SchemaEngine wraps this port with generic API: `Get[T Schema | Property](name)` and `Has[T Schema | Property](name)` for convenient type-safe access. Engine translates generic calls to specific port methods (GetSchema/GetProperty).
 
 ---
 
@@ -913,11 +913,11 @@ Driving adapters implement API ports and coordinate domain services. Located in 
 
 ### CobraCLIAdapter
 
-**Responsibility:** Implement `CLICommandPort` by handling Cobra-specific command parsing, flag processing, and output formatting. Receives CommandHandler from CommandOrchestrator to delegate business logic.
+**Responsibility:** Implement `CLIPort` by handling Cobra-specific command parsing, flag processing, and output formatting. Receives CommandPort from CommandOrchestrator to delegate business logic.
 
-**Key Interfaces (implements CLICommandPort):**
+**Key Interfaces (implements CLIPort):**
 
-- `Start(ctx context.Context, handler CommandHandler) error` - Set up Cobra command tree, parse user input, delegate to handler, format output
+- `Start(ctx context.Context, handler CommandPort) error` - Set up Cobra command tree, parse user input, delegate to handler, format output
 
 **Dependencies:** FinderPort (for fuzzy template selection), Logger, `github.com/spf13/cobra`, `github.com/spf13/pflag`.
 
@@ -936,7 +936,7 @@ All public methods decompose into focused private methods following Single Respo
 
 ```go
 // Public - orchestrates
-func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandHandler) error {
+func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandPort) error {
     rootCmd := a.buildRootCommand()
     rootCmd.AddCommand(
         a.buildNewCommand(handler),
@@ -947,7 +947,7 @@ func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandHandler) err
 }
 
 // Private - builds new command
-func (a *CobraCLIAdapter) buildNewCommand(handler CommandHandler) *cobra.Command {
+func (a *CobraCLIAdapter) buildNewCommand(handler CommandPort) *cobra.Command {
     cmd := &cobra.Command{
         Use:   "new [template-id]",
         Short: "Create a new note from template",
@@ -961,7 +961,7 @@ func (a *CobraCLIAdapter) buildNewCommand(handler CommandHandler) *cobra.Command
 }
 
 // Private - handles new command workflow
-func (a *CobraCLIAdapter) handleNewCommand(cmd *cobra.Command, args []string, handler CommandHandler) error {
+func (a *CobraCLIAdapter) handleNewCommand(cmd *cobra.Command, args []string, handler CommandPort) error {
     templateID, err := a.selectTemplate(cmd.Context(), args, handler)
     if err != nil {
         return err
@@ -976,7 +976,7 @@ func (a *CobraCLIAdapter) handleNewCommand(cmd *cobra.Command, args []string, ha
 }
 
 // Private - template selection (direct or fuzzy)
-func (a *CobraCLIAdapter) selectTemplate(ctx context.Context, args []string, handler CommandHandler) (TemplateID, error) {
+func (a *CobraCLIAdapter) selectTemplate(ctx context.Context, args []string, handler CommandPort) (TemplateID, error) {
     if len(args) > 0 {
         return TemplateID(args[0]), nil
     }
@@ -1013,7 +1013,7 @@ func (a *CobraCLIAdapter) displayNoteCreated(cmd *cobra.Command, note Note) erro
 
 **What It Does NOT Do:**
 
-- Business logic orchestration (delegated to CommandHandler)
+- Business logic orchestration (delegated to CommandPort)
 - Domain service coordination (handled by CommandOrchestrator)
 - Template rendering, validation, or persistence (all domain concerns)
 
@@ -1021,14 +1021,14 @@ func (a *CobraCLIAdapter) displayNoteCreated(cmd *cobra.Command, note Note) erro
 
 ### BubbleTeaTUIAdapter (Post-MVP)
 
-**Responsibility:** Planned TUI that provides rich terminal UX (status dashboard, live previews) while calling `CLICommandPort`.
+**Responsibility:** Planned TUI that provides rich terminal UX (status dashboard, live previews) while calling `CLIPort`.
 
 **Key Interfaces:**
 
 - `Run(ctx context.Context) error`
 - `Update(msg tea.Msg) (tea.Model, tea.Cmd)`
 
-**Dependencies:** `CLICommandPort`, `InteractivePort`, `github.com/charmbracelet/bubbletea`, Logger.
+**Dependencies:** `CLIPort`, `InteractivePort`, `github.com/charmbracelet/bubbletea`, Logger.
 
 **Technology Stack:** Bubble Tea state machine (`tea.Model`), `lipgloss` styling, reuse of existing prompt/fuzzy finder ports for list selections.
 
@@ -1041,7 +1041,7 @@ func (a *CobraCLIAdapter) displayNoteCreated(cmd *cobra.Command, note Note) erro
 - `Initialize(params protocol.InitializeParams) (protocol.InitializeResult, error)`
 - `ExecuteCommand(params protocol.ExecuteCommandParams) (interface{}, error)`
 
-**Dependencies:** `CLICommandPort`, `ConfigPort`, LSP JSON-RPC server library, Logger.
+**Dependencies:** `CLIPort`, `ConfigPort`, LSP JSON-RPC server library, Logger.
 
 **Technology Stack:** `golang.org/x/tools` LSP packages or `sourcegraph/jsonrpc2`, JSON message codecs, reuse of command results formatted for editor diagnostics.
 
@@ -1143,7 +1143,7 @@ graph TD
     end
 
     subgraph APIPorts
-        CSP[CLICommandPort]
+        CSP[CLIPort]
     end
 
     subgraph DomainCore[Domain Core]
@@ -1217,7 +1217,7 @@ graph TD
 
 **Legend:**
 
-- CSP = CLICommandPort
+- CSP = CLIPort
 - VR = VaultReaderPort, VRA = VaultReaderAdapter
 - VW = VaultWriterPort, VWA = VaultWriterAdapter
 - CW = CacheWriterPort, JCWA = JSONCacheWriteAdapter
@@ -1262,7 +1262,7 @@ Dependencies are constructed in a specific order to satisfy the dependency graph
 - VaultIndexer (depends on VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService, Logger, Config)
 
 **4. CommandOrchestrator (application service):**
-- CommandOrchestrator (depends on CLICommandPort, TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger)
+- CommandOrchestrator (depends on CLIPort, TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger)
 
 **5. API Adapters (driving):**
 - CobraCLIAdapter (depends on FinderPort, Logger)
@@ -1339,7 +1339,7 @@ func main() {
 
     // 5. CommandOrchestrator (application service)
     orchestrator := domain.NewCommandOrchestrator(
-        cliAdapter,  // CLICommandPort injected!
+        cliAdapter,  // CLIPort injected!
         templateEngine,
         vaultIndexer,
         queryService,

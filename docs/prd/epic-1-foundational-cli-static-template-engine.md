@@ -3,6 +3,7 @@
 **Epic Goal:** Establish a production-ready Go CLI application with clean hexagonal architecture that can render static markdown templates using Go's text/template engine. This epic delivers the foundational infrastructure (project setup, logging, error handling, configuration) while providing immediate user value through the `lithos new` command that generates markdown notes from templates with basic template functions (now, path control). All domain models, ports, and adapters follow architecture v0.6.8 principles with proper dependency injection, enabling future epics to build upon a solid, testable foundation.
 
 **Architecture References:**
+
 - `docs/architecture/components.md` v0.6.8
 - `docs/architecture/data-models.md` v0.6.8
 - `docs/architecture/tech-stack.md`
@@ -27,13 +28,13 @@ so that the project has consistent linting, formatting, security scanning, and p
   - Timeout set to 5m
 
 - 1.1.2: Verify `.gitignore` exists with entries for:
-  - Go build artifacts (*.exe, *.dll, *.so, *.dylib, *.test)
+  - Go build artifacts (_.exe, _.dll, _.so, _.dylib, \*.test)
   - IDE files (.vscode/, .idea/)
   - Lithos-specific (.lithos/, testdata/vault-copies/)
   - OS files (.DS_Store, Thumbs.db)
 
 - 1.1.3: Verify `.gitattributes` exists with:
-  - Line ending normalization (* text=auto eol=lf)
+  - Line ending normalization (\* text=auto eol=lf)
   - Binary file markers for images, archives
   - Git LFS configuration for large files
 
@@ -95,6 +96,7 @@ so that the project has consistent linting, formatting, security scanning, and p
 **Time Estimate:** 2 hours
 
 **Architecture References:**
+
 - Tech stack: `docs/architecture/tech-stack.md`
 - Source tree: `docs/architecture/source-tree.md`
 - Coding standards: `docs/architecture/coding-standards.md`
@@ -151,6 +153,7 @@ so that the domain layer has clean note entities without infrastructure dependen
 **Time Estimate:** 3 hours
 
 **Architecture References:**
+
 - Data models: `docs/architecture/data-models.md#noteid` (v0.5.2)
 - Data models: `docs/architecture/data-models.md#frontmatter` (v0.1.0)
 - Data models: `docs/architecture/data-models.md#note` (v0.5.2)
@@ -198,6 +201,7 @@ so that templates are represented as pure domain data without infrastructure con
 **Time Estimate:** 2 hours
 
 **Architecture References:**
+
 - Data models: `docs/architecture/data-models.md#templateid` (v0.5.6)
 - Data models: `docs/architecture/data-models.md#template` (v0.5.6)
 
@@ -237,6 +241,7 @@ so that configuration is represented in the domain layer.
 **Time Estimate:** 2 hours
 
 **Architecture References:**
+
 - Data models: `docs/architecture/data-models.md#config` (v0.5.7)
 
 ---
@@ -318,6 +323,7 @@ so that the application has consistent error handling without Result[T] pattern.
 **Time Estimate:** 4 hours
 
 **Architecture References:**
+
 - Components: `docs/architecture/components.md#shared-internal-packages` - Error Package
 - Coding standards: `docs/architecture/coding-standards.md` - Error Handling (v0.6.7, removed Result[T])
 - Change log: v0.5.9 - Error types split (FrontmatterError, CacheReadError, etc.)
@@ -369,6 +375,7 @@ so that the application has consistent, structured logging across all components
 **Time Estimate:** 2.5 hours
 
 **Architecture References:**
+
 - Components: `docs/architecture/components.md#shared-internal-packages` - Logger
 - Tech stack: `docs/architecture/tech-stack.md` - zerolog v1.34.0
 
@@ -382,7 +389,7 @@ so that schemas and templates can be stored in-memory with concurrent read acces
 
 ### Acceptance Criteria
 
-- 1.7.1: Create `internal/shared/registry/registry.go`:
+- 1.7.1: Create `internal/shared/registry/service.go`:
   - Uses Go 1.23+ generics: `Registry[T any]`
   - Thread-safe with `sync.RWMutex`
   - Internal storage: `map[string]T`
@@ -407,7 +414,7 @@ so that schemas and templates can be stored in-memory with concurrent read acces
   - `Exists()` uses `RLock()` for concurrent reads
   - Returns `ErrNotFound` from errors package when key doesn't exist
 
-- 1.7.5: Create unit tests in `internal/shared/registry/registry_test.go`:
+- 1.7.5: Create unit tests in `internal/shared/registry/service_test.go`:
   - Test: Generic type instantiation works (string, int, custom struct)
   - Test: Concurrent reads don't block each other
   - Test: Writes block reads correctly
@@ -429,6 +436,7 @@ so that schemas and templates can be stored in-memory with concurrent read acces
 **Time Estimate:** 3 hours
 
 **Architecture References:**
+
 - Components: `docs/architecture/components.md#shared-internal-packages` - Registry Package
 
 ---
@@ -506,6 +514,7 @@ so that application configuration can be loaded from file, environment, and flag
 **Time Estimate:** 4 hours
 
 **Architecture References:**
+
 - Components: `docs/architecture/components.md#spi-port-interfaces` - ConfigPort (v0.5.11)
 - Components: `docs/architecture/components.md#spi-adapters` - ViperAdapter
 
@@ -606,6 +615,7 @@ so that templates can be loaded from filesystem following hexagonal architecture
 **Time Estimate:** 4.5 hours
 
 **Architecture References:**
+
 - Data models: `docs/architecture/data-models.md#filemetadata` (v0.5.1)
 - Data models: `docs/architecture/data-models.md#templateid` (v0.5.6)
 - Data models: `docs/architecture/data-models.md#template` (v0.5.6)
@@ -624,7 +634,7 @@ so that templates can be loaded from port, parsed with Go text/template, and ren
 
 **TemplateEngine Setup and Load:**
 
-- 1.10.1: Create `internal/app/template_engine.go`:
+- 1.10.1: Create `internal/app/template/service.go`:
   - Constructor: `NewTemplateEngine(templatePort TemplatePort, config Config, log zerolog.Logger) *TemplateEngine`
   - Dependencies: TemplatePort (injected), Config (injected), Logger (injected)
 
@@ -680,7 +690,7 @@ so that templates can be loaded from port, parsed with Go text/template, and ren
   - Implements: List() returns keys from internal storage
   - Implements: Load() returns template from storage or configured error
 
-- 1.10.8: Create unit tests in `internal/app/template_engine_test.go`:
+- 1.10.8: Create unit tests in `internal/app/template/service_test.go`:
   - Test: Load() delegates to TemplatePort correctly
   - Test: Load() logs operation
   - Test: Load() propagates errors from port
@@ -719,6 +729,7 @@ so that templates can be loaded from port, parsed with Go text/template, and ren
 **Time Estimate:** 5 hours
 
 **Architecture References:**
+
 - Components: `docs/architecture/components.md#domain-services` - TemplateEngine (v0.1.0, updated v0.6.2)
 - Components: Custom template functions section
 - Change log: v0.6.3 - File path template functions
@@ -728,21 +739,21 @@ so that templates can be loaded from port, parsed with Go text/template, and ren
 ## Story 1.11: Implement CLI Port Interfaces
 
 As a developer,
-I want to define CLICommandPort and CommandHandler API interfaces,
+I want to define CLIPort and CommandPort API interfaces,
 so that CLI framework integration follows hexagonal callback pattern.
 
 ### Acceptance Criteria
 
-- 1.11.1: Create `internal/ports/api/cli_command.go`:
-  - Interface: `CLICommandPort`
-  - Method: `Start(ctx context.Context, handler CommandHandler) error`
+- 1.11.1: Create `internal/ports/api/cli.go`:
+  - Interface: `CLIPort`
+  - Method: `Start(ctx context.Context, handler CommandPort) error`
   - Add documentation comments:
     - Describe hexagonal callback pattern (CLI adapter receives handler, calls handler methods)
     - Document Start() method contract
     - Reference architecture components.md
 
-- 1.11.2: Create `internal/ports/api/command_handler.go`:
-  - Interface: `CommandHandler`
+- 1.11.2: Create `internal/ports/api/command.go`:
+  - Interface: `CommandPort`
   - Method: `NewNote(ctx context.Context, templateID TemplateID) (Note, error)`
   - Add documentation comments:
     - Note: Additional methods will be added in later epics
@@ -759,9 +770,10 @@ so that CLI framework integration follows hexagonal callback pattern.
 **Time Estimate:** 1 hour
 
 **Architecture References:**
-- Components: `docs/architecture/components.md#api-port-interfaces` - CLICommandPort (v0.6.4)
-- Components: CommandHandler callback interface
-- Change log: v0.6.4 - CommandOrchestrator and CLICommandPort pattern
+
+- Components: `docs/architecture/components.md#api-port-interfaces` - CLIPort (v0.6.4)
+- Components: CommandPort callback interface
+- Change log: v0.6.4 - CommandOrchestrator and CLIPort pattern
 
 ---
 
@@ -780,14 +792,14 @@ so that users can interact with the application via CLI following hexagonal arch
   - `github.com/spf13/pflag`
 
 - 1.12.2: Create `internal/adapters/api/cli/cobra.go`:
-  - Implements CLICommandPort interface
+  - Implements CLIPort interface
   - Constructor: `NewCobraCLIAdapter(log zerolog.Logger) *CobraCLIAdapter`
-  - Internal field: `handler CommandHandler` (stored in Start())
+  - Internal field: `handler CommandPort` (stored in Start())
   - Internal field: `log zerolog.Logger`
 
 **Start Method:**
 
-- 1.12.3: Implement `Start(ctx context.Context, handler CommandHandler) error`:
+- 1.12.3: Implement `Start(ctx context.Context, handler CommandPort) error`:
   - Stores handler parameter in internal field
   - Calls buildRootCommand() private method
   - Executes root command with context: rootCmd.ExecuteContext(ctx)
@@ -848,7 +860,7 @@ so that users can interact with the application via CLI following hexagonal arch
 **Testing:**
 
 - 1.12.10: Add mock to `tests/utils/mocks.go`:
-  - `MockCommandHandler` struct implementing CommandHandler interface
+  - `MockCommandPort` struct implementing CommandPort interface
   - Internal field: `newNoteResult` (Note, error)
   - Method: `SetNewNoteResult(note Note, err error)` - configure mock response
   - Implements: NewNote() returns configured result
@@ -867,7 +879,7 @@ so that users can interact with the application via CLI following hexagonal arch
   - Test: formatError() formats ResourceError correctly
   - Test: formatError() formats TemplateError correctly
   - Test: formatError() formats generic error correctly
-  - All tests use MockCommandHandler from tests/utils/mocks.go
+  - All tests use MockCommandPort from tests/utils/mocks.go
 
 - 1.12.12: All tests pass: `go test ./internal/adapters/api/cli`
 
@@ -875,11 +887,12 @@ so that users can interact with the application via CLI following hexagonal arch
 
 - 1.12.14: Committed with message: `feat(adapters): implement CobraCLI adapter with version and new commands`
 
-**Prerequisites:** Story 1.6 (Logger), Story 1.11 (CLICommandPort, CommandHandler interfaces)
+**Prerequisites:** Story 1.6 (Logger), Story 1.11 (CLIPort, CommandPort interfaces)
 
 **Time Estimate:** 5 hours
 
 **Architecture References:**
+
 - Components: `docs/architecture/components.md#api-adapters` - CobraCLIAdapter (v0.5.11, updated v0.6.4)
 - Components: SRP decomposition pattern section
 
@@ -893,10 +906,10 @@ so that CLI commands are coordinated through domain services following hexagonal
 
 ### Acceptance Criteria
 
-- 1.13.1: Create `internal/app/command_orchestrator.go`:
-  - Constructor: `NewCommandOrchestrator(cliPort CLICommandPort, templateEngine *TemplateEngine, config Config, log zerolog.Logger) *CommandOrchestrator`
-  - Implements CommandHandler interface (from ports/api/command_handler.go)
-  - Dependencies: CLICommandPort (injected), TemplateEngine (injected), Config (injected), Logger (injected)
+- 1.13.1: Create `internal/app/command/orchestrator.go`:
+  - Constructor: `NewCommandOrchestrator(cliPort CLIPort, templateEngine *TemplateEngine, config Config, log zerolog.Logger) *CommandOrchestrator`
+  - Implements CommandPort interface (from ports/api/command_handler.go)
+  - Dependencies: CLIPort (injected), TemplateEngine (injected), Config (injected), Logger (injected)
 
 - 1.13.2: Implement `Run(ctx context.Context) error`:
   - Calls `cliPort.Start(ctx, self)` passing orchestrator as handler (hexagonal callback pattern)
@@ -922,8 +935,8 @@ so that CLI commands are coordinated through domain services following hexagonal
   - Render error → return TemplateError from TemplateEngine
   - File write error → wrap with WrapWithContext("failed to write note to {path}", err)
 
-- 1.13.5: Create unit tests in `internal/app/command_orchestrator_test.go`:
-  - Test: Run() calls CLICommandPort.Start() with self as handler
+- 1.13.5: Create unit tests in `internal/app/command/orchestrator_test.go`:
+  - Test: Run() calls CLIPort.Start() with self as handler
   - Test: Run() propagates errors from CLI
   - Test: NewNote() orchestrates template rendering correctly
   - Test: NewNote() generates NoteID from templateID (basename strategy)
@@ -933,14 +946,14 @@ so that CLI commands are coordinated through domain services following hexagonal
   - Test: NewNote() returns ResourceError when template not found
   - Test: NewNote() returns TemplateError on render failure
   - Test: NewNote() wraps file write errors with context
-  - All tests use mocks from tests/utils/mocks.go (MockCLICommandPort, MockTemplatePort)
+  - All tests use mocks from tests/utils/mocks.go (MockCLIPort, MockTemplatePort)
 
 - 1.13.6: Add mock to `tests/utils/mocks.go`:
-  - `MockCLICommandPort` struct implementing CLICommandPort interface
-  - Internal field: `startCalled bool`, `startHandler CommandHandler`
+  - `MockCLIPort` struct implementing CLIPort interface
+  - Internal field: `startCalled bool`, `startHandler CommandPort`
   - Method: `Start(ctx, handler)` stores handler and sets startCalled flag
   - Method: `WasStartCalled() bool` returns startCalled
-  - Method: `GetHandler() CommandHandler` returns stored handler
+  - Method: `GetHandler() CommandPort` returns stored handler
 
 - 1.13.7: All tests pass: `go test ./internal/app`
 
@@ -948,11 +961,12 @@ so that CLI commands are coordinated through domain services following hexagonal
 
 - 1.13.9: Committed with message: `feat(app): implement CommandOrchestrator with NewNote use case`
 
-**Prerequisites:** Story 1.2 (Note, NoteID), Story 1.4 (Config), Story 1.5 (errors), Story 1.6 (Logger), Story 1.10 (TemplateEngine), Story 1.11 (CLICommandPort, CommandHandler)
+**Prerequisites:** Story 1.2 (Note, NoteID), Story 1.4 (Config), Story 1.5 (errors), Story 1.6 (Logger), Story 1.10 (TemplateEngine), Story 1.11 (CLIPort, CommandPort)
 
 **Time Estimate:** 4 hours
 
 **Architecture References:**
+
 - Components: `docs/architecture/components.md#domain-services` - CommandOrchestrator (v0.6.4)
 - Components: NewNote workflow section
 - Change log: v0.6.4 - CommandOrchestrator as proper use case orchestrator
@@ -1048,6 +1062,7 @@ so that the complete application works from CLI invocation to file creation with
 **Time Estimate:** 4 hours
 
 **Architecture References:**
+
 - Components: `docs/architecture/components.md#dependency-injection-pattern` (v0.6.5)
 - Components: Initialization order section
 - Components: Example main.go structure
@@ -1084,7 +1099,7 @@ so that users can install and use lithos effectively.
       - PropertyBankFile (default: "property_bank.json") - Property bank filename (Epic 2)
       - CacheDir (default: ".lithos/cache/") - Index cache location (Epic 3)
       - LogLevel (default: "info") - Logging verbosity (debug, info, warn, error)
-    - Document environment variable overrides (LITHOS_*)
+    - Document environment variable overrides (LITHOS\_\*)
     - Document config file search behavior (upward from CWD)
   - **Template Function Reference section:**
     - Basic functions:
@@ -1130,7 +1145,7 @@ so that users can install and use lithos effectively.
     - Clean hexagonal architecture following v0.6.8 specifications
     - Domain models: NoteID, Frontmatter, Note, TemplateID, Template, Config
     - Domain services: TemplateEngine, CommandOrchestrator
-    - Ports: ConfigPort, TemplatePort, CLICommandPort, CommandHandler
+    - Ports: ConfigPort, TemplatePort, CLIPort, CommandPort
     - Adapters: ViperAdapter, TemplateLoaderAdapter, CobraCLIAdapter
     - Shared packages: Logger (zerolog), Error handling (idiomatic Go), Registry (generic CQRS)
   - **Testing:**
@@ -1169,6 +1184,7 @@ so that users can install and use lithos effectively.
 **Time Estimate:** 3 hours
 
 **Architecture References:**
+
 - All architecture documents in `docs/architecture/`
 
 ---
@@ -1176,73 +1192,83 @@ so that users can install and use lithos effectively.
 ## Epic 1 Completion Summary
 
 ### Total Stories: 15
+
 ### Estimated Time: 53 hours (~2.5 weeks for AI agent with 2-4 hour story sizes)
 
 ### Story Breakdown by Time
 
-| Story | Title | Time | Cumulative |
-|-------|-------|------|------------|
-| 1.1 | Verify Tooling and Structure | 2h | 2h |
-| 1.2 | Note Models (NoteID, Frontmatter, Note) | 3h | 5h |
-| 1.3 | Template Models (TemplateID, Template) | 2h | 7h |
-| 1.4 | Config Model | 2h | 9h |
-| 1.5 | Shared Error Package | 4h | 13h |
-| 1.6 | Logger Package | 2.5h | 15.5h |
-| 1.7 | Registry Package | 3h | 18.5h |
-| 1.8 | Config Loading (Port + Adapter) | 4h | 22.5h |
-| 1.9 | Template Loading (Model + Port + Adapter) | 4.5h | 27h |
-| 1.10 | TemplateEngine Service | 5h | 32h |
-| 1.11 | CLI Port Interfaces | 1h | 33h |
-| 1.12 | CobraCLI Adapter | 5h | 38h |
-| 1.13 | CommandOrchestrator | 4h | 42h |
-| 1.14 | DI + E2E Test | 4h | 46h |
-| 1.15 | Documentation | 3h | 49h |
+| Story | Title                                     | Time | Cumulative |
+| ----- | ----------------------------------------- | ---- | ---------- |
+| 1.1   | Verify Tooling and Structure              | 2h   | 2h         |
+| 1.2   | Note Models (NoteID, Frontmatter, Note)   | 3h   | 5h         |
+| 1.3   | Template Models (TemplateID, Template)    | 2h   | 7h         |
+| 1.4   | Config Model                              | 2h   | 9h         |
+| 1.5   | Shared Error Package                      | 4h   | 13h        |
+| 1.6   | Logger Package                            | 2.5h | 15.5h      |
+| 1.7   | Registry Package                          | 3h   | 18.5h      |
+| 1.8   | Config Loading (Port + Adapter)           | 4h   | 22.5h      |
+| 1.9   | Template Loading (Model + Port + Adapter) | 4.5h | 27h        |
+| 1.10  | TemplateEngine Service                    | 5h   | 32h        |
+| 1.11  | CLI Port Interfaces                       | 1h   | 33h        |
+| 1.12  | CobraCLI Adapter                          | 5h   | 38h        |
+| 1.13  | CommandOrchestrator                       | 4h   | 42h        |
+| 1.14  | DI + E2E Test                             | 4h   | 46h        |
+| 1.15  | Documentation                             | 3h   | 49h        |
 
 **Adjusted Total: 49 hours** (not 53h, recalculated from breakdown)
 
 ### Deliverables
 
 ✅ **Infrastructure:**
+
 - Development tooling verified (Story 1.1)
 - Project structure verified with hexagonal architecture (Story 1.1)
 - testdata structure used correctly (Stories 1.9, 1.10, 1.14)
 - Mocks in tests/utils/mocks.go (Stories 1.10, 1.12, 1.13)
 
 ✅ **Domain Models (v0.6.8):**
+
 - NoteID, Frontmatter, Note in internal/domain/note.go (Story 1.2)
 - TemplateID, Template in internal/domain/template.go (Story 1.3)
 - Config in internal/domain/config.go (Story 1.4)
 
 ✅ **Shared Packages:**
+
 - Error types - idiomatic Go, no Result[T] (Story 1.5)
 - Logger with zerolog (Story 1.6)
 - Registry with CQRS (Story 1.7)
 
 ✅ **Ports & Adapters:**
+
 - ConfigPort + ViperAdapter (Story 1.8)
 - TemplatePort + TemplateLoaderAdapter (Story 1.9)
-- CLICommandPort + CommandHandler + CobraCLIAdapter (Stories 1.11-1.12)
+- CLIPort + CommandPort + CobraCLIAdapter (Stories 1.11-1.12)
 - FileMetadata SPI model (Story 1.9)
 
 ✅ **Domain Services:**
+
 - TemplateEngine with all functions in internal/app/ (Story 1.10)
 - CommandOrchestrator in internal/app/ (Story 1.13)
 
 ✅ **Template Functions:**
+
 - Basic: now, toLower, toUpper (Story 1.10)
 - Path control: path, folder, basename, extension, join, vaultPath (Story 1.10)
 
 ✅ **Testing:**
+
 - Unit tests for all components (all stories)
 - Integration tests in tests/integration/ (Stories 1.9, 1.10)
 - End-to-end tests in tests/e2e/ (Story 1.14)
 - Mocks in tests/utils/mocks.go (Stories 1.10, 1.12, 1.13)
 
 ✅ **CLI Commands:**
+
 - `lithos version` (Story 1.12)
 - `lithos new <template-id>` with --view flag (Story 1.12)
 
 ✅ **Documentation:**
+
 - README with installation and quick start (Story 1.15)
 - CHANGELOG for v0.1.0 (Story 1.15)
 - Configuration reference (Story 1.15)
@@ -1254,18 +1280,18 @@ so that users can install and use lithos effectively.
 
 **Implemented Components:**
 
-| Category | Components | Stories |
-|----------|------------|---------|
-| Domain Models | NoteID, Frontmatter, Note, TemplateID, Template, Config | 1.2, 1.3, 1.4 |
-| SPI Models | FileMetadata | 1.9 |
-| Domain Services | TemplateEngine, CommandOrchestrator | 1.10, 1.13 |
-| SPI Ports | ConfigPort, TemplatePort | 1.8, 1.9 |
-| SPI Adapters | ViperAdapter, TemplateLoaderAdapter | 1.8, 1.9 |
-| API Ports | CLICommandPort, CommandHandler | 1.11 |
-| API Adapters | CobraCLIAdapter | 1.12 |
-| Shared Packages | Logger, Errors, Registry | 1.5, 1.6, 1.7 |
-| Template Functions | 12 functions (basic + path control) | 1.10 |
-| DI & Main | main.go initialization | 1.14 |
+| Category           | Components                                              | Stories       |
+| ------------------ | ------------------------------------------------------- | ------------- |
+| Domain Models      | NoteID, Frontmatter, Note, TemplateID, Template, Config | 1.2, 1.3, 1.4 |
+| SPI Models         | FileMetadata                                            | 1.9           |
+| Domain Services    | TemplateEngine, CommandOrchestrator                     | 1.10, 1.13    |
+| SPI Ports          | ConfigPort, TemplatePort                                | 1.8, 1.9      |
+| SPI Adapters       | ViperAdapter, TemplateLoaderAdapter                     | 1.8, 1.9      |
+| API Ports          | CLIPort, CommandPort                                    | 1.11          |
+| API Adapters       | CobraCLIAdapter                                         | 1.12          |
+| Shared Packages    | Logger, Errors, Registry                                | 1.5, 1.6, 1.7 |
+| Template Functions | 12 functions (basic + path control)                     | 1.10          |
+| DI & Main          | main.go initialization                                  | 1.14          |
 
 **Components Deferred to Later Epics:**
 

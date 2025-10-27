@@ -19,16 +19,19 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 2. **Architecture Coverage Gaps:** Epics/stories don't cover ALL architecture components from v0.6.8
 
 **Root Cause:**
+
 - PRD/Epics written before architecture was finalized (v0.1-0.4)
 - Epic/story creation not verified against complete architecture inventory
 - Epic 1-2 implemented with violations baked into code
 
 **Scope of Impact:**
+
 - **Code:** 7 files with critical violations in production
 - **Stories:** ALL ~30+ story files reference old architecture
 - **Coverage:** Unknown number of architecture components not represented in epics
 
 **Good News:**
+
 - Epic 3+ not implemented yet - violations caught before major waste
 - Architecture fully documented and correct (v0.6.8)
 
@@ -39,6 +42,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 **Timeline:** 17-25 days before Epic 3 can proceed
 
 **Why This Approach:**
+
 1. ✅ AI-agent workflow: Rigorous planning is SLOW but enables FAST implementation
 2. ✅ Archive ALL stories (not selective) - Epic 1-2 stories also reference old architecture
 3. ✅ Architecture coverage verification - Ensure NO component forgotten
@@ -56,6 +60,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 **Why:** Planning Epic 3 stories triggered critical reflection on architecture quality
 
 **Timeline of Events:**
+
 - Oct 8, 2025: Initial architecture v0.1-0.4 created
 - Oct 11-21, 2025: Epic 1-2 implemented with v0.1-0.4 architecture
 - Oct 24-26, 2025: Architecture review during Epic 3 planning
@@ -65,6 +70,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 ### Core Problem Statement
 
 **The initial architecture (v0.1-0.4) contained fundamental hexagonal architecture violations and pattern misapplications that led to:**
+
 - Tight coupling between domain and infrastructure layers
 - Non-idiomatic Go patterns (Result[T] instead of (T, error))
 - Violation of SOLID principles (SRP, ISP, DIP)
@@ -82,6 +88,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 4. **Incremental story creation** - Stories created without holistic architecture review
 
 **Impact Scope:**
+
 - **Technical Debt:** 6 critical violations in production code
 - **Epic Debt:** ALL epics reference incomplete/incorrect architecture
 - **Story Debt:** ALL ~30+ stories need regeneration
@@ -91,11 +98,13 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 ### Could This Have Been Prevented?
 
 **Partially Yes:**
+
 - ✅ Architecture-first approach (architecture → epics → stories)
 - ✅ Architecture coverage checklist during epic planning
 - ✅ Periodic epic-to-architecture alignment reviews
 
 **Good Timing:**
+
 - ✅ Caught before Epic 3 implementation
 - ✅ Comprehensive architecture corrections completed (v0.6.8)
 - ✅ All violations documented in architecture-review-and-refactoring-plan.md
@@ -108,16 +117,17 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 
 **Epic 1: Foundational CLI (IMPLEMENTED - Has Violations)**
 
-| Story | Status | Violation | Action |
-|-------|--------|-----------|--------|
-| 1.1-1.2 | ✅ Complete | ✅ None | Archive story file, regenerate |
-| **1.3** | ✅ Complete | 🔴 File, Note, Template models - layer violations | Archive code + story, re-implement |
-| **1.4** | ✅ Complete | 🔴 Result[T] pattern throughout | Archive code + story, re-implement |
-| 1.5-1.6 | ✅ Complete | ✅ None (Logger, Registry correct) | Archive story file, regenerate |
-| **1.7** | ✅ Complete | 🔴 FileSystemPort (YAGNI violation) | Archive code + story, re-implement |
-| 1.8-1.13 | ✅ Complete | ✅ None | Archive story files, regenerate |
+| Story    | Status      | Violation                                         | Action                             |
+| -------- | ----------- | ------------------------------------------------- | ---------------------------------- |
+| 1.1-1.2  | ✅ Complete | ✅ None                                           | Archive story file, regenerate     |
+| **1.3**  | ✅ Complete | 🔴 File, Note, Template models - layer violations | Archive code + story, re-implement |
+| **1.4**  | ✅ Complete | 🔴 Result[T] pattern throughout                   | Archive code + story, re-implement |
+| 1.5-1.6  | ✅ Complete | ✅ None (Logger, Registry correct)                | Archive story file, regenerate     |
+| **1.7**  | ✅ Complete | 🔴 FileSystemPort (YAGNI violation)               | Archive code + story, re-implement |
+| 1.8-1.13 | ✅ Complete | ✅ None                                           | Archive story files, regenerate    |
 
 **Missing from Epic 1:**
+
 - ⚠️ TemplateEngine service (referenced in architecture)
 - ⚠️ CommandOrchestrator service (added v0.6.4)
 - ⚠️ TemplatePort interface
@@ -127,14 +137,15 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 
 **Epic 2: Configuration & Schema Loading (IMPLEMENTED - Needs Verification)**
 
-| Story | Status | Issues | Action |
-|-------|--------|--------|--------|
-| 2.1 | ✅ Complete | 🟡 Config in adapter layer | Verify + move to domain |
+| Story   | Status      | Issues                            | Action                          |
+| ------- | ----------- | --------------------------------- | ------------------------------- |
+| 2.1     | ✅ Complete | 🟡 Config in adapter layer        | Verify + move to domain         |
 | 2.2-2.3 | ✅ Complete | ⚠️ Rich model verification needed | Verify Validate() methods exist |
-| 2.6 | ✅ Complete | ⚠️ SchemaResolver service | Verify service exists (v0.6.1) |
-| 2.7 | ✅ Complete | ⚠️ SchemaValidator service | Verify service exists (v0.6.1) |
+| 2.6     | ✅ Complete | ⚠️ SchemaResolver service         | Verify service exists (v0.6.1)  |
+| 2.7     | ✅ Complete | ⚠️ SchemaValidator service        | Verify service exists (v0.6.1)  |
 
 **Missing from Epic 2:**
+
 - ⚠️ SchemaEngine service story
 - ⚠️ Explicit SchemaValidator service story (v0.6.1)
 - ⚠️ Explicit SchemaResolver service story (v0.6.1)
@@ -142,6 +153,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 **Epic 3: Vault Indexing Engine (DRAFTED - Completely Outdated)**
 
 **All 9 Stories Outdated:**
+
 - 3.1: References CacheCommandPort/QueryPort → should be CacheWriter/Reader
 - 3.2: References single adapter → should be Write/Read split
 - 3.3: References FileSystemPort → should be VaultReaderPort
@@ -153,6 +165,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 - 3.9: Cache versioning → concepts valid, implementation details need update
 
 **Missing from Epic 3:**
+
 - 🔴 VaultReaderPort interface (added v0.6.8)
 - 🔴 VaultReaderAdapter implementation (added v0.6.8)
 - 🔴 VaultWriterPort interface (added v0.6.8)
@@ -162,6 +175,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 **Epic 4 & 5: Future Epics (PLANNED - Need Review)**
 
 **Potential Issues:**
+
 - Template model changes (FilePath → TemplateID)
 - CommandOrchestrator redesign (v0.6.4)
 - Port/service name changes from Epic 3
@@ -170,6 +184,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 ### Architecture Components NOT Covered by Epics
 
 **Domain Services (from components.md v0.6.8):**
+
 - ❓ TemplateEngine - Which epic/story?
 - ❓ FrontmatterService - Epic 3.4 (but not explicit)
 - ❓ SchemaEngine - Which epic/story?
@@ -180,6 +195,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 - ❓ CommandOrchestrator - Which epic/story? (added v0.6.4)
 
 **SPI Ports (13 total from components.md v0.6.8):**
+
 - ❓ CacheWriterPort - Epic 3.1 (but wrong name in story)
 - ❓ CacheReaderPort - Epic 3.1 (but wrong name in story)
 - ❌ VaultReaderPort - NOT IN ANY EPIC (added v0.6.8)
@@ -190,12 +206,14 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 - ❓ FinderPort - Epic 4 somewhere
 - ❓ ConfigPort - Which epic/story?
 - ❓ SchemaRegistryPort - Which epic/story?
-- ✅ CLICommandPort - Epic 1 (but needs callback pattern v0.6.4)
+- ✅ CLIPort - Epic 1 (but needs callback pattern v0.6.4)
 
 **SPI Adapters (12 total from components.md v0.6.8):**
+
 - Similar gaps and verification needed
 
 **Domain Models (9 from data-models.md v0.6.8):**
+
 - ❌ NoteID - NOT EXPLICIT in Epic 1
 - ❓ Frontmatter - Epic 1.3 (but needs verification)
 - ❓ Note - Epic 1.3 (but wrong composition)
@@ -208,12 +226,14 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 - ❓ Config - Epic 2.1 (but wrong location)
 
 **SPI Adapter Models (2 from data-models.md v0.6.8):**
+
 - ❌ FileMetadata - NOT EXPLICIT (File exists in domain instead)
 - ❌ VaultFile - NOT IN ANY EPIC (added v0.6.8)
 
 ### Summary: Complete Gap Analysis
 
 **Critical Finding:** We cannot definitively say whether ALL architecture components are covered by epics because:
+
 1. ❌ No architecture coverage checklist exists
 2. ❌ Many components are "probably" covered but not explicitly
 3. ❌ New components (v0.5.0-v0.6.8) may not be in epics
@@ -228,21 +248,25 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 ### PRD Files (docs/prd/)
 
 **epic-list.md:**
+
 - Line 8: References "core Storage interface" → should be "CacheWriter, CacheReader, VaultReader, VaultWriter ports"
 - **Action:** Update with correct port names
 
-**epic-*.md (5 files):**
+**epic-\*.md (5 files):**
+
 - All reference incomplete/incorrect architecture
 - Missing architecture version references
 - Missing explicit component coverage
 - **Action:** Rigorous update with architecture v0.6.8 + coverage verification
 
 **technical-assumptions.md:**
+
 - ✅ ALIGNED - No conflicts found
 
 ### Architecture Documents (docs/architecture/)
 
 **Updated to v0.6.8 (7 files):**
+
 - ✅ high-level-architecture.md (v0.5.0)
 - ✅ data-models.md (v0.5.1-v0.5.8, v0.6.0)
 - ✅ components.md (v0.5.11, v0.6.1-v0.6.8)
@@ -254,18 +278,21 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 **Need Updates (2 files):**
 
 **source-tree.md:**
+
 - Line 9: References "File" in domain → should list "NoteID, Frontmatter, Note, Schema, Property, Template, Config"
 - Line 9: Missing "FileMetadata, VaultFile (SPI adapter models)"
 - Line 18: References "FileSystemPort" → should be "CacheWriter, CacheReader, VaultReader, VaultWriter, etc."
 - **Action:** Update model lists and port lists
 
 **testing-strategy.md:**
+
 - Line 18: "MockFileSystemPort" → should be "MockVaultReader, MockVaultWriter"
 - Line 28: "Assert Result[T] states" → should be "Assert (T, error) return values"
 - Line 68: "MockFileSystemPort" again
 - **Action:** Update mock names and error handling references
 
 **Need Verification (6 files):**
+
 - core-workflows.md - Spot check for old patterns
 - database-schema.md - Likely N/A for MVP
 - external-apis.md - Likely N/A for MVP
@@ -278,6 +305,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 **Status:** ALL ~30+ story files need to be archived and regenerated
 
 **Why ALL stories (not selective):**
+
 - Epic 1-2 stories reference old architecture (File model, Result[T], FileSystemPort)
 - Epic 3 stories completely outdated
 - Epic 4-5 stories likely have conflicts
@@ -286,6 +314,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 - Archive preserves Dev Notes, QA Results for reference
 
 **Estimated Count:**
+
 - Epic 1: ~13 stories
 - Epic 2: ~7-8 stories
 - Epic 3: ~13 stories (9 + 4 new)
@@ -296,6 +325,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 ### Implementation Code (internal/)
 
 **Violated Code (Archive + Re-implement):**
+
 ```
 internal/domain/file.go                    # File model - domain layer violation
 internal/domain/note.go                    # Embeds File, should use NoteID
@@ -306,6 +336,7 @@ internal/adapters/spi/filesystem/          # If exists - YAGNI
 ```
 
 **Verified Correct Code (Keep):**
+
 ```
 ✅ internal/domain/frontmatter.go          # Anemic model, correct
 ✅ internal/domain/schema.go               # Verify rich model with Validate()
@@ -315,6 +346,7 @@ internal/adapters/spi/filesystem/          # If exists - YAGNI
 ```
 
 **Needs Verification:**
+
 ```
 ⚠️ internal/adapters/spi/config/           # Should be in internal/domain/
 ⚠️ internal/adapters/spi/schema/           # Verify implementation
@@ -324,21 +356,22 @@ internal/adapters/spi/filesystem/          # If exists - YAGNI
 ### Build Scripts
 
 **justfile:**
+
 - ✅ CLEAN - No conflicts found
 
 ### Summary Table
 
-| Artifact Category | Files | Severity | Action |
-|------------------|-------|----------|--------|
-| PRD Epics | 5 files | 🔴 CRITICAL | Rigorous update + coverage verification |
-| PRD Epic List | 1 file | 🟡 MINOR | Update Storage reference |
-| Architecture (Updated) | 7 files | ✅ CURRENT | No action |
-| Architecture (Needs Update) | 2 files | 🟡 MEDIUM | Update source-tree, testing-strategy |
-| Architecture (Verify) | 6 files | ⚠️ UNKNOWN | Spot checks recommended |
-| **Story Files** | **~54-60 files** | **🔴 CRITICAL** | **Archive ALL + regenerate** |
-| Implementation Code | 7+ files | 🔴 CRITICAL | Archive violations + re-implement |
-| Implementation Tests | ~10 files | 🔴 HIGH | Update/rewrite |
-| Build Scripts | 1 file | ✅ CLEAN | No action |
+| Artifact Category           | Files            | Severity        | Action                                  |
+| --------------------------- | ---------------- | --------------- | --------------------------------------- |
+| PRD Epics                   | 5 files          | 🔴 CRITICAL     | Rigorous update + coverage verification |
+| PRD Epic List               | 1 file           | 🟡 MINOR        | Update Storage reference                |
+| Architecture (Updated)      | 7 files          | ✅ CURRENT      | No action                               |
+| Architecture (Needs Update) | 2 files          | 🟡 MEDIUM       | Update source-tree, testing-strategy    |
+| Architecture (Verify)       | 6 files          | ⚠️ UNKNOWN      | Spot checks recommended                 |
+| **Story Files**             | **~54-60 files** | **🔴 CRITICAL** | **Archive ALL + regenerate**            |
+| Implementation Code         | 7+ files         | 🔴 CRITICAL     | Archive violations + re-implement       |
+| Implementation Tests        | ~10 files        | 🔴 HIGH         | Update/rewrite                          |
+| Build Scripts               | 1 file           | ✅ CLEAN        | No action                               |
 
 ---
 
@@ -347,15 +380,18 @@ internal/adapters/spi/filesystem/          # If exists - YAGNI
 ### Options Considered
 
 **Option 1: Incremental Refactoring**
+
 - Refactor Epic 1-2 violations in place
 - Update Epic 3 stories selectively
 - **Rejected:** 14-21 days, higher complexity for AI agent, higher bug risk
 
 **Option 2: MVP Re-scoping**
+
 - Cut features to avoid refactoring
 - **Rejected:** Violations block Epic 3 implementation anyway
 
 **Option 3: Archive + Complete Regeneration (RECOMMENDED)**
+
 - Archive ALL stories and violated code
 - Rigorous epic-architecture alignment with coverage verification
 - Complete story regeneration
@@ -405,6 +441,7 @@ internal/adapters/spi/filesystem/          # If exists - YAGNI
 **Actions:**
 
 1. **Create Archive Branches:**
+
 ```bash
 # Archive violated code
 git checkout -b archive/epic-1-2-violations
@@ -416,6 +453,7 @@ git push origin archive/stories-pre-epic-alignment
 ```
 
 2. **Remove from Main Branch:**
+
 ```bash
 git checkout main
 git checkout -b refactor/complete-architecture-alignment
@@ -445,31 +483,37 @@ See docs/course_correction/sprint-change-proposal-2025-10-27-complete-architectu
 3. **Document Lessons Learned:**
 
 Create `docs/lessons-learned-epic-1-2.md`:
+
 ```markdown
 # Lessons Learned: Epic 1-2 Implementation
 
 ## What Worked Well
+
 - Test patterns and TDD approach
 - Logger and Registry implementations
 - Schema system structure (if rich models verified)
 
 ## What to Preserve
+
 - Test file structure and organization
 - Table-driven test patterns
 - Quality gate approach (golangci-lint, coverage)
 
 ## What to Avoid
+
 - Implementing before architecture finalized
 - Layer violations (File in domain)
 - Non-idiomatic patterns (Result[T])
 - Missing abstractions (NoteID, VaultPorts)
 
 ## Archive Branches
+
 - code: archive/epic-1-2-violations
 - stories: archive/stories-pre-epic-alignment
 ```
 
 **Deliverables:**
+
 - ✅ Two archive branches with all work preserved
 - ✅ Clean baseline branch
 - ✅ Lessons learned document
@@ -496,35 +540,35 @@ Create `docs/lessons-learned-epic-1-2.md`:
 
 ## Domain Services (from components.md v0.6.8)
 
-- [ ] **TemplateEngine** → Epic: ___ Story: ___
+- [ ] **TemplateEngine** → Epic: **_ Story: _**
   - Reference: components.md#templateengine
   - Render templates with custom function map
 
-- [ ] **FrontmatterService** → Epic: ___ Story: ___
+- [ ] **FrontmatterService** → Epic: **_ Story: _**
   - Reference: components.md#frontmatterservice (v0.5.9)
   - Extract() and Validate() methods
 
-- [ ] **SchemaEngine** → Epic: ___ Story: ___
+- [ ] **SchemaEngine** → Epic: **_ Story: _**
   - Reference: components.md#schemaengine
   - Schema loading and management
 
-- [ ] **SchemaValidator** → Epic: ___ Story: ___
+- [ ] **SchemaValidator** → Epic: **_ Story: _**
   - Reference: components.md#schemavalidator (v0.6.1)
   - Orchestrates schema validation
 
-- [ ] **SchemaResolver** → Epic: ___ Story: ___
+- [ ] **SchemaResolver** → Epic: **_ Story: _**
   - Reference: components.md#schemaresolver (v0.6.1)
   - Inheritance and $ref resolution
 
-- [ ] **VaultIndexer** → Epic: ___ Story: ___
+- [ ] **VaultIndexer** → Epic: **_ Story: _**
   - Reference: components.md#vaultindexer (v0.6.8)
   - Focused service (not God Service)
 
-- [ ] **QueryService** → Epic: ___ Story: ___
+- [ ] **QueryService** → Epic: **_ Story: _**
   - Reference: components.md#queryservice
   - Read-side query operations
 
-- [ ] **CommandOrchestrator** → Epic: ___ Story: ___
+- [ ] **CommandOrchestrator** → Epic: **_ Story: _**
   - Reference: components.md#commandorchestrator (v0.6.4)
   - Use case orchestrator with callback pattern
 
@@ -532,100 +576,100 @@ Create `docs/lessons-learned-epic-1-2.md`:
 
 ## SPI Ports (from components.md v0.6.8)
 
-- [ ] **CacheWriterPort** → Epic: ___ Story: ___
+- [ ] **CacheWriterPort** → Epic: **_ Story: _**
   - Reference: components.md#cachewriterport (v0.5.11)
   - Persist(Note) error, Delete(NoteID) error
 
-- [ ] **CacheReaderPort** → Epic: ___ Story: ___
+- [ ] **CacheReaderPort** → Epic: **_ Story: _**
   - Reference: components.md#cachereaderport (v0.5.11)
   - Get, List, Filter methods
 
-- [ ] **VaultReaderPort** → Epic: ___ Story: ___
+- [ ] **VaultReaderPort** → Epic: **_ Story: _**
   - Reference: components.md#vaultreaderport (v0.6.8)
   - ScanAll, ScanModified, Read methods
 
-- [ ] **VaultWriterPort** → Epic: ___ Story: ___
+- [ ] **VaultWriterPort** → Epic: **_ Story: _**
   - Reference: components.md#vaultwriterport (v0.6.8)
   - Persist, Delete methods
 
-- [ ] **SchemaPort** → Epic: ___ Story: ___
-- [ ] **TemplatePort** → Epic: ___ Story: ___
-- [ ] **PromptPort** → Epic: ___ Story: ___
-- [ ] **FinderPort** → Epic: ___ Story: ___
-- [ ] **ConfigPort** → Epic: ___ Story: ___
-- [ ] **SchemaRegistryPort** → Epic: ___ Story: ___
-- [ ] **CLICommandPort** → Epic: ___ Story: ___
-  - Reference: components.md#clicommandport (v0.6.4)
-  - Start(ctx, handler) with CommandHandler callback
+- [ ] **SchemaPort** → Epic: **_ Story: _**
+- [ ] **TemplatePort** → Epic: **_ Story: _**
+- [ ] **PromptPort** → Epic: **_ Story: _**
+- [ ] **FinderPort** → Epic: **_ Story: _**
+- [ ] **ConfigPort** → Epic: **_ Story: _**
+- [ ] **SchemaRegistryPort** → Epic: **_ Story: _**
+- [ ] **CLIPort** → Epic: **_ Story: _**
+  - Reference: components.md#cliport (v0.6.4)
+  - Start(ctx, handler) with CommandPort callback
 
 ---
 
 ## SPI Adapters (from components.md v0.6.8)
 
-- [ ] **JSONCacheWriteAdapter** → Epic: ___ Story: ___
-- [ ] **JSONCacheReadAdapter** → Epic: ___ Story: ___
-- [ ] **VaultReaderAdapter** → Epic: ___ Story: ___
-- [ ] **VaultWriterAdapter** → Epic: ___ Story: ___
-- [ ] **SchemaLoaderAdapter** → Epic: ___ Story: ___
-- [ ] **TemplateLoaderAdapter** → Epic: ___ Story: ___
-- [ ] **PromptUIAdapter** → Epic: ___ Story: ___
-- [ ] **FuzzyfindAdapter** → Epic: ___ Story: ___
-- [ ] **ViperAdapter** → Epic: ___ Story: ___
-- [ ] **SchemaRegistryAdapter** → Epic: ___ Story: ___
+- [ ] **JSONCacheWriteAdapter** → Epic: **_ Story: _**
+- [ ] **JSONCacheReadAdapter** → Epic: **_ Story: _**
+- [ ] **VaultReaderAdapter** → Epic: **_ Story: _**
+- [ ] **VaultWriterAdapter** → Epic: **_ Story: _**
+- [ ] **SchemaLoaderAdapter** → Epic: **_ Story: _**
+- [ ] **TemplateLoaderAdapter** → Epic: **_ Story: _**
+- [ ] **PromptUIAdapter** → Epic: **_ Story: _**
+- [ ] **FuzzyfindAdapter** → Epic: **_ Story: _**
+- [ ] **ViperAdapter** → Epic: **_ Story: _**
+- [ ] **SchemaRegistryAdapter** → Epic: **_ Story: _**
 
 ---
 
 ## API Ports (from components.md v0.6.8)
 
-- [ ] **CLICommandPort** → Epic: ___ Story: ___
+- [ ] **CLIPort** → Epic: **_ Story: _**
 
 ---
 
 ## API Adapters (from components.md v0.6.8)
 
-- [ ] **CobraCLIAdapter** → Epic: ___ Story: ___
+- [ ] **CobraCLIAdapter** → Epic: **_ Story: _**
 
 ---
 
 ## Domain Models (from data-models.md v0.6.8)
 
-- [ ] **NoteID** → Epic: ___ Story: ___
+- [ ] **NoteID** → Epic: **_ Story: _**
   - Reference: data-models.md#noteid (v0.5.2)
   - Opaque domain identifier
 
-- [ ] **Frontmatter** → Epic: ___ Story: ___
+- [ ] **Frontmatter** → Epic: **_ Story: _**
   - Reference: data-models.md#frontmatter
   - Anemic model: FileClass + Fields
 
-- [ ] **Note** → Epic: ___ Story: ___
+- [ ] **Note** → Epic: **_ Story: _**
   - Reference: data-models.md#note (v0.5.2)
   - Composition: NoteID + Frontmatter
 
-- [ ] **Schema** → Epic: ___ Story: ___
+- [ ] **Schema** → Epic: **_ Story: _**
   - Reference: data-models.md#schema (v0.6.0)
   - Rich model with Validate() method
 
-- [ ] **Property** → Epic: ___ Story: ___
+- [ ] **Property** → Epic: **_ Story: _**
   - Reference: data-models.md#property (v0.6.0)
   - Rich model with Validate() method
 
-- [ ] **PropertySpec** → Epic: ___ Story: ___
+- [ ] **PropertySpec** → Epic: **_ Story: _**
   - Reference: data-models.md#propertyspec (v0.6.0)
   - Interface + 5 variants (String, Number, Date, File, Bool)
   - Rich models with Validate() methods
 
-- [ ] **PropertyBank** → Epic: ___ Story: ___
+- [ ] **PropertyBank** → Epic: **_ Story: _**
   - Reference: data-models.md#propertybank
 
-- [ ] **TemplateID** → Epic: ___ Story: ___
+- [ ] **TemplateID** → Epic: **_ Story: _**
   - Reference: data-models.md#templateid (v0.5.6)
   - Template name identifier
 
-- [ ] **Template** → Epic: ___ Story: ___
+- [ ] **Template** → Epic: **_ Story: _**
   - Reference: data-models.md#template (v0.5.6)
   - ID + Content (no FilePath)
 
-- [ ] **Config** → Epic: ___ Story: ___
+- [ ] **Config** → Epic: **_ Story: _**
   - Reference: data-models.md#config (v0.5.7)
   - Domain value object
 
@@ -633,11 +677,11 @@ Create `docs/lessons-learned-epic-1-2.md`:
 
 ## SPI Adapter Models (from data-models.md v0.6.8)
 
-- [ ] **FileMetadata** → Epic: ___ Story: ___
+- [ ] **FileMetadata** → Epic: **_ Story: _**
   - Reference: data-models.md#filemetadata (v0.5.1)
   - SPI adapter model, not domain
 
-- [ ] **VaultFile** → Epic: ___ Story: ___
+- [ ] **VaultFile** → Epic: **_ Story: _**
   - Reference: data-models.md#vaultfile (v0.6.8)
   - DTO: embeds FileMetadata + Content
 
@@ -654,12 +698,14 @@ Create `docs/lessons-learned-epic-1-2.md`:
 ```
 
 **Process:**
+
 1. Work through checklist systematically
 2. For each component, identify which epic/story should implement it
 3. If component has no epic/story → flag for addition
 4. Document all findings
 
 **Deliverable:**
+
 - ✅ architecture-coverage-checklist.md 100% filled out
 - ✅ List of missing components/stories to add
 - ✅ Complete inventory of architecture → epic mapping
@@ -671,6 +717,7 @@ Create `docs/lessons-learned-epic-1-2.md`:
 **File:** `docs/prd/epic-list.md`
 
 **Change:**
+
 ```diff
 - This includes defining the core `Storage` interface.
 + This includes defining the cache and vault port interfaces (CacheWriter,
@@ -679,6 +726,7 @@ Create `docs/lessons-learned-epic-1-2.md`:
 ```
 
 **Add to header:**
+
 ```markdown
 **Architecture Version:** Based on docs/architecture/ v0.6.8 (Oct 26, 2025)
 ```
@@ -690,8 +738,10 @@ Create `docs/lessons-learned-epic-1-2.md`:
 **File:** `docs/prd/epic-1-foundational-cli-static-template-engine.md`
 
 **Add to Epic Header:**
+
 ```markdown
 **Architecture References:**
+
 - Components: docs/architecture/components.md v0.6.4-v0.6.8
 - Models: docs/architecture/data-models.md v0.5.1-v0.5.7
 - Errors: docs/architecture/error-handling-strategy.md v0.5.9
@@ -709,6 +759,7 @@ architecture principles, so that the domain layer has no infrastructure dependen
 ### Key Requirements
 
 **Domain Models:**
+
 - NoteID - Opaque identifier (Reference: data-models.md#noteid v0.5.2)
 - Note - Composition of NoteID + Frontmatter (Reference: data-models.md#note v0.5.2)
 - Frontmatter - Anemic model with FileClass + Fields (Reference: data-models.md#frontmatter)
@@ -717,6 +768,7 @@ architecture principles, so that the domain layer has no infrastructure dependen
 - Config - Domain value object (Reference: data-models.md#config v0.5.7)
 
 **SPI Adapter Models:**
+
 - FileMetadata - Infrastructure metadata in SPI layer (Reference: data-models.md#filemetadata v0.5.1)
 
 ### Acceptance Criteria
@@ -845,15 +897,16 @@ unnecessary abstraction with single implementation.
 
 **Add Missing Stories Based on Architecture Coverage Checklist:**
 
-*After completing checklist in Phase 2.0, add stories for any missing components*
+_After completing checklist in Phase 2.0, add stories for any missing components_
 
 Examples of potentially missing:
+
 - Story 1.X: Implement TemplateEngine Service
 - Story 1.X: Implement CommandOrchestrator
 - Story 1.X: Implement TemplatePort Interface
 - Story 1.X: Implement TemplateLoaderAdapter
 - Story 1.X: Implement ConfigPort Interface
-- Story 1.X: Update CLICommandPort for Callback Pattern
+- Story 1.X: Update CLIPort for Callback Pattern
 
 ---
 
@@ -864,25 +917,30 @@ Examples of potentially missing:
 **Add Epic Header with Architecture References**
 
 **Update Story 2.1: Config Model**
+
 - Add note: Config should be in `internal/domain/config.go` (v0.5.7)
 - Reference: data-models.md#config
 
 **Verify Stories 2.2-2.3: Schema/Property Models**
+
 - Add rich model requirements (v0.6.0)
 - Require Validate() methods on Schema, Property, PropertySpec
 - Reference: data-models.md#schema, #property, #propertyspec
 
 **Update Story 2.6: Inheritance Resolution**
+
 - Explicitly require SchemaResolver service (v0.6.1)
 - Reference: components.md#schemaresolver
 
 **Update Story 2.7: Schema Validation**
+
 - Explicitly require SchemaValidator service (v0.6.1)
 - Separate from model validation
 - Orchestrates schema validation and cross-schema checks
 - Reference: components.md#schemavalidator
 
 **Add Missing Stories:**
+
 - Story 2.X: SchemaEngine service (if not explicit)
 - Any other components from coverage checklist
 
@@ -906,6 +964,7 @@ read-side access to indexed data. Implements CQRS pattern at both vault level
 **Dependencies:** Epic 2 (Configuration & Schema Loading)
 
 **Architecture References:**
+
 - Ports: components.md#vault-ports (v0.6.8), #cache-ports (v0.5.11)
 - Services: components.md#vaultindexer (v0.6.8), #frontmatterservice (v0.5.9), #queryservice
 - Models: data-models.md#noteid, #filemetadata, #vaultfile (v0.6.8)
@@ -939,6 +998,7 @@ so that cache operations follow CQRS principles with proper naming.
 - 3.1.4: Method naming uses "Persist" (not "Write") for consistency
 
 ### Architecture References
+
 - components.md#cachewriterport (v0.5.11)
 - components.md#cachereaderport (v0.5.11)
 - data-models.md#note (v0.5.2)
@@ -967,6 +1027,7 @@ operations, so that indexing uses proper abstraction (not generic FileSystemPort
   - NOT a domain model - infrastructure DTO only
 
 ### Architecture References
+
 - components.md#vaultreaderport (v0.6.8)
 - data-models.md#vaultfile (v0.6.8)
 - data-models.md#filemetadata (v0.5.1)
@@ -993,6 +1054,7 @@ operations, so that indexing uses proper abstraction (not generic FileSystemPort
 #### Phase 2.5: Update Epic 4-5 Details (1 day)
 
 **Review all stories for:**
+
 - Template model changes (FilePath → TemplateID)
 - CommandOrchestrator redesign (v0.6.4)
 - Port/service naming updates
@@ -1005,6 +1067,7 @@ operations, so that indexing uses proper abstraction (not generic FileSystemPort
 #### Phase 2.6: Final Architecture Coverage Audit (0.5 days)
 
 **Process:**
+
 1. Review completed `docs/prd/architecture-coverage-checklist.md`
 2. Verify EVERY component has epic + story assignment
 3. Verify NO components marked "???" or blank
@@ -1014,6 +1077,7 @@ operations, so that indexing uses proper abstraction (not generic FileSystemPort
 **If ANY component unchecked → GO BACK and add to appropriate epic**
 
 **Deliverables:**
+
 - ✅ All 5 epic files rigorously updated
 - ✅ architecture-coverage-checklist.md 100% complete
 - ✅ Every architecture component mapped to story
@@ -1048,6 +1112,7 @@ operations, so that indexing uses proper abstraction (not generic FileSystemPort
 ```
 
 **Spot check remaining docs:**
+
 - core-workflows.md
 - security.md
 - Others as needed
@@ -1144,6 +1209,7 @@ Using updated `epic-3-vault-indexing-engine.md`:
 #### Quality Verification
 
 **For each generated story:**
+
 - [ ] Story statement clear and valuable
 - [ ] Acceptance criteria detailed and testable
 - [ ] Architecture references with versions
@@ -1154,12 +1220,14 @@ Using updated `epic-3-vault-indexing-engine.md`:
 - [ ] Zero ambiguity - AI executable
 
 **Cross-story verification:**
+
 - [ ] architecture-coverage-checklist.md matches stories
 - [ ] No duplicate component coverage
 - [ ] No missing component coverage
 - [ ] Story sequence matches dependencies
 
 **Deliverables:**
+
 - ✅ ~54-60 rigorous story files in docs/stories/
 - ✅ Perfect architecture v0.6.8 alignment
 - ✅ 100% architecture component coverage verified
@@ -1177,21 +1245,25 @@ Using updated `epic-3-vault-indexing-engine.md`:
 **Implement ALL ~13 Epic 1 stories:**
 
 **Day 1-2: Core Models**
+
 - Story 1.3: NoteID, FileMetadata, Note, TemplateID, Template, Config
 - Comprehensive unit tests
 - Quality gates (lint, test, coverage)
 
 **Day 3: Error Handling**
+
 - Story 1.4: Domain error types, (T, error) pattern
 - Remove any Result[T] remnants
 - Update all error handling
 
 **Day 4: Services and Ports**
+
 - Stories for TemplateEngine, CommandOrchestrator
-- Port interfaces (TemplatePort, ConfigPort, CLICommandPort)
+- Port interfaces (TemplatePort, ConfigPort, CLIPort)
 - Adapter implementations
 
 **Day 5: Integration and Quality**
+
 - Integration testing
 - Quality gates
 - Documentation
@@ -1199,12 +1271,14 @@ Using updated `epic-3-vault-indexing-engine.md`:
 #### Sub-Phase 5.2: Epic 2 Verification + Gaps (2-3 days)
 
 **Verify existing Epic 2 code:**
+
 - Check Schema/Property Validate() methods exist
 - Check SchemaValidator service exists
 - Check SchemaResolver service exists
 - Move Config to internal/domain/
 
 **Implement missing components:**
+
 - Any gaps identified in coverage checklist
 - Update tests
 - Quality gates
@@ -1212,6 +1286,7 @@ Using updated `epic-3-vault-indexing-engine.md`:
 #### Sub-Phase 5.3: Quality Gates (1-2 days)
 
 **Run comprehensive quality checks:**
+
 - golangci-lint run: 0 warnings required
 - go test ./...: 100% pass required
 - Test coverage: ≥95% internal/app, ≥85% overall
@@ -1221,11 +1296,13 @@ Using updated `epic-3-vault-indexing-engine.md`:
 #### Sub-Phase 5.4: Documentation (1 day)
 
 **Update documentation:**
+
 - Implementation notes
 - Any architecture insights
 - Update lessons-learned if needed
 
 **Deliverables:**
+
 - ✅ Epic 1-2 completely re-implemented
 - ✅ Zero architectural violations
 - ✅ All quality gates passing
@@ -1236,19 +1313,20 @@ Using updated `epic-3-vault-indexing-engine.md`:
 
 ## TIMELINE & RESOURCE ALLOCATION
 
-| Phase | Duration | Owner | Effort | Key Deliverable |
-|-------|----------|-------|--------|-----------------|
-| **1. Archive ALL** | 0.5 days | You (PO) | Low | Archive branches, lessons learned |
-| **2.0 Coverage Checklist** | 0.5 days | You (PO) | **High** | **Architecture coverage 100% mapped** |
-| **2.1-2.6 Epic Alignment** | 5-7 days | You (PO) | **High** | **Epics cover 100% of architecture** |
-| **3. Doc Cleanup** | 0.5 days | You (PO) | Low | Updated source-tree, testing-strategy |
-| **4. Story Regeneration** | 3-5 days | You (PO) | **High** | **~54-60 rigorous stories** |
-| **5. Re-Implementation** | 8-12 days | AI Agent | Medium | **Clean code, all violations fixed** |
-| **TOTAL** | **17-25 days** | | | **Epic 3 ready with Epic 1-2 perfected** |
+| Phase                      | Duration       | Owner    | Effort   | Key Deliverable                          |
+| -------------------------- | -------------- | -------- | -------- | ---------------------------------------- |
+| **1. Archive ALL**         | 0.5 days       | You (PO) | Low      | Archive branches, lessons learned        |
+| **2.0 Coverage Checklist** | 0.5 days       | You (PO) | **High** | **Architecture coverage 100% mapped**    |
+| **2.1-2.6 Epic Alignment** | 5-7 days       | You (PO) | **High** | **Epics cover 100% of architecture**     |
+| **3. Doc Cleanup**         | 0.5 days       | You (PO) | Low      | Updated source-tree, testing-strategy    |
+| **4. Story Regeneration**  | 3-5 days       | You (PO) | **High** | **~54-60 rigorous stories**              |
+| **5. Re-Implementation**   | 8-12 days      | AI Agent | Medium   | **Clean code, all violations fixed**     |
+| **TOTAL**                  | **17-25 days** |          |          | **Epic 3 ready with Epic 1-2 perfected** |
 
 **Critical Path:** Coverage checklist → Epic alignment → Story generation → Re-implementation
 
 **Parallelization:**
+
 - Phase 2 (epic updates) can partially overlap across epics
 - Phase 3 (doc cleanup) can overlap with Phase 2
 - Multiple stories can be implemented in parallel in Phase 5 (if multiple AI agents)
@@ -1260,26 +1338,28 @@ Using updated `epic-3-vault-indexing-engine.md`:
 
 ## RISKS & MITIGATION
 
-| Risk | Probability | Impact | Mitigation |
-|------|------------|--------|------------|
-| **Coverage checklist reveals major gaps** | Medium | High | Time-boxed to 2 weeks max for epic alignment; prioritize Epic 1-3 |
-| **Epic alignment takes longer than 7 days** | Medium | Medium | Can compress Phase 4 (story generation) slightly if needed |
-| **Story generation reveals conflicts** | Low | Medium | Epic alignment phase should catch all major issues |
-| **Re-implementation hits unexpected issues** | Low | Medium | Stories detailed enough to minimize ambiguity; can reference archived code |
-| **Work feels "thrown away" (morale)** | Low | Low | Frame as "leveling up"; archive preserves all work; lessons learned doc |
-| **Timeline estimate too optimistic** | Low | Medium | Built in buffer (17-25 days); can extend to 30 days max if needed |
+| Risk                                         | Probability | Impact | Mitigation                                                                 |
+| -------------------------------------------- | ----------- | ------ | -------------------------------------------------------------------------- |
+| **Coverage checklist reveals major gaps**    | Medium      | High   | Time-boxed to 2 weeks max for epic alignment; prioritize Epic 1-3          |
+| **Epic alignment takes longer than 7 days**  | Medium      | Medium | Can compress Phase 4 (story generation) slightly if needed                 |
+| **Story generation reveals conflicts**       | Low         | Medium | Epic alignment phase should catch all major issues                         |
+| **Re-implementation hits unexpected issues** | Low         | Medium | Stories detailed enough to minimize ambiguity; can reference archived code |
+| **Work feels "thrown away" (morale)**        | Low         | Low    | Frame as "leveling up"; archive preserves all work; lessons learned doc    |
+| **Timeline estimate too optimistic**         | Low         | Medium | Built in buffer (17-25 days); can extend to 30 days max if needed          |
 
 ---
 
 ## SUCCESS CRITERIA
 
 ### Phase 2.0 Complete: ✅
+
 - [ ] architecture-coverage-checklist.md created
 - [ ] ALL architecture components inventoried (services, ports, adapters, models)
 - [ ] EVERY component assigned to epic + story
 - [ ] ZERO components unchecked or marked "???"
 
 ### Phase 2.6 Complete: ✅
+
 - [ ] All 5 epic files updated with architecture v0.6.8 references
 - [ ] architecture-coverage-checklist.md shows 100% coverage
 - [ ] Every story description has architecture section references
@@ -1287,6 +1367,7 @@ Using updated `epic-3-vault-indexing-engine.md`:
 - [ ] Dependencies properly sequenced
 
 ### Phase 4 Complete: ✅
+
 - [ ] ~54-60 story files generated (ALL epics)
 - [ ] Every story has detailed acceptance criteria
 - [ ] Every story references architecture docs with versions
@@ -1295,6 +1376,7 @@ Using updated `epic-3-vault-indexing-engine.md`:
 - [ ] AI agent can implement with zero ambiguity
 
 ### Phase 5 Complete: ✅
+
 - [ ] Epic 1-2 completely re-implemented
 - [ ] golangci-lint: 0 warnings
 - [ ] go test ./...: 100% pass
@@ -1313,6 +1395,7 @@ Using updated `epic-3-vault-indexing-engine.md`:
 ### MVP Scope: UNCHANGED ✅
 
 **All 5 epics remain in scope:**
+
 - Epic 1: Foundational CLI ✅
 - Epic 2: Configuration & Schema Loading ✅
 - Epic 3: Vault Indexing Engine ✅
@@ -1327,6 +1410,7 @@ Using updated `epic-3-vault-indexing-engine.md`:
 **Impact:** ~3-5 weeks delay to MVP delivery
 
 **Rationale:**
+
 - Fixing violations now prevents technical debt compounding
 - Investment in rigorous planning pays dividends in fast implementation
 - Ensures NO missing components (coverage checklist)
@@ -1335,6 +1419,7 @@ Using updated `epic-3-vault-indexing-engine.md`:
 ### MVP Value Proposition: ENHANCED ✅
 
 **Same features, BETTER implementation:**
+
 - ✅ Clean hexagonal architecture (enables future TUI/LSP)
 - ✅ Proper CQRS pattern (enables performance optimizations)
 - ✅ Idiomatic Go (easier for contributors)
@@ -1349,34 +1434,40 @@ Using updated `epic-3-vault-indexing-engine.md`:
 ### Immediate Next Steps (If Approved)
 
 **Day 1: Archive Phase**
+
 - **PO (You)** creates archive branches
 - **PO** removes violated code
 - **PO** documents lessons learned
 
 **Week 1: Architecture Coverage**
+
 - **PO** creates architecture-coverage-checklist.md
 - **PO** systematically fills out checklist
 - **Architect (Winston)** available for questions
 - **Deliverable:** 100% coverage checklist
 
 **Week 2-3: Epic Alignment**
+
 - **PO** updates all 5 epic files
 - **PO** adds missing stories for uncovered components
 - **PO** verifies 100% coverage
 - **Deliverable:** Perfect epic-architecture alignment
 
 **Week 3: Documentation + Story Prep**
+
 - **PO** updates source-tree.md, testing-strategy.md
 - **PO** prepares for story generation
 - **Deliverable:** Clean documentation
 
 **Week 4-5: Story Generation**
+
 - **PO** generates ~54-60 rigorous stories
 - **PO** quality checks all stories
 - **Dev Agent** reviews story clarity
 - **Deliverable:** Perfect, consistent stories
 
 **Week 5-7: Re-Implementation**
+
 - **Dev Agent** implements stories
 - **QA** validates quality gates
 - **PO** performs acceptance
@@ -1384,12 +1475,12 @@ Using updated `epic-3-vault-indexing-engine.md`:
 
 ### Roles Required
 
-| Role | Responsibilities | Time Commitment |
-|------|-----------------|-----------------|
-| **Product Owner (You/Sarah)** | Epic alignment, story generation, acceptance | ~9-13 days focused work |
-| **Architect (Winston/Reference)** | Architecture clarification questions | Ad-hoc availability |
-| **Dev Agent (AI)** | Re-implementation execution | ~8-12 days execution |
-| **QA Agent** | Quality gate validation | Ad-hoc verification |
+| Role                              | Responsibilities                             | Time Commitment         |
+| --------------------------------- | -------------------------------------------- | ----------------------- |
+| **Product Owner (You/Sarah)**     | Epic alignment, story generation, acceptance | ~9-13 days focused work |
+| **Architect (Winston/Reference)** | Architecture clarification questions         | Ad-hoc availability     |
+| **Dev Agent (AI)**                | Re-implementation execution                  | ~8-12 days execution    |
+| **QA Agent**                      | Quality gate validation                      | Ad-hoc verification     |
 
 ---
 
@@ -1428,6 +1519,7 @@ Please confirm approval for:
 ### Constraints or Concerns?
 
 Please share any:
+
 - Budget constraints
 - Timeline pressures
 - Team availability issues
@@ -1477,36 +1569,42 @@ Please share any:
 ### Appendix A: Key Architectural Violations Detail
 
 **1. File Model in Domain (CRITICAL)**
+
 - **Location:** `internal/domain/file.go`
 - **Violation:** Domain contains filesystem paths (Path, Basename, Folder, ModTime)
 - **Correct:** NoteID (domain) + FileMetadata (SPI adapter)
 - **Reference:** architecture-review-and-refactoring-plan.md Section "Layer Violation: File Model"
 
 **2. Note Model Embeds File (CRITICAL)**
+
 - **Location:** `internal/domain/note.go`
 - **Violation:** Embeds File (infrastructure)
 - **Correct:** Note{ID NoteID, Frontmatter Frontmatter}
 - **Reference:** data-models.md#note (v0.5.2)
 
 **3. Template Uses FilePath (CRITICAL)**
+
 - **Location:** `internal/domain/template.go`
 - **Violation:** Uses FilePath string
 - **Correct:** Template{ID TemplateID, Content string}
 - **Reference:** data-models.md#template (v0.5.6)
 
 **4. Result[T] Pattern (CRITICAL)**
+
 - **Location:** `internal/shared/errors/result.go`
 - **Violation:** Non-idiomatic Go pattern
 - **Correct:** Use (T, error) throughout
 - **Reference:** coding-standards.md (v0.6.7)
 
 **5. FileSystemPort Exists (MEDIUM)**
+
 - **Location:** `internal/ports/spi/filesystem.go`
 - **Violation:** YAGNI - single implementation
 - **Correct:** Remove, use Go stdlib directly
 - **Reference:** components.md (v0.5.11 YAGNI decision)
 
 **6. Config in Adapter Layer (MEDIUM)**
+
 - **Location:** `internal/adapters/spi/config/config.go`
 - **Violation:** Should be domain value object
 - **Correct:** Move to `internal/domain/config.go`
@@ -1514,33 +1612,35 @@ Please share any:
 
 ### Appendix B: Architecture Version Timeline
 
-| Version | Date | Key Changes |
-|---------|------|-------------|
-| v0.1.0-0.4.3 | Oct 8-11, 2025 | Initial architecture (had violations) |
-| v0.5.0 | Oct 24, 2025 | Clean hexagonal design principles |
-| v0.5.1 | Oct 24, 2025 | FileMetadata, CQRS adapter references |
-| v0.5.2 | Oct 24, 2025 | NoteID, Note composition |
-| v0.5.3-v0.5.8 | Oct 24, 2025 | Schema/Property/Template/Config corrections |
-| v0.5.9 | Oct 24, 2025 | Error handling: removed Result[T] |
-| v0.5.10 | Oct 24, 2025 | Added atomicwriter |
-| v0.5.11 | Oct 24, 2025 | Components: removed FileSystemPort (YAGNI), updated ports/adapters |
-| v0.6.0 | Oct 26, 2025 | Rich domain models (Validate methods) |
-| v0.6.1 | Oct 26, 2025 | SchemaValidator, SchemaResolver services |
-| v0.6.2 | Oct 26, 2025 | FrontmatterService validation details |
-| v0.6.3 | Oct 26, 2025 | Template file path functions |
-| v0.6.4 | Oct 26, 2025 | CommandOrchestrator callback pattern |
-| v0.6.5 | Oct 26, 2025 | Dependency injection pattern |
-| v0.6.6 | Oct 26, 2025 | Validation architecture overview |
-| v0.6.7 | Oct 26, 2025 | Coding standards: (T, error) |
-| v0.6.8 | Oct 26, 2025 | **VaultReaderPort, VaultWriterPort, VaultFile** |
+| Version       | Date           | Key Changes                                                        |
+| ------------- | -------------- | ------------------------------------------------------------------ |
+| v0.1.0-0.4.3  | Oct 8-11, 2025 | Initial architecture (had violations)                              |
+| v0.5.0        | Oct 24, 2025   | Clean hexagonal design principles                                  |
+| v0.5.1        | Oct 24, 2025   | FileMetadata, CQRS adapter references                              |
+| v0.5.2        | Oct 24, 2025   | NoteID, Note composition                                           |
+| v0.5.3-v0.5.8 | Oct 24, 2025   | Schema/Property/Template/Config corrections                        |
+| v0.5.9        | Oct 24, 2025   | Error handling: removed Result[T]                                  |
+| v0.5.10       | Oct 24, 2025   | Added atomicwriter                                                 |
+| v0.5.11       | Oct 24, 2025   | Components: removed FileSystemPort (YAGNI), updated ports/adapters |
+| v0.6.0        | Oct 26, 2025   | Rich domain models (Validate methods)                              |
+| v0.6.1        | Oct 26, 2025   | SchemaValidator, SchemaResolver services                           |
+| v0.6.2        | Oct 26, 2025   | FrontmatterService validation details                              |
+| v0.6.3        | Oct 26, 2025   | Template file path functions                                       |
+| v0.6.4        | Oct 26, 2025   | CommandOrchestrator callback pattern                               |
+| v0.6.5        | Oct 26, 2025   | Dependency injection pattern                                       |
+| v0.6.6        | Oct 26, 2025   | Validation architecture overview                                   |
+| v0.6.7        | Oct 26, 2025   | Coding standards: (T, error)                                       |
+| v0.6.8        | Oct 26, 2025   | **VaultReaderPort, VaultWriterPort, VaultFile**                    |
 
 ### Appendix C: Related Documents
 
 **Course Correction:**
+
 - This document: `sprint-change-proposal-2025-10-27-complete-architecture-alignment.md`
 - Background: `architecture-review-and-refactoring-plan.md`
 
 **Architecture (v0.6.8):**
+
 - `docs/architecture/high-level-architecture.md`
 - `docs/architecture/data-models.md`
 - `docs/architecture/components.md`
@@ -1549,6 +1649,7 @@ Please share any:
 - `docs/architecture/change-log.md`
 
 **PRD:**
+
 - `docs/prd/epic-list.md`
 - `docs/prd/epic-1-foundational-cli-static-template-engine.md`
 - `docs/prd/epic-2-configuration-schema-loading.md`
@@ -1557,6 +1658,7 @@ Please share any:
 - `docs/prd/epic-5-schema-driven-lookups-validation.md`
 
 **To Be Created:**
+
 - `docs/prd/architecture-coverage-checklist.md` (Phase 2.0)
 - `docs/lessons-learned-epic-1-2.md` (Phase 1)
 - `docs/stories/*.md` (~54-60 files, Phase 4)
@@ -1580,6 +1682,7 @@ Please share any:
 **Status:** ✅ APPROVED - Proceed with Phase 1
 
 **Approved Scope:**
+
 - ✅ Archive ALL code violations and story files
 - ✅ Architecture coverage verification (Phase 2.0)
 - ✅ Complete story regeneration (~54-60 stories)

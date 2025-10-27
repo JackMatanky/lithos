@@ -1,88 +1,59 @@
 # Epic 5: Schema-Driven Lookups & Validation
 
-This epic connects the schema and indexing engines to the template engine, unlocking the full power of dynamic, data-driven note creation. It also implements the final validation step. This epic integrates QueryService with TemplateEngine and implements post-generation validation through CommandOrchestrator following the hexagonal architecture.
+**Epic Goal:** Connect TemplateEngine, FrontmatterService, QueryService, and CommandOrchestrator as described in architecture v0.6.8 so schemas drive interactive lookups and note validation.
 
-**Dependencies:** Epic 4 (Interactive Input Engine)
+**Dependencies:** Epic 3 (Vault Indexing Engine)
 
-## Story 5.1: Enhance Query Service with Filter Support
+**Architecture References:**
+- `docs/architecture/components.md` v0.6.8 — TemplateEngine, FrontmatterService, QueryService, CommandOrchestrator
+- `docs/architecture/data-models.md` v0.6.8 — Note, Frontmatter, PropertySpec
+- `docs/architecture/error-handling-strategy.md` v0.5.9 — ValidationError, InteractiveError
+- `docs/architecture/coding-standards.md` v0.6.7 — logging, testing
 
-As a developer, I want to enhance the QueryService with sophisticated filtering capabilities, so that template functions can perform complex queries following the architectural patterns.
+---
 
-### Acceptance Criteria
+## Story 5.1: Add TemplateEngine Query Helpers
 
-- 5.1.1: QueryService includes Filter struct with Key, Operator, and Value fields for flexible searching.
-- 5.1.2: Query method accepts filter parameters and returns filtered Note slices through CacheQueryPort.
-- 5.1.3: Initial implementation supports basic iteration with preparation for advanced filtering.
-- 5.1.4: Service maintains thread-safe access patterns using `sync.RWMutex` as specified in components documentation.
-
-## Story 5.2: Implement `fileClass` Filter
-
-As a developer, I want to implement the logic for filtering by `fileClass`, so that the query engine can perform its first type of lookup.
+As a developer, I want TemplateEngine to expose `lookup`, `query`, and `fileClass` helpers exactly as documented so templates can use schema-driven lookups.
 
 ### Acceptance Criteria
+1. Extend `internal/app/template/service.go` to register helpers `lookup(name string)`, `query(filter QueryFilter)`, and `fileClass(id NoteID)` as referenced in `components.md#templateengine`.
+2. `lookup` should call `QueryService.ByPath`/`ByFileClass` depending on arguments and return data structures suitable for template consumption.
+3. `query` should wrap `QueryService.ByFrontmatter` using a simple struct (`field`, `value`) matching architecture guidance (no custom DSL).
+4. Unit tests verify each helper delegates to QueryService and handles empty results gracefully.
+5. Run `golangci-lint run ./internal/app/template` and `go test ./internal/app/template`.
 
-- 5.2.1: The `Query` function correctly handles a `Filter` where `Key` is "fileClass".
-- 5.2.2: The function returns only notes where the frontmatter `fileClass` key matches the filter's `Value`.
-- 5.2.3: The filtering is case-insensitive.
+---
 
-## Story 5.3: Integrate Query Service with Template Engine
+## Story 5.2: Use QueryService in Frontmatter FileSpec Validation
 
-As a template author, I want to use `query()` and `lookup()` functions in templates, so that I can create dynamic templates that reference indexed vault data.
-
-### Acceptance Criteria
-
-- 5.3.1: TemplateEngine function map includes `query()` function that calls QueryService through closure.
-- 5.3.2: Convenience `lookup("fileClass")` function calls QueryService with predefined fileClass filter.
-- 5.3.3: Template functions return maps of note names to file paths for template consumption.
-- 5.3.4: Functions handle empty/stale index gracefully with appropriate logging through structured logger.
-
-## Story 5.4: Enhance `suggester` to Handle Map Input
-
-As a template author, I want the `suggester` to accept a map, so that I can present users with a list of note names and get back a file path.
+As a developer, I need FrontmatterService to leverage QueryService when validating `FileSpec` properties so file references follow the architecture workflow.
 
 ### Acceptance Criteria
+1. Update `FrontmatterService.Validate` to call `QueryService.ByPath` (or similar) when processing FileSpec properties, failing with `ValidationError` when referenced files are missing.
+2. Include tests covering valid references, missing files, and case sensitivity behaviour described in data-models.
+3. Run `golangci-lint run ./internal/app/frontmatter` and `go test ./internal/app/frontmatter`.
 
-- 5.4.1: The `suggester` function is updated to accept a `map[string]string` as its `options` argument.
-- 5.4.2: The UI displays the *keys* of the map to the user.
-- 5.4.3: The function returns the *value* corresponding to the selected key.
-- 5.4.4: A template with `{{ suggester "Select project" (lookup "project") }}` works as expected.
+---
 
-## Story 5.5: Implement Basic Schema Validation Enhancement
+## Story 5.3: Align CommandOrchestrator NewNote Workflow
 
-As a developer, I want to enhance the SchemaValidator with basic validation rules, so that frontmatter validation follows the PropertySpec architecture.
-
-### Acceptance Criteria
-
-- 5.5.1: SchemaValidator implements validation using PropertySpec polymorphism per `docs/architecture/data-models.md#propertyspec`.
-- 5.5.2: Validation checks Required fields and Array constraints.
-
-## Story 5.6: Implement PropertySpec Type Validation
-
-As a developer, I want to implement type-specific validation for PropertySpec, so that all PropertySpec types are properly validated.
+As a developer, I want `CommandOrchestrator.NewNote` to follow the ten-step workflow enumerated in the architecture.
 
 ### Acceptance Criteria
+1. Ensure `NewNote` performs the documented steps: load template → render → extract frontmatter → validate → generate NoteID → resolve path → construct note → persist via VaultWriterPort → persist via CacheWriterPort → return note.
+2. Return typed errors for each failure stage (wrapping underlying errors) and log cache write warnings without failing the overall operation.
+3. Add unit tests using fakes to assert call order and error propagation (template load failure, validation failure, vault persistence failure, cache warning).
+4. Run `golangci-lint run ./internal/app/command` and `go test ./internal/app/command`.
 
-- 5.6.1: Each PropertySpec implements its own Validate method with type-specific rules (enum, pattern, min/max, format).
-- 5.6.2: Service returns structured ValidationError instances with detailed field-level information.
+---
 
-## Story 5.7: Implement Post-Generation Validation in Command Orchestrator
+## Story 5.4: Provide Schema-Driven Lookup Integration Test
 
-As a user, I want the `lithos new` command to validate generated notes through the proper service architecture, so I get immediate feedback on metadata correctness.
-
-### Acceptance Criteria
-
-- 5.7.1: CommandOrchestrator.New method includes post-generation validation step after template rendering.
-- 5.7.2: Orchestrator uses SchemaRegistry to lookup schema by fileClass and SchemaValidator for validation.
-- 5.7.3: Validation errors are formatted using structured error types and logged through proper service layers.
-- 5.7.4: CLI adapter receives validation results and provides appropriate exit codes and user feedback.
-
-## Story 5.8: Implement Advanced FilePropertySpec Validation
-
-As a developer, I want to implement FilePropertySpec validation with dynamic lookups, so that file references can be validated against the vault index.
+As a QA-minded developer, I want an integration test demonstrating schema-driven lookups end to end.
 
 ### Acceptance Criteria
-
-- 5.8.1: FilePropertySpec validation uses QueryService to validate file references against actual vault contents.
-- 5.8.2: FileClass and Directory constraints are checked against indexed notes following the specification.
-- 5.8.3: Validation supports both absolute paths and wikilink format `[[basename]]` references.
-- 5.8.4: Filter conjunction (FileClass AND Directory) and negation patterns are properly implemented.
+1. Add `tests/integration/schema_lookup_test.go` that boots TemplateEngine, QueryService (with populated indices), and renders a template using `lookup`/`query` helpers.
+2. Fixture should include schemas, property bank, cache notes, and template leveraging the helper functions; assertions verify rendered output and validation behaviour.
+3. Document how to run the suite in `docs/architecture/testing-strategy.md` (append to Schema Runtime section).
+4. Run `go test ./tests/integration -run SchemaLookup`.
