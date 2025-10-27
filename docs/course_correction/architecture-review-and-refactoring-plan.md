@@ -380,11 +380,11 @@ type ProjectionBuilder struct {
 
 ---
 
-### 7. CommandOrchestrator Redundant Facade (MODERATE)
+### 7. CommandOrchestrator: From Redundant Facade to Use Case Orchestrator (MODERATE)
 
 **Location:** `docs/architecture/components.md:110-122`
 
-**Problem:** CommandOrchestrator is described as "Facade consumed by API adapters" but it's just a pass-through layer.
+**Initial Problem (October 24, 2025):** CommandOrchestrator is described as "Facade consumed by API adapters" but it's just a pass-through layer.
 
 **Evidence:**
 ```go
@@ -394,12 +394,12 @@ func (c *CommandOrchestrator) New(ctx, templateID) {
 }
 ```
 
-**User Response:**
+**Initial User Response:**
 > "considering the use of main.go for dependency injection, I am not sure I can properly justify CommandOrchestrator"
 
-**Decision:** Remove CommandOrchestrator
+**Initial Decision:** Remove CommandOrchestrator
 
-**Alternative Approach:**
+**Initial Alternative Approach:**
 ```go
 // main.go does DI
 func main() {
@@ -413,13 +413,70 @@ func main() {
 }
 ```
 
+---
+
+**Architecture Review (October 26, 2025):** User challenged the removal based on hexagonal architecture principles.
+
+**User Feedback:**
+> "it seems necessary that we rethink the CLI command system to ensure the CLICommandAdapter is not directly dependent on the service layer and that the CommandOrchestrator is a proper orchestrator and not just a facade"
+
+**Revised Decision:** **Reinstate CommandOrchestrator** as proper use case orchestrator with proper hexagonal architecture
+
+**Why CommandOrchestrator IS Necessary:**
+- **Hexagonal Architecture:** Domain should not depend on API adapters, but needs to control application flow
+- **Inversion of Control:** Domain starts the application and calls CLICommandPort.Start(), adapter calls back to CommandHandler
+- **Use Case Orchestration:** Coordinates multiple domain services for complete workflows (not just pass-through)
+- **Real Added Value:** NoteID generation, file path resolution, workflow coordination, Note object creation
+
+**Proper Architecture (v0.6.4):**
+```go
+// CommandOrchestrator (Domain Layer)
+type CommandOrchestrator struct {
+    cliPort         CLICommandPort  // API Port
+    templateEngine  *TemplateEngine
+    vaultIndexer    *VaultIndexer
+    queryService    *QueryService
+    frontmatterSvc  *FrontmatterService
+    // ...
+}
+
+// Implements CommandHandler callback interface
+func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID) (Note, error) {
+    // 1. Load and render template
+    // 2. Extract frontmatter
+    // 3. Validate frontmatter
+    // 4. Generate NoteID (filename field → title slug → UUID)
+    // 5. Resolve file path from template functions
+    // 6. Create Note object
+    // 7. Save to vault
+    // 8. Return Note
+}
+
+// Starts application
+func (o *CommandOrchestrator) Run(ctx context.Context) error {
+    return o.cliPort.Start(ctx, o) // Pass itself as CommandHandler
+}
+
+// CLICommandPort (API Port)
+type CLICommandPort interface {
+    Start(ctx context.Context, handler CommandHandler) error
+}
+
+// CommandHandler (Callback Interface)
+type CommandHandler interface {
+    NewNote(ctx context.Context, templateID TemplateID) (Note, error)
+    IndexVault(ctx context.Context) (IndexStats, error)
+    FindTemplates(ctx context.Context, query string) ([]Template, error)
+}
+```
+
 **When Facades ARE Useful:**
-- Complex coordination logic across multiple services
+- Complex coordination logic across multiple services ✓ (CommandOrchestrator does this)
 - Transaction management
-- Common pre/post processing
+- Common pre/post processing ✓ (NoteID generation, validation)
 - Cross-cutting concerns (audit, metrics)
 
-**Current Case:** None of these apply. CLI can call domain services directly through ports.
+**Updated Understanding:** CommandOrchestrator is NOT a facade - it's a proper use case orchestrator with real coordination logic.
 
 ---
 
@@ -534,15 +591,40 @@ func (s *FrontmatterService) Validate(ctx context.Context, fm Frontmatter) error
 
 **Question:** Should Frontmatter define Validate and Extract methods, or keep behavior in services?
 
-**User Decision:**
+**User Decision (October 24, 2025):**
 > "keep anemic for the MVP, but only mention FrontmatterService, which should have Extract and Validate methods, instead of two separate services"
 
-**Rationale:**
+**Rationale for Anemic Models (Note, Frontmatter):**
 1. **Clean hexagonal:** Validation needs external dependencies (schema registry, query service). If Frontmatter has Validate(), it couples model to ports.
 2. **Testing:** Pure data models trivial to construct in tests
 3. **YAGNI:** For MVP, services are simple enough that rich models don't add value
 
 **Post-MVP:** If Frontmatter passed through many service methods, rich models might make sense.
+
+---
+
+**User Decision Update (October 26, 2025):**
+> "yes, I approve updating schema models to be rich while Note/Frontmatter stay anemic"
+
+**Rationale for Rich Models (Schema, Property, PropertySpec):**
+1. **No external dependencies:** Schema validation only checks internal structure - no ports needed
+2. **Polymorphism benefit:** PropertySpec variants implement interface with Validate() method
+3. **Structural integrity:** Validation is inherent to schema definition itself
+4. **Fail-fast at load time:** Models can self-validate when loaded
+
+**Implementation (v0.6.0):**
+```go
+// Rich models with structural validation
+func (s Schema) Validate(ctx context.Context) error
+func (p Property) Validate(ctx context.Context) error
+func (s StringSpec) Validate(ctx context.Context) error
+func (n NumberSpec) Validate(ctx context.Context) error
+```
+
+**SchemaValidator Service Still Needed:**
+- Orchestrates model validation (calls Schema.Validate() on each)
+- Performs cross-schema validation (Extends references, PropertyBank $ref, duplicate names)
+- Individual models can't validate cross-schema concerns
 
 ---
 
@@ -683,6 +765,454 @@ type ValidatorRegistry struct {
 }
 ```
 
+**Note (October 26, 2025):** This decision was revisited - PropertySpec now has Validate() methods as rich models (see Decision 1 update). The separation principle still applies for complex validators.
+
+---
+
+### Decision 11: Internal vs Injected Dependencies
+
+**Context (October 26, 2025):** SchemaValidator and SchemaResolver are only used by SchemaEngine.
+
+**User Question:**
+> "the SchemaValidator and SchemaResolver are strictly embedded in SchemaEngine, so couldn't their instantiation be defined in SchemaEngine and be triggered when SchemaEngine is instantiated in the DI?"
+
+**Decision:** SchemaEngine **internally instantiates** SchemaValidator and SchemaResolver rather than receiving them via constructor injection.
+
+**Rule Established:**
+- **Inject:** Dependencies that cross boundaries, need substitution for testing, or are shared services
+- **Internally Instantiate:** Single-use dependencies that are implementation details
+
+**Example (v0.6.1):**
+```go
+// SchemaEngine internally creates its validators
+func NewSchemaEngine(loader SchemaLoader, registry SchemaRegistry, log Logger) *SchemaEngine {
+    validator := NewSchemaValidator()
+    resolver := NewSchemaResolver()
+    return &SchemaEngine{
+        loader:    loader,    // injected (port)
+        registry:  registry,  // injected (port)
+        validator: validator, // internal
+        resolver:  resolver,  // internal
+        log:       log,       // injected (shared)
+    }
+}
+```
+
+---
+
+### Decision 12: Validation vs Linting Philosophy
+
+**Context (October 26, 2025):** How strict should frontmatter validation be?
+
+**User Clarification:**
+> "if validating that a field is an array, the validator should not coerce a field into an array because that would be the job of a linter. a validator should not coerce every value because sometimes it needs to raise an error"
+
+**Decision:** **Validator is strict** - raises errors for type mismatches. **Linter is permissive** (future feature) - auto-fixes issues.
+
+**Validation Philosophy (v0.6.2):**
+- **NO semantic coercion:** `tags: work` when Property.Array = true is **ERROR**, not auto-fix to `[work]`
+- **NO type coercion across semantic boundaries:** `count: "42"` when NumberSpec is **ERROR**, not auto-fix to `42`
+- **YES in-memory normalization:** YAML int → float64 for NumberSpec (YAML parser artifact)
+- **Files never modified:** All normalization is in-memory for validation logic only
+
+**Rationale:**
+- Validation errors reveal schema mismatches that should be fixed in schema definition
+- Auto-coercion hides problems and prevents catching user mistakes
+- Linting is separate future feature for intentional auto-fixing
+
+---
+
+### Decision 13: Template File Path Control
+
+**Context (October 26, 2025):** Templates need to control where generated notes are saved in the vault.
+
+**User Realization:**
+> "I realize now that unless the Go stdlib can be used to find a file path and designate where a file is created, then we need to add functions to the custom function map... similar to the move and path functions in templater"
+
+**Decision:** Add file path control functions to TemplateEngine's custom function map (inspired by Obsidian Templater's file module).
+
+**Functions Added (v0.6.3):**
+- `path()` - Returns the target file path for the note being created
+- `folder(path)` - Returns parent directory of path
+- `basename(path)` - Returns filename without extension
+- `extension(path)` - Returns file extension
+- `join(parts...)` - Joins path segments using OS-appropriate separator
+- `vaultPath()` - Returns absolute vault root path from Config
+
+**Example Template:**
+```go
+{{- $targetPath := join (vaultPath) "contacts" (printf "%s.md" (prompt "filename" "Filename" "")) -}}
+```
+
+---
+
+### Decision 14: NewNote Primary Behavior and Return Type
+
+**Context (October 26, 2025):** What should `lithos new` command return?
+
+**User Clarification:**
+> "the intended primary behavior of lithos new is to save a rendered markdown file in the vault... a secondary behavior could be that after saving... the CLI could give the option of viewing the file in stdout"
+
+**Decision:** Primary behavior is **save rendered note to vault**. Secondary optional behavior is display to stdout.
+
+**NewNote Return Type (v0.6.4):** Returns `Note` object (not string) because:
+- Primary concern is persisting to vault
+- Note object contains all metadata (ID, frontmatter, content)
+- CLI adapter can extract what it needs for display
+- Enables future behaviors (open in editor, add to index, etc.)
+
+**NoteID Generation Strategy:**
+```go
+// Priority 1: Use explicit filename field from frontmatter
+if filename, ok := fm.Fields["filename"].(string); ok {
+    return NoteID(filename), nil
+}
+// Priority 2: Slugify title field
+if title, ok := fm.Fields["title"].(string); ok {
+    return NoteID(slugify(title)), nil
+}
+// Priority 3: Generate UUID
+return NoteID(generateUUID()), nil
+```
+
+---
+
+### Decision 15: SRP Decomposition Pattern
+
+**Context (October 26, 2025):** Public methods in adapters were doing too much.
+
+**User Requirement:**
+> "all methods would have to be decomposed into private SRP methods and embedded in the public methods"
+
+**Decision:** All public methods with multiple steps **MUST** decompose into private SRP (Single Responsibility Principle) methods.
+
+**Pattern (v0.6.4):**
+- **Public methods:** Orchestrate workflow
+- **Private methods:** Focused, single-responsibility tasks
+
+**Example (CobraCLIAdapter):**
+```go
+// Public - orchestrates
+func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandHandler) error {
+    rootCmd := a.buildRootCommand()
+    rootCmd.AddCommand(
+        a.buildNewCommand(handler),
+        a.buildIndexCommand(handler),
+        a.buildFindCommand(handler),
+    )
+    return rootCmd.ExecuteContext(ctx)
+}
+
+// Private - builds command
+func (a *CobraCLIAdapter) buildNewCommand(handler CommandHandler) *cobra.Command
+
+// Private - handles workflow
+func (a *CobraCLIAdapter) handleNewCommand(...) error {
+    templateID, err := a.selectTemplate(...)
+    note, err := handler.NewNote(...)
+    return a.displayNoteCreated(...)
+}
+
+// Private - template selection
+func (a *CobraCLIAdapter) selectTemplate(...) (TemplateID, error)
+
+// Private - display result
+func (a *CobraCLIAdapter) displayNoteCreated(...) error
+```
+
+**Benefit:** Each method has clear, testable responsibility.
+
+---
+
+### Decision 16: Filesystem Operations - YAGNI Principle
+
+**Context (October 24-26, 2025):** Should we create FileSystemPort, FileReaderPort, FileWriterPort, FileWalkerPort interfaces?
+
+**Decision:** **No filesystem ports for MVP.** Use Go stdlib (`os.ReadFile`, `filepath.Walk`) and `moby/sys/atomicwriter` directly in adapters.
+
+**Rationale (YAGNI - You Aren't Gonna Need It):**
+- MVP has **single file source:** Local filesystem only
+- No requirement for multiple storage backends (S3, HTTP, embedded)
+- Creating ports/adapters for single implementation adds unnecessary abstraction
+- Go stdlib provides all needed functionality
+- Can add ports later if multiple implementations actually needed
+
+**What Adapters Use Directly:**
+- `os.ReadFile` - Read files
+- `filepath.Walk` - Scan directories
+- `atomicwriter.WriteFile` - Atomic writes (cache, notes)
+- `os.Stat` - File metadata
+
+**Future Migration Path:**
+If future needs arise (S3, HTTP, embedded files), add ports then:
+```go
+// Future - only if needed
+type FileReaderPort interface {
+    Read(ctx context.Context, path string) ([]byte, error)
+}
+
+type FileWriterPort interface {
+    Write(ctx context.Context, path string, data []byte) error
+}
+```
+
+**Impact on Architecture:**
+- VaultIndexer uses Go stdlib directly (no FileWalker/FileReader ports)
+- CommandOrchestrator uses `atomicwriter.WriteFile` directly (no FileWriter port)
+- Cache adapters use Go stdlib directly (documented in components.md)
+
+**Change Log:** v0.5.11 (removed filesystem ports per YAGNI), components.md notes added
+
+---
+
+### Decision 17: Vault Operations with CQRS Pattern
+
+**Context (October 26, 2025):** How should domain services (VaultIndexer, CommandOrchestrator) interact with the vault (markdown files)?
+
+**Key Realization:** Domain services should NOT use Go stdlib directly (violates hexagonal architecture) and should NOT depend on generic FileSystemPort (wrong abstraction level).
+
+**Decision:** Create **VaultReaderPort** and **VaultWriterPort** following CQRS pattern with business-level abstractions.
+
+**Architecture Pattern:**
+
+```go
+// CQRS Read Side - Vault scanning for indexing
+type VaultReaderPort interface {
+    // Full scan for initial index build
+    ScanAll(ctx context.Context) ([]VaultFile, error)
+
+    // Incremental scan for large vaults (future scalability)
+    ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)
+
+    // Single file content read (not just .md - any vault file)
+    Read(ctx context.Context, path string) ([]byte, error)
+}
+
+// CQRS Write Side - Vault persistence
+type VaultWriterPort interface {
+    Persist(ctx context.Context, note Note, path string) error
+    Delete(ctx context.Context, path string) error
+}
+
+// VaultFile - SPI Adapter DTO (embeds FileMetadata + adds Content)
+type VaultFile struct {
+    FileMetadata        // Embedded: Path, Basename, Folder, Ext, ModTime, Size, MimeType
+    Content      []byte // Raw file content (optional - nil for large files)
+}
+
+// FileMetadata - SPI Adapter model (extended with Ext, Size, MimeType)
+type FileMetadata struct {
+    Path     string      // Absolute path
+    Basename string      // Filename without extension (computed)
+    Folder   string      // Parent directory (computed)
+    Ext      string      // File extension with dot (computed) - e.g., ".md"
+    ModTime  time.Time   // Modification timestamp
+    Size     int64       // File size in bytes
+    MimeType string      // MIME type (computed from Ext)
+}
+```
+
+**CacheWriterPort Update (consistency with VaultWriterPort):**
+
+```go
+// CQRS Write Side - Cache persistence
+type CacheWriterPort interface {
+    Persist(ctx context.Context, note Note) error  // Renamed from Write
+    Delete(ctx context.Context, id NoteID) error
+}
+```
+
+**Why CQRS at Vault Level:**
+
+The vault IS the source of truth, and the cache is a projection:
+
+```
+Vault (Source of Truth - All Vault Files)
+    ↓ VaultReaderPort.ScanAll/ScanModified
+VaultIndexer (Projection Builder)
+    ↓ CacheWriterPort.Persist
+Cache Layer (Projections/Read Models)
+    ├─> JSON Cache (.lithos/cache/) - Full data (MVP)
+    └─> BoltDB Index (future) - Optimized queries
+    ↓ CacheReaderPort.Read/List
+QueryService (Query Handler)
+    ↓
+User Queries
+```
+
+**Rationale:**
+
+1. **Business-level abstraction:** Ports express "scan vault", "persist note" (business intent), not "read file", "walk directory" (infrastructure detail)
+2. **Hexagonal architecture compliance:** Domain depends on domain-defined ports, infrastructure implements them
+3. **Future-proof for hybrid index (NFR4):**
+   - `ScanModified()` enables incremental indexing for large vaults (100K+ notes)
+   - Supports multiple cache backends (JSON + BoltDB)
+   - Read/write separation enables optimization
+4. **Testability:** Mock vault operations without filesystem I/O
+5. **CQRS at two levels:**
+   - Vault level: VaultReader/VaultWriter (source of truth)
+   - Cache level: CacheReader/CacheWriter (projections)
+6. **Method naming:**
+   - `Read()` not `ReadNote()` - vault contains all files, not just markdown notes
+   - `Persist()` not `Write()` - avoids redundancy with "Writer" in port name
+   - Consistent naming across VaultWriter and CacheWriter
+
+**Implementation (MVP):**
+
+```go
+// Separate adapters for CQRS read/write separation and ISP compliance
+
+// VaultReaderAdapter - Implements VaultReaderPort
+type VaultReaderAdapter struct {
+    config Config
+    log    Logger
+}
+
+func (a *VaultReaderAdapter) ScanAll(ctx context.Context) ([]RawNote, error) {
+    // Uses filepath.Walk, os.ReadFile internally (infrastructure detail)
+}
+
+func (a *VaultReaderAdapter) ScanModified(ctx context.Context, since time.Time) ([]RawNote, error) {
+    // Uses filepath.Walk with ModTime check, os.ReadFile internally
+}
+
+func (a *VaultReaderAdapter) Read(ctx context.Context, path string) (RawNote, error) {
+    // Uses os.ReadFile, os.Stat internally
+}
+
+// VaultWriterAdapter - Implements VaultWriterPort
+type VaultWriterAdapter struct {
+    config Config
+    log    Logger
+}
+
+func (a *VaultWriterAdapter) Persist(ctx context.Context, note Note, path string) error {
+    // Uses atomicwriter.WriteFile internally (infrastructure detail)
+}
+
+func (a *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
+    // Uses os.Remove internally
+}
+```
+
+**Rationale for Separate Adapters:**
+- **CQRS pattern:** Read and write concerns are separate
+- **ISP compliance:** Components only depend on what they need (VaultIndexer doesn't need write operations)
+- **Modularity:** Can optimize read and write independently
+- **Testability:** Mock read/write operations separately
+- **Future flexibility:** Can swap read implementation (e.g., file watching) without affecting writes
+
+**Domain Service Dependencies:**
+
+```go
+type VaultIndexer struct {
+    vaultReader        VaultReaderPort        // CQRS read side
+    cacheWriter        CacheWriterPort        // CQRS write side
+    frontmatterService *FrontmatterService
+    queryService       *QueryService
+    // ...
+}
+
+type CommandOrchestrator struct {
+    vaultWriter VaultWriterPort        // CQRS write side
+    cacheWriter CacheWriterPort        // Dual write for consistency
+    templateEngine *TemplateEngine
+    // ...
+}
+```
+
+**VaultIndexer Workflow (Building Notes from VaultFile):**
+
+```go
+func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
+    // 1. Scan vault - returns []VaultFile
+    vaultFiles, err := v.vaultReader.ScanAll(ctx)
+    if err != nil {
+        return IndexStats{}, fmt.Errorf("vault scan failed: %w", err)
+    }
+
+    // 2. Process each vault file
+    for _, vf := range vaultFiles {
+        // Filter: MVP only processes markdown files
+        if vf.Ext != ".md" {
+            continue // Skip non-markdown files
+        }
+
+        // Extract frontmatter from content
+        fm, err := v.frontmatterService.Extract(vf.Content)
+        if err != nil {
+            v.log.Warn().Str("path", vf.Path).Err(err).Msg("frontmatter extraction failed")
+            continue
+        }
+
+        // Validate frontmatter against schema
+        if err := v.frontmatterService.Validate(ctx, fm); err != nil {
+            v.log.Warn().Str("path", vf.Path).Err(err).Msg("frontmatter validation failed")
+            continue
+        }
+
+        // Derive NoteID from path (adapter concern - abstracts filesystem)
+        noteID := v.deriveNoteIDFromPath(vf.Path)
+
+        // Construct Note domain model
+        note := Note{
+            ID:          noteID,
+            Frontmatter: fm,
+            // Post-MVP: Content: vf.Content
+        }
+
+        // Persist to cache (projection)
+        if err := v.cacheWriter.Persist(ctx, note); err != nil {
+            return IndexStats{}, fmt.Errorf("cache write failed: %w", err)
+        }
+    }
+
+    return IndexStats{Total: len(vaultFiles)}, nil
+}
+
+// deriveNoteIDFromPath translates filesystem path to domain identifier
+// Adapter-level concern kept in VaultIndexer for path→ID translation
+func (v *VaultIndexer) deriveNoteIDFromPath(path string) NoteID {
+    // Use relative path from vault root as ID
+    relPath, _ := filepath.Rel(v.config.VaultPath, path)
+    return NoteID(relPath)
+}
+```
+
+**Dual Write Pattern (CommandOrchestrator.NewNote):**
+
+```go
+func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID) (Note, error) {
+    // 1. Render, validate, create note
+    // 2. Persist to vault (source of truth)
+    if err := o.vaultWriter.Persist(ctx, note, path); err != nil {
+        return Note{}, err
+    }
+    // 3. Persist to cache (projection) - keeps index in sync
+    if err := o.cacheWriter.Persist(ctx, note); err != nil {
+        // Log warning but don't fail - can rebuild index later
+        o.log.Warn().Err(err).Msg("failed to update cache")
+    }
+    return note, nil
+}
+```
+
+**What This Is NOT:**
+
+- ❌ Generic FileSystemPort with low-level operations
+- ❌ Domain services using Go stdlib directly
+- ❌ Infrastructure abstraction without business meaning
+
+**What This IS:**
+
+- ✅ Business-level ports expressing vault operations
+- ✅ CQRS pattern for scalability (NFR4 compliance)
+- ✅ Clean hexagonal architecture
+- ✅ Future-proof for hybrid index with BoltDB
+- ✅ Consistent naming (Persist, not Write)
+
+**Change Log:** v0.6.8 (added VaultReaderPort and VaultWriterPort with CQRS pattern, renamed CacheWriterPort.Write to Persist)
+
 ---
 
 ## Refactoring Plan and Progress
@@ -714,7 +1244,7 @@ type ValidatorRegistry struct {
 
 ---
 
-### Phase 2: Data Models (IN PROGRESS 🔄)
+### Phase 2: Data Models (COMPLETED ✅)
 
 **File:** `docs/architecture/data-models.md`
 
@@ -729,7 +1259,7 @@ type ValidatorRegistry struct {
 2. **FileMetadata (Renamed from File):**
    - Purpose: Filesystem-specific metadata for storage adapters
    - Architecture Layer: SPI Adapter (Infrastructure)
-   - Used by: FileSystemReadAdapter and FileSystemWriteAdapter
+   - Used by: FileSystemReadAdapter, FileSystemWriteAdapter, and TemplateLoader adapters
    - Never exposed to domain
    - Computed fields cached (Basename, Folder)
    - Change Log: v0.5.1
@@ -757,130 +1287,191 @@ type ValidatorRegistry struct {
    - Kept Post-MVP section on body content indexing
    - Change Log: v0.5.2
 
-6. **Schema:**
+6. **Schema (Updated to Rich Model - v0.6.0):**
    - Key Attributes: Name, Extends, Excludes, Properties
    - Removed ResolvedProperties (adapter concern)
    - Inheritance resolution in SchemaLoader adapter
-   - Pure data structure
-   - Change Log: v0.5.3
+   - **Rich model with Validate() method** for structural integrity
+   - Change Log: v0.5.3, v0.6.0
 
-7. **Property:**
+7. **Property (Updated to Rich Model - v0.6.0):**
    - Simplified to: Name, Required, Array, Spec
-   - Pure data structure
    - Interface-based composition (PropertySpec)
-   - Change Log: v0.5.3
+   - **Rich model with Validate() method** for structural integrity
+   - Change Log: v0.5.3, v0.6.0
 
-**Remaining (TODO):**
-
-8. **PropertySpec Variants:**
-   - Separate spec definition from validation
-   - Use generics for type safety
+8. **PropertySpec Variants (Updated to Rich Models - v0.6.0):**
+   - PropertySpec is interface, variants implement it
+   - Each variant has Validate() method for structural integrity
    - StringSpec, NumberSpec, FileSpec, DateSpec, BoolSpec
+   - Generics for type safety
+   - Change Log: v0.5.4, v0.6.0
 
 9. **PropertyBank:**
    - Singleton pattern
    - $ref resolution specification
    - Loaded by SchemaLoader
    - Used for property reuse
+   - Change Log: v0.5.5
 
-10. **TemplateID (New):**
+10. **TemplateID:**
     - Abstract identifier like NoteID
     - Decouples from filesystem
+    - Change Log: v0.5.6
 
 11. **Template:**
     - Use TemplateID instead of FilePath
     - Minimal: ID, Name, Content
     - Pure data structure
+    - Change Log: v0.5.6
 
-12. **TemplateMetadata (New):**
-    - SPI Adapter model
-    - Path, ModTime
-    - Used by TemplateLoader adapters
+12. **No TemplateMetadata Model:**
+    - Decision: Reuse existing FileMetadata for template file metadata
+    - TemplateLoader adapters use FileMetadata directly
+    - Avoids unnecessary duplication
+    - Change Log: v0.5.6
 
 13. **Config:**
-    - Reclassify as Domain Value Object
+    - Reclassified as Domain Value Object
     - Immutable configuration data
     - Loaded by ConfigLoader adapter
+    - Change Log: v0.5.7
+
+14. **VaultFile (Added - v0.6.8):**
+    - Purpose: Data transfer object for vault scanning
+    - Architecture Layer: SPI Adapter (DTO)
+    - Embeds FileMetadata + adds Content ([]byte)
+    - Returned by VaultReaderPort.ScanAll/ScanModified/Read
+    - Consumed by VaultIndexer to construct Note domain models
+    - Not a domain model - infrastructure data transfer only
+    - Change Log: v0.6.8
 
 ---
 
-### Phase 3: Components (PENDING)
+### Phase 3: Components (PARTIALLY COMPLETED 🔄)
 
 **File:** `docs/architecture/components.md`
 
-**Planned Changes:**
+**Previously Completed (v0.5.11):**
 
-1. **Update Domain Services:**
-   - Remove VaultIndexer
-   - Add: FrontmatterExtractor, NoteBuilder, FrontmatterValidator, IndexOrchestrator, ProjectionBuilder
-   - Remove: CommandOrchestrator
-   - Update: TemplateEngine, SchemaValidator, QueryService
+1. **Domain Services:**
+   - Removed VaultIndexer (decomposed per SRP)
+   - Updated: TemplateEngine, FrontmatterService, SchemaEngine with generics, VaultIndexer, QueryService
 
-2. **Update API Ports:**
-   - Remove CLICommandPort (or update to remove CommandOrchestrator reference)
-   - CLI calls domain services directly
+2. **API Ports:**
+   - Updated CLICommandPort
 
-3. **Update SPI Ports:**
-   - Split FileSystemPort → FileReader, FileWriter, FileWalker
-   - Rename: CacheCommandPort → CacheWriter
-   - Rename: CacheQueryPort → CacheReader
-   - Add: SchemaLoader (with inheritance resolution)
-   - Remove: SchemaRegistryPort (just use interface)
+3. **SPI Ports:**
+   - Split: CacheCommandPort/CacheQueryPort → CacheWriter/CacheReader
+   - Added: SchemaPort, TemplatePort
+   - Split: PromptPort/FinderPort
+   - Added: ConfigPort, SchemaRegistryPort
+   - Removed filesystem ports per YAGNI
 
-4. **Update SPI Adapters:**
-   - Split: LocalFileSystemAdapter → FileSystemReadAdapter, FileSystemWriteAdapter
-   - Update: JSONFileCacheAdapter implements both CacheWriter and CacheReader
-   - Add: SchemaLoaderAdapter (handles inheritance, $ref resolution)
+4. **SPI Adapters:**
+   - Split JSONCache adapters
+   - Added: SchemaLoaderAdapter, TemplateLoaderAdapter
+   - Added: PromptUIAdapter, FuzzyfindAdapter
+   - Added: ViperAdapter, SchemaRegistryAdapter
+   - Updated: CobraCLIAdapter
 
-5. **Update Shared Packages:**
-   - Update Error Package: Remove Result[T], use (T, error)
-   - Add: Lean error types (FieldError, MultiError)
-   - Update: Registry usage (adapter-only, injected via interfaces)
+**Additional Completed Work (v0.6.1 - v0.6.6):**
+
+5. **Rich Domain Models and Validation Services (v0.6.0 - v0.6.1):**
+   - Added SchemaValidator service (orchestrates model validation, performs cross-schema checks)
+   - Added SchemaResolver service (resolves inheritance and $ref using dependency graph)
+   - Clarified SchemaEngine internally instantiates SchemaValidator and SchemaResolver
+   - Updated Schema, Property, PropertySpec to be rich models with Validate() methods
+
+6. **Frontmatter Validation Architecture (v0.6.2):**
+   - Expanded FrontmatterService with detailed 7-step validation workflow
+   - Documented type coercion rules and strict validation philosophy
+   - Clarified in-memory normalization only (files never modified)
+   - No semantic coercion (scalar→array is linting, not validation)
+
+7. **Template File Path Functions (v0.6.3):**
+   - Added file path control functions to TemplateEngine
+   - Functions: path(), folder(), basename(), extension(), join(), vaultPath()
+   - Enables templates to control their own save locations
+
+8. **CLI Architecture Redesign (v0.6.4):**
+   - Reinstated CommandOrchestrator as proper use case orchestrator
+   - Redesigned CLICommandPort with Start(ctx, handler) method
+   - Added CommandHandler callback interface (NewNote, IndexVault, FindTemplates)
+   - Implemented proper hexagonal architecture with inversion of control
+   - Expanded CobraCLIAdapter with SRP decomposition pattern
+   - Documented NoteID generation strategy (filename field → title slug → UUID)
+
+9. **Dependency Injection Documentation (v0.6.5):**
+   - Added DI Pattern section to components.md
+   - Documented initialization order (5 layers)
+   - Clarified internal vs injected dependencies
+   - Provided example main.go structure
+
+10. **Validation Architecture Overview (v0.6.6):**
+    - Added comprehensive validation architecture section
+    - Separated schema validation (structural, startup) from frontmatter validation (business rules, runtime)
+    - Documented validation philosophy and complexity differences
+
+11. **Vault Operations with CQRS Pattern (v0.6.8):**
+    - Added VaultReaderPort (ScanAll, ScanModified, Read) for CQRS read-side vault access
+    - Added VaultWriterPort (Persist, Delete) for CQRS write-side vault persistence
+    - Added VaultReaderAdapter and VaultWriterAdapter implementing respective ports
+    - Renamed CacheWriterPort.Write() to Persist() for naming consistency
+    - Updated VaultIndexer dependencies (now depends on VaultReaderPort, not generic filesystem)
+    - Updated CommandOrchestrator dependencies (now depends on VaultWriterPort and CacheWriterPort)
+    - Documented dual write pattern (vault + cache) for eventual consistency
+    - Updated component diagrams replacing FileSystemPort with vault ports
+    - Updated DI initialization order and example main.go
+    - Uses VaultFile DTO (embeds FileMetadata + Content) as return type
+
+**Remaining Planned Changes:**
+
+- Add: FrontmatterExtractor, NoteBuilder, IndexOrchestrator, ProjectionBuilder (VaultIndexer decomposition details)
+- Additional shared package updates
 
 ---
 
-### Phase 4: Error Handling Strategy (PENDING)
+### Phase 4: Error Handling Strategy and Coding Standards (COMPLETED ✅)
 
-**File:** `docs/architecture/error-handling-strategy.md`
+**Files:** `docs/architecture/error-handling-strategy.md` (v0.5.9), `docs/architecture/coding-standards.md` (v0.6.7)
 
-**Planned Changes:**
+**Completed Changes:**
 
-1. **General Approach:**
-   - Remove Result[T] pattern
-   - Use idiomatic `(T, error)`
+1. **Error Handling Strategy (v0.5.9):**
+   - Removed Result[T] pattern references
+   - Renamed ValidationError to FrontmatterError
+   - Split StorageError into CacheReadError/CacheWriteError/FileSystemError
+   - Documented domain-specific error types with standard `error` interface
    - Error wrapping with `fmt.Errorf("context: %w", err)`
-   - Domain-specific error types implement `error` interface
 
-2. **Error Types:**
-   - Lean shared types: FieldError, MultiError
-   - Domain-specific wrappers: SchemaError, FrontmatterValidationError, TemplateError
-   - No "ValidationError" domain (validation is cross-cutting concern)
-
-3. **Error Propagation:**
-   - Use `errors.Is()` and `errors.As()` for type checking
-   - Wrap errors with context at each layer
-   - No panics except programmer assertions
+2. **Coding Standards (v0.6.7):**
+   - Removed all Result[T] pattern requirements
+   - Updated to mandate idiomatic Go `(T, error)` signatures throughout
+   - Updated error handling section with proper wrapping and unwrapping
+   - Changed naming conventions table: removed Result helpers, added Error Types
+   - Required domain-specific error types to implement `error` interface with `Unwrap()` method
+   - Required adapters to convert infrastructure errors to domain error types
 
 ---
 
-### Phase 5: New Documentation (PENDING)
+### Phase 5: New Documentation (COMPLETED via components.md ✅)
 
-**New File:** `docs/architecture/dependency-injection.md`
+**Decision:** Instead of creating separate files, added comprehensive sections to `docs/architecture/components.md`
 
-**Content:**
-1. main.go DI pattern
-2. Layer initialization order: Infrastructure → Domain → Application → API
-3. Constructor injection examples
-4. No DI framework needed
+**Dependency Injection Documentation (v0.6.5):**
+- Added "Dependency Injection Pattern" section at end of components.md
+- Documented initialization order: Infrastructure → SPI Adapters → Domain Services → CommandOrchestrator → API Adapters
+- Clarified internal vs injected dependencies pattern
+- Provided example main.go structure showing constructor injection
+- Explained when to inject (cross boundaries, need substitution) vs internally instantiate (single-use, internal logic)
 
-**New File:** `docs/architecture/validation-architecture.md`
-
-**Content:**
-1. Schema Validation (simple structural checks)
-2. Frontmatter Validation (complex with type coercion)
-3. YAML → JSON Schema impedance mismatch
-4. Type coercion rules and examples
-5. FrontmatterService design
+**Validation Architecture Documentation (v0.6.6):**
+- Added "Validation Architecture Overview" section at end of components.md
+- Separated schema validation (structural integrity, simple, startup, rich models) from frontmatter validation (business rules, complex, runtime, anemic models)
+- Documented YAML → JSON Schema impedance mismatch
+- Included type coercion rules and strict validation philosophy
+- Cross-referenced FrontmatterService and SchemaValidator sections
 
 ---
 
