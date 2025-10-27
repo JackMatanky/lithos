@@ -20,10 +20,13 @@ Domain models live in the core and contain only essential business data. Infrast
 
 **Key Attributes:**
 
-- `Path` (string) - Absolute path to note file. Serves as primary key and unique identifier across the system. Immutable once set. Used for body loading, cache keys, wikilink resolution, and note identification. Format: OS-specific absolute path (e.g., `/vault/notes/contact.md`).
+- `Path` (string) - Absolute path to file. Serves as primary key and unique identifier across the system. Immutable once set. Used for cache keys, file identification, and adapter operations. Format: OS-specific absolute path (e.g., `/vault/notes/contact.md`).
 - `Basename` (string, computed) - Filename without path and extension. Computed from Path using `filepath.Base()` and `strings.TrimSuffix()`. Used by template `lookup()` function (returns `map[basename]Path`) and wikilink resolution `[[basename]]`. Computed once during construction, cached in struct.
 - `Folder` (string, computed) - Parent directory path. Computed from Path using `filepath.Dir()`. Used by template functions for file organization queries (e.g., "all notes in projects/"). Computed once during construction, cached in struct.
+- `Ext` (string, computed) - File extension including dot. Computed from Path using `filepath.Ext()`. Used for file type filtering (e.g., ".md", ".pdf", ".png"). Empty string if no extension. Computed once during construction, cached in struct.
 - `ModTime` (time.Time) - File modification timestamp from `os.Stat()`. Used for staleness detection by comparing cached ModTime against current filesystem ModTime. Enables incremental indexing optimizations (scan only files modified since last index). Format: RFC3339 for JSON serialization.
+- `Size` (int64) - File size in bytes from `os.Stat()`. Used for filtering large files or determining if content should be loaded. Post-MVP: may skip content loading for files above threshold.
+- `MimeType` (string, computed) - MIME type detected from file extension or content. Computed using `mime.TypeByExtension(Ext)` or `http.DetectContentType(content)`. Used for file type classification and handling. Examples: "text/markdown", "application/pdf", "image/png".
 
 **Relationships:**
 
@@ -43,14 +46,18 @@ Domain models live in the core and contain only essential business data. Infrast
 **Helper Functions:**
 
 ```go
-// NewFile creates File from path and filesystem metadata
-// Called by adapter during vault indexing
-func NewFile(path string, modTime time.Time) File {
-    return File{
+// NewFileMetadata creates FileMetadata from path and fs.FileInfo
+// Called by adapter during vault scanning
+func NewFileMetadata(path string, info fs.FileInfo) FileMetadata {
+    ext := filepath.Ext(path)
+    return FileMetadata{
         Path:     path,
         Basename: computeBasename(path),
         Folder:   computeFolder(path),
-        ModTime:  modTime,
+        Ext:      ext,
+        ModTime:  info.ModTime(),
+        Size:     info.Size(),
+        MimeType: computeMimeType(ext),
     }
 }
 
@@ -65,6 +72,94 @@ func computeBasename(path string) string {
 // Returns directory path (e.g., "/vault/note.md" → "/vault")
 func computeFolder(path string) string {
     return filepath.Dir(path)
+}
+
+// computeMimeType detects MIME type from file extension
+// Returns MIME type string (e.g., "text/markdown", "application/pdf")
+func computeMimeType(ext string) string {
+    mimeType := mime.TypeByExtension(ext)
+    if mimeType == "" {
+        return "application/octet-stream" // Default for unknown types
+    }
+    return mimeType
+}
+```
+
+---
+
+## VaultFile
+
+**Purpose:** Data transfer object used by VaultReaderPort to return scanned vault files with metadata and content. Embeds FileMetadata and adds raw file content. Used for vault indexing workflow.
+
+**Architecture Layer:** SPI Adapter (Data Transfer Object)
+
+**Rationale:** VaultFile is a simple DTO that combines filesystem metadata (FileMetadata) with file content. It's the return type for VaultReaderPort.ScanAll/ScanModified, providing VaultIndexer with everything needed to construct Note domain models. Not a domain model - just infrastructure data transfer between port and service.
+
+**Key Attributes:**
+
+- `FileMetadata` (embedded) - All filesystem metadata (Path, Basename, Folder, Ext, ModTime, Size, MimeType)
+- `Content` ([]byte) - Raw file content. For MVP: markdown text from .md files. Post-MVP: may be nil for large files (lazy load via VaultReaderPort.Read()).
+
+**Relationships:**
+
+- Returned by VaultReaderPort.ScanAll() and VaultReaderPort.ScanModified()
+- Consumed by VaultIndexer to construct Note domain models
+- Embeds FileMetadata for filesystem metadata
+- Content extracted by FrontmatterService to create Frontmatter
+
+**Design Decisions:**
+
+- **Embeds FileMetadata:** Reuses existing metadata structure (DRY principle). VaultFile = FileMetadata + Content.
+- **DTO, not domain model:** Simple data transfer between vault scanning (adapter) and indexing (domain service). No behavior.
+- **Content optional (post-MVP):** For large files (PDFs, videos), Content may be nil. VaultIndexer checks MimeType and decides whether to load content.
+- **Used only in indexing workflow:** CommandOrchestrator.NewNote uses VaultWriterPort directly, doesn't need VaultFile.
+
+**Helper Functions:**
+
+```go
+// NewVaultFile creates VaultFile from FileMetadata and content
+// Called by VaultReaderAdapter during vault scanning
+func NewVaultFile(metadata FileMetadata, content []byte) VaultFile {
+    return VaultFile{
+        FileMetadata: metadata,
+        Content:      content,
+    }
+}
+```
+
+**Usage Example (VaultIndexer):**
+
+```go
+func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
+    // 1. Scan vault
+    vaultFiles, err := v.vaultReader.ScanAll(ctx)
+
+    // 2. For each file, construct Note
+    for _, vf := range vaultFiles {
+        // Filter: only process markdown files for MVP
+        if vf.Ext != ".md" {
+            continue
+        }
+
+        // Extract frontmatter from content
+        fm, err := v.frontmatterService.Extract(vf.Content)
+
+        // Validate frontmatter
+        v.frontmatterService.Validate(ctx, fm)
+
+        // Derive NoteID from path (adapter translates Path → NoteID)
+        noteID := deriveNoteIDFromPath(vf.Path)
+
+        // Construct Note domain model
+        note := Note{
+            ID:          noteID,
+            Frontmatter: fm,
+            // Post-MVP: Content: vf.Content
+        }
+
+        // Persist to cache
+        v.cacheWriter.Persist(ctx, note)
+    }
 }
 ```
 
@@ -218,9 +313,9 @@ Current MVP only indexes frontmatter. Post-MVP Phase 3 (Enhanced Querying) may r
 
 ## Schema
 
-**Purpose:** Defines metadata structure with property constraints and inheritance. Governs validation rules for notes of a given `fileClass`.
+**Purpose:** Defines metadata structure with property constraints and inheritance. Governs validation rules for notes of a given `fileClass`. Rich domain model with structural validation behavior.
 
-**Architecture Layer:** Domain Core
+**Architecture Layer:** Domain Core (Rich Domain Model)
 
 **Key Attributes:**
 
@@ -229,18 +324,23 @@ Current MVP only indexes frontmatter. Post-MVP Phase 3 (Enhanced Querying) may r
 - `Excludes` ([]string, optional) - Parent property names to exclude from inheritance. Only applicable when Extends is not empty. Enables subtractive inheritance.
 - `Properties` ([]Property) - Property definitions for this schema. For inherited schemas, represents delta/override. For root schemas, complete property set.
 
+**Key Methods:**
+
+- `Validate(ctx context.Context) error` - Validates schema structure (Name not empty, Properties valid, Excludes only set when Extends present). Delegates property validation to each Property.Validate(). Returns SchemaError on structural issues.
+
 **Relationships:**
 
 - Schema may extend another Schema (optional inheritance chains)
 - Schema contains multiple Property definitions
 - Frontmatter validated against resolved Schema by FrontmatterService
 - Loaded from JSON files by SchemaLoader adapter
-- Inheritance resolved by SchemaLoader before passing to domain
+- Inheritance resolved by SchemaResolver service
+- Structural validation via Schema.Validate() called by SchemaValidator
 
 **Design Decisions:**
 
-- **Pure data structure:** No behavior. Inheritance resolution happens in SchemaLoader adapter.
-- **Inheritance in source form:** Schema stores original Extends/Excludes/Properties from JSON. Adapter resolves inheritance and provides flattened properties to FrontmatterService.
+- **Rich domain model:** Contains structural validation behavior via Validate() method. No external dependencies - pure domain logic checking structure.
+- **Inheritance in source form:** Schema stores original Extends/Excludes/Properties from JSON. SchemaResolver service resolves inheritance and provides flattened properties to FrontmatterService.
 - **Properties vs Fields terminology:** Schema has "Properties" (validation rules). Frontmatter has "Fields" (actual data).
 - **Excludes dependent on Extends:** Excludes only meaningful when Extends is not empty.
 
@@ -262,9 +362,9 @@ Schema inheritance provides powerful reusability for similar note types. For exa
 
 ## Property
 
-**Purpose:** Defines a single metadata field with validation constraints. Building block of Schema definitions.
+**Purpose:** Defines a single metadata field with validation constraints. Building block of Schema definitions. Rich domain model with structural validation behavior.
 
-**Architecture Layer:** Domain Core
+**Architecture Layer:** Domain Core (Rich Domain Model)
 
 **Key Attributes:**
 
@@ -273,16 +373,21 @@ Schema inheritance provides powerful reusability for similar note types. For exa
 - `Array` (bool) - Whether property accepts multiple values (YAML list) vs single scalar value.
 - `Spec` (PropertySpec) - Type-specific validation constraints (interface for polymorphism).
 
+**Key Methods:**
+
+- `Validate(ctx context.Context) error` - Validates property structure (Name not empty, Spec not nil). Delegates PropertySpec validation to Spec.Validate(). Returns error on structural issues.
+
 **Relationships:**
 
 - Belongs to Schema (composition)
 - Contains one PropertySpec implementation
-- May be sourced from PropertyBank via `$ref` (resolved by SchemaLoader)
+- May be sourced from PropertyBank via `$ref` (resolved by SchemaResolver)
 - Used by FrontmatterService to validate Frontmatter.Fields
+- Structural validation via Property.Validate() called by Schema.Validate()
 
 **Design Decisions:**
 
-- **Pure data structure:** No validation behavior. Logic in FrontmatterService using PropertySpec interface.
+- **Rich domain model:** Contains structural validation behavior via Validate() method. Delegates to PropertySpec.Validate() for polymorphic validation.
 - **Interface-based composition:** PropertySpec interface enables type-specific validation without nullable attributes.
 - **Properties vs Fields terminology:** "Property" = schema definition. "Field" = actual frontmatter data.
 - **Required vs Array orthogonal:** Can have required scalars, optional scalars, required arrays, or optional arrays.
@@ -291,23 +396,29 @@ Schema inheritance provides powerful reusability for similar note types. For exa
 
 ## PropertySpec (Type-Specific Configurations)
 
-**Purpose:** Interface for type-specific validation constraint definitions. Defines what constraints apply to a property (min/max, patterns, enums) as immutable value objects. Validation behavior implemented separately in FrontmatterService.
+**Purpose:** Interface for type-specific validation constraint definitions. Defines what constraints apply to a property (min/max, patterns, enums) as immutable value objects with structural validation behavior. Each PropertySpec variant validates its own constraint structure.
 
-**Architecture Layer:** Domain Core (Value Objects)
+**Architecture Layer:** Domain Core (Value Objects with Behavior)
 
-**Rationale:** PropertySpec variants are DDD value objects—immutable constraint definitions identified by their attributes, not by identity. They define constraint data (e.g., "min: 0, max: 100") without validation behavior. FrontmatterService uses these specs to validate frontmatter fields.
+**Rationale:** PropertySpec variants are DDD value objects—immutable constraint definitions identified by their attributes, not by identity. They define constraint data (e.g., "min: 0, max: 100") AND validate constraint structure (e.g., regex pattern is valid). This leverages polymorphism—each PropertySpec type knows how to validate its own constraints.
+
+**Key Methods (Interface):**
+
+- `Type() PropertyType` - Returns property type identifier (string, number, date, file, boolean)
+- `Validate(ctx context.Context) error` - Validates constraint structure (e.g., pattern is valid regex, min <= max, enum not empty). Pure structural validation with no external dependencies.
 
 **Relationships:**
 
 - Exactly one PropertySpec variant per Property (composition via interface)
-- Used by FrontmatterService to validate Frontmatter.Fields
+- Used by FrontmatterService to validate Frontmatter.Fields against constraints
 - FileSpec uses FileClass/Directory attributes for dynamic lookups against vault index
+- Structural validation via PropertySpec.Validate() called by Property.Validate()
 
 **Design Decisions:**
 
-- **Value objects (DDD):** PropertySpec variants are immutable value objects with no identity. Two StringSpecs with identical Enum/Pattern are equivalent. Equality based on attribute values.
+- **Value objects with behavior:** PropertySpec variants are immutable value objects that validate their own structural integrity. Two StringSpecs with identical Enum/Pattern are equivalent.
 
-- **Separation of data and behavior:** PropertySpec defines constraint data (what to validate). FrontmatterService implements validation behavior (how to validate). Specs are pure data structures with no methods.
+- **Polymorphic validation:** Each PropertySpec variant implements Validate() for type-specific structural checks. Avoids type switches in validator service.
 
 - **Interface-based polymorphism:** PropertySpec interface enables type-safe composition. Property contains one PropertySpec variant without nullable attributes or type switches.
 
@@ -317,17 +428,37 @@ Schema inheritance provides powerful reusability for similar note types. For exa
 
 ### StringSpec
 
-**Purpose:** Defines string validation constraints (allowed values, patterns) as immutable value object.
+**Purpose:** Defines string validation constraints (allowed values, patterns) as immutable value object with structural validation.
 
 **Key Attributes:**
 
 - `Enum` ([]string, optional) - Allowed values as fixed list. If non-empty, value must be in list (exact match, case-sensitive). Empty list means no values allowed, nil means any string valid.
 - `Pattern` (string, optional) - Regex pattern for custom validation. If non-empty, value must match pattern. Uses Go `regexp` package. Empty string or nil means no pattern constraint.
 
+**Key Methods:**
+
+- `Type() PropertyType` - Returns `PropertyTypeString`
+- `Validate(ctx context.Context) error` - Validates Pattern is valid regex if specified. Returns error if pattern compilation fails.
+
+**Validation Implementation Example:**
+
+```go
+func (s StringSpec) Validate(ctx context.Context) error {
+    if s.Pattern != "" {
+        if _, err := regexp.Compile(s.Pattern); err != nil {
+            return fmt.Errorf("invalid pattern regex: %w", err)
+        }
+    }
+    // Enum doesn't need validation - any string list is valid
+    return nil
+}
+```
+
 **Design Decisions:**
 
 - **Enum and Pattern can coexist:** Both constraints can be specified. FrontmatterService checks enum first (if present), then pattern (if present). Value must satisfy both (AND logic).
 - **Case-sensitive enum:** Exact string matching. User must include all case variations in enum if case-insensitive behavior desired.
+- **Pattern validation at load time:** Validate() ensures regex compiles at schema load time, not at frontmatter validation time.
 
 **Example:**
 
@@ -349,7 +480,7 @@ or
 
 ### NumberSpec
 
-**Purpose:** Defines numeric validation constraints (min/max bounds, step increments) as immutable value object.
+**Purpose:** Defines numeric validation constraints (min/max bounds, step increments) as immutable value object with structural validation.
 
 **Key Attributes:**
 
@@ -357,11 +488,31 @@ or
 - `Max` (\*float64, optional) - Maximum allowed value (inclusive). If set, value must be <= Max.
 - `Step` (\*float64, optional) - Increment/decrement amount. If 1.0, implies integer values. If 0.1, implies one decimal precision. If nil, any precision allowed.
 
+**Key Methods:**
+
+- `Type() PropertyType` - Returns `PropertyTypeNumber`
+- `Validate(ctx context.Context) error` - Validates Min <= Max if both specified, Step > 0 if specified. Returns error on invalid constraints.
+
+**Validation Implementation Example:**
+
+```go
+func (n NumberSpec) Validate(ctx context.Context) error {
+    if n.Min != nil && n.Max != nil && *n.Min > *n.Max {
+        return fmt.Errorf("min (%f) cannot be greater than max (%f)", *n.Min, *n.Max)
+    }
+    if n.Step != nil && *n.Step <= 0 {
+        return fmt.Errorf("step must be positive, got %f", *n.Step)
+    }
+    return nil
+}
+```
+
 **Design Decisions:**
 
 - **Unified number type:** Handles both integer and float via `Step` attribute. Simplifies type system and aligns with YAML's lack of int/float distinction.
 - **Step-based integer semantics:** If Step=1.0, FrontmatterService checks `value == math.Floor(value)`. This is semantic check (not type check), aligning with YAML treating `42` and `42.0` identically.
 - **All numbers as float64:** YAML unmarshals numbers as float64. FrontmatterService validates as float64, uses Step to determine if fractional part allowed.
+- **Constraint validation at load time:** Validate() ensures min/max/step are coherent at schema load time.
 
 **Example:**
 
@@ -379,16 +530,38 @@ or
 
 ### DateSpec
 
-**Purpose:** Defines date/time format constraints as immutable value object.
+**Purpose:** Defines date/time format constraints as immutable value object with structural validation.
 
 **Key Attributes:**
 
 - `Format` (string) - Go time layout string (e.g., "2006-01-02", "2006-01-02T15:04:05Z07:00"). Uses Go stdlib `time.Parse(format, value)`. If empty, defaults to RFC3339.
 
+**Key Methods:**
+
+- `Type() PropertyType` - Returns `PropertyTypeDate`
+- `Validate(ctx context.Context) error` - Validates Format is valid Go time layout by attempting to parse reference time. Returns error if format invalid.
+
+**Validation Implementation Example:**
+
+```go
+func (d DateSpec) Validate(ctx context.Context) error {
+    if d.Format == "" {
+        return nil // Empty format defaults to RFC3339, always valid
+    }
+    // Test format by parsing reference time
+    referenceTime := "Mon Jan 2 15:04:05 MST 2006"
+    if _, err := time.Parse(d.Format, referenceTime); err != nil {
+        return fmt.Errorf("invalid time format: %w", err)
+    }
+    return nil
+}
+```
+
 **Design Decisions:**
 
 - **Go time layout format:** Uses Go's reference time format (Jan 2 15:04:05 2006 MST). Enables flexible date/time parsing with stdlib.
 - **Default RFC3339:** If Format empty or nil, FrontmatterService uses RFC3339 (ISO 8601 compatible).
+- **Format validation at load time:** Validate() ensures format string is valid at schema load time.
 
 **Example:**
 
@@ -404,18 +577,46 @@ or
 
 ### FileSpec
 
-**Purpose:** Defines file reference validation constraints (fileClass filters, directory filters) as immutable value object.
+**Purpose:** Defines file reference validation constraints (fileClass filters, directory filters) as immutable value object with structural validation.
 
 **Key Attributes:**
 
 - `FileClass` (string, optional) - Restricts valid file references to notes with specific fileClass value or regex pattern. Supports negation via `^` prefix. Examples: `"project"` (exact match), `"^archive"` (NOT archive), `"(project|task)"` (regex: project OR task). Empty string or nil means no fileClass restriction.
 - `Directory` (string, optional) - Restricts valid file references to notes within specific vault directory path. Path is relative to vault root. Supports negation via `^` prefix. Examples: `"projects/"` (notes in projects/), `"^archive/"` (NOT in archive/), `"work/.*"` (regex: anything under work/). Empty string or nil means no directory restriction.
 
+**Key Methods:**
+
+- `Type() PropertyType` - Returns `PropertyTypeFile`
+- `Validate(ctx context.Context) error` - Validates FileClass and Directory patterns are valid regex if they contain regex syntax. Returns error if patterns invalid.
+
+**Validation Implementation Example:**
+
+```go
+func (f FileSpec) Validate(ctx context.Context) error {
+    // Validate FileClass regex if present
+    if f.FileClass != "" {
+        pattern := strings.TrimPrefix(f.FileClass, "^") // Remove negation prefix
+        if _, err := regexp.Compile(pattern); err != nil {
+            return fmt.Errorf("invalid fileClass pattern: %w", err)
+        }
+    }
+    // Validate Directory regex if present
+    if f.Directory != "" {
+        pattern := strings.TrimPrefix(f.Directory, "^") // Remove negation prefix
+        if _, err := regexp.Compile(pattern); err != nil {
+            return fmt.Errorf("invalid directory pattern: %w", err)
+        }
+    }
+    return nil
+}
+```
+
 **Design Decisions:**
 
 - **Filter conjunction (AND logic):** When both FileClass and Directory set, both conditions must be satisfied. Example: `{"fileClass": "project", "directory": "work/"}` matches project notes in work/ directory only.
 - **Negation support:** `^` prefix inverts the match. Enables exclusion patterns (e.g., "any note except archives").
 - **Regex patterns:** FileClass and Directory support regex for flexible matching. FrontmatterService uses Go `regexp` package.
+- **Pattern validation at load time:** Validate() ensures regex patterns compile at schema load time.
 - **Flattened attributes (MVP):** FileClass and Directory are direct attributes for MVP simplicity. Post-MVP could introduce nested Filter struct with additional filter types (Tags, ModTime, etc.).
 - **Vault index dependency:** FrontmatterService validates that referenced file exists in vault index (loaded via CacheReader) and matches constraints. Requires indexed vault.
 
@@ -432,16 +633,30 @@ or
 
 ### BoolSpec
 
-**Purpose:** Defines boolean validation (no additional constraints). Marker value object.
+**Purpose:** Defines boolean validation (no additional constraints). Marker value object with no structural validation needed.
 
 **Key Attributes:**
 
 - None. Presence of BoolSpec indicates property accepts boolean values only.
 
+**Key Methods:**
+
+- `Type() PropertyType` - Returns `PropertyTypeBool`
+- `Validate(ctx context.Context) error` - Always returns nil. No constraints to validate.
+
+**Validation Implementation Example:**
+
+```go
+func (b BoolSpec) Validate(ctx context.Context) error {
+    return nil // No constraints to validate for boolean type
+}
+```
+
 **Design Decisions:**
 
 - **Type check only:** FrontmatterService validates that value is Go bool type (true/false). No additional constraints possible.
 - **Marker value object:** Empty struct. Presence in Property.Spec indicates boolean type.
+- **No-op validation:** Validate() always succeeds since there are no constraints to check.
 
 ---
 

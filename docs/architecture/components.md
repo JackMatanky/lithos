@@ -15,61 +15,319 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 
 ### TemplateEngine
 
-**Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and frontmatter validation. Pure domain service orchestrating template execution.
+**Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and frontmatter validation. Pure domain service orchestrating template execution with custom function map for user interaction and file path control.
 
 **Key Interfaces:**
 
 - `Render(ctx context.Context, templateID TemplateID) (string, error)` - Render template to markdown string
 - `Load(ctx context.Context, templateID TemplateID) (Template, error)` - Load template via TemplateLoader port
 
-**Dependencies:** TemplateLoader (port), InteractivePort, QueryService, FrontmatterService, Logger.
+**Dependencies:** TemplateLoader (port), InteractivePort, QueryService, FrontmatterService, Config, Logger.
 
-**Technology Stack:** Go `text/template`, custom function map (`prompt`, `suggester`, `lookup`, `query`, `now`), closures wrapping port calls for dependency injection, zerolog for instrumentation.
+**Technology Stack:** Go `text/template`, custom function map with user interaction and file control functions, closures wrapping port calls for dependency injection, zerolog for instrumentation.
+
+**Custom Template Functions:**
+
+The TemplateEngine provides a function map injected into Go's `text/template` for interactive prompts, vault queries, and file path control:
+
+**User Interaction Functions:**
+- `prompt(name, label, default)` - Text input prompt via InteractivePort
+- `suggester(name, label, options)` - Selection from list via InteractivePort
+- `now(format)` - Current timestamp with Go time layout format
+
+**Vault Query Functions:**
+- `lookup(basename)` - Find note by basename via QueryService
+- `query(filter)` - Query notes by criteria via QueryService
+- `fileClass(noteID)` - Get note's fileClass field
+
+**File Path Control Functions** (inspired by Templater file module):
+- `path()` - Returns the target file path for the note being created. Used to determine where the note will be saved.
+- `folder(path)` - Returns parent directory of path. Can be chained to navigate up directory tree.
+- `basename(path)` - Returns filename without extension from path.
+- `extension(path)` - Returns file extension from path.
+- `join(parts...)` - Joins path segments using OS-appropriate separator.
+- `vaultPath()` - Returns absolute vault root path from Config.
+
+**File Path Function Examples:**
+
+```go
+// Template can control its own save location
+{{- $targetPath := join (vaultPath) "contacts" (printf "%s.md" (prompt "filename" "Filename" "")) -}}
+// Sets target path for CommandOrchestrator to use when saving
+
+// Or derive from frontmatter fields
+{{- $slug := lower (replace (prompt "title" "Title" "") " " "-") -}}
+{{- $targetPath := join (vaultPath) "notes" (printf "%s.md" $slug) -}}
+
+// Access current path context (during rendering)
+{{- $currentFolder := folder (path) -}}
+{{- $currentName := basename (path) -}}
+```
+
+**Note:** The `path()` function returns the target path being constructed during rendering. Templates set this implicitly through frontmatter or explicitly via `$targetPath` variable. CommandOrchestrator uses the resolved path to save the note via `atomicwriter.WriteFile` directly (no FileWriter port - YAGNI principle).
 
 ### FrontmatterService
 
-**Responsibility:** Extract YAML frontmatter from markdown and validate against schema rules. Single domain service handling both extraction and validation concerns.
+**Responsibility:** Extract YAML frontmatter from markdown and validate against schema rules with strict type checking. Single domain service handling both extraction and validation concerns.
 
 **Key Interfaces:**
 
 - `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content
-- `Validate(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (looked up via FileClass)
+- `Validate(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (looked up via FileClass) with in-memory type normalization for validation logic only
 
-**Dependencies:** SchemaRegistry (port for schema lookup), QueryService (for FileSpec resolution), Logger.
+**Dependencies:** SchemaRegistry (port for schema lookup), QueryService (for FileSpec file existence validation), Logger.
 
-**Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`), `goccy/go-yaml` for YAML parsing, PropertySpec polymorphism for type-specific validation, YAML→JSON type coercion for validation, structured FrontmatterError with remediation hints.
+**Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `goccy/go-yaml` for YAML parsing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
+
+**Frontmatter Validation (Business Rules with Strict Type Checking):**
+
+FrontmatterService.Validate() performs strict validation with in-memory type normalization for validation logic only. **Important:** Validation never modifies files—normalization is purely in-memory for validation purposes. Data transformations (like scalar→array coercion or type conversions) are linting concerns, not validation concerns.
+
+- **Purpose:** Validate YAML frontmatter data strictly against schema business rules
+- **When:** Every note indexing and validation operation
+- **Complexity:** High - requires YAML type handling and cross-field validation
+- **Philosophy:** Validator is strict and raises errors when data doesn't match schema. A future linter would be permissive and auto-fix issues.
+
+**Validation Workflow:**
+
+1. **Schema Lookup:** Get schema from SchemaRegistry using frontmatter.FileClass
+2. **Required Field Check:** Ensure all required properties present in frontmatter.Fields
+3. **Array vs Scalar Check:** Verify array/scalar expectation matches (no auto-coercion)
+4. **Type Normalization (In-Memory Only):** Normalize YAML types for validation logic without modifying files
+5. **Constraint Validation:** Validate normalized value against PropertySpec constraints (pattern, min/max, enum, etc.)
+6. **File Reference Validation:** For FileSpec properties, validate file exists via QueryService.ByPath()
+7. **Error Aggregation:** Return all validation errors with field-level remediation hints
+
+**YAML Type Handling:**
+
+The `goccy/go-yaml` parser handles YAML syntax and returns Go types. FrontmatterService validates these Go types against schema expectations:
+
+```yaml
+# Strings (quoted or unquoted - both valid YAML)
+title: hello world           # Unquoted string → string
+title: "hello world"         # Quoted string → string
+title: 'single quoted'       # Single-quoted → string
+description: |               # Block scalar → string
+  Multiline text
+
+# Numbers (YAML doesn't distinguish int/float)
+count: 42                    # Integer notation → int64 in Go
+price: 42.5                  # Float notation → float64 in Go
+# Validator normalizes to float64 IN-MEMORY for validation only
+# Files remain unchanged!
+
+# Booleans (YAML liberal syntax)
+active: true                 # Boolean literal → bool
+active: yes                  # YAML boolean → bool (parser converts)
+active: on                   # YAML boolean → bool (parser converts)
+
+# Arrays
+tags: [work, personal]       # Flow style → []any
+tags:                        # Block style → []any
+  - work
+  - personal
+```
+
+**Type Validation Strategy:**
+
+```go
+// StringSpec validation
+title: "hello"  ✓ (string type matches)
+title: 42       ✗ ERROR: Expected string, got number
+
+// NumberSpec validation
+count: 42       ✓ (int normalized to float64 in-memory for validation)
+count: 42.5     ✓ (float already float64)
+count: "42"     ✗ ERROR: Expected number, got string
+# Note: If NumberSpec.Step = 1.0, validator checks value == floor(value)
+
+// BoolSpec validation
+active: true    ✓ (bool type)
+active: yes     ✓ (YAML parser converts to bool)
+active: 1       ✗ ERROR: Expected boolean, got number
+active: "true"  ✗ ERROR: Expected boolean, got string
+
+// Array validation (NO auto-coercion)
+tags: [work]    ✓ (array when Property.Array = true)
+tags: work      ✗ ERROR: Expected array, got scalar
+tags: [work]    ✗ ERROR: Expected scalar, got array (when Property.Array = false)
+```
+
+**Validation vs Linting:**
+
+- **Validator (FrontmatterService):** Strict enforcement. Raises errors when data doesn't match schema. User must fix data or schema.
+- **Linter (Future feature):** Permissive transformation. Auto-fixes common issues like `tags: work` → `tags: [work]` or type conversions.
+
+**In-Memory Normalization:**
+
+Validator normalizes types in-memory for validation logic only:
+
+- YAML integers → float64 for NumberSpec validation (files unchanged)
+- Step attribute determines int vs float semantics:
+  - `Step: 1.0` → Requires integer values (checks `value == math.Floor(value)`)
+  - `Step: 0.1` → Allows fractional values
+  - `Step: nil` → Any precision allowed
+
+**Implementation Note:**
+
+All public methods with multiple steps follow Single Responsibility Principle by decomposing into private methods. For example, Validate() orchestrates via private methods: lookupSchema(), validateAgainstSchema(), validateProperty(), validateArrayExpectation(), coerceValue(), validateAgainstSpec(), etc. Each private method has one clear responsibility.
+
+**Error Format:**
+
+Validation errors returned as structured FrontmatterError types with schema name, field name, rule violated, actual value, and remediation message for CLI display.
 
 ### SchemaEngine
 
-**Responsibility:** Coordinate schema loading and provide unified access to schemas and properties. Acts as facade over SchemaLoader and SchemaRegistry using Go generics for type-safe retrieval.
+**Responsibility:** Coordinate schema loading, validation, resolution, and provide unified access to schemas and properties. Orchestrates SchemaLoader, SchemaValidator, SchemaResolver, and SchemaRegistry using Go generics for type-safe retrieval.
 
 **Key Interfaces:**
 
-- `Load(ctx context.Context) error` - Load schemas and property bank through SchemaLoader port, populate SchemaRegistry
+- `Load(ctx context.Context) error` - Load schemas and property bank, validate structure, resolve inheritance, populate SchemaRegistry
 - `Get[T Schema | Property](ctx context.Context, name string) (T, error)` - Retrieve schema or property by name using generics
 - `Has[T Schema | Property](ctx context.Context, name string) bool` - Check if schema or property exists using generics
 
-**Dependencies:** SchemaLoader (port), SchemaRegistry (port), Logger.
+**Dependencies:** SchemaLoader (port), SchemaValidator (service), SchemaResolver (service), SchemaRegistry (port), Logger.
 
-**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics, delegates to SchemaLoader for loading (which handles validation and inheritance resolution) and SchemaRegistry for lookups. Idiomatic (T, error) return signatures.
+**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics. Delegates to SchemaLoader for I/O, SchemaValidator for structural validation, SchemaResolver for inheritance resolution, and SchemaRegistry for lookups. Idiomatic (T, error) return signatures.
+
+**Schema Loading and Validation Workflow:**
+
+The Load() method orchestrates the complete schema initialization pipeline:
+
+1. **Load:** SchemaLoader reads JSON files from disk and parses into Schema DTOs and PropertyBank
+2. **Validate:** SchemaValidator validates structural integrity by calling schema.Validate() on each schema (which delegates to property.Validate() → propertySpec.Validate()). Also performs cross-schema validation (Extends references exist).
+3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes) and substitutes $ref with PropertyBank definitions. Detects circular dependencies.
+4. **Register:** SchemaRegistry populates in-memory maps with resolved schemas for fast lookups
+
+**Fails Fast:** Any error in steps 1-3 terminates application at startup. No invalid schemas reach runtime.
 
 **Usage Examples:**
 ```go
+// At startup
+if err := schemaEngine.Load(ctx); err != nil {
+    log.Fatal("schema loading failed:", err)
+}
+
+// Runtime lookups
 schema, err := schemaEngine.Get[Schema](ctx, "contact")
 property, err := schemaEngine.Get[Property](ctx, "standard_title")
 exists := schemaEngine.Has[Schema](ctx, "contact")
 ```
 
+### SchemaValidator
+
+**Responsibility:** Orchestrate schema validation by calling model-level Validate() methods and performing cross-schema validation that requires seeing multiple schemas together. Pure domain service with no external dependencies.
+
+**Key Interfaces:**
+
+- `ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error` - Orchestrate validation of all schemas and check cross-schema references
+
+**Dependencies:** None (pure domain logic).
+
+**Technology Stack:** Orchestrates schema.Validate() calls, validates cross-schema references, aggregates errors using errors.Join().
+
+**Validation Responsibilities:**
+
+SchemaValidator has two distinct responsibilities that require service-level logic:
+
+1. **Orchestrate Model Validation:**
+   - Calls schema.Validate() on each schema
+   - Each schema delegates to property.Validate() → propertySpec.Validate()
+   - Aggregates all structural validation errors
+   - **Why service needed:** Centralized orchestration and error aggregation across all schemas
+
+2. **Cross-Schema Validation:**
+   - Validates Extends references point to existing schemas
+   - Validates PropertyBank $ref references exist
+   - Ensures no duplicate schema names
+   - **Why service needed:** Individual schemas can't validate references without seeing other schemas and PropertyBank
+
+**What SchemaValidator Does NOT Do:**
+
+- Structural validation of individual schemas (delegated to schema.Validate())
+- Inheritance resolution (handled by SchemaResolver)
+- Circular dependency detection (handled by SchemaResolver during topological sort)
+
+**Example Implementation Pattern:**
+
+```go
+func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error {
+    var errors []error
+
+    // 1. Orchestrate model-level validation
+    for _, schema := range schemas {
+        if err := schema.Validate(ctx); err != nil {
+            errors = append(errors, fmt.Errorf("schema %s: %w", schema.Name, err))
+        }
+    }
+
+    // 2. Cross-schema validation
+    schemaMap := buildSchemaMap(schemas)
+    for _, schema := range schemas {
+        if schema.Extends != "" {
+            if _, exists := schemaMap[schema.Extends]; !exists {
+                errors = append(errors, fmt.Errorf("schema %s extends non-existent schema %s",
+                    schema.Name, schema.Extends))
+            }
+        }
+        // Check $ref references in properties
+        for _, prop := range schema.Properties {
+            if err := v.validatePropertyRefs(prop, bank); err != nil {
+                errors = append(errors, err)
+            }
+        }
+    }
+
+    if len(errors) > 0 {
+        return errors.Join(errors...)
+    }
+    return nil
+}
+```
+
+### SchemaResolver
+
+**Responsibility:** Resolve schema inheritance chains and PropertyBank $ref substitutions. Pure domain service implementing inheritance resolution algorithm.
+
+**Key Interfaces:**
+
+- `Resolve(ctx context.Context, schemas []Schema, bank PropertyBank) ([]Schema, error)` - Resolve all schemas, returning flattened schemas with inheritance applied and $ref substituted
+
+**Dependencies:** None (pure domain logic).
+
+**Technology Stack:** Topological sort for dependency ordering, depth-first search for cycle detection, property merging with override semantics.
+
+**Resolution Algorithm:**
+
+1. **Build Dependency Graph:** Map each schema to its Extends parent
+2. **Detect Cycles:** DFS to find circular inheritance chains (Schema A extends B extends A)
+3. **Topological Sort:** Order schemas so parents resolve before children
+4. **Resolve Inheritance:** For each schema in order:
+   - Get parent's resolved properties (or empty if root schema)
+   - Apply Excludes (remove properties by name)
+   - Merge child properties (override parent properties with same name)
+   - Store as resolved properties
+5. **Substitute $ref:** Replace all `{$ref: "#/properties/name"}` with PropertyBank.Properties[name]
+
+**Example:**
+```go
+resolver := NewSchemaResolver()
+resolved, err := resolver.Resolve(ctx, schemas, propertyBank)
+if err != nil {
+    return fmt.Errorf("schema resolution failed: %w", err)
+}
+```
+
 ### VaultIndexer
 
-**Responsibility:** Orchestrate vault scanning and indexing workflow (CQRS write side). Coordinates file walking, frontmatter extraction, validation, cache persistence, and query index population.
+**Responsibility:** Orchestrate vault scanning and indexing workflow (CQRS write side). Coordinates vault scanning, frontmatter extraction, validation, cache persistence, and query index population.
 
 **Key Interfaces:**
 
 - `Build(ctx context.Context) (IndexStats, error)` - Full vault scan, cache rebuild, and query index population
-- `Refresh(ctx context.Context, paths []string) error` - Incremental update for specific paths and indices (post-MVP)
+- `Refresh(ctx context.Context, since time.Time) error` - Incremental update for large vaults (post-MVP optimization)
 
-**Dependencies:** FileWalker (port), FileReader (port), FrontmatterService, CacheWriter (port), QueryService (direct access to populate indices), Logger, Config.
+**Dependencies:** VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService (direct access to populate indices), Logger, Config.
 
 **Technology Stack:** Pure Go orchestration, delegates file operations to ports, atomic indexing with temp file + rename pattern for consistency, directly populates QueryService in-memory indices after cache write completes, zerolog for metrics and progress tracking.
 
@@ -90,6 +348,120 @@ exists := schemaEngine.Has[Schema](ctx, "contact")
 
 **Technology Stack:** In-memory indices backed by Go maps with `sync.RWMutex` for concurrent safety, multiple specialized indices (by ID, path, fileClass, frontmatter fields) for fast lookups, indices populated directly by VaultIndexer after cache write.
 
+### CommandOrchestrator
+
+**Responsibility:** Orchestrate use case workflows by coordinating domain services. Acts as the application service layer that CLI, TUI, and LSP adapters invoke via CLICommandPort. Owns application startup and control flow.
+
+**Key Interfaces:**
+
+- `Run(ctx context.Context) error` - Start the application by calling CLICommandPort.Start()
+- `NewNote(ctx context.Context, templateID TemplateID) (Note, error)` - Create new note from template (implements CommandHandler)
+- `IndexVault(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache (implements CommandHandler)
+- `FindTemplates(ctx context.Context, query string) ([]Template, error)` - List available templates (implements CommandHandler)
+
+**Dependencies:** CLICommandPort (injected API port), TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger.
+
+**Technology Stack:** Pure Go orchestration, implements CommandHandler interface for CLI callbacks, uses dependency injection from main.go.
+
+**NewNote Use Case Workflow:**
+
+The NewNote method orchestrates the complete note creation workflow:
+
+1. **Load Template:** Load template via TemplateEngine.Load()
+2. **Render Template:** Execute template with user prompts via TemplateEngine.Render()
+3. **Extract Frontmatter:** Parse YAML frontmatter via FrontmatterService.Extract()
+4. **Validate Frontmatter:** Validate against schema via FrontmatterService.Validate()
+5. **Generate NoteID:** Derive NoteID from frontmatter fields (filename, title slug, or UUID)
+6. **Resolve File Path:** Determine target path from template's path control functions or derive from frontmatter
+7. **Create Note Object:** Construct Note with ID, Content, and Frontmatter
+8. **Persist to Vault:** Write note via VaultWriterPort.Persist() (source of truth)
+9. **Persist to Cache:** Write note via CacheWriterPort.Persist() (projection - keeps index in sync)
+10. **Return Note:** Return Note object for CLI to display confirmation and optionally show content
+
+**NoteID Generation Strategy:**
+
+```go
+func (o *CommandOrchestrator) generateNoteID(fm Frontmatter) (NoteID, error) {
+    // Priority 1: Use explicit filename field from frontmatter
+    if filename, ok := fm.Fields["filename"].(string); ok {
+        return NoteID(filename), nil
+    }
+
+    // Priority 2: Slugify title field
+    if title, ok := fm.Fields["title"].(string); ok {
+        slug := slugify(title)  // Convert "My Note" → "my-note"
+        return NoteID(slug), nil
+    }
+
+    // Priority 3: Generate UUID-based ID
+    return NoteID(generateUUID()), nil
+}
+```
+
+**File Path Resolution:**
+
+Templates can control their save location via file path template functions:
+
+```go
+// Template sets target path
+{{- $targetPath := join (vaultPath) "contacts" (printf "%s.md" (prompt "filename" "Filename" "")) -}}
+```
+
+CommandOrchestrator extracts the resolved path from template execution context and passes to FileWriter.
+
+**Example Implementation:**
+
+```go
+func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID) (Note, error) {
+    // Load and render
+    template, err := o.templateEngine.Load(ctx, templateID)
+    if err != nil {
+        return Note{}, fmt.Errorf("template not found: %w", err)
+    }
+
+    rendered, err := o.templateEngine.Render(ctx, template)
+    if err != nil {
+        return Note{}, fmt.Errorf("rendering failed: %w", err)
+    }
+
+    // Extract and validate
+    fm, err := o.frontmatterService.Extract([]byte(rendered))
+    if err != nil {
+        return Note{}, fmt.Errorf("frontmatter extraction failed: %w", err)
+    }
+
+    if err := o.frontmatterService.Validate(ctx, fm); err != nil {
+        return Note{}, fmt.Errorf("frontmatter validation failed: %w", err)
+    }
+
+    // Generate ID and create note
+    noteID, err := o.generateNoteID(fm)
+    if err != nil {
+        return Note{}, fmt.Errorf("note ID generation failed: %w", err)
+    }
+
+    note := Note{
+        ID:          noteID,
+        Content:     rendered,
+        Frontmatter: fm,
+    }
+
+    // Dual write pattern (vault + cache)
+    // 1. Persist to vault (source of truth)
+    if err := o.vaultWriter.Persist(ctx, note, path); err != nil {
+        return Note{}, fmt.Errorf("failed to persist note to vault: %w", err)
+    }
+
+    // 2. Persist to cache (projection) - keeps index in sync
+    if err := o.cacheWriter.Persist(ctx, note); err != nil {
+        // Log warning but don't fail - can rebuild index later
+        o.log.Warn().Err(err).Msg("failed to update cache")
+    }
+
+    return note, nil
+}
+```
+
 ---
 
 ## API Port Interfaces
@@ -98,17 +470,48 @@ Primary (driving) ports define the contracts that domain exposes to adapters. Th
 
 ### CLICommandPort
 
-**Responsibility:** Define application use cases for CLI commands. Implemented directly by CLI adapter through orchestrating domain services.
+**Responsibility:** Define the contract for CLI framework integration. Implemented by CLI adapter to handle command parsing, flag processing, and output formatting. Domain injects this port into CommandOrchestrator to decouple from specific CLI frameworks.
 
 **Key Interfaces:**
 
-- `New(ctx context.Context, templateID TemplateID) (string, error)` - Execute template to generate new note
-- `Find(ctx context.Context) ([]Template, error)` - List available templates for selection
-- `Index(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache
+- `Start(ctx context.Context, handler CommandHandler) error` - Start the CLI event loop, parse commands, and delegate to handler for business logic
 
-**Dependencies:** Implemented by CLI adapter (CobraAdapter), which composes TemplateEngine, VaultIndexer, QueryService, FrontmatterService, and SchemaEngine via dependency injection.
+**CommandHandler Interface:**
 
-**Technology Stack:** Defined in `internal/ports/api/` as pure Go interface. CLI adapter implements these use cases by orchestrating domain services. Dependency injection happens in main.go.
+The CLI adapter calls back to CommandOrchestrator through this interface:
+
+```go
+type CommandHandler interface {
+    NewNote(ctx context.Context, templateID TemplateID) (Note, error)
+    IndexVault(ctx context.Context) (IndexStats, error)
+    FindTemplates(ctx context.Context, query string) ([]Template, error)
+}
+```
+
+**Architecture Pattern:**
+
+```
+CommandOrchestrator (Domain)
+  └─> Calls CLICommandPort.Start(itself as CommandHandler)
+      └─> CobraCLIAdapter receives control
+          └─> Sets up Cobra commands
+          └─> Parses user input
+          └─> Calls back to CommandHandler.NewNote/IndexVault/FindTemplates
+              └─> CommandOrchestrator orchestrates domain services
+              └─> Returns result to CLI adapter
+          └─> Formats and displays output
+```
+
+**Why This Design:**
+
+- **Decouples CLI framework from domain:** CommandOrchestrator never imports Cobra
+- **Enables multiple adapters:** TUI/LSP can implement CLICommandPort without affecting domain
+- **Testable:** Mock CLICommandPort to test CommandOrchestrator without CLI framework
+- **Inversion of Control:** Domain starts the application and delegates command parsing to adapter
+
+**Dependencies:** Implemented by CobraCLIAdapter. Injected into CommandOrchestrator via constructor.
+
+**Technology Stack:** Defined in `internal/ports/api/` as pure Go interfaces. No framework dependencies.
 
 ---
 
@@ -122,7 +525,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Key Interfaces:**
 
-- `Write(ctx context.Context, note Note) error` - Write note to cache
+- `Persist(ctx context.Context, note Note) error` - Persist note to cache
 - `Delete(ctx context.Context, id NoteID) error` - Remove note from cache
 
 **Dependencies:** Implemented by JSONFileCacheAdapter.
@@ -145,6 +548,61 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 **Technology Stack:** Go `encoding/json`, lazy loading, optional memoization with `sync.RWMutex`.
 
 **Note:** No separate FileReaderPort needed - adapters use `os.ReadFile` and `filepath.Walk` directly. YAGNI principle - we don't have multiple file sources for MVP. If future needs arise (S3, HTTP, embedded), ports can be added then.
+
+### VaultReaderPort
+
+**Responsibility:** Provide CQRS read-side access to vault files for indexing and validation. Abstracts vault scanning operations at business level. Supports both full scans (initial indexing) and incremental scans (large vault optimization).
+
+**Key Interfaces:**
+
+- `ScanAll(ctx context.Context) ([]VaultFile, error)` - Full vault scan for initial index build
+- `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan for large vaults (future optimization for NFR4)
+- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read for validation (any vault file, not just .md)
+
+**Dependencies:** Implemented by FileSystemVaultAdapter.
+
+**Technology Stack:** Go `filepath.Walk` for scanning, `os.ReadFile` for content, `os.Stat` for ModTime filtering (ScanModified). Returns VaultFile DTOs (FileMetadata + Content).
+
+**Why Business-Level Abstraction:**
+- Expresses domain intent: "scan vault", "read file" (business operations)
+- NOT infrastructure operations: "walk directory", "read bytes" (too low-level)
+- Future-proof: Can swap filesystem → S3 → HTTP without changing domain
+- Enables incremental indexing for hybrid index architecture (NFR4)
+
+### VaultWriterPort
+
+**Responsibility:** Provide CQRS write-side access for persisting notes to vault. Abstracts vault persistence operations at business level with atomic write guarantees.
+
+**Key Interfaces:**
+
+- `Persist(ctx context.Context, note Note, path string) error` - Write note to vault with atomic guarantees
+- `Delete(ctx context.Context, path string) error` - Remove note from vault
+
+**Dependencies:** Implemented by FileSystemVaultAdapter.
+
+**Technology Stack:** `moby/sys/atomicwriter` for atomic writes (temp + rename), `os.Remove` for deletion.
+
+**Dual Write Pattern:**
+
+CommandOrchestrator uses dual writes to keep vault (source of truth) and cache (projection) in sync:
+
+```go
+// 1. Persist to vault (source of truth)
+if err := o.vaultWriter.Persist(ctx, note, path); err != nil {
+    return Note{}, err
+}
+// 2. Persist to cache (projection) - eventual consistency
+if err := o.cacheWriter.Persist(ctx, note); err != nil {
+    // Log warning but don't fail - can rebuild index later
+    o.log.Warn().Err(err).Msg("failed to update cache")
+}
+```
+
+**Why Separate from CacheWriter:**
+- Vault is source of truth (persistent storage)
+- Cache is projection (can be rebuilt from vault)
+- Different failure modes (vault write failure = hard error, cache write failure = soft error)
+- CQRS pattern: VaultWriter + CacheWriter = write side, CacheReader + QueryService = read side
 
 ### SchemaPort
 
@@ -247,7 +705,7 @@ Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports 
 
 **Key Interfaces:**
 
-- `Write(ctx context.Context, note Note) error` - Write note to cache with atomic guarantees
+- `Persist(ctx context.Context, note Note) error` - Persist note to cache with atomic guarantees
 - `Delete(ctx context.Context, id NoteID) error` - Remove note from cache
 
 **Dependencies:** Go `encoding/json`, `moby/sys/atomicwriter`, `os`, `filepath`, Config (cache directory), Logger.
@@ -270,6 +728,97 @@ Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports 
 **Technology Stack:** JSON deserialization, `os.ReadFile` for reads, `filepath.Walk` for directory listing, optional in-memory memoization with `sync.RWMutex` for frequently accessed notes.
 
 **Note:** Read adapter optimized for query performance. Can add caching layer without affecting write adapter.
+
+### VaultReaderAdapter
+
+**Responsibility:** Implement `VaultReaderPort` by providing filesystem-based vault scanning and reading for indexing operations (CQRS read side).
+
+**Key Interfaces:**
+
+- `ScanAll(ctx context.Context) ([]VaultFile, error)` - Full vault scan using filepath.Walk
+- `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan filtering by ModTime
+- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read with metadata
+
+**Dependencies:** Go `os`, `filepath`, Config (vault path), Logger.
+
+**Technology Stack:**
+- `filepath.Walk` for vault directory traversal
+- `os.ReadFile` for file content
+- `os.Stat` for file metadata (ModTime, Size)
+- Constructs VaultFile DTOs from FileMetadata + Content
+
+**Implementation Pattern:**
+
+```go
+type VaultReaderAdapter struct {
+    config Config
+    log    Logger
+}
+
+func (a *VaultReaderAdapter) ScanAll(ctx context.Context) ([]VaultFile, error) {
+    var files []VaultFile
+    err := filepath.Walk(a.config.VaultPath, func(path string, info os.FileInfo, err error) error {
+        if err != nil || info.IsDir() {
+            return err
+        }
+        content, err := os.ReadFile(path)
+        if err != nil {
+            return err
+        }
+        metadata := NewFileMetadata(path, info)
+        files = append(files, NewVaultFile(metadata, content))
+        return nil
+    })
+    return files, err
+}
+```
+
+**Note:** Shared helper functions for FileMetadata construction can live in `internal/adapters/spi/vault/helper.go` to avoid duplication with write adapter.
+
+### VaultWriterAdapter
+
+**Responsibility:** Implement `VaultWriterPort` by providing filesystem-based vault persistence with atomic write guarantees (CQRS write side).
+
+**Key Interfaces:**
+
+- `Persist(ctx context.Context, note Note, path string) error` - Atomic write using atomicwriter
+- `Delete(ctx context.Context, path string) error` - File deletion
+
+**Dependencies:** Go `os`, `moby/sys/atomicwriter`, Config (vault path), Logger.
+
+**Technology Stack:**
+- `atomicwriter.WriteFile` for atomic writes (temp + rename pattern)
+- `os.Remove` for file deletion
+- `os.MkdirAll` for directory creation
+
+**Implementation Pattern:**
+
+```go
+type VaultWriterAdapter struct {
+    config Config
+    log    Logger
+}
+
+func (a *VaultWriterAdapter) Persist(ctx context.Context, note Note, path string) error {
+    // Ensure directory exists
+    if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+        return fmt.Errorf("failed to create directory: %w", err)
+    }
+
+    // Atomic write (temp + rename)
+    return atomicwriter.WriteFile(path, bytes.NewReader([]byte(note.Content)), 0644)
+}
+
+func (a *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
+    return os.Remove(path)
+}
+```
+
+**Why Separate Adapters:**
+- CQRS pattern: Separate read and write concerns
+- ISP compliance: Adapters implement only what they need
+- Optimization: Read adapter can add caching, write adapter ensures atomicity
+- Testing: Can test read and write operations independently
 
 ### SchemaLoaderAdapter
 
@@ -364,19 +913,111 @@ Driving adapters implement API ports and coordinate domain services. Located in 
 
 ### CobraCLIAdapter
 
-**Responsibility:** Implement `CLICommandPort` by orchestrating domain services for CLI commands. Translates flags/arguments into domain requests and presents results to users.
+**Responsibility:** Implement `CLICommandPort` by handling Cobra-specific command parsing, flag processing, and output formatting. Receives CommandHandler from CommandOrchestrator to delegate business logic.
 
 **Key Interfaces (implements CLICommandPort):**
 
-- `New(ctx context.Context, templateID TemplateID) (string, error)` - Execute template to generate new note
-- `Find(ctx context.Context) ([]Template, error)` - List available templates for selection
-- `Index(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache
+- `Start(ctx context.Context, handler CommandHandler) error` - Set up Cobra command tree, parse user input, delegate to handler, format output
 
-**Dependencies:** TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine (domain services), ConfigPort, FinderPort, Logger, `github.com/spf13/cobra`.
+**Dependencies:** FinderPort (for fuzzy template selection), Logger, `github.com/spf13/cobra`, `github.com/spf13/pflag`.
 
-**Technology Stack:** Cobra command tree, `pflag` for flag parsing, orchestrates domain services via dependency injection (no CommandOrchestrator), structured output (human-readable + JSON), zerolog instrumentation.
+**Technology Stack:** Cobra command tree, `pflag` for flag parsing, Cobra's RunE pattern for command handlers, structured output (human-readable + JSON with `--json` flag), zerolog instrumentation.
 
-**Note:** CLI adapter implements use cases by composing domain services. Dependency injection happens in main.go. No facade/orchestrator layer needed—direct service composition is clean for MVP.
+**SRP Decomposition Pattern:**
+
+All public methods decompose into focused private methods following Single Responsibility Principle:
+
+- **Public:** `Start(ctx, handler)` - Orchestrates command tree setup
+- **Private Builders:** `buildRootCommand()`, `buildNewCommand()`, `buildIndexCommand()`, `buildFindCommand()` - Construct commands
+- **Private Handlers:** `handleNewCommand()`, `handleIndexCommand()`, `handleFindCommand()` - Execute command workflows
+- **Private Helpers:** `selectTemplate()`, `displayNoteCreated()`, `formatError()`, `getNotePathForDisplay()` - Single-purpose utilities
+
+**Example Decomposition:**
+
+```go
+// Public - orchestrates
+func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandHandler) error {
+    rootCmd := a.buildRootCommand()
+    rootCmd.AddCommand(
+        a.buildNewCommand(handler),
+        a.buildIndexCommand(handler),
+        a.buildFindCommand(handler),
+    )
+    return rootCmd.ExecuteContext(ctx)
+}
+
+// Private - builds new command
+func (a *CobraCLIAdapter) buildNewCommand(handler CommandHandler) *cobra.Command {
+    cmd := &cobra.Command{
+        Use:   "new [template-id]",
+        Short: "Create a new note from template",
+        Args:  cobra.MaximumNArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            return a.handleNewCommand(cmd, args, handler)
+        },
+    }
+    cmd.Flags().BoolP("view", "v", false, "Display note content after creation")
+    return cmd
+}
+
+// Private - handles new command workflow
+func (a *CobraCLIAdapter) handleNewCommand(cmd *cobra.Command, args []string, handler CommandHandler) error {
+    templateID, err := a.selectTemplate(cmd.Context(), args, handler)
+    if err != nil {
+        return err
+    }
+
+    note, err := handler.NewNote(cmd.Context(), templateID)
+    if err != nil {
+        return a.formatError(err)
+    }
+
+    return a.displayNoteCreated(cmd, note)
+}
+
+// Private - template selection (direct or fuzzy)
+func (a *CobraCLIAdapter) selectTemplate(ctx context.Context, args []string, handler CommandHandler) (TemplateID, error) {
+    if len(args) > 0 {
+        return TemplateID(args[0]), nil
+    }
+
+    templates, err := handler.FindTemplates(ctx, "")
+    if err != nil {
+        return TemplateID(""), err
+    }
+
+    selected, err := a.finder.Find(ctx, templates)
+    return selected.ID, err
+}
+
+// Private - display result
+func (a *CobraCLIAdapter) displayNoteCreated(cmd *cobra.Command, note Note) error {
+    fmt.Printf("✓ Created: %s\n", a.getNotePathForDisplay(note.ID))
+
+    if viewFlag, _ := cmd.Flags().GetBool("view"); viewFlag {
+        fmt.Println("\n" + strings.Repeat("─", 80))
+        fmt.Println(note.Content)
+        fmt.Println(strings.Repeat("─", 80))
+    }
+
+    return nil
+}
+```
+
+**Responsibilities:**
+
+- **Command Parsing:** Cobra-specific command tree setup and flag handling
+- **Workflow Logic:** Handle `lithos new` without template → show finder → call NewNote
+- **Output Formatting:** Display confirmation messages, optional content view with `--view` flag
+- **Error Formatting:** Convert domain errors to user-friendly messages
+
+**What It Does NOT Do:**
+
+- Business logic orchestration (delegated to CommandHandler)
+- Domain service coordination (handled by CommandOrchestrator)
+- Template rendering, validation, or persistence (all domain concerns)
+
+**Implementation Note:** Each public method with multiple steps decomposes into focused private methods with single responsibilities (build, handle, select, display, format).
 
 ### BubbleTeaTUIAdapter (Post-MVP)
 
@@ -516,9 +1157,10 @@ graph TD
     end
 
      subgraph SPIPorts[Driven Ports]
-        FS[FileSystemPort]
-        CC[CacheCommandPort]
-        CQ[CacheQueryPort]
+        VR[VaultReaderPort]
+        VW[VaultWriterPort]
+        CW[CacheWriterPort]
+        CR[CacheReaderPort]
         SL[SchemaLoaderPort]
         SRP[SchemaRegistryPort]
         TR[TemplateRepositoryPort]
@@ -527,8 +1169,10 @@ graph TD
     end
 
     subgraph SPIAdapters[Concrete SPI Adapters]
-        LFS[LocalFileSystemAdapter]
-        JFC[JSONFileCacheAdapter]
+        VRA[VaultReaderAdapter]
+        VWA[VaultWriterAdapter]
+        JCWA[JSONCacheWriteAdapter]
+        JCRA[JSONCacheReadAdapter]
         SLA[SchemaLoaderAdapter]
         SRA[SchemaRegistryAdapter]
         TFA[TemplateFSAdapter]
@@ -551,17 +1195,20 @@ graph TD
        FV --> SRP
      TE --> IP
      TE --> TR
-     VI --> FS
-     VI --> CC
-     QS --> CQ
+     VI --> VR
+     VI --> CW
+     CO --> VW
+     CO --> CW
+     QS --> CR
      SV --> SRP
      CO --> CP
      SRP --> SRA
       SRA --> SL
 
-    FS --> LFS
-    CC --> JFC
-    CQ --> JFC
+    VR --> VRA
+    VW --> VWA
+    CW --> JCWA
+    CR --> JCRA
      SL --> SLA
     TR --> TFA
     IP --> ICA
@@ -570,18 +1217,290 @@ graph TD
 
 **Legend:**
 
-- CSP = CLICommandPort,
-- FS = FileSystemPort,
-- CC = CacheCommandPort,
-- CQ = CacheQueryPort,
-- FV = FrontmatterValidator,
-- SE = SchemaEngine,
-- SL = SchemaLoaderPort,
-- SRP = SchemaRegistryPort,
-- SV = SchemaValidator,
-- TR = TemplateRepositoryPort,
-- IP = InteractivePort,
-- CP = ConfigPort,
-  and similarly for adapter abbreviations.
+- CSP = CLICommandPort
+- VR = VaultReaderPort, VRA = VaultReaderAdapter
+- VW = VaultWriterPort, VWA = VaultWriterAdapter
+- CW = CacheWriterPort, JCWA = JSONCacheWriteAdapter
+- CR = CacheReaderPort, JCRA = JSONCacheReadAdapter
+- FV = FrontmatterValidator
+- SE = SchemaEngine
+- SL = SchemaLoaderPort, SLA = SchemaLoaderAdapter
+- SRP = SchemaRegistryPort, SRA = SchemaRegistryAdapter
+- SV = SchemaValidator
+- TR = TemplateRepositoryPort, TFA = TemplateFSAdapter
+- IP = InteractivePort, ICA = InteractiveCLIAdapter
+- CP = ConfigPort, CVA = ConfigViperAdapter
+
+---
+
+## Dependency Injection Pattern
+
+Lithos uses **constructor-based dependency injection** wired in `main.go` without requiring a DI framework. All dependencies flow explicitly through constructors following the hexagonal architecture principle of dependency inversion.
+
+### Initialization Order
+
+Dependencies are constructed in a specific order to satisfy the dependency graph:
+
+**1. Infrastructure Layer (bottom-up):**
+- Logger (zero dependencies)
+- Config via ViperAdapter (depends on Logger)
+
+**2. SPI Adapters (driven):**
+- VaultReaderAdapter, VaultWriterAdapter (depend on Config, Logger)
+- JSONCacheWriteAdapter, JSONCacheReadAdapter (depend on Config, Logger)
+- SchemaLoaderAdapter (depends on Config, Logger)
+- SchemaRegistryAdapter (depends on Logger)
+- TemplateLoaderAdapter (depends on Config, Logger)
+- PromptUIAdapter, FuzzyfindAdapter (depend on Logger)
+
+**3. Domain Services (core):**
+- SchemaEngine (depends on SchemaLoaderPort, SchemaRegistryPort, Logger)
+  - **Internally instantiates:** SchemaValidator, SchemaResolver (not injected - used only by SchemaEngine)
+- QueryService (depends on CacheReaderPort, Logger)
+- FrontmatterService (depends on SchemaRegistryPort, QueryService, Logger)
+- TemplateEngine (depends on TemplatePort, PromptPort, QueryService, FrontmatterService, Config, Logger)
+- VaultIndexer (depends on VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService, Logger, Config)
+
+**4. CommandOrchestrator (application service):**
+- CommandOrchestrator (depends on CLICommandPort, TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger)
+
+**5. API Adapters (driving):**
+- CobraCLIAdapter (depends on FinderPort, Logger)
+
+### Example main.go Structure
+
+```go
+func main() {
+    ctx := context.Background()
+
+    // 1. Infrastructure Layer
+    log := logger.New(os.Stdout, logger.LevelInfo)
+
+    configAdapter := viper.NewAdapter(log)
+    cfg, err := configAdapter.Load(ctx)
+    if err != nil {
+        log.Fatal().Err(err).Msg("failed to load configuration")
+    }
+
+    // 2. SPI Adapters
+    vaultReader := vault.NewReaderAdapter(cfg, log)
+    vaultWriter := vault.NewWriterAdapter(cfg, log)
+
+    cacheWriter := cache.NewJSONCacheWriter(cfg, log)
+    cacheReader := cache.NewJSONCacheReader(cfg, log)
+
+    schemaLoader := schema.NewLoaderAdapter(cfg, log)
+    schemaRegistry := schema.NewRegistryAdapter(log)
+
+    templateLoader := template.NewLoaderAdapter(cfg, log)
+
+    prompter := promptui.NewAdapter(log)
+    finder := fuzzyfind.NewAdapter(log)
+
+    // 3. Domain Services
+    // SchemaEngine internally instantiates SchemaValidator and SchemaResolver
+    schemaEngine := domain.NewSchemaEngine(
+        schemaLoader,
+        schemaRegistry,
+        log,
+    )
+    if err := schemaEngine.Load(ctx); err != nil {
+        log.Fatal().Err(err).Msg("failed to load schemas")
+    }
+
+    queryService := domain.NewQueryService(cacheReader, log)
+
+    frontmatterService := domain.NewFrontmatterService(
+        schemaRegistry,
+        queryService,
+        log,
+    )
+
+    templateEngine := domain.NewTemplateEngine(
+        templateLoader,
+        prompter,
+        queryService,
+        frontmatterService,
+        cfg,
+        log,
+    )
+
+    vaultIndexer := domain.NewVaultIndexer(
+        vaultReader,
+        frontmatterService,
+        cacheWriter,
+        queryService,
+        log,
+        cfg,
+    )
+
+    // 4. API Adapter
+    cliAdapter := cobra.NewCLIAdapter(finder, log)
+
+    // 5. CommandOrchestrator (application service)
+    orchestrator := domain.NewCommandOrchestrator(
+        cliAdapter,  // CLICommandPort injected!
+        templateEngine,
+        vaultIndexer,
+        queryService,
+        frontmatterService,
+        schemaEngine,
+        vaultWriter,
+        cacheWriter,
+        cfg,
+        log,
+    )
+
+    // Start the application (orchestrator controls flow)
+    if err := orchestrator.Run(ctx); err != nil {
+        log.Fatal().Err(err).Msg("application failed")
+    }
+}
+```
+
+### Design Principles
+
+- **No DI Framework:** Pure Go constructors are sufficient for MVP scope
+- **Explicit Dependencies:** All dependencies visible in constructor signatures
+- **Fail Fast:** Infrastructure errors (config, schema loading) terminate at startup
+- **Single Instantiation:** Each component instantiated once, passed by reference
+- **Constructor Injection:** All dependencies provided via `New*()` functions
+- **Interface Types:** Services depend on port interfaces, not concrete adapters
+- **Internal Instantiation:** Services that are only used internally (SchemaValidator, SchemaResolver) are instantiated within their parent service, not injected
+
+### Internal vs Injected Dependencies
+
+**Injected Dependencies** (cross boundaries or need substitution):
+- Ports (cross architectural boundaries)
+- Shared services (used by multiple components)
+- Configuration (external data)
+
+**Internal Dependencies** (single-use, internal logic):
+- SchemaValidator - only used by SchemaEngine, instantiated internally
+- SchemaResolver - only used by SchemaEngine, instantiated internally
+
+**Rationale:** Reduces main.go complexity by not exposing internal implementation details. SchemaEngine's constructor signature shows only what it needs from outside, not internal orchestration details.
+
+### Testing Implications
+
+The DI pattern enables trivial test setup by substituting test doubles for ports:
+
+```go
+func TestTemplateEngine(t *testing.T) {
+    // Use test doubles instead of production adapters
+    mockLoader := &FakeTemplateLoader{}
+    mockPrompter := &FakePrompter{}
+    mockQuery := &FakeQueryService{}
+    mockFrontmatter := &FakeFrontmatterService{}
+    testCfg := &Config{VaultPath: "/test"}
+    testLog := logger.NewTest()
+
+    engine := domain.NewTemplateEngine(
+        mockLoader,
+        mockPrompter,
+        mockQuery,
+        mockFrontmatter,
+        testCfg,
+        testLog,
+    )
+
+    // Test engine without touching filesystem or prompting user
+}
+```
+
+---
+
+## Validation Architecture Overview
+
+Lithos implements validation at two distinct levels with different concerns and complexity:
+
+### Schema Validation (Structural Integrity)
+
+**Purpose:** Validate that JSON schema definition files themselves are well-formed and internally consistent.
+
+**When:** Schema load time (once at startup) - fail-fast approach
+
+**Complexity:** Low - structural checks only
+
+**Responsibility:** SchemaValidator service orchestrates, Schema/Property/PropertySpec models self-validate
+
+**Architecture:**
+
+```
+Schema Models (Rich Domain Models)
+  └─> schema.Validate() checks own structure
+      └─> property.Validate() checks each property
+          └─> propertySpec.Validate() checks constraints (e.g., regex compiles, min <= max)
+
+SchemaValidator Service (Orchestrator)
+  └─> Calls schema.Validate() on each schema
+  └─> Cross-schema validation (Extends references exist, no duplicate names, $ref valid)
+```
+
+**What It Checks:**
+- Valid JSON syntax (done by SchemaLoaderAdapter)
+- Required fields present (Name, Properties)
+- Property structures valid
+- PropertySpec constraints valid (regex patterns compile, min <= max, step > 0)
+- Inheritance references valid (Extends refers to existing schemas)
+- No duplicate schema names
+- $ref targets exist in PropertyBank
+
+**Error Handling:** Any structural issues cause application termination at startup. No invalid schemas reach runtime.
+
+### Frontmatter Validation (Business Rules)
+
+**Purpose:** Validate YAML frontmatter data in notes against schema rules with strict type checking.
+
+**When:** Every note indexing and validation operation
+
+**Complexity:** High - requires YAML type handling, no semantic coercion, cross-field validation
+
+**Responsibility:** FrontmatterService (anemic Note/Frontmatter models)
+
+**Architecture:**
+
+```
+FrontmatterService (Domain Service)
+  └─> Schema lookup via SchemaRegistryPort
+  └─> For each property in schema:
+      1. Check required fields present
+      2. Check array vs scalar expectation (NO auto-coercion)
+      3. Normalize YAML types in-memory for validation logic
+      4. Validate against PropertySpec constraints
+      5. File references validated via QueryService
+  └─> Aggregate errors with field-level remediation hints
+```
+
+**What It Checks:**
+- Required fields present
+- Array/scalar expectations match (no `tags: work` → `[work]` coercion)
+- Types match (no `count: "42"` → `42` coercion)
+- PropertySpec constraints satisfied (pattern, min/max, enum, etc.)
+- File references exist in vault (FileSpec validation)
+- Date formats valid
+
+**Validation Philosophy:**
+- **Strict enforcement:** Raises errors when data doesn't match schema
+- **No semantic coercion:** `tags: work` with `Array: true` is ERROR, not auto-fixed
+- **In-memory normalization only:** YAML int→float64 for validation logic, files unchanged
+- **User must fix:** Either correct the data or adjust the schema
+
+**Validation vs Linting:**
+- **Validator (Current):** Strict, raises errors, no transformations
+- **Linter (Future):** Permissive, auto-fixes issues like scalar→array or type conversions
+
+### Key Differences Summary
+
+| Aspect | Schema Validation | Frontmatter Validation |
+|--------|------------------|------------------------|
+| **What** | JSON schema file structure | YAML frontmatter data |
+| **When** | Once at startup | Every note operation |
+| **Complexity** | Low (structural) | High (business rules) |
+| **Models** | Rich (self-validating) | Anemic (service validates) |
+| **Dependencies** | None (pure domain logic) | SchemaRegistry, QueryService |
+| **Failure Impact** | Application won't start | Note indexing fails |
+| **Validation Type** | Structural integrity | Business rule enforcement |
+| **Coercion** | None | In-memory normalization only |
 
 ---
