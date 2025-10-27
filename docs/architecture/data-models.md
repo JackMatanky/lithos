@@ -360,6 +360,107 @@ Schema inheritance provides powerful reusability for similar note types. For exa
 
 ---
 
+## PropertyBank
+
+**Purpose:** Singleton registry of reusable, pre-configured Property definitions that schemas can reference via `$ref`. Reduces duplication across schema definitions, ensures consistency for common properties (e.g., `standard_title`, `standard_tags`), and enables centralized property definition management.
+
+**Architecture Layer:** Domain Core (Singleton)
+
+**Rationale:** PropertyBank is pure domain concern—it's a singleton registry of business rules (property constraints) that can be reused. No infrastructure dependencies. Loaded once at startup by SchemaLoader adapter from single JSON file, but the model itself represents domain knowledge about common property patterns.
+
+**Key Attributes:**
+
+- `Properties` (map[string]Property) - Named property definitions keyed by unique identifier (e.g., "standard_title", "iso_date", "email_address"). Loaded from single property bank JSON file at startup.
+
+**Relationships:**
+
+- PropertyBank loaded before Schema definitions during startup (SchemaLoader orchestrates)
+- Schema.Properties can reference PropertyBank entries via `$ref` syntax (resolved during schema loading by SchemaLoader)
+- Property definitions in PropertyBank are templates—simple substitution for MVP (no attribute-level overrides)
+
+**Reference Resolution Pattern:**
+
+Schemas reference property bank entries using JSON reference syntax:
+
+```json
+{
+  "name": "contact",
+  "properties": [
+    { "$ref": "#/properties/standard_title" },
+    { "$ref": "#/properties/standard_tags" },
+    {
+      "name": "email",
+      "required": true,
+      "type": "string",
+      "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"
+    }
+  ]
+}
+```
+
+Property bank definitions stored in single file `schemas/property_bank.json` (configurable via Config.PropertyBankPath):
+
+```json
+{
+  "properties": {
+    "standard_title": {
+      "name": "title",
+      "required": true,
+      "type": "string",
+      "pattern": "^.{1,200}$"
+    },
+    "standard_tags": {
+      "name": "tags",
+      "required": false,
+      "array": true,
+      "type": "string"
+    }
+  }
+}
+```
+
+**Design Decisions:**
+
+- **Singleton pattern:** Only one PropertyBank instance exists per application lifecycle. Loaded once at startup from single JSON file (default: `schemas/property_bank.json`, configurable via Config.PropertyBankPath).
+
+- **Properties vs Fields terminology:** PropertyBank contains "Properties" (reusable validation rule definitions), not "Fields" (actual data). Consistent with Schema.Properties terminology.
+
+- **JSON format:** Simpler unmarshaling than YAML. Frontmatter remains YAML (Obsidian convention), but schema definitions prioritize Go stdlib integration.
+
+- **$ref resolution format:** Schemas reference properties using JSON pointer syntax: `{"$ref": "#/properties/{property-name}"}`. SchemaLoader resolves references at load time by looking up PropertyBank.Properties map.
+
+- **Simple substitution (MVP):** Referenced property completely replaces `$ref` object. No attribute-level merging or overrides. Post-MVP could support inline overrides:
+
+  ```json
+  {
+    "$ref": "#/properties/standard_title",
+    "required": false // Override: make title optional for this schema
+  }
+  ```
+
+- **Load order:** PropertyBank loaded before schemas during SchemaLoader.LoadSchemas() call. Ensures all `$ref` references can be resolved. Missing references cause schema loading to fail at startup (fail-fast).
+
+- **Flat structure:** Properties cannot reference other properties (no nested `$ref` in PropertyBank itself). Post-MVP could add property composition if needed.
+
+**Implementation Notes:**
+
+SchemaLoader adapter implements property bank loading and `$ref` resolution (~30 LOC):
+
+1. Construct property bank path from Config: `filepath.Join(config.SchemasDir, config.PropertyBankFile)` (default: `schemas/property_bank.json`)
+2. Load single property bank JSON file from constructed path
+3. Parse into PropertyBank structure with Properties map
+4. During schema parsing, detect `$ref` attributes in property definitions
+5. Look up referenced property in PropertyBank.Properties map by key
+6. Substitute `$ref` object with referenced property definition
+7. Continue with normal schema validation
+8. Fail at startup if `$ref` references non-existent property (fail-fast)
+
+**Additional Information:**
+
+PropertyBank solves the "common property definition" problem elegantly. Without it, every schema must redefine standard properties like `title`, `tags`, `created`, `modified`—leading to inconsistencies (different patterns, required settings) and maintainability burden. With PropertyBank, define once, reference everywhere. The JSON format choice aligns with Go's excellent stdlib JSON support while keeping frontmatter in YAML (user-facing, Obsidian standard). The `$ref` syntax follows JSON Schema conventions, making it familiar to users with schema experience. Post-MVP could enhance with property inheritance, attribute-level overrides, or validation rules, but simple reference substitution covers 80% of reuse needs.
+
+---
+
 ## Property
 
 **Purpose:** Defines a single metadata field with validation constraints. Building block of Schema definitions. Rich domain model with structural validation behavior.
@@ -660,106 +761,6 @@ func (b BoolSpec) Validate(ctx context.Context) error {
 
 ---
 
-## PropertyBank
-
-**Purpose:** Singleton registry of reusable, pre-configured Property definitions that schemas can reference via `$ref`. Reduces duplication across schema definitions, ensures consistency for common properties (e.g., `standard_title`, `standard_tags`), and enables centralized property definition management.
-
-**Architecture Layer:** Domain Core (Singleton)
-
-**Rationale:** PropertyBank is pure domain concern—it's a singleton registry of business rules (property constraints) that can be reused. No infrastructure dependencies. Loaded once at startup by SchemaLoader adapter from single JSON file, but the model itself represents domain knowledge about common property patterns.
-
-**Key Attributes:**
-
-- `Properties` (map[string]Property) - Named property definitions keyed by unique identifier (e.g., "standard_title", "iso_date", "email_address"). Loaded from single property bank JSON file at startup.
-
-**Relationships:**
-
-- PropertyBank loaded before Schema definitions during startup (SchemaLoader orchestrates)
-- Schema.Properties can reference PropertyBank entries via `$ref` syntax (resolved during schema loading by SchemaLoader)
-- Property definitions in PropertyBank are templates—simple substitution for MVP (no attribute-level overrides)
-
-**Reference Resolution Pattern:**
-
-Schemas reference property bank entries using JSON reference syntax:
-
-```json
-{
-  "name": "contact",
-  "properties": [
-    { "$ref": "#/properties/standard_title" },
-    { "$ref": "#/properties/standard_tags" },
-    {
-      "name": "email",
-      "required": true,
-      "type": "string",
-      "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"
-    }
-  ]
-}
-```
-
-Property bank definitions stored in single file `schemas/property_bank.json` (configurable via Config.PropertyBankPath):
-
-```json
-{
-  "properties": {
-    "standard_title": {
-      "name": "title",
-      "required": true,
-      "type": "string",
-      "pattern": "^.{1,200}$"
-    },
-    "standard_tags": {
-      "name": "tags",
-      "required": false,
-      "array": true,
-      "type": "string"
-    }
-  }
-}
-```
-
-**Design Decisions:**
-
-- **Singleton pattern:** Only one PropertyBank instance exists per application lifecycle. Loaded once at startup from single JSON file (default: `schemas/property_bank.json`, configurable via Config.PropertyBankPath).
-
-- **Properties vs Fields terminology:** PropertyBank contains "Properties" (reusable validation rule definitions), not "Fields" (actual data). Consistent with Schema.Properties terminology.
-
-- **JSON format:** Simpler unmarshaling than YAML. Frontmatter remains YAML (Obsidian convention), but schema definitions prioritize Go stdlib integration.
-
-- **$ref resolution format:** Schemas reference properties using JSON pointer syntax: `{"$ref": "#/properties/{property-name}"}`. SchemaLoader resolves references at load time by looking up PropertyBank.Properties map.
-
-- **Simple substitution (MVP):** Referenced property completely replaces `$ref` object. No attribute-level merging or overrides. Post-MVP could support inline overrides:
-
-  ```json
-  {
-    "$ref": "#/properties/standard_title",
-    "required": false // Override: make title optional for this schema
-  }
-  ```
-
-- **Load order:** PropertyBank loaded before schemas during SchemaLoader.LoadSchemas() call. Ensures all `$ref` references can be resolved. Missing references cause schema loading to fail at startup (fail-fast).
-
-- **Flat structure:** Properties cannot reference other properties (no nested `$ref` in PropertyBank itself). Post-MVP could add property composition if needed.
-
-**Implementation Notes:**
-
-SchemaLoader adapter implements property bank loading and `$ref` resolution (~30 LOC):
-
-1. Construct property bank path from Config: `filepath.Join(config.SchemasDir, config.PropertyBankFile)` (default: `schemas/property_bank.json`)
-2. Load single property bank JSON file from constructed path
-3. Parse into PropertyBank structure with Properties map
-4. During schema parsing, detect `$ref` attributes in property definitions
-5. Look up referenced property in PropertyBank.Properties map by key
-6. Substitute `$ref` object with referenced property definition
-7. Continue with normal schema validation
-8. Fail at startup if `$ref` references non-existent property (fail-fast)
-
-**Additional Information:**
-
-PropertyBank solves the "common property definition" problem elegantly. Without it, every schema must redefine standard properties like `title`, `tags`, `created`, `modified`—leading to inconsistencies (different patterns, required settings) and maintainability burden. With PropertyBank, define once, reference everywhere. The JSON format choice aligns with Go's excellent stdlib JSON support while keeping frontmatter in YAML (user-facing, Obsidian standard). The `$ref` syntax follows JSON Schema conventions, making it familiar to users with schema experience. Post-MVP could enhance with property inheritance, attribute-level overrides, or validation rules, but simple reference substitution covers 80% of reuse needs.
-
----
 
 ## TemplateID
 

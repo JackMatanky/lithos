@@ -37,7 +37,7 @@
       - [QueryService](./components.md#queryservice)
       - [CommandOrchestrator](./components.md#commandorchestrator)
     - [API Port Interfaces](./components.md#api-port-interfaces)
-      - [CLICommandPort](./components.md#commandserviceport)
+      - [CLIPort](./components.md#commandserviceport)
     - [SPI Port Interfaces](./components.md#spi-port-interfaces)
       - [FileSystemPort](./components.md#filesystemport)
       - [CacheCommandPort](./components.md#cachecommandport)

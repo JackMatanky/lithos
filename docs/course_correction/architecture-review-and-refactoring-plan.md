@@ -424,7 +424,7 @@ func main() {
 
 **Why CommandOrchestrator IS Necessary:**
 - **Hexagonal Architecture:** Domain should not depend on API adapters, but needs to control application flow
-- **Inversion of Control:** Domain starts the application and calls CLICommandPort.Start(), adapter calls back to CommandHandler
+- **Inversion of Control:** Domain starts the application and calls CLIPort.Start(), adapter calls back to CommandPort
 - **Use Case Orchestration:** Coordinates multiple domain services for complete workflows (not just pass-through)
 - **Real Added Value:** NoteID generation, file path resolution, workflow coordination, Note object creation
 
@@ -432,7 +432,7 @@ func main() {
 ```go
 // CommandOrchestrator (Domain Layer)
 type CommandOrchestrator struct {
-    cliPort         CLICommandPort  // API Port
+    cliPort         CLIPort  // API Port
     templateEngine  *TemplateEngine
     vaultIndexer    *VaultIndexer
     queryService    *QueryService
@@ -440,7 +440,7 @@ type CommandOrchestrator struct {
     // ...
 }
 
-// Implements CommandHandler callback interface
+// Implements CommandPort callback interface
 func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID) (Note, error) {
     // 1. Load and render template
     // 2. Extract frontmatter
@@ -454,16 +454,16 @@ func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID
 
 // Starts application
 func (o *CommandOrchestrator) Run(ctx context.Context) error {
-    return o.cliPort.Start(ctx, o) // Pass itself as CommandHandler
+    return o.cliPort.Start(ctx, o) // Pass itself as CommandPort
 }
 
-// CLICommandPort (API Port)
-type CLICommandPort interface {
-    Start(ctx context.Context, handler CommandHandler) error
+// CLIPort (API Port)
+type CLIPort interface {
+    Start(ctx context.Context, handler CommandPort) error
 }
 
-// CommandHandler (Callback Interface)
-type CommandHandler interface {
+// CommandPort (Callback Interface)
+type CommandPort interface {
     NewNote(ctx context.Context, templateID TemplateID) (Note, error)
     IndexVault(ctx context.Context) (IndexStats, error)
     FindTemplates(ctx context.Context, query string) ([]Template, error)
@@ -893,7 +893,7 @@ return NoteID(generateUUID()), nil
 **Example (CobraCLIAdapter):**
 ```go
 // Public - orchestrates
-func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandHandler) error {
+func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandPort) error {
     rootCmd := a.buildRootCommand()
     rootCmd.AddCommand(
         a.buildNewCommand(handler),
@@ -904,7 +904,7 @@ func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandHandler) err
 }
 
 // Private - builds command
-func (a *CobraCLIAdapter) buildNewCommand(handler CommandHandler) *cobra.Command
+func (a *CobraCLIAdapter) buildNewCommand(handler CommandPort) *cobra.Command
 
 // Private - handles workflow
 func (a *CobraCLIAdapter) handleNewCommand(...) error {
@@ -1359,7 +1359,7 @@ func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID
    - Updated: TemplateEngine, FrontmatterService, SchemaEngine with generics, VaultIndexer, QueryService
 
 2. **API Ports:**
-   - Updated CLICommandPort
+   - Updated CLIPort
 
 3. **SPI Ports:**
    - Split: CacheCommandPort/CacheQueryPort → CacheWriter/CacheReader
@@ -1396,8 +1396,8 @@ func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID
 
 8. **CLI Architecture Redesign (v0.6.4):**
    - Reinstated CommandOrchestrator as proper use case orchestrator
-   - Redesigned CLICommandPort with Start(ctx, handler) method
-   - Added CommandHandler callback interface (NewNote, IndexVault, FindTemplates)
+   - Redesigned CLIPort with Start(ctx, handler) method
+   - Added CommandPort callback interface (NewNote, IndexVault, FindTemplates)
    - Implemented proper hexagonal architecture with inversion of control
    - Expanded CobraCLIAdapter with SRP decomposition pattern
    - Documented NoteID generation strategy (filename field → title slug → UUID)

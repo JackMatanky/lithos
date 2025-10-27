@@ -15,17 +15,17 @@
 - **File Convention:** `*_test.go` files co-located with implementation
 - **Location:** Co-located `*_test.go` files near implementation code
 - **Mocking Strategy:** In-memory mock implementations for all external dependencies
-- **Mocking Library:** Custom mocks in `tests/utils/mocks.go` (MockFileSystemPort, MockConfigPort)
+- **Mocking Library:** Custom mocks in `tests/utils/mocks.go` (MockCacheWriter, MockCacheReader, MockVaultReader, MockVaultWriter, MockConfigPort)
 - **Coverage Requirement:** ≥85% for `internal/app`, ≥80% for `internal/adapters`
 
 **AI Agent Requirements:**
 - Generate tests for all public methods and critical private methods
 - Cover happy path, edge cases, and error conditions
 - Follow table-driven test patterns for multiple scenarios
-- Mock all external dependencies (filesystem, configuration, external APIs)
+- Mock all external dependencies (cache, vault, configuration, external APIs)
 - Use table-driven tests for multiple scenarios where applicable
 - Ensure tests are isolated and can run in parallel
-- Assert both `Result[T]` states and domain side effects
+- Assert domain side effects and error conditions
 - Verify atomic write behavior via temp directories
 
 ### Integration Tests
@@ -65,7 +65,7 @@
   - Data loading functions (`LoadTestData`, `LoadSchemaTestData`) for fixtures and golden files
   - Runtime path resolution with `GetTestDataPath` functions
 - **Mock Implementations:**
-  - `MockFileSystemPort`: In-memory filesystem with configurable error injection capabilities
+  - `MockCacheWriter`, `MockCacheReader`, `MockVaultReader`, `MockVaultWriter`: In-memory implementations with configurable error injection capabilities
   - `MockConfigPort`: Mock configuration for testing different vault configurations
   - Reusable test doubles for external dependencies
 - **Test Infrastructure:**

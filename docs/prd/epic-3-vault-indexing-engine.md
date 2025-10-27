@@ -1,100 +1,115 @@
 # Epic 3: Vault Indexing Engine
 
-This epic focuses on building the core data layer of Lithos. It will scan the user's vault, parse frontmatter, and build a persistent cache that will power all future dynamic and lookup-based features. This epic implements the CQRS-based cache architecture with VaultIndexer and QueryService following hexagonal design principles.
+**Epic Goal:** Implement the vault indexing pipeline defined in architecture v0.6.8 so Lithos can scan the vault, validate frontmatter, persist a cache, and expose indexed data for downstream queries.
 
-**Dependencies:** Epic 2 (Configuration & Schema Loading)
+**Dependencies:** Epic 2 (Configuration & Schema Loading)
 
-## Story 3.1: Implement CQRS Cache Port Interfaces
+**Architecture References:**
+- `docs/architecture/components.md` v0.6.8 — VaultIndexer, FrontmatterService, QueryService, CacheWriterPort, CacheReaderPort, VaultReaderPort, VaultWriterPort, CommandOrchestrator
+- `docs/architecture/data-models.md` v0.6.8 — Note, NoteID, Frontmatter, VaultFile, FileMetadata
+- `docs/architecture/error-handling-strategy.md` v0.5.9 — CacheReadError, CacheWriteError, FileSystemError, FrontmatterError
+- `docs/architecture/coding-standards.md` v0.6.7 — `(T, error)` signatures, logging, testing
 
-As a developer, I want to define separate command and query interfaces for the cache, so that I follow CQRS principles and have clear separation of concerns.
+---
 
-### Acceptance Criteria
+## Story 3.1: Define CacheWriterPort & CacheReaderPort
 
-- 3.1.1: `internal/ports/spi/` contains CacheCommandPort interface with Store and Remove methods per `docs/architecture/components.md#spi-port-interfaces`.
-- 3.1.2: CacheQueryPort interface with Fetch and List methods is defined for read-side access per `docs/architecture/components.md#spi-port-interfaces`.
-- 3.1.3: Interfaces use the Note domain model (File + Frontmatter composition) from `docs/architecture/data-models.md#note`.
-- 3.1.4: Port contracts include context support and structured error handling.
-
-## Story 3.2: Implement JSON File Cache Adapter
-
-As a developer, I want to implement the JSONFileCacheAdapter that provides both command and query cache access, so that I have a persistent cache following the architecture.
+As a developer, I need cache ports that match the architecture so the indexing workflow can persist and read cached notes via CQRS contracts.
 
 ### Acceptance Criteria
+1. In `internal/ports/spi/cache.go`, declare `CacheWriterPort` with `Persist(ctx context.Context, note Note) error` and `Delete(ctx context.Context, id NoteID) error` exactly as in `components.md#cachewriterport`.
+2. In the same file, declare `CacheReaderPort` with `Read(ctx context.Context, id NoteID) (Note, error)` and `List(ctx context.Context) ([]Note, error)` per `components.md#cachereaderport`.
+3. Add GoDoc referencing the architecture sections and error strategy expectations (CacheWriteError/CacheReadError wrapping).
+4. Run `golangci-lint run ./internal/ports/spi`.
 
-- 3.2.1: `internal/adapters/spi/cache/` contains JSONFileCacheAdapter implementing both CacheCommandPort and CacheQueryPort.
-- 3.2.2: Store method serializes Note struct to JSON file in `.lithos/cache/` directory using atomic write pattern.
-- 3.2.3: Fetch method deserializes JSON file back into Note struct with proper error handling.
-- 3.2.4: Adapter uses LocalFileSystemAdapter (composition) and follows tech stack specifications for JSON serialization.
+---
 
-## Story 3.3: Enhance FileSystem Port for Vault Scanning
+## Story 3.2: Implement JSON Cache Adapters
 
-As a developer, I want to enhance the FileSystemPort to support vault scanning operations, so that vault indexing can discover markdown files through the proper architectural interface.
-
-### Acceptance Criteria
-
-- 3.3.1: FileSystemPort interface includes Walk method with WalkFunc signature per `docs/architecture/components.md#filesystemport`.
-- 3.3.2: LocalFileSystemAdapter implements Walk using Go stdlib `filepath.Walk` functionality.
-- 3.3.3: Vault scanning logic filters for `.md` files and ignores `.lithos` cache directory.
-- 3.3.4: Scanner returns slice of absolute paths and handles filesystem errors gracefully.
-
-## Story 3.4: Implement Custom Frontmatter Extraction
-
-As a developer, I want to implement custom frontmatter extraction using the specified technology stack, so that I have control over parsing behavior and minimize dependencies.
+As a developer, I want filesystem adapters that implement the cache ports using the JSON strategy defined in the architecture.
 
 ### Acceptance Criteria
+1. Implement `internal/adapters/spi/cache/json_writer.go` with constructor `NewJSONCacheWriter(root string, log zerolog.Logger)` that satisfies `CacheWriterPort`.
+2. `Persist` writes `${root}/{noteID}.json` using `encoding/json` and `atomicwriter.WriteFile`; `Delete` removes the cached file and returns `CacheWriteError` on failure (except missing files).
+3. Implement `internal/adapters/spi/cache/json_reader.go` with constructor `NewJSONCacheReader(root string, log zerolog.Logger)` that satisfies `CacheReaderPort` (`Read` + `List`).
+4. Wrap IO errors with `CacheReadError`/`CacheWriteError`, never return raw `*os.PathError`.
+5. Unit tests cover persist/delete/read/list happy paths and failure conditions (permission denied, malformed JSON).
+6. Run `golangci-lint run ./internal/adapters/spi/cache` and `go test ./internal/adapters/spi/cache`.
 
-- 3.4.1: `internal/app/indexing/` contains custom frontmatter extraction logic using delimiter detection per `docs/architecture/tech-stack.md#yaml-parsing`.
-- 3.4.2: Implementation uses `github.com/goccy/go-yaml` for YAML parsing after delimiter extraction.
-- 3.4.3: Parser returns frontmatter as `map[string]interface{}` and creates Frontmatter domain model per `docs/architecture/data-models.md#frontmatter`.
-- 3.4.4: Graceful handling of files with no frontmatter, invalid YAML, or unsupported delimiter variants (only `---` supported).
+---
 
-## Story 3.5: Implement VaultIndexer Domain Service
+## Story 3.3: Define VaultReaderPort & Filesystem Adapter
 
-As a developer, I want to implement the VaultIndexer domain service, so that vault indexing follows the architectural patterns.
-
-### Acceptance Criteria
-
-- 3.5.1: `internal/app/indexing/` contains VaultIndexer implementing the interface from `docs/architecture/components.md#vaultindexer`.
-- 3.5.2: Service orchestrates vault scanning, frontmatter parsing, and cache persistence through port interfaces.
-
-## Story 3.6: Implement Indexing Orchestration
-
-As a developer, I want to implement the indexing orchestration logic, so that the rebuild method coordinates all components.
+As a developer, I need a vault reader port and adapter that provide the scanning operations described in the architecture.
 
 ### Acceptance Criteria
+1. In `internal/ports/spi/vault.go`, declare `VaultReaderPort` with methods `ScanAll(ctx context.Context) ([]VaultFile, error)`, `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)`, and `Read(ctx context.Context, path string) (VaultFile, error)` per `components.md#vaultreaderport`.
+2. Implement `internal/adapters/spi/vault/reader.go` using the OS filesystem to satisfy the port (ignore `.lithos/` and other non-note folders as noted in the architecture).
+3. Populate `VaultFile` with metadata (Path, Basename, Folder, Ext, ModTime, Size, MimeType) plus file content.
+4. Wrap filesystem errors with `FileSystemError` enriched with operation/path fields.
+5. Unit tests cover full scan, incremental scan, single read, and error scenarios (permission denied, missing file).
+6. Run `golangci-lint run ./internal/adapters/spi/vault` and `go test ./internal/adapters/spi/vault`.
 
-- 3.6.1: Rebuild method coordinates FileSystemPort, CacheCommandPort, and SchemaValidator interactions.
-- 3.6.2: Service logs indexing progress using structured logging and returns IndexStats result object.
+---
 
-## Story 3.7: Implement Query Service
+## Story 3.4: Define VaultWriterPort & Filesystem Adapter
 
-As a developer, I want to implement the QueryService domain service, so that read-side access to indexed data follows the architectural patterns.
-
-### Acceptance Criteria
-
-- 3.7.1: QueryService includes Filter struct with Key, Operator, and Value fields for flexible searching.
-- 3.7.2: Query method accepts filter parameters and returns filtered Note slices through CacheQueryPort.
-- 3.7.3: Initial implementation supports basic iteration with preparation for advanced filtering.
-- 3.7.4: Service maintains thread-safe access patterns using `sync.RWMutex` as specified in components documentation.
-
-## Story 3.8: Add Index Command to CLI
-
-As a user, I want to run `lithos index` through the CLI adapter, so that I can trigger vault indexing through the proper architectural layers.
+As a developer, I want a vault writer port and adapter so CommandOrchestrator and VaultIndexer can persist notes according to CQRS write patterns.
 
 ### Acceptance Criteria
+1. Extend `internal/ports/spi/vault.go` with `VaultWriterPort` exposing `Persist(ctx context.Context, note Note, path string) error` and `Delete(ctx context.Context, path string) error` as in `components.md#vaultwriterport`.
+2. Implement `internal/adapters/spi/vault/writer.go` using `atomicwriter.WriteFile` for atomic writes and `os.Remove` for deletes.
+3. Ensure directories are created with `os.MkdirAll` and errors are wrapped with `FileSystemError`.
+4. Unit tests cover writing new files, overwriting existing files, delete success, and failure cases.
+5. Run `golangci-lint run ./internal/adapters/spi/vault` and `go test ./internal/adapters/spi/vault`.
 
-- 3.8.1: CobraCLIAdapter includes `index` subcommand that calls CLICommandPort.Index method.
-- 3.8.2: CommandOrchestrator implements Index method that delegates to VaultIndexer.
-- 3.8.3: Command returns structured IndexStats and logs progress through proper service layers.
-- 3.8.4: CLI handles errors gracefully and provides user-friendly feedback.
+---
 
-## Story 3.9: Implement Cache Versioning and Migration
+## Story 3.5: Implement FrontmatterService
 
-As a developer, I want the cache to include versioning and migration capabilities, so that schema changes don't break existing installations.
+As a developer, I need FrontmatterService to extract and validate frontmatter exactly as documented so indexing produces canonical Note objects.
 
 ### Acceptance Criteria
+1. Create `internal/app/frontmatter/service.go` with methods `Extract(content []byte) (Frontmatter, error)` and `Validate(ctx context.Context, fm Frontmatter) error` per `components.md#frontmatterservice`.
+2. `Extract` must parse YAML frontmatter using `goccy/go-yaml`, returning `Frontmatter` domain model; missing or malformed frontmatter results in `FrontmatterError`.
+3. `Validate` must look up schemas through SchemaRegistryPort, enforce required/array/type checks, and use QueryService for FileSpec existence (as described in the architecture workflow).
+4. Unit tests cover extraction edge cases (no frontmatter, malformed YAML) and validation scenarios (missing required field, array vs scalar mismatch, file reference validation).
+5. Run `golangci-lint run ./internal/app/frontmatter` and `go test ./internal/app/frontmatter`.
 
-- 3.9.1: Cache metadata includes semantic version field for cache schema per original requirements.
-- 3.9.2: VaultIndexer detects version mismatches and handles migration or clean rebuild.
-- 3.9.3: Migration logic is documented and includes rollback guidance.
-- 3.9.4: Cache version changes trigger appropriate user notifications and recovery procedures.
+---
+
+## Story 3.6: Implement VaultIndexer Service
+
+As a developer, I want VaultIndexer to orchestrate the indexing workflow exactly as defined in the architecture.
+
+### Acceptance Criteria
+1. Implement `internal/app/vault/indexer.go` with `type Indexer struct` and method `Build(ctx context.Context) (IndexStats, error)` following the sequence: `VaultReaderPort.ScanAll` → `FrontmatterService.Extract/Validate` → construct Note → `CacheWriterPort.Persist` → update QueryService indices.
+2. `IndexStats` should capture totals for scanned files, indexed notes, validation failures, and duration (per architecture guidance).
+3. Log progress at info/debug levels using zerolog.
+4. Unit tests use fakes for ports/services to verify call order, error propagation, and stats aggregation.
+5. Run `golangci-lint run ./internal/app/vault` and `go test ./internal/app/vault`.
+
+---
+
+## Story 3.7: Implement QueryService
+
+As a developer, I need QueryService to expose the lookup methods outlined in the architecture for downstream queries.
+
+### Acceptance Criteria
+1. Create `internal/app/query/service.go` with methods `ByID`, `ByPath`, `ByFileClass`, and `ByFrontmatter` exactly as described in `components.md#queryservice`.
+2. Maintain in-memory indices (maps protected by `sync.RWMutex`) populated by VaultIndexer after cache persistence.
+3. Implement `RefreshFromCache(ctx context.Context, reader CacheReaderPort) error` to rebuild indices on demand using `CacheReaderPort.List`.
+4. Unit tests cover index population, each query method, and concurrent reads (use `t.Parallel()` and the race detector in CI).
+5. Run `golangci-lint run ./internal/app/query` and `go test ./internal/app/query`.
+
+---
+
+## Story 3.8: Wire Index Command through CommandOrchestrator
+
+As a developer, I want the CLI index command to call VaultIndexer.Build and surface results.
+
+### Acceptance Criteria
+1. Extend `internal/app/command/orchestrator.go` to implement `IndexVault(ctx context.Context) (IndexStats, error)` that delegates to VaultIndexer.Build and returns stats.
+2. Update the CLI adapter (`internal/adapters/api/cli`) to register an `index` command that calls `CommandPort.IndexVault`, prints summary statistics, and handles errors per coding standards.
+3. Add integration test(s) demonstrating a CLI run against sample vault data (using fixtures) and verifying cache files/console output.
+4. Run `golangci-lint run ./internal/app/command ./internal/adapters/api/cli` and relevant `go test` packages.
