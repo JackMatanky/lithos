@@ -259,6 +259,11 @@ enable = [
   "require-doc",
 ]
 
+[linters.settings.godoclint]
+enable = [
+  "require-doc",
+]
+
 [linters.settings.govet]
 enable-all = true
 disable = ["fieldalignment"]
