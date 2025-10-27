@@ -10,13 +10,15 @@
 
 ---
 
-## Story 1.1: Verify Development Tooling Configuration
+## Story 1.1: Verify Development Tooling and Project Structure
 
 As a developer,
-I want to verify that all development tooling configuration files exist and are properly configured,
-so that the project has consistent linting, formatting, and security scanning from the start.
+I want to verify that all development tooling configuration files and project structure exist,
+so that the project has consistent linting, formatting, security scanning, and proper hexagonal architecture from the start.
 
 ### Acceptance Criteria
+
+**Development Tooling:**
 
 - 1.1.1: Verify `.golangci.toml` exists with correct configuration:
   - Uses golangci-lint v2 format
@@ -50,44 +52,27 @@ so that the project has consistent linting, formatting, and security scanning fr
 
 - 1.1.7: Run `pre-commit run --all-files` and verify all hooks pass
 
-- 1.1.8: Document verification results in commit message
+**Project Structure:**
 
-**Prerequisites:** None (first story)
-
-**Time Estimate:** 1-2 hours
-
-**Architecture References:**
-- Tech stack: `docs/architecture/tech-stack.md`
-- Coding standards: `docs/architecture/coding-standards.md`
-
----
-
-## Story 1.2: Verify Go Module and Project Structure
-
-As a developer,
-I want to verify the Go module is initialized and project structure follows hexagonal architecture,
-so that the foundation is correct before adding code.
-
-### Acceptance Criteria
-
-- 1.2.1: Verify `go.mod` exists with:
+- 1.1.8: Verify `go.mod` exists with:
   - Module: `github.com/JackMatanky/lithos`
   - Go version: 1.23+ (required for generics)
 
-- 1.2.2: Verify hexagonal architecture directories exist:
+- 1.1.9: Verify hexagonal architecture directories exist:
   - `internal/domain/` (core business logic)
+  - `internal/app/` (core business services)
   - `internal/ports/api/` (primary/driving port interfaces)
   - `internal/ports/spi/` (secondary/driven port interfaces)
   - `internal/adapters/api/` (primary/driving adapters)
   - `internal/adapters/spi/` (secondary/driven adapters)
   - `internal/shared/` (cross-cutting concerns)
 
-- 1.2.3: Verify test directories exist:
+- 1.1.10: Verify test directories exist:
   - `tests/integration/`
   - `tests/e2e/`
   - `tests/utils/` (contains mocks.go)
 
-- 1.2.4: Verify testdata structure exists:
+- 1.1.11: Verify testdata structure exists:
   - `testdata/golden/` (expected outputs)
   - `testdata/schema/valid/` (valid schemas)
   - `testdata/schema/invalid/` (invalid schemas for testing)
@@ -95,196 +80,130 @@ so that the foundation is correct before adding code.
   - `testdata/notes/` (sample notes)
   - `testdata/templates/` (sample templates)
 
-- 1.2.5: Verify CLI entrypoint exists at `cmd/lithos/main.go`
+- 1.1.12: Verify CLI entrypoint exists at `cmd/lithos/main.go`
 
-- 1.2.6: Verify `README.md` exists with project overview
+- 1.1.13: Verify `README.md` exists with project overview
 
-- 1.2.7: Run `go mod tidy` to ensure dependencies are clean
+- 1.1.14: Run `go mod tidy` to ensure dependencies are clean
 
-- 1.2.8: Committed with message: `chore: verify project structure and Go module`
+- 1.1.15: Document verification results in commit message
 
-**Prerequisites:** Story 1.1
+- 1.1.16: Committed with message: `chore: verify development tooling and project structure`
 
-**Time Estimate:** 1 hour
+**Prerequisites:** None (first story)
+
+**Time Estimate:** 2 hours
 
 **Architecture References:**
+- Tech stack: `docs/architecture/tech-stack.md`
 - Source tree: `docs/architecture/source-tree.md`
+- Coding standards: `docs/architecture/coding-standards.md`
 
 ---
 
-## Story 1.3: Implement NoteID Domain Model
+## Story 1.2: Implement Note Domain Models (NoteID, Frontmatter, Note)
 
 As a developer,
-I want to implement the NoteID domain model as an opaque identifier,
-so that notes are identified without infrastructure coupling.
+I want to implement NoteID, Frontmatter, and Note domain models in note.go,
+so that the domain layer has clean note entities without infrastructure dependencies.
 
 ### Acceptance Criteria
 
-- 1.3.1: Create `internal/domain/note_id.go`:
+**NoteID Implementation:**
+
+- 1.2.1: Create `internal/domain/note.go` with NoteID:
   - Type: `type NoteID string`
   - Constructor: `NewNoteID(value string) NoteID`
   - Method: `String() string` for logging/debugging
 
-- 1.3.2: Create unit tests in `internal/domain/note_id_test.go`:
-  - Test: NewNoteID creates valid instance
-  - Test: String() returns underlying value
-  - Test: NoteID can be used as map key
+**Frontmatter Implementation:**
 
-- 1.3.3: All tests pass: `go test ./internal/domain`
-
-- 1.3.4: All linting passes: `golangci-lint run internal/domain`
-
-- 1.3.5: Committed with message: `feat(domain): implement NoteID model`
-
-**Prerequisites:** Story 1.2
-
-**Time Estimate:** 1 hour
-
-**Architecture References:**
-- Data models: `docs/architecture/data-models.md#noteid` (v0.5.2)
-
----
-
-## Story 1.4: Implement Frontmatter Domain Model
-
-As a developer,
-I want to implement the Frontmatter domain model,
-so that note metadata can be represented as pure domain data.
-
-### Acceptance Criteria
-
-- 1.4.1: Create `internal/domain/frontmatter.go`:
+- 1.2.2: Add Frontmatter to `internal/domain/note.go`:
   - Field: `FileClass string` (computed from Fields)
   - Field: `Fields map[string]interface{}` (complete YAML frontmatter)
   - Constructor: `NewFrontmatter(fields map[string]interface{}) Frontmatter`
   - Helper: `extractFileClass(fields map[string]interface{}) string`
   - Method: `SchemaName() string` (returns FileClass)
 
-- 1.4.2: Create unit tests in `internal/domain/frontmatter_test.go`:
-  - Test: NewFrontmatter constructs correctly
-  - Test: FileClass extracted from Fields["fileClass"]
-  - Test: FileClass empty when not present
-  - Test: SchemaName() returns FileClass
+**Note Implementation:**
 
-- 1.4.3: All tests pass: `go test ./internal/domain`
-
-- 1.4.4: All linting passes: `golangci-lint run internal/domain`
-
-- 1.4.5: Committed with message: `feat(domain): implement Frontmatter model`
-
-**Prerequisites:** Story 1.2
-
-**Time Estimate:** 1.5 hours
-
-**Architecture References:**
-- Data models: `docs/architecture/data-models.md#frontmatter` (v0.1.0)
-
----
-
-## Story 1.5: Implement Note Domain Model
-
-As a developer,
-I want to implement the Note domain model using NoteID and Frontmatter composition,
-so that notes follow clean architecture without embedded infrastructure.
-
-### Acceptance Criteria
-
-- 1.5.1: Create `internal/domain/note.go`:
+- 1.2.3: Add Note to `internal/domain/note.go`:
   - Field: `ID NoteID`
   - Field: `Frontmatter Frontmatter` (composition, NOT embedding)
   - Constructor: `NewNote(id NoteID, frontmatter Frontmatter) Note`
   - Method: `SchemaName() string` (delegates to Frontmatter.SchemaName())
 
-- 1.5.2: Create unit tests in `internal/domain/note_test.go`:
-  - Test: NewNote constructs with ID and Frontmatter
-  - Test: SchemaName() delegates correctly
-  - Test: No embedded File or filesystem paths
-  - Test: Note can be serialized to JSON
+**Testing:**
 
-- 1.5.3: All tests pass: `go test ./internal/domain`
+- 1.2.4: Create unit tests in `internal/domain/note_test.go`:
+  - Test NoteID: NewNoteID creates valid instance, String() returns value, can be used as map key
+  - Test Frontmatter: NewFrontmatter constructs correctly, FileClass extracted from Fields["fileClass"], FileClass empty when not present, SchemaName() returns FileClass
+  - Test Note: NewNote constructs with ID and Frontmatter, SchemaName() delegates correctly, no embedded File or filesystem paths, Note can be serialized to JSON
 
-- 1.5.4: All linting passes: `golangci-lint run internal/domain`
+- 1.2.5: All tests pass: `go test ./internal/domain`
 
-- 1.5.5: Committed with message: `feat(domain): implement Note model with NoteID composition`
+- 1.2.6: All linting passes: `golangci-lint run --fix internal/domain`
 
-**Prerequisites:** Story 1.3 (NoteID), Story 1.4 (Frontmatter)
+- 1.2.7: Committed with message: `feat(domain): implement Note domain models (NoteID, Frontmatter, Note)`
 
-**Time Estimate:** 1.5 hours
+**Prerequisites:** Story 1.1
+
+**Time Estimate:** 3 hours
 
 **Architecture References:**
+- Data models: `docs/architecture/data-models.md#noteid` (v0.5.2)
+- Data models: `docs/architecture/data-models.md#frontmatter` (v0.1.0)
 - Data models: `docs/architecture/data-models.md#note` (v0.5.2)
 
 ---
 
-## Story 1.6: Implement TemplateID Domain Model
+## Story 1.3: Implement Template Domain Models (TemplateID, Template)
 
 As a developer,
-I want to implement the TemplateID domain model,
-so that templates are identified by name for Go text/template composition.
+I want to implement TemplateID and Template domain models in template.go,
+so that templates are represented as pure domain data without infrastructure concerns.
 
 ### Acceptance Criteria
 
-- 1.6.1: Create `internal/domain/template_id.go`:
+**TemplateID Implementation:**
+
+- 1.3.1: Create `internal/domain/template.go` with TemplateID:
   - Type: `type TemplateID string`
   - Constructor: `NewTemplateID(value string) TemplateID`
   - Method: `String() string` for logging/debugging
 
-- 1.6.2: Create unit tests in `internal/domain/template_id_test.go`:
-  - Test: NewTemplateID creates valid instance
-  - Test: String() returns underlying value
-  - Test: TemplateID can be used as map key
+**Template Implementation:**
 
-- 1.6.3: All tests pass: `go test ./internal/domain`
-
-- 1.6.4: All linting passes: `golangci-lint run internal/domain`
-
-- 1.6.5: Committed with message: `feat(domain): implement TemplateID model`
-
-**Prerequisites:** Story 1.2
-
-**Time Estimate:** 1 hour
-
-**Architecture References:**
-- Data models: `docs/architecture/data-models.md#templateid` (v0.5.6)
-
----
-
-## Story 1.7: Implement Template Domain Model
-
-As a developer,
-I want to implement the Template domain model with ID and Content only,
-so that templates are pure domain data without infrastructure concerns.
-
-### Acceptance Criteria
-
-- 1.7.1: Create `internal/domain/template.go`:
+- 1.3.2: Add Template to `internal/domain/template.go`:
   - Field: `ID TemplateID`
   - Field: `Content string` (raw template text)
   - Constructor: `NewTemplate(id TemplateID, content string) Template`
   - NO FilePath field (infrastructure concern)
   - NO Parsed field (caching concern)
 
-- 1.7.2: Create unit tests in `internal/domain/template_test.go`:
-  - Test: NewTemplate constructs with ID and Content
-  - Test: No filesystem dependencies
-  - Test: Template can store Go template syntax in Content
+**Testing:**
 
-- 1.7.3: All tests pass: `go test ./internal/domain`
+- 1.3.3: Create unit tests in `internal/domain/template_test.go`:
+  - Test TemplateID: NewTemplateID creates valid instance, String() returns value, can be used as map key
+  - Test Template: NewTemplate constructs with ID and Content, no filesystem dependencies, Template can store Go template syntax in Content
 
-- 1.7.4: All linting passes: `golangci-lint run internal/domain`
+- 1.3.4: All tests pass: `go test ./internal/domain`
 
-- 1.7.5: Committed with message: `feat(domain): implement Template model`
+- 1.3.5: All linting passes: `golangci-lint run --fix internal/domain`
 
-**Prerequisites:** Story 1.6 (TemplateID)
+- 1.3.6: Committed with message: `feat(domain): implement Template domain models (TemplateID, Template)`
 
-**Time Estimate:** 1 hour
+**Prerequisites:** Story 1.1
+
+**Time Estimate:** 2 hours
 
 **Architecture References:**
+- Data models: `docs/architecture/data-models.md#templateid` (v0.5.6)
 - Data models: `docs/architecture/data-models.md#template` (v0.5.6)
 
 ---
 
-## Story 1.8: Implement Config Domain Model
+## Story 1.4: Implement Config Domain Model
 
 As a developer,
 I want to implement the Config domain model as a value object,
@@ -292,7 +211,7 @@ so that configuration is represented in the domain layer.
 
 ### Acceptance Criteria
 
-- 1.8.1: Create `internal/domain/config.go`:
+- 1.4.1: Create `internal/domain/config.go`:
   - Field: `VaultPath string` (default: ".")
   - Field: `TemplatesDir string` (default: "templates/")
   - Field: `SchemasDir string` (default: "schemas/")
@@ -302,1049 +221,1071 @@ so that configuration is represented in the domain layer.
   - Constructor: `NewConfig(...)` with all fields
   - Constructor: `DefaultConfig()` using defaults
 
-- 1.8.2: Create unit tests in `internal/domain/config_test.go`:
+- 1.4.2: Create unit tests in `internal/domain/config_test.go`:
   - Test: NewConfig constructs with all fields
   - Test: DefaultConfig uses correct defaults
   - Test: Config is immutable (copy on modification pattern if needed)
 
-- 1.8.3: All tests pass: `go test ./internal/domain`
+- 1.4.3: All tests pass: `go test ./internal/domain`
 
-- 1.8.4: All linting passes: `golangci-lint run internal/domain`
+- 1.4.4: All linting passes: `golangci-lint run --fix internal/domain`
 
-- 1.8.5: Committed with message: `feat(domain): implement Config model`
+- 1.4.5: Committed with message: `feat(domain): implement Config model`
 
-**Prerequisites:** Story 1.2
+**Prerequisites:** Story 1.1
 
-**Time Estimate:** 1.5 hours
+**Time Estimate:** 2 hours
 
 **Architecture References:**
 - Data models: `docs/architecture/data-models.md#config` (v0.5.7)
 
 ---
 
-## Story 1.9: Implement Base Error Types
+## Story 1.5: Implement Shared Error Package
 
 As a developer,
-I want to implement base error types using idiomatic Go error handling,
-so that errors follow Go conventions without Result[T] pattern.
+I want to implement all error types using idiomatic Go error handling,
+so that the application has consistent error handling without Result[T] pattern.
 
 ### Acceptance Criteria
 
-- 1.9.1: Create `internal/shared/errors/types.go`:
-  - `BaseError` struct with `message string` and `cause error`
-  - Implements `Error() string` and `Unwrap() error`
+**Base Error Types:**
+
+- 1.5.1: Create `internal/shared/errors/types.go`:
+  - `BaseError` struct with `message string` and `cause error` fields
+  - Implements `Error() string` and `Unwrap() error` methods
   - Constructor: `NewBaseError(message string, cause error) BaseError`
 
-- 1.9.2: Implement `ValidationError` in same file:
+- 1.5.2: Add `ValidationError` to `internal/shared/errors/types.go`:
   - Embeds `BaseError`
   - Fields: `property string`, `reason string`, `value interface{}`
-  - Constructor: `NewValidationError(...)`
-  - Methods: `Property()`, `Reason()`, `Value()`
+  - Constructor: `NewValidationError(property, reason string, value interface{}, cause error) *ValidationError`
+  - Methods: `Property() string`, `Reason() string`, `Value() interface{}`
 
-- 1.9.3: Implement `ResourceError` in same file:
+- 1.5.3: Add `ResourceError` to `internal/shared/errors/types.go`:
   - Embeds `BaseError`
   - Fields: `resource string`, `operation string`, `target string`
-  - Constructor: `NewResourceError(...)`
-  - Methods: `Resource()`, `Operation()`, `Target()`
+  - Constructor: `NewResourceError(resource, operation, target string, cause error) *ResourceError`
+  - Methods: `Resource() string`, `Operation() string`, `Target() string`
 
-- 1.9.4: Create unit tests in `internal/shared/errors/types_test.go`:
+- 1.5.4: Create unit tests in `internal/shared/errors/types_test.go`:
   - Test: Error construction and methods
   - Test: errors.Unwrap() works correctly
   - Test: errors.Is() and errors.As() work correctly
 
-- 1.9.5: **Verify NO Result[T] type exists**
+**Domain-Specific Errors:**
 
-- 1.9.6: All tests pass: `go test ./internal/shared/errors`
-
-- 1.9.7: All linting passes: `golangci-lint run internal/shared/errors`
-
-- 1.9.8: Committed with message: `feat(shared): implement base error types with idiomatic Go`
-
-**Prerequisites:** Story 1.2
-
-**Time Estimate:** 2 hours
-
-**Architecture References:**
-- Components: `docs/architecture/components.md#shared-internal-packages` - Error Package
-- Coding standards: `docs/architecture/coding-standards.md` - Error Handling (v0.6.7)
-
----
-
-## Story 1.10: Implement Domain-Specific Error Types
-
-As a developer,
-I want to implement domain-specific error types for templates, schemas, and frontmatter,
-so that errors provide context for each domain area.
-
-### Acceptance Criteria
-
-- 1.10.1: Create `internal/shared/errors/template.go`:
+- 1.5.5: Create `internal/shared/errors/template.go`:
   - `TemplateError` type using BaseError
   - Constructor: `NewTemplateError(message string, templateID string, cause error)`
   - Method: `TemplateID() string`
+  - Unit tests for construction and unwrapping
 
-- 1.10.2: Create `internal/shared/errors/schema.go`:
+- 1.5.6: Create `internal/shared/errors/schema.go`:
   - `SchemaError` type using BaseError
   - Constructor: `NewSchemaError(message string, schemaName string, cause error)`
   - Method: `SchemaName() string`
+  - Unit tests for construction and unwrapping
 
-- 1.10.3: Create `internal/shared/errors/frontmatter.go`:
+- 1.5.7: Create `internal/shared/errors/frontmatter.go`:
   - `FrontmatterError` type using BaseError
   - Constructor: `NewFrontmatterError(message string, field string, cause error)`
   - Method: `Field() string`
+  - Unit tests for construction and unwrapping
 
-- 1.10.4: Create unit tests for each error type:
-  - Test: Construction and accessor methods
-  - Test: Error message formatting
-  - Test: Unwrapping works correctly
+**Helper Functions:**
 
-- 1.10.5: All tests pass: `go test ./internal/shared/errors`
-
-- 1.10.6: All linting passes: `golangci-lint run internal/shared/errors`
-
-- 1.10.7: Committed with message: `feat(shared): implement domain-specific error types`
-
-**Prerequisites:** Story 1.9 (base errors)
-
-**Time Estimate:** 1.5 hours
-
-**Architecture References:**
-- Change log: v0.5.9 - Error types split
-
----
-
-## Story 1.11: Implement Error Helper Functions
-
-As a developer,
-I want to implement error wrapping helper functions,
-so that errors can be wrapped with context throughout the codebase.
-
-### Acceptance Criteria
-
-- 1.11.1: Create `internal/shared/errors/helpers.go`:
+- 1.5.8: Create `internal/shared/errors/helpers.go`:
   - `Wrap(err error, message string) error` - wraps with fmt.Errorf
   - `WrapWithContext(err error, format string, args ...interface{}) error`
   - Uses Go stdlib `errors.Join()` for multiple errors
 
-- 1.11.2: Create unit tests in `internal/shared/errors/helpers_test.go`:
+- 1.5.9: Create unit tests in `internal/shared/errors/helpers_test.go`:
   - Test: Wrap() preserves original error
   - Test: WrapWithContext() formats message correctly
   - Test: errors.Unwrap() works on wrapped errors
 
-- 1.11.3: All tests pass: `go test ./internal/shared/errors`
+- 1.5.10: **Verify NO Result[T] type exists anywhere in codebase**
 
-- 1.11.4: All linting passes: `golangci-lint run internal/shared/errors`
+- 1.5.11: All tests pass: `go test ./internal/shared/errors`
 
-- 1.11.5: Committed with message: `feat(shared): implement error helper functions`
+- 1.5.12: All linting passes: `golangci-lint run --fix internal/shared/errors`
 
-**Prerequisites:** Story 1.9 (base errors)
+- 1.5.13: Committed with message: `feat(shared): implement error package with idiomatic Go`
 
-**Time Estimate:** 1 hour
+**Prerequisites:** Story 1.1
+
+**Time Estimate:** 4 hours
 
 **Architecture References:**
-- Coding standards: `docs/architecture/coding-standards.md` - Error wrapping with fmt.Errorf
+- Components: `docs/architecture/components.md#shared-internal-packages` - Error Package
+- Coding standards: `docs/architecture/coding-standards.md` - Error Handling (v0.6.7, removed Result[T])
+- Change log: v0.5.9 - Error types split (FrontmatterError, CacheReadError, etc.)
 
 ---
 
-## Story 1.12: Implement Logger Package
+## Story 1.6: Implement Logger Package
 
 As a developer,
 I want to implement structured logging with zerolog,
-so that the application has consistent logging across all components.
+so that the application has consistent, structured logging across all components with configurable output formats.
 
 ### Acceptance Criteria
 
-- 1.12.1: Add `github.com/rs/zerolog` v1.34.0 to `go.mod`
+- 1.6.1: Add `github.com/rs/zerolog` v1.34.0 to `go.mod`
 
-- 1.12.2: Create `internal/shared/logger/logger.go`:
-  - `New(output io.Writer, level string) zerolog.Logger`
-  - TTY detection via `golang.org/x/term`
-  - Level parsing: "debug", "info", "warn", "error"
+- 1.6.2: Create `internal/shared/logger/logger.go`:
+  - Global `Log zerolog.Logger` instance
+  - `New(output io.Writer, level string) zerolog.Logger` - creates configured logger
+  - TTY detection via `golang.org/x/term` - pretty-print for terminals, JSON for pipes
+  - Level parsing: "debug", "info", "warn", "error" (case-insensitive)
 
-- 1.12.3: Implement context methods:
+- 1.6.3: Context methods:
   - `WithComponent(logger zerolog.Logger, component string) zerolog.Logger`
   - `WithOperation(logger zerolog.Logger, operation string) zerolog.Logger`
   - `WithCorrelationID(logger zerolog.Logger, id string) zerolog.Logger`
 
-- 1.12.4: Implement test helper:
-  - `NewTest() zerolog.Logger` - returns logger with ioutil.Discard
+- 1.6.4: Sensitive data filtering:
+  - Filter password, token, apiKey fields from logs
+  - Redact with "[REDACTED]" string
 
-- 1.12.5: Create unit tests in `internal/shared/logger/logger_test.go`:
-  - Test: Log level configuration
+- 1.6.5: Test helper:
+  - `NewTest() zerolog.Logger` - returns logger with ioutil.Discard for testing
+
+- 1.6.6: Create unit tests in `internal/shared/logger/logger_test.go`:
+  - Test: Log level configuration works
   - Test: TTY detection switches output format
-  - Test: Context methods add fields
+  - Test: Context methods add fields correctly
+  - Test: Sensitive data filtering works
 
-- 1.12.6: All tests pass: `go test ./internal/shared/logger`
+- 1.6.7: All tests pass: `go test ./internal/shared/logger`
 
-- 1.12.7: All linting passes: `golangci-lint run internal/shared/logger`
+- 1.6.8: All linting passes: `golangci-lint run --fix internal/shared/logger`
 
-- 1.12.8: Committed with message: `feat(shared): implement logger package with zerolog`
+- 1.6.9: Committed with message: `feat(shared): implement logger package with zerolog`
 
-**Prerequisites:** Story 1.2
-
-**Time Estimate:** 2 hours
-
-**Architecture References:**
-- Components: `docs/architecture/components.md#shared-internal-packages` - Logger
-- Tech stack: zerolog v1.34.0
-
----
-
-## Story 1.13: Implement Registry Package
-
-As a developer,
-I want to implement generic thread-safe registry with CQRS interfaces,
-so that schemas and templates can be stored in-memory.
-
-### Acceptance Criteria
-
-- 1.13.1: Create `internal/shared/registry/registry.go`:
-  - Generic type: `Registry[T any]`
-  - Thread-safe with `sync.RWMutex`
-  - Storage: `map[string]T`
-
-- 1.13.2: Define CQRS interfaces:
-  - `Reader[T any]`: Get(), Exists(), ListKeys()
-  - `Writer[T any]`: Register(), Clear()
-  - `Registry[T any]` embeds both
-
-- 1.13.3: Implement registry struct and methods:
-  - Constructor: `New[T any]() Registry[T]`
-  - Get() uses RLock()
-  - Register() uses Lock()
-  - Returns ErrNotFound for missing keys
-
-- 1.13.4: Create unit tests in `internal/shared/registry/registry_test.go`:
-  - Test: Generic instantiation (string, int, struct)
-  - Test: Concurrent reads don't block
-  - Test: Writes block correctly
-  - Test: ErrNotFound for missing keys
-
-- 1.13.5: All tests pass: `go test ./internal/shared/registry`
-
-- 1.13.6: All linting passes: `golangci-lint run internal/shared/registry`
-
-- 1.13.7: Committed with message: `feat(shared): implement thread-safe registry with CQRS`
-
-**Prerequisites:** Story 1.2
+**Prerequisites:** Story 1.1
 
 **Time Estimate:** 2.5 hours
 
 **Architecture References:**
-- Components: `docs/architecture/components.md#shared-internal-packages` - Registry
+- Components: `docs/architecture/components.md#shared-internal-packages` - Logger
+- Tech stack: `docs/architecture/tech-stack.md` - zerolog v1.34.0
 
 ---
 
-## Story 1.14: Implement ConfigPort Interface
+## Story 1.7: Implement Registry Package
 
 As a developer,
-I want to define the ConfigPort SPI interface,
-so that configuration loading follows hexagonal architecture.
+I want to implement generic thread-safe registry with CQRS interfaces,
+so that schemas and templates can be stored in-memory with concurrent read access.
 
 ### Acceptance Criteria
 
-- 1.14.1: Create `internal/ports/spi/config.go`:
-  - Interface: `ConfigPort`
-  - Method: `Load(ctx context.Context) (Config, error)`
+- 1.7.1: Create `internal/shared/registry/registry.go`:
+  - Uses Go 1.23+ generics: `Registry[T any]`
+  - Thread-safe with `sync.RWMutex`
+  - Internal storage: `map[string]T`
 
-- 1.14.2: Add documentation comments:
-  - Describe port responsibility
-  - Document Load() method contract
-  - Reference architecture components.md
+- 1.7.2: Define CQRS interfaces in same file:
+  - `Reader[T any]` interface:
+    - `Get(key string) (T, error)`
+    - `Exists(key string) bool`
+    - `ListKeys() []string`
+  - `Writer[T any]` interface:
+    - `Register(key string, value T) error`
+    - `Clear()`
+  - `Registry[T any]` interface embeds both Reader and Writer
 
-- 1.14.3: All linting passes: `golangci-lint run internal/ports/spi`
+- 1.7.3: Implement `registry[T any]` struct (unexported):
+  - Fields: `mu sync.RWMutex`, `items map[string]T`
+  - Constructor: `New[T any]() Registry[T]`
 
-- 1.14.4: Committed with message: `feat(ports): define ConfigPort SPI interface`
+- 1.7.4: Implement all interface methods:
+  - `Get()` uses `RLock()` for concurrent reads
+  - `Register()` uses `Lock()` for exclusive writes
+  - `Exists()` uses `RLock()` for concurrent reads
+  - Returns `ErrNotFound` from errors package when key doesn't exist
 
-**Prerequisites:** Story 1.8 (Config model)
+- 1.7.5: Create unit tests in `internal/shared/registry/registry_test.go`:
+  - Test: Generic type instantiation works (string, int, custom struct)
+  - Test: Concurrent reads don't block each other
+  - Test: Writes block reads correctly
+  - Test: ErrNotFound returned for missing keys
+  - Test: ListKeys() returns all registered keys
 
-**Time Estimate:** 0.5 hours
+- 1.7.6: Create benchmark tests:
+  - Benchmark: Concurrent read performance
+  - Benchmark: Write contention
 
-**Architecture References:**
-- Components: `docs/architecture/components.md#spi-port-interfaces` - ConfigPort (v0.5.11)
+- 1.7.7: All tests pass: `go test ./internal/shared/registry`
 
----
+- 1.7.8: All linting passes: `golangci-lint run --fix internal/shared/registry`
 
-## Story 1.15: Implement ViperAdapter
+- 1.7.9: Committed with message: `feat(shared): implement thread-safe registry with CQRS`
 
-As a developer,
-I want to implement config loading with Viper,
-so that configuration can be loaded from file, environment, and flags.
-
-### Acceptance Criteria
-
-- 1.15.1: Add `github.com/spf13/viper` to `go.mod`
-
-- 1.15.2: Create `internal/adapters/spi/config/viper_adapter.go`:
-  - Implements ConfigPort interface
-  - Constructor: `NewViperAdapter(log zerolog.Logger) *ViperAdapter`
-
-- 1.15.3: Implement Load() with precedence:
-  1. Environment variables (LITHOS_*)
-  2. Config file (`lithos.json`)
-  3. Defaults from Config.DefaultConfig()
-
-- 1.15.4: Implement upward search for lithos.json:
-  - Start from CWD
-  - Search upward through parents
-  - Use directory containing lithos.json as VaultPath
-
-- 1.15.5: Environment variable mapping:
-  - LITHOS_VAULT_PATH → VaultPath
-  - LITHOS_LOG_LEVEL → LogLevel
-  - (etc. for all Config fields)
-
-- 1.15.6: Validate VaultPath exists and is directory
-
-- 1.15.7: Create unit tests in `internal/adapters/spi/config/viper_adapter_test.go`:
-  - Test: Defaults when no config
-  - Test: Config file overrides defaults
-  - Test: Env vars override config file
-  - Test: Upward search finds config
-
-- 1.15.8: All tests pass: `go test ./internal/adapters/spi/config`
-
-- 1.15.9: All linting passes: `golangci-lint run internal/adapters/spi/config`
-
-- 1.15.10: Committed with message: `feat(adapters): implement Viper config adapter`
-
-**Prerequisites:** Story 1.8 (Config), Story 1.12 (Logger), Story 1.14 (ConfigPort)
+**Prerequisites:** Story 1.1
 
 **Time Estimate:** 3 hours
 
 **Architecture References:**
+- Components: `docs/architecture/components.md#shared-internal-packages` - Registry Package
+
+---
+
+## Story 1.8: Implement Config Loading Infrastructure
+
+As a developer,
+I want to implement ConfigPort interface and ViperAdapter,
+so that application configuration can be loaded from file, environment, and flags following hexagonal architecture.
+
+### Acceptance Criteria
+
+**ConfigPort Interface:**
+
+- 1.8.1: Create `internal/ports/spi/config.go`:
+  - Interface: `ConfigPort`
+  - Method: `Load(ctx context.Context) (Config, error)`
+  - Add documentation comments:
+    - Describe port responsibility
+    - Document Load() method contract
+    - Reference architecture components.md
+
+**ViperAdapter Implementation:**
+
+- 1.8.2: Add `github.com/spf13/viper` to `go.mod`
+
+- 1.8.3: Create `internal/adapters/spi/config/viper.go`:
+  - Implements ConfigPort interface
+  - Constructor: `NewViperAdapter(log zerolog.Logger) *ViperAdapter`
+
+- 1.8.4: Implement Load() method with precedence (highest to lowest):
+  1. CLI flags (not implemented yet, reserved for future stories)
+  2. Environment variables (LITHOS_VAULT_PATH, LITHOS_LOG_LEVEL, etc.)
+  3. Config file (`lithos.json` searched upward from CWD)
+  4. Defaults from Config.DefaultConfig()
+
+- 1.8.5: Config file search pattern:
+  - Start from current working directory
+  - Search upward through parent directories
+  - Stop at first `lithos.json` found
+  - Use that directory as VaultPath
+  - If no config found, use CWD as VaultPath
+
+- 1.8.6: Environment variable mapping:
+  - `LITHOS_VAULT_PATH` → Config.VaultPath
+  - `LITHOS_TEMPLATES_DIR` → Config.TemplatesDir
+  - `LITHOS_SCHEMAS_DIR` → Config.SchemasDir
+  - `LITHOS_PROPERTY_BANK_FILE` → Config.PropertyBankFile
+  - `LITHOS_CACHE_DIR` → Config.CacheDir
+  - `LITHOS_LOG_LEVEL` → Config.LogLevel
+
+- 1.8.7: Validate VaultPath exists and is directory (return error if not)
+
+**Testing:**
+
+- 1.8.8: Create unit tests in `internal/adapters/spi/config/viper_test.go`:
+  - Test: Defaults work when no config file
+  - Test: Config file values override defaults
+  - Test: Environment variables override config file
+  - Test: VaultPath validation rejects non-existent paths
+  - Test: Upward search finds config in parent directories
+
+- 1.8.9: Create integration test with `testdata/vault/lithos.json`:
+  - Create sample config file in testdata
+  - Verify adapter loads values correctly
+
+- 1.8.10: All tests pass: `go test ./internal/ports/spi ./internal/adapters/spi/config`
+
+- 1.8.11: All linting passes: `golangci-lint run --fix internal/ports/spi internal/adapters/spi/config`
+
+- 1.8.12: Committed with message: `feat: implement config loading with ConfigPort and ViperAdapter`
+
+**Prerequisites:** Story 1.4 (Config model), Story 1.6 (Logger)
+
+**Time Estimate:** 4 hours
+
+**Architecture References:**
+- Components: `docs/architecture/components.md#spi-port-interfaces` - ConfigPort (v0.5.11)
 - Components: `docs/architecture/components.md#spi-adapters` - ViperAdapter
 
 ---
 
-## Story 1.16: Implement FileMetadata SPI Model
+## Story 1.9: Implement Template Loading Infrastructure
 
 As a developer,
-I want to implement FileMetadata as an SPI adapter model,
-so that filesystem metadata is isolated from the domain.
+I want to implement FileMetadata model, TemplatePort interface, and TemplateLoaderAdapter,
+so that templates can be loaded from filesystem following hexagonal architecture.
 
 ### Acceptance Criteria
 
-- 1.16.1: Create `internal/adapters/spi/file_metadata.go`:
-  - Fields: Path, Basename, Folder, Ext, ModTime, Size, MimeType
+**FileMetadata Model:**
+
+- 1.9.1: Create `internal/adapters/spi/file_metadata.go`:
+  - SPI adapter model (NOT domain)
+  - Fields:
+    - `Path string` - absolute file path
+    - `Basename string` - filename without path/extension (computed)
+    - `Folder string` - parent directory (computed)
+    - `Ext string` - file extension including dot (computed)
+    - `ModTime time.Time` - modification timestamp
+    - `Size int64` - file size in bytes
+    - `MimeType string` - MIME type (computed)
   - Constructor: `NewFileMetadata(path string, info fs.FileInfo) FileMetadata`
-  - Helper: `computeBasename(path string) string`
-  - Helper: `computeFolder(path string) string`
-  - Helper: `computeMimeType(ext string) string`
+  - Helper functions:
+    - `computeBasename(path string) string` - removes path and extension
+    - `computeFolder(path string) string` - returns directory path
+    - `computeMimeType(ext string) string` - detects MIME type from extension
 
-- 1.16.2: Create unit tests in `internal/adapters/spi/file_metadata_test.go`:
-  - Test: NewFileMetadata constructs correctly
-  - Test: Computed fields (Basename, Folder, Ext)
-  - Test: MIME type detection
+- 1.9.2: Create unit tests in `internal/adapters/spi/file_metadata_test.go`:
+  - Test: NewFileMetadata construction and all helper functions
+  - Test: Computed fields (Basename, Folder, Ext) are correct
+  - Test: MIME type detection works for common file types
 
-- 1.16.3: All tests pass: `go test ./internal/adapters/spi`
+**TemplatePort Interface:**
 
-- 1.16.4: All linting passes: `golangci-lint run internal/adapters/spi`
+- 1.9.3: Create `internal/ports/spi/template.go`:
+  - Interface: `TemplatePort`
+  - Method: `List(ctx context.Context) ([]TemplateID, error)` - list available template IDs
+  - Method: `Load(ctx context.Context, id TemplateID) (Template, error)` - load template by ID
+  - Add documentation comments:
+    - Describe port responsibility
+    - Document method contracts
+    - Reference architecture components.md
 
-- 1.16.5: Committed with message: `feat(adapters): implement FileMetadata SPI model`
+**TemplateLoaderAdapter:**
 
-**Prerequisites:** Story 1.2
+- 1.9.4: Create `internal/adapters/spi/template/loader.go`:
+  - Implements TemplatePort interface
+  - Constructor: `NewTemplateLoaderAdapter(config Config, log zerolog.Logger) *TemplateLoaderAdapter`
+  - Internal metadata cache: `map[TemplateID]FileMetadata` for ID → Path mapping
 
-**Time Estimate:** 1.5 hours
+- 1.9.5: Implement List() method:
+  - Scan Config.TemplatesDir using `filepath.Walk`
+  - Find all `.md` files
+  - Derive TemplateID from basename (filename without `.md` extension)
+  - Build FileMetadata for each template
+  - Populate internal cache
+  - Return sorted []TemplateID
+
+- 1.9.6: Implement Load() method:
+  - Look up TemplateID in metadata cache
+  - If not found, return ResourceError with "template not found"
+  - Read file content using `os.ReadFile`
+  - Return Template with ID and Content
+  - Validate UTF-8 encoding (return ValidationError if invalid)
+
+- 1.9.7: Error handling:
+  - Missing template → ResourceError with "template not found"
+  - Read failure → ResourceError with wrapped os.Error
+  - Invalid UTF-8 → ValidationError
+
+**Testing:**
+
+- 1.9.8: Create unit tests in `internal/adapters/spi/template/loader_test.go`:
+  - Test: FileMetadata construction and helper functions
+  - Test: List() finds all templates in testdata
+  - Test: Load() reads template content correctly
+  - Test: Errors returned for missing templates
+
+- 1.9.9: Create integration test in `tests/integration/template_loader_test.go`:
+  - Use existing `testdata/templates/` directory
+  - Test: List() finds static-template.md and basic-note.md
+  - Test: Load("static-template") returns Template with correct content
+  - Test: Load("basic-note") returns Template with correct content
+  - Test: Load("nonexistent") returns ResourceError
+
+- 1.9.10: All tests pass: `go test ./internal/adapters/spi/... ./tests/integration/...`
+
+- 1.9.11: All linting passes: `golangci-lint run --fix internal/adapters/spi internal/ports/spi`
+
+- 1.9.12: Committed with message: `feat: implement template loading infrastructure`
+
+**Prerequisites:** Story 1.3 (Template, TemplateID models), Story 1.4 (Config), Story 1.5 (errors), Story 1.6 (Logger)
+
+**Time Estimate:** 4.5 hours
 
 **Architecture References:**
 - Data models: `docs/architecture/data-models.md#filemetadata` (v0.5.1)
-
----
-
-## Story 1.17: Implement TemplatePort Interface
-
-As a developer,
-I want to define the TemplatePort SPI interface,
-so that template loading follows hexagonal architecture.
-
-### Acceptance Criteria
-
-- 1.17.1: Create `internal/ports/spi/template.go`:
-  - Interface: `TemplatePort`
-  - Method: `List(ctx context.Context) ([]TemplateID, error)`
-  - Method: `Load(ctx context.Context, id TemplateID) (Template, error)`
-
-- 1.17.2: Add documentation comments:
-  - Describe port responsibility
-  - Document method contracts
-  - Reference architecture components.md
-
-- 1.17.3: All linting passes: `golangci-lint run internal/ports/spi`
-
-- 1.17.4: Committed with message: `feat(ports): define TemplatePort SPI interface`
-
-**Prerequisites:** Story 1.6 (TemplateID), Story 1.7 (Template)
-
-**Time Estimate:** 0.5 hours
-
-**Architecture References:**
+- Data models: `docs/architecture/data-models.md#templateid` (v0.5.6)
+- Data models: `docs/architecture/data-models.md#template` (v0.5.6)
 - Components: `docs/architecture/components.md#spi-port-interfaces` - TemplatePort (v0.5.11)
-
----
-
-## Story 1.18: Implement TemplateLoaderAdapter
-
-As a developer,
-I want to implement template loading from filesystem,
-so that templates can be loaded via TemplatePort interface.
-
-### Acceptance Criteria
-
-- 1.18.1: Create `internal/adapters/spi/template/template_loader.go`:
-  - Implements TemplatePort interface
-  - Constructor: `NewTemplateLoaderAdapter(config Config, log zerolog.Logger)`
-  - Internal cache: `map[TemplateID]FileMetadata`
-
-- 1.18.2: Implement List() method:
-  - Scan Config.TemplatesDir using filepath.Walk
-  - Find all .md files
-  - Derive TemplateID from basename
-  - Build FileMetadata for each
-  - Return sorted []TemplateID
-
-- 1.18.3: Implement Load() method:
-  - Look up TemplateID in cache
-  - Read file with os.ReadFile
-  - Return Template(ID, Content)
-  - Return ResourceError if not found
-
-- 1.18.4: Create unit tests in `internal/adapters/spi/template/template_loader_test.go`:
-  - Test: List() finds templates in testdata
-  - Test: Load() reads content correctly
-  - Test: Error for missing template
-
-- 1.18.5: Create integration test in `tests/integration/template_loader_test.go`:
-  - Use existing testdata/templates/
-  - Test: List() finds static-template.md, basic-note.md
-  - Test: Load("static-template") returns correct content
-
-- 1.18.6: All tests pass: `go test ./internal/adapters/spi/template ./tests/integration`
-
-- 1.18.7: All linting passes: `golangci-lint run internal/adapters/spi/template`
-
-- 1.18.8: Committed with message: `feat(adapters): implement TemplateLoader adapter`
-
-**Prerequisites:** Story 1.7 (Template), Story 1.8 (Config), Story 1.12 (Logger), Story 1.16 (FileMetadata), Story 1.17 (TemplatePort)
-
-**Time Estimate:** 3 hours
-
-**Architecture References:**
 - Components: `docs/architecture/components.md#spi-adapters` - TemplateLoaderAdapter
 
 ---
 
-## Story 1.19: Implement TemplateEngine - Load Method
+## Story 1.10: Implement TemplateEngine Service
 
 As a developer,
-I want to implement the TemplateEngine Load method,
-so that templates can be loaded via dependency injection.
+I want to implement complete TemplateEngine domain service with Load, Render, and all template functions,
+so that templates can be loaded from port, parsed with Go text/template, and rendered with custom functions.
 
 ### Acceptance Criteria
 
-- 1.19.1: Create `internal/domain/template_engine.go`:
-  - Constructor: `NewTemplateEngine(templatePort TemplatePort, config Config, log zerolog.Logger)`
-  - Dependencies: TemplatePort, Config, Logger
+**TemplateEngine Setup and Load:**
 
-- 1.19.2: Implement `Load(ctx context.Context, templateID TemplateID) (Template, error)`:
+- 1.10.1: Create `internal/app/template_engine.go`:
+  - Constructor: `NewTemplateEngine(templatePort TemplatePort, config Config, log zerolog.Logger) *TemplateEngine`
+  - Dependencies: TemplatePort (injected), Config (injected), Logger (injected)
+
+- 1.10.2: Implement `Load(ctx context.Context, templateID TemplateID) (Template, error)`:
   - Delegates to TemplatePort.Load()
-  - Logs loading operation
+  - Logs loading operation with template ID
   - Returns Template or error
 
-- 1.19.3: Create unit tests in `internal/domain/template_engine_test.go`:
-  - Test: Load() delegates to port correctly
-  - Test: Error propagation from port
-  - Use mock TemplatePort from tests/utils/mocks.go
+**Function Map Setup:**
 
-- 1.19.4: Create mock in `tests/utils/mocks.go`:
-  - `MockTemplatePort` struct
-  - Implements TemplatePort interface
-  - Methods: SetTemplates(), SetLoadError()
+- 1.10.3: Implement private method `buildFuncMap() template.FuncMap`:
+  - Returns template.FuncMap with all custom functions
+  - Registers all functions described below
 
-- 1.19.5: All tests pass: `go test ./internal/domain`
+**Basic Template Functions:**
 
-- 1.19.6: All linting passes: `golangci-lint run internal/domain`
+- 1.10.4: Implement basic functions in buildFuncMap():
+  - `now(format string) string` - current timestamp with Go time layout (e.g., "2006-01-02")
+  - `toLower(s string) string` - lowercase conversion using strings.ToLower
+  - `toUpper(s string) string` - uppercase conversion using strings.ToUpper
 
-- 1.19.7: Committed with message: `feat(domain): implement TemplateEngine Load method`
+**File Path Control Functions (v0.6.3):**
 
-**Prerequisites:** Story 1.7 (Template), Story 1.8 (Config), Story 1.12 (Logger), Story 1.17 (TemplatePort)
+- 1.10.5: Implement file path control functions in buildFuncMap():
+  - `path() string` - returns target file path (empty for MVP, used in Epic 3 for vault operations)
+  - `folder(p string) string` - returns parent directory using filepath.Dir()
+  - `basename(p string) string` - returns filename without extension (strips path and extension)
+  - `extension(p string) string` - returns file extension using filepath.Ext() (includes dot)
+  - `join(parts ...string) string` - joins path segments using filepath.Join() (OS-appropriate separator)
+  - `vaultPath() string` - returns Config.VaultPath
 
-**Time Estimate:** 2 hours
+**Render Method:**
 
-**Architecture References:**
-- Components: `docs/architecture/components.md#domain-services` - TemplateEngine
+- 1.10.6: Implement `Render(ctx context.Context, templateID TemplateID) (string, error)`:
+  - Step 1: Load template via Load(ctx, templateID)
+  - Step 2: Create `text/template` instance with template.ID as name
+  - Step 3: Register function map via buildFuncMap()
+  - Step 4: Parse template.Content using template.Parse()
+  - Step 5: Execute template with empty data context (static rendering for Epic 1)
+  - Step 6: Return rendered string
+  - Error handling:
+    - Template not found → ResourceError from Load()
+    - Parse error → TemplateError with line/column info and template name
+    - Execute error → TemplateError with template name and error details
 
----
+**Testing:**
 
-## Story 1.20: Implement TemplateEngine - Basic Functions
+- 1.10.7: Add mock to `tests/utils/mocks.go`:
+  - `MockTemplatePort` struct implementing TemplatePort interface
+  - Internal storage: `map[TemplateID]Template`
+  - Method: `SetTemplates(templates map[TemplateID]Template)` - configure mock responses
+  - Method: `SetLoadError(err error)` - configure error response
+  - Implements: List() returns keys from internal storage
+  - Implements: Load() returns template from storage or configured error
 
-As a developer,
-I want to implement basic template functions (now, toLower, toUpper),
-so that templates can perform simple transformations.
-
-### Acceptance Criteria
-
-- 1.20.1: Add to `internal/domain/template_engine.go`:
-  - Private method: `buildFuncMap() template.FuncMap`
-  - Function: `now(format string) string` - current time with Go layout
-  - Function: `toLower(s string) string`
-  - Function: `toUpper(s string) string`
-
-- 1.20.2: Create unit tests in `internal/domain/template_engine_test.go`:
-  - Test: now() returns formatted timestamp
-  - Test: toLower() converts correctly
-  - Test: toUpper() converts correctly
-  - Test: Function map is registered
-
-- 1.20.3: All tests pass: `go test ./internal/domain`
-
-- 1.20.4: All linting passes: `golangci-lint run internal/domain`
-
-- 1.20.5: Committed with message: `feat(domain): add basic template functions`
-
-**Prerequisites:** Story 1.19 (TemplateEngine Load)
-
-**Time Estimate:** 1.5 hours
-
-**Architecture References:**
-- Components: `docs/architecture/components.md#domain-services` - TemplateEngine custom functions
-
----
-
-## Story 1.21: Implement TemplateEngine - File Path Functions
-
-As a developer,
-I want to implement file path control template functions,
-so that templates can manipulate paths for note organization.
-
-### Acceptance Criteria
-
-- 1.21.1: Add to `internal/domain/template_engine.go` function map:
-  - Function: `path() string` - returns target path (empty for now)
-  - Function: `folder(p string) string` - parent directory using filepath.Dir()
-  - Function: `basename(p string) string` - filename without extension
-  - Function: `extension(p string) string` - file extension using filepath.Ext()
-  - Function: `join(parts ...string) string` - filepath.Join()
-  - Function: `vaultPath() string` - returns Config.VaultPath
-
-- 1.21.2: Create unit tests in `internal/domain/template_engine_test.go`:
+- 1.10.8: Create unit tests in `internal/app/template_engine_test.go`:
+  - Test: Load() delegates to TemplatePort correctly
+  - Test: Load() logs operation
+  - Test: Load() propagates errors from port
+  - Test: now() function returns formatted timestamp
+  - Test: toLower() converts to lowercase
+  - Test: toUpper() converts to uppercase
   - Test: folder() returns parent directory
   - Test: basename() strips path and extension
   - Test: extension() returns extension with dot
-  - Test: join() uses OS-appropriate separator
+  - Test: join() uses OS-appropriate path separator
   - Test: vaultPath() returns config value
-
-- 1.21.3: All tests pass: `go test ./internal/domain`
-
-- 1.21.4: All linting passes: `golangci-lint run internal/domain`
-
-- 1.21.5: Committed with message: `feat(domain): add file path control template functions`
-
-**Prerequisites:** Story 1.20 (basic functions)
-
-**Time Estimate:** 2 hours
-
-**Architecture References:**
-- Components: `docs/architecture/components.md#domain-services` - File path control functions (v0.6.3)
-
----
-
-## Story 1.22: Implement TemplateEngine - Render Method
-
-As a developer,
-I want to implement the TemplateEngine Render method,
-so that templates can be executed with the function map.
-
-### Acceptance Criteria
-
-- 1.22.1: Add to `internal/domain/template_engine.go`:
-  - Method: `Render(ctx context.Context, templateID TemplateID) (string, error)`
-  - Loads template via Load()
-  - Creates text/template with template.ID as name
-  - Registers function map via buildFuncMap()
-  - Parses template.Content
-  - Executes with empty data (static for now)
-  - Returns rendered string
-
-- 1.22.2: Error handling:
-  - Template not found → ResourceError from Load()
-  - Parse error → TemplateError with details
-  - Execute error → TemplateError with context
-
-- 1.22.3: Create unit tests in `internal/domain/template_engine_test.go`:
   - Test: Render() executes static template
-  - Test: Render() uses now() function
-  - Test: Render() uses path functions
-  - Test: Parse error returns TemplateError
-  - Use mock TemplatePort
+  - Test: Render() uses now() function correctly
+  - Test: Render() uses path control functions correctly
+  - Test: Parse error returns TemplateError with details
+  - Test: Execute error returns TemplateError with context
+  - All tests use MockTemplatePort from tests/utils/mocks.go
 
-- 1.22.4: Create integration test in `tests/integration/template_engine_test.go`:
-  - Use testdata/templates/static-template.md
-  - Compare output to testdata/golden/static-template-expected.md
-  - Verify all functions work
+- 1.10.9: Create integration test in `tests/integration/template_engine_test.go`:
+  - Use existing testdata/templates/static-template.md
+  - Compare rendered output to testdata/golden/static-template-expected.md
+  - Verify all template functions work end-to-end:
+    - now() with various format strings
+    - toLower() and toUpper()
+    - File path control functions (folder, basename, extension, join, vaultPath)
+  - Test: Template composition works ({{template "name"}})
 
-- 1.22.5: All tests pass: `go test ./internal/domain ./tests/integration`
+- 1.10.10: All tests pass: `go test ./internal/app ./tests/integration`
 
-- 1.22.6: All linting passes: `golangci-lint run internal/domain`
+- 1.10.11: All linting passes: `golangci-lint run --fix internal/app`
 
-- 1.22.7: Committed with message: `feat(domain): implement TemplateEngine Render method`
+- 1.10.12: Committed with message: `feat(app): implement TemplateEngine service with all functions`
 
-**Prerequisites:** Story 1.21 (path functions)
+**Prerequisites:** Story 1.3 (Template, TemplateID), Story 1.4 (Config), Story 1.5 (errors), Story 1.6 (Logger), Story 1.9 (TemplatePort)
 
-**Time Estimate:** 3 hours
+**Time Estimate:** 5 hours
 
 **Architecture References:**
-- Components: `docs/architecture/components.md#domain-services` - TemplateEngine Render
+- Components: `docs/architecture/components.md#domain-services` - TemplateEngine (v0.1.0, updated v0.6.2)
+- Components: Custom template functions section
+- Change log: v0.6.3 - File path template functions
 
 ---
 
-## Story 1.23: Implement CLICommandPort Interface
+## Story 1.11: Implement CLI Port Interfaces
 
 As a developer,
-I want to define the CLICommandPort API interface,
-so that CLI framework integration follows hexagonal architecture.
+I want to define CLICommandPort and CommandHandler API interfaces,
+so that CLI framework integration follows hexagonal callback pattern.
 
 ### Acceptance Criteria
 
-- 1.23.1: Create `internal/ports/api/cli_command.go`:
+- 1.11.1: Create `internal/ports/api/cli_command.go`:
   - Interface: `CLICommandPort`
   - Method: `Start(ctx context.Context, handler CommandHandler) error`
+  - Add documentation comments:
+    - Describe hexagonal callback pattern (CLI adapter receives handler, calls handler methods)
+    - Document Start() method contract
+    - Reference architecture components.md
 
-- 1.23.2: Create `internal/ports/api/command_handler.go`:
+- 1.11.2: Create `internal/ports/api/command_handler.go`:
   - Interface: `CommandHandler`
   - Method: `NewNote(ctx context.Context, templateID TemplateID) (Note, error)`
-  - (Additional methods added in later epics)
+  - Add documentation comments:
+    - Note: Additional methods will be added in later epics
+    - Describe use case handler contract
+    - Document NewNote() method as orchestrating template rendering and note creation
+    - Reference architecture components.md
 
-- 1.23.3: Add documentation comments:
-  - Describe hexagonal callback pattern
-  - Document method contracts
-  - Reference architecture components.md
+- 1.11.3: All linting passes: `golangci-lint run --fix internal/ports/api`
 
-- 1.23.4: All linting passes: `golangci-lint run internal/ports/api`
+- 1.11.4: Committed with message: `feat(ports): define CLI port interfaces`
 
-- 1.23.5: Committed with message: `feat(ports): define CLICommandPort and CommandHandler interfaces`
-
-**Prerequisites:** Story 1.5 (Note), Story 1.6 (TemplateID)
+**Prerequisites:** Story 1.2 (Note, NoteID), Story 1.3 (TemplateID)
 
 **Time Estimate:** 1 hour
 
 **Architecture References:**
 - Components: `docs/architecture/components.md#api-port-interfaces` - CLICommandPort (v0.6.4)
 - Components: CommandHandler callback interface
+- Change log: v0.6.4 - CommandOrchestrator and CLICommandPort pattern
 
 ---
 
-## Story 1.24: Implement CobraCLIAdapter - Setup
+## Story 1.12: Implement CobraCLI Adapter
 
 As a developer,
-I want to set up the CobraCLIAdapter with Cobra framework,
-so that the CLI can parse commands and delegate to domain.
+I want to implement complete CobraCLI adapter with root command, version command, and new command,
+so that users can interact with the application via CLI following hexagonal architecture with SRP decomposition.
 
 ### Acceptance Criteria
 
-- 1.24.1: Add dependencies to go.mod:
-  - github.com/spf13/cobra
-  - github.com/spf13/pflag
+**Dependencies and Setup:**
 
-- 1.24.2: Create `internal/adapters/api/cli/cobra_cli.go`:
+- 1.12.1: Add dependencies to `go.mod`:
+  - `github.com/spf13/cobra`
+  - `github.com/spf13/pflag`
+
+- 1.12.2: Create `internal/adapters/api/cli/cobra.go`:
   - Implements CLICommandPort interface
-  - Constructor: `NewCobraCLIAdapter(log zerolog.Logger)`
-  - Internal field: `handler CommandHandler`
+  - Constructor: `NewCobraCLIAdapter(log zerolog.Logger) *CobraCLIAdapter`
+  - Internal field: `handler CommandHandler` (stored in Start())
+  - Internal field: `log zerolog.Logger`
 
-- 1.24.3: Implement Start() method skeleton:
-  - Stores handler parameter
-  - Calls buildRootCommand()
-  - Executes root command with context
-  - Returns error
+**Start Method:**
 
-- 1.24.4: Implement buildRootCommand() private method:
+- 1.12.3: Implement `Start(ctx context.Context, handler CommandHandler) error`:
+  - Stores handler parameter in internal field
+  - Calls buildRootCommand() private method
+  - Executes root command with context: rootCmd.ExecuteContext(ctx)
+  - Returns error from command execution
+
+**Root Command:**
+
+- 1.12.4: Implement private method `buildRootCommand() *cobra.Command`:
   - Use: "lithos"
-  - Short: "Template-driven markdown note generator"
-  - SilenceUsage: true
-  - SilenceErrors: true
+  - Short: "Template-driven markdown note generator for Obsidian vaults"
+  - SilenceUsage: true (don't print usage on command errors)
+  - SilenceErrors: true (handle errors in domain)
+  - Adds version subcommand via AddCommand(buildVersionCommand())
+  - Adds new subcommand via AddCommand(buildNewCommand())
 
-- 1.24.5: Create unit tests in `internal/adapters/api/cli/cobra_cli_test.go`:
-  - Test: Start() stores handler correctly
-  - Test: buildRootCommand() creates command
-  - Use mock CommandHandler from tests/utils/mocks.go
+**Version Command:**
 
-- 1.24.6: Create mock in `tests/utils/mocks.go`:
-  - `MockCommandHandler` struct
-  - Implements CommandHandler interface
-  - Method: SetNewNoteResult()
-
-- 1.24.7: All tests pass: `go test ./internal/adapters/api/cli`
-
-- 1.24.8: All linting passes: `golangci-lint run internal/adapters/api/cli`
-
-- 1.24.9: Committed with message: `feat(adapters): implement CobraCLI adapter setup`
-
-**Prerequisites:** Story 1.12 (Logger), Story 1.23 (CLICommandPort)
-
-**Time Estimate:** 2 hours
-
-**Architecture References:**
-- Components: `docs/architecture/components.md#api-adapters` - CobraCLIAdapter (v0.6.4)
-
----
-
-## Story 1.25: Implement CobraCLIAdapter - Version Command
-
-As a developer,
-I want to implement the version command,
-so that users can check the CLI version.
-
-### Acceptance Criteria
-
-- 1.25.1: Add to `internal/adapters/api/cli/cobra_cli.go`:
-  - Private method: `buildVersionCommand() *cobra.Command`
+- 1.12.5: Implement private method `buildVersionCommand() *cobra.Command`:
   - Command: `lithos version`
   - Short: "Print version information"
-  - RunE: prints "lithos v0.1.0"
+  - RunE: prints "lithos v0.1.0" to stdout
+  - Returns nil error on success
 
-- 1.25.2: Update buildRootCommand():
-  - Add version subcommand via AddCommand()
+**New Command:**
 
-- 1.25.3: Create unit tests in `internal/adapters/api/cli/cobra_cli_test.go`:
-  - Test: version command prints correctly
-
-- 1.25.4: All tests pass: `go test ./internal/adapters/api/cli`
-
-- 1.25.5: All linting passes: `golangci-lint run internal/adapters/api/cli`
-
-- 1.25.6: Committed with message: `feat(adapters): add version command to CLI`
-
-**Prerequisites:** Story 1.24 (CobraCLI setup)
-
-**Time Estimate:** 1 hour
-
-**Architecture References:**
-- Components: `docs/architecture/components.md#api-adapters` - CobraCLIAdapter
-
----
-
-## Story 1.26: Implement CobraCLIAdapter - New Command Structure
-
-As a developer,
-I want to implement the new command structure,
-so that the command can be registered and parse arguments.
-
-### Acceptance Criteria
-
-- 1.26.1: Add to `internal/adapters/api/cli/cobra_cli.go`:
-  - Private method: `buildNewCommand() *cobra.Command`
+- 1.12.6: Implement private method `buildNewCommand() *cobra.Command`:
   - Command: `lithos new [template-id]`
   - Short: "Create a new note from template"
-  - Args: cobra.MaximumNArgs(1)
-  - Flags: `--view, -v` (boolean) - display content after creation
-  - RunE: calls handleNewCommand() (implemented in next story)
+  - Args: `cobra.MaximumNArgs(1)` (template-id is optional for now, will error in handler if missing)
+  - Flags: `--view, -v` (boolean, default false) - display content after creation
+  - RunE: calls handleNewCommand(cmd, args)
 
-- 1.26.2: Update buildRootCommand():
-  - Add new subcommand via AddCommand()
+**New Command Handler:**
 
-- 1.26.3: Create unit tests in `internal/adapters/api/cli/cobra_cli_test.go`:
-  - Test: new command parses template-id argument
-  - Test: new command parses --view flag
+- 1.12.7: Implement private method `handleNewCommand(cmd *cobra.Command, args []string) error`:
+  - Extract template-id from args[0] (return error if missing with message "template-id required")
+  - Create TemplateID from args[0]: `templateID := domain.NewTemplateID(args[0])`
+  - Call handler.NewNote(cmd.Context(), templateID)
+  - On success: call displayNoteCreated(cmd, note)
+  - On failure: return formatError(err)
 
-- 1.26.4: All tests pass: `go test ./internal/adapters/api/cli`
+- 1.12.8: Implement private method `displayNoteCreated(cmd *cobra.Command, note Note)`:
+  - Print to stdout: `✓ Created: {Config.VaultPath}/{note.ID}.md`
+  - Check --view flag via cmd.Flags().GetBool("view")
+  - If --view is true:
+    - Print separator line (80 characters of "=")
+    - Print note content (read from file)
+    - Print separator line
 
-- 1.26.5: All linting passes: `golangci-lint run internal/adapters/api/cli`
+- 1.12.9: Implement private method `formatError(err error) error`:
+  - Check error type using errors.As()
+  - Format user-friendly messages:
+    - ResourceError (template not found) → "Template '{name}' not found in {TemplatesDir}"
+    - TemplateError (parse/render) → "Template error in '{name}': {message}"
+    - Generic error → "Error: {message}"
+  - Return formatted error for Cobra to display
 
-- 1.26.6: Committed with message: `feat(adapters): add new command structure to CLI`
+**Testing:**
 
-**Prerequisites:** Story 1.25 (version command)
+- 1.12.10: Add mock to `tests/utils/mocks.go`:
+  - `MockCommandHandler` struct implementing CommandHandler interface
+  - Internal field: `newNoteResult` (Note, error)
+  - Method: `SetNewNoteResult(note Note, err error)` - configure mock response
+  - Implements: NewNote() returns configured result
 
-**Time Estimate:** 1.5 hours
+- 1.12.11: Create unit tests in `internal/adapters/api/cli/cobra_test.go`:
+  - Test: Start() stores handler correctly
+  - Test: buildRootCommand() creates command with correct structure
+  - Test: version command prints "lithos v0.1.0"
+  - Test: new command parses template-id argument correctly
+  - Test: new command parses --view flag correctly
+  - Test: handleNewCommand() extracts templateID from args
+  - Test: handleNewCommand() returns error when args empty
+  - Test: handleNewCommand() calls handler.NewNote() with correct arguments
+  - Test: displayNoteCreated() formats output correctly without --view flag
+  - Test: displayNoteCreated() displays content with --view flag
+  - Test: formatError() formats ResourceError correctly
+  - Test: formatError() formats TemplateError correctly
+  - Test: formatError() formats generic error correctly
+  - All tests use MockCommandHandler from tests/utils/mocks.go
+
+- 1.12.12: All tests pass: `go test ./internal/adapters/api/cli`
+
+- 1.12.13: All linting passes: `golangci-lint run --fix internal/adapters/api/cli`
+
+- 1.12.14: Committed with message: `feat(adapters): implement CobraCLI adapter with version and new commands`
+
+**Prerequisites:** Story 1.6 (Logger), Story 1.11 (CLICommandPort, CommandHandler interfaces)
+
+**Time Estimate:** 5 hours
 
 **Architecture References:**
-- Components: `docs/architecture/components.md#api-adapters` - CobraCLIAdapter SRP decomposition
+- Components: `docs/architecture/components.md#api-adapters` - CobraCLIAdapter (v0.5.11, updated v0.6.4)
+- Components: SRP decomposition pattern section
 
 ---
 
-## Story 1.27: Implement CommandOrchestrator
+## Story 1.13: Implement CommandOrchestrator
 
 As a developer,
-I want to implement CommandOrchestrator that coordinates the NewNote workflow,
-so that use cases are orchestrated properly.
+I want to implement CommandOrchestrator that orchestrates the NewNote use case workflow,
+so that CLI commands are coordinated through domain services following hexagonal architecture.
 
 ### Acceptance Criteria
 
-- 1.27.1: Create `internal/domain/command_orchestrator.go`:
-  - Constructor: `NewCommandOrchestrator(cliPort CLICommandPort, templateEngine *TemplateEngine, config Config, log zerolog.Logger)`
-  - Implements CommandHandler interface
-  - Dependencies: CLICommandPort, TemplateEngine, Config, Logger
+- 1.13.1: Create `internal/app/command_orchestrator.go`:
+  - Constructor: `NewCommandOrchestrator(cliPort CLICommandPort, templateEngine *TemplateEngine, config Config, log zerolog.Logger) *CommandOrchestrator`
+  - Implements CommandHandler interface (from ports/api/command_handler.go)
+  - Dependencies: CLICommandPort (injected), TemplateEngine (injected), Config (injected), Logger (injected)
 
-- 1.27.2: Implement `Run(ctx context.Context) error`:
-  - Calls cliPort.Start(ctx, self)
-  - Returns error from CLI
+- 1.13.2: Implement `Run(ctx context.Context) error`:
+  - Calls `cliPort.Start(ctx, self)` passing orchestrator as handler (hexagonal callback pattern)
+  - Returns error from CLI execution
 
-- 1.27.3: Implement `NewNote(ctx context.Context, templateID TemplateID) (Note, error)`:
-  - Step 1: Render template via templateEngine.Render()
-  - Step 2: Generate NoteID from templateID (basename strategy)
-  - Step 3: Create empty Frontmatter (no parsing yet)
-  - Step 4: Construct Note(noteID, frontmatter)
-  - Step 5: Write file to {Config.VaultPath}/{noteID}.md using os.WriteFile
+- 1.13.3: Implement `NewNote(ctx context.Context, templateID TemplateID) (Note, error)` workflow:
+  - Step 1: Render template via `templateEngine.Render(ctx, templateID)`
+    - Log operation: "Rendering template {templateID}"
+  - Step 2: Generate NoteID from templateID (temporary strategy for Epic 1):
+    - Use template basename as note filename: `noteID := domain.NewNoteID(templateID.String())`
+  - Step 3: Create empty Frontmatter (no YAML parsing in Epic 1):
+    - `frontmatter := domain.NewFrontmatter(map[string]interface{}{})`
+  - Step 4: Construct Note:
+    - `note := domain.NewNote(noteID, frontmatter)`
+  - Step 5: Write rendered content to file:
+    - Target path: `{Config.VaultPath}/{noteID}.md`
+    - Use `os.WriteFile(path, []byte(renderedContent), 0644)`
+    - Log operation: "Writing note to {path}"
   - Step 6: Return Note
 
-- 1.27.4: Error handling:
-  - Template error → return TemplateError
-  - File write error → wrap with WrapWithContext()
+- 1.13.4: Error handling:
+  - Template not found → return ResourceError from TemplateEngine (propagates from TemplatePort)
+  - Render error → return TemplateError from TemplateEngine
+  - File write error → wrap with WrapWithContext("failed to write note to {path}", err)
 
-- 1.27.5: Create unit tests in `internal/domain/command_orchestrator_test.go`:
-  - Test: Run() calls CLICommandPort.Start()
-  - Test: NewNote() orchestrates correctly
-  - Test: NewNote() generates NoteID from templateID
-  - Test: NewNote() writes file to vault
-  - Use mocks from tests/utils/mocks.go
+- 1.13.5: Create unit tests in `internal/app/command_orchestrator_test.go`:
+  - Test: Run() calls CLICommandPort.Start() with self as handler
+  - Test: Run() propagates errors from CLI
+  - Test: NewNote() orchestrates template rendering correctly
+  - Test: NewNote() generates NoteID from templateID (basename strategy)
+  - Test: NewNote() creates empty Frontmatter
+  - Test: NewNote() constructs Note with NoteID and Frontmatter
+  - Test: NewNote() writes file to vault at correct path
+  - Test: NewNote() returns ResourceError when template not found
+  - Test: NewNote() returns TemplateError on render failure
+  - Test: NewNote() wraps file write errors with context
+  - All tests use mocks from tests/utils/mocks.go (MockCLICommandPort, MockTemplatePort)
 
-- 1.27.6: All tests pass: `go test ./internal/domain`
+- 1.13.6: Add mock to `tests/utils/mocks.go`:
+  - `MockCLICommandPort` struct implementing CLICommandPort interface
+  - Internal field: `startCalled bool`, `startHandler CommandHandler`
+  - Method: `Start(ctx, handler)` stores handler and sets startCalled flag
+  - Method: `WasStartCalled() bool` returns startCalled
+  - Method: `GetHandler() CommandHandler` returns stored handler
 
-- 1.27.7: All linting passes: `golangci-lint run internal/domain`
+- 1.13.7: All tests pass: `go test ./internal/app`
 
-- 1.27.8: Committed with message: `feat(domain): implement CommandOrchestrator`
+- 1.13.8: All linting passes: `golangci-lint run --fix internal/app`
 
-**Prerequisites:** Story 1.5 (Note), Story 1.8 (Config), Story 1.12 (Logger), Story 1.22 (TemplateEngine Render), Story 1.23 (CLICommandPort)
+- 1.13.9: Committed with message: `feat(app): implement CommandOrchestrator with NewNote use case`
 
-**Time Estimate:** 3 hours
+**Prerequisites:** Story 1.2 (Note, NoteID), Story 1.4 (Config), Story 1.5 (errors), Story 1.6 (Logger), Story 1.10 (TemplateEngine), Story 1.11 (CLICommandPort, CommandHandler)
+
+**Time Estimate:** 4 hours
 
 **Architecture References:**
 - Components: `docs/architecture/components.md#domain-services` - CommandOrchestrator (v0.6.4)
 - Components: NewNote workflow section
+- Change log: v0.6.4 - CommandOrchestrator as proper use case orchestrator
 
 ---
 
-## Story 1.28: Implement CobraCLIAdapter - New Command Handler
+## Story 1.14: Wire Dependency Injection and Create End-to-End Test
 
 As a developer,
-I want to implement the new command handler logic,
-so that the command delegates to CommandOrchestrator and displays results.
+I want to wire all components in main.go using constructor-based dependency injection and create end-to-end test,
+so that the complete application works from CLI invocation to file creation with proper initialization order.
 
 ### Acceptance Criteria
 
-- 1.28.1: Add to `internal/adapters/api/cli/cobra_cli.go`:
-  - Private method: `handleNewCommand(cmd *cobra.Command, args []string) error`
-  - Extract template-id from args[0] (error if missing)
-  - Create TemplateID from args[0]
-  - Call handler.NewNote(cmd.Context(), templateID)
-  - Display result via displayNoteCreated()
-  - Return formatted error via formatError()
+**Dependency Injection in main.go:**
 
-- 1.28.2: Implement `displayNoteCreated(cmd *cobra.Command, note Note)`:
-  - Print: `✓ Created: {VaultPath}/{note.ID}.md`
-  - If --view flag: print separator + content + separator
+- 1.14.1: Implement main() function in `cmd/lithos/main.go`:
+  - Create context: `ctx := context.Background()`
+  - Follow initialization order per architecture v0.6.5 (documented below)
 
-- 1.28.3: Implement `formatError(err error) error`:
-  - Check error type with errors.As()
-  - Format user-friendly messages for each type
-  - Return formatted error
+- 1.14.2: Infrastructure layer initialization (Layer 1):
+  - Create logger: `log := logger.New(os.Stdout, "info")` (default level)
+  - Create config adapter: `configAdapter := config.NewViperAdapter(log)`
+  - Load config: `cfg, err := configAdapter.Load(ctx)` - **fatal error if fails**
+  - Update logger level from config: `log = logger.New(os.Stdout, cfg.LogLevel)`
 
-- 1.28.4: Update buildNewCommand() RunE to call handleNewCommand()
+- 1.14.3: SPI adapter initialization (Layer 2):
+  - Create TemplateLoaderAdapter: `templateLoader := template.NewTemplateLoaderAdapter(cfg, log)`
 
-- 1.28.5: Create unit tests in `internal/adapters/api/cli/cobra_cli_test.go`:
-  - Test: handleNewCommand() extracts templateID
-  - Test: handleNewCommand() calls handler.NewNote()
-  - Test: displayNoteCreated() formats output
-  - Test: formatError() formats error types
+- 1.14.4: Domain service initialization (Layer 3):
+  - Create TemplateEngine: `templateEngine := app.NewTemplateEngine(templateLoader, cfg, log)`
 
-- 1.28.6: All tests pass: `go test ./internal/adapters/api/cli`
+- 1.14.5: API adapter initialization (Layer 4):
+  - Create CobraCLIAdapter: `cliAdapter := cli.NewCobraCLIAdapter(log)`
 
-- 1.28.7: All linting passes: `golangci-lint run internal/adapters/api/cli`
+- 1.14.6: CommandOrchestrator initialization (Layer 5):
+  - Create CommandOrchestrator: `orchestrator := app.NewCommandOrchestrator(cliAdapter, templateEngine, cfg, log)`
 
-- 1.28.8: Committed with message: `feat(adapters): implement new command handler`
+- 1.14.7: Start application:
+  - Call `err := orchestrator.Run(ctx)`
+  - If error, log fatal and exit with code 1: `log.Fatal().Err(err).Msg("application failed")`
 
-**Prerequisites:** Story 1.26 (new command structure), Story 1.27 (CommandOrchestrator)
+- 1.14.8: Error handling:
+  - Config load failure → `log.Fatal().Err(err).Msg("failed to load configuration")`
+  - Application failure → `log.Fatal().Err(err).Msg("application failed")`
 
-**Time Estimate:** 2.5 hours
+**End-to-End Test:**
 
-**Architecture References:**
-- Components: `docs/architecture/components.md#api-adapters` - CobraCLIAdapter handlers
+- 1.14.9: Create `tests/e2e/lithos_new_test.go`:
+  - Test scenario: Full application flow from CLI to file creation
+  - Setup:
+    - Create temporary vault directory using `os.MkdirTemp`
+    - Create templates/ subdirectory
+    - Copy template from testdata/templates/static-template.md to temp vault
+    - Set environment variable LITHOS_VAULT_PATH to temp directory
+  - Execute:
+    - Build lithos binary: `go build -o {tempDir}/lithos cmd/lithos/main.go`
+    - Run command: `{tempDir}/lithos new static-template`
+  - Verify:
+    - Check file exists: `{tempDir}/static-template.md`
+    - Read file content
+    - Compare to expected output (verify template functions executed)
+  - Cleanup:
+    - Remove temporary directory
 
----
+- 1.14.10: Additional test scenarios in same file:
+  - Test: `lithos new basic-note` creates note with basic functions (now, toLower, toUpper)
+  - Test: Error when template not found (returns exit code 1)
+  - Test: `lithos version` prints version string
 
-## Story 1.29: Wire Dependency Injection in main.go
+**Manual Testing:**
 
-As a developer,
-I want to wire all components in main.go using constructor injection,
-so that the application starts with proper initialization order.
+- 1.14.11: Manual test checklist (documented in story, not automated):
+  - Build: `go build -o bin/lithos cmd/lithos/main.go`
+  - Run: `./bin/lithos version` → prints "lithos v0.1.0"
+  - Run: `./bin/lithos new static-template` (with testdata as vault) → creates note
+  - Verify: File exists at expected location with rendered content
+  - Run: `./bin/lithos new static-template --view` → displays content after creation
+  - Run: `./bin/lithos new nonexistent` → shows error "Template 'nonexistent' not found"
+  - Verify: Template functions work (now() shows current date, path functions work)
+  - Verify: Config loads from lithos.json if present
+  - Verify: Environment variables override config (test with LITHOS_LOG_LEVEL=debug)
+  - Verify: Error messages are user-friendly (not stack traces)
 
-### Acceptance Criteria
+- 1.14.12: All tests pass: `go test ./...` (all packages)
 
-- 1.29.1: Implement main() in `cmd/lithos/main.go`:
-  - Create context
-  - Initialize infrastructure layer (logger, config)
-  - Initialize SPI adapters (TemplateLoader)
-  - Initialize domain services (TemplateEngine)
-  - Initialize API adapters (CobraCLI)
-  - Initialize CommandOrchestrator
-  - Call orchestrator.Run()
-  - Handle errors with log.Fatal()
+- 1.14.13: All linting passes: `golangci-lint run` (all code)
 
-- 1.29.2: Follow initialization order from architecture v0.6.5:
-  - Layer 1: Logger, Config
-  - Layer 2: SPI Adapters
-  - Layer 3: Domain Services
-  - Layer 4: API Adapters
-  - Layer 5: CommandOrchestrator
+- 1.14.14: Committed with message: `feat: wire dependency injection in main.go and add e2e test`
 
-- 1.29.3: Error handling:
-  - Config load failure → log.Fatal() with message
-  - Application failure → log.Fatal() with message
+**Prerequisites:** Story 1.13 (CommandOrchestrator)
 
-- 1.29.4: Manual testing:
-  - Run `go build -o bin/lithos cmd/lithos/main.go`
-  - Run `./bin/lithos version` → prints version
-  - Run `./bin/lithos new static-template` → creates note
-  - Verify file exists with rendered content
-
-- 1.29.5: All linting passes: `golangci-lint run cmd/lithos`
-
-- 1.29.6: Committed with message: `feat: wire dependency injection in main.go`
-
-**Prerequisites:** Story 1.27 (CommandOrchestrator), Story 1.28 (CLI handler)
-
-**Time Estimate:** 2 hours
+**Time Estimate:** 4 hours
 
 **Architecture References:**
 - Components: `docs/architecture/components.md#dependency-injection-pattern` (v0.6.5)
-- Components: Initialization order
+- Components: Initialization order section
+- Components: Example main.go structure
+- Testing: `docs/architecture/testing-strategy.md`
 
 ---
 
-## Story 1.30: Create End-to-End Test
+## Story 1.15: Update Documentation for Epic 1 Release
 
 As a developer,
-I want to create an end-to-end test for the complete workflow,
-so that Epic 1 functionality is verified.
+I want to update project documentation with installation instructions, quick start guide, and feature list,
+so that users can install and use lithos effectively.
 
 ### Acceptance Criteria
 
-- 1.30.1: Create `tests/e2e/lithos_new_test.go`:
-  - Test: Full application flow from CLI to file creation
-  - Setup: Create temporary vault directory
-  - Copy testdata template to temp vault
-  - Execute: Run lithos new command
-  - Verify: File created with correct content
-  - Cleanup: Remove temporary directory
+**README Update:**
 
-- 1.30.2: Test scenarios:
-  - Test: `lithos new static-template` creates note
-  - Test: `lithos new basic-note` uses basic functions
-  - Test: Error when template not found
+- 1.15.1: Update `README.md` with comprehensive content:
+  - **Installation section:**
+    - Go install: `go install github.com/JackMatanky/lithos@latest`
+    - Requirements: Go 1.23+ required for generics
+  - **Quick Start section:**
+    - Step 1: Create vault directory or use existing Obsidian vault
+    - Step 2: Create `lithos.json` in vault root (optional, uses defaults if missing)
+    - Step 3: Create `templates/` directory in vault
+    - Step 4: Create template file (example provided: contact.md with frontmatter and functions)
+    - Step 5: Run `lithos new contact` to generate note
+    - Step 6: Check generated file in vault
+  - **Configuration Reference section:**
+    - Document all Config fields with descriptions and defaults:
+      - VaultPath (default: ".") - Root directory of vault
+      - TemplatesDir (default: "templates/") - Template files location
+      - SchemasDir (default: "schemas/") - Schema files location (Epic 2)
+      - PropertyBankFile (default: "property_bank.json") - Property bank filename (Epic 2)
+      - CacheDir (default: ".lithos/cache/") - Index cache location (Epic 3)
+      - LogLevel (default: "info") - Logging verbosity (debug, info, warn, error)
+    - Document environment variable overrides (LITHOS_*)
+    - Document config file search behavior (upward from CWD)
+  - **Template Function Reference section:**
+    - Basic functions:
+      - `now(format)` - Current timestamp with Go time layout
+      - `toLower(s)` - Lowercase conversion
+      - `toUpper(s)` - Uppercase conversion
+    - File path control functions:
+      - `path()` - Target file path (empty in Epic 1, used in Epic 3)
+      - `folder(p)` - Parent directory of path
+      - `basename(p)` - Filename without extension
+      - `extension(p)` - File extension including dot
+      - `join(parts...)` - Join path segments with OS separator
+      - `vaultPath()` - Vault root directory path
+    - Include examples for each function
+  - **CLI Commands section:**
+    - `lithos version` - Print version information
+    - `lithos new <template-id>` - Create note from template
+    - `lithos new <template-id> --view` - Create note and display content
+  - **Architecture section:**
+    - Brief description of hexagonal architecture
+    - Link to detailed architecture docs: `docs/architecture/`
+  - **Contributing section:**
+    - Link to development setup instructions
+    - Note about pre-commit hooks
+    - Link to architecture documentation for contributors
 
-- 1.30.3: All tests pass: `go test ./tests/e2e`
+**CHANGELOG Creation:**
 
-- 1.30.4: All linting passes: `golangci-lint run tests/e2e`
+- 1.15.2: Create `CHANGELOG.md` with Epic 1 release:
+  - Version 0.1.0 - Epic 1 Complete (date: TBD)
+  - **Features Added:**
+    - CLI with `version` and `new` commands
+    - Static template rendering using Go text/template
+    - Basic template functions: now, toLower, toUpper
+    - File path control functions: path, folder, basename, extension, join, vaultPath
+    - Configuration loading from file, environment variables, and defaults
+    - Hexagonal architecture with clean domain layer (no infrastructure dependencies)
+    - Comprehensive error handling with user-friendly messages
+    - Structured logging with zerolog
+    - Template loading from filesystem
+    - Note creation workflow (template → rendered content → file)
+  - **Architecture:**
+    - Clean hexagonal architecture following v0.6.8 specifications
+    - Domain models: NoteID, Frontmatter, Note, TemplateID, Template, Config
+    - Domain services: TemplateEngine, CommandOrchestrator
+    - Ports: ConfigPort, TemplatePort, CLICommandPort, CommandHandler
+    - Adapters: ViperAdapter, TemplateLoaderAdapter, CobraCLIAdapter
+    - Shared packages: Logger (zerolog), Error handling (idiomatic Go), Registry (generic CQRS)
+  - **Testing:**
+    - Unit tests for all components
+    - Integration tests for template loading and rendering
+    - End-to-end test for complete CLI workflow
+    - Test coverage: [to be measured]
+  - **Documentation:**
+    - Complete architecture documentation in `docs/architecture/`
+    - README with installation and quick start
+    - Template function reference
+    - Configuration reference
+  - **Link to Epic 1 documentation:** `docs/prd/epic-1-foundational-cli-static-template-engine.md`
 
-- 1.30.5: Committed with message: `test: add end-to-end test for lithos new command`
+**Final Verification:**
 
-**Prerequisites:** Story 1.29 (main.go wiring)
-
-**Time Estimate:** 2.5 hours
-
-**Architecture References:**
-- Testing strategy: `docs/architecture/testing-strategy.md`
-
----
-
-## Story 1.31: Update Documentation
-
-As a developer,
-I want to update project documentation for Epic 1 completion,
-so that users can install and use lithos.
-
-### Acceptance Criteria
-
-- 1.31.1: Update `README.md`:
-  - Add installation instructions
-  - Add quick start guide (create vault, add template, run lithos new)
-  - Add configuration reference (all Config fields)
-  - Add template function reference (now, path functions)
-  - Link to architecture docs
-
-- 1.31.2: Create `CHANGELOG.md`:
-  - Version 0.1.0 - Epic 1 Complete
-  - List features: CLI, template rendering, basic functions
-  - Link to architecture docs
-
-- 1.31.3: Verify all tests pass:
+- 1.15.3: Verify all tests pass:
   - Run `go test ./...` → all pass
-  - Run `golangci-lint run` → no warnings
-  - Run `pre-commit run --all-files` → all pass
+  - Verify test coverage is reasonable (aim for >70% for domain/app layers)
 
-- 1.31.4: Manual testing checklist:
-  - [ ] lithos version works
-  - [ ] lithos new creates notes
-  - [ ] --view flag displays content
-  - [ ] Template functions work
-  - [ ] Config loads from file
-  - [ ] Errors are user-friendly
+- 1.15.4: Verify all linting passes:
+  - Run `golangci-lint run` → no warnings or errors
+  - Verify code follows architecture v0.6.8 specifications
 
-- 1.31.5: Committed with message: `docs: update README and CHANGELOG for Epic 1`
+- 1.15.5: Verify pre-commit hooks:
+  - Run `pre-commit run --all-files` → all hooks pass
+  - Verify no secrets detected by gitleaks
+  - Verify Go formatting (gofmt, goimports) applied
+  - Verify Go static analysis (go vet) passes
+  - Verify golangci-lint passes
 
-**Prerequisites:** Story 1.30 (e2e test)
+- 1.15.6: Committed with message: `docs: update README and create CHANGELOG for Epic 1 release`
 
-**Time Estimate:** 2 hours
+**Prerequisites:** Story 1.14 (main.go wiring and e2e test)
+
+**Time Estimate:** 3 hours
 
 **Architecture References:**
-- All architecture documents
+- All architecture documents in `docs/architecture/`
 
 ---
 
 ## Epic 1 Completion Summary
 
-### Total Stories: 31
-### Estimated Time: 54-62 hours (2.7-3.1 weeks for AI agent)
+### Total Stories: 15
+### Estimated Time: 53 hours (~2.5 weeks for AI agent with 2-4 hour story sizes)
+
+### Story Breakdown by Time
+
+| Story | Title | Time | Cumulative |
+|-------|-------|------|------------|
+| 1.1 | Verify Tooling and Structure | 2h | 2h |
+| 1.2 | Note Models (NoteID, Frontmatter, Note) | 3h | 5h |
+| 1.3 | Template Models (TemplateID, Template) | 2h | 7h |
+| 1.4 | Config Model | 2h | 9h |
+| 1.5 | Shared Error Package | 4h | 13h |
+| 1.6 | Logger Package | 2.5h | 15.5h |
+| 1.7 | Registry Package | 3h | 18.5h |
+| 1.8 | Config Loading (Port + Adapter) | 4h | 22.5h |
+| 1.9 | Template Loading (Model + Port + Adapter) | 4.5h | 27h |
+| 1.10 | TemplateEngine Service | 5h | 32h |
+| 1.11 | CLI Port Interfaces | 1h | 33h |
+| 1.12 | CobraCLI Adapter | 5h | 38h |
+| 1.13 | CommandOrchestrator | 4h | 42h |
+| 1.14 | DI + E2E Test | 4h | 46h |
+| 1.15 | Documentation | 3h | 49h |
+
+**Adjusted Total: 49 hours** (not 53h, recalculated from breakdown)
 
 ### Deliverables
 
 ✅ **Infrastructure:**
-- Development tooling verified (linting, formatting, security)
-- Project structure verified (hexagonal architecture)
-- testdata structure used correctly
+- Development tooling verified (Story 1.1)
+- Project structure verified with hexagonal architecture (Story 1.1)
+- testdata structure used correctly (Stories 1.9, 1.10, 1.14)
+- Mocks in tests/utils/mocks.go (Stories 1.10, 1.12, 1.13)
 
 ✅ **Domain Models (v0.6.8):**
-- NoteID (1.3)
-- Frontmatter (1.4)
-- Note with NoteID composition (1.5)
-- TemplateID (1.6)
-- Template (1.7)
-- Config (1.8)
+- NoteID, Frontmatter, Note in internal/domain/note.go (Story 1.2)
+- TemplateID, Template in internal/domain/template.go (Story 1.3)
+- Config in internal/domain/config.go (Story 1.4)
 
 ✅ **Shared Packages:**
-- Error types - idiomatic Go, no Result[T] (1.9-1.11)
-- Logger with zerolog (1.12)
-- Registry with CQRS (1.13)
+- Error types - idiomatic Go, no Result[T] (Story 1.5)
+- Logger with zerolog (Story 1.6)
+- Registry with CQRS (Story 1.7)
 
 ✅ **Ports & Adapters:**
-- ConfigPort + ViperAdapter (1.14-1.15)
-- TemplatePort + TemplateLoaderAdapter (1.17-1.18)
-- CLICommandPort + CobraCLIAdapter (1.23-1.26, 1.28)
-- FileMetadata SPI model (1.16)
+- ConfigPort + ViperAdapter (Story 1.8)
+- TemplatePort + TemplateLoaderAdapter (Story 1.9)
+- CLICommandPort + CommandHandler + CobraCLIAdapter (Stories 1.11-1.12)
+- FileMetadata SPI model (Story 1.9)
 
 ✅ **Domain Services:**
-- TemplateEngine with functions (1.19-1.22)
-- CommandOrchestrator (1.27)
+- TemplateEngine with all functions in internal/app/ (Story 1.10)
+- CommandOrchestrator in internal/app/ (Story 1.13)
 
 ✅ **Template Functions:**
-- Basic: now, toLower, toUpper (1.20)
-- Path control: path, folder, basename, extension, join, vaultPath (1.21)
+- Basic: now, toLower, toUpper (Story 1.10)
+- Path control: path, folder, basename, extension, join, vaultPath (Story 1.10)
 
 ✅ **Testing:**
-- Unit tests for all components
-- Integration tests in tests/integration/
-- End-to-end tests in tests/e2e/
-- Mocks in tests/utils/mocks.go
+- Unit tests for all components (all stories)
+- Integration tests in tests/integration/ (Stories 1.9, 1.10)
+- End-to-end tests in tests/e2e/ (Story 1.14)
+- Mocks in tests/utils/mocks.go (Stories 1.10, 1.12, 1.13)
+
+✅ **CLI Commands:**
+- `lithos version` (Story 1.12)
+- `lithos new <template-id>` with --view flag (Story 1.12)
 
 ✅ **Documentation:**
-- README with quick start (1.31)
-- CHANGELOG for v0.1.0 (1.31)
+- README with installation and quick start (Story 1.15)
+- CHANGELOG for v0.1.0 (Story 1.15)
+- Configuration reference (Story 1.15)
+- Template function reference (Story 1.15)
 
 ### Architecture Coverage (Epic 1)
 
 **23 of 76 components implemented (30%)**
 
-Components deferred to later epics:
-- Epic 2: Schema loading, validation, resolution
-- Epic 3: Vault indexing, frontmatter extraction/validation, CQRS cache
-- Epic 4: Interactive prompts, fuzzy finder
-- Epic 5: Query service, additional use cases
+**Implemented Components:**
+
+| Category | Components | Stories |
+|----------|------------|---------|
+| Domain Models | NoteID, Frontmatter, Note, TemplateID, Template, Config | 1.2, 1.3, 1.4 |
+| SPI Models | FileMetadata | 1.9 |
+| Domain Services | TemplateEngine, CommandOrchestrator | 1.10, 1.13 |
+| SPI Ports | ConfigPort, TemplatePort | 1.8, 1.9 |
+| SPI Adapters | ViperAdapter, TemplateLoaderAdapter | 1.8, 1.9 |
+| API Ports | CLICommandPort, CommandHandler | 1.11 |
+| API Adapters | CobraCLIAdapter | 1.12 |
+| Shared Packages | Logger, Errors, Registry | 1.5, 1.6, 1.7 |
+| Template Functions | 12 functions (basic + path control) | 1.10 |
+| DI & Main | main.go initialization | 1.14 |
+
+**Components Deferred to Later Epics:**
+
+- **Epic 2:** Schema models (Schema, Property, PropertySpec variants, PropertyBank), SchemaEngine, SchemaValidator, SchemaResolver, SchemaPort, SchemaLoaderAdapter, SchemaRegistryAdapter
+- **Epic 3:** VaultIndexer, QueryService, FrontmatterService, CQRS cache ports (CacheReader/Writer), CQRS vault ports (VaultReader/Writer), cache adapters, vault adapters, VaultFile DTO
+- **Epic 4:** PromptPort, FinderPort, PromptUIAdapter, FuzzyfindAdapter, interactive template functions (prompt, suggester)
+- **Epic 5:** Additional CommandOrchestrator use cases, query template functions (lookup, query, fileClass), full CLI integration
+
+### Success Criteria
+
+✅ All 15 stories completed
+✅ All tests passing (`go test ./...`)
+✅ All linting passing (`golangci-lint run`)
+✅ `lithos new` command creates notes successfully
+✅ No architectural violations (verified against v0.6.8)
+✅ Clean hexagonal architecture with proper dependency injection
+✅ Ready for Epic 2 (schema loading and validation)
+
+---
+
+## Next Epic
+
+**Epic 2: Configuration & Schema Loading** - Implement schema loading from JSON, schema inheritance and resolution, property bank, and schema validation at startup. This will enable Epic 3 to validate frontmatter against schemas during vault indexing.
