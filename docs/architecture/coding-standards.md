@@ -20,7 +20,7 @@ These standards are **MANDATORY** for Lithos contributors and AI agents. They ar
 ## Core Standards
 
 - Go **1.25+ MUST** be used (CI enforces via toolchain).
-- The application core **MUST** use the Result pattern supplied by `internal/shared/errors` (Rust-like `Result[T]`). Plain `(T, error)` signatures **MUST NOT** cross port boundaries.
+- The application core and ports **MUST** use idiomatic Go `(T, error)` signatures. Domain-specific error types **MUST** implement the standard `error` interface and support error unwrapping via `Unwrap() error`.
 - Shared logging (`internal/shared/logger`) **MUST** be the only logging facility; no `fmt.Print*` or `log.*`.
 - Functions performing I/O or long-running work **MUST** accept `context.Context` as the first parameter and abort on cancellation.
 - `VaultIndexer` and cache adapters **MUST** continue to use atomic temp-file → rename patterns.
@@ -32,7 +32,7 @@ These standards are **MANDATORY** for Lithos contributors and AI agents. They ar
 | Ports           | PascalCase + `Port`       | `TemplateRepositoryPort` |
 | Adapters        | PascalCase + `Adapter`    | `TemplateFSAdapter`      |
 | Domain Services | PascalCase descriptive    | `TemplateEngine`  |
-| Result Helpers  | `errors.Ok`, `errors.Err` | `errors.Err[Note](err)`  |
+| Error Types     | PascalCase + `Error`      | `FrontmatterError`, `SchemaError` |
 | Test Doubles    | `Fake`/`Stub` prefix      | `FakeSchemaLoader`       |
 
 Names **MUST NOT** repeat package context (e.g., avoid `template.TemplateEngine`). Keep receiver names 1‑2 letters.
@@ -48,9 +48,10 @@ Names **MUST NOT** repeat package context (e.g., avoid `template.TemplateEngine`
 
 ## Error Handling
 
-- The application core and ports **MUST** expose `Result[T]` signatures.
-- Adapters interfacing with third-party libraries **MAY** use `(T, error)` internally but **MUST** convert to `Result[T]` before returning.
-- Errors **MUST** be wrapped with contextual messages (template ID, file path, schema name).
+- The application core and ports **MUST** use idiomatic Go `(T, error)` return signatures throughout.
+- Domain-specific error types **MUST** implement the standard `error` interface and support unwrapping via `Unwrap() error` method.
+- Errors **MUST** be wrapped with contextual messages using `fmt.Errorf("context: %w", err)` to preserve error chains for `errors.Is()` and `errors.As()` checks.
+- Adapters **MUST** convert infrastructure errors to domain-specific error types (e.g., `os.ErrNotExist` → `FileSystemError`).
 - Use `errors.Is`/`errors.As` for comparisons; never rely on `==` for non-sentinel errors.
 
 ## Testing
