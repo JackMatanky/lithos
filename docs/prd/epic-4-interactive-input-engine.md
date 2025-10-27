@@ -1,73 +1,85 @@
 # Epic 4: Interactive Input Engine
 
-**Epic Goal:** Deliver the interactive ports, adapters, and TemplateEngine integrations described in architecture v0.6.8 so Lithos can collect user input and perform template discovery from the CLI.
-
-**Dependencies:** Epic 3 (Vault Indexing Engine)
-
-**Architecture References:**
-- `docs/architecture/components.md` v0.6.8 — TemplateEngine, PromptPort, FinderPort, CommandOrchestrator
-- `docs/architecture/error-handling-strategy.md` v0.5.9 — InteractiveError
-- `docs/architecture/coding-standards.md` v0.6.7 — logging, testing
+This epic delivers the interactive ports, adapters, TemplateEngine helpers, and CLI wiring defined in architecture v0.6.8. Completing it lets Lithos gather user input for templates and discover templates interactively through consistent PromptPort and FinderPort abstractions. Stories proceed from SPI contracts to adapter implementations and finally to TemplateEngine and CommandOrchestrator integration.
 
 ---
 
-## Story 4.1: Define PromptPort Interface & Config Types
+## Story 4.1 PromptPort Contract
 
-As a developer, I want the PromptPort interface and configuration structs to match the architecture so TemplateEngine can delegate all interactive prompts.
+As a developer,
+I want the PromptPort interface and configuration structs defined per the architecture,
+so that interactive prompts can be implemented behind a stable SPI.
+
+**Prerequisites:** Epic 3 complete (QueryService available).
 
 ### Acceptance Criteria
-1. Create `internal/ports/spi/prompt.go` defining `PromptPort` with methods `Prompt(ctx context.Context, cfg PromptConfig) (string, error)` and `Suggester(ctx context.Context, cfg SuggesterConfig) (string, error)` exactly as in `components.md#promptport`.
-2. Define `PromptConfig` and `SuggesterConfig` structs with the documented fields (Name, Label, Default, Options, Validator, etc.).
-3. Document expected error handling (return `InteractiveError` when validation fails) referencing the error strategy doc.
-4. Run `golangci-lint run ./internal/ports/spi`.
+1. `internal/ports/spi/prompt.go` declares `PromptPort` exactly as in `docs/architecture/components.md#promptport`, including GoDoc references to FR10 in `docs/prd/requirements.md`.
+2. `PromptConfig` and `SuggesterConfig` structs expose the documented fields (Name, Label, Default, Options, Validator, NonInteractiveFallback) with inline comments referencing the architecture section.
+3. Port documentation states error handling expectations (`InteractiveError`) per `docs/architecture/error-handling-strategy.md`.
+4. `golangci-lint run ./internal/ports/spi` succeeds.
 
 ---
 
-## Story 4.2: Implement PromptUI Adapter
+## Story 4.2 PromptUI Adapter
 
-As a developer, I need a PromptUI-based adapter that satisfies PromptPort while respecting TTY detection and validation rules.
+As a developer,
+I want a PromptUI-based adapter that satisfies PromptPort,
+so that templates can collect user input through the CLI.
+
+**Prerequisites:** Story 4.1.
 
 ### Acceptance Criteria
-1. Implement `internal/adapters/spi/interactive/promptui.go` with constructor `NewPromptUIAdapter(log zerolog.Logger)`.
-2. `Prompt` must render a promptui input, return user input, support default values, and enforce `PromptConfig.Validator` returning `InteractiveError` on failure.
-3. `Suggester` must render a promptui select menu using the provided options, respecting search/filter behaviour described in the architecture notes.
-4. Detect non-TTY environments and return `InteractiveError` indicating the operation is not interactive.
-5. Unit tests cover successful prompt/suggester interactions (using promptui's runner in test mode), validation failure, and non-TTY fallback.
-6. Run `golangci-lint run ./internal/adapters/spi/interactive` and `go test ./internal/adapters/spi/interactive`.
+1. `internal/adapters/spi/interactive/promptui.go` implements `PromptPort` using `github.com/manifoldco/promptui` exactly as in `docs/architecture/components.md#promptuiadapter`, including default handling and validator hooks.
+2. Adapter detects non-TTY environments via `golang.org/x/term` and returns `InteractiveError` with remediation guidance per error-handling strategy.
+3. Logging follows coding standards (debug for retries, info for prompt start/end) and satisfies FR10 UX guidance.
+4. Unit tests cover successful prompt/suggester interactions, validation failures, cancellation, and non-interactive fallback.
+5. `golangci-lint run ./internal/adapters/spi/interactive` and `go test ./internal/adapters/spi/interactive` succeed.
 
 ---
 
-## Story 4.3: Define FinderPort & Fuzzyfind Adapter
+## Story 4.3 FinderPort & Fuzzy Adapter
 
-As a developer, I need a FinderPort contract and adapter so the CLI can present the fuzzy template selection flow documented in the architecture.
+As a developer,
+I want FinderPort and its fuzzy finder adapter,
+so that the CLI can provide interactive template selection as described in the architecture.
+
+**Prerequisites:** Stories 4.1–4.2.
 
 ### Acceptance Criteria
-1. Declare `FinderPort` in `internal/ports/spi/finder.go` with method `Find(ctx context.Context, templates []Template) (Template, error)` per `components.md#finderport`.
-2. Implement `internal/adapters/spi/interactive/fuzzyfind.go` using `github.com/ktr0731/go-fuzzyfinder` to satisfy the port, including preview text from template metadata.
-3. Return `InteractiveError` when the environment is not interactive or when the user cancels the selection.
-4. Unit tests simulate selection, cancellation, and non-interactive mode.
-5. Run `golangci-lint run ./internal/adapters/spi/interactive` and `go test ./internal/adapters/spi/interactive`.
+1. `internal/ports/spi/finder.go` declares `FinderPort` exactly as in `docs/architecture/components.md#finderport` with GoDoc referencing FR10.
+2. `internal/adapters/spi/interactive/fuzzyfind.go` implements the port using `github.com/ktr0731/go-fuzzyfinder`, including preview text support and non-TTY handling described in the architecture.
+3. Adapter wraps cancellation and non-interactive scenarios in `InteractiveError` with consistent messaging.
+4. Unit tests simulate selection success, cancellation, non-interactive mode, and ensure logging meets coding standards.
+5. `golangci-lint run ./internal/adapters/spi/interactive` and `go test ./internal/adapters/spi/interactive` succeed.
 
 ---
 
-## Story 4.4: Extend TemplateEngine with Interactive Functions
+## Story 4.4 TemplateEngine Interactive Helpers
 
-As a developer, I want TemplateEngine to expose the interactive function map exactly as described in the architecture so templates can invoke `prompt`, `suggester`, and file path helpers.
+As a developer,
+I want TemplateEngine to expose the interactive helper functions,
+so that templates can call `prompt`, `suggester`, and the documented path utilities.
+
+**Prerequisites:** Stories 4.1–4.3.
 
 ### Acceptance Criteria
-1. Update `internal/app/template/service.go` to register function map entries for `prompt`, `suggester`, `now`, `path`, `folder`, `basename`, `extension`, `join`, and `vaultPath` (see `components.md#templateengine`).
-2. Ensure `prompt` and `suggester` delegate to PromptPort, `vaultPath` reads from Config, and file path helpers operate on the current execution path context.
-3. Provide unit tests demonstrating each function (use fake PromptPort/FinderPort to return deterministic values).
-4. Run `golangci-lint run ./internal/app/template` and `go test ./internal/app/template`.
+1. `internal/app/template/service.go` registers helper functions (prompt, suggester, now, path, folder, basename, extension, join, vaultPath, query helpers) exactly as documented in `docs/architecture/components.md#templateengine`.
+2. Helpers delegate to PromptPort, FinderPort, QueryService, and Config consistently with FR3 requirements, without leaking infrastructure concerns.
+3. Implementation exposes only the Go standard library packages approved in the architecture (strings, path, time) and documents any additions.
+4. Unit tests with fake ports verify helper behaviour, path context handling, error propagation, and ensure interactive helpers respect non-interactive mode.
+5. `golangci-lint run ./internal/app/template` and `go test ./internal/app/template` succeed.
 
 ---
 
-## Story 4.5: Wire FinderPort through CommandOrchestrator & CLI
+## Story 4.5 CLI Find Command
 
-As a developer, I want the CLI `find` command to call CommandOrchestrator.FindTemplates via FinderPort so users can choose templates interactively.
+As a developer,
+I want CommandOrchestrator and the CLI adapter to offer the interactive `find` flow,
+so that users can discover templates via FinderPort.
+
+**Prerequisites:** Stories 4.1–4.4.
 
 ### Acceptance Criteria
-1. Implement `CommandOrchestrator.FindTemplates(ctx context.Context, query string) ([]Template, error)` delegating to FinderPort and TemplatePort as documented in `components.md#commandorchestrator`.
-2. Update the CLI adapter to register a `find` command that calls the new method, prints results, and handles cancellation errors gracefully.
-3. Add integration test(s) exercising `lithos find` with stubbed FinderPort to verify control flow.
-4. Run `golangci-lint run ./internal/app/command ./internal/adapters/api/cli` and relevant `go test` packages.
+1. `internal/app/command/orchestrator.go` implements `FindTemplates` delegating to TemplatePort and FinderPort exactly as in `docs/architecture/components.md#commandorchestrator`, returning structured errors for cancellation vs failure.
+2. The CLI adapter registers a `find` command that invokes the orchestrator, prints results, respects non-interactive mode, and updates usage docs, satisfying FR2 and FR10.
+3. Integration tests run `lithos find` with stubbed ports to confirm control flow, cancellation handling, and output formatting per coding standards.

@@ -1,59 +1,64 @@
 # Epic 5: Schema-Driven Lookups & Validation
 
-**Epic Goal:** Connect TemplateEngine, FrontmatterService, QueryService, and CommandOrchestrator as described in architecture v0.6.8 so schemas drive interactive lookups and note validation.
-
-**Dependencies:** Epic 3 (Vault Indexing Engine)
-
-**Architecture References:**
-- `docs/architecture/components.md` v0.6.8 — TemplateEngine, FrontmatterService, QueryService, CommandOrchestrator
-- `docs/architecture/data-models.md` v0.6.8 — Note, Frontmatter, PropertySpec
-- `docs/architecture/error-handling-strategy.md` v0.5.9 — ValidationError, InteractiveError
-- `docs/architecture/coding-standards.md` v0.6.7 — logging, testing
+This epic connects TemplateEngine, FrontmatterService, QueryService, and CommandOrchestrator as specified in architecture v0.6.8. The stories ensure templates can leverage schema-aware lookups, note generation validates frontmatter end-to-end, and regression tests protect the workflow. Execution proceeds from TemplateEngine helpers to validation updates, orchestration alignment, and integration testing.
 
 ---
 
-## Story 5.1: Add TemplateEngine Query Helpers
+## Story 5.1 TemplateEngine Lookup Helpers
 
-As a developer, I want TemplateEngine to expose `lookup`, `query`, and `fileClass` helpers exactly as documented so templates can use schema-driven lookups.
+As a template author,
+I want TemplateEngine helpers for schema-aware lookups,
+so that templates can query indexed notes directly through documented functions.
+
+**Prerequisites:** Epics 3 and 4 complete.
 
 ### Acceptance Criteria
-1. Extend `internal/app/template/service.go` to register helpers `lookup(name string)`, `query(filter QueryFilter)`, and `fileClass(id NoteID)` as referenced in `components.md#templateengine`.
-2. `lookup` should call `QueryService.ByPath`/`ByFileClass` depending on arguments and return data structures suitable for template consumption.
-3. `query` should wrap `QueryService.ByFrontmatter` using a simple struct (`field`, `value`) matching architecture guidance (no custom DSL).
-4. Unit tests verify each helper delegates to QueryService and handles empty results gracefully.
-5. Run `golangci-lint run ./internal/app/template` and `go test ./internal/app/template`.
+1. `internal/app/template/service.go` registers `lookup`, `query`, and `fileClass` helpers exactly as in `docs/architecture/components.md#templateengine`, delegating to QueryService and Config.
+2. Helpers satisfy FR3 and FR9 by supporting wikilink formatting, schema-aware lookups, and appropriate error propagation using `InteractiveError` or standard errors per context.
+3. Implementation ensures helper outputs are immutable copies and do not expose underlying index structures.
+4. Unit tests verify success, empty results, error propagation, and helper behaviour with both slice and map inputs.
 
 ---
 
-## Story 5.2: Use QueryService in Frontmatter FileSpec Validation
+## Story 5.2 Frontmatter FileSpec Validation with QueryService
 
-As a developer, I need FrontmatterService to leverage QueryService when validating `FileSpec` properties so file references follow the architecture workflow.
+As a developer,
+I want FrontmatterService to validate FileSpec properties using QueryService,
+so that file references are checked against the indexed vault.
+
+**Prerequisites:** Stories 3.6–3.7, Story 5.1.
 
 ### Acceptance Criteria
-1. Update `FrontmatterService.Validate` to call `QueryService.ByPath` (or similar) when processing FileSpec properties, failing with `ValidationError` when referenced files are missing.
-2. Include tests covering valid references, missing files, and case sensitivity behaviour described in data-models.
-3. Run `golangci-lint run ./internal/app/frontmatter` and `go test ./internal/app/frontmatter`.
+1. `FrontmatterService.Validate` consults QueryService for FileSpec properties exactly as in `docs/architecture/components.md#frontmatterservice`, including query hints from FR8.
+2. Validation errors return `ValidationError` instances referencing offending fields and remediation steps per `error-handling-strategy.md`.
+3. Unit tests cover valid references, missing files, case sensitivity, and ensure references to wikilinks resolve correctly.
 
 ---
 
-## Story 5.3: Align CommandOrchestrator NewNote Workflow
+## Story 5.3 CommandOrchestrator NewNote Workflow
 
-As a developer, I want `CommandOrchestrator.NewNote` to follow the ten-step workflow enumerated in the architecture.
+As a developer,
+I want CommandOrchestrator.NewNote to follow the ten-step workflow in the architecture,
+so that note creation is schema-driven and keeps vault and cache in sync.
+
+**Prerequisites:** Stories 3.1–3.7, Story 5.2.
 
 ### Acceptance Criteria
-1. Ensure `NewNote` performs the documented steps: load template → render → extract frontmatter → validate → generate NoteID → resolve path → construct note → persist via VaultWriterPort → persist via CacheWriterPort → return note.
-2. Return typed errors for each failure stage (wrapping underlying errors) and log cache write warnings without failing the overall operation.
-3. Add unit tests using fakes to assert call order and error propagation (template load failure, validation failure, vault persistence failure, cache warning).
-4. Run `golangci-lint run ./internal/app/command` and `go test ./internal/app/command`.
+1. `CommandOrchestrator.NewNote` executes the documented sequence (template load, render, frontmatter extract/validate, NoteID generation, path resolution, vault persist, cache persist) exactly as in `docs/architecture/components.md#commandorchestrator`.
+2. Method returns typed errors consistent with `error-handling-strategy.md`, logs summary info, and satisfies FR2 (non-interactive execution) and FR6/FR7 validation guarantees.
+3. Unit tests with fakes verify success path, template load failure, validation failure, vault persistence failure, cache warning handling, and ensure partial failures leave vault/cache consistent.
 
 ---
 
-## Story 5.4: Provide Schema-Driven Lookup Integration Test
+## Story 5.4 Schema-Driven Lookup Integration Test
 
-As a QA-minded developer, I want an integration test demonstrating schema-driven lookups end to end.
+As a QA-focused developer,
+I want an integration test that exercises schema-driven template lookups end to end,
+so that future changes cannot break the combined workflow.
+
+**Prerequisites:** Stories 5.1–5.3.
 
 ### Acceptance Criteria
-1. Add `tests/integration/schema_lookup_test.go` that boots TemplateEngine, QueryService (with populated indices), and renders a template using `lookup`/`query` helpers.
-2. Fixture should include schemas, property bank, cache notes, and template leveraging the helper functions; assertions verify rendered output and validation behaviour.
-3. Document how to run the suite in `docs/architecture/testing-strategy.md` (append to Schema Runtime section).
-4. Run `go test ./tests/integration -run SchemaLookup`.
+1. `tests/integration/schema_lookup_test.go` spins up TemplateEngine, QueryService, and FrontmatterService with real fixtures (schemas/property bank/cache notes) exercising lookup helpers, FileSpec validation, and CommandOrchestrator note creation.
+2. The test suite verifies FR3/FR8 behaviours (interactive helpers, schema-driven lookups) and ensures rendered output matches golden files.
+3. `docs/architecture/testing-strategy.md` documents the `go test ./tests/integration -run SchemaLookup` command and fixture layout for reproducibility.
