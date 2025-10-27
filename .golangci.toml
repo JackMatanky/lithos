@@ -92,6 +92,7 @@ enable = [
   "goconst",    # Suggest factoring repeated literals into consts.
   "gocritic",   # Curated bug/perf/style diagnostics (tuned via tags).
   "godot",      # Doc comments must end with a period.
+  "godoclint",  # Check for common mistakes in godoc comments.
   "importas",   # Enforce consistent import aliases.
   "lll",        # Enforce max line length (matches formatter policy).
   "misspell",   # Spell-check comments/strings (US English).
@@ -108,6 +109,8 @@ enable = [
   "dupl",     # Detect duplicated code regions.
   "funlen",   # Function size limits (lines & statements).
   "gocognit", # Cognitive complexity (branch nesting, flow readability).
+  "maintidx", # Maintainability index (lines of code, comments, complexity).
+  "usestdlibvars", # Use standard library variables instead of constants.
 
   # --------------- Dependency & Module Policy --------------- #
   "depguard",          # Restrict/deny problematic dependencies.
@@ -116,6 +119,7 @@ enable = [
 
   # ------------ Design & Architecture Discipline ------------ #
   "decorder",       # Enforce declaration order for consts, vars, types, funcs.
+  "embeddedstructfieldcheck", # Enforce embedded struct field naming conventions.
   "exhaustruct",    # Require struct literals to init all fields.
   "funcorder",      # Require exported funcs/methods before unexported ones.
   "iface",          # Warn on interface pollution or poor interface use.
@@ -181,7 +185,7 @@ deny = [
 ]
 
 [linters.settings.dupl]
-threshold = 100 # Only flag substantial clones.
+threshold = 80 # Only flag substantial clones.
 
 [linters.settings.exhaustruct]
 # Require struct literals to initialize ALL fields.
