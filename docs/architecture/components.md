@@ -559,7 +559,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 - `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan for large vaults (future optimization for NFR4)
 - `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read for validation (any vault file, not just .md)
 
-**Dependencies:** Implemented by FileSystemVaultAdapter.
+**Dependencies:** Implemented by VaultReaderAdapter.
 
 **Technology Stack:** Go `filepath.Walk` for scanning, `os.ReadFile` for content, `os.Stat` for ModTime filtering (ScanModified). Returns VaultFile DTOs (FileMetadata + Content).
 
@@ -578,7 +578,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 - `Persist(ctx context.Context, note Note, path string) error` - Write note to vault with atomic guarantees
 - `Delete(ctx context.Context, path string) error` - Remove note from vault
 
-**Dependencies:** Implemented by FileSystemVaultAdapter.
+**Dependencies:** Implemented by VaultWriterAdapter.
 
 **Technology Stack:** `moby/sys/atomicwriter` for atomic writes (temp + rename), `os.Remove` for deletion.
 

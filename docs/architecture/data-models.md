@@ -16,7 +16,7 @@ Domain models live in the core and contain only essential business data. Infrast
 
 **Architecture Layer:** SPI Adapter (Infrastructure)
 
-**Rationale:** FileMetadata is infrastructure model used by FileSystemReadAdapter and FileSystemWriteAdapter to translate between domain identifiers (NoteID) and filesystem paths. Domain never depends on filesystem paths - adapters handle this translation. Enables filesystem implementation details to change without affecting domain.
+**Rationale:** FileMetadata is infrastructure model used by VaultReadAdapter and VaultWriteAdapter to translate between domain identifiers (NoteID) and filesystem paths. Domain never depends on filesystem paths - adapters handle this translation. Enables filesystem implementation details to change without affecting domain.
 
 **Key Attributes:**
 
@@ -30,9 +30,9 @@ Domain models live in the core and contain only essential business data. Infrast
 
 **Relationships:**
 
-- Used internally by FileSystemReadAdapter and FileSystemWriteAdapter to map NoteID ↔ Path
+- Used internally by VaultReadAdapter and VaultWriteAdapter to map NoteID ↔ Path
 - Never exposed to domain services
-- Created during vault scanning by FileSystemReadAdapter
+- Created during vault scanning by VaultReadAdapter
 - Cached in adapters for performance
 
 **Design Decisions:**
@@ -41,7 +41,7 @@ Domain models live in the core and contain only essential business data. Infrast
 - **Computed fields cached:** Basename/Folder computed once during construction to avoid repeated string operations
 - **Staleness detection:** ModTime enables incremental indexing - skip unchanged files
 - **Clean separation:** Keeps filesystem concerns out of domain layer
-- **Shared by CQRS adapters:** Both FileSystemReadAdapter and FileSystemWriteAdapter use this metadata model
+- **Shared by CQRS adapters:** Both VaultReadAdapter and VaultWriteAdapter use this metadata model
 
 **Helper Functions:**
 
@@ -178,7 +178,7 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 **Relationships:**
 
 - Used by all domain services to reference notes
-- Translated by storage adapters (FileSystemReadAdapter/FileSystemWriteAdapter map NoteID ↔ file paths)
+- Translated by storage adapters (VaultReadAdapter/VaultWriteAdapter map NoteID ↔ file paths)
 - Used as map keys in QueryService indices
 
 **Design Decisions:**
@@ -983,7 +983,7 @@ Frontmatter → Schema
   └─> Validated by FrontmatterService using Schema lookup via FileClass
 
 NoteID ↔ FileMetadata (adapter layer)
-  └─> FileSystemReadAdapter/FileSystemWriteAdapter map NoteID to Path
+  └─> VaultReadAdapter/VaultWriteAdapter map NoteID to Path
 
 TemplateID ↔ FileMetadata (adapter layer)
   └─> TemplateLoader maps TemplateID to Path (reuses FileMetadata)

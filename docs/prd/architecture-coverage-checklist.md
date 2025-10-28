@@ -52,10 +52,10 @@
 
 ### 1.3 SPI Adapter Models
 
-| Component        | Version Added | Epic   | Story | Status | File Path                                |
-| ---------------- | ------------- | ------ | ----- | ------ | ---------------------------------------- |
-| **FileMetadata** | v0.5.1        | Epic 1 | 1.9   | 🟡     | `internal/adapters/spi/file_metadata.go` |
-| **VaultFile**    | v0.6.8        | Epic 3 | 3.3   | ✅     | `internal/adapters/spi/vault_file.go`    |
+| Component        | Version Added | Epic   | Story | Status | File Path                           |
+| ---------------- | ------------- | ------ | ----- | ------ | ----------------------------------- |
+| **FileMetadata** | v0.5.1        | Epic 1 | 1.9   | 🟡     | `internal/adapters/spi/file_dto.go` |
+| **VaultFile**    | v0.6.8        | Epic 3 | 3.3   | ✅     | `internal/adapters/spi/file_dto.go` |
 
 ---
 

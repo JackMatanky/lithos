@@ -530,7 +530,7 @@ so that templates can be loaded from filesystem following hexagonal architecture
 
 **FileMetadata Model:**
 
-- 1.9.1: Create `internal/adapters/spi/file_metadata.go`:
+- 1.9.1: Create `internal/adapters/spi/file_dto.go`:
   - SPI adapter model (NOT domain)
   - Fields:
     - `Path string` - absolute file path
@@ -546,7 +546,7 @@ so that templates can be loaded from filesystem following hexagonal architecture
     - `computeFolder(path string) string` - returns directory path
     - `computeMimeType(ext string) string` - detects MIME type from extension
 
-- 1.9.2: Create unit tests in `internal/adapters/spi/file_metadata_test.go`:
+- 1.9.2: Create unit tests in `internal/adapters/spi/file_dto_test.go`:
   - Test: NewFileMetadata construction and all helper functions
   - Test: Computed fields (Basename, Folder, Ext) are correct
   - Test: MIME type detection works for common file types

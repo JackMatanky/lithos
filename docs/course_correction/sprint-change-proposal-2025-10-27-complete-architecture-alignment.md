@@ -778,7 +778,7 @@ architecture principles, so that the domain layer has no infrastructure dependen
   - Purpose: Decouple domain from infrastructure
   - No filesystem path knowledge
 
-- 1.3.2: Create FileMetadata SPI adapter model in `internal/adapters/spi/file_metadata.go`:
+- 1.3.2: Create FileMetadata SPI adapter model in `internal/adapters/spi/file_dto.go`:
   - Fields: Path, Basename, Folder, Ext, ModTime, Size, MimeType
   - Purpose: Used by adapters to map NoteID ↔ filesystem paths
   - Not accessible to domain layer
