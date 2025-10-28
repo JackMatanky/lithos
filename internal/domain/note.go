@@ -3,6 +3,17 @@
 // dependencies.
 package domain
 
+// Note represents a core business entity for a markdown note.
+// It is an aggregate root combining identity and content metadata.
+type Note struct {
+	// ID is the abstract identifier for this note.
+	// Opaque to the domain - could represent file path, UUID, or database key.
+	ID NoteID
+	// Frontmatter contains content metadata from YAML frontmatter.
+	// Composed (not embedded) to maintain clean domain boundaries.
+	Frontmatter Frontmatter
+}
+
 // NoteID represents an opaque domain identifier for notes.
 // It abstracts the storage mechanism (file paths, UUIDs, database keys)
 // from the domain logic.
@@ -17,17 +28,6 @@ type Frontmatter struct {
 	// Fields contains the complete parsed YAML frontmatter as a flexible map.
 	// Preserves all user-defined fields without filtering.
 	Fields map[string]interface{}
-}
-
-// Note represents a core business entity for a markdown note.
-// It is an aggregate root combining identity and content metadata.
-type Note struct {
-	// ID is the abstract identifier for this note.
-	// Opaque to the domain - could represent file path, UUID, or database key.
-	ID NoteID
-	// Frontmatter contains content metadata from YAML frontmatter.
-	// Composed (not embedded) to maintain clean domain boundaries.
-	Frontmatter Frontmatter
 }
 
 // NewNoteID creates a new NoteID from a string value.
