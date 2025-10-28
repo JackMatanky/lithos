@@ -1462,6 +1462,7 @@ Using updated `epic-3-vault-indexing-engine.md`:
 **Week 4-5: Story Generation**
 
 - **SM** generates ~54-60 rigorous stories (`.bmad-core/tasks/create-next-story.md`)
+- **QA** ensures all stories implement TDD framework and predefine well-designed tests, if applicable (`.bmad-core/tasks/test-design.md`)
 - **SM** quality checks all stories (`.bmad-core/tasks/execute-checklist.md`)
 - **PO** reviews and validates each story clarity (`.bmad-core/tasks/validate-next-story.md`)
 - **Deliverable:** Perfect, consistent stories
