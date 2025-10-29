@@ -5,6 +5,11 @@ import (
 	"testing"
 )
 
+const (
+	testProperty = "prop"
+	testResource = "file"
+)
+
 // TestBaseError verifies BaseError construction, Error() method, and Unwrap()
 // compatibility.
 func TestBaseError(t *testing.T) {
@@ -112,7 +117,7 @@ func TestValidationErrorCompatibility(t *testing.T) {
 		if !errors.As(err, &target) {
 			t.Error("errors.As should extract ValidationError")
 		}
-		if target.Property() != "prop" { //nolint:goconst // test string
+		if target.Property() != testProperty {
 			t.Errorf("extracted property incorrect: %s", target.Property())
 		}
 	})
@@ -122,12 +127,12 @@ func TestValidationErrorCompatibility(t *testing.T) {
 func TestResourceErrorConstruction(t *testing.T) {
 	t.Run("with cause", func(t *testing.T) {
 		err := NewResourceError(
-			"file",
+			testResource,
 			"read",
 			"/path/to/file",
 			errors.New("permission denied"),
 		)
-		if err.Resource() != "file" { //nolint:goconst // test string
+		if err.Resource() != testResource {
 			t.Errorf("expected resource 'file', got '%s'", err.Resource())
 		}
 		if err.Operation() != "read" {
