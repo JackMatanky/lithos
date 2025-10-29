@@ -224,42 +224,45 @@ func (a *ViperAdapter) loadEnvironmentVars(cfg *domain.Config) {
 	v.SetEnvPrefix("LITHOS")
 	v.AutomaticEnv()
 
+	// Define environment variable mappings with field setters
+	envMappings := map[string]struct {
+		fieldName string
+		setter    func(*domain.Config, string)
+	}{
+		"VAULT_PATH": {
+			fieldName: "vault_path",
+			setter:    func(c *domain.Config, val string) { c.VaultPath = val },
+		},
+		"TEMPLATES_DIR": {
+			fieldName: "templates_dir",
+			setter:    func(c *domain.Config, val string) { c.TemplatesDir = val },
+		},
+		"SCHEMAS_DIR": {
+			fieldName: "schemas_dir",
+			setter:    func(c *domain.Config, val string) { c.SchemasDir = val },
+		},
+		"PROPERTY_BANK_FILE": {
+			fieldName: "property_bank_file",
+			setter:    func(c *domain.Config, val string) { c.PropertyBankFile = val },
+		},
+		"CACHE_DIR": {
+			fieldName: "cache_dir",
+			setter:    func(c *domain.Config, val string) { c.CacheDir = val },
+		},
+		"LOG_LEVEL": {
+			fieldName: "log_level",
+			setter:    func(c *domain.Config, val string) { c.LogLevel = val },
+		},
+	}
+
 	// Override config with env vars if present
-	if val := v.GetString("VAULT_PATH"); val != "" {
-		cfg.VaultPath = val
-		a.logger.Debug().
-			Str("vault_path", val).
-			Msg("Overriding vault path from environment")
-	}
-	if val := v.GetString("TEMPLATES_DIR"); val != "" {
-		cfg.TemplatesDir = val
-		a.logger.Debug().
-			Str("templates_dir", val).
-			Msg("Overriding templates dir from environment")
-	}
-	if val := v.GetString("SCHEMAS_DIR"); val != "" {
-		cfg.SchemasDir = val
-		a.logger.Debug().
-			Str("schemas_dir", val).
-			Msg("Overriding schemas dir from environment")
-	}
-	if val := v.GetString("PROPERTY_BANK_FILE"); val != "" {
-		cfg.PropertyBankFile = val
-		a.logger.Debug().
-			Str("property_bank_file", val).
-			Msg("Overriding property bank file from environment")
-	}
-	if val := v.GetString("CACHE_DIR"); val != "" {
-		cfg.CacheDir = val
-		a.logger.Debug().
-			Str("cache_dir", val).
-			Msg("Overriding cache dir from environment")
-	}
-	if val := v.GetString("LOG_LEVEL"); val != "" {
-		cfg.LogLevel = val
-		a.logger.Debug().
-			Str("log_level", val).
-			Msg("Overriding log level from environment")
+	for envKey, mapping := range envMappings {
+		if val := v.GetString(envKey); val != "" {
+			mapping.setter(cfg, val)
+			a.logger.Debug().
+				Str(mapping.fieldName, val).
+				Msgf("Overriding %s from environment", mapping.fieldName)
+		}
 	}
 }
 
