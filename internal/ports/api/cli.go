@@ -36,14 +36,16 @@ import (
 // ```
 //
 // Why This Design:
-// - Decouples CLI framework from domain: CommandOrchestrator never imports
-// Cobra - Enables multiple adapters: TUI/LSP can implement CLIPort without
-// affecting domain
-// - Testable: Mock CLIPort to test CommandOrchestrator without CLI framework
-// - Inversion of Control: Domain starts the application and delegates command
-// parsing to adapter
+//   - Decouples CLI framework from domain: CommandOrchestrator never imports
+//     Cobra
+//   - Enables multiple adapters: TUI/LSP can implement CLIPort without
+//     affecting domain
+//   - Testable: Mock CLIPort to test CommandOrchestrator without CLI framework
+//   - Inversion of Control: Domain starts the application and delegates command
+//     parsing to adapter
 //
-// Reference: docs/architecture/components.md#api-port-interfaces.
+// Reference: docs/architecture/components.md#api-port-interfaces - CLIPort
+// (v0.6.4).
 type CLIPort interface {
 	// Start begins the CLI event loop and command processing.
 	// The CLI adapter receives the CommandPort handler (typically
