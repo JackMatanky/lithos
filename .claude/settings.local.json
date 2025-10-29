@@ -5,7 +5,11 @@
       "Bash(go build:*)",
       "Bash(golines:*)",
       "Bash(gofmt:*)",
-      "Bash(go tool cover:*)"
+      "Bash(go tool cover:*)",
+      "Bash(for f in *.md)",
+      "Bash(do grep -q \"| 2025-10-28 | 1.1 |\" \"$f\")",
+      "Bash(echo:*)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []
