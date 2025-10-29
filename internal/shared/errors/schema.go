@@ -5,19 +5,30 @@ package errors
 type SchemaError struct {
 	BaseError
 
-	schemaName string
+	SchemaName  string
+	Remediation string
 }
 
 // NewSchemaError creates a new SchemaError with schema context.
 // The cause provides additional context about the schema processing failure.
 func NewSchemaError(message, schemaName string, cause error) *SchemaError {
 	return &SchemaError{
-		BaseError:  NewBaseError(message, cause),
-		schemaName: schemaName,
+		BaseError:   NewBaseError(message, cause),
+		SchemaName:  schemaName,
+		Remediation: "",
 	}
 }
 
-// SchemaName returns the name of the schema that failed processing.
-func (e *SchemaError) SchemaName() string {
-	return e.schemaName
+// NewSchemaErrorWithRemediation creates a new SchemaError with schema context
+// and remediation hint.
+// The cause provides additional context about the schema processing failure.
+func NewSchemaErrorWithRemediation(
+	message, schemaName, remediation string,
+	cause error,
+) *SchemaError {
+	return &SchemaError{
+		BaseError:   NewBaseError(message, cause),
+		SchemaName:  schemaName,
+		Remediation: remediation,
+	}
 }

@@ -76,7 +76,11 @@ func TestPropertyValidate(t *testing.T) {
 		err := property.Validate(ctx)
 
 		require.Error(t, err)
-		assert.Contains(t, err.Error(), "property spec cannot be nil")
+		assert.Contains(
+			t,
+			err.Error(),
+			"property must have either $ref or spec",
+		)
 	})
 
 	t.Run("delegates to spec validate", func(t *testing.T) {
