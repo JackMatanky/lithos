@@ -119,44 +119,19 @@ func (a *TemplateLoaderAdapter) Load(
 ) (domain.Template, error) {
 	a.log.Debug().Str("template_id", string(id)).Msg("loading template")
 
-	metadata, exists := a.metadata[id]
-	if !exists {
-		a.log.Warn().
-			Str("template_id", string(id)).
-			Msg("template not found in cache")
-		return domain.Template{}, errors.NewResourceError(
-			"template",
-			"load",
-			string(id),
-			fmt.Errorf("template not found"),
-		)
-	}
-
-	content, err := os.ReadFile(metadata.Path)
+	metadata, err := a.findTemplateMetadata(ctx, id)
 	if err != nil {
-		a.log.Error().
-			Err(err).
-			Str("path", metadata.Path).
-			Msg("failed to read template file")
-		return domain.Template{}, errors.NewResourceError(
-			"template",
-			"read",
-			metadata.Path,
-			err,
-		)
+		return domain.Template{}, err
 	}
 
-	// Validate UTF-8 encoding
-	if !utf8.Valid(content) {
-		a.log.Warn().
-			Str("path", metadata.Path).
-			Msg("template contains invalid UTF-8")
-		return domain.Template{}, errors.NewValidationError(
-			"content",
-			"invalid UTF-8 encoding",
-			metadata.Path,
-			nil,
-		)
+	content, err := a.readTemplateContent(&metadata)
+	if err != nil {
+		return domain.Template{}, err
+	}
+
+	err = a.validateTemplateContent(content, metadata.Path)
+	if err != nil {
+		return domain.Template{}, err
 	}
 
 	template := domain.NewTemplate(id, string(content))
@@ -164,4 +139,94 @@ func (a *TemplateLoaderAdapter) Load(
 		Msg("template loaded successfully")
 
 	return template, nil
+}
+
+// findTemplateMetadata locates template metadata, populating cache if
+// necessary.
+func (a *TemplateLoaderAdapter) findTemplateMetadata(
+	ctx context.Context,
+	id domain.TemplateID,
+) (spi.FileMetadata, error) {
+	metadata, exists := a.metadata[id]
+	if exists {
+		return metadata, nil
+	}
+
+	// Template not in cache, try to populate cache if empty
+	if len(a.metadata) == 0 {
+		if err := a.populateCache(ctx); err != nil {
+			return spi.FileMetadata{}, errors.NewResourceError(
+				"template",
+				"load",
+				string(id),
+				fmt.Errorf("template not found and scan failed: %w", err),
+			)
+		}
+		// Check again after scanning
+		metadata, exists = a.metadata[id]
+	}
+
+	if !exists {
+		a.log.Warn().
+			Str("template_id", string(id)).
+			Msg("template not found in cache")
+		return spi.FileMetadata{}, errors.NewResourceError(
+			"template",
+			"load",
+			string(id),
+			fmt.Errorf("template not found"),
+		)
+	}
+
+	return metadata, nil
+}
+
+// populateCache scans the templates directory and populates the metadata cache.
+func (a *TemplateLoaderAdapter) populateCache(ctx context.Context) error {
+	a.log.Debug().Msg("cache is empty, scanning templates directory")
+	_, err := a.List(ctx)
+	if err != nil {
+		a.log.Error().Err(err).Msg("failed to scan templates directory")
+		return err
+	}
+	return nil
+}
+
+// readTemplateContent reads the raw file content from disk.
+func (a *TemplateLoaderAdapter) readTemplateContent(
+	metadata *spi.FileMetadata,
+) ([]byte, error) {
+	content, err := os.ReadFile(metadata.Path)
+	if err != nil {
+		a.log.Error().
+			Err(err).
+			Str("path", metadata.Path).
+			Msg("failed to read template file")
+		return nil, errors.NewResourceError(
+			"template",
+			"read",
+			metadata.Path,
+			err,
+		)
+	}
+	return content, nil
+}
+
+// validateTemplateContent ensures the template content is valid UTF-8.
+func (a *TemplateLoaderAdapter) validateTemplateContent(
+	content []byte,
+	path string,
+) error {
+	if !utf8.Valid(content) {
+		a.log.Warn().
+			Str("path", path).
+			Msg("template contains invalid UTF-8")
+		return errors.NewValidationError(
+			"content",
+			"invalid UTF-8 encoding",
+			path,
+			nil,
+		)
+	}
+	return nil
 }
