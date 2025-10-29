@@ -1,14 +1,11 @@
-// Package domain contains the core business entities and domain logic for
-// lithos.
-// Schema represents a validation schema for note frontmatter fields.
 package domain
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // Schema defines metadata structure with property constraints and inheritance.
@@ -57,56 +54,38 @@ type Schema struct {
 	Properties []Property `json:"properties" yaml:"properties"`
 }
 
-// UnmarshalJSON implements custom JSON unmarshaling for Schema.
-// It converts the properties object (map[string]interface{}) to a slice of
-// Property.
-func (s *Schema) UnmarshalJSON(data []byte) error {
-	// Define a temporary struct for unmarshaling
-	type schemaAlias struct {
-		Name       string                 `json:"name"`
-		Extends    string                 `json:"extends,omitempty"`
-		Excludes   []string               `json:"excludes,omitempty"`
-		Properties map[string]interface{} `json:"properties"`
+// NewSchema creates a new Schema with defensive copies to preserve
+// immutability.
+// Returns error if the schema definition is invalid.
+//
+// Defensive copies prevent external modification of schema state after
+// construction,
+// ensuring schema definitions remain stable throughout their lifetime.
+func NewSchema(
+	name, extends string,
+	excludes []string,
+	properties []Property,
+) (*Schema, error) {
+	// Defensive copy of excludes slice
+	excludesCopy := make([]string, len(excludes))
+	copy(excludesCopy, excludes)
+
+	// Defensive copy of properties slice
+	propertiesCopy := make([]Property, len(properties))
+	copy(propertiesCopy, properties)
+
+	schema := Schema{
+		Name:       name,
+		Extends:    extends,
+		Excludes:   excludesCopy,
+		Properties: propertiesCopy,
 	}
 
-	var alias schemaAlias
-	if err := json.Unmarshal(data, &alias); err != nil {
-		return err
+	if err := schema.Validate(context.Background()); err != nil {
+		return nil, err
 	}
 
-	s.Name = alias.Name
-	s.Extends = alias.Extends
-	s.Excludes = alias.Excludes
-
-	// Convert properties map to slice
-	s.Properties = make([]Property, 0, len(alias.Properties))
-	for propName, propValue := range alias.Properties {
-		var prop Property
-		prop.Name = propName
-
-		// Marshal the property value back to JSON for unmarshaling into
-		// Property
-		propData, err := json.Marshal(propValue)
-		if err != nil {
-			return fmt.Errorf(
-				"failed to marshal property %s: %w",
-				propName,
-				err,
-			)
-		}
-
-		if err := json.Unmarshal(propData, &prop); err != nil {
-			return fmt.Errorf(
-				"failed to unmarshal property %s: %w",
-				propName,
-				err,
-			)
-		}
-
-		s.Properties = append(s.Properties, prop)
-	}
-
-	return nil
+	return &schema, nil
 }
 
 // Validate performs structural validation of the schema definition.
@@ -121,7 +100,7 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 // Does not validate inheritance chains - that's handled by SchemaResolver.
 //
 // Context is used for cancellation during potentially expensive validation.
-func (s Schema) Validate(ctx context.Context) error {
+func (s *Schema) Validate(ctx context.Context) error {
 	// Check for cancellation
 	select {
 	case <-ctx.Done():
@@ -145,9 +124,9 @@ func (s Schema) Validate(ctx context.Context) error {
 }
 
 // validateName ensures schema name is not empty.
-func (s Schema) validateName() error {
+func (s *Schema) validateName() error {
 	if s.Name == "" {
-		return errors.NewSchemaErrorWithRemediation(
+		return lithoserrors.NewSchemaErrorWithRemediation(
 			"schema name cannot be empty",
 			"",
 			"provide a unique schema name matching expected fileClass values",
@@ -158,10 +137,9 @@ func (s Schema) validateName() error {
 }
 
 // validateExcludesConstraint ensures excludes is only used with extends.
-// Single Responsibility: Excludes/Extends constraint validation only.
-func (s Schema) validateExcludesConstraint() error {
+func (s *Schema) validateExcludesConstraint() error {
 	if len(s.Excludes) > 0 && s.Extends == "" {
-		return errors.NewSchemaErrorWithRemediation(
+		return lithoserrors.NewSchemaErrorWithRemediation(
 			"excludes can only be set when extends is not empty",
 			s.Name,
 			"either set extends to parent schema name or remove excludes",
@@ -171,61 +149,66 @@ func (s Schema) validateExcludesConstraint() error {
 	return nil
 }
 
-// validateProperties validates each property and checks for duplicates.
-func (s Schema) validateProperties(ctx context.Context) error {
-	// Track property names to detect duplicates
+// validateProperties validates all properties with a single pass through the
+// list.
+// Checks for duplicates and validates each property, aggregating all errors.
+func (s *Schema) validateProperties(ctx context.Context) error {
 	seen := make(map[string]bool)
+	var errs []error
 
 	for _, prop := range s.Properties {
-		// Check for cancellation during property validation
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
+		// Check for cancellation
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
-		// Check for duplicate property names
-		if seen[prop.Name] {
-			return errors.NewSchemaErrorWithRemediation(
-				fmt.Sprintf("duplicate property name: %s", prop.Name),
-				s.Name,
-				"ensure all property names within a schema are unique",
-				nil,
-			)
+		// Check for duplicate property name
+		if err := s.checkDuplicateProperty(prop.Name, seen); err != nil {
+			errs = append(errs, err)
+			continue // Skip validation for duplicate
 		}
-		seen[prop.Name] = true
 
-		// Validate individual property
-		if err := prop.Validate(ctx); err != nil {
-			return errors.NewSchemaErrorWithRemediation(
-				fmt.Sprintf("property %s validation failed", prop.Name),
-				s.Name,
-				"fix property definition according to architecture constraints",
-				err,
-			)
+		// Validate the property
+		if err := s.validateProperty(ctx, prop); err != nil {
+			errs = append(errs, err)
 		}
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 
 	return nil
 }
 
-// NewSchema creates a new Schema with validation.
-// Returns error if the schema definition is invalid.
-func NewSchema(
-	name, extends string,
-	excludes []string,
-	properties []Property,
-) (*Schema, error) {
-	schema := Schema{
-		Name:       name,
-		Extends:    extends,
-		Excludes:   excludes,
-		Properties: properties,
+// checkDuplicateProperty checks if a property name is duplicate and marks it as
+// seen.
+func (s *Schema) checkDuplicateProperty(
+	name string,
+	seen map[string]bool,
+) error {
+	if seen[name] {
+		return lithoserrors.NewSchemaErrorWithRemediation(
+			fmt.Sprintf("duplicate property name: %s", name),
+			s.Name,
+			"ensure all property names within a schema are unique",
+			nil,
+		)
 	}
+	seen[name] = true
+	return nil
+}
 
-	if err := schema.Validate(context.Background()); err != nil {
-		return nil, err
+// validateProperty validates a single property and wraps errors with schema
+// context.
+func (s *Schema) validateProperty(ctx context.Context, prop Property) error {
+	if err := prop.Validate(ctx); err != nil {
+		return lithoserrors.NewSchemaErrorWithRemediation(
+			fmt.Sprintf("property %s validation failed", prop.Name),
+			s.Name,
+			"fix property definition according to architecture constraints",
+			err,
+		)
 	}
-
-	return &schema, nil
+	return nil
 }
