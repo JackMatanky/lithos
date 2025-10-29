@@ -1,5 +1,7 @@
 package domain
 
+import "path/filepath"
+
 // Default configuration values for Config.
 // These provide sensible defaults for vault structure and operational settings.
 const (
@@ -54,12 +56,40 @@ type Config struct {
 	LogLevel string `json:"log_level"`
 }
 
-// NewConfig creates a Config with all fields explicitly set.
-// Use this constructor when you have all configuration values available.
+// NewConfig creates a Config with sensible defaults applied for empty values.
+// Use this constructor when you want automatic defaults for unspecified fields.
 // The Config is immutable after creation.
+//
+// Defaults applied:
+// - VaultPath: current working directory (".")
+// - TemplatesDir: "{VaultPath}/templates/"
+// - SchemasDir: "{VaultPath}/schemas/"
+// - PropertyBankFile: "property_bank.json"
+// - CacheDir: "{VaultPath}/.lithos/cache/"
+// - LogLevel: "info".
 func NewConfig(
 	vaultPath, templatesDir, schemasDir, propertyBankFile, cacheDir, logLevel string,
 ) Config {
+	// Apply defaults for empty values
+	if vaultPath == "" {
+		vaultPath = defaultVaultPath
+	}
+	if templatesDir == "" {
+		templatesDir = filepath.Join(vaultPath, "templates")
+	}
+	if schemasDir == "" {
+		schemasDir = filepath.Join(vaultPath, "schemas")
+	}
+	if propertyBankFile == "" {
+		propertyBankFile = defaultPropertyBankFile
+	}
+	if cacheDir == "" {
+		cacheDir = filepath.Join(vaultPath, ".lithos", "cache")
+	}
+	if logLevel == "" {
+		logLevel = defaultLogLevel
+	}
+
 	return Config{
 		VaultPath:        vaultPath,
 		TemplatesDir:     templatesDir,
@@ -83,4 +113,12 @@ func DefaultConfig() Config {
 		CacheDir:         defaultCacheDir,
 		LogLevel:         defaultLogLevel,
 	}
+}
+
+// PropertyBankPath returns the full path to the property bank file
+// by joining SchemasDir with PropertyBankFile.
+//
+//nolint:gocritic // Config is a value object, intentionally passed by value
+func (c Config) PropertyBankPath() string {
+	return filepath.Join(c.SchemasDir, c.PropertyBankFile)
 }
