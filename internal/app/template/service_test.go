@@ -2,6 +2,8 @@ package template
 
 import (
 	"context"
+	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -64,6 +66,10 @@ func (m *mockTemplatePort) setTemplates(
 	m.templates = templates
 }
 
+func (m *mockTemplatePort) setLoadError(err error) {
+	m.loadError = err
+}
+
 // TestTemplateEngine_Load tests the TemplateEngine Load functionality.
 func TestTemplateEngine_Load(t *testing.T) {
 	ctx := context.Background()
@@ -86,6 +92,20 @@ func TestTemplateEngine_Load(t *testing.T) {
 		assert.Equal(t, template, result)
 	})
 
+	t.Run("propagates errors from port", func(t *testing.T) {
+		expectedErr := errors.New("port error")
+		mockPort := newMockTemplatePort()
+		mockPort.setLoadError(expectedErr)
+
+		config := domain.Config{}
+		logger := zerolog.Nop()
+		engine := NewTemplateEngine(mockPort, &config, &logger)
+
+		_, err := engine.Load(ctx, templateID)
+
+		assert.Equal(t, expectedErr, err)
+	})
+
 	t.Run("uses path control functions correctly", func(t *testing.T) {
 		testTemplate := domain.NewTemplate(
 			templateID,
@@ -104,6 +124,24 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, "Path: , Vault: /test/vault", result)
+	})
+
+	t.Run("uses now function correctly", func(t *testing.T) {
+		tmpl := domain.NewTemplate(templateID, `Date: {{now "2006-01-02"}}`)
+		mockPort := newMockTemplatePort()
+		mockPort.setTemplates(map[domain.TemplateID]domain.Template{
+			templateID: tmpl,
+		})
+
+		config := domain.Config{}
+		logger := zerolog.Nop()
+		engine := NewTemplateEngine(mockPort, &config, &logger)
+
+		result, err := engine.Render(ctx, templateID)
+
+		require.NoError(t, err)
+		// Should be today's date in YYYY-MM-DD format
+		assert.Regexp(t, `^Date: \d{4}-\d{2}-\d{2}$`, result)
 	})
 
 	t.Run("parse error returns TemplateError with details", func(t *testing.T) {
@@ -171,5 +209,65 @@ func TestTemplateEngine_Load(t *testing.T) {
 		require.Error(t, err)
 		var resourceErr *domainerrors.ResourceError
 		assert.ErrorAs(t, err, &resourceErr)
+	})
+}
+
+// TestTemplateEngine_BuildFuncMap tests the buildFuncMap method and all custom
+// template functions.
+func TestTemplateEngine_BuildFuncMap(t *testing.T) {
+	config := domain.Config{VaultPath: "/test/vault"}
+	logger := zerolog.Nop()
+	engine := NewTemplateEngine(nil, &config, &logger)
+	funcMap := engine.buildFuncMap()
+
+	t.Run("now function returns formatted timestamp", func(t *testing.T) {
+		nowFunc := funcMap["now"].(func(string) string)
+		result := nowFunc("2006-01-02")
+		// Should be today's date in YYYY-MM-DD format
+		assert.Regexp(t, `^\d{4}-\d{2}-\d{2}$`, result)
+	})
+
+	t.Run("toLower converts to lowercase", func(t *testing.T) {
+		toLowerFunc := funcMap["toLower"].(func(string) string)
+		assert.Equal(t, "hello", toLowerFunc("HELLO"))
+		assert.Equal(t, "world", toLowerFunc("World"))
+	})
+
+	t.Run("toUpper converts to uppercase", func(t *testing.T) {
+		toUpperFunc := funcMap["toUpper"].(func(string) string)
+		assert.Equal(t, "HELLO", toUpperFunc("hello"))
+		assert.Equal(t, "WORLD", toUpperFunc("World"))
+	})
+
+	t.Run("folder returns parent directory", func(t *testing.T) {
+		folderFunc := funcMap["folder"].(func(string) string)
+		assert.Equal(t, "/path/to", folderFunc("/path/to/file.txt"))
+		assert.Equal(t, ".", folderFunc("file.txt"))
+	})
+
+	t.Run("basename strips path and extension", func(t *testing.T) {
+		basenameFunc := funcMap["basename"].(func(string) string)
+		assert.Equal(t, "file", basenameFunc("/path/to/file.txt"))
+		assert.Equal(t, "document", basenameFunc("document.md"))
+		assert.Equal(t, "test", basenameFunc("test"))
+	})
+
+	t.Run("extension returns extension with dot", func(t *testing.T) {
+		extensionFunc := funcMap["extension"].(func(string) string)
+		assert.Equal(t, ".txt", extensionFunc("/path/to/file.txt"))
+		assert.Equal(t, ".md", extensionFunc("document.md"))
+		assert.Empty(t, extensionFunc("test"))
+	})
+
+	t.Run("join uses OS-appropriate path separator", func(t *testing.T) {
+		joinFunc := funcMap["join"].(func(...string) string)
+		result := joinFunc("path", "to", "file")
+		// Should contain path separator appropriate for the OS
+		assert.Contains(t, result, string(filepath.Separator))
+	})
+
+	t.Run("vaultPath returns config value", func(t *testing.T) {
+		vaultPathFunc := funcMap["vaultPath"].(func() string)
+		assert.Equal(t, "/test/vault", vaultPathFunc())
 	})
 }
