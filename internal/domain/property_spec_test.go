@@ -142,10 +142,11 @@ func TestDateSpecValidate(t *testing.T) {
 		assert.NoError(t, err)
 	})
 
-	t.Run("accepts any format string", func(t *testing.T) {
+	t.Run("fails with invalid Go time layout", func(t *testing.T) {
 		spec := DateSpec{Format: "invalid"}
 		err := spec.Validate(ctx)
-		assert.NoError(t, err)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "invalid Go time layout")
 	})
 }
 
