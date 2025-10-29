@@ -21,8 +21,15 @@ type Property struct {
 	// scalar.
 	Array bool `json:"array"`
 
+	// Ref is a JSON pointer reference to a property in the PropertyBank.
+	// When present, this property inherits all attributes from the referenced
+	// property.
+	// Mutually exclusive with Spec - only one can be set.
+	Ref string `json:"$ref,omitempty"`
+
 	// Spec defines type-specific validation constraints.
-	Spec PropertySpec `json:"spec"`
+	// Mutually exclusive with Ref - only one can be set.
+	Spec PropertySpec `json:"spec,omitempty"`
 }
 
 // Validate performs structural validation of the Property definition.
@@ -31,6 +38,21 @@ func (p Property) Validate(ctx context.Context) error {
 	if err := validatePropertyName(p.Name); err != nil {
 		return err
 	}
+
+	// Either Ref or Spec must be set, but not both
+	if p.Ref != "" && p.Spec != nil {
+		return fmt.Errorf("property cannot have both $ref and spec")
+	}
+	if p.Ref == "" && p.Spec == nil {
+		return fmt.Errorf("property must have either $ref or spec")
+	}
+
+	// If using $ref, no further validation needed here
+	if p.Ref != "" {
+		return nil
+	}
+
+	// Validate the spec
 	if err := ensurePropertySpec(p.Spec); err != nil {
 		return err
 	}

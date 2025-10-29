@@ -1,0 +1,25 @@
+{
+  "name": "meeting-note",
+  "extends": "base-note",
+  "excludes": [],
+  "properties": {
+    "attendees": {
+      "name": "attendees",
+      "required": true,
+      "array": true,
+      "spec": {
+        "type": "string"
+      }
+    },
+    "duration": {
+      "name": "duration",
+      "required": false,
+      "array": false,
+       "spec": {
+         "type": "number",
+         "min": 1,
+         "max": 480
+       }
+    }
+  }
+}

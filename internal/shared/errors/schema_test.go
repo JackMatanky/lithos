@@ -10,10 +10,10 @@ func TestSchemaError(t *testing.T) {
 	t.Run("construction with cause", func(t *testing.T) {
 		cause := errors.New("invalid property type")
 		err := NewSchemaError("schema validation failed", "user-schema", cause)
-		if err.SchemaName() != "user-schema" {
+		if err.SchemaName != "user-schema" {
 			t.Errorf(
 				"expected schemaName 'user-schema', got '%s'",
-				err.SchemaName(),
+				err.SchemaName,
 			)
 		}
 		expectedMsg := "schema validation failed: invalid property type"
@@ -24,10 +24,10 @@ func TestSchemaError(t *testing.T) {
 
 	t.Run("construction without cause", func(t *testing.T) {
 		err := NewSchemaError("schema not found", "missing-schema", nil)
-		if err.SchemaName() != "missing-schema" {
+		if err.SchemaName != "missing-schema" {
 			t.Errorf(
 				"expected schemaName 'missing-schema', got '%s'",
-				err.SchemaName(),
+				err.SchemaName,
 			)
 		}
 		if err.Error() != "schema not found" {
@@ -51,8 +51,8 @@ func TestSchemaError(t *testing.T) {
 		if !errors.As(err, &target) {
 			t.Error("errors.As should extract SchemaError")
 		}
-		if target.SchemaName() != "schema-123" {
-			t.Errorf("extracted schemaName incorrect: %s", target.SchemaName())
+		if target.SchemaName != "schema-123" {
+			t.Errorf("extracted schemaName incorrect: %s", target.SchemaName)
 		}
 	})
 }
