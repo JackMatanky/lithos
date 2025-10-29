@@ -9,6 +9,10 @@ package errors
 
 import "fmt"
 
+// ErrNotFound is returned when a requested resource or item cannot be found.
+// It follows the standard Go convention for "not found" errors.
+var ErrNotFound = NewBaseError("not found", nil)
+
 // BaseError provides a lightweight foundation for domain-specific errors.
 // It implements the standard error interface and supports error unwrapping.
 type BaseError struct {
