@@ -122,9 +122,32 @@ func (d DateSpec) Type() PropertyType {
 
 // Validate performs basic validation of the DateSpec.
 func (d DateSpec) Validate(ctx context.Context) error {
-	// For now, accept any format string
-	// TODO: Add proper Go time layout validation
-	return nil
+	if d.Format == "" {
+		// Empty format defaults to RFC3339, which is valid
+		return nil
+	}
+	// Validate that Format contains at least one standard Go time layout token
+	validTokens := []string{
+		"2006",
+		"01",
+		"02",
+		"15",
+		"04",
+		"05",
+		"MST",
+		"Z07:00",
+		"PM",
+		"Jan",
+		"Mon",
+	}
+	for _, token := range validTokens {
+		if strings.Contains(d.Format, token) {
+			return nil
+		}
+	}
+	return fmt.Errorf(
+		"invalid Go time layout: format must contain at least one standard time token",
+	)
 }
 
 // Type returns PropertyTypeFile.

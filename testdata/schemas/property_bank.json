@@ -1,0 +1,30 @@
+{
+  "properties": {
+    "standard_title": {
+      "name": "title",
+      "required": true,
+      "array": false,
+      "spec": {
+        "type": "string",
+        "pattern": "^.{1,200}$"
+      }
+    },
+    "standard_tags": {
+      "name": "tags",
+      "required": false,
+      "array": true,
+      "spec": {
+        "type": "string"
+      }
+    },
+    "iso_date": {
+      "name": "date",
+      "required": true,
+      "array": false,
+      "spec": {
+        "type": "date",
+        "format": "2006-01-02"
+      }
+    }
+  }
+}
