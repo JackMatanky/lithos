@@ -107,7 +107,7 @@ func TestTemplateLoaderAdapter_Integration(t *testing.T) {
 		}
 
 		// Check that content contains expected text
-		expectedContent := "# {{.title}}"
+		expectedContent := "# {{if .title}}{{.title}}{{else}}Untitled Note{{end}}"
 		if tmpl.Content == "" {
 			t.Error("Template content is empty")
 		}
