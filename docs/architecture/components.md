@@ -79,6 +79,103 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 
 **Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `goccy/go-yaml` for YAML parsing, `github.com/yuin/goldmark` for AST-based frontmatter extraction and heading parsing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
 
+**Frontmatter Validation (Business Rules with Strict Type Checking):**
+
+FrontmatterService.Validate() performs strict validation with in-memory type normalization for validation logic only. **Important:** Validation never modifies files—normalization is purely in-memory for validation purposes. Data transformations (like scalar→array coercion or type conversions) are linting concerns, not validation concerns.
+
+- **Purpose:** Validate YAML frontmatter data strictly against schema business rules
+- **When:** Every note indexing and validation operation
+- **Complexity:** High - requires YAML type handling and cross-field validation
+- **Philosophy:** Validator is strict and raises errors when data doesn't match schema. A future linter would be permissive and auto-fix issues.
+
+**Validation Workflow:**
+
+1. **Schema Lookup:** Get schema from SchemaRegistry using frontmatter.FileClass
+2. **Required Field Check:** Ensure all required properties present in frontmatter.Fields
+3. **Array vs Scalar Check:** Verify array/scalar expectation matches (no auto-coercion)
+4. **Type Normalization (In-Memory Only):** Normalize YAML types for validation logic without modifying files
+5. **Constraint Validation:** Validate normalized value against PropertySpec constraints (pattern, min/max, enum, etc.)
+6. **File Reference Validation:** For FileSpec properties, validate file exists via QueryService.ByPath()
+7. **Error Aggregation:** Return all validation errors with field-level remediation hints
+
+**YAML Type Handling:**
+
+The `goccy/go-yaml` parser handles YAML syntax and returns Go types. FrontmatterService validates these Go types against schema expectations:
+
+```yaml
+# Strings (quoted or unquoted - both valid YAML)
+title: hello world           # Unquoted string → string
+title: "hello world"         # Quoted string → string
+title: 'single quoted'       # Single-quoted → string
+description: |               # Block scalar → string
+  Multiline text
+
+# Numbers (YAML doesn't distinguish int/float)
+count: 42                    # Integer notation → int64 in Go
+price: 42.5                  # Float notation → float64 in Go
+# Validator normalizes to float64 IN-MEMORY for validation only
+# Files remain unchanged!
+
+# Booleans (YAML liberal syntax)
+active: true                 # Boolean literal → bool
+active: yes                  # YAML boolean → bool (parser converts)
+active: on                   # YAML boolean → bool (parser converts)
+
+# Arrays
+tags: [work, personal]       # Flow style → []any
+tags:                        # Block style → []any
+  - work
+  - personal
+```
+
+**Type Validation Strategy:**
+
+```go
+// StringSpec validation
+title: "hello"  ✓ (string type matches)
+title: 42       ✗ ERROR: Expected string, got number
+
+// NumberSpec validation
+count: 42       ✓ (int normalized to float64 in-memory for validation)
+count: 42.5     ✓ (float already float64)
+count: "42"     ✗ ERROR: Expected number, got string
+# Note: If NumberSpec.Step = 1.0, validator checks value == floor(value)
+
+// BoolSpec validation
+active: true    ✓ (bool type)
+active: yes     ✓ (YAML parser converts to bool)
+active: 1       ✗ ERROR: Expected boolean, got number
+active: "true"  ✗ ERROR: Expected boolean, got string
+
+// Array validation (NO auto-coercion)
+tags: [work]    ✓ (array when Property.Array = true)
+tags: work      ✗ ERROR: Expected array, got scalar
+tags: [work]    ✗ ERROR: Expected scalar, got array (when Property.Array = false)
+```
+
+**Validation vs Linting:**
+
+- **Validator (FrontmatterService):** Strict enforcement. Raises errors when data doesn't match schema. User must fix data or schema.
+- **Linter (Future feature):** Permissive transformation. Auto-fixes common issues like `tags: work` → `tags: [work]` or type conversions.
+
+**In-Memory Normalization:**
+
+Validator normalizes types in-memory for validation logic only:
+
+- YAML integers → float64 for NumberSpec validation (files unchanged)
+- Step attribute determines int vs float semantics:
+  - `Step: 1.0` → Requires integer values (checks `value == math.Floor(value)`)
+  - `Step: 0.1` → Allows fractional values
+  - `Step: nil` → Any precision allowed
+
+**Implementation Note:**
+
+All public methods with multiple steps follow Single Responsibility Principle by decomposing into private methods. For example, Validate() orchestrates via private methods: lookupSchema(), validateAgainstSchema(), validateProperty(), validateArrayExpectation(), coerceValue(), validateAgainstSpec(), etc. Each private method has one clear responsibility.
+
+**Error Format:**
+
+Validation errors returned as structured FrontmatterError types with schema name, field name, rule violated, actual value, and remediation message for CLI display.
+
 ### SchemaEngine
 
 **Responsibility:** Coordinate schema loading, validation, resolution, and provide unified access to schemas and properties. Orchestrates SchemaLoader, SchemaValidator, SchemaResolver, and SchemaRegistry using Go generics for type-safe retrieval.
@@ -220,103 +317,6 @@ if err != nil {
     return fmt.Errorf("schema resolution failed: %w", err)
 }
 ```
-
-**Frontmatter Validation (Business Rules with Strict Type Checking):**
-
-FrontmatterService.Validate() performs strict validation with in-memory type normalization for validation logic only. **Important:** Validation never modifies files—normalization is purely in-memory for validation purposes. Data transformations (like scalar→array coercion or type conversions) are linting concerns, not validation concerns.
-
-- **Purpose:** Validate YAML frontmatter data strictly against schema business rules
-- **When:** Every note indexing and validation operation
-- **Complexity:** High - requires YAML type handling and cross-field validation
-- **Philosophy:** Validator is strict and raises errors when data doesn't match schema. A future linter would be permissive and auto-fix issues.
-
-**Validation Workflow:**
-
-1. **Schema Lookup:** Get schema from SchemaRegistry using frontmatter.FileClass
-2. **Required Field Check:** Ensure all required properties present in frontmatter.Fields
-3. **Array vs Scalar Check:** Verify array/scalar expectation matches (no auto-coercion)
-4. **Type Normalization (In-Memory Only):** Normalize YAML types for validation logic without modifying files
-5. **Constraint Validation:** Validate normalized value against PropertySpec constraints (pattern, min/max, enum, etc.)
-6. **File Reference Validation:** For FileSpec properties, validate file exists via QueryService.ByPath()
-7. **Error Aggregation:** Return all validation errors with field-level remediation hints
-
-**YAML Type Handling:**
-
-The `goccy/go-yaml` parser handles YAML syntax and returns Go types. FrontmatterService validates these Go types against schema expectations:
-
-```yaml
-# Strings (quoted or unquoted - both valid YAML)
-title: hello world           # Unquoted string → string
-title: "hello world"         # Quoted string → string
-title: 'single quoted'       # Single-quoted → string
-description: |               # Block scalar → string
-  Multiline text
-
-# Numbers (YAML doesn't distinguish int/float)
-count: 42                    # Integer notation → int64 in Go
-price: 42.5                  # Float notation → float64 in Go
-# Validator normalizes to float64 IN-MEMORY for validation only
-# Files remain unchanged!
-
-# Booleans (YAML liberal syntax)
-active: true                 # Boolean literal → bool
-active: yes                  # YAML boolean → bool (parser converts)
-active: on                   # YAML boolean → bool (parser converts)
-
-# Arrays
-tags: [work, personal]       # Flow style → []any
-tags:                        # Block style → []any
-  - work
-  - personal
-```
-
-**Type Validation Strategy:**
-
-```go
-// StringSpec validation
-title: "hello"  ✓ (string type matches)
-title: 42       ✗ ERROR: Expected string, got number
-
-// NumberSpec validation
-count: 42       ✓ (int normalized to float64 in-memory for validation)
-count: 42.5     ✓ (float already float64)
-count: "42"     ✗ ERROR: Expected number, got string
-# Note: If NumberSpec.Step = 1.0, validator checks value == floor(value)
-
-// BoolSpec validation
-active: true    ✓ (bool type)
-active: yes     ✓ (YAML parser converts to bool)
-active: 1       ✗ ERROR: Expected boolean, got number
-active: "true"  ✗ ERROR: Expected boolean, got string
-
-// Array validation (NO auto-coercion)
-tags: [work]    ✓ (array when Property.Array = true)
-tags: work      ✗ ERROR: Expected array, got scalar
-tags: [work]    ✗ ERROR: Expected scalar, got array (when Property.Array = false)
-```
-
-**Validation vs Linting:**
-
-- **Validator (FrontmatterService):** Strict enforcement. Raises errors when data doesn't match schema. User must fix data or schema.
-- **Linter (Future feature):** Permissive transformation. Auto-fixes common issues like `tags: work` → `tags: [work]` or type conversions.
-
-**In-Memory Normalization:**
-
-Validator normalizes types in-memory for validation logic only:
-
-- YAML integers → float64 for NumberSpec validation (files unchanged)
-- Step attribute determines int vs float semantics:
-  - `Step: 1.0` → Requires integer values (checks `value == math.Floor(value)`)
-  - `Step: 0.1` → Allows fractional values
-  - `Step: nil` → Any precision allowed
-
-**Implementation Note:**
-
-All public methods with multiple steps follow Single Responsibility Principle by decomposing into private methods. For example, Validate() orchestrates via private methods: lookupSchema(), validateAgainstSchema(), validateProperty(), validateArrayExpectation(), coerceValue(), validateAgainstSpec(), etc. Each private method has one clear responsibility.
-
-**Error Format:**
-
-Validation errors returned as structured FrontmatterError types with schema name, field name, rule violated, actual value, and remediation message for CLI display.
 
 ### SchemaEngine
 
