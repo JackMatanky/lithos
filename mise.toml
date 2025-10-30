@@ -1,0 +1,83 @@
+# -----------------------------------------------------------------------------
+# Filename:     lithos/mise.toml
+# Docs:         https://mise.jdx.dev/
+# Description:
+# -----------------------------------------------------------------------------
+
+# ------------------------------------------------------------
+# Tools this project needs
+# ------------------------------------------------------------
+[tools]
+go = "1.24"               # ← set to whatever your project actually uses
+golangci-lint = "latest"  # common in Go repos; remove if unused
+
+# ------------------------------------------------------------
+# Project env (what you used to have in .envrc)
+# ------------------------------------------------------------
+[env]
+GO111MODULE = "on"
+
+# If you have private org modules:
+# GOPRIVATE = "github.com/your-org/*"
+
+# Keep binaries in-repo (helps CI and avoids polluting global GOPATH/bin)
+GOBIN = "{{config_root}}/bin"
+
+# Put that bin on PATH
+PATH = ["{{config_root}}/bin"]
+
+# ------------------------------------------------------------
+# Mise settings — only what helps Go projects
+# ------------------------------------------------------------
+[settings]
+# 1. Install what’s missing when entering the repo or running tasks
+auto_install = true
+
+# 2. Make “command not found → install” work (nice for new devs)
+not_found_auto_install = true
+
+# 3. Keep remote version checks reasonably fast
+fetch_remote_versions_cache = "1h"
+fetch_remote_versions_timeout = "10s"
+use_versions_host = true
+
+# 4. Trust this repo so people aren’t prompted every time (optional)
+trusted_config_paths = ["{{config_root}}"]
+
+# 5. We want to actually write a lockfile so CI gets the same versions
+lockfile = true
+
+# ------------------------------------------------------------
+# Go-specific settings
+# ------------------------------------------------------------
+[settings.go]
+# make sure GOROOT is set from the tool you installed
+set_goroot = true
+
+# set GOBIN automatically (we also set it in [env], this just reinforces)
+set_gobin = true
+
+# optional: if you keep a list of Go tools to auto-install, point to it
+# default_packages_file = "{{config_root}}/.default-go-packages"
+
+# If you’re in a region where Google’s mirror is slow, change this:
+download_mirror = "https://dl.google.com/go"
+
+# ------------------------------------------------------------
+# Tasks — run with: `mise run build`, `mise run test`, ...
+# ------------------------------------------------------------
+[tasks.build]
+desc = "Build the Go project"
+run = "go build ./..."
+
+[tasks.test]
+desc = "Run unit tests"
+run = "go test ./..."
+
+[tasks.lint]
+desc = "Run golangci-lint"
+run = "golangci-lint run ./..."
+
+# Example: task-specific env (handy for Go)
+[tasks.test.env]
+GOFLAGS = "-count=1"
