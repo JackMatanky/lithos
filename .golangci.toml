@@ -144,7 +144,7 @@ paths = ["^bin(/|$)", "^dist(/|$)", "^generated(/|$)", "^vendor(/|$)"]
 # Relaxations for specific files.
 # Tests: relax noisy rules (+ cyclop here instead of the removed skip-tests).
 [[linters.exclusions.rules]]
-path = "_test\\.go"
+path = ".*_test\\.go$"
 linters = ["cyclop", "dupl", "funlen", "mnd", "ineffassign"]
 
 # Only suppress G204/G304 from gosec in *_test.go files.
