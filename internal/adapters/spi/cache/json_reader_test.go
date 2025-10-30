@@ -380,10 +380,10 @@ func TestList(t *testing.T) {
 
 			// Restore permissions for directory walk failure test
 			if tt.name == "error - directory walk failure" {
-				_ = os.Chmod(
+				_ = os.Chmod( //nolint:gosec // Test cleanup requires directory permissions
 					cacheDir,
 					0o755,
-				) //nolint:gosec // Test cleanup requires directory permissions
+				)
 			}
 
 			// Validate results
