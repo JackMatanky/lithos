@@ -25,6 +25,10 @@ import (
 // Compile-time check to ensure VaultReaderAdapter implements VaultReaderPort.
 var _ spi.VaultReaderPort = (*VaultReaderAdapter)(nil)
 
+// FilterFunc defines a function type for filtering files during vault scanning.
+// Returns true if the file should be included in the scan results.
+type FilterFunc func(path string, info os.FileInfo) bool
+
 // VaultReaderAdapter implements VaultReaderPort using filesystem operations.
 // It provides vault scanning capabilities with proper error handling,
 // cache directory filtering, and security measures against path traversal.
@@ -58,11 +62,123 @@ func NewVaultReaderAdapter(
 func (a *VaultReaderAdapter) ScanAll(
 	ctx context.Context,
 ) ([]spi.VaultFile, error) {
-	var files []spi.VaultFile
 	startTime := time.Now()
 
+	// Filter: include files, exclude directories and cache directories
+	filter := func(path string, info os.FileInfo) bool {
+		return !info.IsDir() && !strings.Contains(path, ".lithos")
+	}
+
+	files, err := a.scanVault(ctx, a.config.VaultPath, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(startTime)
+	a.log.Debug().
+		Int("files_scanned", len(files)).
+		Dur("duration", duration).
+		Msg("vault scan completed")
+
+	return files, nil
+}
+
+// ScanModified scans vault files that have been modified after the given
+// timestamp.
+// Uses the same scanning logic as ScanAll but filters by modification time.
+// Enables NFR4 performance optimization for large vaults.
+func (a *VaultReaderAdapter) ScanModified(
+	ctx context.Context,
+	since time.Time,
+) ([]spi.VaultFile, error) {
+	startTime := time.Now()
+
+	// Filter: include files modified after since, exclude directories and cache
+	filter := func(path string, info os.FileInfo) bool {
+		if info.IsDir() || strings.Contains(path, ".lithos") {
+			return false
+		}
+		return filterByModTime(info, since)
+	}
+
+	files, err := a.scanVault(ctx, a.config.VaultPath, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	duration := time.Since(startTime)
+	a.log.Debug().
+		Int("files_scanned", len(files)).
+		Time("since", since).
+		Dur("duration", duration).
+		Msg("incremental vault scan completed")
+
+	return files, nil
+}
+
+// readFileWithMetadata reads a file and constructs VaultFile with metadata.
+// Assumes path validation has already been performed.
+//
+// that uses it.
+//
+//nolint:funcorder // Helper method must be defined before exported Read method
+func (a *VaultReaderAdapter) readFileWithMetadata(
+	path string,
+) (spi.VaultFile, error) {
+	// Check file exists
+	info, err := a.stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return spi.VaultFile{}, fmt.Errorf("file not found: %s", path)
+		}
+		return spi.VaultFile{}, a.wrapVaultError("stat", path, err)
+	}
+
+	// Read content
+	content, err := a.readFile(
+		path,
+	) // #nosec G304 - path is validated by caller
+	if err != nil {
+		return spi.VaultFile{}, a.wrapVaultError("read", path, err)
+	}
+
+	// Construct metadata and VaultFile
+	metadata := spi.NewFileMetadata(path, info)
+	return spi.NewVaultFile(metadata, content), nil
+}
+
+// Read performs single file read with path validation and security checks.
+// Validates path is within vault to prevent directory traversal attacks.
+// Returns VaultFile DTO with metadata and content.
+func (a *VaultReaderAdapter) Read(
+	ctx context.Context,
+	path string,
+) (spi.VaultFile, error) {
+	// Check for context cancellation
+	if ctx.Err() != nil {
+		return spi.VaultFile{}, ctx.Err()
+	}
+
+	// Validate path is within vault (prevent directory traversal)
+	if err := a.validatePathInVault(path); err != nil {
+		return spi.VaultFile{}, err
+	}
+
+	// Read file and construct VaultFile
+	return a.readFileWithMetadata(path)
+}
+
+// scanVault performs the core vault scanning logic with a custom filter.
+// The filter function determines which files to include in the results.
+func (a *VaultReaderAdapter) scanVault(
+	ctx context.Context,
+	vaultPath string,
+	filter FilterFunc,
+) ([]spi.VaultFile, error) {
+	var files []spi.VaultFile
+
 	err := a.walkDir(
-		a.config.VaultPath,
+		vaultPath,
 		func(path string, info os.FileInfo, err error) error {
 			// Check for context cancellation
 			if ctx.Err() != nil {
@@ -75,10 +191,10 @@ func (a *VaultReaderAdapter) ScanAll(
 				return nil // Continue walking
 			}
 
-			// Skip directories
-			if info.IsDir() {
-				// Skip cache directories
-				if strings.Contains(path, ".lithos") {
+			// Apply filter
+			if !filter(path, info) {
+				// Skip directories and cache directories
+				if info.IsDir() && strings.Contains(path, ".lithos") {
 					return filepath.SkipDir
 				}
 				return nil
@@ -108,171 +224,45 @@ func (a *VaultReaderAdapter) ScanAll(
 	)
 
 	if err != nil {
-		return nil, errors.NewFileSystemError("scan", a.config.VaultPath, err)
+		return nil, a.wrapVaultError("scan", vaultPath, err)
 	}
-
-	duration := time.Since(startTime)
-	a.log.Debug().
-		Int("files_scanned", len(files)).
-		Dur("duration", duration).
-		Msg("vault scan completed")
 
 	return files, nil
 }
 
-// ScanModified scans vault files that have been modified after the given
-// timestamp.
-// Uses the same scanning logic as ScanAll but filters by modification time.
-// Enables NFR4 performance optimization for large vaults.
-func (a *VaultReaderAdapter) ScanModified(
-	ctx context.Context,
-	since time.Time,
-) ([]spi.VaultFile, error) {
-	var files []spi.VaultFile
-	var checked, matched int
-
-	err := a.walkDir(
-		a.config.VaultPath,
-		func(path string, info os.FileInfo, err error) error {
-			// Check for context cancellation
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-
-			// Handle walk errors
-			if err != nil {
-				a.log.Warn().Err(err).Str("path", path).Msg("walk error")
-				return nil
-			}
-
-			// Skip directories
-			if info.IsDir() {
-				if strings.Contains(path, ".lithos") {
-					return filepath.SkipDir
-				}
-				return nil
-			}
-
-			return a.processFileIfModified(
-				path,
-				info,
-				since,
-				&files,
-				&checked,
-				&matched,
-			)
-		},
-	)
-
-	if err != nil {
-		return nil, errors.NewFileSystemError(
-			"scan_modified",
-			a.config.VaultPath,
-			err,
-		)
-	}
-
-	a.log.Debug().
-		Int("files_checked", checked).
-		Int("files_matched", matched).
-		Time("since", since).
-		Msg("incremental vault scan completed")
-
-	return files, nil
+// wrapVaultError wraps filesystem errors with consistent context.
+func (a *VaultReaderAdapter) wrapVaultError(op, path string, err error) error {
+	return errors.NewFileSystemError(op, path, err)
 }
 
-// Read performs single file read with path validation and security checks.
-// Validates path is within vault to prevent directory traversal attacks.
-// Returns VaultFile DTO with metadata and content.
-func (a *VaultReaderAdapter) Read(
-	ctx context.Context,
-	path string,
-) (spi.VaultFile, error) {
-	// Check for context cancellation
-	if ctx.Err() != nil {
-		return spi.VaultFile{}, ctx.Err()
-	}
-
-	// Validate path is within vault (prevent directory traversal)
-	if !a.isPathInVault(path) {
-		return spi.VaultFile{}, fmt.Errorf("path outside vault: %s", path)
-	}
-
-	// Check file exists
-	info, err := a.stat(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return spi.VaultFile{}, fmt.Errorf("file not found: %s", path)
-		}
-		return spi.VaultFile{}, errors.NewFileSystemError("stat", path, err)
-	}
-
-	// Read content
-	content, err := a.readFile(
-		path,
-	) // #nosec G304 - path is validated by caller
-	if err != nil {
-		return spi.VaultFile{}, errors.NewFileSystemError("read", path, err)
-	}
-
-	// Construct metadata and VaultFile
-	metadata := spi.NewFileMetadata(path, info)
-	return spi.NewVaultFile(metadata, content), nil
+// filterByModTime checks if a file was modified after the given timestamp.
+// Returns true if the file should be included (modified after since).
+func filterByModTime(info os.FileInfo, since time.Time) bool {
+	return !info.ModTime().Before(since)
 }
 
-// processFileIfModified checks if a file was modified after the given time
-// and processes it.
-func (a *VaultReaderAdapter) processFileIfModified(
-	path string,
-	info os.FileInfo,
-	since time.Time,
-	files *[]spi.VaultFile,
-	checked, matched *int,
-) error {
-	*checked++
-
-	// Filter: Only include files modified after 'since' timestamp
-	if info.ModTime().Before(since) {
-		return nil // Skip old file
-	}
-
-	*matched++
-
-	// Read and construct VaultFile (same as ScanAll)
-	content, err := a.readFile(
-		path,
-	) // #nosec G304 - path is validated by caller
-	if err != nil {
-		a.log.Warn().
-			Err(err).
-			Str("path", path).
-			Msg("failed to read file")
-		return nil
-	}
-
-	metadata := spi.NewFileMetadata(path, info)
-	*files = append(*files, spi.NewVaultFile(metadata, content))
-
-	return nil
-}
-
-// isPathInVault validates that the target path is within the vault directory.
+// validatePathInVault validates that the target path is within the vault
+// directory.
 // Prevents directory traversal attacks by ensuring the path doesn't escape
 // the vault root using absolute path comparison.
-func (a *VaultReaderAdapter) isPathInVault(targetPath string) bool {
+// Returns an error if the path is outside the vault.
+func (a *VaultReaderAdapter) validatePathInVault(targetPath string) error {
 	absVault, err := filepath.Abs(a.config.VaultPath)
 	if err != nil {
-		return false
+		return fmt.Errorf("failed to get vault path: %w", err)
 	}
 	absTarget, err := filepath.Abs(targetPath)
 	if err != nil {
-		return false
+		return fmt.Errorf("failed to get target path: %w", err)
 	}
 	// Check target is subdirectory of vault
 	rel, err := filepath.Rel(absVault, absTarget)
 	if err != nil {
-		return false
+		return fmt.Errorf("failed to compute relative path: %w", err)
 	}
 	// Reject paths starting with ".." (directory traversal)
-	return !strings.HasPrefix(rel, "..")
+	if strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("path outside vault: %s", targetPath)
+	}
+	return nil
 }
