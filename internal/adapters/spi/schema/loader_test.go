@@ -2,401 +2,331 @@ package schema
 
 import (
 	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
+	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// testdataPath returns the path to testdata directory from this package.
-func testdataPath() string {
-	return "../../../../testdata/schemas"
-}
+// TestSchemaLoaderAdapter_LoadSuccess verifies a full property bank and schema
+// load.
+func TestSchemaLoaderAdapter_LoadSuccess(t *testing.T) {
+	t.Parallel()
 
-func TestSchemaLoaderAdapter_Load_Success(t *testing.T) {
-	// Create temporary directory with only valid files
 	tempDir := t.TempDir()
-	schemaDir := filepath.Join(tempDir, "schemas")
-	require.NoError(t, os.MkdirAll(schemaDir, 0755))
-
-	// Copy valid files
-	validFiles := []string{
-		"property_bank.json",
-		"base-note.json",
-		"meeting-note.json",
-	}
-	for _, file := range validFiles {
-		src := filepath.Join(testdataPath(), file)
-		dst := filepath.Join(schemaDir, file)
-		data, err := os.ReadFile(src)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(dst, data, 0644))
-	}
-
-	// Setup test config
-	cfg := &domain.Config{
-		SchemasDir:       schemaDir,
-		PropertyBankFile: "property_bank.json",
-	}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	// Execute Load
-	schemas, bank, err := loader.Load(context.Background())
-
-	// Verify success
-	require.NoError(t, err)
-	assert.NotEmpty(t, bank.Properties)
-	assert.Len(t, schemas, 2)
-
-	// Verify schema names
-	names := make([]string, len(schemas))
-	for i, s := range schemas {
-		names[i] = s.Name
-	}
-	assert.Contains(t, names, "base-note")
-	assert.Contains(t, names, "meeting-note")
-
-	// Verify meeting-note extends base-note
-	for _, s := range schemas {
-		if s.Name == "meeting-note" {
-			assert.Equal(t, "base-note", s.Extends)
-		}
-	}
-}
-
-func TestSchemaLoaderAdapter_Load_MissingPropertyBank(t *testing.T) {
-	// Setup config with non-existent property bank
-	cfg := &domain.Config{
-		SchemasDir:       testdataPath(),
-		PropertyBankFile: "missing.json",
-	}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	// Execute Load
-	_, _, err := loader.Load(context.Background())
-
-	// Verify error
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "resource operation failed")
-}
-
-func TestSchemaLoaderAdapter_Load_MalformedPropertyBank(t *testing.T) {
-	// Setup config pointing to malformed JSON
-	cfg := &domain.Config{
-		SchemasDir:       testdataPath(),
-		PropertyBankFile: "invalid.json", // This is actually a schema file, not property bank
-	}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	// Execute Load
-	_, _, err := loader.Load(context.Background())
-
-	// Verify error
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "malformed property bank JSON")
-}
-
-func TestSchemaLoaderAdapter_Load_MalformedSchema(t *testing.T) {
-	// Create a temporary malformed schema file
-	tempDir := t.TempDir()
-	schemaDir := filepath.Join(tempDir, "schemas")
-	require.NoError(t, os.MkdirAll(schemaDir, 0755))
-
-	// Copy valid property bank
-	validBankPath := filepath.Join(testdataPath(), "property_bank.json")
-	bankData, err := os.ReadFile(validBankPath)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		os.WriteFile(
-			filepath.Join(schemaDir, "property_bank.json"),
-			bankData,
-			0644,
-		),
-	)
-
-	// Create malformed schema
-	require.NoError(
-		t,
-		os.WriteFile(
-			filepath.Join(schemaDir, "bad.json"),
-			[]byte("{invalid json"),
-			0644,
-		),
-	)
-
-	// Setup config
-	cfg := &domain.Config{
-		SchemasDir:       schemaDir,
-		PropertyBankFile: "property_bank.json",
-	}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	// Execute Load
-	_, _, err = loader.Load(context.Background())
-
-	// Verify error
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "malformed schema JSON")
-}
-
-func TestSchemaLoaderAdapter_Load_DuplicateNames(t *testing.T) {
-	// Create temp directory with duplicate schemas
-	tempDir := t.TempDir()
-	schemaDir := filepath.Join(tempDir, "schemas")
-	require.NoError(t, os.MkdirAll(schemaDir, 0755))
-
-	// Copy property bank
-	bankSrc := filepath.Join(testdataPath(), "property_bank.json")
-	bankData, err := os.ReadFile(bankSrc)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		os.WriteFile(
-			filepath.Join(schemaDir, "property_bank.json"),
-			bankData,
-			0644,
-		),
-	)
-
-	// Copy base-note
-	baseSrc := filepath.Join(testdataPath(), "base-note.json")
-	baseData, err := os.ReadFile(baseSrc)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		os.WriteFile(
-			filepath.Join(schemaDir, "base-note.json"),
-			baseData,
-			0644,
-		),
-	)
-
-	// Copy meeting-note twice to create duplicate
-	meetingSrc := filepath.Join(testdataPath(), "meeting-note.json")
-	meetingData, err := os.ReadFile(meetingSrc)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		os.WriteFile(
-			filepath.Join(schemaDir, "meeting-note.json"),
-			meetingData,
-			0644,
-		),
-	)
-	require.NoError(
-		t,
-		os.WriteFile(
-			filepath.Join(schemaDir, "meeting-note-duplicate.json"),
-			meetingData,
-			0644,
-		),
-	)
-
-	// Setup config
-	cfg := &domain.Config{
-		SchemasDir:       schemaDir,
-		PropertyBankFile: "property_bank.json",
-	}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	// Execute Load
-	_, _, err = loader.Load(context.Background())
-
-	// Verify error
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "duplicate schema names found")
-}
-
-func TestSchemaLoaderAdapter_Load_EmptyDirectory(t *testing.T) {
-	// Create empty temp directory
-	tempDir := t.TempDir()
-	schemaDir := filepath.Join(tempDir, "schemas")
-	require.NoError(t, os.MkdirAll(schemaDir, 0755))
-
-	// Copy valid property bank
-	validBankPath := filepath.Join(testdataPath(), "property_bank.json")
-	bankData, err := os.ReadFile(validBankPath)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		os.WriteFile(
-			filepath.Join(schemaDir, "property_bank.json"),
-			bankData,
-			0644,
-		),
-	)
-
-	// Setup config
-	cfg := &domain.Config{
-		SchemasDir:       schemaDir,
-		PropertyBankFile: "property_bank.json",
-	}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	// Execute Load
-	schemas, bank, err := loader.Load(context.Background())
-
-	// Verify success with empty schemas
-	require.NoError(t, err)
-	assert.NotEmpty(t, bank.Properties)
-	assert.Empty(t, schemas)
-}
-
-func TestSchemaLoaderAdapter_Load_PropertyBankLoadedOnce(t *testing.T) {
-	// This test verifies that property bank is loaded exactly once
-	// We can't easily test this directly, but we can verify the behavior
-	// by checking that Load() succeeds and property bank is present
-
-	// Create temporary directory with valid files
-	tempDir := t.TempDir()
-	schemaDir := filepath.Join(tempDir, "schemas")
-	require.NoError(t, os.MkdirAll(schemaDir, 0755))
-
-	// Copy valid files
-	validFiles := []string{
-		"property_bank.json",
-		"base-note.json",
-		"meeting-note.json",
-	}
-	for _, file := range validFiles {
-		src := filepath.Join(testdataPath(), file)
-		dst := filepath.Join(schemaDir, file)
-		data, err := os.ReadFile(src)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(dst, data, 0644))
-	}
-
-	cfg := &domain.Config{
-		SchemasDir:       schemaDir,
-		PropertyBankFile: "property_bank.json",
-	}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	schemas, bank, err := loader.Load(context.Background())
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, bank.Properties)
-	assert.Len(t, schemas, 2) // base-note and meeting-note
-}
-
-func TestSchemaLoaderAdapter_loadPropertyBank_Success(t *testing.T) {
-	cfg := &domain.Config{
-		SchemasDir:       testdataPath(),
-		PropertyBankFile: "property_bank.json",
-	}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	bank, err := loader.loadPropertyBank(
-		filepath.Join(testdataPath(), "property_bank.json"),
-	)
-
-	require.NoError(t, err)
-	assert.NotEmpty(t, bank.Properties)
-}
-
-func TestSchemaLoaderAdapter_loadPropertyBank_MissingFile(t *testing.T) {
-	cfg := &domain.Config{}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	_, err := loader.loadPropertyBank("nonexistent.json")
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "resource operation failed")
-}
-
-func TestSchemaLoaderAdapter_loadPropertyBank_MalformedJSON(t *testing.T) {
-	cfg := &domain.Config{}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	_, err := loader.loadPropertyBank(
-		filepath.Join(testdataPath(), "invalid.json"),
-	)
-
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "malformed property bank JSON")
-}
-
-func TestSchemaLoaderAdapter_loadSchemas_Success(t *testing.T) {
-	// Create temporary directory with only valid schema files
-	tempDir := t.TempDir()
-
-	// Copy valid schema files (excluding property_bank.json)
-	validFiles := []string{"base-note.json", "meeting-note.json"}
-	for _, file := range validFiles {
-		src := filepath.Join(testdataPath(), file)
-		dst := filepath.Join(tempDir, file)
-		data, err := os.ReadFile(src)
-		require.NoError(t, err)
-		require.NoError(t, os.WriteFile(dst, data, 0644))
-	}
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "base-note.json")
+	copySchemaFixture(t, tempDir, "meeting-note.json")
 
 	cfg := &domain.Config{
 		SchemasDir:       tempDir,
 		PropertyBankFile: "property_bank.json",
 	}
 	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
 
-	schemas, err := loader.loadSchemas(tempDir)
-
+	schemas, bank, err := adapter.Load(context.Background())
 	require.NoError(t, err)
-	assert.Len(t, schemas, 2) // base-note and meeting-note
+
+	assert.Len(t, bank.Properties, 3)
+	assert.Len(t, schemas, 2)
+
+	names := []string{schemas[0].Name, schemas[1].Name}
+	assert.ElementsMatch(t, []string{"base-note", "meeting-note"}, names)
+	for _, schema := range schemas {
+		assert.NotNil(t, schema.Properties)
+	}
 }
 
-func TestSchemaLoaderAdapter_loadSchemas_EmptyDir(t *testing.T) {
+// TestSchemaLoaderAdapter_MissingPropertyBank asserts missing property bank
+// errors.
+func TestSchemaLoaderAdapter_MissingPropertyBank(t *testing.T) {
+	t.Parallel()
+
 	tempDir := t.TempDir()
-	cfg := &domain.Config{}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
+	copySchemaFixture(t, tempDir, "base-note.json")
 
-	schemas, err := loader.loadSchemas(tempDir)
-
-	require.NoError(t, err)
-	assert.Empty(t, schemas)
-}
-
-func TestSchemaLoaderAdapter_checkDuplicates_NoDuplicates(t *testing.T) {
-	schemas := []domain.Schema{
-		{Name: "schema1"},
-		{Name: "schema2"},
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
 	}
-	cfg := &domain.Config{}
 	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
 
-	err := loader.checkDuplicates(schemas)
-
-	require.NoError(t, err)
-}
-
-func TestSchemaLoaderAdapter_checkDuplicates_WithDuplicates(t *testing.T) {
-	schemas := []domain.Schema{
-		{Name: "duplicate"},
-		{Name: "unique"},
-		{Name: "duplicate"},
-	}
-	cfg := &domain.Config{}
-	log := logger.NewTest()
-	loader := NewSchemaLoaderAdapter(cfg, &log)
-
-	err := loader.checkDuplicates(schemas)
-
+	_, _, err := adapter.Load(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "duplicate schema names found")
-	assert.Contains(t, err.Error(), "duplicate")
+
+	var resourceErr *domainerrors.ResourceError
+	require.ErrorAs(t, err, &resourceErr)
+	const expectedMissingHint = "Create schemas/property_bank.json or configure PropertyBankFile"
+	assert.Contains(t, err.Error(), expectedMissingHint)
+	assert.Equal(t, "schema", resourceErr.Resource())
+	assert.Equal(t, "load", resourceErr.Operation())
+}
+
+// TestSchemaLoaderAdapter_MalformedPropertyBank reports malformed JSON with
+// remediation.
+func TestSchemaLoaderAdapter_MalformedPropertyBank(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	writeFile(
+		t,
+		filepath.Join(tempDir, "property_bank.json"),
+		`{"properties": {`,
+	)
+	copySchemaFixture(t, tempDir, "base-note.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	_, _, err := adapter.Load(context.Background())
+	require.Error(t, err)
+
+	var schemaErr *domainerrors.SchemaError
+	require.ErrorAs(t, err, &schemaErr)
+	assert.Contains(t, schemaErr.Remediation, "Check JSON syntax")
+}
+
+// TestSchemaLoaderAdapter_MalformedSchemaJSON reports malformed schema JSON.
+func TestSchemaLoaderAdapter_MalformedSchemaJSON(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "invalid.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	_, _, err := adapter.Load(context.Background())
+	require.Error(t, err)
+
+	var schemaErr *domainerrors.SchemaError
+	require.ErrorAs(t, err, &schemaErr)
+	assert.Contains(t, schemaErr.Remediation, "Check JSON syntax")
+}
+
+// TestSchemaLoaderAdapter_DuplicateSchemas detects duplicate schema names.
+func TestSchemaLoaderAdapter_DuplicateSchemas(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "base-note.json")
+	copySchemaFixture(t, tempDir, "meeting-note.json")
+
+	duplicateDir := filepath.Join(tempDir, "dup")
+	require.NoError(t, os.MkdirAll(duplicateDir, 0o750))
+	duplicateContent := `{
+  "name": "meeting-note",
+  "extends": "",
+  "excludes": [],
+  "properties": {
+    "title": {
+      "$ref": "#/properties/standard_title"
+    }
+  }
+}`
+	writeFile(
+		t,
+		filepath.Join(duplicateDir, "meeting-note.json"),
+		duplicateContent,
+	)
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	_, _, err := adapter.Load(context.Background())
+	require.Error(t, err)
+
+	var schemaErr *domainerrors.SchemaError
+	require.ErrorAs(t, err, &schemaErr)
+	assert.Contains(t, err.Error(), "Schema names must be unique")
+	assert.Contains(t, err.Error(), "meeting-note")
+}
+
+// TestSchemaLoaderAdapter_EmptySchemasDirectory returns an empty slice when no
+// schemas exist.
+func TestSchemaLoaderAdapter_EmptySchemasDirectory(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	schemas, bank, err := adapter.Load(context.Background())
+	require.NoError(t, err)
+
+	assert.Empty(t, schemas)
+	assert.NotNil(t, bank.Properties)
+}
+
+// TestSchemaLoaderAdapter_PropertyBankReadOnce ensures the property bank file
+// is read once.
+func TestSchemaLoaderAdapter_PropertyBankReadOnce(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "base-note.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	var propertyReads atomic.Int32
+	adapter.readFile = func(path string) ([]byte, error) {
+		if strings.HasSuffix(path, "property_bank.json") {
+			propertyReads.Add(1)
+		}
+		return os.ReadFile(path)
+	}
+
+	_, _, err := adapter.Load(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), propertyReads.Load())
+}
+
+// TestSchemaLoaderAdapter_RespectsConfigPropertyBankPath honors custom property
+// bank filenames.
+func TestSchemaLoaderAdapter_RespectsConfigPropertyBankPath(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	writeFile(t, filepath.Join(tempDir, "custom_bank.json"), `{
+  "properties": {
+    "title": {
+      "name": "title",
+      "required": true,
+      "array": false,
+      "spec": {
+        "type": "string"
+      }
+    }
+  }
+}`)
+	copySchemaFixture(t, tempDir, "base-note.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "custom_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	_, _, err := adapter.Load(context.Background())
+	require.NoError(t, err)
+}
+
+func copySchemaFixture(t *testing.T, dstDir, filename string) {
+	t.Helper()
+
+	src := filepath.Join(
+		"..",
+		"..",
+		"..",
+		"..",
+		"testdata",
+		"schemas",
+		filename,
+	)
+	data, err := os.ReadFile(src)
+	require.NoError(t, err)
+
+	dest := filepath.Join(dstDir, filename)
+	require.NoError(t, os.MkdirAll(filepath.Dir(dest), 0o750))
+	require.NoError(t, os.WriteFile(dest, data, 0o600))
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+}
+
+// TestSchemaLoaderAdapter_PropertyBankBeforeSchemas verifies load order
+// logging.
+func TestSchemaLoaderAdapter_PropertyBankBeforeSchemas(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "base-note.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	var order []string
+	adapter.readFile = func(path string) ([]byte, error) {
+		order = append(order, filepath.Base(path))
+		return os.ReadFile(path)
+	}
+
+	_, _, err := adapter.Load(context.Background())
+	require.NoError(t, err)
+	require.NotEmpty(t, order)
+	assert.Equal(t, "property_bank.json", order[0])
+}
+
+// TestSchemaLoaderAdapter_WalkError surfaces directory walk failures.
+func TestSchemaLoaderAdapter_WalkError(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	adapter.walkDir = func(string, fs.WalkDirFunc) error {
+		return errors.New("walk failure")
+	}
+
+	_, _, err := adapter.Load(context.Background())
+	require.Error(t, err)
+
+	var resourceErr *domainerrors.ResourceError
+	require.ErrorAs(t, err, &resourceErr)
+	assert.Equal(t, "schema", resourceErr.Resource())
+	assert.Equal(t, "scan", resourceErr.Operation())
 }
