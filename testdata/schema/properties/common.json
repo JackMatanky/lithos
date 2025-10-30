@@ -1,8 +1,0 @@
-{
-  "properties": {
-    "user-profile": {
-      "type": "string",
-      "required": false
-    }
-  }
-}
