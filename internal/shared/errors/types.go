@@ -65,6 +65,12 @@ func (e BaseError) Unwrap() error {
 	return e.cause
 }
 
+// Cause returns the underlying cause error, or nil if none exists.
+// This provides direct access to the cause for error formatting.
+func (e BaseError) Cause() error {
+	return e.cause
+}
+
 // NewValidationError creates a new ValidationError with property validation
 // context. The message is fixed as "validation failed" and the cause provides
 // additional context.
@@ -127,4 +133,19 @@ func (e *ResourceError) Operation() string {
 // connection string).
 func (e *ResourceError) Target() string {
 	return e.target
+}
+
+// FileSystemError represents filesystem operation failures.
+// It embeds ResourceError to provide standard error functionality with
+// filesystem-specific context.
+type FileSystemError struct {
+	ResourceError
+}
+
+// NewFileSystemError creates a new FileSystemError with filesystem operation context.
+// The resource is fixed as "file" and the operation/target provide specific context.
+func NewFileSystemError(operation, target string, cause error) *FileSystemError {
+	return &FileSystemError{
+		ResourceError: *NewResourceError("file", operation, target, cause),
+	}
 }
