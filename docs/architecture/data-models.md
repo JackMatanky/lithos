@@ -352,6 +352,32 @@ Current MVP only indexes frontmatter. Post-MVP Phase 3 (Enhanced Querying) may r
 
 - **Property override semantics:** If child Property.Name matches parent Property.Name, child completely replaces parent (not merging property attributes). This is explicit override, not attribute-level merge.
 
+- **Immutability:** Schema instances are immutable after construction. Properties and Excludes slices are defensively copied during creation to prevent external modification.
+
+- **JSON/YAML Serialization:** Schemas serialize as JSON or YAML objects with name, extends (optional), excludes (optional), and properties array. ResolvedProperties is omitted from serialization (computed field).
+
+**JSON/YAML Format Example:**
+
+```json
+{
+  "name": "contact",
+  "extends": "base-note",
+  "excludes": ["internal_id"],
+  "properties": [
+    {"$ref": "#/properties/standard_title"},
+    {"$ref": "#/properties/standard_created"},
+    {
+      "name": "email",
+      "required": true,
+      "array": false,
+      "spec": {
+        "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"
+      }
+    }
+  ]
+}
+```
+
 **Additional Information:**
 
 Schema inheritance provides powerful reusability for similar note types. For example, a base "note" schema could define common properties (title, tags, created), while specialized schemas like "meeting-note" or "person" extend the base and add domain-specific properties. The eager resolution strategy ensures validation is fast (no runtime resolution overhead) at the cost of slightly longer startup time. For MVP with <100 schemas, this tradeoff is acceptable. The Builder pattern isolates complexity—domain validators simply receive fully-resolved schemas and don't need to understand inheritance mechanics.
@@ -442,6 +468,10 @@ Property bank definitions stored in single file `schemas/property_bank.json` (co
 
 - **Flat structure:** Properties cannot reference other properties (no nested `$ref` in PropertyBank itself). Post-MVP could add property composition if needed.
 
+- **Immutability:** PropertyBank instances are immutable after construction. Properties map is defensively copied during creation to prevent external modification.
+
+- **JSON/YAML Serialization:** PropertyBank serializes as JSON object with single "properties" field containing the property map. No YAML support (JSON-only for MVP).
+
 **Implementation Notes:**
 
 SchemaLoader adapter implements property bank loading and `$ref` resolution (~30 LOC):
@@ -472,26 +502,52 @@ PropertyBank solves the "common property definition" problem elegantly. Without 
 - `Name` (string) - Property identifier matching frontmatter key. Case-sensitive.
 - `Required` (bool) - Whether property must be present. Empty array satisfies required for array properties.
 - `Array` (bool) - Whether property accepts multiple values (YAML list) vs single scalar value.
-- `Spec` (PropertySpec) - Type-specific validation constraints (interface for polymorphism).
+- `Ref` (string, optional) - JSON pointer reference to PropertyBank entry (e.g., "#/properties/standard_title"). Mutually exclusive with Spec.
+- `Spec` (PropertySpec, optional) - Type-specific validation constraints (interface for polymorphism). Mutually exclusive with Ref.
 
 **Key Methods:**
 
-- `Validate(ctx context.Context) error` - Validates property structure (Name not empty, Spec not nil). Delegates PropertySpec validation to Spec.Validate(). Returns error on structural issues.
+- `Validate(ctx context.Context) error` - Validates property structure (Name not empty, exactly one of Ref or Spec set). Delegates PropertySpec validation to Spec.Validate() if present. Returns error on structural issues.
 
 **Relationships:**
 
 - Belongs to Schema (composition)
-- Contains one PropertySpec implementation
-- May be sourced from PropertyBank via `$ref` (resolved by SchemaResolver)
+- Contains one PropertySpec implementation OR references PropertyBank entry
+- May be sourced from PropertyBank via `$ref` (resolved by SchemaLoader adapter)
 - Used by FrontmatterService to validate Frontmatter.Fields
 - Structural validation via Property.Validate() called by Schema.Validate()
 
 **Design Decisions:**
 
 - **Rich domain model:** Contains structural validation behavior via Validate() method. Delegates to PropertySpec.Validate() for polymorphic validation.
+- **Reference vs Inline:** Properties can either reference PropertyBank entries ($ref) or define constraints inline (Spec). Mutually exclusive for clarity.
 - **Interface-based composition:** PropertySpec interface enables type-specific validation without nullable attributes.
 - **Properties vs Fields terminology:** "Property" = schema definition. "Field" = actual frontmatter data.
 - **Required vs Array orthogonal:** Can have required scalars, optional scalars, required arrays, or optional arrays.
+- **Immutability:** Property instances are immutable value objects. Created via constructor validation, never modified after creation.
+- **JSON/YAML Serialization:** Properties serialize as JSON objects with either `$ref` field or `spec` field containing the PropertySpec variant.
+
+**JSON/YAML Format Examples:**
+
+```json
+// Property with inline spec
+{
+  "name": "email",
+  "required": true,
+  "array": false,
+  "spec": {
+    "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"
+  }
+}
+
+// Property with reference
+{
+  "name": "title",
+  "required": true,
+  "array": false,
+  "$ref": "#/properties/standard_title"
+}
+```
 
 ---
 
@@ -524,6 +580,10 @@ PropertyBank solves the "common property definition" problem elegantly. Without 
 - **Interface-based polymorphism:** PropertySpec interface enables type-safe composition. Property contains one PropertySpec variant without nullable attributes or type switches.
 
 - **Nil pointer semantics:** For optional attributes, nil pointer means "no constraint." Empty value has different meaning (e.g., empty Enum list = no values allowed, nil Enum = any value allowed).
+
+- **Immutability:** All PropertySpec variants are immutable after construction. No setters or modification methods.
+
+- **JSON/YAML Serialization:** Each PropertySpec variant serializes as JSON/YAML object with type-specific fields. Interface is resolved via discriminator pattern during unmarshaling.
 
 ---
 

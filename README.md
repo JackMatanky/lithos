@@ -80,7 +80,84 @@ This will install the `lithos` binary to your `$GOPATH/bin` directory.
    ```
 
 6. **Check the generated note:**
-   The note will be created in your vault root with the rendered content.
+    The note will be created in your vault root with the rendered content.
+
+## Schema System
+
+Lithos supports **schemas** to define the structure and validation rules for your notes. Schemas ensure consistent frontmatter properties, automatic validation, and property reuse across your vault.
+
+### Key Features
+
+- **Property Bank:** Single source of truth for reusable property definitions
+- **Schema Inheritance:** Extend base schemas with `extends` and customize with `excludes`
+- **Type Validation:** Automatic validation for string, number, boolean, date, and file properties
+- **Constraint Validation:** Support for regex, enum, min/max, step, directory, and fileClass constraints
+- **Property References:** Use `$ref` to reference property bank entries (DRY principle)
+- **Actionable Errors:** Error messages include remediation hints for quick fixes
+
+For detailed documentation, see [Schema Documentation](docs/schemas/README.md).
+
+### Quick Example
+
+1. **Create property bank** (`schemas/property_bank.json`):
+
+```json
+{
+  "standard_title": {
+    "type": "string",
+    "required": true,
+    "metadata": {"description": "Standard title property"}
+  },
+  "standard_created": {
+    "type": "date",
+    "required": true,
+    "metadata": {"description": "Creation timestamp"}
+  }
+}
+```
+
+2. **Create schema** (`schemas/contact.schema.json`):
+
+```json
+{
+  "name": "contact",
+  "properties": [
+    {"$ref": "standard_title"},
+    {"$ref": "standard_created"},
+    {
+      "id": "email",
+      "type": "string",
+      "required": true,
+      "spec": {
+        "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+      }
+    }
+  ]
+}
+```
+
+3. **Create template** using schema (`templates/contact.md`):
+
+```markdown
+---
+schema: contact
+title: {{ prompt "name" "Contact Name" "" }}
+created: {{ now "2006-01-02" }}
+email: {{ prompt "email" "Email Address" "" }}
+---
+
+# {{ .Frontmatter.title }}
+
+Email: {{ .Frontmatter.email }}
+```
+
+4. **Generate note** with automatic validation:
+
+```bash
+lithos new contact
+```
+
+The frontmatter will be automatically validated against the schema before the note is created.
 
 ## Configuration Reference
 
@@ -117,12 +194,106 @@ All configuration fields can be overridden using environment variables with the 
 ```bash
 export LITHOS_VAULT_PATH="/path/to/vault"
 export LITHOS_TEMPLATES_DIR="my-templates/"
+export LITHOS_SCHEMAS_DIR="my-schemas/"
+export LITHOS_PROPERTY_BANK_FILE="my-property-bank.json"
 export LITHOS_LOG_LEVEL="debug"
 ```
 
 ### Configuration File Search
 
 Lithos searches for `lithos.json` starting from the current working directory and moving upward until the file is found or the root directory is reached.
+
+## Schema Quick Start
+
+Get started with schema-based note creation in 6 steps:
+
+1. **Create schemas/ directory:**
+   ```bash
+   mkdir schemas
+   ```
+
+2. **Create property_bank.json:**
+   ```json
+   {
+     "standard_title": {
+       "type": "string",
+       "required": true,
+       "metadata": {"description": "Standard title property"}
+     },
+     "standard_created": {
+       "type": "date",
+       "required": true,
+       "metadata": {"description": "Creation timestamp"}
+     }
+   }
+   ```
+
+3. **Create contact.schema.json:**
+   ```json
+   {
+     "name": "contact",
+     "properties": [
+       {"$ref": "standard_title"},
+       {"$ref": "standard_created"},
+       {
+         "id": "email",
+         "type": "string",
+         "required": true,
+         "spec": {
+           "regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+         }
+       }
+     ]
+   }
+   ```
+
+4. **Create template using schema:**
+   ```markdown
+   ---
+   schema: contact
+   title: {{ prompt "name" "Contact Name" "" }}
+   created: {{ now "2006-01-02" }}
+   email: {{ prompt "email" "Email Address" "" }}
+   ---
+
+   # {{ .Frontmatter.title }}
+
+   Email: {{ .Frontmatter.email }}
+   ```
+
+5. **Run lithos new contact:**
+   ```bash
+   lithos new contact
+   ```
+
+6. **Check generated file:**
+   The output file will have frontmatter matching the schema structure and validated properties.
+
+## Error Messages
+
+Lithos provides actionable error messages with remediation hints to help you quickly resolve issues.
+
+### Common Schema Errors
+
+**Missing Property Bank:**
+```
+Error: Property bank file not found at schemas/property_bank.json
+Hint: Create the property bank file with your reusable property definitions
+```
+
+**Circular Inheritance:**
+```
+Error: Circular inheritance detected in schema chain: contact -> person -> contact
+Hint: Remove the circular reference by changing the extends field
+```
+
+**Missing $ref Target:**
+```
+Error: Property reference '$ref: "missing_prop"' not found in property bank
+Hint: Add the missing property to schemas/property_bank.json or fix the reference
+```
+
+For detailed error handling strategies, see [Error Handling Strategy](docs/architecture/error-handling-strategy.md).
 
 ## Template Function Reference
 

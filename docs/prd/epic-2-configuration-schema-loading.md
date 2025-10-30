@@ -1,5 +1,9 @@
 # Epic 2: Configuration & Schema Loading
 
+## Status
+
+Complete
+
 This epic establishes the schema runtime exactly as documented in architecture v0.6.8. Completing it ensures Lithos loads configuration-driven schemas, validates them, resolves inheritance, and exposes canonical definitions to every downstream service. The stories progress from core domain models through SPI adapters to full runtime bootstrapping and regression coverage.
 
 ---
