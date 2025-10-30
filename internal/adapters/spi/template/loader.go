@@ -1,7 +1,6 @@
 // Package template provides filesystem-based template loading adapters.
 // This package implements the TemplatePort interface using filesystem
-// operations
-// to discover and load template files from configured directories.
+// operations to discover and load template files from configured directories.
 package template
 
 import (
