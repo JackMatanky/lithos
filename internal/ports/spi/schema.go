@@ -1,10 +1,3 @@
-// Package spi defines Service Provider Interfaces (SPI) for external resource
-// loading
-// and persistence operations in the lithos configuration and schema engine.
-//
-// SPI ports define contracts for external dependencies that the domain
-// requires,
-// such as loading schemas from filesystem, databases, or remote services.
 package spi
 
 import (
@@ -14,13 +7,11 @@ import (
 )
 
 // SchemaPort defines the interface for loading schemas and property bank
-// definitions
-// from external storage systems.
+// definitions from external storage systems.
 //
 // This port abstracts the schema loading responsibility from the domain,
 // enabling different storage backends (filesystem, database, remote services)
-// while maintaining
-// consistent domain behavior.
+// while maintaining consistent domain behavior.
 //
 // Architecture Reference: docs/architecture/components.md#schemaport
 // Requirements: FR5 (Schema Loading), FR9 (Configuration Schema) from
@@ -47,9 +38,8 @@ type SchemaPort interface {
 	//  - error: Loading, parsing, or validation errors
 	//
 	// The returned schemas contain Extends/Excludes/Properties exactly as
-	// defined
-	// in storage. The SchemaResolver component handles inheritance resolution
-	// and $ref substitution in a separate processing step.
+	// defined in storage. The SchemaResolver component handles inheritance
+	// resolution and $ref substitution in a separate processing step.
 	//
 	// Property bank is loaded exactly once per Load() call and contains all
 	// shared property definitions that schemas can reference via $ref syntax.

@@ -6,19 +6,45 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 )
+
+type exampleSchemaPort struct {
+	err error
+}
+
+// Load satisfies the spi.SchemaPort interface for example usage.
+func (p exampleSchemaPort) Load(
+	context.Context,
+) ([]domain.Schema, domain.PropertyBank, error) {
+	if p.err != nil {
+		return nil, domain.PropertyBank{}, p.err
+	}
+
+	schemas := []domain.Schema{{Name: "base-note"}}
+	bank := domain.PropertyBank{
+		Properties: map[string]domain.Property{
+			"title": {
+				Name: "title",
+				Spec: domain.StringSpec{},
+			},
+		},
+	}
+
+	return schemas, bank, nil
+}
 
 // ExampleSchemaPort demonstrates the SchemaPort interface usage.
 // This example shows how a SchemaPort implementation loads schemas and property
 // bank.
 func ExampleSchemaPort() {
-	var port spi.SchemaPort // Assume concrete implementation
+	var port spi.SchemaPort = exampleSchemaPort{}
 
 	// Load all schemas and property bank from storage
 	schemas, propertyBank, err := port.Load(
 		context.Background(),
-	) //nolint:nilness // example code assumes concrete implementation assigned
+	)
 	if err != nil {
 		fmt.Printf("Failed to load schemas: %v\n", err)
 		return
@@ -39,11 +65,11 @@ func ExampleSchemaPort() {
 // ExampleSchemaPort_Load_success shows successful loading of schemas and
 // property bank.
 func ExampleSchemaPort_Load_success() {
-	var port spi.SchemaPort // Assume concrete implementation
+	var port spi.SchemaPort = exampleSchemaPort{}
 
 	schemas, propertyBank, err := port.Load(
 		context.Background(),
-	) //nolint:nilness // example code assumes concrete implementation assigned
+	)
 	if err != nil {
 		panic(err) // In real usage, handle error appropriately
 	}
@@ -56,11 +82,11 @@ func ExampleSchemaPort_Load_success() {
 // ExampleSchemaPort_Load_errors demonstrates error handling in SchemaPort
 // implementations.
 func ExampleSchemaPort_Load_errors() {
-	var port spi.SchemaPort // Assume concrete implementation
+	var port spi.SchemaPort = exampleSchemaPort{err: fmt.Errorf("load failed")}
 
 	_, _, err := port.Load(
 		context.Background(),
-	) //nolint:nilness // example code assumes concrete implementation assigned
+	)
 	if err != nil {
 		// Handle specific error types:
 		// - ResourceError: Missing files or access issues
@@ -72,11 +98,11 @@ func ExampleSchemaPort_Load_errors() {
 // ExampleSchemaPort_Load_rawSchemas shows that Load returns raw schemas without
 // resolution.
 func ExampleSchemaPort_Load_rawSchemas() {
-	var port spi.SchemaPort // Assume concrete implementation
+	var port spi.SchemaPort = exampleSchemaPort{}
 
 	schemas, _, err := port.Load(
 		context.Background(),
-	) //nolint:nilness // example code assumes concrete implementation assigned
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -93,11 +119,11 @@ func ExampleSchemaPort_Load_rawSchemas() {
 
 // ExampleSchemaPort_Load_propertyBank demonstrates property bank loading.
 func ExampleSchemaPort_Load_propertyBank() {
-	var port spi.SchemaPort // Assume concrete implementation
+	var port spi.SchemaPort = exampleSchemaPort{}
 
 	_, propertyBank, err := port.Load(
 		context.Background(),
-	) //nolint:nilness // example code assumes concrete implementation assigned
+	)
 	if err != nil {
 		panic(err)
 	}
