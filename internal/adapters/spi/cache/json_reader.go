@@ -43,8 +43,10 @@ var _ spi.CacheReaderPort = (*JSONCacheReadAdapter)(nil)
 // See docs/architecture/components.md#jsoncachereadapter for implementation
 // guidance.
 type JSONCacheReadAdapter struct {
-	config domain.Config
-	log    zerolog.Logger
+	config   domain.Config
+	log      zerolog.Logger
+	readFile func(string) ([]byte, error)
+	walkDir  func(string, filepath.WalkFunc) error
 }
 
 // NewJSONCacheReader creates a new JSONCacheReadAdapter with the provided
@@ -64,8 +66,10 @@ func NewJSONCacheReader(
 	log zerolog.Logger,
 ) *JSONCacheReadAdapter {
 	return &JSONCacheReadAdapter{
-		config: config,
-		log:    log,
+		config:   config,
+		log:      log,
+		readFile: os.ReadFile,
+		walkDir:  filepath.Walk,
 	}
 }
 
@@ -100,7 +104,7 @@ func (a *JSONCacheReadAdapter) Read(
 	path := noteFilePath(a.config.CacheDir, id)
 
 	// Read file
-	data, err := os.ReadFile( //nolint:gosec // Path from validated cache dir and note ID
+	data, err := a.readFile(
 		path,
 	)
 	if err != nil {
@@ -166,7 +170,7 @@ func (a *JSONCacheReadAdapter) List(
 	var notes []domain.Note
 
 	// Walk the cache directory
-	walkErr := filepath.Walk(
+	walkErr := a.walkDir(
 		a.config.CacheDir,
 		func(path string, info os.FileInfo, err error) error {
 			// Check for context cancellation during walk

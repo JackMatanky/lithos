@@ -25,8 +25,11 @@ const (
 //
 // Reference: docs/architecture/components.md#vaultwriteradapter.
 type VaultWriterAdapter struct {
-	config domain.Config
-	logger zerolog.Logger
+	config    domain.Config
+	logger    zerolog.Logger
+	writeFile func(string, []byte, os.FileMode) error
+	mkdirAll  func(string, os.FileMode) error
+	remove    func(string) error
 }
 
 // NewVaultWriterAdapter creates a new VaultWriterAdapter with the given
@@ -40,8 +43,11 @@ func NewVaultWriterAdapter(
 	logger zerolog.Logger,
 ) spi.VaultWriterPort {
 	return &VaultWriterAdapter{
-		config: config,
-		logger: logger,
+		config:    config,
+		logger:    logger,
+		writeFile: atomicwriter.WriteFile,
+		mkdirAll:  os.MkdirAll,
+		remove:    os.Remove,
 	}
 }
 
@@ -82,7 +88,7 @@ func (v *VaultWriterAdapter) Persist(
 	fullPath := filepath.Join(v.config.VaultPath, path)
 
 	// Create parent directories
-	if err := os.MkdirAll(filepath.Dir(fullPath), 0o750); err != nil {
+	if err := v.mkdirAll(filepath.Dir(fullPath), 0o750); err != nil {
 		v.logger.Error().
 			Err(err).
 			Str("path", fullPath).
@@ -109,7 +115,7 @@ func (v *VaultWriterAdapter) Persist(
 	}
 
 	// Write atomically
-	if writeErr := atomicwriter.WriteFile(fullPath, content, filePermissions); writeErr != nil {
+	if writeErr := v.writeFile(fullPath, content, filePermissions); writeErr != nil {
 		v.logger.Error().
 			Err(writeErr).
 			Str("path", fullPath).
@@ -139,7 +145,7 @@ func (v *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
 	fullPath := filepath.Join(v.config.VaultPath, path)
 
 	// Remove file - os.Remove is idempotent (no error if file doesn't exist)
-	if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+	if err := v.remove(fullPath); err != nil && !os.IsNotExist(err) {
 		v.logger.Error().
 			Err(err).
 			Str("path", fullPath).

@@ -31,6 +31,10 @@ type TemplateLoaderAdapter struct {
 	log *zerolog.Logger
 	// metadata caches TemplateID → FileMetadata mappings for fast lookups
 	metadata map[domain.TemplateID]spi.FileMetadata
+	// readFile reads file contents from filesystem (injected for testing)
+	readFile func(string) ([]byte, error)
+	// walkDir walks directory tree (injected for testing)
+	walkDir func(string, filepath.WalkFunc) error
 }
 
 // NewTemplateLoaderAdapter creates a new TemplateLoaderAdapter with config and
@@ -43,6 +47,8 @@ func NewTemplateLoaderAdapter(
 		config:   config,
 		log:      log,
 		metadata: make(map[domain.TemplateID]spi.FileMetadata),
+		readFile: os.ReadFile,
+		walkDir:  filepath.Walk,
 	}
 }
 
@@ -60,7 +66,7 @@ func (a *TemplateLoaderAdapter) List(
 
 	var templates []domain.TemplateID
 
-	err := filepath.Walk(
+	err := a.walkDir(
 		a.config.TemplatesDir,
 		func(path string, info fs.FileInfo, err error) error {
 			if err != nil {
@@ -194,7 +200,7 @@ func (a *TemplateLoaderAdapter) populateCache(ctx context.Context) error {
 func (a *TemplateLoaderAdapter) readTemplateContent(
 	metadata *spi.FileMetadata,
 ) ([]byte, error) {
-	content, err := os.ReadFile(metadata.Path)
+	content, err := a.readFile(metadata.Path)
 	if err != nil {
 		a.log.Error().
 			Err(err).
