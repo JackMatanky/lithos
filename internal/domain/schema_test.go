@@ -97,7 +97,8 @@ func TestNewSchemaCreatesValidSchema(t *testing.T) {
 	assert.Equal(t, testNameProp, schema.Properties[0].Name)
 }
 
-// 2.1-UNIT-014: NewSchema defensive copy of excludes slice.
+// TestNewSchemaDefensiveCopyExcludes tests that NewSchema creates defensive
+// copies of excludes slice.
 func TestNewSchemaDefensiveCopyExcludes(t *testing.T) {
 	name := testSchemaName
 	excludes := []string{testTag1, testTag2}
@@ -108,6 +109,7 @@ func TestNewSchemaDefensiveCopyExcludes(t *testing.T) {
 
 	// Modify original slice
 	excludes[0] = testModifiedValue
+
 	excludes = append(
 		excludes,
 		"new",
