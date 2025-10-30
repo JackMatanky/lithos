@@ -1,9 +1,10 @@
-// Package spi provides Service Provider Interface (SPI) adapters that implement
-// domain ports by translating between domain models and infrastructure
-// concerns.
-// This package contains infrastructure-specific models and adapters that are
-// never exposed to the domain layer.
-package spi
+// Package dto provides shared data transfer objects used across infrastructure
+// layers. These DTOs represent infrastructure-specific models that are never
+// exposed to the domain layer.
+//
+// This package contains reusable types that implement port interfaces,
+// maintaining clean separation between interface contracts and concrete types.
+package dto
 
 import (
 	"io/fs"
@@ -26,6 +27,8 @@ const (
 // FileMetadata is used by adapters to translate between domain identifiers
 // and filesystem paths, keeping infrastructure details isolated from business
 // logic.
+//
+// Reference: docs/architecture/data-models.md#filemetadata.
 type FileMetadata struct {
 	// Path is the absolute path to the file. This serves as the primary key
 	// and is immutable once set. Domain models never see filesystem paths.
@@ -57,6 +60,8 @@ type FileMetadata struct {
 //
 // VaultFile embeds FileMetadata for filesystem information and adds raw
 // content bytes needed for indexing operations like frontmatter extraction.
+//
+// Reference: docs/architecture/data-models.md#vaultfile.
 type VaultFile struct {
 	FileMetadata // Embedded filesystem metadata
 
@@ -95,7 +100,12 @@ func computeFolder(path string) string {
 
 // computeMimeType detects the MIME type from a file extension.
 // Returns "application/octet-stream" for unknown extensions.
+// Special handling for .md files as text/markdown.
 func computeMimeType(ext string) string {
+	// Special case for markdown files
+	if ext == ".md" {
+		return "text/markdown"
+	}
 	mimeType := mime.TypeByExtension(ext)
 	if mimeType == "" {
 		return defaultMimeType

@@ -8,11 +8,37 @@ import (
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/shared/dto"
 	"github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockFileInfo implements fs.FileInfo for testing.
+type mockFileInfo struct {
+	name    string
+	size    int64
+	modTime time.Time
+	isDir   bool
+}
+
+// Name returns the name of the file.
+func (m *mockFileInfo) Name() string { return m.name }
+
+// Size returns the size of the file.
+func (m *mockFileInfo) Size() int64 { return m.size }
+
+// Mode returns the file mode.
+func (m *mockFileInfo) Mode() os.FileMode { return 0o644 }
+
+// ModTime returns the modification time.
+func (m *mockFileInfo) ModTime() time.Time { return m.modTime }
+
+// IsDir returns whether the file is a directory.
+func (m *mockFileInfo) IsDir() bool { return m.isDir }
+
+// Sys returns the underlying data source.
+func (m *mockFileInfo) Sys() any { return nil }
 
 // setupTestVault creates a temporary directory with test files for vault
 // scanning tests.
@@ -319,18 +345,15 @@ func TestRead_WithPermissionError(t *testing.T) {
 
 // TestVaultFile_NewVaultFile tests creating a new VaultFile instance.
 func TestVaultFile_NewVaultFile(t *testing.T) {
-	metadata := spi.FileMetadata{
-		Path:     "/vault/test.md",
-		Basename: "test",
-		Folder:   "/vault",
-		Ext:      ".md",
-		ModTime:  time.Now(),
-		Size:     100,
-		MimeType: "text/markdown",
+	content := []byte("# Test Content")
+	info := &mockFileInfo{
+		name:    "file.md",
+		size:    100,
+		modTime: time.Now(),
+		isDir:   false,
 	}
-	content := []byte("# Test")
-
-	vf := spi.NewVaultFile(metadata, content)
+	metadata := dto.NewFileMetadata("/test/file.md", info)
+	vf := dto.NewVaultFile(metadata, content)
 
 	assert.Equal(t, metadata, vf.FileMetadata)
 	assert.Equal(t, content, vf.Content)

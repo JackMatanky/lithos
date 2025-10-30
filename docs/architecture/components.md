@@ -15,16 +15,16 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 
 ### TemplateEngine
 
-**Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and frontmatter validation. Pure domain service orchestrating template execution with custom function map for user interaction and file path control.
+**Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and frontmatter validation. Pure domain service orchestrating template execution with custom function map for user interaction and file path control. Enhanced with goldmark for markdown rendering capabilities in templates.
 
 **Key Interfaces:**
 
-- `Render(ctx context.Context, templateID TemplateID) (string, error)` - Render template to markdown string
+- `Render(ctx context.Context, templateID TemplateID) (string, error)` - Render template to markdown string with goldmark markdown processing
 - `Load(ctx context.Context, templateID TemplateID) (Template, error)` - Load template via TemplateLoader port
 
 **Dependencies:** TemplateLoader (port), InteractivePort, QueryService, FrontmatterService, Config, Logger.
 
-**Technology Stack:** Go `text/template`, custom function map with user interaction and file control functions, closures wrapping port calls for dependency injection, zerolog for instrumentation.
+**Technology Stack:** Go `text/template`, `github.com/yuin/goldmark` for markdown rendering in templates, custom function map with user interaction and file control functions, closures wrapping port calls for dependency injection, zerolog for instrumentation.
 
 **Custom Template Functions:**
 
@@ -68,16 +68,16 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 
 ### FrontmatterService
 
-**Responsibility:** Extract YAML frontmatter from markdown and validate against schema rules with strict type checking. Single domain service handling both extraction and validation concerns.
+**Responsibility:** Extract YAML frontmatter from markdown and validate against schema rules with strict type checking. Single domain service handling both extraction and validation concerns. Enhanced with goldmark AST access for robust frontmatter delimiter detection and heading parsing.
 
 **Key Interfaces:**
 
-- `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content
+- `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content using goldmark AST for reliable delimiter detection
 - `Validate(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (looked up via FileClass) with in-memory type normalization for validation logic only
 
 **Dependencies:** SchemaRegistry (port), QueryService (for FileSpec file existence validation), Logger.
 
-**Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `goccy/go-yaml` for YAML parsing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
+**Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `goccy/go-yaml` for YAML parsing, `github.com/yuin/goldmark` for AST-based frontmatter extraction and heading parsing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
 
 ### SchemaEngine
 
@@ -462,16 +462,16 @@ if err != nil {
 
 ### VaultIndexer
 
-**Responsibility:** Orchestrate vault scanning and indexing workflow (CQRS write side). Coordinates vault scanning, frontmatter extraction, validation, cache persistence, and query index population.
+**Responsibility:** Orchestrate vault scanning and indexing workflow (CQRS write side). Coordinates vault scanning, frontmatter extraction, validation, cache persistence, and query index population. Enhanced with goldmark for robust heading extraction and markdown processing during vault indexing.
 
 **Key Interfaces:**
 
-- `Build(ctx context.Context) (IndexStats, error)` - Full vault scan, cache rebuild, and query index population
+- `Build(ctx context.Context) (IndexStats, error)` - Full vault scan, cache rebuild, and query index population with goldmark-enhanced processing
 - `Refresh(ctx context.Context, since time.Time) error` - Incremental update for large vaults (post-MVP optimization)
 
 **Dependencies:** VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService (direct access to populate indices), Logger, Config.
 
-**Technology Stack:** Pure Go orchestration, delegates file operations to ports, atomic indexing with temp file + rename pattern for consistency, directly populates QueryService in-memory indices after cache write completes, zerolog for metrics and progress tracking.
+**Technology Stack:** Pure Go orchestration, `github.com/yuin/goldmark` for heading extraction and markdown processing, delegates file operations to ports, atomic indexing with temp file + rename pattern for consistency, directly populates QueryService in-memory indices after cache write completes, zerolog for metrics and progress tracking.
 
 **Note:** VaultIndexer has direct access to QueryService's internal index structures (same package or package-private methods) to populate indices after successful cache write. This keeps write-side concerns (index building) in VaultIndexer while read-side concerns (querying) in QueryService.
 

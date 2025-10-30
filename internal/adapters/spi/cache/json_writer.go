@@ -16,6 +16,10 @@ const (
 	// cacheFilePerms defines the file permissions for cache files.
 	// 0o644 = rw-r--r-- (owner read/write, group/other read-only).
 	cacheFilePerms = 0o644
+	// cacheDirPerms defines the directory permissions for cache directories.
+	// 0o750 = rwxr-x--- (owner read/write/execute, group read/execute, other
+	// none).
+	cacheDirPerms = 0o750
 )
 
 // Compile-time interface compliance check.
@@ -231,5 +235,5 @@ func (a *JSONCacheWriteAdapter) Delete(
 // Uses injected mkdirAll for recursive creation (mkdir -p semantics).
 // Permissions: 0o750 (rwxr-x---).
 func (a *JSONCacheWriteAdapter) ensureCacheDir(cacheDir string) error {
-	return a.mkdirAll(cacheDir, 0o750)
+	return a.mkdirAll(cacheDir, cacheDirPerms)
 }

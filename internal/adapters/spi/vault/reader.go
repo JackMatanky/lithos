@@ -18,6 +18,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/shared/dto"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
@@ -61,7 +62,7 @@ func NewVaultReaderAdapter(
 // Errors are logged but don't stop the scan; partial results are returned.
 func (a *VaultReaderAdapter) ScanAll(
 	ctx context.Context,
-) ([]spi.VaultFile, error) {
+) ([]dto.VaultFile, error) {
 	startTime := time.Now()
 
 	// Filter: include files, exclude directories and cache directories
@@ -90,7 +91,7 @@ func (a *VaultReaderAdapter) ScanAll(
 func (a *VaultReaderAdapter) ScanModified(
 	ctx context.Context,
 	since time.Time,
-) ([]spi.VaultFile, error) {
+) ([]dto.VaultFile, error) {
 	startTime := time.Now()
 
 	// Filter: include files modified after since, exclude directories and cache
@@ -124,14 +125,14 @@ func (a *VaultReaderAdapter) ScanModified(
 //nolint:funcorder // Helper method must be defined before exported Read method
 func (a *VaultReaderAdapter) readFileWithMetadata(
 	path string,
-) (spi.VaultFile, error) {
+) (dto.VaultFile, error) {
 	// Check file exists
 	info, err := a.stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return spi.VaultFile{}, fmt.Errorf("file not found: %s", path)
+			return dto.VaultFile{}, fmt.Errorf("file not found: %s", path)
 		}
-		return spi.VaultFile{}, a.wrapVaultError("stat", path, err)
+		return dto.VaultFile{}, a.wrapVaultError("stat", path, err)
 	}
 
 	// Read content
@@ -139,12 +140,12 @@ func (a *VaultReaderAdapter) readFileWithMetadata(
 		path,
 	) // #nosec G304 - path is validated by caller
 	if err != nil {
-		return spi.VaultFile{}, a.wrapVaultError("read", path, err)
+		return dto.VaultFile{}, a.wrapVaultError("read", path, err)
 	}
 
 	// Construct metadata and VaultFile
-	metadata := spi.NewFileMetadata(path, info)
-	return spi.NewVaultFile(metadata, content), nil
+	metadata := dto.NewFileMetadata(path, info)
+	return dto.NewVaultFile(metadata, content), nil
 }
 
 // Read performs single file read with path validation and security checks.
@@ -153,15 +154,15 @@ func (a *VaultReaderAdapter) readFileWithMetadata(
 func (a *VaultReaderAdapter) Read(
 	ctx context.Context,
 	path string,
-) (spi.VaultFile, error) {
+) (dto.VaultFile, error) {
 	// Check for context cancellation
 	if ctx.Err() != nil {
-		return spi.VaultFile{}, ctx.Err()
+		return dto.VaultFile{}, ctx.Err()
 	}
 
 	// Validate path is within vault (prevent directory traversal)
 	if err := a.validatePathInVault(path); err != nil {
-		return spi.VaultFile{}, err
+		return dto.VaultFile{}, err
 	}
 
 	// Read file and construct VaultFile
@@ -174,8 +175,8 @@ func (a *VaultReaderAdapter) scanVault(
 	ctx context.Context,
 	vaultPath string,
 	filter FilterFunc,
-) ([]spi.VaultFile, error) {
-	var files []spi.VaultFile
+) ([]dto.VaultFile, error) {
+	var files []dto.VaultFile
 
 	err := a.walkDir(
 		vaultPath,
@@ -213,10 +214,10 @@ func (a *VaultReaderAdapter) scanVault(
 			}
 
 			// Construct FileMetadata
-			metadata := spi.NewFileMetadata(path, info)
+			metadata := dto.NewFileMetadata(path, info)
 
 			// Create VaultFile
-			vf := spi.NewVaultFile(metadata, content)
+			vf := dto.NewVaultFile(metadata, content)
 			files = append(files, vf)
 
 			return nil

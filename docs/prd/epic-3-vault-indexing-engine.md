@@ -100,8 +100,11 @@ so that the cache and in-memory indices stay consistent with the vault.
 1. `internal/app/vault/indexer.go` implements `Indexer.Build` following the steps in `docs/architecture/components.md#vaultindexer` (vault scan → frontmatter extract/validate → note creation → cache persist → query index update) and respects FR9.
 2. `IndexStats` records counts for scanned notes, indexed notes, validation failures, cache failures, and total duration; logging uses zerolog per coding standards and feeds NFR3 metrics.
 3. Indexer updates QueryService indices via the package-private hooks defined in the architecture and handles cache write failures by logging warnings without aborting the build.
-4. Unit tests with fakes verify call order, error handling for validation and cache operations, and stats accuracy.
-5. `golangci-lint run ./internal/app/vault` and `go test ./internal/app/vault` succeed.
+4. Goldmark v1.7.4 integrated for heading extraction during vault scanning, providing foundation for future navigation features.
+5. Heading extraction uses goldmark AST parsing for reliable heading detection and level identification.
+6. IndexStats extended to include heading extraction metrics (headings found, processing time).
+7. Unit tests with fakes verify call order, error handling for validation and cache operations, stats accuracy, and goldmark heading extraction.
+8. `golangci-lint run ./internal/app/vault` and `go test ./internal/app/vault` succeed.
 
 ---
 
