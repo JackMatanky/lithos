@@ -16,6 +16,8 @@ import (
 const (
 	// filePermissions defines the permissions for created files.
 	filePermissions = 0o600
+	// dirPermissions defines the permissions for created directories.
+	dirPermissions = 0o750
 )
 
 // VaultWriterAdapter implements VaultWriterPort for filesystem-based note
@@ -88,7 +90,7 @@ func (v *VaultWriterAdapter) Persist(
 	fullPath := filepath.Join(v.config.VaultPath, path)
 
 	// Create parent directories
-	if err := v.mkdirAll(filepath.Dir(fullPath), 0o750); err != nil {
+	if err := v.mkdirAll(filepath.Dir(fullPath), dirPermissions); err != nil {
 		v.logger.Error().
 			Err(err).
 			Str("path", fullPath).

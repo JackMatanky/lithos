@@ -1,4 +1,4 @@
-package spi
+package dto
 
 import (
 	"io/fs"
@@ -63,7 +63,7 @@ func TestNewFileMetadata(t *testing.T) {
 				Ext:      ".md",
 				ModTime:  time.Date(2025, 1, 15, 10, 30, 0, 0, time.UTC),
 				Size:     1024,
-				MimeType: "application/octet-stream",
+				MimeType: "text/markdown",
 			},
 		},
 		{
@@ -259,7 +259,7 @@ func TestComputeMimeType(t *testing.T) {
 		{
 			name:     "markdown extension",
 			ext:      ".md",
-			expected: "application/octet-stream",
+			expected: "text/markdown",
 		},
 		{
 			name:     "json extension",
@@ -300,6 +300,10 @@ func TestComputeMimeType(t *testing.T) {
 
 // TestFileMetadataIntegration tests FileMetadata creation with real filesystem.
 func TestFileMetadataIntegration(t *testing.T) {
+	const (
+		testFileExt      = ".md"
+		testFileMimeType = "text/markdown"
+	)
 	// Create a temporary file for integration testing
 	tempDir := t.TempDir()
 	tempFile := filepath.Join(tempDir, "test.md")
@@ -330,12 +334,12 @@ func TestFileMetadataIntegration(t *testing.T) {
 		t.Errorf("Folder = %q, want %q", metadata.Folder, expectedFolder)
 	}
 
-	expectedExt := ".md"
+	expectedExt := testFileExt
 	if metadata.Ext != expectedExt {
 		t.Errorf("Ext = %q, want %q", metadata.Ext, expectedExt)
 	}
 
-	expectedMimeType := "application/octet-stream"
+	expectedMimeType := testFileMimeType
 	if metadata.MimeType != expectedMimeType {
 		t.Errorf("MimeType = %q, want %q", metadata.MimeType, expectedMimeType)
 	}

@@ -164,17 +164,21 @@ func (m *MockTemplatePort) Load(
 func CopyFile(t *testing.T, src, dst string) {
 	t.Helper()
 
-	srcFile, err := os.Open(src)
+	srcFile, err := os.Open( //nolint:gosec // Controlled by test code, not user input
+		src,
+	)
 	if err != nil {
 		t.Fatalf("Failed to open source file %s: %v", src, err)
 	}
-	defer srcFile.Close()
+	defer func() { _ = srcFile.Close() }()
 
-	dstFile, err := os.Create(dst)
+	dstFile, err := os.Create( //nolint:gosec // Controlled by test code, not user input
+		dst,
+	)
 	if err != nil {
 		t.Fatalf("Failed to create destination file %s: %v", dst, err)
 	}
-	defer dstFile.Close()
+	defer func() { _ = dstFile.Close() }()
 
 	_, err = io.Copy(dstFile, srcFile)
 	if err != nil {

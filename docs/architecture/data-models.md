@@ -298,16 +298,15 @@ func (n Note) SchemaName() string {
 
 The Note model represents Lithos's pragmatic approach to domain modeling—split where it matters (File vs Frontmatter), compose where it helps (Note aggregate). This three-model structure mirrors Templater's proven module architecture while enabling Go idioms (struct embedding, value types). The composition provides flexibility: queries can return `[]File` when only paths needed, validation operates on `Frontmatter`, but template rendering gets full `Note`. CQRS benefits come from operational separation, not model separation, avoiding translation overhead.
 
-**Post-MVP Considerations - Body Content Indexing:**
+**Enhanced Body Content Indexing (Goldmark Integration):**
 
-When to add body parsing (future indicators):
+Goldmark integration enables advanced markdown processing during vault indexing:
 
-- **Heading extraction:** Parse markdown headings for navigation/search
-- **Tag extraction:** Parse inline tags (#tag) beyond frontmatter tags
-- **Link graph:** Parse wikilinks [[note]] for relationship mapping
-- **Block references:** Parse block IDs for Obsidian block-reference support
+- **Heading extraction:** Parse markdown headings (# ## ###) for navigation and search using goldmark AST
+- **Enhanced frontmatter detection:** Robust YAML delimiter detection using goldmark parser
+- **Future-ready architecture:** Foundation for inline tag parsing, wikilink extraction, and block reference support
 
-Current MVP only indexes frontmatter. Post-MVP Phase 3 (Enhanced Querying) may require body parsing and richer Note.Body model.
+Current implementation indexes frontmatter only. Goldmark provides AST access for future body content parsing in Phase 3 (Enhanced Querying), enabling richer Note.Body model with heading hierarchies and content structure.
 
 ---
 
