@@ -99,7 +99,7 @@ func (a *JSONCacheReadAdapter) Read(
 	path := noteFilePath(a.config.CacheDir, id)
 
 	// Read file
-	data, err := os.ReadFile(
+	data, err := os.ReadFile( //nolint:gosec // Path from validated cache dir and note ID
 		path,
 	)
 	if err != nil {

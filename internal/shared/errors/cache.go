@@ -89,7 +89,7 @@ func NewCacheDeleteError(
 // Returns a formatted error message including operation context.
 func (e *CacheWriteError) Error() string {
 	return fmt.Sprintf("cache write failed for note %s at %s during %s: %v",
-		e.NoteID, e.Path, e.Operation, e.Cause())
+		e.NoteID, e.Path, e.Operation, e.BaseError.Cause())
 }
 
 // Cause returns the underlying cause error for CacheWriteError.
