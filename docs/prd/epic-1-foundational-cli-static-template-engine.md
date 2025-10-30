@@ -973,7 +973,7 @@ so that CLI commands are coordinated through domain services following hexagonal
 
 ---
 
-## Story 1.14: Wire Dependency Injection and Create End-to-End Test
+## Story 1.16: Wire Dependency Injection and Create End-to-End Test
 
 As a developer,
 I want to wire all components in main.go using constructor-based dependency injection and create end-to-end test,
@@ -983,39 +983,39 @@ so that the complete application works from CLI invocation to file creation with
 
 **Dependency Injection in main.go:**
 
-- 1.14.1: Implement main() function in `cmd/lithos/main.go`:
+- 1.16.1: Implement main() function in `cmd/lithos/main.go`:
   - Create context: `ctx := context.Background()`
   - Follow initialization order per architecture v0.6.5 (documented below)
 
-- 1.14.2: Infrastructure layer initialization (Layer 1):
+- 1.16.2: Infrastructure layer initialization (Layer 1):
   - Create logger: `log := logger.New(os.Stdout, "info")` (default level)
   - Create config adapter: `configAdapter := config.NewViperAdapter(log)`
   - Load config: `cfg, err := configAdapter.Load(ctx)` - **fatal error if fails**
   - Update logger level from config: `log = logger.New(os.Stdout, cfg.LogLevel)`
 
-- 1.14.3: SPI adapter initialization (Layer 2):
+- 1.16.3: SPI adapter initialization (Layer 2):
   - Create TemplateLoaderAdapter: `templateLoader := template.NewTemplateLoaderAdapter(cfg, log)`
 
-- 1.14.4: Domain service initialization (Layer 3):
+- 1.16.4: Domain service initialization (Layer 3):
   - Create TemplateEngine: `templateEngine := app.NewTemplateEngine(templateLoader, cfg, log)`
 
-- 1.14.5: API adapter initialization (Layer 4):
+- 1.16.5: API adapter initialization (Layer 4):
   - Create CobraCLIAdapter: `cliAdapter := cli.NewCobraCLIAdapter(log)`
 
-- 1.14.6: CommandOrchestrator initialization (Layer 5):
+- 1.16.6: CommandOrchestrator initialization (Layer 5):
   - Create CommandOrchestrator: `orchestrator := app.NewCommandOrchestrator(cliAdapter, templateEngine, cfg, log)`
 
-- 1.14.7: Start application:
+- 1.16.7: Start application:
   - Call `err := orchestrator.Run(ctx)`
   - If error, log fatal and exit with code 1: `log.Fatal().Err(err).Msg("application failed")`
 
-- 1.14.8: Error handling:
+- 1.16.8: Error handling:
   - Config load failure → `log.Fatal().Err(err).Msg("failed to load configuration")`
   - Application failure → `log.Fatal().Err(err).Msg("application failed")`
 
 **End-to-End Test:**
 
-- 1.14.9: Create `tests/e2e/lithos_new_test.go`:
+- 1.16.9: Create `tests/e2e/lithos_new_test.go`:
   - Test scenario: Full application flow from CLI to file creation
   - Setup:
     - Create temporary vault directory using `os.MkdirTemp`
@@ -1032,14 +1032,14 @@ so that the complete application works from CLI invocation to file creation with
   - Cleanup:
     - Remove temporary directory
 
-- 1.14.10: Additional test scenarios in same file:
+- 1.16.10: Additional test scenarios in same file:
   - Test: `lithos new basic-note` creates note with basic functions (now, toLower, toUpper)
   - Test: Error when template not found (returns exit code 1)
   - Test: `lithos version` prints version string
 
 **Manual Testing:**
 
-- 1.14.11: Manual test checklist (documented in story, not automated):
+- 1.16.11: Manual test checklist (documented in story, not automated):
   - Build: `go build -o bin/lithos cmd/lithos/main.go`
   - Run: `./bin/lithos version` → prints "lithos v0.1.0"
   - Run: `./bin/lithos new static-template` (with testdata as vault) → creates note
@@ -1051,11 +1051,11 @@ so that the complete application works from CLI invocation to file creation with
   - Verify: Environment variables override config (test with LITHOS_LOG_LEVEL=debug)
   - Verify: Error messages are user-friendly (not stack traces)
 
-- 1.14.12: All tests pass: `go test ./...` (all packages)
+- 1.16.12: All tests pass: `go test ./...` (all packages)
 
-- 1.14.13: All linting passes: `golangci-lint run` (all code)
+- 1.16.13: All linting passes: `golangci-lint run` (all code)
 
-- 1.14.14: Committed with message: `feat: wire dependency injection in main.go and add e2e test`
+- 1.16.14: Committed with message: `feat: wire dependency injection in main.go and add e2e test`
 
 **Prerequisites:** Story 1.13 (CommandOrchestrator)
 
@@ -1070,7 +1070,7 @@ so that the complete application works from CLI invocation to file creation with
 
 ---
 
-## Story 1.15: Update Documentation for Epic 1 Release
+## Story 1.17: Update Documentation for Epic 1 Release
 
 As a developer,
 I want to update project documentation with installation instructions, quick start guide, and feature list,
@@ -1080,7 +1080,7 @@ so that users can install and use lithos effectively.
 
 **README Update:**
 
-- 1.15.1: Update `README.md` with comprehensive content:
+- 1.17.1: Update `README.md` with comprehensive content:
   - **Installation section:**
     - Go install: `go install github.com/JackMatanky/lithos@latest`
     - Requirements: Go 1.23+ required for generics
@@ -1128,7 +1128,7 @@ so that users can install and use lithos effectively.
 
 **CHANGELOG Creation:**
 
-- 1.15.2: Create `CHANGELOG.md` with Epic 1 release:
+- 1.17.2: Create `CHANGELOG.md` with Epic 1 release:
   - Version 0.1.0 - Epic 1 Complete (date: TBD)
   - **Features Added:**
     - CLI with `version` and `new` commands
@@ -1162,24 +1162,24 @@ so that users can install and use lithos effectively.
 
 **Final Verification:**
 
-- 1.15.3: Verify all tests pass:
+- 1.17.3: Verify all tests pass:
   - Run `go test ./...` → all pass
   - Verify test coverage is reasonable (aim for >70% for domain/app layers)
 
-- 1.15.4: Verify all linting passes:
+- 1.17.4: Verify all linting passes:
   - Run `golangci-lint run` → no warnings or errors
   - Verify code follows architecture v0.6.8 specifications
 
-- 1.15.5: Verify pre-commit hooks:
+- 1.17.5: Verify pre-commit hooks:
   - Run `pre-commit run --all-files` → all hooks pass
   - Verify no secrets detected by gitleaks
   - Verify Go formatting (gofmt, goimports) applied
   - Verify Go static analysis (go vet) passes
   - Verify golangci-lint passes
 
-- 1.15.6: Committed with message: `docs: update README and create CHANGELOG for Epic 1 release`
+- 1.17.6: Committed with message: `docs: update README and create CHANGELOG for Epic 1 release`
 
-**Prerequisites:** Story 1.14 (main.go wiring and e2e test)
+**Prerequisites:** Story 1.16 (main.go wiring and e2e test)
 
 **Time Estimate:** 3 hours
 
@@ -1259,7 +1259,7 @@ so that users can install and use lithos effectively.
 
 - Unit tests for all components (all stories)
 - Integration tests in tests/integration/ (Stories 1.9, 1.10)
-- End-to-end tests in tests/e2e/ (Story 1.14)
+- End-to-end tests in tests/e2e/ (Story 1.16)
 - Mocks in tests/utils/mocks.go (Stories 1.10, 1.12, 1.13)
 
 ✅ **CLI Commands:**
@@ -1269,10 +1269,10 @@ so that users can install and use lithos effectively.
 
 ✅ **Documentation:**
 
-- README with installation and quick start (Story 1.15)
-- CHANGELOG for v0.1.0 (Story 1.15)
-- Configuration reference (Story 1.15)
-- Template function reference (Story 1.15)
+- README with installation and quick start (Story 1.17)
+- CHANGELOG for v0.1.0 (Story 1.17)
+- Configuration reference (Story 1.17)
+- Template function reference (Story 1.17)
 
 ### Architecture Coverage (Epic 1)
 

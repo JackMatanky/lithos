@@ -1,5 +1,5 @@
 schema: 1
-story: '1.15'
+story: '1.17'
 story_title: 'Update Documentation for Epic 1 Release'
 gate: PASS
 status_reason: 'All acceptance criteria met, documentation complete and accurate, quality gates passed with minor acceptable linting issues'
@@ -17,7 +17,7 @@ evidence:
   tests_reviewed: 18
   risks_identified: 3
   trace:
-    ac_covered: [1.15.1, 1.15.2, 1.15.3, 1.15.4, 1.15.5, 1.15.6]
+    ac_covered: [1.17.1, 1.17.2, 1.17.3, 1.17.4, 1.17.5, 1.17.6]
     ac_gaps: []
 
 nfr_validation:
