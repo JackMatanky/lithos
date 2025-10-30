@@ -46,8 +46,11 @@ var _ spi.CacheWriterPort = (*JSONCacheWriteAdapter)(nil)
 // See docs/architecture/components.md#jsoncachewriteadapter for implementation
 // details.
 type JSONCacheWriteAdapter struct {
-	config domain.Config
-	log    zerolog.Logger
+	config     domain.Config
+	log        zerolog.Logger
+	writeFile  func(string, []byte, os.FileMode) error
+	mkdirAll   func(string, os.FileMode) error
+	removeFile func(string) error
 }
 
 // NewJSONCacheWriter creates a new JSONCacheWriteAdapter with the provided
@@ -67,8 +70,11 @@ func NewJSONCacheWriter(
 	log zerolog.Logger,
 ) *JSONCacheWriteAdapter {
 	return &JSONCacheWriteAdapter{
-		config: config,
-		log:    log,
+		config:     config,
+		log:        log,
+		writeFile:  atomicwriter.WriteFile,
+		mkdirAll:   os.MkdirAll,
+		removeFile: os.Remove,
 	}
 }
 
@@ -76,12 +82,6 @@ func NewJSONCacheWriter(
 // Returns the JSON data or an error if serialization fails.
 func marshalNote(note domain.Note) ([]byte, error) {
 	return json.MarshalIndent(note, "", "  ")
-}
-
-// writeAtomic performs atomic file write using temp-file + rename pattern.
-// Creates the file with specified permissions and ensures atomicity.
-func writeAtomic(path string, data []byte, perm os.FileMode) error {
-	return atomicwriter.WriteFile(path, data, perm)
 }
 
 // wrapCacheWriteError creates a standardized CacheWriteError with operation
@@ -127,7 +127,7 @@ func (a *JSONCacheWriteAdapter) Persist(
 	}
 
 	// 1. Ensure cache directory exists
-	if err := ensureCacheDir(a.config.CacheDir); err != nil {
+	if err := a.ensureCacheDir(a.config.CacheDir); err != nil {
 		return wrapCacheWriteError(
 			string(note.ID),
 			a.config.CacheDir,
@@ -149,7 +149,7 @@ func (a *JSONCacheWriteAdapter) Persist(
 
 	// 3. Atomic write
 	path := noteFilePath(a.config.CacheDir, note.ID)
-	if writeErr := writeAtomic(path, data, cacheFilePerms); writeErr != nil {
+	if writeErr := a.writeFile(path, data, cacheFilePerms); writeErr != nil {
 		return wrapCacheWriteError(
 			string(note.ID),
 			path,
@@ -199,7 +199,7 @@ func (a *JSONCacheWriteAdapter) Delete(
 	path := noteFilePath(a.config.CacheDir, id)
 
 	// Attempt deletion
-	if err := os.Remove(path); err != nil {
+	if err := a.removeFile(path); err != nil {
 		// Check if file doesn't exist (idempotent behavior)
 		if os.IsNotExist(err) {
 			// File doesn't exist - treat as successful deletion
@@ -225,4 +225,11 @@ func (a *JSONCacheWriteAdapter) Delete(
 		Msg("cache delete successful")
 
 	return nil
+}
+
+// ensureCacheDir creates cache directory if missing.
+// Uses injected mkdirAll for recursive creation (mkdir -p semantics).
+// Permissions: 0o750 (rwxr-x---).
+func (a *JSONCacheWriteAdapter) ensureCacheDir(cacheDir string) error {
+	return a.mkdirAll(cacheDir, 0o750)
 }

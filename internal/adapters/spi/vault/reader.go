@@ -29,8 +29,11 @@ var _ spi.VaultReaderPort = (*VaultReaderAdapter)(nil)
 // It provides vault scanning capabilities with proper error handling,
 // cache directory filtering, and security measures against path traversal.
 type VaultReaderAdapter struct {
-	config domain.Config
-	log    zerolog.Logger
+	config   domain.Config
+	log      zerolog.Logger
+	readFile func(string) ([]byte, error)
+	walkDir  func(string, filepath.WalkFunc) error
+	stat     func(string) (os.FileInfo, error)
 }
 
 // NewVaultReaderAdapter creates a new VaultReaderAdapter with the given config
@@ -41,8 +44,11 @@ func NewVaultReaderAdapter(
 	log zerolog.Logger,
 ) *VaultReaderAdapter {
 	return &VaultReaderAdapter{
-		config: config,
-		log:    log,
+		config:   config,
+		log:      log,
+		readFile: os.ReadFile,
+		walkDir:  filepath.Walk,
+		stat:     os.Stat,
 	}
 }
 
@@ -55,7 +61,7 @@ func (a *VaultReaderAdapter) ScanAll(
 	var files []spi.VaultFile
 	startTime := time.Now()
 
-	err := filepath.Walk(
+	err := a.walkDir(
 		a.config.VaultPath,
 		func(path string, info os.FileInfo, err error) error {
 			// Check for context cancellation
@@ -79,7 +85,7 @@ func (a *VaultReaderAdapter) ScanAll(
 			}
 
 			// Read file content
-			content, err := os.ReadFile(
+			content, err := a.readFile(
 				path,
 			) // #nosec G304 - path is validated by caller
 			if err != nil {
@@ -125,7 +131,7 @@ func (a *VaultReaderAdapter) ScanModified(
 	var files []spi.VaultFile
 	var checked, matched int
 
-	err := filepath.Walk(
+	err := a.walkDir(
 		a.config.VaultPath,
 		func(path string, info os.FileInfo, err error) error {
 			// Check for context cancellation
@@ -193,7 +199,7 @@ func (a *VaultReaderAdapter) Read(
 	}
 
 	// Check file exists
-	info, err := os.Stat(path)
+	info, err := a.stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return spi.VaultFile{}, fmt.Errorf("file not found: %s", path)
@@ -202,7 +208,7 @@ func (a *VaultReaderAdapter) Read(
 	}
 
 	// Read content
-	content, err := os.ReadFile(
+	content, err := a.readFile(
 		path,
 	) // #nosec G304 - path is validated by caller
 	if err != nil {
@@ -233,7 +239,7 @@ func (a *VaultReaderAdapter) processFileIfModified(
 	*matched++
 
 	// Read and construct VaultFile (same as ScanAll)
-	content, err := os.ReadFile(
+	content, err := a.readFile(
 		path,
 	) // #nosec G304 - path is validated by caller
 	if err != nil {
