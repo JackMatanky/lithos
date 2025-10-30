@@ -75,9 +75,151 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 - `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content
 - `Validate(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (looked up via FileClass) with in-memory type normalization for validation logic only
 
-**Dependencies:** SchemaRegistry (port for schema lookup), QueryService (for FileSpec file existence validation), Logger.
+**Dependencies:** SchemaRegistry (port), QueryService (for FileSpec file existence validation), Logger.
 
 **Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `goccy/go-yaml` for YAML parsing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
+
+### SchemaEngine
+
+**Responsibility:** Coordinate schema loading, validation, resolution, and provide unified access to schemas and properties. Orchestrates SchemaLoader, SchemaValidator, SchemaResolver, and SchemaRegistry using Go generics for type-safe retrieval.
+
+**Key Interfaces:**
+
+- `Load(ctx context.Context) error` - Load schemas and property bank, validate structure, resolve inheritance, populate SchemaRegistry
+- `Get[T Schema | Property](ctx context.Context, name string) (T, error)` - Retrieve schema or property by name using generics
+- `Has[T Schema | Property](ctx context.Context, name string) bool` - Check if schema or property exists using generics
+
+**Dependencies:** SchemaLoader (port), SchemaValidator (service), SchemaResolver (service), SchemaRegistry (port), Logger.
+
+**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics. Delegates to SchemaLoader for I/O, SchemaValidator for structural validation, SchemaResolver for inheritance resolution, and SchemaRegistry for lookups. Idiomatic (T, error) return signatures.
+
+**Schema Loading and Validation Workflow:**
+
+The Load() method orchestrates the complete schema initialization pipeline:
+
+1. **Load:** SchemaLoader reads JSON files from disk and parses into Schema DTOs and PropertyBank
+2. **Validate:** SchemaValidator validates structural integrity by calling schema.Validate() on each schema (which delegates to property.Validate() → propertySpec.Validate()). Also performs cross-schema validation (Extends references exist).
+3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes) and substitutes $ref with PropertyBank definitions. Detects circular dependencies.
+4. **Register:** SchemaRegistry populates in-memory maps with resolved schemas for fast lookups
+
+**Fails Fast:** Any error in steps 1-3 terminates application at startup. No invalid schemas reach runtime.
+
+**Usage Examples:**
+```go
+// At startup
+if err := schemaEngine.Load(ctx); err != nil {
+    log.Fatal("schema loading failed:", err)
+}
+
+// Runtime lookups
+schema, err := schemaEngine.Get[Schema](ctx, "contact")
+property, err := schemaEngine.Get[Property](ctx, "standard_title")
+exists := schemaEngine.Has[Schema](ctx, "contact")
+```
+
+### SchemaValidator
+
+**Responsibility:** Orchestrate schema validation by calling model-level Validate() methods and performing cross-schema validation that requires seeing multiple schemas together. Pure domain service with no external dependencies.
+
+**Key Interfaces:**
+
+- `ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error` - Orchestrate validation of all schemas and check cross-schema references
+
+**Dependencies:** None (pure domain logic).
+
+**Technology Stack:** Orchestrates schema.Validate() calls, validates cross-schema references, aggregates errors using errors.Join().
+
+**Validation Responsibilities:**
+
+SchemaValidator has two distinct responsibilities that require service-level logic:
+
+1. **Orchestrate Model Validation:**
+    - Calls schema.Validate() on each schema
+    - Each schema delegates to property.Validate() → propertySpec.Validate()
+    - Aggregates all structural validation errors
+    - **Why service needed:** Centralized orchestration and error aggregation across all schemas
+
+2. **Cross-Schema Validation:**
+    - Validates Extends references point to existing schemas
+    - Validates PropertyBank $ref references exist
+    - Ensures no duplicate schema names
+    - **Why service needed:** Individual schemas can't validate references without seeing other schemas and PropertyBank
+
+**What SchemaValidator Does NOT Do:**
+
+- Structural validation of individual schemas (delegated to schema.Validate())
+- Inheritance resolution (handled by SchemaResolver)
+- Circular dependency detection (handled by SchemaResolver during topological sort)
+
+**Example Implementation Pattern:**
+
+```go
+func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error {
+    var errors []error
+
+    // 1. Orchestrate model-level validation
+    for _, schema := range schemas {
+        if err := schema.Validate(ctx); err != nil {
+            errors = append(errors, fmt.Errorf("schema %s: %w", schema.Name, err))
+        }
+    }
+
+    // 2. Cross-schema validation
+    schemaMap := buildSchemaMap(schemas)
+    for _, schema := range schemas {
+        if schema.Extends != "" {
+            if _, exists := schemaMap[schema.Extends]; !exists {
+                errors = append(errors, fmt.Errorf("schema %s extends non-existent schema %s",
+                    schema.Name, schema.Extends))
+            }
+        }
+        // Check $ref references in properties
+        for _, prop := range schema.Properties {
+            if err := v.validatePropertyRefs(prop, bank); err != nil {
+                errors = append(errors, err)
+            }
+        }
+    }
+
+    if len(errors) > 0 {
+        return errors.Join(errors...)
+    }
+    return nil
+}
+```
+
+### SchemaResolver
+
+**Responsibility:** Resolve schema inheritance chains and PropertyBank $ref substitutions. Pure domain service implementing inheritance resolution algorithm.
+
+**Key Interfaces:**
+
+- `Resolve(ctx context.Context, schemas []Schema, bank PropertyBank) ([]Schema, error)` - Resolve all schemas, returning flattened schemas with inheritance applied and $ref substituted
+
+**Dependencies:** None (pure domain logic).
+
+**Technology Stack:** Topological sort for dependency ordering, depth-first search for cycle detection, property merging with override semantics.
+
+**Resolution Algorithm:**
+
+1. **Build Dependency Graph:** Map each schema to its Extends parent
+2. **Detect Cycles:** DFS to find circular inheritance chains (Schema A extends B extends A)
+3. **Topological Sort:** Order schemas so parents resolve before children
+4. **Resolve Inheritance:** For each schema in order:
+    - Get parent's resolved properties (or empty if root schema)
+    - Apply Excludes (remove properties by name)
+    - Merge child properties (override parent properties with same name)
+    - Store as resolved properties
+5. **Substitute $ref:** Replace all `{$ref: "#/properties/name"}` with PropertyBank.Properties[name]
+
+**Example:**
+```go
+resolver := NewSchemaResolver()
+resolved, err := resolver.Resolve(ctx, schemas, propertyBank)
+if err != nil {
+    return fmt.Errorf("schema resolution failed: %w", err)
+}
+```
 
 **Frontmatter Validation (Business Rules with Strict Type Checking):**
 

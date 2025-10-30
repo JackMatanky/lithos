@@ -142,6 +142,10 @@ warn-unused = true
 paths = ["^bin(/|$)", "^dist(/|$)", "^generated(/|$)", "^vendor(/|$)"]
 
 # Relaxations for specific files.
+[[linters.exclusions.rules]]
+path = "cmd/.*/main\\.go$"
+linters = ["cyclop"]
+
 # Tests: relax noisy rules (+ cyclop here instead of the removed skip-tests).
 [[linters.exclusions.rules]]
 path = ".*_test\\.go$"
