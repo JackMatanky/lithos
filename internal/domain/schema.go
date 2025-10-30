@@ -52,6 +52,12 @@ type Schema struct {
 	// For root schemas: represents the complete property set
 	// Property names must be unique within the schema
 	Properties []Property `json:"properties" yaml:"properties"`
+
+	// ResolvedProperties contains the flattened property set after inheritance
+	// resolution and $ref substitution. Populated by SchemaResolver.
+	// This is the final property set used for validation and consumption.
+	// Empty until SchemaResolver.Resolve() is called.
+	ResolvedProperties []Property `json:"resolved_properties,omitempty" yaml:"resolved_properties,omitempty"` //nolint:lll // field tags required for JSON/YAML
 }
 
 // NewSchema creates a new Schema with defensive copies to preserve
