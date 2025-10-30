@@ -1,9 +1,3 @@
-// Package spi provides Service Provider Interface (SPI) ports that define
-// contracts for infrastructure adapters. These ports are implemented by
-// adapters in the adapters/spi package.
-//
-// This package contains interface definitions and associated DTOs that are
-// part of the port contracts. Implementation details belong in adapters/spi.
 package spi
 
 import (

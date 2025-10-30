@@ -1,7 +1,6 @@
 // Package template provides the TemplateEngine domain service for template
 // rendering. It orchestrates template loading, parsing, and execution with
-// custom functions
-// for the lithos new and find commands.
+// custom functions for the lithos new and find commands.
 package template
 
 import (

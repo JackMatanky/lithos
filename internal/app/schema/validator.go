@@ -22,14 +22,13 @@ import (
 //
 // Validation Process:
 //  1. Model validation: Calls schema.Validate() on each schema
-//
-// 2. Cross-schema validation: Checks Extends references, duplicates, $ref
-// validity
+//  2. Cross-schema validation: Checks Extends references, duplicates, $ref
+//     validity
 //  3. Error aggregation: Combines all errors using errors.Join()
 //
 // Distinction from SchemaResolver:
-// - SchemaValidator: Ensures schemas are structurally valid and references
-// exist
+//   - SchemaValidator: Ensures schemas are structurally valid and references
+//     exist
 //   - SchemaResolver: Performs inheritance resolution and $ref substitution
 type SchemaValidator struct{}
 
@@ -83,8 +82,7 @@ func (v *SchemaValidator) ValidateAll(
 }
 
 // validateModels orchestrates model-level validation by calling
-// schema.Validate()
-// on each schema and wrapping errors with schema context.
+// schema.Validate() on each schema and wrapping errors with schema context.
 func (v *SchemaValidator) validateModels(
 	ctx context.Context,
 	schemas []domain.Schema,
@@ -106,8 +104,7 @@ func (v *SchemaValidator) validateModels(
 }
 
 // validateCrossSchema performs cross-schema validation including Extends
-// references,
-// duplicate names, and $ref validity.
+// references, duplicate names, and $ref validity.
 func (v *SchemaValidator) validateCrossSchema(
 	ctx context.Context,
 	schemas []domain.Schema,

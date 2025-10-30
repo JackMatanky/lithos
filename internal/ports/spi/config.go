@@ -48,7 +48,7 @@ type ConfigPort interface {
 	//   - VaultPath does not exist: returns descriptive error
 	//   - VaultPath is not a directory: returns descriptive error
 	//   - Context canceled: returns context.Canceled error
-	// - Config file parse errors: logged but not returned (fallback to
-	// defaults)
+	// 	 - Config file parse errors: logged but not returned (fallback to
+	// 	   defaults)
 	Load(ctx context.Context) (domain.Config, error)
 }

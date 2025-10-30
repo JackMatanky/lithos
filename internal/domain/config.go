@@ -44,14 +44,14 @@ type Config struct {
 	// Optional—if missing, schemas cannot use $ref references.
 	PropertyBankFile string `json:"property_bank_file"`
 
-	// CacheDir is the path to the index cache directory. Default:
-	// "{VaultPath}/.lithos/cache/".
+	// CacheDir is the path to the index cache directory.
+	// Default: "{VaultPath}/.lithos/cache/".
 	// Can be absolute or relative to VaultPath.
 	// Created automatically if missing. Must be writable.
 	CacheDir string `json:"cache_dir"`
 
-	// LogLevel is the logging verbosity for zerolog. Default: "info".
-	// One of: "debug", "info", "warn", "error".
+	// LogLevel is the logging verbosity for zerolog.
+	// Default: "info". Options: "debug", "info", "warn", "error".
 	// Case-insensitive. Invalid values fall back to "info" with warning.
 	LogLevel string `json:"log_level"`
 }
@@ -115,10 +115,8 @@ func DefaultConfig() Config {
 	}
 }
 
-// PropertyBankPath returns the full path to the property bank file
-// by joining SchemasDir with PropertyBankFile.
-//
-//nolint:gocritic // Config is a value object, intentionally passed by value
+// PropertyBankPath returns the full path to the property bank file by joining
+// SchemasDir with PropertyBankFile.
 func (c Config) PropertyBankPath() string {
 	return filepath.Join(c.SchemasDir, c.PropertyBankFile)
 }

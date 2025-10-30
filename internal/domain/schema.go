@@ -65,8 +65,8 @@ type Schema struct {
 // Returns error if the schema definition is invalid.
 //
 // Defensive copies prevent external modification of schema state after
-// construction,
-// ensuring schema definitions remain stable throughout their lifetime.
+// construction, ensuring schema definitions remain stable throughout their
+// lifetime.
 func NewSchema(
 	name, extends string,
 	excludes []string,
@@ -81,10 +81,11 @@ func NewSchema(
 	copy(propertiesCopy, properties)
 
 	schema := Schema{
-		Name:       name,
-		Extends:    extends,
-		Excludes:   excludesCopy,
-		Properties: propertiesCopy,
+		Name:               name,
+		Extends:            extends,
+		Excludes:           excludesCopy,
+		Properties:         propertiesCopy,
+		ResolvedProperties: nil,
 	}
 
 	if err := schema.Validate(context.Background()); err != nil {

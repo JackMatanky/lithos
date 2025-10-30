@@ -79,7 +79,9 @@ func (a *VaultReaderAdapter) ScanAll(
 			}
 
 			// Read file content
-			content, err := os.ReadFile(path)
+			content, err := os.ReadFile(
+				path,
+			) // #nosec G304 - path is validated by caller
 			if err != nil {
 				a.log.Warn().
 					Err(err).
@@ -112,7 +114,7 @@ func (a *VaultReaderAdapter) ScanAll(
 	return files, nil
 }
 
-// ScanModified performs incremental scan, returning only files modified since
+// ScanModified scans vault files that have been modified after the given
 // timestamp.
 // Uses the same scanning logic as ScanAll but filters by modification time.
 // Enables NFR4 performance optimization for large vaults.
@@ -145,29 +147,14 @@ func (a *VaultReaderAdapter) ScanModified(
 				return nil
 			}
 
-			checked++
-
-			// Filter: Only include files modified after 'since' timestamp
-			if info.ModTime().Before(since) {
-				return nil // Skip old file
-			}
-
-			matched++
-
-			// Read and construct VaultFile (same as ScanAll)
-			content, err := os.ReadFile(path)
-			if err != nil {
-				a.log.Warn().
-					Err(err).
-					Str("path", path).
-					Msg("failed to read file")
-				return nil
-			}
-
-			metadata := spi.NewFileMetadata(path, info)
-			files = append(files, spi.NewVaultFile(metadata, content))
-
-			return nil
+			return a.processFileIfModified(
+				path,
+				info,
+				since,
+				&files,
+				&checked,
+				&matched,
+			)
 		},
 	)
 
@@ -215,7 +202,9 @@ func (a *VaultReaderAdapter) Read(
 	}
 
 	// Read content
-	content, err := os.ReadFile(path)
+	content, err := os.ReadFile(
+		path,
+	) // #nosec G304 - path is validated by caller
 	if err != nil {
 		return spi.VaultFile{}, errors.NewFileSystemError("read", path, err)
 	}
@@ -223,6 +212,42 @@ func (a *VaultReaderAdapter) Read(
 	// Construct metadata and VaultFile
 	metadata := spi.NewFileMetadata(path, info)
 	return spi.NewVaultFile(metadata, content), nil
+}
+
+// processFileIfModified checks if a file was modified after the given time
+// and processes it.
+func (a *VaultReaderAdapter) processFileIfModified(
+	path string,
+	info os.FileInfo,
+	since time.Time,
+	files *[]spi.VaultFile,
+	checked, matched *int,
+) error {
+	*checked++
+
+	// Filter: Only include files modified after 'since' timestamp
+	if info.ModTime().Before(since) {
+		return nil // Skip old file
+	}
+
+	*matched++
+
+	// Read and construct VaultFile (same as ScanAll)
+	content, err := os.ReadFile(
+		path,
+	) // #nosec G304 - path is validated by caller
+	if err != nil {
+		a.log.Warn().
+			Err(err).
+			Str("path", path).
+			Msg("failed to read file")
+		return nil
+	}
+
+	metadata := spi.NewFileMetadata(path, info)
+	*files = append(*files, spi.NewVaultFile(metadata, content))
+
+	return nil
 }
 
 // isPathInVault validates that the target path is within the vault directory.

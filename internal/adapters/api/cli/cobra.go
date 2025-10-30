@@ -1,8 +1,4 @@
 // Package cli provides CLI adapter implementations for Lithos.
-// This package contains the CobraCLIAdapter which implements the CLIPort
-// interface using the Cobra CLI framework.
-//
-//nolint:godoclint // package godoc is sufficient
 package cli
 
 import (
@@ -30,10 +26,7 @@ type CobraCLIAdapter struct {
 
 // NewCobraCLIAdapter creates a new CobraCLIAdapter with the provided logger.
 // The adapter implements hexagonal architecture by accepting a CommandPort
-// handler
-// during Start() to delegate business logic execution.
-//
-//nolint:gocritic // zerolog.Logger is heavy but follows project pattern
+// handler during Start() to delegate business logic execution.
 func NewCobraCLIAdapter(
 	log zerolog.Logger,
 ) *CobraCLIAdapter {

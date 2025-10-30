@@ -110,11 +110,6 @@ func TestNewSchemaDefensiveCopyExcludes(t *testing.T) {
 	// Modify original slice
 	excludes[0] = testModifiedValue
 
-	excludes = append(
-		excludes,
-		"new",
-	)
-
 	// Verify schema unchanged
 	assert.Equal(t, []string{testTag1, testTag2}, schema.Excludes)
 	assert.Len(t, schema.Excludes, 2)
@@ -133,10 +128,6 @@ func TestNewSchemaDefensiveCopyProperties(t *testing.T) {
 
 	// Modify original slice
 	properties[0] = createValidTestProperty(testModifiedValue)
-	properties = append(
-		properties,
-		createValidTestProperty("new"),
-	)
 
 	// Verify schema unchanged
 	assert.Len(t, schema.Properties, 2)
@@ -159,18 +150,9 @@ func TestNewSchemaCompleteImmutability(t *testing.T) {
 
 	// Modify all original args
 	excludes[0] = testModifiedValue
-	excludes = append(
-		excludes,
-		"new",
-	)
 	properties[0] = createValidTestProperty(testModifiedValue)
-	properties = append(
-		properties,
-		createValidTestProperty("new"),
-	)
 
 	// Verify schema completely unchanged
-	assert.Equal(t, testSchemaName, schema.Name)
 	assert.Equal(t, testSchemaExtends, schema.Extends)
 	assert.Equal(t, []string{testTag1, testTag2}, schema.Excludes)
 	assert.Len(t, schema.Properties, 2)

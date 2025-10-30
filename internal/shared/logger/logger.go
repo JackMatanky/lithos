@@ -86,22 +86,16 @@ func parseLevel(level string) zerolog.Level {
 }
 
 // WithComponent adds a component field to the logger context.
-//
-//nolint:gocritic // zerolog.Logger is designed to be passed by value
 func WithComponent(logger zerolog.Logger, component string) zerolog.Logger {
 	return logger.With().Str("component", component).Logger()
 }
 
 // WithOperation adds an operation field to the logger context.
-//
-//nolint:gocritic // zerolog.Logger is designed to be passed by value
 func WithOperation(logger zerolog.Logger, operation string) zerolog.Logger {
 	return logger.With().Str("operation", operation).Logger()
 }
 
 // WithCorrelationID adds a correlation_id field to the logger context.
-//
-//nolint:gocritic // zerolog.Logger is designed to be passed by value
 func WithCorrelationID(logger zerolog.Logger, id string) zerolog.Logger {
 	return logger.With().Str("correlation_id", id).Logger()
 }

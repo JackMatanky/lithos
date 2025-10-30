@@ -23,11 +23,11 @@ func setupTestVault(t *testing.T) string {
 	tmpDir := t.TempDir()
 
 	// Create vault structure
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "notes"), 0755))
-	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "attachments"), 0755))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "notes"), 0o750))
+	require.NoError(t, os.MkdirAll(filepath.Join(tmpDir, "attachments"), 0o750))
 	require.NoError(
 		t,
-		os.MkdirAll(filepath.Join(tmpDir, ".lithos", "cache"), 0755),
+		os.MkdirAll(filepath.Join(tmpDir, ".lithos", "cache"), 0o750),
 	)
 
 	// Write test files
@@ -36,7 +36,7 @@ func setupTestVault(t *testing.T) string {
 		os.WriteFile(
 			filepath.Join(tmpDir, "notes", "contact.md"),
 			[]byte("# Contact\n\nJohn Doe"),
-			0644,
+			0o600,
 		),
 	)
 	require.NoError(
@@ -44,7 +44,7 @@ func setupTestVault(t *testing.T) string {
 		os.WriteFile(
 			filepath.Join(tmpDir, "notes", "project.md"),
 			[]byte("# Project\n\nSecret project"),
-			0644,
+			0o600,
 		),
 	)
 	require.NoError(
@@ -52,7 +52,7 @@ func setupTestVault(t *testing.T) string {
 		os.WriteFile(
 			filepath.Join(tmpDir, "attachments", "image.png"),
 			[]byte("fake png content"),
-			0644,
+			0o600,
 		),
 	)
 	require.NoError(
@@ -60,7 +60,7 @@ func setupTestVault(t *testing.T) string {
 		os.WriteFile(
 			filepath.Join(tmpDir, "attachments", "doc.pdf"),
 			[]byte("fake pdf content"),
-			0644,
+			0o600,
 		),
 	)
 	require.NoError(
@@ -68,13 +68,14 @@ func setupTestVault(t *testing.T) string {
 		os.WriteFile(
 			filepath.Join(tmpDir, ".lithos", "cache", "cached.json"),
 			[]byte(`{"cached": true}`),
-			0644,
+			0o600,
 		),
 	)
 
 	return tmpDir
 }
 
+// TestNewVaultReaderAdapter tests the creation of a new VaultReaderAdapter.
 func TestNewVaultReaderAdapter(t *testing.T) {
 	config := domain.DefaultConfig()
 	log := logger.NewTest()
@@ -86,6 +87,7 @@ func TestNewVaultReaderAdapter(t *testing.T) {
 	assert.Equal(t, log, adapter.log)
 }
 
+// TestScanAll_EmptyVault tests scanning an empty vault directory.
 func TestScanAll_EmptyVault(t *testing.T) {
 	vaultPath := t.TempDir()
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
@@ -97,6 +99,7 @@ func TestScanAll_EmptyVault(t *testing.T) {
 	assert.Empty(t, files)
 }
 
+// TestScanAll_WithFiles tests scanning a vault with existing files.
 func TestScanAll_WithFiles(t *testing.T) {
 	vaultPath := setupTestVault(t)
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
@@ -120,6 +123,8 @@ func TestScanAll_WithFiles(t *testing.T) {
 	}
 }
 
+// TestScanAll_IgnoresCacheDirectories tests that cache directories are excluded
+// from scanning.
 func TestScanAll_IgnoresCacheDirectories(t *testing.T) {
 	vaultPath := setupTestVault(t)
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
@@ -141,11 +146,13 @@ func TestScanAll_IgnoresCacheDirectories(t *testing.T) {
 	}
 }
 
+// TestScanAll_ConstructsVaultFileCorrectly tests that VaultFile objects are
+// constructed correctly.
 func TestScanAll_ConstructsVaultFileCorrectly(t *testing.T) {
 	vaultPath := t.TempDir()
 	testFile := filepath.Join(vaultPath, "test.md")
 	content := []byte("# Test\n\nContent")
-	require.NoError(t, os.WriteFile(testFile, content, 0644))
+	require.NoError(t, os.WriteFile(testFile, content, 0o600))
 
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
@@ -165,6 +172,8 @@ func TestScanAll_ConstructsVaultFileCorrectly(t *testing.T) {
 	assert.Equal(t, "text/markdown", vf.MimeType)
 }
 
+// TestScanAll_WithPermissionErrors tests handling of files with permission
+// errors.
 func TestScanAll_WithPermissionErrors(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping permission test in short mode")
@@ -172,12 +181,14 @@ func TestScanAll_WithPermissionErrors(t *testing.T) {
 
 	vaultPath := t.TempDir()
 	testFile := filepath.Join(vaultPath, "readable.md")
-	require.NoError(t, os.WriteFile(testFile, []byte("content"), 0644))
+	require.NoError(t, os.WriteFile(testFile, []byte("content"), 0o600))
 
 	// Create a file with no read permissions (if possible)
 	unreadableFile := filepath.Join(vaultPath, "unreadable.md")
-	require.NoError(t, os.WriteFile(unreadableFile, []byte("secret"), 0000))
-	defer os.Chmod(unreadableFile, 0644) // Cleanup
+	require.NoError(t, os.WriteFile(unreadableFile, []byte("secret"), 0o000))
+	defer func() {
+		_ = os.Chmod(unreadableFile, 0o644) // #nosec G302 - cleanup operation
+	}()
 
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
@@ -190,6 +201,8 @@ func TestScanAll_WithPermissionErrors(t *testing.T) {
 	assert.Equal(t, testFile, files[0].Path)
 }
 
+// TestScanModified_WithRecentFiles tests scanning for files modified after a
+// specific time.
 func TestScanModified_WithRecentFiles(t *testing.T) {
 	vaultPath := setupTestVault(t)
 
@@ -213,6 +226,8 @@ func TestScanModified_WithRecentFiles(t *testing.T) {
 	}
 }
 
+// TestScanModified_WithNoMatches tests scanning when no files match the
+// modification time criteria.
 func TestScanModified_WithNoMatches(t *testing.T) {
 	vaultPath := setupTestVault(t)
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
@@ -225,11 +240,12 @@ func TestScanModified_WithNoMatches(t *testing.T) {
 	assert.Empty(t, files)
 }
 
+// TestRead_ValidFile tests reading a valid file from the vault.
 func TestRead_ValidFile(t *testing.T) {
 	vaultPath := t.TempDir()
 	testFile := filepath.Join(vaultPath, "test.md")
 	content := []byte("# Test\n\nContent")
-	require.NoError(t, os.WriteFile(testFile, content, 0644))
+	require.NoError(t, os.WriteFile(testFile, content, 0o600))
 
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
@@ -245,6 +261,7 @@ func TestRead_ValidFile(t *testing.T) {
 	assert.Equal(t, "text/markdown", vf.MimeType)
 }
 
+// TestRead_MissingFile tests reading a file that doesn't exist.
 func TestRead_MissingFile(t *testing.T) {
 	vaultPath := t.TempDir()
 	missingFile := filepath.Join(vaultPath, "missing.md")
@@ -254,15 +271,17 @@ func TestRead_MissingFile(t *testing.T) {
 
 	_, err := adapter.Read(context.Background(), missingFile)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "file not found")
 }
 
+// TestRead_PathTraversalPrevention tests that path traversal attacks are
+// prevented.
 func TestRead_PathTraversalPrevention(t *testing.T) {
 	vaultPath := t.TempDir()
 	// Create a file outside vault
 	outsideFile := filepath.Join(t.TempDir(), "outside.md")
-	require.NoError(t, os.WriteFile(outsideFile, []byte("outside"), 0644))
+	require.NoError(t, os.WriteFile(outsideFile, []byte("outside"), 0o600))
 
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
@@ -272,10 +291,11 @@ func TestRead_PathTraversalPrevention(t *testing.T) {
 
 	_, err := adapter.Read(context.Background(), traversalPath)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "path outside vault")
 }
 
+// TestRead_WithPermissionError tests reading a file with permission errors.
 func TestRead_WithPermissionError(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping permission test in short mode")
@@ -283,18 +303,21 @@ func TestRead_WithPermissionError(t *testing.T) {
 
 	vaultPath := t.TempDir()
 	unreadableFile := filepath.Join(vaultPath, "unreadable.md")
-	require.NoError(t, os.WriteFile(unreadableFile, []byte("secret"), 0000))
-	defer os.Chmod(unreadableFile, 0644) // Cleanup
+	require.NoError(t, os.WriteFile(unreadableFile, []byte("secret"), 0o000))
+	defer func() {
+		_ = os.Chmod(unreadableFile, 0o644) // #nosec G302 - cleanup operation
+	}()
 
 	config := domain.NewConfig(vaultPath, "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	_, err := adapter.Read(context.Background(), unreadableFile)
 
-	assert.Error(t, err)
+	require.Error(t, err)
 	assert.Contains(t, err.Error(), "resource operation failed")
 }
 
+// TestVaultFile_NewVaultFile tests creating a new VaultFile instance.
 func TestVaultFile_NewVaultFile(t *testing.T) {
 	metadata := spi.FileMetadata{
 		Path:     "/vault/test.md",

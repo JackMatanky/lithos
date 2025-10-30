@@ -24,11 +24,12 @@ import (
 //
 // Processing Pipeline:
 //  1. SchemaPort.Load() - Load raw schemas and property bank from storage
-//
-// 2. SchemaValidator.ValidateAll() - Validate structural integrity and
-// cross-schema references 3. SchemaResolver.Resolve() - Resolve inheritance
-// chains and $ref substitutions 4. SchemaRegistryPort.RegisterAll() - Register
-// resolved schemas for fast lookups
+//  2. SchemaValidator.ValidateAll() - Validate structural integrity and
+//     cross-schema references
+//  3. SchemaResolver.Resolve() - Resolve inheritance chains and $ref
+//     substitutions
+//  4. SchemaRegistryPort.RegisterAll() - Register resolved schemas for fast
+//     lookups
 //
 // Each stage is logged with duration for observability (NFR3 requirement).
 // Fail-fast behavior ensures any stage failure stops the pipeline immediately.
@@ -42,11 +43,11 @@ import (
 //   - Has[Property](ctx, "property-name") checks property existence
 //
 // Dependencies:
-// - SchemaPort: Loads raw schemas from storage (injected)
-// - SchemaRegistryPort: Provides fast in-memory schema access (injected)
-// - Logger: Provides observability for each pipeline stage (injected)
-// - SchemaValidator: Validates schemas (internally instantiated)
-// - SchemaResolver: Resolves inheritance (internally instantiated).
+//   - SchemaPort: Loads raw schemas from storage (injected)
+//   - SchemaRegistryPort: Provides fast in-memory schema access (injected)
+//   - Logger: Provides observability for each pipeline stage (injected)
+//   - SchemaValidator: Validates schemas (internally instantiated)
+//   - SchemaResolver: Resolves inheritance (internally instantiated).
 type SchemaEngine struct {
 	// Injected dependencies
 	schemaPort   spi.SchemaPort
@@ -133,14 +134,19 @@ func (e *SchemaEngine) Load(ctx context.Context) error {
 }
 
 // loadSchemas executes the schema loading stage.
-func (e *SchemaEngine) loadSchemas(ctx context.Context) ([]domain.Schema, domain.PropertyBank, error) {
+func (e *SchemaEngine) loadSchemas(
+	ctx context.Context,
+) ([]domain.Schema, domain.PropertyBank, error) {
 	e.log.Info().Msg("loading schemas...")
 	stageStart := time.Now()
 
 	schemas, bank, err := e.schemaPort.Load(ctx)
 	if err != nil {
 		e.log.Error().Err(err).Msg("failed to load schemas")
-		return nil, domain.PropertyBank{}, fmt.Errorf("schema loading failed: %w", err)
+		return nil, domain.PropertyBank{}, fmt.Errorf(
+			"schema loading failed: %w",
+			err,
+		)
 	}
 
 	stageDuration := time.Since(stageStart)
@@ -155,7 +161,11 @@ func (e *SchemaEngine) loadSchemas(ctx context.Context) ([]domain.Schema, domain
 }
 
 // validateSchemas executes the schema validation stage.
-func (e *SchemaEngine) validateSchemas(ctx context.Context, schemas []domain.Schema, bank domain.PropertyBank) error {
+func (e *SchemaEngine) validateSchemas(
+	ctx context.Context,
+	schemas []domain.Schema,
+	bank domain.PropertyBank,
+) error {
 	e.log.Info().Msg("validating schemas...")
 	stageStart := time.Now()
 
@@ -173,7 +183,11 @@ func (e *SchemaEngine) validateSchemas(ctx context.Context, schemas []domain.Sch
 }
 
 // resolveSchemas executes the schema resolution stage.
-func (e *SchemaEngine) resolveSchemas(ctx context.Context, schemas []domain.Schema, bank domain.PropertyBank) ([]domain.Schema, error) {
+func (e *SchemaEngine) resolveSchemas(
+	ctx context.Context,
+	schemas []domain.Schema,
+	bank domain.PropertyBank,
+) ([]domain.Schema, error) {
 	e.log.Info().Msg("resolving inheritance...")
 	stageStart := time.Now()
 
@@ -192,7 +206,12 @@ func (e *SchemaEngine) resolveSchemas(ctx context.Context, schemas []domain.Sche
 }
 
 // registerSchemas executes the schema registration stage.
-func (e *SchemaEngine) registerSchemas(ctx context.Context, schemas []domain.Schema, bank domain.PropertyBank, startTime time.Time) error {
+func (e *SchemaEngine) registerSchemas(
+	ctx context.Context,
+	schemas []domain.Schema,
+	bank domain.PropertyBank,
+	startTime time.Time,
+) error {
 	e.log.Info().Msg("registering schemas...")
 	stageStart := time.Now()
 

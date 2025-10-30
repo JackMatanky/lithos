@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/tests/utils"
@@ -38,12 +39,15 @@ func TestRunCallsCLIPortStart(t *testing.T) {
 	logger := zerolog.Nop()
 
 	// Create orchestrator with mock dependencies
-	// Note: We pass nil for templateEngine since we're not testing that in this
+	// Note: We pass nil for templateEngine and schemaEngine since we're not
+	// testing that in this
 	// test
 	var templateEngine *template.TemplateEngine
+	var schemaEngine *schema.SchemaEngine
 	orchestrator := NewCommandOrchestrator(
 		mockCLIPort,
 		templateEngine,
+		schemaEngine,
 		&config,
 		&logger,
 	)
@@ -80,9 +84,11 @@ func TestRunPropagatesCLIError(t *testing.T) {
 
 	// Create orchestrator with mock dependencies
 	var templateEngine *template.TemplateEngine
+	var schemaEngine *schema.SchemaEngine
 	orchestrator := NewCommandOrchestrator(
 		mockCLIPort,
 		templateEngine,
+		schemaEngine,
 		&config,
 		&logger,
 	)
@@ -136,9 +142,11 @@ func TestNewNoteSuccess(t *testing.T) {
 	tempDir := t.TempDir()
 	config.VaultPath = tempDir
 
+	var schemaEngine *schema.SchemaEngine
 	orchestrator := NewCommandOrchestrator(
 		nil,
 		templateEngine,
+		schemaEngine,
 		&config,
 		&logger,
 	)
@@ -196,9 +204,11 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 		&logger,
 	)
 
+	var schemaEngine *schema.SchemaEngine
 	orchestrator := NewCommandOrchestrator(
 		nil,
 		templateEngine,
+		schemaEngine,
 		&config,
 		&logger,
 	)
@@ -237,9 +247,11 @@ func TestNewNoteFileWriteError(t *testing.T) {
 		&logger,
 	)
 
+	var schemaEngine *schema.SchemaEngine
 	orchestrator := NewCommandOrchestrator(
 		nil,
 		templateEngine,
+		schemaEngine,
 		&config,
 		&logger,
 	)

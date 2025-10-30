@@ -49,8 +49,7 @@ import (
 type CLIPort interface {
 	// Start begins the CLI event loop and command processing.
 	// The CLI adapter receives the CommandPort handler (typically
-	// CommandOrchestrator)
-	// and uses it to delegate business logic execution.
+	// CommandOrchestrator) and uses it to delegate business logic execution.
 	//
 	// The adapter is responsible for:
 	// - Setting up command definitions and flags

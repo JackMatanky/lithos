@@ -1,8 +1,7 @@
 // Package cache provides filesystem-based cache adapters for note persistence.
 //
 // This package implements the CQRS pattern with separate write and read
-// adapters
-// for atomic persistence and optimized querying of notes.
+// adapters for atomic persistence and optimized querying of notes.
 package cache
 
 import (
