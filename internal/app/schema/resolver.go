@@ -11,8 +11,7 @@ import (
 
 // SchemaResolver resolves inheritance and $ref substitution for schemas.
 // It transforms schemas with inheritance chains into flattened, resolved
-// schemas
-// with complete property sets ready for validation and consumption.
+// schemas with complete property sets ready for validation and consumption.
 //
 // SchemaResolver has no external dependencies and is instantiated internally
 // by SchemaEngine. It assumes all input schemas have passed validation via
@@ -25,9 +24,8 @@ import (
 // Resolution Algorithm:
 //  1. Build dependency graph mapping each schema to its Extends parent
 //  2. Detect circular inheritance chains using depth-first search
-//
-// 3. Perform topological sort to order schemas (parents resolve before
-// children)
+//  3. Perform topological sort to order schemas (parents resolve before
+//     children)
 //  4. For each schema in order:
 //     - Get parent's resolved properties (or empty if root schema)
 //     - Apply Excludes (remove properties by name)
@@ -36,20 +34,20 @@ import (
 //     - Store as ResolvedProperties in new Schema copy
 //
 // Property Override Semantics:
-// - If child Property.Name matches parent Property.Name, child completely
-// replaces parent
-// - This is explicit override, not attribute-level merge
-// - Properties not overridden or excluded are inherited from parent
+//   - If child Property.Name matches parent Property.Name, child completely
+//     replaces parent
+//   - This is explicit override, not attribute-level merge
+//   - Properties not overridden or excluded are inherited from parent
 //
 // Immutability:
-// - Original schemas are never mutated
-// - Returns new schema copies with ResolvedProperties populated
-// - Original Extends/Excludes/Properties remain unchanged
+//   - Original schemas are never mutated
+//   - Returns new schema copies with ResolvedProperties populated
+//   - Original Extends/Excludes/Properties remain unchanged
 //
 // Distinction from SchemaValidator:
-// - SchemaValidator: Ensures schemas are structurally valid and references
-// exist
-// - SchemaResolver: Performs inheritance resolution and $ref substitution.
+//   - SchemaValidator: Ensures schemas are structurally valid and references
+//     exist
+//   - SchemaResolver: Performs inheritance resolution and $ref substitution.
 type SchemaResolver struct{}
 
 // NewSchemaResolver creates a new SchemaResolver instance.
@@ -360,8 +358,11 @@ func (r *SchemaResolver) resolveRefProperty(
 	refProp, exists := bank.Properties[prop.Ref]
 	if !exists {
 		return domain.Property{}, lithoserrors.NewSchemaErrorWithRemediation(
-			fmt.Sprintf("property %s: $ref '%s' not found in property bank",
-				prop.Name, prop.Ref),
+			fmt.Sprintf(
+				"property %s: $ref '%s' not found in property bank",
+				prop.Name,
+				prop.Ref,
+			),
 			schemaName,
 			fmt.Sprintf(
 				"add property '%s' to property bank or fix reference",

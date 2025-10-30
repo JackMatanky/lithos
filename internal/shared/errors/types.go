@@ -40,6 +40,13 @@ type ResourceError struct {
 	target    string
 }
 
+// FileSystemError represents filesystem operation failures.
+// It embeds ResourceError to provide standard error functionality with
+// filesystem-specific context.
+type FileSystemError struct {
+	ResourceError
+}
+
 // NewBaseError creates a new BaseError with an optional cause.
 // If cause is nil, the error contains only the message.
 // If cause is provided, the error message will include the cause.
@@ -135,16 +142,13 @@ func (e *ResourceError) Target() string {
 	return e.target
 }
 
-// FileSystemError represents filesystem operation failures.
-// It embeds ResourceError to provide standard error functionality with
-// filesystem-specific context.
-type FileSystemError struct {
-	ResourceError
-}
-
-// NewFileSystemError creates a new FileSystemError with filesystem operation context.
-// The resource is fixed as "file" and the operation/target provide specific context.
-func NewFileSystemError(operation, target string, cause error) *FileSystemError {
+// NewFileSystemError creates a new FileSystemError with filesystem operation
+// context. The resource is fixed as "file" and the operation/target provide
+// specific context.
+func NewFileSystemError(
+	operation, target string,
+	cause error,
+) *FileSystemError {
 	return &FileSystemError{
 		ResourceError: *NewResourceError("file", operation, target, cause),
 	}

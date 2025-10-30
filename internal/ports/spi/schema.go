@@ -72,7 +72,8 @@ type SchemaPort interface {
 // when lookups fail
 // - HasSchema/HasProperty never error, return bool only
 // - RegisterAll clears existing entries before registration (idempotent
-// behavior) - RegisterAll stores defensive copies of schemas and properties
+// behavior)
+// - RegisterAll stores defensive copies of schemas and properties
 // (not original references)
 // - GetSchema/GetProperty return defensive copies (not internal references)
 // - Thread-safe for concurrent reads.
@@ -89,8 +90,8 @@ type SchemaRegistryPort interface {
 
 	// GetProperty retrieves a property from the property bank by name.
 	//
-	// Returns SchemaError with ErrNotFound classification when property doesn't
-	// exist.
+	// Returns SchemaError with ErrNotFound classification when property does
+	// not exist.
 	// Returns defensive copy to prevent external mutation of registry state.
 	//
 	// Context is used for cancellation during potentially long-running

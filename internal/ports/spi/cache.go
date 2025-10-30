@@ -32,8 +32,7 @@ import (
 // CacheWriterPort defines the CQRS write-side contract for cache persistence.
 // Implementations must provide atomic write guarantees and thread-safe
 // concurrent access. All errors must be wrapped per error-handling-strategy.md
-// with operation
-// context and resource identifiers (FR9).
+// with operation context and resource identifiers (FR9).
 //
 // CQRS Write-Side Responsibility:
 // - Atomic persistence using temp-file + rename pattern (moby/sys/atomicwriter)

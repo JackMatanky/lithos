@@ -23,8 +23,7 @@ import (
 // metadata for each template, and provides access to template content by ID.
 //
 // The adapter maintains an internal metadata cache populated during List()
-// operations
-// for efficient Load() operations without repeated filesystem scans.
+// operations for efficient Load() operations without repeated filesystem scans.
 type TemplateLoaderAdapter struct {
 	// config holds the application configuration, specifically TemplatesDir
 	config *domain.Config

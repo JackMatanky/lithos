@@ -36,7 +36,7 @@ type ViperAdapter struct {
 	logger zerolog.Logger
 }
 
-// NewViperAdapter creates a new ViperAdapter with the provided logger.
+// NewViperAdapter creates a new ViperAdapter instance with the provided logger.
 // The logger is injected for dependency inversion, allowing the adapter to
 // log configuration loading operations without depending on global state.
 //
@@ -48,8 +48,6 @@ type ViperAdapter struct {
 //
 // The constructor follows the factory pattern and ensures the adapter
 // is properly initialized with all required dependencies.
-//
-//nolint:gocritic // logger is required for dependency injection
 func NewViperAdapter(
 	logger zerolog.Logger,
 ) *ViperAdapter {

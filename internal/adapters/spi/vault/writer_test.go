@@ -128,7 +128,8 @@ func TestDeleteRemovesFile(t *testing.T) {
 	}
 }
 
-// TestPersistOverwritesExistingFile tests that Persist overwrites an existing file.
+// TestPersistOverwritesExistingFile tests that Persist overwrites an existing
+// file.
 func TestPersistOverwritesExistingFile(t *testing.T) {
 	// Setup temporary directory
 	tempDir, err := os.MkdirTemp("", "vault-test")
@@ -174,7 +175,8 @@ func TestPersistOverwritesExistingFile(t *testing.T) {
 	}
 }
 
-// TestPersistCreatesParentDirectories tests that Persist creates parent directories.
+// TestPersistCreatesParentDirectories tests that Persist creates parent
+// directories.
 func TestPersistCreatesParentDirectories(t *testing.T) {
 	// Setup temporary directory
 	tempDir, err := os.MkdirTemp("", "vault-test")
@@ -214,7 +216,8 @@ func TestPersistCreatesParentDirectories(t *testing.T) {
 	}
 }
 
-// TestPersistPreservesFrontmatter tests that Persist preserves all frontmatter fields (FR6).
+// TestPersistPreservesFrontmatter tests that Persist preserves all frontmatter
+// fields (FR6).
 func TestPersistPreservesFrontmatter(t *testing.T) {
 	// Setup temporary directory
 	tempDir, err := os.MkdirTemp("", "vault-test")

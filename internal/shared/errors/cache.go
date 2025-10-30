@@ -88,8 +88,13 @@ func NewCacheDeleteError(
 // Error implements the error interface for CacheWriteError.
 // Returns a formatted error message including operation context.
 func (e *CacheWriteError) Error() string {
-	return fmt.Sprintf("cache write failed for note %s at %s during %s: %v",
-		e.NoteID, e.Path, e.Operation, e.BaseError.Cause())
+	return fmt.Sprintf(
+		"cache write failed for note %s at %s during %s: %v",
+		e.NoteID,
+		e.Path,
+		e.Operation,
+		e.BaseError.Cause(),
+	)
 }
 
 // Cause returns the underlying cause error for CacheWriteError.
@@ -100,8 +105,13 @@ func (e *CacheWriteError) Cause() error {
 // Error implements the error interface for CacheReadError.
 // Returns a formatted error message including operation context.
 func (e *CacheReadError) Error() string {
-	return fmt.Sprintf("cache read failed for note %s at %s during %s: %v",
-		e.NoteID, e.Path, e.Operation, e.Cause())
+	return fmt.Sprintf(
+		"cache read failed for note %s at %s during %s: %v",
+		e.NoteID,
+		e.Path,
+		e.Operation,
+		e.Cause(),
+	)
 }
 
 // Cause returns the underlying cause error for CacheReadError.
@@ -112,8 +122,13 @@ func (e *CacheReadError) Cause() error {
 // Error implements the error interface for CacheDeleteError.
 // Returns a formatted error message including operation context.
 func (e *CacheDeleteError) Error() string {
-	return fmt.Sprintf("cache delete failed for note %s at %s during %s: %v",
-		e.NoteID, e.Path, e.Operation, e.Cause())
+	return fmt.Sprintf(
+		"cache delete failed for note %s at %s during %s: %v",
+		e.NoteID,
+		e.Path,
+		e.Operation,
+		e.Cause(),
+	)
 }
 
 // Cause returns the underlying cause error for CacheDeleteError.

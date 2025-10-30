@@ -84,6 +84,7 @@ func (f *FakeSchemaRegistryPort) HasProperty(
 	return exists
 }
 
+// RegisterAll registers all schemas and the property bank in the fake registry.
 func (f *FakeSchemaRegistryPort) RegisterAll(
 	ctx context.Context,
 	schemas []domain.Schema,

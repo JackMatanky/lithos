@@ -19,21 +19,6 @@ var propertySpecParsers = map[domain.PropertyType]propertySpecParser{
 	domain.PropertyTypeFile:   parseFileSpec,
 }
 
-// propertySpecParser converts a raw JSON blob into a concrete
-// domain.PropertySpec implementation.
-type propertySpecParser func(json.RawMessage) (domain.PropertySpec, error)
-
-// propertyEntry captures the results of decoding a single named property.
-type propertyEntry struct {
-	key      string
-	property domain.Property
-}
-
-// propertyBankDTO represents the JSON layout of the property bank document.
-type propertyBankDTO struct {
-	Properties map[string]json.RawMessage `json:"properties"`
-}
-
 // schemaDTO mirrors the on-disk schema JSON document structure.
 type schemaDTO struct {
 	Name       string                     `json:"name"`
@@ -42,9 +27,20 @@ type schemaDTO struct {
 	Properties map[string]json.RawMessage `json:"properties"`
 }
 
-// propertyDefinitionDTO captures the per-property definition fields excluding
+// propertyBankDTO represents the JSON layout of the property bank document.
+type propertyBankDTO struct {
+	Properties map[string]json.RawMessage `json:"properties"`
+}
+
+// propertyEntry captures the results of decoding a single named property.
+type propertyEntry struct {
+	key      string
+	property domain.Property
+}
+
+// propertyDTO captures the per-property definition fields excluding
 // references; it is paired with propertyRefDTO to keep responsibilities small.
-type propertyDefinitionDTO struct {
+type propertyDTO struct {
 	Name     string          `json:"name"`
 	Required bool            `json:"required"`
 	Array    bool            `json:"array"`
@@ -55,6 +51,10 @@ type propertyDefinitionDTO struct {
 type propertyRefDTO struct {
 	Ref string `json:"$ref"`
 }
+
+// propertySpecParser converts a raw JSON blob into a concrete
+// domain.PropertySpec implementation.
+type propertySpecParser func(json.RawMessage) (domain.PropertySpec, error)
 
 // toDomain converts the DTO into a domain.PropertyBank while preserving
 // detailed remediation information on failure.
@@ -130,10 +130,11 @@ func (dto schemaDTO) toDomain(path string) (domain.Schema, error) {
 	})
 
 	return domain.Schema{
-		Name:       dto.Name,
-		Extends:    dto.Extends,
-		Excludes:   dto.Excludes,
-		Properties: properties,
+		Name:               dto.Name,
+		Extends:            dto.Extends,
+		Excludes:           dto.Excludes,
+		Properties:         properties,
+		ResolvedProperties: nil,
 	}, nil
 }
 
@@ -145,7 +146,7 @@ func parsePropertyDefinition(
 	path string,
 	owner string,
 ) (domain.Property, error) {
-	var def propertyDefinitionDTO
+	var def propertyDTO
 	if err := json.Unmarshal(raw, &def); err != nil {
 		return domain.Property{}, propertyDefinitionError(
 			fmt.Sprintf("failed to parse property %q", name),

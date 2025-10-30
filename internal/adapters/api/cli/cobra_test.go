@@ -1,7 +1,3 @@
-// Package cli provides CLI adapter implementations for Lithos.
-// This package contains the CobraCLIAdapter which implements the CLIPort
-// interface using the Cobra CLI framework.
-//
 //nolint:godoclint // test functions don't need godoc comments
 package cli
 

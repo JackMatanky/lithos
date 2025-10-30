@@ -31,8 +31,7 @@ type PropertyBank struct {
 
 // NewPropertyBank creates a new PropertyBank with validation.
 // It validates that all property IDs are non-empty and delegates property
-// validation
-// to each Property.Validate().
+// validation to each Property.Validate().
 //
 // Returns (*PropertyBank, nil) for valid input.
 // Returns (nil, error) for validation failures with informative error messages.

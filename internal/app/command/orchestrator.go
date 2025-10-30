@@ -1,7 +1,6 @@
 // Package command provides the CommandOrchestrator domain service for CLI
-// command
-// orchestration. It implements the hexagonal callback pattern where the domain
-// starts the application and delegates command parsing to CLI adapters.
+// command orchestration. It implements the hexagonal callback pattern where the
+// domain starts the application and delegates command parsing to CLI adapters.
 package command
 
 import (
@@ -9,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/api"
@@ -23,21 +23,23 @@ import (
 //
 // Responsibilities:
 //   - Orchestrate the complete note creation workflow (NewNote use case)
-//   - Coordinate domain services (TemplateEngine, Config, Logger)
+//   - Coordinate domain services (TemplateEngine, SchemaEngine, Config, Logger)
 //   - Implement hexagonal callback pattern (pass self to CLIPort.Start)
 //   - Handle business logic orchestration without infrastructure concerns
 //
 // Dependencies (injected via constructor):
 //   - CLIPort: CLI framework adapter for command parsing and user interaction
 //   - TemplateEngine: Domain service for template loading and rendering
+//   - SchemaEngine: Domain service for schema loading and validation
 //   - Config: Application configuration (vault path, etc.)
-//   - Logger: Structured logging for workflow operations
+//   - Logger: Structured logging for workflow operations and debugging
 //
 // Reference: docs/architecture/components.md#domain-services -
 // CommandOrchestrator (v0.6.4).
 type CommandOrchestrator struct {
 	cliPort        api.CLIPort
 	templateEngine *template.TemplateEngine
+	schemaEngine   *schema.SchemaEngine
 	config         domain.Config
 	log            zerolog.Logger
 }
@@ -50,6 +52,7 @@ type CommandOrchestrator struct {
 // Parameters:
 //   - cliPort: CLI framework adapter implementing CLIPort interface
 //   - templateEngine: Template rendering service for note creation
+//   - schemaEngine: Schema loading and validation service
 //   - config: Application configuration containing vault paths and settings
 //   - log: Structured logger for workflow operations and debugging
 //
@@ -61,12 +64,14 @@ type CommandOrchestrator struct {
 func NewCommandOrchestrator(
 	cliPort api.CLIPort,
 	templateEngine *template.TemplateEngine,
+	schemaEngine *schema.SchemaEngine,
 	config *domain.Config,
 	log *zerolog.Logger,
 ) *CommandOrchestrator {
 	return &CommandOrchestrator{
 		cliPort:        cliPort,
 		templateEngine: templateEngine,
+		schemaEngine:   schemaEngine,
 		config:         *config,
 		log:            *log,
 	}

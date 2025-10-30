@@ -23,21 +23,22 @@ var _ spi.CacheReaderPort = (*JSONCacheReadAdapter)(nil)
 // pattern to provide efficient querying and lazy loading of cached notes.
 //
 // Unknown Field Preservation (FR6):
-// - Preserves all JSON fields during deserialization using flexible
-// unmarshaling - Ensures round-trip compatibility for user-defined fields in
-// Frontmatter.Fields
-// - Uses map[string]interface{} for unknown field storage
+//   - Preserves all JSON fields during deserialization using flexible
+//     unmarshaling
+//   - Ensures round-trip compatibility for user-defined fields in
+//     Frontmatter.Fields
+//   - Uses map[string]interface{} for unknown field storage
 //
 // Partial Failure Tolerance:
-// - List method continues processing when individual notes fail to load
-// - Logs warnings for unreadable files but returns partial results
-// - Maintains system availability even with corrupted cache entries
+//   - List method continues processing when individual notes fail to load
+//   - Logs warnings for unreadable files but returns partial results
+//   - Maintains system availability even with corrupted cache entries
 //
 // Thread Safety:
-// - Safe for concurrent reads from multiple services (QueryService +
-// FrontmatterService)
-// - No shared mutable state beyond configuration
-// - Filesystem operations provide OS-level consistency guarantees
+//   - Safe for concurrent reads from multiple services (QueryService +
+//     FrontmatterService)
+//   - No shared mutable state beyond configuration
+//   - Filesystem operations provide OS-level consistency guarantees
 //
 // See docs/architecture/components.md#jsoncachereadapter for implementation
 // guidance.
