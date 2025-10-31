@@ -35,11 +35,11 @@ func TestTemplateLoaderAdapter_Integration(t *testing.T) {
 			t.Fatalf("List() error = %v", err)
 		}
 
-		// Should find basic-note.md and static-template.md (ignoring .txt
+		// Should find basic_note.md and static_template.md (ignoring .txt
 		// files)
 		expectedTemplates := []domain.TemplateID{
-			"basic-note",
-			"static-template",
+			"basic_note",
+			"static_template",
 		}
 		if len(templates) != len(expectedTemplates) {
 			t.Errorf(
@@ -64,21 +64,21 @@ func TestTemplateLoaderAdapter_Integration(t *testing.T) {
 		}
 	})
 
-	// Test Load() for static-template
-	t.Run("Load_static-template", func(t *testing.T) {
+	// Test Load() for static_template
+	t.Run("Load_static_template", func(t *testing.T) {
 		// First populate metadata cache
 		_, err := adapter.List(ctx)
 		if err != nil {
 			t.Fatalf("List() error = %v", err)
 		}
 
-		tmpl, err := adapter.Load(ctx, "static-template")
+		tmpl, err := adapter.Load(ctx, "static_template")
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
 		}
 
-		if tmpl.ID != "static-template" {
-			t.Errorf("Template ID = %s, want static-template", tmpl.ID)
+		if tmpl.ID != "static_template" {
+			t.Errorf("Template ID = %s, want static_template", tmpl.ID)
 		}
 
 		// Check that content contains expected text
@@ -94,16 +94,16 @@ func TestTemplateLoaderAdapter_Integration(t *testing.T) {
 		}
 	})
 
-	// Test Load() for basic-note
-	t.Run("Load_basic-note", func(t *testing.T) {
+	// Test Load() for basic_note
+	t.Run("Load_basic_note", func(t *testing.T) {
 		// Metadata cache should already be populated from previous test
-		tmpl, err := adapter.Load(ctx, "basic-note")
+		tmpl, err := adapter.Load(ctx, "basic_note")
 		if err != nil {
 			t.Fatalf("Load() error = %v", err)
 		}
 
-		if tmpl.ID != "basic-note" {
-			t.Errorf("Template ID = %s, want basic-note", tmpl.ID)
+		if tmpl.ID != "basic_note" {
+			t.Errorf("Template ID = %s, want basic_note", tmpl.ID)
 		}
 
 		// Check that content contains expected text

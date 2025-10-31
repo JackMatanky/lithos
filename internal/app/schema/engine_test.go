@@ -144,7 +144,7 @@ func TestSchemaEngine_NewSchemaEngine_NilRegistryPort(t *testing.T) {
 func TestSchemaEngine_Load_Success(t *testing.T) {
 	schemaPort := &FakeSchemaPort{
 		schemas: []domain.Schema{
-			{Name: "test-schema", Properties: []domain.Property{}},
+			{Name: "test-schema", Properties: []domain.IProperty{}},
 		},
 		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
 	}
@@ -186,7 +186,7 @@ func TestSchemaEngine_Load_ValidationFailure(t *testing.T) {
 		schemas: []domain.Schema{
 			{
 				Name:       "",
-				Properties: []domain.Property{},
+				Properties: []domain.IProperty{},
 			}, // Invalid schema (empty name)
 		},
 		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
@@ -229,7 +229,7 @@ func TestSchemaEngine_Load_ResolutionFailure(t *testing.T) {
 func TestSchemaEngine_Load_RegistrationFailure(t *testing.T) {
 	schemaPort := &FakeSchemaPort{
 		schemas: []domain.Schema{
-			{Name: "test-schema", Properties: []domain.Property{}},
+			{Name: "test-schema", Properties: []domain.IProperty{}},
 		},
 		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
 	}

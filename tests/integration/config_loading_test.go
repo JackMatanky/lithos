@@ -41,10 +41,10 @@ func TestConfigLoading_Integration(t *testing.T) {
 	// Verify config values from testdata/vault/lithos.json
 	assert.Equal(t, "/tmp/test-vault", cfg.VaultPath)
 	assert.Equal(t, "testdata/templates", cfg.TemplatesDir)
-	assert.Equal(t, "testdata/schema", cfg.SchemasDir)
+	assert.Equal(t, "testdata/schemas", cfg.SchemasDir)
 	assert.Equal(
 		t,
-		"testdata/schema/properties/bank.json",
+		"testdata/schemas/properties/bank.json",
 		cfg.PropertyBankFile,
 	)
 	assert.Equal(t, ".cache", cfg.CacheDir)

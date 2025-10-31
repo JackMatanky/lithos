@@ -1,8 +1,8 @@
 {
   "vault_path": "/tmp/test-vault",
   "templates_dir": "testdata/templates",
-  "schemas_dir": "testdata/schema",
-  "property_bank_file": "testdata/schema/properties/bank.json",
+  "schemas_dir": "testdata/schemas",
+  "property_bank_file": "testdata/schemas/properties/bank.json",
   "cache_dir": ".cache",
   "log_level": "info"
 }

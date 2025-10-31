@@ -379,7 +379,7 @@ Current implementation indexes frontmatter only. Goldmark provides AST access fo
 
 **Additional Information:**
 
-Schema inheritance provides powerful reusability for similar note types. For example, a base "note" schema could define common properties (title, tags, created), while specialized schemas like "meeting-note" or "person" extend the base and add domain-specific properties. The eager resolution strategy ensures validation is fast (no runtime resolution overhead) at the cost of slightly longer startup time. For MVP with <100 schemas, this tradeoff is acceptable. The Builder pattern isolates complexity—domain validators simply receive fully-resolved schemas and don't need to understand inheritance mechanics.
+Schema inheritance provides powerful reusability for similar note types. For example, a base "note" schema could define common properties (title, tags, created), while specialized schemas like "meeting_note" or "person" extend the base and add domain-specific properties. The eager resolution strategy ensures validation is fast (no runtime resolution overhead) at the cost of slightly longer startup time. For MVP with <100 schemas, this tradeoff is acceptable. The Builder pattern isolates complexity—domain validators simply receive fully-resolved schemas and don't need to understand inheritance mechanics.
 
 > **Adapter boundary reminder:** Schema definitions are serialized as JSON on disk, but decoding and discriminator handling occur in the SchemaLoader adapter (see Epic 2, Story 2.4). The domain models described here stay infrastructure-free and are instantiated via constructors that enforce the rules above.
 

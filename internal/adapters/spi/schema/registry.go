@@ -91,7 +91,7 @@ func (a *SchemaRegistryAdapter) RegisterAll(
 	// Register schemas (defensive copy - deep copy Properties slice)
 	for _, schema := range schemas {
 		// Deep copy the Properties slice to prevent external mutation
-		propertiesCopy := make([]domain.Property, len(schema.Properties))
+		propertiesCopy := make([]domain.IProperty, len(schema.Properties))
 		copy(propertiesCopy, schema.Properties)
 		schemaCopy := schema
 		schemaCopy.Properties = propertiesCopy
@@ -144,7 +144,7 @@ func (a *SchemaRegistryAdapter) GetSchema(
 	}
 
 	// Return defensive copy to prevent external mutation
-	propertiesCopy := make([]domain.Property, len(schema.Properties))
+	propertiesCopy := make([]domain.IProperty, len(schema.Properties))
 	copy(propertiesCopy, schema.Properties)
 	schemaCopy := schema
 	schemaCopy.Properties = propertiesCopy

@@ -1,30 +1,21 @@
 {
   "properties": {
     "standard_title": {
-      "name": "title",
+      "type": "string",
       "required": true,
       "array": false,
-      "spec": {
-        "type": "string",
-        "pattern": "^.{1,200}$"
-      }
+      "pattern": "^.{1,200}$"
     },
     "standard_tags": {
-      "name": "tags",
+      "type": "string",
       "required": false,
-      "array": true,
-      "spec": {
-        "type": "string"
-      }
+      "array": true
     },
     "iso_date": {
-      "name": "date",
+      "type": "date",
       "required": true,
       "array": false,
-      "spec": {
-        "type": "date",
-        "format": "2006-01-02"
-      }
+      "format": "2006-01-02"
     }
   }
 }

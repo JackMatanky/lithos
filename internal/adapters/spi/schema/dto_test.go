@@ -12,13 +12,10 @@ import (
 // TestPropertyBankDTOToDomain verifies successful conversion of a property
 // bank DTO into a domain.PropertyBank.
 func TestPropertyBankDTOToDomain(t *testing.T) {
-	rawSpec := json.RawMessage(`{"type":"string"}`)
 	dto := propertyBankDTO{
 		Properties: map[string]json.RawMessage{
 			"title": json.RawMessage(
-				`{"name":"title","required":true,"spec":` + string(
-					rawSpec,
-				) + `}`,
+				`{"type":"string","required":true,"array":false}`,
 			),
 		},
 	}
@@ -37,35 +34,31 @@ func TestSchemaDTOToDomainSortsProperties(t *testing.T) {
 	dto := schemaDTO{
 		Name: "note",
 		Properties: map[string]json.RawMessage{
-			"b": json.RawMessage(`{"name":"b","spec":{"type":"string"}}`),
-			"a": json.RawMessage(`{"name":"a","spec":{"type":"string"}}`),
+			"b": json.RawMessage(
+				`{"type":"string","required":false,"array":false}`,
+			),
+			"a": json.RawMessage(
+				`{"type":"string","required":false,"array":false}`,
+			),
 		},
 	}
 
 	schema, err := dto.toDomain("schema-path")
 	require.NoError(t, err)
 	require.Len(t, schema.Properties, 2)
-	assert.Equal(t, "a", schema.Properties[0].Name)
-	assert.Equal(t, "b", schema.Properties[1].Name)
+	assert.Equal(t, "a", schema.Properties[0].GetName())
+	assert.Equal(t, "b", schema.Properties[1].GetName())
 }
 
 // TestParsePropertyDefinitionInvalidSpec asserts that invalid specs raise an
 // error with the expected message.
 func TestParsePropertyDefinitionInvalidSpec(t *testing.T) {
-	_, err := parsePropertyDefinition(
+	_, err := parseProperty(
 		"invalid",
-		json.RawMessage(`{"name":"invalid","spec":{"type":"unknown"}}`),
+		json.RawMessage(`{"type":"unknown","required":false,"array":false}`),
 		"schema-path",
 		"note",
 	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported property type")
-}
-
-// TestParsePropertySpecUnsupportedType verifies unsupported property spec
-// types are rejected.
-func TestParsePropertySpecUnsupportedType(t *testing.T) {
-	_, err := parsePropertySpec(json.RawMessage(`{"type":"unsupported"}`))
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported property type")
 }

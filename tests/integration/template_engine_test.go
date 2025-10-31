@@ -38,7 +38,7 @@ func TestTemplateEngine_RenderStaticTemplate(t *testing.T) {
 	engine := templateservice.NewTemplateEngine(loader, &config, &logger)
 
 	// Load and render static template
-	templateID := domain.NewTemplateID("static-template")
+	templateID := domain.NewTemplateID("static_template")
 	result, err := engine.Render(ctx, templateID)
 	require.NoError(t, err)
 
@@ -48,7 +48,7 @@ func TestTemplateEngine_RenderStaticTemplate(t *testing.T) {
 		"..",
 		"testdata",
 		"golden",
-		"static-template-expected.md",
+		"static_template_expected.md",
 	)
 	expectedBytes, err := os.ReadFile(expectedPath)
 	require.NoError(t, err)

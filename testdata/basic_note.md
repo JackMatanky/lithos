@@ -10,5 +10,5 @@ No content provided
 
 ## Notes
 
-This note was created using the basic-note template.
+This note was created using the basic_note template.
 Project: WORLD
