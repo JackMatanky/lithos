@@ -23,15 +23,17 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Compile-time check to ensure VaultReaderAdapter implements VaultReaderPort.
+// Compile-time checks to ensure VaultReaderAdapter implements both interfaces.
+var _ spi.VaultScannerPort = (*VaultReaderAdapter)(nil)
 var _ spi.VaultReaderPort = (*VaultReaderAdapter)(nil)
 
 // FilterFunc defines a function type for filtering files during vault scanning.
 // Returns true if the file should be included in the scan results.
 type FilterFunc func(path string, info os.FileInfo) bool
 
-// VaultReaderAdapter implements VaultReaderPort using filesystem operations.
-// It provides vault scanning capabilities with proper error handling,
+// VaultReaderAdapter implements both VaultScannerPort and VaultReaderPort using
+// filesystem operations. It provides vault scanning and single file reading
+// capabilities with proper error handling,
 // cache directory filtering, and security measures against path traversal.
 type VaultReaderAdapter struct {
 	config   domain.Config

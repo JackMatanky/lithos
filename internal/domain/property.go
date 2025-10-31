@@ -5,26 +5,24 @@ import (
 	"fmt"
 )
 
-// PropertyKind identifies the concrete type of an IProperty implementation.
-type PropertyKind string
-
 // Property kind constants describe whether an IProperty is a concrete
 // definition or a reference to the property bank.
-//
-//nolint:decorder // Typed constants require PropertyKind to be defined first.
 const (
 	// PropertyKindDefinition marks an inline property definition.
-	PropertyKindDefinition PropertyKind = "definition"
+	PropertyKindDefinition PropertyType = "definition"
 	// PropertyKindReference marks a property reference into the property bank.
-	PropertyKindReference PropertyKind = "reference"
+	PropertyKindReference PropertyType = "reference"
 )
+
+// PropertyType identifies the concrete type of an IProperty implementation.
+type PropertyType string
 
 // IProperty is the common interface for Property and PropertyRef.
 // It defines the contract for property validation, name access, and type
 // identification.
 type IProperty interface {
 	GetName() string
-	Type() PropertyKind
+	Type() PropertyType
 	Validate(ctx context.Context) error
 }
 
@@ -72,7 +70,7 @@ func (p PropertyRef) GetName() string {
 }
 
 // Type returns the kind identifier for PropertyRef.
-func (p PropertyRef) Type() PropertyKind {
+func (p PropertyRef) Type() PropertyType {
 	return PropertyKindReference
 }
 
@@ -94,7 +92,7 @@ func (p Property) GetName() string {
 }
 
 // Type returns the kind identifier for Property.
-func (p Property) Type() PropertyKind {
+func (p Property) Type() PropertyType {
 	return PropertyKindDefinition
 }
 
