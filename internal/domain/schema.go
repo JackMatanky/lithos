@@ -173,7 +173,7 @@ func (s *Schema) validateProperties(ctx context.Context) error {
 		}
 
 		// Check for duplicate property name
-		if err := s.checkDuplicateProperty(prop.GetName(), seen); err != nil {
+		if err := s.validateUniquePropertyName(prop.GetName(), seen); err != nil {
 			errs = append(errs, err)
 			continue
 		}
@@ -194,9 +194,10 @@ func (s *Schema) validateProperties(ctx context.Context) error {
 	return nil
 }
 
-// checkDuplicateProperty checks if a property name is duplicate and marks it as
+// validateUniquePropertyName checks if a property name is duplicate and marks
+// it as
 // seen.
-func (s *Schema) checkDuplicateProperty(
+func (s *Schema) validateUniquePropertyName(
 	name string,
 	seen map[string]bool,
 ) error {
