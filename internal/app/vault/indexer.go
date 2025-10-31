@@ -128,6 +128,57 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 	return stats, nil
 }
 
+// Refresh performs incremental vault indexing for large vault optimization.
+// Only processes files modified since the specified timestamp.
+//
+// Workflow Steps:
+// 1. Scan modified files using scanModifiedFiles()
+// 2. Process each modified file using processFile()
+// 3. Log incremental update statistics
+//
+// Error Handling:
+// - Vault scan failures: Return error immediately (abort refresh)
+// - Cache write failures: Log warning, increment CacheFailures, continue
+// processing
+// - Partial success acceptable - update what we can
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - since: Only process files modified after this timestamp
+//
+// Returns:
+//   - error: Vault scan errors only (cache failures logged but don't abort)
+//
+// Thread-safe: Safe for concurrent calls (dependencies handle synchronization).
+func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
+	startTime := time.Now()
+	stats := IndexStats{
+		ScannedCount:  0,
+		IndexedCount:  0,
+		CacheFailures: 0,
+		Duration:      0,
+	}
+
+	// Step 1: Scan modified files
+	vaultFiles, err := v.scanModifiedFiles(ctx, since)
+	if err != nil {
+		return err
+	}
+	stats.ScannedCount = len(vaultFiles)
+
+	// Step 2: Process each modified file
+	for i := range vaultFiles {
+		v.processFile(ctx, vaultFiles[i], &stats)
+	}
+
+	stats.Duration = time.Since(startTime)
+
+	// Step 3: Log incremental update
+	v.logRefreshStats(stats, since)
+
+	return nil
+}
+
 // scanFiles performs vault scanning using the injected VaultScannerPort.
 // Returns all vault files or an error if scanning fails.
 //
@@ -139,6 +190,23 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 //   - error: Scanning failure (aborts indexing)
 func (v *VaultIndexer) scanFiles(ctx context.Context) ([]dto.VaultFile, error) {
 	return v.vaultScanner.ScanAll(ctx)
+}
+
+// scanModifiedFiles performs incremental vault scanning for modified files.
+// Returns only files changed since the specified timestamp.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - since: Only return files modified after this timestamp
+//
+// Returns:
+//   - []dto.VaultFile: Modified files found in the vault
+//   - error: Scanning failure (aborts refresh)
+func (v *VaultIndexer) scanModifiedFiles(
+	ctx context.Context,
+	since time.Time,
+) ([]dto.VaultFile, error) {
+	return v.vaultScanner.ScanModified(ctx, since)
 }
 
 // processFile handles single file processing: filtering, note creation, and
@@ -192,6 +260,22 @@ func (v *VaultIndexer) logStats(stats IndexStats) {
 		Int("cache_failures", stats.CacheFailures).
 		Dur("duration", stats.Duration).
 		Msg("vault indexing complete")
+}
+
+// logRefreshStats logs incremental refresh statistics using structured logging.
+// Provides metrics for incremental update performance monitoring.
+//
+// Parameters:
+//   - stats: Refresh IndexStats to log
+//   - since: Timestamp used for the incremental scan
+func (v *VaultIndexer) logRefreshStats(stats IndexStats, since time.Time) {
+	v.log.Info().
+		Time("since", since).
+		Int("scanned", stats.ScannedCount).
+		Int("indexed", stats.IndexedCount).
+		Int("cache_failures", stats.CacheFailures).
+		Dur("duration", stats.Duration).
+		Msg("vault refresh complete")
 }
 
 // deriveNoteIDFromPath creates a NoteID from a file path.
