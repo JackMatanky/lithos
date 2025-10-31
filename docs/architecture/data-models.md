@@ -340,6 +340,7 @@ Current implementation indexes frontmatter only. Goldmark provides AST access fo
 
 - **Rich domain model:** Contains structural validation behavior via Validate() method. No external dependencies - pure domain logic checking structure.
 - **Inheritance in source form:** Schema stores original Extends/Excludes/Properties from JSON. SchemaResolver service resolves inheritance and provides flattened properties to FrontmatterService.
+- **Resolution details:** SchemaResolver now uses name-keyed maps to merge overrides and hydrates PropertyBank references within the same pass (no secondary substitution step).
 - **Properties vs Fields terminology:** Schema has "Properties" (validation rules). Frontmatter has "Fields" (actual data).
 - **Excludes dependent on Extends:** Excludes only meaningful when Extends is not empty.
 
@@ -560,7 +561,7 @@ PropertyBank solves the "common property definition" problem elegantly. Without 
 
 **Key Methods (Interface):**
 
-- `Type() PropertyType` - Returns property type identifier (string, number, date, file, boolean)
+- `Type() PropertySpecType` - Returns property type identifier (string, number, date, file, boolean)
 - `Validate(ctx context.Context) error` - Validates constraint structure (e.g., pattern is valid regex, min <= max, enum not empty). Pure structural validation with no external dependencies.
 
 **Relationships:**
@@ -597,7 +598,7 @@ PropertyBank solves the "common property definition" problem elegantly. Without 
 
 **Key Methods:**
 
-- `Type() PropertyType` - Returns `PropertyTypeString`
+- `Type() PropertySpecType` - Returns `PropertyTypeString`
 - `Validate(ctx context.Context) error` - Validates Pattern is valid regex if specified. Returns error if pattern compilation fails.
 
 **Validation Implementation Example:**
@@ -650,7 +651,7 @@ or
 
 **Key Methods:**
 
-- `Type() PropertyType` - Returns `PropertyTypeNumber`
+- `Type() PropertySpecType` - Returns `PropertyTypeNumber`
 - `Validate(ctx context.Context) error` - Validates Min <= Max if both specified, Step > 0 if specified. Returns error on invalid constraints.
 
 **Validation Implementation Example:**
@@ -698,7 +699,7 @@ func (n NumberSpec) Validate(ctx context.Context) error {
 
 **Key Methods:**
 
-- `Type() PropertyType` - Returns `PropertyTypeDate`
+- `Type() PropertySpecType` - Returns `PropertyTypeDate`
 - `Validate(ctx context.Context) error` - Validates Format is valid Go time layout by attempting to parse reference time. Returns error if format invalid.
 
 **Validation Implementation Example:**
@@ -746,7 +747,7 @@ func (d DateSpec) Validate(ctx context.Context) error {
 
 **Key Methods:**
 
-- `Type() PropertyType` - Returns `PropertyTypeFile`
+- `Type() PropertySpecType` - Returns `PropertyTypeFile`
 - `Validate(ctx context.Context) error` - Validates FileClass and Directory patterns are valid regex if they contain regex syntax. Returns error if patterns invalid.
 
 **Validation Implementation Example:**
@@ -801,7 +802,7 @@ func (f FileSpec) Validate(ctx context.Context) error {
 
 **Key Methods:**
 
-- `Type() PropertyType` - Returns `PropertyTypeBool`
+- `Type() PropertySpecType` - Returns `PropertyTypeBool`
 - `Validate(ctx context.Context) error` - Always returns nil. No constraints to validate.
 
 **Validation Implementation Example:**

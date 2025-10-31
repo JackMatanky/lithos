@@ -3,17 +3,19 @@ module github.com/JackMatanky/lithos
 go 1.24.0
 
 require (
-	github.com/goccy/go-yaml v1.18.0
 	github.com/moby/sys/atomicwriter v0.1.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.21.0
 	github.com/stretchr/testify v1.11.1
+	github.com/yuin/goldmark v1.5.4
+	go.abhg.dev/goldmark/frontmatter v0.2.0
 	golang.org/x/term v0.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
+	github.com/BurntSushi/toml v1.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect

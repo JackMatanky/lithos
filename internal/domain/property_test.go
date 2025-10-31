@@ -13,11 +13,11 @@ import (
 // delegation.
 type mockPropertySpec struct {
 	validateError error
-	specType      PropertyType
+	specType      PropertySpecType
 }
 
 // Type returns the mock spec type.
-func (m mockPropertySpec) Type() PropertyType {
+func (m mockPropertySpec) Type() PropertySpecType {
 	return m.specType
 }
 

@@ -748,7 +748,7 @@ type CacheReader interface {
 ```go
 // PropertySpec is pure data
 type PropertySpec[T any] interface {
-    Type() PropertyType
+    Type() PropertySpecType
     Constraints() any
 }
 

@@ -8,17 +8,41 @@ import (
 	"github.com/JackMatanky/lithos/internal/shared/dto"
 )
 
-// VaultReaderPort defines the contract for reading vault files at the business
-// level. This port abstracts filesystem operations into domain-level scanning
-// operations, enabling the indexing service to read notes without knowing
-// filesystem details.
+// VaultReaderPort defines the contract for reading individual vault files at
+// the business level. This port abstracts filesystem operations into
+// domain-level file reading operations, enabling services to read single files
+// without knowing filesystem details.
+//
+// The port provides single file access for validation and lookups. All
+// operations include proper error context per FR9 requirements.
+//
+// Interface Segregation Principle: Separated from VaultScannerPort to avoid
+// forcing single-file dependencies on services that only need scanning.
+//
+// Reference: docs/architecture/components.md#vaultreaderport.
+type VaultReaderPort interface {
+	// Read performs single file read for validation and lookups.
+	// Validates path is within vault to prevent directory traversal attacks.
+	// Used by FrontmatterService for FileSpec validation.
+	// Returns VaultFile DTO with metadata and content.
+	// Errors include operation context and file paths per FR9.
+	Read(ctx context.Context, path string) (dto.VaultFile, error)
+}
+
+// VaultScannerPort defines the contract for scanning vault files at the
+// business level. This port abstracts filesystem scanning operations into
+// domain-level scanning operations, enabling the indexing service to scan
+// notes without knowing filesystem details.
 //
 // The port supports both full vault scans (for initial indexing) and
 // incremental scans (for performance optimization with large vaults). All
 // operations include proper error context per FR9 requirements.
 //
-// Reference: docs/architecture/components.md#vaultreaderport.
-type VaultReaderPort interface {
+// Interface Segregation Principle: Separated from VaultReaderPort to avoid
+// forcing scanning dependencies on services that only need single file access.
+//
+// Reference: docs/architecture/components.md#vaultscannerport.
+type VaultScannerPort interface {
 	// ScanAll performs a full vault scan for initial index build.
 	// Returns all files in the vault as VaultFile DTOs for indexing.
 	// Ignores cache directories (.lithos/) to prevent re-indexing cached data.
@@ -32,13 +56,6 @@ type VaultReaderPort interface {
 	// MVP can use ScanAll for both initial and incremental builds.
 	// Errors include operation context and file paths per FR9.
 	ScanModified(ctx context.Context, since time.Time) ([]dto.VaultFile, error)
-
-	// Read performs single file read for validation and lookups.
-	// Validates path is within vault to prevent directory traversal attacks.
-	// Used by FrontmatterService for FileSpec validation.
-	// Returns VaultFile DTO with metadata and content.
-	// Errors include operation context and file paths per FR9.
-	Read(ctx context.Context, path string) (dto.VaultFile, error)
 }
 
 // VaultWriterPort defines the contract for writing notes to vault with atomic

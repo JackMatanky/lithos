@@ -9,22 +9,22 @@ import (
 
 // Property type constants.
 const (
-	PropertyTypeString PropertyType = "string"
-	PropertyTypeNumber PropertyType = "number"
-	PropertyTypeBool   PropertyType = "bool"
-	PropertyTypeDate   PropertyType = "date"
-	PropertyTypeFile   PropertyType = "file"
+	PropertyTypeString PropertySpecType = "string"
+	PropertyTypeNumber PropertySpecType = "number"
+	PropertyTypeBool   PropertySpecType = "bool"
+	PropertyTypeDate   PropertySpecType = "date"
+	PropertyTypeFile   PropertySpecType = "file"
 )
 
-// PropertyType represents the type of property constraint.
-type PropertyType string
+// PropertySpecType represents the type of property constraint.
+type PropertySpecType string
 
 // PropertySpec defines the interface for type-specific validation constraints.
 // Each property type implements this interface to provide polymorphic
 // validation.
 type PropertySpec interface {
 	// Type returns the property type identifier.
-	Type() PropertyType
+	Type() PropertySpecType
 
 	// Validate performs structural validation of the constraint definition.
 	Validate(ctx context.Context) error
@@ -83,7 +83,7 @@ type FileSpec struct {
 }
 
 // Type returns PropertyTypeString.
-func (s StringSpec) Type() PropertyType {
+func (s StringSpec) Type() PropertySpecType {
 	return PropertyTypeString
 }
 
@@ -93,7 +93,7 @@ func (s StringSpec) Validate(ctx context.Context) error {
 }
 
 // Type returns PropertyTypeNumber.
-func (n NumberSpec) Type() PropertyType {
+func (n NumberSpec) Type() PropertySpecType {
 	return PropertyTypeNumber
 }
 
@@ -106,7 +106,7 @@ func (n NumberSpec) Validate(ctx context.Context) error {
 }
 
 // Type returns PropertyTypeBool.
-func (b BoolSpec) Type() PropertyType {
+func (b BoolSpec) Type() PropertySpecType {
 	return PropertyTypeBool
 }
 
@@ -116,7 +116,7 @@ func (b BoolSpec) Validate(ctx context.Context) error {
 }
 
 // Type returns PropertyTypeDate.
-func (d DateSpec) Type() PropertyType {
+func (d DateSpec) Type() PropertySpecType {
 	return PropertyTypeDate
 }
 
@@ -151,7 +151,7 @@ func (d DateSpec) Validate(ctx context.Context) error {
 }
 
 // Type returns PropertyTypeFile.
-func (f FileSpec) Type() PropertyType {
+func (f FileSpec) Type() PropertySpecType {
 	return PropertyTypeFile
 }
 

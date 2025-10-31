@@ -238,6 +238,10 @@ func (r *SchemaResolver) resolveSchema(
 	resolvedMap map[string]domain.Schema,
 	bank domain.PropertyBank,
 ) (domain.Schema, error) {
+	if err := ctx.Err(); err != nil {
+		return domain.Schema{}, err
+	}
+
 	// Get parent's resolved properties
 	var parentProps []domain.Property
 	if schema.Extends != "" {
@@ -249,14 +253,7 @@ func (r *SchemaResolver) resolveSchema(
 	}
 
 	// Resolve properties (inheritance + excludes + overrides + ref hydration)
-	resolvedProps, err := r.resolveProperties(schema, parentProps, bank)
-	if err != nil {
-		return domain.Schema{}, err
-	}
-
-	// Substitute $ref references (now deprecated - refs are hydrated in
-	// resolveProperties)
-	finalProps, err := r.substituteRefs(ctx, resolvedProps)
+	finalProps, err := r.resolveProperties(schema, parentProps, bank)
 	if err != nil {
 		return domain.Schema{}, err
 	}
@@ -273,63 +270,43 @@ func (r *SchemaResolver) resolveSchema(
 	return resolved, nil
 }
 
-// resolveProperties applies inheritance, excludes, and property overrides.
-// It also stores PropertyRefs temporarily for later substitution.
+// resolveProperties applies inheritance, excludes, property overrides, and
+// hydrates references using the provided PropertyBank.
 func (r *SchemaResolver) resolveProperties(
 	schema domain.Schema,
 	parentProps []domain.Property,
 	bank domain.PropertyBank,
 ) ([]domain.Property, error) {
-	// Start with parent properties
-	resolved := make(
-		[]domain.Property,
-		0,
-		len(parentProps)+len(schema.Properties),
-	)
+	capacity := len(parentProps) + len(schema.Properties)
+	resolved := make(map[string]domain.Property, capacity)
+	order := make([]string, 0, capacity)
 
-	// Apply Excludes
-	excludeSet := make(map[string]bool)
-	for _, name := range schema.Excludes {
-		excludeSet[name] = true
-	}
+	excludeSet := buildExcludeSet(schema.Excludes)
+	appendParentProperties(resolved, &order, parentProps, excludeSet)
 
-	// Add non-excluded parent properties
-	for _, prop := range parentProps {
-		if !excludeSet[prop.Name] {
-			resolved = append(resolved, prop)
-		}
-	}
-
-	// Merge child properties (override by name)
 	for _, childProp := range schema.Properties {
-		// Remove parent property with same name
-		resolved = r.removeProperty(resolved, childProp.GetName())
+		concrete, include, err := r.materializeProperty(
+			schema.Name,
+			childProp,
+			bank,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if !include {
+			continue
+		}
+		updateResolved(resolved, &order, concrete)
+	}
 
-		// Handle based on property kind
-		switch childProp.Type() {
-		case domain.PropertyKindDefinition:
-			// Add full property definition directly
-			if prop, ok := childProp.(domain.Property); ok {
-				resolved = append(resolved, prop)
-			}
-
-		case domain.PropertyKindReference:
-			// Hydrate PropertyRef into Property using PropertyBank
-			if propRef, ok := childProp.(domain.PropertyRef); ok {
-				hydratedProp, err := r.hydratePropertyRef(
-					propRef,
-					bank,
-					schema.Name,
-				)
-				if err != nil {
-					return nil, err
-				}
-				resolved = append(resolved, hydratedProp)
-			}
+	final := make([]domain.Property, 0, len(order))
+	for _, name := range order {
+		if prop, exists := resolved[name]; exists {
+			final = append(final, prop)
 		}
 	}
 
-	return resolved, nil
+	return final, nil
 }
 
 // hydratePropertyRef converts a PropertyRef into a full Property by looking up
@@ -371,33 +348,74 @@ func (r *SchemaResolver) hydratePropertyRef(
 	}, nil
 }
 
-// removeProperty removes a property by name from the property list.
-func (r *SchemaResolver) removeProperty(
-	props []domain.Property,
-	name string,
-) []domain.Property {
-	filtered := make([]domain.Property, 0, len(props))
-	for _, prop := range props {
-		if prop.Name != name {
-			filtered = append(filtered, prop)
+// removeOrderedName removes the first occurrence of name from the order slice.
+func removeOrderedName(order []string, name string) []string {
+	for idx, current := range order {
+		if current == name {
+			return append(order[:idx], order[idx+1:]...)
 		}
 	}
-	return filtered
+	return order
 }
 
-// substituteRefs is now a pass-through since PropertyRefs are hydrated
-// during resolveProperties. This method is kept for backwards compatibility
-// and context cancellation checks.
-func (r *SchemaResolver) substituteRefs(
-	ctx context.Context,
-	props []domain.Property,
-) ([]domain.Property, error) {
-	// Check for cancellation
-	if err := ctx.Err(); err != nil {
-		return nil, err
+func buildExcludeSet(excludes []string) map[string]struct{} {
+	excludeSet := make(map[string]struct{}, len(excludes))
+	for _, name := range excludes {
+		excludeSet[name] = struct{}{}
 	}
+	return excludeSet
+}
 
-	// All PropertyRefs have been hydrated in resolveProperties
-	// Just return the properties as-is
-	return props, nil
+func appendParentProperties(
+	resolved map[string]domain.Property,
+	order *[]string,
+	parentProps []domain.Property,
+	excludeSet map[string]struct{},
+) {
+	for _, prop := range parentProps {
+		if _, skip := excludeSet[prop.Name]; skip {
+			continue
+		}
+		updateResolved(resolved, order, prop)
+	}
+}
+
+func (r *SchemaResolver) materializeProperty(
+	schemaName string,
+	childProp domain.IProperty,
+	bank domain.PropertyBank,
+) (domain.Property, bool, error) {
+	switch childProp.Type() {
+	case domain.PropertyKindDefinition:
+		prop, ok := childProp.(domain.Property)
+		if !ok {
+			return domain.Property{}, false, nil
+		}
+		return prop, true, nil
+	case domain.PropertyKindReference:
+		propRef, ok := childProp.(domain.PropertyRef)
+		if !ok {
+			return domain.Property{}, false, nil
+		}
+		hydrated, err := r.hydratePropertyRef(propRef, bank, schemaName)
+		if err != nil {
+			return domain.Property{}, false, err
+		}
+		return hydrated, true, nil
+	default:
+		return domain.Property{}, false, nil
+	}
+}
+
+func updateResolved(
+	resolved map[string]domain.Property,
+	order *[]string,
+	prop domain.Property,
+) {
+	name := prop.Name
+	if _, exists := resolved[name]; exists {
+		*order = removeOrderedName(*order, name)
+	}
+	*order = append(*order, name)
+	resolved[name] = prop
 }

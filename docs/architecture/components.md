@@ -198,7 +198,7 @@ The Load() method orchestrates the complete schema initialization pipeline:
 
 1. **Load:** SchemaLoader reads JSON files from disk and parses into Schema DTOs and PropertyBank
 2. **Validate:** SchemaValidator validates structural integrity by calling schema.Validate() on each schema (which delegates to property.Validate() → propertySpec.Validate()). Also performs cross-schema validation (Extends references exist).
-3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes) and substitutes $ref with PropertyBank definitions. Detects circular dependencies.
+3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes), hydrates PropertyBank references within a single merge pass using name-keyed maps, and detects circular dependencies.
 4. **Register:** SchemaRegistry populates in-memory maps with resolved schemas for fast lookups
 
 **Fails Fast:** Any error in steps 1-3 terminates application at startup. No invalid schemas reach runtime.
@@ -340,7 +340,7 @@ The Load() method orchestrates the complete schema initialization pipeline:
 
 1. **Load:** SchemaLoader reads JSON files from disk and parses into Schema DTOs and PropertyBank
 2. **Validate:** SchemaValidator validates structural integrity by calling schema.Validate() on each schema (which delegates to property.Validate() → propertySpec.Validate()). Also performs cross-schema validation (Extends references exist).
-3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes) and substitutes $ref with PropertyBank definitions. Detects circular dependencies.
+3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes), hydrates PropertyBank references within a single merge pass using name-keyed maps, and detects circular dependencies.
 4. **Register:** SchemaRegistry populates in-memory maps with resolved schemas for fast lookups
 
 **Fails Fast:** Any error in steps 1-3 terminates application at startup. No invalid schemas reach runtime.
@@ -956,45 +956,7 @@ func (a *VaultReaderAdapter) Read(ctx context.Context, path string) (VaultFile, 
 
 ### NoteLoaderAdapter
 
-**Responsibility:** Implement `VaultReaderPort` by providing filesystem-based single file reading specifically optimized for markdown file validation operations (CQRS read side). Returns generic VaultFile DTOs, delegating domain-specific parsing to FrontmatterService.
-
-**Key Interfaces:**
-
-- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read with metadata, optimized for markdown files
-
-**Dependencies:** Go `os`, Config (vault path), Logger.
-
-**Technology Stack:**
-- `os.ReadFile` for file content
-- `os.Stat` for file metadata
-- Constructs VaultFile DTOs from FileMetadata + Content
-- Optimized for markdown file handling but returns generic DTOs
-
-**Implementation Pattern:**
-
-```go
-type NoteLoaderAdapter struct {
-    config Config
-    log    Logger
-}
-
-func (a *NoteLoaderAdapter) Read(ctx context.Context, path string) (VaultFile, error) {
-    content, err := os.ReadFile(path)
-    if err != nil {
-        return VaultFile{}, err
-    }
-
-    info, err := os.Stat(path)
-    if err != nil {
-        return VaultFile{}, err
-    }
-
-    metadata := NewFileMetadata(path, info)
-    return NewVaultFile(metadata, content), nil
-}
-```
-
-**Note:** Follows hexagonal architecture principles by keeping adapters focused on infrastructure concerns (file I/O) while delegating domain logic (frontmatter parsing) to FrontmatterService. This maintains clean separation between infrastructure and domain layers.
+_Removed (2025-10-31): FrontmatterService now depends directly on `VaultReaderPort`, eliminating the redundant adapter layer. VaultReaderAdapter remains the single implementation for read-side access._
 
 ### VaultWriterAdapter
 
