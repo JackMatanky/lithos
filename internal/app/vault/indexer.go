@@ -14,18 +14,20 @@ import (
 
 // VaultIndexer orchestrates the vault indexing workflow from scan to cache
 // persistence. It implements the CQRS write-side pattern for indexing
-// operations, coordinating
-// vault scanning, basic note creation, and cache persistence.
+// operations, coordinating vault scanning, basic note creation, and cache
+// persistence.
 //
 // The indexer focuses solely on orchestration - it delegates scanning to
 // VaultScannerPort, caching to CacheWriterPort, and uses injected dependencies
 // for all infrastructure concerns.
 //
 // Key Design Principles:
-// - Focused Service: Orchestrates workflow only, does not implement
-// scanning/caching - Resilient Error Handling: Cache failures logged as
-// warnings, indexing continues - MVP Scope: Creates basic notes with file
-// metadata, frontmatter parsing deferred
+//   - Focused Service: Orchestrates workflow only, does not implement
+//     scanning/caching
+//   - Resilient Error Handling: Cache failures logged as warnings, indexing
+//     continues
+//   - MVP Scope: Creates basic notes with file metadata, frontmatter parsing
+//     deferred
 //
 // Reference: docs/architecture/components.md#vaultindexer.
 type VaultIndexer struct {
