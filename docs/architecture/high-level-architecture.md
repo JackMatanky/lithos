@@ -120,7 +120,7 @@ graph TB
 
 *Separation of write model and read model with distinct optimization strategies*
 
-- **Rationale:** Data indexing (write) and data querying (read) have fundamentally different optimization needs. The separation is in both **models** (separate structures for writes vs reads) and **operations** (distinct port interfaces). Write model optimizes for validation and data integrity - enforces business rules and maintains canonical representation. Read model optimizes for queries - denormalized with pre-built indices. Synchronization service keeps models consistent. This true CQRS provides independent scaling, multiple specialized indices, and supports future event sourcing. → *(Epic 3: Vault indexing, Epic 5: Template queries)*
+- **Rationale:** Data indexing (write) and data querying (read) have fundamentally different optimization needs. The separation is in both **models** (separate structures for writes vs reads) and **operations** (distinct port interfaces). Write model optimizes for validation and data integrity - enforces business rules and maintains canonical representation. Read model optimizes for queries - denormalized with pre-built indices. Synchronization service keeps models consistent. This true CQRS provides independent scaling, multiple specialized indices, and supports future event sourcing. → *(Epic 3: Vault indexing, Epic 4: Template queries)*
 
 *Note: The CQRS pattern future-proofs for larger datasets. Write side can add validation caching and batch processing. Read side can maintain multiple projections optimized for different query patterns without impacting write performance.*
 

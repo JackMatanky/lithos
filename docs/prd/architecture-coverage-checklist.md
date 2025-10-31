@@ -102,8 +102,8 @@
 
 | Component      | Version Added | Epic   | Story | Status | File Path                      |
 | -------------- | ------------- | ------ | ----- | ------ | ------------------------------ |
-| **PromptPort** | v0.5.11       | Epic 4 | 4.1   | 🟡     | `internal/ports/spi/prompt.go` |
-| **FinderPort** | v0.5.11       | Epic 4 | 4.3   | 🟡     | `internal/ports/spi/finder.go` |
+| **PromptPort** | v0.5.11       | Epic 5 | 4.1   | 🟡     | `internal/ports/spi/prompt.go` |
+| **FinderPort** | v0.5.11       | Epic 5 | 4.3   | 🟡     | `internal/ports/spi/finder.go` |
 | **ConfigPort** | v0.5.11       | Epic 1 | 1.8   | 🟡     | `internal/ports/spi/config.go` |
 
 ---
@@ -136,8 +136,8 @@
 
 | Component            | Version Added | Epic   | Story | Status | File Path                                        |
 | -------------------- | ------------- | ------ | ----- | ------ | ------------------------------------------------ |
-| **PromptUIAdapter**  | v0.5.11       | Epic 4 | 4.2   | 🟡     | `internal/adapters/spi/interactive/promptui.go`  |
-| **FuzzyfindAdapter** | v0.5.11       | Epic 4 | 4.3   | 🟡     | `internal/adapters/spi/interactive/fuzzyfind.go` |
+| **PromptUIAdapter**  | v0.5.11       | Epic 5 | 4.2   | 🟡     | `internal/adapters/spi/interactive/promptui.go`  |
+| **FuzzyFinderAdapter** | v0.5.11       | Epic 5 | 4.3   | 🟡     | `internal/adapters/spi/interactive/fuzzyfind.go` |
 | **ViperAdapter**     | v0.5.11       | Epic 1 | 1.8   | 🟡     | `internal/adapters/spi/config/viper.go`          |
 
 ---
@@ -208,16 +208,16 @@
 
 | Function                            | Version Added | Epic   | Story | Status | Implementation              |
 | ----------------------------------- | ------------- | ------ | ----- | ------ | --------------------------- |
-| **prompt(name, label, default)**    | v0.1.0        | Epic 4 | 4.5   | ✅     | TemplateEngine function map |
-| **suggester(name, label, options)** | v0.1.0        | Epic 4 | 4.6   | ✅     | TemplateEngine function map |
+| **prompt(name, label, default)**    | v0.1.0        | Epic 5 | 4.5   | ✅     | TemplateEngine function map |
+| **suggester(name, label, options)** | v0.1.0        | Epic 5 | 4.6   | ✅     | TemplateEngine function map |
 
 ### 8.4 Vault Query Functions
 
 | Function              | Version Added | Epic   | Story | Status | Implementation              |
 | --------------------- | ------------- | ------ | ----- | ------ | --------------------------- |
-| **lookup(basename)**  | v0.1.0        | Epic 5 | 5.1   | ✅     | TemplateEngine function map |
-| **query(filter)**     | v0.1.0        | Epic 5 | 5.2   | ✅     | TemplateEngine function map |
-| **fileClass(noteID)** | v0.1.0        | Epic 5 | 5.3   | ✅     | TemplateEngine function map |
+| **lookup(basename)**  | v0.1.0        | Epic 4 | 4.1   | ✅     | TemplateEngine function map |
+| **query(filter)**     | v0.1.0        | Epic 4 | 4.2   | ✅     | TemplateEngine function map |
+| **fileClass(noteID)** | v0.1.0        | Epic 4 | 4.3   | ✅     | TemplateEngine function map |
 
 ---
 
@@ -325,12 +325,12 @@
   - Error types: FrontmatterError, CacheReadError, CacheWriteError, FileSystemError
   - Validation: FrontmatterService.Extract(), FrontmatterService.Validate()
 
-- **Epic 4 (Interactive Input):**
+- **Epic 5 (Interactive Input):**
   - SPI ports: PromptPort, FinderPort
-  - SPI adapters: PromptUIAdapter, FuzzyfindAdapter
+  - SPI adapters: PromptUIAdapter, FuzzyFinderAdapter
   - Template functions: prompt(), suggester(), now()
 
-- **Epic 5 (Schema-Driven Lookups):**
+- **Epic 4 (Schema-Driven Lookups):**
   - Domain services: CommandOrchestrator (complete)
   - API ports: CLIPort, CommandPort
   - API adapters: CobraCLIAdapter

@@ -48,17 +48,17 @@ This library could simplify and improve:
 - **Goldmark Opportunity:** AST-based parsing for more reliable frontmatter and heading extraction
 - **Impact Level:** High - Direct improvement to core vault functionality mentioned in data-models.md
 
-#### Epic 5: Schema-Driven Lookups Validation
+#### Epic 4: Schema-Driven Lookups Validation
 - **Current Implementation:** Basic content parsing for lookup operations
 - **Goldmark Opportunity:** Robust markdown parsing for validation and lookup operations
 - **Impact Level:** Medium - Enhanced reliability for schema-driven processing
 
 ### Future Epic Impact Assessment
 
-#### Epic 4: Interactive Input Engine
+#### Epic 5: Interactive Input Engine
 - Potential for improved markdown preview and editing capabilities
 
-#### Epic 5: Schema-Driven Lookups Validation (continued)
+#### Epic 4: Schema-Driven Lookups Validation (continued)
 - Enhanced validation of markdown content against schemas
 
 ### Overall Epic Flow Impact

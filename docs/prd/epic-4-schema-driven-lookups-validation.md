@@ -1,16 +1,16 @@
-# Epic 5: Schema-Driven Lookups & Validation
+# Epic 4: Schema-Driven Lookups & Validation
 
-This epic connects TemplateEngine, FrontmatterService, QueryService, and CommandOrchestrator as specified in architecture v0.6.8. The stories ensure templates can leverage schema-aware lookups, note generation validates frontmatter end-to-end, and regression tests protect the workflow. Execution proceeds from TemplateEngine helpers to validation updates, orchestration alignment, and integration testing.
+This epic connects TemplateEngine, FrontmatterService, QueryService, and CommandOrchestrator as specified in architecture v0.6.8. The stories ensure templates can leverage schema-aware lookups, note generation validates frontmatter end-to-end, and regression tests protect the workflow. Execution proceeds from TemplateEngine helpers to validation updates, orchestration alignment, and integration testing. This epic builds on the core indexing infrastructure from Epic 3 and should be completed before Epic 5's interactive features.
 
 ---
 
-## Story 5.1 TemplateEngine Lookup Helpers
+## Story 4.1 TemplateEngine Lookup Helpers
 
 As a template author,
 I want TemplateEngine helpers for schema-aware lookups,
 so that templates can query indexed notes directly through documented functions.
 
-**Prerequisites:** Epics 3 and 4 complete.
+**Prerequisites:** Epic 3 complete.
 
 ### Acceptance Criteria
 1. `internal/app/template/service.go` registers `lookup`, `query`, and `fileClass` helpers exactly as in `docs/architecture/components.md#templateengine`, delegating to QueryService and Config.
@@ -20,13 +20,13 @@ so that templates can query indexed notes directly through documented functions.
 
 ---
 
-## Story 5.2 Frontmatter FileSpec Validation with QueryService
+## Story 4.2 Frontmatter FileSpec Validation with QueryService
 
 As a developer,
 I want FrontmatterService to validate FileSpec properties using QueryService,
 so that file references are checked against the indexed vault.
 
-**Prerequisites:** Stories 3.6–3.7, Story 5.1.
+**Prerequisites:** Stories 3.6–3.7, Story 4.1.
 
 ### Acceptance Criteria
 1. `FrontmatterService.Validate` consults QueryService for FileSpec properties exactly as in `docs/architecture/components.md#frontmatterservice`, including query hints from FR8.
@@ -35,13 +35,13 @@ so that file references are checked against the indexed vault.
 
 ---
 
-## Story 5.3 CommandOrchestrator NewNote Workflow
+## Story 4.3 CommandOrchestrator NewNote Workflow
 
 As a developer,
 I want CommandOrchestrator.NewNote to follow the ten-step workflow in the architecture,
 so that note creation is schema-driven and keeps vault and cache in sync.
 
-**Prerequisites:** Stories 3.1–3.7, Story 5.2.
+**Prerequisites:** Stories 3.1–3.7, Story 4.2.
 
 ### Acceptance Criteria
 1. `CommandOrchestrator.NewNote` executes the documented sequence (template load, render, frontmatter extract/validate, NoteID generation, path resolution, vault persist, cache persist) exactly as in `docs/architecture/components.md#commandorchestrator`.
@@ -50,13 +50,13 @@ so that note creation is schema-driven and keeps vault and cache in sync.
 
 ---
 
-## Story 5.4 Schema-Driven Lookup Integration Test
+## Story 4.4 Schema-Driven Lookup Integration Test
 
 As a QA-focused developer,
 I want an integration test that exercises schema-driven template lookups end to end,
 so that future changes cannot break the combined workflow.
 
-**Prerequisites:** Stories 5.1–5.3.
+**Prerequisites:** Stories 4.1–4.3.
 
 ### Acceptance Criteria
 1. `tests/integration/schema_lookup_test.go` spins up TemplateEngine, QueryService, and FrontmatterService with real fixtures (schemas/property bank/cache notes) exercising lookup helpers, FileSpec validation, and CommandOrchestrator note creation.

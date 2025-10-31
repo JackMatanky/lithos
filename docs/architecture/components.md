@@ -75,9 +75,9 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 - `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content using goldmark-frontmatter extension for reliable delimiter detection and parsing
 - `Validate(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (looked up via FileClass) with in-memory type normalization for validation logic only
 
-**Dependencies:** SchemaRegistry (port), VaultReaderPort (for reading file data with VaultFile DTO), Logger.
+**Dependencies:** SchemaRegistry (port), VaultReaderPort (for FileSpec validation and reading file data), Logger.
 
-**Note:** QueryService depends on FrontmatterService for reliable frontmatter validation during searches, not the reverse. FrontmatterService is independent and provides validation capabilities that QueryService consumes. The Extract method outputs Frontmatter struct that can be searched. In post-MVP, frontmatter should be cached for QueryService to search directly.
+**Note:** QueryService depends on FrontmatterService for reliable frontmatter validation during searches. FrontmatterService uses VaultReaderPort for FileSpec validation to avoid circular dependencies. The Extract method outputs Frontmatter struct that can be searched. In post-MVP, frontmatter should be cached for QueryService to search directly.
 
 **Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `go.abhg.dev/goldmark/frontmatter` for type-safe frontmatter extraction with built-in YAML/TOML parsing (replaces custom goldmark AST parsing), `github.com/yuin/goldmark` for markdown processing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
 
@@ -97,7 +97,7 @@ FrontmatterService.Validate() performs strict validation with in-memory type nor
 3. **Array vs Scalar Check:** Verify array/scalar expectation matches (no auto-coercion)
 4. **Type Normalization (In-Memory Only):** Normalize YAML types for validation logic without modifying files
 5. **Constraint Validation:** Validate normalized value against PropertySpec constraints (pattern, min/max, enum, etc.)
-6. **File Reference Validation:** For FileSpec properties, validate file exists via QueryService.ByPath()
+6. **File Reference Validation:** For FileSpec properties, validate file exists via VaultReaderPort.Read() (avoids circular dependency with QueryService)
 7. **Error Aggregation:** Return all validation errors with field-level remediation hints
 
 **YAML Type Handling:**
@@ -177,148 +177,6 @@ All public methods with multiple steps follow Single Responsibility Principle by
 **Error Format:**
 
 Validation errors returned as structured FrontmatterError types with schema name, field name, rule violated, actual value, and remediation message for CLI display.
-
-### SchemaEngine
-
-**Responsibility:** Coordinate schema loading, validation, resolution, and provide unified access to schemas and properties. Orchestrates SchemaLoader, SchemaValidator, SchemaResolver, and SchemaRegistry using Go generics for type-safe retrieval.
-
-**Key Interfaces:**
-
-- `Load(ctx context.Context) error` - Load schemas and property bank, validate structure, resolve inheritance, populate SchemaRegistry
-- `Get[T Schema | Property](ctx context.Context, name string) (T, error)` - Retrieve schema or property by name using generics
-- `Has[T Schema | Property](ctx context.Context, name string) bool` - Check if schema or property exists using generics
-
-**Dependencies:** SchemaLoader (port), SchemaValidator (service), SchemaResolver (service), SchemaRegistry (port), Logger.
-
-**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics. Delegates to SchemaLoader for I/O, SchemaValidator for structural validation, SchemaResolver for inheritance resolution, and SchemaRegistry for lookups. Idiomatic (T, error) return signatures.
-
-**Schema Loading and Validation Workflow:**
-
-The Load() method orchestrates the complete schema initialization pipeline:
-
-1. **Load:** SchemaLoader reads JSON files from disk and parses into Schema DTOs and PropertyBank
-2. **Validate:** SchemaValidator validates structural integrity by calling schema.Validate() on each schema (which delegates to property.Validate() → propertySpec.Validate()). Also performs cross-schema validation (Extends references exist).
-3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes), hydrates PropertyBank references within a single merge pass using name-keyed maps, and detects circular dependencies.
-4. **Register:** SchemaRegistry populates in-memory maps with resolved schemas for fast lookups
-
-**Fails Fast:** Any error in steps 1-3 terminates application at startup. No invalid schemas reach runtime.
-
-**Usage Examples:**
-```go
-// At startup
-if err := schemaEngine.Load(ctx); err != nil {
-    log.Fatal("schema loading failed:", err)
-}
-
-// Runtime lookups
-schema, err := schemaEngine.Get[Schema](ctx, "contact")
-property, err := schemaEngine.Get[Property](ctx, "standard_title")
-exists := schemaEngine.Has[Schema](ctx, "contact")
-```
-
-### SchemaValidator
-
-**Responsibility:** Orchestrate schema validation by calling model-level Validate() methods and performing cross-schema validation that requires seeing multiple schemas together. Pure domain service with no external dependencies.
-
-**Key Interfaces:**
-
-- `ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error` - Orchestrate validation of all schemas and check cross-schema references
-
-**Dependencies:** None (pure domain logic).
-
-**Technology Stack:** Orchestrates schema.Validate() calls, validates cross-schema references, aggregates errors using errors.Join().
-
-**Validation Responsibilities:**
-
-SchemaValidator has two distinct responsibilities that require service-level logic:
-
-1. **Orchestrate Model Validation:**
-    - Calls schema.Validate() on each schema
-    - Each schema delegates to property.Validate() → propertySpec.Validate()
-    - Aggregates all structural validation errors
-    - **Why service needed:** Centralized orchestration and error aggregation across all schemas
-
-2. **Cross-Schema Validation:**
-    - Validates Extends references point to existing schemas
-    - Validates PropertyBank $ref references exist
-    - Ensures no duplicate schema names
-    - **Why service needed:** Individual schemas can't validate references without seeing other schemas and PropertyBank
-
-**What SchemaValidator Does NOT Do:**
-
-- Structural validation of individual schemas (delegated to schema.Validate())
-- Inheritance resolution (handled by SchemaResolver)
-- Circular dependency detection (handled by SchemaResolver during topological sort)
-
-**Example Implementation Pattern:**
-
-```go
-func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error {
-    var errors []error
-
-    // 1. Orchestrate model-level validation
-    for _, schema := range schemas {
-        if err := schema.Validate(ctx); err != nil {
-            errors = append(errors, fmt.Errorf("schema %s: %w", schema.Name, err))
-        }
-    }
-
-    // 2. Cross-schema validation
-    schemaMap := buildSchemaMap(schemas)
-    for _, schema := range schemas {
-        if schema.Extends != "" {
-            if _, exists := schemaMap[schema.Extends]; !exists {
-                errors = append(errors, fmt.Errorf("schema %s extends non-existent schema %s",
-                    schema.Name, schema.Extends))
-            }
-        }
-        // Check $ref references in properties
-        for _, prop := range schema.Properties {
-            if err := v.validatePropertyRefs(prop, bank); err != nil {
-                errors = append(errors, err)
-            }
-        }
-    }
-
-    if len(errors) > 0 {
-        return errors.Join(errors...)
-    }
-    return nil
-}
-```
-
-### SchemaResolver
-
-**Responsibility:** Resolve schema inheritance chains and PropertyBank $ref substitutions. Pure domain service implementing inheritance resolution algorithm.
-
-**Key Interfaces:**
-
-- `Resolve(ctx context.Context, schemas []Schema, bank PropertyBank) ([]Schema, error)` - Resolve all schemas, returning flattened schemas with inheritance applied and $ref substituted
-
-**Dependencies:** None (pure domain logic).
-
-**Technology Stack:** Topological sort for dependency ordering, depth-first search for cycle detection, property merging with override semantics.
-
-**Resolution Algorithm:**
-
-1. **Build Dependency Graph:** Map each schema to its Extends parent
-2. **Detect Cycles:** DFS to find circular inheritance chains (Schema A extends B extends A)
-3. **Topological Sort:** Order schemas so parents resolve before children
-4. **Resolve Inheritance:** For each schema in order:
-    - Get parent's resolved properties (or empty if root schema)
-    - Apply Excludes (remove properties by name)
-    - Merge child properties (override parent properties with same name)
-    - Store as resolved properties
-5. **Substitute $ref:** Replace all `{$ref: "#/properties/name"}` with PropertyBank.Properties[name]
-
-**Example:**
-```go
-resolver := NewSchemaResolver()
-resolved, err := resolver.Resolve(ctx, schemas, propertyBank)
-if err != nil {
-    return fmt.Errorf("schema resolution failed: %w", err)
-}
-```
 
 ### SchemaEngine
 
@@ -464,18 +322,18 @@ if err != nil {
 
 ### VaultIndexer
 
-**Responsibility:** Orchestrate vault scanning and indexing workflow (CQRS write side). Coordinates vault scanning, frontmatter extraction, validation, cache persistence, and query index population. Enhanced with goldmark for robust heading extraction and markdown processing during vault indexing.
+**Responsibility:** Orchestrate vault scanning and indexing workflow (CQRS write side). Coordinates vault scanning, basic note creation, cache persistence. Delegates frontmatter extraction and validation to FrontmatterService.
 
 **Key Interfaces:**
 
-- `Build(ctx context.Context) (IndexStats, error)` - Full vault scan, cache rebuild, and query index population with goldmark-enhanced processing
+- `Build(ctx context.Context) (IndexStats, error)` - Full vault scan and cache persistence with basic note creation
 - `Refresh(ctx context.Context, since time.Time) error` - Incremental update for large vaults (post-MVP optimization)
 
-**Dependencies:** VaultScannerPort, FrontmatterService, CacheWriterPort, QueryService (direct access to populate indices), Logger, Config.
+**Dependencies:** VaultScannerPort, CacheWriterPort, Logger, Config.
 
-**Technology Stack:** Pure Go orchestration, `github.com/yuin/goldmark` for heading extraction and markdown processing, delegates file operations to ports, atomic indexing with temp file + rename pattern for consistency, directly populates QueryService in-memory indices after cache write completes, zerolog for metrics and progress tracking.
+**Technology Stack:** Pure Go orchestration, delegates file operations to ports, atomic indexing with temp file + rename pattern for consistency, zerolog for metrics and progress tracking.
 
-**Note:** VaultIndexer has direct access to QueryService's internal index structures (same package or package-private methods) to populate indices after successful cache write. This keeps write-side concerns (index building) in VaultIndexer while read-side concerns (querying) in QueryService.
+**Note:** VaultIndexer focuses solely on file discovery and persistence. Frontmatter extraction and validation is handled by FrontmatterService, maintaining clean separation of concerns.
 
 ### QueryService
 
@@ -720,7 +578,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 - `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read for validation (any vault file, not just .md)
 
-**Dependencies:** Implemented by VaultReaderAdapter and NoteLoaderAdapter.
+**Dependencies:** Implemented by VaultReaderAdapter.
 
 **Technology Stack:** `os.ReadFile` for content, `os.Stat` for metadata. Returns VaultFile DTOs (FileMetadata + Content).
 
@@ -832,7 +690,7 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 
 - `Find(ctx context.Context, templates []Template) (Template, error)` - Fuzzy finder for template selection
 
-**Dependencies:** Implemented by FuzzyfindAdapter.
+**Dependencies:** Implemented by FuzzyFinderAdapter.
 
 **Technology Stack:** `github.com/ktr0731/go-fuzzyfinder`, `golang.org/x/term` for TTY detection.
 
@@ -954,10 +812,6 @@ func (a *VaultReaderAdapter) Read(ctx context.Context, path string) (VaultFile, 
 
 **Note:** Implements both scanning and reading interfaces for comprehensive vault access. Shared helper functions for FileMetadata construction can live in `internal/adapters/spi/vault/helper.go` to avoid duplication with write adapter.
 
-### NoteLoaderAdapter
-
-_Removed (2025-10-31): FrontmatterService now depends directly on `VaultReaderPort`, eliminating the redundant adapter layer. VaultReaderAdapter remains the single implementation for read-side access._
-
 ### VaultWriterAdapter
 
 **Responsibility:** Implement `VaultWriterPort` by providing filesystem-based vault persistence with atomic write guarantees (CQRS write side).
@@ -1045,7 +899,7 @@ func (a *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
 
 **Note:** Post-MVP (Phase 4) will migrate to `charmbracelet/huh` for TUI support. Port abstraction enables swap without domain changes.
 
-### FuzzyfindAdapter
+### FuzzyFinderAdapter
 
 **Responsibility:** Implement `FinderPort` for fuzzy finding template selection in `lithos find` command.
 
@@ -1354,7 +1208,6 @@ graph TD
 
      subgraph SPIAdapters[Concrete SPI Adapters]
          VRA[VaultReaderAdapter]
-         NLA[NoteLoaderAdapter]
          VWA[VaultWriterAdapter]
          JCWA[JSONCacheWriteAdapter]
          JCRA[JSONCacheReadAdapter]
@@ -1406,8 +1259,9 @@ graph TD
 **Legend:**
 
 - CSP = CLIPort
-- VSP = VaultScannerPort, VRA = VaultReaderAdapter (implements both VSP and VRP)
-- VRP = VaultReaderPort, NLA = NoteLoaderAdapter (markdown-optimized)
+- VSP = VaultScannerPort
+- VRP = VaultReaderPort
+- VRA = VaultReaderAdapter (implements both VSP and VRP)
 - VW = VaultWriterPort, VWA = VaultWriterAdapter
 - CW = CacheWriterPort, JCWA = JSONCacheWriteAdapter
 - CR = CacheReaderPort, JCRA = JSONCacheReadAdapter
@@ -1440,7 +1294,7 @@ Dependencies are constructed in a specific order to satisfy the dependency graph
 - SchemaLoaderAdapter (depends on Config, Logger)
 - SchemaRegistryAdapter (depends on Logger)
 - TemplateLoaderAdapter (depends on Config, Logger)
-- PromptUIAdapter, FuzzyfindAdapter (depend on Logger)
+- PromptUIAdapter, FuzzyFinderAdapter (depend on Logger)
 
 **3. Domain Services (core):**
 - SchemaEngine (depends on SchemaLoaderPort, SchemaRegistryPort, Logger)
@@ -1448,7 +1302,7 @@ Dependencies are constructed in a specific order to satisfy the dependency graph
 - QueryService (depends on CacheReaderPort, FrontmatterService, Logger)
 - FrontmatterService (depends on SchemaRegistryPort, VaultReaderPort, Logger)
 - TemplateEngine (depends on TemplatePort, PromptPort, QueryService, FrontmatterService, Config, Logger)
-- VaultIndexer (depends on VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService, Logger, Config)
+- VaultIndexer (depends on VaultReaderPort, CacheWriterPort, Logger, Config)
 
 **4. CommandOrchestrator (application service):**
 - CommandOrchestrator (depends on CLIPort, TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger)
@@ -1473,7 +1327,6 @@ func main() {
 
     // 2. SPI Adapters
     vaultReader := vault.NewReaderAdapter(cfg, log)    // Implements both VaultScannerPort and VaultReaderPort
-    noteLoader := vault.NewNoteLoaderAdapter(cfg, log) // Implements VaultReaderPort (markdown-optimized)
     vaultWriter := vault.NewWriterAdapter(cfg, log)
 
     cacheWriter := cache.NewJSONCacheWriter(cfg, log)
@@ -1500,7 +1353,7 @@ func main() {
 
     frontmatterService := domain.NewFrontmatterService(
         schemaRegistry,
-        noteLoader,  // VaultReaderPort for file data access
+        vaultReader,  // For FileSpec validation
         log,
     )
 
@@ -1517,9 +1370,7 @@ func main() {
 
     vaultIndexer := domain.NewVaultIndexer(
         vaultReader,  // VaultScannerPort for scanning operations
-        frontmatterService,
         cacheWriter,
-        queryService,
         log,
         cfg,
     )
@@ -1688,7 +1539,7 @@ FrontmatterService (Domain Service)
 | **When** | Once at startup | Every note operation |
 | **Complexity** | Low (structural) | High (business rules) |
 | **Models** | Rich (self-validating) | Anemic (service validates) |
-| **Dependencies** | None (pure domain logic) | SchemaRegistry, QueryService |
+| **Dependencies** | None (pure domain logic) | SchemaRegistry, VaultReaderPort |
 | **Failure Impact** | Application won't start | Note indexing fails |
 | **Validation Type** | Structural integrity | Business rule enforcement |
 | **Coercion** | None | In-memory normalization only |

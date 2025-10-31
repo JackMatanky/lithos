@@ -133,14 +133,14 @@ This document provides a comprehensive summary of the key findings, discussions,
 
 - **Story Granularity**: The initial, larger stories were broken down into five distinct, single-responsibility stories: **1. Define Interface**, **2. Implement Cache**, **3. Implement Scanner**, **4. Implement Parser**, **5. Implement Command Logic**. This was a crucial step to de-risk the development of the most complex component by building it from testable units.
 
-### 2.6.4. Elicitation on Stories for Epic 4 (Interactive Engine)
+### 2.6.4. Elicitation on Stories for Epic 5 (Interactive Engine)
 
 **Key Findings & Decisions**:
 
 - **Architectural Foresight**: The elicitation process identified the need for an abstract `Interactive` interface to decouple the template engine from the specific prompt/fuzzy-finder libraries. This was added as a new architectural story.
 - **AC Refinement**: ACs were added to handle edge cases, such as what happens when the fuzzy finder finds no templates.
 
-### 2.6.5. Elicitation on Stories for Epic 5 (Lookups & Validation)
+### 2.6.5. Elicitation on Stories for Epic 4 (Lookups Epic 5 (Lookups & Validation) Validation)
 
 **Key Findings & Decisions**:
 

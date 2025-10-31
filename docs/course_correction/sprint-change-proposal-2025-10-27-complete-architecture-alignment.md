@@ -172,7 +172,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 - 🔴 VaultWriterAdapter implementation (added v0.6.8)
 - 🔴 VaultFile DTO model (added v0.6.8)
 
-**Epic 4 & 5: Future Epics (PLANNED - Need Review)**
+**Epic 5 & 5: Future Epics (PLANNED - Need Review)**
 
 **Potential Issues:**
 
@@ -202,8 +202,8 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 - ❌ VaultWriterPort - NOT IN ANY EPIC (added v0.6.8)
 - ❓ SchemaPort - Which epic/story?
 - ❓ TemplatePort - Which epic/story?
-- ❓ PromptPort - Epic 4 somewhere
-- ❓ FinderPort - Epic 4 somewhere
+- ❓ PromptPort - Epic 5 somewhere
+- ❓ FinderPort - Epic 5 somewhere
 - ❓ ConfigPort - Which epic/story?
 - ❓ SchemaRegistryPort - Which epic/story?
 - ✅ CLIPort - Epic 1 (but needs callback pattern v0.6.4)
@@ -308,7 +308,7 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 
 - Epic 1-2 stories reference old architecture (File model, Result[T], FileSystemPort)
 - Epic 3 stories completely outdated
-- Epic 4-5 stories likely have conflicts
+- Epic 5-5 stories likely have conflicts
 - Inconsistent format/detail across epics
 - Easier to regenerate consistently than update piecemeal
 - Archive preserves Dev Notes, QA Results for reference
@@ -318,8 +318,8 @@ During Epic 3 (Vault Indexing Engine) planning, comprehensive architectural revi
 - Epic 1: ~13 stories
 - Epic 2: ~7-8 stories
 - Epic 3: ~13 stories (9 + 4 new)
-- Epic 4: ~13 stories
-- Epic 5: ~8 stories
+- Epic 5: ~13 stories
+- Epic 4: ~8 stories
 - **Total: ~54-60 stories**
 
 ### Implementation Code (internal/)
@@ -613,7 +613,7 @@ Create `docs/lessons-learned-epic-1-2.md`:
 - [ ] **SchemaLoaderAdapter** → Epic: **_ Story: _**
 - [ ] **TemplateLoaderAdapter** → Epic: **_ Story: _**
 - [ ] **PromptUIAdapter** → Epic: **_ Story: _**
-- [ ] **FuzzyfindAdapter** → Epic: **_ Story: _**
+- [ ] **FuzzyFinderAdapter** → Epic: **_ Story: _**
 - [ ] **ViperAdapter** → Epic: **_ Story: _**
 - [ ] **SchemaRegistryAdapter** → Epic: **_ Story: _**
 
@@ -1051,7 +1051,7 @@ operations, so that indexing uses proper abstraction (not generic FileSystemPort
 
 ---
 
-#### Phase 2.5: Update Epic 4-5 Details (1 day)
+#### Phase 2.5: Update Epic 5-5 Details (1 day)
 
 **Review all stories for:**
 
@@ -1195,13 +1195,13 @@ Using updated `epic-3-vault-indexing-engine.md`:
 - All new port names (CacheWriter/Reader, VaultReader/Writer)
 - All new models (NoteID, VaultFile, FileMetadata)
 
-**Epic 4: ~13 Stories**
+**Epic 5: ~13 Stories**
 
 - Regenerate all stories
 - Update for Template changes
 - Update for CommandOrchestrator changes
 
-**Epic 5: ~8 Stories**
+**Epic 4: ~8 Stories**
 
 - Regenerate all stories
 - Update for Epic 2-4 changes
@@ -1399,8 +1399,8 @@ Using updated `epic-3-vault-indexing-engine.md`:
 - Epic 1: Foundational CLI ✅
 - Epic 2: Configuration & Schema Loading ✅
 - Epic 3: Vault Indexing Engine ✅
-- Epic 4: Interactive Input Engine ✅
-- Epic 5: Schema-Driven Lookups & Validation ✅
+- Epic 5: Interactive Input Engine ✅
+- Epic 4: Schema-Driven Lookups & Validation ✅
 
 **No features cut** - Only implementation quality improvement
 

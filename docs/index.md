@@ -110,9 +110,9 @@ This epic refactors the foundational CLI implementation from Epic 1 to follow he
 
 This epic introduces the ability for the CLI to read configuration files and understand the structure of the user's data through schema definitions.
 
-### [Epic 4: Vault Indexing Engine](./prd/epic-4-vault-indexing-engine.md)
+### [Epic 4: Schema-Driven Lookups & Validation](./prd/epic-4-schema-driven-lookups-validation.md)
 
-This epic focuses on building the core data layer of Lithos, which will scan the user's vault, parse frontmatter, and build a persistent cache.
+This epic connects the template engine to the vault index to enable dynamic lookups for suggesters and implements core metadata validation logic.
 
 ### [Epic 5: Interactive Input Engine](./prd/epic-5-interactive-input-engine.md)
 

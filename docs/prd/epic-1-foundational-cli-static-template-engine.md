@@ -1295,7 +1295,7 @@ so that users can install and use lithos effectively.
 
 - **Epic 2:** Schema models (Schema, Property, PropertySpec variants, PropertyBank), SchemaEngine, SchemaValidator, SchemaResolver, SchemaPort, SchemaLoaderAdapter, SchemaRegistryAdapter
 - **Epic 3:** VaultIndexer, QueryService, FrontmatterService, CQRS cache ports (CacheReader/Writer), CQRS vault ports (VaultReader/Writer), cache adapters, vault adapters, VaultFile DTO
-- **Epic 4:** PromptPort, FinderPort, PromptUIAdapter, FuzzyfindAdapter, interactive template functions (prompt, suggester)
+- **Epic 4:** PromptPort, FinderPort, PromptUIAdapter, FuzzyFinderAdapter, interactive template functions (prompt, suggester)
 - **Epic 5:** Additional CommandOrchestrator use cases, query template functions (lookup, query, fileClass), full CLI integration
 
 ### Success Criteria
