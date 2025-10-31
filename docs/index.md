@@ -98,7 +98,7 @@ The strategy for unit, integration, and end-to-end testing.
 
 Product Requirements Document for the Lithos project.
 
-### [Epic 1: Foundational CLI & Static Template Engine](./prd/epic-1-foundational-cli-static-template-engine.md)
+### [Epic 1: Foundational CLI & Static Template Engine](./prd/epic-1-foundational-cli-static_template-engine.md)
 
 This epic establishes the project's backbone, delivering a runnable Go application with a basic command structure and core, non-interactive template rendering.
 
@@ -178,7 +178,7 @@ As a developer, I want to add a new command that accepts an optional <template-p
 
 As a developer, I want the new command to read a template file into memory, so that the content is available for parsing.
 
-### [Story 1.7: Implement Static Template Parsing](./stories/1.7.implement-static-template-parsing.md)
+### [Story 1.7: Implement Static Template Parsing](./stories/1.7.implement-static_template-parsing.md)
 
 As a developer, I want to parse template content using Go's text/template engine, so that I can process a template without dynamic functions.
 

@@ -735,7 +735,7 @@ Create `docs/lessons-learned-epic-1-2.md`:
 
 #### Phase 2.2: Update Epic 1 Detail (1.5 days)
 
-**File:** `docs/prd/epic-1-foundational-cli-static-template-engine.md`
+**File:** `docs/prd/epic-1-foundational-cli-static_template-engine.md`
 
 **Add to Epic Header:**
 
@@ -1165,7 +1165,7 @@ operations, so that indexing uses proper abstraction (not generic FileSystemPort
 
 **Epic 1: ~13 Stories**
 
-Using updated `epic-1-foundational-cli-static-template-engine.md`:
+Using updated `epic-1-foundational-cli-static_template-engine.md`:
 
 - Regenerate stories 1.1-1.13
 - Add new stories for missing components (from coverage checklist)
@@ -1652,7 +1652,7 @@ Please share any:
 **PRD:**
 
 - `docs/prd/epic-list.md`
-- `docs/prd/epic-1-foundational-cli-static-template-engine.md`
+- `docs/prd/epic-1-foundational-cli-static_template-engine.md`
 - `docs/prd/epic-2-configuration-schema-loading.md`
 - `docs/prd/epic-3-vault-indexing-engine.md`
 - `docs/prd/epic-4-interactive-input-engine.md`

@@ -64,10 +64,6 @@ func (a *SchemaLoaderAdapter) Load(
 		return nil, domain.PropertyBank{}, err
 	}
 
-	if dupErr := ensureUniqueSchemaNames(schemas); dupErr != nil {
-		return nil, domain.PropertyBank{}, dupErr
-	}
-
 	if a.log != nil {
 		a.log.Debug().
 			Int("count", len(schemas)).
@@ -175,37 +171,6 @@ func (a *SchemaLoaderAdapter) loadSchema(path string) (domain.Schema, error) {
 		return domain.Schema{}, err
 	}
 	return schema, nil
-}
-
-func ensureUniqueSchemaNames(schemas []domain.Schema) error {
-	byName := make(map[string]int)
-	for _, schema := range schemas {
-		byName[schema.Name]++
-	}
-
-	var duplicates []string
-	for name, count := range byName {
-		if count > 1 {
-			duplicates = append(duplicates, name)
-		}
-	}
-
-	if len(duplicates) == 0 {
-		return nil
-	}
-
-	sort.Strings(duplicates)
-	message := fmt.Sprintf(
-		"Schema names must be unique: %s",
-		strings.Join(duplicates, ", "),
-	)
-
-	return domainerrors.NewSchemaErrorWithRemediation(
-		message,
-		"",
-		"Rename duplicate schema files so each schema name is unique",
-		nil,
-	)
 }
 
 // wrapPropertyBankReadError converts filesystem failures into ResourceErrors

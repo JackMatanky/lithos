@@ -68,16 +68,18 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 
 ### FrontmatterService
 
-**Responsibility:** Extract YAML frontmatter from markdown and validate against schema rules with strict type checking. Single domain service handling both extraction and validation concerns. Enhanced with goldmark AST access for robust frontmatter delimiter detection and heading parsing.
+**Responsibility:** Extract YAML frontmatter from markdown using goldmark-frontmatter extension and validate against schema rules with strict type checking. Single domain service handling both extraction and validation concerns. Leverages goldmark-frontmatter extension for robust frontmatter parsing instead of custom AST manipulation.
 
 **Key Interfaces:**
 
-- `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content using goldmark AST for reliable delimiter detection
+- `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content using goldmark-frontmatter extension for reliable delimiter detection and parsing
 - `Validate(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (looked up via FileClass) with in-memory type normalization for validation logic only
 
-**Dependencies:** SchemaRegistry (port), QueryService (for FileSpec file existence validation), Logger.
+**Dependencies:** SchemaRegistry (port), VaultReaderPort (for reading file data with VaultFile DTO), Logger.
 
-**Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `goccy/go-yaml` for YAML parsing, `github.com/yuin/goldmark` for AST-based frontmatter extraction and heading parsing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
+**Note:** QueryService depends on FrontmatterService for reliable frontmatter validation during searches, not the reverse. FrontmatterService is independent and provides validation capabilities that QueryService consumes. The Extract method outputs Frontmatter struct that can be searched. In post-MVP, frontmatter should be cached for QueryService to search directly.
+
+**Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `go.abhg.dev/goldmark/frontmatter` for type-safe frontmatter extraction with built-in YAML/TOML parsing (replaces custom goldmark AST parsing), `github.com/yuin/goldmark` for markdown processing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
 
 **Frontmatter Validation (Business Rules with Strict Type Checking):**
 
@@ -469,7 +471,7 @@ if err != nil {
 - `Build(ctx context.Context) (IndexStats, error)` - Full vault scan, cache rebuild, and query index population with goldmark-enhanced processing
 - `Refresh(ctx context.Context, since time.Time) error` - Incremental update for large vaults (post-MVP optimization)
 
-**Dependencies:** VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService (direct access to populate indices), Logger, Config.
+**Dependencies:** VaultScannerPort, FrontmatterService, CacheWriterPort, QueryService (direct access to populate indices), Logger, Config.
 
 **Technology Stack:** Pure Go orchestration, `github.com/yuin/goldmark` for heading extraction and markdown processing, delegates file operations to ports, atomic indexing with temp file + rename pattern for consistency, directly populates QueryService in-memory indices after cache write completes, zerolog for metrics and progress tracking.
 
@@ -486,7 +488,7 @@ if err != nil {
 - `ByFileClass(ctx context.Context, fileClass string) ([]Note, error)` - Find all notes with matching fileClass (convenience for common frontmatter query)
 - `ByFrontmatter(ctx context.Context, field string, value any) ([]Note, error)` - Generic frontmatter field query
 
-**Dependencies:** CacheReader (port), Logger.
+**Dependencies:** CacheReader (port), FrontmatterService (for frontmatter validation during searches), Logger.
 
 **Technology Stack:** In-memory indices backed by Go maps with `sync.RWMutex` for concurrent safety, multiple specialized indices (by ID, path, fileClass, frontmatter fields) for fast lookups, indices populated directly by VaultIndexer after cache write.
 
@@ -691,25 +693,42 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Note:** No separate FileReaderPort needed - adapters use `os.ReadFile` and `filepath.Walk` directly. YAGNI principle - we don't have multiple file sources for MVP. If future needs arise (S3, HTTP, embedded), ports can be added then.
 
-### VaultReaderPort
+### VaultScannerPort
 
-**Responsibility:** Provide CQRS read-side access to vault files for indexing and validation. Abstracts vault scanning operations at business level. Supports both full scans (initial indexing) and incremental scans (large vault optimization).
+**Responsibility:** Provide CQRS read-side access to vault scanning operations for indexing. Abstracts vault scanning operations at business level. Supports both full scans (initial indexing) and incremental scans (large vault optimization).
 
 **Key Interfaces:**
 
 - `ScanAll(ctx context.Context) ([]VaultFile, error)` - Full vault scan for initial index build
 - `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan for large vaults (future optimization for NFR4)
-- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read for validation (any vault file, not just .md)
 
 **Dependencies:** Implemented by VaultReaderAdapter.
 
-**Technology Stack:** Go `filepath.Walk` for scanning, `os.ReadFile` for content, `os.Stat` for ModTime filtering (ScanModified). Returns VaultFile DTOs (FileMetadata + Content).
+**Technology Stack:** Go `filepath.Walk` for scanning, `os.Stat` for ModTime filtering (ScanModified). Returns VaultFile DTOs (FileMetadata + Content).
 
 **Why Business-Level Abstraction:**
-- Expresses domain intent: "scan vault", "read file" (business operations)
-- NOT infrastructure operations: "walk directory", "read bytes" (too low-level)
+- Expresses domain intent: "scan vault" (business operations)
+- NOT infrastructure operations: "walk directory" (too low-level)
 - Future-proof: Can swap filesystem → S3 → HTTP without changing domain
 - Enables incremental indexing for hybrid index architecture (NFR4)
+
+### VaultReaderPort
+
+**Responsibility:** Provide CQRS read-side access to individual vault files for validation and processing. Abstracts single file reading operations at business level.
+
+**Key Interfaces:**
+
+- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read for validation (any vault file, not just .md)
+
+**Dependencies:** Implemented by VaultReaderAdapter and NoteLoaderAdapter.
+
+**Technology Stack:** `os.ReadFile` for content, `os.Stat` for metadata. Returns VaultFile DTOs (FileMetadata + Content).
+
+**Why Business-Level Abstraction:**
+- Expresses domain intent: "read file" (business operations)
+- NOT infrastructure operations: "read bytes" (too low-level)
+- Future-proof: Can swap filesystem → S3 → HTTP without changing domain
+- Enables focused file access for validation operations
 
 ### VaultWriterPort
 
@@ -873,12 +892,15 @@ Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports 
 
 ### VaultReaderAdapter
 
-**Responsibility:** Implement `VaultReaderPort` by providing filesystem-based vault scanning and reading for indexing operations (CQRS read side).
+**Responsibility:** Implement both `VaultScannerPort` and `VaultReaderPort` by providing filesystem-based vault scanning and reading operations (CQRS read side).
 
-**Key Interfaces:**
+**Key Interfaces (VaultScannerPort):**
 
 - `ScanAll(ctx context.Context) ([]VaultFile, error)` - Full vault scan using filepath.Walk
 - `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan filtering by ModTime
+
+**Key Interfaces (VaultReaderPort):**
+
 - `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read with metadata
 
 **Dependencies:** Go `os`, `filepath`, Config (vault path), Logger.
@@ -913,9 +935,66 @@ func (a *VaultReaderAdapter) ScanAll(ctx context.Context) ([]VaultFile, error) {
     })
     return files, err
 }
+
+func (a *VaultReaderAdapter) Read(ctx context.Context, path string) (VaultFile, error) {
+    content, err := os.ReadFile(path)
+    if err != nil {
+        return VaultFile{}, err
+    }
+
+    info, err := os.Stat(path)
+    if err != nil {
+        return VaultFile{}, err
+    }
+
+    metadata := NewFileMetadata(path, info)
+    return NewVaultFile(metadata, content), nil
+}
 ```
 
-**Note:** Shared helper functions for FileMetadata construction can live in `internal/adapters/spi/vault/helper.go` to avoid duplication with write adapter.
+**Note:** Implements both scanning and reading interfaces for comprehensive vault access. Shared helper functions for FileMetadata construction can live in `internal/adapters/spi/vault/helper.go` to avoid duplication with write adapter.
+
+### NoteLoaderAdapter
+
+**Responsibility:** Implement `VaultReaderPort` by providing filesystem-based single file reading specifically optimized for markdown file validation operations (CQRS read side). Returns generic VaultFile DTOs, delegating domain-specific parsing to FrontmatterService.
+
+**Key Interfaces:**
+
+- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read with metadata, optimized for markdown files
+
+**Dependencies:** Go `os`, Config (vault path), Logger.
+
+**Technology Stack:**
+- `os.ReadFile` for file content
+- `os.Stat` for file metadata
+- Constructs VaultFile DTOs from FileMetadata + Content
+- Optimized for markdown file handling but returns generic DTOs
+
+**Implementation Pattern:**
+
+```go
+type NoteLoaderAdapter struct {
+    config Config
+    log    Logger
+}
+
+func (a *NoteLoaderAdapter) Read(ctx context.Context, path string) (VaultFile, error) {
+    content, err := os.ReadFile(path)
+    if err != nil {
+        return VaultFile{}, err
+    }
+
+    info, err := os.Stat(path)
+    if err != nil {
+        return VaultFile{}, err
+    }
+
+    metadata := NewFileMetadata(path, info)
+    return NewVaultFile(metadata, content), nil
+}
+```
+
+**Note:** Follows hexagonal architecture principles by keeping adapters focused on infrastructure concerns (file I/O) while delegating domain logic (frontmatter parsing) to FrontmatterService. This maintains clean separation between infrastructure and domain layers.
 
 ### VaultWriterAdapter
 
@@ -1299,28 +1378,30 @@ graph TD
     end
 
      subgraph SPIPorts[Driven Ports]
-        VR[VaultReaderPort]
-        VW[VaultWriterPort]
-        CW[CacheWriterPort]
-        CR[CacheReaderPort]
-        SL[SchemaLoaderPort]
-        SRP[SchemaRegistryPort]
-        TR[TemplateRepositoryPort]
-        IP[InteractivePort]
-        CP[ConfigPort]
-    end
+         VSP[VaultScannerPort]
+         VRP[VaultReaderPort]
+         VW[VaultWriterPort]
+         CW[CacheWriterPort]
+         CR[CacheReaderPort]
+         SL[SchemaLoaderPort]
+         SRP[SchemaRegistryPort]
+         TR[TemplateRepositoryPort]
+         IP[InteractivePort]
+         CP[ConfigPort]
+     end
 
-    subgraph SPIAdapters[Concrete SPI Adapters]
-        VRA[VaultReaderAdapter]
-        VWA[VaultWriterAdapter]
-        JCWA[JSONCacheWriteAdapter]
-        JCRA[JSONCacheReadAdapter]
-        SLA[SchemaLoaderAdapter]
-        SRA[SchemaRegistryAdapter]
-        TFA[TemplateFSAdapter]
-        ICA[InteractiveCLIAdapter]
-        CVA[ConfigViperAdapter]
-    end
+     subgraph SPIAdapters[Concrete SPI Adapters]
+         VRA[VaultReaderAdapter]
+         NLA[NoteLoaderAdapter]
+         VWA[VaultWriterAdapter]
+         JCWA[JSONCacheWriteAdapter]
+         JCRA[JSONCacheReadAdapter]
+         SLA[SchemaLoaderAdapter]
+         SRA[SchemaRegistryAdapter]
+         TFA[TemplateFSAdapter]
+         ICA[InteractiveCLIAdapter]
+         CVA[ConfigViperAdapter]
+     end
 
     User --> CLI
     CLI --> CSP
@@ -1337,18 +1418,21 @@ graph TD
        FV --> SRP
      TE --> IP
      TE --> TR
-     VI --> VR
-     VI --> CW
-     CO --> VW
-     CO --> CW
-     QS --> CR
-     SV --> SRP
-     CO --> CP
-     SRP --> SRA
-      SRA --> SL
+        VI --> VSP
+        VI --> CW
+        FV --> VRP
+        CO --> VW
+        CO --> CW
+        QS --> CR
+        SV --> SRP
+        CO --> CP
+        SRP --> SRA
+         SRA --> SL
 
-    VR --> VRA
-    VW --> VWA
+     VSP --> VRA
+     VRP --> VRA
+     VRP --> NLA
+     VW --> VWA
     CW --> JCWA
     CR --> JCRA
      SL --> SLA
@@ -1360,7 +1444,8 @@ graph TD
 **Legend:**
 
 - CSP = CLIPort
-- VR = VaultReaderPort, VRA = VaultReaderAdapter
+- VSP = VaultScannerPort, VRA = VaultReaderAdapter (implements both VSP and VRP)
+- VRP = VaultReaderPort, NLA = NoteLoaderAdapter (markdown-optimized)
 - VW = VaultWriterPort, VWA = VaultWriterAdapter
 - CW = CacheWriterPort, JCWA = JSONCacheWriteAdapter
 - CR = CacheReaderPort, JCRA = JSONCacheReadAdapter
@@ -1398,8 +1483,8 @@ Dependencies are constructed in a specific order to satisfy the dependency graph
 **3. Domain Services (core):**
 - SchemaEngine (depends on SchemaLoaderPort, SchemaRegistryPort, Logger)
   - **Internally instantiates:** SchemaValidator, SchemaResolver (not injected - used only by SchemaEngine)
-- QueryService (depends on CacheReaderPort, Logger)
-- FrontmatterService (depends on SchemaRegistryPort, QueryService, Logger)
+- QueryService (depends on CacheReaderPort, FrontmatterService, Logger)
+- FrontmatterService (depends on SchemaRegistryPort, VaultReaderPort, Logger)
 - TemplateEngine (depends on TemplatePort, PromptPort, QueryService, FrontmatterService, Config, Logger)
 - VaultIndexer (depends on VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService, Logger, Config)
 
@@ -1425,7 +1510,8 @@ func main() {
     }
 
     // 2. SPI Adapters
-    vaultReader := vault.NewReaderAdapter(cfg, log)
+    vaultReader := vault.NewReaderAdapter(cfg, log)    // Implements both VaultScannerPort and VaultReaderPort
+    noteLoader := vault.NewNoteLoaderAdapter(cfg, log) // Implements VaultReaderPort (markdown-optimized)
     vaultWriter := vault.NewWriterAdapter(cfg, log)
 
     cacheWriter := cache.NewJSONCacheWriter(cfg, log)
@@ -1450,13 +1536,13 @@ func main() {
         log.Fatal().Err(err).Msg("failed to load schemas")
     }
 
-    queryService := domain.NewQueryService(cacheReader, log)
-
     frontmatterService := domain.NewFrontmatterService(
         schemaRegistry,
-        queryService,
+        noteLoader,  // VaultReaderPort for file data access
         log,
     )
+
+    queryService := domain.NewQueryService(cacheReader, frontmatterService, log)
 
     templateEngine := domain.NewTemplateEngine(
         templateLoader,
@@ -1468,7 +1554,7 @@ func main() {
     )
 
     vaultIndexer := domain.NewVaultIndexer(
-        vaultReader,
+        vaultReader,  // VaultScannerPort for scanning operations
         frontmatterService,
         cacheWriter,
         queryService,

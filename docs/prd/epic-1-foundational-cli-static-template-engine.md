@@ -74,12 +74,10 @@ so that the project has consistent linting, formatting, security scanning, and p
   - `tests/utils/` (contains mocks.go)
 
 - 1.1.11: Verify testdata structure exists:
-  - `testdata/golden/` (expected outputs)
-  - `testdata/schema/valid/` (valid schemas)
-  - `testdata/schema/invalid/` (invalid schemas for testing)
-  - `testdata/schema/properties/` (property bank files)
-  - `testdata/notes/` (sample notes)
   - `testdata/templates/` (sample templates)
+  - `testdata/schemas/` (schema fixtures organised into valid/, invalid/, duplicate/, properties/)
+  - `testdata/golden/` (expected outputs)
+  - `testdata/vault/` (configuration samples)
 
 - 1.1.12: Verify CLI entrypoint exists at `cmd/lithos/main.go`
 
@@ -599,9 +597,9 @@ so that templates can be loaded from filesystem following hexagonal architecture
 
 - 1.9.9: Create integration test in `tests/integration/template_loader_test.go`:
   - Use existing `testdata/templates/` directory
-  - Test: List() finds static-template.md and basic-note.md
-  - Test: Load("static-template") returns Template with correct content
-  - Test: Load("basic-note") returns Template with correct content
+  - Test: List() finds static_template.md and basic_note.md
+  - Test: Load("static_template") returns Template with correct content
+  - Test: Load("basic_note") returns Template with correct content
   - Test: Load("nonexistent") returns ResourceError
 
 - 1.9.10: All tests pass: `go test ./internal/adapters/spi/... ./tests/integration/...`
@@ -710,8 +708,8 @@ so that templates can be loaded from port, parsed with Go text/template, and ren
   - All tests use MockTemplatePort from tests/utils/mocks.go
 
 - 1.10.9: Create integration test in `tests/integration/template_engine_test.go`:
-  - Use existing testdata/templates/static-template.md
-  - Compare rendered output to testdata/golden/static-template-expected.md
+  - Use existing testdata/templates/static_template.md
+  - Compare rendered output to testdata/golden/static_template_expected.md
   - Verify all template functions work end-to-end:
     - now() with various format strings
     - toLower() and toUpper()
@@ -1020,20 +1018,20 @@ so that the complete application works from CLI invocation to file creation with
   - Setup:
     - Create temporary vault directory using `os.MkdirTemp`
     - Create templates/ subdirectory
-    - Copy template from testdata/templates/static-template.md to temp vault
+    - Copy template from testdata/templates/static_template.md to temp vault
     - Set environment variable LITHOS_VAULT_PATH to temp directory
   - Execute:
     - Build lithos binary: `go build -o {tempDir}/lithos cmd/lithos/main.go`
-    - Run command: `{tempDir}/lithos new static-template`
+    - Run command: `{tempDir}/lithos new static_template`
   - Verify:
-    - Check file exists: `{tempDir}/static-template.md`
+    - Check file exists: `{tempDir}/static_template.md`
     - Read file content
     - Compare to expected output (verify template functions executed)
   - Cleanup:
     - Remove temporary directory
 
 - 1.16.10: Additional test scenarios in same file:
-  - Test: `lithos new basic-note` creates note with basic functions (now, toLower, toUpper)
+  - Test: `lithos new basic_note` creates note with basic functions (now, toLower, toUpper)
   - Test: Error when template not found (returns exit code 1)
   - Test: `lithos version` prints version string
 
@@ -1042,9 +1040,9 @@ so that the complete application works from CLI invocation to file creation with
 - 1.16.11: Manual test checklist (documented in story, not automated):
   - Build: `go build -o bin/lithos cmd/lithos/main.go`
   - Run: `./bin/lithos version` → prints "lithos v0.1.0"
-  - Run: `./bin/lithos new static-template` (with testdata as vault) → creates note
+  - Run: `./bin/lithos new static_template` (with testdata as vault) → creates note
   - Verify: File exists at expected location with rendered content
-  - Run: `./bin/lithos new static-template --view` → displays content after creation
+  - Run: `./bin/lithos new static_template --view` → displays content after creation
   - Run: `./bin/lithos new nonexistent` → shows error "Template 'nonexistent' not found"
   - Verify: Template functions work (now() shows current date, path functions work)
   - Verify: Config loads from lithos.json if present
@@ -1158,7 +1156,7 @@ so that users can install and use lithos effectively.
     - README with installation and quick start
     - Template function reference
     - Configuration reference
-  - **Link to Epic 1 documentation:** `docs/prd/epic-1-foundational-cli-static-template-engine.md`
+  - **Link to Epic 1 documentation:** `docs/prd/epic-1-foundational-cli-static_template-engine.md`
 
 **Final Verification:**
 

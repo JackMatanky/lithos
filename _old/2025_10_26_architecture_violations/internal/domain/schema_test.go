@@ -10,7 +10,7 @@ const (
 )
 
 func TestNewSchema(t *testing.T) {
-	props := []Property{
+	props := []IProperty{
 		NewProperty("title", true, false, StringPropertySpec{}),
 		NewProperty("count", false, false, NumberPropertySpec{}),
 	}
@@ -32,7 +32,7 @@ func TestNewSchema(t *testing.T) {
 }
 
 func TestNewSchemaWithExtends(t *testing.T) {
-	props := []Property{
+	props := []IProperty{
 		NewProperty("title", true, false, StringPropertySpec{}),
 		NewProperty("count", false, false, NumberPropertySpec{}),
 	}
@@ -66,11 +66,11 @@ func TestNewSchemaWithExtends(t *testing.T) {
 }
 
 func TestSchemaSetResolvedProperties(t *testing.T) {
-	schema := NewSchema("test_schema", []Property{
+	schema := NewSchema("test_schema", []IProperty{
 		NewProperty("original", true, false, StringPropertySpec{}),
 	})
 
-	resolvedProps := []Property{
+	resolvedProps := []IProperty{
 		NewProperty("inherited", false, false, StringPropertySpec{}),
 		NewProperty("original", true, false, StringPropertySpec{}),
 	}
@@ -93,7 +93,7 @@ func TestSchemaSetResolvedProperties(t *testing.T) {
 }
 
 func TestSchemaGetResolvedProperties(t *testing.T) {
-	originalProps := []Property{
+	originalProps := []IProperty{
 		NewProperty("original", true, false, StringPropertySpec{}),
 	}
 	schema := NewSchema("test_schema", originalProps)
@@ -112,7 +112,7 @@ func TestSchemaGetResolvedProperties(t *testing.T) {
 	}
 
 	// When ResolvedProperties is set, should return ResolvedProperties
-	resolvedProps := []Property{
+	resolvedProps := []IProperty{
 		NewProperty("inherited", false, false, StringPropertySpec{}),
 		NewProperty("original", true, false, StringPropertySpec{}),
 	}
@@ -141,7 +141,7 @@ func TestSchemaConstructorBehavior(t *testing.T) {
 		{
 			name: "NewSchema creates simple schema",
 			constructor: func() Schema {
-				return NewSchema("simple", []Property{
+				return NewSchema("simple", []IProperty{
 					NewProperty("title", true, false, StringPropertySpec{}),
 				})
 			},
@@ -155,7 +155,7 @@ func TestSchemaConstructorBehavior(t *testing.T) {
 					"extended",
 					"base",
 					[]string{"old"},
-					[]Property{
+					[]IProperty{
 						NewProperty(
 							"new_prop",
 							false,

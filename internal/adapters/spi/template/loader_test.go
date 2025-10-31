@@ -72,7 +72,7 @@ func TestTemplateLoaderAdapter_List_WithTemplates(t *testing.T) {
 	}
 
 	// Create test templates
-	createTempTemplate(t, tempDir, "basic-note", "# Basic Note\n\nContent")
+	createTempTemplate(t, tempDir, "basic_note", "# Basic Note\n\nContent")
 	createTempTemplate(t, tempDir, "contact", "# Contact\n\nInfo")
 	createTempTemplate(t, tempDir, "meeting", "# Meeting\n\nNotes")
 
@@ -84,7 +84,7 @@ func TestTemplateLoaderAdapter_List_WithTemplates(t *testing.T) {
 		t.Fatalf("List() error = %v", err)
 	}
 
-	expected := []domain.TemplateID{"basic-note", "contact", "meeting"}
+	expected := []domain.TemplateID{"basic_note", "contact", "meeting"}
 	if len(templates) != len(expected) {
 		t.Errorf(
 			"List() returned %d templates, want %d",

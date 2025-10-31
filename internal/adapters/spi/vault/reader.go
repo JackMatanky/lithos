@@ -117,12 +117,29 @@ func (a *VaultReaderAdapter) ScanModified(
 	return files, nil
 }
 
+// Read performs single file read with path validation and security checks.
+// Validates path is within vault to prevent directory traversal attacks.
+// Returns VaultFile DTO with metadata and content.
+func (a *VaultReaderAdapter) Read(
+	ctx context.Context,
+	path string,
+) (dto.VaultFile, error) {
+	// Check for context cancellation
+	if ctx.Err() != nil {
+		return dto.VaultFile{}, ctx.Err()
+	}
+
+	// Validate path is within vault (prevent directory traversal)
+	if err := a.validatePathInVault(path); err != nil {
+		return dto.VaultFile{}, err
+	}
+
+	// Read file and construct VaultFile
+	return a.readFileWithMetadata(path)
+}
+
 // readFileWithMetadata reads a file and constructs VaultFile with metadata.
 // Assumes path validation has already been performed.
-//
-// that uses it.
-//
-//nolint:funcorder // Helper method must be defined before exported Read method
 func (a *VaultReaderAdapter) readFileWithMetadata(
 	path string,
 ) (dto.VaultFile, error) {
@@ -146,27 +163,6 @@ func (a *VaultReaderAdapter) readFileWithMetadata(
 	// Construct metadata and VaultFile
 	metadata := dto.NewFileMetadata(path, info)
 	return dto.NewVaultFile(metadata, content), nil
-}
-
-// Read performs single file read with path validation and security checks.
-// Validates path is within vault to prevent directory traversal attacks.
-// Returns VaultFile DTO with metadata and content.
-func (a *VaultReaderAdapter) Read(
-	ctx context.Context,
-	path string,
-) (dto.VaultFile, error) {
-	// Check for context cancellation
-	if ctx.Err() != nil {
-		return dto.VaultFile{}, ctx.Err()
-	}
-
-	// Validate path is within vault (prevent directory traversal)
-	if err := a.validatePathInVault(path); err != nil {
-		return dto.VaultFile{}, err
-	}
-
-	// Read file and construct VaultFile
-	return a.readFileWithMetadata(path)
 }
 
 // scanVault performs the core vault scanning logic with a custom filter.

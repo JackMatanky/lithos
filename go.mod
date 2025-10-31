@@ -3,6 +3,7 @@ module github.com/JackMatanky/lithos
 go 1.24.0
 
 require (
+	github.com/goccy/go-yaml v1.18.0
 	github.com/moby/sys/atomicwriter v0.1.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/cobra v1.10.1

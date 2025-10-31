@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README with installation, quick start, and reference
 - Template function reference with examples
 - Configuration reference with all options
-- Epic 1 PRD: docs/prd/epic-1-foundational-cli-static-template-engine.md
+- Epic 1 PRD: docs/prd/epic-1-foundational-cli-static_template-engine.md
 
 **Technical Stack:**
 

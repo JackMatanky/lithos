@@ -8,8 +8,8 @@
 # Tools this project needs
 # ------------------------------------------------------------
 [tools]
-go = "1.24"               # ← set to whatever your project actually uses
-golangci-lint = "latest"  # common in Go repos; remove if unused
+go = "latest"
+golangci-lint = "latest"
 
 # ------------------------------------------------------------
 # Project env (what you used to have in .envrc)
@@ -24,7 +24,7 @@ GO111MODULE = "on"
 GOBIN = "{{config_root}}/bin"
 
 # Put that bin on PATH
-PATH = ["{{config_root}}/bin"]
+PATH = "{{config_root}}/bin:{{env.PATH}}"
 
 # ------------------------------------------------------------
 # Mise settings — only what helps Go projects
@@ -50,32 +50,31 @@ lockfile = true
 # ------------------------------------------------------------
 # Go-specific settings
 # ------------------------------------------------------------
-[settings.go]
 # make sure GOROOT is set from the tool you installed
-set_goroot = true
+go_set_goroot = true
 
 # set GOBIN automatically (we also set it in [env], this just reinforces)
-set_gobin = true
+go_set_gobin = true
 
 # optional: if you keep a list of Go tools to auto-install, point to it
 # default_packages_file = "{{config_root}}/.default-go-packages"
 
 # If you’re in a region where Google’s mirror is slow, change this:
-download_mirror = "https://dl.google.com/go"
+go_download_mirror = "https://dl.google.com/go"
 
 # ------------------------------------------------------------
 # Tasks — run with: `mise run build`, `mise run test`, ...
 # ------------------------------------------------------------
 [tasks.build]
-desc = "Build the Go project"
+description = "Build the Go project"
 run = "go build ./..."
 
 [tasks.test]
-desc = "Run unit tests"
+description = "Run unit tests"
 run = "go test ./..."
 
 [tasks.lint]
-desc = "Run golangci-lint"
+description = "Run golangci-lint"
 run = "golangci-lint run ./..."
 
 # Example: task-specific env (handy for Go)

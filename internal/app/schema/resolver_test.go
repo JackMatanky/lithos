@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const meetingNoteSchemaName = "meeting-note"
+const meetingNoteSchemaName = "meeting_note"
 
 // TestSchemaResolver_Resolve_SingleRootSchema tests resolution of a single
 // schema with no inheritance.
@@ -19,9 +19,17 @@ func TestSchemaResolver_Resolve_SingleRootSchema(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "note",
-			Properties: []domain.Property{
-				{Name: "title", Required: true, Spec: domain.StringSpec{}},
-				{Name: "tags", Required: false, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "title",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
+				domain.Property{
+					Name:     "tags",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 	}
@@ -51,16 +59,28 @@ func TestSchemaResolver_Resolve_TwoLevelInheritance(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "base",
-			Properties: []domain.Property{
-				{Name: "title", Required: true, Spec: domain.StringSpec{}},
-				{Name: "tags", Required: false, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "title",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
+				domain.Property{
+					Name:     "tags",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 		{
 			Name:    meetingNoteSchemaName,
 			Extends: "base",
-			Properties: []domain.Property{
-				{Name: "attendees", Required: true, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "attendees",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 	}
@@ -98,23 +118,39 @@ func TestSchemaResolver_Resolve_MultiLevelInheritance(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "note",
-			Properties: []domain.Property{
-				{Name: "title", Required: true, Spec: domain.StringSpec{}},
-				{Name: "tags", Required: false, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "title",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
+				domain.Property{
+					Name:     "tags",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 		{
 			Name:    "base-note",
 			Extends: "note",
-			Properties: []domain.Property{
-				{Name: "created", Required: true, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "created",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 		{
 			Name:    meetingNoteSchemaName,
 			Extends: "base-note",
-			Properties: []domain.Property{
-				{Name: "attendees", Required: true, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "attendees",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 	}
@@ -159,10 +195,18 @@ func TestSchemaResolver_Resolve_ExcludesRemovesProperties(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "base",
-			Properties: []domain.Property{
-				{Name: "title", Required: true, Spec: domain.StringSpec{}},
-				{Name: "tags", Required: false, Spec: domain.StringSpec{}},
-				{
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "title",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
+				domain.Property{
+					Name:     "tags",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
+				domain.Property{
 					Name:     "internal_id",
 					Required: false,
 					Spec:     domain.StringSpec{},
@@ -173,8 +217,12 @@ func TestSchemaResolver_Resolve_ExcludesRemovesProperties(t *testing.T) {
 			Name:     "public-note",
 			Extends:  "base",
 			Excludes: []string{"internal_id"},
-			Properties: []domain.Property{
-				{Name: "published", Required: true, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "published",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 	}
@@ -213,20 +261,24 @@ func TestSchemaResolver_Resolve_ChildOverridesParent(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "base",
-			Properties: []domain.Property{
-				{
+			Properties: []domain.IProperty{
+				domain.Property{
 					Name:     "title",
 					Required: true,
 					Spec:     domain.StringSpec{},
 				}, // required in parent
-				{Name: "tags", Required: false, Spec: domain.StringSpec{}},
+				domain.Property{
+					Name:     "tags",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 		{
 			Name:    "flexible-note",
 			Extends: "base",
-			Properties: []domain.Property{
-				{
+			Properties: []domain.IProperty{
+				domain.Property{
 					Name:     "title",
 					Required: false,
 					Spec:     domain.StringSpec{},
@@ -292,8 +344,11 @@ func TestSchemaResolver_Resolve_MissingRefError(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "note",
-			Properties: []domain.Property{
-				{Name: "title", Ref: "standard_title"}, // Missing in bank
+			Properties: []domain.IProperty{
+				domain.PropertyRef{
+					Name: "title",
+					Ref:  "standard_title",
+				}, // Missing in bank
 			},
 		},
 	}
@@ -315,15 +370,23 @@ func TestSchemaResolver_Resolve_RefSubstitutionSuccess(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "note",
-			Properties: []domain.Property{
-				{Name: "title", Required: true, Ref: "standard_title"},
-				{Name: "tags", Required: false, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.PropertyRef{Name: "title", Ref: "standard_title"},
+				domain.Property{
+					Name:     "tags",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 	}
 
 	bank := domain.PropertyBank{Properties: map[string]domain.Property{
-		"standard_title": {Name: "title", Spec: domain.StringSpec{}},
+		"standard_title": {
+			Name:     "title",
+			Required: true,
+			Spec:     domain.StringSpec{},
+		},
 	}}
 
 	resolved, err := resolver.Resolve(context.Background(), schemas, bank)
@@ -338,11 +401,8 @@ func TestSchemaResolver_Resolve_RefSubstitutionSuccess(t *testing.T) {
 	assert.True(
 		t,
 		titleProp.Required,
-	) // From original property
-	assert.Empty(
-		t,
-		titleProp.Ref,
-	) // Ref cleared after substitution
+	) // From PropertyBank definition
+	// Ref field no longer exists - PropertyRef is a separate type
 	assert.IsType(t, domain.StringSpec{}, titleProp.Spec) // Spec from bank
 }
 
@@ -355,14 +415,18 @@ func TestSchemaResolver_Resolve_OriginalSchemasUnchanged(t *testing.T) {
 		{
 			Name:    "child",
 			Extends: "parent",
-			Properties: []domain.Property{
-				{Name: "child_prop", Required: true, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "child_prop",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 		{
 			Name: "parent",
-			Properties: []domain.Property{
-				{
+			Properties: []domain.IProperty{
+				domain.Property{
 					Name:     "parent_prop",
 					Required: false,
 					Spec:     domain.StringSpec{},
@@ -412,19 +476,27 @@ func TestSchemaResolver_Resolve_PreservesOriginalFields(t *testing.T) {
 			Name:     "child",
 			Extends:  "parent",
 			Excludes: []string{"unwanted"},
-			Properties: []domain.Property{
-				{Name: "child_prop", Required: true, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "child_prop",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 		{
 			Name: "parent",
-			Properties: []domain.Property{
-				{
+			Properties: []domain.IProperty{
+				domain.Property{
 					Name:     "parent_prop",
 					Required: false,
 					Spec:     domain.StringSpec{},
 				},
-				{Name: "unwanted", Required: false, Spec: domain.StringSpec{}},
+				domain.Property{
+					Name:     "unwanted",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 	}
@@ -447,7 +519,7 @@ func TestSchemaResolver_Resolve_PreservesOriginalFields(t *testing.T) {
 	assert.Equal(t, "parent", child.Extends)
 	assert.Equal(t, []string{"unwanted"}, child.Excludes)
 	assert.Len(t, child.Properties, 1) // Original properties count
-	assert.Equal(t, "child_prop", child.Properties[0].Name)
+	assert.Equal(t, "child_prop", child.Properties[0].GetName())
 
 	// Verify resolved properties are populated
 	assert.NotEmpty(t, child.ResolvedProperties)
@@ -466,23 +538,38 @@ func TestSchemaResolver_Resolve_ComplexInheritanceWithRefs(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "base",
-			Properties: []domain.Property{
-				{Name: "title", Required: true, Spec: domain.StringSpec{}},
-				{Name: "tags", Required: false, Spec: domain.StringSpec{}},
-				{Name: "internal", Required: false, Spec: domain.StringSpec{}},
+			Properties: []domain.IProperty{
+				domain.Property{
+					Name:     "title",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
+				domain.Property{
+					Name:     "tags",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
+				domain.Property{
+					Name:     "internal",
+					Required: false,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 		{
 			Name:     "note",
 			Extends:  "base",
 			Excludes: []string{"internal"},
-			Properties: []domain.Property{
-				{
-					Name:     "title",
-					Required: false,
-					Ref:      "standard_title",
+			Properties: []domain.IProperty{
+				domain.PropertyRef{
+					Name: "title",
+					Ref:  "standard_title",
 				}, // Override + ref
-				{Name: "created", Required: true, Spec: domain.StringSpec{}},
+				domain.Property{
+					Name:     "created",
+					Required: true,
+					Spec:     domain.StringSpec{},
+				},
 			},
 		},
 	}
@@ -513,7 +600,7 @@ func TestSchemaResolver_Resolve_ComplexInheritanceWithRefs(t *testing.T) {
 	// Verify title override with ref substitution
 	titleProp := getResolvedProperty(note, "title")
 	assert.False(t, titleProp.Required) // Child's requirement (override)
-	assert.Empty(t, titleProp.Ref)      // Ref cleared after substitution
+	// Ref field no longer exists - PropertyRef is a separate type
 
 	// Verify inherited property
 	assert.True(t, hasResolvedProperty(note, "tags"))

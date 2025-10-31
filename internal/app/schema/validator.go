@@ -119,9 +119,9 @@ func (v *SchemaValidator) validateCrossSchema(
 	extendsErrs := v.validateExtendsReferences(schemas, schemaMap)
 	errs = append(errs, extendsErrs...)
 
-	// Check for duplicate schema names
-	dupErrs := v.validateDuplicateNames(schemas)
-	errs = append(errs, dupErrs...)
+	// Check for unique schema names
+	uniqueErrs := v.validateUniqueSchemaNames(schemas)
+	errs = append(errs, uniqueErrs...)
 
 	// Check $ref references against PropertyBank
 	refErrs := v.validatePropertyRefs(ctx, schemas, bank)
@@ -163,8 +163,9 @@ func (v *SchemaValidator) validateExtendsReferences(
 	return errs
 }
 
-// validateDuplicateNames checks for duplicate schema names across all schemas.
-func (v *SchemaValidator) validateDuplicateNames(
+// validateUniqueSchemaNames checks for duplicate schema names across all
+// schemas.
+func (v *SchemaValidator) validateUniqueSchemaNames(
 	schemas []domain.Schema,
 ) []error {
 	seen := make(map[string]bool)
@@ -182,7 +183,7 @@ func (v *SchemaValidator) validateDuplicateNames(
 	return errs
 }
 
-// validatePropertyRefs checks that all $ref properties reference existing
+// validatePropertyRefs checks that all PropertyRef instances reference existing
 // PropertyBank entries.
 func (v *SchemaValidator) validatePropertyRefs(
 	ctx context.Context,
@@ -198,13 +199,14 @@ func (v *SchemaValidator) validatePropertyRefs(
 		}
 
 		for _, prop := range schema.Properties {
-			if prop.Ref != "" {
-				if _, exists := bank.Properties[prop.Ref]; !exists {
+			// Type assert to check if this is a PropertyRef
+			if propRef, ok := prop.(domain.PropertyRef); ok {
+				if _, exists := bank.Lookup(propRef.Ref); !exists {
 					errs = append(errs, fmt.Errorf(
 						"schema %s, property %s: $ref '%s' not found in property bank",
 						schema.Name,
-						prop.Name,
-						prop.Ref,
+						propRef.Name,
+						propRef.Ref,
 					))
 				}
 			}

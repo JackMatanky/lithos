@@ -22,7 +22,7 @@
     - [Core Philosophy](./technical-assumptions.md#core-philosophy)
     - [Go Packages & Libraries](./technical-assumptions.md#go-packages-libraries)
   - [Epic List](./epic-list.md)
-  - [Epic 1: Foundational CLI with Hexagonal Architecture](./epic-1-foundational-cli-static-template-engine.md)
+  - [Epic 1: Foundational CLI with Hexagonal Architecture](./epic-1-foundational-cli-static_template-engine.md)
   - [Epic 2: Configuration & Schema Loading](./epic-2-configuration-schema-loading.md)
   - [Epic 3: Vault Indexing Engine](./epic-3-vault-indexing-engine.md)
   - [Epic 4: Interactive Input Engine](./epic-4-interactive-input-engine.md)

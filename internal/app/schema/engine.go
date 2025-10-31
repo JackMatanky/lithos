@@ -240,7 +240,7 @@ func (e *SchemaEngine) registerSchemas(
 //
 // Usage Examples:
 //
-//	schema, err := Get[domain.Schema](engine, ctx, "meeting-note")
+//	schema, err := Get[domain.Schema](engine, ctx, "meeting_note")
 //	property, err := Get[domain.Property](engine, ctx, "standard_title")
 //
 // Returns SchemaError with ErrNotFound classification when the requested
@@ -283,7 +283,7 @@ func Get[T domain.Schema | domain.Property](
 //
 // Usage Examples:
 //
-//	exists := Has[domain.Schema](engine, ctx, "meeting-note")
+//	exists := Has[domain.Schema](engine, ctx, "meeting_note")
 //	exists := Has[domain.Property](engine, ctx, "standard_title")
 //
 // Never returns an error - only boolean existence check.

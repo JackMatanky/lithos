@@ -30,7 +30,7 @@ import (
 //   - Inheritance resolution handled by separate SchemaResolver service
 type Schema struct {
 	// Name is the schema identifier matching fileClass frontmatter value.
-	// Examples: "contact", "project", "daily-note", "meeting-note"
+	// Examples: "contact", "project", "daily-note", "meeting_note"
 	// Must be unique across all schemas in the system.
 	Name string `json:"name" yaml:"name"`
 
@@ -38,7 +38,7 @@ type Schema struct {
 	// Can form multi-level inheritance (e.g., "fleeting-note" extends
 	// "base-note" extends "note").
 	// Empty string means no parent schema.
-	// Example: "meeting-note" extends "base-note"
+	// Example: "meeting_note" extends "base-note"
 	Extends string `json:"extends,omitempty" yaml:"extends,omitempty"`
 
 	// Excludes lists parent property names to exclude from inheritance.
@@ -51,12 +51,15 @@ type Schema struct {
 	// For inherited schemas: represents delta/override properties
 	// For root schemas: represents the complete property set
 	// Property names must be unique within the schema
-	Properties []Property `json:"properties" yaml:"properties"`
+	// Before resolution: may contain both Property and PropertyRef
+	// After resolution: all PropertyRefs are replaced with full Properties
+	Properties []IProperty `json:"properties" yaml:"properties"`
 
 	// ResolvedProperties contains the flattened property set after inheritance
 	// resolution and $ref substitution. Populated by SchemaResolver.
 	// This is the final property set used for validation and consumption.
 	// Empty until SchemaResolver.Resolve() is called.
+	// Always contains only Property (no PropertyRef).
 	ResolvedProperties []Property `json:"resolved_properties,omitempty" yaml:"resolved_properties,omitempty"` //nolint:lll // field tags required for JSON/YAML
 }
 
@@ -70,14 +73,14 @@ type Schema struct {
 func NewSchema(
 	name, extends string,
 	excludes []string,
-	properties []Property,
+	properties []IProperty,
 ) (*Schema, error) {
 	// Defensive copy of excludes slice
 	excludesCopy := make([]string, len(excludes))
 	copy(excludesCopy, excludes)
 
 	// Defensive copy of properties slice
-	propertiesCopy := make([]Property, len(properties))
+	propertiesCopy := make([]IProperty, len(properties))
 	copy(propertiesCopy, properties)
 
 	schema := Schema{
@@ -170,14 +173,17 @@ func (s *Schema) validateProperties(ctx context.Context) error {
 		}
 
 		// Check for duplicate property name
-		if err := s.checkDuplicateProperty(prop.Name, seen); err != nil {
+		if err := s.checkDuplicateProperty(prop.GetName(), seen); err != nil {
 			errs = append(errs, err)
-			continue // Skip validation for duplicate
+			continue
 		}
 
-		// Validate the property
-		if err := s.validateProperty(ctx, prop); err != nil {
-			errs = append(errs, err)
+		// Validate the property (works for both Property and PropertyRef)
+		if err := prop.Validate(ctx); err != nil {
+			errs = append(
+				errs,
+				fmt.Errorf("property %s: %w", prop.GetName(), err),
+			)
 		}
 	}
 
@@ -203,19 +209,5 @@ func (s *Schema) checkDuplicateProperty(
 		)
 	}
 	seen[name] = true
-	return nil
-}
-
-// validateProperty validates a single property and wraps errors with schema
-// context.
-func (s *Schema) validateProperty(ctx context.Context, prop Property) error {
-	if err := prop.Validate(ctx); err != nil {
-		return lithoserrors.NewSchemaErrorWithRemediation(
-			fmt.Sprintf("property %s validation failed", prop.Name),
-			s.Name,
-			"fix property definition according to architecture constraints",
-			err,
-		)
-	}
 	return nil
 }

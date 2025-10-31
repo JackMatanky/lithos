@@ -24,8 +24,8 @@ func TestSchemaLoaderAdapter_LoadSuccess(t *testing.T) {
 
 	tempDir := t.TempDir()
 	copySchemaFixture(t, tempDir, "property_bank.json")
-	copySchemaFixture(t, tempDir, "base-note.json")
-	copySchemaFixture(t, tempDir, "meeting-note.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
+	copySchemaFixture(t, tempDir, "meeting_note.json")
 
 	cfg := &domain.Config{
 		SchemasDir:       tempDir,
@@ -41,7 +41,7 @@ func TestSchemaLoaderAdapter_LoadSuccess(t *testing.T) {
 	assert.Len(t, schemas, 2)
 
 	names := []string{schemas[0].Name, schemas[1].Name}
-	assert.ElementsMatch(t, []string{"base-note", "meeting-note"}, names)
+	assert.ElementsMatch(t, []string{"base-note", "meeting_note"}, names)
 	for _, schema := range schemas {
 		assert.NotNil(t, schema.Properties)
 	}
@@ -53,7 +53,7 @@ func TestSchemaLoaderAdapter_MissingPropertyBank(t *testing.T) {
 	t.Parallel()
 
 	tempDir := t.TempDir()
-	copySchemaFixture(t, tempDir, "base-note.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
 
 	cfg := &domain.Config{
 		SchemasDir:       tempDir,
@@ -84,7 +84,7 @@ func TestSchemaLoaderAdapter_MalformedPropertyBank(t *testing.T) {
 		filepath.Join(tempDir, "property_bank.json"),
 		`{"properties": {`,
 	)
-	copySchemaFixture(t, tempDir, "base-note.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
 
 	cfg := &domain.Config{
 		SchemasDir:       tempDir,
@@ -124,49 +124,6 @@ func TestSchemaLoaderAdapter_MalformedSchemaJSON(t *testing.T) {
 	assert.Contains(t, schemaErr.Remediation, "Check JSON syntax")
 }
 
-// TestSchemaLoaderAdapter_DuplicateSchemas detects duplicate schema names.
-func TestSchemaLoaderAdapter_DuplicateSchemas(t *testing.T) {
-	t.Parallel()
-
-	tempDir := t.TempDir()
-	copySchemaFixture(t, tempDir, "property_bank.json")
-	copySchemaFixture(t, tempDir, "base-note.json")
-	copySchemaFixture(t, tempDir, "meeting-note.json")
-
-	duplicateDir := filepath.Join(tempDir, "dup")
-	require.NoError(t, os.MkdirAll(duplicateDir, 0o750))
-	duplicateContent := `{
-  "name": "meeting-note",
-  "extends": "",
-  "excludes": [],
-  "properties": {
-    "title": {
-      "$ref": "#/properties/standard_title"
-    }
-  }
-}`
-	writeFile(
-		t,
-		filepath.Join(duplicateDir, "meeting-note.json"),
-		duplicateContent,
-	)
-
-	cfg := &domain.Config{
-		SchemasDir:       tempDir,
-		PropertyBankFile: "property_bank.json",
-	}
-	log := logger.NewTest()
-	adapter := NewSchemaLoaderAdapter(cfg, &log)
-
-	_, _, err := adapter.Load(context.Background())
-	require.Error(t, err)
-
-	var schemaErr *domainerrors.SchemaError
-	require.ErrorAs(t, err, &schemaErr)
-	assert.Contains(t, err.Error(), "Schema names must be unique")
-	assert.Contains(t, err.Error(), "meeting-note")
-}
-
 // TestSchemaLoaderAdapter_EmptySchemasDirectory returns an empty slice when no
 // schemas exist.
 func TestSchemaLoaderAdapter_EmptySchemasDirectory(t *testing.T) {
@@ -196,7 +153,7 @@ func TestSchemaLoaderAdapter_PropertyBankReadOnce(t *testing.T) {
 
 	tempDir := t.TempDir()
 	copySchemaFixture(t, tempDir, "property_bank.json")
-	copySchemaFixture(t, tempDir, "base-note.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
 
 	cfg := &domain.Config{
 		SchemasDir:       tempDir,
@@ -227,16 +184,13 @@ func TestSchemaLoaderAdapter_RespectsConfigPropertyBankPath(t *testing.T) {
 	writeFile(t, filepath.Join(tempDir, "custom_bank.json"), `{
   "properties": {
     "title": {
-      "name": "title",
+      "type": "string",
       "required": true,
-      "array": false,
-      "spec": {
-        "type": "string"
-      }
+      "array": false
     }
   }
 }`)
-	copySchemaFixture(t, tempDir, "base-note.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
 
 	cfg := &domain.Config{
 		SchemasDir:       tempDir,
@@ -283,7 +237,7 @@ func TestSchemaLoaderAdapter_PropertyBankBeforeSchemas(t *testing.T) {
 
 	tempDir := t.TempDir()
 	copySchemaFixture(t, tempDir, "property_bank.json")
-	copySchemaFixture(t, tempDir, "base-note.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
 
 	cfg := &domain.Config{
 		SchemasDir:       tempDir,

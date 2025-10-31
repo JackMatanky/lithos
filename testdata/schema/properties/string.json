@@ -1,7 +1,0 @@
-{
-  "name": "status",
-  "required": true,
-  "array": false,
-  "type": "string",
-  "enum": ["active", "inactive"]
-}

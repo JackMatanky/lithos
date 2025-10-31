@@ -248,11 +248,15 @@ func (r *SchemaResolver) resolveSchema(
 		// (this should not happen if topological sort worked correctly)
 	}
 
-	// Resolve properties (inheritance + excludes + overrides)
-	resolvedProps := r.resolveProperties(schema, parentProps)
+	// Resolve properties (inheritance + excludes + overrides + ref hydration)
+	resolvedProps, err := r.resolveProperties(schema, parentProps, bank)
+	if err != nil {
+		return domain.Schema{}, err
+	}
 
-	// Substitute $ref references
-	finalProps, err := r.substituteRefs(ctx, resolvedProps, bank, schema.Name)
+	// Substitute $ref references (now deprecated - refs are hydrated in
+	// resolveProperties)
+	finalProps, err := r.substituteRefs(ctx, resolvedProps)
 	if err != nil {
 		return domain.Schema{}, err
 	}
@@ -270,10 +274,12 @@ func (r *SchemaResolver) resolveSchema(
 }
 
 // resolveProperties applies inheritance, excludes, and property overrides.
+// It also stores PropertyRefs temporarily for later substitution.
 func (r *SchemaResolver) resolveProperties(
 	schema domain.Schema,
 	parentProps []domain.Property,
-) []domain.Property {
+	bank domain.PropertyBank,
+) ([]domain.Property, error) {
 	// Start with parent properties
 	resolved := make(
 		[]domain.Property,
@@ -297,12 +303,72 @@ func (r *SchemaResolver) resolveProperties(
 	// Merge child properties (override by name)
 	for _, childProp := range schema.Properties {
 		// Remove parent property with same name
-		resolved = r.removeProperty(resolved, childProp.Name)
-		// Add child property
-		resolved = append(resolved, childProp)
+		resolved = r.removeProperty(resolved, childProp.GetName())
+
+		// Handle based on property kind
+		switch childProp.Type() {
+		case domain.PropertyKindDefinition:
+			// Add full property definition directly
+			if prop, ok := childProp.(domain.Property); ok {
+				resolved = append(resolved, prop)
+			}
+
+		case domain.PropertyKindReference:
+			// Hydrate PropertyRef into Property using PropertyBank
+			if propRef, ok := childProp.(domain.PropertyRef); ok {
+				hydratedProp, err := r.hydratePropertyRef(
+					propRef,
+					bank,
+					schema.Name,
+				)
+				if err != nil {
+					return nil, err
+				}
+				resolved = append(resolved, hydratedProp)
+			}
+		}
 	}
 
-	return resolved
+	return resolved, nil
+}
+
+// hydratePropertyRef converts a PropertyRef into a full Property by looking up
+// the definition in the PropertyBank.
+func (r *SchemaResolver) hydratePropertyRef(
+	propRef domain.PropertyRef,
+	bank domain.PropertyBank,
+	schemaName string,
+) (domain.Property, error) {
+	// Look up the property definition in the bank
+	bankProp, exists := bank.Lookup(propRef.Ref)
+	if !exists {
+		return domain.Property{}, lithoserrors.NewSchemaErrorWithRemediation(
+			fmt.Sprintf(
+				"schema %s, property %s: $ref '%s' not found in property bank",
+				schemaName,
+				propRef.Name,
+				propRef.Ref,
+			),
+			schemaName,
+			fmt.Sprintf(
+				"add property '%s' to property bank or fix $ref",
+				propRef.Ref,
+			),
+			nil,
+		)
+	}
+
+	// Create a new Property using:
+	// - Name from the PropertyRef (the key in the schema)
+	// - Spec, Required, Array from the PropertyBank definition
+	// This allows the schema to use the ref's name while getting validation
+	// from bank
+	return domain.Property{
+		Name:     propRef.Name,
+		Required: bankProp.Required,
+		Array:    bankProp.Array,
+		Spec:     bankProp.Spec,
+	}, nil
 }
 
 // removeProperty removes a property by name from the property list.
@@ -319,66 +385,19 @@ func (r *SchemaResolver) removeProperty(
 	return filtered
 }
 
-// substituteRefs replaces $ref references with PropertyBank definitions.
+// substituteRefs is now a pass-through since PropertyRefs are hydrated
+// during resolveProperties. This method is kept for backwards compatibility
+// and context cancellation checks.
 func (r *SchemaResolver) substituteRefs(
 	ctx context.Context,
 	props []domain.Property,
-	bank domain.PropertyBank,
-	schemaName string,
 ) ([]domain.Property, error) {
-	substituted := make([]domain.Property, 0, len(props))
-
-	for _, prop := range props {
-		// Check for cancellation
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-
-		if prop.Ref != "" {
-			resolved, err := r.resolveRefProperty(prop, bank, schemaName)
-			if err != nil {
-				return nil, err
-			}
-			substituted = append(substituted, resolved)
-		} else {
-			// Property without $ref - keep as is
-			substituted = append(substituted, prop)
-		}
+	// Check for cancellation
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
-	return substituted, nil
-}
-
-// resolveRefProperty resolves a single property's $ref reference.
-func (r *SchemaResolver) resolveRefProperty(
-	prop domain.Property,
-	bank domain.PropertyBank,
-	schemaName string,
-) (domain.Property, error) {
-	refProp, exists := bank.Properties[prop.Ref]
-	if !exists {
-		return domain.Property{}, lithoserrors.NewSchemaErrorWithRemediation(
-			fmt.Sprintf(
-				"property %s: $ref '%s' not found in property bank",
-				prop.Name,
-				prop.Ref,
-			),
-			schemaName,
-			fmt.Sprintf(
-				"add property '%s' to property bank or fix reference",
-				prop.Ref,
-			),
-			nil,
-		)
-	}
-
-	// Create new property with substituted definition
-	// Keep original name but use ref's spec
-	return domain.Property{
-		Name:     prop.Name,
-		Required: prop.Required,
-		Array:    prop.Array,
-		Spec:     refProp.Spec,
-		Ref:      "", // Clear ref after substitution
-	}, nil
+	// All PropertyRefs have been hydrated in resolveProperties
+	// Just return the properties as-is
+	return props, nil
 }

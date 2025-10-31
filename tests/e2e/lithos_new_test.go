@@ -10,19 +10,20 @@ import (
 	"testing"
 	"time"
 
+	testutils "github.com/JackMatanky/lithos/tests/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // TestLithosNew_StaticTemplate tests lithos new with static template.
 func TestLithosNew_StaticTemplate(t *testing.T) {
-	// Setup: Create temp vault
-	tempDir, err := os.MkdirTemp("", "lithos-e2e-*")
-	require.NoError(t, err)
-	defer func() { _ = os.RemoveAll(tempDir) }()
+	// Setup workspace
+	ws := testutils.NewWorkspace(t)
+	tempDir := ws.Root()
 
-	templatesDir := filepath.Join(tempDir, "templates")
-	require.NoError(t, os.MkdirAll(templatesDir, 0o750))
+	ws.MkdirAll("templates", 0o750)
+	ws.MkdirAll("schemas", 0o750)
+	ws.MkdirAll(".cache", 0o750)
 
 	// Create vault config
 	configContent := fmt.Sprintf(`{
@@ -32,21 +33,26 @@ func TestLithosNew_StaticTemplate(t *testing.T) {
   "cache_dir": ".cache",
   "log_level": "info"
 }`, tempDir)
-	configPath := filepath.Join(tempDir, "lithos.json")
-	require.NoError(t, os.WriteFile(configPath, []byte(configContent), 0o600))
-
-	// Create cache and schemas directories
-	cacheDir := filepath.Join(tempDir, ".cache")
-	require.NoError(t, os.MkdirAll(cacheDir, 0o750))
-	schemasDir := filepath.Join(tempDir, "schemas")
-	require.NoError(t, os.MkdirAll(schemasDir, 0o750))
+	ws.WriteFile("lithos.json", []byte(configContent), 0o600)
 
 	// Copy test template
-	testDataPath := filepath.Join("..", "..", "testdata")
-	templatePath := filepath.Join("templates", "static-template.md")
-	srcTemplate := filepath.Join(testDataPath, templatePath)
-	dstTemplate := filepath.Join(templatesDir, "static-template.md")
-	copyFile(t, srcTemplate, dstTemplate)
+	testutils.CopyFromTestdata(
+		t,
+		ws,
+		filepath.Join("templates", "static_template.md"),
+		"templates",
+		"static_template.md",
+	)
+	dstTemplate := ws.Path("templates", "static_template.md")
+
+	// Copy required property bank
+	testutils.CopyFromTestdata(
+		t,
+		ws,
+		filepath.Join("schemas", "property_bank.json"),
+		"schemas",
+		"property_bank.json",
+	)
 
 	// Verify template file exists
 	require.FileExists(t, dstTemplate)
@@ -64,12 +70,12 @@ func TestLithosNew_StaticTemplate(t *testing.T) {
 	)
 	require.NoError(t, cmd.Run())
 
-	// Execute: lithos new static-template
+	// Execute: lithos new static_template
 	cmd = exec.CommandContext(
 		context.Background(),
 		binaryPath,
 		"new",
-		"static-template",
+		"static_template",
 	)
 	cmd.Dir = tempDir
 	cmd.Env = append(os.Environ(), fmt.Sprintf("LITHOS_VAULT_PATH=%s", tempDir))
@@ -77,7 +83,7 @@ func TestLithosNew_StaticTemplate(t *testing.T) {
 	require.NoError(t, err, "command output: %s", output)
 
 	// Verify: File exists
-	notePath := filepath.Join(tempDir, "static-template.md")
+	notePath := ws.Path("static_template.md")
 	require.FileExists(t, notePath)
 
 	// Verify: Content matches expected
@@ -90,20 +96,29 @@ func TestLithosNew_StaticTemplate(t *testing.T) {
 
 // TestLithosNew_BasicNote tests lithos new with basic note template.
 func TestLithosNew_BasicNote(t *testing.T) {
-	// Setup: Create temp vault
-	tempDir, err := os.MkdirTemp("", "lithos-e2e-*")
-	require.NoError(t, err)
-	defer func() { _ = os.RemoveAll(tempDir) }()
+	ws := testutils.NewWorkspace(t)
+	tempDir := ws.Root()
 
-	templatesDir := filepath.Join(tempDir, "templates")
-	require.NoError(t, os.MkdirAll(templatesDir, 0o750))
+	ws.MkdirAll("templates", 0o750)
+	ws.MkdirAll("schemas", 0o750)
 
 	// Copy test template
-	testDataPath2 := filepath.Join("..", "..", "testdata")
-	templatePath2 := filepath.Join("templates", "basic-note.md")
-	srcTemplate := filepath.Join(testDataPath2, templatePath2)
-	dstTemplate := filepath.Join(templatesDir, "basic-note.md")
-	copyFile(t, srcTemplate, dstTemplate)
+	testutils.CopyFromTestdata(
+		t,
+		ws,
+		filepath.Join("templates", "basic_note.md"),
+		"templates",
+		"basic_note.md",
+	)
+
+	// Copy required property bank
+	testutils.CopyFromTestdata(
+		t,
+		ws,
+		filepath.Join("schemas", "property_bank.json"),
+		"schemas",
+		"property_bank.json",
+	)
 
 	// Build binary
 	binaryPath := filepath.Join(tempDir, "lithos")
@@ -118,12 +133,12 @@ func TestLithosNew_BasicNote(t *testing.T) {
 	)
 	require.NoError(t, cmd.Run())
 
-	// Execute: lithos new basic-note
+	// Execute: lithos new basic_note
 	cmd = exec.CommandContext(
 		context.Background(),
 		binaryPath,
 		"new",
-		"basic-note",
+		"basic_note",
 	)
 	cmd.Dir = tempDir
 	cmd.Env = append(os.Environ(), fmt.Sprintf("LITHOS_VAULT_PATH=%s", tempDir))
@@ -131,7 +146,7 @@ func TestLithosNew_BasicNote(t *testing.T) {
 	require.NoError(t, err, "command output: %s", output)
 
 	// Verify: File exists
-	notePath := filepath.Join(tempDir, "basic-note.md")
+	notePath := ws.Path("basic_note.md")
 	require.FileExists(t, notePath)
 
 	// Verify: Content contains template functions
@@ -158,14 +173,11 @@ func TestLithosNew_BasicNote(t *testing.T) {
 
 // TestLithosNew_TemplateNotFound tests error when template not found.
 func TestLithosNew_TemplateNotFound(t *testing.T) {
-	// Setup: Create temp vault with no templates
-	tempDir, err := os.MkdirTemp("", "lithos-e2e-*")
-	require.NoError(t, err)
-	defer func() { _ = os.RemoveAll(tempDir) }()
+	ws := testutils.NewWorkspace(t)
+	tempDir := ws.Root()
 
 	// Ensure templates directory exists but is empty
-	templatesDir := filepath.Join(tempDir, "templates")
-	require.NoError(t, os.MkdirAll(templatesDir, 0o750))
+	ws.MkdirAll("templates", 0o750)
 
 	// Build binary
 	binaryPath := filepath.Join(tempDir, "lithos")
@@ -189,7 +201,7 @@ func TestLithosNew_TemplateNotFound(t *testing.T) {
 	)
 	cmd.Dir = tempDir
 	cmd.Env = append(os.Environ(), fmt.Sprintf("LITHOS_VAULT_PATH=%s", tempDir))
-	err = cmd.Run()
+	err := cmd.Run()
 
 	// Verify: Command fails with exit code 1
 	require.Error(t, err)
@@ -201,10 +213,25 @@ func TestLithosNew_TemplateNotFound(t *testing.T) {
 
 // TestLithosVersion tests the lithos version command.
 func TestLithosVersion(t *testing.T) {
-	// Setup: Create temp directory for binary
-	tempDir, err := os.MkdirTemp("", "lithos-e2e-*")
-	require.NoError(t, err)
-	defer func() { _ = os.RemoveAll(tempDir) }()
+	ws := testutils.NewWorkspace(t)
+	tempDir := ws.Root()
+
+	// Setup minimal vault structure with property bank and a schema
+	ws.MkdirAll("schemas", 0o750)
+	testutils.CopyFromTestdata(
+		t,
+		ws,
+		filepath.Join("schemas", "property_bank.json"),
+		"schemas",
+		"property_bank.json",
+	)
+	testutils.CopyFromTestdata(
+		t,
+		ws,
+		filepath.Join("schemas", "base_note.json"),
+		"schemas",
+		"base_note.json",
+	)
 
 	// Build binary
 	binaryPath := filepath.Join(tempDir, "lithos")
@@ -221,26 +248,15 @@ func TestLithosVersion(t *testing.T) {
 
 	// Execute: lithos version
 	cmd = exec.CommandContext(context.Background(), binaryPath, "version")
+	cmd.Dir = tempDir
+	cmd.Env = append(os.Environ(), fmt.Sprintf("LITHOS_VAULT_PATH=%s", tempDir))
+	cmd.Env = append(cmd.Env,
+		fmt.Sprintf("LITHOS_SCHEMAS_DIR=%s", ws.Path("schemas")),
+	)
 	output, err := cmd.CombinedOutput()
-	require.NoError(t, err)
+	require.NoError(t, err, "command output: %s", output)
 
 	// Verify: Output contains version
 	outputStr := string(output)
 	assert.Contains(t, outputStr, "lithos v0.1.0")
-}
-
-// copyFile is a helper function to copy files during test setup.
-func copyFile(t *testing.T, src, dst string) {
-	t.Helper()
-
-	srcFile, err := os.Open(src)
-	require.NoError(t, err)
-	defer func() { _ = srcFile.Close() }()
-
-	dstFile, err := os.Create(dst)
-	require.NoError(t, err)
-	defer func() { _ = dstFile.Close() }()
-
-	_, err = dstFile.ReadFrom(srcFile)
-	require.NoError(t, err)
 }

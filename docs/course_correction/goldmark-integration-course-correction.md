@@ -297,6 +297,54 @@ This library could simplify and improve:
 - **Post-Implementation:** Update coding standards and best practices
 - **Future:** Add goldmark usage guidelines for team reference
 
+## Frontmatter Extension Integration Enhancement
+
+### Extension Discovery
+During the goldmark integration analysis, the `abhinav/goldmark-frontmatter` extension was discovered, providing specialized frontmatter parsing capabilities that significantly simplify the FrontmatterService implementation.
+
+### Extension Capabilities
+The extension offers:
+- **YAML and TOML frontmatter support** out of the box
+- **Type-safe API** for structured data extraction
+- **AST-based parsing** for reliable frontmatter detection
+- **Extensibility** for custom frontmatter formats
+- **Production maturity** with comprehensive testing
+
+### Integration Impact
+This extension enhances the goldmark integration by:
+- Replacing custom frontmatter logic with mature, tested implementation
+- Providing type-safe data extraction for frontmatter content
+- Supporting both YAML and TOML frontmatter formats
+- Eliminating edge case handling for frontmatter parsing
+- Maintaining full compatibility with goldmark's AST approach
+
+### Updated Implementation Approach
+
+#### Story 3.5 Enhancement (FrontmatterService) - UPDATED
+- **Current Status:** Ready for Implementation
+- **Enhancement:** Integrate goldmark with abhinav/goldmark-frontmatter extension for AST-based frontmatter extraction
+- **Scope:** Use extension's type-safe API for robust frontmatter parsing instead of custom delimiter detection
+- **Additional Acceptance Criteria:**
+  - abhinav/goldmark-frontmatter v0.2.0 added to go.mod with proper import
+  - FrontmatterService uses extension's type-safe API for frontmatter extraction
+  - Support for both YAML and TOML frontmatter formats verified
+  - Enhanced robustness for edge cases (code blocks containing frontmatter delimiters, etc.)
+  - Performance improvement verified (extension optimized for goldmark)
+  - Backward compatibility maintained with existing markdown files
+
+#### Updated Tech Stack
+- **File:** `docs/architecture/tech-stack.md`
+- **Updated Changes:**
+  - Add goldmark entry: `github.com/yuin/goldmark v1.7.4`
+  - Add abhinav/goldmark-frontmatter entry: `go.abhg.dev/goldmark/frontmatter v0.2.0`
+  - Include rationale: "Specialized goldmark extension for robust YAML/TOML frontmatter parsing with type-safe API"
+
+#### Updated Component Descriptions
+- **File:** `docs/architecture/components.md`
+- **Updated Changes:**
+  - **FrontmatterService:** Update description to use goldmark-frontmatter extension for AST-based parsing with type-safe data extraction
+  - Add note about YAML/TOML frontmatter format support
+
 ## Approval and Next Steps
 
 ### Approval Required
@@ -309,8 +357,8 @@ This Sprint Change Proposal requires approval from:
 ### Next Steps After Approval
 1. **Architect Review:** Winston to provide technical approval within 24 hours
 2. **Story Updates:** Sarah to coordinate story modifications
-3. **Sprint Planning:** Include goldmark integration in next sprint backlog
-4. **Implementation Kickoff:** James to begin goldmark integration
+3. **Sprint Planning:** Include goldmark and frontmatter extension integration in next sprint backlog
+4. **Implementation Kickoff:** James to begin goldmark and extension integration
 5. **Monitoring Setup:** Quinn to establish performance baselines
 
 ### Escalation Path
@@ -327,5 +375,6 @@ If approval is not granted within 48 hours, escalate to:
 **Implementation Start Date:** Immediate
 
 **Change Log:**
+- v1.2 (Oct 30, 2025): Added frontmatter extension integration enhancement based on abhinav/goldmark-frontmatter discovery
 - v1.1 (Oct 30, 2025): Updated with approval and caveat - stories from completed epics will not be modified; new stories will be created instead
 - v1.0 (Oct 30, 2025): Initial course correction proposal created based on goldmark discovery

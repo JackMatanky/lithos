@@ -79,7 +79,7 @@ func TestPropertyValidate(t *testing.T) {
 		assert.Contains(
 			t,
 			err.Error(),
-			"property must have either $ref or spec",
+			"property spec cannot be nil",
 		)
 	})
 

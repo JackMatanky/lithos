@@ -1,15 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:pkg.go.dev)",
-      "Bash(go build:*)",
-      "Bash(golines:*)",
-      "Bash(gofmt:*)",
-      "Bash(go tool cover:*)",
-      "Bash(for f in *.md)",
-      "Bash(do grep -q \"| 2025-10-28 | 1.1 |\" \"$f\")",
-      "Bash(echo:*)",
-      "Bash(done)"
+      "Bash(go mod vendor:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go env:*)"
     ],
     "deny": [],
     "ask": []

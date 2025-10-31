@@ -98,13 +98,15 @@ type TestDataPaths struct {
 - **Test Data Location:** `testdata/` directory with organized subdirectories
 - **Data Organization:**
   - **Fixtures:** `testdata/` with immutable test data organized by type
-    - `templates/`: Template files for testing (static-template.md, integration-test-template.txt, etc.)
-    - `schema/`: JSON schema test files organized by validity (valid/, invalid/, properties/)
-    - `notes/`: Sample note files for testing
-  - **Golden Files:** `testdata/golden/` for expected output comparisons (static-template-expected.md, etc.)
-  - **Schema Data:** `testdata/schema/` with validity-based organization for validation test cases
+    - `templates/`: Template files for testing (`static_template.md`, `basic_note.md`, `integration_test_template.txt`, etc.)
+    - `schemas/`: JSON schema fixtures organised into `valid/`, `invalid/`, `duplicate/`, and `properties/` subdirectories
+    - `vault/`: Configuration samples such as `lithos.json`
+    - `golden/`: Expected output artefacts kept separate from template inputs
+    - Top-level snake_case fixtures retained for backward compatibility (e.g., `basic_note.md`)
+  - **Golden Files:** `testdata/golden/` for expected output comparisons (`static_template_expected.md`, etc.)
+  - **Schema Data:** Canonically served from `testdata/schemas/`
 - **Data Loading:** Centralized loading utilities via `tests/utils/testdata.go`
-  - Runtime path resolution using `runtime.Caller()` for reliable path discovery
+  - Path resolution via `tests/utils/testdata.go` helpers for reliable discovery and naming validation
   - Immutable fixture handling with copy-to-temp patterns for safe mutation testing
 - **Factories:** `NewTestDataPaths()` provides structured access to test data categories
 - **Cleanup:** `t.Cleanup()` and `t.TempDir()` for automatic temporary file management

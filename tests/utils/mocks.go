@@ -3,9 +3,6 @@ package utils
 
 import (
 	"context"
-	"io"
-	"os"
-	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/api"
@@ -158,30 +155,4 @@ func (m *MockTemplatePort) Load(
 		)
 	}
 	return tmpl, nil
-}
-
-// CopyFile copies a file from src to dst. Used in e2e tests.
-func CopyFile(t *testing.T, src, dst string) {
-	t.Helper()
-
-	srcFile, err := os.Open( //nolint:gosec // Controlled by test code, not user input
-		src,
-	)
-	if err != nil {
-		t.Fatalf("Failed to open source file %s: %v", src, err)
-	}
-	defer func() { _ = srcFile.Close() }()
-
-	dstFile, err := os.Create( //nolint:gosec // Controlled by test code, not user input
-		dst,
-	)
-	if err != nil {
-		t.Fatalf("Failed to create destination file %s: %v", dst, err)
-	}
-	defer func() { _ = dstFile.Close() }()
-
-	_, err = io.Copy(dstFile, srcFile)
-	if err != nil {
-		t.Fatalf("Failed to copy from %s to %s: %v", src, dst, err)
-	}
 }
