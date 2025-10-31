@@ -71,13 +71,61 @@ so that CommandOrchestrator and the indexer can persist notes with atomic guaran
 
 ---
 
-## Story 3.5 FrontmatterService
+## Story 3.5 VaultIndexer Service
+
+As a developer,
+I want VaultIndexer to orchestrate the indexing workflow,
+so that the cache and in-memory indices stay consistent with the vault.
+
+**Prerequisites:** Stories 3.1–3.4.
+
+### Acceptance Criteria
+1. `internal/app/vault/indexer.go` implements `Indexer.Build` following the steps in `docs/architecture/components.md#vaultindexer` (vault scan → note creation → cache persist) and respects FR9. Frontmatter extraction and validation is handled by FrontmatterService in Story 3.7.
+
+2. `IndexStats` records counts for scanned files, processed notes, cache failures, and total duration; logging uses zerolog per coding standards and feeds NFR3 metrics.
+
+3. Indexer handles cache write failures by logging warnings without aborting the build.
+
+4. Basic file scanning creates Note objects with file metadata (path, size, modification time) for indexing foundation.
+
+5. Indexer focuses solely on vault structure and file discovery, delegating content processing to specialized services.
+
+6. IndexStats tracks scanning metrics (files found, processing time) for performance monitoring.
+
+7. Unit tests with fakes verify call order, error handling for cache operations, stats accuracy, and file scanning logic.
+
+8. `golangci-lint run ./internal/app/vault` and `go test ./internal/app/vault` succeed.
+
+---
+
+## Story 3.6 QueryService
+
+As a developer,
+I want QueryService to expose the lookup methods described in the architecture,
+so that templates and validators can retrieve indexed notes efficiently.
+
+**Prerequisites:** Stories 3.1–3.5.
+
+### Acceptance Criteria
+1. `internal/app/query/service.go` implements `ByID`, `ByPath`, `ByFileClass`, `ByFrontmatter`, and `RefreshFromCache` exactly as described in `docs/architecture/components.md#queryservice`, using in-memory indices with `sync.RWMutex`.
+
+2. Query methods satisfy FR9 by supporting lookups by path, basename, and schema-defined keys; helpers return errors consistent with `error-handling-strategy.md`.
+
+3. Service exposes instrumentation hooks or logging recommended in the architecture appendix for query debugging.
+
+4. Unit tests cover index population, each query method, cache refresh, concurrent reads, and error paths when entries are missing.
+
+5. `golangci-lint run ./internal/app/query` and `go test ./internal/app/query` succeed.
+
+---
+
+## Story 3.7 FrontmatterService
 
 As a developer,
 I want FrontmatterService to extract and validate frontmatter exactly as described,
 so that the indexer produces canonical Note objects.
 
-**Prerequisites:** Stories 2.4–2.8 (schema runtime) and Stories 3.1–3.4.
+**Prerequisites:** Stories 2.4–2.8 (schema runtime) and Stories 3.1–3.6.
 
 ### Acceptance Criteria
 1. `internal/app/frontmatter/service.go` implements `Extract` and `Validate` exactly as described in `docs/architecture/components.md#frontmatterservice`, using `goccy/go-yaml` and SchemaRegistryPort/QueryService dependencies.
@@ -85,43 +133,6 @@ so that the indexer produces canonical Note objects.
 3. Service returns structured `FrontmatterError` instances per `error-handling-strategy.md`, preserving unknown fields as required.
 4. Unit tests cover extraction edge cases, missing required fields, type mismatches, file reference resolution, and error message content.
 5. `golangci-lint run ./internal/app/frontmatter` and `go test ./internal/app/frontmatter` succeed.
-
----
-
-## Story 3.6 VaultIndexer Service
-
-As a developer,
-I want VaultIndexer to orchestrate the indexing workflow,
-so that the cache and in-memory indices stay consistent with the vault.
-
-**Prerequisites:** Stories 3.1–3.5.
-
-### Acceptance Criteria
-1. `internal/app/vault/indexer.go` implements `Indexer.Build` following the steps in `docs/architecture/components.md#vaultindexer` (vault scan → frontmatter extract/validate → note creation → cache persist → query index update) and respects FR9.
-2. `IndexStats` records counts for scanned notes, indexed notes, validation failures, cache failures, and total duration; logging uses zerolog per coding standards and feeds NFR3 metrics.
-3. Indexer updates QueryService indices via the package-private hooks defined in the architecture and handles cache write failures by logging warnings without aborting the build.
-4. Goldmark v1.7.4 integrated for heading extraction during vault scanning, providing foundation for future navigation features.
-5. Heading extraction uses goldmark AST parsing for reliable heading detection and level identification.
-6. IndexStats extended to include heading extraction metrics (headings found, processing time).
-7. Unit tests with fakes verify call order, error handling for validation and cache operations, stats accuracy, and goldmark heading extraction.
-8. `golangci-lint run ./internal/app/vault` and `go test ./internal/app/vault` succeed.
-
----
-
-## Story 3.7 QueryService
-
-As a developer,
-I want QueryService to expose the lookup methods described in the architecture,
-so that templates and validators can retrieve indexed notes efficiently.
-
-**Prerequisites:** Stories 3.1–3.6.
-
-### Acceptance Criteria
-1. `internal/app/query/service.go` implements `ByID`, `ByPath`, `ByFileClass`, `ByFrontmatter`, and `RefreshFromCache` exactly as described in `docs/architecture/components.md#queryservice`, using in-memory indices with `sync.RWMutex`.
-2. Query methods satisfy FR9 by supporting lookups by path, basename, and schema-defined keys; helpers return errors consistent with `error-handling-strategy.md`.
-3. Service exposes instrumentation hooks or logging recommended in the architecture appendix for query debugging.
-4. Unit tests cover index population, each query method, cache refresh, concurrent reads, and error paths when entries are missing.
-5. `golangci-lint run ./internal/app/query` and `go test ./internal/app/query` succeed.
 
 ---
 

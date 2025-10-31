@@ -1371,7 +1371,7 @@ func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID
 4. **SPI Adapters:**
    - Split JSONCache adapters
    - Added: SchemaLoaderAdapter, TemplateLoaderAdapter
-   - Added: PromptUIAdapter, FuzzyfindAdapter
+   - Added: PromptUIAdapter, FuzzyFinderAdapter
    - Added: ViperAdapter, SchemaRegistryAdapter
    - Updated: CobraCLIAdapter
 
