@@ -2,53 +2,23 @@ package domain
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 )
 
-// Property kind constants describe whether an IProperty is a concrete
-// definition or a reference to the property bank.
-const (
-	// PropertyKindDefinition marks an inline property definition.
-	PropertyKindDefinition PropertyType = "definition"
-	// PropertyKindReference marks a property reference into the property bank.
-	PropertyKindReference PropertyType = "reference"
-)
-
-// PropertyType identifies the concrete type of an IProperty implementation.
-type PropertyType string
-
-// IProperty is the common interface for Property and PropertyRef.
-// It defines the contract for property validation, name access, and type
-// identification.
-type IProperty interface {
-	GetName() string
-	Type() PropertyType
-	Validate(ctx context.Context) error
-}
-
-// PropertyRef represents a reference to a property defined in the PropertyBank.
-// It allows schemas to reuse common property definitions by referencing them.
-//
-// PropertyRef is resolved during schema resolution to obtain the full property
-// definition from the PropertyBank.
-//
-// Reference: docs/architecture/data-models.md#property.
-type PropertyRef struct {
-	// Name is the property identifier as it appears in frontmatter
-	// (case-sensitive).
-	Name string `json:"name"`
-
-	// Ref is the property identifier in the PropertyBank.
-	// This is normalized from JSON pointer format (e.g., "#/properties/foo")
-	// to simple identifiers (e.g., "foo").
-	Ref string `json:"$ref"`
-}
-
-// Property represents a schema property definition with validation constraints.
+// Property represents a DDD entity for schema property definitions with
+// validation constraints.
 // It defines how a frontmatter field should be validated in notes.
+// As a DDD entity, Property has identity determined by its ID field.
 //
 // Reference: docs/architecture/data-models.md#property.
 type Property struct {
+	// ID is the unique identifier for this property entity, generated from
+	// hash of (Name + Spec content) to ensure deterministic identity.
+	ID string `json:"id"`
+
 	// Name is the property identifier matching frontmatter key
 	// (case-sensitive).
 	Name string `json:"name"`
@@ -64,36 +34,48 @@ type Property struct {
 	Spec PropertySpec `json:"spec"`
 }
 
-// GetName returns the property name for PropertyRef.
-func (p PropertyRef) GetName() string {
-	return p.Name
-}
+// NewProperty creates a new Property entity with auto-generated ID.
+// The ID is generated using hash of (Name + Spec content) for deterministic
+// identity.
+// Returns error if the property definition is invalid.
+func NewProperty(
+	name string,
+	required, array bool,
+	spec PropertySpec,
+) (*Property, error) {
+	// Generate deterministic ID from name and spec content
+	id := generatePropertyID(name, spec)
 
-// Type returns the kind identifier for PropertyRef.
-func (p PropertyRef) Type() PropertyType {
-	return PropertyKindReference
-}
-
-// Validate performs structural validation of the PropertyRef.
-// It checks that both Name and Ref are non-empty.
-func (p PropertyRef) Validate(ctx context.Context) error {
-	if err := validatePropertyName(p.Name); err != nil {
-		return err
+	property := Property{
+		ID:       id,
+		Name:     name,
+		Required: required,
+		Array:    array,
+		Spec:     spec,
 	}
-	if p.Ref == "" {
-		return fmt.Errorf("property reference must have non-empty $ref")
+
+	// Validate the property
+	if err := property.Validate(context.Background()); err != nil {
+		return nil, err
 	}
-	return nil
+
+	return &property, nil
 }
 
-// GetName returns the property name for Property.
-func (p Property) GetName() string {
-	return p.Name
-}
+// generatePropertyID creates a deterministic hash-based ID from property name
+// and full spec content for maximum uniqueness.
+func generatePropertyID(name string, spec PropertySpec) string {
+	// Serialize the full spec to JSON for comprehensive content hashing
+	specJSON, err := json.Marshal(spec)
+	if err != nil {
+		// Fallback to type-only if serialization fails (shouldn't happen)
+		specJSON = []byte(fmt.Sprintf(`{"type":%q}`, spec.Type()))
+	}
 
-// Type returns the kind identifier for Property.
-func (p Property) Type() PropertyType {
-	return PropertyKindDefinition
+	// Include name and full spec content
+	content := fmt.Sprintf("%s|%s", name, string(specJSON))
+	hash := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(hash[:])
 }
 
 // Validate performs structural validation of the Property definition.

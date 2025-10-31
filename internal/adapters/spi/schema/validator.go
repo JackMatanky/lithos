@@ -70,7 +70,7 @@ func (v *SchemaValidator) ValidateAll(
 	errs = append(errs, modelErrs...)
 
 	// 2. Cross-schema validation
-	crossErrs := v.validateCrossSchema(ctx, schemas, bank)
+	crossErrs := v.validateCrossSchema(ctx, schemas)
 	errs = append(errs, crossErrs...)
 
 	// 3. Aggregate all errors
@@ -108,7 +108,6 @@ func (v *SchemaValidator) validateModels(
 func (v *SchemaValidator) validateCrossSchema(
 	ctx context.Context,
 	schemas []domain.Schema,
-	bank domain.PropertyBank,
 ) []error {
 	var errs []error
 
@@ -123,8 +122,8 @@ func (v *SchemaValidator) validateCrossSchema(
 	uniqueErrs := v.validateUniqueSchemaNames(schemas)
 	errs = append(errs, uniqueErrs...)
 
-	// Check $ref references against PropertyBank
-	refErrs := v.validatePropertyRefs(ctx, schemas, bank)
+	// Check property references (basic validation)
+	refErrs := v.validatePropertyRefs(ctx, schemas)
 	errs = append(errs, refErrs...)
 
 	return errs
@@ -183,35 +182,15 @@ func (v *SchemaValidator) validateUniqueSchemaNames(
 	return errs
 }
 
-// validatePropertyRefs checks that all PropertyRef instances reference existing
-// PropertyBank entries.
+// validatePropertyRefs checks that property references in schemas are valid.
+// Since $ref resolution now happens in the DTO layer and all properties are
+// concrete Property entities created via NewProperty (which validates them),
+// this method is now a no-op for future extensibility.
 func (v *SchemaValidator) validatePropertyRefs(
 	ctx context.Context,
 	schemas []domain.Schema,
-	bank domain.PropertyBank,
 ) []error {
-	var errs []error
-
-	for _, schema := range schemas {
-		// Check for cancellation
-		if err := ctx.Err(); err != nil {
-			return []error{err}
-		}
-
-		for _, prop := range schema.Properties {
-			// Type assert to check if this is a PropertyRef
-			if propRef, ok := prop.(domain.PropertyRef); ok {
-				if _, exists := bank.Lookup(propRef.Ref); !exists {
-					errs = append(errs, fmt.Errorf(
-						"schema %s, property %s: $ref '%s' not found in property bank",
-						schema.Name,
-						propRef.Name,
-						propRef.Ref,
-					))
-				}
-			}
-		}
-	}
-
-	return errs
+	// All property validation now happens during Property construction
+	// in the DTO layer. No additional validation needed here.
+	return nil
 }

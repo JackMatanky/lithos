@@ -51,9 +51,8 @@ type Schema struct {
 	// For inherited schemas: represents delta/override properties
 	// For root schemas: represents the complete property set
 	// Property names must be unique within the schema
-	// Before resolution: may contain both Property and PropertyRef
-	// After resolution: all PropertyRefs are replaced with full Properties
-	Properties []IProperty `json:"properties" yaml:"properties"`
+	// Contains only Property entities (no PropertyRef in domain layer)
+	Properties []Property `json:"properties" yaml:"properties"`
 
 	// ResolvedProperties contains the flattened property set after inheritance
 	// resolution and $ref substitution. Populated by SchemaResolver.
@@ -73,14 +72,14 @@ type Schema struct {
 func NewSchema(
 	name, extends string,
 	excludes []string,
-	properties []IProperty,
+	properties []Property,
 ) (*Schema, error) {
 	// Defensive copy of excludes slice
 	excludesCopy := make([]string, len(excludes))
 	copy(excludesCopy, excludes)
 
 	// Defensive copy of properties slice
-	propertiesCopy := make([]IProperty, len(properties))
+	propertiesCopy := make([]Property, len(properties))
 	copy(propertiesCopy, properties)
 
 	schema := Schema{
@@ -173,16 +172,16 @@ func (s *Schema) validateProperties(ctx context.Context) error {
 		}
 
 		// Check for duplicate property name
-		if err := s.validateUniquePropertyName(prop.GetName(), seen); err != nil {
+		if err := s.validateUniquePropertyName(prop.Name, seen); err != nil {
 			errs = append(errs, err)
 			continue
 		}
 
-		// Validate the property (works for both Property and PropertyRef)
+		// Validate the property
 		if err := prop.Validate(ctx); err != nil {
 			errs = append(
 				errs,
-				fmt.Errorf("property %s: %w", prop.GetName(), err),
+				fmt.Errorf("property %s: %w", prop.Name, err),
 			)
 		}
 	}
@@ -195,8 +194,7 @@ func (s *Schema) validateProperties(ctx context.Context) error {
 }
 
 // validateUniquePropertyName checks if a property name is duplicate and marks
-// it as
-// seen.
+// it as seen.
 func (s *Schema) validateUniquePropertyName(
 	name string,
 	seen map[string]bool,

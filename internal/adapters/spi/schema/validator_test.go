@@ -23,17 +23,17 @@ func TestSchemaValidator_ValidateAll_Success(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "base",
-			Properties: []domain.IProperty{
-				domain.Property{Name: "title", Spec: domain.StringSpec{}},
-				domain.Property{Name: "tags", Spec: domain.StringSpec{}},
+			Properties: []domain.Property{
+				{Name: "title", Spec: domain.StringSpec{}},
+				{Name: "tags", Spec: domain.StringSpec{}},
 			},
 		},
 		{
 			Name:    "meeting_note",
 			Extends: "base",
-			Properties: []domain.IProperty{
-				domain.PropertyRef{Name: "title", Ref: "standard_title"},
-				domain.PropertyRef{Name: "tags", Ref: "standard_tags"},
+			Properties: []domain.Property{
+				{Name: "title", Spec: domain.StringSpec{}},
+				{Name: "tags", Spec: domain.StringSpec{}},
 			},
 		},
 	}
@@ -48,7 +48,7 @@ func TestSchemaValidator_ValidateAll_EmptyNameError(t *testing.T) {
 	validator := NewSchemaValidator()
 
 	schemas := []domain.Schema{
-		{Name: "", Properties: []domain.IProperty{}},
+		{Name: "", Properties: []domain.Property{}},
 	}
 
 	err := validator.ValidateAll(
@@ -68,8 +68,8 @@ func TestSchemaValidator_ValidateAll_InvalidPropertySpec(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "test",
-			Properties: []domain.IProperty{
-				domain.Property{
+			Properties: []domain.Property{
+				{
 					Name: "",
 					Spec: domain.StringSpec{},
 				}, // Invalid property name
@@ -126,16 +126,19 @@ func TestSchemaValidator_ValidateAll_DuplicateNames(t *testing.T) {
 	assert.Contains(t, err.Error(), "duplicate schema name")
 }
 
-// TestSchemaValidator_ValidateAll_MissingRef tests property $ref missing from
-// PropertyBank.
-func TestSchemaValidator_ValidateAll_MissingRef(t *testing.T) {
+// TestSchemaValidator_ValidateAll_EmptyPropertyName tests property validation
+// for empty property names.
+func TestSchemaValidator_ValidateAll_EmptyPropertyName(t *testing.T) {
 	validator := NewSchemaValidator()
 
 	schemas := []domain.Schema{
 		{
 			Name: "note",
-			Properties: []domain.IProperty{
-				domain.PropertyRef{Name: "title", Ref: "standard_title"},
+			Properties: []domain.Property{
+				{
+					Name: "",
+					Spec: domain.StringSpec{},
+				}, // Empty name should trigger error
 			},
 		},
 	}
@@ -147,8 +150,8 @@ func TestSchemaValidator_ValidateAll_MissingRef(t *testing.T) {
 	)
 
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "standard_title")
-	assert.Contains(t, err.Error(), "$ref")
+	assert.Contains(t, err.Error(), "property name cannot be empty")
+	assert.Contains(t, err.Error(), "note")
 }
 
 // TestSchemaValidator_ValidateAll_EmptySchemas tests validator handles empty
@@ -238,8 +241,8 @@ func TestSchemaValidator_ValidateAll_NoMutation(t *testing.T) {
 	originalSchemas := []domain.Schema{
 		{
 			Name: "test",
-			Properties: []domain.IProperty{
-				domain.Property{Name: "prop", Spec: domain.StringSpec{}},
+			Properties: []domain.Property{
+				{Name: "prop", Spec: domain.StringSpec{}},
 			},
 		},
 	}
@@ -276,8 +279,8 @@ func TestSchemaValidator_ValidateAll_GodocExample(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "note",
-			Properties: []domain.IProperty{
-				domain.PropertyRef{Name: "title", Ref: "title"},
+			Properties: []domain.Property{
+				{Name: "title", Spec: domain.StringSpec{}},
 			},
 		},
 	}
@@ -313,16 +316,16 @@ func TestSchemaValidator_ValidateAll_ExtendsChain(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "base",
-			Properties: []domain.IProperty{
-				domain.Property{Name: "title", Spec: domain.StringSpec{}},
+			Properties: []domain.Property{
+				{Name: "title", Spec: domain.StringSpec{}},
 			},
 		},
-		{Name: "middle", Extends: "base", Properties: []domain.IProperty{}},
+		{Name: "middle", Extends: "base", Properties: []domain.Property{}},
 		{
 			Name:    "child",
 			Extends: "middle",
-			Properties: []domain.IProperty{
-				domain.PropertyRef{Name: "title", Ref: "title"},
+			Properties: []domain.Property{
+				{Name: "title", Spec: domain.StringSpec{}},
 			},
 		},
 	}
@@ -344,9 +347,9 @@ func TestSchemaValidator_ValidateAll_MultipleRefs(t *testing.T) {
 	schemas := []domain.Schema{
 		{
 			Name: "note",
-			Properties: []domain.IProperty{
-				domain.PropertyRef{Name: "title", Ref: "title"},
-				domain.PropertyRef{Name: "tags", Ref: "tags"},
+			Properties: []domain.Property{
+				{Name: "title", Spec: domain.StringSpec{}},
+				{Name: "tags", Spec: domain.StringSpec{}},
 			},
 		},
 	}

@@ -1,0 +1,477 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/JackMatanky/lithos/schemas/lithos-domain-schema.json",
+  "title": "Lithos Domain Models JSON Schema",
+  "description": "Comprehensive JSON schema for all Lithos domain models including Property, PropertySpec variants, Schema, PropertyBank, Note, and Template entities.",
+
+  "definitions": {
+    "NoteID": {
+      "type": "string",
+      "description": "Opaque domain identifier for notes. Could represent file path, UUID, or database key.",
+      "minLength": 1,
+      "examples": ["note-123", "/vault/notes/contact.md", "550e8400-e29b-41d4-a716-446655440000"]
+    },
+
+    "TemplateID": {
+      "type": "string",
+      "description": "Template name used for identification and composition. Typically basename of template file without extension.",
+      "pattern": "^[a-zA-Z0-9_-]+$",
+      "minLength": 1,
+      "examples": ["contact-header", "daily-note", "project-summary"]
+    },
+
+    "PropertySpecType": {
+      "type": "string",
+      "enum": ["string", "number", "bool", "date", "file"],
+      "description": "Property constraint type identifier"
+    },
+
+    "StringSpec": {
+      "type": "object",
+      "description": "String validation constraints with enum and pattern support",
+      "properties": {
+        "enum": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Allowed values as fixed list. If non-empty, value must be in list (exact match, case-sensitive).",
+          "examples": [["red", "green", "blue"], ["draft", "published", "archived"]]
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Regex pattern for custom validation. Uses Go regexp package syntax.",
+          "examples": ["^[A-Z][a-z]+$", "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "NumberSpec": {
+      "type": "object",
+      "description": "Numeric validation constraints with min/max bounds and step increments",
+      "properties": {
+        "min": {
+          "type": "number",
+          "description": "Minimum allowed value (inclusive). If set, value must be >= min."
+        },
+        "max": {
+          "type": "number",
+          "description": "Maximum allowed value (inclusive). If set, value must be <= max."
+        },
+        "step": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Increment/decrement amount. If 1.0, implies integer values. If 0.1, implies one decimal precision."
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "BoolSpec": {
+      "type": "object",
+      "description": "Boolean validation constraints. Marker type with no additional constraints.",
+      "additionalProperties": false
+    },
+
+    "DateSpec": {
+      "type": "object",
+      "description": "Date/time format constraints using Go time layout strings",
+      "properties": {
+        "format": {
+          "type": "string",
+          "description": "Go time layout string. Defaults to RFC3339 if empty.",
+          "examples": ["2006-01-02", "2006-01-02T15:04:05Z07:00", "Jan 2, 2006"]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "FileSpec": {
+      "type": "object",
+      "description": "File reference validation constraints with fileClass and directory filters",
+      "properties": {
+        "file_class": {
+          "type": "string",
+          "description": "Restricts valid file references to notes with specific fileClass value or regex pattern. Supports negation via ^ prefix.",
+          "examples": ["project", "^archive", "(project|task)"]
+        },
+        "directory": {
+          "type": "string",
+          "description": "Restricts valid file references to notes within specific vault directory path. Supports negation via ^ prefix.",
+          "examples": ["projects/", "^archive/", "work/.*"]
+        }
+      },
+      "additionalProperties": false
+    },
+
+    "PropertySpec": {
+      "oneOf": [
+        {
+          "allOf": [
+            {"$ref": "#/definitions/StringSpec"},
+            {
+              "properties": {
+                "type": {"const": "string"}
+              },
+              "required": ["type"]
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {"$ref": "#/definitions/NumberSpec"},
+            {
+              "properties": {
+                "type": {"const": "number"}
+              },
+              "required": ["type"]
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {"$ref": "#/definitions/BoolSpec"},
+            {
+              "properties": {
+                "type": {"const": "bool"}
+              },
+              "required": ["type"]
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {"$ref": "#/definitions/DateSpec"},
+            {
+              "properties": {
+                "type": {"const": "date"}
+              },
+              "required": ["type"]
+            }
+          ]
+        },
+        {
+          "allOf": [
+            {"$ref": "#/definitions/FileSpec"},
+            {
+              "properties": {
+                "type": {"const": "file"}
+              },
+              "required": ["type"]
+            }
+          ]
+        }
+      ],
+      "description": "Type-specific validation constraint definition. Each variant validates its own constraint structure."
+    },
+
+    "Property": {
+      "type": "object",
+      "description": "DDD entity for schema property definitions with validation constraints and identity",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for this property entity, generated from hash of (Name + Spec content)",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Property identifier matching frontmatter key (case-sensitive)",
+          "examples": ["title", "email", "tags", "created_date"]
+        },
+        "required": {
+          "type": "boolean",
+          "description": "Whether property must be present. Empty array satisfies required for array properties."
+        },
+        "array": {
+          "type": "boolean",
+          "description": "Whether property accepts multiple values (YAML list) vs single scalar value"
+        },
+        "spec": {
+          "$ref": "#/definitions/PropertySpec",
+          "description": "Type-specific validation constraints"
+        }
+      },
+      "required": ["id", "name", "required", "array", "spec"],
+      "additionalProperties": false
+    },
+
+    "PropertyRef": {
+      "type": "object",
+      "description": "Reference to PropertyBank entry using JSON pointer syntax",
+      "properties": {
+        "$ref": {
+          "type": "string",
+          "pattern": "^#/properties/[a-zA-Z0-9_-]+$",
+          "description": "JSON pointer reference to PropertyBank entry",
+          "examples": ["#/properties/standard_title", "#/properties/standard_tags"]
+        }
+      },
+      "required": ["$ref"],
+      "additionalProperties": false
+    },
+
+    "PropertyOrRef": {
+      "oneOf": [
+        {"$ref": "#/definitions/Property"},
+        {"$ref": "#/definitions/PropertyRef"}
+      ],
+      "description": "Property can be either inline definition or reference to PropertyBank"
+    },
+
+    "Schema": {
+      "type": "object",
+      "description": "Defines metadata structure with property constraints and inheritance. Governs validation rules for notes of a given fileClass.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Schema identifier matching fileClass frontmatter value",
+          "examples": ["contact", "project", "daily-note", "meeting_note"]
+        },
+        "extends": {
+          "type": "string",
+          "description": "Optional parent schema name for inheritance chains. Can form multi-level inheritance.",
+          "examples": ["base-note", "note"]
+        },
+        "excludes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Parent property names to exclude from inheritance. Only applicable when extends is not empty.",
+          "examples": [["internal_id", "legacy_field"]]
+        },
+        "properties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/PropertyOrRef"
+          },
+          "description": "Property definitions for this schema. For inherited schemas, represents delta/override."
+        },
+        "resolved_properties": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Property"
+          },
+          "description": "Flattened property set after inheritance resolution and $ref substitution. Populated by SchemaResolver."
+        }
+      },
+      "required": ["name", "properties"],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "excludes": {
+            "type": "array",
+            "minItems": 1
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "extends": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": ["extends"]
+      }
+    },
+
+    "PropertyBank": {
+      "type": "object",
+      "description": "Singleton registry of reusable Property definitions that schemas can reference via $ref",
+      "properties": {
+        "properties": {
+          "type": "object",
+          "patternProperties": {
+            "^[a-zA-Z0-9_-]+$": {
+              "$ref": "#/definitions/Property"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Named property definitions keyed by unique identifier"
+        }
+      },
+      "required": ["properties"],
+      "additionalProperties": false
+    },
+
+    "Frontmatter": {
+      "type": "object",
+      "description": "Note content metadata extracted from YAML frontmatter. Pure data structure with no behavior.",
+      "properties": {
+        "fileClass": {
+          "type": "string",
+          "description": "Schema reference extracted from fields['fileClass']. Used for validation lookup."
+        },
+        "fields": {
+          "type": "object",
+          "description": "Complete parsed YAML frontmatter as flexible map. Preserves all user-defined fields."
+        }
+      },
+      "required": ["fields"],
+      "additionalProperties": false
+    },
+
+    "Note": {
+      "type": "object",
+      "description": "Core business entity representing a markdown note. Aggregate root combining identity and content metadata.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/NoteID",
+          "description": "Abstract identifier for this note"
+        },
+        "frontmatter": {
+          "$ref": "#/definitions/Frontmatter",
+          "description": "Content metadata from YAML frontmatter"
+        }
+      },
+      "required": ["id", "frontmatter"],
+      "additionalProperties": false
+    },
+
+    "Template": {
+      "type": "object",
+      "description": "Executable template for note generation. Pure data structure containing template identity and content.",
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/TemplateID",
+          "description": "Template name for identification and composition"
+        },
+        "content": {
+          "type": "string",
+          "description": "Raw template text containing Go text/template syntax with Lithos-specific function calls"
+        }
+      },
+      "required": ["id", "content"],
+      "additionalProperties": false
+    },
+
+    "Config": {
+      "type": "object",
+      "description": "Application configuration loaded from lithos.json and environment variables. Immutable value object.",
+      "properties": {
+        "vaultPath": {
+          "type": "string",
+          "description": "Root directory of vault. Default: current working directory.",
+          "examples": ["/Users/john/vault", "./", "/home/user/notes"]
+        },
+        "templatesDir": {
+          "type": "string",
+          "description": "Path to templates directory. Default: {VaultPath}/templates/",
+          "examples": ["templates/", "/opt/lithos/templates"]
+        },
+        "schemasDir": {
+          "type": "string",
+          "description": "Path to schemas directory. Default: {VaultPath}/schemas/",
+          "examples": ["schemas/", "/opt/lithos/schemas"]
+        },
+        "propertyBankFile": {
+          "type": "string",
+          "description": "Filename of property bank file within SchemasDir. Default: property_bank.json",
+          "examples": ["property_bank.json", "common_properties.json"]
+        },
+        "cacheDir": {
+          "type": "string",
+          "description": "Path to index cache directory. Default: {VaultPath}/.lithos/cache/",
+          "examples": [".lithos/cache/", "/tmp/lithos-cache"]
+        },
+        "logLevel": {
+          "type": "string",
+          "enum": ["debug", "info", "warn", "error"],
+          "description": "Logging verbosity for zerolog. Default: info"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+
+  "type": "object",
+  "properties": {
+    "note": {
+      "$ref": "#/definitions/Note"
+    },
+    "template": {
+      "$ref": "#/definitions/Template"
+    },
+    "schema": {
+      "$ref": "#/definitions/Schema"
+    },
+    "propertyBank": {
+      "$ref": "#/definitions/PropertyBank"
+    },
+    "property": {
+      "$ref": "#/definitions/Property"
+    },
+    "config": {
+      "$ref": "#/definitions/Config"
+    }
+  },
+
+  "examples": [
+    {
+      "note": {
+        "id": "contact-john-doe",
+        "frontmatter": {
+          "fileClass": "contact",
+          "fields": {
+            "fileClass": "contact",
+            "title": "John Doe",
+            "email": "john@example.com",
+            "tags": ["colleague", "developer"]
+          }
+        }
+      }
+    },
+    {
+      "schema": {
+        "name": "contact",
+        "extends": "base-note",
+        "excludes": ["internal_id"],
+        "properties": [
+          {
+            "$ref": "#/properties/standard_title"
+          },
+          {
+            "id": "a1b2c3d4e5f6...",
+            "name": "email",
+            "required": true,
+            "array": false,
+            "spec": {
+              "type": "string",
+              "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "propertyBank": {
+        "properties": {
+          "standard_title": {
+            "id": "abc123...",
+            "name": "title",
+            "required": true,
+            "array": false,
+            "spec": {
+              "type": "string",
+              "pattern": "^.{1,200}$"
+            }
+          },
+          "standard_tags": {
+            "id": "def456...",
+            "name": "tags",
+            "required": false,
+            "array": true,
+            "spec": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  ]
+}
