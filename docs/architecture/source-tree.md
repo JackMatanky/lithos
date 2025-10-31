@@ -16,7 +16,8 @@ lithos/
 │   │   └── template.go      # Template models: Template, TemplateID
 │   ├── app/                 # Domain services & orchestrators (template, indexing, schema, query, command)
 │   │   ├── command/
-│   │   ├── indexing/
+│   │   ├── vault/
+│   │   │   └── indexer.go   # VaultIndexer
 │   │   ├── query/
 │   │   │   └── service.go   # QueryService
 │   │   ├── schema/
