@@ -188,7 +188,7 @@ Validation errors returned as structured FrontmatterError types with schema name
 - `Get[T Schema | Property](ctx context.Context, name string) (T, error)` - Retrieve schema or property by name using generics
 - `Has[T Schema | Property](ctx context.Context, name string) bool` - Check if schema or property exists using generics
 
-**Dependencies:** SchemaLoader (port), SchemaValidator (service), SchemaResolver (service), SchemaRegistry (port), Logger.
+**Dependencies:** SchemaLoader (port), SchemaValidator (adapter), SchemaResolver (service), SchemaRegistry (port), Logger.
 
 **Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics. Delegates to SchemaLoader for I/O, SchemaValidator for structural validation, SchemaResolver for inheritance resolution, and SchemaRegistry for lookups. Idiomatic (T, error) return signatures.
 
@@ -218,13 +218,13 @@ exists := schemaEngine.Has[Schema](ctx, "contact")
 
 ### SchemaValidator
 
-**Responsibility:** Orchestrate schema validation by calling model-level Validate() methods and performing cross-schema validation that requires seeing multiple schemas together. Pure domain service with no external dependencies.
+**Responsibility:** Orchestrate schema validation by calling model-level Validate() methods and performing cross-schema validation that requires seeing multiple schemas together. Pure infrastructure adapter with no external dependencies, moved to adapter layer as part of DDD architecture refactoring.
 
 **Key Interfaces:**
 
 - `ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error` - Orchestrate validation of all schemas and check cross-schema references
 
-**Dependencies:** None (pure domain logic).
+**Dependencies:** None (pure infrastructure logic).
 
 **Technology Stack:** Orchestrates schema.Validate() calls, validates cross-schema references, aggregates errors using errors.Join().
 
@@ -1269,7 +1269,7 @@ graph TD
 - SE = SchemaEngine
 - SL = SchemaLoaderPort, SLA = SchemaLoaderAdapter
 - SRP = SchemaRegistryPort, SRA = SchemaRegistryAdapter
-- SV = SchemaValidator
+- SV = SchemaValidator (moved to adapter layer in DDD refactoring)
 - TR = TemplateRepositoryPort, TFA = TemplateFSAdapter
 - IP = InteractivePort, ICA = InteractiveCLIAdapter
 - CP = ConfigPort, CVA = ConfigViperAdapter
@@ -1417,7 +1417,7 @@ func main() {
 - Configuration (external data)
 
 **Internal Dependencies** (single-use, internal logic):
-- SchemaValidator - only used by SchemaEngine, instantiated internally
+- SchemaValidator - only used by SchemaEngine, instantiated internally (moved to adapter layer)
 - SchemaResolver - only used by SchemaEngine, instantiated internally
 
 **Rationale:** Reduces main.go complexity by not exposing internal implementation details. SchemaEngine's constructor signature shows only what it needs from outside, not internal orchestration details.
@@ -1463,7 +1463,7 @@ Lithos implements validation at two distinct levels with different concerns and 
 
 **Complexity:** Low - structural checks only
 
-**Responsibility:** SchemaValidator service orchestrates, Schema/Property/PropertySpec models self-validate
+**Responsibility:** SchemaValidator adapter orchestrates, Schema/Property/PropertySpec models self-validate
 
 **Architecture:**
 
@@ -1473,7 +1473,7 @@ Schema Models (Rich Domain Models)
       └─> property.Validate() checks each property
           └─> propertySpec.Validate() checks constraints (e.g., regex compiles, min <= max)
 
-SchemaValidator Service (Orchestrator)
+SchemaValidator Adapter (Orchestrator)
   └─> Calls schema.Validate() on each schema
   └─> Cross-schema validation (Extends references exist, no duplicate names, $ref valid)
 ```

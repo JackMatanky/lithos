@@ -1,0 +1,28 @@
+{
+  "name": "lithos",
+  "version": "1.0.0",
+  "description": "Lithos is a CLI tool for managing and processing Obsidian vaults, providing schema-driven lookups, template rendering, and interactive input capabilities.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JackMatanky/lithos.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/JackMatanky/lithos/issues"
+  },
+  "homepage": "https://github.com/JackMatanky/lithos#readme",
+  "dependencies": {
+    "ajv": "^8.17.1"
+  }
+}

@@ -3,6 +3,7 @@ package schema
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -111,8 +112,6 @@ func TestSchemaEngine_NewSchemaEngine_ValidDependencies(t *testing.T) {
 	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
 	require.NoError(t, err)
 	require.NotNil(t, engine)
-	assert.NotNil(t, engine.validator)
-	assert.NotNil(t, engine.resolver)
 }
 
 // TestSchemaEngine_NewSchemaEngine_NilSchemaPort tests constructor with nil
@@ -144,7 +143,7 @@ func TestSchemaEngine_NewSchemaEngine_NilRegistryPort(t *testing.T) {
 func TestSchemaEngine_Load_Success(t *testing.T) {
 	schemaPort := &FakeSchemaPort{
 		schemas: []domain.Schema{
-			{Name: "test-schema", Properties: []domain.IProperty{}},
+			{Name: "test-schema", Properties: []domain.Property{}},
 		},
 		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
 	}
@@ -180,16 +179,12 @@ func TestSchemaEngine_Load_SchemaPortFailure(t *testing.T) {
 }
 
 // TestSchemaEngine_Load_ValidationFailure tests Load() failure at
-// SchemaValidator stage.
+// schema port (adapter validation).
 func TestSchemaEngine_Load_ValidationFailure(t *testing.T) {
 	schemaPort := &FakeSchemaPort{
-		schemas: []domain.Schema{
-			{
-				Name:       "",
-				Properties: []domain.IProperty{},
-			}, // Invalid schema (empty name)
-		},
-		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
+		err: fmt.Errorf(
+			"schema validation failed: schema name cannot be empty",
+		),
 	}
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
@@ -203,14 +198,12 @@ func TestSchemaEngine_Load_ValidationFailure(t *testing.T) {
 }
 
 // TestSchemaEngine_Load_ResolutionFailure tests Load() failure at
-// SchemaResolver stage.
+// schema port (adapter resolution).
 func TestSchemaEngine_Load_ResolutionFailure(t *testing.T) {
 	schemaPort := &FakeSchemaPort{
-		schemas: []domain.Schema{
-			{Name: "a", Extends: "b"},
-			{Name: "b", Extends: "a"}, // Circular dependency
-		},
-		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
+		err: fmt.Errorf(
+			"schema inheritance resolution failed: circular inheritance detected",
+		),
 	}
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
@@ -220,7 +213,7 @@ func TestSchemaEngine_Load_ResolutionFailure(t *testing.T) {
 
 	err = engine.Load(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "schema resolution failed")
+	assert.Contains(t, err.Error(), "schema inheritance resolution failed")
 	assert.Contains(t, err.Error(), "circular inheritance")
 }
 
@@ -229,7 +222,7 @@ func TestSchemaEngine_Load_ResolutionFailure(t *testing.T) {
 func TestSchemaEngine_Load_RegistrationFailure(t *testing.T) {
 	schemaPort := &FakeSchemaPort{
 		schemas: []domain.Schema{
-			{Name: "test-schema", Properties: []domain.IProperty{}},
+			{Name: "test-schema", Properties: []domain.Property{}},
 		},
 		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
 	}
@@ -247,7 +240,8 @@ func TestSchemaEngine_Load_RegistrationFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "registration error")
 }
 
-// TestSchemaEngine_Get_SchemaSuccess tests Get[Schema]() success case.
+// TestSchemaEngine_Get_SchemaSuccess tests registry port GetSchema success
+// case.
 func TestSchemaEngine_Get_SchemaSuccess(t *testing.T) {
 	schemaPort := &FakeSchemaPort{}
 	registryPort := &FakeSchemaRegistryPort{
@@ -260,8 +254,7 @@ func TestSchemaEngine_Get_SchemaSuccess(t *testing.T) {
 	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
 	require.NoError(t, err)
 
-	schema, err := Get[domain.Schema](
-		engine,
+	schema, err := engine.registryPort.GetSchema(
 		context.Background(),
 		"test-schema",
 	)
@@ -269,7 +262,8 @@ func TestSchemaEngine_Get_SchemaSuccess(t *testing.T) {
 	assert.Equal(t, "test-schema", schema.Name)
 }
 
-// TestSchemaEngine_Get_PropertySuccess tests Get[Property]() success case.
+// TestSchemaEngine_Get_PropertySuccess tests registry port GetProperty success
+// case.
 func TestSchemaEngine_Get_PropertySuccess(t *testing.T) {
 	schemaPort := &FakeSchemaPort{}
 	registryPort := &FakeSchemaRegistryPort{
@@ -282,8 +276,7 @@ func TestSchemaEngine_Get_PropertySuccess(t *testing.T) {
 	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
 	require.NoError(t, err)
 
-	property, err := Get[domain.Property](
-		engine,
+	property, err := engine.registryPort.GetProperty(
 		context.Background(),
 		"test-prop",
 	)
@@ -300,7 +293,7 @@ func TestSchemaEngine_Get_SchemaNotFound(t *testing.T) {
 	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
 	require.NoError(t, err)
 
-	_, err = Get[domain.Schema](engine, context.Background(), "non-existent")
+	_, err = engine.registryPort.GetSchema(context.Background(), "non-existent")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "schema not found")
 }
@@ -314,7 +307,10 @@ func TestSchemaEngine_Get_PropertyNotFound(t *testing.T) {
 	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
 	require.NoError(t, err)
 
-	_, err = Get[domain.Property](engine, context.Background(), "non-existent")
+	_, err = engine.registryPort.GetProperty(
+		context.Background(),
+		"non-existent",
+	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "property not found")
 }
@@ -334,7 +330,7 @@ func TestSchemaEngine_Has_SchemaTrue(t *testing.T) {
 
 	assert.True(
 		t,
-		Has[domain.Schema](engine, context.Background(), "test-schema"),
+		engine.registryPort.HasSchema(context.Background(), "test-schema"),
 	)
 }
 
@@ -349,7 +345,7 @@ func TestSchemaEngine_Has_SchemaFalse(t *testing.T) {
 
 	assert.False(
 		t,
-		Has[domain.Schema](engine, context.Background(), "non-existent"),
+		engine.registryPort.HasSchema(context.Background(), "non-existent"),
 	)
 }
 
@@ -368,7 +364,7 @@ func TestSchemaEngine_Has_PropertyTrue(t *testing.T) {
 
 	assert.True(
 		t,
-		Has[domain.Property](engine, context.Background(), "test-prop"),
+		engine.registryPort.HasProperty(context.Background(), "test-prop"),
 	)
 }
 
@@ -383,6 +379,6 @@ func TestSchemaEngine_Has_PropertyFalse(t *testing.T) {
 
 	assert.False(
 		t,
-		Has[domain.Property](engine, context.Background(), "non-existent"),
+		engine.registryPort.HasProperty(context.Background(), "non-existent"),
 	)
 }

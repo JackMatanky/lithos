@@ -43,17 +43,22 @@ func TestSchemaDTOToDomainSortsProperties(t *testing.T) {
 		},
 	}
 
-	schema, err := dto.toDomain("schema-path")
+	// Create empty bank for this test
+	bankDTO := propertyBankDTO{Properties: map[string]json.RawMessage{}}
+	bank, err := bankDTO.toDomain("bank-path")
+	require.NoError(t, err)
+
+	schema, err := dto.toDomain("schema-path", bank)
 	require.NoError(t, err)
 	require.Len(t, schema.Properties, 2)
-	assert.Equal(t, "a", schema.Properties[0].GetName())
-	assert.Equal(t, "b", schema.Properties[1].GetName())
+	assert.Equal(t, "a", schema.Properties[0].Name)
+	assert.Equal(t, "b", schema.Properties[1].Name)
 }
 
 // TestParsePropertyDefinitionInvalidSpec asserts that invalid specs raise an
 // error with the expected message.
 func TestParsePropertyDefinitionInvalidSpec(t *testing.T) {
-	_, err := parseProperty(
+	_, err := parsePropertyDef(
 		"invalid",
 		json.RawMessage(`{"type":"unknown","required":false,"array":false}`),
 		"schema-path",
@@ -71,4 +76,71 @@ func TestPropertyDefinitionErrorWrapsCause(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, base)
 	assert.Contains(t, err.Error(), "message")
+}
+
+// TestSchemaDTOToDomainMixedProperties tests that schemas with both inline
+// property definitions and $ref references are resolved correctly.
+func TestSchemaDTOToDomainMixedProperties(t *testing.T) {
+	// Create property bank with a referenceable property
+	bankDTO := propertyBankDTO{
+		Properties: map[string]json.RawMessage{
+			"shared_title": json.RawMessage(
+				`{"type":"string","required":true,"array":false}`,
+			),
+		},
+	}
+	bank, err := bankDTO.toDomain("bank-path")
+	require.NoError(t, err)
+
+	// Create schema with mixed properties: inline + $ref
+	dto := schemaDTO{
+		Name: "test_schema",
+		Properties: map[string]json.RawMessage{
+			"inline_prop": json.RawMessage(
+				`{"type":"number","required":false,"array":false}`,
+			),
+			"ref_prop": json.RawMessage(
+				`{"$ref":"#/properties/shared_title"}`,
+			),
+		},
+	}
+
+	schema, err := dto.toDomain("schema-path", bank)
+	require.NoError(t, err)
+	require.Len(t, schema.Properties, 2)
+
+	// Check inline property
+	inlineProp := schema.Properties[0]
+	assert.Equal(t, "inline_prop", inlineProp.Name)
+	assert.False(t, inlineProp.Required)
+	assert.False(t, inlineProp.Array)
+
+	// Check $ref resolved property
+	refProp := schema.Properties[1]
+	assert.Equal(t, "ref_prop", refProp.Name)
+	assert.True(t, refProp.Required) // From bank definition
+	assert.False(t, refProp.Array)   // From bank definition
+}
+
+// TestSchemaDTOToDomainInvalidRef tests that invalid $ref references produce
+// appropriate errors.
+func TestSchemaDTOToDomainInvalidRef(t *testing.T) {
+	// Create empty property bank
+	bankDTO := propertyBankDTO{Properties: map[string]json.RawMessage{}}
+	bank, err := bankDTO.toDomain("bank-path")
+	require.NoError(t, err)
+
+	// Create schema with invalid $ref
+	dto := schemaDTO{
+		Name: "test_schema",
+		Properties: map[string]json.RawMessage{
+			"invalid_ref": json.RawMessage(
+				`{"$ref":"#/properties/nonexistent"}`,
+			),
+		},
+	}
+
+	_, err = dto.toDomain("schema-path", bank)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not found in property bank")
 }

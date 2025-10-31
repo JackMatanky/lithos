@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 	"testing"
@@ -44,17 +45,16 @@ const (
 	testProject       = "project"
 )
 
-// createValidTestProperty returns a valid Property for testing.
+// createValidTestProperty returns a valid Property entity for testing.
 func createValidTestProperty(name string) Property {
-	return Property{
-		Name:     name,
-		Required: false,
-		Array:    false,
-		Spec: mockPropertySpec{
-			validateError: nil,
-			specType:      PropertyTypeString,
-		},
+	property, err := NewProperty(name, false, false, mockPropertySpec{
+		validateError: nil,
+		specType:      PropertyTypeString,
+	})
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create test property: %v", err))
 	}
+	return *property
 }
 
 // createInvalidTestProperty returns an invalid Property for delegation testing.
@@ -70,20 +70,15 @@ func createInvalidTestProperty(name string, validationErr error) Property {
 	}
 }
 
-// createRefProperty returns a PropertyRef for serialization testing.
-func createRefProperty(name, ref string) PropertyRef {
-	return PropertyRef{
-		Name: name,
-		Ref:  ref,
-	}
-}
+// PropertyRef no longer exists in domain layer - removed as part of DDD
+// refactoring
 
 // 2.1-UNIT-013: NewSchema creates valid schema with all fields.
 func TestNewSchemaCreatesValidSchema(t *testing.T) {
 	name := testSchemaName
 	extends := testSchemaExtends
 	excludes := []string{testExcludesTag}
-	properties := []IProperty{createValidTestProperty(testNameProp)}
+	properties := []Property{createValidTestProperty(testNameProp)}
 
 	schema, err := NewSchema(name, extends, excludes, properties)
 
@@ -92,7 +87,7 @@ func TestNewSchemaCreatesValidSchema(t *testing.T) {
 	assert.Equal(t, testSchemaExtends, schema.Extends)
 	assert.Equal(t, []string{testExcludesTag}, schema.Excludes)
 	assert.Len(t, schema.Properties, 1)
-	assert.Equal(t, testNameProp, schema.Properties[0].GetName())
+	assert.Equal(t, testNameProp, schema.Properties[0].Name)
 }
 
 // TestNewSchemaDefensiveCopyExcludes tests that NewSchema creates defensive
@@ -100,7 +95,7 @@ func TestNewSchemaCreatesValidSchema(t *testing.T) {
 func TestNewSchemaDefensiveCopyExcludes(t *testing.T) {
 	name := testSchemaName
 	excludes := []string{testTag1, testTag2}
-	properties := []IProperty{createValidTestProperty(testNameProp)}
+	properties := []Property{createValidTestProperty(testNameProp)}
 
 	schema, err := NewSchema(name, testSchemaExtends, excludes, properties)
 	require.NoError(t, err)
@@ -116,7 +111,7 @@ func TestNewSchemaDefensiveCopyExcludes(t *testing.T) {
 // 2.1-UNIT-015: NewSchema defensive copy of properties slice.
 func TestNewSchemaDefensiveCopyProperties(t *testing.T) {
 	name := testSchemaName
-	properties := []IProperty{
+	properties := []Property{
 		createValidTestProperty(testProp1),
 		createValidTestProperty(testProp2),
 	}
@@ -129,8 +124,8 @@ func TestNewSchemaDefensiveCopyProperties(t *testing.T) {
 
 	// Verify schema unchanged
 	assert.Len(t, schema.Properties, 2)
-	assert.Equal(t, testProp1, schema.Properties[0].GetName())
-	assert.Equal(t, testProp2, schema.Properties[1].GetName())
+	assert.Equal(t, testProp1, schema.Properties[0].Name)
+	assert.Equal(t, testProp2, schema.Properties[1].Name)
 }
 
 // 2.1-UNIT-016: Modifying constructor args doesn't affect Schema.
@@ -138,7 +133,7 @@ func TestNewSchemaCompleteImmutability(t *testing.T) {
 	name := testSchemaName
 	extends := testSchemaExtends
 	excludes := []string{testTag1, testTag2}
-	properties := []IProperty{
+	properties := []Property{
 		createValidTestProperty(testProp1),
 		createValidTestProperty(testProp2),
 	}
@@ -154,15 +149,15 @@ func TestNewSchemaCompleteImmutability(t *testing.T) {
 	assert.Equal(t, testSchemaExtends, schema.Extends)
 	assert.Equal(t, []string{testTag1, testTag2}, schema.Excludes)
 	assert.Len(t, schema.Properties, 2)
-	assert.Equal(t, testProp1, schema.Properties[0].GetName())
-	assert.Equal(t, testProp2, schema.Properties[1].GetName())
+	assert.Equal(t, testProp1, schema.Properties[0].Name)
+	assert.Equal(t, testProp2, schema.Properties[1].Name)
 }
 
 // 2.1-UNIT-017: Validate() succeeds with valid schema.
 func TestSchemaValidateSuccess(t *testing.T) {
 	schema := Schema{
 		Name: testSchemaName,
-		Properties: []IProperty{
+		Properties: []Property{
 			createValidTestProperty(testNameProp),
 			createValidTestProperty(testEmailProp),
 		},
@@ -177,7 +172,7 @@ func TestSchemaValidateSuccess(t *testing.T) {
 func TestSchemaValidateEmptyName(t *testing.T) {
 	schema := Schema{
 		Name:       testEmptyName,
-		Properties: []IProperty{createValidTestProperty(testNameProp)},
+		Properties: []Property{createValidTestProperty(testNameProp)},
 	}
 
 	err := schema.Validate(context.Background())
@@ -192,7 +187,7 @@ func TestSchemaValidateExcludesWithoutExtends(t *testing.T) {
 		Name:       testSchemaName,
 		Extends:    testEmptyExtends,
 		Excludes:   []string{testExcludesTag},
-		Properties: []IProperty{createValidTestProperty(testNameProp)},
+		Properties: []Property{createValidTestProperty(testNameProp)},
 	}
 
 	err := schema.Validate(context.Background())
@@ -210,7 +205,7 @@ func TestSchemaValidateDelegatesToProperty(t *testing.T) {
 	expectedErr := errors.New("property validation failed")
 	schema := Schema{
 		Name: testSchemaName,
-		Properties: []IProperty{
+		Properties: []Property{
 			createInvalidTestProperty(testInvalidProp, expectedErr),
 		},
 	}
@@ -229,7 +224,7 @@ func TestSchemaValidateAggregatesErrors(t *testing.T) {
 
 	schema := Schema{
 		Name: testSchemaName,
-		Properties: []IProperty{
+		Properties: []Property{
 			createInvalidTestProperty("prop1", err1),
 			createInvalidTestProperty("prop2", err2),
 			createInvalidTestProperty("prop3", err3),
@@ -250,7 +245,7 @@ func TestSchemaValidationErrorsIncludeSchemaName(t *testing.T) {
 	expectedErr := errors.New("property validation failed")
 	schema := Schema{
 		Name: testSchemaName,
-		Properties: []IProperty{
+		Properties: []Property{
 			createInvalidTestProperty(testInvalidProp, expectedErr),
 		},
 	}
@@ -293,20 +288,20 @@ func TestSchemaHasNoSetters(t *testing.T) {
 }
 
 // 2.1-UNIT-024: JSON round-trip preserves all fields.
-// TestSchemaJSONRoundTrip is skipped because Schema.Properties uses []IProperty
+// TestSchemaJSONRoundTrip is skipped because Schema.Properties uses []Property
 // which cannot be directly marshaled. Schema JSON serialization is handled by
 // the adapter layer DTOs.
 func TestSchemaJSONRoundTrip(t *testing.T) {
 	t.Skip(
-		"Schema uses []IProperty which requires custom marshaling - handled by adapter layer",
+		"Schema uses []Property which requires custom marshaling - handled by adapter layer",
 	)
 	original := Schema{
 		Name:     testSchemaName,
 		Extends:  testSchemaExtends,
 		Excludes: []string{testTag1, testTag2},
-		Properties: []IProperty{
-			createRefProperty(testNameProp, testNameRef),
-			createRefProperty(testEmailProp, testEmailRef),
+		Properties: []Property{
+			createValidTestProperty(testNameProp),
+			createValidTestProperty(testEmailProp),
 		},
 	}
 
@@ -326,31 +321,31 @@ func TestSchemaJSONRoundTrip(t *testing.T) {
 	assert.Len(t, unmarshaled.Properties, len(original.Properties))
 	assert.Equal(
 		t,
-		original.Properties[0].GetName(),
-		unmarshaled.Properties[0].GetName(),
+		original.Properties[0].Name,
+		unmarshaled.Properties[0].Name,
 	)
 	assert.Equal(
 		t,
-		original.Properties[1].GetName(),
-		unmarshaled.Properties[1].GetName(),
+		original.Properties[1].Name,
+		unmarshaled.Properties[1].Name,
 	)
 }
 
 // 2.1-UNIT-025: YAML round-trip preserves all fields.
-// TestSchemaYAMLRoundTrip is skipped because Schema.Properties uses []IProperty
+// TestSchemaYAMLRoundTrip is skipped because Schema.Properties uses []Property
 // which cannot be directly marshaled. Schema YAML serialization is handled by
 // the adapter layer DTOs.
 func TestSchemaYAMLRoundTrip(t *testing.T) {
 	t.Skip(
-		"Schema uses []IProperty which requires custom marshaling - handled by adapter layer",
+		"Schema uses []Property which requires custom marshaling - handled by adapter layer",
 	)
 	original := Schema{
 		Name:     testSchemaName,
 		Extends:  testSchemaExtends,
 		Excludes: []string{testTag1, testTag2},
-		Properties: []IProperty{
-			createRefProperty(testNameProp, testNameRef),
-			createRefProperty(testEmailProp, testEmailRef),
+		Properties: []Property{
+			createValidTestProperty(testNameProp),
+			createValidTestProperty(testEmailProp),
 		},
 	}
 
@@ -370,13 +365,13 @@ func TestSchemaYAMLRoundTrip(t *testing.T) {
 	assert.Len(t, unmarshaled.Properties, len(original.Properties))
 	assert.Equal(
 		t,
-		original.Properties[0].GetName(),
-		unmarshaled.Properties[0].GetName(),
+		original.Properties[0].Name,
+		unmarshaled.Properties[0].Name,
 	)
 	assert.Equal(
 		t,
-		original.Properties[1].GetName(),
-		unmarshaled.Properties[1].GetName(),
+		original.Properties[1].Name,
+		unmarshaled.Properties[1].Name,
 	)
 }
 
@@ -385,7 +380,7 @@ func TestSchemaWithEmptyExtendsOmitsField(t *testing.T) {
 	schema := Schema{
 		Name:       testStandalone,
 		Extends:    testEmptyExtends, // Empty should be omitted
-		Properties: []IProperty{createRefProperty(testNameProp, testNameRef)},
+		Properties: []Property{createValidTestProperty(testNameProp)},
 	}
 
 	// Marshal to JSON

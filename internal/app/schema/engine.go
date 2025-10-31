@@ -10,8 +10,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// SchemaEngine orchestrates the complete schema processing pipeline from
-// loading through validation, resolution, and registration.
+// SchemaEngine orchestrates schema loading and registration, delegating
+// validation and inheritance resolution to the adapter layer.
 //
 // SchemaEngine coordinates the schema loading process by executing stages in
 // the documented order, ensuring proper dependency handling and fail-fast
@@ -23,12 +23,9 @@ import (
 // Observability) from docs/prd/requirements.md
 //
 // Processing Pipeline:
-//  1. SchemaPort.Load() - Load raw schemas and property bank from storage
-//  2. SchemaValidator.ValidateAll() - Validate structural integrity and
-//     cross-schema references
-//  3. SchemaResolver.Resolve() - Resolve inheritance chains and $ref
-//     substitutions
-//  4. SchemaRegistryPort.RegisterAll() - Register resolved schemas for fast
+//  1. SchemaPort.Load() - Load validated schemas and property bank from storage
+//     (adapter handles validation and inheritance resolution)
+//  2. SchemaRegistryPort.RegisterAll() - Register resolved schemas for fast
 //     lookups
 //
 // Each stage is logged with duration for observability (NFR3 requirement).
@@ -43,30 +40,24 @@ import (
 //   - Has[Property](ctx, "property-name") checks property existence
 //
 // Dependencies:
-//   - SchemaPort: Loads raw schemas from storage (injected)
+// - SchemaPort: Loads validated schemas and property bank from storage
+// (injected)
 //   - SchemaRegistryPort: Provides fast in-memory schema access (injected)
 //   - Logger: Provides observability for each pipeline stage (injected)
-//   - SchemaValidator: Validates schemas (internally instantiated)
-//   - SchemaResolver: Resolves inheritance (internally instantiated).
 type SchemaEngine struct {
 	// Injected dependencies
 	schemaPort   spi.SchemaPort
 	registryPort spi.SchemaRegistryPort
 	log          zerolog.Logger
-
-	// Internal services (not injected)
-	validator *SchemaValidator
-	resolver  *SchemaResolver
 }
 
 // NewSchemaEngine creates a new SchemaEngine with the specified dependencies.
 //
-// The constructor validates that all injected dependencies are non-nil and
-// internally instantiates the pure domain services (SchemaValidator and
-// SchemaResolver) that have no external dependencies.
+// The constructor validates that all injected dependencies are non-nil.
+// Validation and inheritance resolution are now handled in the adapter layer.
 //
 // Dependencies:
-//   - schemaPort: Interface for loading schemas from storage
+//   - schemaPort: Interface for loading validated schemas from storage
 //   - registryPort: Interface for fast in-memory schema access
 //   - log: Logger for pipeline stage observability
 //
@@ -84,23 +75,20 @@ func NewSchemaEngine(
 		return nil, fmt.Errorf("registryPort cannot be nil")
 	}
 
-	// Create engine with dependencies and internal services
+	// Create engine with dependencies
 	return &SchemaEngine{
 		schemaPort:   schemaPort,
 		registryPort: registryPort,
 		log:          log,
-		validator:    NewSchemaValidator(),
-		resolver:     NewSchemaResolver(),
 	}, nil
 }
 
 // Load executes the complete schema processing pipeline in documented order.
 //
 // Pipeline Stages:
-//  1. Load raw schemas and property bank from storage
-//  2. Validate structural integrity and cross-schema references
-//  3. Resolve inheritance chains and $ref substitutions
-//  4. Register resolved schemas for fast lookups
+// 1. Load validated schemas and property bank from storage (adapter handles
+// validation and inheritance)
+//  2. Register resolved schemas for fast lookups
 //
 // Each stage is logged with duration for observability (NFR3 requirement).
 // Fail-fast behavior: any stage failure stops the pipeline and returns error.
@@ -117,16 +105,7 @@ func (e *SchemaEngine) Load(ctx context.Context) error {
 		return loadErr
 	}
 
-	if validateErr := e.validateSchemas(ctx, schemas, bank); validateErr != nil {
-		return validateErr
-	}
-
-	resolvedSchemas, resolveErr := e.resolveSchemas(ctx, schemas, bank)
-	if resolveErr != nil {
-		return resolveErr
-	}
-
-	if registerErr := e.registerSchemas(ctx, resolvedSchemas, bank, startTime); registerErr != nil {
+	if registerErr := e.registerSchemas(ctx, schemas, bank, startTime); registerErr != nil {
 		return registerErr
 	}
 
@@ -158,51 +137,6 @@ func (e *SchemaEngine) loadSchemas(
 			len(schemas), len(bank.Properties), stageDuration)
 
 	return schemas, bank, nil
-}
-
-// validateSchemas executes the schema validation stage.
-func (e *SchemaEngine) validateSchemas(
-	ctx context.Context,
-	schemas []domain.Schema,
-	bank domain.PropertyBank,
-) error {
-	e.log.Info().Msg("validating schemas...")
-	stageStart := time.Now()
-
-	if err := e.validator.ValidateAll(ctx, schemas, bank); err != nil {
-		e.log.Error().Err(err).Msg("schema validation failed")
-		return fmt.Errorf("schema validation failed: %w", err)
-	}
-
-	stageDuration := time.Since(stageStart)
-	e.log.Info().
-		Dur("duration_ms", stageDuration).
-		Msgf("validation complete in %v", stageDuration)
-
-	return nil
-}
-
-// resolveSchemas executes the schema resolution stage.
-func (e *SchemaEngine) resolveSchemas(
-	ctx context.Context,
-	schemas []domain.Schema,
-	bank domain.PropertyBank,
-) ([]domain.Schema, error) {
-	e.log.Info().Msg("resolving inheritance...")
-	stageStart := time.Now()
-
-	resolvedSchemas, err := e.resolver.Resolve(ctx, schemas, bank)
-	if err != nil {
-		e.log.Error().Err(err).Msg("schema resolution failed")
-		return nil, fmt.Errorf("schema resolution failed: %w", err)
-	}
-
-	stageDuration := time.Since(stageStart)
-	e.log.Info().
-		Dur("duration_ms", stageDuration).
-		Msgf("resolution complete in %v", stageDuration)
-
-	return resolvedSchemas, nil
 }
 
 // registerSchemas executes the schema registration stage.
@@ -257,11 +191,11 @@ func Get[T domain.Schema | domain.Property](
 	// Use type switch to determine which registry method to call
 	switch any(zero).(type) {
 	case domain.Schema:
-		schema, err := e.registryPort.GetSchema(ctx, name)
+		schemaResult, err := e.registryPort.GetSchema(ctx, name)
 		if err != nil {
 			return zero, err
 		}
-		return any(schema).(T), nil
+		return any(schemaResult).(T), nil
 
 	case domain.Property:
 		property, err := e.registryPort.GetProperty(ctx, name)

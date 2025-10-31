@@ -88,13 +88,21 @@ func (a *SchemaRegistryAdapter) RegisterAll(
 	a.schemas = make(map[string]domain.Schema)
 	a.properties = make(map[string]domain.Property)
 
-	// Register schemas (defensive copy - deep copy Properties slice)
+	// Register schemas (defensive copy - deep copy Properties and
+	// ResolvedProperties slices)
 	for _, schema := range schemas {
 		// Deep copy the Properties slice to prevent external mutation
-		propertiesCopy := make([]domain.IProperty, len(schema.Properties))
+		propertiesCopy := make([]domain.Property, len(schema.Properties))
 		copy(propertiesCopy, schema.Properties)
+		// Deep copy the ResolvedProperties slice to prevent external mutation
+		resolvedPropertiesCopy := make(
+			[]domain.Property,
+			len(schema.ResolvedProperties),
+		)
+		copy(resolvedPropertiesCopy, schema.ResolvedProperties)
 		schemaCopy := schema
 		schemaCopy.Properties = propertiesCopy
+		schemaCopy.ResolvedProperties = resolvedPropertiesCopy
 		a.schemas[schema.Name] = schemaCopy
 	}
 
@@ -144,10 +152,16 @@ func (a *SchemaRegistryAdapter) GetSchema(
 	}
 
 	// Return defensive copy to prevent external mutation
-	propertiesCopy := make([]domain.IProperty, len(schema.Properties))
+	propertiesCopy := make([]domain.Property, len(schema.Properties))
 	copy(propertiesCopy, schema.Properties)
+	resolvedPropertiesCopy := make(
+		[]domain.Property,
+		len(schema.ResolvedProperties),
+	)
+	copy(resolvedPropertiesCopy, schema.ResolvedProperties)
 	schemaCopy := schema
 	schemaCopy.Properties = propertiesCopy
+	schemaCopy.ResolvedProperties = resolvedPropertiesCopy
 
 	return schemaCopy, nil
 }

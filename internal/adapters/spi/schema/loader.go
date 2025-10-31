@@ -18,11 +18,14 @@ import (
 
 // SchemaLoaderAdapter implements SchemaPort by loading schema JSON files and
 // the property bank from the filesystem configured in domain.Config.
+// It validates and resolves inheritance for loaded schemas.
 type SchemaLoaderAdapter struct {
-	config   *domain.Config
-	log      *zerolog.Logger
-	readFile func(string) ([]byte, error)
-	walkDir  func(string, fs.WalkDirFunc) error
+	config    *domain.Config
+	log       *zerolog.Logger
+	readFile  func(string) ([]byte, error)
+	walkDir   func(string, fs.WalkDirFunc) error
+	validator *SchemaValidator
+	extender  *SchemaExtender
 }
 
 // NewSchemaLoaderAdapter creates a new filesystem-backed schema loader.
@@ -31,15 +34,18 @@ func NewSchemaLoaderAdapter(
 	log *zerolog.Logger,
 ) *SchemaLoaderAdapter {
 	return &SchemaLoaderAdapter{
-		config:   config,
-		log:      log,
-		readFile: os.ReadFile,
-		walkDir:  filepath.WalkDir,
+		config:    config,
+		log:       log,
+		readFile:  os.ReadFile,
+		walkDir:   filepath.WalkDir,
+		validator: NewSchemaValidator(),
+		extender:  NewSchemaExtender(),
 	}
 }
 
-// Load loads the property bank first, then all schema documents, returning raw
-// schemas without inheritance resolution alongside the shared property bank.
+// Load loads the property bank first, then all schema documents, validates
+// them, resolves inheritance, and returns fully processed schemas alongside
+// the shared property bank.
 func (a *SchemaLoaderAdapter) Load(
 	ctx context.Context,
 ) ([]domain.Schema, domain.PropertyBank, error) {
@@ -47,6 +53,7 @@ func (a *SchemaLoaderAdapter) Load(
 		return nil, domain.PropertyBank{}, err
 	}
 
+	var err error
 	bank, err := a.loadPropertyBank()
 	if err != nil {
 		return nil, domain.PropertyBank{}, err
@@ -59,7 +66,7 @@ func (a *SchemaLoaderAdapter) Load(
 			Msg("property bank loaded")
 	}
 
-	schemas, err := a.loadSchemas()
+	schemas, err := a.loadSchemas(bank)
 	if err != nil {
 		return nil, domain.PropertyBank{}, err
 	}
@@ -68,10 +75,27 @@ func (a *SchemaLoaderAdapter) Load(
 		a.log.Debug().
 			Int("count", len(schemas)).
 			Str("directory", a.config.SchemasDir).
-			Msg("schema loading complete")
+			Msg("raw schemas loaded")
 	}
 
-	return schemas, bank, nil
+	// Validate schemas
+	if validateErr := a.validateSchemas(ctx, schemas, bank); validateErr != nil {
+		return nil, domain.PropertyBank{}, validateErr
+	}
+
+	// Resolve inheritance
+	extendedSchemas, err := a.resolveInheritance(ctx, schemas)
+	if err != nil {
+		return nil, domain.PropertyBank{}, err
+	}
+
+	if a.log != nil {
+		a.log.Debug().
+			Int("count", len(extendedSchemas)).
+			Msg("schemas validated and inheritance resolved")
+	}
+
+	return extendedSchemas, bank, nil
 }
 
 func (a *SchemaLoaderAdapter) loadPropertyBank() (domain.PropertyBank, error) {
@@ -94,7 +118,9 @@ func (a *SchemaLoaderAdapter) loadPropertyBank() (domain.PropertyBank, error) {
 	return document.toDomain(path)
 }
 
-func (a *SchemaLoaderAdapter) loadSchemas() ([]domain.Schema, error) {
+func (a *SchemaLoaderAdapter) loadSchemas(
+	bank domain.PropertyBank,
+) ([]domain.Schema, error) {
 	var schemas []domain.Schema
 
 	walkErr := a.walkDir(
@@ -119,7 +145,7 @@ func (a *SchemaLoaderAdapter) loadSchemas() ([]domain.Schema, error) {
 				return nil
 			}
 
-			schema, err := a.loadSchema(path)
+			schema, err := a.loadSchema(path, bank)
 			if err != nil {
 				return err
 			}
@@ -145,7 +171,10 @@ func (a *SchemaLoaderAdapter) loadSchemas() ([]domain.Schema, error) {
 	return schemas, nil
 }
 
-func (a *SchemaLoaderAdapter) loadSchema(path string) (domain.Schema, error) {
+func (a *SchemaLoaderAdapter) loadSchema(
+	path string,
+	bank domain.PropertyBank,
+) (domain.Schema, error) {
 	data, err := a.readFile(path)
 	if err != nil {
 		return domain.Schema{}, domainerrors.NewResourceError(
@@ -166,11 +195,59 @@ func (a *SchemaLoaderAdapter) loadSchema(path string) (domain.Schema, error) {
 		)
 	}
 
-	schema, err := document.toDomain(path)
+	schema, err := document.toDomain(path, bank)
 	if err != nil {
 		return domain.Schema{}, err
 	}
 	return schema, nil
+}
+
+// validateSchemas performs validation on loaded schemas.
+func (a *SchemaLoaderAdapter) validateSchemas(
+	ctx context.Context,
+	schemas []domain.Schema,
+	bank domain.PropertyBank,
+) error {
+	if a.log != nil {
+		a.log.Debug().Msg("validating schemas")
+	}
+
+	if err := a.validator.ValidateAll(ctx, schemas, bank); err != nil {
+		if a.log != nil {
+			a.log.Error().Err(err).Msg("schema validation failed")
+		}
+		return fmt.Errorf("schema validation failed: %w", err)
+	}
+
+	if a.log != nil {
+		a.log.Debug().Msg("schema validation complete")
+	}
+
+	return nil
+}
+
+// resolveInheritance resolves inheritance chains in schemas.
+func (a *SchemaLoaderAdapter) resolveInheritance(
+	ctx context.Context,
+	schemas []domain.Schema,
+) ([]domain.Schema, error) {
+	if a.log != nil {
+		a.log.Debug().Msg("resolving inheritance")
+	}
+
+	extendedSchemas, err := a.extender.ExtendSchemas(ctx, schemas)
+	if err != nil {
+		if a.log != nil {
+			a.log.Error().Err(err).Msg("inheritance resolution failed")
+		}
+		return nil, fmt.Errorf("inheritance resolution failed: %w", err)
+	}
+
+	if a.log != nil {
+		a.log.Debug().Msg("inheritance resolution complete")
+	}
+
+	return extendedSchemas, nil
 }
 
 // wrapPropertyBankReadError converts filesystem failures into ResourceErrors

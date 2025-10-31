@@ -183,8 +183,19 @@ func TestSchemaLoaderAdapter_RespectsConfigPropertyBankPath(t *testing.T) {
 	tempDir := t.TempDir()
 	writeFile(t, filepath.Join(tempDir, "custom_bank.json"), `{
   "properties": {
-    "title": {
+    "standard_title": {
       "type": "string",
+      "required": true,
+      "array": false
+    },
+    "standard_tags": {
+      "type": "string",
+      "required": false,
+      "array": true
+    },
+    "iso_date": {
+      "type": "string",
+      "format": "date-time",
       "required": true,
       "array": false
     }

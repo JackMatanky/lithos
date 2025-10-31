@@ -1,6 +1,7 @@
 package schema
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -20,7 +21,6 @@ var propertySpecParsers = map[string]func(json.RawMessage) (domain.PropertySpec,
 }
 
 // schemaDTO mirrors the on-disk schema JSON document structure.
-// schemaDTO mirrors the on-disk schema JSON document structure.
 type schemaDTO struct {
 	Name       string                     `json:"name"`
 	Extends    string                     `json:"extends"`
@@ -31,13 +31,6 @@ type schemaDTO struct {
 // propertyBankDTO represents the JSON layout of the property bank document.
 type propertyBankDTO struct {
 	Properties map[string]json.RawMessage `json:"properties"`
-}
-
-// propertyEntry captures the results of decoding a single named property or
-// property reference.
-type propertyEntry struct {
-	key   string
-	value domain.IProperty
 }
 
 // propertyRefDTO carries the optional `$ref` pointer for a property.
@@ -63,13 +56,6 @@ func (r propertyRefDTO) Normalize() string {
 	}
 
 	return r.Ref
-}
-
-func (r propertyRefDTO) toDomain(name string) domain.PropertyRef {
-	return domain.PropertyRef{
-		Name: name,
-		Ref:  r.Normalize(),
-	}
 }
 
 func parseStringSpec(raw json.RawMessage) (domain.PropertySpec, error) {
@@ -120,20 +106,17 @@ func parseFileSpec(raw json.RawMessage) (domain.PropertySpec, error) {
 	return spec, nil
 }
 
-// toDomain converts the DTO into a domain.PropertyBank while preserving
-// detailed remediation information on failure.
+// toDomain converts the DTO into a domain.PropertyBank.
 func (dto propertyBankDTO) toDomain(path string) (domain.PropertyBank, error) {
-	entries, err := dto.propertyEntries(path)
-	if err != nil {
-		return domain.PropertyBank{}, err
-	}
+	properties := make(map[string]domain.Property, len(dto.Properties))
 
-	properties := make(map[string]domain.Property, len(entries))
-	for _, entry := range entries {
-		// PropertyBank should only contain full Property definitions, not refs
-		if prop, ok := entry.value.(domain.Property); ok {
-			properties[entry.key] = prop
+	for id, raw := range dto.Properties {
+		// PropertyBank entries are always full definitions, never refs
+		prop, err := parsePropertyDef(id, raw, path, "property_bank")
+		if err != nil {
+			return domain.PropertyBank{}, err
 		}
+		properties[id] = prop
 	}
 
 	bankPtr, err := domain.NewPropertyBank(properties)
@@ -149,86 +132,71 @@ func (dto propertyBankDTO) toDomain(path string) (domain.PropertyBank, error) {
 	return *bankPtr, nil
 }
 
-// propertyBankDTO.propertyEntries decodes each property definition and returns
-// the resulting domain properties keyed by property identifier.
-// PropertyBank should only contain full Property definitions, never
-// PropertyRefs.
-func (dto propertyBankDTO) propertyEntries(
+// toDomain materializes the schema DTO into a domain.Schema value.
+// It resolves $ref references immediately using the PropertyBank.
+func (dto schemaDTO) toDomain(
 	path string,
-) ([]propertyEntry, error) {
-	entries := make([]propertyEntry, 0, len(dto.Properties))
-	for id, raw := range dto.Properties {
-		// PropertyBank entries are always full definitions, never refs
-		prop, err := parsePropertyDef(id, raw, path, "property_bank")
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, propertyEntry{key: id, value: prop})
-	}
-	return entries, nil
-}
+	bank domain.PropertyBank,
+) (domain.Schema, error) {
+	// Create mixed slice of Properties and PropertyRefs
+	properties := make([]MixedProperty, 0, len(dto.Properties))
 
-// schemaDTO.propertyEntries decodes the schema DTO's properties into a slice of
-// entries, preserving their names for later sorting.
-// Schemas can contain either Property or PropertyRef.
-func (dto schemaDTO) propertyEntries(path string) ([]propertyEntry, error) {
-	entries := make([]propertyEntry, 0, len(dto.Properties))
-	for name, raw := range dto.Properties {
-		// Schemas can have either full properties or refs
-		value, err := parseProperty(name, raw, path, dto.Name)
-		if err != nil {
-			return nil, err
-		}
-		entries = append(entries, propertyEntry{key: name, value: value})
+	// Sort property keys for deterministic ordering
+	keys := make([]string, 0, len(dto.Properties))
+	for key := range dto.Properties {
+		keys = append(keys, key)
 	}
-	return entries, nil
-}
+	sort.Strings(keys)
 
-// toDomain materializes the schema DTO into a domain.Schema value, keeping the
-// properties sorted deterministically by name.
-func (dto schemaDTO) toDomain(path string) (domain.Schema, error) {
-	entries, err := dto.propertyEntries(path)
+	for _, name := range keys {
+		raw := dto.Properties[name]
+
+		// Check if this is a $ref property
+		var ref propertyRefDTO
+		if err := json.Unmarshal(raw, &ref); err == nil && ref.Ref != "" {
+			// This is a $ref - create PropertyRef for immediate resolution
+			normalizedRef := ref.Normalize()
+			properties = append(properties, MixedProperty{
+				Property: nil,
+				PropertyRef: &PropertyRef{
+					Name: name,
+					Ref:  normalizedRef,
+				},
+			})
+			continue
+		}
+
+		// Parse as full Property definition
+		prop, err := parsePropertyDef(name, raw, path, dto.Name)
+		if err != nil {
+			return domain.Schema{}, err
+		}
+		properties = append(properties, MixedProperty{
+			Property:    &prop,
+			PropertyRef: nil,
+		})
+	}
+
+	// Resolve $refs immediately using PropertyDereferencer
+	dereferencer := NewPropertyDereferencer()
+	ctx := context.Background() // TODO: Pass proper context from caller
+	resolvedProperties, err := dereferencer.DereferenceProperties(
+		ctx,
+		dto.Name,
+		properties,
+		bank,
+	)
 	if err != nil {
 		return domain.Schema{}, err
 	}
-
-	properties := make([]domain.IProperty, 0, len(entries))
-	for _, entry := range entries {
-		properties = append(properties, entry.value)
-	}
-
-	// Sort by name using IProperty interface
-	sort.Slice(properties, func(i, j int) bool {
-		return properties[i].GetName() < properties[j].GetName()
-	})
 
 	return domain.Schema{
 		Name:               dto.Name,
 		Extends:            dto.Extends,
 		Excludes:           dto.Excludes,
-		Properties:         properties,
-		ResolvedProperties: nil,
+		Properties:         resolvedProperties, // Original properties (resolved)
+		ResolvedProperties: resolvedProperties, // Same as Properties for now
 	}, nil
-}
-
-// parsePropertyRef parses a PropertyRef from JSON.
-func parsePropertyRef(
-	name string,
-	raw json.RawMessage,
-	path string,
-	owner string,
-) (domain.PropertyRef, error) {
-	var ref propertyRefDTO
-	if err := json.Unmarshal(raw, &ref); err != nil {
-		return domain.PropertyRef{}, propertyDefinitionError(
-			fmt.Sprintf("failed to parse property ref %q", name),
-			owner,
-			path,
-			err,
-		)
-	}
-
-	return ref.toDomain(name), nil
 }
 
 // parsePropertyDef parses a full Property definition from JSON.
@@ -240,27 +208,35 @@ func decodePropertyDefinition(
 		Required bool   `json:"required"`
 		Array    bool   `json:"array"`
 	}
-	if err = json.Unmarshal(raw, &header); err != nil {
-		return
+	if headerErr := json.Unmarshal(raw, &header); headerErr != nil {
+		return "", false, false, nil, headerErr
 	}
 	if header.Type == "" {
-		err = fmt.Errorf("type field is required for all properties")
-		return
+		return "", false, false, nil, fmt.Errorf(
+			"type field is required for all properties",
+		)
 	}
 
 	var fields map[string]json.RawMessage
-	if err = json.Unmarshal(raw, &fields); err != nil {
-		return
+	if fieldsErr := json.Unmarshal(raw, &fields); fieldsErr != nil {
+		return "", false, false, nil, fieldsErr
 	}
 	delete(fields, "type")
 	delete(fields, "required")
 	delete(fields, "array")
+	// Remove fields that shouldn't be in spec
+	delete(fields, "name") // name comes from the map key
+	delete(fields, "id")   // id is generated by domain
 
 	specRaw, err = json.Marshal(fields)
+	if err != nil {
+		return "", false, false, nil, err
+	}
+
 	typeName = strings.ToLower(header.Type)
 	required = header.Required
 	array = header.Array
-	return
+	return typeName, required, array, specRaw, nil
 }
 
 func parsePropertyDef(
@@ -301,45 +277,18 @@ func parsePropertyDef(
 		)
 	}
 
-	return domain.Property{
-		Name:     name,
-		Required: required,
-		Array:    array,
-		Spec:     spec,
-	}, nil
-}
-
-// parseProperty parses either a PropertyRef or Property from JSON by checking
-// for the presence of $ref field.
-//
-// The name parameter comes from the map key in the properties object.
-// For example, in {"properties": {"title": {...}}}, name would be "title".
-//
-// Returns either domain.Property or domain.PropertyRef as domain.IProperty.
-func parseProperty(
-	name string,
-	raw json.RawMessage,
-	path string,
-	owner string,
-) (domain.IProperty, error) {
-	// Check if this is a $ref property by looking for $ref field
-	var ref propertyRefDTO
-	if err := json.Unmarshal(raw, &ref); err != nil {
-		return nil, propertyDefinitionError(
-			fmt.Sprintf("failed to parse property %q", name),
+	// Use domain.NewProperty to get proper ID generation and validation
+	propertyPtr, err := domain.NewProperty(name, required, array, spec)
+	if err != nil {
+		return domain.Property{}, propertyDefinitionError(
+			fmt.Sprintf("invalid property definition for %q", name),
 			owner,
 			path,
 			err,
 		)
 	}
 
-	// MVP: $ref is mutually exclusive - if present, parse as PropertyRef
-	if ref.Ref != "" {
-		return parsePropertyRef(name, raw, path, owner)
-	}
-
-	// Otherwise parse as full Property definition
-	return parsePropertyDef(name, raw, path, owner)
+	return *propertyPtr, nil
 }
 
 // propertyDefinitionError constructs a SchemaError with a consistent

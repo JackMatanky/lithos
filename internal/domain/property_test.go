@@ -102,3 +102,58 @@ func TestPropertyValidate(t *testing.T) {
 		assert.Contains(t, err.Error(), "spec validation failed")
 	})
 }
+
+// TestNewProperty tests the Property entity constructor with ID generation.
+func TestNewProperty(t *testing.T) {
+	spec := mockPropertySpec{
+		validateError: nil,
+		specType:      PropertyTypeString,
+	}
+
+	t.Run("creates Property with auto-generated ID", func(t *testing.T) {
+		property, err := NewProperty("testProp", true, false, spec)
+
+		require.NoError(t, err)
+		assert.Equal(t, "testProp", property.Name)
+		assert.True(t, property.Required)
+		assert.False(t, property.Array)
+		assert.Equal(t, spec, property.Spec)
+
+		// Property should have a non-empty ID
+		assert.NotEmpty(t, property.ID)
+
+		// ID should be deterministic based on name and spec content
+		property2, err2 := NewProperty("testProp", true, false, spec)
+		require.NoError(t, err2)
+		assert.Equal(
+			t,
+			property.ID,
+			property2.ID,
+			"Properties with same name and spec should have same ID",
+		)
+	})
+
+	t.Run(
+		"generates different IDs for different properties",
+		func(t *testing.T) {
+			property1, err1 := NewProperty("prop1", true, false, spec)
+			property2, err2 := NewProperty("prop2", true, false, spec)
+
+			require.NoError(t, err1)
+			require.NoError(t, err2)
+			assert.NotEqual(
+				t,
+				property1.ID,
+				property2.ID,
+				"Different properties should have different IDs",
+			)
+		},
+	)
+
+	t.Run("fails validation for invalid property", func(t *testing.T) {
+		_, err := NewProperty("", true, false, spec)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "property name cannot be empty")
+	})
+}

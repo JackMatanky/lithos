@@ -3,6 +3,8 @@ package domain
 import (
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 const testPropertyName = "title"
@@ -206,7 +208,7 @@ func TestPropertyBank_UnmarshalFromFixture(t *testing.T) {
 	if !exists {
 		t.Fatal("standard_title not found")
 	}
-	if title.Name != "title" {
+	if title.Name != testPropertyName {
 		t.Errorf("Expected name 'title', got %s", title.Name)
 	}
 
@@ -224,5 +226,88 @@ func TestPropertyBank_UnmarshalFromFixture(t *testing.T) {
 	}
 	if date.Name != "date" {
 		t.Errorf("Expected name 'date', got %s", date.Name)
+	}
+}
+
+// TestPropertyBank_Lookup_WithGeneratedIDs tests that property lookups work
+// correctly with the new ID generation that uses full spec content hashing.
+func TestPropertyBank_Lookup_WithGeneratedIDs(t *testing.T) {
+	// Create properties with different specs to ensure unique IDs
+	prop1, err := NewProperty(
+		"title",
+		true,
+		false,
+		&StringSpec{Pattern: "^.{1,200}$"},
+	)
+	require.NoError(t, err)
+
+	prop2, err := NewProperty(
+		"title",
+		true,
+		false,
+		&StringSpec{Pattern: "^.{1,100}$"},
+	) // Different pattern
+	require.NoError(t, err)
+
+	prop3, err := NewProperty(
+		"tags",
+		false,
+		true,
+		&StringSpec{},
+	) // Different name and array
+	require.NoError(t, err)
+
+	// Verify IDs are different (since specs are different)
+	if prop1.ID == prop2.ID {
+		t.Error("Properties with different specs should have different IDs")
+	}
+	if prop1.ID == prop3.ID {
+		t.Error("Properties with different names should have different IDs")
+	}
+	if prop2.ID == prop3.ID {
+		t.Error(
+			"Properties with different names and specs should have different IDs",
+		)
+	}
+
+	// Create PropertyBank using the generated IDs as keys
+	properties := map[string]Property{
+		prop1.ID: *prop1,
+		prop2.ID: *prop2,
+		prop3.ID: *prop3,
+	}
+
+	pb, err := NewPropertyBank(properties)
+	require.NoError(t, err)
+
+	// Test lookups using the generated IDs
+	found1, exists1 := pb.Lookup(prop1.ID)
+	if !exists1 {
+		t.Fatal("Lookup should find property with generated ID")
+	}
+	if found1.Name != testPropertyName || found1.Required != true {
+		t.Error("Lookup returned incorrect property data")
+	}
+
+	found2, exists2 := pb.Lookup(prop2.ID)
+	if !exists2 {
+		t.Fatal("Lookup should find second property with generated ID")
+	}
+	if found2.Name != "title" || found2.Required != true {
+		t.Error("Lookup returned incorrect property data for second property")
+	}
+
+	found3, exists3 := pb.Lookup(prop3.ID)
+	if !exists3 {
+		t.Fatal("Lookup should find third property with generated ID")
+	}
+	if found3.Name != "tags" || found3.Array != true {
+		t.Error("Lookup returned incorrect property data for third property")
+	}
+
+	// Test that lookup with wrong ID fails
+	_, exists := pb.Lookup("nonexistent-id")
+	if exists {
+		t.Error("Lookup should not find property with invalid ID")
 	}
 }

@@ -18,8 +18,8 @@ func TestSchemaRegistryAdapter_RegisterAll(t *testing.T) {
 	registry := NewSchemaRegistryAdapter(logger.NewTest())
 
 	schemas := []domain.Schema{
-		{Name: "test-schema", Properties: []domain.IProperty{
-			domain.Property{Name: "field1", Spec: domain.StringSpec{}},
+		{Name: "test-schema", Properties: []domain.Property{
+			{Name: "field1", Spec: domain.StringSpec{}},
 		}},
 	}
 	bank := domain.PropertyBank{
@@ -81,8 +81,8 @@ func TestSchemaRegistryAdapter_GetSchema_Success(t *testing.T) {
 
 	schema := domain.Schema{
 		Name: "test",
-		Properties: []domain.IProperty{
-			domain.Property{Name: "field", Spec: domain.StringSpec{}},
+		Properties: []domain.Property{
+			{Name: "field", Spec: domain.StringSpec{}},
 		},
 	}
 	err := registry.RegisterAll(
@@ -96,7 +96,7 @@ func TestSchemaRegistryAdapter_GetSchema_Success(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "test", result.Name)
 	assert.Len(t, result.Properties, 1)
-	assert.Equal(t, "field", result.Properties[0].GetName())
+	assert.Equal(t, "field", result.Properties[0].Name)
 }
 
 // TestSchemaRegistryAdapter_GetSchema_NotFound tests error handling when schema
@@ -253,8 +253,8 @@ func TestSchemaRegistryAdapter_DefensiveCopying(t *testing.T) {
 	// Register original schema
 	originalSchema := domain.Schema{
 		Name: "test",
-		Properties: []domain.IProperty{
-			domain.Property{Name: "field1", Spec: domain.StringSpec{}},
+		Properties: []domain.Property{
+			{Name: "field1", Spec: domain.StringSpec{}},
 		},
 	}
 	originalProperty := domain.Property{Name: "prop1"}
@@ -273,11 +273,8 @@ func TestSchemaRegistryAdapter_DefensiveCopying(t *testing.T) {
 	retrievedSchema, err := registry.GetSchema(context.Background(), "test")
 	require.NoError(t, err)
 	retrievedSchema.Name = "mutated"
-	// Mutate property (requires type assertion since IProperty is interface)
-	if prop, ok := retrievedSchema.Properties[0].(domain.Property); ok {
-		prop.Name = "mutated-field"
-		retrievedSchema.Properties[0] = prop
-	}
+	// Mutate property directly since it's now a concrete type
+	retrievedSchema.Properties[0].Name = "mutated-field"
 	_ = retrievedSchema // intentionally mutated to test defensive copying
 
 	// Get property and mutate returned copy
@@ -293,9 +290,68 @@ func TestSchemaRegistryAdapter_DefensiveCopying(t *testing.T) {
 	internalSchema, err := registry.GetSchema(context.Background(), "test")
 	require.NoError(t, err)
 	assert.Equal(t, "test", internalSchema.Name)
-	assert.Equal(t, "field1", internalSchema.Properties[0].GetName())
+	assert.Equal(t, "field1", internalSchema.Properties[0].Name)
 
 	internalProperty, err := registry.GetProperty(context.Background(), "prop1")
 	require.NoError(t, err)
 	assert.Equal(t, "prop1", internalProperty.Name)
+}
+
+// TestSchemaRegistryAdapter_DefensiveCopyingResolvedProperties tests that
+// ResolvedProperties are defensively copied to prevent external mutation.
+func TestSchemaRegistryAdapter_DefensiveCopyingResolvedProperties(
+	t *testing.T,
+) {
+	registry := NewSchemaRegistryAdapter(logger.NewTest())
+
+	// Create schema with ResolvedProperties
+	originalSchema := domain.Schema{
+		Name: "test-resolved",
+		Properties: []domain.Property{
+			{Name: "field1", Spec: &domain.StringSpec{}},
+		},
+		ResolvedProperties: []domain.Property{
+			{Name: "resolved1", Spec: &domain.StringSpec{}},
+			{Name: "resolved2", Spec: &domain.StringSpec{}},
+		},
+	}
+
+	bank := domain.PropertyBank{
+		Properties: map[string]domain.Property{},
+	}
+
+	err := registry.RegisterAll(
+		context.Background(),
+		[]domain.Schema{originalSchema},
+		bank,
+	)
+	require.NoError(t, err)
+
+	// Get schema and mutate returned copy's ResolvedProperties
+	retrievedSchema, err := registry.GetSchema(
+		context.Background(),
+		"test-resolved",
+	)
+	require.NoError(t, err)
+
+	// Mutate the ResolvedProperties slice
+	retrievedSchema.ResolvedProperties[0].Name = "mutated-resolved"
+	retrievedSchema.ResolvedProperties = append(
+		retrievedSchema.ResolvedProperties,
+		domain.Property{Name: "added"},
+	)
+	_ = retrievedSchema // intentionally mutated to test defensive copying
+
+	// Verify internal state unchanged
+	internalSchema, err := registry.GetSchema(
+		context.Background(),
+		"test-resolved",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "resolved1", internalSchema.ResolvedProperties[0].Name)
+	assert.Len(
+		t,
+		internalSchema.ResolvedProperties,
+		2,
+	) // Should still be 2, not 3
 }
