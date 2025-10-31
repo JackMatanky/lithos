@@ -327,7 +327,7 @@ if err != nil {
 **Key Interfaces:**
 
 - `Build(ctx context.Context) (IndexStats, error)` - Full vault scan and cache persistence with basic note creation
-- `Refresh(ctx context.Context, since time.Time) error` - Incremental update for large vaults (post-MVP optimization)
+- `Refresh(ctx context.Context, since time.Time) error` - Incremental update for large vaults
 
 **Dependencies:** VaultScannerPort, CacheWriterPort, Logger, Config.
 
