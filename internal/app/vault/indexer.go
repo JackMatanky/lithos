@@ -2,10 +2,13 @@ package vault
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/app/frontmatter"
+	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/JackMatanky/lithos/internal/shared/dto"
@@ -14,27 +17,32 @@ import (
 
 // VaultIndexer orchestrates the vault indexing workflow from scan to cache
 // persistence. It implements the CQRS write-side pattern for indexing
-// operations, coordinating vault scanning, basic note creation, and cache
-// persistence.
+// operations, coordinating vault scanning, frontmatter extraction/validation,
+// note creation, and cache persistence.
 //
 // The indexer focuses solely on orchestration - it delegates scanning to
-// VaultScannerPort, caching to CacheWriterPort, and uses injected dependencies
-// for all infrastructure concerns.
+// VaultScannerPort, frontmatter processing to FrontmatterService, schema
+// operations to SchemaEngine, and caching to CacheWriterPort.
 //
 // Key Design Principles:
 //   - Focused Service: Orchestrates workflow only, does not implement
-//     scanning/caching
-//   - Resilient Error Handling: Cache failures logged as warnings, indexing
-//     continues
-//   - MVP Scope: Creates basic notes with file metadata, frontmatter parsing
-//     deferred
+//     scanning/caching/frontmatter processing
+//
+// - Resilient Error Handling: Frontmatter validation errors logged but don't
+// abort
+//
+//	  entire indexing; cache failures logged as warnings, indexing continues
+//	- Integrated Workflow: FrontmatterService integration enables validated
+//	  frontmatter in indexed Notes
 //
 // Reference: docs/architecture/components.md#vaultindexer.
 type VaultIndexer struct {
-	vaultScanner spi.VaultScannerPort
-	cacheWriter  spi.CacheWriterPort
-	config       domain.Config
-	log          zerolog.Logger
+	vaultScanner       spi.VaultScannerPort
+	cacheWriter        spi.CacheWriterPort
+	frontmatterService *frontmatter.FrontmatterService
+	schemaEngine       *schema.SchemaEngine
+	config             domain.Config
+	log                zerolog.Logger
 }
 
 // IndexStats tracks metrics for vault indexing operations.
@@ -44,12 +52,17 @@ type VaultIndexer struct {
 // - ScannedCount: Total files scanned from vault
 // - IndexedCount: Notes successfully persisted to cache
 // - CacheFailures: Cache write errors (logged as warnings)
+// - ValidationSuccesses: Frontmatter validations that passed
+// - ValidationFailures: Frontmatter validations that failed (logged but don't
+// abort)
 // - Duration: Total indexing time for performance tracking.
 type IndexStats struct {
-	ScannedCount  int
-	IndexedCount  int
-	CacheFailures int
-	Duration      time.Duration
+	ScannedCount        int
+	IndexedCount        int
+	CacheFailures       int
+	ValidationSuccesses int
+	ValidationFailures  int
+	Duration            time.Duration
 }
 
 // NewVaultIndexer creates a new VaultIndexer with injected dependencies.
@@ -59,6 +72,8 @@ type IndexStats struct {
 // Parameters:
 //   - vaultScanner: Port for scanning vault files
 //   - cacheWriter: Port for persisting notes to cache
+//   - frontmatterService: Service for frontmatter extraction and validation
+//   - schemaEngine: Engine for schema loading and resolution
 //   - config: Application configuration
 //   - log: Structured logger for operation tracking
 //
@@ -67,30 +82,37 @@ type IndexStats struct {
 func NewVaultIndexer(
 	vaultScanner spi.VaultScannerPort,
 	cacheWriter spi.CacheWriterPort,
+	frontmatterService *frontmatter.FrontmatterService,
+	schemaEngine *schema.SchemaEngine,
 	config domain.Config,
 	log zerolog.Logger,
 ) *VaultIndexer {
 	return &VaultIndexer{
-		vaultScanner: vaultScanner,
-		cacheWriter:  cacheWriter,
-		config:       config,
-		log:          log,
+		vaultScanner:       vaultScanner,
+		cacheWriter:        cacheWriter,
+		frontmatterService: frontmatterService,
+		schemaEngine:       schemaEngine,
+		config:             config,
+		log:                log,
 	}
 }
 
 // Build orchestrates the complete vault indexing workflow.
-// Implements the 3-step process: vault scan → basic note creation → cache
-// persist.
+// Implements the enhanced workflow: schema load → vault scan → frontmatter
+// extraction/validation → note creation → cache persist.
 //
 // Workflow Steps:
-// 1. Scan vault using scanFiles()
-// 2. Process each file using processFile()
-// 3. Log final statistics using logStats()
+// 1. Load schemas using SchemaEngine.Load()
+// 2. Scan vault using scanFiles()
+// 3. Process each file using processFile() (with frontmatter integration)
+// 4. Log final statistics using logStats()
 //
 // Error Handling:
+// - Schema load failures: Return error immediately (abort indexing)
 // - Vault scan failures: Return error immediately (abort indexing)
+// - Frontmatter validation failures: Log warning, increment ValidationFailures,
+// continue
 // - Cache write failures: Log warning, increment CacheFailures, continue
-// processing
 // - Partial success acceptable - index what we can
 //
 // Parameters:
@@ -98,33 +120,44 @@ func NewVaultIndexer(
 //
 // Returns:
 //   - IndexStats: Metrics for the indexing operation
-//   - error: Vault scan errors only (cache failures logged but don't abort)
+//
+// - error: Schema/scan errors only (validation/cache failures logged but don't
+// abort)
 //
 // Thread-safe: Safe for concurrent calls (dependencies handle synchronization).
 func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 	startTime := time.Now()
 	stats := IndexStats{
-		ScannedCount:  0,
-		IndexedCount:  0,
-		CacheFailures: 0,
-		Duration:      0,
+		ScannedCount:        0,
+		IndexedCount:        0,
+		CacheFailures:       0,
+		ValidationSuccesses: 0,
+		ValidationFailures:  0,
+		Duration:            0,
 	}
 
-	// Step 1: Scan vault
+	// Step 1: Load schemas first (if schema engine is available)
+	if v.schemaEngine != nil {
+		if err := v.schemaEngine.Load(ctx); err != nil {
+			return stats, err
+		}
+	}
+
+	// Step 2: Scan vault
 	vaultFiles, err := v.scanFiles(ctx)
 	if err != nil {
 		return stats, err
 	}
 	stats.ScannedCount = len(vaultFiles)
 
-	// Step 2: Process each file
+	// Step 3: Process each file
 	for i := range vaultFiles {
 		v.processFile(ctx, vaultFiles[i], &stats)
 	}
 
 	stats.Duration = time.Since(startTime)
 
-	// Step 3: Log summary
+	// Step 4: Log summary
 	v.logStats(stats)
 
 	return stats, nil
@@ -155,10 +188,12 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 	startTime := time.Now()
 	stats := IndexStats{
-		ScannedCount:  0,
-		IndexedCount:  0,
-		CacheFailures: 0,
-		Duration:      0,
+		ScannedCount:        0,
+		IndexedCount:        0,
+		CacheFailures:       0,
+		ValidationSuccesses: 0,
+		ValidationFailures:  0,
+		Duration:            0,
 	}
 
 	// Step 1: Scan modified files
@@ -211,8 +246,9 @@ func (v *VaultIndexer) scanModifiedFiles(
 	return v.vaultScanner.ScanModified(ctx, since)
 }
 
-// processFile handles single file processing: filtering, note creation, and
-// persistence.
+// processFile handles single file processing: filtering, frontmatter
+// processing,
+// note creation, and persistence.
 // Updates stats for tracking and logging.
 //
 // Parameters:
@@ -224,17 +260,31 @@ func (v *VaultIndexer) processFile(
 	vf dto.VaultFile,
 	stats *IndexStats,
 ) {
-	// Filter: only .md files for MVP
+	// Filter: only .md files for frontmatter processing
 	if vf.Ext != ".md" {
 		return
 	}
 
-	// Create basic Note with file metadata
+	var noteFrontmatter domain.Frontmatter
+
+	// If frontmatterService is available, use it for extraction and validation
+	if v.frontmatterService != nil {
+		noteFrontmatter = v.processFileWithFrontmatter(ctx, vf, stats)
+		if noteFrontmatter.Fields == nil {
+			return // Processing failed, stats already updated
+		}
+		stats.ValidationSuccesses++
+	} else {
+		// Fallback: create basic empty frontmatter for backward compatibility
+		noteFrontmatter = domain.Frontmatter{
+			FileClass: "",
+			Fields:    map[string]interface{}{},
+		}
+	}
+
+	// Create Note with frontmatter (validated or basic)
 	noteID := deriveNoteIDFromPath(vf.Path)
-	note := domain.NewNote(noteID, domain.Frontmatter{
-		FileClass: "",
-		Fields:    map[string]interface{}{},
-	})
+	note := domain.NewNote(noteID, noteFrontmatter)
 
 	// Persist to cache
 	if persistErr := v.cacheWriter.Persist(ctx, note); persistErr != nil {
@@ -260,6 +310,8 @@ func (v *VaultIndexer) logStats(stats IndexStats) {
 		Int("scanned", stats.ScannedCount).
 		Int("indexed", stats.IndexedCount).
 		Int("cache_failures", stats.CacheFailures).
+		Int("validation_successes", stats.ValidationSuccesses).
+		Int("validation_failures", stats.ValidationFailures).
 		Dur("duration", stats.Duration).
 		Msg("vault indexing complete")
 }
@@ -276,6 +328,8 @@ func (v *VaultIndexer) logRefreshStats(stats IndexStats, since time.Time) {
 		Int("scanned", stats.ScannedCount).
 		Int("indexed", stats.IndexedCount).
 		Int("cache_failures", stats.CacheFailures).
+		Int("validation_successes", stats.ValidationSuccesses).
+		Int("validation_failures", stats.ValidationFailures).
 		Dur("duration", stats.Duration).
 		Msg("vault refresh complete")
 }
@@ -292,4 +346,90 @@ func deriveNoteIDFromPath(path string) domain.NoteID {
 	basename := filepath.Base(path)
 	name := strings.TrimSuffix(basename, filepath.Ext(basename))
 	return domain.NewNoteID(name)
+}
+
+// logValidationError logs frontmatter validation errors with structured
+// context.
+// Used for tracking validation failures without aborting indexing.
+//
+// Parameters:
+//   - filePath: Path of the file that failed validation
+//   - err: The validation error that occurred
+func (v *VaultIndexer) logValidationError(filePath string, err error) {
+	v.log.Warn().
+		Err(err).
+		Str("filePath", filePath).
+		Msg("frontmatter validation failed")
+}
+
+// processFileWithFrontmatter handles frontmatter extraction and validation.
+// Helper method to reduce complexity in processFile.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - vf: Vault file to process
+//   - stats: IndexStats to update with processing results
+//
+// Returns:
+//   - domain.Frontmatter: Validated frontmatter or empty if processing failed
+func (v *VaultIndexer) processFileWithFrontmatter(
+	ctx context.Context,
+	vf dto.VaultFile,
+	stats *IndexStats,
+) domain.Frontmatter {
+	// Extract frontmatter from file content
+	extractedFM, extractErr := v.frontmatterService.Extract(vf.Content)
+	if extractErr != nil {
+		v.logValidationError(vf.Path, extractErr)
+		stats.ValidationFailures++
+		return domain.Frontmatter{} // Return empty to signal failure
+	}
+
+	// Get schema for validation if fileClass is present
+	if extractedFM.FileClass != "" {
+		schemaForValidation, schemaErr := v.getSchemaForValidation(
+			ctx,
+			extractedFM.FileClass,
+		)
+		if schemaErr != nil {
+			v.logValidationError(vf.Path, schemaErr)
+			stats.ValidationFailures++
+			return domain.Frontmatter{} // Return empty to signal failure
+		}
+
+		// Validate frontmatter against schema
+		validationErr := v.frontmatterService.Validate(
+			ctx,
+			extractedFM,
+			schemaForValidation,
+		)
+		if validationErr != nil {
+			v.logValidationError(vf.Path, validationErr)
+			stats.ValidationFailures++
+			return domain.Frontmatter{} // Return empty to signal failure
+		}
+	}
+
+	return extractedFM
+}
+
+// getSchemaForValidation retrieves a schema for frontmatter validation.
+// Helper method that wraps schema engine access with error handling.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - fileClass: The schema name to retrieve
+//
+// Returns:
+//   - domain.Schema: The resolved schema for validation
+//   - error: Schema retrieval error if schema not found or engine unavailable
+func (v *VaultIndexer) getSchemaForValidation(
+	ctx context.Context,
+	fileClass string,
+) (domain.Schema, error) {
+	if v.schemaEngine == nil {
+		return domain.Schema{}, fmt.Errorf("schema engine not available")
+	}
+	// Use generic Get method from SchemaEngine
+	return schema.Get[domain.Schema](v.schemaEngine, ctx, fileClass)
 }

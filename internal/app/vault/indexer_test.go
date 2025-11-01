@@ -75,7 +75,7 @@ func TestVaultIndexer_Build_CallsVaultScannerScanAll(t *testing.T) {
 	config := domain.Config{}
 	log := zerolog.New(nil)
 
-	indexer := NewVaultIndexer(fakeScanner, fakeWriter, config, log)
+	indexer := NewVaultIndexer(fakeScanner, fakeWriter, nil, nil, config, log)
 
 	// When
 	_, err := indexer.Build(context.Background())
@@ -100,7 +100,7 @@ func TestVaultIndexer_Build_CallsCacheWriterPersist(t *testing.T) {
 	config := domain.Config{}
 	log := zerolog.New(nil)
 
-	indexer := NewVaultIndexer(fakeScanner, fakeWriter, config, log)
+	indexer := NewVaultIndexer(fakeScanner, fakeWriter, nil, nil, config, log)
 
 	// When
 	_, err := indexer.Build(context.Background())
@@ -128,7 +128,7 @@ func TestVaultIndexer_Build_HandlesCacheWriteFailures(t *testing.T) {
 	config := domain.Config{}
 	log := zerolog.New(nil)
 
-	indexer := NewVaultIndexer(fakeScanner, fakeWriter, config, log)
+	indexer := NewVaultIndexer(fakeScanner, fakeWriter, nil, nil, config, log)
 
 	// When
 	stats, err := indexer.Build(context.Background())
@@ -153,7 +153,7 @@ func TestVaultIndexer_Build_HandlesVaultScanFailure(t *testing.T) {
 	config := domain.Config{}
 	log := zerolog.New(nil)
 
-	indexer := NewVaultIndexer(fakeScanner, fakeWriter, config, log)
+	indexer := NewVaultIndexer(fakeScanner, fakeWriter, nil, nil, config, log)
 
 	// When
 	stats, err := indexer.Build(context.Background())
@@ -183,7 +183,7 @@ func TestVaultIndexer_Refresh_Success(t *testing.T) {
 	config := domain.Config{}
 	log := zerolog.New(nil)
 
-	indexer := NewVaultIndexer(fakeScanner, fakeWriter, config, log)
+	indexer := NewVaultIndexer(fakeScanner, fakeWriter, nil, nil, config, log)
 
 	// When
 	err := indexer.Refresh(context.Background(), since)
@@ -205,7 +205,7 @@ func TestVaultIndexer_Refresh_NoModifications(t *testing.T) {
 	config := domain.Config{}
 	log := zerolog.New(nil)
 
-	indexer := NewVaultIndexer(fakeScanner, fakeWriter, config, log)
+	indexer := NewVaultIndexer(fakeScanner, fakeWriter, nil, nil, config, log)
 
 	// When
 	err := indexer.Refresh(context.Background(), since)
@@ -233,7 +233,7 @@ func TestVaultIndexer_Refresh_CacheFailure(t *testing.T) {
 	config := domain.Config{}
 	log := zerolog.New(nil)
 
-	indexer := NewVaultIndexer(fakeScanner, fakeWriter, config, log)
+	indexer := NewVaultIndexer(fakeScanner, fakeWriter, nil, nil, config, log)
 
 	// When
 	err := indexer.Refresh(context.Background(), since)
@@ -257,7 +257,7 @@ func TestVaultIndexer_Refresh_ScanFailure(t *testing.T) {
 	config := domain.Config{}
 	log := zerolog.New(nil)
 
-	indexer := NewVaultIndexer(fakeScanner, fakeWriter, config, log)
+	indexer := NewVaultIndexer(fakeScanner, fakeWriter, nil, nil, config, log)
 
 	// When
 	err := indexer.Refresh(context.Background(), since)

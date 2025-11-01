@@ -1,10 +1,3 @@
-// Package integration provides end-to-end tests for schema-driven lookup
-// workflows.
-//
-// This package tests the complete integration between TemplateEngine,
-// QueryService,
-// FrontmatterService, and SchemaEngine to ensure schema-driven template lookups
-// work correctly end-to-end.
 package integration
 
 // Temporarily commented out until packages are implemented

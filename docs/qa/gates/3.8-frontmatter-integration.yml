@@ -1,0 +1,50 @@
+schema: 1
+story: "3.8"
+story_title: "FrontmatterService Integration"
+gate: CONCERNS
+status_reason: "Core functionality implemented and tested, but missing integration tests and performance verification for complete quality assurance."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-11-01T12:00:00Z"
+
+top_issues:
+  - id: "TEST-001"
+    severity: medium
+    finding: "Missing integration tests for complete frontmatter workflow (vault scan → extract → validate → index → query)"
+    suggested_action: "Implement comprehensive integration test suite covering end-to-end frontmatter processing"
+  - id: "PERF-001"
+    severity: medium
+    finding: "No performance benchmarking to verify <10% overhead target for frontmatter processing"
+    suggested_action: "Add performance tests measuring indexing time with/without frontmatter processing"
+
+waiver: { active: false }
+
+quality_score: 85
+
+evidence:
+  tests_reviewed: 12
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+    ac_gaps: [10]
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "No security concerns - frontmatter validation prevents malformed data"
+  performance:
+    status: CONCERNS
+    notes: "Performance impact not measured - need benchmarking for <10% overhead target"
+  reliability:
+    status: PASS
+    notes: "Robust error handling - validation failures logged but don't abort indexing"
+  maintainability:
+    status: PASS
+    notes: "Clean code structure with proper documentation and helper methods"
+
+recommendations:
+  immediate:
+    - action: "Add integration tests for complete frontmatter workflow"
+      refs: ["internal/app/vault/indexer.go", "internal/app/query/service.go"]
+  future:
+    - action: "Implement performance benchmarking for frontmatter processing overhead"
+      refs: ["internal/app/vault/indexer.go"]
