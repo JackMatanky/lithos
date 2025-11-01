@@ -90,6 +90,7 @@ func (d *PropertyDereferencer) DereferenceProperties(
 		case prop.PropertyRef != nil:
 			// Resolve $ref to concrete Property
 			resolved, err := d.resolvePropertyRef(
+				ctx,
 				*prop.PropertyRef,
 				bank,
 				schemaName,
@@ -111,6 +112,7 @@ func (d *PropertyDereferencer) DereferenceProperties(
 // up
 // the definition in the PropertyBank.
 func (d *PropertyDereferencer) resolvePropertyRef(
+	ctx context.Context,
 	propRef PropertyRef,
 	bank domain.PropertyBank,
 	schemaName string,
@@ -134,19 +136,35 @@ func (d *PropertyDereferencer) resolvePropertyRef(
 		)
 	}
 
-	// Create a new Property using:
+	// Create a resolved Property using:
+	// - ID from the PropertyRef.Ref (preserves original PropertyBank key)
 	// - Name from the PropertyRef (the key in the schema)
 	// - Spec, Required, Array from the PropertyBank definition
 	// This allows the schema to use the ref's name while getting validation
-	// rules from the bank
-	propPtr, err := domain.NewProperty(
-		propRef.Name,
-		bankProp.Required,
-		bankProp.Array,
-		bankProp.Spec,
-	)
-	if err != nil {
-		return domain.Property{}, err
+	// rules from the bank, and maintains InPropertyBank check capability
+	resolvedProp := domain.Property{
+		ID:       propRef.Ref, // Preserve original PropertyBank key
+		Name:     propRef.Name,
+		Required: bankProp.Required,
+		Array:    bankProp.Array,
+		Spec:     bankProp.Spec,
 	}
-	return *propPtr, nil
+
+	// Validate the resolved property (bank properties are assumed valid,
+	// but we need to validate the new name and structure)
+	if err := (&resolvedProp).Validate(ctx); err != nil {
+		return domain.Property{}, lithoserrors.NewSchemaErrorWithRemediation(
+			fmt.Sprintf(
+				"schema %s, property %s: resolved $ref validation failed: %v",
+				schemaName,
+				propRef.Name,
+				err,
+			),
+			schemaName,
+			"check property name and ensure referenced property bank entry is valid",
+			err,
+		)
+	}
+
+	return resolvedProp, nil
 }

@@ -333,7 +333,7 @@ Current implementation indexes frontmatter only. Goldmark provides AST access fo
 - Schema contains multiple Property definitions
 - Frontmatter validated against resolved Schema by FrontmatterService
 - Loaded from JSON files by SchemaLoader adapter
-- Inheritance resolved by SchemaResolver service
+- Inheritance resolved by SchemaExtender adapter
 - Structural validation via Schema.Validate() called by SchemaValidator
 
 **Design Decisions:**
@@ -499,53 +499,58 @@ PropertyBank solves the "common property definition" problem elegantly. Without 
 
 **Key Attributes:**
 
+- `ID` (string) - Unique identifier for this property entity, generated using hash of (Name + Spec content) for deterministic identity.
 - `Name` (string) - Property identifier matching frontmatter key. Case-sensitive.
 - `Required` (bool) - Whether property must be present. Empty array satisfies required for array properties.
 - `Array` (bool) - Whether property accepts multiple values (YAML list) vs single scalar value.
-- `Ref` (string, optional) - JSON pointer reference to PropertyBank entry (e.g., "#/properties/standard_title"). Mutually exclusive with Spec.
-- `Spec` (PropertySpec, optional) - Type-specific validation constraints (interface for polymorphism). Mutually exclusive with Ref.
+- `Spec` (PropertySpec) - Type-specific validation constraints (interface for polymorphism).
 
 **Key Methods:**
 
-- `Validate(ctx context.Context) error` - Validates property structure (Name not empty, exactly one of Ref or Spec set). Delegates PropertySpec validation to Spec.Validate() if present. Returns error on structural issues.
+- `Validate(ctx context.Context) error` - Validates property structure (Name not empty, Spec valid). Delegates PropertySpec validation to Spec.Validate().
+- `InPropertyBank(bank PropertyBank) bool` - Checks if this property exists in the given PropertyBank by ID comparison.
 
 **Relationships:**
 
 - Belongs to Schema (composition)
-- Contains one PropertySpec implementation OR references PropertyBank entry
-- May be sourced from PropertyBank via `$ref` (resolved by SchemaLoader adapter)
+- Contains one PropertySpec implementation (no more $ref in domain layer)
 - Used by FrontmatterService to validate Frontmatter.Fields
 - Structural validation via Property.Validate() called by Schema.Validate()
 
 **Design Decisions:**
 
-- **Rich domain model:** Contains structural validation behavior via Validate() method. Delegates to PropertySpec.Validate() for polymorphic validation.
-- **Reference vs Inline:** Properties can either reference PropertyBank entries ($ref) or define constraints inline (Spec). Mutually exclusive for clarity.
-- **Interface-based composition:** PropertySpec interface enables type-specific validation without nullable attributes.
-- **Properties vs Fields terminology:** "Property" = schema definition. "Field" = actual frontmatter data.
-- **Required vs Array orthogonal:** Can have required scalars, optional scalars, required arrays, or optional arrays.
-- **Immutability:** Property instances are immutable value objects. Created via constructor validation, never modified after creation.
-- **JSON/YAML Serialization:** Properties serialize as JSON objects with either `$ref` field or `spec` field containing the PropertySpec variant.
+- **DDD Entity:** Property is now a domain entity with identity (ID field) rather than a value object. ID enables reliable membership checking in PropertyBank.
+- **Hash-based Identity:** ID generated from hash of (Name + Spec content) ensures deterministic, reproducible identity for the same property definition.
+- **No more $ref in domain:** PropertyBank references resolved at infrastructure layer (adapter), domain works with resolved Property entities only.
+- **Simplified Structure:** Removed Ref field and IProperty interface - all properties now have inline Spec, resolved by infrastructure layer.
+- **Entity vs Value Object:** Properties are entities because they need identity for PropertyBank membership checking, unlike PropertySpec which remains a value object.
+- **Immutability:** Property instances are immutable entities. Created via constructor validation, never modified after creation.
+- **JSON/YAML Serialization:** Properties serialize as JSON objects with id, name, required, array, and spec fields.
 
 **JSON/YAML Format Examples:**
 
 ```json
-// Property with inline spec
+// Property entity with inline spec
 {
+  "id": "a1b2c3d4...",
   "name": "email",
   "required": true,
   "array": false,
   "spec": {
+    "type": "string",
     "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"
   }
 }
 
-// Property with reference
+// Property entity with different spec type
 {
-  "name": "title",
-  "required": true,
-  "array": false,
-  "$ref": "#/properties/standard_title"
+  "id": "e5f6g7h8...",
+  "name": "tags",
+  "required": false,
+  "array": true,
+  "spec": {
+    "type": "string"
+  }
 }
 ```
 

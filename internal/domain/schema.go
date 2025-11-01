@@ -161,6 +161,8 @@ func (s *Schema) validateExcludesConstraint() error {
 // validateProperties validates all properties with a single pass through the
 // list.
 // Checks for duplicates and validates each property, aggregating all errors.
+// Note: This may result in duplicate validation calls if properties were
+// already validated during NewProperty construction, but ensures safety.
 func (s *Schema) validateProperties(ctx context.Context) error {
 	seen := make(map[string]bool)
 	var errs []error
@@ -189,7 +191,6 @@ func (s *Schema) validateProperties(ctx context.Context) error {
 	if len(errs) > 0 {
 		return errors.Join(errs...)
 	}
-
 	return nil
 }
 

@@ -39,6 +39,9 @@ type StringSpec struct {
 
 	// Pattern contains a regex pattern for validation (optional).
 	Pattern string `json:"pattern,omitempty"`
+
+	// compiledRegex caches the compiled regex pattern to avoid recompilation.
+	compiledRegex *regexp.Regexp
 }
 
 // NumberSpec defines validation constraints for numeric properties.
@@ -80,6 +83,12 @@ type FileSpec struct {
 	// Directory restricts valid file references to notes within specific vault
 	// directory (optional).
 	Directory string `json:"directory,omitempty"`
+
+	// compiledFileClass caches the compiled regex for FileClass pattern.
+	compiledFileClass *regexp.Regexp
+
+	// compiledDirectory caches the compiled regex for Directory pattern.
+	compiledDirectory *regexp.Regexp
 }
 
 // Type returns PropertyTypeString.
@@ -88,8 +97,19 @@ func (s StringSpec) Type() PropertySpecType {
 }
 
 // Validate checks that Pattern is a valid regex if specified.
-func (s StringSpec) Validate(ctx context.Context) error {
-	return validateStringPattern(s.Pattern)
+// Uses caching to avoid recompiling regex patterns.
+func (s *StringSpec) Validate(ctx context.Context) error {
+	if s.Pattern == "" {
+		return nil
+	}
+	if s.compiledRegex == nil {
+		regex, err := regexp.Compile(s.Pattern)
+		if err != nil {
+			return fmt.Errorf("invalid pattern regex: %w", err)
+		}
+		s.compiledRegex = regex
+	}
+	return nil
 }
 
 // Type returns PropertyTypeNumber.
@@ -156,23 +176,16 @@ func (f FileSpec) Type() PropertySpecType {
 }
 
 // Validate checks that FileClass and Directory patterns are valid regexes,
-// handling negation prefix.
-func (f FileSpec) Validate(ctx context.Context) error {
-	if err := validateFilePattern("fileClass", f.FileClass); err != nil {
+// handling negation prefix. Uses caching to avoid recompilation.
+func (f *FileSpec) Validate(ctx context.Context) error {
+	if err := validateFilePatternCached("fileClass", f.FileClass, &f.compiledFileClass); err != nil {
 		return err
 	}
-	return validateFilePattern("directory", f.Directory)
-}
-
-// validateStringPattern checks if the pattern is a valid regex.
-func validateStringPattern(pattern string) error {
-	if pattern == "" {
-		return nil
-	}
-	if _, err := regexp.Compile(pattern); err != nil {
-		return fmt.Errorf("invalid pattern regex: %w", err)
-	}
-	return nil
+	return validateFilePatternCached(
+		"directory",
+		f.Directory,
+		&f.compiledDirectory,
+	)
 }
 
 // validateNumberRange checks that Min <= Max if both are specified.
@@ -195,15 +208,23 @@ func validateNumberStep(step *float64) error {
 	return nil
 }
 
-// validateFilePattern checks if the pattern is a valid regex, allowing negation
-// prefix (^).
-func validateFilePattern(field, value string) error {
+// validateFilePatternCached checks if the pattern is a valid regex, allowing
+// negation
+// prefix (^). Uses caching to avoid recompilation.
+func validateFilePatternCached(
+	field, value string,
+	compiled **regexp.Regexp,
+) error {
 	if value == "" {
 		return nil
 	}
-	pattern := strings.TrimPrefix(value, "^") // Allow negation prefix
-	if _, err := regexp.Compile(pattern); err != nil {
-		return fmt.Errorf("invalid %s pattern: %w", field, err)
+	if *compiled == nil {
+		pattern := strings.TrimPrefix(value, "^") // Allow negation prefix
+		regex, err := regexp.Compile(pattern)
+		if err != nil {
+			return fmt.Errorf("invalid %s pattern: %w", field, err)
+		}
+		*compiled = regex
 	}
 	return nil
 }

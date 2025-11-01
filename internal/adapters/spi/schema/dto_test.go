@@ -1,8 +1,8 @@
 package schema
 
 import (
+	"context"
 	"encoding/json"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,7 +20,7 @@ func TestPropertyBankDTOToDomain(t *testing.T) {
 		},
 	}
 
-	bank, err := dto.toDomain("bank-path")
+	bank, err := dto.toDomain(context.Background(), "bank-path")
 	require.NoError(t, err)
 	property, ok := bank.Properties["title"]
 	require.True(t, ok)
@@ -45,37 +45,14 @@ func TestSchemaDTOToDomainSortsProperties(t *testing.T) {
 
 	// Create empty bank for this test
 	bankDTO := propertyBankDTO{Properties: map[string]json.RawMessage{}}
-	bank, err := bankDTO.toDomain("bank-path")
+	bank, err := bankDTO.toDomain(context.Background(), "bank-path")
 	require.NoError(t, err)
 
-	schema, err := dto.toDomain("schema-path", bank)
+	schema, err := dto.toDomain(context.Background(), "schema-path", bank)
 	require.NoError(t, err)
 	require.Len(t, schema.Properties, 2)
 	assert.Equal(t, "a", schema.Properties[0].Name)
 	assert.Equal(t, "b", schema.Properties[1].Name)
-}
-
-// TestParsePropertyDefinitionInvalidSpec asserts that invalid specs raise an
-// error with the expected message.
-func TestParsePropertyDefinitionInvalidSpec(t *testing.T) {
-	_, err := parsePropertyDef(
-		"invalid",
-		json.RawMessage(`{"type":"unknown","required":false,"array":false}`),
-		"schema-path",
-		"note",
-	)
-	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported property type")
-}
-
-// TestPropertyDefinitionErrorWrapsCause confirms schema errors retain their
-// original cause.
-func TestPropertyDefinitionErrorWrapsCause(t *testing.T) {
-	base := errors.New("cause")
-	err := propertyDefinitionError("message", "schema", "path", base)
-	require.Error(t, err)
-	require.ErrorIs(t, err, base)
-	assert.Contains(t, err.Error(), "message")
 }
 
 // TestSchemaDTOToDomainMixedProperties tests that schemas with both inline
@@ -89,7 +66,7 @@ func TestSchemaDTOToDomainMixedProperties(t *testing.T) {
 			),
 		},
 	}
-	bank, err := bankDTO.toDomain("bank-path")
+	bank, err := bankDTO.toDomain(context.Background(), "bank-path")
 	require.NoError(t, err)
 
 	// Create schema with mixed properties: inline + $ref
@@ -105,7 +82,7 @@ func TestSchemaDTOToDomainMixedProperties(t *testing.T) {
 		},
 	}
 
-	schema, err := dto.toDomain("schema-path", bank)
+	schema, err := dto.toDomain(context.Background(), "schema-path", bank)
 	require.NoError(t, err)
 	require.Len(t, schema.Properties, 2)
 
@@ -127,7 +104,7 @@ func TestSchemaDTOToDomainMixedProperties(t *testing.T) {
 func TestSchemaDTOToDomainInvalidRef(t *testing.T) {
 	// Create empty property bank
 	bankDTO := propertyBankDTO{Properties: map[string]json.RawMessage{}}
-	bank, err := bankDTO.toDomain("bank-path")
+	bank, err := bankDTO.toDomain(context.Background(), "bank-path")
 	require.NoError(t, err)
 
 	// Create schema with invalid $ref
@@ -140,7 +117,7 @@ func TestSchemaDTOToDomainInvalidRef(t *testing.T) {
 		},
 	}
 
-	_, err = dto.toDomain("schema-path", bank)
+	_, err = dto.toDomain(context.Background(), "schema-path", bank)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found in property bank")
 }

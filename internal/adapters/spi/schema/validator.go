@@ -38,23 +38,19 @@ func NewSchemaValidator() *SchemaValidator {
 	return &SchemaValidator{}
 }
 
-// ValidateAll performs comprehensive validation of schemas and property bank.
-// It orchestrates both model-level and cross-schema validation, aggregating
-// all errors for comprehensive reporting.
+// ValidateAll performs comprehensive validation of schemas.
+// It orchestrates model-level and cross-schema validation.
 //
-// Validation Steps:
-//  1. Model validation: Calls schema.Validate() for each schema
-//  2. Cross-schema validation: Checks Extends, duplicates, $ref references
-//  3. Error aggregation: Combines all errors using errors.Join()
+// Parameters:
+//   - ctx: Context for cancellation during long-running validation
+//   - schemas: Slice of schemas to validate
 //
-// Returns nil if all validation passes.
 // Returns aggregated error if any validation fails.
 //
 // Context is used for cancellation during potentially long-running validation.
 func (v *SchemaValidator) ValidateAll(
 	ctx context.Context,
 	schemas []domain.Schema,
-	bank domain.PropertyBank,
 ) error {
 	// Check for cancellation
 	select {
@@ -109,6 +105,11 @@ func (v *SchemaValidator) validateCrossSchema(
 	ctx context.Context,
 	schemas []domain.Schema,
 ) []error {
+	// Check for cancellation
+	if err := ctx.Err(); err != nil {
+		return []error{err}
+	}
+
 	var errs []error
 
 	// Build schema map for reference checking
@@ -122,9 +123,7 @@ func (v *SchemaValidator) validateCrossSchema(
 	uniqueErrs := v.validateUniqueSchemaNames(schemas)
 	errs = append(errs, uniqueErrs...)
 
-	// Check property references (basic validation)
-	refErrs := v.validatePropertyRefs(ctx, schemas)
-	errs = append(errs, refErrs...)
+	// Property references are now validated during DTO parsing
 
 	return errs
 }
@@ -180,17 +179,4 @@ func (v *SchemaValidator) validateUniqueSchemaNames(
 	}
 
 	return errs
-}
-
-// validatePropertyRefs checks that property references in schemas are valid.
-// Since $ref resolution now happens in the DTO layer and all properties are
-// concrete Property entities created via NewProperty (which validates them),
-// this method is now a no-op for future extensibility.
-func (v *SchemaValidator) validatePropertyRefs(
-	ctx context.Context,
-	schemas []domain.Schema,
-) []error {
-	// All property validation now happens during Property construction
-	// in the DTO layer. No additional validation needed here.
-	return nil
 }

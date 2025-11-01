@@ -32,6 +32,10 @@ type Property struct {
 
 	// Spec defines type-specific validation constraints.
 	Spec PropertySpec `json:"spec"`
+
+	// validated tracks whether this property has been validated to enable
+	// short-circuiting redundant validations.
+	validated bool
 }
 
 // NewProperty creates a new Property entity with auto-generated ID.
@@ -43,19 +47,39 @@ func NewProperty(
 	required, array bool,
 	spec PropertySpec,
 ) (*Property, error) {
+	return NewPropertyWithContext(
+		context.Background(),
+		name,
+		required,
+		array,
+		spec,
+	)
+}
+
+// NewPropertyWithContext creates a new Property entity with auto-generated ID.
+// The ID is generated using hash of (Name + Spec content) for deterministic
+// identity.
+// Returns error if the property definition is invalid.
+func NewPropertyWithContext(
+	ctx context.Context,
+	name string,
+	required, array bool,
+	spec PropertySpec,
+) (*Property, error) {
 	// Generate deterministic ID from name and spec content
 	id := generatePropertyID(name, spec)
 
 	property := Property{
-		ID:       id,
-		Name:     name,
-		Required: required,
-		Array:    array,
-		Spec:     spec,
+		ID:        id,
+		Name:      name,
+		Required:  required,
+		Array:     array,
+		Spec:      spec,
+		validated: false,
 	}
 
 	// Validate the property
-	if err := property.Validate(context.Background()); err != nil {
+	if err := (&property).Validate(ctx); err != nil {
 		return nil, err
 	}
 
@@ -64,7 +88,12 @@ func NewProperty(
 
 // Validate performs structural validation of the Property definition.
 // It checks basic constraints and delegates type-specific validation to Spec.
-func (p Property) Validate(ctx context.Context) error {
+// Uses short-circuiting to avoid redundant validations.
+func (p *Property) Validate(ctx context.Context) error {
+	if p.validated {
+		return nil
+	}
+
 	if err := validatePropertyName(p.Name); err != nil {
 		return err
 	}
@@ -73,7 +102,13 @@ func (p Property) Validate(ctx context.Context) error {
 	if err := ensurePropertySpec(p.Spec); err != nil {
 		return err
 	}
-	return validatePropertySpec(ctx, p.Name, p.Spec)
+	if err := validatePropertySpec(ctx, p.Name, p.Spec); err != nil {
+		return err
+	}
+
+	// Mark as validated to enable short-circuiting
+	p.validated = true
+	return nil
 }
 
 // validatePropertyName checks that property name is not empty.
@@ -102,6 +137,14 @@ func validatePropertySpec(
 		return fmt.Errorf("property %s: %w", name, err)
 	}
 	return nil
+}
+
+// InPropertyBank checks if this property originated from the given PropertyBank
+// by verifying that its ID exists as a key in the bank's properties map.
+// This enables membership checking for properties that were resolved from $ref.
+func (p Property) InPropertyBank(bank PropertyBank) bool {
+	_, exists := bank.Properties[p.ID]
+	return exists
 }
 
 // generatePropertyID creates a deterministic hash-based ID from property name

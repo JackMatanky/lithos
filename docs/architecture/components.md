@@ -180,28 +180,26 @@ Validation errors returned as structured FrontmatterError types with schema name
 
 ### SchemaEngine
 
-**Responsibility:** Coordinate schema loading, validation, resolution, and provide unified access to schemas and properties. Orchestrates SchemaLoader, SchemaValidator, SchemaResolver, and SchemaRegistry using Go generics for type-safe retrieval.
+**Responsibility:** Pure orchestration service coordinating schema initialization and providing unified access to loaded schemas and properties. Delegates all infrastructure concerns (validation, inheritance resolution, $ref substitution) to adapter layer components.
 
 **Key Interfaces:**
 
-- `Load(ctx context.Context) error` - Load schemas and property bank, validate structure, resolve inheritance, populate SchemaRegistry
+- `Load(ctx context.Context) error` - Orchestrate schema loading through SchemaLoader adapter (which handles validation, inheritance resolution, and registration internally)
 - `Get[T Schema | Property](ctx context.Context, name string) (T, error)` - Retrieve schema or property by name using generics
 - `Has[T Schema | Property](ctx context.Context, name string) bool` - Check if schema or property exists using generics
 
-**Dependencies:** SchemaLoader (port), SchemaValidator (adapter), SchemaResolver (service), SchemaRegistry (port), Logger.
+**Dependencies:** SchemaLoader (port), SchemaRegistry (port), Logger.
 
-**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics. Delegates to SchemaLoader for I/O, SchemaValidator for structural validation, SchemaResolver for inheritance resolution, and SchemaRegistry for lookups. Idiomatic (T, error) return signatures.
+**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics. Delegates complex infrastructure logic to adapter layer components. Maintains stable interface for Epic 3+ compatibility.
 
-**Schema Loading and Validation Workflow:**
+**Schema Loading Workflow:**
 
-The Load() method orchestrates the complete schema initialization pipeline:
+The Load() method orchestrates schema initialization through the adapter layer:
 
-1. **Load:** SchemaLoader reads JSON files from disk and parses into Schema DTOs and PropertyBank
-2. **Validate:** SchemaValidator validates structural integrity by calling schema.Validate() on each schema (which delegates to property.Validate() → propertySpec.Validate()). Also performs cross-schema validation (Extends references exist).
-3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes), hydrates PropertyBank references within a single merge pass using name-keyed maps, and detects circular dependencies.
-4. **Register:** SchemaRegistry populates in-memory maps with resolved schemas for fast lookups
+1. **Load & Process:** SchemaLoader adapter handles complete pipeline (JSON parsing → validation → inheritance resolution → $ref substitution → registration)
+2. **Register:** SchemaRegistry populated with fully resolved schemas for fast lookups
 
-**Fails Fast:** Any error in steps 1-3 terminates application at startup. No invalid schemas reach runtime.
+**Fails Fast:** Any error in adapter layer terminates application at startup. No invalid schemas reach runtime.
 
 **Usage Examples:**
 ```go
@@ -216,17 +214,47 @@ property, err := schemaEngine.Get[Property](ctx, "standard_title")
 exists := schemaEngine.Has[Schema](ctx, "contact")
 ```
 
-### SchemaValidator
+### SchemaValidator (Adapter Layer)
 
-**Responsibility:** Orchestrate schema validation by calling model-level Validate() methods and performing cross-schema validation that requires seeing multiple schemas together. Pure infrastructure adapter with no external dependencies, moved to adapter layer as part of DDD architecture refactoring.
+**Responsibility:** Infrastructure adapter for JSON schema file structure validation. Performs cross-schema validation that requires seeing multiple schemas together. Pure infrastructure logic separated from domain concerns.
 
 **Key Interfaces:**
 
-- `ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error` - Orchestrate validation of all schemas and check cross-schema references
+- `ValidateAll(ctx context.Context, schemas []Schema) error` - Orchestrate validation of all schemas and check cross-schema references
 
 **Dependencies:** None (pure infrastructure logic).
 
 **Technology Stack:** Orchestrates schema.Validate() calls, validates cross-schema references, aggregates errors using errors.Join().
+
+**Location:** `internal/adapters/spi/schema/validator.go`
+
+### PropertyDereferencer (Adapter Layer)
+
+**Responsibility:** Infrastructure adapter handling $ref substitution with PropertyBank lookups. Pure infrastructure concern for JSON pointer resolution.
+
+**Key Interfaces:**
+
+- `Dereference(ctx context.Context, schemas []Schema, bank PropertyBank) ([]Schema, error)` - Replace all $ref references with PropertyBank property definitions
+
+**Dependencies:** None (pure infrastructure logic).
+
+**Technology Stack:** JSON pointer resolution, PropertyBank lookups, error aggregation.
+
+**Location:** `internal/adapters/spi/schema/dereferencer.go`
+
+### SchemaExtender (Adapter Layer)
+
+**Responsibility:** Infrastructure adapter handling extends/excludes inheritance attribute processing. Pure infrastructure concern for inheritance resolution.
+
+**Key Interfaces:**
+
+- `Extend(ctx context.Context, schemas []Schema) ([]Schema, error)` - Resolve inheritance chains, flatten Extends/Excludes, detect circular dependencies
+
+**Dependencies:** None (pure infrastructure logic).
+
+**Technology Stack:** Topological sorting, inheritance merging, cycle detection.
+
+**Location:** `internal/adapters/spi/schema/extender.go`
 
 **Validation Responsibilities:**
 
@@ -247,13 +275,14 @@ SchemaValidator has two distinct responsibilities that require service-level log
 **What SchemaValidator Does NOT Do:**
 
 - Structural validation of individual schemas (delegated to schema.Validate())
-- Inheritance resolution (handled by SchemaResolver)
-- Circular dependency detection (handled by SchemaResolver during topological sort)
+- Inheritance resolution (handled by SchemaExtender adapter)
+- $ref substitution (handled by PropertyDereferencer adapter)
+- Circular dependency detection (handled by SchemaExtender during topological sort)
 
 **Example Implementation Pattern:**
 
 ```go
-func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error {
+func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema) error {
     var errors []error
 
     // 1. Orchestrate model-level validation
@@ -287,38 +316,7 @@ func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema, ban
 }
 ```
 
-### SchemaResolver
 
-**Responsibility:** Resolve schema inheritance chains and PropertyBank $ref substitutions. Pure domain service implementing inheritance resolution algorithm.
-
-**Key Interfaces:**
-
-- `Resolve(ctx context.Context, schemas []Schema, bank PropertyBank) ([]Schema, error)` - Resolve all schemas, returning flattened schemas with inheritance applied and $ref substituted
-
-**Dependencies:** None (pure domain logic).
-
-**Technology Stack:** Topological sort for dependency ordering, depth-first search for cycle detection, property merging with override semantics.
-
-**Resolution Algorithm:**
-
-1. **Build Dependency Graph:** Map each schema to its Extends parent
-2. **Detect Cycles:** DFS to find circular inheritance chains (Schema A extends B extends A)
-3. **Topological Sort:** Order schemas so parents resolve before children
-4. **Resolve Inheritance:** For each schema in order:
-   - Get parent's resolved properties (or empty if root schema)
-   - Apply Excludes (remove properties by name)
-   - Merge child properties (override parent properties with same name)
-   - Store as resolved properties
-5. **Substitute $ref:** Replace all `{$ref: "#/properties/name"}` with PropertyBank.Properties[name]
-
-**Example:**
-```go
-resolver := NewSchemaResolver()
-resolved, err := resolver.Resolve(ctx, schemas, propertyBank)
-if err != nil {
-    return fmt.Errorf("schema resolution failed: %w", err)
-}
-```
 
 ### VaultIndexer
 
@@ -1341,7 +1339,7 @@ func main() {
     finder := fuzzyfind.NewAdapter(log)
 
     // 3. Domain Services
-    // SchemaEngine internally instantiates SchemaValidator and SchemaResolver
+    // SchemaEngine is pure orchestration - complex logic handled by adapter layer
     schemaEngine := domain.NewSchemaEngine(
         schemaLoader,
         schemaRegistry,
@@ -1416,9 +1414,10 @@ func main() {
 - Shared services (used by multiple components)
 - Configuration (external data)
 
-**Internal Dependencies** (single-use, internal logic):
-- SchemaValidator - only used by SchemaEngine, instantiated internally (moved to adapter layer)
-- SchemaResolver - only used by SchemaEngine, instantiated internally
+**Internal Dependencies** (infrastructure adapters):
+- SchemaValidator - infrastructure adapter instantiated by SchemaLoader
+- PropertyDereferencer - infrastructure adapter instantiated by SchemaLoader
+- SchemaExtender - infrastructure adapter instantiated by SchemaLoader
 
 **Rationale:** Reduces main.go complexity by not exposing internal implementation details. SchemaEngine's constructor signature shows only what it needs from outside, not internal orchestration details.
 
