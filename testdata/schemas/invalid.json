@@ -7,4 +7,6 @@
       "$ref": "#/properties/standard_title"
     }
   }
+}
+  }
   // Missing closing brace - malformed JSON

@@ -28,7 +28,8 @@ import (
 
 // QueryService provides fast in-memory lookups for indexed notes.
 // It implements thread-safe concurrent reads using sync.RWMutex and supports
-// the FR9 query capabilities: lookup by ID, path, basename, and schema.
+// the FR9 query capabilities: lookup by ID, path, basename, schema, and
+// frontmatter.
 //
 // Thread-Safe Design:
 // - Multiple readers can query simultaneously via RLock
@@ -39,7 +40,9 @@ import (
 // - byID: Primary index for NoteID → Note lookups (O(1))
 // - byPath: Path index for file path → Note lookups (O(1))
 // - byBasename: Basename index for filename → []Note lookups (O(log n))
-// - byFileClass: Schema index for fileClass → []Note lookups (O(log n)).
+// - byFileClass: Schema index for fileClass → []Note lookups (O(log n))
+// - byFrontmatter: Frontmatter index for field → value → []Note lookups
+// (O(log n)).
 type QueryService struct {
 	mu sync.RWMutex
 
@@ -58,6 +61,9 @@ type QueryService struct {
 
 	// FileClass index: schema name → []Note
 	byFileClass map[string][]domain.Note
+
+	// Frontmatter index: field → value → []Note
+	byFrontmatter map[string]map[interface{}][]domain.Note
 }
 
 // NewQueryService creates a new QueryService with thread-safe in-memory
@@ -80,12 +86,13 @@ func NewQueryService(
 	log zerolog.Logger,
 ) *QueryService {
 	return &QueryService{
-		byID:        make(map[domain.NoteID]domain.Note),
-		byPath:      make(map[string]domain.Note),
-		byBasename:  make(map[string][]domain.Note),
-		byFileClass: make(map[string][]domain.Note),
-		cacheReader: cacheReader,
-		log:         log,
+		byID:          make(map[domain.NoteID]domain.Note),
+		byPath:        make(map[string]domain.Note),
+		byBasename:    make(map[string][]domain.Note),
+		byFileClass:   make(map[string][]domain.Note),
+		byFrontmatter: make(map[string]map[interface{}][]domain.Note),
+		cacheReader:   cacheReader,
+		log:           log,
 		// mu is initialized to zero value (unlocked state)
 		mu: sync.RWMutex{},
 	}
@@ -177,6 +184,49 @@ func (q *QueryService) ByFileClass(
 	return notes, nil
 }
 
+// ByFrontmatter retrieves all notes matching a frontmatter field value.
+// Returns a slice of notes if any match, or empty slice if none found.
+// Thread-safe: uses RLock to allow concurrent reads.
+//
+// Query Semantics:
+// - Returns empty slice (not error) for non-matching field/value pairs
+// - Supports any value type (string, number, boolean, etc.)
+// - Logs debug message with field, value, and result count
+// - O(log n) lookup performance via nested map access.
+//
+// Usage Examples:
+//
+//	notes := queryService.ByFrontmatter("author", "John Doe")
+//	notes := queryService.ByFrontmatter("tags", "project-x")
+//	notes := queryService.ByFrontmatter("status", "draft")
+func (q *QueryService) ByFrontmatter(
+	ctx context.Context,
+	field string,
+	value interface{},
+) ([]domain.Note, error) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	// Check if field exists in index
+	fieldMap, fieldExists := q.byFrontmatter[field]
+	if !fieldExists {
+		return nil, nil // Return empty slice for non-existent field
+	}
+
+	// Check if value exists for this field
+	notes, valueExists := fieldMap[value]
+	if !valueExists || len(notes) == 0 {
+		return nil, nil // Return empty slice for non-matching value
+	}
+
+	q.log.Debug().
+		Str("field", field).
+		Interface("value", value).
+		Int("count", len(notes)).
+		Msg("query by frontmatter")
+	return notes, nil
+}
+
 // RefreshFromCache rebuilds all in-memory indices from the persistent cache.
 // This method should be called during app startup and when cache is
 // invalidated.
@@ -215,17 +265,29 @@ func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 	q.byPath = make(map[string]domain.Note)
 	q.byBasename = make(map[string][]domain.Note)
 	q.byFileClass = make(map[string][]domain.Note)
+	q.byFrontmatter = make(map[string]map[interface{}][]domain.Note)
 
 	// Populate indices from cache
 	for _, note := range notes {
 		q.byID[note.ID] = note
 
 		// TODO: Populate byPath and byBasename in Story 3.7
-		// For now, only populate byID and byFileClass as per current scope
+		// For now, populate byID, byFileClass, and byFrontmatter
 
 		if note.Frontmatter.FileClass != "" {
 			q.byFileClass[note.Frontmatter.FileClass] = append(
 				q.byFileClass[note.Frontmatter.FileClass],
+				note,
+			)
+		}
+
+		// Populate frontmatter index for all fields
+		for field, value := range note.Frontmatter.Fields {
+			if q.byFrontmatter[field] == nil {
+				q.byFrontmatter[field] = make(map[interface{}][]domain.Note)
+			}
+			q.byFrontmatter[field][value] = append(
+				q.byFrontmatter[field][value],
 				note,
 			)
 		}

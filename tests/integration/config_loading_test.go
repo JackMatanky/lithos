@@ -24,6 +24,11 @@ func TestConfigLoading_Integration(t *testing.T) {
 		_ = os.Chdir(originalWd)
 	}()
 
+	// Create temp vault directory for validation
+	vaultDir := t.TempDir()
+	require.NoError(t, os.Setenv("LITHOS_VAULT_PATH", vaultDir))
+	defer func() { _ = os.Unsetenv("LITHOS_VAULT_PATH") }()
+
 	// Create logger
 	log := logger.New(os.Stdout, "debug")
 
@@ -39,7 +44,7 @@ func TestConfigLoading_Integration(t *testing.T) {
 	require.NotNil(t, cfg)
 
 	// Verify config values from testdata/vault/lithos.json
-	assert.Equal(t, "/tmp/test-vault", cfg.VaultPath)
+	assert.Equal(t, vaultDir, cfg.VaultPath)
 	assert.Equal(t, "testdata/templates", cfg.TemplatesDir)
 	assert.Equal(t, "testdata/schemas", cfg.SchemasDir)
 	assert.Equal(

@@ -616,3 +616,103 @@ func TestQueryService_RefreshFromCache_EmptyCache(t *testing.T) {
 		"byFileClass should be empty after refresh with empty cache",
 	)
 }
+
+// RED TESTS: ByFrontmatter method (AC: 3)
+
+// TestQueryService_ByFrontmatter_ExistingField tests frontmatter field lookups.
+func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
+	// Given
+	authorNote := domain.NewNote(
+		domain.NewNoteID("note1"),
+		domain.NewFrontmatter(map[string]interface{}{
+			"author": "John Doe",
+			"status": "published",
+		}),
+	)
+	tagNote := domain.NewNote(
+		domain.NewNoteID("note2"),
+		domain.NewFrontmatter(map[string]interface{}{
+			"tags":   "project-x",
+			"author": "Jane Smith",
+		}),
+	)
+
+	fakeCacheReader := &FakeCacheReader{
+		notes: []domain.Note{authorNote, tagNote},
+	}
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+	qs := NewQueryService(fakeCacheReader, logger)
+
+	// Populate indices
+	err := qs.RefreshFromCache(context.Background())
+	require.NoError(t, err)
+
+	// When
+	notes, err := qs.ByFrontmatter(context.Background(), "author", "John Doe")
+
+	// Then
+	require.NoError(t, err)
+	assert.Len(t, notes, 1)
+	assert.Equal(t, "note1", notes[0].ID.String())
+}
+
+// TestQueryService_ByFrontmatter_MultipleMatches tests multiple notes with same
+// frontmatter value.
+func TestQueryService_ByFrontmatter_MultipleMatches(t *testing.T) {
+	// Given
+	note1 := domain.NewNote(
+		domain.NewNoteID("note1"),
+		domain.NewFrontmatter(map[string]interface{}{
+			"status": "draft",
+			"author": "John",
+		}),
+	)
+	note2 := domain.NewNote(
+		domain.NewNoteID("note2"),
+		domain.NewFrontmatter(map[string]interface{}{
+			"status": "draft",
+			"author": "Jane",
+		}),
+	)
+
+	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note1, note2}}
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+	qs := NewQueryService(fakeCacheReader, logger)
+
+	// Populate indices
+	err := qs.RefreshFromCache(context.Background())
+	require.NoError(t, err)
+
+	// When
+	notes, err := qs.ByFrontmatter(context.Background(), "status", "draft")
+
+	// Then
+	require.NoError(t, err)
+	assert.Len(t, notes, 2)
+}
+
+// TestQueryService_ByFrontmatter_MissingField tests missing frontmatter field.
+func TestQueryService_ByFrontmatter_MissingField(t *testing.T) {
+	// Given
+	note := domain.NewNote(
+		domain.NewNoteID("note1"),
+		domain.NewFrontmatter(map[string]interface{}{
+			"author": "John Doe",
+		}),
+	)
+
+	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note}}
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+	qs := NewQueryService(fakeCacheReader, logger)
+
+	// Populate indices
+	err := qs.RefreshFromCache(context.Background())
+	require.NoError(t, err)
+
+	// When
+	notes, err := qs.ByFrontmatter(context.Background(), "tags", "nonexistent")
+
+	// Then
+	require.NoError(t, err)
+	assert.Empty(t, notes) // Should return empty slice, not error
+}
