@@ -151,11 +151,11 @@ linters = ["cyclop"]
 path = ".*_test\\.go$"
 linters = ["cyclop", "dupl", "funlen", "mnd", "ineffassign"]
 
-# Only suppress G204/G304 from gosec in *_test.go files.
+# Only suppress G204/G304/G301/G306 from gosec in *_test.go files.
 [[linters.exclusions.rules]]
 path = "_test\\.go$"
 linters = ["gosec"]
-text = "^(G204|G304):"
+text = "^(G204|G304|G301|G306):"
 
 # Suppress exhaustruct in test files where zero values are intentionally used
 [[linters.exclusions.rules]]
