@@ -62,22 +62,6 @@ func NewProperty(
 	return &property, nil
 }
 
-// generatePropertyID creates a deterministic hash-based ID from property name
-// and full spec content for maximum uniqueness.
-func generatePropertyID(name string, spec PropertySpec) string {
-	// Serialize the full spec to JSON for comprehensive content hashing
-	specJSON, err := json.Marshal(spec)
-	if err != nil {
-		// Fallback to type-only if serialization fails (shouldn't happen)
-		specJSON = []byte(fmt.Sprintf(`{"type":%q}`, spec.Type()))
-	}
-
-	// Include name and full spec content
-	content := fmt.Sprintf("%s|%s", name, string(specJSON))
-	hash := sha256.Sum256([]byte(content))
-	return hex.EncodeToString(hash[:])
-}
-
 // Validate performs structural validation of the Property definition.
 // It checks basic constraints and delegates type-specific validation to Spec.
 func (p Property) Validate(ctx context.Context) error {
@@ -118,4 +102,20 @@ func validatePropertySpec(
 		return fmt.Errorf("property %s: %w", name, err)
 	}
 	return nil
+}
+
+// generatePropertyID creates a deterministic hash-based ID from property name
+// and full spec content for maximum uniqueness.
+func generatePropertyID(name string, spec PropertySpec) string {
+	// Serialize the full spec to JSON for comprehensive content hashing
+	specJSON, err := json.Marshal(spec)
+	if err != nil {
+		// Fallback to type-only if serialization fails (shouldn't happen)
+		specJSON = []byte(fmt.Sprintf(`{"type":%q}`, spec.Type()))
+	}
+
+	// Include name and full spec content
+	content := fmt.Sprintf("%s|%s", name, string(specJSON))
+	hash := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(hash[:])
 }
