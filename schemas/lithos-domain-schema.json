@@ -9,7 +9,11 @@
       "type": "string",
       "description": "Opaque domain identifier for notes. Could represent file path, UUID, or database key.",
       "minLength": 1,
-      "examples": ["note-123", "/vault/notes/contact.md", "550e8400-e29b-41d4-a716-446655440000"]
+      "examples": [
+        "note-123",
+        "/vault/notes/contact.md",
+        "550e8400-e29b-41d4-a716-446655440000"
+      ]
     },
 
     "TemplateID": {
@@ -36,7 +40,10 @@
             "type": "string"
           },
           "description": "Allowed values as fixed list. If non-empty, value must be in list (exact match, case-sensitive).",
-          "examples": [["red", "green", "blue"], ["draft", "published", "archived"]]
+          "examples": [
+            ["red", "green", "blue"],
+            ["draft", "published", "archived"]
+          ]
         },
         "pattern": {
           "type": "string",
@@ -109,10 +116,10 @@
       "oneOf": [
         {
           "allOf": [
-            {"$ref": "#/definitions/StringSpec"},
+            { "$ref": "#/definitions/StringSpec" },
             {
               "properties": {
-                "type": {"const": "string"}
+                "type": { "const": "string" }
               },
               "required": ["type"]
             }
@@ -120,10 +127,10 @@
         },
         {
           "allOf": [
-            {"$ref": "#/definitions/NumberSpec"},
+            { "$ref": "#/definitions/NumberSpec" },
             {
               "properties": {
-                "type": {"const": "number"}
+                "type": { "const": "number" }
               },
               "required": ["type"]
             }
@@ -131,10 +138,10 @@
         },
         {
           "allOf": [
-            {"$ref": "#/definitions/BoolSpec"},
+            { "$ref": "#/definitions/BoolSpec" },
             {
               "properties": {
-                "type": {"const": "bool"}
+                "type": { "const": "bool" }
               },
               "required": ["type"]
             }
@@ -142,10 +149,10 @@
         },
         {
           "allOf": [
-            {"$ref": "#/definitions/DateSpec"},
+            { "$ref": "#/definitions/DateSpec" },
             {
               "properties": {
-                "type": {"const": "date"}
+                "type": { "const": "date" }
               },
               "required": ["type"]
             }
@@ -153,10 +160,10 @@
         },
         {
           "allOf": [
-            {"$ref": "#/definitions/FileSpec"},
+            { "$ref": "#/definitions/FileSpec" },
             {
               "properties": {
-                "type": {"const": "file"}
+                "type": { "const": "file" }
               },
               "required": ["type"]
             }
@@ -206,7 +213,10 @@
           "type": "string",
           "pattern": "^#/properties/[a-zA-Z0-9_-]+$",
           "description": "JSON pointer reference to PropertyBank entry",
-          "examples": ["#/properties/standard_title", "#/properties/standard_tags"]
+          "examples": [
+            "#/properties/standard_title",
+            "#/properties/standard_tags"
+          ]
         }
       },
       "required": ["$ref"],
@@ -215,8 +225,8 @@
 
     "PropertyOrRef": {
       "oneOf": [
-        {"$ref": "#/definitions/Property"},
-        {"$ref": "#/definitions/PropertyRef"}
+        { "$ref": "#/definitions/Property" },
+        { "$ref": "#/definitions/PropertyRef" }
       ],
       "description": "Property can be either inline definition or reference to PropertyBank"
     },
