@@ -44,10 +44,12 @@ func main() {
 	templateEngine := template.NewTemplateEngine(templateLoader, &cfg, &log)
 	vaultScanner := vaultAdapter.NewVaultReaderAdapter(cfg, log)
 	cacheWriter := cache.NewJSONCacheWriter(cfg, log)
+	cacheReader := cache.NewJSONCacheReader(cfg, log)
 	frontmatterService := frontmatter.NewFrontmatterService(schemaEngine, log)
 	vaultIndexer := vault.NewVaultIndexer(
 		vaultScanner,
 		cacheWriter,
+		cacheReader,
 		frontmatterService,
 		schemaEngine,
 		cfg,

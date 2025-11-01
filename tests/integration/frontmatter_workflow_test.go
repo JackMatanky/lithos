@@ -148,6 +148,7 @@ This is a test note with frontmatter.
 	indexer := vault.NewVaultIndexer(
 		vaultScanner,
 		cacheWriter,
+		cacheReader,
 		fmService,
 		schemaEngine,
 		*config,

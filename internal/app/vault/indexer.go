@@ -14,6 +14,11 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	// markdownExt defines the file extension for markdown files.
+	markdownExt = ".md"
+)
+
 // VaultIndexerInterface defines the contract for vault indexing operations.
 // This interface allows for mocking in tests while maintaining clean
 // architecture.
@@ -30,7 +35,8 @@ type VaultIndexerInterface interface {
 //
 // The indexer focuses solely on orchestration - it delegates scanning to
 // VaultScannerPort, frontmatter processing to FrontmatterService, schema
-// operations to SchemaEngine, and caching to CacheWriterPort.
+// operations to SchemaEngine, and caching to CacheWriterPort and
+// CacheReaderPort.
 //
 // Key Design Principles:
 //   - Focused Service: Orchestrates workflow only, does not implement
@@ -47,6 +53,7 @@ type VaultIndexerInterface interface {
 type VaultIndexer struct {
 	vaultScanner       spi.VaultScannerPort
 	cacheWriter        spi.CacheWriterPort
+	cacheReader        spi.CacheReaderPort
 	frontmatterService *frontmatter.FrontmatterService
 	schemaEngine       *schema.SchemaEngine
 	config             domain.Config
@@ -60,6 +67,7 @@ type VaultIndexer struct {
 // Parameters:
 //   - vaultScanner: Port for scanning vault files
 //   - cacheWriter: Port for persisting notes to cache
+//   - cacheReader: Port for reading cached notes
 //   - frontmatterService: Service for frontmatter extraction and validation
 //   - schemaEngine: Engine for schema loading and resolution
 //   - config: Application configuration
@@ -70,6 +78,7 @@ type VaultIndexer struct {
 func NewVaultIndexer(
 	vaultScanner spi.VaultScannerPort,
 	cacheWriter spi.CacheWriterPort,
+	cacheReader spi.CacheReaderPort,
 	frontmatterService *frontmatter.FrontmatterService,
 	schemaEngine *schema.SchemaEngine,
 	config domain.Config,
@@ -78,6 +87,7 @@ func NewVaultIndexer(
 	return &VaultIndexer{
 		vaultScanner:       vaultScanner,
 		cacheWriter:        cacheWriter,
+		cacheReader:        cacheReader,
 		frontmatterService: frontmatterService,
 		schemaEngine:       schemaEngine,
 		config:             config,
@@ -140,28 +150,42 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 
 	// Step 3: Process each file
 	for i := range vaultFiles {
-		v.processFile(ctx, vaultFiles[i], &stats)
+		v.processFile(ctx, &vaultFiles[i], &stats)
 	}
 
 	stats.Duration = time.Since(startTime)
 
-	// Step 4: Log summary
+	// Step 4: Validate cache state
+	validationResult, validationErr := v.validateCacheState(ctx)
+	if validationErr != nil {
+		v.log.Warn().
+			Err(validationErr).
+			Msg("cache state validation failed")
+	} else {
+		v.logCacheValidationResult(validationResult)
+	}
+
+	// Step 5: Log summary
 	v.logStats(stats)
 
 	return stats, nil
 }
 
 // Refresh performs incremental vault indexing for large vault optimization.
-// Only processes files modified since the specified timestamp.
+// Processes modified files and handles deletion reconciliation.
 //
 // Workflow Steps:
-// 1. Scan modified files using scanModifiedFiles()
-// 2. Process each modified file using processFile()
-// 3. Log incremental update statistics
+// 1. Load schemas using SchemaEngine.Load() (if schema engine available)
+// 2. Perform deletion reconciliation by comparing current vault state with
+// cache
+// 3. Scan modified files using scanModifiedFiles()
+// 4. Process each modified file using processFile()
+// 5. Log incremental update statistics
 //
 // Error Handling:
+// - Schema load failures: Return error immediately (abort refresh)
 // - Vault scan failures: Return error immediately (abort refresh)
-// - Cache write failures: Log warning, increment CacheFailures, continue
+// - Cache write/delete failures: Log warning, increment CacheFailures, continue
 // processing
 // - Partial success acceptable - update what we can
 //
@@ -170,7 +194,7 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 //   - since: Only process files modified after this timestamp
 //
 // Returns:
-//   - error: Vault scan errors only (cache failures logged but don't abort)
+//   - error: Schema/scan errors only (cache failures logged but don't abort)
 //
 // Thread-safe: Safe for concurrent calls (dependencies handle synchronization).
 func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
@@ -184,24 +208,167 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 		Duration:            0,
 	}
 
-	// Step 1: Scan modified files
+	// Step 1: Load schemas first (if schema engine is available)
+	if v.schemaEngine != nil {
+		if err := v.schemaEngine.Load(ctx); err != nil {
+			return fmt.Errorf("schema loading failed: %w", err)
+		}
+	}
+
+	// Step 2: Perform deletion reconciliation
+	if err := v.reconcileDeletions(ctx, &stats); err != nil {
+		return fmt.Errorf("deletion reconciliation failed: %w", err)
+	}
+
+	// Step 2: Scan modified files
 	vaultFiles, err := v.scanModifiedFiles(ctx, since)
 	if err != nil {
 		return err
 	}
 	stats.ScannedCount = len(vaultFiles)
 
-	// Step 2: Process each modified file
+	// Step 3: Process each modified file
 	for i := range vaultFiles {
-		v.processFile(ctx, vaultFiles[i], &stats)
+		v.processFile(ctx, &vaultFiles[i], &stats)
 	}
 
 	stats.Duration = time.Since(startTime)
 
-	// Step 3: Log incremental update
+	// Step 4: Validate cache state
+	validationResult, validationErr := v.validateCacheState(ctx)
+	if validationErr != nil {
+		v.log.Warn().
+			Err(validationErr).
+			Msg("cache state validation failed during refresh")
+	} else {
+		v.logCacheValidationResult(validationResult)
+	}
+
+	// Step 5: Log incremental update
 	v.logRefreshStats(stats, since)
 
 	return nil
+}
+
+// reconcileDeletions compares current vault state with cache entries and
+// removes
+// orphaned cache entries (files deleted from vault but still cached).
+// Ensures cache-vault consistency during incremental operations.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - stats: IndexStats to update with deletion failures
+//
+// Returns:
+// - error: Critical errors that should abort refresh (e.g., vault scan
+// failure).
+func (v *VaultIndexer) reconcileDeletions(
+	ctx context.Context,
+	stats *IndexStats,
+) error {
+	// Step 1: Get current vault NoteIDs
+	vaultFiles, scanErr := v.scanFiles(ctx)
+	if scanErr != nil {
+		return fmt.Errorf(
+			"failed to scan vault for reconciliation: %w",
+			scanErr,
+		)
+	}
+
+	currentNoteIDs := make(map[domain.NoteID]bool)
+	for i := range vaultFiles {
+		vf := vaultFiles[i]
+		if vf.Ext == markdownExt {
+			noteID := deriveNoteIDFromPath(v.config.VaultPath, vf.Path)
+			currentNoteIDs[noteID] = true
+		}
+	}
+
+	// Step 2: Get cached NoteIDs
+	cachedNotes, listErr := v.cacheReader.List(ctx)
+	if listErr != nil {
+		v.log.Warn().
+			Err(listErr).
+			Msg("failed to list cached notes for reconciliation, skipping deletion reconciliation")
+		return nil // Don't abort refresh for cache read failures
+	}
+
+	// Step 3: Find orphaned cache entries (cached but not in vault)
+	for i := range cachedNotes {
+		note := cachedNotes[i]
+		if !currentNoteIDs[note.ID] {
+			// Orphan found - delete from cache
+			if deleteErr := v.cacheWriter.Delete(ctx, note.ID); deleteErr != nil {
+				stats.CacheFailures++
+				v.log.Warn().
+					Err(deleteErr).
+					Str("noteID", string(note.ID)).
+					Msg("failed to delete orphaned cache entry")
+				// Continue - don't abort for individual delete failures
+			} else {
+				v.log.Debug().
+					Str("noteID", string(note.ID)).
+					Msg("deleted orphaned cache entry")
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateCacheState verifies that cache contents accurately reflect current
+// vault state. Performs comprehensive consistency checks to ensure cache-vault
+// synchronization.
+// Returns detailed validation results for debugging cache management issues.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//
+// Returns:
+//   - CacheValidationResult: Detailed results of cache state validation
+//   - error: Critical validation errors (e.g., unable to access vault/cache)
+func (v *VaultIndexer) validateCacheState(
+	ctx context.Context,
+) (CacheValidationResult, error) {
+	// Collect vault state
+	vaultNoteIDs, totalVaultFiles, vaultErr := v.collectVaultState(ctx)
+	if vaultErr != nil {
+		return CacheValidationResult{}, fmt.Errorf(
+			"failed to collect vault state for validation: %w",
+			vaultErr,
+		)
+	}
+
+	// Collect cache state
+	cacheNoteIDs, totalCacheEntries, cachedNotes, cacheErr := v.collectCacheState(
+		ctx,
+	)
+	if cacheErr != nil {
+		return CacheValidationResult{}, fmt.Errorf(
+			"failed to collect cache state for validation: %w",
+			cacheErr,
+		)
+	}
+
+	// Find inconsistencies
+	orphanedCount, missingCount, orphanedDetails, missingDetails, isConsistent :=
+		v.findInconsistencies(
+			vaultNoteIDs,
+			cacheNoteIDs,
+			cachedNotes,
+		)
+
+	result := CacheValidationResult{
+		TotalVaultFiles:    totalVaultFiles,
+		TotalCacheEntries:  totalCacheEntries,
+		OrphanedCacheFiles: orphanedCount,
+		MissingCacheFiles:  missingCount,
+		OrphanedDetails:    orphanedDetails,
+		MissingDetails:     missingDetails,
+		IsConsistent:       isConsistent,
+	}
+
+	return result, nil
 }
 
 // scanFiles performs vault scanning using the injected VaultScannerPort.
@@ -215,6 +382,103 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 //   - error: Scanning failure (aborts indexing)
 func (v *VaultIndexer) scanFiles(ctx context.Context) ([]dto.VaultFile, error) {
 	return v.vaultScanner.ScanAll(ctx)
+}
+
+// collectVaultState scans the vault and builds a map of NoteIDs for markdown
+// files.
+// Returns the NoteID map, total count, and any scanning error.
+func (v *VaultIndexer) collectVaultState(
+	ctx context.Context,
+) (
+	vaultNoteIDs map[domain.NoteID]bool,
+	totalFiles int,
+	err error,
+) {
+	vaultFiles, err := v.scanFiles(ctx)
+	if err != nil {
+		return
+	}
+
+	vaultNoteIDs = make(map[domain.NoteID]bool)
+	totalFiles = 0
+	for i := range vaultFiles {
+		vf := vaultFiles[i]
+		if vf.Ext == markdownExt {
+			noteID := deriveNoteIDFromPath(v.config.VaultPath, vf.Path)
+			vaultNoteIDs[noteID] = true
+			totalFiles++
+		}
+	}
+	return vaultNoteIDs, totalFiles, nil
+}
+
+// collectCacheState retrieves all cached notes and builds a map of NoteIDs.
+// Returns the NoteID map, total count, cached notes slice, and any listing
+// error.
+func (v *VaultIndexer) collectCacheState(
+	ctx context.Context,
+) (
+	cacheNoteIDs map[domain.NoteID]bool,
+	totalEntries int,
+	cachedNotes []domain.Note,
+	err error,
+) {
+	cachedNotes, err = v.cacheReader.List(ctx)
+	if err != nil {
+		return
+	}
+
+	cacheNoteIDs = make(map[domain.NoteID]bool)
+	totalEntries = len(cachedNotes)
+	for i := range cachedNotes {
+		note := cachedNotes[i]
+		cacheNoteIDs[note.ID] = true
+	}
+	return
+}
+
+// findInconsistencies compares vault and cache NoteID sets to identify
+// orphaned and missing entries. Returns orphaned count, missing count,
+// orphaned details, missing details, and consistency flag.
+func (v *VaultIndexer) findInconsistencies(
+	vaultNoteIDs map[domain.NoteID]bool,
+	cacheNoteIDs map[domain.NoteID]bool,
+	cachedNotes []domain.Note,
+) (
+	orphanedCount int,
+	missingCount int,
+	orphanedDetails []string,
+	missingDetails []string,
+	isConsistent bool,
+) {
+	orphanedDetails = []string{}
+	missingDetails = []string{}
+	isConsistent = true
+
+	// Find orphaned cache entries (in cache but not in vault)
+	for i := range cachedNotes {
+		note := cachedNotes[i]
+		if !vaultNoteIDs[note.ID] {
+			orphanedCount++
+			orphanedDetails = append(orphanedDetails, string(note.ID))
+			isConsistent = false
+		}
+	}
+
+	// Find missing cache entries (in vault but not in cache)
+	for noteID := range vaultNoteIDs {
+		if !cacheNoteIDs[noteID] {
+			missingCount++
+			missingDetails = append(missingDetails, string(noteID))
+			isConsistent = false
+		}
+	}
+
+	return orphanedCount,
+		missingCount,
+		orphanedDetails,
+		missingDetails,
+		isConsistent
 }
 
 // scanModifiedFiles performs incremental vault scanning for modified files.
@@ -235,7 +499,7 @@ func (v *VaultIndexer) scanModifiedFiles(
 }
 
 // processFile handles single file processing: filtering, frontmatter
-// processing,
+// extraction/validation,
 // note creation, and persistence.
 // Updates stats for tracking and logging.
 //
@@ -245,11 +509,11 @@ func (v *VaultIndexer) scanModifiedFiles(
 //   - stats: IndexStats to update with processing results
 func (v *VaultIndexer) processFile(
 	ctx context.Context,
-	file dto.VaultFile,
+	file *dto.VaultFile,
 	stats *IndexStats,
 ) {
 	// Filter: only .md files for frontmatter processing
-	if file.Ext != ".md" {
+	if file.Ext != markdownExt {
 		return
 	}
 
@@ -325,6 +589,30 @@ func (v *VaultIndexer) logRefreshStats(
 		Msg("vault refresh complete")
 }
 
+// logCacheValidationResult logs cache validation results using structured
+// logging. Provides visibility into cache-vault consistency for debugging and
+// monitoring.
+//
+// Parameters:
+//   - result: CacheValidationResult to log
+func (v *VaultIndexer) logCacheValidationResult(result CacheValidationResult) {
+	if result.IsConsistent {
+		v.log.Info().
+			Int("vault_files", result.TotalVaultFiles).
+			Int("cache_entries", result.TotalCacheEntries).
+			Msg("cache state validation: consistent")
+	} else {
+		v.log.Warn().
+			Int("vault_files", result.TotalVaultFiles).
+			Int("cache_entries", result.TotalCacheEntries).
+			Int("orphaned_cache", result.OrphanedCacheFiles).
+			Int("missing_cache", result.MissingCacheFiles).
+			Strs("orphaned_details", result.OrphanedDetails).
+			Strs("missing_details", result.MissingDetails).
+			Msg("cache state validation: inconsistencies found")
+	}
+}
+
 // deriveNoteIDFromPath creates a NoteID from a file path.
 // Preserves vault-relative path information to prevent collisions.
 //
@@ -384,7 +672,7 @@ func (v *VaultIndexer) logValidationError(filePath string, err error) {
 //   - domain.Frontmatter: Validated frontmatter or empty if processing failed
 func (v *VaultIndexer) processFileWithFrontmatter(
 	ctx context.Context,
-	vf dto.VaultFile,
+	vf *dto.VaultFile,
 	stats *IndexStats,
 ) domain.Frontmatter {
 	// Extract frontmatter from file content

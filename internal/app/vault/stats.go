@@ -21,3 +21,24 @@ type IndexStats struct {
 	ValidationFailures  int
 	Duration            time.Duration
 }
+
+// CacheValidationResult contains detailed results of cache state validation.
+// Used to verify cache-vault consistency and identify synchronization issues.
+//
+// Fields:
+// - TotalVaultFiles: Number of .md files found in vault
+// - TotalCacheEntries: Number of entries found in cache
+// - OrphanedCacheFiles: Cache entries without corresponding vault files
+// - MissingCacheFiles: Vault files without corresponding cache entries
+// - OrphanedDetails: List of orphaned cache entry NoteIDs
+// - MissingDetails: List of missing cache entry NoteIDs
+// - IsConsistent: True if cache perfectly matches vault state.
+type CacheValidationResult struct {
+	TotalVaultFiles    int
+	TotalCacheEntries  int
+	OrphanedCacheFiles int
+	MissingCacheFiles  int
+	OrphanedDetails    []string
+	MissingDetails     []string
+	IsConsistent       bool
+}

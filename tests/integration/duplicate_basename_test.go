@@ -40,18 +40,19 @@ func TestDuplicateBasenameHandling_Integration(t *testing.T) {
 	// Create cache writer
 	cacheWriter := cache.NewJSONCacheWriter(config, logger)
 
+	// Create cache reader
+	cacheReader := cache.NewJSONCacheReader(config, logger)
+
 	// Create indexer (without frontmatter/schema for simplicity)
 	indexer := vaultindexer.NewVaultIndexer(
 		vaultReader,
 		cacheWriter,
+		cacheReader,
 		nil,
 		nil,
 		config,
 		logger,
 	)
-
-	// Create query service
-	cacheReader := cache.NewJSONCacheReader(config, logger)
 	queryService := query.NewQueryService(cacheReader, logger)
 
 	// Execute indexing
