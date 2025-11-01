@@ -23,6 +23,14 @@ import (
 	"github.com/rs/zerolog"
 )
 
+const (
+	// maxFileSizeBytes is the maximum size of a file that will be loaded into
+	// memory.
+	// Files larger than this will be skipped to prevent memory exhaustion.
+	// 10MB should be sufficient for most markdown files while preventing abuse.
+	maxFileSizeBytes = 10 * 1024 * 1024 // 10MB
+)
+
 // Compile-time checks to ensure VaultReaderAdapter implements both interfaces.
 var _ spi.VaultScannerPort = (*VaultReaderAdapter)(nil)
 var _ spi.VaultReaderPort = (*VaultReaderAdapter)(nil)
@@ -60,16 +68,25 @@ func NewVaultReaderAdapter(
 }
 
 // ScanAll performs a full vault scan, returning all files as VaultFile DTOs.
-// Ignores cache directories (.lithos/) and skips directories during traversal.
+// Filters files by extension (.md, .markdown) before loading content to prevent
+// memory issues with large binary files. Ignores cache directories (.lithos/)
+// and skips directories during traversal.
 // Errors are logged but don't stop the scan; partial results are returned.
 func (a *VaultReaderAdapter) ScanAll(
 	ctx context.Context,
 ) ([]dto.VaultFile, error) {
 	startTime := time.Now()
 
-	// Filter: include files, exclude directories and cache directories
+	// Filter: include only markdown files, exclude directories and cache
+	// directories
 	filter := func(path string, info os.FileInfo) bool {
-		return !info.IsDir() && !strings.Contains(path, ".lithos")
+		if info.IsDir() {
+			return false
+		}
+		if a.isCacheDirectory(path) {
+			return false
+		}
+		return a.isMarkdownFile(path)
 	}
 
 	files, err := a.scanVault(ctx, a.config.VaultPath, filter)
@@ -98,7 +115,13 @@ func (a *VaultReaderAdapter) ScanModified(
 
 	// Filter: include files modified after since, exclude directories and cache
 	filter := func(path string, info os.FileInfo) bool {
-		if info.IsDir() || strings.Contains(path, ".lithos") {
+		if info.IsDir() {
+			return false
+		}
+		if a.isCacheDirectory(path) {
+			return false
+		}
+		if !a.isMarkdownFile(path) {
 			return false
 		}
 		return filterByModTime(info, since)
@@ -192,11 +215,21 @@ func (a *VaultReaderAdapter) scanVault(
 
 			// Apply filter
 			if !filter(path, info) {
-				// Skip directories and cache directories
-				if info.IsDir() && strings.Contains(path, ".lithos") {
+				// Skip cache directories entirely
+				if info.IsDir() && a.isCacheDirectory(path) {
 					return filepath.SkipDir
 				}
 				return nil
+			}
+
+			// Check file size to prevent memory exhaustion
+			if info.Size() > maxFileSizeBytes {
+				a.log.Warn().
+					Str("path", path).
+					Int64("size", info.Size()).
+					Int64("max_size", maxFileSizeBytes).
+					Msg("skipping file that exceeds maximum size limit")
+				return nil // Skip large files
 			}
 
 			// Read file content
@@ -264,4 +297,33 @@ func (a *VaultReaderAdapter) validatePathInVault(targetPath string) error {
 		return fmt.Errorf("path outside vault: %s", targetPath)
 	}
 	return nil
+}
+
+// isCacheDirectory checks if a path is within a cache directory (.lithos/).
+// Uses proper path segment comparison instead of string contains to avoid
+// false positives with filenames containing ".lithos".
+func (a *VaultReaderAdapter) isCacheDirectory(path string) bool {
+	// Get path relative to vault root
+	relPath, err := filepath.Rel(a.config.VaultPath, path)
+	if err != nil {
+		// If we can't make it relative, check if it contains .lithos as
+		// fallback
+		return strings.Contains(path, ".lithos")
+	}
+
+	// Split path into segments and check if any segment is exactly ".lithos"
+	parts := strings.Split(relPath, string(filepath.Separator))
+	for _, part := range parts {
+		if part == ".lithos" {
+			return true
+		}
+	}
+	return false
+}
+
+// isMarkdownFile checks if a file has a markdown extension.
+// Supports both .md and .markdown extensions.
+func (a *VaultReaderAdapter) isMarkdownFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".md" || ext == ".markdown"
 }
