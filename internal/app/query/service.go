@@ -12,6 +12,12 @@
 // - byPath: Path index for file path → Note lookups (O(1))
 // - byBasename: Basename index for filename → []Note lookups (O(log n))
 // - byFileClass: Schema index for fileClass → []Note lookups (O(log n))
+// - byFrontmatter: Frontmatter index for field → value → []Note lookups
+// (O(log n))
+//
+// complex logic
+//
+//nolint:cyclop // Query service implements multiple index types requiring
 package query
 
 import (
@@ -85,6 +91,50 @@ func extractBasenameFromNoteID(id domain.NoteID) string {
 		base = strings.TrimSuffix(base, ext)
 	}
 	return base
+}
+
+// normalizeFrontmatterValue normalizes frontmatter values for type-agnostic
+// comparison.
+// Handles numeric type conversions (int 2 == float 2.0) and safe comparison
+// for complex types.
+// Returns the normalized value and whether normalization was successful.
+//
+//nolint:cyclop // Type normalization requires exhaustive type checking
+func normalizeFrontmatterValue(value interface{}) (interface{}, bool) {
+	switch v := value.(type) {
+	case int:
+		// Convert int to float64 for consistent numeric comparison
+		return float64(v), true
+	case int8:
+		return float64(v), true
+	case int16:
+		return float64(v), true
+	case int32:
+		return float64(v), true
+	case int64:
+		return float64(v), true
+	case uint:
+		return float64(v), true
+	case uint8:
+		return float64(v), true
+	case uint16:
+		return float64(v), true
+	case uint32:
+		return float64(v), true
+	case uint64:
+		return float64(v), true
+	case float32:
+		return float64(v), true
+	case float64:
+		return v, true
+	case string, bool:
+		// Strings and booleans are already comparable
+		return v, true
+	default:
+		// Complex types (arrays, maps) are not safely comparable
+		// Return false to indicate normalization failed
+		return nil, false
+	}
 }
 
 // NewQueryService creates a new QueryService with thread-safe in-memory
@@ -220,7 +270,8 @@ func (q *QueryService) ByBasename(
 //
 // Query Semantics:
 // - Returns empty slice (not error) for non-matching field/value pairs
-// - Supports any value type (string, number, boolean, etc.)
+// - Supports type-agnostic queries (int 2 matches float 2.0)
+// - Handles safe comparison for primitive types only
 // - Logs debug message with field, value, and result count
 // - O(log n) lookup performance via nested map access.
 //
@@ -229,6 +280,7 @@ func (q *QueryService) ByBasename(
 //	notes := queryService.ByFrontmatter("author", "John Doe")
 //	notes := queryService.ByFrontmatter("tags", "project-x")
 //	notes := queryService.ByFrontmatter("status", "draft")
+//	notes := queryService.ByFrontmatter("priority", 2) // matches float 2.0
 func (q *QueryService) ByFrontmatter(
 	ctx context.Context,
 	field string,
@@ -243,18 +295,36 @@ func (q *QueryService) ByFrontmatter(
 		return nil, nil // Return empty slice for non-existent field
 	}
 
-	// Check if value exists for this field
-	notes, valueExists := fieldMap[value]
-	if !valueExists || len(notes) == 0 {
-		return nil, nil // Return empty slice for non-matching value
+	// Try direct lookup first (for exact matches)
+	if notes, exists := fieldMap[value]; exists && len(notes) > 0 {
+		q.log.Debug().
+			Str("field", field).
+			Interface("value", value).
+			Int("count", len(notes)).
+			Msg("query by frontmatter (direct match)")
+		return notes, nil
 	}
 
+	// Try normalized lookup for type-agnostic matching
+	if normalizedValue, ok := normalizeFrontmatterValue(value); ok {
+		if notes, exists := fieldMap[normalizedValue]; exists &&
+			len(notes) > 0 {
+			q.log.Debug().
+				Str("field", field).
+				Interface("original_value", value).
+				Interface("normalized_value", normalizedValue).
+				Int("count", len(notes)).
+				Msg("query by frontmatter (normalized match)")
+			return notes, nil
+		}
+	}
+
+	// No matches found
 	q.log.Debug().
 		Str("field", field).
 		Interface("value", value).
-		Int("count", len(notes)).
-		Msg("query by frontmatter")
-	return notes, nil
+		Msg("query by frontmatter (no matches)")
+	return nil, nil
 }
 
 // RefreshFromCache rebuilds all in-memory indices from the persistent cache.
@@ -264,8 +334,10 @@ func (q *QueryService) ByFrontmatter(
 //
 // Rebuild Process:
 // - Reads all notes from CacheReaderPort
+// - Handles missing cache directory gracefully (fresh installations)
 // - Clears existing indices to prevent stale data
-// - Populates all indices (byID, byPath, byBasename, byFileClass)
+// - Populates all indices (byID, byPath, byBasename, byFileClass,
+// byFrontmatter)
 // - Logs info message with total note count
 //
 // When to Call:
@@ -274,8 +346,8 @@ func (q *QueryService) ByFrontmatter(
 // - Manual cache refresh operations
 //
 // Error Handling:
-// - Returns error if cache read fails
-// - Aborts rebuild on any cache read error
+// - Returns error if cache read fails (except missing directory)
+// - Handles missing cache directory as empty cache (fresh installation)
 // - Preserves existing indices if rebuild fails.
 func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 	q.log.Info().Msg("refreshing query service from cache")
@@ -283,7 +355,15 @@ func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 	// Read all notes from cache
 	notes, err := q.cacheReader.List(ctx)
 	if err != nil {
-		return fmt.Errorf("cache refresh failed: %w", err)
+		// Check if error is due to missing cache directory (fresh installation)
+		if strings.Contains(err.Error(), "no such file or directory") ||
+			strings.Contains(err.Error(), "directory not found") {
+			q.log.Info().
+				Msg("cache directory missing, treating as fresh installation")
+			notes = []domain.Note{} // Empty cache for fresh installation
+		} else {
+			return fmt.Errorf("cache refresh failed: %w", err)
+		}
 	}
 
 	// Acquire exclusive write lock for atomic rebuild
@@ -301,8 +381,8 @@ func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 	for _, note := range notes {
 		q.byID[note.ID] = note
 
-		// Populate byPath index using the full NoteID as the path key
-		q.byPath[string(note.ID)] = note
+		// Populate byPath index using the Path field
+		q.byPath[note.Path] = note
 
 		// Populate byBasename index using extracted basename
 		basename := extractBasenameFromNoteID(note.ID)
@@ -320,10 +400,21 @@ func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 			if q.byFrontmatter[field] == nil {
 				q.byFrontmatter[field] = make(map[interface{}][]domain.Note)
 			}
+
+			// Store with original value for exact matches
 			q.byFrontmatter[field][value] = append(
 				q.byFrontmatter[field][value],
 				note,
 			)
+
+			// Also store with normalized value for type-agnostic queries
+			if normalizedValue, ok := normalizeFrontmatterValue(value); ok &&
+				normalizedValue != value {
+				q.byFrontmatter[field][normalizedValue] = append(
+					q.byFrontmatter[field][normalizedValue],
+					note,
+				)
+			}
 		}
 	}
 

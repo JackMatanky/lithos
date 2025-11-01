@@ -340,13 +340,15 @@ func TestQueryService_RefreshFromCache_Success(t *testing.T) {
 	// Create new notes for cache
 	newNotes := []domain.Note{
 		{
-			ID: domain.NoteID("new-1"),
+			ID:   domain.NoteID("new-1"),
+			Path: "new-1",
 			Frontmatter: domain.Frontmatter{
 				FileClass: "project",
 			},
 		},
 		{
-			ID: domain.NoteID("new-2"),
+			ID:   domain.NoteID("new-2"),
+			Path: "new-2",
 			Frontmatter: domain.Frontmatter{
 				FileClass: "meeting",
 			},
@@ -435,7 +437,8 @@ func TestQueryService_RefreshFromCache_ClearsExistingIndices(t *testing.T) {
 	// New notes that will replace any existing data
 	newNotes := []domain.Note{
 		{
-			ID: domain.NoteID("new-1"),
+			ID:   domain.NoteID("new-1"),
+			Path: "new-1",
 			Frontmatter: domain.Frontmatter{
 				FileClass: "project",
 			},
@@ -760,6 +763,34 @@ func TestQueryService_ByFrontmatter_MissingField(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	assert.Empty(t, notes) // Should return empty slice, not error
+}
+
+// TestQueryService_ByFrontmatter_TypeNormalization tests type-agnostic queries
+// where int 2 matches float 2.0.
+func TestQueryService_ByFrontmatter_TypeNormalization(t *testing.T) {
+	// Given - note with float value
+	note := domain.NewNote(
+		domain.NewNoteID("note1"),
+		domain.NewFrontmatter(map[string]interface{}{
+			"priority": 2.0, // float64
+		}),
+	)
+
+	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note}}
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+	qs := NewQueryService(fakeCacheReader, logger)
+
+	// Populate indices
+	err := qs.RefreshFromCache(context.Background())
+	require.NoError(t, err)
+
+	// When - query with int value
+	notes, err := qs.ByFrontmatter(context.Background(), "priority", 2)
+
+	// Then - should find the note with float 2.0
+	require.NoError(t, err)
+	assert.Len(t, notes, 1)
+	assert.Equal(t, "note1", notes[0].ID.String())
 }
 
 // TestExtractBasenameFromNoteID tests the extractBasenameFromNoteID helper

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/shared/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -69,7 +70,8 @@ func TestNoteFilePath(t *testing.T) {
 	}
 }
 
-// TestEnsureCacheDir tests the ensureCacheDir function with various scenarios.
+// TestEnsureCacheDir tests the utils.EnsureCacheDir function with various
+// scenarios.
 func TestEnsureCacheDir(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -105,7 +107,7 @@ func TestEnsureCacheDir(t *testing.T) {
 				tt.setupFunc(t, tt.cacheDir)
 			}
 
-			err := ensureCacheDir(tt.cacheDir)
+			err := utils.EnsureCacheDir(tt.cacheDir)
 			if tt.wantErr {
 				require.Error(t, err)
 			} else {

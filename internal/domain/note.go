@@ -1,12 +1,17 @@
 // Package domain provides core domain types and business logic for Lithos.
 package domain
 
+import "encoding/json"
+
 // Note represents a core business entity for a markdown note.
 // It is an aggregate root combining identity and content metadata.
 type Note struct {
 	// ID is the abstract identifier for this note.
 	// Opaque to the domain - could represent file path, UUID, or database key.
 	ID NoteID
+	// Path is the vault-relative file path for this note.
+	// Used for path-based queries and navigation.
+	Path string
 	// Frontmatter contains content metadata from YAML frontmatter.
 	// Composed (not embedded) to maintain clean domain boundaries.
 	Frontmatter Frontmatter
@@ -71,8 +76,38 @@ func (f Frontmatter) SchemaName() string {
 func NewNote(id NoteID, frontmatter Frontmatter) Note {
 	return Note{
 		ID:          id,
+		Path:        string(id), // NoteID contains the vault-relative path
 		Frontmatter: frontmatter,
 	}
+}
+
+// UnmarshalJSON implements custom JSON unmarshaling for Note.
+// Ensures Path field is populated from ID for backward compatibility.
+func (n *Note) UnmarshalJSON(data []byte) error {
+	// Define a temporary struct to avoid recursion
+	aux := &struct { //nolint:exhaustruct // Custom unmarshaling struct for backward compatibility
+		ID          NoteID      `json:"id"`
+		Path        *string     `json:"path,omitempty"` // Optional for backward compatibility
+		Frontmatter Frontmatter `json:"frontmatter"`
+	}{}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+
+	// Set values
+	n.ID = aux.ID
+	n.Frontmatter = aux.Frontmatter
+
+	// Ensure Path is set from ID if not present in JSON (backward
+	// compatibility)
+	if aux.Path == nil || *aux.Path == "" {
+		n.Path = string(n.ID)
+	} else {
+		n.Path = *aux.Path
+	}
+
+	return nil
 }
 
 // SchemaName returns the schema name for this note.

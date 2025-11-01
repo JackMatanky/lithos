@@ -8,6 +8,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/internal/shared/utils"
 	"github.com/moby/sys/atomicwriter"
 	"github.com/rs/zerolog"
 )
@@ -16,10 +17,6 @@ const (
 	// cacheFilePerms defines the file permissions for cache files.
 	// 0o644 = rw-r--r-- (owner read/write, group/other read-only).
 	cacheFilePerms = 0o644
-	// cacheDirPerms defines the directory permissions for cache directories.
-	// 0o750 = rwxr-x--- (owner read/write/execute, group read/execute, other
-	// none).
-	cacheDirPerms = 0o750
 )
 
 // Compile-time interface compliance check.
@@ -82,10 +79,10 @@ func NewJSONCacheWriter(
 	}
 }
 
-// marshalNote serializes a note to indented JSON bytes.
+// marshalNote serializes a note to compact JSON bytes.
 // Returns the JSON data or an error if serialization fails.
 func marshalNote(note domain.Note) ([]byte, error) {
-	return json.MarshalIndent(note, "", "  ")
+	return json.Marshal(note)
 }
 
 // wrapCacheWriteError creates a standardized CacheWriteError with operation
@@ -131,7 +128,7 @@ func (a *JSONCacheWriteAdapter) Persist(
 	}
 
 	// 1. Ensure cache directory exists
-	if err := a.ensureCacheDir(a.config.CacheDir); err != nil {
+	if err := utils.EnsureCacheDir(a.config.CacheDir); err != nil {
 		return wrapCacheWriteError(
 			string(note.ID),
 			a.config.CacheDir,
@@ -229,11 +226,4 @@ func (a *JSONCacheWriteAdapter) Delete(
 		Msg("cache delete successful")
 
 	return nil
-}
-
-// ensureCacheDir creates cache directory if missing.
-// Uses injected mkdirAll for recursive creation (mkdir -p semantics).
-// Permissions: 0o750 (rwxr-x---).
-func (a *JSONCacheWriteAdapter) ensureCacheDir(cacheDir string) error {
-	return a.mkdirAll(cacheDir, cacheDirPerms)
 }
