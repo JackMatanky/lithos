@@ -10,6 +10,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
+	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/api"
 	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
@@ -23,7 +24,10 @@ import (
 //
 // Responsibilities:
 //   - Orchestrate the complete note creation workflow (NewNote use case)
-//   - Coordinate domain services (TemplateEngine, SchemaEngine, Config, Logger)
+//   - Orchestrate the vault indexing workflow (IndexVault use case)
+//
+// - Coordinate domain services (TemplateEngine, SchemaEngine, VaultIndexer,
+// Config, Logger)
 //   - Implement hexagonal callback pattern (pass self to CLIPort.Start)
 //   - Handle business logic orchestration without infrastructure concerns
 //
@@ -31,6 +35,9 @@ import (
 //   - CLIPort: CLI framework adapter for command parsing and user interaction
 //   - TemplateEngine: Domain service for template loading and rendering
 //   - SchemaEngine: Domain service for schema loading and validation
+//
+// - VaultIndexer: Domain service for vault scanning, frontmatter processing,
+// and cache persistence
 //   - Config: Application configuration (vault path, etc.)
 //   - Logger: Structured logging for workflow operations and debugging
 //
@@ -40,6 +47,7 @@ type CommandOrchestrator struct {
 	cliPort        api.CLIPort
 	templateEngine *template.TemplateEngine
 	schemaEngine   *schema.SchemaEngine
+	vaultIndexer   vault.VaultIndexerInterface
 	config         domain.Config
 	log            zerolog.Logger
 }
@@ -53,6 +61,7 @@ type CommandOrchestrator struct {
 //   - cliPort: CLI framework adapter implementing CLIPort interface
 //   - templateEngine: Template rendering service for note creation
 //   - schemaEngine: Schema loading and validation service
+//   - vaultIndexer: Vault indexing service for cache rebuild operations
 //   - config: Application configuration containing vault paths and settings
 //   - log: Structured logger for workflow operations and debugging
 //
@@ -65,6 +74,7 @@ func NewCommandOrchestrator(
 	cliPort api.CLIPort,
 	templateEngine *template.TemplateEngine,
 	schemaEngine *schema.SchemaEngine,
+	vaultIndexer vault.VaultIndexerInterface,
 	config *domain.Config,
 	log *zerolog.Logger,
 ) *CommandOrchestrator {
@@ -72,6 +82,7 @@ func NewCommandOrchestrator(
 		cliPort:        cliPort,
 		templateEngine: templateEngine,
 		schemaEngine:   schemaEngine,
+		vaultIndexer:   vaultIndexer,
 		config:         *config,
 		log:            *log,
 	}
@@ -167,4 +178,53 @@ func (o *CommandOrchestrator) NewNote(
 
 	// Step 6: Return Note
 	return note, nil
+}
+
+// IndexVault orchestrates the vault indexing workflow.
+// This method implements the CommandPort interface and delegates to
+// VaultIndexer.Build()
+// for the complete indexing operation.
+//
+// Workflow:
+// 1. Log indexing start
+// 2. Delegate to VaultIndexer.Build() for scanning, frontmatter processing, and
+// caching
+// 3. Log summary statistics on completion
+// 4. Wrap errors with context for CLI error handling
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout control during indexing
+//
+// Returns:
+// - vault.IndexStats: Statistics from the indexing operation (scanned,
+// indexed, failures, duration) - error: Wrapped error if indexing fails (schema
+// load, vault scan, or critical failures)
+//
+// Reference: docs/architecture/components.md#commandorchestrator - IndexVault
+// implementation.
+func (o *CommandOrchestrator) IndexVault(
+	ctx context.Context,
+) (vault.IndexStats, error) {
+	o.log.Info().Msg("starting vault indexing")
+
+	// Delegate to VaultIndexer.Build()
+	stats, err := o.vaultIndexer.Build(ctx)
+	if err != nil {
+		o.log.Error().Err(err).Msg("vault indexing failed")
+		return stats, lithoserrors.WrapWithContext(
+			err,
+			"vault indexing operation failed",
+		)
+	}
+
+	// Log summary statistics
+	o.log.Info().
+		Int("scanned", stats.ScannedCount).
+		Int("indexed", stats.IndexedCount).
+		Int("validation_failures", stats.ValidationFailures).
+		Int("cache_failures", stats.CacheFailures).
+		Dur("duration", stats.Duration).
+		Msg("vault indexing complete")
+
+	return stats, nil
 }

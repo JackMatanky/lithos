@@ -1,6 +1,4 @@
-// Package domain contains the core business models for Lithos.
-// These models represent the domain entities without infrastructure
-// dependencies.
+// Package domain provides core domain types and business logic for Lithos.
 package domain
 
 // Note represents a core business entity for a markdown note.

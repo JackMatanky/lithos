@@ -8,7 +8,9 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
+	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/api"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -39,15 +41,17 @@ func TestRunCallsCLIPortStart(t *testing.T) {
 	logger := zerolog.Nop()
 
 	// Create orchestrator with mock dependencies
-	// Note: We pass nil for templateEngine and schemaEngine since we're not
-	// testing that in this
-	// test
+	// Note: We pass nil for templateEngine, schemaEngine, and vaultIndexer
+	// since we're not
+	// testing that in this test
 	var templateEngine *template.TemplateEngine
 	var schemaEngine *schema.SchemaEngine
+	var vaultIndexer *vault.VaultIndexer
 	orchestrator := NewCommandOrchestrator(
 		mockCLIPort,
 		templateEngine,
 		schemaEngine,
+		vaultIndexer,
 		&config,
 		&logger,
 	)
@@ -85,10 +89,12 @@ func TestRunPropagatesCLIError(t *testing.T) {
 	// Create orchestrator with mock dependencies
 	var templateEngine *template.TemplateEngine
 	var schemaEngine *schema.SchemaEngine
+	var vaultIndexer *vault.VaultIndexer
 	orchestrator := NewCommandOrchestrator(
 		mockCLIPort,
 		templateEngine,
 		schemaEngine,
+		vaultIndexer,
 		&config,
 		&logger,
 	)
@@ -143,10 +149,12 @@ func TestNewNoteSuccess(t *testing.T) {
 	config.VaultPath = tempDir
 
 	var schemaEngine *schema.SchemaEngine
+	var vaultIndexer *vault.VaultIndexer
 	orchestrator := NewCommandOrchestrator(
 		nil,
 		templateEngine,
 		schemaEngine,
+		vaultIndexer,
 		&config,
 		&logger,
 	)
@@ -205,10 +213,12 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 	)
 
 	var schemaEngine *schema.SchemaEngine
+	var vaultIndexer *vault.VaultIndexer
 	orchestrator := NewCommandOrchestrator(
 		nil,
 		templateEngine,
 		schemaEngine,
+		vaultIndexer,
 		&config,
 		&logger,
 	)
@@ -248,10 +258,12 @@ func TestNewNoteFileWriteError(t *testing.T) {
 	)
 
 	var schemaEngine *schema.SchemaEngine
+	var vaultIndexer *vault.VaultIndexer
 	orchestrator := NewCommandOrchestrator(
 		nil,
 		templateEngine,
 		schemaEngine,
+		vaultIndexer,
 		&config,
 		&logger,
 	)
@@ -266,6 +278,87 @@ func TestNewNoteFileWriteError(t *testing.T) {
 		t,
 		err.Error(),
 		"failed to write note",
+		"Error should be wrapped with context",
+	)
+}
+
+// TestIndexVaultSuccess verifies the complete IndexVault workflow succeeds.
+func TestIndexVaultSuccess(t *testing.T) {
+	// Setup mock VaultIndexer
+	mockVaultIndexer := utils.NewMockVaultIndexer()
+	expectedStats := vault.IndexStats{
+		ScannedCount:        10,
+		IndexedCount:        8,
+		CacheFailures:       1,
+		ValidationSuccesses: 7,
+		ValidationFailures:  2,
+		Duration:            150000000, // 150ms
+	}
+	mockVaultIndexer.SetBuildResult(expectedStats, nil)
+
+	config := domain.DefaultConfig()
+	logger := zerolog.Nop()
+
+	// Create orchestrator with mock VaultIndexer
+	var templateEngine *template.TemplateEngine
+	var schemaEngine *schema.SchemaEngine
+	var cliPort api.CLIPort
+	orchestrator := NewCommandOrchestrator(
+		cliPort,
+		templateEngine,
+		schemaEngine,
+		mockVaultIndexer,
+		&config,
+		&logger,
+	)
+
+	// Execute
+	ctx := context.Background()
+	stats, err := orchestrator.IndexVault(ctx)
+
+	// Verify
+	require.NoError(t, err, "IndexVault should succeed")
+	assert.Equal(t, expectedStats, stats, "Stats should match expected")
+}
+
+// TestIndexVaultIndexerError verifies error handling when VaultIndexer.Build
+// fails.
+func TestIndexVaultIndexerError(t *testing.T) {
+	// Setup mock VaultIndexer
+	mockVaultIndexer := utils.NewMockVaultIndexer()
+	expectedError := assert.AnError
+	mockVaultIndexer.SetBuildResult(vault.IndexStats{}, expectedError)
+
+	config := domain.DefaultConfig()
+	logger := zerolog.Nop()
+
+	// Create orchestrator with mock VaultIndexer
+	var templateEngine *template.TemplateEngine
+	var schemaEngine *schema.SchemaEngine
+	var cliPort api.CLIPort
+	orchestrator := NewCommandOrchestrator(
+		cliPort,
+		templateEngine,
+		schemaEngine,
+		mockVaultIndexer,
+		&config,
+		&logger,
+	)
+
+	// Execute
+	ctx := context.Background()
+	_, err := orchestrator.IndexVault(ctx)
+
+	// Verify
+	require.Error(
+		t,
+		err,
+		"IndexVault should fail when VaultIndexer.Build fails",
+	)
+	assert.Contains(
+		t,
+		err.Error(),
+		"vault indexing operation failed",
 		"Error should be wrapped with context",
 	)
 }

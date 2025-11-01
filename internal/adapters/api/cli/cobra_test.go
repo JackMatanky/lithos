@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
 	mocks "github.com/JackMatanky/lithos/tests/utils"
@@ -60,7 +61,7 @@ func TestBuildRootCommand_CreatesCommandWithCorrectStructure(t *testing.T) {
 
 	// Check subcommands
 	subcommands := cmd.Commands()
-	require.Len(t, subcommands, 2)
+	require.Len(t, subcommands, 3)
 
 	versionCmd := findCommandByUse(subcommands, "version")
 	require.NotNil(t, versionCmd)
@@ -68,6 +69,10 @@ func TestBuildRootCommand_CreatesCommandWithCorrectStructure(t *testing.T) {
 
 	newCmd := findCommandByUse(subcommands, "new [template-id]")
 	require.NotNil(t, newCmd)
+
+	indexCmd := findCommandByUse(subcommands, "index")
+	require.NotNil(t, indexCmd)
+	assert.Equal(t, "Rebuild vault cache and query indices", indexCmd.Short)
 	assert.Equal(t, "Create a new note from template", newCmd.Short)
 }
 
@@ -286,6 +291,64 @@ func TestFormatError_FormatsGenericErrorCorrectly(t *testing.T) {
 	err := adapter.formatError(genericErr)
 
 	assert.Equal(t, "error: something went wrong", err.Error())
+}
+
+// TestBuildIndexCommand_CreatesCommandWithCorrectStructure verifies index
+// command structure.
+func TestBuildIndexCommand_CreatesCommandWithCorrectStructure(t *testing.T) {
+	logger := zerolog.New(nil)
+	adapter := NewCobraCLIAdapter(logger)
+
+	cmd := adapter.buildIndexCommand()
+
+	assert.Equal(t, "index", cmd.Use)
+	assert.Equal(t, "Rebuild vault cache and query indices", cmd.Short)
+	assert.Contains(t, cmd.Long, "Scans the vault")
+	assert.Contains(t, cmd.Long, "Use this command after")
+	assert.NotNil(t, cmd.RunE)
+}
+
+// TestHandleIndexCommand_CallsHandlerIndexVault verifies index command calls
+// handler.
+func TestHandleIndexCommand_CallsHandlerIndexVault(t *testing.T) {
+	logger := zerolog.New(nil)
+	mockHandler := mocks.NewMockCommandPort()
+	adapter := NewCobraCLIAdapter(logger)
+	adapter.handler = mockHandler
+
+	cmd := adapter.buildIndexCommand()
+
+	err := adapter.handleIndexCommand(cmd, []string{})
+	require.NoError(t, err)
+}
+
+// TestDisplayIndexStats_FormatsOutputCorrectly verifies index stats display.
+func TestDisplayIndexStats_FormatsOutputCorrectly(t *testing.T) {
+	logger := zerolog.New(nil)
+	adapter := NewCobraCLIAdapter(logger)
+
+	stats := vault.IndexStats{
+		ScannedCount:       10,
+		IndexedCount:       8,
+		ValidationFailures: 2,
+		CacheFailures:      1,
+		Duration:           150000000, // 150ms
+	}
+
+	cmd := &cobra.Command{}
+	var buf bytes.Buffer
+	cmd.SetOut(&buf)
+
+	err := adapter.displayIndexStats(cmd, stats)
+	require.NoError(t, err)
+
+	output := buf.String()
+	assert.Contains(t, output, "✓ Vault indexed successfully")
+	assert.Contains(t, output, "Scanned:    10 files")
+	assert.Contains(t, output, "Indexed:    8 notes")
+	assert.Contains(t, output, "⚠ Validation failures: 2")
+	assert.Contains(t, output, "⚠ Cache failures:      1")
+	assert.Contains(t, output, "Duration:   150ms")
 }
 
 // Helper function to find command by Use string.

@@ -396,6 +396,44 @@ lithos new meeting --view
 - Template not found: `template 'contact' not found in templates/`
 - Template parsing error: `template error in 'contact': parse error...`
 
+### index
+
+Rebuild the vault cache and query indices on demand. Use this command after adding or modifying notes in the vault, changing schema definitions, or recovering from manual cache corruption.
+
+```bash
+# Rebuild vault cache and indices
+lithos index
+```
+
+#### Output
+
+```bash
+$ lithos index
+✓ Vault indexed successfully
+
+Statistics:
+  Scanned:    150 files
+  Indexed:    142 notes
+  ⚠ Validation failures: 5
+  ⚠ Cache failures:      3
+  Duration:   234ms
+```
+
+#### When to Use
+
+- After adding new notes to the vault
+- After modifying existing note frontmatter
+- After changing schema definitions
+- After manual cache corruption recovery
+- Before running queries that require up-to-date indices
+
+#### Error Handling
+
+- Vault path not found: `vault indexing failed: vault path does not exist`
+- Permission denied: `vault indexing failed: permission denied accessing vault`
+- Schema validation errors: Displayed as "Validation failures" with count
+- Cache write errors: Displayed as "Cache failures" with count
+
 ## Architecture
 
 Lithos follows hexagonal architecture principles to ensure clean separation of concerns and testability.

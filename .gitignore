@@ -80,6 +80,7 @@ wheels/
 *.dll
 *.dylib
 *.so
+lithos-test
 
 # Go workspace
 go.work
