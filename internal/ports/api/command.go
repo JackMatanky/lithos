@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 
+	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
 )
 
@@ -52,7 +53,24 @@ type CommandPort interface {
 		templateID domain.TemplateID,
 	) (domain.Note, error)
 
+	// IndexVault orchestrates the vault indexing workflow:
+	// 1. Delegate to VaultIndexer.Build() for scanning and processing
+	// 2. Log summary statistics for observability
+	// 3. Wrap errors with operation context for debugging
+	// 4. Return IndexStats for CLI display
+	//
+	// Context usage:
+	//   - ctx propagates cancellation/timeouts triggered by CLIPort adapters
+	//   - Long-running indexing operations must observe ctx.Done()
+	//
+	// Returns:
+	// - vault.IndexStats: Statistics from the indexing operation (scanned,
+	// indexed, failures, duration) - error: Wrapped error if indexing fails
+	// (schema load, vault scan, or critical failures)
+	IndexVault(
+		ctx context.Context,
+	) (vault.IndexStats, error)
+
 	// Additional methods to be added in later stories:
-	// - IndexVault(ctx context.Context) (IndexStats, error)
 	// - FindTemplates(ctx context.Context, query string) ([]Template, error)
 }

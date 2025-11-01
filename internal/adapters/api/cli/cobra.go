@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/api"
 	domainErrors "github.com/JackMatanky/lithos/internal/shared/errors"
@@ -79,6 +80,7 @@ func (a *CobraCLIAdapter) buildRootCommand() *cobra.Command {
 	}
 	cmd.AddCommand(a.buildVersionCommand())
 	cmd.AddCommand(a.buildNewCommand())
+	cmd.AddCommand(a.buildIndexCommand())
 	return cmd
 }
 
@@ -110,6 +112,26 @@ func (a *CobraCLIAdapter) buildNewCommand() *cobra.Command {
 	return cmd
 }
 
+// buildIndexCommand creates the index subcommand.
+// This method follows SRP by focusing solely on index command structure.
+func (a *CobraCLIAdapter) buildIndexCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "index",
+		Short: "Rebuild vault cache and query indices",
+		Long: `Scans the vault, extracts frontmatter, validates against schemas,
+and updates the cache and in-memory query indices.
+
+Use this command after:
+- Adding or modifying notes in the vault
+- Changing schema definitions
+- Manual cache corruption recovery`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return a.handleIndexCommand(cmd, args)
+		},
+	}
+	return cmd
+}
+
 // handleNewCommand orchestrates the note creation workflow.
 // This method follows SRP by coordinating the new command execution.
 func (a *CobraCLIAdapter) handleNewCommand(
@@ -129,6 +151,21 @@ func (a *CobraCLIAdapter) handleNewCommand(
 	return a.displayNoteCreated(cmd, note)
 }
 
+// handleIndexCommand orchestrates the vault indexing workflow.
+// This method follows SRP by coordinating the index command execution.
+func (a *CobraCLIAdapter) handleIndexCommand(
+	cmd *cobra.Command,
+	_ []string,
+) error {
+	stats, err := a.handler.IndexVault(cmd.Context())
+	if err != nil {
+		a.log.Error().Err(err).Msg("indexing failed")
+		return a.formatError(err)
+	}
+
+	return a.displayIndexStats(cmd, stats)
+}
+
 // displayNoteCreated formats and displays the note creation success message.
 // This method follows SRP by focusing solely on output formatting.
 func (a *CobraCLIAdapter) displayNoteCreated(
@@ -142,6 +179,30 @@ func (a *CobraCLIAdapter) displayNoteCreated(
 		// TODO: Read and display note content
 		cmd.Println(strings.Repeat("=", separatorWidth))
 	}
+
+	return nil
+}
+
+// displayIndexStats formats and displays the vault indexing statistics.
+// This method follows SRP by focusing solely on output formatting.
+func (a *CobraCLIAdapter) displayIndexStats(
+	cmd *cobra.Command,
+	stats vault.IndexStats,
+) error {
+	cmd.Printf("✓ Vault indexed successfully\n\n")
+	cmd.Printf("Statistics:\n")
+	cmd.Printf("  Scanned:    %d files\n", stats.ScannedCount)
+	cmd.Printf("  Indexed:    %d notes\n", stats.IndexedCount)
+
+	if stats.ValidationFailures > 0 {
+		cmd.Printf("  ⚠ Validation failures: %d\n", stats.ValidationFailures)
+	}
+
+	if stats.CacheFailures > 0 {
+		cmd.Printf("  ⚠ Cache failures:      %d\n", stats.CacheFailures)
+	}
+
+	cmd.Printf("  Duration:   %v\n", stats.Duration)
 
 	return nil
 }

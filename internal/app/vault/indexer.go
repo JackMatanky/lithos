@@ -15,6 +15,15 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// VaultIndexerInterface defines the contract for vault indexing operations.
+// This interface allows for mocking in tests while maintaining clean
+// architecture.
+type VaultIndexerInterface interface {
+	// Build performs a complete vault indexing operation.
+	// Returns IndexStats with operation metrics and any error encountered.
+	Build(ctx context.Context) (IndexStats, error)
+}
+
 // VaultIndexer orchestrates the vault indexing workflow from scan to cache
 // persistence. It implements the CQRS write-side pattern for indexing
 // operations, coordinating vault scanning, frontmatter extraction/validation,
@@ -43,26 +52,6 @@ type VaultIndexer struct {
 	schemaEngine       *schema.SchemaEngine
 	config             domain.Config
 	log                zerolog.Logger
-}
-
-// IndexStats tracks metrics for vault indexing operations.
-// Used for performance monitoring and NFR3 compliance.
-//
-// Fields:
-// - ScannedCount: Total files scanned from vault
-// - IndexedCount: Notes successfully persisted to cache
-// - CacheFailures: Cache write errors (logged as warnings)
-// - ValidationSuccesses: Frontmatter validations that passed
-// - ValidationFailures: Frontmatter validations that failed (logged but don't
-// abort)
-// - Duration: Total indexing time for performance tracking.
-type IndexStats struct {
-	ScannedCount        int
-	IndexedCount        int
-	CacheFailures       int
-	ValidationSuccesses int
-	ValidationFailures  int
-	Duration            time.Duration
 }
 
 // NewVaultIndexer creates a new VaultIndexer with injected dependencies.
@@ -257,11 +246,11 @@ func (v *VaultIndexer) scanModifiedFiles(
 //   - stats: IndexStats to update with processing results
 func (v *VaultIndexer) processFile(
 	ctx context.Context,
-	vf dto.VaultFile,
+	file dto.VaultFile,
 	stats *IndexStats,
 ) {
 	// Filter: only .md files for frontmatter processing
-	if vf.Ext != ".md" {
+	if file.Ext != ".md" {
 		return
 	}
 
@@ -269,7 +258,7 @@ func (v *VaultIndexer) processFile(
 
 	// If frontmatterService is available, use it for extraction and validation
 	if v.frontmatterService != nil {
-		noteFrontmatter = v.processFileWithFrontmatter(ctx, vf, stats)
+		noteFrontmatter = v.processFileWithFrontmatter(ctx, file, stats)
 		if noteFrontmatter.Fields == nil {
 			return // Processing failed, stats already updated
 		}
@@ -283,7 +272,7 @@ func (v *VaultIndexer) processFile(
 	}
 
 	// Create Note with frontmatter (validated or basic)
-	noteID := deriveNoteIDFromPath(vf.Path)
+	noteID := deriveNoteIDFromPath(file.Path)
 	note := domain.NewNote(noteID, noteFrontmatter)
 
 	// Persist to cache
@@ -322,7 +311,10 @@ func (v *VaultIndexer) logStats(stats IndexStats) {
 // Parameters:
 //   - stats: Refresh IndexStats to log
 //   - since: Timestamp used for the incremental scan
-func (v *VaultIndexer) logRefreshStats(stats IndexStats, since time.Time) {
+func (v *VaultIndexer) logRefreshStats(
+	stats IndexStats,
+	since time.Time,
+) {
 	v.log.Info().
 		Time("since", since).
 		Int("scanned", stats.ScannedCount).
