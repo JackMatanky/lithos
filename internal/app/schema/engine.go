@@ -40,7 +40,8 @@ import (
 //   - Has[Property](ctx, "property-name") checks property existence
 //
 // Dependencies:
-// - SchemaPort: Loads validated schemas and property bank from storage
+//   - SchemaPort: Loads validated schemas and property bank from storage
+//
 // (injected)
 //   - SchemaRegistryPort: Provides fast in-memory schema access (injected)
 //   - Logger: Provides observability for each pipeline stage (injected)
