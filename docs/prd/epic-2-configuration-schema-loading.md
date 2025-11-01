@@ -103,7 +103,7 @@ so that invalid schemas are rejected before runtime proceeds.
 **Prerequisites:** Stories 2.1–2.5.
 
 ### Acceptance Criteria
-1. `internal/app/schema/validator.go` implements `ValidateAll(ctx, schemas, bank)` exactly as in `docs/architecture/components.md#schemavalidator`, aggregating model validation, extends checks, `$ref` checks, and duplicate name detection.
+1. `internal/app/schema/validator.go` implements `ValidateAll(ctx, schemas)` exactly as in `docs/architecture/components.md#schemavalidator`, aggregating model validation, extends checks, `$ref` checks, and duplicate name detection.
 2. The validator returns aggregated `SchemaError`/`ValidationError` instances with contextual messages that reference offending schema/property names (FR5, FR7).
 3. Logging and metrics hooks (if present) follow guidance in `docs/architecture/components.md#schemaengine` (debug-level details only when enabled).
 4. Unit tests cover valid input, missing parent schema, missing `$ref`, duplicate names, and ensure errors use `errors.Join` semantics.

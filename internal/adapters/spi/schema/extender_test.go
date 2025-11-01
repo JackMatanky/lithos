@@ -24,12 +24,12 @@ func TestSchemaExtender_ExtendSchemas_SingleRootSchema(t *testing.T) {
 				{
 					Name:     "title",
 					Required: true,
-					Spec:     domain.StringSpec{},
+					Spec:     &domain.StringSpec{},
 				},
 				{
 					Name:     "tags",
 					Required: false,
-					Spec:     domain.StringSpec{},
+					Spec:     &domain.StringSpec{},
 				},
 			},
 		},
@@ -63,12 +63,12 @@ func TestSchemaExtender_ExtendSchemas_TwoLevelInheritance(t *testing.T) {
 				{
 					Name:     "title",
 					Required: true,
-					Spec:     domain.StringSpec{},
+					Spec:     &domain.StringSpec{},
 				},
 				{
 					Name:     "tags",
 					Required: false,
-					Spec:     domain.StringSpec{},
+					Spec:     &domain.StringSpec{},
 				},
 			},
 		},
@@ -79,7 +79,7 @@ func TestSchemaExtender_ExtendSchemas_TwoLevelInheritance(t *testing.T) {
 				{
 					Name:     "attendees",
 					Required: true,
-					Spec:     domain.StringSpec{},
+					Spec:     &domain.StringSpec{},
 				},
 			},
 		},
@@ -114,8 +114,8 @@ func TestSchemaExtender_ExtendSchemas_MultiLevelInheritance(t *testing.T) {
 	grandparent := domain.Schema{
 		Name: "note",
 		Properties: []domain.Property{
-			{Name: "title", Required: true, Spec: domain.StringSpec{}},
-			{Name: "tags", Required: false, Spec: domain.StringSpec{}},
+			{Name: "title", Required: true, Spec: &domain.StringSpec{}},
+			{Name: "tags", Required: false, Spec: &domain.StringSpec{}},
 		},
 	}
 
@@ -124,7 +124,7 @@ func TestSchemaExtender_ExtendSchemas_MultiLevelInheritance(t *testing.T) {
 		Name:    "base-note",
 		Extends: "note",
 		Properties: []domain.Property{
-			{Name: "created", Required: true, Spec: domain.StringSpec{}},
+			{Name: "created", Required: true, Spec: &domain.StringSpec{}},
 		},
 	}
 
@@ -137,9 +137,9 @@ func TestSchemaExtender_ExtendSchemas_MultiLevelInheritance(t *testing.T) {
 			{
 				Name:     "title",
 				Required: false,
-				Spec:     domain.StringSpec{},
+				Spec:     &domain.StringSpec{},
 			}, // Override
-			{Name: "attendees", Required: true, Spec: domain.StringSpec{}},
+			{Name: "attendees", Required: true, Spec: &domain.StringSpec{}},
 		},
 	}
 
@@ -184,21 +184,21 @@ func TestSchemaExtender_ExtendSchemas_CircularInheritance(t *testing.T) {
 			Name:    "a",
 			Extends: "b",
 			Properties: []domain.Property{
-				{Name: "prop_a", Required: true, Spec: domain.StringSpec{}},
+				{Name: "prop_a", Required: true, Spec: &domain.StringSpec{}},
 			},
 		},
 		{
 			Name:    "b",
 			Extends: "c",
 			Properties: []domain.Property{
-				{Name: "prop_b", Required: true, Spec: domain.StringSpec{}},
+				{Name: "prop_b", Required: true, Spec: &domain.StringSpec{}},
 			},
 		},
 		{
 			Name:    "c",
 			Extends: "a", // Creates cycle: a → b → c → a
 			Properties: []domain.Property{
-				{Name: "prop_c", Required: true, Spec: domain.StringSpec{}},
+				{Name: "prop_c", Required: true, Spec: &domain.StringSpec{}},
 			},
 		},
 	}
@@ -219,8 +219,8 @@ func TestSchemaExtender_ExtendSchemas_PropertyOverride(t *testing.T) {
 		{
 			Name: "base",
 			Properties: []domain.Property{
-				{Name: "title", Required: true, Spec: domain.StringSpec{}},
-				{Name: "status", Required: false, Spec: domain.StringSpec{}},
+				{Name: "title", Required: true, Spec: &domain.StringSpec{}},
+				{Name: "status", Required: false, Spec: &domain.StringSpec{}},
 			},
 		},
 		{
@@ -230,9 +230,9 @@ func TestSchemaExtender_ExtendSchemas_PropertyOverride(t *testing.T) {
 				{
 					Name:     "title",
 					Required: false,
-					Spec:     domain.StringSpec{},
+					Spec:     &domain.StringSpec{},
 				}, // Override
-				{Name: "extra", Required: true, Spec: domain.StringSpec{}},
+				{Name: "extra", Required: true, Spec: &domain.StringSpec{}},
 			},
 		},
 	}
@@ -277,12 +277,12 @@ func TestSchemaExtender_ExtendSchemas_ExcludesProperty(t *testing.T) {
 		{
 			Name: "base",
 			Properties: []domain.Property{
-				{Name: "title", Required: true, Spec: domain.StringSpec{}},
-				{Name: "tags", Required: false, Spec: domain.StringSpec{}},
+				{Name: "title", Required: true, Spec: &domain.StringSpec{}},
+				{Name: "tags", Required: false, Spec: &domain.StringSpec{}},
 				{
 					Name:     "internal_id",
 					Required: true,
-					Spec:     domain.StringSpec{},
+					Spec:     &domain.StringSpec{},
 				},
 			},
 		},
@@ -291,7 +291,7 @@ func TestSchemaExtender_ExtendSchemas_ExcludesProperty(t *testing.T) {
 			Extends:  "base",
 			Excludes: []string{"internal_id"}, // Remove internal_id from parent
 			Properties: []domain.Property{
-				{Name: "author", Required: true, Spec: domain.StringSpec{}},
+				{Name: "author", Required: true, Spec: &domain.StringSpec{}},
 			},
 		},
 	}
@@ -332,7 +332,7 @@ func TestSchemaExtender_ExtendSchemas_ContextCancellation(t *testing.T) {
 		{
 			Name: "test",
 			Properties: []domain.Property{
-				{Name: "title", Required: true, Spec: domain.StringSpec{}},
+				{Name: "title", Required: true, Spec: &domain.StringSpec{}},
 			},
 		},
 	}

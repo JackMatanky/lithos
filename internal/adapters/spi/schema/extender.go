@@ -241,7 +241,12 @@ func (e *SchemaExtender) resolveProperties(
 	order := make([]string, 0, capacity)
 
 	excludeSet := buildExcludeSet(schema.Excludes)
-	appendParentProperties(resolved, &order, parentProps, excludeSet)
+	appendParentProperties(
+		resolved,
+		&order,
+		parentProps,
+		excludeSet,
+	)
 
 	// Add/override child properties
 	for _, childProp := range schema.Properties {
@@ -259,16 +264,9 @@ func (e *SchemaExtender) resolveProperties(
 	return final
 }
 
-// buildExcludeSet creates a set for O(1) exclude lookups.
-func buildExcludeSet(excludes []string) map[string]struct{} {
-	excludeSet := make(map[string]struct{}, len(excludes))
-	for _, name := range excludes {
-		excludeSet[name] = struct{}{}
-	}
-	return excludeSet
-}
-
-// appendParentProperties adds parent properties that aren't excluded.
+// appendParentProperties adds parent properties to resolved map and
+// order, respecting exclusions.
+// Checks resolved map for existence to maintain order.
 func appendParentProperties(
 	resolved map[string]domain.Property,
 	order *[]string,
@@ -276,33 +274,40 @@ func appendParentProperties(
 	excludeSet map[string]struct{},
 ) {
 	for _, prop := range parentProps {
-		if _, skip := excludeSet[prop.Name]; skip {
-			continue
+		if _, excluded := excludeSet[prop.Name]; !excluded {
+			if _, exists := resolved[prop.Name]; !exists {
+				resolved[prop.Name] = prop
+				*order = append(*order, prop.Name)
+			}
 		}
-		updateResolved(resolved, order, prop)
 	}
 }
 
-// updateResolved adds or updates a property, maintaining insertion order.
+// updateResolved adds or updates a child property in resolved map and
+// order.
+// Maintains order for properties that are added/updated.
 func updateResolved(
 	resolved map[string]domain.Property,
 	order *[]string,
-	prop domain.Property,
+	childProp domain.Property,
 ) {
-	name := prop.Name
+	name := childProp.Name
 	if _, exists := resolved[name]; exists {
-		*order = removeOrderedName(*order, name)
+		// Property exists, update it
+		resolved[name] = childProp
+		// Order remains the same
+	} else {
+		// New property, add to end
+		resolved[name] = childProp
+		*order = append(*order, name)
 	}
-	*order = append(*order, name)
-	resolved[name] = prop
 }
 
-// removeOrderedName removes the first occurrence of name from the order slice.
-func removeOrderedName(order []string, name string) []string {
-	for idx, current := range order {
-		if current == name {
-			return append(order[:idx], order[idx+1:]...)
-		}
+// buildExcludeSet creates a set for O(1) exclude lookups.
+func buildExcludeSet(excludes []string) map[string]struct{} {
+	excludeSet := make(map[string]struct{}, len(excludes))
+	for _, name := range excludes {
+		excludeSet[name] = struct{}{}
 	}
-	return order
+	return excludeSet
 }

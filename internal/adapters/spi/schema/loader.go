@@ -54,7 +54,7 @@ func (a *SchemaLoaderAdapter) Load(
 	}
 
 	var err error
-	bank, err := a.loadPropertyBank()
+	bank, err := a.loadPropertyBank(ctx)
 	if err != nil {
 		return nil, domain.PropertyBank{}, err
 	}
@@ -66,7 +66,7 @@ func (a *SchemaLoaderAdapter) Load(
 			Msg("property bank loaded")
 	}
 
-	schemas, err := a.loadSchemas(bank)
+	schemas, err := a.loadSchemas(ctx, bank)
 	if err != nil {
 		return nil, domain.PropertyBank{}, err
 	}
@@ -79,7 +79,7 @@ func (a *SchemaLoaderAdapter) Load(
 	}
 
 	// Validate schemas
-	if validateErr := a.validateSchemas(ctx, schemas, bank); validateErr != nil {
+	if validateErr := a.validateSchemas(ctx, schemas); validateErr != nil {
 		return nil, domain.PropertyBank{}, validateErr
 	}
 
@@ -98,7 +98,9 @@ func (a *SchemaLoaderAdapter) Load(
 	return extendedSchemas, bank, nil
 }
 
-func (a *SchemaLoaderAdapter) loadPropertyBank() (domain.PropertyBank, error) {
+func (a *SchemaLoaderAdapter) loadPropertyBank(
+	ctx context.Context,
+) (domain.PropertyBank, error) {
 	path := a.config.PropertyBankPath()
 	data, err := a.readFile(path)
 	if err != nil {
@@ -115,10 +117,11 @@ func (a *SchemaLoaderAdapter) loadPropertyBank() (domain.PropertyBank, error) {
 		)
 	}
 
-	return document.toDomain(path)
+	return document.toDomain(ctx, path)
 }
 
 func (a *SchemaLoaderAdapter) loadSchemas(
+	ctx context.Context,
 	bank domain.PropertyBank,
 ) ([]domain.Schema, error) {
 	var schemas []domain.Schema
@@ -145,7 +148,7 @@ func (a *SchemaLoaderAdapter) loadSchemas(
 				return nil
 			}
 
-			schema, err := a.loadSchema(path, bank)
+			schema, err := a.loadSchema(ctx, path, bank)
 			if err != nil {
 				return err
 			}
@@ -172,6 +175,7 @@ func (a *SchemaLoaderAdapter) loadSchemas(
 }
 
 func (a *SchemaLoaderAdapter) loadSchema(
+	ctx context.Context,
 	path string,
 	bank domain.PropertyBank,
 ) (domain.Schema, error) {
@@ -195,7 +199,7 @@ func (a *SchemaLoaderAdapter) loadSchema(
 		)
 	}
 
-	schema, err := document.toDomain(path, bank)
+	schema, err := document.toDomain(ctx, path, bank)
 	if err != nil {
 		return domain.Schema{}, err
 	}
@@ -206,13 +210,12 @@ func (a *SchemaLoaderAdapter) loadSchema(
 func (a *SchemaLoaderAdapter) validateSchemas(
 	ctx context.Context,
 	schemas []domain.Schema,
-	bank domain.PropertyBank,
 ) error {
 	if a.log != nil {
 		a.log.Debug().Msg("validating schemas")
 	}
 
-	if err := a.validator.ValidateAll(ctx, schemas, bank); err != nil {
+	if err := a.validator.ValidateAll(ctx, schemas); err != nil {
 		if a.log != nil {
 			a.log.Error().Err(err).Msg("schema validation failed")
 		}

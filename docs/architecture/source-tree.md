@@ -21,9 +21,7 @@ lithos/
 │   │   ├── query/
 │   │   │   └── service.go   # QueryService
 │   │   ├── schema/
-│   │   │   ├── engine.go    # SchemaEngine
-│   │   │   ├── resolver.go  # SchemaResolver
-│   │   │   └── validator.go # SchemaValidator
+│   │   │   └── engine.go    # SchemaEngine (orchestration only)
 │   │   └── template/
 │   ├── ports/
 │   │   ├── api/             # Drivers: CLIPort and related contracts
@@ -38,6 +36,12 @@ lithos/
 │   │       ├── config/
 │   │       ├── interactive/
 │   │       ├── schema/
+│   │       │   ├── dereferencer.go     # PropertyDereferencer ($ref substitution)
+│   │       │   ├── extender.go          # SchemaExtender (inheritance resolution)
+│   │       │   ├── loader.go            # SchemaLoader (enhanced with validation/resolution)
+│   │       │   ├── registry.go          # SchemaRegistry (moved from service layer)
+│   │       │   ├── validator.go         # SchemaValidator (moved from service layer)
+│   │       │   └── dto.go               # Schema DTOs
 │   │       └── template/
 │   └── shared/              # Cross-cutting helpers (logger, errors, registry, utilities)
 │       ├── errors/

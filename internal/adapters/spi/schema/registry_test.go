@@ -19,7 +19,7 @@ func TestSchemaRegistryAdapter_RegisterAll(t *testing.T) {
 
 	schemas := []domain.Schema{
 		{Name: "test-schema", Properties: []domain.Property{
-			{Name: "field1", Spec: domain.StringSpec{}},
+			{Name: "field1", Spec: &domain.StringSpec{}},
 		}},
 	}
 	bank := domain.PropertyBank{
@@ -82,7 +82,7 @@ func TestSchemaRegistryAdapter_GetSchema_Success(t *testing.T) {
 	schema := domain.Schema{
 		Name: "test",
 		Properties: []domain.Property{
-			{Name: "field", Spec: domain.StringSpec{}},
+			{Name: "field", Spec: &domain.StringSpec{}},
 		},
 	}
 	err := registry.RegisterAll(
@@ -254,7 +254,7 @@ func TestSchemaRegistryAdapter_DefensiveCopying(t *testing.T) {
 	originalSchema := domain.Schema{
 		Name: "test",
 		Properties: []domain.Property{
-			{Name: "field1", Spec: domain.StringSpec{}},
+			{Name: "field1", Spec: &domain.StringSpec{}},
 		},
 	}
 	originalProperty := domain.Property{Name: "prop1"}

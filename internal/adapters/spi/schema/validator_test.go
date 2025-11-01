@@ -15,30 +15,25 @@ import (
 func TestSchemaValidator_ValidateAll_Success(t *testing.T) {
 	validator := NewSchemaValidator()
 
-	bank := domain.PropertyBank{Properties: map[string]domain.Property{
-		"standard_title": {Name: "title", Spec: domain.StringSpec{}},
-		"standard_tags":  {Name: "tags", Spec: domain.StringSpec{}},
-	}}
-
 	schemas := []domain.Schema{
 		{
 			Name: "base",
 			Properties: []domain.Property{
-				{Name: "title", Spec: domain.StringSpec{}},
-				{Name: "tags", Spec: domain.StringSpec{}},
+				{Name: "title", Spec: &domain.StringSpec{}},
+				{Name: "tags", Spec: &domain.StringSpec{}},
 			},
 		},
 		{
 			Name:    "meeting_note",
 			Extends: "base",
 			Properties: []domain.Property{
-				{Name: "title", Spec: domain.StringSpec{}},
-				{Name: "tags", Spec: domain.StringSpec{}},
+				{Name: "title", Spec: &domain.StringSpec{}},
+				{Name: "tags", Spec: &domain.StringSpec{}},
 			},
 		},
 	}
 
-	err := validator.ValidateAll(context.Background(), schemas, bank)
+	err := validator.ValidateAll(context.Background(), schemas)
 	require.NoError(t, err)
 }
 
@@ -54,7 +49,6 @@ func TestSchemaValidator_ValidateAll_EmptyNameError(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "schema :")
@@ -71,7 +65,7 @@ func TestSchemaValidator_ValidateAll_InvalidPropertySpec(t *testing.T) {
 			Properties: []domain.Property{
 				{
 					Name: "",
-					Spec: domain.StringSpec{},
+					Spec: &domain.StringSpec{},
 				}, // Invalid property name
 			},
 		},
@@ -80,7 +74,6 @@ func TestSchemaValidator_ValidateAll_InvalidPropertySpec(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "test")
@@ -96,7 +89,6 @@ func TestSchemaValidator_ValidateAll_MissingParent(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 
 	require.Error(t, err)
@@ -118,7 +110,6 @@ func TestSchemaValidator_ValidateAll_DuplicateNames(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 
 	require.Error(t, err)
@@ -137,7 +128,7 @@ func TestSchemaValidator_ValidateAll_EmptyPropertyName(t *testing.T) {
 			Properties: []domain.Property{
 				{
 					Name: "",
-					Spec: domain.StringSpec{},
+					Spec: &domain.StringSpec{},
 				}, // Empty name should trigger error
 			},
 		},
@@ -146,7 +137,6 @@ func TestSchemaValidator_ValidateAll_EmptyPropertyName(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 
 	require.Error(t, err)
@@ -162,7 +152,6 @@ func TestSchemaValidator_ValidateAll_EmptySchemas(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		[]domain.Schema{},
-		domain.PropertyBank{},
 	)
 	require.NoError(t, err)
 }
@@ -180,7 +169,6 @@ func TestSchemaValidator_ValidateAll_AggregatesMultipleErrors(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 
 	require.Error(t, err)
@@ -201,7 +189,6 @@ func TestSchemaValidator_ValidateAll_AggregatedErrorTypes(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 	require.Error(t, err)
 
@@ -223,7 +210,6 @@ func TestSchemaValidator_ValidateAll_ErrorMessagesIncludeHints(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 	require.Error(t, err)
 
@@ -242,12 +228,12 @@ func TestSchemaValidator_ValidateAll_NoMutation(t *testing.T) {
 		{
 			Name: "test",
 			Properties: []domain.Property{
-				{Name: "prop", Spec: domain.StringSpec{}},
+				{Name: "prop", Spec: &domain.StringSpec{}},
 			},
 		},
 	}
 	originalBank := domain.PropertyBank{Properties: map[string]domain.Property{
-		"prop": {Name: "prop", Spec: domain.StringSpec{}},
+		"prop": {Name: "prop", Spec: &domain.StringSpec{}},
 	}}
 
 	// Make copies to compare
@@ -258,7 +244,6 @@ func TestSchemaValidator_ValidateAll_NoMutation(t *testing.T) {
 	_ = validator.ValidateAll(
 		context.Background(),
 		originalSchemas,
-		originalBank,
 	) // Ignore error for mutation test
 
 	// Inputs should not be mutated
@@ -272,20 +257,16 @@ func TestSchemaValidator_ValidateAll_GodocExample(t *testing.T) {
 	// This test ensures the GoDoc example compiles and runs
 	validator := NewSchemaValidator()
 
-	bank := domain.PropertyBank{Properties: map[string]domain.Property{
-		"title": {Name: "title", Spec: domain.StringSpec{}},
-	}}
-
 	schemas := []domain.Schema{
 		{
 			Name: "note",
 			Properties: []domain.Property{
-				{Name: "title", Spec: domain.StringSpec{}},
+				{Name: "title", Spec: &domain.StringSpec{}},
 			},
 		},
 	}
 
-	err := validator.ValidateAll(context.Background(), schemas, bank)
+	err := validator.ValidateAll(context.Background(), schemas)
 	require.NoError(t, err)
 }
 
@@ -297,10 +278,9 @@ func TestSchemaValidator_ValidateAll_NoLogging(t *testing.T) {
 	validator := NewSchemaValidator()
 
 	schemas := []domain.Schema{{Name: ""}} // Invalid schema (empty name)
-	bank := domain.PropertyBank{}
 
 	// This should produce an error, but no logging should occur
-	err := validator.ValidateAll(context.Background(), schemas, bank)
+	err := validator.ValidateAll(context.Background(), schemas)
 	require.Error(t, err)
 }
 
@@ -309,15 +289,11 @@ func TestSchemaValidator_ValidateAll_NoLogging(t *testing.T) {
 func TestSchemaValidator_ValidateAll_ExtendsChain(t *testing.T) {
 	validator := NewSchemaValidator()
 
-	bank := domain.PropertyBank{Properties: map[string]domain.Property{
-		"title": {Name: "title", Spec: domain.StringSpec{}},
-	}}
-
 	schemas := []domain.Schema{
 		{
 			Name: "base",
 			Properties: []domain.Property{
-				{Name: "title", Spec: domain.StringSpec{}},
+				{Name: "title", Spec: &domain.StringSpec{}},
 			},
 		},
 		{Name: "middle", Extends: "base", Properties: []domain.Property{}},
@@ -325,12 +301,12 @@ func TestSchemaValidator_ValidateAll_ExtendsChain(t *testing.T) {
 			Name:    "child",
 			Extends: "middle",
 			Properties: []domain.Property{
-				{Name: "title", Spec: domain.StringSpec{}},
+				{Name: "title", Spec: &domain.StringSpec{}},
 			},
 		},
 	}
 
-	err := validator.ValidateAll(context.Background(), schemas, bank)
+	err := validator.ValidateAll(context.Background(), schemas)
 	require.NoError(t, err)
 }
 
@@ -339,22 +315,17 @@ func TestSchemaValidator_ValidateAll_ExtendsChain(t *testing.T) {
 func TestSchemaValidator_ValidateAll_MultipleRefs(t *testing.T) {
 	validator := NewSchemaValidator()
 
-	bank := domain.PropertyBank{Properties: map[string]domain.Property{
-		"title": {Name: "title", Spec: domain.StringSpec{}},
-		"tags":  {Name: "tags", Spec: domain.StringSpec{}},
-	}}
-
 	schemas := []domain.Schema{
 		{
 			Name: "note",
 			Properties: []domain.Property{
-				{Name: "title", Spec: domain.StringSpec{}},
-				{Name: "tags", Spec: domain.StringSpec{}},
+				{Name: "title", Spec: &domain.StringSpec{}},
+				{Name: "tags", Spec: &domain.StringSpec{}},
 			},
 		},
 	}
 
-	err := validator.ValidateAll(context.Background(), schemas, bank)
+	err := validator.ValidateAll(context.Background(), schemas)
 	require.NoError(t, err)
 }
 
@@ -371,7 +342,6 @@ func TestSchemaValidator_ValidateAll_CombinationErrors(t *testing.T) {
 	err := validator.ValidateAll(
 		context.Background(),
 		schemas,
-		domain.PropertyBank{},
 	)
 	require.Error(t, err)
 
@@ -379,4 +349,60 @@ func TestSchemaValidator_ValidateAll_CombinationErrors(t *testing.T) {
 	assert.Contains(t, err.Error(), "schema :")
 	assert.Contains(t, err.Error(), "orphan")
 	assert.Contains(t, err.Error(), "missing")
+}
+
+// BenchmarkSchemaValidator_ValidateAll benchmarks comprehensive schema
+// validation.
+// Measures performance improvements from property validation caching.
+func BenchmarkSchemaValidator_ValidateAll(b *testing.B) {
+	validator := NewSchemaValidator()
+
+	// Create a moderately complex schema set with regex patterns
+	schemas := []domain.Schema{
+		{
+			Name: "user",
+			Properties: []domain.Property{
+				{Name: "id", Required: true, Spec: &domain.StringSpec{}},
+				{
+					Name:     "email",
+					Required: true,
+					Spec: &domain.StringSpec{
+						Pattern: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`,
+					},
+				},
+				{Name: "name", Required: true, Spec: &domain.StringSpec{}},
+				{
+					Name:     "tags",
+					Required: false,
+					Array:    true,
+					Spec:     &domain.StringSpec{},
+				},
+			},
+		},
+		{
+			Name:    "post",
+			Extends: "user",
+			Properties: []domain.Property{
+				{Name: "title", Required: true, Spec: &domain.StringSpec{}},
+				{Name: "content", Required: true, Spec: &domain.StringSpec{}},
+				{Name: "published", Required: false, Spec: &domain.BoolSpec{}},
+			},
+		},
+		{
+			Name: "comment",
+			Properties: []domain.Property{
+				{Name: "id", Required: true, Spec: &domain.StringSpec{}},
+				{Name: "post_id", Required: true, Spec: &domain.StringSpec{}},
+				{Name: "author", Required: true, Spec: &domain.StringSpec{}},
+				{Name: "text", Required: true, Spec: &domain.StringSpec{}},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	b.ResetTimer()
+
+	for range b.N {
+		_ = validator.ValidateAll(ctx, schemas)
+	}
 }

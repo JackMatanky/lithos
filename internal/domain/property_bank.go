@@ -76,7 +76,7 @@ func validatePropertyDefinitions(
 ) error {
 	var errs []error
 	for id, prop := range properties {
-		if err := prop.Validate(ctx); err != nil {
+		if err := (&prop).Validate(ctx); err != nil {
 			errs = append(errs, fmt.Errorf("property %s: %w", id, err))
 		}
 	}

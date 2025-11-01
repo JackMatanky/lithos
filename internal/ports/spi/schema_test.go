@@ -27,7 +27,7 @@ func (p exampleSchemaPort) Load(
 		Properties: map[string]domain.Property{
 			"title": {
 				Name: "title",
-				Spec: domain.StringSpec{},
+				Spec: &domain.StringSpec{},
 			},
 		},
 	}

@@ -42,7 +42,7 @@ func TestPropertyValidate(t *testing.T) {
 			Spec:     spec,
 		}
 
-		err := property.Validate(ctx)
+		err := (&property).Validate(ctx)
 
 		assert.NoError(t, err)
 	})
@@ -59,7 +59,7 @@ func TestPropertyValidate(t *testing.T) {
 			Spec:     spec,
 		}
 
-		err := property.Validate(ctx)
+		err := (&property).Validate(ctx)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "property name cannot be empty")
@@ -73,7 +73,7 @@ func TestPropertyValidate(t *testing.T) {
 			Spec:     nil,
 		}
 
-		err := property.Validate(ctx)
+		err := (&property).Validate(ctx)
 
 		require.Error(t, err)
 		assert.Contains(
@@ -96,7 +96,7 @@ func TestPropertyValidate(t *testing.T) {
 			Spec:     spec,
 		}
 
-		err := property.Validate(ctx)
+		err := (&property).Validate(ctx)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "spec validation failed")
@@ -156,4 +156,47 @@ func TestNewProperty(t *testing.T) {
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "property name cannot be empty")
 	})
+}
+
+// BenchmarkPropertyValidate benchmarks property validation performance.
+// Measures the impact of validation caching on repeated validations.
+func BenchmarkPropertyValidate(b *testing.B) {
+	ctx := context.Background()
+
+	// Test with regex pattern (triggers compilation caching)
+	spec := StringSpec{
+		Pattern: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, // Email regex
+	}
+
+	property, err := NewProperty("email", true, false, &spec)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for range b.N {
+		_ = property.Validate(ctx)
+	}
+}
+
+// BenchmarkPropertyValidateNoCache benchmarks validation without caching
+// (simulating old behavior with repeated regex compilation).
+func BenchmarkPropertyValidateNoCache(b *testing.B) {
+	ctx := context.Background()
+
+	// Create property without caching by using value receiver
+	spec := StringSpec{
+		Pattern: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`,
+	}
+
+	property := Property{
+		ID:       "test-id",
+		Name:     "email",
+		Required: true,
+		Array:    false,
+		Spec:     &spec, // Pointer to enable caching
+	}
+
+	b.ResetTimer()
+	for range b.N {
+		_ = property.Validate(ctx)
+	}
 }

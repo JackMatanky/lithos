@@ -20,7 +20,7 @@ func TestPropertyDereferencer_DereferenceProperties(t *testing.T) {
 			"standard_title": {
 				Name:     "standard_title",
 				Required: true,
-				Spec:     domain.StringSpec{},
+				Spec:     &domain.StringSpec{},
 			},
 		},
 	}
@@ -38,7 +38,7 @@ func TestPropertyDereferencer_DereferenceProperties(t *testing.T) {
 			Property: &domain.Property{
 				Name:     "content",
 				Required: false,
-				Spec:     domain.StringSpec{},
+				Spec:     &domain.StringSpec{},
 			},
 			PropertyRef: nil,
 		},
@@ -57,7 +57,7 @@ func TestPropertyDereferencer_DereferenceProperties(t *testing.T) {
 	// Verify $ref was substituted
 	assert.Equal(t, "title", result[0].Name)
 	assert.True(t, result[0].Required) // Should get Required from bank
-	assert.Equal(t, domain.StringSpec{}, result[0].Spec)
+	assert.Equal(t, &domain.StringSpec{}, result[0].Spec)
 
 	// Verify regular property unchanged
 	assert.Equal(t, "content", result[1].Name)
@@ -127,7 +127,7 @@ func TestPropertyDereferencer_NoRefsProperties(t *testing.T) {
 			Property: &domain.Property{
 				Name:     "title",
 				Required: true,
-				Spec:     domain.StringSpec{},
+				Spec:     &domain.StringSpec{},
 			},
 			PropertyRef: nil,
 		},
@@ -135,7 +135,7 @@ func TestPropertyDereferencer_NoRefsProperties(t *testing.T) {
 			Property: &domain.Property{
 				Name:     "content",
 				Required: false,
-				Spec:     domain.StringSpec{},
+				Spec:     &domain.StringSpec{},
 			},
 			PropertyRef: nil,
 		},
@@ -174,7 +174,7 @@ func TestPropertyDereferencer_ContextCancellation(t *testing.T) {
 			Property: &domain.Property{
 				Name:     "title",
 				Required: true,
-				Spec:     domain.StringSpec{},
+				Spec:     &domain.StringSpec{},
 			},
 			PropertyRef: nil,
 		},
