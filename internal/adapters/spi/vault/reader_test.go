@@ -134,17 +134,21 @@ func TestScanAll_WithFiles(t *testing.T) {
 	files, err := adapter.ScanAll(context.Background())
 
 	require.NoError(t, err)
-	assert.Len(t, files, 4) // 2 .md + 2 attachments, excludes .lithos/cache
+	assert.Len(
+		t,
+		files,
+		2,
+	) // Only .md files, excludes attachments and .lithos/cache
 
 	// Check that all files are VaultFile instances with proper structure
 	for _, vf := range files {
 		assert.NotEmpty(t, vf.Path)
 		assert.NotEmpty(t, vf.Basename)
 		assert.NotEmpty(t, vf.Folder)
-		assert.NotEmpty(t, vf.Ext)
+		assert.Equal(t, ".md", vf.Ext)
 		assert.NotZero(t, vf.ModTime)
 		assert.Positive(t, vf.Size)
-		assert.NotEmpty(t, vf.MimeType)
+		assert.Equal(t, "text/markdown", vf.MimeType)
 		assert.NotNil(t, vf.Content)
 	}
 }
@@ -244,11 +248,12 @@ func TestScanModified_WithRecentFiles(t *testing.T) {
 	files, err := adapter.ScanModified(context.Background(), since)
 
 	require.NoError(t, err)
-	assert.Len(t, files, 3) // 3 files modified within last hour
+	assert.Len(t, files, 1) // Only project.md is recent and markdown
 
 	// Ensure old file is not included
 	for _, vf := range files {
 		assert.NotEqual(t, oldFile, vf.Path, "Old file should be excluded")
+		assert.Equal(t, ".md", vf.Ext, "Only markdown files should be included")
 	}
 }
 
