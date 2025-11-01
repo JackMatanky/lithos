@@ -7,14 +7,22 @@ package cache
 import (
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 )
 
 // noteFilePath constructs cache file path from note ID.
-// Format: {cacheDir}/{noteID}.json.
+// Converts NoteID to filesystem-safe filename by replacing path separators.
+// Format: {cacheDir}/{safeNoteID}.json.
+//
+// Path separators in NoteID (/, \) are replaced with hyphens (-) to create
+// unique, filesystem-safe cache filenames.
 func noteFilePath(cacheDir string, id domain.NoteID) string {
-	return filepath.Join(cacheDir, string(id)+".json")
+	// Convert NoteID to safe filename by replacing path separators
+	safeName := strings.ReplaceAll(string(id), "/", "-")
+	safeName = strings.ReplaceAll(safeName, "\\", "-")
+	return filepath.Join(cacheDir, safeName+".json")
 }
 
 // ensureCacheDir creates cache directory if missing.

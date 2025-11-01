@@ -129,34 +129,29 @@ func TestQueryService_DependenciesExist(t *testing.T) {
 
 // setupQueryServiceWithNotes creates a QueryService with populated indices
 // for testing query methods. It includes sample notes with different file
-// classes.
+// classes and path-based NoteIDs.
 func setupQueryServiceWithNotes(t *testing.T) *QueryService {
 	t.Helper()
 
-	// Create sample notes
+	// Create sample notes with path-based NoteIDs
 	note1 := domain.Note{
-		ID: domain.NoteID("note-1"),
+		ID: domain.NoteID("contacts/john-doe.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
 		},
 	}
 	note2 := domain.Note{
-		ID: domain.NoteID("note-2"),
+		ID: domain.NoteID("meetings/2023-10-01.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "meeting",
 		},
 	}
 	note3 := domain.Note{
-		ID: domain.NoteID("note-3"),
+		ID: domain.NoteID("contacts/jane-smith.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
 		},
 	}
-
-	// Define paths separately (Note struct doesn't contain path)
-	path1 := "contacts/john-doe.md"
-	path2 := "meetings/2023-10-01.md"
-	path3 := "contacts/jane-smith.md"
 
 	// Create QueryService with fake dependencies
 	fakeCacheReader := &FakeCacheReader{}
@@ -170,9 +165,9 @@ func setupQueryServiceWithNotes(t *testing.T) *QueryService {
 		note3.ID: note3,
 	}
 	qs.byPath = map[string]domain.Note{
-		path1: note1,
-		path2: note2,
-		path3: note3,
+		string(note1.ID): note1,
+		string(note2.ID): note2,
+		string(note3.ID): note3,
 	}
 	qs.byBasename = map[string][]domain.Note{
 		"john-doe":   {note1},
@@ -193,12 +188,12 @@ func TestQueryService_ByID_ExistingNote(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	note, err := qs.ByID(ctx, domain.NoteID("note-1"))
+	note, err := qs.ByID(ctx, domain.NoteID("contacts/john-doe.md"))
 
 	require.NoError(t, err, "ByID should not return error for existing note")
 	assert.Equal(
 		t,
-		domain.NoteID("note-1"),
+		domain.NoteID("contacts/john-doe.md"),
 		note.ID,
 		"ByID should return correct note",
 	)
@@ -216,7 +211,7 @@ func TestQueryService_ByID_MissingNote(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	note, err := qs.ByID(ctx, domain.NoteID("missing-note"))
+	note, err := qs.ByID(ctx, domain.NoteID("missing-note.md"))
 
 	require.Error(t, err, "ByID should return error for missing note")
 	var resErr *domainerrors.ResourceError
@@ -245,7 +240,7 @@ func TestQueryService_ByPath_ExistingPath(t *testing.T) {
 	require.NoError(t, err, "ByPath should not return error for existing path")
 	assert.Equal(
 		t,
-		domain.NoteID("note-1"),
+		domain.NoteID("contacts/john-doe.md"),
 		note.ID,
 		"ByPath should return note with correct ID",
 	)
@@ -302,13 +297,13 @@ func TestQueryService_ByFileClass_ExistingClass(t *testing.T) {
 	)
 	assert.Equal(
 		t,
-		domain.NoteID("note-1"),
+		domain.NoteID("contacts/john-doe.md"),
 		notes[0].ID,
 		"ByFileClass should return notes in correct order",
 	)
 	assert.Equal(
 		t,
-		domain.NoteID("note-3"),
+		domain.NoteID("contacts/jane-smith.md"),
 		notes[1].ID,
 		"ByFileClass should return notes in correct order",
 	)
@@ -384,6 +379,41 @@ func TestQueryService_RefreshFromCache_Success(t *testing.T) {
 		"byID should contain new-2",
 	)
 
+	// Verify byPath was rebuilt
+	assert.Len(t, qs.byPath, 2, "byPath should contain 2 notes after refresh")
+	assert.Contains(
+		t,
+		qs.byPath,
+		"new-1",
+		"byPath should contain 'new-1' path",
+	)
+	assert.Contains(
+		t,
+		qs.byPath,
+		"new-2",
+		"byPath should contain 'new-2' path",
+	)
+
+	// Verify byBasename was rebuilt
+	assert.Len(
+		t,
+		qs.byBasename,
+		2,
+		"byBasename should contain 2 basenames after refresh",
+	)
+	assert.Contains(
+		t,
+		qs.byBasename,
+		"new-1",
+		"byBasename should contain 'new-1' basename",
+	)
+	assert.Contains(
+		t,
+		qs.byBasename,
+		"new-2",
+		"byBasename should contain 'new-2' basename",
+	)
+
 	// Verify byFileClass was rebuilt
 	assert.Len(
 		t,
@@ -425,6 +455,18 @@ func TestQueryService_RefreshFromCache_ClearsExistingIndices(t *testing.T) {
 		qs.byID,
 		domain.NoteID("new-1"),
 		"byID should contain new-1 after refresh",
+	)
+	assert.Contains(
+		t,
+		qs.byPath,
+		"new-1",
+		"byPath should contain new-1 after refresh",
+	)
+	assert.Contains(
+		t,
+		qs.byBasename,
+		"new-1",
+		"byBasename should contain new-1 after refresh",
 	)
 	assert.Contains(
 		t,
@@ -479,13 +521,16 @@ func TestQueryService_ConcurrentReads(t *testing.T) {
 			defer wg.Done()
 			for range opsPerGoroutine {
 				// Test ByID
-				_, _ = qs.ByID(ctx, domain.NoteID("note-1"))
+				_, _ = qs.ByID(ctx, domain.NoteID("contacts/john-doe.md"))
 
 				// Test ByPath
 				_, _ = qs.ByPath(ctx, "contacts/john-doe.md")
 
 				// Test ByFileClass
 				_, _ = qs.ByFileClass(ctx, "contact")
+
+				// Test ByBasename
+				_, _ = qs.ByBasename(ctx, "john-doe")
 			}
 		}()
 	}
@@ -501,7 +546,7 @@ func TestQueryService_EdgeCases_EmptyService(t *testing.T) {
 	ctx := context.Background()
 
 	// Test ByID on empty service
-	note, err := qs.ByID(ctx, domain.NoteID("any-id"))
+	note, err := qs.ByID(ctx, domain.NoteID("any-id.md"))
 	require.Error(t, err, "ByID should return error for empty service")
 	var resErr *domainerrors.ResourceError
 	require.ErrorAs(t, err, &resErr, "ByID should return ResourceError")
@@ -532,7 +577,7 @@ func TestQueryService_EdgeCases_TODOContext(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 
 	// Test ByID with context.TODO
-	note, err := qs.ByID(context.TODO(), domain.NoteID("note-1"))
+	note, err := qs.ByID(context.TODO(), domain.NoteID("contacts/john-doe.md"))
 	require.NoError(
 		t,
 		err,
@@ -540,7 +585,7 @@ func TestQueryService_EdgeCases_TODOContext(t *testing.T) {
 	)
 	assert.Equal(
 		t,
-		domain.NoteID("note-1"),
+		domain.NoteID("contacts/john-doe.md"),
 		note.ID,
 		"ByID should return correct note with context.TODO",
 	)
@@ -554,7 +599,7 @@ func TestQueryService_EdgeCases_TODOContext(t *testing.T) {
 	)
 	assert.Equal(
 		t,
-		domain.NoteID("note-1"),
+		domain.NoteID("contacts/john-doe.md"),
 		note.ID,
 		"ByPath should return correct note with context.TODO",
 	)
@@ -715,4 +760,143 @@ func TestQueryService_ByFrontmatter_MissingField(t *testing.T) {
 	// Then
 	require.NoError(t, err)
 	assert.Empty(t, notes) // Should return empty slice, not error
+}
+
+// TestExtractBasenameFromNoteID tests the extractBasenameFromNoteID helper
+// function.
+func TestExtractBasenameFromNoteID(t *testing.T) {
+	tests := []struct {
+		name     string
+		noteID   domain.NoteID
+		expected string
+	}{
+		{
+			name:     "simple filename with extension",
+			noteID:   domain.NoteID("meeting.md"),
+			expected: "meeting",
+		},
+		{
+			name:     "filename with path",
+			noteID:   domain.NoteID("projects/notes/meeting.md"),
+			expected: "meeting",
+		},
+		{
+			name:     "nested path",
+			noteID:   domain.NoteID("deep/nested/path/file.txt"),
+			expected: "file",
+		},
+		{
+			name:     "filename without extension",
+			noteID:   domain.NoteID("README"),
+			expected: "README",
+		},
+		{
+			name:     "filename with multiple dots",
+			noteID:   domain.NoteID("file.name.with.dots.md"),
+			expected: "file.name.with.dots",
+		},
+		{
+			name:     "windows path separators",
+			noteID:   domain.NoteID("projects\\notes\\meeting.md"),
+			expected: "meeting",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := extractBasenameFromNoteID(tt.noteID)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+// TestQueryService_ByBasename_ExistingBasename verifies ByBasename returns all
+// notes matching basename.
+func TestQueryService_ByBasename_ExistingBasename(t *testing.T) {
+	qs := setupQueryServiceWithNotes(t)
+	ctx := context.Background()
+
+	notes, err := qs.ByBasename(ctx, "john-doe")
+
+	require.NoError(
+		t,
+		err,
+		"ByBasename should not return error for existing basename",
+	)
+	assert.Len(
+		t,
+		notes,
+		1,
+		"ByBasename should return 1 note for 'john-doe' basename",
+	)
+	assert.Equal(
+		t,
+		domain.NoteID("contacts/john-doe.md"),
+		notes[0].ID,
+		"ByBasename should return note with correct ID",
+	)
+}
+
+// TestQueryService_ByBasename_NonMatchingBasename verifies ByBasename returns
+// empty slice for non-matching basename.
+func TestQueryService_ByBasename_NonMatchingBasename(t *testing.T) {
+	qs := setupQueryServiceWithNotes(t)
+	ctx := context.Background()
+
+	notes, err := qs.ByBasename(ctx, "nonexistent")
+
+	require.NoError(
+		t,
+		err,
+		"ByBasename should not return error for non-matching basename",
+	)
+	assert.Empty(
+		t,
+		notes,
+		"ByBasename should return empty slice for non-matching basename",
+	)
+	assert.Nil(
+		t,
+		notes,
+		"ByBasename should return nil slice for non-matching basename",
+	)
+}
+
+// TestQueryService_ByBasename_MultipleMatches verifies ByBasename returns all
+// notes with same basename from different paths.
+func TestQueryService_ByBasename_MultipleMatches(t *testing.T) {
+	// Create notes with same basename in different paths
+	note1 := domain.Note{
+		ID: domain.NoteID("contacts/john-doe.md"),
+		Frontmatter: domain.Frontmatter{
+			FileClass: "contact",
+		},
+	}
+	note2 := domain.Note{
+		ID: domain.NoteID("projects/john-doe.md"),
+		Frontmatter: domain.Frontmatter{
+			FileClass: "project",
+		},
+	}
+
+	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note1, note2}}
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+	qs := NewQueryService(fakeCacheReader, logger)
+
+	// Populate indices via RefreshFromCache
+	err := qs.RefreshFromCache(context.Background())
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	notes, err := qs.ByBasename(ctx, "john-doe")
+
+	require.NoError(t, err, "ByBasename should not return error")
+	assert.Len(t, notes, 2, "ByBasename should return 2 notes for 'john-doe'")
+	// Verify both notes are returned
+	noteIDs := make([]string, len(notes))
+	for i, note := range notes {
+		noteIDs[i] = string(note.ID)
+	}
+	assert.Contains(t, noteIDs, "contacts/john-doe.md")
+	assert.Contains(t, noteIDs, "projects/john-doe.md")
 }
