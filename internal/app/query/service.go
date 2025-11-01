@@ -18,6 +18,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -64,6 +66,25 @@ type QueryService struct {
 
 	// Frontmatter index: field → value → []Note
 	byFrontmatter map[string]map[interface{}][]domain.Note
+}
+
+// extractBasenameFromNoteID extracts the filename without extension from a
+// NoteID.
+// NoteID now contains the full vault-relative path, so we extract the basename.
+// Handles both Unix (/) and Windows (\) path separators for cross-platform
+// compatibility.
+// Example: "projects/notes/meeting.md" → "meeting".
+func extractBasenameFromNoteID(id domain.NoteID) string {
+	path := string(id)
+	// Normalize Windows backslashes to forward slashes for cross-platform
+	// compatibility
+	path = strings.ReplaceAll(path, "\\", "/")
+	base := filepath.Base(path)
+	// Remove extension if present
+	if ext := filepath.Ext(base); ext != "" {
+		base = strings.TrimSuffix(base, ext)
+	}
+	return base
 }
 
 // NewQueryService creates a new QueryService with thread-safe in-memory
@@ -169,19 +190,28 @@ func (q *QueryService) ByFileClass(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
+	return q.queryByField(q.byFileClass, "fileClass", fileClass)
+}
 
-	notes, exists := q.byFileClass[fileClass]
-	if !exists || len(notes) == 0 {
-		return nil, nil // Return empty slice, not error
-	}
-
-	q.log.Debug().
-		Str("fileClass", fileClass).
-		Int("count", len(notes)).
-		Msg("query by file class")
-	return notes, nil
+// ByBasename retrieves all notes matching a filename basename (without
+// extension).
+// Returns a slice of notes if any match, or empty slice if none found.
+// Thread-safe: uses RLock to allow concurrent reads.
+//
+// Query Semantics:
+// - Returns empty slice (not error) for non-matching basenames (collection
+// lookup)
+// - Basename is extracted from NoteID (full path) by removing directory path
+// and file extension
+// - Logs debug message with basename and result count
+// - O(log n) lookup performance via map access.
+//
+// Example: NoteID "projects/notes/meeting.md" matches basename "meeting".
+func (q *QueryService) ByBasename(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	return q.queryByField(q.byBasename, "basename", basename)
 }
 
 // ByFrontmatter retrieves all notes matching a frontmatter field value.
@@ -271,8 +301,12 @@ func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 	for _, note := range notes {
 		q.byID[note.ID] = note
 
-		// TODO: Populate byPath and byBasename in Story 3.7
-		// For now, populate byID, byFileClass, and byFrontmatter
+		// Populate byPath index using the full NoteID as the path key
+		q.byPath[string(note.ID)] = note
+
+		// Populate byBasename index using extracted basename
+		basename := extractBasenameFromNoteID(note.ID)
+		q.byBasename[basename] = append(q.byBasename[basename], note)
 
 		if note.Frontmatter.FileClass != "" {
 			q.byFileClass[note.Frontmatter.FileClass] = append(
@@ -295,4 +329,26 @@ func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 
 	q.log.Info().Int("count", len(notes)).Msg("query service refreshed")
 	return nil
+}
+
+// queryByField performs a thread-safe lookup in a note index map.
+// Returns a slice of notes if any match, or empty slice if none found.
+// Used by ByFileClass, ByBasename, and other index-based query methods.
+func (q *QueryService) queryByField(
+	index map[string][]domain.Note,
+	fieldName, fieldValue string,
+) ([]domain.Note, error) {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	notes, exists := index[fieldValue]
+	if !exists || len(notes) == 0 {
+		return nil, nil // Return empty slice, not error
+	}
+
+	q.log.Debug().
+		Str(fieldName, fieldValue).
+		Int("count", len(notes)).
+		Msg(fmt.Sprintf("query by %s", fieldName))
+	return notes, nil
 }

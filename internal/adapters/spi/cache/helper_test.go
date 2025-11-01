@@ -35,6 +35,30 @@ func TestNoteFilePath(t *testing.T) {
 			id:       "note-with-dashes_and_underscores",
 			expected: "/cache/note-with-dashes_and_underscores.json",
 		},
+		{
+			name:     "note ID with forward slash path separators",
+			cacheDir: "/tmp/cache",
+			id:       "projects/notes/meeting.md",
+			expected: "/tmp/cache/projects-notes-meeting.md.json",
+		},
+		{
+			name:     "note ID with backslash path separators",
+			cacheDir: "/tmp/cache",
+			id:       "projects\\notes\\meeting.md",
+			expected: "/tmp/cache/projects-notes-meeting.md.json",
+		},
+		{
+			name:     "note ID with mixed path separators",
+			cacheDir: "/tmp/cache",
+			id:       "projects/notes\\meeting.md",
+			expected: "/tmp/cache/projects-notes-meeting.md.json",
+		},
+		{
+			name:     "note ID with nested directories",
+			cacheDir: "/cache",
+			id:       "deep/nested/path/to/file.txt",
+			expected: "/cache/deep-nested-path-to-file.txt.json",
+		},
 	}
 
 	for _, tt := range tests {

@@ -267,3 +267,46 @@ func TestVaultIndexer_Refresh_ScanFailure(t *testing.T) {
 	assert.Equal(t, assert.AnError, err)
 	assert.Empty(t, fakeWriter.persistCalls) // No persistence attempted
 }
+
+// TestDeriveNoteIDFromPath tests the deriveNoteIDFromPath function.
+func TestDeriveNoteIDFromPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "simple filename",
+			input:    "note.md",
+			expected: "note.md",
+		},
+		{
+			name:     "nested path",
+			input:    "projects/ideas/note.md",
+			expected: "projects/ideas/note.md",
+		},
+		{
+			name:     "deeply nested path",
+			input:    "year2024/projects/active/note.md",
+			expected: "year2024/projects/active/note.md",
+		},
+		{
+			name:     "windows path separators normalized",
+			input:    "projects\\ideas\\note.md",
+			expected: "projects/ideas/note.md",
+		},
+		{
+			name:     "path with spaces",
+			input:    "projects/my project/note.md",
+			expected: "projects/my project/note.md",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Use empty vault root since test inputs are already relative paths
+			result := deriveNoteIDFromPath("", tt.input)
+			assert.Equal(t, domain.NewNoteID(tt.expected), result)
+		})
+	}
+}

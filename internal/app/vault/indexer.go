@@ -3,7 +3,6 @@ package vault
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -272,7 +271,7 @@ func (v *VaultIndexer) processFile(
 	}
 
 	// Create Note with frontmatter (validated or basic)
-	noteID := deriveNoteIDFromPath(file.Path)
+	noteID := deriveNoteIDFromPath(v.config.VaultPath, file.Path)
 	note := domain.NewNote(noteID, noteFrontmatter)
 
 	// Persist to cache
@@ -327,17 +326,36 @@ func (v *VaultIndexer) logRefreshStats(
 }
 
 // deriveNoteIDFromPath creates a NoteID from a file path.
-// For MVP: Use relative path from vault root as NoteID.
+// Preserves vault-relative path information to prevent collisions.
 //
-// Example: "/vault/projects/foo.md" → "projects/foo"
+// Example: "/vault/projects/foo.md" → "projects/foo.md"
 //
-// Future: May use UUID or content hash for NoteID.
-func deriveNoteIDFromPath(path string) domain.NoteID {
-	// For MVP: Use relative path from vault root
-	// Remove .md extension and use as NoteID
-	basename := filepath.Base(path)
-	name := strings.TrimSuffix(basename, filepath.Ext(basename))
-	return domain.NewNoteID(name)
+// Path Normalization:
+// - Converts backslashes to forward slashes for consistency
+// - Strips vault root prefix to get relative path
+// - Preserves full relative path from vault root
+// - Keeps .md extension for uniqueness and clarity.
+func deriveNoteIDFromPath(vaultRoot, path string) domain.NoteID {
+	// Normalize path separators to forward slashes for cross-platform
+	// consistency
+	normalizedPath := strings.ReplaceAll(path, "\\", "/")
+	normalizedRoot := strings.ReplaceAll(vaultRoot, "\\", "/")
+
+	// Strip vault root prefix to get relative path
+	// Ensure root ends with separator for proper stripping
+	if !strings.HasSuffix(normalizedRoot, "/") {
+		normalizedRoot += "/"
+	}
+
+	var relativePath string
+	if strings.HasPrefix(normalizedPath, normalizedRoot) {
+		relativePath = strings.TrimPrefix(normalizedPath, normalizedRoot)
+	} else {
+		// Fallback: assume path is already relative
+		relativePath = normalizedPath
+	}
+
+	return domain.NewNoteID(relativePath)
 }
 
 // logValidationError logs frontmatter validation errors with structured
