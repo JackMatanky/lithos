@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"testing"
 	"time"
@@ -17,71 +16,13 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	vaultindexer "github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 // Helper functions for comprehensive vault indexing test
-
-func findProjectRootComprehensive(t *testing.T) string {
-	// Find project root by looking for go.mod
-	dir, err := os.Getwd()
-	require.NoError(t, err)
-	for {
-		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("Could not find project root (go.mod)")
-		}
-		dir = parent
-	}
-}
-
-func copyFileComprehensive(t *testing.T, src, dst string) {
-	data, err := os.ReadFile(src)
-	require.NoError(t, err)
-	require.NoError(
-		t,
-		os.WriteFile(dst, data, 0o644),
-	)
-}
-
-func buildLithosBinaryComprehensive(t *testing.T, tempDir string) string {
-	projectRoot := findProjectRootComprehensive(t)
-	binaryPath := filepath.Join(tempDir, "lithos")
-	cmd := exec.CommandContext(
-		context.Background(),
-		"go",
-		"build",
-		"-o",
-		binaryPath,
-		"./cmd/lithos",
-	)
-	cmd.Dir = projectRoot
-	require.NoError(t, cmd.Run())
-	return binaryPath
-}
-
-func executeIndexCommandComprehensive(
-	binaryPath, vaultDir string,
-) (string, error) {
-	cmd := exec.CommandContext(
-		context.Background(),
-		binaryPath,
-		"index",
-		vaultDir,
-	)
-	output, err := cmd.CombinedOutput()
-	return string(output), err
-}
-
-func verifyStatisticsComprehensive(t *testing.T, output string) {
-	assert.Contains(t, output, "Indexed")
-	assert.Contains(t, output, "files")
-}
 
 // TestComprehensiveVaultIndexing_Integration tests the complete vault indexing
 // pipeline with all critical fixes integrated together. This test validates:
@@ -101,7 +42,7 @@ func TestComprehensiveVaultIndexing_Integration(t *testing.T) {
 	createComplexTestVault(t, vaultDir)
 
 	// Setup schemas for frontmatter/schema services
-	projectRoot := findProjectRootComprehensive(t)
+	projectRoot := utils.FindProjectRoot(t)
 	testSchemasDir := filepath.Join(vaultDir, "schemas")
 	require.NoError(
 		t,
@@ -114,7 +55,7 @@ func TestComprehensiveVaultIndexing_Integration(t *testing.T) {
 		"property-bank.json",
 	)
 	dstPropertyBank := filepath.Join(testSchemasDir, "property_bank.json")
-	copyFileComprehensive(t, srcPropertyBank, dstPropertyBank)
+	utils.CopyFile(t, srcPropertyBank, dstPropertyBank)
 
 	// Setup dependencies
 	config := domain.Config{
@@ -532,7 +473,7 @@ func testQueryLayerComprehensive(
 // testEndToEndCLIWorkflow validates the complete CLI workflow.
 func testEndToEndCLIWorkflow(t *testing.T, tempDir, vaultDir string) {
 	// Copy schemas to a location the CLI can find during startup
-	projectRoot := findProjectRootComprehensive(t)
+	projectRoot := utils.FindProjectRoot(t)
 	testSchemasDir := filepath.Join(vaultDir, "schemas")
 
 	// Ensure test schemas exist
@@ -547,17 +488,17 @@ func testEndToEndCLIWorkflow(t *testing.T, tempDir, vaultDir string) {
 		"property-bank.json",
 	)
 	dstPropertyBank := filepath.Join(testSchemasDir, "property_bank.json")
-	copyFileComprehensive(t, srcPropertyBank, dstPropertyBank)
+	utils.CopyFile(t, srcPropertyBank, dstPropertyBank)
 
 	// Set environment variables before building
 	require.NoError(t, os.Setenv("LITHOS_SCHEMAS_DIR", testSchemasDir))
 	defer func() { _ = os.Unsetenv("LITHOS_SCHEMAS_DIR") }()
 
 	// Build lithos binary
-	binaryPath := buildLithosBinaryComprehensive(t, tempDir)
+	binaryPath := utils.BuildLithosBinary(t, tempDir)
 
 	// Execute index command
-	output, err := executeIndexCommandComprehensive(binaryPath, vaultDir)
+	output, err := utils.ExecuteIndexCommand(binaryPath, vaultDir)
 	require.NoError(t, err, "CLI index command should succeed")
 
 	// Verify output contains expected elements
@@ -568,7 +509,7 @@ func testEndToEndCLIWorkflow(t *testing.T, tempDir, vaultDir string) {
 	assert.Contains(t, output, "Duration:")
 
 	// Parse and verify statistics
-	verifyStatisticsComprehensive(t, output)
+	utils.VerifyStatistics(t, output)
 }
 
 // testPerformanceBenchmarks validates performance requirements are met.

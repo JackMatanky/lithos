@@ -307,3 +307,58 @@ func TestDelete(t *testing.T) {
 		})
 	}
 }
+
+// BenchmarkMarshalNote benchmarks JSON serialization performance.
+// Measures the performance of compact JSON marshaling.
+func BenchmarkMarshalNote(b *testing.B) {
+	note := domain.NewNote(
+		domain.NewNoteID("bench"),
+		domain.NewFrontmatter(map[string]interface{}{
+			"title": "test",
+		}),
+	)
+	for range b.N {
+		_, _ = marshalNote(note)
+	}
+}
+
+// TestMarshalNoteCompact verifies that JSON output is compact (not indented).
+func TestMarshalNoteCompact(t *testing.T) {
+	note := domain.NewNote(
+		domain.NewNoteID("compact-test"),
+		domain.NewFrontmatter(map[string]interface{}{
+			"fileClass": "contact",
+			"title":     "Compact Test",
+			"tags":      []string{"test", "compact"},
+		}),
+	)
+
+	data, err := marshalNote(note)
+	require.NoError(t, err)
+
+	// Verify it's valid JSON
+	var result map[string]interface{}
+	err = json.Unmarshal(data, &result)
+	require.NoError(t, err)
+
+	// Verify it doesn't contain indentation (no indented newlines)
+	jsonStr := string(data)
+	assert.NotContains(
+		t,
+		jsonStr,
+		"\n  ",
+		"JSON should not contain indented newlines",
+	)
+	assert.NotContains(
+		t,
+		jsonStr,
+		"\n\t",
+		"JSON should not contain tab indentation",
+	)
+
+	// Verify structure is preserved
+	assert.Equal(t, "compact-test", result["ID"])
+	frontmatter := result["Frontmatter"].(map[string]interface{})
+	fields := frontmatter["Fields"].(map[string]interface{})
+	assert.Equal(t, "Compact Test", fields["title"])
+}

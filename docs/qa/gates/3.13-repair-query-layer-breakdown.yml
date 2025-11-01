@@ -1,0 +1,50 @@
+schema: 1
+story: '3.13'
+story_title: 'Fix Query Layer Functionality'
+gate: CONCERNS
+status_reason: 'Functional requirements met but critical test gaps exist: failing unit tests and missing coverage for type-agnostic frontmatter queries.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2025-11-02T12:00:00Z'
+waiver: { active: false }
+
+top_issues:
+  - id: 'TEST-001'
+    severity: high
+    finding: 'Unit tests failing for RefreshFromCache - Path field not properly populated in byPath index'
+    suggested_action: 'Fix Path field population in RefreshFromCache and update failing tests'
+  - id: 'TEST-002'
+    severity: medium
+    finding: 'Missing test coverage for type-agnostic frontmatter queries (AC4: int 2 matches float 2.0)'
+    suggested_action: 'Add unit test for ByFrontmatter with numeric type normalization'
+
+quality_score: 75
+evidence:
+  tests_reviewed: 21
+  risks_identified: 0
+  trace:
+    ac_covered: [1, 2, 3, 5, 6]
+    ac_gaps: [4]
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'No security issues introduced'
+  performance:
+    status: PASS
+    notes: 'Type normalization adds minimal overhead'
+  reliability:
+    status: PASS
+    notes: 'Graceful cache directory handling implemented'
+  maintainability:
+    status: CONCERNS
+    notes: 'Test gaps and failing unit tests impact maintainability'
+
+recommendations:
+  immediate:
+    - action: 'Fix failing RefreshFromCache unit tests'
+      refs: ['internal/app/query/service_test.go']
+    - action: 'Add test for type normalization in ByFrontmatter'
+      refs: ['internal/app/query/service_test.go']
+  future:
+    - action: 'Consider refactoring normalizeFrontmatterValue to reduce cyclomatic complexity'
+      refs: ['internal/app/query/service.go:96-137']
