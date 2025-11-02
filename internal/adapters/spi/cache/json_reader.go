@@ -9,7 +9,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -109,7 +109,7 @@ func (a *JSONCacheReadAdapter) Read(
 	}
 
 	if !os.IsNotExist(readErr) {
-		return domain.Note{}, errors.NewCacheReadError(
+		return domain.Note{}, lithoserrors.NewCacheReadError(
 			string(id),
 			path,
 			"read",
@@ -123,9 +123,9 @@ func (a *JSONCacheReadAdapter) Read(
 	case legacyErr == nil:
 		return a.unmarshalNote(id, legacyPath, legacyData)
 	case os.IsNotExist(legacyErr):
-		return domain.Note{}, errors.ErrNotFound
+		return domain.Note{}, lithoserrors.ErrNotFound
 	default:
-		return domain.Note{}, errors.NewCacheReadError(
+		return domain.Note{}, lithoserrors.NewCacheReadError(
 			string(id),
 			legacyPath,
 			"read_legacy",
@@ -164,7 +164,7 @@ func (a *JSONCacheReadAdapter) List(
 
 	// Ensure cache directory exists for graceful first access
 	if err := EnsureCacheDir(a.config.CacheDir); err != nil {
-		return nil, errors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			a.config.CacheDir,
 			"ensure_cache_dir",
@@ -202,7 +202,7 @@ func (a *JSONCacheReadAdapter) List(
 	)
 
 	if walkErr != nil {
-		return nil, errors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			a.config.CacheDir,
 			"list",
@@ -264,7 +264,7 @@ func (a *JSONCacheReadAdapter) unmarshalNote(
 ) (domain.Note, error) {
 	var note domain.Note
 	if unmarshalErr := json.Unmarshal(data, &note); unmarshalErr != nil {
-		return domain.Note{}, errors.NewCacheReadError(
+		return domain.Note{}, lithoserrors.NewCacheReadError(
 			string(id),
 			path,
 			"unmarshal",

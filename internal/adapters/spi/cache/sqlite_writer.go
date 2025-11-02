@@ -9,7 +9,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	_ "modernc.org/sqlite" // Register SQLite driver
 )
@@ -89,7 +89,7 @@ func NewSQLiteCacheWriteAdapter(
 	dbPath := filepath.Join(config.CacheDir, "cache.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, errors.NewCacheWriteError("", dbPath, "open_db", err)
+		return nil, lithoserrors.NewCacheWriteError("", dbPath, "open_db", err)
 	}
 
 	// Enable foreign keys and WAL mode for better concurrency
@@ -98,7 +98,7 @@ func NewSQLiteCacheWriteAdapter(
 		"PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;",
 	); execErr != nil {
 		_ = db.Close()
-		return nil, errors.NewCacheWriteError(
+		return nil, lithoserrors.NewCacheWriteError(
 			"",
 			dbPath,
 			"init_pragmas",
@@ -109,7 +109,7 @@ func NewSQLiteCacheWriteAdapter(
 	// Create schema
 	if schemaErr := initSQLiteSchema(db); schemaErr != nil {
 		_ = db.Close()
-		return nil, errors.NewCacheWriteError(
+		return nil, lithoserrors.NewCacheWriteError(
 			"",
 			dbPath,
 			"init_schema",
@@ -203,7 +203,7 @@ func (a *SQLiteCacheWriteAdapter) Persist(
 
 	metadata, err := extractSQLiteNoteMetadata(note, a.config.FileClassKey)
 	if err != nil {
-		return errors.NewCacheWriteError(
+		return lithoserrors.NewCacheWriteError(
 			string(note.ID),
 			note.Path,
 			"extract_metadata",
@@ -249,7 +249,7 @@ func (a *SQLiteCacheWriteAdapter) Delete(
 	// Use transaction for consistency
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
-		return errors.NewCacheDeleteError(
+		return lithoserrors.NewCacheDeleteError(
 			string(id),
 			"",
 			"begin_transaction",
@@ -264,7 +264,7 @@ func (a *SQLiteCacheWriteAdapter) Delete(
 		string(id),
 	)
 	if err != nil {
-		return errors.NewCacheDeleteError(
+		return lithoserrors.NewCacheDeleteError(
 			string(id),
 			"",
 			"delete_note",
@@ -273,7 +273,7 @@ func (a *SQLiteCacheWriteAdapter) Delete(
 	}
 
 	if commitErr := tx.Commit(); commitErr != nil {
-		return errors.NewCacheDeleteError(
+		return lithoserrors.NewCacheDeleteError(
 			string(id),
 			"",
 			"commit_transaction",
@@ -300,7 +300,7 @@ func (a *SQLiteCacheWriteAdapter) persistWithTransaction(
 	// Use transaction for atomicity
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
-		return errors.NewCacheWriteError(
+		return lithoserrors.NewCacheWriteError(
 			string(note.ID),
 			note.Path,
 			"begin_transaction",
@@ -314,7 +314,7 @@ func (a *SQLiteCacheWriteAdapter) persistWithTransaction(
 	}
 
 	if commitErr := tx.Commit(); commitErr != nil {
-		return errors.NewCacheWriteError(
+		return lithoserrors.NewCacheWriteError(
 			string(note.ID),
 			note.Path,
 			"commit_transaction",
@@ -354,7 +354,7 @@ func (a *SQLiteCacheWriteAdapter) insertNoteInTransaction(
 	)
 
 	if err != nil {
-		return errors.NewCacheWriteError(
+		return lithoserrors.NewCacheWriteError(
 			string(note.ID),
 			note.Path,
 			"insert_note",
