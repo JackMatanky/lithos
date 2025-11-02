@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -11,16 +12,6 @@ import (
 	"github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"go.etcd.io/bbolt"
-)
-
-// BoltDB bucket names for indexing.
-const (
-	bucketPaths       = "paths"
-	bucketBasenames   = "basenames"
-	bucketAliases     = "aliases"
-	bucketFileClasses = "file_classes"
-	bucketDirectories = "directories"
-	bucketStaleness   = "staleness"
 )
 
 // Compile-time interface compliance check.
@@ -352,11 +343,8 @@ func (a *BoltDBCacheWriteAdapter) persistNoteInTransaction(
 	}
 
 	// 4. Update /file_classes/ secondary index
-	fileClassesBucket := tx.Bucket([]byte(bucketFileClasses))
-	if metadata.FileClass != "" {
-		if putErr := fileClassesBucket.Put([]byte(metadata.FileClass), noteID); putErr != nil {
-			return putErr
-		}
+	if err := a.updateFileClassIndex(tx, metadata.FileClass, note.ID); err != nil {
+		return err
 	}
 
 	// 5. Update /directories/ secondary index
@@ -379,6 +367,54 @@ func (a *BoltDBCacheWriteAdapter) persistNoteInTransaction(
 	}
 
 	return nil
+}
+
+// updateFileClassIndex updates the file class secondary index by maintaining
+// a JSON array of note IDs for each file class.
+func (a *BoltDBCacheWriteAdapter) updateFileClassIndex(
+	tx *bbolt.Tx,
+	fileClass string,
+	noteID domain.NoteID,
+) error {
+	if fileClass == "" {
+		return nil
+	}
+
+	fileClassesBucket := tx.Bucket([]byte(bucketFileClasses))
+
+	// Get existing ID list for this file class
+	existingBytes := fileClassesBucket.Get([]byte(fileClass))
+	var idList []string
+	if existingBytes != nil {
+		if err := json.Unmarshal(existingBytes, &idList); err != nil {
+			return fmt.Errorf(
+				"failed to unmarshal existing ID list for file class %s: %w",
+				fileClass,
+				err,
+			)
+		}
+	}
+
+	// Add this note ID if not already present
+	noteIDStr := string(noteID)
+	for _, id := range idList {
+		if id == noteIDStr {
+			return nil // Already present
+		}
+	}
+	idList = append(idList, noteIDStr)
+
+	// Store updated ID list
+	updatedBytes, err := json.Marshal(idList)
+	if err != nil {
+		return fmt.Errorf(
+			"failed to marshal ID list for file class %s: %w",
+			fileClass,
+			err,
+		)
+	}
+
+	return fileClassesBucket.Put([]byte(fileClass), updatedBytes)
 }
 
 // deleteNoteFromBuckets performs the transaction to remove note metadata

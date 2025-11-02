@@ -315,11 +315,72 @@ func TestBoltDBCacheReadAdapter_List(t *testing.T) {
 	})
 }
 
-// TestBoltDBCacheReadAdapter_IsStale tests the function.
+// TestBoltDBCacheReadAdapter_IsStale tests the staleness detection
+// functionality.
 func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
-	// Note: IsStale method doesn't exist in the current implementation
-	// This test would be added if/when the method is implemented
-	t.Skip("IsStale method not yet implemented in BoltDBCacheReadAdapter")
+	cacheDir := t.TempDir()
+	config := domain.Config{
+		CacheDir:     cacheDir,
+		FileClassKey: "file_class",
+	}
+	log := zerolog.New(zerolog.NewTestWriter(t))
+
+	// Create writer first to set up database and persist a note
+	writer, err := NewBoltDBCacheWriter(config, log)
+	require.NoError(t, err)
+
+	fixedTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
+	testNote := domain.Note{
+		ID:   domain.NewNoteID("test-note"),
+		Path: "/notes/test-note.md",
+		Frontmatter: domain.Frontmatter{
+			FileClass: "note",
+			Fields: map[string]interface{}{
+				"title":         "Test Note",
+				"file_class":    "note",
+				"file_mod_time": fixedTime,
+			},
+		},
+	}
+
+	ctx := context.Background()
+	err = writer.Persist(ctx, testNote)
+	require.NoError(t, err)
+
+	// Close writer to release write lock
+	err = writer.Close()
+	require.NoError(t, err)
+
+	// Create reader
+	reader, err := NewBoltDBCacheReadAdapter(config, log)
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
+
+	t.Run("fresh_note_returns_false", func(t *testing.T) {
+		// Note should not be stale when file_mod_time matches
+		isStale, staleErr := reader.IsStale(testNote.Path, fixedTime)
+		require.NoError(t, staleErr)
+		assert.False(
+			t,
+			isStale,
+			"note should not be stale when timestamps match",
+		)
+	})
+
+	t.Run("modified_note_returns_true", func(t *testing.T) {
+		// Note should be stale when file_mod_time is different
+		newModTime := time.Now().Add(time.Hour) // Future time
+		isStale, staleErr := reader.IsStale(testNote.Path, newModTime)
+		require.NoError(t, staleErr)
+		assert.True(t, isStale, "note should be stale when file was modified")
+	})
+
+	t.Run("nonexistent_note_returns_true", func(t *testing.T) {
+		// Non-existent note should be considered stale
+		isStale, staleErr := reader.IsStale("/notes/nonexistent.md", time.Now())
+		require.NoError(t, staleErr)
+		assert.True(t, isStale, "non-existent note should be considered stale")
+	})
 }
 
 // TestBoltDBCacheReadAdapter_Close tests the function.
