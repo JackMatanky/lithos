@@ -3,6 +3,8 @@ package vault
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -156,7 +158,11 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 	stats.Duration = time.Since(startTime)
 
 	// Step 4: Validate cache state
-	validationResult, validationErr := v.validateCacheState(ctx)
+	validationResult, validationErr := v.validateCacheState(
+		ctx,
+		vaultFiles,
+		nil,
+	)
 	if validationErr != nil {
 		v.log.Warn().
 			Err(validationErr).
@@ -216,9 +222,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 	}
 
 	// Step 2: Perform deletion reconciliation
-	if err := v.reconcileDeletions(ctx, &stats); err != nil {
-		return fmt.Errorf("deletion reconciliation failed: %w", err)
-	}
+	retainedNotes := v.reconcileDeletions(ctx, &stats)
 
 	// Step 2: Scan modified files
 	vaultFiles, err := v.scanModifiedFiles(ctx, since)
@@ -235,7 +239,11 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 	stats.Duration = time.Since(startTime)
 
 	// Step 4: Validate cache state
-	validationResult, validationErr := v.validateCacheState(ctx)
+	validationResult, validationErr := v.validateCacheState(
+		ctx,
+		nil,
+		retainedNotes,
+	)
 	if validationErr != nil {
 		v.log.Warn().
 			Err(validationErr).
@@ -265,26 +273,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 func (v *VaultIndexer) reconcileDeletions(
 	ctx context.Context,
 	stats *IndexStats,
-) error {
-	// Step 1: Get current vault NoteIDs
-	vaultFiles, scanErr := v.scanFiles(ctx)
-	if scanErr != nil {
-		return fmt.Errorf(
-			"failed to scan vault for reconciliation: %w",
-			scanErr,
-		)
-	}
-
-	currentNoteIDs := make(map[domain.NoteID]bool)
-	for i := range vaultFiles {
-		vf := vaultFiles[i]
-		if vf.Ext == markdownExt {
-			noteID := deriveNoteIDFromPath(v.config.VaultPath, vf.Path)
-			currentNoteIDs[noteID] = true
-		}
-	}
-
-	// Step 2: Get cached NoteIDs
+) []domain.Note {
 	cachedNotes, listErr := v.cacheReader.List(ctx)
 	if listErr != nil {
 		v.log.Warn().
@@ -293,27 +282,43 @@ func (v *VaultIndexer) reconcileDeletions(
 		return nil // Don't abort refresh for cache read failures
 	}
 
-	// Step 3: Find orphaned cache entries (cached but not in vault)
+	var retained []domain.Note
 	for i := range cachedNotes {
 		note := cachedNotes[i]
-		if !currentNoteIDs[note.ID] {
-			// Orphan found - delete from cache
+		relativePath := filepath.FromSlash(note.Path)
+		absolutePath := filepath.Join(v.config.VaultPath, relativePath)
+
+		_, statErr := os.Stat(absolutePath)
+		if statErr == nil {
+			retained = append(retained, note)
+			continue
+		}
+
+		if os.IsNotExist(statErr) {
 			if deleteErr := v.cacheWriter.Delete(ctx, note.ID); deleteErr != nil {
 				stats.CacheFailures++
 				v.log.Warn().
 					Err(deleteErr).
 					Str("noteID", string(note.ID)).
 					Msg("failed to delete orphaned cache entry")
-				// Continue - don't abort for individual delete failures
 			} else {
 				v.log.Debug().
 					Str("noteID", string(note.ID)).
+					Str("path", absolutePath).
 					Msg("deleted orphaned cache entry")
 			}
+			continue
 		}
+
+		v.log.Warn().
+			Err(statErr).
+			Str("noteID", string(note.ID)).
+			Str("path", absolutePath).
+			Msg("failed to stat note path during reconciliation")
+		retained = append(retained, note)
 	}
 
-	return nil
+	return retained
 }
 
 // validateCacheState verifies that cache contents accurately reflect current
@@ -329,9 +334,14 @@ func (v *VaultIndexer) reconcileDeletions(
 //   - error: Critical validation errors (e.g., unable to access vault/cache)
 func (v *VaultIndexer) validateCacheState(
 	ctx context.Context,
+	vaultFiles []dto.VaultFile,
+	cachedNotes []domain.Note,
 ) (CacheValidationResult, error) {
 	// Collect vault state
-	vaultNoteIDs, totalVaultFiles, vaultErr := v.collectVaultState(ctx)
+	vaultNoteIDs, totalVaultFiles, vaultErr := v.collectVaultState(
+		ctx,
+		vaultFiles,
+	)
 	if vaultErr != nil {
 		return CacheValidationResult{}, fmt.Errorf(
 			"failed to collect vault state for validation: %w",
@@ -342,6 +352,7 @@ func (v *VaultIndexer) validateCacheState(
 	// Collect cache state
 	cacheNoteIDs, totalCacheEntries, cachedNotes, cacheErr := v.collectCacheState(
 		ctx,
+		cachedNotes,
 	)
 	if cacheErr != nil {
 		return CacheValidationResult{}, fmt.Errorf(
@@ -389,14 +400,20 @@ func (v *VaultIndexer) scanFiles(ctx context.Context) ([]dto.VaultFile, error) {
 // Returns the NoteID map, total count, and any scanning error.
 func (v *VaultIndexer) collectVaultState(
 	ctx context.Context,
+	cachedVault []dto.VaultFile,
 ) (
 	vaultNoteIDs map[domain.NoteID]bool,
 	totalFiles int,
 	err error,
 ) {
-	vaultFiles, err := v.scanFiles(ctx)
-	if err != nil {
-		return
+	var vaultFiles []dto.VaultFile
+	if cachedVault != nil {
+		vaultFiles = cachedVault
+	} else {
+		vaultFiles, err = v.scanFiles(ctx)
+		if err != nil {
+			return
+		}
 	}
 
 	vaultNoteIDs = make(map[domain.NoteID]bool)
@@ -417,15 +434,20 @@ func (v *VaultIndexer) collectVaultState(
 // error.
 func (v *VaultIndexer) collectCacheState(
 	ctx context.Context,
+	preloaded []domain.Note,
 ) (
 	cacheNoteIDs map[domain.NoteID]bool,
 	totalEntries int,
 	cachedNotes []domain.Note,
 	err error,
 ) {
-	cachedNotes, err = v.cacheReader.List(ctx)
-	if err != nil {
-		return
+	if preloaded != nil {
+		cachedNotes = preloaded
+	} else {
+		cachedNotes, err = v.cacheReader.List(ctx)
+		if err != nil {
+			return
+		}
 	}
 
 	cacheNoteIDs = make(map[domain.NoteID]bool)

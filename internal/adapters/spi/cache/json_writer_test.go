@@ -87,7 +87,10 @@ func TestPersist(t *testing.T) {
 			),
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Pre-create a file to test overwrite
-				path := filepath.Join(cacheDir, "overwrite-test.json")
+				path := noteFilePath(
+					cacheDir,
+					domain.NewNoteID("overwrite-test"),
+				)
 				err := os.MkdirAll(cacheDir, 0o750)
 				require.NoError(t, err)
 				err = os.WriteFile(path, []byte(`{"old": "content"}`), 0o600)
@@ -149,6 +152,14 @@ func TestPersist(t *testing.T) {
 			// Verify file was created
 			expectedPath := noteFilePath(cacheDir, tt.note.ID)
 			assert.FileExists(t, expectedPath)
+
+			// Legacy cache filename should be gone to avoid duplicates
+			legacyPath := legacyNoteFilePath(cacheDir, tt.note.ID)
+			assert.False(
+				t,
+				fileExists(legacyPath),
+				"legacy cache file should be removed if present",
+			)
 
 			// Verify JSON content
 			content, err := os.ReadFile(expectedPath)
@@ -218,6 +229,11 @@ func TestPersist(t *testing.T) {
 			}
 		})
 	}
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // TestDelete tests the Delete method with various scenarios.

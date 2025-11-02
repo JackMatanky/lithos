@@ -3,6 +3,8 @@ package vault
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -509,13 +511,17 @@ func TestDeriveNoteIDFromPath(t *testing.T) {
 func TestRefreshReconcileDeletions(t *testing.T) {
 	// Given
 	since := time.Now().Add(-time.Hour)
+	vaultDir := t.TempDir()
+	require.NoError(
+		t,
+		os.WriteFile(
+			filepath.Join(vaultDir, "existing.md"),
+			[]byte("# Existing"),
+			0o644,
+		),
+	)
 	fakeScanner := &FakeVaultScannerPort{
-		scanAllResult: []dto.VaultFile{
-			dto.NewVaultFile(dto.FileMetadata{
-				Path: "/vault/existing.md",
-				Ext:  ".md",
-			}, []byte("# Existing")),
-		},
+		scanModifiedResult: []dto.VaultFile{},
 	}
 	fakeWriter := &FakeCacheWriterPort{}
 	fakeReader := &FakeCacheReaderPort{
@@ -530,7 +536,7 @@ func TestRefreshReconcileDeletions(t *testing.T) {
 			), // Orphan
 		},
 	}
-	config := domain.Config{VaultPath: "/vault"}
+	config := domain.Config{VaultPath: vaultDir}
 	log := zerolog.New(nil)
 
 	indexer := NewVaultIndexer(
@@ -596,13 +602,17 @@ func TestReconcileCacheReadFailure(t *testing.T) {
 func TestReconcileDeleteFailure(t *testing.T) {
 	// Given
 	since := time.Now().Add(-time.Hour)
+	vaultDir := t.TempDir()
+	require.NoError(
+		t,
+		os.WriteFile(
+			filepath.Join(vaultDir, "existing.md"),
+			[]byte("# Existing"),
+			0o644,
+		),
+	)
 	fakeScanner := &FakeVaultScannerPort{
-		scanAllResult: []dto.VaultFile{
-			dto.NewVaultFile(dto.FileMetadata{
-				Path: "/vault/existing.md",
-				Ext:  ".md",
-			}, []byte("# Existing")),
-		},
+		scanModifiedResult: []dto.VaultFile{},
 	}
 	fakeWriter := &FakeCacheWriterPort{
 		deleteError: assert.AnError, // Simulate delete failure
@@ -619,7 +629,7 @@ func TestReconcileDeleteFailure(t *testing.T) {
 			), // Orphan
 		},
 	}
-	config := domain.Config{VaultPath: "/vault"}
+	config := domain.Config{VaultPath: vaultDir}
 	log := zerolog.New(nil)
 
 	indexer := NewVaultIndexer(
@@ -700,7 +710,7 @@ func BenchmarkValidateCacheState(b *testing.B) {
 			b.ResetTimer()
 
 			for range b.N {
-				_, _ = indexer.validateCacheState(ctx)
+				_, _ = indexer.validateCacheState(ctx, vaultFiles, cacheNotes)
 			}
 		})
 	}

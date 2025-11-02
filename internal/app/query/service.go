@@ -25,6 +25,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 
@@ -135,6 +136,16 @@ func normalizeFrontmatterValue(value interface{}) (interface{}, bool) {
 		// Return false to indicate normalization failed
 		return nil, false
 	}
+}
+
+// isComparableForIndex ensures the provided value can be safely used as a map
+// key. Non-comparable types like slices and maps would panic if used directly.
+func isComparableForIndex(value interface{}) bool {
+	if value == nil {
+		return false
+	}
+	val := reflect.ValueOf(value)
+	return val.IsValid() && val.Type().Comparable()
 }
 
 // NewQueryService creates a new QueryService with thread-safe in-memory
@@ -296,17 +307,31 @@ func (q *QueryService) ByFrontmatter(
 	}
 
 	// Try direct lookup first (for exact matches)
-	if notes, exists := fieldMap[value]; exists && len(notes) > 0 {
+	if isComparableForIndex(value) {
+		if notes, exists := fieldMap[value]; exists && len(notes) > 0 {
+			q.log.Debug().
+				Str("field", field).
+				Interface("value", value).
+				Int("count", len(notes)).
+				Msg("query by frontmatter (direct match)")
+			return notes, nil
+		}
+	} else {
 		q.log.Debug().
 			Str("field", field).
-			Interface("value", value).
-			Int("count", len(notes)).
-			Msg("query by frontmatter (direct match)")
-		return notes, nil
+			Interface("value_type", fmt.Sprintf("%T", value)).
+			Msg("query by frontmatter (value not comparable)")
 	}
 
 	// Try normalized lookup for type-agnostic matching
 	if normalizedValue, ok := normalizeFrontmatterValue(value); ok {
+		if !isComparableForIndex(normalizedValue) {
+			q.log.Debug().
+				Str("field", field).
+				Interface("value", value).
+				Msg("query by frontmatter (normalized value not comparable)")
+			return nil, nil
+		}
 		if notes, exists := fieldMap[normalizedValue]; exists &&
 			len(notes) > 0 {
 			q.log.Debug().
@@ -352,21 +377,34 @@ func (q *QueryService) ByFrontmatter(
 func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 	q.log.Info().Msg("refreshing query service from cache")
 
-	// Read all notes from cache
-	notes, err := q.cacheReader.List(ctx)
+	notes, err := q.loadNotesForRefresh(ctx)
 	if err != nil {
-		// Check if error is due to missing cache directory (fresh installation)
-		if strings.Contains(err.Error(), "no such file or directory") ||
-			strings.Contains(err.Error(), "directory not found") {
-			q.log.Info().
-				Msg("cache directory missing, treating as fresh installation")
-			notes = []domain.Note{} // Empty cache for fresh installation
-		} else {
-			return fmt.Errorf("cache refresh failed: %w", err)
-		}
+		return err
 	}
 
-	// Acquire exclusive write lock for atomic rebuild
+	q.rebuildIndices(notes)
+	return nil
+}
+
+func (q *QueryService) loadNotesForRefresh(
+	ctx context.Context,
+) ([]domain.Note, error) {
+	notes, err := q.cacheReader.List(ctx)
+	if err == nil {
+		return notes, nil
+	}
+
+	if strings.Contains(err.Error(), "no such file or directory") ||
+		strings.Contains(err.Error(), "directory not found") {
+		q.log.Info().
+			Msg("cache directory missing, treating as fresh installation")
+		return []domain.Note{}, nil
+	}
+
+	return nil, fmt.Errorf("cache refresh failed: %w", err)
+}
+
+func (q *QueryService) rebuildIndices(notes []domain.Note) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -402,14 +440,22 @@ func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 			}
 
 			// Store with original value for exact matches
-			q.byFrontmatter[field][value] = append(
-				q.byFrontmatter[field][value],
-				note,
-			)
+			if isComparableForIndex(value) {
+				q.byFrontmatter[field][value] = append(
+					q.byFrontmatter[field][value],
+					note,
+				)
+			} else {
+				q.log.Debug().
+					Str("field", field).
+					Interface("value_type", fmt.Sprintf("%T", value)).
+					Str("note_id", note.ID.String()).
+					Msg("skipping frontmatter index for non-comparable value")
+			}
 
 			// Also store with normalized value for type-agnostic queries
 			if normalizedValue, ok := normalizeFrontmatterValue(value); ok &&
-				normalizedValue != value {
+				normalizedValue != value && isComparableForIndex(normalizedValue) {
 				q.byFrontmatter[field][normalizedValue] = append(
 					q.byFrontmatter[field][normalizedValue],
 					note,
@@ -419,7 +465,6 @@ func (q *QueryService) RefreshFromCache(ctx context.Context) error {
 	}
 
 	q.log.Info().Int("count", len(notes)).Msg("query service refreshed")
-	return nil
 }
 
 // queryByField performs a thread-safe lookup in a note index map.
