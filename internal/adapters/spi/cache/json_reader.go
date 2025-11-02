@@ -10,7 +10,6 @@ import (
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
-	"github.com/JackMatanky/lithos/internal/shared/utils"
 	"github.com/rs/zerolog"
 )
 
@@ -164,7 +163,7 @@ func (a *JSONCacheReadAdapter) List(
 	}
 
 	// Ensure cache directory exists for graceful first access
-	if err := utils.EnsureCacheDir(a.config.CacheDir); err != nil {
+	if err := EnsureCacheDir(a.config.CacheDir); err != nil {
 		return nil, errors.NewCacheReadError(
 			"",
 			a.config.CacheDir,

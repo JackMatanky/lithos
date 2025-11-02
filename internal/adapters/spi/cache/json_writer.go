@@ -8,7 +8,6 @@ import (
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
-	"github.com/JackMatanky/lithos/internal/shared/utils"
 	"github.com/moby/sys/atomicwriter"
 	"github.com/rs/zerolog"
 )
@@ -128,7 +127,7 @@ func (a *JSONCacheWriteAdapter) Persist(
 	}
 
 	// 1. Ensure cache directory exists
-	if err := utils.EnsureCacheDir(a.config.CacheDir); err != nil {
+	if err := EnsureCacheDir(a.config.CacheDir); err != nil {
 		return wrapCacheWriteError(
 			string(note.ID),
 			a.config.CacheDir,
