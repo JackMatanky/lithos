@@ -89,6 +89,10 @@ go.work
 .lithos/
 testdata/vault-copies/
 
+# Production test data (70+ MB Obsidian vault)
+# Access via: ls docs/refs/obsidian/
+docs/refs/obsidian/
+
 # --------------------- Tests & Coverage --------------------- #
 # Reports
 test-results.txt

@@ -15,6 +15,7 @@ import (
 )
 
 // TestNewJSONCacheReader tests the JSONCacheReadAdapter constructor.
+// TestNewJSONCacheReader tests the function.
 func TestNewJSONCacheReader(t *testing.T) {
 	log := logger.New(os.Stdout, "debug")
 	config := domain.Config{CacheDir: "/tmp/cache"}
@@ -31,6 +32,7 @@ func TestNewJSONCacheReader(t *testing.T) {
 }
 
 // TestRead tests the Read method of JSONCacheReadAdapter.
+// TestRead tests the function.
 func TestRead(t *testing.T) {
 	// Create temporary directory for tests
 	cacheDir, err := os.MkdirTemp("", "cache_test")
@@ -216,6 +218,7 @@ func TestRead(t *testing.T) {
 }
 
 // TestList tests the List method of JSONCacheReadAdapter.
+// TestList tests the function.
 func TestList(t *testing.T) {
 	tests := []struct {
 		name         string

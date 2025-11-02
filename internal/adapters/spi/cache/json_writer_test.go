@@ -15,7 +15,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const testContextCanceled = "error - context canceled"
+
 // TestNewJSONCacheWriter tests the JSONCacheWriteAdapter constructor.
+// TestNewJSONCacheWriter tests the function.
 func TestNewJSONCacheWriter(t *testing.T) {
 	log := logger.New(os.Stdout, "debug")
 	config := domain.Config{CacheDir: "/tmp/cache"}
@@ -32,6 +35,8 @@ func TestNewJSONCacheWriter(t *testing.T) {
 }
 
 // TestPersist tests the Persist method with various scenarios.
+//
+// TestPersist tests the function.
 //
 //nolint:gocognit // Complex test function with multiple scenarios is acceptable
 func TestPersist(t *testing.T) {
@@ -237,6 +242,7 @@ func fileExists(path string) bool {
 }
 
 // TestDelete tests the Delete method with various scenarios.
+// TestDelete tests the function.
 func TestDelete(t *testing.T) {
 	tests := []struct {
 		name      string
@@ -299,7 +305,7 @@ func TestDelete(t *testing.T) {
 
 			// Execute Delete
 			ctx := context.Background()
-			if tt.name == "error - context canceled" {
+			if tt.name == testContextCanceled {
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithCancel(context.Background())
 				cancel() // Cancel immediately
@@ -339,6 +345,7 @@ func BenchmarkMarshalNote(b *testing.B) {
 }
 
 // TestMarshalNoteCompact verifies that JSON output is compact (not indented).
+// TestMarshalNoteCompact tests the function.
 func TestMarshalNoteCompact(t *testing.T) {
 	note := domain.NewNote(
 		domain.NewNoteID("compact-test"),

@@ -1,3 +1,7 @@
+# Lithos BMad Core Configuration
+# Production test data: docs/refs/obsidian/ (70+ MB, gitignored)
+# Use: ls docs/refs/obsidian/ to explore real Obsidian vault structure
+
 markdownExploder: true
 qa:
   qaLocation: docs/qa
