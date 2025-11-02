@@ -110,59 +110,17 @@ func (a *BoltDBCacheReadAdapter) Read(
 	default:
 	}
 
-	var note domain.Note
-	var found bool
-
-	err := a.db.View(func(tx *bbolt.Tx) error {
-		pathsBucket := tx.Bucket([]byte(bucketPaths))
-		if pathsBucket == nil {
-			return sharederrors.NewCacheReadError(
-				"",
-				"",
-				"bucket_missing",
-				fmt.Errorf("paths bucket not found"),
-			)
-		}
-
-		// Scan paths bucket to find note with matching ID
-		return pathsBucket.ForEach(func(k, v []byte) error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-
-			var metadata BoltDBNoteMetadata
-			if err := json.Unmarshal(v, &metadata); err != nil {
-				a.log.Warn().
-					Err(err).
-					Str("path", string(k)).
-					Msg("Failed to unmarshal note metadata, skipping")
-				return nil // Continue scanning
-			}
-
-			if metadata.ID == string(id) {
-				// Found the note, reconstruct it
-				note = a.reconstructNoteFromMetadata(id, metadata)
-				found = true
-				return nil // Stop scanning
-			}
-
-			return nil // Continue scanning
-		})
-	})
-
+	note, err := a.findNoteByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, sharederrors.ErrNotFound) {
+			return domain.Note{}, sharederrors.ErrNotFound
+		}
 		return domain.Note{}, sharederrors.NewCacheReadError(
 			string(id),
 			"",
 			"read_scan",
 			err,
 		)
-	}
-
-	if !found {
-		return domain.Note{}, sharederrors.ErrNotFound
 	}
 
 	a.log.Debug().
@@ -443,6 +401,65 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 	}
 
 	return false, nil // Note is fresh
+}
+
+// findNoteByID scans the paths bucket to find a note by ID.
+// Returns the reconstructed note or ErrNotFound if not found.
+func (a *BoltDBCacheReadAdapter) findNoteByID(
+	ctx context.Context,
+	id domain.NoteID,
+) (domain.Note, error) {
+	var note domain.Note
+	var found bool
+
+	err := a.db.View(func(tx *bbolt.Tx) error {
+		pathsBucket := tx.Bucket([]byte(bucketPaths))
+		if pathsBucket == nil {
+			return sharederrors.NewCacheReadError(
+				"",
+				"",
+				"bucket_missing",
+				fmt.Errorf("paths bucket not found"),
+			)
+		}
+
+		// Scan paths bucket to find note with matching ID
+		return pathsBucket.ForEach(func(k, v []byte) error {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
+			var metadata BoltDBNoteMetadata
+			if err := json.Unmarshal(v, &metadata); err != nil {
+				a.log.Warn().
+					Err(err).
+					Str("path", string(k)).
+					Msg("Failed to unmarshal note metadata, skipping")
+				return nil // Continue scanning
+			}
+
+			if metadata.ID == string(id) {
+				// Found the note, reconstruct it
+				note = a.reconstructNoteFromMetadata(id, metadata)
+				found = true
+				return nil // Stop scanning
+			}
+
+			return nil // Continue scanning
+		})
+	})
+
+	if err != nil {
+		return domain.Note{}, err
+	}
+
+	if !found {
+		return domain.Note{}, sharederrors.ErrNotFound
+	}
+
+	return note, nil
 }
 
 // getIDListForFileClass retrieves the list of note IDs for a given file class.
