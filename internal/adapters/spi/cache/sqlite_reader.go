@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"path/filepath"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -192,6 +193,58 @@ func (a *SQLiteCacheReadAdapter) List(
 	a.log.Debug().
 		Int("count", len(notes)).
 		Msg("Listed notes from SQLite cache")
+
+	return notes, nil
+}
+
+// ListStale retrieves notes that have been modified since the specified time.
+// Uses the composite index on (file_mod_time, index_time) for efficient
+// staleness detection. This enables incremental indexing by identifying only
+// notes that need re-processing.
+//
+// Parameters:
+// - since: Time threshold - notes modified after this time are considered stale
+//
+// Returns:
+//   - []domain.Note: Notes that are stale and need re-indexing
+//   - error: If the query fails
+//
+// Performance: Uses composite index for fast filtering
+// Thread-safe: Safe for concurrent calls.
+func (a *SQLiteCacheReadAdapter) ListStale(
+	ctx context.Context,
+	since time.Time,
+) ([]domain.Note, error) {
+	if ctx.Err() != nil {
+		return nil, ctx.Err()
+	}
+
+	query := `
+		SELECT id, path, title, file_class, frontmatter
+		FROM notes
+		WHERE file_mod_time > ?
+		ORDER BY file_mod_time ASC`
+
+	rows, err := a.db.QueryContext(ctx, query, since)
+	if err != nil {
+		return nil, errors.NewCacheReadError(
+			"",
+			"",
+			"list_stale_query",
+			err,
+		)
+	}
+	defer func() { _ = rows.Close() }()
+
+	notes, err := a.processListRows(ctx, rows)
+	if err != nil {
+		return nil, err
+	}
+
+	a.log.Debug().
+		Time("since", since).
+		Int("stale_count", len(notes)).
+		Msg("Listed stale notes from SQLite cache")
 
 	return notes, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/rs/zerolog"
@@ -311,6 +312,147 @@ func TestSQLiteCacheReadAdapter_List(t *testing.T) {
 			}
 			assert.True(t, noteIDs["note1"])
 			assert.True(t, noteIDs["note2"])
+		})
+	}
+}
+
+// TestSQLiteCacheReadAdapter_ListStale tests the function.
+func TestSQLiteCacheReadAdapter_ListStale(t *testing.T) {
+	cacheDir := t.TempDir()
+	config := domain.Config{
+		CacheDir:     cacheDir,
+		FileClassKey: "file_class",
+	}
+	log := zerolog.New(zerolog.NewTestWriter(t))
+
+	// Setup: create writer adapter and persist notes with different mod times
+	writer, err := NewSQLiteCacheWriteAdapter(config, log)
+	require.NoError(t, err)
+	defer func() { _ = writer.Close() }()
+
+	baseTime := time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)
+
+	notes := []domain.Note{
+		{
+			ID:   domain.NewNoteID("fresh-note"),
+			Path: "/notes/fresh.md",
+			Frontmatter: domain.Frontmatter{
+				FileClass: "note",
+				Fields: map[string]interface{}{
+					"title": "Fresh Note",
+					"file_mod_time": baseTime.Add(
+						2 * time.Hour,
+					), // Modified 2 hours after base
+				},
+			},
+		},
+		{
+			ID:   domain.NewNoteID("stale-note"),
+			Path: "/notes/stale.md",
+			Frontmatter: domain.Frontmatter{
+				FileClass: "note",
+				Fields: map[string]interface{}{
+					"title": "Stale Note",
+					"file_mod_time": baseTime.Add(
+						-1 * time.Hour,
+					), // Modified 1 hour before base
+				},
+			},
+		},
+		{
+			ID:   domain.NewNoteID("exact-note"),
+			Path: "/notes/exact.md",
+			Frontmatter: domain.Frontmatter{
+				FileClass: "note",
+				Fields: map[string]interface{}{
+					"title":         "Exact Note",
+					"file_mod_time": baseTime, // Modified exactly at base time
+				},
+			},
+		},
+	}
+
+	ctx := context.Background()
+	for _, note := range notes {
+		err = writer.Persist(ctx, note)
+		require.NoError(t, err)
+	}
+
+	// Now test reader
+	reader, err := NewSQLiteCacheReadAdapter(config, log)
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
+
+	tests := []struct {
+		name          string
+		since         time.Time
+		expectedIDs   []string
+		contextCancel bool
+	}{
+		{
+			name:  "success - returns notes modified after base time",
+			since: baseTime,
+			expectedIDs: []string{
+				"fresh-note",
+			}, // Only fresh-note is after baseTime
+		},
+		{
+			name:        "success - returns all notes when since is old",
+			since:       baseTime.Add(-2 * time.Hour),
+			expectedIDs: []string{"fresh-note", "stale-note", "exact-note"},
+		},
+		{
+			name:        "success - returns no notes when since is future",
+			since:       baseTime.Add(3 * time.Hour),
+			expectedIDs: []string{}, // No notes modified after this time
+		},
+		{
+			name:          "error - context canceled",
+			since:         baseTime,
+			contextCancel: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			testCtx := context.Background()
+
+			if tt.contextCancel {
+				cancelCtx, cancel := context.WithCancel(context.Background())
+				cancel()
+				_, listErr := reader.ListStale(cancelCtx, tt.since)
+				require.Error(t, listErr)
+				assert.Equal(t, context.Canceled, listErr)
+				return
+			}
+
+			staleNotes, listErr := reader.ListStale(testCtx, tt.since)
+			require.NoError(t, listErr)
+
+			actualIDs := make([]string, len(staleNotes))
+			for i, note := range staleNotes {
+				actualIDs[i] = string(note.ID)
+			}
+
+			assert.ElementsMatch(t, tt.expectedIDs, actualIDs)
+
+			// Verify notes are ordered by file_mod_time ASC (basic check that
+			// we have expected notes)
+			for _, expectedID := range tt.expectedIDs {
+				found := false
+				for _, note := range staleNotes {
+					if string(note.ID) == expectedID {
+						found = true
+						break
+					}
+				}
+				assert.True(
+					t,
+					found,
+					"Expected note %s not found in results",
+					expectedID,
+				)
+			}
 		})
 	}
 }
