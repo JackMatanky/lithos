@@ -78,6 +78,14 @@ type VaultWriterPort interface {
 	// Errors include operation context and file paths per FR9
 	Persist(ctx context.Context, note domain.Note, path string) error
 
+	// WriteContent writes raw markdown content to the vault with atomic
+	// guarantees.
+	// Creates parent directories if missing and preserves file integrity via
+	// temp-file + rename semantics. Intended for workflows (e.g., templated
+	// note creation) that already have fully rendered markdown content.
+	// Errors include operation context and file paths per FR9.
+	WriteContent(ctx context.Context, path string, content []byte) error
+
 	// Delete removes note from vault
 	// Idempotent: returns nil if file doesn't exist
 	// Used by CommandOrchestrator for note deletion

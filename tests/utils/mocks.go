@@ -27,6 +27,9 @@ var _ api.CLIPort = (*MockCLIPort)(nil)
 // Ensure MockCacheWriterPort implements CacheWriterPort.
 var _ spi.CacheWriterPort = (*MockCacheWriterPort)(nil)
 
+// Ensure MockVaultWriterPort implements VaultWriterPort.
+var _ spi.VaultWriterPort = (*MockVaultWriterPort)(nil)
+
 // MockCacheWriterPort provides a mock implementation of CacheWriterPort for
 // testing.
 // It allows configuring mock responses for cache persistence operations.
@@ -66,6 +69,70 @@ func (m *MockCacheWriterPort) Delete(
 	id domain.NoteID,
 ) error {
 	return m.deleteResult
+}
+
+// MockVaultWriterPort provides a mock implementation of VaultWriterPort for
+// testing workflows that need to observe vault write side effects.
+type MockVaultWriterPort struct {
+	persistResult      error
+	deleteResult       error
+	writeContentResult error
+	lastWritePath      string
+	lastWriteContent   []byte
+}
+
+// NewMockVaultWriterPort creates a new MockVaultWriterPort with default values.
+func NewMockVaultWriterPort() *MockVaultWriterPort {
+	return &MockVaultWriterPort{}
+}
+
+// SetPersistResult configures the result returned from Persist.
+func (m *MockVaultWriterPort) SetPersistResult(err error) {
+	m.persistResult = err
+}
+
+// SetDeleteResult configures the result returned from Delete.
+func (m *MockVaultWriterPort) SetDeleteResult(err error) {
+	m.deleteResult = err
+}
+
+// SetWriteContentResult configures the result returned from WriteContent.
+func (m *MockVaultWriterPort) SetWriteContentResult(err error) {
+	m.writeContentResult = err
+}
+
+// LastWrite returns the path and content captured during the most recent
+// WriteContent call.
+func (m *MockVaultWriterPort) LastWrite() (path string, content []byte) {
+	return m.lastWritePath, m.lastWriteContent
+}
+
+// Persist implements VaultWriterPort.Persist.
+func (m *MockVaultWriterPort) Persist(
+	ctx context.Context,
+	note domain.Note,
+	path string,
+) error {
+	return m.persistResult
+}
+
+// Delete implements VaultWriterPort.Delete.
+func (m *MockVaultWriterPort) Delete(
+	ctx context.Context,
+	path string,
+) error {
+	return m.deleteResult
+}
+
+// WriteContent implements VaultWriterPort.WriteContent.
+func (m *MockVaultWriterPort) WriteContent(
+	ctx context.Context,
+	path string,
+	content []byte,
+) error {
+	m.lastWritePath = path
+	m.lastWriteContent = append([]byte(nil), content...)
+	return m.writeContentResult
 }
 
 // MockFrontmatterService provides a mock implementation for frontmatter

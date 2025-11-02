@@ -13,6 +13,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/api"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
@@ -48,6 +49,7 @@ type CommandOrchestrator struct {
 	templateEngine *template.TemplateEngine
 	schemaEngine   *schema.SchemaEngine
 	vaultIndexer   vault.VaultIndexerInterface
+	vaultWriter    spi.VaultWriterPort
 	config         domain.Config
 	log            zerolog.Logger
 }
@@ -75,6 +77,7 @@ func NewCommandOrchestrator(
 	templateEngine *template.TemplateEngine,
 	schemaEngine *schema.SchemaEngine,
 	vaultIndexer vault.VaultIndexerInterface,
+	vaultWriter spi.VaultWriterPort,
 	config *domain.Config,
 	log *zerolog.Logger,
 ) *CommandOrchestrator {
@@ -83,6 +86,7 @@ func NewCommandOrchestrator(
 		templateEngine: templateEngine,
 		schemaEngine:   schemaEngine,
 		vaultIndexer:   vaultIndexer,
+		vaultWriter:    vaultWriter,
 		config:         *config,
 		log:            *log,
 	}
@@ -158,23 +162,36 @@ func (o *CommandOrchestrator) NewNote(
 	o.log.Debug().Str("noteID", string(noteID)).Msg("Note constructed")
 
 	// Step 5: Write file to vault
-	filePath := filepath.Join(o.config.VaultPath, string(noteID)+".md")
-	err = os.WriteFile( //nolint:gosec // 0o644 is required for note files that may be shared
-		filePath,
+	relativePath := string(noteID) + ".md"
+	absolutePath := filepath.Join(o.config.VaultPath, relativePath)
+	if o.vaultWriter != nil {
+		if writeErr := o.vaultWriter.WriteContent(ctx, relativePath, []byte(content)); writeErr != nil {
+			o.log.Error().
+				Err(writeErr).
+				Str("filePath", absolutePath).
+				Msg("Failed to write note file")
+			return domain.Note{}, lithoserrors.WrapWithContext(
+				writeErr,
+				"failed to write note to %s", absolutePath,
+			)
+		}
+	} else if err = os.WriteFile( //nolint:gosec // 0o644 is required for note files that may be shared
+		absolutePath,
 		[]byte(content),
 		0o644,
-	)
-	if err != nil {
+	); err != nil {
 		o.log.Error().
 			Err(err).
-			Str("filePath", filePath).
+			Str("filePath", absolutePath).
 			Msg("Failed to write note file")
 		return domain.Note{}, lithoserrors.WrapWithContext(
 			err,
-			"failed to write note to %s", filePath,
+			"failed to write note to %s", absolutePath,
 		)
 	}
-	o.log.Info().Str("filePath", filePath).Msg("Note file written successfully")
+	o.log.Info().
+		Str("filePath", absolutePath).
+		Msg("Note file written successfully")
 
 	// Step 6: Return Note
 	return note, nil

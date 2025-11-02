@@ -43,13 +43,11 @@ type VaultIndexerInterface interface {
 // Key Design Principles:
 //   - Focused Service: Orchestrates workflow only, does not implement
 //     scanning/caching/frontmatter processing
-//
-// - Resilient Error Handling: Frontmatter validation errors logged but don't
-// abort
-//
-//	  entire indexing; cache failures logged as warnings, indexing continues
-//	- Integrated Workflow: FrontmatterService integration enables validated
-//	  frontmatter in indexed Notes
+//   - Resilient Error Handling: Frontmatter validation errors logged but don't
+//     abort entire indexing; cache failures logged as warnings, indexing
+//     continues
+//   - Integrated Workflow: FrontmatterService integration enables validated
+//     frontmatter in indexed Notes
 //
 // Reference: docs/architecture/components.md#vaultindexer.
 type VaultIndexer struct {
@@ -120,9 +118,8 @@ func NewVaultIndexer(
 //
 // Returns:
 //   - IndexStats: Metrics for the indexing operation
-//
-// - error: Schema/scan errors only (validation/cache failures logged but don't
-// abort)
+//   - error: Schema/scan errors only (validation/cache failures logged but don't
+//     abort)
 //
 // Thread-safe: Safe for concurrent calls (dependencies handle synchronization).
 func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
@@ -241,7 +238,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 	// Step 4: Validate cache state
 	validationResult, validationErr := v.validateCacheState(
 		ctx,
-		nil,
+		vaultFiles,
 		retainedNotes,
 	)
 	if validationErr != nil {
@@ -259,8 +256,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 }
 
 // reconcileDeletions compares current vault state with cache entries and
-// removes
-// orphaned cache entries (files deleted from vault but still cached).
+// removes orphaned cache entries (files deleted from vault but still cached).
 // Ensures cache-vault consistency during incremental operations.
 //
 // Parameters:
@@ -268,7 +264,8 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 //   - stats: IndexStats to update with deletion failures
 //
 // Returns:
-// - error: Critical errors that should abort refresh (e.g., vault scan
+//   - error: Critical errors that should abort refresh (e.g., vault scan
+//
 // failure).
 func (v *VaultIndexer) reconcileDeletions(
 	ctx context.Context,
@@ -335,12 +332,28 @@ func (v *VaultIndexer) reconcileDeletions(
 func (v *VaultIndexer) validateCacheState(
 	ctx context.Context,
 	vaultFiles []dto.VaultFile,
-	cachedNotes []domain.Note,
+	retainedNotes []domain.Note,
 ) (CacheValidationResult, error) {
+	snapshot := vaultFiles
+	if len(retainedNotes) > 0 {
+		var buildErr error
+		snapshot, buildErr = v.buildVaultSnapshot(
+			ctx,
+			vaultFiles,
+			retainedNotes,
+		)
+		if buildErr != nil {
+			return CacheValidationResult{}, fmt.Errorf(
+				"failed to build vault snapshot: %w",
+				buildErr,
+			)
+		}
+	}
+
 	// Collect vault state
 	vaultNoteIDs, totalVaultFiles, vaultErr := v.collectVaultState(
 		ctx,
-		vaultFiles,
+		snapshot,
 	)
 	if vaultErr != nil {
 		return CacheValidationResult{}, fmt.Errorf(
@@ -352,7 +365,7 @@ func (v *VaultIndexer) validateCacheState(
 	// Collect cache state
 	cacheNoteIDs, totalCacheEntries, cachedNotes, cacheErr := v.collectCacheState(
 		ctx,
-		cachedNotes,
+		retainedNotes,
 	)
 	if cacheErr != nil {
 		return CacheValidationResult{}, fmt.Errorf(
@@ -457,6 +470,57 @@ func (v *VaultIndexer) collectCacheState(
 		cacheNoteIDs[note.ID] = true
 	}
 	return
+}
+
+func (v *VaultIndexer) buildVaultSnapshot(
+	ctx context.Context,
+	scanned []dto.VaultFile,
+	retained []domain.Note,
+) ([]dto.VaultFile, error) {
+	if len(retained) == 0 {
+		return scanned, nil
+	}
+
+	snapshot := make([]dto.VaultFile, 0, len(scanned)+len(retained))
+	seen := make(map[string]struct{}, len(scanned)+len(retained))
+
+	for i := range scanned {
+		vf := scanned[i]
+		snapshot = append(snapshot, vf)
+		seen[filepath.Clean(vf.Path)] = struct{}{}
+	}
+
+	for i := range retained {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+
+		note := retained[i]
+		relative := filepath.FromSlash(note.Path)
+		absolute := filepath.Join(v.config.VaultPath, relative)
+		cleanPath := filepath.Clean(absolute)
+
+		if _, exists := seen[cleanPath]; exists {
+			continue
+		}
+
+		info, err := os.Stat(absolute)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		if strings.ToLower(filepath.Ext(absolute)) != markdownExt {
+			continue
+		}
+
+		metadata := dto.NewFileMetadata(absolute, info)
+		snapshot = append(snapshot, dto.NewVaultFile(metadata, nil))
+		seen[cleanPath] = struct{}{}
+	}
+
+	return snapshot, nil
 }
 
 // findInconsistencies compares vault and cache NoteID sets to identify

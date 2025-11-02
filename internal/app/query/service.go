@@ -94,14 +94,14 @@ func extractBasenameFromNoteID(id domain.NoteID) string {
 	return base
 }
 
-// normalizeFrontmatterValue normalizes frontmatter values for type-agnostic
+// canonicalizeFrontmatterValue normalizes frontmatter values for type-agnostic
 // comparison.
 // Handles numeric type conversions (int 2 == float 2.0) and safe comparison
 // for complex types.
 // Returns the normalized value and whether normalization was successful.
 //
 //nolint:cyclop // Type normalization requires exhaustive type checking
-func normalizeFrontmatterValue(value interface{}) (interface{}, bool) {
+func canonicalizeFrontmatterValue(value interface{}) (interface{}, bool) {
 	switch v := value.(type) {
 	case int:
 		// Convert int to float64 for consistent numeric comparison
@@ -306,48 +306,27 @@ func (q *QueryService) ByFrontmatter(
 		return nil, nil // Return empty slice for non-existent field
 	}
 
-	// Try direct lookup first (for exact matches)
-	if isComparableForIndex(value) {
-		if notes, exists := fieldMap[value]; exists && len(notes) > 0 {
-			q.log.Debug().
-				Str("field", field).
-				Interface("value", value).
-				Int("count", len(notes)).
-				Msg("query by frontmatter (direct match)")
-			return notes, nil
-		}
-	} else {
+	canonicalValue, ok := canonicalizeFrontmatterValue(value)
+	if !ok || !isComparableForIndex(canonicalValue) {
 		q.log.Debug().
 			Str("field", field).
 			Interface("value_type", fmt.Sprintf("%T", value)).
 			Msg("query by frontmatter (value not comparable)")
+		return nil, nil
 	}
 
-	// Try normalized lookup for type-agnostic matching
-	if normalizedValue, ok := normalizeFrontmatterValue(value); ok {
-		if !isComparableForIndex(normalizedValue) {
-			q.log.Debug().
-				Str("field", field).
-				Interface("value", value).
-				Msg("query by frontmatter (normalized value not comparable)")
-			return nil, nil
-		}
-		if notes, exists := fieldMap[normalizedValue]; exists &&
-			len(notes) > 0 {
-			q.log.Debug().
-				Str("field", field).
-				Interface("original_value", value).
-				Interface("normalized_value", normalizedValue).
-				Int("count", len(notes)).
-				Msg("query by frontmatter (normalized match)")
-			return notes, nil
-		}
+	if notes, exists := fieldMap[canonicalValue]; exists && len(notes) > 0 {
+		q.log.Debug().
+			Str("field", field).
+			Interface("canonical_value", canonicalValue).
+			Int("count", len(notes)).
+			Msg("query by frontmatter (match)")
+		return notes, nil
 	}
 
-	// No matches found
 	q.log.Debug().
 		Str("field", field).
-		Interface("value", value).
+		Interface("canonical_value", canonicalValue).
 		Msg("query by frontmatter (no matches)")
 	return nil, nil
 }
@@ -435,32 +414,24 @@ func (q *QueryService) rebuildIndices(notes []domain.Note) {
 
 		// Populate frontmatter index for all fields
 		for field, value := range note.Frontmatter.Fields {
-			if q.byFrontmatter[field] == nil {
-				q.byFrontmatter[field] = make(map[interface{}][]domain.Note)
-			}
-
-			// Store with original value for exact matches
-			if isComparableForIndex(value) {
-				q.byFrontmatter[field][value] = append(
-					q.byFrontmatter[field][value],
-					note,
-				)
-			} else {
+			canonicalValue, ok := canonicalizeFrontmatterValue(value)
+			if !ok || !isComparableForIndex(canonicalValue) {
 				q.log.Debug().
 					Str("field", field).
 					Interface("value_type", fmt.Sprintf("%T", value)).
 					Str("note_id", note.ID.String()).
 					Msg("skipping frontmatter index for non-comparable value")
+				continue
 			}
 
-			// Also store with normalized value for type-agnostic queries
-			if normalizedValue, ok := normalizeFrontmatterValue(value); ok &&
-				normalizedValue != value && isComparableForIndex(normalizedValue) {
-				q.byFrontmatter[field][normalizedValue] = append(
-					q.byFrontmatter[field][normalizedValue],
-					note,
-				)
+			if q.byFrontmatter[field] == nil {
+				q.byFrontmatter[field] = make(map[interface{}][]domain.Note)
 			}
+
+			q.byFrontmatter[field][canonicalValue] = append(
+				q.byFrontmatter[field][canonicalValue],
+				note,
+			)
 		}
 	}
 

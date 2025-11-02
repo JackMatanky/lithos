@@ -10,6 +10,9 @@ package schema
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -40,6 +43,8 @@ type SchemaRegistryAdapter struct {
 	mu sync.RWMutex
 	// log provides structured logging for operations
 	log zerolog.Logger
+	// signature keeps a lightweight fingerprint of the current registry state
+	signature string
 }
 
 // NewSchemaRegistryAdapter creates a new SchemaRegistryAdapter with dependency
@@ -57,6 +62,7 @@ func NewSchemaRegistryAdapter(log zerolog.Logger) *SchemaRegistryAdapter {
 		properties: make(map[string]domain.Property),
 		mu:         sync.RWMutex{},
 		log:        log,
+		signature:  "",
 	}
 }
 
@@ -74,6 +80,8 @@ func (a *SchemaRegistryAdapter) RegisterAll(
 	schemas []domain.Schema,
 	bank domain.PropertyBank,
 ) error {
+	newSignature := registrySignature(schemas, bank)
+
 	// Check for cancellation
 	select {
 	case <-ctx.Done():
@@ -83,6 +91,14 @@ func (a *SchemaRegistryAdapter) RegisterAll(
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
+
+	if a.signature != "" && a.signature == newSignature {
+		a.log.Debug().
+			Int("schemas", len(schemas)).
+			Int("properties", len(bank.Properties)).
+			Msg("registry unchanged, skipping re-registration")
+		return nil
+	}
 
 	// Clear existing entries (idempotent)
 	a.schemas = make(map[string]domain.Schema)
@@ -116,6 +132,7 @@ func (a *SchemaRegistryAdapter) RegisterAll(
 		Int("schemas", len(schemas)).
 		Int("properties", len(bank.Properties)).
 		Msg("registered schemas and properties")
+	a.signature = newSignature
 
 	return nil
 }
@@ -250,4 +267,26 @@ func (a *SchemaRegistryAdapter) HasProperty(
 
 	_, exists := a.properties[name]
 	return exists
+}
+
+func registrySignature(
+	schemas []domain.Schema,
+	bank domain.PropertyBank,
+) string {
+	parts := make([]string, 0, len(schemas)+len(bank.Properties))
+
+	for _, schema := range schemas {
+		parts = append(parts, fmt.Sprintf(
+			"schema:%s:%d:%d",
+			schema.Name,
+			len(schema.Properties),
+			len(schema.ResolvedProperties),
+		))
+	}
+	for id := range bank.Properties {
+		parts = append(parts, fmt.Sprintf("property:%s", id))
+	}
+
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
 }

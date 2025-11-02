@@ -905,7 +905,7 @@ so that CLI commands are coordinated through domain services following hexagonal
 ### Acceptance Criteria
 
 - 1.13.1: Create `internal/app/command/orchestrator.go`:
-  - Constructor: `NewCommandOrchestrator(cliPort CLIPort, templateEngine *TemplateEngine, config Config, log zerolog.Logger) *CommandOrchestrator`
+  - Constructor: `NewCommandOrchestrator(cliPort CLIPort, templateEngine *TemplateEngine, schemaEngine *SchemaEngine, vaultIndexer VaultIndexerInterface, vaultWriter VaultWriterPort, config Config, log zerolog.Logger) *CommandOrchestrator`
   - Implements CommandPort interface (from ports/api/command_handler.go)
   - Dependencies: CLIPort (injected), TemplateEngine (injected), Config (injected), Logger (injected)
 
@@ -1001,7 +1001,7 @@ so that the complete application works from CLI invocation to file creation with
   - Create CobraCLIAdapter: `cliAdapter := cli.NewCobraCLIAdapter(log)`
 
 - 1.16.6: CommandOrchestrator initialization (Layer 5):
-  - Create CommandOrchestrator: `orchestrator := app.NewCommandOrchestrator(cliAdapter, templateEngine, cfg, log)`
+  - Create CommandOrchestrator: `orchestrator := app.NewCommandOrchestrator(cliAdapter, templateEngine, schemaEngine, vaultIndexer, vaultWriter, cfg, log)`
 
 - 1.16.7: Start application:
   - Call `err := orchestrator.Run(ctx)`

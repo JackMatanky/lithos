@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	stderrors "errors"
+	"sync"
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -28,6 +29,8 @@ import (
 type FrontmatterService struct {
 	schemaEngine *schema.SchemaEngine
 	logger       zerolog.Logger
+	markdown     goldmark.Markdown
+	parserMu     sync.Mutex
 }
 
 // NewFrontmatterService creates a new FrontmatterService with required
@@ -46,6 +49,15 @@ func NewFrontmatterService(
 	return &FrontmatterService{
 		schemaEngine: schemaEngine,
 		logger:       logger,
+		markdown: goldmark.New(
+			goldmark.WithExtensions(
+				&frontmatter.Extender{
+					Formats: frontmatter.DefaultFormats,
+					Mode:    frontmatter.SetMetadata,
+				},
+			),
+		),
+		parserMu: sync.Mutex{},
 	}
 }
 
@@ -155,30 +167,26 @@ func (s *FrontmatterService) Validate(
 func (s *FrontmatterService) parseMarkdownWithFrontmatter(
 	content []byte,
 ) (map[string]any, error) {
-	// Create goldmark parser with frontmatter extension
-	// This enables parsing of both YAML (---) and TOML (+++) frontmatter
-	md := goldmark.New(
-		goldmark.WithExtensions(
-			&frontmatter.Extender{
-				Formats: frontmatter.DefaultFormats,
-				Mode:    frontmatter.SetMetadata,
-			},
-		),
-	)
-
 	// Create parser context for frontmatter extraction
 	// Context isolates frontmatter parsing from markdown rendering
-	ctx := parser.NewContext()
+	parserCtx := parser.NewContext()
 
 	// Parse the markdown content
 	// The frontmatter extension populates the context with extracted data
 	var buf bytes.Buffer
-	if err := md.Convert(content, &buf, parser.WithContext(ctx)); err != nil {
-		return nil, err
+	s.parserMu.Lock()
+	convertErr := s.markdown.Convert(
+		content,
+		&buf,
+		parser.WithContext(parserCtx),
+	)
+	s.parserMu.Unlock()
+	if convertErr != nil {
+		return nil, convertErr
 	}
 
 	// Extract frontmatter data from parser context
-	frontmatterData := frontmatter.Get(ctx)
+	frontmatterData := frontmatter.Get(parserCtx)
 	if frontmatterData == nil {
 		// No frontmatter found - return empty map (not an error)
 		return make(map[string]any), nil

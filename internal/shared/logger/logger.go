@@ -7,6 +7,7 @@
 package logger
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"strings"
@@ -15,9 +16,17 @@ import (
 	"golang.org/x/term"
 )
 
-// Log is the global logger instance for the application.
-// It should be initialized once during application startup.
-var Log zerolog.Logger
+var (
+	// Log is the global logger instance for the application.
+	// It should be initialized once during application startup.
+	Log zerolog.Logger
+
+	sensitiveMarkers = [][]byte{
+		[]byte("\"password\":"),
+		[]byte("\"token\":"),
+		[]byte("\"apiKey\":"),
+	}
+)
 
 // sensitiveWriter wraps an io.Writer to redact sensitive fields from JSON
 // output.
@@ -107,8 +116,19 @@ func NewTest() zerolog.Logger {
 
 // Write redacts sensitive fields from JSON log output before writing.
 func (w *sensitiveWriter) Write(p []byte) (n int, err error) {
-	line := string(p)
-	line = redactSensitiveFields(line)
+	needsRedaction := false
+	for _, marker := range sensitiveMarkers {
+		if bytes.Contains(p, marker) {
+			needsRedaction = true
+			break
+		}
+	}
+
+	if !needsRedaction {
+		return w.writer.Write(p)
+	}
+
+	line := redactSensitiveFields(string(p))
 	return w.writer.Write([]byte(line))
 }
 

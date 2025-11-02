@@ -6,8 +6,10 @@ package template
 import (
 	"context"
 	"fmt"
+	"hash/fnv"
 	"path/filepath"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
@@ -33,6 +35,14 @@ type TemplateEngine struct {
 	templatePort spi.TemplatePort
 	config       *domain.Config
 	log          *zerolog.Logger
+	mu           sync.RWMutex
+	funcMap      template.FuncMap
+	compiled     map[domain.TemplateID]cachedTemplate
+}
+
+type cachedTemplate struct {
+	tpl      *template.Template
+	checksum uint64
 }
 
 // NewTemplateEngine creates a new TemplateEngine with injected dependencies.
@@ -55,6 +65,9 @@ func NewTemplateEngine(
 		templatePort: templatePort,
 		config:       config,
 		log:          log,
+		mu:           sync.RWMutex{},
+		funcMap:      nil,
+		compiled:     make(map[domain.TemplateID]cachedTemplate),
 	}
 }
 
@@ -89,16 +102,9 @@ func (e *TemplateEngine) Render(
 	}
 
 	// Step 2-3: Create text/template with function map
-	t := template.New(string(tmpl.ID)).Funcs(e.buildFuncMap())
-
-	// Step 4: Parse template content
-	t, err = t.Parse(tmpl.Content)
+	t, err := e.getCompiledTemplate(tmpl)
 	if err != nil {
-		return "", errors.NewTemplateError(
-			fmt.Sprintf("parse error in template '%s'", tmpl.ID),
-			string(tmpl.ID),
-			err,
-		)
+		return "", err
 	}
 
 	// Step 5-6: Execute with empty data context and return
@@ -150,7 +156,19 @@ func (e *TemplateEngine) Load(
 //
 // Returns a template.FuncMap ready for use with template.Funcs().
 func (e *TemplateEngine) buildFuncMap() template.FuncMap {
-	return template.FuncMap{
+	e.mu.RLock()
+	if e.funcMap != nil {
+		defer e.mu.RUnlock()
+		return e.funcMap
+	}
+	e.mu.RUnlock()
+
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.funcMap != nil {
+		return e.funcMap
+	}
+	e.funcMap = template.FuncMap{
 		// Basic functions
 		"now":     func(format string) string { return time.Now().Format(format) },
 		"toLower": strings.ToLower,
@@ -167,4 +185,53 @@ func (e *TemplateEngine) buildFuncMap() template.FuncMap {
 		"join":      filepath.Join,
 		"vaultPath": func() string { return e.config.VaultPath },
 	}
+	return e.funcMap
+}
+
+func (e *TemplateEngine) getFuncMap() template.FuncMap {
+	return e.buildFuncMap()
+}
+
+func (e *TemplateEngine) getCompiledTemplate(
+	tmpl domain.Template,
+) (*template.Template, error) {
+	checksum := checksumString(tmpl.Content)
+
+	e.mu.RLock()
+	if cached, ok := e.compiled[tmpl.ID]; ok && cached.checksum == checksum {
+		defer e.mu.RUnlock()
+		return cached.tpl, nil
+	}
+	e.mu.RUnlock()
+
+	parsed, err := template.New(string(tmpl.ID)).
+		Funcs(e.getFuncMap()).
+		Parse(tmpl.Content)
+	if err != nil {
+		return nil, errors.NewTemplateError(
+			fmt.Sprintf("parse error in template '%s'", tmpl.ID),
+			string(tmpl.ID),
+			err,
+		)
+	}
+
+	e.mu.Lock()
+	e.compiled[tmpl.ID] = cachedTemplate{
+		tpl:      parsed,
+		checksum: checksum,
+	}
+	e.mu.Unlock()
+
+	return parsed, nil
+}
+
+func checksumString(s string) uint64 {
+	hasher := fnv.New64a()
+	_, err := hasher.Write([]byte(s))
+	if err != nil {
+		// This should never happen with fnv hash, but we handle it to satisfy
+		// linter
+		panic(fmt.Sprintf("unexpected error writing to fnv hasher: %v", err))
+	}
+	return hasher.Sum64()
 }

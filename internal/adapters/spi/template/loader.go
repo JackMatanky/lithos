@@ -64,6 +64,8 @@ func (a *TemplateLoaderAdapter) List(
 		Str("templates_dir", a.config.TemplatesDir).
 		Msg("scanning templates directory")
 
+	a.metadata = make(map[domain.TemplateID]dto.FileMetadata)
+
 	var templates []domain.TemplateID
 
 	err := a.walkDir(

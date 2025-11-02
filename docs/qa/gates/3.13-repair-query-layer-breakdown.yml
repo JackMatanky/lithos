@@ -46,5 +46,5 @@ recommendations:
     - action: 'Add test for type normalization in ByFrontmatter'
       refs: ['internal/app/query/service_test.go']
   future:
-    - action: 'Consider refactoring normalizeFrontmatterValue to reduce cyclomatic complexity'
+    - action: 'Consider refactoring canonicalizeFrontmatterValue to reduce cyclomatic complexity'
       refs: ['internal/app/query/service.go:96-137']
