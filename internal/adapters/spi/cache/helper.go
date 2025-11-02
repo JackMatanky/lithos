@@ -6,6 +6,7 @@ package cache
 
 import (
 	"encoding/base64"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -16,6 +17,7 @@ const (
 	cacheFileExt         = ".json"
 	cacheFilenamePrefix  = "id-"
 	legacySeparatorToken = "-"
+	cacheDirPerms        = 0o750
 )
 
 // noteFilePath constructs the cache file path for a given note ID using a
@@ -52,4 +54,10 @@ func decodeNoteIDFromFilename(filename string) (domain.NoteID, bool) {
 		}
 	}
 	return domain.NoteID(base), false
+}
+
+// EnsureCacheDir creates the cache directory if missing using
+// mkdir -p semantics. Permissions default to 0o750 (rwxr-x---).
+func EnsureCacheDir(cacheDir string) error {
+	return os.MkdirAll(cacheDir, cacheDirPerms)
 }
