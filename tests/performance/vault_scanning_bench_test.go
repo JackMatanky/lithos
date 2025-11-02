@@ -148,7 +148,7 @@ func BenchmarkVaultScanning_SmallVault(b *testing.B) {
 	vaultPath := b.TempDir()
 	setupLargeTestVault(&testing.T{}, vaultPath, 10, 10)
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := vault.NewVaultReaderAdapter(config, logger.NewTest())
 
 	b.ResetTimer()
@@ -172,7 +172,7 @@ func BenchmarkVaultScanning_MediumVault(b *testing.B) {
 	vaultPath := b.TempDir()
 	setupLargeTestVault(&testing.T{}, vaultPath, 100, 50)
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := vault.NewVaultReaderAdapter(config, logger.NewTest())
 
 	b.ResetTimer()
@@ -196,7 +196,7 @@ func BenchmarkVaultScanning_LargeVault(b *testing.B) {
 	vaultPath := b.TempDir()
 	setupLargeTestVault(&testing.T{}, vaultPath, 1000, 200)
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := vault.NewVaultReaderAdapter(config, logger.NewTest())
 
 	b.ResetTimer()
@@ -231,7 +231,7 @@ func BenchmarkVaultScanning_CacheExclusion(b *testing.B) {
 		}
 	}
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := vault.NewVaultReaderAdapter(config, logger.NewTest())
 
 	b.ResetTimer()
@@ -276,7 +276,7 @@ func TestVaultScanning_MemoryUsage(t *testing.T) {
 		0o600,
 	))
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := vault.NewVaultReaderAdapter(config, logger.NewTest())
 
 	files, err := adapter.ScanAll(context.Background())
@@ -317,7 +317,7 @@ func TestVaultScanning_SizeLimits(t *testing.T) {
 		0o600,
 	))
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := vault.NewVaultReaderAdapter(config, logger.NewTest())
 
 	files, err := adapter.ScanAll(context.Background())
@@ -376,7 +376,7 @@ func TestVaultScanning_CacheDirectoryExclusion(t *testing.T) {
 		0o600,
 	))
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := vault.NewVaultReaderAdapter(config, logger.NewTest())
 
 	files, err := adapter.ScanAll(context.Background())

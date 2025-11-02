@@ -12,6 +12,7 @@ import (
 )
 
 // TestNoteFilePath tests the noteFilePath function with various inputs.
+// TestNoteFilePath tests the function.
 func TestNoteFilePath(t *testing.T) {
 	cacheDir := "/tmp/cache"
 	tests := []domain.NoteID{
@@ -66,6 +67,7 @@ func TestNoteFilePath(t *testing.T) {
 
 // TestEnsureCacheDir tests the EnsureCacheDir function with various
 // scenarios.
+// TestEnsureCacheDir tests the function.
 func TestEnsureCacheDir(t *testing.T) {
 	tests := []struct {
 		name        string

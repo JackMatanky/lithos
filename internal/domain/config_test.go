@@ -6,6 +6,10 @@ import (
 )
 
 // TestNewConfig tests that NewConfig applies defaults correctly.
+//
+// multiple test cases.
+//
+//nolint:gocognit // Test function with comprehensive coverage requires
 func TestNewConfig(t *testing.T) {
 	tests := []struct {
 		name                     string
@@ -15,12 +19,14 @@ func TestNewConfig(t *testing.T) {
 		inputPropertyBankFile    string
 		inputCacheDir            string
 		inputLogLevel            string
+		inputFileClassKey        string
 		expectedVaultPath        string
 		expectedTemplatesDir     string
 		expectedSchemasDir       string
 		expectedPropertyBankFile string
 		expectedCacheDir         string
 		expectedLogLevel         string
+		expectedFileClassKey     string
 	}{
 		{
 			name:                     "all defaults applied",
@@ -30,12 +36,14 @@ func TestNewConfig(t *testing.T) {
 			inputPropertyBankFile:    "",
 			inputCacheDir:            "",
 			inputLogLevel:            "",
+			inputFileClassKey:        "",
 			expectedVaultPath:        ".",
 			expectedTemplatesDir:     "templates",
 			expectedSchemasDir:       "schemas",
 			expectedPropertyBankFile: "property_bank.json",
 			expectedCacheDir:         ".lithos/cache",
 			expectedLogLevel:         "info",
+			expectedFileClassKey:     "file_class",
 		},
 		{
 			name:                     "partial defaults applied",
@@ -45,12 +53,14 @@ func TestNewConfig(t *testing.T) {
 			inputPropertyBankFile:    "custom.json",
 			inputCacheDir:            "",
 			inputLogLevel:            "debug",
+			inputFileClassKey:        "",
 			expectedVaultPath:        "/custom/vault",
 			expectedTemplatesDir:     "/custom/vault/templates",
 			expectedSchemasDir:       "/custom/vault/schemas",
 			expectedPropertyBankFile: "custom.json",
 			expectedCacheDir:         "/custom/vault/.lithos/cache",
 			expectedLogLevel:         "debug",
+			expectedFileClassKey:     "file_class",
 		},
 		{
 			name:                     "no defaults needed",
@@ -60,12 +70,14 @@ func TestNewConfig(t *testing.T) {
 			inputPropertyBankFile:    "custom_bank.json",
 			inputCacheDir:            "/tmp/cache/",
 			inputLogLevel:            "debug",
+			inputFileClassKey:        "",
 			expectedVaultPath:        "/home/user/vault",
 			expectedTemplatesDir:     "custom/templates/",
 			expectedSchemasDir:       "custom/schemas/",
 			expectedPropertyBankFile: "custom_bank.json",
 			expectedCacheDir:         "/tmp/cache/",
 			expectedLogLevel:         "debug",
+			expectedFileClassKey:     "file_class",
 		},
 	}
 
@@ -78,6 +90,7 @@ func TestNewConfig(t *testing.T) {
 				tt.inputPropertyBankFile,
 				tt.inputCacheDir,
 				tt.inputLogLevel,
+				tt.inputFileClassKey,
 			)
 
 			if config.VaultPath != tt.expectedVaultPath {
@@ -120,6 +133,13 @@ func TestNewConfig(t *testing.T) {
 					"expected LogLevel %q, got %q",
 					tt.expectedLogLevel,
 					config.LogLevel,
+				)
+			}
+			if config.FileClassKey != tt.expectedFileClassKey {
+				t.Errorf(
+					"expected FileClassKey %q, got %q",
+					tt.expectedFileClassKey,
+					config.FileClassKey,
 				)
 			}
 		})
@@ -171,6 +191,13 @@ func TestDefaultConfig(t *testing.T) {
 			"expected LogLevel %q, got %q",
 			defaultLogLevel,
 			config.LogLevel,
+		)
+	}
+	if config.FileClassKey != defaultFileClassKey {
+		t.Errorf(
+			"expected FileClassKey %q, got %q",
+			defaultFileClassKey,
+			config.FileClassKey,
 		)
 	}
 }
@@ -230,6 +257,7 @@ func TestConfigJSONMarshaling(t *testing.T) {
 		"bank.json",
 		"/cache/dir",
 		"debug",
+		"file_class",
 	)
 
 	// Marshal to JSON
@@ -266,6 +294,7 @@ func TestConfigImmutability(t *testing.T) {
 		"property_bank.json",
 		".lithos/cache/",
 		"info",
+		"file_class",
 	)
 	config2 := NewConfig(
 		".",
@@ -274,6 +303,7 @@ func TestConfigImmutability(t *testing.T) {
 		"property_bank.json",
 		".lithos/cache/",
 		"info",
+		"file_class",
 	)
 
 	if config1 != config2 {

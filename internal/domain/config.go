@@ -11,6 +11,7 @@ const (
 	defaultPropertyBankFile = "property_bank.json"
 	defaultCacheDir         = ".lithos/cache/"
 	defaultLogLevel         = "info"
+	defaultFileClassKey     = "file_class"
 )
 
 // Config represents application configuration as an immutable value object.
@@ -54,6 +55,12 @@ type Config struct {
 	// Default: "info". Options: "debug", "info", "warn", "error".
 	// Case-insensitive. Invalid values fall back to "info" with warning.
 	LogLevel string `json:"log_level"`
+
+	// FileClassKey is the frontmatter key used to identify file class/schema.
+	// Default: "file_class". Supports user preferences like "fileClass",
+	// "type", etc.
+	// Used consistently across all storage adapters and query operations.
+	FileClassKey string `yaml:"file_class_key" mapstructure:"file_class_key"`
 }
 
 // NewConfig creates a Config with sensible defaults applied for empty values.
@@ -66,9 +73,10 @@ type Config struct {
 // - SchemasDir: "{VaultPath}/schemas/"
 // - PropertyBankFile: "property_bank.json"
 // - CacheDir: "{VaultPath}/.lithos/cache/"
-// - LogLevel: "info".
+// - LogLevel: "info"
+// - FileClassKey: "file_class".
 func NewConfig(
-	vaultPath, templatesDir, schemasDir, propertyBankFile, cacheDir, logLevel string,
+	vaultPath, templatesDir, schemasDir, propertyBankFile, cacheDir, logLevel, fileClassKey string,
 ) Config {
 	// Apply defaults for empty values
 	if vaultPath == "" {
@@ -89,6 +97,9 @@ func NewConfig(
 	if logLevel == "" {
 		logLevel = defaultLogLevel
 	}
+	if fileClassKey == "" {
+		fileClassKey = defaultFileClassKey
+	}
 
 	return Config{
 		VaultPath:        vaultPath,
@@ -97,6 +108,7 @@ func NewConfig(
 		PropertyBankFile: propertyBankFile,
 		CacheDir:         cacheDir,
 		LogLevel:         logLevel,
+		FileClassKey:     fileClassKey,
 	}
 }
 
@@ -112,6 +124,7 @@ func DefaultConfig() Config {
 		PropertyBankFile: defaultPropertyBankFile,
 		CacheDir:         defaultCacheDir,
 		LogLevel:         defaultLogLevel,
+		FileClassKey:     defaultFileClassKey,
 	}
 }
 

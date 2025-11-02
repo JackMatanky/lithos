@@ -116,7 +116,7 @@ func TestNewVaultReaderAdapter(t *testing.T) {
 // TestScanAll_EmptyVault tests scanning an empty vault directory.
 func TestScanAll_EmptyVault(t *testing.T) {
 	vaultPath := t.TempDir()
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	files, err := adapter.ScanAll(context.Background())
@@ -128,7 +128,7 @@ func TestScanAll_EmptyVault(t *testing.T) {
 // TestScanAll_WithFiles tests scanning a vault with existing files.
 func TestScanAll_WithFiles(t *testing.T) {
 	vaultPath := setupTestVault(t)
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	files, err := adapter.ScanAll(context.Background())
@@ -157,7 +157,7 @@ func TestScanAll_WithFiles(t *testing.T) {
 // from scanning.
 func TestScanAll_IgnoresCacheDirectories(t *testing.T) {
 	vaultPath := setupTestVault(t)
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	files, err := adapter.ScanAll(context.Background())
@@ -184,7 +184,7 @@ func TestScanAll_ConstructsVaultFileCorrectly(t *testing.T) {
 	content := []byte("# Test\n\nContent")
 	require.NoError(t, os.WriteFile(testFile, content, 0o600))
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	files, err := adapter.ScanAll(context.Background())
@@ -220,7 +220,7 @@ func TestScanAll_WithPermissionErrors(t *testing.T) {
 		_ = os.Chmod(unreadableFile, 0o644) // #nosec G302 - cleanup operation
 	}()
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	files, err := adapter.ScanAll(context.Background())
@@ -241,7 +241,7 @@ func TestScanModified_WithRecentFiles(t *testing.T) {
 	oldTime := time.Now().Add(-24 * time.Hour)
 	require.NoError(t, os.Chtimes(oldFile, oldTime, oldTime))
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	since := time.Now().Add(-1 * time.Hour) // 1 hour ago
@@ -261,7 +261,7 @@ func TestScanModified_WithRecentFiles(t *testing.T) {
 // modification time criteria.
 func TestScanModified_WithNoMatches(t *testing.T) {
 	vaultPath := setupTestVault(t)
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	since := time.Now().Add(1 * time.Hour) // Future time
@@ -278,7 +278,7 @@ func TestRead_ValidFile(t *testing.T) {
 	content := []byte("# Test\n\nContent")
 	require.NoError(t, os.WriteFile(testFile, content, 0o600))
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	vf, err := adapter.Read(context.Background(), testFile)
@@ -297,7 +297,7 @@ func TestRead_MissingFile(t *testing.T) {
 	vaultPath := t.TempDir()
 	missingFile := filepath.Join(vaultPath, "missing.md")
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	_, err := adapter.Read(context.Background(), missingFile)
@@ -314,7 +314,7 @@ func TestRead_PathTraversalPrevention(t *testing.T) {
 	outsideFile := filepath.Join(t.TempDir(), "outside.md")
 	require.NoError(t, os.WriteFile(outsideFile, []byte("outside"), 0o600))
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	// Try to read file outside vault using path traversal
@@ -339,7 +339,7 @@ func TestRead_WithPermissionError(t *testing.T) {
 		_ = os.Chmod(unreadableFile, 0o644) // #nosec G302 - cleanup operation
 	}()
 
-	config := domain.NewConfig(vaultPath, "", "", "", "", "")
+	config := domain.NewConfig(vaultPath, "", "", "", "", "", "")
 	adapter := NewVaultReaderAdapter(config, logger.NewTest())
 
 	_, err := adapter.Read(context.Background(), unreadableFile)

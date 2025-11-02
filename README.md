@@ -623,6 +623,14 @@ Basic usage (to be expanded as features are implemented):
 - Use table-driven tests where appropriate
 - Maintain high test coverage (>80%)
 
+### Production Test Data
+
+**Real Obsidian Vault**: `docs/refs/obsidian/` (gitignored, 70+ MB)
+- Contains Jack's real Obsidian vault with production frontmatter patterns
+- Use for performance validation and realistic testing scenarios
+- Access via: `ls docs/refs/obsidian/` and `find docs/refs/obsidian/ -name "*.md"`
+- Extract subsets to `testdata/` for specific test scenarios
+
 ## License
 
 [To be determined]
