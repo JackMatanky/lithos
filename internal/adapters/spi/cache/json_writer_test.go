@@ -10,7 +10,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	"github.com/JackMatanky/lithos/internal/shared/logger"
+	lithoslog "github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -20,7 +20,7 @@ const testContextCanceled = "error - context canceled"
 // TestNewJSONCacheWriter tests the JSONCacheWriteAdapter constructor.
 // TestNewJSONCacheWriter tests the function.
 func TestNewJSONCacheWriter(t *testing.T) {
-	log := logger.New(os.Stdout, "debug")
+	log := lithoslog.New(os.Stdout, "debug")
 	config := domain.Config{CacheDir: "/tmp/cache"}
 
 	adapter := NewJSONCacheWriter(config, log)
@@ -131,7 +131,7 @@ func TestPersist(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup temp directory
 			cacheDir := t.TempDir()
-			log := logger.New(os.Stdout, "debug")
+			log := lithoslog.New(os.Stdout, "debug")
 			config := domain.Config{CacheDir: cacheDir}
 			adapter := NewJSONCacheWriter(config, log)
 
@@ -294,7 +294,7 @@ func TestDelete(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup temp directory
 			cacheDir := t.TempDir()
-			log := logger.New(os.Stdout, "debug")
+			log := lithoslog.New(os.Stdout, "debug")
 			config := domain.Config{CacheDir: cacheDir}
 			adapter := NewJSONCacheWriter(config, log)
 

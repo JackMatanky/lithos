@@ -9,7 +9,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	_ "modernc.org/sqlite" // Register SQLite driver
 )
@@ -68,7 +68,7 @@ func NewSQLiteCacheReadAdapter(
 	dbPath := filepath.Join(config.CacheDir, "cache.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, errors.NewCacheReadError("", dbPath, "open_db", err)
+		return nil, lithoserrors.NewCacheReadError("", dbPath, "open_db", err)
 	}
 
 	// Enable foreign keys for consistency
@@ -77,7 +77,7 @@ func NewSQLiteCacheReadAdapter(
 		"PRAGMA foreign_keys = ON;",
 	); execErr != nil {
 		_ = db.Close()
-		return nil, errors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			dbPath,
 			"init_pragmas",
@@ -176,7 +176,7 @@ func (a *SQLiteCacheReadAdapter) List(
 
 	rows, err := a.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, errors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			"",
 			"list_query",
@@ -227,7 +227,7 @@ func (a *SQLiteCacheReadAdapter) ListStale(
 
 	rows, err := a.db.QueryContext(ctx, query, since)
 	if err != nil {
-		return nil, errors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			"",
 			"list_stale_query",
@@ -294,7 +294,7 @@ func (a *SQLiteCacheReadAdapter) processListRows(
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, errors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			"",
 			"list_rows",
@@ -328,9 +328,9 @@ func (a *SQLiteCacheReadAdapter) executeReadQuery(
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return errors.ErrNotFound
+			return lithoserrors.ErrNotFound
 		}
-		return errors.NewCacheReadError(
+		return lithoserrors.NewCacheReadError(
 			string(id),
 			"",
 			"read_query",
@@ -351,7 +351,7 @@ func (a *SQLiteCacheReadAdapter) reconstructNote(
 	// Parse frontmatter JSON
 	var fields map[string]interface{}
 	if err := json.Unmarshal([]byte(frontmatterJSON), &fields); err != nil {
-		return domain.Note{}, errors.NewCacheReadError(
+		return domain.Note{}, lithoserrors.NewCacheReadError(
 			string(id),
 			path,
 			"unmarshal_frontmatter",
@@ -361,11 +361,11 @@ func (a *SQLiteCacheReadAdapter) reconstructNote(
 
 	// Verify ID matches (should always be true)
 	if dbID != string(id) {
-		return domain.Note{}, errors.NewCacheReadError(
+		return domain.Note{}, lithoserrors.NewCacheReadError(
 			string(id),
 			path,
 			"id_mismatch",
-			errors.NewBaseError("database ID does not match requested ID", nil),
+			lithoserrors.NewBaseError("database ID does not match requested ID", nil),
 		)
 	}
 

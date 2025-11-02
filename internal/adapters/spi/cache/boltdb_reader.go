@@ -9,7 +9,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	sharederrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"go.etcd.io/bbolt"
 )
@@ -70,7 +70,7 @@ func NewBoltDBCacheReadAdapter(
 		&options,
 	)
 	if err != nil {
-		return nil, sharederrors.NewCacheReadError("", dbPath, "open_db", err)
+		return nil, lithoserrors.NewCacheReadError("", dbPath, "open_db", err)
 	}
 
 	return &BoltDBCacheReadAdapter{
@@ -112,10 +112,10 @@ func (a *BoltDBCacheReadAdapter) Read(
 
 	note, err := a.findNoteByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, sharederrors.ErrNotFound) {
-			return domain.Note{}, sharederrors.ErrNotFound
+		if errors.Is(err, lithoserrors.ErrNotFound) {
+			return domain.Note{}, lithoserrors.ErrNotFound
 		}
-		return domain.Note{}, sharederrors.NewCacheReadError(
+		return domain.Note{}, lithoserrors.NewCacheReadError(
 			string(id),
 			"",
 			"read_scan",
@@ -193,7 +193,7 @@ func (a *BoltDBCacheReadAdapter) List(
 	})
 
 	if err != nil {
-		return nil, sharederrors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			"",
 			"list_transaction",
@@ -235,7 +235,7 @@ func (a *BoltDBCacheReadAdapter) GetByPath(
 
 		metadataBytes := pathsBucket.Get([]byte(path))
 		if metadataBytes == nil {
-			return sharederrors.ErrNotFound
+			return lithoserrors.ErrNotFound
 		}
 
 		var metadata BoltDBNoteMetadata
@@ -249,10 +249,10 @@ func (a *BoltDBCacheReadAdapter) GetByPath(
 	})
 
 	if err != nil {
-		if errors.Is(err, sharederrors.ErrNotFound) {
-			return domain.Note{}, sharederrors.ErrNotFound
+		if errors.Is(err, lithoserrors.ErrNotFound) {
+			return domain.Note{}, lithoserrors.ErrNotFound
 		}
-		return domain.Note{}, sharederrors.NewCacheReadError(
+		return domain.Note{}, lithoserrors.NewCacheReadError(
 			"",
 			path,
 			"get_by_path",
@@ -304,7 +304,7 @@ func (a *BoltDBCacheReadAdapter) GetByFileClass(
 	})
 
 	if err != nil {
-		return nil, sharederrors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			fileClass,
 			"get_by_file_class",
@@ -360,7 +360,7 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 	err := a.db.View(func(tx *bbolt.Tx) error {
 		pathsBucket := tx.Bucket([]byte(bucketPaths))
 		if pathsBucket == nil {
-			return sharederrors.NewCacheReadError(
+			return lithoserrors.NewCacheReadError(
 				"",
 				path,
 				"staleness_check",
@@ -371,12 +371,12 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 		metadataBytes := pathsBucket.Get([]byte(path))
 		if metadataBytes == nil {
 			// Note not in cache, consider it stale (needs indexing)
-			return sharederrors.ErrNotFound
+			return lithoserrors.ErrNotFound
 		}
 
 		var metadata BoltDBNoteMetadata
 		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-			return sharederrors.NewCacheReadError(
+			return lithoserrors.NewCacheReadError(
 				"",
 				path,
 				"staleness_check",
@@ -386,7 +386,7 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 
 		// Check if file was modified after indexing
 		if metadata.FileModTime != fileModTime {
-			return sharederrors.ErrNotFound // Signal stale
+			return lithoserrors.ErrNotFound // Signal stale
 		}
 
 		// File is fresh
@@ -394,7 +394,7 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 	})
 
 	if err != nil {
-		if errors.Is(err, sharederrors.ErrNotFound) {
+		if errors.Is(err, lithoserrors.ErrNotFound) {
 			return true, nil // Note not found or modified, consider stale
 		}
 		return false, err // Other error
@@ -415,7 +415,7 @@ func (a *BoltDBCacheReadAdapter) findNoteByID(
 	err := a.db.View(func(tx *bbolt.Tx) error {
 		pathsBucket := tx.Bucket([]byte(bucketPaths))
 		if pathsBucket == nil {
-			return sharederrors.NewCacheReadError(
+			return lithoserrors.NewCacheReadError(
 				"",
 				"",
 				"bucket_missing",
@@ -456,7 +456,7 @@ func (a *BoltDBCacheReadAdapter) findNoteByID(
 	}
 
 	if !found {
-		return domain.Note{}, sharederrors.ErrNotFound
+		return domain.Note{}, lithoserrors.ErrNotFound
 	}
 
 	return note, nil
@@ -469,7 +469,7 @@ func (a *BoltDBCacheReadAdapter) getIDListForFileClass(
 ) ([]string, error) {
 	fileClassesBucket := tx.Bucket([]byte(bucketFileClasses))
 	if fileClassesBucket == nil {
-		return nil, sharederrors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			"",
 			"bucket_missing",
@@ -497,7 +497,7 @@ func (a *BoltDBCacheReadAdapter) findMetadataForIDs(
 ) ([]BoltDBNoteMetadata, error) {
 	pathsBucket := tx.Bucket([]byte(bucketPaths))
 	if pathsBucket == nil {
-		return nil, sharederrors.NewCacheReadError(
+		return nil, lithoserrors.NewCacheReadError(
 			"",
 			"",
 			"bucket_missing",
@@ -549,7 +549,7 @@ func (a *BoltDBCacheReadAdapter) findMetadataForID(
 	}
 
 	if !found {
-		return nil, sharederrors.ErrNotFound // Use sentinel error instead of nil, nil
+		return nil, lithoserrors.ErrNotFound // Use sentinel error instead of nil, nil
 	}
 
 	return &metadata, nil
