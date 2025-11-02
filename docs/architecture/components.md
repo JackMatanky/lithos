@@ -1380,12 +1380,9 @@ func main() {
     orchestrator := domain.NewCommandOrchestrator(
         cliAdapter,  // CLIPort injected!
         templateEngine,
-        vaultIndexer,
-        queryService,
-        frontmatterService,
         schemaEngine,
+        vaultIndexer,
         vaultWriter,
-        cacheWriter,
         cfg,
         log,
     )

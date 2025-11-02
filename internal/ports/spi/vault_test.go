@@ -59,6 +59,15 @@ func (m *mockVaultWriter) Delete(ctx context.Context, path string) error {
 	return nil
 }
 
+// WriteContent is a mock implementation of VaultWriterPort.WriteContent.
+func (m *mockVaultWriter) WriteContent(
+	ctx context.Context,
+	path string,
+	content []byte,
+) error {
+	return nil
+}
+
 // TestVaultWriterPortInterfaceCompliance verifies that VaultWriterPort
 // interface exists and has the required methods with correct signatures.
 func TestVaultWriterPortInterfaceCompliance(t *testing.T) {
@@ -98,6 +107,18 @@ func TestVaultWriterPortDeleteSignature(t *testing.T) {
 	err := mock.Delete(ctx, testPath)
 	if err != nil {
 		t.Errorf("Delete should not return error in mock: %v", err)
+	}
+}
+
+// TestVaultWriterPortWriteContentSignature verifies WriteContent method
+// signature.
+func TestVaultWriterPortWriteContentSignature(t *testing.T) {
+	mock := &mockVaultWriter{}
+	ctx := context.Background()
+
+	err := mock.WriteContent(ctx, testPath, []byte("content"))
+	if err != nil {
+		t.Errorf("WriteContent should not return error in mock: %v", err)
 	}
 }
 

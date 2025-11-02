@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
@@ -52,6 +53,7 @@ func TestRunCallsCLIPortStart(t *testing.T) {
 		templateEngine,
 		schemaEngine,
 		vaultIndexer,
+		nil,
 		&config,
 		&logger,
 	)
@@ -95,6 +97,7 @@ func TestRunPropagatesCLIError(t *testing.T) {
 		templateEngine,
 		schemaEngine,
 		vaultIndexer,
+		nil,
 		&config,
 		&logger,
 	)
@@ -155,6 +158,7 @@ func TestNewNoteSuccess(t *testing.T) {
 		templateEngine,
 		schemaEngine,
 		vaultIndexer,
+		vaultAdapter.NewVaultWriterAdapter(config, logger),
 		&config,
 		&logger,
 	)
@@ -219,6 +223,7 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 		templateEngine,
 		schemaEngine,
 		vaultIndexer,
+		nil,
 		&config,
 		&logger,
 	)
@@ -248,9 +253,6 @@ func TestNewNoteFileWriteError(t *testing.T) {
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
 
-	// Use invalid path to cause write error
-	config.VaultPath = "/invalid/path/that/does/not/exist"
-
 	templateEngine := template.NewTemplateEngine(
 		mockTemplatePort,
 		&config,
@@ -259,11 +261,14 @@ func TestNewNoteFileWriteError(t *testing.T) {
 
 	var schemaEngine *schema.SchemaEngine
 	var vaultIndexer *vault.VaultIndexer
+	mockVaultWriter := utils.NewMockVaultWriterPort()
+	mockVaultWriter.SetWriteContentResult(assert.AnError)
 	orchestrator := NewCommandOrchestrator(
 		nil,
 		templateEngine,
 		schemaEngine,
 		vaultIndexer,
+		mockVaultWriter,
 		&config,
 		&logger,
 	)
@@ -308,6 +313,7 @@ func TestIndexVaultSuccess(t *testing.T) {
 		templateEngine,
 		schemaEngine,
 		mockVaultIndexer,
+		nil,
 		&config,
 		&logger,
 	)
@@ -341,6 +347,7 @@ func TestIndexVaultIndexerError(t *testing.T) {
 		templateEngine,
 		schemaEngine,
 		mockVaultIndexer,
+		nil,
 		&config,
 		&logger,
 	)

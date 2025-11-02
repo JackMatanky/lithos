@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
@@ -26,6 +27,10 @@ type SchemaLoaderAdapter struct {
 	walkDir   func(string, fs.WalkDirFunc) error
 	validator *SchemaValidator
 	extender  *SchemaExtender
+	mu        sync.RWMutex
+	signature string
+	cache     []domain.Schema
+	cacheBank domain.PropertyBank
 }
 
 // NewSchemaLoaderAdapter creates a new filesystem-backed schema loader.
@@ -40,6 +45,12 @@ func NewSchemaLoaderAdapter(
 		walkDir:   filepath.WalkDir,
 		validator: NewSchemaValidator(),
 		extender:  NewSchemaExtender(),
+		mu:        sync.RWMutex{},
+		signature: "",
+		cache:     nil,
+		cacheBank: domain.PropertyBank{
+			Properties: make(map[string]domain.Property),
+		},
 	}
 }
 
@@ -53,10 +64,66 @@ func (a *SchemaLoaderAdapter) Load(
 		return nil, domain.PropertyBank{}, err
 	}
 
-	var err error
-	bank, err := a.loadPropertyBank(ctx)
+	// Try to use cache first
+	schemas, bank, useCache := a.tryUseCache()
+	if useCache {
+		return schemas, bank, nil
+	}
+
+	// Load fresh data
+	return a.loadFreshData(ctx)
+}
+
+// tryUseCache attempts to return cached results if available and valid.
+func (a *SchemaLoaderAdapter) tryUseCache() ([]domain.Schema, domain.PropertyBank, bool) {
+	signature, sigErr := a.computeSignature()
+	if sigErr != nil {
+		return nil, domain.PropertyBank{}, false
+	}
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if signature == a.signature && len(a.cache) > 0 {
+		if a.log != nil {
+			a.log.Debug().Msg("using cached schemas and property bank")
+		}
+		return cloneSchemas(a.cache), clonePropertyBank(a.cacheBank), true
+	}
+
+	return nil, domain.PropertyBank{}, false
+}
+
+// loadFreshData loads and processes schemas from scratch.
+func (a *SchemaLoaderAdapter) loadFreshData(
+	ctx context.Context,
+) ([]domain.Schema, domain.PropertyBank, error) {
+	bank, err := a.loadAndLogPropertyBank(ctx)
 	if err != nil {
 		return nil, domain.PropertyBank{}, err
+	}
+
+	schemas, err := a.loadAndLogSchemas(ctx, bank)
+	if err != nil {
+		return nil, domain.PropertyBank{}, err
+	}
+
+	extendedSchemas, err := a.validateAndExtendSchemas(ctx, schemas)
+	if err != nil {
+		return nil, domain.PropertyBank{}, err
+	}
+
+	a.updateCache(extendedSchemas, bank)
+	return extendedSchemas, bank, nil
+}
+
+// loadAndLogPropertyBank loads the property bank with logging.
+func (a *SchemaLoaderAdapter) loadAndLogPropertyBank(
+	ctx context.Context,
+) (domain.PropertyBank, error) {
+	bank, err := a.loadPropertyBank(ctx)
+	if err != nil {
+		return domain.PropertyBank{}, err
 	}
 
 	if a.log != nil {
@@ -66,9 +133,16 @@ func (a *SchemaLoaderAdapter) Load(
 			Msg("property bank loaded")
 	}
 
+	return bank, nil
+}
+
+// loadAndLogSchemas loads schemas with logging.
+func (a *SchemaLoaderAdapter) loadAndLogSchemas(
+	ctx context.Context, bank domain.PropertyBank,
+) ([]domain.Schema, error) {
 	schemas, err := a.loadSchemas(ctx, bank)
 	if err != nil {
-		return nil, domain.PropertyBank{}, err
+		return nil, err
 	}
 
 	if a.log != nil {
@@ -78,15 +152,20 @@ func (a *SchemaLoaderAdapter) Load(
 			Msg("raw schemas loaded")
 	}
 
-	// Validate schemas
-	if validateErr := a.validateSchemas(ctx, schemas); validateErr != nil {
-		return nil, domain.PropertyBank{}, validateErr
+	return schemas, nil
+}
+
+// validateAndExtendSchemas validates and resolves inheritance.
+func (a *SchemaLoaderAdapter) validateAndExtendSchemas(
+	ctx context.Context, schemas []domain.Schema,
+) ([]domain.Schema, error) {
+	if err := a.validateSchemas(ctx, schemas); err != nil {
+		return nil, err
 	}
 
-	// Resolve inheritance
 	extendedSchemas, err := a.resolveInheritance(ctx, schemas)
 	if err != nil {
-		return nil, domain.PropertyBank{}, err
+		return nil, err
 	}
 
 	if a.log != nil {
@@ -95,7 +174,21 @@ func (a *SchemaLoaderAdapter) Load(
 			Msg("schemas validated and inheritance resolved")
 	}
 
-	return extendedSchemas, bank, nil
+	return extendedSchemas, nil
+}
+
+// updateCache stores the results in cache.
+func (a *SchemaLoaderAdapter) updateCache(
+	schemas []domain.Schema, bank domain.PropertyBank,
+) {
+	signature, sigErr := a.computeSignature()
+	if sigErr == nil {
+		a.mu.Lock()
+		a.signature = signature
+		a.cache = cloneSchemas(schemas)
+		a.cacheBank = clonePropertyBank(bank)
+		a.mu.Unlock()
+	}
 }
 
 func (a *SchemaLoaderAdapter) loadPropertyBank(
@@ -280,4 +373,83 @@ func wrapPropertyBankReadError(path string, err error) error {
 // JSON payloads.
 func syntaxRemediation(path string) string {
 	return fmt.Sprintf("Check JSON syntax in %s", path)
+}
+
+func (a *SchemaLoaderAdapter) computeSignature() (string, error) {
+	var parts []string
+
+	bankInfo, err := os.Stat(a.config.PropertyBankPath())
+	switch {
+	case err == nil:
+		parts = append(parts, fmt.Sprintf(
+			"bank:%d:%d",
+			bankInfo.ModTime().UnixNano(),
+			bankInfo.Size(),
+		))
+	case errors.Is(err, os.ErrNotExist):
+		parts = append(parts, "bank:none")
+	default:
+		return "", err
+	}
+
+	err = a.walkDir(
+		a.config.SchemasDir,
+		func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if filepath.Clean(
+				path,
+			) == filepath.Clean(
+				a.config.PropertyBankPath(),
+			) {
+				return nil
+			}
+			if !strings.EqualFold(filepath.Ext(path), ".json") {
+				return nil
+			}
+
+			fileInfo, statErr := d.Info()
+			if statErr != nil {
+				return statErr
+			}
+
+			parts = append(parts, fmt.Sprintf(
+				"schema:%s:%d:%d",
+				filepath.ToSlash(path),
+				fileInfo.ModTime().UnixNano(),
+				fileInfo.Size(),
+			))
+			return nil
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	sort.Strings(parts)
+	return strings.Join(parts, "|"), nil
+}
+
+func cloneSchemas(schemas []domain.Schema) []domain.Schema {
+	if len(schemas) == 0 {
+		return nil
+	}
+	cloned := make([]domain.Schema, len(schemas))
+	copy(cloned, schemas)
+	return cloned
+}
+
+func clonePropertyBank(bank domain.PropertyBank) domain.PropertyBank {
+	if len(bank.Properties) == 0 {
+		return domain.PropertyBank{Properties: map[string]domain.Property{}}
+	}
+	props := make(map[string]domain.Property, len(bank.Properties))
+	for k, v := range bank.Properties {
+		props[k] = v
+	}
+	return domain.PropertyBank{Properties: props}
 }

@@ -161,3 +161,44 @@ func (v *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
 
 	return nil
 }
+
+// WriteContent writes raw markdown content to the vault using atomic semantics.
+// It creates parent directories when necessary and leverages the same
+// temp-file + rename guarantees as Persist to avoid partial writes.
+func (v *VaultWriterAdapter) WriteContent(
+	ctx context.Context,
+	path string,
+	content []byte,
+) error {
+	fullPath := filepath.Join(v.config.VaultPath, path)
+
+	if err := v.mkdirAll(filepath.Dir(fullPath), dirPermissions); err != nil {
+		v.logger.Error().
+			Err(err).
+			Str("path", fullPath).
+			Msg("Failed to create parent directories for content write")
+		return fmt.Errorf(
+			"failed to create directories for %s: %w",
+			fullPath,
+			err,
+		)
+	}
+
+	if err := v.writeFile(fullPath, content, filePermissions); err != nil {
+		v.logger.Error().
+			Err(err).
+			Str("path", fullPath).
+			Msg("Failed to write raw content atomically")
+		return fmt.Errorf(
+			"failed to persist content to %s: %w",
+			fullPath,
+			err,
+		)
+	}
+
+	v.logger.Info().
+		Str("path", fullPath).
+		Msg("Successfully wrote raw content")
+
+	return nil
+}
