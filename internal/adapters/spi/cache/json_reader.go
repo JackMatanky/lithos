@@ -104,40 +104,35 @@ func (a *JSONCacheReadAdapter) Read(
 	// Construct file path
 	path := noteFilePath(a.config.CacheDir, id)
 
-	// Read file
-	data, err := a.readFile(
-		path,
-	)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return domain.Note{}, errors.ErrNotFound
-		}
+	data, readErr := a.readFile(path)
+	if readErr == nil {
+		return a.unmarshalNote(id, path, data)
+	}
+
+	if !os.IsNotExist(readErr) {
 		return domain.Note{}, errors.NewCacheReadError(
 			string(id),
 			path,
 			"read",
-			err,
+			readErr,
 		)
 	}
 
-	// Deserialize JSON
-	var note domain.Note
-	if unmarshalErr := json.Unmarshal(data, &note); unmarshalErr != nil {
+	legacyPath := legacyNoteFilePath(a.config.CacheDir, id)
+	legacyData, legacyErr := a.readFile(legacyPath)
+	switch {
+	case legacyErr == nil:
+		return a.unmarshalNote(id, legacyPath, legacyData)
+	case os.IsNotExist(legacyErr):
+		return domain.Note{}, errors.ErrNotFound
+	default:
 		return domain.Note{}, errors.NewCacheReadError(
 			string(id),
-			path,
-			"unmarshal",
-			unmarshalErr,
+			legacyPath,
+			"read_legacy",
+			legacyErr,
 		)
 	}
-
-	// Log successful read
-	a.log.Debug().
-		Str("note_id", string(id)).
-		Str("path", path).
-		Msg("cache read successful")
-
-	return note, nil
 }
 
 // List returns all notes currently in the cache.
@@ -235,8 +230,10 @@ func shouldIncludeFile(info os.FileInfo, path string) bool {
 // Removes the .json extension from the filename.
 func extractNoteIDFromPath(path string) domain.NoteID {
 	filename := filepath.Base(path)
-	noteIDStr := strings.TrimSuffix(filename, ".json")
-	return domain.NoteID(noteIDStr)
+	if id, ok := decodeNoteIDFromFilename(filename); ok {
+		return id
+	}
+	return domain.NoteID(strings.TrimSuffix(filename, ".json"))
 }
 
 // processNoteFile processes a single cache file and returns the note if
@@ -259,4 +256,27 @@ func (a *JSONCacheReadAdapter) processNoteFile(
 	}
 
 	return note, true
+}
+
+func (a *JSONCacheReadAdapter) unmarshalNote(
+	id domain.NoteID,
+	path string,
+	data []byte,
+) (domain.Note, error) {
+	var note domain.Note
+	if unmarshalErr := json.Unmarshal(data, &note); unmarshalErr != nil {
+		return domain.Note{}, errors.NewCacheReadError(
+			string(id),
+			path,
+			"unmarshal",
+			unmarshalErr,
+		)
+	}
+
+	a.log.Debug().
+		Str("note_id", string(id)).
+		Str("path", path).
+		Msg("cache read successful")
+
+	return note, nil
 }

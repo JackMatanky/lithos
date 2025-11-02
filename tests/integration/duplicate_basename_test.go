@@ -2,6 +2,7 @@ package integration
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -73,19 +74,35 @@ func TestDuplicateBasenameHandling_Integration(t *testing.T) {
 	require.NoError(t, err, "Should find note with ideas path")
 	assert.Equal(t, domain.NoteID("ideas/meeting.md"), note2.ID)
 
-	// Verify unique cache files exist
-	cacheFile1 := filepath.Join(cacheDir, "projects-meeting.md.json")
-	cacheFile2 := filepath.Join(cacheDir, "ideas-meeting.md.json")
+	// Verify unique cache entries exist with correct NoteIDs
+	cacheFiles, globErr := filepath.Glob(filepath.Join(cacheDir, "*.json"))
+	require.NoError(t, globErr, "Should list cache files")
+	assert.Len(t, cacheFiles, 2, "Cache should contain exactly two entries")
 
-	assert.FileExists(
+	foundIDs := make(map[domain.NoteID]bool)
+	for _, path := range cacheFiles {
+		content, readErr := os.ReadFile(path)
+		require.NoErrorf(t, readErr, "Should read cache file %s", path)
+
+		var note domain.Note
+		require.NoErrorf(
+			t,
+			json.Unmarshal(content, &note),
+			"Should unmarshal cache file %s",
+			path,
+		)
+		foundIDs[note.ID] = true
+	}
+
+	assert.True(
 		t,
-		cacheFile1,
-		"Cache file for projects/meeting.md should exist",
+		foundIDs[domain.NoteID("projects/meeting.md")],
+		"Cache should contain projects/meeting.md",
 	)
-	assert.FileExists(
+	assert.True(
 		t,
-		cacheFile2,
-		"Cache file for ideas/meeting.md should exist",
+		foundIDs[domain.NoteID("ideas/meeting.md")],
+		"Cache should contain ideas/meeting.md",
 	)
 
 	// Verify byBasename returns both notes

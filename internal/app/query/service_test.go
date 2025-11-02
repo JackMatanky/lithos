@@ -182,6 +182,60 @@ func setupQueryServiceWithNotes(t *testing.T) *QueryService {
 	return qs
 }
 
+// TestQueryService_RefreshFromCache_SkipsNonComparableFrontmatter ensures
+// RefreshFromCache safely ignores non-comparable frontmatter values.
+func TestQueryService_RefreshFromCache_SkipsNonComparableFrontmatter(
+	t *testing.T,
+) {
+	t.Helper()
+
+	note := domain.Note{
+		ID:   domain.NoteID("projects/demo.md"),
+		Path: "projects/demo.md",
+		Frontmatter: domain.Frontmatter{
+			FileClass: "project",
+			Fields: map[string]interface{}{
+				"title": "Demo",
+				"tags": []interface{}{
+					"alpha",
+					"beta",
+				},
+			},
+		},
+	}
+
+	cacheReader := &FakeCacheReader{notes: []domain.Note{note}}
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+	service := NewQueryService(cacheReader, logger)
+
+	err := service.RefreshFromCache(context.Background())
+	require.NoError(t, err)
+
+	// Ensure note is still available through other indices
+	byID, err := service.ByID(context.Background(), note.ID)
+	require.NoError(t, err)
+	assert.Equal(t, note.ID, byID.ID)
+
+	// Querying by non-comparable field should return no results without panic
+	result, err := service.ByFrontmatter(
+		context.Background(),
+		"tags",
+		[]string{"alpha"},
+	)
+	require.NoError(t, err)
+	assert.Nil(t, result)
+
+	// Querying with primitive field still works
+	titleResult, err := service.ByFrontmatter(
+		context.Background(),
+		"title",
+		"Demo",
+	)
+	require.NoError(t, err)
+	require.Len(t, titleResult, 1)
+	assert.Equal(t, note.ID, titleResult[0].ID)
+}
+
 // TestQueryService_ByID_ExistingNote verifies ByID returns note for existing
 // NoteID.
 func TestQueryService_ByID_ExistingNote(t *testing.T) {

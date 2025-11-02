@@ -55,7 +55,7 @@ func TestRead(t *testing.T) {
 			name:   "success - deserializes valid JSON",
 			noteID: "test-note",
 			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
-				path := filepath.Join(cacheDir, string(noteID)+".json")
+				path := noteFilePath(cacheDir, noteID)
 				jsonData := `{
 					"ID": "test-note",
 					"Frontmatter": {
@@ -95,10 +95,30 @@ func TestRead(t *testing.T) {
 			},
 		},
 		{
+			name:   "success - reads legacy cache filename",
+			noteID: "legacy/path/note.md",
+			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
+				path := legacyNoteFilePath(cacheDir, noteID)
+				writeErr := os.WriteFile(path, []byte(`{
+						"ID": "legacy/path/note.md",
+						"Frontmatter": {
+							"FileClass": "legacy",
+							"Fields": {"fileClass": "legacy"}
+						}
+					}`), 0o600)
+				require.NoError(t, writeErr)
+			},
+			wantErr: false,
+			validateFunc: func(t *testing.T, note domain.Note, err error) {
+				assert.Equal(t, domain.NoteID("legacy/path/note.md"), note.ID)
+				assert.Equal(t, "legacy", note.Frontmatter.FileClass)
+			},
+		},
+		{
 			name:   "success - preserves unknown fields (FR6)",
 			noteID: "unknown-fields-note",
 			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
-				path := filepath.Join(cacheDir, string(noteID)+".json")
+				path := noteFilePath(cacheDir, noteID)
 				jsonData := `{
 					"ID": "unknown-fields-note",
 					"Frontmatter": {
@@ -156,7 +176,7 @@ func TestRead(t *testing.T) {
 			name:   "error - wraps errors correctly for malformed JSON",
 			noteID: "malformed-note",
 			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
-				path := filepath.Join(cacheDir, string(noteID)+".json")
+				path := noteFilePath(cacheDir, noteID)
 				jsonData := `{"ID": "malformed-note", "Frontmatter": {invalid json}`
 				writeErr := os.WriteFile(path, []byte(jsonData), 0o600)
 				require.NoError(t, writeErr)
@@ -225,7 +245,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						filepath.Join(cacheDir, "note1.json"),
+						noteFilePath(cacheDir, domain.NoteID("note1")),
 						[]byte(note1),
 						0o600,
 					),
@@ -233,7 +253,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						filepath.Join(cacheDir, "note2.json"),
+						noteFilePath(cacheDir, domain.NoteID("note2")),
 						[]byte(note2),
 						0o600,
 					),
@@ -275,7 +295,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						filepath.Join(cacheDir, "valid-note.json"),
+						noteFilePath(cacheDir, domain.NoteID("valid-note")),
 						[]byte(validNote),
 						0o600,
 					),
@@ -285,7 +305,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						filepath.Join(cacheDir, "invalid-note.json"),
+						noteFilePath(cacheDir, domain.NoteID("invalid-note")),
 						[]byte(`{"invalid": json`),
 						0o600,
 					),
@@ -312,7 +332,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						filepath.Join(cacheDir, "json-note.json"),
+						noteFilePath(cacheDir, domain.NoteID("json-note")),
 						[]byte(validNote),
 						0o600,
 					),
