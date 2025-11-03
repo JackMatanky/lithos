@@ -7,10 +7,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	"github.com/JackMatanky/lithos/internal/shared/logger"
+	lithoslog "github.com/JackMatanky/lithos/internal/shared/logger"
 )
 
 const testNoteFilename = "test-note.md"
@@ -26,7 +27,7 @@ func TestNewVaultWriterAdapter(t *testing.T) {
 
 	// Test data
 	config := domain.Config{VaultPath: "/tmp/test-vault"}
-	log := logger.NewTest()
+	log := lithoslog.NewTest()
 
 	// Call constructor (will fail until implemented)
 	adapter := NewVaultWriterAdapter(config, log)
@@ -49,7 +50,7 @@ func TestPersistCreatesNewFile(t *testing.T) {
 
 	// Test data
 	config := domain.Config{VaultPath: tempDir}
-	log := logger.NewTest()
+	log := lithoslog.NewTest()
 	adapter := NewVaultWriterAdapter(config, log)
 
 	frontmatter := domain.NewFrontmatter(map[string]interface{}{
@@ -57,7 +58,7 @@ func TestPersistCreatesNewFile(t *testing.T) {
 		"tags":    []string{"test"},
 		"content": "This is test content",
 	})
-	note := domain.NewNote(domain.NewNoteID("test-note"), frontmatter)
+	note := domain.NewNote(domain.NewNoteID("test-note"), time.Now(), frontmatter)
 	path := testNoteFilename
 
 	// Call Persist (will fail until implemented)
@@ -100,7 +101,7 @@ func TestDeleteRemovesFile(t *testing.T) {
 
 	// Test data
 	config := domain.Config{VaultPath: tempDir}
-	log := logger.NewTest()
+	log := lithoslog.NewTest()
 	adapter := NewVaultWriterAdapter(config, log)
 
 	relativePath := testNoteFilename
@@ -147,10 +148,11 @@ func TestPersistOverwritesExistingFile(t *testing.T) {
 
 	// Test data
 	config := domain.Config{VaultPath: tempDir}
-	log := logger.NewTest()
+	log := lithoslog.NewTest()
 	adapter := NewVaultWriterAdapter(config, log)
 
 	note := domain.NewNote(domain.NewNoteID("test-note"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"title":   "Updated Note",
 			"content": "new content",
@@ -187,11 +189,12 @@ func TestPersistCreatesParentDirectories(t *testing.T) {
 
 	// Test data
 	config := domain.Config{VaultPath: tempDir}
-	log := logger.NewTest()
+	log := lithoslog.NewTest()
 	adapter := NewVaultWriterAdapter(config, log)
 
 	nestedPath := "contacts/work/alice.md"
 	note := domain.NewNote(domain.NewNoteID("test-note"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"title":   "Alice Smith",
 			"content": "Contact info",
@@ -228,11 +231,12 @@ func TestPersistPreservesFrontmatter(t *testing.T) {
 
 	// Test data
 	config := domain.Config{VaultPath: tempDir}
-	log := logger.NewTest()
+	log := lithoslog.NewTest()
 	adapter := NewVaultWriterAdapter(config, log)
 
 	// Note with custom frontmatter fields
 	note := domain.NewNote(domain.NewNoteID("test-note"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"fileClass":    "contact",
 			"title":        "Test Contact",

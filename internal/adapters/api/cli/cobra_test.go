@@ -5,10 +5,11 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
 	mocks "github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -145,6 +146,7 @@ func TestHandleNewCommand_ExtractsTemplateIdFromArgs(t *testing.T) {
 	// Set up mock to return success
 	expectedNote := domain.NewNote(
 		domain.NewNoteID("test123"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{}),
 	)
 	mockHandler.SetNewNoteResult(expectedNote, nil)
@@ -184,6 +186,7 @@ func TestHandleNewCommand_CallsHandlerNewNoteWithCorrectArguments(
 	// Set up mock to return success
 	expectedNote := domain.NewNote(
 		domain.NewNoteID("test123"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{}),
 	)
 	mockHandler.SetNewNoteResult(expectedNote, nil)
@@ -207,6 +210,7 @@ func TestDisplayNoteCreated_FormatsOutputCorrectlyWithoutViewFlag(
 
 	note := domain.NewNote(
 		domain.NewNoteID("test123"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{}),
 	)
 
@@ -228,6 +232,7 @@ func TestDisplayNoteCreated_DisplaysContentWithViewFlag(t *testing.T) {
 
 	note := domain.NewNote(
 		domain.NewNoteID("test123"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{}),
 	)
 
@@ -246,9 +251,17 @@ func TestDisplayNoteCreated_DisplaysContentWithViewFlag(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(output), "\n")
 
 	assert.Equal(t, "✓ Created: test123.md", lines[0])
-	assert.Equal(t, strings.Repeat("=", 80), lines[1])
+	assert.Equal(
+		t,
+		strings.Repeat("=", 80),
+		lines[1],
+	)
 	// Note: Content reading is TODO, so we expect empty content for now
-	assert.Equal(t, strings.Repeat("=", 80), lines[2])
+	assert.Equal(
+		t,
+		strings.Repeat("=", 80),
+		lines[2],
+	)
 }
 
 // TestFormatError_FormatsResourceErrorCorrectly validates resource formatting.
@@ -256,7 +269,7 @@ func TestFormatError_FormatsResourceErrorCorrectly(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	resourceErr := errors.NewResourceError(
+	resourceErr := lithoserrors.NewResourceError(
 		"template",
 		"load",
 		"my-template",
@@ -267,12 +280,16 @@ func TestFormatError_FormatsResourceErrorCorrectly(t *testing.T) {
 	assert.Equal(t, "template 'my-template' not found in template", err.Error())
 }
 
-// TestFormatError_FormatsTemplateErrorCorrectly covers template errors.
+// TestFormatError_FormatsTemplateErrorCorrectly covers template lithoserrors.
 func TestFormatError_FormatsTemplateErrorCorrectly(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	templateErr := errors.NewTemplateError("parse failed", "my-template", nil)
+	templateErr := lithoserrors.NewTemplateError(
+		"parse failed",
+		"my-template",
+		nil,
+	)
 	err := adapter.formatError(templateErr)
 
 	assert.Equal(
@@ -287,7 +304,7 @@ func TestFormatError_FormatsGenericErrorCorrectly(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	genericErr := errors.NewBaseError("something went wrong", nil)
+	genericErr := lithoserrors.NewBaseError("something went wrong", nil)
 	err := adapter.formatError(genericErr)
 
 	assert.Equal(t, "error: something went wrong", err.Error())

@@ -5,9 +5,10 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -45,7 +46,8 @@ func setupQueryServiceForRefresh(
 
 	fakeCacheReader := &FakeCacheReader{notes: initialNotes}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.DefaultConfig() // Default config for tests
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	// Pre-populate with some initial data to test clearing
 	if len(initialNotes) > 0 {
@@ -111,11 +113,18 @@ func TestQueryService_DependenciesExist(t *testing.T) {
 
 	qs := &QueryService{}
 
-	// Verify cacheReader dependency field exists (interface, nil initially)
+	// Verify boltReader dependency field exists (interface, nil initially)
 	assert.Nil(
 		t,
-		qs.cacheReader,
-		"QueryService should have CacheReaderPort dependency field",
+		qs.boltReader,
+		"QueryService should have boltReader CacheReaderPort dependency field",
+	)
+
+	// Verify sqliteReader dependency field exists (interface, nil initially)
+	assert.Nil(
+		t,
+		qs.sqliteReader,
+		"QueryService should have sqliteReader CacheReaderPort dependency field",
 	)
 
 	// Verify logger dependency field exists (zerolog.Logger has zero value)
@@ -135,28 +144,41 @@ func setupQueryServiceWithNotes(t *testing.T) *QueryService {
 
 	// Create sample notes with path-based NoteIDs
 	note1 := domain.Note{
-		ID: domain.NoteID("contacts/john-doe.md"),
+		ID:   domain.NoteID("contacts/john-doe.md"),
+		Path: "contacts/john-doe.md",
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
+			Fields: map[string]interface{}{
+				"file_class": "contact",
+			},
 		},
 	}
 	note2 := domain.Note{
-		ID: domain.NoteID("meetings/2023-10-01.md"),
+		ID:   domain.NoteID("meetings/2023-10-01.md"),
+		Path: "meetings/2023-10-01.md",
 		Frontmatter: domain.Frontmatter{
 			FileClass: "meeting",
+			Fields: map[string]interface{}{
+				"file_class": "meeting",
+			},
 		},
 	}
 	note3 := domain.Note{
-		ID: domain.NoteID("contacts/jane-smith.md"),
+		ID:   domain.NoteID("contacts/jane-smith.md"),
+		Path: "contacts/jane-smith.md",
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
+			Fields: map[string]interface{}{
+				"file_class": "contact",
+			},
 		},
 	}
 
 	// Create QueryService with fake dependencies
 	fakeCacheReader := &FakeCacheReader{}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.DefaultConfig()
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	// Manually populate indices for testing
 	qs.byID = map[domain.NoteID]domain.Note{
@@ -195,7 +217,8 @@ func TestQueryService_RefreshFromCache_SkipsNonComparableFrontmatter(
 		Frontmatter: domain.Frontmatter{
 			FileClass: "project",
 			Fields: map[string]interface{}{
-				"title": "Demo",
+				"file_class": "project",
+				"title":      "Demo",
 				"tags": []interface{}{
 					"alpha",
 					"beta",
@@ -206,7 +229,8 @@ func TestQueryService_RefreshFromCache_SkipsNonComparableFrontmatter(
 
 	cacheReader := &FakeCacheReader{notes: []domain.Note{note}}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	service := NewQueryService(cacheReader, logger)
+	config := domain.Config{}
+	service := NewQueryService(cacheReader, cacheReader, config, logger)
 
 	err := service.RefreshFromCache(context.Background())
 	require.NoError(t, err)
@@ -268,7 +292,7 @@ func TestQueryService_ByID_MissingNote(t *testing.T) {
 	note, err := qs.ByID(ctx, domain.NoteID("missing-note.md"))
 
 	require.Error(t, err, "ByID should return error for missing note")
-	var resErr *domainerrors.ResourceError
+	var resErr *lithoserrors.ResourceError
 	require.ErrorAs(
 		t,
 		err,
@@ -315,7 +339,7 @@ func TestQueryService_ByPath_MissingPath(t *testing.T) {
 	note, err := qs.ByPath(ctx, "missing/path.md")
 
 	require.Error(t, err, "ByPath should return error for missing path")
-	var resErr *domainerrors.ResourceError
+	var resErr *lithoserrors.ResourceError
 	require.ErrorAs(
 		t,
 		err,
@@ -398,6 +422,9 @@ func TestQueryService_RefreshFromCache_Success(t *testing.T) {
 			Path: "new-1",
 			Frontmatter: domain.Frontmatter{
 				FileClass: "project",
+				Fields: map[string]interface{}{
+					"file_class": "project",
+				},
 			},
 		},
 		{
@@ -405,6 +432,9 @@ func TestQueryService_RefreshFromCache_Success(t *testing.T) {
 			Path: "new-2",
 			Frontmatter: domain.Frontmatter{
 				FileClass: "meeting",
+				Fields: map[string]interface{}{
+					"file_class": "meeting",
+				},
 			},
 		},
 	}
@@ -495,6 +525,9 @@ func TestQueryService_RefreshFromCache_ClearsExistingIndices(t *testing.T) {
 			Path: "new-1",
 			Frontmatter: domain.Frontmatter{
 				FileClass: "project",
+				Fields: map[string]interface{}{
+					"file_class": "project",
+				},
 			},
 		},
 	}
@@ -540,7 +573,8 @@ func TestQueryService_RefreshFromCache_CacheReadError(t *testing.T) {
 		err: errors.New("cache read failed"),
 	}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.Config{}
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	ctx := context.Background()
 
@@ -599,13 +633,14 @@ func TestQueryService_ConcurrentReads(t *testing.T) {
 func TestQueryService_EdgeCases_EmptyService(t *testing.T) {
 	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{}}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.Config{}
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 	ctx := context.Background()
 
 	// Test ByID on empty service
 	note, err := qs.ByID(ctx, domain.NoteID("any-id.md"))
 	require.Error(t, err, "ByID should return error for empty service")
-	var resErr *domainerrors.ResourceError
+	var resErr *lithoserrors.ResourceError
 	require.ErrorAs(t, err, &resErr, "ByID should return ResourceError")
 	assert.Equal(t, domain.Note{}, note, "ByID should return zero Note")
 
@@ -681,7 +716,8 @@ func TestQueryService_EdgeCases_TODOContext(t *testing.T) {
 func TestQueryService_RefreshFromCache_EmptyCache(t *testing.T) {
 	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{}}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.Config{}
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	// Pre-populate with some data to ensure clearing
 	qs.byID = map[domain.NoteID]domain.Note{
@@ -726,6 +762,7 @@ func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
 	// Given
 	authorNote := domain.NewNote(
 		domain.NewNoteID("note1"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"author": "John Doe",
 			"status": "published",
@@ -733,6 +770,7 @@ func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
 	)
 	tagNote := domain.NewNote(
 		domain.NewNoteID("note2"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"tags":   "project-x",
 			"author": "Jane Smith",
@@ -743,7 +781,8 @@ func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
 		notes: []domain.Note{authorNote, tagNote},
 	}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.Config{}
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	// Populate indices
 	err := qs.RefreshFromCache(context.Background())
@@ -764,6 +803,7 @@ func TestQueryService_ByFrontmatter_MultipleMatches(t *testing.T) {
 	// Given
 	note1 := domain.NewNote(
 		domain.NewNoteID("note1"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"status": "draft",
 			"author": "John",
@@ -771,6 +811,7 @@ func TestQueryService_ByFrontmatter_MultipleMatches(t *testing.T) {
 	)
 	note2 := domain.NewNote(
 		domain.NewNoteID("note2"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"status": "draft",
 			"author": "Jane",
@@ -779,7 +820,8 @@ func TestQueryService_ByFrontmatter_MultipleMatches(t *testing.T) {
 
 	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note1, note2}}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.Config{}
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	// Populate indices
 	err := qs.RefreshFromCache(context.Background())
@@ -798,6 +840,7 @@ func TestQueryService_ByFrontmatter_MissingField(t *testing.T) {
 	// Given
 	note := domain.NewNote(
 		domain.NewNoteID("note1"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"author": "John Doe",
 		}),
@@ -805,7 +848,8 @@ func TestQueryService_ByFrontmatter_MissingField(t *testing.T) {
 
 	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note}}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.Config{}
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	// Populate indices
 	err := qs.RefreshFromCache(context.Background())
@@ -825,6 +869,7 @@ func TestQueryService_ByFrontmatter_TypeNormalization(t *testing.T) {
 	// Given - note with float value
 	note := domain.NewNote(
 		domain.NewNoteID("note1"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"priority": 2.0, // float64
 		}),
@@ -832,7 +877,8 @@ func TestQueryService_ByFrontmatter_TypeNormalization(t *testing.T) {
 
 	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note}}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.Config{}
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	// Populate indices
 	err := qs.RefreshFromCache(context.Background())
@@ -947,26 +993,133 @@ func TestQueryService_ByBasename_NonMatchingBasename(t *testing.T) {
 	)
 }
 
+// TestQueryService_RefreshIncremental verifies RefreshIncremental updates only
+// notes modified since the specified time.
+func TestQueryService_RefreshIncremental(t *testing.T) {
+	// Create initial notes with different mod times
+	oldTime := time.Now().Add(-time.Hour)
+	newTime := time.Now()
+
+	oldNote := domain.Note{
+		ID:      domain.NoteID("old.md"),
+		Path:    "old.md",
+		ModTime: oldTime,
+		Frontmatter: domain.Frontmatter{
+			FileClass: "old",
+			Fields: map[string]interface{}{
+				"file_class": "old",
+			},
+		},
+	}
+	newNote := domain.Note{
+		ID:      domain.NoteID("new.md"),
+		Path:    "new.md",
+		ModTime: newTime,
+		Frontmatter: domain.Frontmatter{
+			FileClass: "new",
+			Fields: map[string]interface{}{
+				"file_class": "new",
+			},
+		},
+	}
+
+	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{oldNote, newNote}}
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+	config := domain.DefaultConfig()
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
+
+	ctx := context.Background()
+
+	// Incremental refresh with threshold between old and new
+	threshold := oldTime.Add(time.Minute)
+	err := qs.RefreshIncremental(ctx, threshold)
+
+	require.NoError(t, err, "RefreshIncremental should not return error")
+
+	// Should only have the new note
+	assert.Contains(
+		t,
+		qs.byID,
+		domain.NoteID("new.md"),
+		"should contain new note",
+	)
+	assert.NotContains(
+		t,
+		qs.byID,
+		domain.NoteID("old.md"),
+		"should not contain old note",
+	)
+	assert.Contains(t, qs.byFileClass, "new", "should have new file class")
+	assert.NotContains(
+		t,
+		qs.byFileClass,
+		"old",
+		"should not have old file class",
+	)
+}
+
+// TestQueryService_ConfigurableFileClassKey verifies file class queries use
+// configurable key from config.
+func TestQueryService_ConfigurableFileClassKey(t *testing.T) {
+	// Create note with custom file class key
+	note := domain.Note{
+		ID:   domain.NoteID("test.md"),
+		Path: "test.md",
+		Frontmatter: domain.Frontmatter{
+			FileClass: "custom", // This is extracted from fields
+			Fields: map[string]interface{}{
+				"fileClass": "custom", // Note: different key
+			},
+		},
+	}
+
+	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note}}
+	logger := zerolog.New(nil).Level(zerolog.Disabled)
+
+	// Config with custom file class key
+	config := domain.NewConfig("", "", "", "", "", "", "fileClass")
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
+
+	ctx := context.Background()
+	err := qs.RefreshFromCache(ctx)
+	require.NoError(t, err)
+
+	// Should find note using custom key
+	notes, err := qs.ByFileClass(ctx, "custom")
+	require.NoError(t, err)
+	assert.Len(t, notes, 1, "should find note with custom file class key")
+	assert.Equal(t, domain.NoteID("test.md"), notes[0].ID)
+}
+
 // TestQueryService_ByBasename_MultipleMatches verifies ByBasename returns all
 // notes with same basename from different paths.
 func TestQueryService_ByBasename_MultipleMatches(t *testing.T) {
 	// Create notes with same basename in different paths
 	note1 := domain.Note{
-		ID: domain.NoteID("contacts/john-doe.md"),
+		ID:   domain.NoteID("contacts/john-doe.md"),
+		Path: "contacts/john-doe.md",
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
+			Fields: map[string]interface{}{
+				"file_class": "contact",
+			},
 		},
 	}
 	note2 := domain.Note{
-		ID: domain.NoteID("projects/john-doe.md"),
+		ID:   domain.NoteID("projects/john-doe.md"),
+		Path: "projects/john-doe.md",
 		Frontmatter: domain.Frontmatter{
 			FileClass: "project",
+			Fields: map[string]interface{}{
+				"file_class": "project",
+			},
 		},
 	}
 
 	fakeCacheReader := &FakeCacheReader{notes: []domain.Note{note1, note2}}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
-	qs := NewQueryService(fakeCacheReader, logger)
+	config := domain.Config{}
+	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 
 	// Populate indices via RefreshFromCache
 	err := qs.RefreshFromCache(context.Background())

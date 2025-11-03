@@ -1,7 +1,10 @@
 // Package domain provides core domain types and business logic for Lithos.
 package domain
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"time"
+)
 
 // Note represents a core business entity for a markdown note.
 // It is an aggregate root combining identity and content metadata.
@@ -12,6 +15,9 @@ type Note struct {
 	// Path is the vault-relative file path for this note.
 	// Used for path-based queries and navigation.
 	Path string
+	// ModTime is the last modification time of the note file.
+	// Used for incremental indexing and staleness detection.
+	ModTime time.Time
 	// Frontmatter contains content metadata from YAML frontmatter.
 	// Composed (not embedded) to maintain clean domain boundaries.
 	Frontmatter Frontmatter
@@ -73,10 +79,11 @@ func (f Frontmatter) SchemaName() string {
 
 // NewNote creates a new Note from its constituent parts.
 // This is the aggregate root constructor for the Note entity.
-func NewNote(id NoteID, frontmatter Frontmatter) Note {
+func NewNote(id NoteID, modTime time.Time, frontmatter Frontmatter) Note {
 	return Note{
 		ID:          id,
 		Path:        string(id), // NoteID contains the vault-relative path
+		ModTime:     modTime,
 		Frontmatter: frontmatter,
 	}
 }
@@ -88,6 +95,7 @@ func (n *Note) UnmarshalJSON(data []byte) error {
 	aux := &struct { //nolint:exhaustruct // Custom unmarshaling struct for backward compatibility
 		ID          NoteID      `json:"id"`
 		Path        *string     `json:"path,omitempty"` // Optional for backward compatibility
+		ModTime     time.Time   `json:"mod_time"`
 		Frontmatter Frontmatter `json:"frontmatter"`
 	}{}
 
@@ -97,6 +105,7 @@ func (n *Note) UnmarshalJSON(data []byte) error {
 
 	// Set values
 	n.ID = aux.ID
+	n.ModTime = aux.ModTime
 	n.Frontmatter = aux.Frontmatter
 
 	// Ensure Path is set from ID if not present in JSON (backward
