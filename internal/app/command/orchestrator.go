@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
@@ -158,7 +159,7 @@ func (o *CommandOrchestrator) NewNote(
 	o.log.Debug().Msg("Empty frontmatter created")
 
 	// Step 4: Construct Note
-	note := domain.NewNote(noteID, frontmatter)
+	note := domain.NewNote(noteID, time.Now(), frontmatter)
 	o.log.Debug().Str("noteID", string(noteID)).Msg("Note constructed")
 
 	// Step 5: Write file to vault

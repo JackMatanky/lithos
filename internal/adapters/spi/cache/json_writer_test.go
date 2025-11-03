@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -51,6 +52,7 @@ func TestPersist(t *testing.T) {
 			name: "success - creates directory and writes JSON",
 			note: domain.NewNote(
 				domain.NewNoteID("test-note"),
+				time.Now(),
 				domain.NewFrontmatter(map[string]interface{}{
 					"fileClass": "contact",
 					"title":     "Test Note",
@@ -62,6 +64,7 @@ func TestPersist(t *testing.T) {
 			name: "success - serializes Note to JSON with proper structure",
 			note: domain.NewNote(
 				domain.NewNoteID("json-test"),
+				time.Now(),
 				domain.NewFrontmatter(map[string]interface{}{
 					"fileClass": "meeting",
 					"title":     "JSON Test",
@@ -74,6 +77,7 @@ func TestPersist(t *testing.T) {
 			name: "success - uses atomic write (temp file + rename)",
 			note: domain.NewNote(
 				domain.NewNoteID("atomic-test"),
+				time.Now(),
 				domain.NewFrontmatter(map[string]interface{}{
 					"fileClass": "contact",
 					"title":     "Atomic Test",
@@ -85,6 +89,7 @@ func TestPersist(t *testing.T) {
 			name: "success - overwrites existing file atomically",
 			note: domain.NewNote(
 				domain.NewNoteID("overwrite-test"),
+				time.Now(),
 				domain.NewFrontmatter(map[string]interface{}{
 					"fileClass": "contact",
 					"title":     "Overwrite Test",
@@ -107,6 +112,7 @@ func TestPersist(t *testing.T) {
 			name: "error - wraps errors with context",
 			note: domain.NewNote(
 				domain.NewNoteID("error-test"),
+				time.Now(),
 				domain.NewFrontmatter(map[string]interface{}{
 					"fileClass": "contact",
 					"title":     "Error Test",
@@ -335,6 +341,7 @@ func TestDelete(t *testing.T) {
 func BenchmarkMarshalNote(b *testing.B) {
 	note := domain.NewNote(
 		domain.NewNoteID("bench"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"title": "test",
 		}),
@@ -349,6 +356,7 @@ func BenchmarkMarshalNote(b *testing.B) {
 func TestMarshalNoteCompact(t *testing.T) {
 	note := domain.NewNote(
 		domain.NewNoteID("compact-test"),
+		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"fileClass": "contact",
 			"title":     "Compact Test",

@@ -528,10 +528,12 @@ func TestRefreshReconcileDeletions(t *testing.T) {
 		listResult: []domain.Note{
 			domain.NewNote(
 				domain.NewNoteID("existing.md"),
+				time.Now(),
 				domain.Frontmatter{},
 			),
 			domain.NewNote(
 				domain.NewNoteID("deleted.md"),
+				time.Now(),
 				domain.Frontmatter{},
 			), // Orphan
 		},
@@ -621,10 +623,12 @@ func TestReconcileDeleteFailure(t *testing.T) {
 		listResult: []domain.Note{
 			domain.NewNote(
 				domain.NewNoteID("existing.md"),
+				time.Now(),
 				domain.Frontmatter{},
 			),
 			domain.NewNote(
 				domain.NewNoteID("deleted.md"),
+				time.Now(),
 				domain.Frontmatter{},
 			), // Orphan
 		},
@@ -683,6 +687,7 @@ func BenchmarkValidateCacheState(b *testing.B) {
 			for i := range cacheNotes {
 				cacheNotes[i] = domain.NewNote(
 					domain.NewNoteID(fmt.Sprintf("note%d.md", i)),
+					time.Now(),
 					domain.Frontmatter{},
 				)
 			}
@@ -749,6 +754,7 @@ func BenchmarkReconcileDeletions(b *testing.B) {
 			for i := range cacheNotes {
 				cacheNotes[i] = domain.NewNote(
 					domain.NewNoteID(fmt.Sprintf("note%d.md", i)),
+					time.Now(),
 					domain.Frontmatter{},
 				)
 			}
