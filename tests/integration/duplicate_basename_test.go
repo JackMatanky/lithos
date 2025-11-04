@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
-	vaultadapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
+	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/query"
 	vaultindexer "github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -36,7 +36,7 @@ func TestDuplicateBasenameHandling_Integration(t *testing.T) {
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
 
 	// Create vault scanner (VaultReaderAdapter implements VaultScannerPort)
-	vaultReader := vaultadapter.NewVaultReaderAdapter(config, logger)
+	vaultReader := vaultAdapter.NewVaultReaderAdapter(config, logger)
 
 	// Create cache writer
 	cacheWriter := cache.NewJSONCacheWriter(config, logger)
@@ -54,7 +54,12 @@ func TestDuplicateBasenameHandling_Integration(t *testing.T) {
 		config,
 		logger,
 	)
-	queryService := query.NewQueryService(cacheReader, logger)
+	queryService := query.NewQueryService(
+		cacheReader,
+		cacheReader,
+		config,
+		logger,
+	)
 
 	// Execute indexing
 	ctx := context.Background()

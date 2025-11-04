@@ -1,6 +1,6 @@
 ---
 description: "Activates the Full Stack Developer agent persona."
-tools: ['changes', 'codebase', 'fetch', 'findTestFiles', 'githubRepo', 'problems', 'usages', 'editFiles', 'runCommands', 'runTasks', 'runTests', 'search', 'searchResults', 'terminalLastCommand', 'terminalSelection', 'testFailure']
+tools: ['edit/createFile', 'edit/createDirectory', 'edit/editFiles', 'search', 'runCommands', 'runTasks', 'context7/*', 'sequential-thinking/*', 'usages', 'problems', 'changes', 'testFailure', 'fetch', 'githubRepo', 'todos', 'runTests']
 ---
 
 <!-- Powered by BMAD™ Core -->

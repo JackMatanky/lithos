@@ -10,7 +10,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/api"
-	domainErrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 )
@@ -210,7 +210,7 @@ func (a *CobraCLIAdapter) displayIndexStats(
 // formatError converts domain errors to user-friendly CLI error messages.
 // This method follows SRP by focusing solely on error formatting.
 func (a *CobraCLIAdapter) formatError(err error) error {
-	var resourceErr *domainErrors.ResourceError
+	var resourceErr *lithosErr.ResourceError
 	if errors.As(err, &resourceErr) {
 		return fmt.Errorf(
 			"template '%s' not found in %s",
@@ -219,7 +219,7 @@ func (a *CobraCLIAdapter) formatError(err error) error {
 		)
 	}
 
-	var templateErr *domainErrors.TemplateError
+	var templateErr *lithosErr.TemplateError
 	if errors.As(err, &templateErr) {
 		return fmt.Errorf(
 			"template error in '%s': %s",

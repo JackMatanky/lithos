@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -195,8 +195,8 @@ func TestSchemaValidator_ValidateAll_AggregatedErrorTypes(t *testing.T) {
 	// Check that we can still use errors.Is/As on the aggregated error
 	// Since the errors are wrapped, this tests that the aggregation preserves
 	// types
-	var validationErr *lithoserrors.ValidationError
-	var schemaErr *lithoserrors.SchemaError
+	var validationErr *lithosErr.ValidationError
+	var schemaErr *lithosErr.SchemaError
 	assert.True(t, errors.As(err, &validationErr) || errors.As(err, &schemaErr))
 }
 

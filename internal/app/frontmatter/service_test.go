@@ -7,7 +7,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithoslog "github.com/JackMatanky/lithos/internal/shared/logger"
+	lithosLog "github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +24,7 @@ func TestNewFrontmatterService_ConstructorExists(t *testing.T) {
 	// This test verifies NewFrontmatterService constructor exists and works
 	// We'll use a fake SchemaEngine and logger for testing
 	fakeSchemaEngine := &schema.SchemaEngine{} // This will need to be a proper fake later
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 	require.NotNil(t, service)
@@ -37,7 +37,7 @@ func TestNewFrontmatterService_ConstructorExists(t *testing.T) {
 func TestFrontmatterService_SchemaEngineDependency(t *testing.T) {
 	// This test verifies SchemaEngine dependency is properly injected
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 	assert.Equal(t, fakeSchemaEngine, service.schemaEngine)
@@ -47,7 +47,7 @@ func TestFrontmatterService_SchemaEngineDependency(t *testing.T) {
 func TestFrontmatterService_LoggerDependency(t *testing.T) {
 	// This test verifies Logger dependency is properly injected
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 	assert.Equal(t, fakeLogger, service.logger)
@@ -59,7 +59,7 @@ func TestFrontmatterService_LoggerDependency(t *testing.T) {
 func TestFrontmatterService_ExtractMethodSignature(t *testing.T) {
 	// This test verifies Extract method signature exists
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	// This will fail if method signature doesn't match exactly
@@ -75,7 +75,7 @@ func TestFrontmatterService_ExtractMethodSignature(t *testing.T) {
 // TestFrontmatterService_ExtractValidYAML verifies YAML frontmatter extraction.
 func TestFrontmatterService_ExtractValidYAML(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	content := []byte(`---
@@ -102,7 +102,7 @@ Some content here`)
 // TestFrontmatterService_ExtractValidTOML verifies TOML frontmatter extraction.
 func TestFrontmatterService_ExtractValidTOML(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	content := []byte(`+++
@@ -126,7 +126,7 @@ Some content here`)
 // missing frontmatter.
 func TestFrontmatterService_ExtractMissingFrontmatter(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	content := []byte(`# Just a title
@@ -144,7 +144,7 @@ Some content without frontmatter`)
 // for parse failures.
 func TestFrontmatterService_ExtractMalformedFrontmatter(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	content := []byte(`---
@@ -170,7 +170,7 @@ Content`)
 // delimiters.
 func TestFrontmatterService_ExtractEdgeCases(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	// Content with code block containing frontmatter-like delimiters
@@ -205,7 +205,7 @@ More content`)
 // exists.
 func TestFrontmatterService_ValidateMethodSignature(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	// Test method signature exists
@@ -228,7 +228,7 @@ func TestFrontmatterService_ValidateMethodSignature(t *testing.T) {
 // validation.
 func TestFrontmatterService_ValidateRequiredFields(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	ctx := context.Background()
@@ -259,7 +259,7 @@ func TestFrontmatterService_ValidateRequiredFields(t *testing.T) {
 // field validators.
 func TestFrontmatterService_ValidateFieldTypes(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	ctx := context.Background()
@@ -292,7 +292,7 @@ func TestFrontmatterService_ValidateFieldTypes(t *testing.T) {
 // field preservation (FR6).
 func TestFrontmatterService_ValidateUnknownFieldPreservation(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	ctx := context.Background()
@@ -327,7 +327,7 @@ func TestFrontmatterService_ValidateUnknownFieldPreservation(t *testing.T) {
 func TestFrontmatterService_IntegrationWithSchemaEngine(t *testing.T) {
 	// Create a fake SchemaEngine for testing
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	ctx := context.Background()
@@ -395,7 +395,7 @@ func TestFrontmatterService_IntegrationWithSchemaEngine(t *testing.T) {
 func TestFrontmatterService_VaultIndexerIntegrationWorkflow(t *testing.T) {
 	// This test simulates the VaultIndexer workflow described in Dev Notes
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	ctx := context.Background()
@@ -444,7 +444,11 @@ This is a test project.`)
 	require.NoError(t, err, "Valid project frontmatter should pass validation")
 
 	// Step 5: Create Note and add to index (simulated)
-	note := domain.NewNote(domain.NewNoteID("test-project.md"), time.Now(), frontmatter)
+	note := domain.NewNote(
+		domain.NewNoteID("test-project.md"),
+		time.Now(),
+		frontmatter,
+	)
 	assert.Equal(t, "project", note.SchemaName())
 	assert.Equal(t, "Lithos", note.Frontmatter.Fields["name"])
 }
@@ -453,7 +457,7 @@ This is a test project.`)
 // across service boundaries.
 func TestFrontmatterService_IntegrationErrorHandling(t *testing.T) {
 	fakeSchemaEngine := &schema.SchemaEngine{}
-	fakeLogger := lithoslog.NewTest()
+	fakeLogger := lithosLog.NewTest()
 	service := NewFrontmatterService(fakeSchemaEngine, fakeLogger)
 
 	ctx := context.Background()

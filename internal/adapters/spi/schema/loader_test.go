@@ -37,7 +37,7 @@ func TestSchemaLoaderAdapter_LoadSuccess(t *testing.T) {
 	schemas, bank, err := adapter.Load(context.Background())
 	require.NoError(t, err)
 
-	assert.Len(t, bank.Properties, 3)
+	assert.Len(t, bank.Properties, 5)
 	assert.Len(t, schemas, 2)
 
 	names := []string{schemas[0].Name, schemas[1].Name}

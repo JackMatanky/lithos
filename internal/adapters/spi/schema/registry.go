@@ -17,7 +17,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -161,10 +161,10 @@ func (a *SchemaRegistryAdapter) GetSchema(
 
 	schema, exists := a.schemas[name]
 	if !exists {
-		return domain.Schema{}, lithoserrors.NewSchemaError(
+		return domain.Schema{}, lithosErr.NewSchemaError(
 			"schema not found",
 			name,
-			lithoserrors.ErrNotFound,
+			lithosErr.ErrNotFound,
 		)
 	}
 
@@ -208,10 +208,10 @@ func (a *SchemaRegistryAdapter) GetProperty(
 
 	property, exists := a.properties[name]
 	if !exists {
-		return domain.Property{}, lithoserrors.NewSchemaError(
+		return domain.Property{}, lithosErr.NewSchemaError(
 			"property not found",
 			name,
-			lithoserrors.ErrNotFound,
+			lithosErr.ErrNotFound,
 		)
 	}
 

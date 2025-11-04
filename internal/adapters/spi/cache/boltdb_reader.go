@@ -9,14 +9,14 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"go.etcd.io/bbolt"
 )
 
 // Compile-time interface compliance check.
-// This ensures BoltDBCacheReadAdapter implements QueryReaderPort correctly.
-var _ spi.QueryReaderPort = (*BoltDBCacheReadAdapter)(nil)
+// This ensures BoltDBCacheReadAdapter implements CacheReaderPort correctly.
+var _ spi.CacheReaderPort = (*BoltDBCacheReadAdapter)(nil)
 
 // BoltDBCacheReadAdapter implements CacheReaderPort for BoltDB-based
 // note retrieval with optimized queries for hot data access. It uses
@@ -70,7 +70,7 @@ func NewBoltDBCacheReadAdapter(
 		&options,
 	)
 	if err != nil {
-		return nil, lithoserrors.NewCacheReadError("", dbPath, "open_db", err)
+		return nil, lithosErr.NewCacheReadError("", dbPath, "open_db", err)
 	}
 
 	return &BoltDBCacheReadAdapter{
@@ -112,10 +112,10 @@ func (a *BoltDBCacheReadAdapter) Read(
 
 	note, err := a.findNoteByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, lithoserrors.ErrNotFound) {
-			return domain.Note{}, lithoserrors.ErrNotFound
+		if errors.Is(err, lithosErr.ErrNotFound) {
+			return domain.Note{}, lithosErr.ErrNotFound
 		}
-		return domain.Note{}, lithoserrors.NewCacheReadError(
+		return domain.Note{}, lithosErr.NewCacheReadError(
 			string(id),
 			"",
 			"read_scan",
@@ -173,10 +173,11 @@ func (a *BoltDBCacheReadAdapter) List(
 				return nil // Continue with other notes
 			}
 
-			// Reconstruct Note from metadata
+			// Reconstruct Note from metadata (including ModTime for staleness)
 			note := domain.Note{
-				ID:   domain.NewNoteID(metadata.ID),
-				Path: metadata.Path,
+				ID:      domain.NewNoteID(metadata.ID),
+				Path:    metadata.Path,
+				ModTime: metadata.FileModTime,
 				Frontmatter: domain.Frontmatter{
 					FileClass: metadata.FileClass,
 					Fields: map[string]interface{}{
@@ -193,7 +194,7 @@ func (a *BoltDBCacheReadAdapter) List(
 	})
 
 	if err != nil {
-		return nil, lithoserrors.NewCacheReadError(
+		return nil, lithosErr.NewCacheReadError(
 			"",
 			"",
 			"list_transaction",
@@ -235,7 +236,7 @@ func (a *BoltDBCacheReadAdapter) GetByPath(
 
 		metadataBytes := pathsBucket.Get([]byte(path))
 		if metadataBytes == nil {
-			return lithoserrors.ErrNotFound
+			return lithosErr.ErrNotFound
 		}
 
 		var metadata BoltDBNoteMetadata
@@ -249,10 +250,10 @@ func (a *BoltDBCacheReadAdapter) GetByPath(
 	})
 
 	if err != nil {
-		if errors.Is(err, lithoserrors.ErrNotFound) {
-			return domain.Note{}, lithoserrors.ErrNotFound
+		if errors.Is(err, lithosErr.ErrNotFound) {
+			return domain.Note{}, lithosErr.ErrNotFound
 		}
-		return domain.Note{}, lithoserrors.NewCacheReadError(
+		return domain.Note{}, lithosErr.NewCacheReadError(
 			"",
 			path,
 			"get_by_path",
@@ -304,7 +305,7 @@ func (a *BoltDBCacheReadAdapter) GetByFileClass(
 	})
 
 	if err != nil {
-		return nil, lithoserrors.NewCacheReadError(
+		return nil, lithosErr.NewCacheReadError(
 			"",
 			fileClass,
 			"get_by_file_class",
@@ -360,7 +361,7 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 	err := a.db.View(func(tx *bbolt.Tx) error {
 		pathsBucket := tx.Bucket([]byte(bucketPaths))
 		if pathsBucket == nil {
-			return lithoserrors.NewCacheReadError(
+			return lithosErr.NewCacheReadError(
 				"",
 				path,
 				"staleness_check",
@@ -371,12 +372,12 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 		metadataBytes := pathsBucket.Get([]byte(path))
 		if metadataBytes == nil {
 			// Note not in cache, consider it stale (needs indexing)
-			return lithoserrors.ErrNotFound
+			return lithosErr.ErrNotFound
 		}
 
 		var metadata BoltDBNoteMetadata
 		if err := json.Unmarshal(metadataBytes, &metadata); err != nil {
-			return lithoserrors.NewCacheReadError(
+			return lithosErr.NewCacheReadError(
 				"",
 				path,
 				"staleness_check",
@@ -386,7 +387,7 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 
 		// Check if file was modified after indexing
 		if metadata.FileModTime != fileModTime {
-			return lithoserrors.ErrNotFound // Signal stale
+			return lithosErr.ErrNotFound // Signal stale
 		}
 
 		// File is fresh
@@ -394,7 +395,7 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 	})
 
 	if err != nil {
-		if errors.Is(err, lithoserrors.ErrNotFound) {
+		if errors.Is(err, lithosErr.ErrNotFound) {
 			return true, nil // Note not found or modified, consider stale
 		}
 		return false, err // Other error
@@ -415,7 +416,7 @@ func (a *BoltDBCacheReadAdapter) findNoteByID(
 	err := a.db.View(func(tx *bbolt.Tx) error {
 		pathsBucket := tx.Bucket([]byte(bucketPaths))
 		if pathsBucket == nil {
-			return lithoserrors.NewCacheReadError(
+			return lithosErr.NewCacheReadError(
 				"",
 				"",
 				"bucket_missing",
@@ -456,7 +457,7 @@ func (a *BoltDBCacheReadAdapter) findNoteByID(
 	}
 
 	if !found {
-		return domain.Note{}, lithoserrors.ErrNotFound
+		return domain.Note{}, lithosErr.ErrNotFound
 	}
 
 	return note, nil
@@ -469,7 +470,7 @@ func (a *BoltDBCacheReadAdapter) getIDListForFileClass(
 ) ([]string, error) {
 	fileClassesBucket := tx.Bucket([]byte(bucketFileClasses))
 	if fileClassesBucket == nil {
-		return nil, lithoserrors.NewCacheReadError(
+		return nil, lithosErr.NewCacheReadError(
 			"",
 			"",
 			"bucket_missing",
@@ -497,7 +498,7 @@ func (a *BoltDBCacheReadAdapter) findMetadataForIDs(
 ) ([]BoltDBNoteMetadata, error) {
 	pathsBucket := tx.Bucket([]byte(bucketPaths))
 	if pathsBucket == nil {
-		return nil, lithoserrors.NewCacheReadError(
+		return nil, lithosErr.NewCacheReadError(
 			"",
 			"",
 			"bucket_missing",
@@ -549,7 +550,7 @@ func (a *BoltDBCacheReadAdapter) findMetadataForID(
 	}
 
 	if !found {
-		return nil, lithoserrors.ErrNotFound // Use sentinel error instead of nil, nil
+		return nil, lithosErr.ErrNotFound // Use sentinel error instead of nil, nil
 	}
 
 	return &metadata, nil
@@ -575,8 +576,9 @@ func (a *BoltDBCacheReadAdapter) reconstructNoteFromMetadata(
 	metadata BoltDBNoteMetadata,
 ) domain.Note {
 	return domain.Note{
-		ID:   id,
-		Path: metadata.Path,
+		ID:      id,
+		Path:    metadata.Path,
+		ModTime: metadata.FileModTime,
 		Frontmatter: domain.Frontmatter{
 			FileClass: metadata.FileClass,
 			Fields: map[string]interface{}{

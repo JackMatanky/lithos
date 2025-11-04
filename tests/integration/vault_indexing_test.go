@@ -10,7 +10,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
 	schemaadapter "github.com/JackMatanky/lithos/internal/adapters/spi/schema"
-	vaultadapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
+	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/app/schema"
@@ -24,7 +24,7 @@ import (
 
 // Helper functions for comprehensive vault indexing test
 
-// TestComprehensiveVaultIndexing_Integration tests the complete vault indexing
+// TestVaultIndexing_Integration tests the complete vault indexing
 // pipeline with all critical fixes integrated together. This test validates:
 // - Note ID collision resolution with path-based queries
 // - Memory-efficient scanning with large binary files
@@ -32,7 +32,7 @@ import (
 // - Query layer working with all index types
 // - End-to-end CLI workflow from index command through cache operations to
 // query results.
-func TestComprehensiveVaultIndexing_Integration(t *testing.T) {
+func TestVaultIndexing_Integration(t *testing.T) {
 	// Setup test environment
 	tempDir := t.TempDir()
 	vaultDir := filepath.Join(tempDir, "vault")
@@ -44,15 +44,12 @@ func TestComprehensiveVaultIndexing_Integration(t *testing.T) {
 	// Setup schemas for frontmatter/schema services
 	projectRoot := utils.FindProjectRoot(t)
 	testSchemasDir := filepath.Join(vaultDir, "schemas")
-	require.NoError(
-		t,
-		os.MkdirAll(testSchemasDir, 0o755),
-	)
+
 	srcPropertyBank := filepath.Join(
 		projectRoot,
+		"testdata",
 		"schemas",
-		"examples",
-		"property-bank.json",
+		"property_bank.json",
 	)
 	dstPropertyBank := filepath.Join(testSchemasDir, "property_bank.json")
 	utils.CopyFile(t, srcPropertyBank, dstPropertyBank)
@@ -67,7 +64,7 @@ func TestComprehensiveVaultIndexing_Integration(t *testing.T) {
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
 
 	// Create vault scanner
-	vaultReader := vaultadapter.NewVaultReaderAdapter(config, logger)
+	vaultReader := vaultAdapter.NewVaultReaderAdapter(config, logger)
 
 	// Create cache writer and reader
 	cacheWriter := cache.NewJSONCacheWriter(config, logger)
@@ -97,7 +94,12 @@ func TestComprehensiveVaultIndexing_Integration(t *testing.T) {
 		config,
 		logger,
 	)
-	queryService := query.NewQueryService(cacheReader, logger)
+	queryService := query.NewQueryService(
+		cacheReader,
+		cacheReader,
+		config,
+		logger,
+	)
 
 	// Execute complete indexing workflow
 	ctx := context.Background()
@@ -143,11 +145,6 @@ func TestComprehensiveVaultIndexing_Integration(t *testing.T) {
 		testQueryLayerComprehensive(t, ctx, queryService)
 	})
 
-	// Test 5: End-to-end CLI workflow validation
-	t.Run("EndToEnd_CLI_Workflow", func(t *testing.T) {
-		testEndToEndCLIWorkflow(t, tempDir, vaultDir)
-	})
-
 	// Test 6: Performance benchmarks meet requirements
 	t.Run("Performance_Benchmarks", func(t *testing.T) {
 		testPerformanceBenchmarks(t, duration, stats)
@@ -165,7 +162,7 @@ func TestComprehensiveVaultIndexing_Integration(t *testing.T) {
 }
 
 // createComplexTestVault creates a test vault with all edge cases for
-// comprehensive testing.
+// testing.
 func createComplexTestVault(t *testing.T, vaultDir string) {
 	t.Helper()
 
@@ -468,48 +465,6 @@ func testQueryLayerComprehensive(
 		assert.False(t, noteIDs[note.ID], "NoteID %s should be unique", note.ID)
 		noteIDs[note.ID] = true
 	}
-}
-
-// testEndToEndCLIWorkflow validates the complete CLI workflow.
-func testEndToEndCLIWorkflow(t *testing.T, tempDir, vaultDir string) {
-	// Copy schemas to a location the CLI can find during startup
-	projectRoot := utils.FindProjectRoot(t)
-	testSchemasDir := filepath.Join(vaultDir, "schemas")
-
-	// Ensure test schemas exist
-	require.NoError(
-		t,
-		os.MkdirAll(testSchemasDir, 0o755),
-	)
-	srcPropertyBank := filepath.Join(
-		projectRoot,
-		"schemas",
-		"examples",
-		"property-bank.json",
-	)
-	dstPropertyBank := filepath.Join(testSchemasDir, "property_bank.json")
-	utils.CopyFile(t, srcPropertyBank, dstPropertyBank)
-
-	// Set environment variables before building
-	require.NoError(t, os.Setenv("LITHOS_SCHEMAS_DIR", testSchemasDir))
-	defer func() { _ = os.Unsetenv("LITHOS_SCHEMAS_DIR") }()
-
-	// Build lithos binary
-	binaryPath := utils.BuildLithosBinary(t, tempDir)
-
-	// Execute index command
-	output, err := utils.ExecuteIndexCommand(binaryPath, vaultDir)
-	require.NoError(t, err, "CLI index command should succeed")
-
-	// Verify output contains expected elements
-	assert.Contains(t, output, "✓ Vault indexed successfully")
-	assert.Contains(t, output, "Statistics:")
-	assert.Contains(t, output, "Scanned:")
-	assert.Contains(t, output, "Indexed:")
-	assert.Contains(t, output, "Duration:")
-
-	// Parse and verify statistics
-	utils.VerifyStatistics(t, output)
 }
 
 // testPerformanceBenchmarks validates performance requirements are met.

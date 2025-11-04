@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -106,9 +106,9 @@ func TestSchemaRegistryAdapter_GetSchema_NotFound(t *testing.T) {
 
 	_, err := registry.GetSchema(context.Background(), "nonexistent")
 	require.Error(t, err)
-	require.ErrorIs(t, err, lithoserrors.ErrNotFound)
+	require.ErrorIs(t, err, lithosErr.ErrNotFound)
 
-	var schemaErr *lithoserrors.SchemaError
+	var schemaErr *lithosErr.SchemaError
 	require.ErrorAs(t, err, &schemaErr)
 	assert.Equal(t, "nonexistent", schemaErr.SchemaName)
 }
@@ -137,9 +137,9 @@ func TestSchemaRegistryAdapter_GetProperty_NotFound(t *testing.T) {
 
 	_, err := registry.GetProperty(context.Background(), "nonexistent")
 	require.Error(t, err)
-	require.ErrorIs(t, err, lithoserrors.ErrNotFound)
+	require.ErrorIs(t, err, lithosErr.ErrNotFound)
 
-	var schemaErr *lithoserrors.SchemaError
+	var schemaErr *lithosErr.SchemaError
 	require.ErrorAs(t, err, &schemaErr)
 	assert.Equal(t, "nonexistent", schemaErr.SchemaName)
 }

@@ -7,7 +7,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/moby/sys/atomicwriter"
 	"github.com/rs/zerolog"
 )
@@ -88,14 +88,14 @@ func marshalNote(note domain.Note) ([]byte, error) {
 // context.
 // Includes note ID, file path, operation name, and underlying cause.
 func wrapCacheWriteError(noteID, path, operation string, cause error) error {
-	return lithoserrors.NewCacheWriteError(noteID, path, operation, cause)
+	return lithosErr.NewCacheWriteError(noteID, path, operation, cause)
 }
 
 // wrapCacheDeleteError creates a standardized CacheDeleteError with operation
 // context.
 // Includes note ID, file path, operation name, and underlying cause.
 func wrapCacheDeleteError(noteID, path, operation string, cause error) error {
-	return lithoserrors.NewCacheDeleteError(noteID, path, operation, cause)
+	return lithosErr.NewCacheDeleteError(noteID, path, operation, cause)
 }
 
 // Persist atomically writes note to cache using temp-file + rename pattern.

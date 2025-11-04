@@ -47,11 +47,7 @@ func TestConfigLoading_Integration(t *testing.T) {
 	assert.Equal(t, vaultDir, cfg.VaultPath)
 	assert.Equal(t, "testdata/templates", cfg.TemplatesDir)
 	assert.Equal(t, "testdata/schemas", cfg.SchemasDir)
-	assert.Equal(
-		t,
-		"testdata/schemas/properties/bank.json",
-		cfg.PropertyBankFile,
-	)
+	assert.Equal(t, "property_bank.json", cfg.PropertyBankFile)
 	assert.Equal(t, ".cache", cfg.CacheDir)
 	assert.Equal(t, "info", cfg.LogLevel)
 }

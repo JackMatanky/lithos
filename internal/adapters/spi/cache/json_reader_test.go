@@ -8,8 +8,8 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
-	lithoslog "github.com/JackMatanky/lithos/internal/shared/logger"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosLog "github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +17,7 @@ import (
 // TestNewJSONCacheReader tests the JSONCacheReadAdapter constructor.
 // TestNewJSONCacheReader tests the function.
 func TestNewJSONCacheReader(t *testing.T) {
-	log := lithoslog.New(os.Stdout, "debug")
+	log := lithosLog.New(os.Stdout, "debug")
 	config := domain.Config{CacheDir: "/tmp/cache"}
 
 	adapter := NewJSONCacheReader(config, log)
@@ -41,7 +41,7 @@ func TestRead(t *testing.T) {
 		_ = os.RemoveAll(cacheDir) // Ignore cleanup errors in tests
 	}()
 
-	log := lithoslog.New(os.Stdout, "debug")
+	log := lithosLog.New(os.Stdout, "debug")
 	config := domain.Config{CacheDir: cacheDir}
 	adapter := NewJSONCacheReader(config, log)
 
@@ -93,7 +93,7 @@ func TestRead(t *testing.T) {
 			wantErr:     true,
 			errContains: "not found",
 			validateFunc: func(t *testing.T, note domain.Note, err error) {
-				assert.Equal(t, lithoserrors.ErrNotFound, err)
+				assert.Equal(t, lithosErr.ErrNotFound, err)
 			},
 		},
 		{
@@ -391,7 +391,7 @@ func TestList(t *testing.T) {
 				_ = os.RemoveAll(cacheDir) // Ignore cleanup errors in tests
 			}()
 
-			log := lithoslog.New(os.Stdout, "debug")
+			log := lithosLog.New(os.Stdout, "debug")
 			config := domain.Config{CacheDir: cacheDir}
 			adapter := NewJSONCacheReader(config, log)
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // SchemaExtender handles extends/excludes inheritance attribute processing.
@@ -142,7 +142,7 @@ func (e *SchemaExtender) processParentInCycle(
 	if recStack[parent] {
 		// Cycle detected - build cycle path
 		cyclePath := strings.Join(append(path, parent), " → ")
-		return lithoserrors.NewSchemaErrorWithRemediation(
+		return lithosErr.NewSchemaErrorWithRemediation(
 			fmt.Sprintf("circular inheritance: %s", cyclePath),
 			name,
 			"remove circular dependency by breaking inheritance chain",

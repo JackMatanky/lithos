@@ -258,12 +258,33 @@ strict = true
 
 # importas: enforce consistent import aliases
 [linters.settings.importas]
-# rules = [
-#   { path = "context", alias = "context" },
-#   { path = "encoding/json", alias = "json" },
-#   { path = "golang.org/x/sync/errgroup", alias = "errgroup" },
-#   { path = "k8s.io/client-go/kubernetes", alias = "kubernetes" },
-# ]
+# Shared packages used across Lithos.
+[[linters.settings.importas.rules]]
+path = "github.com/JackMatanky/lithos/internal/shared/errors"
+alias = "lithosErr"
+
+[[linters.settings.importas.rules]]
+path = "github.com/JackMatanky/lithos/internal/shared/logging"
+alias = "lithosLog"
+
+# Packages within the template domain.
+[[linters.settings.importas.rules]]
+path = "github.com/JackMatanky/lithos/internal/adapters/spi/template"
+alias = "templateAdapter"
+
+[[linters.settings.importas.rules]]
+path = "github.com/JackMatanky/lithos/internal/app/template"
+alias = "templateService"
+
+# Packages within the vault domain.
+[[linters.settings.importas.rules]]
+path = "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
+alias = "vaultAdapter"
+
+[[linters.settings.importas.rules]]
+path = "github.com/JackMatanky/lithos/internal/app/vault"
+alias = "vaultService"
+
 
 # interfacebloat: limit interface size
 # If your version supports configuration, `max` sets the allowed method count.

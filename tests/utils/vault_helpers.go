@@ -34,6 +34,7 @@ func CopyFile(t *testing.T, src, dst string) {
 		src,
 	)
 	require.NoError(t, err)
+	require.NoError(t, os.MkdirAll(filepath.Dir(dst), 0o750))
 	require.NoError(
 		t,
 		os.WriteFile(

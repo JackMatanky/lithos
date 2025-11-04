@@ -9,7 +9,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"go.etcd.io/bbolt"
 )
@@ -87,7 +87,7 @@ func NewBoltDBCacheWriter(
 		&options,
 	)
 	if err != nil {
-		return nil, lithoserrors.NewCacheWriteError("", dbPath, "open_db", err)
+		return nil, lithosErr.NewCacheWriteError("", dbPath, "open_db", err)
 	}
 
 	// Initialize buckets
@@ -110,7 +110,12 @@ func NewBoltDBCacheWriter(
 	})
 	if err != nil {
 		_ = db.Close()
-		return nil, lithoserrors.NewCacheWriteError("", dbPath, "init_buckets", err)
+		return nil, lithosErr.NewCacheWriteError(
+			"",
+			dbPath,
+			"init_buckets",
+			err,
+		)
 	}
 
 	return &BoltDBCacheWriteAdapter{
@@ -231,7 +236,7 @@ func (a *BoltDBCacheWriteAdapter) Persist(
 	// Serialize metadata
 	data, err := json.Marshal(metadata)
 	if err != nil {
-		return lithoserrors.NewCacheWriteError(
+		return lithosErr.NewCacheWriteError(
 			string(note.ID),
 			note.Path,
 			"serialize_metadata",
@@ -245,7 +250,7 @@ func (a *BoltDBCacheWriteAdapter) Persist(
 	})
 
 	if err != nil {
-		return lithoserrors.NewCacheWriteError(
+		return lithosErr.NewCacheWriteError(
 			string(note.ID),
 			note.Path,
 			"persist_transaction",
@@ -294,7 +299,7 @@ func (a *BoltDBCacheWriteAdapter) Delete(
 	})
 
 	if err != nil {
-		return lithoserrors.NewCacheDeleteError(
+		return lithosErr.NewCacheDeleteError(
 			string(id),
 			"",
 			"delete_transaction",

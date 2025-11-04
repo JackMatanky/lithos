@@ -41,8 +41,8 @@ type FilterFunc func(path string, info os.FileInfo) bool
 
 // VaultReaderAdapter implements both VaultScannerPort and VaultReaderPort using
 // filesystem operations. It provides vault scanning and single file reading
-// capabilities with proper error handling,
-// cache directory filtering, and security measures against path traversal.
+// capabilities with proper error handling, cache directory filtering, and
+// security measures against path traversal.
 type VaultReaderAdapter struct {
 	config   domain.Config
 	log      zerolog.Logger

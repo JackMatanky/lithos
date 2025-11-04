@@ -9,7 +9,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	mocks "github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
@@ -269,7 +269,7 @@ func TestFormatError_FormatsResourceErrorCorrectly(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	resourceErr := lithoserrors.NewResourceError(
+	resourceErr := lithosErr.NewResourceError(
 		"template",
 		"load",
 		"my-template",
@@ -280,12 +280,12 @@ func TestFormatError_FormatsResourceErrorCorrectly(t *testing.T) {
 	assert.Equal(t, "template 'my-template' not found in template", err.Error())
 }
 
-// TestFormatError_FormatsTemplateErrorCorrectly covers template lithoserrors.
+// TestFormatError_FormatsTemplateErrorCorrectly covers template lithosErr.
 func TestFormatError_FormatsTemplateErrorCorrectly(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	templateErr := lithoserrors.NewTemplateError(
+	templateErr := lithosErr.NewTemplateError(
 		"parse failed",
 		"my-template",
 		nil,
@@ -304,7 +304,7 @@ func TestFormatError_FormatsGenericErrorCorrectly(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	genericErr := lithoserrors.NewBaseError("something went wrong", nil)
+	genericErr := lithosErr.NewBaseError("something went wrong", nil)
 	err := adapter.formatError(genericErr)
 
 	assert.Equal(t, "error: something went wrong", err.Error())

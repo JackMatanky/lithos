@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // PropertyRef represents a reference to a property definition in the
@@ -120,7 +120,7 @@ func (d *PropertyDereferencer) resolvePropertyRef(
 	// Look up the property definition in the bank
 	bankProp, exists := bank.Lookup(propRef.Ref)
 	if !exists {
-		return domain.Property{}, lithoserrors.NewSchemaErrorWithRemediation(
+		return domain.Property{}, lithosErr.NewSchemaErrorWithRemediation(
 			fmt.Sprintf(
 				"schema %s, property %s: $ref '%s' not found in property bank",
 				schemaName,
@@ -153,7 +153,7 @@ func (d *PropertyDereferencer) resolvePropertyRef(
 	// Validate the resolved property (bank properties are assumed valid,
 	// but we need to validate the new name and structure)
 	if err := (&resolvedProp).Validate(ctx); err != nil {
-		return domain.Property{}, lithoserrors.NewSchemaErrorWithRemediation(
+		return domain.Property{}, lithosErr.NewSchemaErrorWithRemediation(
 			fmt.Sprintf(
 				"schema %s, property %s: resolved $ref validation failed: %v",
 				schemaName,

@@ -1,7 +1,0 @@
-{
-  "vault_path": "testdata",
-  "templates_dir": "templates",
-  "schemas_dir": "schema",
-  "cache_dir": ".cache",
-  "log_level": "debug"
-}
