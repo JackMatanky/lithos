@@ -622,7 +622,7 @@ func (v *VaultIndexer) processFile(
 
 	// Create Note with frontmatter (validated or basic)
 	noteID := deriveNoteIDFromPath(v.config.VaultPath, file.Path)
-	note := domain.NewNote(noteID, noteFrontmatter)
+	note := domain.NewNote(noteID, file.ModTime, noteFrontmatter)
 
 	// Persist to cache
 	if persistErr := v.cacheWriter.Persist(ctx, note); persistErr != nil {

@@ -32,7 +32,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -223,7 +223,7 @@ func (q *QueryService) ByID(
 
 	note, exists := q.byID[id]
 	if !exists {
-		return domain.Note{}, lithoserrors.NewResourceError(
+		return domain.Note{}, lithosErr.NewResourceError(
 			"note",
 			"get",
 			id.String(),
@@ -260,7 +260,7 @@ func (q *QueryService) ByPath(
 
 	note, exists := q.byPath[path]
 	if !exists {
-		return domain.Note{}, lithoserrors.NewResourceError(
+		return domain.Note{}, lithosErr.NewResourceError(
 			"note",
 			"get",
 			path,
@@ -606,82 +606,75 @@ func (q *QueryService) updateIndicesIncremental(notes []domain.Note) {
 
 		// Update byBasename
 		basename := extractBasenameFromNoteID(note.ID)
-		// Remove old entries for this note from byBasename
-		for b, notes := range q.byBasename {
-			for i, n := range notes {
-				if n.ID == note.ID {
-					q.byBasename[b] = append(
-						q.byBasename[b][:i],
-						q.byBasename[b][i+1:]...)
-					break
-				}
-			}
-		}
+		q.removeNoteFromMapOfSlices(q.byBasename, note.ID)
 		q.byBasename[basename] = append(q.byBasename[basename], note)
 
 		// Update byFileClass using configurable key
-		// First remove old entries
-		for fc, notes := range q.byFileClass {
-			for i, n := range notes {
-				if n.ID == note.ID {
-					q.byFileClass[fc] = append(
-						q.byFileClass[fc][:i],
-						q.byFileClass[fc][i+1:]...)
-					break
-				}
-			}
-		}
-		// Add new entry
+		q.removeNoteFromMapOfSlices(q.byFileClass, note.ID)
 		if fileClassValue, exists := note.Frontmatter.Fields[q.config.FileClassKey]; exists {
 			if fc, ok := fileClassValue.(string); ok && fc != "" {
 				q.byFileClass[fc] = append(q.byFileClass[fc], note)
 			}
 		}
 
-		// Update byFrontmatter
-		// This is complex, so for incremental, we rebuild the entire
-		// frontmatter index
-		// In production, this could be optimized further
-		q.rebuildFrontmatterIndex([]domain.Note{note})
+		// Update byFrontmatter (remove old entries and add new)
+		q.removeNoteFromFrontmatterIndexes(note.ID)
+		q.addNoteToFrontmatterIndexes(note)
 	}
 }
 
-func (q *QueryService) rebuildFrontmatterIndex(notes []domain.Note) {
-	// For incremental updates, we need to rebuild frontmatter index for
-	// affected notes This is a simplified implementation; production might need
-	// more optimization
-	for _, note := range notes {
-		// Remove old frontmatter entries for this note
-		for field, valueMap := range q.byFrontmatter {
-			for value, notes := range valueMap {
-				for i, n := range notes {
-					if n.ID == note.ID {
-						q.byFrontmatter[field][value] = append(
-							q.byFrontmatter[field][value][:i],
-							q.byFrontmatter[field][value][i+1:]...,
-						)
-						break
-					}
+// Legacy helper replaced by granular incremental index updates inside
+// updateIndicesIncremental. Removed to reduce cognitive complexity and resolve
+// unused-function lint warning.
+
+// removeNoteFromMapOfSlices removes a note with the given id from all slices in
+// the map.
+func (q *QueryService) removeNoteFromMapOfSlices(
+	m map[string][]domain.Note,
+	id domain.NoteID,
+) {
+	for k, notes := range m {
+		for i, n := range notes {
+			if n.ID == id {
+				m[k] = append(notes[:i], notes[i+1:]...)
+				break
+			}
+		}
+	}
+}
+
+// removeNoteFromFrontmatterIndexes removes the note with the provided id from
+// the frontmatter index.
+func (q *QueryService) removeNoteFromFrontmatterIndexes(id domain.NoteID) {
+	for field, valueMap := range q.byFrontmatter {
+		for value, notes := range valueMap {
+			for i, n := range notes {
+				if n.ID == id {
+					q.byFrontmatter[field][value] = append(
+						notes[:i],
+						notes[i+1:]...)
+					break
 				}
 			}
 		}
+	}
+}
 
-		// Add new frontmatter entries
-		for field, value := range note.Frontmatter.Fields {
-			canonicalValue, ok := canonicalizeFrontmatterValue(value)
-			if !ok || !isComparableForIndex(canonicalValue) {
-				continue
-			}
-
-			if q.byFrontmatter[field] == nil {
-				q.byFrontmatter[field] = make(map[interface{}][]domain.Note)
-			}
-
-			q.byFrontmatter[field][canonicalValue] = append(
-				q.byFrontmatter[field][canonicalValue],
-				note,
-			)
+// addNoteToFrontmatterIndexes inserts note into frontmatter index for all its
+// fields.
+func (q *QueryService) addNoteToFrontmatterIndexes(note domain.Note) {
+	for field, value := range note.Frontmatter.Fields {
+		canonicalValue, ok := canonicalizeFrontmatterValue(value)
+		if !ok || !isComparableForIndex(canonicalValue) {
+			continue
 		}
+		if q.byFrontmatter[field] == nil {
+			q.byFrontmatter[field] = make(map[interface{}][]domain.Note)
+		}
+		q.byFrontmatter[field][canonicalValue] = append(
+			q.byFrontmatter[field][canonicalValue],
+			note,
+		)
 	}
 }
 

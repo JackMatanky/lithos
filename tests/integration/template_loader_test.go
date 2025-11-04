@@ -11,11 +11,7 @@ import (
 )
 
 // TestTemplateLoaderAdapter_Integration tests template loading with real
-// filesystem
-//
-// validation.
-//
-//nolint:gocognit // Integration test with multiple sub-tests for comprehensive
+// filesystem validation.
 func TestTemplateLoaderAdapter_Integration(t *testing.T) {
 	// Get the testdata/templates directory path
 	templatesDir := filepath.Join("..", "..", "testdata", "templates")
@@ -28,104 +24,130 @@ func TestTemplateLoaderAdapter_Integration(t *testing.T) {
 	adapter := template.NewTemplateLoaderAdapter(&config, &logger)
 	ctx := context.Background()
 
-	// Test List() finds expected templates
-	t.Run("List", func(t *testing.T) {
-		templates, err := adapter.List(ctx)
-		if err != nil {
-			t.Fatalf("List() error = %v", err)
-		}
+	t.Run("List", func(t *testing.T) { testList(t, adapter, ctx) })
+	t.Run(
+		"Load_static_template",
+		func(t *testing.T) { testLoadStaticTemplate(t, adapter, ctx) },
+	)
+	t.Run(
+		"Load_basic_note",
+		func(t *testing.T) { testLoadBasicNote(t, adapter, ctx) },
+	)
+	t.Run(
+		"Load_nonexistent",
+		func(t *testing.T) { testLoadNonexistentTemplate(t, adapter, ctx) },
+	)
+}
 
-		// Should find basic_note.md and static_template.md (ignoring .txt
-		// files)
-		expectedTemplates := []domain.TemplateID{
-			"basic_note",
-			"static_template",
-		}
-		if len(templates) != len(expectedTemplates) {
-			t.Errorf(
-				"List() returned %d templates, want %d",
-				len(templates),
-				len(expectedTemplates),
-			)
-			t.Logf("Found templates: %v", templates)
-			return
-		}
+func testList(
+	t *testing.T,
+	adapter *template.TemplateLoaderAdapter,
+	ctx context.Context,
+) {
+	templates, err := adapter.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
 
-		// Check that expected templates are present
-		found := make(map[domain.TemplateID]bool)
-		for _, id := range templates {
-			found[id] = true
-		}
+	// Should find basic_note.md and static_template.md (ignoring .txt
+	// files)
+	expectedTemplates := []domain.TemplateID{
+		"basic_note",
+		"static_template",
+	}
+	if len(templates) != len(expectedTemplates) {
+		t.Errorf(
+			"List() returned %d templates, want %d",
+			len(templates),
+			len(expectedTemplates),
+		)
+		t.Logf("Found templates: %v", templates)
+		return
+	}
 
-		for _, expectedID := range expectedTemplates {
-			if !found[expectedID] {
-				t.Errorf("List() missing expected template %s", expectedID)
-			}
-		}
-	})
+	// Check that expected templates are present
+	found := make(map[domain.TemplateID]bool)
+	for _, id := range templates {
+		found[id] = true
+	}
 
-	// Test Load() for static_template
-	t.Run("Load_static_template", func(t *testing.T) {
-		// First populate metadata cache
-		_, err := adapter.List(ctx)
-		if err != nil {
-			t.Fatalf("List() error = %v", err)
+	for _, expectedID := range expectedTemplates {
+		if !found[expectedID] {
+			t.Errorf("List() missing expected template %s", expectedID)
 		}
+	}
+}
 
-		tmpl, err := adapter.Load(ctx, "static_template")
-		if err != nil {
-			t.Fatalf("Load() error = %v", err)
-		}
+func testLoadStaticTemplate(
+	t *testing.T,
+	adapter *template.TemplateLoaderAdapter,
+	ctx context.Context,
+) {
+	// First populate metadata cache
+	_, err := adapter.List(ctx)
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
 
-		if tmpl.ID != "static_template" {
-			t.Errorf("Template ID = %s, want static_template", tmpl.ID)
-		}
+	tmpl, err := adapter.Load(ctx, "static_template")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
 
-		// Check that content contains expected text
-		expectedContent := "# Static Template Example"
-		if tmpl.Content == "" {
-			t.Error("Template content is empty")
-		}
-		if !contains(tmpl.Content, expectedContent) {
-			t.Errorf(
-				"Template content does not contain expected text %q",
-				expectedContent,
-			)
-		}
-	})
+	if tmpl.ID != "static_template" {
+		t.Errorf("Template ID = %s, want static_template", tmpl.ID)
+	}
 
-	// Test Load() for basic_note
-	t.Run("Load_basic_note", func(t *testing.T) {
-		// Metadata cache should already be populated from previous test
-		tmpl, err := adapter.Load(ctx, "basic_note")
-		if err != nil {
-			t.Fatalf("Load() error = %v", err)
-		}
+	// Check that content contains expected text
+	expectedContent := "# Static Template Example"
+	if tmpl.Content == "" {
+		t.Error("Template content is empty")
+	}
+	if !contains(tmpl.Content, expectedContent) {
+		t.Errorf(
+			"Template content does not contain expected text %q",
+			expectedContent,
+		)
+	}
+}
 
-		if tmpl.ID != "basic_note" {
-			t.Errorf("Template ID = %s, want basic_note", tmpl.ID)
-		}
+func testLoadBasicNote(
+	t *testing.T,
+	adapter *template.TemplateLoaderAdapter,
+	ctx context.Context,
+) {
+	// Metadata cache should already be populated from previous test
+	tmpl, err := adapter.Load(ctx, "basic_note")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
 
-		// Check that content contains expected text
-		expectedContent := "# {{if .title}}{{.title}}{{else}}Untitled Note{{end}}"
-		if tmpl.Content == "" {
-			t.Error("Template content is empty")
-		}
-		if !contains(tmpl.Content, expectedContent) {
-			t.Errorf(
-				"Template content does not contain expected text %q",
-				expectedContent,
-			)
-		}
-	})
+	if tmpl.ID != "basic_note" {
+		t.Errorf("Template ID = %s, want basic_note", tmpl.ID)
+	}
 
-	// Test Load() with nonexistent template
-	t.Run("Load_nonexistent", func(t *testing.T) {
-		_, err := adapter.Load(ctx, "nonexistent-template")
-		if err == nil {
-			t.Error("Load() with nonexistent template should return error")
-		}
-	})
+	// Check that content contains expected text
+	expectedContent := "# {{if .title}}{{.title}}{{else}}Untitled Note{{end}}"
+	if tmpl.Content == "" {
+		t.Error("Template content is empty")
+	}
+	if !contains(tmpl.Content, expectedContent) {
+		t.Errorf(
+			"Template content does not contain expected text %q",
+			expectedContent,
+		)
+	}
+}
+
+func testLoadNonexistentTemplate(
+	t *testing.T,
+	adapter *template.TemplateLoaderAdapter,
+	ctx context.Context,
+) {
+	_, err := adapter.Load(ctx, "nonexistent-template")
+	if err == nil {
+		t.Error("Load() with nonexistent template should return error")
+	}
 }
 
 // contains checks if a string contains a substring.

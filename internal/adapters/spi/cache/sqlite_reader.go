@@ -9,7 +9,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	_ "modernc.org/sqlite" // Register SQLite driver
 )
@@ -68,7 +68,7 @@ func NewSQLiteCacheReadAdapter(
 	dbPath := filepath.Join(config.CacheDir, "cache.db")
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
-		return nil, lithoserrors.NewCacheReadError("", dbPath, "open_db", err)
+		return nil, lithosErr.NewCacheReadError("", dbPath, "open_db", err)
 	}
 
 	// Enable foreign keys for consistency
@@ -77,7 +77,7 @@ func NewSQLiteCacheReadAdapter(
 		"PRAGMA foreign_keys = ON;",
 	); execErr != nil {
 		_ = db.Close()
-		return nil, lithoserrors.NewCacheReadError(
+		return nil, lithosErr.NewCacheReadError(
 			"",
 			dbPath,
 			"init_pragmas",
@@ -124,6 +124,7 @@ func (a *SQLiteCacheReadAdapter) Read(
 	var title, fileClass sql.NullString
 	var frontmatterJSON string
 
+	var fileModTime sql.NullTime
 	err := a.executeReadQuery(
 		ctx,
 		id,
@@ -132,9 +133,15 @@ func (a *SQLiteCacheReadAdapter) Read(
 		&title,
 		&fileClass,
 		&frontmatterJSON,
+		&fileModTime,
 	)
 	if err != nil {
 		return domain.Note{}, err
+	}
+
+	var modTime time.Time
+	if fileModTime.Valid {
+		modTime = fileModTime.Time
 	}
 
 	return a.reconstructNote(
@@ -144,6 +151,7 @@ func (a *SQLiteCacheReadAdapter) Read(
 		title,
 		fileClass,
 		frontmatterJSON,
+		modTime,
 	)
 }
 
@@ -170,13 +178,13 @@ func (a *SQLiteCacheReadAdapter) List(
 	}
 
 	query := `
-		SELECT id, path, title, file_class, frontmatter
+		SELECT id, path, title, file_class, frontmatter, file_mod_time
 		FROM notes
 		ORDER BY path`
 
 	rows, err := a.db.QueryContext(ctx, query)
 	if err != nil {
-		return nil, lithoserrors.NewCacheReadError(
+		return nil, lithosErr.NewCacheReadError(
 			"",
 			"",
 			"list_query",
@@ -220,14 +228,14 @@ func (a *SQLiteCacheReadAdapter) ListStale(
 	}
 
 	query := `
-		SELECT id, path, title, file_class, frontmatter
+		SELECT id, path, title, file_class, frontmatter, file_mod_time
 		FROM notes
 		WHERE file_mod_time > ?
 		ORDER BY file_mod_time ASC`
 
 	rows, err := a.db.QueryContext(ctx, query, since)
 	if err != nil {
-		return nil, lithoserrors.NewCacheReadError(
+		return nil, lithosErr.NewCacheReadError(
 			"",
 			"",
 			"list_stale_query",
@@ -266,12 +274,18 @@ func (a *SQLiteCacheReadAdapter) processListRows(
 		var id, path string
 		var title, fileClass sql.NullString
 		var frontmatterJSON string
+		var fileModTime sql.NullTime
 
-		if err := rows.Scan(&id, &path, &title, &fileClass, &frontmatterJSON); err != nil {
+		if err := rows.Scan(&id, &path, &title, &fileClass, &frontmatterJSON, &fileModTime); err != nil {
 			a.log.Warn().
 				Err(err).
 				Msg("Failed to scan note row, skipping")
 			continue
+		}
+
+		var modTime time.Time
+		if fileModTime.Valid {
+			modTime = fileModTime.Time
 		}
 
 		note, err := a.reconstructNote(
@@ -281,6 +295,7 @@ func (a *SQLiteCacheReadAdapter) processListRows(
 			title,
 			fileClass,
 			frontmatterJSON,
+			modTime,
 		)
 		if err != nil {
 			a.log.Warn().
@@ -294,7 +309,7 @@ func (a *SQLiteCacheReadAdapter) processListRows(
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, lithoserrors.NewCacheReadError(
+		return nil, lithosErr.NewCacheReadError(
 			"",
 			"",
 			"list_rows",
@@ -312,9 +327,10 @@ func (a *SQLiteCacheReadAdapter) executeReadQuery(
 	dbID, path *string,
 	title, fileClass *sql.NullString,
 	frontmatterJSON *string,
+	fileModTime *sql.NullTime,
 ) error {
 	query := `
-		SELECT id, path, title, file_class, frontmatter
+		SELECT id, path, title, file_class, frontmatter, file_mod_time
 		FROM notes
 		WHERE id = ?`
 
@@ -324,13 +340,14 @@ func (a *SQLiteCacheReadAdapter) executeReadQuery(
 		title,
 		fileClass,
 		frontmatterJSON,
+		fileModTime,
 	)
 
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return lithoserrors.ErrNotFound
+			return lithosErr.ErrNotFound
 		}
-		return lithoserrors.NewCacheReadError(
+		return lithosErr.NewCacheReadError(
 			string(id),
 			"",
 			"read_query",
@@ -347,11 +364,12 @@ func (a *SQLiteCacheReadAdapter) reconstructNote(
 	dbID, path string,
 	title, fileClass sql.NullString,
 	frontmatterJSON string,
+	fileModTime time.Time,
 ) (domain.Note, error) {
 	// Parse frontmatter JSON
 	var fields map[string]interface{}
 	if err := json.Unmarshal([]byte(frontmatterJSON), &fields); err != nil {
-		return domain.Note{}, lithoserrors.NewCacheReadError(
+		return domain.Note{}, lithosErr.NewCacheReadError(
 			string(id),
 			path,
 			"unmarshal_frontmatter",
@@ -361,11 +379,14 @@ func (a *SQLiteCacheReadAdapter) reconstructNote(
 
 	// Verify ID matches (should always be true)
 	if dbID != string(id) {
-		return domain.Note{}, lithoserrors.NewCacheReadError(
+		return domain.Note{}, lithosErr.NewCacheReadError(
 			string(id),
 			path,
 			"id_mismatch",
-			lithoserrors.NewBaseError("database ID does not match requested ID", nil),
+			lithosErr.NewBaseError(
+				"database ID does not match requested ID",
+				nil,
+			),
 		)
 	}
 
@@ -375,10 +396,11 @@ func (a *SQLiteCacheReadAdapter) reconstructNote(
 		}
 	}
 
-	// Reconstruct Note
+	// Reconstruct Note (include ModTime for staleness)
 	note := domain.Note{
-		ID:   id,
-		Path: path,
+		ID:      id,
+		Path:    path,
+		ModTime: fileModTime,
 		Frontmatter: domain.Frontmatter{
 			FileClass: fileClass.String, // Use empty string if NULL
 			Fields:    fields,

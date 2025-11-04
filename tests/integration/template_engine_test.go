@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	templateloader "github.com/JackMatanky/lithos/internal/adapters/spi/template"
-	templateservice "github.com/JackMatanky/lithos/internal/app/template"
+	templateAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/template"
+	templateService "github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -28,14 +28,14 @@ func TestTemplateEngine_RenderStaticTemplate(t *testing.T) {
 	logger := zerolog.Nop()
 
 	// Create template loader with testdata directory
-	loader := templateloader.NewTemplateLoaderAdapter(&config, &logger)
+	loader := templateAdapter.NewTemplateLoaderAdapter(&config, &logger)
 
 	// List templates to populate metadata cache
 	_, err := loader.List(ctx)
 	require.NoError(t, err)
 
 	// Create template engine
-	engine := templateservice.NewTemplateEngine(loader, &config, &logger)
+	engine := templateService.NewTemplateEngine(loader, &config, &logger)
 
 	// Load and render static template
 	templateID := domain.NewTemplateID("static_template")

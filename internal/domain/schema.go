@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // Schema defines metadata structure with property constraints and inheritance.
@@ -135,7 +135,7 @@ func (s *Schema) Validate(ctx context.Context) error {
 // validateName ensures schema name is not empty.
 func (s *Schema) validateName() error {
 	if s.Name == "" {
-		return lithoserrors.NewSchemaErrorWithRemediation(
+		return lithosErr.NewSchemaErrorWithRemediation(
 			"schema name cannot be empty",
 			"",
 			"provide a unique schema name matching expected fileClass values",
@@ -148,7 +148,7 @@ func (s *Schema) validateName() error {
 // validateExcludesConstraint ensures excludes is only used with extends.
 func (s *Schema) validateExcludesConstraint() error {
 	if len(s.Excludes) > 0 && s.Extends == "" {
-		return lithoserrors.NewSchemaErrorWithRemediation(
+		return lithosErr.NewSchemaErrorWithRemediation(
 			"excludes can only be set when extends is not empty",
 			s.Name,
 			"either set extends to parent schema name or remove excludes",
@@ -201,7 +201,7 @@ func (s *Schema) validateUniquePropertyName(
 	seen map[string]bool,
 ) error {
 	if seen[name] {
-		return lithoserrors.NewSchemaErrorWithRemediation(
+		return lithosErr.NewSchemaErrorWithRemediation(
 			fmt.Sprintf("duplicate property name: %s", name),
 			s.Name,
 			"ensure all property names within a schema are unique",

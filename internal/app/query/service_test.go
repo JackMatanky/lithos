@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -292,7 +292,7 @@ func TestQueryService_ByID_MissingNote(t *testing.T) {
 	note, err := qs.ByID(ctx, domain.NoteID("missing-note.md"))
 
 	require.Error(t, err, "ByID should return error for missing note")
-	var resErr *lithoserrors.ResourceError
+	var resErr *lithosErr.ResourceError
 	require.ErrorAs(
 		t,
 		err,
@@ -339,7 +339,7 @@ func TestQueryService_ByPath_MissingPath(t *testing.T) {
 	note, err := qs.ByPath(ctx, "missing/path.md")
 
 	require.Error(t, err, "ByPath should return error for missing path")
-	var resErr *lithoserrors.ResourceError
+	var resErr *lithosErr.ResourceError
 	require.ErrorAs(
 		t,
 		err,
@@ -640,7 +640,7 @@ func TestQueryService_EdgeCases_EmptyService(t *testing.T) {
 	// Test ByID on empty service
 	note, err := qs.ByID(ctx, domain.NoteID("any-id.md"))
 	require.Error(t, err, "ByID should return error for empty service")
-	var resErr *lithoserrors.ResourceError
+	var resErr *lithosErr.ResourceError
 	require.ErrorAs(t, err, &resErr, "ByID should return ResourceError")
 	assert.Equal(t, domain.Note{}, note, "ByID should return zero Note")
 

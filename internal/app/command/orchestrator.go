@@ -15,7 +15,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/api"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -171,7 +171,7 @@ func (o *CommandOrchestrator) NewNote(
 				Err(writeErr).
 				Str("filePath", absolutePath).
 				Msg("Failed to write note file")
-			return domain.Note{}, lithoserrors.WrapWithContext(
+			return domain.Note{}, lithosErr.WrapWithContext(
 				writeErr,
 				"failed to write note to %s", absolutePath,
 			)
@@ -185,7 +185,7 @@ func (o *CommandOrchestrator) NewNote(
 			Err(err).
 			Str("filePath", absolutePath).
 			Msg("Failed to write note file")
-		return domain.Note{}, lithoserrors.WrapWithContext(
+		return domain.Note{}, lithosErr.WrapWithContext(
 			err,
 			"failed to write note to %s", absolutePath,
 		)
@@ -200,8 +200,7 @@ func (o *CommandOrchestrator) NewNote(
 
 // IndexVault orchestrates the vault indexing workflow.
 // This method implements the CommandPort interface and delegates to
-// VaultIndexer.Build()
-// for the complete indexing operation.
+// VaultIndexer.Build() for the complete indexing operation.
 //
 // Workflow:
 // 1. Log indexing start
@@ -214,9 +213,10 @@ func (o *CommandOrchestrator) NewNote(
 //   - ctx: Context for cancellation and timeout control during indexing
 //
 // Returns:
-// - vault.IndexStats: Statistics from the indexing operation (scanned,
-// indexed, failures, duration) - error: Wrapped error if indexing fails (schema
-// load, vault scan, or critical failures)
+//   - vault.IndexStats: Statistics from the indexing operation (scanned, indexed,
+//     failures, duration)
+//   - error: Wrapped error if indexing fails (schema load, vault scan, or
+//     critical failures)
 //
 // Reference: docs/architecture/components.md#commandorchestrator - IndexVault
 // implementation.
@@ -229,7 +229,7 @@ func (o *CommandOrchestrator) IndexVault(
 	stats, err := o.vaultIndexer.Build(ctx)
 	if err != nil {
 		o.log.Error().Err(err).Msg("vault indexing failed")
-		return stats, lithoserrors.WrapWithContext(
+		return stats, lithosErr.WrapWithContext(
 			err,
 			"vault indexing operation failed",
 		)

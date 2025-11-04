@@ -96,9 +96,9 @@ func copySchemaFiles(t *testing.T, vaultDir string) {
 	// Copy property_bank.json
 	srcPropertyBank := filepath.Join(
 		projectRoot,
+		"testdata",
 		"schemas",
-		"examples",
-		"property-bank.json",
+		"property_bank.json",
 	)
 	dstPropertyBank := filepath.Join(schemasDir, "property_bank.json")
 	copyFile(t, srcPropertyBank, dstPropertyBank)

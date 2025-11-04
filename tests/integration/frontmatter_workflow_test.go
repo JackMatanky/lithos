@@ -156,7 +156,12 @@ This is a test note with frontmatter.
 	)
 
 	// Create QueryService
-	queryService := query.NewQueryService(cacheReader, logger)
+	queryService := query.NewQueryService(
+		cacheReader,
+		cacheReader,
+		*config,
+		logger,
+	)
 
 	return &frontmatterTestEnv{
 		vaultDir:     vaultDir,
