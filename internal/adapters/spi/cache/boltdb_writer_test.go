@@ -109,8 +109,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 		{
 			name: "success - persists note metadata",
 			note: domain.Note{
-				ID:   domain.NewNoteID("test-note"),
-				Path: "/path/to/test-note.md",
+				ID: domain.NewNoteID("test-note"),
 				Frontmatter: domain.Frontmatter{
 					FileClass: "contact",
 					Fields: map[string]interface{}{
@@ -124,7 +123,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 			validateFunc: func(t *testing.T, adapter *BoltDBCacheWriteAdapter, note domain.Note) {
 				viewErr := adapter.db.View(func(tx *bbolt.Tx) error {
 					pathsBucket := tx.Bucket([]byte(bucketPaths))
-					data := pathsBucket.Get([]byte(note.Path))
+					data := pathsBucket.Get([]byte(string(note.ID)))
 					assert.NotNil(
 						t,
 						data,
@@ -134,7 +133,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 					var metadata BoltDBNoteMetadata
 					unmarshalErr := json.Unmarshal(data, &metadata)
 					require.NoError(t, unmarshalErr)
-					assert.Equal(t, note.Path, metadata.Path)
+					assert.Equal(t, string(note.ID), metadata.Path)
 					assert.Equal(t, string(note.ID), metadata.ID)
 					assert.Equal(t, "Test Note", metadata.Title)
 					assert.Equal(
@@ -169,8 +168,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 		{
 			name: "success - overwrites existing note",
 			note: domain.Note{
-				ID:   domain.NewNoteID("existing-note"),
-				Path: "/path/to/existing-note.md",
+				ID: domain.NewNoteID("existing-note"),
 				Frontmatter: domain.Frontmatter{
 					FileClass: "project",
 					Fields: map[string]interface{}{
@@ -194,7 +192,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 				// Verify update
 				viewErr := adapter.db.View(func(tx *bbolt.Tx) error {
 					pathsBucket := tx.Bucket([]byte(bucketPaths))
-					data := pathsBucket.Get([]byte(note.Path))
+					data := pathsBucket.Get([]byte(string(note.ID)))
 					assert.NotNil(t, data)
 
 					var metadata BoltDBNoteMetadata
@@ -209,8 +207,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 		{
 			name: "success - handles missing frontmatter fields",
 			note: domain.Note{
-				ID:   domain.NewNoteID("minimal-note"),
-				Path: "/path/to/minimal-note.md",
+				ID: domain.NewNoteID("minimal-note"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{},
 				},
@@ -223,7 +220,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 
 				viewErr := adapter.db.View(func(tx *bbolt.Tx) error {
 					pathsBucket := tx.Bucket([]byte(bucketPaths))
-					data := pathsBucket.Get([]byte(note.Path))
+					data := pathsBucket.Get([]byte(string(note.ID)))
 					assert.NotNil(t, data)
 
 					var metadata BoltDBNoteMetadata
@@ -271,8 +268,7 @@ func TestBoltDBCacheWriteAdapter_Delete(t *testing.T) {
 
 	// Setup: persist a note first
 	note := domain.Note{
-		ID:   domain.NewNoteID("delete-test"),
-		Path: "/path/to/delete-test.md",
+		ID: domain.NewNoteID("delete-test"),
 		Frontmatter: domain.Frontmatter{
 			Fields: map[string]interface{}{
 				"title": "Delete Test",
@@ -363,8 +359,7 @@ func TestBoltDBCacheWriteAdapter_Close(t *testing.T) {
 	// Verify we can't use it after close
 	ctx := context.Background()
 	note := domain.Note{
-		ID:   domain.NewNoteID("test"),
-		Path: "/test.md",
+		ID: domain.NewNoteID("test"),
 		Frontmatter: domain.Frontmatter{
 			Fields: map[string]interface{}{},
 		},
@@ -385,7 +380,7 @@ func Test_extractNoteMetadata(t *testing.T) {
 		{
 			name: "extracts all metadata fields",
 			note: domain.Note{
-				Path: "/notes/contact.md",
+				ID: domain.NewNoteID("/notes/contact.md"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{
 						"title":      "John Doe",
@@ -396,6 +391,7 @@ func Test_extractNoteMetadata(t *testing.T) {
 			},
 			fileClassKey: "file_class",
 			expected: BoltDBNoteMetadata{
+				ID:        "/notes/contact.md",
 				Path:      "/notes/contact.md",
 				Title:     "John Doe",
 				Aliases:   []string{"JD", "Johnny"},
@@ -405,20 +401,21 @@ func Test_extractNoteMetadata(t *testing.T) {
 		{
 			name: "handles missing fields gracefully",
 			note: domain.Note{
-				Path: "/notes/minimal.md",
+				ID: domain.NewNoteID("/notes/minimal.md"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{},
 				},
 			},
 			fileClassKey: "file_class",
 			expected: BoltDBNoteMetadata{
+				ID:   "/notes/minimal.md",
 				Path: "/notes/minimal.md",
 			},
 		},
 		{
 			name: "uses configurable file class key",
 			note: domain.Note{
-				Path: "/notes/custom.md",
+				ID: domain.NewNoteID("/notes/custom.md"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{
 						"type": "project",
@@ -427,6 +424,7 @@ func Test_extractNoteMetadata(t *testing.T) {
 			},
 			fileClassKey: "type",
 			expected: BoltDBNoteMetadata{
+				ID:        "/notes/custom.md",
 				Path:      "/notes/custom.md",
 				FileClass: "project",
 			},
@@ -434,7 +432,7 @@ func Test_extractNoteMetadata(t *testing.T) {
 		{
 			name: "handles invalid aliases type",
 			note: domain.Note{
-				Path: "/notes/invalid.md",
+				ID: domain.NewNoteID("/notes/invalid.md"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{
 						"aliases": "not-an-array", // Invalid type
@@ -443,6 +441,7 @@ func Test_extractNoteMetadata(t *testing.T) {
 			},
 			fileClassKey: "file_class",
 			expected: BoltDBNoteMetadata{
+				ID:   "/notes/invalid.md",
 				Path: "/notes/invalid.md",
 			},
 		},
@@ -452,7 +451,7 @@ func Test_extractNoteMetadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractNoteMetadata(tt.note, tt.fileClassKey)
 
-			assert.Equal(t, tt.expected.Path, result.Path)
+			assert.Equal(t, tt.expected.ID, result.ID)
 			assert.Equal(t, tt.expected.Title, result.Title)
 			assert.Equal(t, tt.expected.Aliases, result.Aliases)
 			assert.Equal(t, tt.expected.FileClass, result.FileClass)

@@ -5,6 +5,12 @@
 //
 // Primary ports represent use cases - the ways users interact with the system.
 // They use callback patterns where domain injects itself into adapters.
+// These interfaces define the contracts that domain services expose to
+// application adapters (CLI, TUI, LSP). They follow hexagonal architecture
+// principles where domain defines the interfaces and adapters implement them.
+//
+// Primary ports represent use cases - the ways users interact with the system.
+// They use callback patterns where domain injects itself into adapters.
 package api
 
 import (
@@ -22,7 +28,7 @@ import (
 //
 // Architecture Pattern:
 // ```
-// CommandOrchestrator (Domain)
+// CLIComander (Domain)
 //
 //	└─> Calls CLIPort.Start(itself as CommandPort)
 //	    └─> CobraCLIAdapter receives control
@@ -36,7 +42,7 @@ import (
 // ```
 //
 // Why This Design:
-//   - Decouples CLI framework from domain: CommandOrchestrator never imports
+//   - Decouples CLI framework from domain: CLIComander never imports
 //     Cobra
 //   - Enables multiple adapters: TUI/LSP can implement CLIPort without
 //     affecting domain
@@ -49,7 +55,7 @@ import (
 type CLIPort interface {
 	// Start begins the CLI event loop and command processing.
 	// The CLI adapter receives the CommandPort handler (typically
-	// CommandOrchestrator) and uses it to delegate business logic execution.
+	// CLIComander) and uses it to delegate business logic execution.
 	//
 	// The adapter is responsible for:
 	// - Setting up command definitions and flags
