@@ -1,4 +1,4 @@
-// Package command provides the CommandOrchestrator domain service for CLI
+// Package command provides the CLIComander domain service for CLI
 // command orchestration. It implements the hexagonal callback pattern where the
 // domain starts the application and delegates command parsing to CLI adapters.
 package command
@@ -7,7 +7,6 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
@@ -19,7 +18,7 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// CommandOrchestrator orchestrates use case workflows by coordinating domain
+// CLIComander orchestrates use case workflows by coordinating domain
 // services. It acts as the application service layer that CLI, TUI, and LSP
 // adapters invoke
 // via CLIPort. The orchestrator owns application startup and control flow.
@@ -44,8 +43,8 @@ import (
 //   - Logger: Structured logging for workflow operations and debugging
 //
 // Reference: docs/architecture/components.md#domain-services -
-// CommandOrchestrator (v0.6.4).
-type CommandOrchestrator struct {
+// CLIComander (v0.6.4).
+type CLIComander struct {
 	cliPort        api.CLIPort
 	templateEngine *template.TemplateEngine
 	schemaEngine   *schema.SchemaEngine
@@ -55,7 +54,7 @@ type CommandOrchestrator struct {
 	log            zerolog.Logger
 }
 
-// NewCommandOrchestrator creates a new CommandOrchestrator with injected
+// NewCLIComander creates a new CLIComander with injected
 // dependencies. This constructor follows dependency injection principles,
 // ensuring the orchestrator
 // has all required collaborators without creating them internally.
@@ -69,11 +68,12 @@ type CommandOrchestrator struct {
 //   - log: Structured logger for workflow operations and debugging
 //
 // Returns:
-//   - *CommandOrchestrator: Fully initialized orchestrator ready for use
+// - *CLIComander: Fully initialized workflow coordinator (formerly
+// CommandOrchestrator)
 //
 // Reference: docs/architecture/components.md#domain-services -
-// CommandOrchestrator constructor.
-func NewCommandOrchestrator(
+// CLIComander constructor.
+func NewCLIComander(
 	cliPort api.CLIPort,
 	templateEngine *template.TemplateEngine,
 	schemaEngine *schema.SchemaEngine,
@@ -81,8 +81,8 @@ func NewCommandOrchestrator(
 	vaultWriter spi.VaultWriterPort,
 	config *domain.Config,
 	log *zerolog.Logger,
-) *CommandOrchestrator {
-	return &CommandOrchestrator{
+) *CLIComander {
+	return &CLIComander{
 		cliPort:        cliPort,
 		templateEngine: templateEngine,
 		schemaEngine:   schemaEngine,
@@ -91,6 +91,28 @@ func NewCommandOrchestrator(
 		config:         *config,
 		log:            *log,
 	}
+}
+
+// Deprecated: NewCommandOrchestrator is retained for backward compatibility.
+// Prefer NewCLIComander.
+func NewCommandOrchestrator(
+	cliPort api.CLIPort,
+	templateEngine *template.TemplateEngine,
+	schemaEngine *schema.SchemaEngine,
+	vaultIndexer vault.VaultIndexerInterface,
+	vaultWriter spi.VaultWriterPort,
+	config *domain.Config,
+	log *zerolog.Logger,
+) *CLIComander {
+	return NewCLIComander(
+		cliPort,
+		templateEngine,
+		schemaEngine,
+		vaultIndexer,
+		vaultWriter,
+		config,
+		log,
+	)
 }
 
 // Run begins the CLI event loop and command processing.
@@ -109,7 +131,7 @@ func NewCommandOrchestrator(
 //
 // Reference: docs/architecture/components.md#api-port-interfaces -
 // CLIPort.Start.
-func (o *CommandOrchestrator) Run(ctx context.Context) error {
+func (o *CLIComander) Run(ctx context.Context) error {
 	// Hexagonal callback pattern: pass self as CommandPort handler to CLI
 	// adapter
 	return o.cliPort.Start(ctx, o)
@@ -129,7 +151,7 @@ func (o *CommandOrchestrator) Run(ctx context.Context) error {
 //
 // Reference: docs/architecture/components.md#api-port-interfaces -
 // CommandPort.NewNote.
-func (o *CommandOrchestrator) NewNote(
+func (o *CLIComander) NewNote(
 	ctx context.Context,
 	templateID domain.TemplateID,
 ) (domain.Note, error) {
@@ -159,7 +181,7 @@ func (o *CommandOrchestrator) NewNote(
 	o.log.Debug().Msg("Empty frontmatter created")
 
 	// Step 4: Construct Note
-	note := domain.NewNote(noteID, time.Now(), frontmatter)
+	note := domain.NewNote(noteID, frontmatter)
 	o.log.Debug().Str("noteID", string(noteID)).Msg("Note constructed")
 
 	// Step 5: Write file to vault
@@ -219,8 +241,11 @@ func (o *CommandOrchestrator) NewNote(
 //     critical failures)
 //
 // Reference: docs/architecture/components.md#commandorchestrator - IndexVault
-// implementation.
-func (o *CommandOrchestrator) IndexVault(
+// Reference: docs/architecture/components.md#commandorchestrator (legacy
+// anchor)
+// IndexVault implementation. Component renamed to CLIComander; anchor retained
+// for backward compatibility until docs are fully migrated.
+func (o *CLIComander) IndexVault(
 	ctx context.Context,
 ) (vault.IndexStats, error) {
 	o.log.Info().Msg("starting vault indexing")

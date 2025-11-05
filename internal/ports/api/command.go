@@ -8,12 +8,12 @@ import (
 )
 
 // CommandPort defines the use case handler contract that CLI adapters call back
-// to for business logic execution. CommandOrchestrator implements this
+// to for business logic execution. CLIComander implements this
 // interface, keeping orchestration logic squarely in the domain layer while the
 // CLI adapter focuses on user interaction concerns.
 //
 // Hexagonal callback pattern:
-//   - CommandOrchestrator passes itself to CLIPort.Start(ctx, handler)
+//   - CLIComander passes itself to CLIPort.Start(ctx, handler)
 //   - CLI adapter configures commands, parses input, and delegates to handler
 //   - Handler executes domain workflows and returns results/errors to adapter
 //

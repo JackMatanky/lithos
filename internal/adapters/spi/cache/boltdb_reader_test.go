@@ -182,8 +182,7 @@ func TestBoltDBCacheReadAdapter_Read(t *testing.T) {
 			noteID:  domain.NewNoteID("test1"),
 			wantErr: false,
 			expected: domain.Note{
-				ID:   domain.NewNoteID("test1"),
-				Path: "/notes/test1.md",
+				ID: domain.NewNoteID("test1"),
 				Frontmatter: domain.Frontmatter{
 					FileClass: "contact",
 					Fields: map[string]interface{}{
@@ -199,8 +198,7 @@ func TestBoltDBCacheReadAdapter_Read(t *testing.T) {
 			noteID:  domain.NewNoteID("test2"),
 			wantErr: false,
 			expected: domain.Note{
-				ID:   domain.NewNoteID("test2"),
-				Path: "/notes/test2.md",
+				ID: domain.NewNoteID("test2"),
 				Frontmatter: domain.Frontmatter{
 					FileClass: "project",
 					Fields: map[string]interface{}{
@@ -230,7 +228,7 @@ func TestBoltDBCacheReadAdapter_Read(t *testing.T) {
 
 			require.NoError(t, readErr)
 			assert.Equal(t, tt.expected.ID, note.ID)
-			assert.Equal(t, tt.expected.Path, note.Path)
+			assert.Equal(t, string(tt.expected.ID), string(note.ID))
 			assert.Equal(
 				t,
 				tt.expected.Frontmatter.FileClass,
@@ -331,8 +329,7 @@ func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
 
 	fixedTime := time.Date(2023, 1, 1, 12, 0, 0, 0, time.UTC)
 	testNote := domain.Note{
-		ID:   domain.NewNoteID("test-note"),
-		Path: "/notes/test-note.md",
+		ID: domain.NewNoteID("test-note"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "note",
 			Fields: map[string]interface{}{
@@ -358,7 +355,7 @@ func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
 
 	t.Run("fresh_note_returns_false", func(t *testing.T) {
 		// Note should not be stale when file_mod_time matches
-		isStale, staleErr := reader.IsStale(testNote.Path, fixedTime)
+		isStale, staleErr := reader.IsStale(string(testNote.ID), fixedTime)
 		require.NoError(t, staleErr)
 		assert.False(
 			t,
@@ -370,7 +367,7 @@ func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
 	t.Run("modified_note_returns_true", func(t *testing.T) {
 		// Note should be stale when file_mod_time is different
 		newModTime := time.Now().Add(time.Hour) // Future time
-		isStale, staleErr := reader.IsStale(testNote.Path, newModTime)
+		isStale, staleErr := reader.IsStale(string(testNote.ID), newModTime)
 		require.NoError(t, staleErr)
 		assert.True(t, isStale, "note should be stale when file was modified")
 	})

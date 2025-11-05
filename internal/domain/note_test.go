@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"reflect"
 	"testing"
-	"time"
 )
 
 const (
@@ -256,7 +255,7 @@ func TestNewNote(t *testing.T) {
 		},
 	}
 
-	note := NewNote(id, time.Now(), frontmatter)
+	note := NewNote(id, frontmatter)
 
 	if note.ID != id {
 		t.Errorf("NewNote ID = %v, want %v", note.ID, id)
@@ -273,7 +272,7 @@ func TestNote_SchemaName(t *testing.T) {
 		FileClass: "contact",
 		Fields:    map[string]interface{}{},
 	}
-	note := NewNote(NoteID("test"), time.Now(), frontmatter)
+	note := NewNote(NoteID("test"), frontmatter)
 
 	result := note.SchemaName()
 	expected := "contact"
@@ -287,7 +286,7 @@ func TestNote_SchemaName(t *testing.T) {
 func TestNote_NoFileField(t *testing.T) {
 	// This test verifies that the Note struct does not have a File field
 	// We use reflection to inspect the struct fields
-	note := NewNote(NoteID("test"), time.Now(), Frontmatter{})
+	note := NewNote(NoteID("test"), Frontmatter{})
 
 	v := reflect.ValueOf(note)
 	typ := v.Type()
@@ -309,7 +308,6 @@ func TestNote_NoFileField(t *testing.T) {
 func TestNote_JSONSerialization(t *testing.T) {
 	original := NewNote(
 		NoteID("test-note"),
-		time.Now(),
 		Frontmatter{
 			FileClass: "contact",
 			Fields: map[string]interface{}{

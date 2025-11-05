@@ -57,7 +57,7 @@ func main() {
 	)
 	vaultWriter := vaultAdapter.NewVaultWriterAdapter(cfg, log)
 	cliAdapter := cli.NewCobraCLIAdapter(log)
-	orchestrator := command.NewCommandOrchestrator(
+	orchestrator := command.NewCLIComander(
 		cliAdapter,
 		templateEngine,
 		schemaEngine,

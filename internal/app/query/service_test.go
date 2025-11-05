@@ -144,8 +144,7 @@ func setupQueryServiceWithNotes(t *testing.T) *QueryService {
 
 	// Create sample notes with path-based NoteIDs
 	note1 := domain.Note{
-		ID:   domain.NoteID("contacts/john-doe.md"),
-		Path: "contacts/john-doe.md",
+		ID: domain.NoteID("contacts/john-doe.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
 			Fields: map[string]interface{}{
@@ -154,8 +153,7 @@ func setupQueryServiceWithNotes(t *testing.T) *QueryService {
 		},
 	}
 	note2 := domain.Note{
-		ID:   domain.NoteID("meetings/2023-10-01.md"),
-		Path: "meetings/2023-10-01.md",
+		ID: domain.NoteID("meetings/2023-10-01.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "meeting",
 			Fields: map[string]interface{}{
@@ -164,8 +162,7 @@ func setupQueryServiceWithNotes(t *testing.T) *QueryService {
 		},
 	}
 	note3 := domain.Note{
-		ID:   domain.NoteID("contacts/jane-smith.md"),
-		Path: "contacts/jane-smith.md",
+		ID: domain.NoteID("contacts/jane-smith.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
 			Fields: map[string]interface{}{
@@ -212,8 +209,7 @@ func TestQueryService_RefreshFromCache_SkipsNonComparableFrontmatter(
 	t.Helper()
 
 	note := domain.Note{
-		ID:   domain.NoteID("projects/demo.md"),
-		Path: "projects/demo.md",
+		ID: domain.NoteID("projects/demo.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "project",
 			Fields: map[string]interface{}{
@@ -418,8 +414,7 @@ func TestQueryService_RefreshFromCache_Success(t *testing.T) {
 	// Create new notes for cache
 	newNotes := []domain.Note{
 		{
-			ID:   domain.NoteID("new-1"),
-			Path: "new-1",
+			ID: domain.NoteID("new-1"),
 			Frontmatter: domain.Frontmatter{
 				FileClass: "project",
 				Fields: map[string]interface{}{
@@ -428,8 +423,7 @@ func TestQueryService_RefreshFromCache_Success(t *testing.T) {
 			},
 		},
 		{
-			ID:   domain.NoteID("new-2"),
-			Path: "new-2",
+			ID: domain.NoteID("new-2"),
 			Frontmatter: domain.Frontmatter{
 				FileClass: "meeting",
 				Fields: map[string]interface{}{
@@ -521,8 +515,7 @@ func TestQueryService_RefreshFromCache_ClearsExistingIndices(t *testing.T) {
 	// New notes that will replace any existing data
 	newNotes := []domain.Note{
 		{
-			ID:   domain.NoteID("new-1"),
-			Path: "new-1",
+			ID: domain.NoteID("new-1"),
 			Frontmatter: domain.Frontmatter{
 				FileClass: "project",
 				Fields: map[string]interface{}{
@@ -762,7 +755,6 @@ func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
 	// Given
 	authorNote := domain.NewNote(
 		domain.NewNoteID("note1"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"author": "John Doe",
 			"status": "published",
@@ -770,7 +762,6 @@ func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
 	)
 	tagNote := domain.NewNote(
 		domain.NewNoteID("note2"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"tags":   "project-x",
 			"author": "Jane Smith",
@@ -803,7 +794,6 @@ func TestQueryService_ByFrontmatter_MultipleMatches(t *testing.T) {
 	// Given
 	note1 := domain.NewNote(
 		domain.NewNoteID("note1"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"status": "draft",
 			"author": "John",
@@ -811,7 +801,6 @@ func TestQueryService_ByFrontmatter_MultipleMatches(t *testing.T) {
 	)
 	note2 := domain.NewNote(
 		domain.NewNoteID("note2"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"status": "draft",
 			"author": "Jane",
@@ -840,7 +829,6 @@ func TestQueryService_ByFrontmatter_MissingField(t *testing.T) {
 	// Given
 	note := domain.NewNote(
 		domain.NewNoteID("note1"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"author": "John Doe",
 		}),
@@ -869,7 +857,6 @@ func TestQueryService_ByFrontmatter_TypeNormalization(t *testing.T) {
 	// Given - note with float value
 	note := domain.NewNote(
 		domain.NewNoteID("note1"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"priority": 2.0, // float64
 		}),
@@ -998,12 +985,9 @@ func TestQueryService_ByBasename_NonMatchingBasename(t *testing.T) {
 func TestQueryService_RefreshIncremental(t *testing.T) {
 	// Create initial notes with different mod times
 	oldTime := time.Now().Add(-time.Hour)
-	newTime := time.Now()
 
 	oldNote := domain.Note{
-		ID:      domain.NoteID("old.md"),
-		Path:    "old.md",
-		ModTime: oldTime,
+		ID: domain.NoteID("old.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "old",
 			Fields: map[string]interface{}{
@@ -1012,9 +996,7 @@ func TestQueryService_RefreshIncremental(t *testing.T) {
 		},
 	}
 	newNote := domain.Note{
-		ID:      domain.NoteID("new.md"),
-		Path:    "new.md",
-		ModTime: newTime,
+		ID: domain.NoteID("new.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "new",
 			Fields: map[string]interface{}{
@@ -1063,8 +1045,7 @@ func TestQueryService_RefreshIncremental(t *testing.T) {
 func TestQueryService_ConfigurableFileClassKey(t *testing.T) {
 	// Create note with custom file class key
 	note := domain.Note{
-		ID:   domain.NoteID("test.md"),
-		Path: "test.md",
+		ID: domain.NoteID("test.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "custom", // This is extracted from fields
 			Fields: map[string]interface{}{
@@ -1096,8 +1077,7 @@ func TestQueryService_ConfigurableFileClassKey(t *testing.T) {
 func TestQueryService_ByBasename_MultipleMatches(t *testing.T) {
 	// Create notes with same basename in different paths
 	note1 := domain.Note{
-		ID:   domain.NoteID("contacts/john-doe.md"),
-		Path: "contacts/john-doe.md",
+		ID: domain.NoteID("contacts/john-doe.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
 			Fields: map[string]interface{}{
@@ -1106,8 +1086,7 @@ func TestQueryService_ByBasename_MultipleMatches(t *testing.T) {
 		},
 	}
 	note2 := domain.Note{
-		ID:   domain.NoteID("projects/john-doe.md"),
-		Path: "projects/john-doe.md",
+		ID: domain.NoteID("projects/john-doe.md"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "project",
 			Fields: map[string]interface{}{

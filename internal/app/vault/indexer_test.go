@@ -190,10 +190,9 @@ func TestBuildCallsScanAll(t *testing.T) {
 	fakeScanner := &FakeVaultScannerPort{
 		scanAllResult: []dto.VaultFile{
 			dto.NewVaultFile(dto.FileMetadata{
-				Path:    "/vault/test.md",
-				Ext:     ".md",
-				Size:    100,
-				ModTime: time.Now(),
+				Path: "/vault/test.md",
+				Ext:  ".md",
+				Size: 100,
 			}, []byte("# Test")),
 		},
 	}
@@ -333,10 +332,9 @@ func TestRefreshSuccess(t *testing.T) {
 	fakeScanner := &FakeVaultScannerPort{
 		scanModifiedResult: []dto.VaultFile{
 			dto.NewVaultFile(dto.FileMetadata{
-				Path:    "/vault/modified.md",
-				Ext:     ".md",
-				Size:    200,
-				ModTime: time.Now(),
+				Path: "/vault/modified.md",
+				Ext:  ".md",
+				Size: 200,
 			}, []byte("# Modified")),
 		},
 	}
@@ -528,12 +526,10 @@ func TestRefreshReconcileDeletions(t *testing.T) {
 		listResult: []domain.Note{
 			domain.NewNote(
 				domain.NewNoteID("existing.md"),
-				time.Now(),
 				domain.Frontmatter{},
 			),
 			domain.NewNote(
 				domain.NewNoteID("deleted.md"),
-				time.Now(),
 				domain.Frontmatter{},
 			), // Orphan
 		},
@@ -623,12 +619,10 @@ func TestReconcileDeleteFailure(t *testing.T) {
 		listResult: []domain.Note{
 			domain.NewNote(
 				domain.NewNoteID("existing.md"),
-				time.Now(),
 				domain.Frontmatter{},
 			),
 			domain.NewNote(
 				domain.NewNoteID("deleted.md"),
-				time.Now(),
 				domain.Frontmatter{},
 			), // Orphan
 		},
@@ -687,7 +681,6 @@ func BenchmarkValidateCacheState(b *testing.B) {
 			for i := range cacheNotes {
 				cacheNotes[i] = domain.NewNote(
 					domain.NewNoteID(fmt.Sprintf("note%d.md", i)),
-					time.Now(),
 					domain.Frontmatter{},
 				)
 			}
@@ -754,7 +747,6 @@ func BenchmarkReconcileDeletions(b *testing.B) {
 			for i := range cacheNotes {
 				cacheNotes[i] = domain.NewNote(
 					domain.NewNoteID(fmt.Sprintf("note%d.md", i)),
-					time.Now(),
 					domain.Frontmatter{},
 				)
 			}

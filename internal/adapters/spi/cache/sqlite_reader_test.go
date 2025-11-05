@@ -92,8 +92,7 @@ func TestSQLiteCacheReadAdapter_Read(t *testing.T) {
 	defer func() { _ = writer.Close() }()
 
 	note1 := domain.Note{
-		ID:   domain.NewNoteID("test-note-1"),
-		Path: "/notes/test1.md",
+		ID: domain.NewNoteID("test-note-1"),
 		Frontmatter: domain.Frontmatter{
 			FileClass: "contact",
 			Fields: map[string]interface{}{
@@ -125,8 +124,7 @@ func TestSQLiteCacheReadAdapter_Read(t *testing.T) {
 			noteID:  note1.ID,
 			wantErr: false,
 			expectedNote: &domain.Note{
-				ID:   note1.ID,
-				Path: note1.Path,
+				ID: note1.ID,
 				Frontmatter: domain.Frontmatter{
 					FileClass: "contact",
 					Fields: map[string]interface{}{
@@ -169,7 +167,6 @@ func TestSQLiteCacheReadAdapter_Read(t *testing.T) {
 
 			require.NoError(t, readErr)
 			assert.Equal(t, tt.expectedNote.ID, note.ID)
-			assert.Equal(t, tt.expectedNote.Path, note.Path)
 			assert.Equal(
 				t,
 				tt.expectedNote.Frontmatter.FileClass,
@@ -205,8 +202,7 @@ func TestSQLiteCacheReadAdapter_List(t *testing.T) {
 
 	notes := []domain.Note{
 		{
-			ID:   domain.NewNoteID("note1"),
-			Path: "/notes/note1.md",
+			ID: domain.NewNoteID("note1"),
 			Frontmatter: domain.Frontmatter{
 				FileClass: "contact",
 				Fields: map[string]interface{}{
@@ -215,8 +211,7 @@ func TestSQLiteCacheReadAdapter_List(t *testing.T) {
 			},
 		},
 		{
-			ID:   domain.NewNoteID("note2"),
-			Path: "/notes/note2.md",
+			ID: domain.NewNoteID("note2"),
 			Frontmatter: domain.Frontmatter{
 				FileClass: "project",
 				Fields: map[string]interface{}{
@@ -334,8 +329,7 @@ func TestSQLiteCacheReadAdapter_ListStale(t *testing.T) {
 
 	notes := []domain.Note{
 		{
-			ID:   domain.NewNoteID("fresh-note"),
-			Path: "/notes/fresh.md",
+			ID: domain.NewNoteID("fresh-note"),
 			Frontmatter: domain.Frontmatter{
 				FileClass: "note",
 				Fields: map[string]interface{}{
@@ -347,8 +341,7 @@ func TestSQLiteCacheReadAdapter_ListStale(t *testing.T) {
 			},
 		},
 		{
-			ID:   domain.NewNoteID("stale-note"),
-			Path: "/notes/stale.md",
+			ID: domain.NewNoteID("stale-note"),
 			Frontmatter: domain.Frontmatter{
 				FileClass: "note",
 				Fields: map[string]interface{}{
@@ -360,8 +353,7 @@ func TestSQLiteCacheReadAdapter_ListStale(t *testing.T) {
 			},
 		},
 		{
-			ID:   domain.NewNoteID("exact-note"),
-			Path: "/notes/exact.md",
+			ID: domain.NewNoteID("exact-note"),
 			Frontmatter: domain.Frontmatter{
 				FileClass: "note",
 				Fields: map[string]interface{}{

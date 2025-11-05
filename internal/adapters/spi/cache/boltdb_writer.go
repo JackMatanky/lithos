@@ -178,7 +178,7 @@ func extractNoteMetadata(
 	fileClassKey string,
 ) BoltDBNoteMetadata {
 	var metadata BoltDBNoteMetadata
-	metadata.Path = note.Path
+	metadata.Path = string(note.ID) // Derive path from NoteID
 	metadata.ID = string(note.ID)
 	metadata.IndexTime = time.Now()
 
@@ -238,7 +238,7 @@ func (a *BoltDBCacheWriteAdapter) Persist(
 	if err != nil {
 		return lithosErr.NewCacheWriteError(
 			string(note.ID),
-			note.Path,
+			string(note.ID), // Use NoteID as path
 			"serialize_metadata",
 			err,
 		)
@@ -252,7 +252,7 @@ func (a *BoltDBCacheWriteAdapter) Persist(
 	if err != nil {
 		return lithosErr.NewCacheWriteError(
 			string(note.ID),
-			note.Path,
+			string(note.ID), // Use NoteID as path
 			"persist_transaction",
 			err,
 		)
@@ -260,7 +260,7 @@ func (a *BoltDBCacheWriteAdapter) Persist(
 
 	a.log.Debug().
 		Str("note_id", string(note.ID)).
-		Str("path", note.Path).
+		Str("path", string(note.ID)). // Use NoteID as path
 		Msg("Persisted note metadata to BoltDB")
 
 	return nil
@@ -325,16 +325,17 @@ func (a *BoltDBCacheWriteAdapter) persistNoteInTransaction(
 	data []byte,
 ) error {
 	noteID := []byte(string(note.ID))
+	notePath := string(note.ID) // Derive path from NoteID
 
 	// 1. Store primary metadata in /paths/ bucket
 	pathsBucket := tx.Bucket([]byte(bucketPaths))
-	if putErr := pathsBucket.Put([]byte(note.Path), data); putErr != nil {
+	if putErr := pathsBucket.Put([]byte(notePath), data); putErr != nil {
 		return putErr
 	}
 
 	// 2. Update /basenames/ secondary index
 	basenamesBucket := tx.Bucket([]byte(bucketBasenames))
-	basename := extractBasename(note.Path)
+	basename := extractBasename(notePath)
 	if putErr := basenamesBucket.Put([]byte(basename), noteID); putErr != nil {
 		return putErr
 	}
@@ -354,7 +355,7 @@ func (a *BoltDBCacheWriteAdapter) persistNoteInTransaction(
 
 	// 5. Update /directories/ secondary index
 	directoriesBucket := tx.Bucket([]byte(bucketDirectories))
-	directory := extractDirectory(note.Path)
+	directory := extractDirectory(notePath)
 	if directory != "" {
 		if putErr := directoriesBucket.Put([]byte(directory), noteID); putErr != nil {
 			return putErr
