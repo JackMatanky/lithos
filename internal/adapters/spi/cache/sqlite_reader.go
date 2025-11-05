@@ -139,11 +139,6 @@ func (a *SQLiteCacheReadAdapter) Read(
 		return domain.Note{}, err
 	}
 
-	var modTime time.Time
-	if fileModTime.Valid {
-		modTime = fileModTime.Time
-	}
-
 	return a.reconstructNote(
 		id,
 		dbID,
@@ -151,7 +146,6 @@ func (a *SQLiteCacheReadAdapter) Read(
 		title,
 		fileClass,
 		frontmatterJSON,
-		modTime,
 	)
 }
 
@@ -283,11 +277,6 @@ func (a *SQLiteCacheReadAdapter) processListRows(
 			continue
 		}
 
-		var modTime time.Time
-		if fileModTime.Valid {
-			modTime = fileModTime.Time
-		}
-
 		note, err := a.reconstructNote(
 			domain.NewNoteID(id),
 			id,
@@ -295,7 +284,6 @@ func (a *SQLiteCacheReadAdapter) processListRows(
 			title,
 			fileClass,
 			frontmatterJSON,
-			modTime,
 		)
 		if err != nil {
 			a.log.Warn().
@@ -364,7 +352,6 @@ func (a *SQLiteCacheReadAdapter) reconstructNote(
 	dbID, path string,
 	title, fileClass sql.NullString,
 	frontmatterJSON string,
-	fileModTime time.Time,
 ) (domain.Note, error) {
 	// Parse frontmatter JSON
 	var fields map[string]interface{}
@@ -396,11 +383,9 @@ func (a *SQLiteCacheReadAdapter) reconstructNote(
 		}
 	}
 
-	// Reconstruct Note (include ModTime for staleness)
+	// Reconstruct Note
 	note := domain.Note{
-		ID:      id,
-		Path:    path,
-		ModTime: fileModTime,
+		ID: id,
 		Frontmatter: domain.Frontmatter{
 			FileClass: fileClass.String, // Use empty string if NULL
 			Fields:    fields,

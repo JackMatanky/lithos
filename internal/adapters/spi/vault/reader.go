@@ -1,11 +1,3 @@
-// Package vault provides filesystem-based adapters for vault reading
-// operations.
-// This package implements the VaultReaderPort interface using standard Go
-// filesystem operations with proper error handling and security measures.
-//
-// The adapter provides both full vault scanning and incremental scanning
-// capabilities, with built-in cache directory filtering and path traversal
-// prevention.
 package vault
 
 import (
