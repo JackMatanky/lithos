@@ -13,11 +13,7 @@
 // - byBasename: Basename index for filename → []Note lookups (O(log n))
 // - byFileClass: Schema index for fileClass → []Note lookups (O(log n))
 // - byFrontmatter: Frontmatter index for field → value → []Note lookups
-// (O(log n))
-//
-// complex logic
-//
-//nolint:cyclop // Query service implements multiple index types requiring
+// (O(log n)) complex logic
 package query
 
 import (
@@ -465,16 +461,13 @@ func (q *QueryService) RefreshIncremental(
 		return err
 	}
 
-	// Filter to only modified notes
-	var modifiedNotes []domain.Note
-	for _, note := range notes {
-		if note.ModTime.After(modifiedSince) {
-			modifiedNotes = append(modifiedNotes, note)
-		}
-	}
+	// Note: ModTime filtering removed as domain.Note no longer has ModTime
+	// field This is a temporary workaround - proper solution requires cache
+	// architecture redesign
+	modifiedNotes := notes
 
 	if len(modifiedNotes) == 0 {
-		q.log.Info().Msg("no notes modified since threshold")
+		q.log.Info().Msg("no notes found")
 		return nil
 	}
 
@@ -552,8 +545,8 @@ func (q *QueryService) rebuildIndices(notes []domain.Note) {
 	for _, note := range notes {
 		q.byID[note.ID] = note
 
-		// Populate byPath index using the Path field
-		q.byPath[note.Path] = note
+		// Populate byPath index using NoteID (which contains the path)
+		q.byPath[string(note.ID)] = note
 
 		// Populate byBasename index using extracted basename
 		basename := extractBasenameFromNoteID(note.ID)
@@ -601,8 +594,8 @@ func (q *QueryService) updateIndicesIncremental(notes []domain.Note) {
 		// Update byID
 		q.byID[note.ID] = note
 
-		// Update byPath
-		q.byPath[note.Path] = note
+		// Update byPath using NoteID (which contains the path)
+		q.byPath[string(note.ID)] = note
 
 		// Update byBasename
 		basename := extractBasenameFromNoteID(note.ID)

@@ -125,7 +125,7 @@ func (a *BoltDBCacheReadAdapter) Read(
 
 	a.log.Debug().
 		Str("note_id", string(id)).
-		Str("path", note.Path).
+		Str("path", string(id)).
 		Msg("Read note from BoltDB cache")
 
 	return note, nil
@@ -173,11 +173,9 @@ func (a *BoltDBCacheReadAdapter) List(
 				return nil // Continue with other notes
 			}
 
-			// Reconstruct Note from metadata (including ModTime for staleness)
+			// Reconstruct Note from metadata
 			note := domain.Note{
-				ID:      domain.NewNoteID(metadata.ID),
-				Path:    metadata.Path,
-				ModTime: metadata.FileModTime,
+				ID: domain.NewNoteID(metadata.ID),
 				Frontmatter: domain.Frontmatter{
 					FileClass: metadata.FileClass,
 					Fields: map[string]interface{}{
@@ -576,9 +574,7 @@ func (a *BoltDBCacheReadAdapter) reconstructNoteFromMetadata(
 	metadata BoltDBNoteMetadata,
 ) domain.Note {
 	return domain.Note{
-		ID:      id,
-		Path:    metadata.Path,
-		ModTime: metadata.FileModTime,
+		ID: id,
 		Frontmatter: domain.Frontmatter{
 			FileClass: metadata.FileClass,
 			Fields: map[string]interface{}{

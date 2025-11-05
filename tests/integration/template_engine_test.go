@@ -22,7 +22,6 @@ func TestTemplateEngine_RenderStaticTemplate(t *testing.T) {
 	ctx := context.Background()
 	testdataDir := filepath.Join("..", "..", "testdata", "templates")
 	config := domain.Config{
-		VaultPath:    "/test/vault",
 		TemplatesDir: testdataDir,
 	}
 	logger := zerolog.Nop()

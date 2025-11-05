@@ -282,7 +282,9 @@ func (v *VaultIndexer) reconcileDeletions(
 	var retained []domain.Note
 	for i := range cachedNotes {
 		note := cachedNotes[i]
-		relativePath := filepath.FromSlash(note.Path)
+		relativePath := filepath.FromSlash(
+			string(note.ID),
+		) // Derive path from NoteID
 		absolutePath := filepath.Join(v.config.VaultPath, relativePath)
 
 		_, statErr := os.Stat(absolutePath)
@@ -496,7 +498,9 @@ func (v *VaultIndexer) buildVaultSnapshot(
 		}
 
 		note := retained[i]
-		relative := filepath.FromSlash(note.Path)
+		relative := filepath.FromSlash(
+			string(note.ID),
+		) // Derive path from NoteID
 		absolute := filepath.Join(v.config.VaultPath, relative)
 		cleanPath := filepath.Clean(absolute)
 
@@ -622,7 +626,7 @@ func (v *VaultIndexer) processFile(
 
 	// Create Note with frontmatter (validated or basic)
 	noteID := deriveNoteIDFromPath(v.config.VaultPath, file.Path)
-	note := domain.NewNote(noteID, file.ModTime, noteFrontmatter)
+	note := domain.NewNote(noteID, noteFrontmatter)
 
 	// Persist to cache
 	if persistErr := v.cacheWriter.Persist(ctx, note); persistErr != nil {

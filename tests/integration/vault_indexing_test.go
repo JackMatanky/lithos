@@ -56,7 +56,6 @@ func TestVaultIndexing_Integration(t *testing.T) {
 
 	// Setup dependencies
 	config := domain.Config{
-		VaultPath:        vaultDir,
 		CacheDir:         cacheDir,
 		SchemasDir:       testSchemasDir,
 		PropertyBankFile: "property_bank.json",

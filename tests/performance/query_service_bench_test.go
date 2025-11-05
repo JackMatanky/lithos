@@ -279,7 +279,6 @@ func generateNotes(count int, classes []string) []domain.Note {
 		class := classes[i%len(classes)]
 		notes = append(notes, domain.NewNote(
 			domain.NewNoteID(fmt.Sprintf("note-%d.md", i)),
-			time.Now(),
 			domain.NewFrontmatter(
 				map[string]any{"file_class": class, "priority": i % 5},
 			),
@@ -294,7 +293,6 @@ func generateAuthorNotes(count int) []domain.Note {
 	for i := range count {
 		notes = append(notes, domain.NewNote(
 			domain.NewNoteID(fmt.Sprintf("note-%d.md", i)),
-			time.Now(),
 			domain.NewFrontmatter(map[string]any{
 				"author":     fmt.Sprintf("author-%d", i%50),
 				"priority":   i % 5,
@@ -313,7 +311,6 @@ func generateTemplateNotes(count int) []domain.Note {
 	for i := range count {
 		notes = append(notes, domain.NewNote(
 			domain.NewNoteID(fmt.Sprintf("templates/note-%d.md", i)),
-			time.Now(),
 			domain.NewFrontmatter(map[string]any{
 				"file_class": classes[i%clen],
 				"author":     fmt.Sprintf("author-%d", i%25),

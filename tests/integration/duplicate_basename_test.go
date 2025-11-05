@@ -30,8 +30,7 @@ func TestDuplicateBasenameHandling_Integration(t *testing.T) {
 
 	// Setup dependencies
 	config := domain.Config{
-		VaultPath: vaultDir,
-		CacheDir:  cacheDir,
+		CacheDir: cacheDir,
 	}
 	logger := zerolog.New(nil).Level(zerolog.Disabled)
 

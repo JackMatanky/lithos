@@ -18,18 +18,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCommandOrchestratorStructExists verifies that CommandOrchestrator struct
+// TestCLIComanderStructExists verifies that CLIComander struct
 // can be compiled. This is a compilation test to ensure the struct definition
 // is syntactically correct.
-func TestCommandOrchestratorStructExists(t *testing.T) {
-	// This test verifies the CommandOrchestrator struct exists and can be
-	// instantiated
-	// (though it will be nil since we don't have dependencies yet)
-	var orchestrator *CommandOrchestrator
+func TestCLIComanderStructExists(t *testing.T) {
+	// This test verifies the CLIComander struct (renamed from
+	// CommandOrchestrator)
+	// exists and can be instantiated. Backward-compatible constructor alias
+	// NewCommandOrchestrator should still compile elsewhere.
+	var orchestrator *CLIComander
 	assert.Nil(
 		t,
 		orchestrator,
-		"CommandOrchestrator struct should exist and be nil initially",
+		"CLIComander struct should exist and be nil initially",
 	)
 }
 
@@ -48,7 +49,7 @@ func TestRunCallsCLIPortStart(t *testing.T) {
 	var templateEngine *template.TemplateEngine
 	var schemaEngine *schema.SchemaEngine
 	var vaultIndexer *vault.VaultIndexer
-	orchestrator := NewCommandOrchestrator(
+	orchestrator := NewCLIComander(
 		mockCLIPort,
 		templateEngine,
 		schemaEngine,
@@ -92,7 +93,7 @@ func TestRunPropagatesCLIError(t *testing.T) {
 	var templateEngine *template.TemplateEngine
 	var schemaEngine *schema.SchemaEngine
 	var vaultIndexer *vault.VaultIndexer
-	orchestrator := NewCommandOrchestrator(
+	orchestrator := NewCLIComander(
 		mockCLIPort,
 		templateEngine,
 		schemaEngine,
@@ -153,7 +154,7 @@ func TestNewNoteSuccess(t *testing.T) {
 
 	var schemaEngine *schema.SchemaEngine
 	var vaultIndexer *vault.VaultIndexer
-	orchestrator := NewCommandOrchestrator(
+	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
 		schemaEngine,
@@ -218,7 +219,7 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 
 	var schemaEngine *schema.SchemaEngine
 	var vaultIndexer *vault.VaultIndexer
-	orchestrator := NewCommandOrchestrator(
+	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
 		schemaEngine,
@@ -263,7 +264,7 @@ func TestNewNoteFileWriteError(t *testing.T) {
 	var vaultIndexer *vault.VaultIndexer
 	mockVaultWriter := utils.NewMockVaultWriterPort()
 	mockVaultWriter.SetWriteContentResult(assert.AnError)
-	orchestrator := NewCommandOrchestrator(
+	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
 		schemaEngine,
@@ -308,7 +309,7 @@ func TestIndexVaultSuccess(t *testing.T) {
 	var templateEngine *template.TemplateEngine
 	var schemaEngine *schema.SchemaEngine
 	var cliPort api.CLIPort
-	orchestrator := NewCommandOrchestrator(
+	orchestrator := NewCLIComander(
 		cliPort,
 		templateEngine,
 		schemaEngine,
@@ -342,6 +343,7 @@ func TestIndexVaultIndexerError(t *testing.T) {
 	var templateEngine *template.TemplateEngine
 	var schemaEngine *schema.SchemaEngine
 	var cliPort api.CLIPort
+	// Using deprecated alias to ensure backward compatibility still works.
 	orchestrator := NewCommandOrchestrator(
 		cliPort,
 		templateEngine,

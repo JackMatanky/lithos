@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -60,7 +59,6 @@ func TestPersistCreatesNewFile(t *testing.T) {
 	})
 	note := domain.NewNote(
 		domain.NewNoteID("test-note"),
-		time.Now(),
 		frontmatter,
 	)
 	path := testNoteFilename
@@ -156,7 +154,6 @@ func TestPersistOverwritesExistingFile(t *testing.T) {
 	adapter := NewVaultWriterAdapter(config, log)
 
 	note := domain.NewNote(domain.NewNoteID("test-note"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"title":   "Updated Note",
 			"content": "new content",
@@ -198,7 +195,6 @@ func TestPersistCreatesParentDirectories(t *testing.T) {
 
 	nestedPath := "contacts/work/alice.md"
 	note := domain.NewNote(domain.NewNoteID("test-note"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"title":   "Alice Smith",
 			"content": "Contact info",
@@ -240,7 +236,6 @@ func TestPersistPreservesFrontmatter(t *testing.T) {
 
 	// Note with custom frontmatter fields
 	note := domain.NewNote(domain.NewNoteID("test-note"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{
 			"fileClass":    "contact",
 			"title":        "Test Contact",

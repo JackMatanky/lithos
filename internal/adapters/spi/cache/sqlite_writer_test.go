@@ -112,8 +112,7 @@ func TestSQLiteCacheWriteAdapter_Persist(t *testing.T) {
 		{
 			name: "success - persists note metadata",
 			note: domain.Note{
-				ID:   domain.NewNoteID("test-note"),
-				Path: "/path/to/test-note.md",
+				ID: domain.NewNoteID("test-note"),
 				Frontmatter: domain.Frontmatter{
 					FileClass: "contact",
 					Fields: map[string]interface{}{
@@ -151,7 +150,7 @@ func TestSQLiteCacheWriteAdapter_Persist(t *testing.T) {
 				).Scan(&id, &path, &title, &fileClass, &frontmatterJSON)
 				require.NoError(t, detailsErr)
 				assert.Equal(t, string(note.ID), id)
-				assert.Equal(t, note.Path, path)
+				assert.Equal(t, string(note.ID), path)
 				assert.Equal(t, "Test Note", title)
 				assert.Equal(t, "contact", fileClass)
 
@@ -165,8 +164,7 @@ func TestSQLiteCacheWriteAdapter_Persist(t *testing.T) {
 		{
 			name: "success - overwrites existing note",
 			note: domain.Note{
-				ID:   domain.NewNoteID("existing-note"),
-				Path: "/path/to/existing-note.md",
+				ID: domain.NewNoteID("existing-note"),
 				Frontmatter: domain.Frontmatter{
 					FileClass: "project",
 					Fields: map[string]interface{}{
@@ -201,8 +199,7 @@ func TestSQLiteCacheWriteAdapter_Persist(t *testing.T) {
 		{
 			name: "success - handles missing frontmatter fields",
 			note: domain.Note{
-				ID:   domain.NewNoteID("minimal-note"),
-				Path: "/path/to/minimal-note.md",
+				ID: domain.NewNoteID("minimal-note"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{},
 				},
@@ -258,8 +255,7 @@ func TestSQLiteCacheWriteAdapter_Delete(t *testing.T) {
 
 	// Setup: persist a note first
 	note := domain.Note{
-		ID:   domain.NewNoteID("delete-test"),
-		Path: "/path/to/delete-test.md",
+		ID: domain.NewNoteID("delete-test"),
 		Frontmatter: domain.Frontmatter{
 			Fields: map[string]interface{}{
 				"title": "Delete Test",
@@ -359,8 +355,7 @@ func TestSQLiteCacheWriteAdapter_Close(t *testing.T) {
 	// Verify we can't use it after close (should get error)
 	ctx := context.Background()
 	note := domain.Note{
-		ID:   domain.NewNoteID("test"),
-		Path: "/test.md",
+		ID: domain.NewNoteID("test"),
 		Frontmatter: domain.Frontmatter{
 			Fields: map[string]interface{}{},
 		},
@@ -381,8 +376,7 @@ func Test_extractSQLiteNoteMetadata(t *testing.T) {
 		{
 			name: "extracts all metadata fields",
 			note: domain.Note{
-				ID:   domain.NewNoteID("test1"),
-				Path: "/notes/contact.md",
+				ID: domain.NewNoteID("test1"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{
 						"title":      "John Doe",
@@ -395,7 +389,7 @@ func Test_extractSQLiteNoteMetadata(t *testing.T) {
 			fileClassKey: "file_class",
 			checkFunc: func(t *testing.T, metadata map[string]interface{}) {
 				assert.Equal(t, "test1", metadata["id"])
-				assert.Equal(t, "/notes/contact.md", metadata["path"])
+				assert.Equal(t, "test1", metadata["path"])
 				assert.Equal(t, "John Doe", metadata["title"])
 				assert.Equal(t, "contact", metadata["file_class"])
 				assert.Contains(t, metadata, "frontmatter")
@@ -406,8 +400,7 @@ func Test_extractSQLiteNoteMetadata(t *testing.T) {
 		{
 			name: "handles missing fields gracefully",
 			note: domain.Note{
-				ID:   domain.NewNoteID("minimal"),
-				Path: "/notes/minimal.md",
+				ID: domain.NewNoteID("minimal"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{},
 				},
@@ -415,7 +408,7 @@ func Test_extractSQLiteNoteMetadata(t *testing.T) {
 			fileClassKey: "file_class",
 			checkFunc: func(t *testing.T, metadata map[string]interface{}) {
 				assert.Equal(t, "minimal", metadata["id"])
-				assert.Equal(t, "/notes/minimal.md", metadata["path"])
+				assert.Equal(t, "minimal", metadata["path"])
 				assert.NotContains(t, metadata, "title")
 				assert.NotContains(t, metadata, "file_class")
 			},
@@ -423,8 +416,7 @@ func Test_extractSQLiteNoteMetadata(t *testing.T) {
 		{
 			name: "uses configurable file class key",
 			note: domain.Note{
-				ID:   domain.NewNoteID("custom"),
-				Path: "/notes/custom.md",
+				ID: domain.NewNoteID("custom"),
 				Frontmatter: domain.Frontmatter{
 					Fields: map[string]interface{}{
 						"type": "project",

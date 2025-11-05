@@ -62,7 +62,6 @@ func TestSchemaEngine_LoadValidSchemas(t *testing.T) {
 
 	// Create minimal config for the test
 	cfg := &domain.Config{
-		VaultPath:        tempDir,
 		SchemasDir:       filepath.Join(tempDir, "schemas"),
 		PropertyBankFile: "property_bank.json",
 	}
@@ -166,7 +165,6 @@ func TestSchemaEngine_ComplexInheritance(t *testing.T) {
 
 	// Create minimal config for the test
 	cfg := &domain.Config{
-		VaultPath:        tempDir,
 		SchemasDir:       filepath.Join(tempDir, "schemas"),
 		PropertyBankFile: "property_bank.json",
 	}
@@ -244,7 +242,6 @@ func TestSchemaEngine_ErrorMessages(t *testing.T) {
 
 	// Create minimal config for the test
 	cfg := &domain.Config{
-		VaultPath:        tempDir,
 		SchemasDir:       filepath.Join(tempDir, "schemas"),
 		PropertyBankFile: "property_bank.json",
 	}

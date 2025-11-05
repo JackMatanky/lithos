@@ -60,7 +60,7 @@ type VaultScannerPort interface {
 
 // VaultWriterPort defines the contract for writing notes to vault with atomic
 // guarantees. This port abstracts filesystem write operations into domain-level
-// persistence operations, enabling the CommandOrchestrator to persist notes
+// persistence operations, enabling the CLIComander to persist notes
 // without knowing filesystem details.
 //
 // The port provides CQRS write-side operations with atomic guarantees, ensuring
@@ -74,7 +74,7 @@ type VaultWriterPort interface {
 	// Creates parent directories if missing
 	// Overwrites existing file without mutating note content
 	// Preserves all frontmatter fields (FR6)
-	// Used by CommandOrchestrator.NewNote() and dual-write pattern
+	// Used by CLIComander.NewNote() and dual-write pattern
 	// Errors include operation context and file paths per FR9
 	Persist(ctx context.Context, note domain.Note, path string) error
 
@@ -88,7 +88,7 @@ type VaultWriterPort interface {
 
 	// Delete removes note from vault
 	// Idempotent: returns nil if file doesn't exist
-	// Used by CommandOrchestrator for note deletion
+	// Used by CLIComander for note deletion
 	// Errors include operation context and file paths per FR9
 	Delete(ctx context.Context, path string) error
 }

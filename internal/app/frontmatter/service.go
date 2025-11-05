@@ -3,12 +3,12 @@ package frontmatter
 import (
 	"bytes"
 	"context"
-	stderrors "errors"
+	"errors"
 	"sync"
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/parser"
@@ -90,7 +90,7 @@ func (s *FrontmatterService) Extract(
 	// Parse markdown with frontmatter using goldmark
 	frontmatterData, err := s.parseMarkdownWithFrontmatter(content)
 	if err != nil {
-		return domain.Frontmatter{}, errors.NewFrontmatterError(
+		return domain.Frontmatter{}, lithosErr.NewFrontmatterError(
 			"failed to parse frontmatter from markdown",
 			"",
 			err,
@@ -230,7 +230,7 @@ func (s *FrontmatterService) validateRequiredFields(
 			if _, exists := fm.Fields[property.Name]; !exists {
 				validationErrors = append(
 					validationErrors,
-					errors.NewFrontmatterError(
+					lithosErr.NewFrontmatterError(
 						"required field missing",
 						property.Name,
 						nil,
@@ -241,7 +241,7 @@ func (s *FrontmatterService) validateRequiredFields(
 	}
 
 	if len(validationErrors) > 0 {
-		return stderrors.Join(validationErrors...)
+		return errors.Join(validationErrors...)
 	}
 	return nil
 }
@@ -291,7 +291,7 @@ func (s *FrontmatterService) validateFieldTypes(
 	}
 
 	if len(validationErrors) > 0 {
-		return stderrors.Join(validationErrors...)
+		return errors.Join(validationErrors...)
 	}
 	return nil
 }
@@ -305,5 +305,5 @@ func (s *FrontmatterService) aggregateValidationErrors(
 	if len(validationErrors) == 0 {
 		return nil
 	}
-	return stderrors.Join(validationErrors...)
+	return errors.Join(validationErrors...)
 }

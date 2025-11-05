@@ -3,7 +3,6 @@ package frontmatter
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -446,7 +445,6 @@ This is a test project.`)
 	// Step 5: Create Note and add to index (simulated)
 	note := domain.NewNote(
 		domain.NewNoteID("test-project.md"),
-		time.Now(),
 		frontmatter,
 	)
 	assert.Equal(t, "project", note.SchemaName())

@@ -153,7 +153,7 @@ func extractSQLiteNoteMetadata(
 ) (map[string]interface{}, error) {
 	metadata := map[string]interface{}{
 		"id":         string(note.ID),
-		"path":       note.Path,
+		"path":       string(note.ID),
 		"index_time": time.Now(),
 	}
 
@@ -205,7 +205,7 @@ func (a *SQLiteCacheWriteAdapter) Persist(
 	if err != nil {
 		return lithosErr.NewCacheWriteError(
 			string(note.ID),
-			note.Path,
+			string(note.ID),
 			"extract_metadata",
 			err,
 		)
@@ -302,7 +302,7 @@ func (a *SQLiteCacheWriteAdapter) persistWithTransaction(
 	if err != nil {
 		return lithosErr.NewCacheWriteError(
 			string(note.ID),
-			note.Path,
+			string(note.ID),
 			"begin_transaction",
 			err,
 		)
@@ -316,7 +316,7 @@ func (a *SQLiteCacheWriteAdapter) persistWithTransaction(
 	if commitErr := tx.Commit(); commitErr != nil {
 		return lithosErr.NewCacheWriteError(
 			string(note.ID),
-			note.Path,
+			string(note.ID),
 			"commit_transaction",
 			commitErr,
 		)
@@ -324,7 +324,7 @@ func (a *SQLiteCacheWriteAdapter) persistWithTransaction(
 
 	a.log.Debug().
 		Str("note_id", string(note.ID)).
-		Str("path", note.Path).
+		Str("path", string(note.ID)).
 		Msg("SQLite cache write successful")
 
 	return nil
@@ -356,7 +356,7 @@ func (a *SQLiteCacheWriteAdapter) insertNoteInTransaction(
 	if err != nil {
 		return lithosErr.NewCacheWriteError(
 			string(note.ID),
-			note.Path,
+			string(note.ID),
 			"insert_note",
 			err,
 		)

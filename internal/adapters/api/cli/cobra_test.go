@@ -5,7 +5,6 @@ import (
 	"context"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -146,7 +145,6 @@ func TestHandleNewCommand_ExtractsTemplateIdFromArgs(t *testing.T) {
 	// Set up mock to return success
 	expectedNote := domain.NewNote(
 		domain.NewNoteID("test123"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{}),
 	)
 	mockHandler.SetNewNoteResult(expectedNote, nil)
@@ -186,7 +184,6 @@ func TestHandleNewCommand_CallsHandlerNewNoteWithCorrectArguments(
 	// Set up mock to return success
 	expectedNote := domain.NewNote(
 		domain.NewNoteID("test123"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{}),
 	)
 	mockHandler.SetNewNoteResult(expectedNote, nil)
@@ -210,7 +207,6 @@ func TestDisplayNoteCreated_FormatsOutputCorrectlyWithoutViewFlag(
 
 	note := domain.NewNote(
 		domain.NewNoteID("test123"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{}),
 	)
 
@@ -232,7 +228,6 @@ func TestDisplayNoteCreated_DisplaysContentWithViewFlag(t *testing.T) {
 
 	note := domain.NewNote(
 		domain.NewNoteID("test123"),
-		time.Now(),
 		domain.NewFrontmatter(map[string]interface{}{}),
 	)
 
