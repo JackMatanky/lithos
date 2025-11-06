@@ -36,6 +36,7 @@ These discoveries revealed **fundamental misunderstanding** of hexagonal archite
 ### Critical Architectural Principle Identified
 
 **Hexagonal Architecture Validation Layers**:
+
 - **Syntactic Validation** (structure/format checking) → **Adapter Layer**
 - **Semantic Validation** (business rules checking) → **Domain Layer**
 
@@ -45,14 +46,14 @@ This principle fundamentally changes validation placement across the entire syst
 
 This document captures comprehensive course correction analysis using the BMad Change Navigation Checklist. **18+ architectural issues** have been identified and organized into **8 issue groups** for systematic analysis:
 
-1. **Group 1**: Validation Architecture (anemic models, IO in domain, validation layers) - *Section 1 complete*
-2. **Group 2**: Storage Architecture, CQRS & DTOs - *Pending*
-3. **Group 3**: Orchestration & Coordination - *Pending*
-4. **Group 4**: Configuration Management - *Pending*
-5. **Group 5**: Schema Domain System - *Pending*
-6. **Group 6**: Template System (Epic 5 dependency) - *Pending*
-7. **Group 7**: Documentation & Patterns - *Pending*
-8. **Group 8**: Implementation Blockers - *Pending*
+1. **Group 1**: Validation Architecture (anemic models, IO in domain, validation layers) - _Section 1 complete_
+2. **Group 2**: Storage Architecture, CQRS & DTOs - _Pending_
+3. **Group 3**: Orchestration & Coordination - _Pending_
+4. **Group 4**: Configuration Management - _Pending_
+5. **Group 5**: Schema Domain System - _Pending_
+6. **Group 6**: Template System (Epic 5 dependency) - _Pending_
+7. **Group 7**: Documentation & Patterns - _Pending_
+8. **Group 8**: Implementation Blockers - _Pending_
 
 **Current Status**: Group 1 Section 2 (Epic Impact Assessment) in progress.
 
@@ -69,13 +70,13 @@ This document captures comprehensive course correction analysis using the BMad C
 
 ### Change Log
 
-| Date       | Version | Description                                                                                                                                                                                                             | Author     |
-| ---------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| Date       | Version | Description                                                                                                                                                                                                                       | Author     |
+| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
 | 2025-11-06 | 1.4     | Enhanced Executive Summary with full background (Nov 2 sprint change, 6 architectural questions, course correction trigger); replaced Action Items with detailed, specific breakdown for all 8 groups + research/synthesis phases | Sarah (PO) |
-| 2025-11-06 | 1.3     | Reorganized document structure: moved analysis results under corresponding groups in Structured Analysis Plan; added progress checkboxes to each group; removed duplicate sections; reduced file from 980 to 741 lines  | Sarah (PO) |
-| 2025-11-06 | 1.2     | Completed Group 1 Section 1 comprehensive analysis (Issues D1, B2, Hexagonal Principle) with code evidence from FrontmatterService, VaultReaderAdapter, and domain entities; ready for Section 2 Epic Impact Assessment | Sarah (PO) |
-| 2025-11-05 | 1.1     | Established structured analysis plan (8 issue groups); revised Group 2 to include missing storage/CQRS issues; moved SQLite to storage group; increased issue count to 18+                                              | Sarah (PO) |
-| 2025-11-05 | 1.0     | Initial comprehensive issue inventory (15 issues); established hexagonal validation principle; completed Section 1 for Issue D1                                                                                         | Sarah (PO) |
+| 2025-11-06 | 1.3     | Reorganized document structure: moved analysis results under corresponding groups in Structured Analysis Plan; added progress checkboxes to each group; removed duplicate sections; reduced file from 980 to 741 lines            | Sarah (PO) |
+| 2025-11-06 | 1.2     | Completed Group 1 Section 1 comprehensive analysis (Issues D1, B2, Hexagonal Principle) with code evidence from FrontmatterService, VaultReaderAdapter, and domain entities; ready for Section 2 Epic Impact Assessment           | Sarah (PO) |
+| 2025-11-05 | 1.1     | Established structured analysis plan (8 issue groups); revised Group 2 to include missing storage/CQRS issues; moved SQLite to storage group; increased issue count to 18+                                                        | Sarah (PO) |
+| 2025-11-05 | 1.0     | Initial comprehensive issue inventory (15 issues); established hexagonal validation principle; completed Section 1 for Issue D1                                                                                                   | Sarah (PO) |
 
 ### Conversation Log
 
@@ -315,15 +316,149 @@ Three types of validation, same method name:
 
 ---
 
-## Structured Analysis
-
-### Plan
+## Structured Plan
 
 **Approach**: Option A - Full Sequential Analysis
 
-- Complete Sections 1-2 for each issue group systematically
-- Document findings in this file after each group
-- Synthesize all findings into comprehensive story/epic plan after all groups complete
+- Understand Trigger & Context:
+  - for each issue group systematically work through the trigger and context
+  - document findings in this file after each group
+- Research Strategy:
+  - identify potential solutions built-in to Go packages
+  - gain insights from Obsidian architecture
+  - document findings in this file after each package
+- Complete full entity review scope
+- Epic Impact Assessment:
+  - Review each issue group to stories and epics directly impacted by the issue
+  - Synthesize all findings into comprehensive story/epic plan
+
+### Action Items
+
+#### Understanding Trigger & Context
+
+- [x] Group 1: Validation Architecture:
+  - [x] Analyzed anemic models, IO in domain, validation layer violations
+
+- [ ] Group 2: Storage Architecture, CQRS & DTOs
+  - [ ] Analyze QueryService/Note struct mismatch (Issue B1)
+  - [ ] Review DTO architecture violations of Go idioms (Issues D2, A4)
+  - [ ] Examine SQLite schema optimization approach (Issue A5)
+  - [ ] Investigate write coordination patterns (Issue A6)
+  - [ ] Assess CQRS pattern application (read/write models vs operations)
+  - [ ] Evaluate cache vs vault source of truth implications
+- [ ] Group 3: Orchestration & Coordination
+  - [ ] Evaluate event-driven architecture vs orchestrator pattern (Issue A1)
+  - [ ] Analyze write coordination pattern overlap with storage (Issue A6)
+  - [ ] Examine god-object concerns with CLICommander
+  - [ ] Review domain events approach (NoteIndexed, FrontmatterValidated, SchemaLoaded)
+
+- [ ] Group 4: Configuration Management
+  - [ ] Review singleton implementation for Config and PropertyBank (Issue A2)
+  - [ ] Analyze FileClassKey configuration impact (Issue A3)
+  - [ ] Examine ViperAdapter FileClassKey loading gap
+
+- [ ] Group 5: Schema Domain System
+  - [ ] Analyze SchemaLoaderPort and SchemaRegistryPort coupling (Issue B3)
+  - [ ] Review automatic registration vs explicit loading
+
+- [ ] Group 6: Template System (CRITICAL - Epic 5 Dependency)
+  - [ ] Investigate Template struct name conflict with text/template package
+  - [ ] Research text/template stdlib capabilities
+  - [ ] Determine if Template struct is even needed
+  - [ ] Analyze whether to embed \*template.Template
+
+- [ ] Group 7: Documentation & Patterns (META)
+  - [ ] Catalog pattern documentation gaps (Issue D3)
+  - [ ] Review architectural documentation misalignment
+
+- [ ] Group 8: Implementation Blockers (META)
+  - [ ] Review Questions 1-5 pending implementations (Issue C1)
+  - [ ] Analyze Question 6 unresolved status (Issue C2)
+  - [ ] Document architecture documentation misalignment (Issue C3)
+
+### Research Phase (Parallel with Analysis)
+
+**Phase 1: Go Native Capabilities** (Priority - understand before Obsidian)
+
+- [ ] Research io/fs package (FileInfo, File, FS interfaces, WalkDir patterns)
+- [ ] Research text/template package (composition, function maps, execution patterns)
+- [ ] Research bbolt package (bucket design, transactions, cursor usage, best practices)
+- [ ] Research modernc.org/sqlite (schema patterns, query optimization, Go idioms)
+- [ ] Research goldmark package (parser API, AST manipulation, extension patterns, frontmatter extraction)
+
+**Phase 2: Obsidian API Patterns** (After Phase 1)
+
+- [ ] Survey Obsidian API index for relevant models (TAbstractFile, FileStats, CachedMetadata)
+- [ ] Map Obsidian patterns to Go stdlib capabilities
+- [ ] Identify gaps between Go native and Obsidian solutions
+- [ ] Extract architectural patterns applicable to Lithos domain
+
+**Phase 3: Gap Analysis**
+
+- [ ] Compare Go idioms vs current implementation
+- [ ] Identify Obsidian patterns worth adopting
+- [ ] Document pattern recommendations with rationale
+
+#### Epic Impact Assessment
+
+- [ ] Group 1: Validation Architecture
+  - [ ] Identify which Epic 3 stories require validation refactoring
+  - [ ] Determine story breakdown: Frontmatter entity refactoring, Note entity refactoring, validation layer separation
+  - [ ] Assess FrontmatterService.Extract() extraction to adapter layer
+  - [ ] Evaluate Template entity impact (Epic 5 dependency)
+  - [ ] Document refactoring sequence and dependencies
+
+- [ ] Group 2: Storage Architecture, CQRS & DTOs
+  - [ ] Determine FileMetadata/VaultFile redesign leveraging fs.FileInfo
+  - [ ] Design BoltDB vs SQLite query routing strategy
+  - [ ] Select write coordination pattern (UoW, Saga, or dual-write)
+  - [ ] Plan storage staleness detection implementation
+
+- [ ] Group 3: Orchestration & Coordination
+  - [ ] Select orchestration pattern and document rationale
+  - [ ] Plan CLICommander refactoring if needed
+  - [ ] Design event infrastructure if event-driven approach selected
+
+- [ ] Group 4: Configuration Management
+  - [ ] Plan singleton accessor implementation (GetConfig, GetPropertyBank)
+  - [ ] Design test harness support for instance swapping
+  - [ ] Document Config embedded struct pattern for extensibility
+
+- [ ] Group 5: Schema Domain System
+  - [ ] Determine port simplification approach
+  - [ ] Plan schema loading workflow refactoring
+
+- [ ] Group 6: Template System (CRITICAL - Epic 5 Dependency)
+  - [ ] Make Template struct fundamental decision
+  - [ ] Assess Epic 5 (Template Engine) impact and timeline
+  - [ ] Plan Template entity refactoring if keeping struct
+
+- [ ] Group 7: Documentation & Patterns (META)
+  - [ ] Synthesize patterns discovered across Groups 1-6
+  - [ ] Plan architecture documentation updates (components.md, data-models.md)
+  - [ ] Create pattern decision matrix
+
+- [ ] Group 8: Implementation Blockers (META)
+  - [ ] Assess implementation roadmap across all groups
+  - [ ] Determine story renumbering strategy (push 3.17-3.18 after new stories)
+  - [ ] Plan documentation updates timing
+
+### Synthesis Phase (After All Groups Complete)
+
+- [ ] Create cross-issue dependency map
+- [ ] Consolidate epic impact findings from all 8 groups
+- [ ] Develop comprehensive story plan:
+  - [ ] Story breakdown with acceptance criteria
+  - [ ] Story sequencing based on dependencies
+  - [ ] Effort estimates per story
+  - [ ] Risk assessment and mitigation strategies
+- [ ] Renumber Epic 3 stories (insert new stories, push 3.17-3.18 to end)
+- [ ] Update Epic 3 timeline and milestones
+- [ ] Final architecture documentation updates
+
+---
+
+## Trigger and Context Analysis
 
 ### Group 1: Validation Architecture (3 issues - FOUNDATIONAL)
 
@@ -334,11 +469,6 @@ Three types of validation, same method name:
 - **Hexagonal Principle**: Syntactic (adapter) vs Semantic (domain) validation
 
 **Why Grouped**: All about where validation logic belongs in hexagonal architecture
-
-**Action Items**:
-
-- [x] Section 1: Understand Trigger & Context
-- [ ] Section 2: Epic Impact Assessment
 
 #### Section 1: Understand Trigger & Context
 
@@ -528,27 +658,16 @@ Three types of validation, same method name:
    ↓
    VaultIndexer receives pre-parsed Frontmatter
    ↓
-   FrontmatterService.ValidateAgainstSchema() (domain) → semantic validation only
+   FrontmatterService.IsSchemaCompliant() (domain) → semantic validation only
    ```
 
 **Validation Naming Ambiguity**:
 
-| Current Method                | Type      | Validates         | Data Required    | Current Layer | Correct Layer                            |
-| ----------------------------- | --------- | ----------------- | ---------------- | ------------- | ---------------------------------------- |
-| Schema.Validate()             | Syntactic | JSON structure    | Schema only      | Domain        | **Adapter**                              |
-| Frontmatter.Validate()        | Syntactic | YAML structure    | Frontmatter only | **Missing!**  | Adapter                                  |
-| FrontmatterService.Validate() | Semantic  | Schema compliance | FM + Schema      | Domain        | Domain (rename to ValidateAgainstSchema) |
-
-#### Section 2: Epic Impact Assessment
-
-**Status**: Pending - ready to begin
-
-**Questions to Answer**:
-
-- Which Epic 3 stories are impacted?
-- What new stories are needed?
-- How does this affect Epic 5 (Template Engine)?
-- What is the refactoring sequence?
+| Current Method                | Type      | Validates         | Data Required    | Current Layer | Correct Layer | Correct Method Name |
+| ----------------------------- | --------- | ----------------- | ---------------- | ------------- | ------------- | ------------------- |
+| Schema.Validate()             | Syntactic | JSON structure    | Schema only      | Domain        | **Adapter**   | IsValidSyntax()     |
+| Frontmatter.Validate()        | Syntactic | YAML structure    | Frontmatter only | **Missing!**  | Adapter       | IsValidSyntax()     |
+| FrontmatterService.Validate() | Semantic  | Schema compliance | FM + Schema      | Domain        | Domain        | IsSchemaCompliant() |
 
 ---
 
@@ -598,11 +717,6 @@ Three types of validation, same method name:
 - How does QueryService interface with different storage backends?
 - What does "cache as projection" mean for our architecture?
 
-**Action Items**:
-
-- [ ] Section 1: Understand Trigger & Context
-- [ ] Section 2: Epic Impact Assessment
-
 ---
 
 ### Group 3: Orchestration & Coordination (2 issues - SYSTEM-WIDE)
@@ -613,11 +727,6 @@ Three types of validation, same method name:
 - **Related to A6**: Write coordination pattern (overlaps with storage)
 
 **Why Grouped**: System-wide coordination patterns affecting component communication
-
-**Action Items**:
-
-- [ ] Section 1: Understand Trigger & Context
-- [ ] Section 2: Epic Impact Assessment
 
 ---
 
@@ -630,11 +739,6 @@ Three types of validation, same method name:
 
 **Why Grouped**: Both about configuration architecture and lifecycle
 
-**Action Items**:
-
-- [ ] Section 1: Understand Trigger & Context
-- [ ] Section 2: Epic Impact Assessment
-
 ---
 
 ### Group 5: Schema Domain System (1 issue - DOMAIN SPECIFIC)
@@ -644,11 +748,6 @@ Three types of validation, same method name:
 - **B3**: Schema Loading/Registration Coupling (SchemaLoaderPort vs SchemaRegistryPort)
 
 **Why Grouped**: Schema-specific domain concern (A5 SQLite moved to Group 2 Storage)
-
-**Action Items**:
-
-- [ ] Section 1: Understand Trigger & Context
-- [ ] Section 2: Epic Impact Assessment
 
 ---
 
@@ -664,11 +763,6 @@ Three types of validation, same method name:
 
 **Why Standalone**: Epic 5 depends on this resolution; needs deep analysis of stdlib usage
 
-**Action Items**:
-
-- [ ] Section 1: Understand Trigger & Context
-- [ ] Section 2: Epic Impact Assessment
-
 ---
 
 ### Group 7: Documentation & Patterns (1 issue - META)
@@ -678,11 +772,6 @@ Three types of validation, same method name:
 - **D3**: Missing Pattern Documentation
 
 **Why Standalone**: Meta-issue about documenting patterns discovered in other groups
-
-**Action Items**:
-
-- [ ] Section 1: Understand Trigger & Context
-- [ ] Section 2: Epic Impact Assessment
 
 ---
 
@@ -696,21 +785,35 @@ Three types of validation, same method name:
 
 **Why Grouped**: Meta-issues about implementation state and process
 
-**Action Items**:
-
-- [ ] Section 1: Understand Trigger & Context
-- [ ] Section 2: Epic Impact Assessment
-
 ---
 
 ## Research Strategy
 
 ### Phase 1: Go Native Capabilities (Priority)
 
+#### io/fs stdlib Package
+
 - [ ] **io/fs package**: FileInfo, File, FS interfaces, WalkDir patterns
+
+#### text/template stdlib Package
+
 - [ ] **text/template**: Template composition, function maps, execution patterns
+
+#### bbolt Package
+
 - [ ] **bbolt**: Bucket design, transaction patterns, cursor usage, best practices
+
+#### sqlite (modernc.org/sqlite) Package
+
 - [ ] **sqlite (modernc.org/sqlite)**: Schema patterns, query optimization, Go idioms
+
+#### goldmark Package
+
+Local References:
+
+- `docs/refs/yuin-goldmark-digest.txt`
+- `docs/refs/abhinav-goldmark-frontmatter-digest.txt`
+
 - [ ] **goldmark**: Parser API, AST manipulation, extension patterns, frontmatter extraction
 
 ### Phase 2: Obsidian Patterns (After Phase 1)
@@ -758,6 +861,10 @@ Three types of validation, same method name:
 
 ---
 
+## Epic Impact Assessment
+
+---
+
 ## Key Architectural Principles Established
 
 ### Hexagonal Architecture Validation Layers
@@ -779,137 +886,11 @@ Three types of validation, same method name:
 
 ### Validation Naming Convention (Proposed)
 
-- `Validate()` - syntactic validation on entity (adapter layer)
-- `ValidateAgainstSchema()` - semantic validation in service (domain layer)
-- `IsValid()` - boolean syntactic check
+- `Validate()` - semantic validation in domain entity
+- `IsSchemaCompliant()` - semantic validation in application service
+- `IsValidSyntax()` - syntactic validation on input data in adapter layer
+- `ValidateSyntax()` - boolean syntactic check
 - `IsWellFormed()` - alternative syntactic check
-
----
-
-## Action Items
-
-### Group 1: Validation Architecture (IN PROGRESS)
-
-- [x] Section 1: Understand Trigger & Context - Analyzed anemic models, IO in domain, validation layer violations
-- [ ] Section 2: Epic Impact Assessment
-  - [ ] Identify which Epic 3 stories require validation refactoring
-  - [ ] Determine story breakdown: Frontmatter entity refactoring, Note entity refactoring, validation layer separation
-  - [ ] Assess FrontmatterService.Extract() extraction to adapter layer
-  - [ ] Evaluate Template entity impact (Epic 5 dependency)
-  - [ ] Document refactoring sequence and dependencies
-
-### Group 2: Storage Architecture, CQRS & DTOs (NEXT)
-
-- [ ] Section 1: Understand Trigger & Context
-  - [ ] Analyze QueryService/Note struct mismatch (Issue B1)
-  - [ ] Review DTO architecture violations of Go idioms (Issues D2, A4)
-  - [ ] Examine SQLite schema optimization approach (Issue A5)
-  - [ ] Investigate write coordination patterns (Issue A6)
-  - [ ] Assess CQRS pattern application (read/write models vs operations)
-  - [ ] Evaluate cache vs vault source of truth implications
-- [ ] Section 2: Epic Impact Assessment
-  - [ ] Determine FileMetadata/VaultFile redesign leveraging fs.FileInfo
-  - [ ] Design BoltDB vs SQLite query routing strategy
-  - [ ] Select write coordination pattern (UoW, Saga, or dual-write)
-  - [ ] Plan storage staleness detection implementation
-
-### Group 3: Orchestration & Coordination
-
-- [ ] Section 1: Understand Trigger & Context
-  - [ ] Evaluate event-driven architecture vs orchestrator pattern (Issue A1)
-  - [ ] Analyze write coordination pattern overlap with storage (Issue A6)
-  - [ ] Examine god-object concerns with CLICommander
-  - [ ] Review domain events approach (NoteIndexed, FrontmatterValidated, SchemaLoaded)
-- [ ] Section 2: Epic Impact Assessment
-  - [ ] Select orchestration pattern and document rationale
-  - [ ] Plan CLICommander refactoring if needed
-  - [ ] Design event infrastructure if event-driven approach selected
-
-### Group 4: Configuration Management
-
-- [ ] Section 1: Understand Trigger & Context
-  - [ ] Review singleton implementation for Config and PropertyBank (Issue A2)
-  - [ ] Analyze FileClassKey configuration impact (Issue A3)
-  - [ ] Examine ViperAdapter FileClassKey loading gap
-- [ ] Section 2: Epic Impact Assessment
-  - [ ] Plan singleton accessor implementation (GetConfig, GetPropertyBank)
-  - [ ] Design test harness support for instance swapping
-  - [ ] Document Config embedded struct pattern for extensibility
-
-### Group 5: Schema Domain System
-
-- [ ] Section 1: Understand Trigger & Context
-  - [ ] Analyze SchemaLoaderPort and SchemaRegistryPort coupling (Issue B3)
-  - [ ] Review automatic registration vs explicit loading
-- [ ] Section 2: Epic Impact Assessment
-  - [ ] Determine port simplification approach
-  - [ ] Plan schema loading workflow refactoring
-
-### Group 6: Template System (CRITICAL - Epic 5 Dependency)
-
-- [ ] Section 1: Understand Trigger & Context
-  - [ ] Investigate Template struct name conflict with text/template package
-  - [ ] Research text/template stdlib capabilities
-  - [ ] Determine if Template struct is even needed
-  - [ ] Analyze whether to embed *template.Template
-- [ ] Section 2: Epic Impact Assessment
-  - [ ] Make Template struct fundamental decision
-  - [ ] Assess Epic 5 (Template Engine) impact and timeline
-  - [ ] Plan Template entity refactoring if keeping struct
-
-### Group 7: Documentation & Patterns (META)
-
-- [ ] Section 1: Understand Trigger & Context
-  - [ ] Catalog pattern documentation gaps (Issue D3)
-  - [ ] Review architectural documentation misalignment
-- [ ] Section 2: Epic Impact Assessment
-  - [ ] Synthesize patterns discovered across Groups 1-6
-  - [ ] Plan architecture documentation updates (components.md, data-models.md)
-  - [ ] Create pattern decision matrix
-
-### Group 8: Implementation Blockers (META)
-
-- [ ] Section 1: Understand Trigger & Context
-  - [ ] Review Questions 1-5 pending implementations (Issue C1)
-  - [ ] Analyze Question 6 unresolved status (Issue C2)
-  - [ ] Document architecture documentation misalignment (Issue C3)
-- [ ] Section 2: Epic Impact Assessment
-  - [ ] Assess implementation roadmap across all groups
-  - [ ] Determine story renumbering strategy (push 3.17-3.18 after new stories)
-  - [ ] Plan documentation updates timing
-
-### Research Phase (Parallel with Analysis)
-
-**Phase 1: Go Native Capabilities** (Priority - understand before Obsidian)
-- [ ] Research io/fs package (FileInfo, File, FS interfaces, WalkDir patterns)
-- [ ] Research text/template package (composition, function maps, execution patterns)
-- [ ] Research bbolt package (bucket design, transactions, cursor usage, best practices)
-- [ ] Research modernc.org/sqlite (schema patterns, query optimization, Go idioms)
-- [ ] Research goldmark package (parser API, AST manipulation, extension patterns, frontmatter extraction)
-
-**Phase 2: Obsidian API Patterns** (After Phase 1)
-- [ ] Survey Obsidian API index for relevant models (TAbstractFile, FileStats, CachedMetadata)
-- [ ] Map Obsidian patterns to Go stdlib capabilities
-- [ ] Identify gaps between Go native and Obsidian solutions
-- [ ] Extract architectural patterns applicable to Lithos domain
-
-**Phase 3: Gap Analysis**
-- [ ] Compare Go idioms vs current implementation
-- [ ] Identify Obsidian patterns worth adopting
-- [ ] Document pattern recommendations with rationale
-
-### Synthesis Phase (After All Groups Complete)
-
-- [ ] Create cross-issue dependency map
-- [ ] Consolidate epic impact findings from all 8 groups
-- [ ] Develop comprehensive story plan:
-  - [ ] Story breakdown with acceptance criteria
-  - [ ] Story sequencing based on dependencies
-  - [ ] Effort estimates per story
-  - [ ] Risk assessment and mitigation strategies
-- [ ] Renumber Epic 3 stories (insert new stories, push 3.17-3.18 to end)
-- [ ] Update Epic 3 timeline and milestones
-- [ ] Final architecture documentation updates
 
 ---
 
