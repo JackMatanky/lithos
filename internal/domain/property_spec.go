@@ -209,8 +209,7 @@ func validateNumberStep(step *float64) error {
 }
 
 // validateFilePatternCached checks if the pattern is a valid regex, allowing
-// negation
-// prefix (^). Uses caching to avoid recompilation.
+// negation prefix (^). Uses caching to avoid recompilation.
 func validateFilePatternCached(
 	field, value string,
 	compiled **regexp.Regexp,
