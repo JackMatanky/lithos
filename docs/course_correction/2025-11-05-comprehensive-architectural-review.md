@@ -338,47 +338,35 @@ Three types of validation, same method name:
 #### Understanding Trigger & Context
 
 - [x] Group 1: Validation Architecture:
-
   - [x] Analyzed anemic models, IO in domain, validation layer violations
-
-- [ ] Group 2: Storage Architecture, CQRS & DTOs
-  - [ ] Analyze QueryService/Note struct mismatch (Issue B1)
-  - [ ] Review DTO architecture violations of Go idioms (Issues D2, A4)
-  - [ ] Examine SQLite schema optimization approach (Issue A5)
-  - [ ] Investigate write coordination patterns (Issue A6)
-  - [ ] Assess CQRS pattern application (read/write models vs operations)
-  - [ ] Evaluate cache vs vault source of truth implications
-- [ ] Group 3: Orchestration & Coordination
-
+- [x] Group 2: Storage Architecture, CQRS & DTOs
+  - [x] Analyze QueryService/Note struct mismatch (Issue B1)
+  - [x] Review DTO architecture violations of Go idioms (Issues D2, A4)
+  - [x] Examine SQLite schema optimization approach (Issue A5)
+  - [x] Investigate write coordination patterns (Issue A6)
+  - [x] Assess CQRS pattern application (read/write models vs operations)
+  - [x] Evaluate cache vs vault source of truth implications
+- [ ] **Group 3: Orchestration & Coordination**
   - [ ] Evaluate event-driven architecture vs orchestrator pattern (Issue A1)
   - [ ] Analyze write coordination pattern overlap with storage (Issue A6)
   - [ ] Examine god-object concerns with CLICommander
   - [ ] Review domain events approach (NoteIndexed, FrontmatterValidated, SchemaLoaded)
-
-- [ ] Group 4: Configuration Management
-
+- [ ] **Group 4: Configuration Management**
   - [ ] Review singleton implementation for Config and PropertyBank (Issue A2)
   - [ ] Analyze FileClassKey configuration impact (Issue A3)
   - [ ] Examine ViperAdapter FileClassKey loading gap
-
-- [ ] Group 5: Schema Domain System
-
+- [ ] **Group 5: Schema Domain System**
   - [ ] Analyze SchemaLoaderPort and SchemaRegistryPort coupling (Issue B3)
   - [ ] Review automatic registration vs explicit loading
-
-- [ ] Group 6: Template System (CRITICAL - Epic 5 Dependency)
-
+- [ ] **Group 6: Template System (CRITICAL - Epic 5 Dependency)**
   - [ ] Investigate Template struct name conflict with text/template package
   - [ ] Research text/template stdlib capabilities
   - [ ] Determine if Template struct is even needed
   - [ ] Analyze whether to embed \*template.Template
-
-- [ ] Group 7: Documentation & Patterns (META)
-
+- [ ] **Group 7: Documentation & Patterns (META)**
   - [ ] Catalog pattern documentation gaps (Issue D3)
   - [ ] Review architectural documentation misalignment
-
-- [ ] Group 8: Implementation Blockers (META)
+- [ ] **Group 8: Implementation Blockers (META)**
   - [ ] Review Questions 1-5 pending implementations (Issue C1)
   - [ ] Analyze Question 6 unresolved status (Issue C2)
   - [ ] Document architecture documentation misalignment (Issue C3)
