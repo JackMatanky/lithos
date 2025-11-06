@@ -1035,6 +1035,14 @@ for _, note := range sqliteNotes {
 - Event-Driven: IndexingComplete event → QueryService subscribes → rebuilds indices automatically
 - Benefit: Separates command (indexing) from query (index building) concerns, reduces god-object
 
+##### 1.2 What is the core issue?
+
+##### 1.3 Is this a misunderstanding, missing consideration, or new information?
+
+##### 1.4 What is the impact if we don't address this?
+
+##### 1.5 What evidence supports this?
+
 ---
 
 ### Group 4: Configuration Management (2 issues - INFRASTRUCTURE)
@@ -1046,6 +1054,16 @@ for _, note := range sqliteNotes {
 
 **Why Grouped**: Both about configuration architecture and lifecycle
 
+##### 1.1 What triggered this change?
+
+##### 1.2 What is the core issue?
+
+##### 1.3 Is this a misunderstanding, missing consideration, or new information?
+
+##### 1.4 What is the impact if we don't address this?
+
+##### 1.5 What evidence supports this?
+
 ---
 
 ### Group 5: Schema Domain System (1 issue - DOMAIN SPECIFIC)
@@ -1055,6 +1073,16 @@ for _, note := range sqliteNotes {
 - **B3**: Schema Loading/Registration Coupling (SchemaLoaderPort vs SchemaRegistryPort)
 
 **Why Grouped**: Schema-specific domain concern (A5 SQLite moved to Group 2 Storage)
+
+##### 1.1 What triggered this change?
+
+##### 1.2 What is the core issue?
+
+##### 1.3 Is this a misunderstanding, missing consideration, or new information?
+
+##### 1.4 What is the impact if we don't address this?
+
+##### 1.5 What evidence supports this?
 
 ---
 
@@ -1070,6 +1098,16 @@ for _, note := range sqliteNotes {
 
 **Why Standalone**: Epic 5 depends on this resolution; needs deep analysis of stdlib usage
 
+##### 1.1 What triggered this change?
+
+##### 1.2 What is the core issue?
+
+##### 1.3 Is this a misunderstanding, missing consideration, or new information?
+
+##### 1.4 What is the impact if we don't address this?
+
+##### 1.5 What evidence supports this?
+
 ---
 
 ### Group 7: Documentation & Patterns (1 issue - META)
@@ -1079,6 +1117,16 @@ for _, note := range sqliteNotes {
 - **D3**: Missing Pattern Documentation
 
 **Why Standalone**: Meta-issue about documenting patterns discovered in other groups
+
+##### 1.1 What triggered this change?
+
+##### 1.2 What is the core issue?
+
+##### 1.3 Is this a misunderstanding, missing consideration, or new information?
+
+##### 1.4 What is the impact if we don't address this?
+
+##### 1.5 What evidence supports this?
 
 ---
 
@@ -1091,6 +1139,16 @@ for _, note := range sqliteNotes {
 - **C3**: Documentation Misalignment
 
 **Why Grouped**: Meta-issues about implementation state and process
+
+##### 1.1 What triggered this change?
+
+##### 1.2 What is the core issue?
+
+##### 1.3 Is this a misunderstanding, missing consideration, or new information?
+
+##### 1.4 What is the impact if we don't address this?
+
+##### 1.5 What evidence supports this?
 
 ---
 
