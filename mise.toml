@@ -12,7 +12,7 @@ go = "latest"
 golangci-lint = "latest"
 
 # ------------------------------------------------------------
-# Project env (what you used to have in .envrc)
+# Environment
 # ------------------------------------------------------------
 [env]
 GO111MODULE = "on"
@@ -63,8 +63,10 @@ go_set_gobin = true
 go_download_mirror = "https://dl.google.com/go"
 
 # ------------------------------------------------------------
-# Tasks — run with: `mise run build`, `mise run test`, ...
+# Tasks
 # ------------------------------------------------------------
+# run with: `mise run build`, `mise run test`, ...
+
 [tasks.build]
 description = "Build the Go project"
 run = "go build ./..."
@@ -73,9 +75,13 @@ run = "go build ./..."
 description = "Run unit tests"
 run = "go test ./..."
 
+[tasks.format]
+description = "Run golangci-lint"
+run = "golangci-lint fmt ./..."
+
 [tasks.lint]
 description = "Run golangci-lint"
-run = "golangci-lint run ./..."
+run = "golangci-lint run --fix ./..."
 
 # Example: task-specific env (handy for Go)
 [tasks.test.env]
