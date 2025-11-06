@@ -46,16 +46,16 @@ This principle fundamentally changes validation placement across the entire syst
 
 This document captures comprehensive course correction analysis using the BMad Change Navigation Checklist. **18+ architectural issues** have been identified and organized into **8 issue groups** for systematic analysis:
 
-1. **Group 1**: Validation Architecture (anemic models, IO in domain, validation layers) - _Section 1 complete_
-2. **Group 2**: Storage Architecture, CQRS & DTOs - _Pending_
-3. **Group 3**: Orchestration & Coordination - _Pending_
-4. **Group 4**: Configuration Management - _Pending_
-5. **Group 5**: Schema Domain System - _Pending_
-6. **Group 6**: Template System (Epic 5 dependency) - _Pending_
-7. **Group 7**: Documentation & Patterns - _Pending_
-8. **Group 8**: Implementation Blockers - _Pending_
+1. **Group 1**: Validation Architecture (anemic models, IO in domain, validation layers) - *Section 1 complete*
+2. **Group 2**: Storage Architecture, CQRS & DTOs - *Pending*
+3. **Group 3**: Orchestration & Coordination - *Pending*
+4. **Group 4**: Configuration Management - *Pending*
+5. **Group 5**: Schema Domain System - *Pending*
+6. **Group 6**: Template System (Epic 5 dependency) - *Pending*
+7. **Group 7**: Documentation & Patterns - *Pending*
+8. **Group 8**: Implementation Blockers - *Pending*
 
-**Current Status**: Group 1 Section 2 (Epic Impact Assessment) in progress.
+**Current Status**: Group 1 Section 1 complete. Groups 2-8 Section 1 (Understand Trigger & Context) in progress.
 
 **Expected Outcome**: Comprehensive story plan with sequencing, dependencies, and risk mitigation for completing Epic 3 with correct architectural foundation.
 
@@ -63,15 +63,16 @@ This document captures comprehensive course correction analysis using the BMad C
 
 ## Document Control
 
-- **Version**: 1.4
+- **Version**: 1.5
 - **Date**: November 6, 2025
-- **Status**: IN PROGRESS - Group 1 Section 2 (Epic Impact Assessment)
+- **Status**: IN PROGRESS - Groups 2-8 Section 1 (Understand Trigger & Context)
 - **Distribution**: Development team, stakeholders
 
 ### Change Log
 
 | Date       | Version | Description                                                                                                                                                                                                                       | Author     |
 | ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 2025-11-06 | 1.5     | Restructured Structured Plan to phase-based approach (Section 1 all groups → Research → Entity Review → Synthesis → Epic Impact); moved Action Items under Structured Plan; added Epic Impact Assessment placeholder section      | Sarah (PO) |
 | 2025-11-06 | 1.4     | Enhanced Executive Summary with full background (Nov 2 sprint change, 6 architectural questions, course correction trigger); replaced Action Items with detailed, specific breakdown for all 8 groups + research/synthesis phases | Sarah (PO) |
 | 2025-11-06 | 1.3     | Reorganized document structure: moved analysis results under corresponding groups in Structured Analysis Plan; added progress checkboxes to each group; removed duplicate sections; reduced file from 980 to 741 lines            | Sarah (PO) |
 | 2025-11-06 | 1.2     | Completed Group 1 Section 1 comprehensive analysis (Issues D1, B2, Hexagonal Principle) with code evidence from FrontmatterService, VaultReaderAdapter, and domain entities; ready for Section 2 Epic Impact Assessment           | Sarah (PO) |
@@ -337,6 +338,7 @@ Three types of validation, same method name:
 #### Understanding Trigger & Context
 
 - [x] Group 1: Validation Architecture:
+
   - [x] Analyzed anemic models, IO in domain, validation layer violations
 
 - [ ] Group 2: Storage Architecture, CQRS & DTOs
@@ -347,27 +349,32 @@ Three types of validation, same method name:
   - [ ] Assess CQRS pattern application (read/write models vs operations)
   - [ ] Evaluate cache vs vault source of truth implications
 - [ ] Group 3: Orchestration & Coordination
+
   - [ ] Evaluate event-driven architecture vs orchestrator pattern (Issue A1)
   - [ ] Analyze write coordination pattern overlap with storage (Issue A6)
   - [ ] Examine god-object concerns with CLICommander
   - [ ] Review domain events approach (NoteIndexed, FrontmatterValidated, SchemaLoaded)
 
 - [ ] Group 4: Configuration Management
+
   - [ ] Review singleton implementation for Config and PropertyBank (Issue A2)
   - [ ] Analyze FileClassKey configuration impact (Issue A3)
   - [ ] Examine ViperAdapter FileClassKey loading gap
 
 - [ ] Group 5: Schema Domain System
+
   - [ ] Analyze SchemaLoaderPort and SchemaRegistryPort coupling (Issue B3)
   - [ ] Review automatic registration vs explicit loading
 
 - [ ] Group 6: Template System (CRITICAL - Epic 5 Dependency)
+
   - [ ] Investigate Template struct name conflict with text/template package
   - [ ] Research text/template stdlib capabilities
   - [ ] Determine if Template struct is even needed
   - [ ] Analyze whether to embed \*template.Template
 
 - [ ] Group 7: Documentation & Patterns (META)
+
   - [ ] Catalog pattern documentation gaps (Issue D3)
   - [ ] Review architectural documentation misalignment
 
@@ -402,6 +409,7 @@ Three types of validation, same method name:
 #### Epic Impact Assessment
 
 - [ ] Group 1: Validation Architecture
+
   - [ ] Identify which Epic 3 stories require validation refactoring
   - [ ] Determine story breakdown: Frontmatter entity refactoring, Note entity refactoring, validation layer separation
   - [ ] Assess FrontmatterService.Extract() extraction to adapter layer
@@ -409,31 +417,37 @@ Three types of validation, same method name:
   - [ ] Document refactoring sequence and dependencies
 
 - [ ] Group 2: Storage Architecture, CQRS & DTOs
+
   - [ ] Determine FileMetadata/VaultFile redesign leveraging fs.FileInfo
   - [ ] Design BoltDB vs SQLite query routing strategy
   - [ ] Select write coordination pattern (UoW, Saga, or dual-write)
   - [ ] Plan storage staleness detection implementation
 
 - [ ] Group 3: Orchestration & Coordination
+
   - [ ] Select orchestration pattern and document rationale
   - [ ] Plan CLICommander refactoring if needed
   - [ ] Design event infrastructure if event-driven approach selected
 
 - [ ] Group 4: Configuration Management
+
   - [ ] Plan singleton accessor implementation (GetConfig, GetPropertyBank)
   - [ ] Design test harness support for instance swapping
   - [ ] Document Config embedded struct pattern for extensibility
 
 - [ ] Group 5: Schema Domain System
+
   - [ ] Determine port simplification approach
   - [ ] Plan schema loading workflow refactoring
 
 - [ ] Group 6: Template System (CRITICAL - Epic 5 Dependency)
+
   - [ ] Make Template struct fundamental decision
   - [ ] Assess Epic 5 (Template Engine) impact and timeline
   - [ ] Plan Template entity refactoring if keeping struct
 
 - [ ] Group 7: Documentation & Patterns (META)
+
   - [ ] Synthesize patterns discovered across Groups 1-6
   - [ ] Plan architecture documentation updates (components.md, data-models.md)
   - [ ] Create pattern decision matrix
@@ -485,6 +499,7 @@ Three types of validation, same method name:
 **Three Interconnected Problems**:
 
 1. **Anemic Domain Model** (Issue D1):
+
    - Entities are pure data structures with no behavior
    - All business logic centralized in services
    - Frontmatter has no validation, factory, or behavior methods
@@ -493,6 +508,7 @@ Three types of validation, same method name:
    - Only Schema and PropertySpec variants are rich models (inconsistency)
 
 2. **IO in Domain Layer** (Issue B2):
+
    - FrontmatterService.Extract() parses markdown using goldmark (infrastructure dependency in domain)
    - Domain layer coupled to goldmark parser library
    - Parsing is adapter responsibility, not domain responsibility
@@ -528,21 +544,25 @@ Three types of validation, same method name:
 **Immediate Impacts**:
 
 1. **Testing Difficulty**:
+
    - Domain layer tests require goldmark parser (infrastructure dependency)
    - Can't test Frontmatter validation without parser setup
    - Frontmatter has no self-validation (must always use service)
 
 2. **Architecture Erosion**:
+
    - If FrontmatterService has IO, others will follow
    - Precedent for infrastructure dependencies in domain
    - Hexagonal architecture benefits lost
 
 3. **Coupling & Inflexibility**:
+
    - Domain coupled to specific parser implementation (goldmark)
    - Can't swap parsers without changing domain layer
    - Can't reuse Frontmatter entity in non-filesystem contexts
 
 4. **Validation Inconsistency**:
+
    - Three validation types, same method name (Schema.Validate, Frontmatter.Validate, FrontmatterService.Validate)
    - Developers confused about which validation to use when
    - Schema.Validate() in domain layer (should be in adapter per hexagonal principle)
@@ -629,6 +649,7 @@ Three types of validation, same method name:
 **Documentation Evidence**:
 
 1. `docs/architecture/components.md`:
+
    - Schema described as "Rich domain model with validation"
    - Frontmatter described as "Pure data structure with no behavior"
    - Inconsistent guidance about which pattern to use
@@ -653,6 +674,7 @@ Three types of validation, same method name:
    ```
 
 2. **Correct Flow (Hexagonal Architecture)**:
+
    ```
    VaultReaderAdapter (adapter) → reads file → parses frontmatter using goldmark → syntactic validation
    ↓
@@ -684,16 +706,19 @@ Three types of validation, same method name:
 **Missing Storage/CQRS Issues** (from sprint-change-proposal-2025-11-02):
 
 - **CQRS Pattern Application**:
+
   - Current: Just separated read/write methods (CacheWriterPort vs CacheReaderPort)
   - Question: Do we need separate read/write models (NoteProjection vs Note)?
   - True CQRS separates models, not just operations
 
 - **Hybrid Storage Architecture Design**:
+
   - BoltDB (hot cache) vs SQLite (deep storage) - what belongs where?
   - Query routing strategy: ByPath → BoltDB, ByFrontmatter → SQLite
   - Performance requirements: BoltDB <1ms, SQLite <50ms
 
 - **Cache vs Vault Source of Truth**:
+
   - Vault = source of truth (persistent markdown files)
   - Cache = projection (can be rebuilt from vault)
   - Dual-write pattern implications (vault + cache coordination)
@@ -706,16 +731,272 @@ Three types of validation, same method name:
 
 **Why Grouped**: All about storage layer architecture, data persistence, query optimization, CQRS pattern
 
-**Key Questions to Answer**:
+#### Section 1: Understand Trigger & Context
 
-- Do we need separate CQRS read/write models or just separated operations?
-- How should query routing work between BoltDB and SQLite?
-- What coordination pattern for BoltDB+SQLite writes? (UoW? Saga? Dual-write?)
-- How do DTOs map to each storage system (BoltDB, SQLite, JSON)?
-- How do we leverage Go's fs.FileInfo instead of custom FileMetadata?
-- What Obsidian patterns apply to our DTO design?
-- How does QueryService interface with different storage backends?
-- What does "cache as projection" mean for our architecture?
+##### 1.1 What triggered this change?
+
+**Primary Trigger**: November 2, 2025 sprint change proposal (docs/course_correction/sprint-change-proposal-2025-11-02-epic3-hybrid-storage-architecture.md) pivoted Epic 3 (Vault Indexing Engine) from JSON file-per-note caching to hybrid BoltDB + SQLite architecture to ensure production-ready performance at realistic vault scales (500+ notes).
+
+**Performance Driver**: JSON file-per-note approach would not scale - O(n) file operations for cache warming/querying makes template queries too slow at production scale.
+
+**Six Architectural Questions Introduced**: The hybrid storage pivot introduced fundamental questions requiring resolution:
+
+1. **A1: Component Orchestration** - ❌ UNRESOLVED - Event-driven vs orchestrator patterns
+2. **A2: Singleton Pattern** - ✅ DECIDED (sync.Once for Config/PropertyBank) - Implementation pending
+3. **A3: FileClassKey Config** - ✅ DECIDED (config-driven schema selection) - Implementation pending
+4. **A4: DTO Architecture** - ❌ UNRESOLVED - How to leverage fs.FileInfo, Obsidian patterns, storage-specific DTOs
+5. **A5: SQLite Schema** - ✅ DECIDED (schema-driven views over JSON) - Implementation pending
+6. **A6: Write Coordination** - ❌ UNRESOLVED - BoltDB + SQLite coordination pattern (UoW, Saga, dual-write)
+
+**Secondary Discoveries During Implementation**:
+
+- **Issue B1**: QueryService/Note struct mismatch - broader question of what domain entities should expose for querying
+
+  - Note is domain entity (no IO concerns)
+  - Queries need path/basename (filesystem concepts)
+  - Fundamental domain modeling tension
+
+- **CQRS Pattern Application**: Separated ports (CacheWriterPort/CacheReaderPort) vs separated models - is this true CQRS?
+
+- **Cache Consistency Challenge**: Vault is source of truth, but QueryService must use BoltDB/SQLite for performance
+  - How to ensure reindexing/updates don't bottleneck query performance?
+  - What consistency guarantees between vault and caches?
+
+##### 1.2 What is the core issue?
+
+**Five Interconnected Problems**:
+
+1. **QueryService Command/Query Responsibility Confusion** (Issue B1 + Event-Driven Need):
+
+   - **Problem**: QueryService.RefreshFromCache() is a WRITE operation (command side) in a service named "Query"
+   - **CQRS Violation**: Query services should only READ, not rebuild indices (that's command side)
+   - **Broader Issue**: What should domain entities expose for querying? Note is pure domain (ID + Frontmatter), but queries need path/basename (filesystem concepts)
+   - **Current Consequence**: RefreshIncremental loads ALL notes because Note lacks ModTime for filtering
+   - **Event-Driven Implication**: IndexingComplete event → QueryService subscribes and rebuilds indices (separates concerns properly)
+
+2. **DTO Architecture Not Focused/Optimal** (Issues A4, D2):
+
+   - **Problem**: Current DTOs (FileMetadata, VaultFile) too generic - not focused per storage system
+   - **Options**: Break down into smaller focused structs OR create completely storage-specific structs
+   - **fs.FileInfo/filepath Underutilization**: Although fs.FileInfo is used, not leveraging full capabilities - reimplementing things packages already provide
+   - **Research Goal**: Find where packages solve problems with premade solutions instead of custom code
+   - **Storage-Specific Needs**:
+     - BoltDB: Hot cache metadata (path, basename, aliases, file_class)
+     - SQLite: Queryable metadata (all frontmatter fields as typed columns via views)
+     - JSON: Full Note serialization for export/debugging - ⚠️ must NOT include note content when Note.Content added
+
+3. **Storage Write Coordination Undefined** (Issue A6):
+
+   - **Problem**: No coordination pattern for dual-write to BoltDB + SQLite
+   - **Risk**: BoltDB write succeeds, SQLite write fails → data inconsistency
+   - **Options Pending**: Unit of Work, Saga, dual-write with compensation, eventual consistency
+   - **Impact**: QueryService merges data from both stores - inconsistency breaks queries
+
+4. **CQRS Pattern Scope and NoteProjection Domain/IO Boundary** (CQRS Issues + NoteProjection):
+
+   - **Current State**: Separated ports (CacheWriterPort vs CacheReaderPort) but unified domain.Note model
+   - **Question 1**: Is this true CQRS, or just separated interfaces?
+     - True CQRS: Separate read/write **models** (NoteProjection vs Note)
+     - Current: Just separated **operations** with same unified model
+   - **Question 2**: Do we need separate read/write models (NoteProjection vs Note)?
+     - **History**: NoteProjection was dropped because it was identical to Note struct
+     - **If reintroduced**: Where does NoteProjection live? Domain layer?
+     - **IO Boundary Tension**: NoteProjection needs filesystem data (path, basename, ModTime) for queries
+     - How does projection in domain handle IO concerns without violating hexagonal architecture?
+   - **Question 3**: Should we maintain unified domain.Note or separate models?
+     - Unified: Simpler, but limits read-side optimization
+     - Separated: More complex, but enables query-specific data modeling
+   - **Fundamental Complexity**: CQRS with filesystem projections creates domain/IO boundary tension that's hard to resolve cleanly
+
+5. **SQLite Schema-Driven Views Implementation Gap** (Issue A5):
+   - **Decision**: ✅ Schema-driven views extract JSON frontmatter into typed columns
+   - **Design**: `v_contact_notes` view has columns: name, email, phone, company, status (extracted from frontmatter JSON)
+   - **Major Benefit**: Filtering by fileclass directs query to correct view (not scanning full notes table)
+   - **Without Views**: Must scan entire notes table filtering by fileclass, THEN extract JSON fields (slow)
+   - **With Views**: `SELECT * FROM v_contact_notes WHERE status = 'active'` - pre-filtered by schema, typed columns
+   - **Implementation**: ❌ View generation code doesn't exist yet
+
+**Root Cause**: Hybrid storage architecture (BoltDB + SQLite) introduced without comprehensive design for:
+
+- Domain entity boundaries (what belongs in Note vs DTOs vs cache metadata)
+- Storage coordination patterns (how to keep BoltDB and SQLite consistent)
+- Query data modeling (how domain entities relate to queryable data)
+- CQRS pattern application (ports only vs models + ports)
+
+##### 1.3 Is this a misunderstanding, missing consideration, or new information?
+
+**Missing Consideration (Primary)**: Storage architecture design gaps
+
+- **Problem 1 (QueryService command/query mixing)**: When designing QueryService, command/query separation wasn't fully considered - RefreshFromCache is a command operation in a query service
+- **Problem 2 (DTO architecture)**: Storage-specific needs weren't analyzed - generic DTOs created without considering BoltDB vs SQLite vs JSON differences
+- **Problem 3 (Write coordination)**: Dual-write coordination pattern was never established - no plan for handling BoltDB write success + SQLite write failure
+- **Industry Pattern**: Hybrid storage requires explicit coordination (Unit of Work, Saga, eventual consistency)
+
+**Misunderstanding (Secondary)**: CQRS pattern scope
+
+- **Confusion**: Does CQRS mean separated ports OR separated models?
+- **Current Assumption**: Separated ports (CacheWriterPort/CacheReaderPort) = CQRS
+- **Industry Definition**: True CQRS requires separate read/write models optimized for their use case
+- **Our Reality**: Separated interfaces with unified domain.Note model = not full CQRS
+- **Complexity**: If we separate models, where does NoteProjection live? How does it handle IO concerns in domain?
+
+**New Information (Discovery)**: Implementation gaps for decided questions
+
+- **Problem 5 (SQLite views)**: Question 5 resolved with schema-driven views decision, but implementation never created
+- **Discovered During**: Course correction review - decision documented, code doesn't exist
+- **Gap Type**: Decision-to-implementation gap (not architectural uncertainty)
+
+**Package Capability Gap (Research Need)**: fs.FileInfo/filepath underutilization
+
+- **Current**: Using fs.FileInfo but not leveraging full capabilities
+- **Problem**: Reimplementing functionality packages already provide
+- **Research Goal**: Discover where stdlib solves problems we're solving manually
+
+##### 1.4 What is the impact if we don't address this?
+
+**Immediate Impacts**:
+
+1. **Data Inconsistency Risk** (Storage Write Coordination):
+   - **Scenario**: BoltDB write succeeds, SQLite write fails (disk full, constraint violation, etc.)
+   - **Result**: QueryService merges both stores - inconsistent data returned to queries
+   - **User Impact**: Template queries return incomplete/stale results from SQLite while BoltDB has current data
+   - **Frequency**: Low probability but HIGH impact when occurs
+
+2. **Query Performance Degradation** (SQLite Views Not Implemented):
+   - **Current**: Must scan entire notes table filtering by fileclass, then extract JSON fields
+   - **With Views**: Query directed to schema-specific view with pre-filtered fileclass and typed columns
+   - **Performance Impact**: 10x-100x slower queries without views (full table scan vs indexed view)
+   - **Template Impact**: Template rendering becomes sluggish as vault grows (defeats hybrid storage purpose)
+
+3. **Incremental Indexing Broken** (QueryService Command/Query Mixing):
+   - **Problem**: RefreshIncremental loads ALL notes because Note lacks ModTime for filtering
+   - **Expected**: Load only notes modified since timestamp
+   - **Impact**: Full index rebuild on every refresh instead of incremental updates
+   - **Scale Impact**: 1000-note vault rebuilds entire index unnecessarily
+
+4. **DTO Code Duplication** (DTO Architecture Not Focused):
+   - **Current**: Generic DTOs reimplementing functionality fs.FileInfo/filepath already provide
+   - **Impact**: Maintenance burden, potential bugs in reimplemented logic
+   - **Example**: Computing basename, folder, extension manually instead of using filepath package
+
+5. **CQRS Architecture Confusion**:
+   - **Team Impact**: Unclear whether to add read-optimized models or keep unified Note
+   - **Design Drift**: Different developers interpret CQRS differently → inconsistent patterns
+   - **Over-Engineering Risk**: If full CQRS not needed, maintaining separated models adds complexity for no benefit
+
+**Long-term Strategic Impacts**:
+
+1. **Scalability Ceiling**: Without proper incremental indexing and view-based queries, performance degrades nonlinearly as vault grows
+2. **Data Integrity Erosion**: No write coordination → inconsistencies accumulate over time, cache becomes unreliable
+3. **Technical Debt Compound**: DTO reimplementation + missing views + command/query mixing = compounding maintenance cost
+4. **Event-Driven Architecture Blocker**: QueryService doing command operations prevents clean event-driven design adoption
+
+##### 1.5 What evidence supports this?
+
+**Code Evidence**:
+
+1. **QueryService Command Operation in Query Service** (`internal/app/query/service.go`):
+
+   **Lines 391-423** - RefreshFromCache rebuilds indices (WRITE operation):
+   ```go
+   func (q *QueryService) RefreshFromCache(ctx context.Context) error {
+       q.log.Info().Msg("refreshing query service from cache")
+       notes, err := q.loadNotesForRefresh(ctx)
+       if err != nil {
+           return err
+       }
+       q.rebuildIndices(notes)  // ← WRITE operation rebuilding indices
+       return nil
+   }
+   ```
+
+   **Lines 464-467** - ModTime filtering broken comment:
+   ```go
+   // Note: ModTime filtering removed as domain.Note no longer has ModTime field
+   // This is a temporary workaround - proper solution requires cache architecture redesign
+   modifiedNotes := notes
+   ```
+
+2. **Note Domain Model Lacks File Metadata** (`internal/domain/note.go`):
+
+   **Lines 7-14** - Pure domain entity, no IO concerns:
+   ```go
+   type Note struct {
+       ID NoteID
+       Frontmatter Frontmatter
+   }
+   // Missing: ModTime, Size, Path (separate from ID) - required for staleness detection
+   ```
+
+3. **Generic DTO Structure Not Focused** (`internal/shared/dto/file.go`):
+
+   **Lines 22-54** - FileMetadata combines multiple concerns:
+   ```go
+   type FileMetadata struct {
+       Path     string    // Path concerns
+       Basename string    // Path concerns (computed)
+       Folder   string    // Path concerns (computed)
+       Ext      string    // Path concerns (computed)
+       ModTime  time.Time // Date concerns
+       Size     int64     // File stat concerns
+       MimeType string    // Type detection concerns (computed)
+   }
+   ```
+
+   **Problem**: Single struct mixing path manipulation, dates, file stats, type detection
+
+   **Potential Focused Breakdown**:
+   - FilePathDTO: Path, Basename, Folder, Ext
+   - FileDatesDTO: ModTime, CreatedTime, IndexTime
+   - FrontmatterDTO: All Fields, title, aliases, file_class
+
+   **Research Needed**: Obsidian patterns will reveal better decomposition strategies
+
+4. **No Write Coordination Code Exists**:
+   - **BoltDB Writer**: `internal/adapters/spi/cache/boltdb_writer.go` - writes independently
+   - **SQLite Writer**: `internal/adapters/spi/cache/sqlite_writer.go` - writes independently
+   - **No Coordinator**: No code coordinating writes, handling partial failures, or ensuring consistency
+   - **QueryService Merge**: Lines 506-522 merge from both stores with no consistency validation
+
+**Architecture Decision Evidence** (Sprint Change Proposal):
+
+1. **Question 4 (DTO Architecture)** - Lines 922-1129:
+   - **Proposal Discussed**: NoteMetadataDTO + BoltDBMetadata/SQLiteMetadata extensions
+   - **Status**: ❌ NOT FINALIZED - multiple decomposition strategies possible
+   - **Example Options**: Break into FilePathDTO, FileDatesDTO, FrontmatterDTO or storage-specific structs
+   - **Research Needed**: Obsidian patterns will inform final design
+
+2. **Question 5 (SQLite Schema Views)** - Lines 1133-1479:
+   - **Decision**: ✅ Schema-driven views over JSON storage
+   - **Status**: DECIDED but ❌ NOT IMPLEMENTED
+
+3. **Question 6 (Write Coordination)** - Lines 1483-1498:
+   - **Options**: Atomic writes, eventual consistency, primary + async replication
+   - **Status**: ❌ UNRESOLVED
+
+**QueryService Hybrid Storage Evidence** (`internal/app/query/service.go`):
+
+**Lines 175-194** - Constructor accepts two cache readers:
+```go
+func NewQueryService(
+    boltReader   spi.CacheReaderPort,
+    sqliteReader spi.CacheReaderPort,
+    config       domain.Config,
+    log          zerolog.Logger,
+) *QueryService
+```
+
+**Lines 506-522** - Merges from both stores without consistency checking:
+```go
+// Merge notes from both stores, preferring SQLite for complete data
+noteMap := make(map[domain.NoteID]domain.Note)
+for _, note := range boltNotes {
+    noteMap[note.ID] = note
+}
+for _, note := range sqliteNotes {
+    noteMap[note.ID] = note  // ← No consistency validation
+}
+```
 
 ---
 
@@ -727,6 +1008,32 @@ Three types of validation, same method name:
 - **Related to A6**: Write coordination pattern (overlaps with storage)
 
 **Why Grouped**: System-wide coordination patterns affecting component communication
+
+#### Section 1: Understand Trigger & Context
+
+##### 1.1 What triggered this change?
+
+**Primary Trigger**: November 2, 2025 sprint change proposal Question 1 asked "How should component orchestration be structured to avoid god objects while maintaining clean architecture?"
+
+**Immediate Context**: Sprint change introduced CLICommander (renamed from CommandOrchestrator) as workflow coordinator, with decision documented in proposal lines 594-720. However, Issue A1 status shows this is ❌ UNRESOLVED - need to evaluate event-driven vs orchestrator patterns.
+
+**Missing Consideration Identified**: Event-driven architecture and other coordination patterns as potential solutions:
+- **Event-Driven**: Domain events (NoteIndexed, FrontmatterValidated, SchemaLoaded) - would events reduce coupling AND reduce god-objects vs CLICommander orchestrator?
+- **Saga Pattern**: Distributed transaction coordination (relevant for BoltDB + SQLite write coordination)
+- **Mediator Pattern**: Component communication without direct coupling
+- **Command Pattern**: Encapsulate operations for decoupled execution
+- **Unit of Work Pattern**: Transaction coordination across multiple operations
+- **Comparison Needed**: Trade-offs between patterns for our specific orchestration needs
+
+**Secondary Trigger (Write Coordination Overlap)**: Issue A6 (Storage Write Coordination) relates to orchestration:
+- BoltDB + SQLite dual-write coordination
+- Question: Should write coordination be orchestrator responsibility, event-driven, or Saga pattern?
+- Overlap: Same coordination pattern question at different layers
+
+**Discovery from Group 2**: QueryService doing command operations (RefreshFromCache) suggests event-driven could help:
+- Current: QueryService manually called to rebuild indices after indexing
+- Event-Driven: IndexingComplete event → QueryService subscribes → rebuilds indices automatically
+- Benefit: Separates command (indexing) from query (index building) concerns, reduces god-object
 
 ---
 
@@ -791,30 +1098,38 @@ Three types of validation, same method name:
 
 ### Phase 1: Go Native Capabilities (Priority)
 
-#### io/fs stdlib Package
+#### Go Standard Library Packages
 
-- [ ] **io/fs package**: FileInfo, File, FS interfaces, WalkDir patterns
+##### io/fs
 
-#### text/template stdlib Package
+- [ ] FileInfo, File, FS interfaces, WalkDir, GlobFS, patterns
 
-- [ ] **text/template**: Template composition, function maps, execution patterns
+##### path/filepath
 
-#### bbolt Package
+- [ ] <https://pkg.go.dev/path/filepath>
 
-- [ ] **bbolt**: Bucket design, transaction patterns, cursor usage, best practices
+##### text/template
 
-#### sqlite (modernc.org/sqlite) Package
+- [ ] Template composition, function maps, execution patterns
 
-- [ ] **sqlite (modernc.org/sqlite)**: Schema patterns, query optimization, Go idioms
+#### Go Third-Party Packages
 
-#### goldmark Package
+##### bbolt
+
+- [ ] Bucket design, transaction patterns, cursor usage, best practices
+
+##### sqlite (modernc.org/sqlite)
+
+- [ ] Schema patterns, query optimization, Go idioms
+
+##### goldmark
 
 Local References:
 
 - `docs/refs/yuin-goldmark-digest.txt`
 - `docs/refs/abhinav-goldmark-frontmatter-digest.txt`
 
-- [ ] **goldmark**: Parser API, AST manipulation, extension patterns, frontmatter extraction
+- [ ] Parser API, AST manipulation, extension patterns, frontmatter extraction
 
 ### Phase 2: Obsidian Patterns (After Phase 1)
 
@@ -894,4 +1209,4 @@ Local References:
 
 ---
 
-_This document will be updated as the course correction process continues._
+*This document will be updated as the course correction process continues.*
