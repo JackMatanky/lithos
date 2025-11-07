@@ -4,7 +4,10 @@
       "Bash(go mod vendor:*)",
       "Bash(go mod tidy:*)",
       "Bash(go env:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "WebSearch",
+      "WebFetch(domain:pkg.go.dev)",
+      "WebFetch(domain:sqlite.org)"
     ],
     "deny": [],
     "ask": []
