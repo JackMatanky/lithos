@@ -46,14 +46,14 @@ This principle fundamentally changes validation placement across the entire syst
 
 This document captures comprehensive course correction analysis using the BMad Change Navigation Checklist. **18+ architectural issues** have been identified and organized into **8 issue groups** for systematic analysis:
 
-1. **Group 1**: Validation Architecture (anemic models, IO in domain, validation layers) - *Section 1 complete*
-2. **Group 2**: Storage Architecture, CQRS & DTOs - *Section 1 complete*
-3. **Group 3**: Orchestration & Coordination - *Section 1 complete*
-4. **Group 4**: Configuration Management - *Section 1 complete*
-5. **Group 5**: Schema Domain System - *Section 1 complete*
-6. **Group 6**: Template System (Epic 5 dependency) - *Section 1 complete*
-7. **Group 7**: Documentation & Patterns - *Section 1 complete*
-8. **Group 8**: Implementation Blockers - *Section 1 complete*
+1. **Group 1**: Validation Architecture (anemic models, IO in domain, validation layers) - _Section 1 complete_
+2. **Group 2**: Storage Architecture, CQRS & DTOs - _Section 1 complete_
+3. **Group 3**: Orchestration & Coordination - _Section 1 complete_
+4. **Group 4**: Configuration Management - _Section 1 complete_
+5. **Group 5**: Schema Domain System - _Section 1 complete_
+6. **Group 6**: Template System (Epic 5 dependency) - _Section 1 complete_
+7. **Group 7**: Documentation & Patterns - _Section 1 complete_
+8. **Group 8**: Implementation Blockers - _Section 1 complete_
 
 **Current Status**: All Groups Section 1 (Understand Trigger & Context) complete. Proceeding to Research Phase (Go stdlib + Obsidian patterns).
 
@@ -63,22 +63,23 @@ This document captures comprehensive course correction analysis using the BMad C
 
 ## Document Control
 
-- **Version**: 1.6
-- **Date**: November 6, 2025
-- **Status**: IN PROGRESS - Section 1 complete for all 8 groups, proceeding to Research Phase
+- **Version**: 1.7
+- **Date**: November 7, 2025
+- **Status**: IN PROGRESS - Research Phase 1 complete (Go stdlib + generics), proceeding to path/filepath research and actionable insights
 - **Distribution**: Development team, stakeholders
 
 ### Change Log
 
-| Date       | Version | Description                                                                                                                                                                                                                       | Author     |
-| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 2025-11-06 | 1.6     | Completed Section 1 (Understand Trigger & Context) for all 8 groups: comprehensive analysis of 18+ architectural issues with critical evaluation, code evidence, and impact assessment; ready for Research Phase (Go stdlib + Obsidian patterns) | Sarah (PO) |
-| 2025-11-06 | 1.5     | Restructured Structured Plan to phase-based approach (Section 1 all groups → Research → Entity Review → Synthesis → Epic Impact); moved Action Items under Structured Plan; added Epic Impact Assessment placeholder section      | Sarah (PO) |
-| 2025-11-06 | 1.4     | Enhanced Executive Summary with full background (Nov 2 sprint change, 6 architectural questions, course correction trigger); replaced Action Items with detailed, specific breakdown for all 8 groups + research/synthesis phases | Sarah (PO) |
-| 2025-11-06 | 1.3     | Reorganized document structure: moved analysis results under corresponding groups in Structured Analysis Plan; added progress checkboxes to each group; removed duplicate sections; reduced file from 980 to 741 lines            | Sarah (PO) |
-| 2025-11-06 | 1.2     | Completed Group 1 Section 1 comprehensive analysis (Issues D1, B2, Hexagonal Principle) with code evidence from FrontmatterService, VaultReaderAdapter, and domain entities; ready for Section 2 Epic Impact Assessment           | Sarah (PO) |
-| 2025-11-05 | 1.1     | Established structured analysis plan (8 issue groups); revised Group 2 to include missing storage/CQRS issues; moved SQLite to storage group; increased issue count to 18+                                                        | Sarah (PO) |
-| 2025-11-05 | 1.0     | Initial comprehensive issue inventory (15 issues); established hexagonal validation principle; completed Section 1 for Issue D1                                                                                                   | Sarah (PO) |
+| Date       | Version | Description                                                                                                                                                                                                                                                                             | Author     |
+| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 2025-11-07 | 1.7     | Completed Research Phase 1: Documented comprehensive findings for io/fs, text/template, bbolt, modernc.org/sqlite, goldmark, and Go generics with patterns, best practices, options, and tradeoffs for all architectural decisions; proceeding to path/filepath and actionable insights | Sarah (PO) |
+| 2025-11-06 | 1.6     | Completed Section 1 (Understand Trigger & Context) for all 8 groups: comprehensive analysis of 18+ architectural issues with critical evaluation, code evidence, and impact assessment; ready for Research Phase (Go stdlib + Obsidian patterns)                                        | Sarah (PO) |
+| 2025-11-06 | 1.5     | Restructured Structured Plan to phase-based approach (Section 1 all groups → Research → Entity Review → Synthesis → Epic Impact); moved Action Items under Structured Plan; added Epic Impact Assessment placeholder section                                                            | Sarah (PO) |
+| 2025-11-06 | 1.4     | Enhanced Executive Summary with full background (Nov 2 sprint change, 6 architectural questions, course correction trigger); replaced Action Items with detailed, specific breakdown for all 8 groups + research/synthesis phases                                                       | Sarah (PO) |
+| 2025-11-06 | 1.3     | Reorganized document structure: moved analysis results under corresponding groups in Structured Analysis Plan; added progress checkboxes to each group; removed duplicate sections; reduced file from 980 to 741 lines                                                                  | Sarah (PO) |
+| 2025-11-06 | 1.2     | Completed Group 1 Section 1 comprehensive analysis (Issues D1, B2, Hexagonal Principle) with code evidence from FrontmatterService, VaultReaderAdapter, and domain entities; ready for Section 2 Epic Impact Assessment                                                                 | Sarah (PO) |
+| 2025-11-05 | 1.1     | Established structured analysis plan (8 issue groups); revised Group 2 to include missing storage/CQRS issues; moved SQLite to storage group; increased issue count to 18+                                                                                                              | Sarah (PO) |
+| 2025-11-05 | 1.0     | Initial comprehensive issue inventory (15 issues); established hexagonal validation principle; completed Section 1 for Issue D1                                                                                                                                                         | Sarah (PO) |
 
 ### Conversation Log
 
@@ -399,7 +400,6 @@ Three types of validation, same method name:
 #### Epic Impact Assessment
 
 - [ ] Group 1: Validation Architecture
-
   - [ ] Identify which Epic 3 stories require validation refactoring
   - [ ] Determine story breakdown: Frontmatter entity refactoring, Note entity refactoring, validation layer separation
   - [ ] Assess FrontmatterService.Extract() extraction to adapter layer
@@ -407,37 +407,31 @@ Three types of validation, same method name:
   - [ ] Document refactoring sequence and dependencies
 
 - [ ] Group 2: Storage Architecture, CQRS & DTOs
-
   - [ ] Determine FileMetadata/VaultFile redesign leveraging fs.FileInfo
   - [ ] Design BoltDB vs SQLite query routing strategy
   - [ ] Select write coordination pattern (UoW, Saga, or dual-write)
   - [ ] Plan storage staleness detection implementation
 
 - [ ] Group 3: Orchestration & Coordination
-
   - [ ] Select orchestration pattern and document rationale
   - [ ] Plan CLICommander refactoring if needed
   - [ ] Design event infrastructure if event-driven approach selected
 
 - [ ] Group 4: Configuration Management
-
   - [ ] Plan singleton accessor implementation (GetConfig, GetPropertyBank)
   - [ ] Design test harness support for instance swapping
   - [ ] Document Config embedded struct pattern for extensibility
 
 - [ ] Group 5: Schema Domain System
-
   - [ ] Determine port simplification approach
   - [ ] Plan schema loading workflow refactoring
 
 - [ ] Group 6: Template System (CRITICAL - Epic 5 Dependency)
-
   - [ ] Make Template struct fundamental decision
   - [ ] Assess Epic 5 (Template Engine) impact and timeline
   - [ ] Plan Template entity refactoring if keeping struct
 
 - [ ] Group 7: Documentation & Patterns (META)
-
   - [ ] Synthesize patterns discovered across Groups 1-6
   - [ ] Plan architecture documentation updates (components.md, data-models.md)
   - [ ] Create pattern decision matrix
@@ -489,7 +483,6 @@ Three types of validation, same method name:
 **Three Interconnected Problems**:
 
 1. **Anemic Domain Model** (Issue D1):
-
    - Entities are pure data structures with no behavior
    - All business logic centralized in services
    - Frontmatter has no validation, factory, or behavior methods
@@ -498,7 +491,6 @@ Three types of validation, same method name:
    - Only Schema and PropertySpec variants are rich models (inconsistency)
 
 2. **IO in Domain Layer** (Issue B2):
-
    - FrontmatterService.Extract() parses markdown using goldmark (infrastructure dependency in domain)
    - Domain layer coupled to goldmark parser library
    - Parsing is adapter responsibility, not domain responsibility
@@ -534,25 +526,21 @@ Three types of validation, same method name:
 **Immediate Impacts**:
 
 1. **Testing Difficulty**:
-
    - Domain layer tests require goldmark parser (infrastructure dependency)
    - Can't test Frontmatter validation without parser setup
    - Frontmatter has no self-validation (must always use service)
 
 2. **Architecture Erosion**:
-
    - If FrontmatterService has IO, others will follow
    - Precedent for infrastructure dependencies in domain
    - Hexagonal architecture benefits lost
 
 3. **Coupling & Inflexibility**:
-
    - Domain coupled to specific parser implementation (goldmark)
    - Can't swap parsers without changing domain layer
    - Can't reuse Frontmatter entity in non-filesystem contexts
 
 4. **Validation Inconsistency**:
-
    - Three validation types, same method name (Schema.Validate, Frontmatter.Validate, FrontmatterService.Validate)
    - Developers confused about which validation to use when
    - Schema.Validate() in domain layer (should be in adapter per hexagonal principle)
@@ -639,7 +627,6 @@ Three types of validation, same method name:
 **Documentation Evidence**:
 
 1. `docs/architecture/components.md`:
-
    - Schema described as "Rich domain model with validation"
    - Frontmatter described as "Pure data structure with no behavior"
    - Inconsistent guidance about which pattern to use
@@ -696,19 +683,16 @@ Three types of validation, same method name:
 **Missing Storage/CQRS Issues** (from sprint-change-proposal-2025-11-02):
 
 - **CQRS Pattern Application**:
-
   - Current: Just separated read/write methods (CacheWriterPort vs CacheReaderPort)
   - Question: Do we need separate read/write models (NoteProjection vs Note)?
   - True CQRS separates models, not just operations
 
 - **Hybrid Storage Architecture Design**:
-
   - BoltDB (hot cache) vs SQLite (deep storage) - what belongs where?
   - Query routing strategy: ByPath → BoltDB, ByFrontmatter → SQLite
   - Performance requirements: BoltDB <1ms, SQLite <50ms
 
 - **Cache vs Vault Source of Truth**:
-
   - Vault = source of truth (persistent markdown files)
   - Cache = projection (can be rebuilt from vault)
   - Dual-write pattern implications (vault + cache coordination)
@@ -741,7 +725,6 @@ Three types of validation, same method name:
 **Secondary Discoveries During Implementation**:
 
 - **Issue B1**: QueryService/Note struct mismatch - broader question of what domain entities should expose for querying
-
   - Note is domain entity (no IO concerns)
   - Queries need path/basename (filesystem concepts)
   - Fundamental domain modeling tension
@@ -757,7 +740,6 @@ Three types of validation, same method name:
 **Five Interconnected Problems**:
 
 1. **QueryService Command/Query Responsibility Confusion** (Issue B1 + Event-Driven Need):
-
    - **Problem**: QueryService.RefreshFromCache() is a WRITE operation (command side) in a service named "Query"
    - **CQRS Violation**: Query services should only READ, not rebuild indices (that's command side)
    - **Broader Issue**: What should domain entities expose for querying? Note is pure domain (ID + Frontmatter), but queries need path/basename (filesystem concepts)
@@ -765,7 +747,6 @@ Three types of validation, same method name:
    - **Event-Driven Implication**: IndexingComplete event → QueryService subscribes and rebuilds indices (separates concerns properly)
 
 2. **DTO Architecture Not Focused/Optimal** (Issues A4, D2):
-
    - **Problem**: Current DTOs (FileMetadata, VaultFile) too generic - not focused per storage system
    - **Options**: Break down into smaller focused structs OR create completely storage-specific structs
    - **fs.FileInfo/filepath Underutilization**: Although fs.FileInfo is used, not leveraging full capabilities - reimplementing things packages already provide
@@ -776,14 +757,12 @@ Three types of validation, same method name:
      - JSON: Full Note serialization for export/debugging - ⚠️ must NOT include note content when Note.Content added
 
 3. **Storage Write Coordination Undefined** (Issue A6):
-
    - **Problem**: No coordination pattern for dual-write to BoltDB + SQLite
    - **Risk**: BoltDB write succeeds, SQLite write fails → data inconsistency
    - **Options Pending**: Unit of Work, Saga, dual-write with compensation, eventual consistency
    - **Impact**: QueryService merges data from both stores - inconsistency breaks queries
 
 4. **CQRS Pattern Scope and NoteProjection Domain/IO Boundary** (CQRS Issues + NoteProjection):
-
    - **Current State**: Separated ports (CacheWriterPort vs CacheReaderPort) but unified domain.Note model
    - **Question 1**: Is this true CQRS, or just separated interfaces?
      - True CQRS: Separate read/write **models** (NoteProjection vs Note)
@@ -888,6 +867,7 @@ Three types of validation, same method name:
 1. **QueryService Command Operation in Query Service** (`internal/app/query/service.go`):
 
    **Lines 391-423** - RefreshFromCache rebuilds indices (WRITE operation):
+
    ```go
    func (q *QueryService) RefreshFromCache(ctx context.Context) error {
        q.log.Info().Msg("refreshing query service from cache")
@@ -901,6 +881,7 @@ Three types of validation, same method name:
    ```
 
    **Lines 464-467** - ModTime filtering broken comment:
+
    ```go
    // Note: ModTime filtering removed as domain.Note no longer has ModTime field
    // This is a temporary workaround - proper solution requires cache architecture redesign
@@ -910,6 +891,7 @@ Three types of validation, same method name:
 2. **Note Domain Model Lacks File Metadata** (`internal/domain/note.go`):
 
    **Lines 7-14** - Pure domain entity, no IO concerns:
+
    ```go
    type Note struct {
        ID NoteID
@@ -921,6 +903,7 @@ Three types of validation, same method name:
 3. **Generic DTO Structure Not Focused** (`internal/shared/dto/file.go`):
 
    **Lines 22-54** - FileMetadata combines multiple concerns:
+
    ```go
    type FileMetadata struct {
        Path     string    // Path concerns
@@ -967,6 +950,7 @@ Three types of validation, same method name:
 **QueryService Hybrid Storage Evidence** (`internal/app/query/service.go`):
 
 **Lines 175-194** - Constructor accepts two cache readers:
+
 ```go
 func NewQueryService(
     boltReader   spi.CacheReaderPort,
@@ -977,6 +961,7 @@ func NewQueryService(
 ```
 
 **Lines 506-522** - Merges from both stores without consistency checking:
+
 ```go
 // Merge notes from both stores, preferring SQLite for complete data
 noteMap := make(map[domain.NoteID]domain.Note)
@@ -1008,6 +993,7 @@ for _, note := range sqliteNotes {
 **Immediate Context**: Sprint change introduced CLICommander (renamed from CommandOrchestrator) as workflow coordinator, with decision documented in proposal lines 594-720. However, Issue A1 status shows this is ❌ UNRESOLVED - need to evaluate event-driven vs orchestrator patterns.
 
 **Missing Consideration Identified**: Event-driven architecture and other coordination patterns as potential solutions:
+
 - **Event-Driven**: Domain events (NoteIndexed, FrontmatterValidated, SchemaLoaded) - would events reduce coupling AND reduce god-objects vs CLICommander orchestrator?
 - **Saga Pattern**: Distributed transaction coordination (relevant for BoltDB + SQLite write coordination)
 - **Mediator Pattern**: Component communication without direct coupling
@@ -1016,11 +1002,13 @@ for _, note := range sqliteNotes {
 - **Comparison Needed**: Trade-offs between patterns for our specific orchestration needs
 
 **Secondary Trigger (Write Coordination Overlap)**: Issue A6 (Storage Write Coordination) relates to orchestration:
+
 - BoltDB + SQLite dual-write coordination
 - Question: Should write coordination be orchestrator responsibility, event-driven, or Saga pattern?
 - Overlap: Same coordination pattern question at different layers
 
 **Discovery from Group 2**: QueryService doing command operations (RefreshFromCache) suggests event-driven could help:
+
 - Current: QueryService manually called to rebuild indices after indexing
 - Event-Driven: IndexingComplete event → QueryService subscribes → rebuilds indices automatically
 - Benefit: Separates command (indexing) from query (index building) concerns, reduces god-object
@@ -1144,6 +1132,7 @@ for _, note := range sqliteNotes {
 **Code Evidence - Multiple God-Objects** (`cmd/lithos/main.go`):
 
 1. **CLICommander - 7 Dependencies** (lines 60-68):
+
    ```go
    orchestrator := command.NewCLIComander(
        cliAdapter,      // 1. CLI interaction
@@ -1157,6 +1146,7 @@ for _, note := range sqliteNotes {
    ```
 
 2. **VaultIndexer - 7 Dependencies** (lines 49-57):
+
    ```go
    vaultIndexer := vault.NewVaultIndexer(
        vaultScanner,       // 1. Vault scanning
@@ -1176,12 +1166,14 @@ for _, note := range sqliteNotes {
    ```
 
 **Manual DI Complexity** (`cmd/lithos/main.go` lines 21-72):
+
 - **72 lines** of manual dependency construction
 - **Every service** requires explicit instantiation and wiring
 - **Dependency ordering** matters - must construct in correct sequence
 - **No abstraction**: Direct coupling between main() and all services
 
 **Sprint Change Proposal Evidence** (Lines 594-720):
+
 - **Question 1 Decision**: CLICommander as orchestrator documented
 - **Status in Issue Inventory**: ❌ UNRESOLVED - reconsidering pattern
 - **Gap**: Decision documented but resulted in god-object, need to reconsider
@@ -1189,6 +1181,7 @@ for _, note := range sqliteNotes {
 **Issue Inventory Evidence**:
 
 From Issue A1 (lines 122-130):
+
 ```markdown
 #### Issue A1: Component Orchestration Architecture ❌ UNRESOLVED
 
@@ -1201,6 +1194,7 @@ From Issue A1 (lines 122-130):
 ```
 
 **Group 2 Discovery Evidence**:
+
 - QueryService.RefreshFromCache() is command operation in query service
 - Suggests event-driven could solve CQRS separation AND orchestration problems
 - IndexingComplete event → QueryService subscribes → automatic index rebuild
@@ -1228,6 +1222,7 @@ From Issue A1 (lines 122-130):
 **Critical Gap Discovered**: During architectural review, identified that ViperAdapter (internal/adapters/spi/config/viper.go) does NOT load FileClassKey from config file/env vars, despite Question 3 decision requiring config-driven schema selection.
 
 **Configuration Architecture Scope**:
+
 1. **Config Lifecycle**: How to initialize and access Config singleton throughout system
 2. **PropertyBank Lifecycle**: How to initialize and access PropertyBank singleton throughout system
 3. **FileClassKey Integration**: How config-driven schema selection propagates through all file classification touchpoints
@@ -1265,12 +1260,14 @@ From Issue A1 (lines 122-130):
 ##### 1.3 Is this a misunderstanding, missing consideration, or new information?
 
 **Issue A2 (Singleton Pattern)**: **New Information**
+
 - Sprint change proposal Question 2 identified need for proper singleton lifecycle management
 - Analysis revealed Config and PropertyBank should be singletons (global state)
 - Not a misunderstanding - current DI approach is valid but doesn't fit singleton use case
 - New architectural requirement from production-readiness analysis
 
 **Issue A3 (FileClassKey Loading Gap)**: **Missing Consideration**
+
 - Question 3 decision made: config-driven schema selection
 - Implementation overlooked critical step: ViperAdapter must load FileClassKey
 - Not a misunderstanding - decision is correct
@@ -1349,6 +1346,7 @@ From Issue A1 (lines 122-130):
 **Evidence for Issue A3 (FileClassKey Config Loading Gap)**:
 
 1. **Config Domain Model Has FileClassKey** (internal/domain/config.go:59-63):
+
 ```go
 // FileClassKey is the frontmatter key used to identify file class/schema.
 // Default: "file_class". Supports user preferences like "fileClass", "type", etc.
@@ -1357,6 +1355,7 @@ FileClassKey string `yaml:"file_class_key" mapstructure:"file_class_key"`
 ```
 
 2. **Default Value Defined** (internal/domain/config.go:14):
+
 ```go
 defaultFileClassKey = "file_class"
 ```
@@ -1368,14 +1367,16 @@ defaultFileClassKey = "file_class"
      - ❌ NO LITHOS_FILE_CLASS_KEY mapping
 
 4. **Tests Expect FileClassKey** (internal/domain/config_test.go:138-143):
+
 ```go
 if config.FileClassKey != tt.expectedFileClassKey {
     t.Errorf("expected FileClassKey %q, got %q",
         tt.expectedFileClassKey, config.FileClassKey)
 }
 ```
-   - Tests verify FileClassKey is set correctly
-   - But ViperAdapter never loads it from config file/env vars
+
+- Tests verify FileClassKey is set correctly
+- But ViperAdapter never loads it from config file/env vars
 
 5. **Sprint Change Proposal - Question 3** (docs/course_correction/sprint-change-proposal-2025-11-02-epic3-hybrid-storage-architecture.md:821):
    - ✅ DECISION FINALIZED: Config-driven schema selection
@@ -1406,6 +1407,7 @@ if config.FileClassKey != tt.expectedFileClassKey {
 **Issue Classification**: Issue B3 (Schema Loading/Registration Coupling) - Moderate priority simplification opportunity.
 
 **Port Architecture Analysis**:
+
 - **Current Design**: Separate ports for loading (SchemaLoaderPort) and registration (SchemaRegistryPort)
 - **Coupling Problem**: Two ports manage tightly coupled operations (load → register)
 - **Complexity Impact**: Clients must coordinate between two ports for single logical operation
@@ -1492,17 +1494,20 @@ if config.FileClassKey != tt.expectedFileClassKey {
 **Evidence for Port Coupling**:
 
 1. **SchemaPort Interface Definition** (internal/ports/spi/schema.go:32-56):
+
 ```go
 type SchemaPort interface {
     // Load retrieves all schemas and the property bank from storage.
     Load(ctx context.Context) ([]domain.Schema, domain.PropertyBank, error)
 }
 ```
-   - Single method: Load() - retrieves schemas from filesystem
-   - Returns raw schemas without registration
-   - Comment line 63: "Populated by SchemaEngine at startup from SchemaPort.Load() results"
+
+- Single method: Load() - retrieves schemas from filesystem
+- Returns raw schemas without registration
+- Comment line 63: "Populated by SchemaEngine at startup from SchemaPort.Load() results"
 
 2. **SchemaRegistryPort Interface Definition** (internal/ports/spi/schema.go:80-132):
+
 ```go
 type SchemaRegistryPort interface {
     GetSchema(ctx context.Context, name string) (domain.Schema, error)
@@ -1512,9 +1517,10 @@ type SchemaRegistryPort interface {
     RegisterAll(ctx context.Context, schemas []domain.Schema, bank domain.PropertyBank) error
 }
 ```
-   - GetSchema/GetProperty: Retrieve registered schemas
-   - RegisterAll: Must be called to register schemas loaded from SchemaPort
-   - Comment line 63: "Populated by SchemaEngine at startup from SchemaPort.Load() results"
+
+- GetSchema/GetProperty: Retrieve registered schemas
+- RegisterAll: Must be called to register schemas loaded from SchemaPort
+- Comment line 63: "Populated by SchemaEngine at startup from SchemaPort.Load() results"
 
 3. **Two-Step Coordination Required**:
    - Step 1: Call `SchemaPort.Load()` → returns schemas
@@ -1556,13 +1562,15 @@ type SchemaRegistryPort interface {
 **Discovery Context**: During architectural review for Epic 3, noticed that domain.Template struct is minimal (ID + Content string) and doesn't leverage Go's text/template stdlib capabilities.
 
 **Critical Dependency**: Epic 5 implementation depends on fundamental Template struct design decisions:
+
 - **If keeping Template struct**: Must determine how it interacts with text/template package
 - **If removing Template struct**: Must redesign template system to use text/template directly
 
 **Four Key Questions Identified**:
+
 1. **Name Conflict**: Does domain.Template conflict with text/template package imports?
 2. **Necessity**: Do we even need Template struct given text/template stdlib?
-3. **Embedding**: If kept, should Template embed *template.Template for stdlib access?
+3. **Embedding**: If kept, should Template embed \*template.Template for stdlib access?
 4. **Utilization**: Is current design fully utilizing text/template features (composition, function maps, etc.)?
 
 **Research Phase Dependency**: Group 6 analysis depends on Phase 1 research of text/template package capabilities (template composition, function maps, execution patterns).
@@ -1626,7 +1634,7 @@ type SchemaRegistryPort interface {
 
 1. Should Template remain anemic data bag, or become rich model with Validate(), Render(), GetDependencies() methods?
 2. Do we even need domain.Template, or should we use text/template.Template directly?
-3. If keeping domain.Template, should it embed *template.Template for rich behavior?
+3. If keeping domain.Template, should it embed \*template.Template for rich behavior?
 4. How to support {{template "name"}} composition for Epic 5?
 5. What additional text/template features needed for Epic 5 (Clone, data contexts, etc.)?
 
@@ -1714,6 +1722,7 @@ type SchemaRegistryPort interface {
 **Evidence from Code**:
 
 1. **Anemic domain.Template** (internal/domain/template.go:3-18):
+
 ```go
 // Template represents an executable template for note generation.
 // It is a pure data structure containing only the template identity and raw
@@ -1724,11 +1733,13 @@ type Template struct {
     Content string
 }
 ```
-   - Comment line 6: "follows the anemic domain model pattern" - explicitly anemic
-   - No behavior methods - just NewTemplate() constructor
-   - Matches Issue D1 pattern: Frontmatter, Note, Template all anemic
+
+- Comment line 6: "follows the anemic domain model pattern" - explicitly anemic
+- No behavior methods - just NewTemplate() constructor
+- Matches Issue D1 pattern: Frontmatter, Note, Template all anemic
 
 2. **Immediate Conversion to text/template.Template** (internal/app/template/service.go:94-123):
+
 ```go
 func (e *TemplateEngine) Render(ctx context.Context, templateID domain.TemplateID) (string, error) {
     // Step 1: Load template
@@ -1744,11 +1755,13 @@ func (e *TemplateEngine) Render(ctx context.Context, templateID domain.TemplateI
     }
 }
 ```
-   - domain.Template loaded (line 99), immediately converted (line 105)
-   - Actual execution uses text/template.Template (line 112)
-   - domain.Template is just transport object
+
+- domain.Template loaded (line 99), immediately converted (line 105)
+- Actual execution uses text/template.Template (line 112)
+- domain.Template is just transport object
 
 3. **Conversion Logic** (service.go:195-226):
+
 ```go
 func (e *TemplateEngine) getCompiledTemplate(tmpl domain.Template) (*template.Template, error) {
     // ... caching logic ...
@@ -1764,30 +1777,36 @@ func (e *TemplateEngine) getCompiledTemplate(tmpl domain.Template) (*template.Te
     return parsed, nil
 }
 ```
-   - Line 207: Creates stdlib `template.Template` from domain.Template
-   - Line 219: Caches text/template.Template, domain.Template discarded
-   - Question: Why not work with text/template.Template from start?
+
+- Line 207: Creates stdlib `template.Template` from domain.Template
+- Line 219: Caches text/template.Template, domain.Template discarded
+- Question: Why not work with text/template.Template from start?
 
 4. **Single Template Loading Only** (service.go:141-147):
+
 ```go
 func (e *TemplateEngine) Load(ctx context.Context, templateID domain.TemplateID) (domain.Template, error) {
     e.log.Debug().Str("templateID", string(templateID)).Msg("loading template")
     return e.templatePort.Load(ctx, templateID)
 }
 ```
-   - Loads one template by ID
-   - No multi-template loading for composition
-   - No dependency resolution for {{template "name"}} references
+
+- Loads one template by ID
+- No multi-template loading for composition
+- No dependency resolution for {{template "name"}} references
 
 5. **Empty Data Context** (service.go:112):
+
 ```go
 if executeErr := t.Execute(&buf, nil); executeErr != nil {
 ```
-   - Always executes with `nil` data
-   - Comment line 82: "Epic 1" limitation - static rendering only
-   - Epic 5 will need richer data contexts
+
+- Always executes with `nil` data
+- Comment line 82: "Epic 1" limitation - static rendering only
+- Epic 5 will need richer data contexts
 
 6. **Basic text/template Feature Usage** (service.go:158-189):
+
 ```go
 e.funcMap = template.FuncMap{
     // Basic functions
@@ -1803,8 +1822,9 @@ e.funcMap = template.FuncMap{
     "vaultPath": func() string { return e.config.VaultPath },
 }
 ```
-   - Uses: template.New(), .Funcs(), .Parse(), .Execute()
-   - NOT using: .Clone(), .DefinedTemplates(), .Option(), composition
+
+- Uses: template.New(), .Funcs(), .Parse(), .Execute()
+- NOT using: .Clone(), .DefinedTemplates(), .Option(), composition
 
 7. **Name Ambiguity in Code** (service.go):
    - Line 13: `"text/template"` import
@@ -1835,6 +1855,7 @@ e.funcMap = template.FuncMap{
 **Documentation Misalignment**: Issue C3 (Documentation Misalignment) identifies that architecture docs don't reflect current system state or decisions made during Epic 3 planning.
 
 **Pattern Discovery Context**: Analysis of Groups 1-6 revealed:
+
 - Event-driven vs orchestrator pattern evaluation (Group 3)
 - Unit of Work vs dual-write patterns (Group 2)
 - Singleton pattern implementation (Group 4)
@@ -1852,10 +1873,12 @@ e.funcMap = template.FuncMap{
 **1. high-level-architecture.md - Pattern Section Needs Updates** (lines 91-141):
 
 **Currently Documents**:
+
 - Hexagonal Architecture, Repository Pattern, Dependency Injection, Builder Pattern, CQRS
 - Design Principles: DIP, Lean Ports, ISP, Lean Domain Models, Error Handling
 
 **Missing/Incorrect**:
+
 - Orchestration patterns (Event-driven, Saga, Mediator, Command, Unit of Work) - Group 3
 - Singleton pattern (sync.Once for Config/PropertyBank) - Group 4
 - **CONTRADICTION**: Line 135 "Lean Domain Models: contain only essential data with no behavior" endorses anemic model anti-pattern (Issue D1 says this is CRITICAL problem)
@@ -1867,6 +1890,7 @@ e.funcMap = template.FuncMap{
 **2. components.md - Missing Component Documentation**:
 
 **Currently Missing**:
+
 - CLICommander orchestration pattern and responsibilities
 - Singleton lifecycle for Config and PropertyBank
 - Schema-driven SQLite views implementation
@@ -1878,6 +1902,7 @@ e.funcMap = template.FuncMap{
 **3. data-models.md - Missing Model Documentation**:
 
 **Currently Missing**:
+
 - DTO architecture decisions (FileMetadata, VaultFile redesign with fs.FileInfo)
 - Anemic vs rich model guidelines (when entities should have behavior)
 - Domain/IO boundary patterns (NoteProjection needs filesystem data)
@@ -1887,6 +1912,7 @@ e.funcMap = template.FuncMap{
 **4. coding-standards.md - Missing Pattern Guidance**:
 
 **Currently Missing**:
+
 - Singleton accessor usage patterns (GetConfig(), GetPropertyBank())
 - Test harness patterns for singleton instance swapping
 - Validation method naming (Validate vs ValidateAgainstSchema)
@@ -1947,14 +1973,17 @@ e.funcMap = template.FuncMap{
 **Evidence from Documentation Files**:
 
 1. **high-level-architecture.md Line 135 Contradicts Issue D1**:
+
 ```markdown
 **Lean Domain Models:** Domain models contain only essential data with no behavior or infrastructure dependencies. Complex operations implemented in domain services. Models are pure data structures that can be easily serialized, tested, and composed.
 ```
-   - This principle ENDORSES anemic domain model
-   - Issue D1 (line 218) identifies anemic domain model as ❌ CRITICAL - PERVASIVE problem
-   - **Contradiction**: Documentation guides developers to create the anti-pattern
+
+- This principle ENDORSES anemic domain model
+- Issue D1 (line 218) identifies anemic domain model as ❌ CRITICAL - PERVASIVE problem
+- **Contradiction**: Documentation guides developers to create the anti-pattern
 
 2. **Issue C3 - Documentation Misalignment** (line 285-296):
+
 ```markdown
 #### Issue C3: Documentation Misalignment
 
@@ -1970,6 +1999,7 @@ e.funcMap = template.FuncMap{
 ```
 
 3. **Issue D3 - Missing Pattern Documentation** (line 258-267):
+
 ```markdown
 #### Issue D3: Missing Pattern Documentation ⚠️ MODERATE
 
@@ -2002,9 +2032,10 @@ e.funcMap = template.FuncMap{
    - Comprehensive analysis reveals documentation gaps
 
 **Evidence of Developer Impact**:
-   - Template.go line 6: Comment says "follows the anemic domain model pattern" as if intentional
-   - Matches high-level-architecture.md guidance: "Lean Domain Models: no behavior"
-   - Developer was guided by docs to create anemic model
+
+- Template.go line 6: Comment says "follows the anemic domain model pattern" as if intentional
+- Matches high-level-architecture.md guidance: "Lean Domain Models: no behavior"
+- Developer was guided by docs to create anemic model
 
 ---
 
@@ -2025,6 +2056,7 @@ e.funcMap = template.FuncMap{
 **Implementation Gap Discovery**: Comprehensive architectural review (Groups 1-7) revealed that architectural decisions have been made but not implemented, creating technical debt and blocking forward progress.
 
 **Three Meta-Issues Identified**:
+
 - **C1**: Questions 1-5 have decisions but no implementation (technical debt accumulation)
 - **C2**: Question 6 (Write Coordination) remains unresolved (decision blocker)
 - **C3**: Documentation doesn't reflect decisions or current state (guidance blocker)
@@ -2038,6 +2070,7 @@ e.funcMap = template.FuncMap{
 **Issue C1: Multiple Questions Pending Implementation** (line 273-277):
 
 **Decisions Made But Not Implemented**:
+
 1. **Question 1 (Orchestration)**: Decision reconsidered - was orchestrator, now evaluating event-driven
 2. **Question 2 (Singleton)**: ✅ DECIDED (sync.Once pattern) - Implementation pending
 3. **Question 3 (FileClassKey Config)**: ✅ DECIDED (config-driven) - ViperAdapter not loading FileClassKey
@@ -2049,6 +2082,7 @@ e.funcMap = template.FuncMap{
 **Issue C2: Question 6 Unresolved** (line 279-283):
 
 **Write Coordination Pattern Undecided**:
+
 - **Problem**: BoltDB + SQLite dual-write coordination has no pattern decision
 - **Options**: Unit of Work, Saga, dual-write with eventual consistency
 - **Status**: No decision made - Story 3.2 technically incomplete
@@ -2057,6 +2091,7 @@ e.funcMap = template.FuncMap{
 **Issue C3: Documentation Misalignment** (line 285-296 + Group 7):
 
 **Architecture Docs Don't Reflect Reality**:
+
 - CLICommander orchestration pattern - NOT documented
 - Singleton Config/PropertyBank - NOT documented
 - DTO architecture decisions - NOT documented
@@ -2068,6 +2103,7 @@ e.funcMap = template.FuncMap{
 **Impact**: Developers implementing from docs build incorrect architecture (mismatch between docs and system state).
 
 **Root Cause Pattern**: Architectural decisions made during sprint planning but not followed through with:
+
 1. Implementation work
 2. Documentation updates
 3. Verification that decisions were correct
@@ -2132,6 +2168,7 @@ This creates cascading technical debt: incomplete implementations block new stor
 **Evidence from Issue Inventory**:
 
 1. **Issue C1 - Implementation Pending** (line 273-277):
+
 ```markdown
 #### Issue C1: Multiple Questions Pending Implementation
 
@@ -2141,6 +2178,7 @@ This creates cascading technical debt: incomplete implementations block new stor
 ```
 
 2. **Issue C2 - Question 6 Unresolved** (line 279-283):
+
 ```markdown
 #### Issue C2: Question 6 Unresolved
 
@@ -2150,6 +2188,7 @@ This creates cascading technical debt: incomplete implementations block new stor
 ```
 
 3. **Issue C3 - Documentation Misalignment** (line 285-296):
+
 ```markdown
 #### Issue C3: Documentation Misalignment
 
@@ -2158,11 +2197,12 @@ This creates cascading technical debt: incomplete implementations block new stor
   - Singleton Config/PropertyBank
   - DTO architecture decisions
   - Schema-driven SQLite views
-  [... 7 items total]
+    [... 7 items total]
 - Impact: Developers implementing from docs build incorrect architecture
 ```
 
 **Evidence from Groups 1-7 Analysis**:
+
 - Group 1: 3 critical issues (D1, B2, D1 validation) - NOT implemented
 - Group 2: 5 storage issues - Questions 4, 6 unresolved
 - Group 3: Orchestration pattern decided → failed → now undecided
@@ -2172,6 +2212,7 @@ This creates cascading technical debt: incomplete implementations block new stor
 - Group 7: Documentation gaps comprehensive
 
 **Evidence from Sprint Change Proposal**:
+
 - Six questions posed (November 2, 2025)
 - Decisions made for Questions 2, 3, 5
 - Implementation status: NONE complete
@@ -2179,6 +2220,7 @@ This creates cascading technical debt: incomplete implementations block new stor
 - Time elapsed: Analysis period shows gap between decision and action
 
 **Evidence of Compound Risk**:
+
 - 18+ architectural issues identified
 - Multiple dependencies between issues
 - Technical debt growing with each incomplete decision
@@ -2194,38 +2236,2401 @@ This creates cascading technical debt: incomplete implementations block new stor
 
 ##### io/fs
 
-- [ ] FileInfo, File, FS interfaces, WalkDir, GlobFS, patterns
+**Research Status**: ✅ Complete (2025-11-07)
+
+**Purpose**: Address Group 2 DTO Architecture Redesign (Issues D2, A4) - Current custom VaultFile/FileMetadata DTOs duplicate os.FileInfo
+
+**Core Interfaces**:
+
+1. **fs.FileInfo** - Standard file metadata interface:
+
+   ```go
+   type FileInfo interface {
+       Name() string       // base name of the file
+       Size() int64        // length in bytes
+       Mode() FileMode     // file mode bits
+       ModTime() time.Time // modification time
+       IsDir() bool        // abbreviation for Mode().IsDir()
+       Sys() any           // underlying data source (can be nil)
+   }
+   ```
+
+2. **fs.DirEntry** - Efficient directory traversal:
+
+   ```go
+   type DirEntry interface {
+       Name() string                // Final path element only
+       IsDir() bool                 // Whether entry is a directory
+       Type() FileMode              // Type bits subset (fast)
+       Info() (FileInfo, error)     // Full FileInfo (requires stat syscall)
+   }
+   ```
+
+   - **Performance**: DirEntry-based `WalkDir` is ~1.5x faster than FileInfo-based `Walk` (370ms vs 580ms)
+   - Use `Type()` for fast checks (no syscall), only call `Info()` when you need Size, ModTime, or Mode details
+
+3. **fs.FS** - Abstract filesystem interface:
+   ```go
+   type FS interface {
+       Open(name string) (File, error)
+   }
+   ```
+
+   - Extension interfaces: ReadFileFS, StatFS, ReadDirFS, GlobFS
+
+**Key Patterns**:
+
+1. **Composition Pattern** - Embed fs.FileInfo in domain entities:
+
+   ```go
+   type VaultFile struct {
+       Path string
+       fs.FileInfo  // Embed interface, not duplicate fields
+       // Domain-specific fields
+       FrontmatterData map[string]any
+       SchemaType      string
+   }
+   ```
+
+2. **Extension Interface Pattern** - Use Sys() to provide extended metadata:
+
+   ```go
+   type ExtendedFileInfo interface {
+       fs.FileInfo
+       FrontmatterData() map[string]any
+       SchemaType() string
+   }
+
+   type VaultFileInfo struct {
+       baseInfo    fs.FileInfo
+       frontmatter map[string]any
+       schema      string
+   }
+
+   func (v *VaultFileInfo) Sys() any { return v } // Return self for type assertion
+   ```
+
+3. **fs.WalkDir Pattern** - Efficient directory traversal:
+
+   ```go
+   err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+       if err != nil { return err }
+
+       // Use Type() for fast checks (no syscall)
+       if d.Type().IsRegular() {
+           // Only call Info() when you need full metadata
+           info, err := d.Info()
+           if err != nil { return err }
+           processFile(path, info)
+       }
+
+       // Skip directories by returning fs.SkipDir
+       if d.IsDir() && shouldSkip(d.Name()) {
+           return fs.SkipDir
+       }
+
+       return nil
+   })
+   ```
+
+4. **Testing with fstest.MapFS** - In-memory filesystem for testing:
+   ```go
+   fsys := fstest.MapFS{
+       "notes/test.md": &fstest.MapFile{
+           Data: []byte("# Test Note"),
+           Mode: 0644,
+       },
+   }
+   ```
+
+**Best Practices**:
+
+- Use DirEntry, not FileInfo, for directory traversal (avoid syscalls)
+- Leverage extension interfaces for optional functionality
+- Define port interfaces using fs.FS, not os-specific types
+- Error handling: Return `fs.SkipDir` to skip current directory, `fs.SkipAll` to skip all remaining
+- Testing: Use fstest.MapFS for in-memory filesystem testing without disk access
+
+**Options for VaultFile DTO**:
+
+**Option A: Use fs.FileInfo directly, add domain metadata via extension interfaces**
+
+- ✅ Maximum stdlib leverage
+- ✅ No wrapper type needed
+- ❌ Couples domain to stdlib types directly
+- ❌ Extension interface pattern adds complexity
+
+**Option B: Keep VaultFile but embed fs.FileInfo instead of duplicating fields**
+
+- ✅ Preserves hexagonal architecture (domain entities)
+- ✅ Eliminates field duplication (DRY)
+- ✅ Allows domain-specific fields (Frontmatter, Schema)
+- ✅ Easy to extend via extension interface pattern
+- ✅ Testable with fstest.MapFS
+- ❌ Additional wrapper layer
+
+**Option C: Use fs.FileInfo in adapters, convert to domain entities at boundary**
+
+- ✅ Clean hexagonal separation
+- ✅ Domain fully decoupled from stdlib
+- ❌ Conversion overhead at boundary
+- ❌ Duplicates FileInfo fields in domain entity
+
+**Port Interface Pattern**:
+
+```go
+// Port interface uses stdlib abstractions
+type FileSystemPort interface {
+    Open(name string) (fs.File, error)
+    ReadFile(name string) ([]byte, error)
+    WalkDir(root string, fn fs.WalkDirFunc) error
+}
+
+// Adapter implements with os package
+type OSFileSystemAdapter struct {
+    fsys fs.FS
+}
+
+func (a *OSFileSystemAdapter) WalkDir(root string, fn fs.WalkDirFunc) error {
+    return fs.WalkDir(a.fsys, root, fn)
+}
+```
+
+**Impact on Issues**:
+
+- **Issue D2 (DTO Duplication)**: Embedding fs.FileInfo eliminates custom field duplication
+- **Issue A4 (Port Boundaries)**: Enables clean port interfaces using stdlib abstractions
+
+**Sources**:
+
+- pkg.go.dev/io/fs
+- benhoyt.com/writings/go-readdir (DirEntry performance benchmarks)
 
 ##### path/filepath
 
-- [ ] <https://pkg.go.dev/path/filepath>
+**Research Status**: ✅ Complete (2025-11-07)
+
+**Purpose**: Cross-cutting - Path manipulation, directory traversal patterns, cross-platform path handling for vault operations
+
+**Core Functions**:
+
+1. **Directory Traversal**:
+
+   ```go
+   // Walk - Traverses file tree (legacy, less efficient)
+   filepath.Walk(root, func(path string, info fs.FileInfo, err error) error {
+       if err != nil { return err }
+       // Process file
+       return nil
+   })
+
+   // WalkDir - More efficient (Go 1.16+), avoids os.Lstat on every visited item
+   filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+       if err != nil { return err }
+       // Process file
+       return nil
+   })
+   ```
+
+   - **Critical**: "Walk reads an entire directory into memory before proceeding" - memory implications for large directory trees
+   - **Critical**: "Walk does not follow symbolic links" - prevents infinite loops
+   - **Best Practice**: Use `WalkDir()` over `Walk()` for better performance
+
+2. **Path Manipulation**:
+
+   ```go
+   // Join - Combines path elements using OS-specific separator
+   path := filepath.Join("vault", "notes", "meeting.md")
+   // Result: "vault/notes/meeting.md" (Unix) or "vault\notes\meeting.md" (Windows)
+   // "Empty elements are ignored. The result is Cleaned."
+
+   // Clean - Lexically simplifies paths
+   clean := filepath.Clean("vault/./notes/../notes/meeting.md")
+   // Result: "vault/notes/meeting.md"
+
+   // Abs - Returns absolute path
+   abs, err := filepath.Abs("notes/meeting.md")
+   // Combines with current working directory if relative
+
+   // Rel - Computes relative path
+   rel, err := filepath.Rel("/vault", "/vault/notes/meeting.md")
+   // Result: "notes/meeting.md"
+
+   // Split - Separates directory and filename
+   dir, file := filepath.Split("/vault/notes/meeting.md")
+   // dir: "/vault/notes/", file: "meeting.md"
+
+   // Dir - Extract directory
+   dir := filepath.Dir("/vault/notes/meeting.md")
+   // Result: "/vault/notes"
+
+   // Base - Extract filename
+   base := filepath.Base("/vault/notes/meeting.md")
+   // Result: "meeting.md"
+
+   // Ext - File extension
+   ext := filepath.Ext("meeting.md")
+   // Result: ".md"
+   ```
+
+3. **Pattern Matching**:
+
+   ```go
+   // Match - Shell-style pattern matching
+   matched, err := filepath.Match("*.md", "meeting.md")
+   // Supports *, ?, and character classes [...]
+
+   // Glob - Returns all filenames matching pattern
+   matches, err := filepath.Glob("vault/notes/*.md")
+   // Ignores I/O errors, can be expensive for broad patterns
+   ```
+
+**Key Differences from `path` Package**:
+
+| Feature       | `path` Package                 | `filepath` Package                  |
+| ------------- | ------------------------------ | ----------------------------------- |
+| **Purpose**   | URL-like forward-slash paths   | OS-specific filesystem paths        |
+| **Separator** | Always `/`                     | OS-specific (`/` Unix, `\` Windows) |
+| **Use Case**  | URLs, portable data structures | Filesystem operations               |
+| **Platform**  | Platform-independent           | Platform-specific                   |
+
+**Guideline**: Use `filepath` for filesystem operations, `path` for URLs or portable structures.
+
+**OS-Specific Behavior**:
+
+1. **Separators**:
+
+   ```go
+   // OS-specific path separator
+   filepath.Separator // '/' on Unix, '\' on Windows
+
+   // Environment variable separator
+   filepath.ListSeparator // ':' on Unix, ';' on Windows
+   ```
+
+2. **Windows-Specific Handling**:
+   - Volume names recognized (e.g., `C:`, UNC paths `\\host\share`)
+   - "On Windows, escaping is disabled. Instead, '\\' is treated as path separator."
+   - Reserved names like "NUL" handled via `IsLocal()`
+
+3. **Cross-Platform Conversion**:
+
+   ```go
+   // ToSlash - Converts separators to forward slashes
+   portable := filepath.ToSlash(`vault\notes\meeting.md`)
+   // Result: "vault/notes/meeting.md"
+
+   // FromSlash - Converts forward slashes to OS separators
+   native := filepath.FromSlash("vault/notes/meeting.md")
+   // Result: "vault/notes/meeting.md" (Unix) or "vault\notes\meeting.md" (Windows)
+
+   // Localize - Converts slash-separated io/fs paths to OS paths (Go 1.20+)
+   local := filepath.Localize("vault/notes/meeting.md")
+   ```
+
+**Best Practices for Cross-Platform Development**:
+
+1. **Always use `Join()`** instead of string concatenation:
+
+   ```go
+   // ❌ BAD: String concatenation
+   path := "vault" + "/" + "notes" + "/" + "meeting.md"
+
+   // ✅ GOOD: filepath.Join
+   path := filepath.Join("vault", "notes", "meeting.md")
+   ```
+
+2. **Validate paths** with `IsLocal()` to prevent directory traversal attacks:
+
+   ```go
+   if !filepath.IsLocal(userPath) {
+       return errors.New("invalid path: directory traversal attempt")
+   }
+   ```
+
+3. **Use `WalkDir()` over `Walk()`** for better performance (Go 1.16+)
+
+4. **Handle `SkipDir` and `SkipAll`** properly:
+
+   ```go
+   filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+       if d.IsDir() && shouldSkip(d.Name()) {
+           return filepath.SkipDir  // Skip this directory
+       }
+       return nil
+   })
+   ```
+
+5. **Convert between formats** when interfacing with portable formats:
+
+   ```go
+   // Store paths in portable format (forward slashes)
+   stored := filepath.ToSlash(nativePath)
+
+   // Convert back to native format when using
+   native := filepath.FromSlash(stored)
+   ```
+
+6. **Test on target platforms** - behavior differs significantly between Unix and Windows
+
+**Common Gotchas**:
+
+1. **`Clean()` returns `"."` for empty input, not empty string**:
+
+   ```go
+   clean := filepath.Clean("")
+   // Result: "." (not "")
+   ```
+
+2. **Memory implications for large directories**:
+   - "Walk reads an entire directory into memory before proceeding"
+   - Use early filtering with `SkipDir` to reduce memory usage
+
+3. **Trailing separators have semantic meaning**:
+
+   ```go
+   dir := filepath.Dir("/vault/notes/")
+   // Result: "/vault/notes" (removes trailing separator)
+
+   dir, file := filepath.Split("/vault/notes/")
+   // dir: "/vault/notes/", file: "" (preserves trailing separator)
+   ```
+
+4. **`IsAbs()` behavior differs by platform**:
+
+   ```go
+   // Unix: /path is absolute
+   filepath.IsAbs("/vault") // true on Unix
+
+   // Windows: /path is relative without drive letter
+   filepath.IsAbs("/vault") // false on Windows (no drive letter)
+   filepath.IsAbs("C:/vault") // true on Windows
+   ```
+
+5. **`HasPrefix()` is deprecated**:
+   - "HasPrefix does not respect path boundaries and does not ignore case when required"
+   - Use `strings.HasPrefix(filepath.Clean(path), filepath.Clean(prefix)+string(filepath.Separator))` instead
+
+**Performance Considerations**:
+
+1. **WalkDir efficiency**: "Walk is less efficient than WalkDir, introduced in Go 1.16, which avoids calling os.Lstat on every visited file or directory"
+
+2. **Memory usage**: Complete directory listing loaded before traversal begins
+
+3. **Sorting overhead**: "Lexical order...requires Walk to read an entire directory into memory"
+
+4. **Symbolic link handling**: "Walk does not follow symbolic links," preventing infinite loops but may miss linked content
+
+5. **Pattern matching**: `Glob()` can be expensive for broad patterns across large filesystems
+
+**Lithos Application Patterns**:
+
+1. **Vault Path Construction**:
+
+   ```go
+   // Always use Join for cross-platform compatibility
+   notePath := filepath.Join(vaultPath, "notes", "meeting.md")
+   schemaPath := filepath.Join(vaultPath, "schemas", "note.json")
+   templatePath := filepath.Join(vaultPath, "templates", "meeting.tmpl")
+   ```
+
+2. **Vault Scanning with WalkDir**:
+
+   ```go
+   func ScanVault(vaultPath string) error {
+       return filepath.WalkDir(vaultPath, func(path string, d fs.DirEntry, err error) error {
+           if err != nil { return err }
+
+           // Skip hidden directories
+           if d.IsDir() && strings.HasPrefix(d.Name(), ".") {
+               return filepath.SkipDir
+           }
+
+           // Process only markdown files
+           if !d.IsDir() && filepath.Ext(path) == ".md" {
+               processNote(path)
+           }
+
+           return nil
+       })
+   }
+   ```
+
+3. **Portable Path Storage**:
+
+   ```go
+   // Store paths in portable format (forward slashes)
+   type NoteMetadata struct {
+       Path string // Always stored with forward slashes
+   }
+
+   func NewNoteMetadata(nativePath string) *NoteMetadata {
+       return &NoteMetadata{
+           Path: filepath.ToSlash(nativePath),
+       }
+   }
+
+   func (m *NoteMetadata) NativePath() string {
+       return filepath.FromSlash(m.Path)
+   }
+   ```
+
+4. **Relative Path Computation**:
+
+   ```go
+   // Compute relative path from vault root
+   func RelativeToVault(vaultPath, notePath string) (string, error) {
+       rel, err := filepath.Rel(vaultPath, notePath)
+       if err != nil {
+           return "", err
+       }
+       // Store in portable format
+       return filepath.ToSlash(rel), nil
+   }
+   ```
+
+5. **Security Validation**:
+
+   ```go
+   // Prevent directory traversal attacks
+   func ValidateVaultPath(vaultPath, userPath string) error {
+       // Ensure path is local (no .., etc.)
+       if !filepath.IsLocal(userPath) {
+           return errors.New("invalid path: directory traversal attempt")
+       }
+
+       // Ensure path is within vault
+       fullPath := filepath.Join(vaultPath, userPath)
+       relPath, err := filepath.Rel(vaultPath, fullPath)
+       if err != nil || strings.HasPrefix(relPath, "..") {
+           return errors.New("path outside vault")
+       }
+
+       return nil
+   }
+   ```
+
+**Options for Lithos Path Handling**:
+
+**Option A: Store native paths everywhere**
+
+- ✅ Simple (no conversion)
+- ❌ Not portable (breaks when sharing vaults across platforms)
+- ❌ Cannot serialize vault metadata portably
+
+**Option B: Store portable paths (forward slashes), convert at boundaries**
+
+- ✅ Portable (vault metadata works cross-platform)
+- ✅ Clean storage format
+- ❌ Conversion overhead at filesystem operations
+- ✅ **Best for Lithos**: Vaults may be synced across platforms
+
+**Option C: Use io/fs paths everywhere, convert only for legacy code**
+
+- ✅ Modern Go approach (io/fs uses forward slashes)
+- ✅ Works with io/fs abstractions
+- ❌ Conversion needed for os package operations
+
+**Impact on Issues**:
+
+- **Cross-Cutting**: Cross-platform path handling for vault operations
+- **Group 2 (Storage)**: Path normalization for storage layer
+- **Issue A4 (Port Boundaries)**: Path handling in FileSystemPort
+
+**Sources**:
+
+- pkg.go.dev/path/filepath
 
 ##### text/template
 
-- [ ] Template composition, function maps, execution patterns
+**Research Status**: ✅ Complete (2025-11-07)
+
+**Purpose**: Address Group 6 Template System (Epic 5 Blocker) - Current domain.Template wrapper immediately converted to \*template.Template, questions about necessity and composition support
+
+**Core Patterns**:
+
+1. **Template Composition** - `{{template}}` vs `{{block}}`:
+
+   ```go
+   // {{template}} - Execute associated template with data
+   {{define "header"}}
+   <h1>{{.Title}}</h1>
+   {{end}}
+
+   {{template "header" .}}  // With data pipeline
+   {{template "header"}}    // With nil data
+
+   // {{block}} - Shorthand for define + execute in place
+   {{block "content" .}}
+     Default content shown if "content" not redefined
+   {{end}}
+   ```
+
+   - **Use Case**: Blocks enable template inheritance (root defines blocks, children redefine them)
+
+2. **ParseFiles with Multiple Templates**:
+
+   ```go
+   // ParseFiles creates template namespace
+   tmpl, err := template.ParseFiles("base.tmpl", "page1.tmpl", "page2.tmpl")
+
+   // Template name = first file's basename ("base")
+   // Associated templates: "page1", "page2"
+   // CRITICAL: Last file with same basename wins
+   ```
+
+3. **Execute vs ExecuteTemplate**:
+
+   ```go
+   // Execute: Apply the template directly (single template or default)
+   tmpl.Execute(w, data)
+
+   // ExecuteTemplate: Apply named associated template
+   tmpl.ExecuteTemplate(w, "page1", data)
+
+   // Internally: ExecuteTemplate calls Lookup("page1").Execute(w, data)
+   ```
+
+4. **Function Maps** - Registration BEFORE parsing:
+
+   ```go
+   // CRITICAL: Funcs MUST be called BEFORE Parse or it panics
+   funcMap := template.FuncMap{
+       "upper": strings.ToUpper,
+       "formatDate": func(t time.Time) string { return t.Format("2006-01-02") },
+   }
+
+   tmpl := template.New("base").
+       Funcs(funcMap).              // Register functions first
+       ParseFiles("base.tmpl")      // Then parse
+   ```
+
+5. **Template Lookup and Dependency Resolution**:
+
+   ```go
+   // Lookup retrieves associated template by name
+   tmpl.Lookup("header") // Returns *template.Template or nil
+
+   // Check if template exists before executing
+   if headerTmpl := tmpl.Lookup("header"); headerTmpl != nil {
+       headerTmpl.Execute(w, data)
+   }
+
+   // Walk associated templates
+   tmpl.Templates() // Returns []*template.Template slice
+   ```
+
+   - **Note**: No built-in dependency tracking for `{{template}}` references
+
+6. **Template Caching**:
+
+   ```go
+   var (
+       tmplCache = make(map[string]*template.Template)
+       tmplMutex sync.RWMutex
+   )
+
+   func GetTemplate(name string) (*template.Template, error) {
+       tmplMutex.RLock()
+       cached, ok := tmplCache[name]
+       tmplMutex.RUnlock()
+
+       if ok {
+           return cached, nil
+       }
+
+       // Double-check locking pattern
+       tmplMutex.Lock()
+       defer tmplMutex.Unlock()
+
+       if cached, ok := tmplCache[name]; ok {
+           return cached, nil
+       }
+
+       tmpl, err := template.ParseFiles(name)
+       if err != nil {
+           return nil, err
+       }
+       tmplCache[name] = tmpl
+       return tmpl, nil
+   }
+   ```
+
+   - **Performance**: Cached templates ~6.8x faster (1173 ns/op vs 7955 ns/op)
+
+7. **Pre-Execution Validation**:
+
+   ```go
+   // Validation occurs at Parse time (syntax errors)
+   tmpl, err := template.New("test").Parse(`{{.InvalidSyntax}`)
+   if err != nil {
+       // Syntax error caught here
+   }
+
+   // Execution errors (missing data, nil pointers) caught at Execute time
+   err = tmpl.Execute(w, data)
+   if err != nil {
+       // Runtime error (e.g., nil pointer, missing field)
+   }
+
+   // No built-in pre-execution validation (can't validate without data)
+   // Workaround: Execute with mock data
+   testData := mockDataForValidation()
+   var buf bytes.Buffer
+   if err := tmpl.Execute(&buf, testData); err != nil {
+       // Template logic errors
+   }
+   ```
+
+**Best Practices**:
+
+- Register functions BEFORE parsing: `Funcs()` MUST be called before `Parse()` or it panics
+- Use blocks for template inheritance: Define base templates with `{{block}}`, override in child templates with `{{define}}`
+- Cache parsed templates: Parsing is expensive (~6.8x slower), parse once on startup, reuse
+- Thread-safe execution: Templates can be executed safely in parallel, but use mutex for cache writes
+- Validate syntax at parse time: Catch syntax errors early with `Parse()`, but execution errors require runtime data
+- Use Lookup for conditional execution: Check if named template exists before executing
+
+**Options for Template Architecture**:
+
+**Option A: Use \*template.Template directly in domain**
+
+```go
+type TemplateEngine interface {
+    LoadTemplate(id TemplateID) (*template.Template, error)
+    Execute(tmpl *template.Template, data any) (string, error)
+}
+```
+
+- ✅ Simple, no conversion overhead
+- ❌ Couples domain to stdlib
+- ❌ Hard to test (need real templates)
+
+**Option B: Keep domain.Template as metadata, adapter holds \*template.Template**
+
+```go
+// Domain: Metadata only
+type TemplateMetadata struct {
+    ID       TemplateID
+    Name     string
+    FilePath string
+}
+
+// Adapter: Holds parsed template
+type TemplateEngine struct {
+    cache map[TemplateID]*template.Template
+}
+```
+
+- ✅ Clean domain/adapter separation
+- ✅ Testable (mock adapter)
+- ✅ Cache lives in adapter layer
+- ❌ More indirection
+
+**Option C: Template as interface (adapter wraps \*template.Template)**
+
+```go
+// Domain: Interface
+type Template interface {
+    ID() TemplateID
+    Execute(data any) (string, error)
+}
+
+// Adapter: Wraps *template.Template
+type GoTemplate struct {
+    id   TemplateID
+    tmpl *template.Template
+}
+
+func (g *GoTemplate) Execute(data any) (string, error) {
+    var buf bytes.Buffer
+    err := g.tmpl.Execute(&buf, data)
+    return buf.String(), err
+}
+```
+
+- ✅ Domain interface, not concrete type
+- ✅ Testable (mock Template interface)
+- ✅ Type-safe TemplateID
+- ✅ Encapsulates \*template.Template
+- ❌ Wrapper object per template
+
+**Composition Support Patterns**:
+
+1. **Parse All Templates Together**:
+
+   ```go
+   // Adapter initialization
+   func NewGoTemplateAdapter(templateDir string, funcMap template.FuncMap) (*GoTemplateAdapter, error) {
+       adapter := &GoTemplateAdapter{
+           templates: make(map[TemplateID]*template.Template),
+           funcMap:   funcMap,
+       }
+
+       // Parse all templates with shared function map
+       baseTmpl := template.New("base").Funcs(funcMap)
+       tmpl, err := baseTmpl.ParseGlob(filepath.Join(templateDir, "*.tmpl"))
+       if err != nil {
+           return nil, err
+       }
+
+       // Register each template by ID
+       for _, t := range tmpl.Templates() {
+           id := TemplateID(t.Name())
+           adapter.templates[id] = t
+       }
+
+       return adapter, nil
+   }
+   ```
+
+2. **Dependency Resolution Options**:
+   - **Convention-based**: Base template named "base.tmpl", children invoke via `{{template "base"}}`
+   - **Parse template text**: Extract `{{template "name"}}` references (no built-in API)
+   - **Manual registration**: Define template dependencies in metadata
+
+**Impact on Issues**:
+
+- **Group 6 (Template System)**: Resolves "do we need domain.Template?" question
+- **Epic 5 Blocker**: Composition patterns enable template inheritance for Epic 5
+- **Issue D1 (Anemic Models)**: Template interface pattern adds behavior to domain entity
+
+**Sources**:
+
+- pkg.go.dev/text/template
+- camlittle.com/go-template-validation
 
 #### Go Third-Party Packages
 
 ##### bbolt
 
-- [ ] Bucket design, transaction patterns, cursor usage, best practices
+**Research Status**: ✅ Complete (2025-11-07)
+
+**Purpose**: Address Group 2 BoltDB Hot Cache Storage - Planning BoltDB for <1ms hot cache, need transaction patterns, bucket design, performance best practices
+
+**Core Transaction Patterns**:
+
+1. **View (Read-Only) - Concurrent, No Locking**:
+
+   ```go
+   // View executes a function within a read-only transaction
+   err := db.View(func(tx *bolt.Tx) error {
+       b := tx.Bucket([]byte("notes"))
+       v := b.Get([]byte("note-123"))
+       // Process value
+       return nil
+   })
+
+   // Multiple read-only transactions can run concurrently
+   // Any error returned from function is returned from View()
+   // Attempting to manually rollback causes panic
+   ```
+
+2. **Update (Read-Write) - Exclusive Lock**:
+
+   ```go
+   // Update executes a function within a read-write transaction
+   err := db.Update(func(tx *bolt.Tx) error {
+       b := tx.Bucket([]byte("notes"))
+       return b.Put([]byte("note-123"), []byte("content"))
+   })
+
+   // If function returns nil, transaction commits
+   // If function returns error, transaction rolls back
+   // Only ONE read-write transaction allowed at a time
+   // Attempting to manually commit/rollback causes panic
+   ```
+
+3. **Batch (Opportunistic Batching) - Best for Many Small Writes**:
+
+   ```go
+   // Batch opportunistically combines multiple writes
+   // Function may execute MULTIPLE times, so must be idempotent
+   err := db.Batch(func(tx *bolt.Tx) error {
+       b := tx.Bucket([]byte("notes"))
+       return b.Put([]byte("note-123"), []byte("content"))
+   })
+
+   // Sacrifices atomicity guarantees for performance
+   // Go can call function multiple times if batching with other writes
+   // Use for high-write-throughput scenarios
+   ```
+
+4. **Manual Transaction Control**:
+
+   ```go
+   // For complex transaction logic
+   tx, err := db.Begin(true) // true = writable
+   if err != nil {
+       return err
+   }
+   defer tx.Rollback() // Safe to call even if Commit succeeds
+
+   b := tx.Bucket([]byte("notes"))
+   // Complex operations...
+
+   if err := tx.Commit(); err != nil {
+       return err // Rollback called by defer
+   }
+   ```
+
+**Bucket Design Patterns**:
+
+1. **Nested Buckets (Hierarchical Data)**:
+
+   ```go
+   // Create nested bucket structure
+   err := db.Update(func(tx *bolt.Tx) error {
+       // Create root bucket
+       root, err := tx.CreateBucketIfNotExists([]byte("vaults"))
+       if err != nil {
+           return err
+       }
+
+       // Create nested bucket for specific vault
+       vaultBucket, err := root.CreateBucketIfNotExists([]byte("vault-123"))
+       if err != nil {
+           return err
+       }
+
+       // Store note in vault's bucket
+       return vaultBucket.Put([]byte("note-456"), []byte("content"))
+   })
+
+   // Access nested bucket
+   err := db.View(func(tx *bolt.Tx) error {
+       root := tx.Bucket([]byte("vaults"))
+       vaultBucket := root.Bucket([]byte("vault-123"))
+       if vaultBucket == nil {
+           return ErrVaultNotFound
+       }
+       v := vaultBucket.Get([]byte("note-456"))
+       return nil
+   })
+   ```
+
+2. **Flat Buckets with Composite Keys**:
+
+   ```go
+   // Use key namespacing instead of nested buckets
+   func compositeKey(vaultID, noteID string) []byte {
+       return []byte(vaultID + ":" + noteID)
+   }
+
+   err := db.Update(func(tx *bolt.Tx) error {
+       b := tx.Bucket([]byte("notes"))
+       key := compositeKey("vault-123", "note-456")
+       return b.Put(key, []byte("content"))
+   })
+
+   // Range scan by prefix
+   err := db.View(func(tx *bolt.Tx) error {
+       c := tx.Bucket([]byte("notes")).Cursor()
+       prefix := []byte("vault-123:")
+
+       for k, v := c.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = c.Next() {
+           // Process vault's notes
+       }
+       return nil
+   })
+   ```
+
+**Decision Criteria**:
+
+- **Nested buckets**: Small cardinality, logical hierarchy, per-bucket operations (delete all notes in vault)
+- **Flat with composite keys**: Large cardinality, prefix scans, simpler structure
+
+**Cursor Navigation for Range Queries**:
+
+```go
+// Cursor methods: First(), Last(), Next(), Prev(), Seek(key)
+err := db.View(func(tx *bolt.Tx) error {
+    c := tx.Bucket([]byte("notes")).Cursor()
+
+    // Iterate all keys
+    for k, v := c.First(); k != nil; k, v = c.Next() {
+        processNote(k, v)
+    }
+
+    // Seek to specific key and iterate forward
+    for k, v := c.Seek([]byte("2025-01")); k != nil; k, v = c.Next() {
+        if !bytes.HasPrefix(k, []byte("2025-01")) {
+            break
+        }
+        processNote(k, v)
+    }
+
+    return nil
+})
+```
+
+**Critical Caveat**: "Changing data while traversing with a cursor may cause it to be invalidated." Removing key/value pairs during iteration may skip entries. Reposition cursor after mutations.
+
+**Key Design Best Practices**:
+
+1. **Integer IDs (Fixed-Size, Sortable)**:
+
+   ```go
+   // Auto-generate integer IDs
+   err := db.Update(func(tx *bolt.Tx) error {
+       b := tx.Bucket([]byte("notes"))
+
+       // NextSequence returns auto-incrementing ID
+       id, _ := b.NextSequence()
+
+       // Encode as big-endian for byte-sortable storage
+       key := make([]byte, 8)
+       binary.BigEndian.PutUint64(key, id)
+
+       return b.Put(key, []byte("content"))
+   })
+   ```
+
+2. **RFC3339 Timestamps for Time-Based Keys**:
+
+   ```go
+   // RFC3339 format is byte-comparable
+   key := []byte(time.Now().Format(time.RFC3339) + ":note-123")
+   // Enables range queries by date
+   ```
+
+3. **Composite Keys for Relationships**:
+
+   ```go
+   // Pattern: <parentID>:<childID>
+   func compositeKey(vaultID, noteID string) []byte {
+       return []byte(fmt.Sprintf("%s:%s", vaultID, noteID))
+   }
+
+   // Enables prefix scans for all children of parent
+   ```
+
+**Secondary Indices Pattern**:
+
+```go
+// Primary bucket: ID -> Data
+// Index bucket: IndexKey -> ID
+
+err := db.Update(func(tx *bolt.Tx) error {
+    notes := tx.Bucket([]byte("notes"))
+    titleIndex := tx.Bucket([]byte("notes:by_title"))
+
+    noteID := []byte("note-123")
+    noteData := []byte(`{"title":"My Note","content":"..."}`)
+
+    // Write to primary bucket
+    if err := notes.Put(noteID, noteData); err != nil {
+        return err
+    }
+
+    // Update index
+    title := []byte("My Note")
+    return titleIndex.Put(title, noteID)
+})
+
+// Query by index
+err := db.View(func(tx *bolt.Tx) error {
+    titleIndex := tx.Bucket([]byte("notes:by_title"))
+    noteID := titleIndex.Get([]byte("My Note"))
+    if noteID == nil {
+        return ErrNotFound
+    }
+
+    notes := tx.Bucket([]byte("notes"))
+    noteData := notes.Get(noteID)
+    return nil
+})
+```
+
+**Index Maintenance**: Manually update indices on PUT/DELETE. Consider using triggers or middleware pattern.
+
+**Best Practices**:
+
+- **Read-Heavy Workloads**: BoltDB excels at reads with lock-free MVCC. Multiple concurrent read transactions.
+- **Batch Small Writes**: Use `Batch()` for many small writes to amortize fsync overhead.
+- **Avoid Long-Running Read Transactions**: Blocks copy-on-write reclamation, increasing DB size.
+- **Close Transactions Promptly**: Use defer for cleanup.
+- **Keys and Values Valid Only During Transaction**: Copy data with `copy()` if needed beyond transaction scope.
+- **Bulk Inserts**: Stay below ~100,000 pairs per transaction for new buckets to avoid performance degradation.
+- **Space Efficiency**: Small buckets (<4KB) use 12KB (3 pages). Space efficiency improves with larger datasets.
+- **SSD Recommended**: BoltDB uses B+tree with random page access. SSDs significantly outperform HDDs.
+- **Error Handling**: Always check errors from bucket operations. Buckets can be nil if not found.
+
+**Options for Hot Cache Bucket Structure**:
+
+**Option A: Nested Buckets (Logical Hierarchy)**:
+
+```
+Root: vaults
+  → <vaultID>
+    → notes (Key: <noteID> → Value: JSON)
+    → metadata (Key: <noteID> → Value: JSON frontmatter)
+    → indices
+      → by_title (Key: <title> → Value: <noteID>)
+      → by_tag (Key: <tag> → Value: JSON array of noteIDs)
+```
+
+- ✅ Logical hierarchy (vaults → notes)
+- ✅ Per-vault operations (delete all notes in vault)
+- ✅ Isolation (each vault's data isolated)
+- ✅ Small-medium cardinality (not millions of vaults)
+- ✅ <1ms target achievable with B+tree
+- ❌ More bucket management overhead
+
+**Option B: Flat Buckets with Composite Keys**:
+
+```
+Bucket: notes
+  Key: "vault-123:note-456" → Value: JSON
+Bucket: metadata
+  Key: "vault-123:note-456" → Value: JSON frontmatter
+Bucket: indices:by_title
+  Key: "vault-123:My Note" → Value: "note-456"
+```
+
+- ✅ Simpler structure
+- ✅ Prefix scans across all vaults
+- ✅ Large cardinality (millions of entities)
+- ❌ No per-vault isolation
+- ❌ Harder to delete all notes for a vault
+
+**Performance Characteristics**:
+
+- **View() latency**: Sub-millisecond for cached keys (<1ms target achievable)
+- **Update() latency**: 1-10ms (depends on fsync)
+- **Batch() throughput**: 10,000+ writes/second for small values
+- **Cursor iteration**: Fast sequential access (B+tree leaf pages)
+
+**Impact on Issues**:
+
+- **Group 2 (Storage Architecture)**: Provides <1ms hot cache architecture
+- **Issue A5 (Storage Layer)**: BoltDB component for hybrid storage (BoltDB + SQLite)
+
+**Sources**:
+
+- pkg.go.dev/go.etcd.io/bbolt
+- github.com/boltdb/bolt/issues/293 (performance discussions)
 
 ##### sqlite (modernc.org/sqlite)
 
-- [ ] Schema patterns, query optimization, Go idioms
+**Research Status**: ✅ Complete (2025-11-07)
+
+**Purpose**: Address Group 2 SQLite Deep Storage with Schema-Driven Views - Planning SQLite for <50ms deep storage, need JSON patterns, schema-driven views, query optimization, pure Go benefits
+
+**modernc.org/sqlite vs mattn/go-sqlite3**:
+
+| Feature               | modernc.org/sqlite              | mattn/go-sqlite3            |
+| --------------------- | ------------------------------- | --------------------------- |
+| **Architecture**      | Pure Go translation of SQLite C | CGo wrapper around SQLite C |
+| **Cross-Compilation** | ✅ Trivial (no C compiler)      | ❌ Requires C toolchain     |
+| **Build Complexity**  | ✅ Simple (no CGo)              | ❌ CGo dependencies         |
+| **Distribution**      | ✅ Single binary                | ❌ C toolchain required     |
+| **Performance**       | ❌ 10%-100% slower              | ✅ Native C speed           |
+| **INSERT-heavy**      | ❌ ~2x slower                   | ✅ Faster                   |
+| **SELECT**            | ❌ 10%-50% slower               | ✅ Faster                   |
+
+**When to Use modernc.org/sqlite**:
+
+- ✅ Cross-platform distribution (simple builds)
+- ✅ Read-heavy workloads (acceptable performance)
+- ✅ Small-medium datasets (tradeoff acceptable)
+- ❌ Avoid for: Write-heavy, performance-critical paths
+
+**Lithos Use Case**: Read-heavy deep storage (<50ms target) → modernc.org/sqlite acceptable
+
+**JSON Column Patterns**:
+
+1. **json_extract() - Direct JSON Extraction**:
+
+   ```sql
+   -- Store JSON in TEXT column
+   CREATE TABLE notes (
+       id TEXT PRIMARY KEY,
+       path TEXT NOT NULL,
+       content TEXT,
+       frontmatter TEXT -- JSON column
+   );
+
+   -- Extract JSON fields in queries
+   SELECT id, json_extract(frontmatter, '$.title') AS title
+   FROM notes
+   WHERE json_extract(frontmatter, '$.status') = 'published';
+   ```
+
+   - **Problem**: `json_extract()` parses JSON on every call → slow for 100k+ records
+
+2. **VIRTUAL Generated Columns** (Computed at Read Time):
+
+   ```sql
+   -- Add virtual column extracting JSON field
+   ALTER TABLE notes
+   ADD COLUMN title TEXT AS (json_extract(frontmatter, '$.title'));
+
+   -- Index the virtual column (avoids repeated json_extract)
+   CREATE INDEX idx_notes_title ON notes(title);
+
+   -- Query uses index
+   SELECT * FROM notes WHERE title = 'My Note';
+   ```
+
+3. **STORED Generated Columns** (Cached at Write Time):
+
+   ```sql
+   -- STORED columns cache computed values (more space, faster reads)
+   CREATE TABLE notes (
+       id TEXT PRIMARY KEY,
+       frontmatter TEXT,
+       title TEXT GENERATED ALWAYS AS (json_extract(frontmatter, '$.title')) STORED,
+       status TEXT GENERATED ALWAYS AS (json_extract(frontmatter, '$.status')) STORED
+   );
+
+   -- Index stored columns
+   CREATE INDEX idx_notes_title ON notes(title);
+   CREATE INDEX idx_notes_status ON notes(status);
+   ```
+
+**VIRTUAL vs STORED Comparison**:
+
+| Feature       | VIRTUAL                       | STORED                          |
+| ------------- | ----------------------------- | ------------------------------- |
+| Storage       | Not stored (computed on read) | Stored (cached value)           |
+| Write Speed   | Faster (no computation)       | Slower (compute + store)        |
+| Read Speed    | Slower (compute each time)    | Faster (read cached value)      |
+| Disk Usage    | Lower                         | Higher                          |
+| Index Support | ✅ Yes                        | ✅ Yes                          |
+| ALTER TABLE   | ✅ Yes                        | ❌ No (must be in CREATE TABLE) |
+
+4. **Functional Indexes on JSON**:
+
+   ```sql
+   -- Index JSON extraction directly (skip generated column)
+   CREATE INDEX idx_notes_title ON notes(json_extract(frontmatter, '$.title'));
+
+   -- Query MUST use exact expression for index to apply
+   SELECT * FROM notes
+   WHERE json_extract(frontmatter, '$.title') = 'My Note';
+   ```
+
+   - **Caveat**: Must use exact `json_extract()` expression in WHERE clause for index to apply
+
+5. **json_each() for Array Queries**:
+
+   ```sql
+   -- Query JSON arrays
+   SELECT DISTINCT notes.id, notes.title
+   FROM notes, json_each(notes.frontmatter, '$.tags') AS tag
+   WHERE tag.value = 'golang';
+
+   -- Extract array elements to rows
+   SELECT json_each.value AS tag
+   FROM notes, json_each(notes.frontmatter, '$.tags')
+   WHERE notes.id = 'note-123';
+   ```
+
+**Schema-Driven Views Pattern**:
+
+```sql
+-- Base table stores raw JSON
+CREATE TABLE notes (
+    id TEXT PRIMARY KEY,
+    vault_id TEXT NOT NULL,
+    path TEXT NOT NULL,
+    content TEXT,
+    frontmatter TEXT, -- JSON
+
+    -- VIRTUAL columns for universal fields
+    schema_type TEXT AS (json_extract(frontmatter, '$.schema')),
+    title TEXT AS (json_extract(frontmatter, '$.title')),
+    created_at INTEGER AS (json_extract(frontmatter, '$.created_at')),
+    updated_at INTEGER AS (json_extract(frontmatter, '$.updated_at'))
+);
+
+-- Indexes on VIRTUAL columns
+CREATE INDEX idx_notes_schema ON notes(schema_type);
+CREATE INDEX idx_notes_title ON notes(title);
+
+-- Schema-driven view for "meeting" schema
+CREATE VIEW notes_meeting AS
+SELECT
+    id,
+    vault_id,
+    path,
+    title,
+    json_extract(frontmatter, '$.date') AS meeting_date,
+    json_extract(frontmatter, '$.attendees') AS attendees,
+    json_extract(frontmatter, '$.agenda') AS agenda,
+    json_extract(frontmatter, '$.status') AS status
+FROM notes
+WHERE schema_type = 'meeting';
+
+-- Functional index for hot queries
+CREATE INDEX idx_meeting_date ON notes(
+    (json_extract(frontmatter, '$.date'))
+) WHERE schema_type = 'meeting';
+
+-- Schema-driven view for "person" schema
+CREATE VIEW notes_person AS
+SELECT
+    id,
+    vault_id,
+    path,
+    title,
+    json_extract(frontmatter, '$.email') AS email,
+    json_extract(frontmatter, '$.company') AS company,
+    json_extract(frontmatter, '$.role') AS role
+FROM notes
+WHERE schema_type = 'person';
+```
+
+**Go Usage with modernc.org/sqlite**:
+
+```go
+import (
+    "database/sql"
+    _ "modernc.org/sqlite"
+)
+
+// Open connection with URI parameters
+dsn := "file:notes.db?_pragma=journal_mode(WAL)&_pragma=foreign_keys(1)"
+db, err := sql.Open("sqlite", dsn)
+if err != nil {
+    return err
+}
+
+// Set connection pool settings
+db.SetMaxOpenConns(1) // SQLite: single writer, multiple readers
+db.SetMaxIdleConns(1)
+db.SetConnMaxLifetime(0)
+
+// Prepared statements for performance
+stmt, err := db.Prepare(`
+    SELECT id, json_extract(frontmatter, '$.title') AS title
+    FROM notes
+    WHERE json_extract(frontmatter, '$.status') = ?
+`)
+defer stmt.Close()
+
+rows, err := stmt.Query("published")
+defer rows.Close()
+
+for rows.Next() {
+    var id, title string
+    rows.Scan(&id, &title)
+    // Process row
+}
+```
+
+**DSN Parameters**:
+
+- `_pragma`: Execute PRAGMA statements (e.g., `journal_mode(WAL)`, `foreign_keys(1)`)
+- `_time_format`: Time serialization format (default: "sqlite")
+- `_txlock`: Transaction lock mode (deferred/immediate/exclusive)
+
+**Connection Pooling**: SQLite allows multiple readers but single writer. Set `MaxOpenConns=1` for write-heavy workloads or use WAL mode for concurrent reads.
+
+**Best Practices**:
+
+- **Use VIRTUAL Generated Columns + Indexes**: Avoids repeated `json_extract()` parsing
+- **WAL Mode for Concurrent Reads**: `PRAGMA journal_mode=WAL` enables multiple readers during writes
+- **Prepared Statements**: ~10x faster than dynamic SQL for repeated queries
+- **Batch Inserts in Transactions**: Wrap multiple INSERTs in single transaction
+- **Index Strategically**: Index frequently queried JSON fields (functional indexes or generated columns)
+- **Schema-Driven Views**: Define views per schema type for clean query interface
+- **json_each() for Arrays**: Query JSON arrays efficiently
+- **Avoid STORED Columns Unless Necessary**: VIRTUAL more flexible (ALTER TABLE), STORED faster for hot paths
+
+**Options for Schema-Driven Queries**:
+
+**Option A: VIRTUAL Generated Columns + Functional Indexes**
+
+```sql
+-- VIRTUAL columns for common fields
+ALTER TABLE notes ADD COLUMN title TEXT AS (json_extract(frontmatter, '$.title'));
+
+-- Functional indexes for schema-specific fields
+CREATE INDEX idx_meeting_date ON notes(
+    (json_extract(frontmatter, '$.date'))
+) WHERE schema_type = 'meeting';
+```
+
+- ✅ Flexible (ALTER TABLE to add columns)
+- ✅ Lower disk usage
+- ✅ Universal fields indexed once
+- ❌ Slower reads (computed each time for non-indexed fields)
+
+**Option B: STORED Generated Columns**
+
+```sql
+-- STORED columns cache all common values
+CREATE TABLE notes (
+    id TEXT PRIMARY KEY,
+    frontmatter TEXT,
+    title TEXT GENERATED ALWAYS AS (json_extract(frontmatter, '$.title')) STORED,
+    schema_type TEXT GENERATED ALWAYS AS (json_extract(frontmatter, '$.schema')) STORED
+);
+```
+
+- ✅ Faster reads (cached values)
+- ✅ No computation at read time
+- ❌ Higher disk usage
+- ❌ Must plan schema upfront (no ALTER TABLE)
+- ❌ Slower writes (compute + store)
+
+**Option C: Views with json_extract() (No Generated Columns)**
+
+```sql
+-- Views only, no generated columns
+CREATE VIEW notes_meeting AS
+SELECT id, json_extract(frontmatter, '$.title') AS title
+FROM notes
+WHERE json_extract(frontmatter, '$.schema') = 'meeting';
+```
+
+- ✅ Simple
+- ✅ No schema changes
+- ❌ Slow for 100k+ records (repeated json_extract())
+- ❌ Hard to index
+
+**Option D: Hybrid - VIRTUAL for Universal, Views for Schema-Specific**
+
+```sql
+-- VIRTUAL columns for universal fields
+ALTER TABLE notes ADD COLUMN title TEXT AS (json_extract(frontmatter, '$.title'));
+ALTER TABLE notes ADD COLUMN schema_type TEXT AS (json_extract(frontmatter, '$.schema'));
+
+-- Schema-driven views for specialized fields
+CREATE VIEW notes_meeting AS
+SELECT
+    id, title,
+    json_extract(frontmatter, '$.date') AS meeting_date
+FROM notes
+WHERE schema_type = 'meeting';
+
+-- Functional indexes on hot paths
+CREATE INDEX idx_meeting_date ON notes(
+    (json_extract(frontmatter, '$.date'))
+) WHERE schema_type = 'meeting';
+```
+
+- ✅ VIRTUAL columns for universal fields (indexed once)
+- ✅ Views for schema-specific fields (no table alteration)
+- ✅ Functional indexes for frequently queried fields
+- ✅ Flexibility (add new schemas without altering table)
+- ✅ <50ms target achievable
+
+**Performance Characteristics**:
+
+- Universal queries (by title, schema): <10ms (indexed VIRTUAL columns)
+- Schema-specific queries (meeting by date): <30ms (functional index)
+- Full-text search: <50ms (FTS5 virtual table if needed)
+- Bulk inserts: ~1000-5000 rows/second (modernc.org/sqlite)
+
+**Impact on Issues**:
+
+- **Group 2 (Storage Architecture)**: Provides <50ms deep storage architecture
+- **Issue A5 (Schema-Driven Views)**: Complete pattern for generating views per schema type
+- **Issue D2 (DTO Architecture)**: SQLite adapter pattern for deep storage queries
+
+**Sources**:
+
+- pkg.go.dev/modernc.org/sqlite
+- antonz.org/json-virtual-columns (SQLite JSON best practices)
 
 ##### goldmark
+
+**Research Status**: ✅ Complete (2025-11-07)
+
+**Purpose**: Address Group 1 Extract Markdown Parsing from Domain (Issue B2) - Current goldmark parser used in domain layer (violates hexagonal architecture), need adapter patterns
 
 Local References:
 
 - `docs/refs/yuin-goldmark-digest.txt`
 - `docs/refs/abhinav-goldmark-frontmatter-digest.txt`
 
-- [ ] Parser API, AST manipulation, extension patterns, frontmatter extraction
+**Core Parser API**:
 
-#### Go Generics
+1. **High-Level API - Convert()**:
 
-- [ ] Generic types, interfaces, constraints, patterns
+   ```go
+   import "github.com/yuin/goldmark"
+
+   // Convert markdown source to HTML in one call
+   md := goldmark.New()
+   source := []byte("# Hello\nMarkdown content")
+   var buf bytes.Buffer
+
+   if err := md.Convert(source, &buf); err != nil {
+       panic(err)
+   }
+
+   html := buf.String()
+   ```
+
+2. **Low-Level API - Parse() for AST Access**:
+
+   ```go
+   // Parse to AST without rendering
+   md := goldmark.New()
+   source := []byte("# Hello\nMarkdown content")
+   reader := text.NewReader(source)
+   ctx := parser.NewContext()
+
+   // Parse returns ast.Node (root of AST)
+   doc := md.Parser().Parse(reader, parser.WithContext(ctx))
+
+   // Walk AST to extract metadata
+   ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+       if entering {
+           if heading, ok := n.(*ast.Heading); ok {
+               // Process heading
+           }
+       }
+       return ast.WalkContinue, nil
+   })
+   ```
+
+3. **Configuration with Options**:
+   ```go
+   md := goldmark.New(
+       goldmark.WithExtensions(extension.GFM), // GitHub Flavored Markdown
+       goldmark.WithParserOptions(
+           parser.WithAutoHeadingID(),        // Auto-generate heading IDs
+           parser.WithAttribute(),            // Support attributes
+       ),
+       goldmark.WithRendererOptions(
+           html.WithHardWraps(),              // Render \n as <br>
+           html.WithXHTML(),                  // XHTML output
+       ),
+   )
+   ```
+
+**AST Node Types and Traversal**:
+
+1. **Common Node Types**:
+   - `ast.Document` - Root document
+   - `ast.Heading` - # Heading
+   - `ast.Paragraph` - Text paragraph
+   - `ast.Link` - [text](url)
+   - `ast.Text` - Plain text
+   - `ast.CodeBlock` - `code`
+   - `ast.List` - Unordered/ordered lists
+   - `ast.ListItem` - List item
+
+2. **Walking the AST**:
+
+   ```go
+   // ast.Walk visits each node twice (entering and leaving)
+   ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+       if entering {
+           // Process node on entry
+           switch node := n.(type) {
+           case *ast.Heading:
+               level := node.Level
+               // Extract heading text
+
+           case *ast.Link:
+               destination := node.Destination
+               // Extract link URL
+
+           case *ast.Text:
+               segment := node.Segment
+               text := segment.Value(source) // Get text from source
+           }
+       }
+
+       // Return status to control traversal
+       return ast.WalkContinue, nil
+       // ast.WalkStop - stop walking
+       // ast.WalkSkipChildren - skip children of current node
+   })
+   ```
+
+3. **Extracting Text from Nodes**:
+
+   ```go
+   // Nodes don't contain text directly, only segment references
+   type Text struct {
+       ast.BaseInline
+       Segment text.Segment // {Start, End, Padding}
+   }
+
+   // Extract text using source
+   func extractText(n ast.Node, source []byte) string {
+       if textNode, ok := n.(*ast.Text); ok {
+           return string(textNode.Segment.Value(source))
+       }
+       return ""
+   }
+   ```
+
+**Extension System**:
+
+1. **Implementing Extensions**:
+
+   ```go
+   // Extension implements Extender interface
+   type MyExtension struct{}
+
+   func (e *MyExtension) Extend(md goldmark.Markdown) {
+       md.Parser().AddOptions(
+           parser.WithInlineParsers(...),
+           parser.WithBlockParsers(...),
+           parser.WithParagraphTransformers(...),
+           parser.WithASTTransformers(...),
+       )
+       md.Renderer().AddOptions(
+           renderer.WithNodeRenderers(...),
+       )
+   }
+
+   // Register extension
+   md := goldmark.New(
+       goldmark.WithExtensions(&MyExtension{}),
+   )
+   ```
+
+2. **Extension Types**:
+   - **Block Parsers**: Parse block-level elements (custom blocks)
+   - **Inline Parsers**: Parse inline elements (custom syntax)
+   - **Paragraph Transformers**: Post-process paragraphs
+   - **AST Transformers**: Transform entire document AST
+   - **Node Renderers**: Custom rendering for AST nodes
+
+**Frontmatter Extension** (go.abhg.dev/goldmark/frontmatter):
+
+1. **Installation and Registration**:
+
+   ```go
+   import (
+       "github.com/yuin/goldmark"
+       "go.abhg.dev/goldmark/frontmatter"
+   )
+
+   md := goldmark.New(
+       goldmark.WithExtensions(
+           &frontmatter.Extender{},
+       ),
+   )
+   ```
+
+2. **Extracting Frontmatter**:
+
+   ```go
+   // Parse with context to extract frontmatter
+   ctx := parser.NewContext()
+   source := []byte(`---
+   title: My Note
+   tags: [golang, markdown]
+   ---
+   # Content`)
+
+   var buf bytes.Buffer
+   if err := md.Convert(source, &buf, parser.WithContext(ctx)); err != nil {
+       panic(err)
+   }
+
+   // Retrieve frontmatter data from context
+   d := frontmatter.Get(ctx)
+   if d == nil {
+       // No frontmatter found
+   }
+
+   // Decode into struct
+   var meta struct {
+       Title string   `yaml:"title"`
+       Tags  []string `yaml:"tags"`
+   }
+   if err := d.Decode(&meta); err != nil {
+       panic(err)
+   }
+
+   fmt.Println(meta.Title) // "My Note"
+   ```
+
+3. **Supported Formats**:
+   - **YAML**: Delimited by `---` (3+ hyphens)
+   - **TOML**: Delimited by `+++` (3+ plus signs)
+   - **Custom**: Implement `frontmatter.Format` interface
+
+4. **Alternative: Document Metadata Mode**:
+
+   ```go
+   // Store frontmatter in document metadata (not context)
+   md := goldmark.New(
+       goldmark.WithExtensions(
+           &frontmatter.Extender{
+               Mode: frontmatter.SetMetadata,
+           },
+       ),
+   )
+
+   doc := md.Parser().Parse(text.NewReader(source))
+
+   // Access via document metadata
+   meta := doc.OwnerDocument().Meta()
+   ```
+
+**Metadata Extraction Patterns**:
+
+1. **Extract All Metadata (Links, Headings, Frontmatter)**:
+
+   ```go
+   type NoteMetadata struct {
+       Frontmatter map[string]any
+       Links       []string
+       Headings    []Heading
+       Tags        []string
+   }
+
+   func ExtractMetadata(source []byte) (*NoteMetadata, error) {
+       md := goldmark.New(
+           goldmark.WithExtensions(
+               &frontmatter.Extender{},
+           ),
+           goldmark.WithParserOptions(
+               parser.WithAutoHeadingID(),
+           ),
+       )
+
+       ctx := parser.NewContext()
+       doc := md.Parser().Parse(text.NewReader(source), parser.WithContext(ctx))
+
+       metadata := &NoteMetadata{
+           Frontmatter: make(map[string]any),
+       }
+
+       // Extract frontmatter
+       if fmData := frontmatter.Get(ctx); fmData != nil {
+           fmData.Decode(&metadata.Frontmatter)
+       }
+
+       // Extract links and headings in single AST walk
+       ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+           if !entering {
+               return ast.WalkContinue, nil
+           }
+
+           switch node := n.(type) {
+           case *ast.Link:
+               metadata.Links = append(metadata.Links, string(node.Destination))
+
+           case *ast.Heading:
+               var text string
+               for child := node.FirstChild(); child != nil; child = child.NextSibling() {
+                   if textNode, ok := child.(*ast.Text); ok {
+                       text += string(textNode.Segment.Value(source))
+                   }
+               }
+               metadata.Headings = append(metadata.Headings, Heading{
+                   Level: node.Level,
+                   Text:  text,
+               })
+           }
+
+           return ast.WalkContinue, nil
+       })
+
+       return metadata, nil
+   }
+   ```
+
+**Adapter Pattern - Wrapping goldmark**:
+
+```go
+// Domain: Port interface (NOT implementation)
+package ports
+
+type MarkdownParser interface {
+    ParseMetadata(content []byte) (*domain.NoteMetadata, error)
+    ConvertToHTML(content []byte) (string, error)
+}
+
+type NoteMetadata struct {
+    Frontmatter map[string]any
+    Links       []Link
+    Headings    []Heading
+}
+
+// Adapter: Wraps goldmark
+package parser
+
+import (
+    "github.com/yuin/goldmark"
+    "go.abhg.dev/goldmark/frontmatter"
+    "internal/domain"
+    "internal/domain/ports"
+)
+
+type GoldmarkAdapter struct {
+    md goldmark.Markdown
+}
+
+func NewGoldmarkAdapter() *GoldmarkAdapter {
+    md := goldmark.New(
+        goldmark.WithExtensions(
+            extension.GFM,
+            &frontmatter.Extender{},
+        ),
+        goldmark.WithParserOptions(
+            parser.WithAutoHeadingID(),
+        ),
+    )
+
+    return &GoldmarkAdapter{md: md}
+}
+
+func (a *GoldmarkAdapter) ParseMetadata(content []byte) (*domain.NoteMetadata, error) {
+    ctx := parser.NewContext()
+    reader := text.NewReader(content)
+    doc := a.md.Parser().Parse(reader, parser.WithContext(ctx))
+
+    metadata := &domain.NoteMetadata{
+        Frontmatter: make(map[string]any),
+    }
+
+    // Extract frontmatter
+    if fmData := frontmatter.Get(ctx); fmData != nil {
+        fmData.Decode(&metadata.Frontmatter)
+    }
+
+    // Extract links and headings
+    ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+        if !entering {
+            return ast.WalkContinue, nil
+        }
+
+        switch node := n.(type) {
+        case *ast.Link:
+            metadata.Links = append(metadata.Links, domain.Link{
+                Destination: string(node.Destination),
+                IsWikilink:  false,
+            })
+
+        case *ast.Heading:
+            heading := a.extractHeading(node, content)
+            metadata.Headings = append(metadata.Headings, heading)
+        }
+
+        return ast.WalkContinue, nil
+    })
+
+    return metadata, nil
+}
+
+// Service: Uses port interface (domain layer)
+package services
+
+type NoteService struct {
+    parser ports.MarkdownParser
+}
+
+func NewNoteService(parser ports.MarkdownParser) *NoteService {
+    return &NoteService{parser: parser}
+}
+
+func (s *NoteService) ProcessNote(content []byte) (*domain.Note, error) {
+    metadata, err := s.parser.ParseMetadata(content)
+    if err != nil {
+        return nil, err
+    }
+
+    note := &domain.Note{
+        Frontmatter: metadata.Frontmatter,
+        Links:       metadata.Links,
+        Headings:    metadata.Headings,
+    }
+
+    return note, nil
+}
+
+// Main: Wire adapter to service (dependency injection)
+func main() {
+    // Create adapter
+    parser := parser.NewGoldmarkAdapter()
+
+    // Inject adapter into service
+    noteService := services.NewNoteService(parser)
+
+    // Use service
+    content := []byte("# My Note\n...")
+    note, err := noteService.ProcessNote(content)
+}
+```
+
+**Best Practices**:
+
+- **Parse Once, Extract Multiple Metadata**: Single AST walk extracts links, headings, tags
+- **Use Extensions for Frontmatter**: goldmark-frontmatter handles YAML/TOML parsing
+- **AST Walk Performance**: goldmark's AST is fast (performance on par with cmark C implementation)
+- **Interface-Based Design**: Wrap goldmark in adapter implementing domain interface
+- **Context for Metadata**: Use `parser.Context` to pass frontmatter/metadata between parse and process
+- **Segment References**: AST nodes store text.Segment (offsets), not text content directly
+
+**Options for Markdown Parsing Architecture**:
+
+**Option A: Use goldmark directly in domain**
+
+- ✅ Simple, direct access
+- ❌ Couples domain to goldmark library
+- ❌ Violates hexagonal architecture
+- ❌ Hard to test (need real markdown)
+
+**Option B: MarkdownParser interface in domain, GoldmarkAdapter in adapter layer**
+
+- ✅ Clean hexagonal separation
+- ✅ Domain defines interface, adapter implements
+- ✅ Testable (mock MarkdownParser interface)
+- ✅ Can swap parsers if needed (future-proof)
+- ❌ Additional abstraction layer
+
+**Option C: Multiple parser adapters (goldmark, blackfriday, commonmark)**
+
+- ✅ Flexibility to choose parser
+- ✅ Testable
+- ❌ More complexity (need multiple adapters)
+- ❌ YAGNI (no current requirement for multiple parsers)
+
+**Performance Characteristics**:
+
+- Parsing: Fast (on par with C CommonMark implementations)
+- AST traversal: Efficient (single pass for multiple metadata types)
+- Frontmatter extraction: Built-in with extension
+
+**Impact on Issues**:
+
+- **Issue B2 (Goldmark in Domain)**: Provides adapter pattern to move goldmark to adapter layer
+- **Group 1 (Validation Architecture)**: Frontmatter extraction moves to adapter, semantic validation stays in domain
+
+**Sources**:
+
+- github.com/yuin/goldmark
+- pkg.go.dev/go.abhg.dev/goldmark/frontmatter
+
+#### Go Generics (Go 1.18+)
+
+**Research Status**: ✅ Complete (2025-11-07)
+
+**Purpose**: Cross-cutting - Type-safe architecture patterns, opportunities for generic ports, type-safe DTOs, eliminating interface{} and type assertions
+
+**Core Generic Patterns**:
+
+1. **Generic Repository Pattern**:
+
+   ```go
+   // Generic repository interface
+   type Repository[T any] interface {
+       GetByID(id string) (*T, error)
+       List(filter Filter) ([]*T, error)
+       Save(entity *T) error
+       Delete(id string) error
+   }
+
+   // Concrete implementation for Note entity
+   type NoteRepository struct {
+       db *sql.DB
+   }
+
+   func (r *NoteRepository) GetByID(id string) (*Note, error) {
+       // Implementation
+   }
+
+   // Usage
+   var noteRepo Repository[Note] = &NoteRepository{db}
+   note, err := noteRepo.GetByID("note-123")
+   ```
+
+2. **Type Constraints - Built-in and Custom**:
+
+   ```go
+   // any: Any type (alias for interface{})
+   func Print[T any](v T) {
+       fmt.Println(v)
+   }
+
+   // comparable: Types that support == and !=
+   func Contains[T comparable](slice []T, value T) bool {
+       for _, v := range slice {
+           if v == value {
+               return true
+           }
+       }
+       return false
+   }
+
+   // Map keys must be comparable
+   type Cache[K comparable, V any] struct {
+       data map[K]V
+   }
+
+   // Union constraint (Go 1.18+)
+   type Number interface {
+       int | int64 | float64
+   }
+
+   func Sum[T Number](values []T) T {
+       var sum T
+       for _, v := range values {
+           sum += v
+       }
+       return sum
+   }
+
+   // Constraint with methods
+   type Validator interface {
+       Validate() error
+   }
+
+   func ValidateAll[T Validator](entities []T) error {
+       for _, e := range entities {
+           if err := e.Validate(); err != nil {
+               return err
+           }
+       }
+       return nil
+   }
+   ```
+
+3. **Constraint Composition**:
+
+   ```go
+   // Combine multiple constraints
+   type IDEntity interface {
+       comparable              // Can use as map key
+       GetID() string
+       SetID(string)
+   }
+
+   type Repository[T IDEntity] interface {
+       GetByID(id string) (*T, error)
+       Save(entity *T) error
+   }
+
+   // ~T form: Underlying type T
+   type Integer interface {
+       ~int | ~int64 // Includes type aliases with int/int64 underlying type
+   }
+
+   type UserID int // Underlying type: int
+
+   func Add[T Integer](a, b T) T {
+       return a + b
+   }
+
+   var x UserID = 5
+   var y UserID = 10
+   z := Add(x, y) // ✅ Works: UserID's underlying type is int
+   ```
+
+4. **Generic Functions vs Generic Types**:
+
+   **Generic Functions** (Simpler, Use When Possible):
+
+   ```go
+   // Generic function: No type state to maintain
+   func Map[T, U any](slice []T, fn func(T) U) []U {
+       result := make([]U, len(slice))
+       for i, v := range slice {
+           result[i] = fn(v)
+       }
+       return result
+   }
+
+   // Usage: Type inference
+   nums := []int{1, 2, 3}
+   strs := Map(nums, func(n int) string { return fmt.Sprint(n) })
+   // Type parameters inferred: Map[int, string]
+   ```
+
+   **Generic Types** (Use When Encapsulating State):
+
+   ```go
+   // Generic type: Maintains type-specific state
+   type Cache[K comparable, V any] struct {
+       data map[K]V
+       mu   sync.RWMutex
+   }
+
+   func NewCache[K comparable, V any]() *Cache[K, V] {
+       return &Cache[K, V]{
+           data: make(map[K]V),
+       }
+   }
+
+   func (c *Cache[K, V]) Get(key K) (V, bool) {
+       c.mu.RLock()
+       defer c.mu.RUnlock()
+       v, ok := c.data[key]
+       return v, ok
+   }
+
+   func (c *Cache[K, V]) Set(key K, value V) {
+       c.mu.Lock()
+       defer c.mu.Unlock()
+       c.data[key] = value
+   }
+
+   // Usage: Must specify type parameters
+   cache := NewCache[string, *Note]()
+   cache.Set("note-123", note)
+   note, ok := cache.Get("note-123")
+   ```
+
+5. **Type Inference**:
+
+   ```go
+   func Max[T constraints.Ordered](a, b T) T {
+       if a > b {
+           return a
+       }
+       return b
+   }
+
+   // Type inferred from arguments
+   x := Max(5, 10)        // T inferred as int
+   y := Max(3.14, 2.71)   // T inferred as float64
+
+   // Explicit type arguments (when inference fails)
+   z := Max[int64](5, 10) // Explicit: T = int64
+
+   // Struct instantiation: MUST specify type parameters
+   type Pair[T, U any] struct {
+       First  T
+       Second U
+   }
+
+   // ❌ Cannot infer: Must specify types
+   p := Pair{First: 1, Second: "hello"} // Compile error
+
+   // ✅ Specify types explicitly
+   p := Pair[int, string]{First: 1, Second: "hello"}
+   ```
+
+6. **Generic Result Type Pattern**:
+
+   ```go
+   // Result type for error handling (similar to Rust)
+   type Result[T any] struct {
+       value T
+       err   error
+   }
+
+   func Ok[T any](value T) Result[T] {
+       return Result[T]{value: value}
+   }
+
+   func Err[T any](err error) Result[T] {
+       return Result[T]{err: err}
+   }
+
+   func (r Result[T]) IsOk() bool {
+       return r.err == nil
+   }
+
+   func (r Result[T]) Unwrap() (T, error) {
+       return r.value, r.err
+   }
+
+   func (r Result[T]) UnwrapOr(defaultValue T) T {
+       if r.err != nil {
+           return defaultValue
+       }
+       return r.value
+   }
+
+   // Usage
+   func GetNote(id string) Result[*Note] {
+       note, err := db.Query(...)
+       if err != nil {
+           return Err[*Note](err)
+       }
+       return Ok(note)
+   }
+
+   result := GetNote("note-123")
+   if result.IsOk() {
+       note, _ := result.Unwrap()
+       // Use note
+   }
+   ```
+
+7. **Generic Validation Pattern**:
+
+   ```go
+   // Generic validator interface
+   type Validator[T any] interface {
+       Validate(entity T) error
+   }
+
+   // Generic validation chain
+   type ValidationChain[T any] struct {
+       validators []Validator[T]
+   }
+
+   func (vc *ValidationChain[T]) Add(v Validator[T]) {
+       vc.validators = append(vc.validators, v)
+   }
+
+   func (vc *ValidationChain[T]) Validate(entity T) error {
+       for _, v := range vc.validators {
+           if err := v.Validate(entity); err != nil {
+               return err
+           }
+       }
+       return nil
+   }
+
+   // Concrete validator for Note
+   type NoteTitleValidator struct{}
+
+   func (v *NoteTitleValidator) Validate(note *Note) error {
+       if note.Title == "" {
+           return errors.New("title required")
+       }
+       return nil
+   }
+
+   // Usage
+   chain := &ValidationChain[*Note]{}
+   chain.Add(&NoteTitleValidator{})
+   chain.Add(&NoteContentValidator{})
+
+   if err := chain.Validate(note); err != nil {
+       // Validation failed
+   }
+   ```
+
+8. **Generic Collection Utilities**:
+
+   ```go
+   // Filter
+   func Filter[T any](slice []T, predicate func(T) bool) []T {
+       result := []T{}
+       for _, v := range slice {
+           if predicate(v) {
+               result = append(result, v)
+           }
+       }
+       return result
+   }
+
+   // Map
+   func Map[T, U any](slice []T, fn func(T) U) []U {
+       result := make([]U, len(slice))
+       for i, v := range slice {
+           result[i] = fn(v)
+       }
+       return result
+   }
+
+   // Reduce
+   func Reduce[T, U any](slice []T, initial U, fn func(U, T) U) U {
+       result := initial
+       for _, v := range slice {
+           result = fn(result, v)
+       }
+       return result
+   }
+
+   // Usage
+   notes := []*Note{...}
+
+   // Filter published notes
+   published := Filter(notes, func(n *Note) bool {
+       return n.Status == "published"
+   })
+
+   // Extract titles
+   titles := Map(notes, func(n *Note) string {
+       return n.Title
+   })
+
+   // Count total words
+   totalWords := Reduce(notes, 0, func(sum int, n *Note) int {
+       return sum + len(strings.Fields(n.Content))
+   })
+   ```
+
+**Performance Implications**:
+
+**Monomorphization** (Compile-Time Specialization):
+
+```go
+// Generic function
+func Add[T Number](a, b T) T {
+    return a + b
+}
+
+// Compiler generates specialized versions
+// func Add_int(a, b int) int { return a + b }
+// func Add_float64(a, b float64) float64 { return a + b }
+
+// Impact: Increased binary size (each type instantiation = new code)
+```
+
+**Performance Comparison**:
+
+- **Generics vs Interfaces**: Generics avoid dynamic dispatch (faster), but increase binary size
+- **Generics vs Code Generation**: Similar performance, generics simpler (no codegen tools)
+- **Generics vs interface{}**: Generics type-safe at compile time, avoid runtime type assertions
+
+**Benchmarks**:
+
+- Generics: Similar or slightly faster than interfaces (no dynamic dispatch)
+- Binary size: Increases with number of type instantiations
+- Recommendation: Use generics for performance-critical paths, interfaces for flexibility
+
+**Best Practices**:
+
+1. **Don't Overuse Generics**: "Only use generics for code reused across types." If interface works, prefer interface.
+
+2. **Prefer Generic Functions Over Generic Types**: Functions are simpler (no state), better type inference.
+
+3. **Use Constraint Interfaces Wisely**: Constraints document requirements, enable compile-time checking.
+
+4. **Leverage Type Inference**: Let compiler infer types from function arguments (cleaner code).
+
+5. **Avoid Deep Generic Nesting**: `Repository[Cache[K, V]]` harder to read/debug than simple types.
+
+6. **Benchmark Performance-Critical Code**: Generics add binary size; measure tradeoff.
+
+7. **Generic Domain Entities? Usually No**: Domain entities typically specific types (Note, Vault), not generic. Generics better for infrastructure (repositories, caches, collections).
+
+**When to Use Generics vs Interfaces**:
+
+**Use Generics When**:
+
+- ✅ Type-safe collections (Cache[K, V], List[T])
+- ✅ Type-safe operations (Filter, Map, Reduce)
+- ✅ Type-safe repositories (Repository[T])
+- ✅ Avoiding interface{} and type assertions
+- ✅ Performance-critical (avoid dynamic dispatch)
+
+**Use Interfaces When**:
+
+- ✅ Behavior abstraction (multiple implementations)
+- ✅ Polymorphism (different types, same interface)
+- ✅ Plugin architecture (dynamic loading)
+- ✅ Domain ports (hexagonal architecture)
+- ✅ Simple, readable code
+
+**Avoid Generics When**:
+
+- ❌ Single type (no reuse across types)
+- ❌ Domain entities (specific types, not generic)
+- ❌ Complex constraints (hard to read/maintain)
+- ❌ Binary size critical (generics increase size)
+
+**Options for Lithos Architecture**:
+
+**Option A: Generic Repository Ports**
+
+```go
+// Generic repository interface
+type Repository[T Entity] interface {
+    GetByID(id string) (*T, error)
+    List(filter Filter) ([]*T, error)
+    Save(entity *T) error
+    Delete(id string) error
+}
+
+// Entity constraint
+type Entity interface {
+    GetID() string
+    SetID(string)
+    Validate() error
+}
+
+// Domain entities implement Entity
+type Note struct {
+    ID string
+}
+
+func (n *Note) GetID() string { return n.ID }
+func (n *Note) SetID(id string) { n.ID = id }
+func (n *Note) Validate() error { /* ... */ }
+
+// Adapter implements generic interface
+type SQLiteRepository[T Entity] struct {
+    db *sql.DB
+}
+
+func (r *SQLiteRepository[T]) GetByID(id string) (*T, error) {
+    // Generic implementation
+}
+
+// Usage
+var noteRepo Repository[Note] = &SQLiteRepository[Note]{db}
+var vaultRepo Repository[Vault] = &SQLiteRepository[Vault]{db}
+```
+
+- ✅ Type-safe, no code duplication
+- ✅ Single generic implementation
+- ❌ More complex (generic constraints)
+- ❌ Domain entities must implement Entity
+
+**Option B: Specific Ports, No Generics**
+
+```go
+// Separate interface per entity type
+type NoteRepository interface {
+    GetByID(id string) (*Note, error)
+    Save(note *Note) error
+}
+
+type VaultRepository interface {
+    GetByID(id string) (*Vault, error)
+    Save(vault *Vault) error
+}
+```
+
+- ✅ Simple, explicit
+- ❌ Code duplication
+
+**Option C: Hybrid - Specific Ports, Generic Utilities**
+
+```go
+// Domain: Specific ports (simple, explicit)
+type NoteRepository interface {
+    GetByID(id string) (*Note, error)
+    Save(note *Note) error
+}
+
+// Infrastructure: Generic utilities
+type Cache[K comparable, V any] struct {
+    data map[K]V
+}
+
+type QueryBuilder[T any] struct {
+    filters []Filter
+}
+
+// Domain helpers: Generic collection functions
+func Filter[T any](slice []T, predicate func(T) bool) []T
+
+func Map[T, U any](slice []T, fn func(T) U) []U
+```
+
+- ✅ Simple domain interfaces
+- ✅ Generic infrastructure utilities
+- ✅ Best of both worlds
+
+**Guideline for Lithos**:
+
+- **Generic for reusable infrastructure**: Cache, validation, collections
+- **Non-generic for domain ports**: Repository interfaces, service interfaces
+- **Generic for cross-cutting utilities**: Filter, Map, Reduce
+- **Non-generic for domain entities**: Note, Vault are specific types
+
+**Impact on Issues**:
+
+- **Cross-Cutting**: Type-safe infrastructure without complex constraints in domain
+- **Issue D2 (DTO Architecture)**: Generic Cache[K,V] for hot cache layer
+- **Validation**: Generic ValidationChain[T] for composable validators
+
+**Sources**:
+
+- go.dev/doc/tutorial/generics (official tutorial)
+- codingexplorations.com/blog/performance-implications-generics-in-go (performance analysis)
 
 ### Phase 2: Obsidian Patterns (After Phase 1)
 
@@ -2305,4 +4710,4 @@ Local References:
 
 ---
 
-*This document will be updated as the course correction process continues.*
+_This document will be updated as the course correction process continues._
