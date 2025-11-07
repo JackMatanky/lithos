@@ -351,25 +351,25 @@ Three types of validation, same method name:
   - [x] Analyze write coordination pattern overlap with storage (Issue A6)
   - [x] Examine god-object concerns with CLICommander
   - [x] Review domain events approach (NoteIndexed, FrontmatterValidated, SchemaLoaded)
-- [ ] **Group 4: Configuration Management**
-  - [ ] Review singleton implementation for Config and PropertyBank (Issue A2)
-  - [ ] Analyze FileClassKey configuration impact (Issue A3)
-  - [ ] Examine ViperAdapter FileClassKey loading gap
-- [ ] **Group 5: Schema Domain System**
-  - [ ] Analyze SchemaLoaderPort and SchemaRegistryPort coupling (Issue B3)
-  - [ ] Review automatic registration vs explicit loading
+- [x] **Group 4: Configuration Management**
+  - [x] Review singleton implementation for Config and PropertyBank (Issue A2)
+  - [x] Analyze FileClassKey configuration impact (Issue A3)
+  - [x] Examine ViperAdapter FileClassKey loading gap
+- [x] **Group 5: Schema Domain System**
+  - [x] Analyze SchemaLoaderPort and SchemaRegistryPort coupling (Issue B3)
+  - [x] Review automatic registration vs explicit loading
 - [ ] **Group 6: Template System (CRITICAL - Epic 5 Dependency)**
-  - [ ] Investigate Template struct name conflict with text/template package
-  - [ ] Research text/template stdlib capabilities
-  - [ ] Determine if Template struct is even needed
-  - [ ] Analyze whether to embed \*template.Template
-- [ ] **Group 7: Documentation & Patterns (META)**
-  - [ ] Catalog pattern documentation gaps (Issue D3)
-  - [ ] Review architectural documentation misalignment
-- [ ] **Group 8: Implementation Blockers (META)**
-  - [ ] Review Questions 1-5 pending implementations (Issue C1)
-  - [ ] Analyze Question 6 unresolved status (Issue C2)
-  - [ ] Document architecture documentation misalignment (Issue C3)
+  - [x] Investigate Template struct name conflict with text/template package
+  - [x] Research text/template stdlib capabilities
+  - [x] Determine if Template struct is even needed
+  - [x] Analyze whether to embed \*template.Template
+- [x] **Group 7: Documentation & Patterns (META)**
+  - [x] Catalog pattern documentation gaps (Issue D3)
+  - [x] Review architectural documentation misalignment
+- [x] **Group 8: Implementation Blockers (META)**
+  - [x] Review Questions 1-5 pending implementations (Issue C1)
+  - [x] Analyze Question 6 unresolved status (Issue C2)
+  - [x] Document architecture documentation misalignment (Issue C3)
 
 ### Research Phase (Parallel with Analysis)
 
@@ -1216,13 +1216,174 @@ From Issue A1 (lines 122-130):
 
 ##### 1.1 What triggered this change?
 
+**Primary Trigger**: November 2, 2025 sprint change proposal (docs/course_correction/sprint-change-proposal-2025-11-02-epic3-hybrid-storage-architecture.md) introduced six architectural questions requiring resolution before proceeding with Epic 3 implementation.
+
+**Two Configuration-Related Questions With Finalized Decisions**:
+
+- **Question 2 (Issue A2)**: Singleton Pattern Implementation - ✅ DECIDED (sync.Once for Config/PropertyBank) - Implementation pending
+- **Question 3 (Issue A3)**: FileClassKey Configuration Impact - ✅ DECIDED (config-driven schema selection) - Implementation pending
+
+**Critical Gap Discovered**: During architectural review, identified that ViperAdapter (internal/adapters/spi/config/viper.go) does NOT load FileClassKey from config file/env vars, despite Question 3 decision requiring config-driven schema selection.
+
+**Configuration Architecture Scope**:
+1. **Config Lifecycle**: How to initialize and access Config singleton throughout system
+2. **PropertyBank Lifecycle**: How to initialize and access PropertyBank singleton throughout system
+3. **FileClassKey Integration**: How config-driven schema selection propagates through all file classification touchpoints
+4. **Test Harness Support**: How to swap singleton instances for testing without data races
+
 ##### 1.2 What is the core issue?
+
+**Two Interconnected Configuration Problems**:
+
+1. **Singleton Pattern Not Implemented (Issue A2)**:
+   - **Current State**: Config and PropertyBank passed via dependency injection in main.go
+   - **Problem**: No singleton lifecycle management - multiple instances possible, no thread safety
+   - **Decision**: Use sync.Once pattern for proper singleton implementation
+   - **Requirements**:
+     - Package-level variables with sync.Once guards
+     - GetConfig()/GetPropertyBank() accessor functions
+     - Test harness support methods for instance swapping (critical for tests)
+     - Documentation of singleton lifecycle and test patterns
+   - **Testability Concern**: Singletons complicate testing - need explicit support for test instance swapping
+
+2. **FileClassKey Config Loading Gap (Issue A3)**:
+   - **Decision**: Config-driven schema selection (fileClass field name configurable)
+   - **Critical Missing Implementation**: ViperAdapter does NOT load FileClassKey from config file/env vars
+   - **Current Code Gap** (internal/adapters/spi/config/viper.go):
+     - Loads VaultPath, CachePath, SchemaPath
+     - Does NOT load FileClassKey configuration
+   - **Impact**: Config-driven schema selection impossible without config loading
+   - **Dependencies**:
+     - internal/domain/frontmatter.go needs FileClassKey from Config
+     - Schema selection logic depends on configured field name
+     - All file classification touchpoints need config-driven key
+
+**Interdependence**: FileClassKey config loading (A3) depends on Config singleton implementation (A2) - must access Config.FileClassKey throughout system.
 
 ##### 1.3 Is this a misunderstanding, missing consideration, or new information?
 
+**Issue A2 (Singleton Pattern)**: **New Information**
+- Sprint change proposal Question 2 identified need for proper singleton lifecycle management
+- Analysis revealed Config and PropertyBank should be singletons (global state)
+- Not a misunderstanding - current DI approach is valid but doesn't fit singleton use case
+- New architectural requirement from production-readiness analysis
+
+**Issue A3 (FileClassKey Loading Gap)**: **Missing Consideration**
+- Question 3 decision made: config-driven schema selection
+- Implementation overlooked critical step: ViperAdapter must load FileClassKey
+- Not a misunderstanding - decision is correct
+- Missing: Complete implementation of config loading for FileClassKey
+- Discovery: During architectural review, noticed ViperAdapter doesn't load this critical config
+
 ##### 1.4 What is the impact if we don't address this?
 
+**Impact of Not Implementing Singleton Pattern (Issue A2)**:
+
+1. **Multiple Config Instances Possible**:
+   - Without sync.Once, multiple Config instances could be created
+   - Data races if accessed concurrently from multiple goroutines
+   - Inconsistent configuration state across system
+
+2. **Testing Complexity**:
+   - Cannot easily swap Config instances for tests
+   - No controlled singleton lifecycle for test isolation
+   - Risk of test pollution (shared state between tests)
+
+3. **Architectural Inconsistency**:
+   - Config and PropertyBank are conceptually global state (singletons)
+   - Current DI approach treats them like regular dependencies
+   - Mismatch between architectural intent and implementation
+
+4. **Developer Confusion**:
+   - Unclear whether to inject Config or access globally
+   - No documented pattern for Config access
+   - Inconsistent usage across codebase
+
+**Impact of Not Loading FileClassKey from Config (Issue A3)**:
+
+1. **Hardcoded Field Name**:
+   - fileClass field name would be hardcoded in frontmatter.go
+   - Cannot configure different field name per environment
+   - Violates config-driven architecture decision
+
+2. **Schema Selection Broken**:
+   - Config-driven schema selection impossible
+   - System cannot adapt to different vault conventions
+   - Obsidian users with different fileClass naming conventions cannot use Lithos
+
+3. **Incomplete Question 3 Implementation**:
+   - Decision made but not fully implemented
+   - Blocks Story 3.6+ (requires config-driven schema selection)
+   - Technical debt from incomplete architectural decision
+
+4. **Cascade to Other Components**:
+   - All components depending on file classification are blocked
+   - Cannot proceed with schema-driven SQLite views (depends on FileClassKey)
+   - Cannot proceed with frontmatter validation (depends on schema selection)
+
 ##### 1.5 What evidence supports this?
+
+**Evidence for Issue A2 (Singleton Pattern Not Implemented)**:
+
+1. **Current DI Pattern in main.go** (lines 21-72):
+   - Config and PropertyBank constructed in main()
+   - Passed via dependency injection to all services
+   - No singleton pattern - standard dependency injection approach
+   - Evidence: `cfg := config.NewConfig(...)` (line 32), then passed to all constructors
+
+2. **Sprint Change Proposal - Question 2** (docs/course_correction/sprint-change-proposal-2025-11-02-epic3-hybrid-storage-architecture.md:724):
+   - ✅ DECISION FINALIZED: sync.Once pattern for Config and PropertyBank
+   - Explicit decision to move from DI to singleton pattern
+   - Reason: Config/PropertyBank are global state, not regular dependencies
+
+3. **Issue Inventory - Issue A2** (line 132-139):
+   - Status: ✅ DECISION FINALIZED
+   - Implementation Pending:
+     - Package-level variables with sync.Once
+     - GetConfig()/GetPropertyBank() accessors
+     - Test harness support methods
+     - Documentation updates
+
+**Evidence for Issue A3 (FileClassKey Config Loading Gap)**:
+
+1. **Config Domain Model Has FileClassKey** (internal/domain/config.go:59-63):
+```go
+// FileClassKey is the frontmatter key used to identify file class/schema.
+// Default: "file_class". Supports user preferences like "fileClass", "type", etc.
+// Used consistently across all storage adapters and query operations.
+FileClassKey string `yaml:"file_class_key" mapstructure:"file_class_key"`
+```
+
+2. **Default Value Defined** (internal/domain/config.go:14):
+```go
+defaultFileClassKey = "file_class"
+```
+
+3. **ViperAdapter Does NOT Load FileClassKey** (internal/adapters/spi/config/viper.go):
+   - **loadConfigFile()** (lines 143-167): Loads VaultPath, TemplatesDir, SchemasDir, PropertyBankFile, CacheDir, LogLevel
+     - ❌ NO FileClassKey loading
+   - **loadEnvironmentVars()** (lines 226-264): Environment mappings for LITHOS_VAULT_PATH, LITHOS_TEMPLATES_DIR, etc.
+     - ❌ NO LITHOS_FILE_CLASS_KEY mapping
+
+4. **Tests Expect FileClassKey** (internal/domain/config_test.go:138-143):
+```go
+if config.FileClassKey != tt.expectedFileClassKey {
+    t.Errorf("expected FileClassKey %q, got %q",
+        tt.expectedFileClassKey, config.FileClassKey)
+}
+```
+   - Tests verify FileClassKey is set correctly
+   - But ViperAdapter never loads it from config file/env vars
+
+5. **Sprint Change Proposal - Question 3** (docs/course_correction/sprint-change-proposal-2025-11-02-epic3-hybrid-storage-architecture.md:821):
+   - ✅ DECISION FINALIZED: Config-driven schema selection
+   - FileClassKey must be configurable per environment
+   - Implementation gap: Config loading not updated
+
+6. **Issue Inventory - Issue A3** (line 141-148):
+   - Status: ✅ DECISION FINALIZED
+   - **CRITICAL MISSING**: ViperAdapter not loading FileClassKey from config file/env vars
+   - Implementation Pending: internal/adapters/spi/config/viper.go updates (CRITICAL)
 
 ---
 
@@ -1236,13 +1397,141 @@ From Issue A1 (lines 122-130):
 
 ##### 1.1 What triggered this change?
 
+**Primary Trigger**: Architectural review during Epic 3 sprint change proposal analysis revealed unnecessary complexity in schema port architecture.
+
+**Discovery Context**: While analyzing hexagonal architecture patterns and port definitions, identified that SchemaLoaderPort and SchemaRegistryPort have overlapping responsibilities creating coupling without adding value.
+
+**Issue Classification**: Issue B3 (Schema Loading/Registration Coupling) - Moderate priority simplification opportunity.
+
+**Port Architecture Analysis**:
+- **Current Design**: Separate ports for loading (SchemaLoaderPort) and registration (SchemaRegistryPort)
+- **Coupling Problem**: Two ports manage tightly coupled operations (load → register)
+- **Complexity Impact**: Clients must coordinate between two ports for single logical operation
+- **Simplification Opportunity**: Merge responsibilities into unified SchemaRegistryPort
+
 ##### 1.2 What is the core issue?
+
+**Unnecessary Port Separation**:
+
+1. **Current Architecture - Two Separate Ports**:
+   - **SchemaLoaderPort**: Loads schemas from filesystem
+   - **SchemaRegistryPort**: Stores and retrieves loaded schemas in memory
+   - **Client Coordination**: Clients must call SchemaLoaderPort.Load() then SchemaRegistryPort.Register()
+
+2. **Coupling Problem**:
+   - Loading and registration are **always** performed together (tight coupling)
+   - No use case for loading without registration or vice versa
+   - Two-step operation creates coordination burden on clients
+   - Port separation adds complexity without flexibility
+
+3. **Proposed Simplification**:
+   - **Unified SchemaRegistryPort**:
+     - GetSchema(name) tries registry first
+     - If not found, automatically loads from filesystem
+     - Auto-registers after successful load
+   - **Remove SchemaLoaderPort**:
+     - Loading becomes internal implementation detail of SchemaRegistry
+     - Filesystem adapter becomes SPI dependency of SchemaRegistry
+   - **Client Simplification**:
+     - Single call: `registry.GetSchema(name)`
+     - No coordination needed - registry handles load-register lifecycle
+
+4. **Alternative SchemaLoader Approach**:
+   - Keep SchemaLoader but auto-register on load
+   - SchemaLoader.Load() returns Schema AND registers it
+   - Still simpler than current two-step coordination
+
+**Key Insight**: Ports should reflect business operations, not implementation steps. "Get schema by name" is the business operation - whether it's cached or loaded is an implementation detail.
 
 ##### 1.3 Is this a misunderstanding, missing consideration, or new information?
 
+**New Information** (Simplification Opportunity)
+
+- Not a misunderstanding - current port separation is functionally correct
+- Not missing consideration - original design intentionally separated load/register concerns
+- **New insight from architectural review**: Port separation adds complexity without value
+- **Pattern Recognition**: Hexagonal architecture ports should align with business operations, not internal steps
+- **Opportunity**: Simplify by merging tightly-coupled ports into single unified port
+- **Status**: Moderate priority (⚠️) - system works but could be cleaner
+
 ##### 1.4 What is the impact if we don't address this?
 
+**Impact of Not Simplifying Port Architecture**:
+
+1. **Unnecessary Cognitive Load**:
+   - Developers must understand two ports instead of one
+   - Client code requires coordination between SchemaLoader and SchemaRegistry
+   - Increased complexity for simple operation: "get schema by name"
+
+2. **Coordination Bugs**:
+   - Clients might load schema but forget to register
+   - Clients might try to get schema before loading
+   - Two-step operation creates opportunity for coordination errors
+
+3. **Testing Complexity**:
+   - Must mock both SchemaLoaderPort and SchemaRegistryPort
+   - Test setup requires coordinating two ports
+   - More test code for simple schema retrieval scenarios
+
+4. **Architectural Inconsistency**:
+   - Violates hexagonal architecture principle: ports should reflect business use cases
+   - Current design reflects implementation details (load → register steps)
+   - Should reflect business operation: "get schema by name"
+
+5. **Maintenance Burden**:
+   - Changes to schema loading require updating both ports
+   - More interfaces to maintain and document
+   - Port coordination logic duplicated across clients
+
+**Note**: This is **moderate priority** because system is functionally correct - simplification improves maintainability and clarity but doesn't fix broken functionality.
+
 ##### 1.5 What evidence supports this?
+
+**Evidence for Port Coupling**:
+
+1. **SchemaPort Interface Definition** (internal/ports/spi/schema.go:32-56):
+```go
+type SchemaPort interface {
+    // Load retrieves all schemas and the property bank from storage.
+    Load(ctx context.Context) ([]domain.Schema, domain.PropertyBank, error)
+}
+```
+   - Single method: Load() - retrieves schemas from filesystem
+   - Returns raw schemas without registration
+   - Comment line 63: "Populated by SchemaEngine at startup from SchemaPort.Load() results"
+
+2. **SchemaRegistryPort Interface Definition** (internal/ports/spi/schema.go:80-132):
+```go
+type SchemaRegistryPort interface {
+    GetSchema(ctx context.Context, name string) (domain.Schema, error)
+    GetProperty(ctx context.Context, name string) (domain.Property, error)
+    HasSchema(ctx context.Context, name string) bool
+    HasProperty(ctx context.Context, name string) bool
+    RegisterAll(ctx context.Context, schemas []domain.Schema, bank domain.PropertyBank) error
+}
+```
+   - GetSchema/GetProperty: Retrieve registered schemas
+   - RegisterAll: Must be called to register schemas loaded from SchemaPort
+   - Comment line 63: "Populated by SchemaEngine at startup from SchemaPort.Load() results"
+
+3. **Two-Step Coordination Required**:
+   - Step 1: Call `SchemaPort.Load()` → returns schemas
+   - Step 2: Call `SchemaRegistryPort.RegisterAll(schemas, bank)` → registers schemas
+   - Step 3: Call `SchemaRegistryPort.GetSchema(name)` → retrieves schema
+   - **Tight Coupling**: Load always followed by RegisterAll, no use case for Load without RegisterAll
+
+4. **Issue Inventory - Issue B3** (line 205-212):
+   - Status: ⚠️ MODERATE - Simplification opportunity
+   - Problem: Unnecessary complexity with separate SchemaPort and SchemaRegistryPort
+   - Proposal:
+     - SchemaLoader automatically registers on load (alternative approach)
+     - SchemaRegistry tries loading if GetSchema fails (unified approach)
+     - Remove SchemaPort, keep only SchemaRegistryPort
+
+5. **Hexagonal Architecture Principle Violation**:
+   - Ports should reflect business operations: "Get schema by name"
+   - Current design reflects implementation steps: "Load from filesystem" + "Register in memory" + "Get from registry"
+   - Port separation exposes internal coordination to clients
 
 ---
 
@@ -1260,13 +1549,272 @@ From Issue A1 (lines 122-130):
 
 ##### 1.1 What triggered this change?
 
+**Primary Trigger**: Epic 5 (Template Engine) planning identified need to evaluate current Template struct design before proceeding with template system implementation.
+
+**Discovery Context**: During architectural review for Epic 3, noticed that domain.Template struct is minimal (ID + Content string) and doesn't leverage Go's text/template stdlib capabilities.
+
+**Critical Dependency**: Epic 5 implementation depends on fundamental Template struct design decisions:
+- **If keeping Template struct**: Must determine how it interacts with text/template package
+- **If removing Template struct**: Must redesign template system to use text/template directly
+
+**Four Key Questions Identified**:
+1. **Name Conflict**: Does domain.Template conflict with text/template package imports?
+2. **Necessity**: Do we even need Template struct given text/template stdlib?
+3. **Embedding**: If kept, should Template embed *template.Template for stdlib access?
+4. **Utilization**: Is current design fully utilizing text/template features (composition, function maps, etc.)?
+
+**Research Phase Dependency**: Group 6 analysis depends on Phase 1 research of text/template package capabilities (template composition, function maps, execution patterns).
+
 ##### 1.2 What is the core issue?
+
+**Critical Analysis of Template System Architecture**:
+
+1. **Anemic Model Anti-Pattern (Related to Issue D1)**:
+   - **Current State** (template.go line 6): Comment says "follows the anemic domain model pattern"
+   - **Critical Question**: Just because it SAYS "intentionally anemic" doesn't mean it's RIGHT
+   - **Issue D1 Context**: We're identifying anemic models as CRITICAL problem across system (Frontmatter, Note, Template all anemic)
+   - **Template Responsibilities That Should Live on Entity**:
+     - Validate() - Template syntax validation before execution
+     - Render(data) - Execute template with data context
+     - GetDependencies() - Extract {{template "name"}} references
+   - **Current Problem**: All template logic in TemplateEngine service, Template is just ID + Content bag
+
+2. **Questionable Need for domain.Template Struct**:
+   - **Current Flow** (service.go lines 99-108):
+     - Load domain.Template (ID + Content string)
+     - Immediately convert to text/template.Template via getCompiledTemplate()
+     - domain.Template discarded, text/template.Template used for execution
+   - **Critical Question**: Why have intermediate domain.Template at all?
+   - **Alternative**: Use text/template.Template directly throughout system
+   - **What does domain.Template add?**: Just type safety for TemplateID? Is that worth the abstraction?
+
+3. **Potential Name Confusion** (Not Direct Conflict):
+   - service.go line 44: `tpl *template.Template` (this is text/template.Template from import)
+   - service.go line 196: `tmpl domain.Template` (this is domain.Template)
+   - **Confusion Risk**: When reading code, "Template" alone is ambiguous
+   - Must always check: Is this domain.Template or template.Template?
+   - **Better naming**: If keeping domain struct, rename to NoteTemplate or MarkdownTemplate?
+
+4. **Incomplete text/template Utilization**:
+   - **Currently Used** (service.go):
+     - template.New() (line 207) - basic creation
+     - .Funcs() (line 208) - custom function map
+     - .Parse() (line 209) - parse template content
+     - .Execute() (line 112) - render with nil data
+   - **NOT Used** (may need for Epic 5):
+     - template.Clone() - concurrent execution safety
+     - {{template "name"}} composition - no template dependency loading
+     - .DefinedTemplates() - introspection
+     - .Option() - template configuration
+     - Data context beyond nil - line 112: `t.Execute(&buf, nil)` always empty context
+
+5. **Missing Template Composition Support**:
+   - **text/template Feature**: {{template "name"}} to include other templates
+   - **Current Implementation**: TemplateEngine.Load() loads single template only
+   - **Epic 5 Needs**: Template composition for reusable components (headers, footers, shared sections)
+   - **Missing**: Template dependency resolution, composition graph, multi-template loading
+
+6. **No Template Validation Before Execution**:
+   - **Current**: Parse errors only caught during Execute() (service.go line 209-216)
+   - **Problem**: Template syntax errors discovered at render time, not load time
+   - **Question**: Should Template.Validate() method check syntax immediately after Load()?
+   - **Benefit**: Fail fast on template errors, not when user tries to create note
+
+**Key Architectural Questions for Epic 5**:
+
+1. Should Template remain anemic data bag, or become rich model with Validate(), Render(), GetDependencies() methods?
+2. Do we even need domain.Template, or should we use text/template.Template directly?
+3. If keeping domain.Template, should it embed *template.Template for rich behavior?
+4. How to support {{template "name"}} composition for Epic 5?
+5. What additional text/template features needed for Epic 5 (Clone, data contexts, etc.)?
 
 ##### 1.3 Is this a misunderstanding, missing consideration, or new information?
 
+**Multiple Issues - Mixed Classification**:
+
+1. **Anemic Model (Issue #1)**: **Missing Consideration**
+   - Template was designed anemic like rest of system
+   - Issue D1 now identifies anemic models as CRITICAL anti-pattern
+   - Missing: Recognition that Template should have behavior (Validate, Render, GetDependencies)
+   - Discovered during comprehensive architectural review
+
+2. **Need for domain.Template Struct (Issue #2)**: **New Information** (Critical Analysis)
+   - Original design assumed domain.Template adds value
+   - Critical review reveals: Just intermediary immediately converted to text/template.Template
+   - New insight: May not need domain.Template at all
+   - Pattern recognition: Over-abstraction without clear benefit
+
+3. **Name Confusion (Issue #3)**: **Misunderstanding**
+   - Not a conflict, but creates developer confusion
+   - `template.Template` vs `domain.Template` ambiguity
+   - Easy fix: Rename domain.Template if keeping it
+
+4. **Incomplete text/template Utilization (Issue #4)**: **Missing Consideration**
+   - Current implementation uses basic text/template features only
+   - Epic 5 will need: composition, Clone(), richer data contexts
+   - Missing: Full stdlib capability assessment before Epic 5 planning
+
+5. **Template Composition (Issue #5)**: **Missing Consideration**
+   - {{template "name"}} feature exists in text/template
+   - Current TemplateEngine only loads single templates
+   - Missing: Multi-template loading, dependency resolution
+   - Epic 5 blocker: Cannot implement template composition without this
+
+6. **No Pre-Execution Validation (Issue #6)**: **Missing Consideration**
+   - Template errors only discovered at execution time
+   - Missing: Fail-fast validation at load time
+   - Should Template have Validate() method?
+
 ##### 1.4 What is the impact if we don't address this?
 
+**Impact on Epic 5 Implementation**:
+
+1. **Anemic Model Perpetuation**:
+   - Continues Issue D1 anti-pattern into Epic 5
+   - Template logic scattered across services instead of encapsulated
+   - Makes Epic 5 harder to implement - where does template composition logic go?
+   - Inconsistent with fixing anemic models in Frontmatter/Note
+
+2. **Epic 5 Planning Uncertainty**:
+   - Cannot plan Epic 5 stories without fundamental Template design decision
+   - **If removing domain.Template**: Major refactor of TemplateEngine, TemplatePort, file loaders
+   - **If enriching domain.Template**: Need Validate(), Render(), GetDependencies() methods
+   - **If keeping as-is**: Template composition logic goes in service (god-object risk)
+
+3. **Template Composition Blocked**:
+   - Cannot implement {{template "name"}} includes without multi-template loading
+   - Epic 5 requirement: Reusable template components (headers, footers, shared sections)
+   - Current TemplateEngine.Load() only handles single template
+   - Need: Template dependency graph, recursive loading, composition validation
+
+4. **Late Error Discovery**:
+   - Template syntax errors only caught at execution time (user action)
+   - Poor developer experience: Template bugs not found until "lithos new" command
+   - Should fail fast at template load time, not during user workflow
+
+5. **text/template Feature Gap**:
+   - Epic 5 may need features we haven't explored:
+     - Clone() for concurrent rendering
+     - Richer data contexts beyond nil
+     - Custom delimiters via Option()
+     - Template introspection via DefinedTemplates()
+   - Risk: Discover missing features mid-Epic 5 implementation
+
+6. **Architectural Inconsistency Risk**:
+   - If we fix anemic models in Note/Frontmatter but not Template
+   - Inconsistent patterns across domain entities
+   - Developer confusion: When should entities have behavior?
+
+**Critical Path Impact**: Epic 5 cannot proceed until Template architecture decided. This is BLOCKING issue for Epic 5 planning.
+
 ##### 1.5 What evidence supports this?
+
+**Evidence from Code**:
+
+1. **Anemic domain.Template** (internal/domain/template.go:3-18):
+```go
+// Template represents an executable template for note generation.
+// It is a pure data structure containing only the template identity and raw
+// content. This follows the anemic domain model pattern where business logic
+// resides in services.
+type Template struct {
+    ID TemplateID
+    Content string
+}
+```
+   - Comment line 6: "follows the anemic domain model pattern" - explicitly anemic
+   - No behavior methods - just NewTemplate() constructor
+   - Matches Issue D1 pattern: Frontmatter, Note, Template all anemic
+
+2. **Immediate Conversion to text/template.Template** (internal/app/template/service.go:94-123):
+```go
+func (e *TemplateEngine) Render(ctx context.Context, templateID domain.TemplateID) (string, error) {
+    // Step 1: Load template
+    tmpl, err := e.Load(ctx, templateID)  // Returns domain.Template
+
+    // Step 2-3: Create text/template with function map
+    t, err := e.getCompiledTemplate(tmpl)  // Converts to *template.Template
+
+    // Step 5-6: Execute with empty data context
+    var buf strings.Builder
+    if executeErr := t.Execute(&buf, nil); executeErr != nil {  // Uses text/template.Template
+        return "", errors.NewTemplateError(...)
+    }
+}
+```
+   - domain.Template loaded (line 99), immediately converted (line 105)
+   - Actual execution uses text/template.Template (line 112)
+   - domain.Template is just transport object
+
+3. **Conversion Logic** (service.go:195-226):
+```go
+func (e *TemplateEngine) getCompiledTemplate(tmpl domain.Template) (*template.Template, error) {
+    // ... caching logic ...
+
+    parsed, err := template.New(string(tmpl.ID)).  // text/template creation
+        Funcs(e.getFuncMap()).
+        Parse(tmpl.Content)
+
+    e.compiled[tmpl.ID] = cachedTemplate{
+        tpl: parsed,  // Stores *template.Template, not domain.Template
+        checksum: checksum,
+    }
+    return parsed, nil
+}
+```
+   - Line 207: Creates stdlib `template.Template` from domain.Template
+   - Line 219: Caches text/template.Template, domain.Template discarded
+   - Question: Why not work with text/template.Template from start?
+
+4. **Single Template Loading Only** (service.go:141-147):
+```go
+func (e *TemplateEngine) Load(ctx context.Context, templateID domain.TemplateID) (domain.Template, error) {
+    e.log.Debug().Str("templateID", string(templateID)).Msg("loading template")
+    return e.templatePort.Load(ctx, templateID)
+}
+```
+   - Loads one template by ID
+   - No multi-template loading for composition
+   - No dependency resolution for {{template "name"}} references
+
+5. **Empty Data Context** (service.go:112):
+```go
+if executeErr := t.Execute(&buf, nil); executeErr != nil {
+```
+   - Always executes with `nil` data
+   - Comment line 82: "Epic 1" limitation - static rendering only
+   - Epic 5 will need richer data contexts
+
+6. **Basic text/template Feature Usage** (service.go:158-189):
+```go
+e.funcMap = template.FuncMap{
+    // Basic functions
+    "now": func(format string) string { return time.Now().Format(format) },
+    "toLower": strings.ToLower,
+    "toUpper": strings.ToUpper,
+    // File path control functions
+    "path": func() string { return "" },
+    "folder": filepath.Dir,
+    "basename": func(p string) string { ... },
+    "extension": filepath.Ext,
+    "join": filepath.Join,
+    "vaultPath": func() string { return e.config.VaultPath },
+}
+```
+   - Uses: template.New(), .Funcs(), .Parse(), .Execute()
+   - NOT using: .Clone(), .DefinedTemplates(), .Option(), composition
+
+7. **Name Ambiguity in Code** (service.go):
+   - Line 13: `"text/template"` import
+   - Line 16: `"github.com/JackMatanky/lithos/internal/domain"` import
+   - Line 44: `tpl *template.Template` (stdlib)
+   - Line 196: `tmpl domain.Template` (domain)
+   - Developer must track which "Template" is referenced
+
+8. **Issue Inventory - Group 6 Classification** (lines 1538-1548):
+   - Why Standalone: Epic 5 depends on this resolution
+   - Four questions identified: name conflict, necessity, embedding, utilization
+   - Research Phase Dependency: text/template package capabilities
 
 ---
 
@@ -1280,13 +1828,181 @@ From Issue A1 (lines 122-130):
 
 ##### 1.1 What triggered this change?
 
+**Primary Trigger**: Comprehensive architectural review (Groups 1-6) discovered multiple architectural patterns and decisions not documented in architecture documentation.
+
+**Documentation Misalignment**: Issue C3 (Documentation Misalignment) identifies that architecture docs don't reflect current system state or decisions made during Epic 3 planning.
+
+**Pattern Discovery Context**: Analysis of Groups 1-6 revealed:
+- Event-driven vs orchestrator pattern evaluation (Group 3)
+- Unit of Work vs dual-write patterns (Group 2)
+- Singleton pattern implementation (Group 4)
+- CQRS pattern scope questions (Group 2)
+- Schema port simplification (Group 5)
+- Anemic vs rich domain models (Issue D1)
+- Hexagonal validation layers (syntactic vs semantic - Group 1)
+
+**Developer Impact**: Without pattern documentation, developers implementing from docs will build incorrect architecture (mismatch between docs and decisions).
+
 ##### 1.2 What is the core issue?
+
+**Incomplete/Outdated Pattern Documentation Across Multiple Files**:
+
+**1. high-level-architecture.md - Pattern Section Needs Updates** (lines 91-141):
+
+**Currently Documents**:
+- Hexagonal Architecture, Repository Pattern, Dependency Injection, Builder Pattern, CQRS
+- Design Principles: DIP, Lean Ports, ISP, Lean Domain Models, Error Handling
+
+**Missing/Incorrect**:
+- Orchestration patterns (Event-driven, Saga, Mediator, Command, Unit of Work) - Group 3
+- Singleton pattern (sync.Once for Config/PropertyBank) - Group 4
+- **CONTRADICTION**: Line 135 "Lean Domain Models: contain only essential data with no behavior" endorses anemic model anti-pattern (Issue D1 says this is CRITICAL problem)
+- Hexagonal validation layer responsibilities (syntactic in adapters, semantic in domain) - Group 1
+- Port design principle: "reflect business operations, not implementation steps" - Group 5
+- Storage patterns: Hybrid BoltDB + SQLite, write coordination, DTO architecture - Group 2
+- Go stdlib utilization patterns (fs.FileInfo, text/template) - Groups 2, 6
+
+**2. components.md - Missing Component Documentation**:
+
+**Currently Missing**:
+- CLICommander orchestration pattern and responsibilities
+- Singleton lifecycle for Config and PropertyBank
+- Schema-driven SQLite views implementation
+- QueryService command/query responsibility separation (CQRS violation)
+- NoteProjection domain/IO boundary tension
+- FrontmatterService refactoring (extraction to adapter layer)
+- VaultIndexer god-object dependencies
+
+**3. data-models.md - Missing Model Documentation**:
+
+**Currently Missing**:
+- DTO architecture decisions (FileMetadata, VaultFile redesign with fs.FileInfo)
+- Anemic vs rich model guidelines (when entities should have behavior)
+- Domain/IO boundary patterns (NoteProjection needs filesystem data)
+- Template struct design decisions (anemic data bag vs rich model)
+- Note.Content field addition impact on storage
+
+**4. coding-standards.md - Missing Pattern Guidance**:
+
+**Currently Missing**:
+- Singleton accessor usage patterns (GetConfig(), GetPropertyBank())
+- Test harness patterns for singleton instance swapping
+- Validation method naming (Validate vs ValidateAgainstSchema)
+- Hexagonal architecture validation layer guidelines
+- Factory pattern with validation vs simple constructors
+- When to use Go stdlib vs custom abstractions
+
+**Documentation Update Scope**: All four architecture files need updates to reflect Epic 3 architectural decisions and Issue D1 findings.
 
 ##### 1.3 Is this a misunderstanding, missing consideration, or new information?
 
+**Missing Consideration** (Documentation Debt)
+
+- Not a misunderstanding - documentation was correct when written
+- Not new information - just patterns not yet documented
+- **Missing**: Systematic documentation updates after architectural decisions
+- **Process Gap**: Epic 3 architectural questions were decided, but docs not updated to reflect decisions
+- **Discovery**: Comprehensive architectural review revealed documentation debt accumulation
+- **Classification**: Meta-issue - affects developer onboarding and consistency, not functional correctness
+
 ##### 1.4 What is the impact if we don't address this?
 
+**Developer Guidance Impact**:
+
+1. **Incorrect Implementations from Docs**:
+   - Developers read high-level-architecture.md "Lean Domain Models: no behavior"
+   - Implement new entities as anemic models (perpetuating Issue D1)
+   - Documentation guides developers to build the anti-pattern we're trying to fix
+
+2. **Inconsistent Pattern Application**:
+   - No guidance on orchestration pattern selection → more god-objects like CLICommander
+   - No singleton pattern docs → inconsistent Config/PropertyBank usage
+   - No validation layer guidance → more IO in domain violations
+
+3. **Onboarding Confusion**:
+   - New developers can't understand architectural decisions
+   - Why did we choose hybrid BoltDB + SQLite? (not documented)
+   - When should entities have behavior vs stay anemic? (contradictory guidance)
+   - What orchestration pattern should I use? (options not documented)
+
+4. **Perpetuating Architectural Drift**:
+   - Documentation doesn't reflect reality (components.md missing CLICommander, VaultIndexer)
+   - Developers can't reference correct patterns when extending system
+   - Gap between documented architecture and actual implementation widens
+
+5. **Epic 5 Planning Blocked**:
+   - Template struct design questions can't be resolved without documented pattern guidance
+   - Anemic vs rich model decision for Template depends on documented principles
+   - No foundation for making consistent architectural choices
+
+6. **Code Review Challenges**:
+   - Cannot reference docs to justify or challenge design decisions
+   - Inconsistent standards across code reviews
+   - Pattern violations can't be caught against documented standards
+
 ##### 1.5 What evidence supports this?
+
+**Evidence from Documentation Files**:
+
+1. **high-level-architecture.md Line 135 Contradicts Issue D1**:
+```markdown
+**Lean Domain Models:** Domain models contain only essential data with no behavior or infrastructure dependencies. Complex operations implemented in domain services. Models are pure data structures that can be easily serialized, tested, and composed.
+```
+   - This principle ENDORSES anemic domain model
+   - Issue D1 (line 218) identifies anemic domain model as ❌ CRITICAL - PERVASIVE problem
+   - **Contradiction**: Documentation guides developers to create the anti-pattern
+
+2. **Issue C3 - Documentation Misalignment** (line 285-296):
+```markdown
+#### Issue C3: Documentation Misalignment
+
+- Architecture docs don't reflect:
+  - CLIComander orchestration pattern
+  - Singleton Config/PropertyBank
+  - DTO architecture decisions
+  - Schema-driven SQLite views
+  - Hexagonal validation layers (syntactic vs semantic)
+  - FrontmatterService refactoring
+  - QueryService data contracts
+- Impact: Developers implementing from docs build incorrect architecture
+```
+
+3. **Issue D3 - Missing Pattern Documentation** (line 258-267):
+```markdown
+#### Issue D3: Missing Pattern Documentation ⚠️ MODERATE
+
+- **Problem**: Architecture docs don't specify when to use specific patterns
+- **Missing Guidance**:
+  - Event-driven vs orchestrator patterns
+  - Unit of Work vs dual-write patterns
+  - Factory pattern with validation vs simple constructors
+  - Rich vs anemic model guidelines
+  - Go's fs.FileInfo vs custom DTOs
+- **Status**: Needs architecture documentation updates
+```
+
+4. **Groups 1-6 Discoveries Not in Docs**:
+   - Group 1: Hexagonal validation layers - NOT documented
+   - Group 2: Hybrid BoltDB + SQLite storage - NOT documented
+   - Group 3: Event-driven vs orchestrator evaluation - NOT documented
+   - Group 4: Singleton pattern (sync.Once) - NOT documented
+   - Group 5: Port simplification principles - NOT documented
+   - Group 6: Template struct design questions - NOT documented
+
+5. **Epic 3 Sprint Change Proposal** (docs/course_correction/sprint-change-proposal-2025-11-02-epic3-hybrid-storage-architecture.md):
+   - Six architectural questions answered (Questions 1-6)
+   - Decisions made: Singleton pattern, config-driven schema selection, schema-driven views
+   - **None documented** in architecture files
+
+6. **Architectural Review Discovery** (this document):
+   - 18+ architectural issues identified across 8 groups
+   - Multiple architectural decisions and patterns discovered
+   - Comprehensive analysis reveals documentation gaps
+
+**Evidence of Developer Impact**:
+   - Template.go line 6: Comment says "follows the anemic domain model pattern" as if intentional
+   - Matches high-level-architecture.md guidance: "Lean Domain Models: no behavior"
+   - Developer was guided by docs to create anemic model
 
 ---
 
@@ -1302,13 +2018,169 @@ From Issue A1 (lines 122-130):
 
 ##### 1.1 What triggered this change?
 
+**Primary Trigger**: Epic 3 sprint change proposal (November 2, 2025) introduced six architectural questions requiring resolution before proceeding with implementation.
+
+**Implementation Gap Discovery**: Comprehensive architectural review (Groups 1-7) revealed that architectural decisions have been made but not implemented, creating technical debt and blocking forward progress.
+
+**Three Meta-Issues Identified**:
+- **C1**: Questions 1-5 have decisions but no implementation (technical debt accumulation)
+- **C2**: Question 6 (Write Coordination) remains unresolved (decision blocker)
+- **C3**: Documentation doesn't reflect decisions or current state (guidance blocker)
+
+**Epic 3 Progress Blocked**: Cannot proceed with Story 3.6+ until architecture corrected and implemented. Risk of building on flawed foundation compounds technical debt.
+
 ##### 1.2 What is the core issue?
+
+**Three Interconnected Implementation Blockers**:
+
+**Issue C1: Multiple Questions Pending Implementation** (line 273-277):
+
+**Decisions Made But Not Implemented**:
+1. **Question 1 (Orchestration)**: Decision reconsidered - was orchestrator, now evaluating event-driven
+2. **Question 2 (Singleton)**: ✅ DECIDED (sync.Once pattern) - Implementation pending
+3. **Question 3 (FileClassKey Config)**: ✅ DECIDED (config-driven) - ViperAdapter not loading FileClassKey
+4. **Question 4 (DTO Architecture)**: ❌ UNRESOLVED - Needs fundamental redesign
+5. **Question 5 (SQLite Schema)**: ✅ DECIDED (schema-driven views) - Implementation pending
+
+**Impact**: Cannot proceed with Story 3.6+ until Questions 2, 3, 5 implemented and Questions 1, 4 resolved.
+
+**Issue C2: Question 6 Unresolved** (line 279-283):
+
+**Write Coordination Pattern Undecided**:
+- **Problem**: BoltDB + SQLite dual-write coordination has no pattern decision
+- **Options**: Unit of Work, Saga, dual-write with eventual consistency
+- **Status**: No decision made - Story 3.2 technically incomplete
+- **Blocker**: Story 3.6 (cache integration) blocked until write coordination decided
+
+**Issue C3: Documentation Misalignment** (line 285-296 + Group 7):
+
+**Architecture Docs Don't Reflect Reality**:
+- CLICommander orchestration pattern - NOT documented
+- Singleton Config/PropertyBank - NOT documented
+- DTO architecture decisions - NOT documented
+- Schema-driven SQLite views - NOT documented
+- Hexagonal validation layers - NOT documented
+- FrontmatterService refactoring - NOT documented
+- QueryService data contracts - NOT documented
+
+**Impact**: Developers implementing from docs build incorrect architecture (mismatch between docs and system state).
+
+**Root Cause Pattern**: Architectural decisions made during sprint planning but not followed through with:
+1. Implementation work
+2. Documentation updates
+3. Verification that decisions were correct
+
+This creates cascading technical debt: incomplete implementations block new stories, undocumented decisions lead to inconsistent code, unresolved questions compound complexity.
 
 ##### 1.3 Is this a misunderstanding, missing consideration, or new information?
 
+**Process Breakdown** (New Information About Development Process)
+
+- Not a misunderstanding of requirements
+- Not missing technical considerations
+- **New Insight**: Process doesn't include systematic follow-through on architectural decisions
+- **Pattern Recognition**: Sprint change proposal made decisions, but implementation and documentation lagged
+- **Discovery**: Comprehensive architectural review reveals gap between decisions and reality
+- **Root Issue**: Lack of architectural decision record (ADR) process or decision tracking
+
 ##### 1.4 What is the impact if we don't address this?
 
+**Immediate Impact on Epic 3**:
+
+1. **Story 3.6+ Blocked**:
+   - Cannot implement cache integration without:
+     - Question 2 implemented (Config singleton)
+     - Question 3 implemented (FileClassKey loading)
+     - Question 5 implemented (schema-driven views)
+     - Question 6 decided (write coordination)
+   - Technical debt from incomplete implementations will compound
+
+2. **Building on Flawed Foundation**:
+   - Continuing without resolving Issues D1, D2, B2 means:
+     - More anemic entities (perpetuating anti-pattern)
+     - More IO in domain violations
+     - More god-objects from lack of orchestration pattern
+   - Cost to fix increases exponentially with more code built on wrong patterns
+
+3. **Epic 5 Blocked**:
+   - Template struct design (Group 6) can't be decided without:
+     - Documented anemic vs rich model guidelines (Issue D1)
+     - Documented pattern selection principles (Issue D3)
+   - Epic 5 planning cannot proceed
+
+**Long-Term Impact**:
+
+4. **Technical Debt Accumulation**:
+   - Each story adds code following wrong patterns
+   - Refactoring cost grows with codebase size
+   - Eventually reaches "rewrite" threshold
+
+5. **Inconsistent Architecture**:
+   - Different parts of system follow different patterns
+   - Developer confusion: "Which pattern should I follow?"
+   - Code reviews can't enforce standards (no documented standards)
+
+6. **Developer Onboarding**:
+   - New developers read outdated docs
+   - Implement anti-patterns documented as best practices
+   - Perpetuate architectural problems
+
 ##### 1.5 What evidence supports this?
+
+**Evidence from Issue Inventory**:
+
+1. **Issue C1 - Implementation Pending** (line 273-277):
+```markdown
+#### Issue C1: Multiple Questions Pending Implementation
+
+- Questions 1-5 have decisions but no implementation
+- Cannot proceed with Story 3.6+ until architecture corrected
+- Risk: Continuing on flawed foundation compounds debt
+```
+
+2. **Issue C2 - Question 6 Unresolved** (line 279-283):
+```markdown
+#### Issue C2: Question 6 Unresolved
+
+- No decision on write coordination pattern
+- BoltDB+SQLite integration incomplete
+- Story 3.2 technically incomplete, Story 3.6 blocked
+```
+
+3. **Issue C3 - Documentation Misalignment** (line 285-296):
+```markdown
+#### Issue C3: Documentation Misalignment
+
+- Architecture docs don't reflect:
+  - CLIComander orchestration pattern
+  - Singleton Config/PropertyBank
+  - DTO architecture decisions
+  - Schema-driven SQLite views
+  [... 7 items total]
+- Impact: Developers implementing from docs build incorrect architecture
+```
+
+**Evidence from Groups 1-7 Analysis**:
+- Group 1: 3 critical issues (D1, B2, D1 validation) - NOT implemented
+- Group 2: 5 storage issues - Questions 4, 6 unresolved
+- Group 3: Orchestration pattern decided → failed → now undecided
+- Group 4: Question 2, 3 decided but NOT implemented
+- Group 5: Port simplification identified but NOT implemented
+- Group 6: Template design unresolved → Epic 5 blocker
+- Group 7: Documentation gaps comprehensive
+
+**Evidence from Sprint Change Proposal**:
+- Six questions posed (November 2, 2025)
+- Decisions made for Questions 2, 3, 5
+- Implementation status: NONE complete
+- Documentation status: NONE documented
+- Time elapsed: Analysis period shows gap between decision and action
+
+**Evidence of Compound Risk**:
+- 18+ architectural issues identified
+- Multiple dependencies between issues
+- Technical debt growing with each incomplete decision
+- Epic 3 Story 3.6+ blocked by accumulated incomplete work
 
 ---
 
