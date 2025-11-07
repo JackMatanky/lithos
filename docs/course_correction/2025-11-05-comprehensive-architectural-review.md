@@ -346,11 +346,11 @@ Three types of validation, same method name:
   - [x] Investigate write coordination patterns (Issue A6)
   - [x] Assess CQRS pattern application (read/write models vs operations)
   - [x] Evaluate cache vs vault source of truth implications
-- [ ] **Group 3: Orchestration & Coordination**
-  - [ ] Evaluate event-driven architecture vs orchestrator pattern (Issue A1)
-  - [ ] Analyze write coordination pattern overlap with storage (Issue A6)
-  - [ ] Examine god-object concerns with CLICommander
-  - [ ] Review domain events approach (NoteIndexed, FrontmatterValidated, SchemaLoaded)
+- [x] **Group 3: Orchestration & Coordination**
+  - [x] Evaluate event-driven architecture vs orchestrator pattern (Issue A1)
+  - [x] Analyze write coordination pattern overlap with storage (Issue A6)
+  - [x] Examine god-object concerns with CLICommander
+  - [x] Review domain events approach (NoteIndexed, FrontmatterValidated, SchemaLoaded)
 - [ ] **Group 4: Configuration Management**
   - [ ] Review singleton implementation for Config and PropertyBank (Issue A2)
   - [ ] Analyze FileClassKey configuration impact (Issue A3)
@@ -1025,11 +1025,183 @@ for _, note := range sqliteNotes {
 
 ##### 1.2 What is the core issue?
 
+**Two Interconnected Problems**:
+
+1. **Orchestration Pattern Undecided**:
+   - **Previous Attempt**: Orchestrator pattern chosen (CLICommander as workflow coordinator)
+   - **Problem**: Resulted in brittle god-object - not implemented properly
+   - **Current Status**: Orchestration pattern UNDECIDED - need to reconsider
+   - **Evidence from main.go**: CLICommander has 7 dependencies injected (lines 60-68):
+     - cliAdapter, templateEngine, schemaEngine, vaultIndexer, vaultWriter, cfg, log
+   - **God-Object Indicators**: Aggregating many services, coordinating complex workflows
+   - **Alternative Patterns to Evaluate**:
+     - **Event-Driven**: Domain events (NoteIndexed, FrontmatterValidated, SchemaLoaded) decouple components
+     - **Saga Pattern**: Distributed transaction coordination (relevant for write coordination)
+     - **Mediator Pattern**: Component communication without direct coupling
+     - **Command Pattern**: Encapsulate operations for decoupled execution
+     - **Unit of Work**: Transaction coordination across multiple operations
+
+2. **DI Pattern in main.go May Need Improvement**:
+   - **Current DI** (`cmd/lithos/main.go`): Manual dependency construction in main() (lines 21-72)
+   - **Question**: Could improving DI pattern also improve orchestration situation?
+   - **Considerations**:
+     - Does current manual DI contribute to god-object problem?
+     - Would DI container/framework help? (e.g., wire, dig, fx)
+     - How does chosen orchestration pattern affect DI needs?
+     - Event-driven needs event bus in DI container
+     - Orchestrator needs all services injected
+   - **Pattern Interdependence**: DI pattern and orchestration pattern must work together
+
+3. **Write Coordination Pattern Overlaps** (Issue A6 connection):
+   - **Problem**: BoltDB + SQLite dual-write coordination undefined
+   - **Orchestration Question**: Should this be orchestrator responsibility or independent pattern?
+   - **Pattern Options**: Unit of Work, Saga, Event-Driven, or orchestrator-coordinated?
+
+**Root Cause**: Orchestrator pattern attempted but resulted in god-object, no comprehensive evaluation of alternative patterns (Event-Driven, Saga, Mediator, etc.) and their interaction with DI pattern.
+
 ##### 1.3 Is this a misunderstanding, missing consideration, or new information?
+
+**Missing Consideration (Primary)**: Alternative orchestration patterns not evaluated
+
+- **What was missed**: Comprehensive evaluation of orchestration patterns and their trade-offs
+- **Patterns not considered**: Event-Driven, Saga, Mediator, Command, Unit of Work
+- **Question not asked**: Which pattern best fits our orchestration needs?
+- **Consequence**: Defaulted to orchestrator pattern without comparing alternatives
+
+**Missing Consideration (Secondary)**: DI pattern interdependence
+
+- **What was missed**: How orchestration pattern choice affects DI requirements
+- **Examples**:
+  - Event-driven needs event bus in DI container
+  - Orchestrator needs all services injected (contributes to god-object)
+  - Different patterns have different DI complexity
+- **Question not asked**: Could improving DI pattern reduce orchestration complexity?
+- **Current DI**: Manual construction in main.go - no evaluation of DI containers/frameworks
+
+**Misunderstanding (Possible)**: Orchestrator pattern wouldn't become god-object
+
+- **Assumption**: CLICommander could coordinate workflows without becoming bloated
+- **Reality**: 7 dependencies injected, coordinating complex workflows → god-object indicators
+- **Industry Pattern**: Orchestrators often become god-objects without careful boundaries
+- **Missed**: Need explicit strategies to prevent god-object (limit dependencies, clear scope, event delegation)
+
+**New Information (Discovery)**: QueryService command/query mixing reinforces event-driven need
+
+- **Discovered**: Group 2 analysis shows QueryService doing command operations (RefreshFromCache)
+- **Event-Driven Solution**: IndexingComplete event → QueryService subscribes → clean separation
+- **Insight**: Event-driven could solve multiple problems (orchestration + CQRS separation)
 
 ##### 1.4 What is the impact if we don't address this?
 
+**Immediate Impacts**:
+
+1. **God-Object Pattern Spreading to Multiple Services**:
+   - **CLICommander**: 7 dependencies (cliAdapter, templateEngine, schemaEngine, vaultIndexer, vaultWriter, cfg, log)
+   - **VaultIndexer** (`main.go` lines 49-57): 7 dependencies (vaultScanner, cacheWriter, cacheReader, frontmatterService, schemaEngine, cfg, log)
+   - **FrontmatterService**: Growing dependencies as validation needs expand
+   - **Root Cause**: Lack of coordination pattern forces services to orchestrate internally
+   - **Pattern**: Each service becomes mini-orchestrator → multiple god-objects
+
+2. **Tight Coupling Increases**:
+   - **Problem**: Every component knows about multiple other components
+   - **Change Ripple**: Modifying one service requires updating multiple orchestrators (CLICommander, VaultIndexer, etc.)
+   - **Example**: Adding cache invalidation touches CLICommander, VaultIndexer, and cache code
+   - **Flexibility**: Can't swap implementations without touching multiple god-objects
+
+3. **Testing Becomes Impossible**:
+   - **Unit Testing**: VaultIndexer requires mocking 7 dependencies
+   - **FrontmatterService**: Growing mock complexity as dependencies added
+   - **CLICommander**: Unmaintainable test setup
+   - **Trend**: Each new feature makes testing harder
+
+4. **Write Coordination Remains Unresolved** (Issue A6):
+   - **Blocker**: Can't decide write coordination without orchestration pattern
+   - **Questions Blocked**: Should orchestrator coordinate? Event-driven? Saga?
+   - **Risk**: BoltDB + SQLite inconsistency continues
+
+5. **DI Complexity Compounds**:
+   - **Current**: Manual DI in main.go already 72 lines
+   - **Trend**: Each new service adds more boilerplate
+   - **Multiple God-Objects**: DI must wire up VaultIndexer, FrontmatterService, CLICommander dependencies
+   - **Alternative**: DI framework could help, but choice depends on orchestration pattern
+
+6. **Event-Driven Benefits Not Realized**:
+   - **CQRS Separation**: QueryService continues doing command operations
+   - **Decoupling**: Components remain tightly coupled through multiple orchestrators
+   - **Scalability**: Can't easily add async processing, event sourcing, etc.
+
+**Long-term Strategic Impacts**:
+
+1. **Architecture Lock-In**: Multiple god-objects become too painful to refactor - locked into brittle pattern
+2. **Feature Velocity Slows**: Every new feature requires changes to multiple orchestrators - bottleneck
+3. **Testing Debt**: Unit testing impossible → rely on slow integration tests → development slows
+4. **Team Scaling**: New developers struggle with complex interdependencies - onboarding difficulty
+
 ##### 1.5 What evidence supports this?
+
+**Code Evidence - Multiple God-Objects** (`cmd/lithos/main.go`):
+
+1. **CLICommander - 7 Dependencies** (lines 60-68):
+   ```go
+   orchestrator := command.NewCLIComander(
+       cliAdapter,      // 1. CLI interaction
+       templateEngine,  // 2. Template rendering
+       schemaEngine,    // 3. Schema operations
+       vaultIndexer,    // 4. Indexing operations
+       vaultWriter,     // 5. Vault writing
+       &cfg,           // 6. Configuration
+       &log,           // 7. Logging
+   )
+   ```
+
+2. **VaultIndexer - 7 Dependencies** (lines 49-57):
+   ```go
+   vaultIndexer := vault.NewVaultIndexer(
+       vaultScanner,       // 1. Vault scanning
+       cacheWriter,        // 2. Cache writing
+       cacheReader,        // 3. Cache reading
+       frontmatterService, // 4. Frontmatter extraction/validation
+       schemaEngine,       // 5. Schema operations
+       cfg,               // 6. Configuration
+       log,               // 7. Logging
+   )
+   ```
+
+3. **FrontmatterService - Growing Dependencies** (line 48):
+   ```go
+   frontmatterService := frontmatter.NewFrontmatterService(schemaEngine, log)
+   // Currently 2 dependencies, but needs more as validation expands
+   ```
+
+**Manual DI Complexity** (`cmd/lithos/main.go` lines 21-72):
+- **72 lines** of manual dependency construction
+- **Every service** requires explicit instantiation and wiring
+- **Dependency ordering** matters - must construct in correct sequence
+- **No abstraction**: Direct coupling between main() and all services
+
+**Sprint Change Proposal Evidence** (Lines 594-720):
+- **Question 1 Decision**: CLICommander as orchestrator documented
+- **Status in Issue Inventory**: ❌ UNRESOLVED - reconsidering pattern
+- **Gap**: Decision documented but resulted in god-object, need to reconsider
+
+**Issue Inventory Evidence**:
+
+From Issue A1 (lines 122-130):
+```markdown
+#### Issue A1: Component Orchestration Architecture ❌ UNRESOLVED
+
+- **Status**: Reconsidering - need to evaluate event-driven vs orchestrator patterns
+- **Missing Consideration**: Event-driven architecture as solution to god-object problem
+- **Questions**:
+  - Should we use event-driven design for complex orchestration?
+  - Would domain events (NoteIndexed, FrontmatterValidated, SchemaLoaded) reduce coupling?
+  - How does event-driven approach compare to orchestrator pattern?
+```
+
+**Group 2 Discovery Evidence**:
+- QueryService.RefreshFromCache() is command operation in query service
+- Suggests event-driven could solve CQRS separation AND orchestration problems
+- IndexingComplete event → QueryService subscribes → automatic index rebuild
 
 ---
 
