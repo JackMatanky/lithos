@@ -47,15 +47,15 @@ This principle fundamentally changes validation placement across the entire syst
 This document captures comprehensive course correction analysis using the BMad Change Navigation Checklist. **18+ architectural issues** have been identified and organized into **8 issue groups** for systematic analysis:
 
 1. **Group 1**: Validation Architecture (anemic models, IO in domain, validation layers) - *Section 1 complete*
-2. **Group 2**: Storage Architecture, CQRS & DTOs - *Pending*
-3. **Group 3**: Orchestration & Coordination - *Pending*
-4. **Group 4**: Configuration Management - *Pending*
-5. **Group 5**: Schema Domain System - *Pending*
-6. **Group 6**: Template System (Epic 5 dependency) - *Pending*
-7. **Group 7**: Documentation & Patterns - *Pending*
-8. **Group 8**: Implementation Blockers - *Pending*
+2. **Group 2**: Storage Architecture, CQRS & DTOs - *Section 1 complete*
+3. **Group 3**: Orchestration & Coordination - *Section 1 complete*
+4. **Group 4**: Configuration Management - *Section 1 complete*
+5. **Group 5**: Schema Domain System - *Section 1 complete*
+6. **Group 6**: Template System (Epic 5 dependency) - *Section 1 complete*
+7. **Group 7**: Documentation & Patterns - *Section 1 complete*
+8. **Group 8**: Implementation Blockers - *Section 1 complete*
 
-**Current Status**: Group 1 Section 1 complete. Groups 2-8 Section 1 (Understand Trigger & Context) in progress.
+**Current Status**: All Groups Section 1 (Understand Trigger & Context) complete. Proceeding to Research Phase (Go stdlib + Obsidian patterns).
 
 **Expected Outcome**: Comprehensive story plan with sequencing, dependencies, and risk mitigation for completing Epic 3 with correct architectural foundation.
 
@@ -63,15 +63,16 @@ This document captures comprehensive course correction analysis using the BMad C
 
 ## Document Control
 
-- **Version**: 1.5
+- **Version**: 1.6
 - **Date**: November 6, 2025
-- **Status**: IN PROGRESS - Groups 2-8 Section 1 (Understand Trigger & Context)
+- **Status**: IN PROGRESS - Section 1 complete for all 8 groups, proceeding to Research Phase
 - **Distribution**: Development team, stakeholders
 
 ### Change Log
 
 | Date       | Version | Description                                                                                                                                                                                                                       | Author     |
 | ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
+| 2025-11-06 | 1.6     | Completed Section 1 (Understand Trigger & Context) for all 8 groups: comprehensive analysis of 18+ architectural issues with critical evaluation, code evidence, and impact assessment; ready for Research Phase (Go stdlib + Obsidian patterns) | Sarah (PO) |
 | 2025-11-06 | 1.5     | Restructured Structured Plan to phase-based approach (Section 1 all groups → Research → Entity Review → Synthesis → Epic Impact); moved Action Items under Structured Plan; added Epic Impact Assessment placeholder section      | Sarah (PO) |
 | 2025-11-06 | 1.4     | Enhanced Executive Summary with full background (Nov 2 sprint change, 6 architectural questions, course correction trigger); replaced Action Items with detailed, specific breakdown for all 8 groups + research/synthesis phases | Sarah (PO) |
 | 2025-11-06 | 1.3     | Reorganized document structure: moved analysis results under corresponding groups in Structured Analysis Plan; added progress checkboxes to each group; removed duplicate sections; reduced file from 980 to 741 lines            | Sarah (PO) |
@@ -380,6 +381,7 @@ Three types of validation, same method name:
 - [ ] Research bbolt package (bucket design, transactions, cursor usage, best practices)
 - [ ] Research modernc.org/sqlite (schema patterns, query optimization, Go idioms)
 - [ ] Research goldmark package (parser API, AST manipulation, extension patterns, frontmatter extraction)
+- [ ] Research Go Generics
 
 **Phase 2: Obsidian API Patterns** (After Phase 1)
 
@@ -2220,6 +2222,10 @@ Local References:
 - `docs/refs/abhinav-goldmark-frontmatter-digest.txt`
 
 - [ ] Parser API, AST manipulation, extension patterns, frontmatter extraction
+
+#### Go Generics
+
+- [ ] Generic types, interfaces, constraints, patterns
 
 ### Phase 2: Obsidian Patterns (After Phase 1)
 
