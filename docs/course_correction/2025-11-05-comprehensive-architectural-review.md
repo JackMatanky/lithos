@@ -63,16 +63,20 @@ This document captures comprehensive course correction analysis using the BMad C
 
 ## Document Control
 
-- **Version**: 1.7
-- **Date**: November 7, 2025
-- **Status**: IN PROGRESS - Research Phase 1 complete (Go stdlib + generics), proceeding to path/filepath research and actionable insights
+- **Version**: 1.11
+- **Date**: November 8, 2025
+- **Status**: IN PROGRESS - Research & Gap Analysis complete (corrected), ready for Entity Review
 - **Distribution**: Development team, stakeholders
 
 ### Change Log
 
 | Date       | Version | Description                                                                                                                                                                                                                                                                             | Author     |
 | ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 2025-11-07 | 1.7     | Completed Research Phase 1: Documented comprehensive findings for io/fs, text/template, bbolt, modernc.org/sqlite, goldmark, and Go generics with patterns, best practices, options, and tradeoffs for all architectural decisions; proceeding to path/filepath and actionable insights | Sarah (PO) |
+| 2025-11-08 | 1.11    | Corrected Gap 4.1: Acknowledged existing CQRS ports (CacheReaderPort/CacheWriterPort, VaultReaderPort/VaultWriterPort/VaultScannerPort), clarified gap is missing indexed metadata query layer (MetadataQueryPort) for O(1) lookups vs O(n) scanning | Sarah (PO) |
+| 2025-11-08 | 1.10    | Completed Comprehensive Gap Analysis: Identified 12 specific architectural gaps across 7 categories (File Metadata, Caching, Parsing, Storage, Templates, Generics, Paths) with current state, desired state, patterns, benefits, trade-offs, priorities, and recommendations for each | Sarah (PO) |
+| 2025-11-08 | 1.9     | Completed Research Phase 2 (Obsidian API): Documented TFile/TAbstractFile abstractions, MetadataCache pattern, Vault API operations, FileStats interface, atomic frontmatter updates, and comprehensive comparison to Lithos architecture with 5 potential improvements identified | Sarah (PO) |
+| 2025-11-08 | 1.8     | Corrected Research Phase 1 for project relevancy: Fixed io/fs VaultFile examples (removed incorrect frontmatter/schema assumptions), updated bbolt/sqlite schemas to handle mixed file types with nullable frontmatter, added fs.FileInfo simplification pattern, added Sys() extension pattern for notes | Sarah (PO) |
+| 2025-11-07 | 1.7     | Completed Research Phase 1: Documented comprehensive findings for io/fs, path/filepath, text/template, bbolt, modernc.org/sqlite, goldmark, and Go generics with patterns, best practices, options, and tradeoffs for all architectural decisions | Sarah (PO) |
 | 2025-11-06 | 1.6     | Completed Section 1 (Understand Trigger & Context) for all 8 groups: comprehensive analysis of 18+ architectural issues with critical evaluation, code evidence, and impact assessment; ready for Research Phase (Go stdlib + Obsidian patterns)                                        | Sarah (PO) |
 | 2025-11-06 | 1.5     | Restructured Structured Plan to phase-based approach (Section 1 all groups → Research → Entity Review → Synthesis → Epic Impact); moved Action Items under Structured Plan; added Epic Impact Assessment placeholder section                                                            | Sarah (PO) |
 | 2025-11-06 | 1.4     | Enhanced Executive Summary with full background (Nov 2 sprint change, 6 architectural questions, course correction trigger); replaced Action Items with detailed, specific breakdown for all 8 groups + research/synthesis phases                                                       | Sarah (PO) |
@@ -2280,37 +2284,79 @@ This creates cascading technical debt: incomplete implementations block new stor
 
 **Key Patterns**:
 
-1. **Composition Pattern** - Embed fs.FileInfo in domain entities:
+1. **Current Implementation** - FileMetadata with duplicated and computed fields:
 
    ```go
-   type VaultFile struct {
-       Path string
-       fs.FileInfo  // Embed interface, not duplicate fields
-       // Domain-specific fields
-       FrontmatterData map[string]any
-       SchemaType      string
+   // Current implementation from /internal/shared/dto/file.go
+   type FileMetadata struct {
+       Path     string    // Absolute path to file
+       Basename string    // Filename without path and extension (computed)
+       Folder   string    // Parent directory path (computed)
+       Ext      string    // File extension including dot (computed)
+       ModTime  time.Time // Modification timestamp (duplicates fs.FileInfo)
+       Size     int64     // File size in bytes (duplicates fs.FileInfo)
+       MimeType string    // MIME type (computed from Ext)
    }
+
+   type VaultFile struct {
+       FileMetadata // Embedded metadata
+       Content []byte // Raw file content for indexing
+   }
+
+   // NOTE: Not all vault files are markdown with frontmatter
+   // VaultFile represents ANY file in the vault (markdown, JSON, images, etc.)
+   // Frontmatter and schema are separate domain concepts parsed from Content
    ```
 
-2. **Extension Interface Pattern** - Use Sys() to provide extended metadata:
+2. **Potential Simplification** - Use fs.FileInfo directly instead of duplicating fields:
 
    ```go
-   type ExtendedFileInfo interface {
+   // Alternative: Eliminate FileMetadata by using fs.FileInfo
+   type VaultFile struct {
+       Path    string
+       Info    fs.FileInfo  // Use interface directly (ModTime, Size, IsDir, Mode)
+       Content []byte
+   }
+
+   // Compute path components on-demand instead of caching
+   func (v VaultFile) Basename() string {
+       base := filepath.Base(v.Path)
+       return strings.TrimSuffix(base, filepath.Ext(base))
+   }
+   func (v VaultFile) Folder() string { return filepath.Dir(v.Path) }
+   func (v VaultFile) Ext() string    { return filepath.Ext(v.Path) }
+   ```
+
+3. **Extension Pattern for Notes** - Use Sys() to provide note-specific metadata:
+
+   ```go
+   // For the subset of vault files that are notes with frontmatter
+   type NoteFileInfo interface {
        fs.FileInfo
        FrontmatterData() map[string]any
        SchemaType() string
    }
 
-   type VaultFileInfo struct {
-       baseInfo    fs.FileInfo
-       frontmatter map[string]any
-       schema      string
+   type noteFileInfo struct {
+       fs.FileInfo              // Delegate to base FileInfo
+       frontmatter map[string]any // Note-specific data
+       schema      string         // Note-specific data
    }
 
-   func (v *VaultFileInfo) Sys() any { return v } // Return self for type assertion
+   func (n *noteFileInfo) FrontmatterData() map[string]any { return n.frontmatter }
+   func (n *noteFileInfo) SchemaType() string              { return n.schema }
+   func (n *noteFileInfo) Sys() any                        { return n } // Enable type assertion
+
+   // Usage: Type-assert Sys() to access note-specific data
+   if noteInfo, ok := fileInfo.Sys().(*noteFileInfo); ok {
+       frontmatter := noteInfo.FrontmatterData()
+       // Process note-specific metadata
+   }
+
+   // Only applies to notes - other vault files use standard fs.FileInfo
    ```
 
-3. **fs.WalkDir Pattern** - Efficient directory traversal:
+4. **fs.WalkDir Pattern** - Efficient directory traversal:
 
    ```go
    err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
@@ -3263,12 +3309,13 @@ err := db.View(func(tx *bolt.Tx) error {
 ```
 Root: vaults
   → <vaultID>
-    → notes (Key: <noteID> → Value: JSON)
-    → metadata (Key: <noteID> → Value: JSON frontmatter)
+    → files (Key: <filepath> → Value: VaultFile JSON)
     → indices
-      → by_title (Key: <title> → Value: <noteID>)
-      → by_tag (Key: <tag> → Value: JSON array of noteIDs)
+      → by_title (Key: <title> → Value: <filepath>) -- Only for notes with frontmatter
+      → by_tag (Key: <tag> → Value: JSON array of filepaths) -- Only for notes with tags
 ```
+
+NOTE: Not all files are notes with frontmatter. The `files` bucket stores all vault files. Indices only contain entries for files that have the relevant metadata (e.g., only notes with titles appear in by_title index).
 
 - ✅ Logical hierarchy (vaults → notes)
 - ✅ Per-vault operations (delete all notes in vault)
@@ -3280,13 +3327,15 @@ Root: vaults
 **Option B: Flat Buckets with Composite Keys**:
 
 ```
-Bucket: notes
-  Key: "vault-123:note-456" → Value: JSON
-Bucket: metadata
-  Key: "vault-123:note-456" → Value: JSON frontmatter
+Bucket: files
+  Key: "vault-123:path/to/file.md" → Value: VaultFile JSON
 Bucket: indices:by_title
-  Key: "vault-123:My Note" → Value: "note-456"
+  Key: "vault-123:My Note" → Value: "path/to/file.md" -- Only notes with titles
+Bucket: indices:by_tag
+  Key: "vault-123:tag-name" → Value: JSON array of filepaths -- Only notes with tags
 ```
+
+NOTE: The `files` bucket contains ALL vault files. Index buckets only contain entries for files with relevant metadata.
 
 - ✅ Simpler structure
 - ✅ Prefix scans across all vaults
@@ -3343,50 +3392,55 @@ Bucket: indices:by_title
 1. **json_extract() - Direct JSON Extraction**:
 
    ```sql
-   -- Store JSON in TEXT column
-   CREATE TABLE notes (
+   -- Store JSON in TEXT column (nullable - not all files have frontmatter)
+   CREATE TABLE files (
        id TEXT PRIMARY KEY,
        path TEXT NOT NULL,
-       content TEXT,
-       frontmatter TEXT -- JSON column
+       content BLOB,
+       frontmatter TEXT -- JSON column, NULL for files without frontmatter
    );
 
-   -- Extract JSON fields in queries
+   -- Extract JSON fields in queries (handle NULL frontmatter)
    SELECT id, json_extract(frontmatter, '$.title') AS title
-   FROM notes
-   WHERE json_extract(frontmatter, '$.status') = 'published';
+   FROM files
+   WHERE frontmatter IS NOT NULL
+     AND json_extract(frontmatter, '$.status') = 'published';
    ```
+
+   NOTE: Not all vault files have frontmatter. The `frontmatter` column is nullable and queries must handle NULL values.
 
    - **Problem**: `json_extract()` parses JSON on every call → slow for 100k+ records
 
 2. **VIRTUAL Generated Columns** (Computed at Read Time):
 
    ```sql
-   -- Add virtual column extracting JSON field
-   ALTER TABLE notes
+   -- Add virtual column extracting JSON field (handles NULL frontmatter)
+   ALTER TABLE files
    ADD COLUMN title TEXT AS (json_extract(frontmatter, '$.title'));
 
    -- Index the virtual column (avoids repeated json_extract)
-   CREATE INDEX idx_notes_title ON notes(title);
+   -- NULL titles (files without frontmatter) are excluded from index
+   CREATE INDEX idx_files_title ON files(title) WHERE title IS NOT NULL;
 
    -- Query uses index
-   SELECT * FROM notes WHERE title = 'My Note';
+   SELECT * FROM files WHERE title = 'My Note';
    ```
 
 3. **STORED Generated Columns** (Cached at Write Time):
 
    ```sql
    -- STORED columns cache computed values (more space, faster reads)
-   CREATE TABLE notes (
+   -- Handles NULL frontmatter gracefully (json_extract returns NULL for NULL input)
+   CREATE TABLE files (
        id TEXT PRIMARY KEY,
-       frontmatter TEXT,
+       frontmatter TEXT, -- NULL for files without frontmatter
        title TEXT GENERATED ALWAYS AS (json_extract(frontmatter, '$.title')) STORED,
        status TEXT GENERATED ALWAYS AS (json_extract(frontmatter, '$.status')) STORED
    );
 
-   -- Index stored columns
-   CREATE INDEX idx_notes_title ON notes(title);
-   CREATE INDEX idx_notes_status ON notes(status);
+   -- Index stored columns (exclude NULL values)
+   CREATE INDEX idx_files_title ON files(title) WHERE title IS NOT NULL;
+   CREATE INDEX idx_files_status ON files(status) WHERE status IS NOT NULL;
    ```
 
 **VIRTUAL vs STORED Comparison**:
@@ -3404,10 +3458,12 @@ Bucket: indices:by_title
 
    ```sql
    -- Index JSON extraction directly (skip generated column)
-   CREATE INDEX idx_notes_title ON notes(json_extract(frontmatter, '$.title'));
+   -- Partial index excludes NULL frontmatter
+   CREATE INDEX idx_files_title ON files(json_extract(frontmatter, '$.title'))
+   WHERE frontmatter IS NOT NULL;
 
    -- Query MUST use exact expression for index to apply
-   SELECT * FROM notes
+   SELECT * FROM files
    WHERE json_extract(frontmatter, '$.title') = 'My Note';
    ```
 
@@ -3416,41 +3472,43 @@ Bucket: indices:by_title
 5. **json_each() for Array Queries**:
 
    ```sql
-   -- Query JSON arrays
-   SELECT DISTINCT notes.id, notes.title
-   FROM notes, json_each(notes.frontmatter, '$.tags') AS tag
-   WHERE tag.value = 'golang';
+   -- Query JSON arrays (only for files with frontmatter and tags)
+   SELECT DISTINCT files.id, json_extract(files.frontmatter, '$.title') AS title
+   FROM files, json_each(files.frontmatter, '$.tags') AS tag
+   WHERE files.frontmatter IS NOT NULL
+     AND tag.value = 'golang';
 
    -- Extract array elements to rows
    SELECT json_each.value AS tag
-   FROM notes, json_each(notes.frontmatter, '$.tags')
-   WHERE notes.id = 'note-123';
+   FROM files, json_each(files.frontmatter, '$.tags')
+   WHERE files.id = 'note-123'
+     AND files.frontmatter IS NOT NULL;
    ```
 
 **Schema-Driven Views Pattern**:
 
 ```sql
--- Base table stores raw JSON
-CREATE TABLE notes (
+-- Base table stores all vault files (not just notes)
+CREATE TABLE files (
     id TEXT PRIMARY KEY,
     vault_id TEXT NOT NULL,
     path TEXT NOT NULL,
-    content TEXT,
-    frontmatter TEXT, -- JSON
+    content BLOB,
+    frontmatter TEXT, -- JSON, NULL for files without frontmatter
 
-    -- VIRTUAL columns for universal fields
+    -- VIRTUAL columns for universal fields (NULL for files without frontmatter)
     schema_type TEXT AS (json_extract(frontmatter, '$.schema')),
     title TEXT AS (json_extract(frontmatter, '$.title')),
     created_at INTEGER AS (json_extract(frontmatter, '$.created_at')),
     updated_at INTEGER AS (json_extract(frontmatter, '$.updated_at'))
 );
 
--- Indexes on VIRTUAL columns
-CREATE INDEX idx_notes_schema ON notes(schema_type);
-CREATE INDEX idx_notes_title ON notes(title);
+-- Partial indexes on VIRTUAL columns (exclude NULL values)
+CREATE INDEX idx_files_schema ON files(schema_type) WHERE schema_type IS NOT NULL;
+CREATE INDEX idx_files_title ON files(title) WHERE title IS NOT NULL;
 
--- Schema-driven view for "meeting" schema
-CREATE VIEW notes_meeting AS
+-- Schema-driven view for "meeting" schema (only files with meeting schema)
+CREATE VIEW files_meeting AS
 SELECT
     id,
     vault_id,
@@ -3460,16 +3518,16 @@ SELECT
     json_extract(frontmatter, '$.attendees') AS attendees,
     json_extract(frontmatter, '$.agenda') AS agenda,
     json_extract(frontmatter, '$.status') AS status
-FROM notes
+FROM files
 WHERE schema_type = 'meeting';
 
--- Functional index for hot queries
-CREATE INDEX idx_meeting_date ON notes(
+-- Functional index for hot queries (partial index for meeting schema only)
+CREATE INDEX idx_meeting_date ON files(
     (json_extract(frontmatter, '$.date'))
 ) WHERE schema_type = 'meeting';
 
--- Schema-driven view for "person" schema
-CREATE VIEW notes_person AS
+-- Schema-driven view for "person" schema (only files with person schema)
+CREATE VIEW files_person AS
 SELECT
     id,
     vault_id,
@@ -3478,9 +3536,11 @@ SELECT
     json_extract(frontmatter, '$.email') AS email,
     json_extract(frontmatter, '$.company') AS company,
     json_extract(frontmatter, '$.role') AS role
-FROM notes
+FROM files
 WHERE schema_type = 'person';
 ```
+
+NOTE: Views automatically filter to only files with the relevant schema_type. Files without frontmatter or with different schemas are excluded.
 
 **Go Usage with modernc.org/sqlite**:
 
@@ -3505,8 +3565,9 @@ db.SetConnMaxLifetime(0)
 // Prepared statements for performance
 stmt, err := db.Prepare(`
     SELECT id, json_extract(frontmatter, '$.title') AS title
-    FROM notes
-    WHERE json_extract(frontmatter, '$.status') = ?
+    FROM files
+    WHERE frontmatter IS NOT NULL
+      AND json_extract(frontmatter, '$.status') = ?
 `)
 defer stmt.Close()
 
@@ -3961,11 +4022,11 @@ import (
     "internal/domain/ports"
 )
 
-type GoldmarkAdapter struct {
+type MDFileAdapter struct {
     md goldmark.Markdown
 }
 
-func NewGoldmarkAdapter() *GoldmarkAdapter {
+func NewMDFileAdapter() *MDFileAdapter {
     md := goldmark.New(
         goldmark.WithExtensions(
             extension.GFM,
@@ -3976,10 +4037,10 @@ func NewGoldmarkAdapter() *GoldmarkAdapter {
         ),
     )
 
-    return &GoldmarkAdapter{md: md}
+    return &MDFileAdapter{md: md}
 }
 
-func (a *GoldmarkAdapter) ParseMetadata(content []byte) (*domain.NoteMetadata, error) {
+func (a *MDFileAdapter) ParseMetadata(content []byte) (*domain.NoteMetadata, error) {
     ctx := parser.NewContext()
     reader := text.NewReader(content)
     doc := a.md.Parser().Parse(reader, parser.WithContext(ctx))
@@ -4046,7 +4107,7 @@ func (s *NoteService) ProcessNote(content []byte) (*domain.Note, error) {
 // Main: Wire adapter to service (dependency injection)
 func main() {
     // Create adapter
-    parser := parser.NewGoldmarkAdapter()
+    parser := parser.NewMDFileAdapter()
 
     // Inject adapter into service
     noteService := services.NewNoteService(parser)
@@ -4075,7 +4136,7 @@ func main() {
 - ❌ Violates hexagonal architecture
 - ❌ Hard to test (need real markdown)
 
-**Option B: MarkdownParser interface in domain, GoldmarkAdapter in adapter layer**
+**Option B: MarkdownParser interface in domain, MDFileAdapter in adapter layer**
 
 - ✅ Clean hexagonal separation
 - ✅ Domain defines interface, adapter implements
@@ -4632,34 +4693,2007 @@ func Map[T, U any](slice []T, fn func(T) U) []U
 - go.dev/doc/tutorial/generics (official tutorial)
 - codingexplorations.com/blog/performance-implications-generics-in-go (performance analysis)
 
-### Phase 2: Obsidian Patterns (After Phase 1)
+### Obsidian API
 
-- [ ] Survey Obsidian API index for all relevant models
-- [ ] Map Obsidian patterns to Go capabilities
-- [ ] Identify gaps between Go native and Obsidian solutions
-- [ ] Extract architectural patterns applicable to our domain
+#### Obsidian TypeScript API
+
+**Research Status**: ✅ Complete (2025-11-08)
+
+**Purpose**: Address Group 1 (DTO Design) and Group 2 (Storage Architecture) - Understanding Obsidian's patterns for vault file abstraction, metadata caching, frontmatter handling, and path management to inform Lithos architecture
+
+**File Abstractions - TAbstractFile → TFile/TFolder**:
+
+Obsidian uses a class hierarchy for vault files:
+
+```typescript
+// Base class for all vault items
+abstract class TAbstractFile {
+    vault: Vault;         // Reference to containing vault
+    path: string;         // Vault-relative path with extension
+    name: string;         // File or folder name
+    parent: TFolder;      // Parent folder reference
+}
+
+// Represents a markdown file or other file type
+class TFile extends TAbstractFile {
+    stat: FileStats;      // File statistics (ctime, mtime, size)
+    basename: string;     // Filename without extension
+    extension: string;    // File extension
+}
+
+// Represents a folder
+class TFolder extends TAbstractFile {
+    children: TAbstractFile[];  // Child files and folders
+    isRoot(): boolean;          // Check if vault root
+}
+```
+
+**Key Pattern - Vault-Relative Paths**:
+
+```typescript
+// Obsidian uses vault-relative paths throughout
+file.path  // "folder/subfolder/note.md" (vault-relative with extension)
+file.basename  // "note" (filename without extension)
+file.extension // "md"
+file.parent.path // "folder/subfolder"
+```
+
+**FileStats Interface**:
+
+```typescript
+interface FileStats {
+    ctime: number;  // Creation time (milliseconds since epoch)
+    mtime: number;  // Modification time (milliseconds since epoch)
+    size: number;   // File size in bytes
+}
+
+// Usage:
+const file: TFile = app.vault.getAbstractFileByPath("note.md");
+file.stat.mtime  // Modification timestamp
+file.stat.size   // File size
+```
+
+**Comparison to Lithos FileMetadata**:
+
+| Property     | Obsidian TFile         | Lithos FileMetadata           | Analysis                                      |
+| ------------ | ---------------------- | ----------------------------- | --------------------------------------------- |
+| Path         | `path` (vault-relative) | `Path` (absolute)             | Obsidian normalizes to vault-relative         |
+| Basename     | `basename` (property)  | `Basename` (cached, computed) | Obsidian provides directly, Lithos caches     |
+| Extension    | `extension` (property) | `Ext` (cached, computed)      | Obsidian provides directly, Lithos caches     |
+| Folder       | `parent.path` (object) | `Folder` (cached, computed)   | Obsidian uses object graph, Lithos caches     |
+| ModTime      | `stat.mtime`           | `ModTime` (duplicated)        | Both store modification time                  |
+| Size         | `stat.size`            | `Size` (duplicated)           | Both store file size                          |
+| MimeType     | N/A                    | `MimeType` (cached, computed) | Obsidian doesn't include, Lithos computes     |
+| Vault Ref    | `vault` (object)       | N/A                           | Obsidian maintains vault reference            |
+| Parent Ref   | `parent` (object)      | N/A                           | Obsidian maintains object graph               |
+
+**MetadataCache - Cached Frontmatter and Links**:
+
+```typescript
+// Central metadata cache for vault
+class MetadataCache extends Events {
+    // Get cached metadata for a file
+    getFileCache(file: TFile): CachedMetadata | null;
+    getCache(path: string): CachedMetadata | null;
+
+    // Get first file matching linkpath from source
+    getFirstLinkpathDest(linkpath: string, sourcePath: string): TFile | null;
+
+    // Resolved and unresolved link tracking
+    resolvedLinks: Record<string, Record<string, number>>;
+    unresolvedLinks: Record<string, Record<string, number>>;
+}
+
+// Cached metadata structure
+interface CachedMetadata {
+    links?: LinkCache[];              // [[wikilinks]] and [markdown](links)
+    embeds?: EmbedCache[];            // ![[embeds]]
+    tags?: TagCache[];                // #tags
+    headings?: HeadingCache[];        // # Headings
+    frontmatter?: FrontMatterCache;   // YAML frontmatter
+    frontmatterPosition?: Pos;        // Position in file
+    frontmatterLinks?: FrontmatterLinkCache[];  // Links in frontmatter
+    sections?: SectionCache[];        // Document sections
+    listItems?: ListItemCache[];      // List items
+    blocks?: Record<string, BlockCache>;  // ^block-refs
+}
+
+// Frontmatter is just key-value pairs
+interface FrontMatterCache {
+    [key: string]: any;  // No schema enforcement in cache
+}
+```
+
+**Key Pattern - Separation of File Data and Metadata**:
+
+```typescript
+// File data (TFile) and cached metadata (CachedMetadata) are SEPARATE
+const file = app.vault.getAbstractFileByPath("note.md");  // File object
+const metadata = app.metadataCache.getFileCache(file);    // Cached metadata
+
+// File object does NOT contain frontmatter
+// Frontmatter accessed through MetadataCache
+```
+
+**Vault API - File Operations**:
+
+```typescript
+class Vault {
+    // Read operations
+    read(file: TFile): Promise<string>;           // Read file content from disk
+    cachedRead(file: TFile): Promise<string>;     // Read from cache (display only)
+
+    // File lookup
+    getAbstractFileByPath(path: string): TAbstractFile | null;
+    getMarkdownFiles(): TFile[];                  // All markdown files
+    getFiles(): TFile[];                          // All files
+
+    // Write operations
+    create(path: string, data: string): Promise<TFile>;
+    modify(file: TFile, data: string): Promise<void>;
+    rename(file: TAbstractFile, newPath: string): Promise<void>;
+
+    // Delete operations
+    delete(file: TAbstractFile): Promise<void>;   // Permanent deletion
+    trash(file: TAbstractFile): Promise<void>;    // Move to trash
+}
+```
+
+**Atomic Frontmatter Modification Pattern**:
+
+```typescript
+// FileManager.processFrontMatter() - Atomic read-modify-write
+app.fileManager.processFrontMatter(file, (frontmatter) => {
+    // Callback receives frontmatter object
+    // Mutate synchronously
+    frontmatter.title = "New Title";
+    frontmatter.tags = ["tag1", "tag2"];
+
+    // No return needed - mutations applied atomically
+    // Prevents concurrent modification data loss
+});
+```
+
+**Obsidian Pattern Summary**:
+
+1. **File Object ≠ Metadata**: TFile contains file system properties only; frontmatter/links stored separately in MetadataCache
+2. **Vault-Relative Paths**: All paths relative to vault root, not absolute file system paths
+3. **Object Graph**: TFile → TFolder → Vault (maintains references, not flat data)
+4. **Computed Properties**: `basename`, `extension` are properties, not cached values
+5. **Cached Metadata**: MetadataCache provides fast access to parsed frontmatter/links without re-parsing
+6. **Atomic Frontmatter Updates**: `processFrontMatter()` prevents race conditions with read-modify-write callback
+7. **Two Read Modes**: `read()` for modification, `cachedRead()` for display
+8. **Separation of Concerns**: File operations (Vault) separate from metadata access (MetadataCache)
+
+**Comparison to Lithos Architecture**:
+
+| Aspect                   | Obsidian Pattern                                                       | Lithos Current Implementation                     | Gap Analysis                                                            |
+| ------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
+| File Abstraction         | TFile (properties only)                                                | VaultFile (FileMetadata + Content)                | Obsidian separates metadata from file data                              |
+| Path Storage             | Vault-relative                                                         | Absolute                                          | Obsidian normalizes to vault context                                    |
+| Basename/Ext             | Properties (computed on-demand?)                                       | Cached fields                                     | Obsidian may compute dynamically from `path`                            |
+| Frontmatter Storage      | Separate MetadataCache                                                 | Parsed from Content in VaultFile                  | Obsidian caches frontmatter separately                                  |
+| Object Relationships     | TFile → TFolder → Vault (object graph)                                 | Flat FileMetadata                                 | Obsidian maintains navigable structure                                  |
+| Metadata Caching         | Central MetadataCache with events                                      | No dedicated cache (parse on-demand)              | Obsidian caches parsed metadata for performance                         |
+| Atomic Updates           | processFrontMatter() callback                                          | Direct file writes                                | Obsidian prevents race conditions                                       |
+| Read Strategies          | read() vs cachedRead()                                                 | Single read pattern                               | Obsidian optimizes for display vs modification                          |
+| Link Resolution          | MetadataCache tracks resolved/unresolved links                         | No link tracking                                  | Obsidian provides graph analysis                                        |
+
+**Potential Improvements for Lithos**:
+
+1. **Separate File and Metadata Concerns**:
+   - VaultFile should be file system data only (path, stat)
+   - Create separate NoteMetadata cache for frontmatter/links
+   - Matches CQRS pattern (file data = write model, metadata cache = read model)
+
+2. **Use Vault-Relative Paths**:
+   - Store paths relative to vault root, not absolute
+   - Compute absolute paths when needed for file I/O
+   - Simplifies multi-vault support, makes cache portable
+
+3. **Compute Basename/Extension On-Demand**:
+   - Don't cache `Basename`, `Folder`, `Ext` in FileMetadata
+   - Compute from `path` using filepath stdlib functions
+   - Use fs.FileInfo.ModTime() and Size() instead of duplicating
+
+4. **Create MetadataCache Service**:
+   - Cache parsed frontmatter separately from file content
+   - Invalidate cache on file modification
+   - Provide fast metadata queries without re-parsing
+
+5. **Adopt Read vs CachedRead Pattern**:
+   - `cachedRead()` for display/queries (use cache)
+   - `read()` for modification (always fresh from disk)
+   - Prevents stale data overwrites
+
+**Impact on Issues**:
+
+- **Group 1 (DTO Design, Issue A4)**: Obsidian separates file data from metadata - informs VaultFile/FileMetadata redesign
+- **Group 2 (Storage Architecture, Issue A5)**: MetadataCache pattern provides read-optimized metadata access
+- **Group 1 (Frontmatter Extraction, Issue B2)**: Separate metadata cache aligns with adapter-based parsing
+- **Cross-cutting**: Vault-relative paths simplify multi-vault scenarios
+
+**Sources**:
+
+- docs.obsidian.md/Reference/TypeScript+API/TFile
+- docs.obsidian.md/Reference/TypeScript+API/TAbstractFile
+- docs.obsidian.md/Reference/TypeScript+API/MetadataCache
+- docs.obsidian.md/Plugins/Vault
+- github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts
+
+## Comprehensive Gap Analysis
+
+**Status**: ✅ Complete (2025-11-08)
+
+This section synthesizes findings from Research Phases 1-2 (Go stdlib + Obsidian API) to identify specific architectural gaps in Lithos, organized by impact area. Each gap includes current state, desired state, relevant patterns, and affected issues.
+
+### Gap Category 1: File Metadata Architecture
+
+#### Gap 1.1: FileMetadata Duplicates fs.FileInfo
+
+**Current State**:
+
+```go
+// /internal/shared/dto/file.go
+type FileMetadata struct {
+    Path     string
+    Basename string    // computed from filepath.Base + TrimSuffix
+    Folder   string    // computed from filepath.Dir
+    Ext      string    // computed from filepath.Ext
+    ModTime  time.Time // DUPLICATES fs.FileInfo.ModTime()
+    Size     int64     // DUPLICATES fs.FileInfo.Size()
+    MimeType string    // computed from mime.TypeByExtension
+}
+```
+
+**Issue**: FileMetadata duplicates `ModTime` and `Size` from `fs.FileInfo`, and caches computed values (`Basename`, `Folder`, `Ext`, `MimeType`) that can be derived on-demand from `Path`.
+
+**Desired State**:
+
+```go
+// Option A: Use fs.FileInfo directly
+type VaultFile struct {
+    Path    string
+    Info    fs.FileInfo  // Delegate to stdlib interface
+    Content []byte
+}
+
+// Compute derived fields on-demand as methods
+func (v VaultFile) Basename() string { /* compute from Path */ }
+func (v VaultFile) Folder() string   { return filepath.Dir(v.Path) }
+func (v VaultFile) Ext() string      { return filepath.Ext(v.Path) }
+func (v VaultFile) ModTime() time.Time { return v.Info.ModTime() }
+func (v VaultFile) Size() int64      { return v.Info.Size() }
+```
+
+**Relevant Patterns**:
+
+- **Go stdlib (io/fs)**: Use `fs.FileInfo` interface instead of duplicating fields
+- **Obsidian TFile**: Stores `stat: FileStats` interface, computes `basename`/`extension` as properties
+
+**Benefits**:
+
+- Eliminates data duplication (ModTime, Size)
+- Reduces memory footprint per file
+- Single source of truth for file stats
+- On-demand computation avoids stale cached values
+
+**Trade-offs**:
+
+- Slight computation overhead for derived fields
+- Requires method calls instead of field access
+
+**Affected Issues**:
+
+- **Group 1, Issue A4 (DTO Redesign)**: FileMetadata is a DTO that should be simplified
+- **Group 2 (Storage Architecture)**: Cached file metadata has duplication
+
+**Recommendation**: **Adopt Option A** - Use `fs.FileInfo` directly, compute derived fields on-demand. Premature optimization of caching these values is YAGNI.
+
+---
+
+#### Gap 1.2: Absolute Paths vs Vault-Relative Paths
+
+**Current State**:
+
+```go
+type FileMetadata struct {
+    Path string  // Absolute filesystem path (e.g., "/Users/jack/vault/note.md")
+}
+```
+
+**Issue**: Storing absolute paths makes cache non-portable across machines, complicates multi-vault scenarios, and couples to filesystem layout.
+
+**Desired State**:
+
+```go
+type VaultFile struct {
+    Path     string  // Vault-relative path (e.g., "folder/note.md")
+    VaultID  string  // Vault identifier for multi-vault support
+}
+
+// Compute absolute path when needed for I/O
+func (v VaultFile) AbsolutePath(vaultRoot string) string {
+    return filepath.Join(vaultRoot, v.Path)
+}
+```
+
+**Relevant Patterns**:
+
+- **Go stdlib (path/filepath)**: `filepath.Join()` for combining paths, `filepath.Rel()` for relative paths
+- **Obsidian TFile**: Stores `path` as vault-relative (e.g., "folder/subfolder/note.md")
+
+**Benefits**:
+
+- Cache is portable across machines
+- Supports multi-vault scenarios cleanly
+- Vault root can change without invalidating cache
+- Matches Obsidian's proven pattern
+
+**Trade-offs**:
+
+- Must join with vault root for file I/O operations
+- Requires VaultID for multi-vault disambiguation
+
+**Affected Issues**:
+
+- **Group 2 (Storage Architecture)**: Cache portability
+- **Future**: Multi-vault support (not current requirement, but architecture should enable it)
+
+**Recommendation**: **Adopt vault-relative paths** - Store `Path` relative to vault root, compute absolute paths on-demand for I/O. Add `VaultID` field for future multi-vault support.
+
+---
+
+#### Gap 1.3: VaultFile Conflates File Data and Content
+
+**Current State**:
+
+```go
+type VaultFile struct {
+    FileMetadata  // Embedded (Path, Basename, Folder, Ext, ModTime, Size, MimeType)
+    Content []byte  // Raw file content
+}
+```
+
+**Issue**: VaultFile combines file system metadata with file content. For operations that only need metadata (listing files, checking modification times), we load unnecessary content into memory.
+
+**Desired State**:
+
+```go
+// Separate file metadata from content
+type VaultFile struct {
+    Path    string
+    Info    fs.FileInfo  // Filesystem stats only
+    VaultID string
+}
+
+type VaultFileContent struct {
+    VaultFile  // Embedded metadata
+    Content    []byte  // Loaded on-demand
+}
+
+// Storage layer provides both metadata-only and content-loaded variants
+type StoragePort interface {
+    ListFiles(ctx context.Context, vaultID string) ([]VaultFile, error)  // Metadata only
+    ReadFile(ctx context.Context, file VaultFile) (VaultFileContent, error)  // With content
+}
+```
+
+**Relevant Patterns**:
+
+- **Obsidian Vault API**: Separate `getFiles()` (metadata) from `read(file)` (content)
+- **Go idioms**: Lazy loading, load only what's needed
+
+**Benefits**:
+
+- Memory efficiency for metadata-only operations
+- Faster vault scans (no content loading)
+- Clear separation between file existence and file content
+
+**Trade-offs**:
+
+- Slightly more complex API (two types instead of one)
+
+**Affected Issues**:
+
+- **Group 2 (Storage Architecture)**: Indexing performance
+- **Group 3 (Query Optimization)**: Metadata queries shouldn't load content
+
+**Recommendation**: **Separate metadata from content** - Create distinct types for metadata-only and content-loaded scenarios. Provide port methods for both use cases.
+
+---
+
+### Gap Category 2: Metadata Caching Architecture
+
+#### Gap 2.1: No Dedicated Metadata Cache
+
+**Current State**:
+
+- No dedicated cache for parsed frontmatter
+- Frontmatter parsed on-demand from `VaultFile.Content`
+- No cache invalidation strategy for metadata
+- Links/headings/tags not cached
+
+**Issue**: Re-parsing markdown frontmatter on every query is inefficient. No separation between file content (write model) and parsed metadata (read model).
+
+**Desired State**:
+
+```go
+// Cached metadata structure (read model)
+type NoteMetadataCache struct {
+    Path            string
+    VaultID         string
+    Frontmatter     map[string]any
+    Links           []Link
+    Headings        []Heading
+    Tags            []string
+    LastParsed      time.Time
+    ContentChecksum uint64  // For cache invalidation
+}
+
+// MetadataCache service (read model)
+type MetadataCache interface {
+    // Get cached metadata (nil if not cached)
+    Get(ctx context.Context, path string) (*NoteMetadataCache, error)
+
+    // Invalidate cache on file modification
+    InvalidateFile(ctx context.Context, path string) error
+
+    // Batch operations for vault indexing
+    IndexVault(ctx context.Context, vaultID string) error
+}
+```
+
+**Relevant Patterns**:
+
+- **Obsidian MetadataCache**: Separate cache for frontmatter, links, tags, headings
+- **CQRS**: Write model (file content) separate from read model (cached metadata)
+- **Go stdlib**: Use checksums for cache invalidation (fnv.Sum64 from hash/fnv)
+
+**Benefits**:
+
+- Fast metadata queries without re-parsing
+- Supports complex queries (find all notes with tag X)
+- Cache invalidation prevents stale data
+- Aligns with CQRS pattern from architecture
+
+**Trade-offs**:
+
+- Additional storage for cache
+- Cache invalidation complexity
+- Write operations must update cache
+
+**Affected Issues**:
+
+- **Group 2, Issue A5 (Storage Architecture)**: CQRS implementation
+- **Group 3 (Query Performance)**: Fast metadata queries
+- **Group 1, Issue B2 (Goldmark in Domain)**: Parsing moves to adapter, results cached
+
+**Recommendation**: **Implement MetadataCache service** - Create dedicated read model for parsed metadata with cache invalidation. Use content checksums to detect stale cache entries.
+
+---
+
+#### Gap 2.2: No Read vs CachedRead Distinction
+
+**Current State**:
+
+- Single read pattern for all file operations
+- No distinction between "read for display" vs "read for modification"
+
+**Issue**: Risk of stale data overwrites - read file content, make changes, write back old content over newer changes.
+
+**Desired State**:
+
+```go
+type FilePort interface {
+    // Read from disk (always fresh, use before modification)
+    Read(ctx context.Context, path string) ([]byte, error)
+
+    // Read from cache if available (fast, use for display)
+    CachedRead(ctx context.Context, path string) ([]byte, error)
+
+    // Write with optimistic locking
+    Write(ctx context.Context, path string, content []byte, expectedModTime time.Time) error
+}
+```
+
+**Relevant Patterns**:
+
+- **Obsidian Vault API**: `vault.read(file)` vs `vault.cachedRead(file)`
+- **Optimistic Locking**: Check `ModTime` before write to prevent overwrites
+
+**Benefits**:
+
+- Prevents stale data overwrites
+- Performance optimization for display-only reads
+- Explicit intent in API (modify vs display)
+
+**Trade-offs**:
+
+- More complex API
+- Clients must choose correct read method
+
+**Affected Issues**:
+
+- **Group 2 (Storage Architecture)**: Safe concurrent access
+- **Future**: Concurrent editing scenarios
+
+**Recommendation**: **Adopt dual read pattern** - Provide `Read()` (always fresh) and `CachedRead()` (fast) methods. Document when to use each.
+
+---
+
+### Gap Category 3: Markdown Parsing Architecture
+
+#### Gap 3.1: Goldmark Used Directly in Domain
+
+**Current State**:
+
+```go
+// /internal/app/frontmatter/service.go (domain layer)
+import "github.com/yuin/goldmark"
+
+type FrontmatterService struct {
+    parser goldmark.Markdown  // Direct goldmark dependency in domain
+}
+```
+
+**Issue**: Domain layer depends on external library (goldmark), violates hexagonal architecture principle (domain should only depend on stdlib and its own types).
+
+**Desired State**:
+
+```go
+// Port defined by domain (in /internal/ports/spi)
+type MarkdownParserPort interface {
+    ParseMetadata(ctx context.Context, content []byte) (*domain.NoteMetadata, error)
+}
+
+// Domain service uses port
+type FrontmatterService struct {
+    parser MarkdownParserPort  // Depends on port interface
+}
+
+// Adapter implements port (in /internal/adapters/spi/parser)
+type MDFileAdapter struct {
+    md goldmark.Markdown
+}
+
+func (a *MDFileAdapter) ParseMetadata(ctx context.Context, content []byte) (*domain.NoteMetadata, error) {
+    // goldmark implementation details
+}
+```
+
+**Relevant Patterns**:
+
+- **Hexagonal Architecture**: Domain defines port interfaces, adapters implement
+- **Goldmark research**: Use `goldmark.New()` with frontmatter extension in adapter
+- **Dependency Inversion**: High-level domain doesn't depend on low-level parser
+
+**Benefits**:
+
+- Domain remains framework-agnostic
+- Testable (mock MarkdownParserPort)
+- Can swap parsers without changing domain
+- Clean architectural boundaries
+
+**Trade-offs**:
+
+- Additional abstraction layer
+- Port interface must be designed carefully
+
+**Affected Issues**:
+
+- **Group 1, Issue B2 (Goldmark in Domain)**: Primary issue this addresses
+- **Hexagonal Principle**: Syntactic validation (parsing) belongs in adapter
+
+**Recommendation**: **Extract MarkdownParserPort** - Define port interface in domain, implement MDFileAdapter in adapter layer. Move frontmatter parsing to adapter.
+
+---
+
+#### Gap 3.2: No AST-Based Metadata Extraction
+
+**Current State**:
+
+- Frontmatter extracted, but links/headings/tags not systematically extracted
+- No unified metadata extraction pipeline
+
+**Issue**: Missing structured metadata that Obsidian provides (links, headings, tags). No foundation for graph queries or backlinks.
+
+**Desired State**:
+
+```go
+type NoteMetadata struct {
+    Frontmatter map[string]any
+    Links       []Link      // Both [[wikilinks]] and [markdown](links)
+    Headings    []Heading   // # Headings with levels
+    Tags        []string    // #tags
+    Blocks      map[string]BlockRef  // ^block-refs
+}
+
+type MarkdownParserPort interface {
+    // Single parse, extract all metadata
+    ParseMetadata(ctx context.Context, content []byte) (*NoteMetadata, error)
+}
+```
+
+**Relevant Patterns**:
+
+- **Goldmark AST walking**: Use `ast.Walk()` to extract links, headings, tags in single pass
+- **Obsidian CachedMetadata**: Structured metadata for links, embeds, headings, tags
+
+**Benefits**:
+
+- Enables graph queries (find backlinks)
+- Foundation for search by heading/tag
+- Single parse extracts all metadata (efficient)
+
+**Trade-offs**:
+
+- More complex parser adapter
+- Additional storage for metadata
+
+**Affected Issues**:
+
+- **Group 1, Issue B2 (Markdown Parsing)**: Comprehensive metadata extraction
+- **Future**: Graph view, backlinks (not current MVP, but architecture should enable)
+
+**Recommendation**: **Implement comprehensive AST-based extraction** - Use goldmark AST walking to extract links, headings, tags. Store in `NoteMetadata` structure.
+
+---
+
+### Gap Category 4: Storage Layer Architecture
+
+#### Gap 4.1: No Indexed Metadata Query Layer
+
+**Current State**:
+
+CQRS read/write separation already implemented:
+```go
+// /internal/ports/spi/cache.go
+type CacheWriterPort interface {
+    Persist(ctx context.Context, note domain.Note) error
+    Delete(ctx context.Context, id domain.NoteID) error
+}
+
+type CacheReaderPort interface {
+    Read(ctx context.Context, id domain.NoteID) (domain.Note, error)
+    List(ctx context.Context) ([]domain.Note, error)
+}
+
+// /internal/ports/spi/vault.go
+type VaultWriterPort interface {
+    Persist(ctx context.Context, note domain.Note, path string) error
+    WriteContent(ctx context.Context, path string, content []byte) error
+    Delete(ctx context.Context, path string) error
+}
+
+type VaultReaderPort interface {
+    Read(ctx context.Context, path string) (dto.VaultFile, error)
+}
+
+type VaultScannerPort interface {
+    ScanAll(ctx context.Context) ([]dto.VaultFile, error)
+    ScanModified(ctx context.Context, since time.Time) ([]dto.VaultFile, error)
+}
+```
+
+**Issue**: While CQRS read/write separation exists, there's **no indexed metadata query layer**. Complex queries (find all notes with tag X, find notes linking to Y) require:
+1. `CacheReaderPort.List()` to get all notes
+2. Iterate through all notes, filtering by frontmatter fields
+3. O(n) scanning instead of O(1) indexed lookup
+
+No support for:
+- Indexed queries by tag, frontmatter field
+- Backlink queries (find notes linking to X)
+- Full-text search on metadata
+
+**Desired State**:
+
+```go
+// New indexed metadata query port (layer on top of existing cache)
+type MetadataQueryPort interface {
+    // Indexed queries - O(1) lookup instead of O(n) scan
+    QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)
+    QueryByFrontmatter(ctx context.Context, field string, value any) ([]domain.Note, error)
+    QueryByBacklinks(ctx context.Context, notePath string) ([]domain.Note, error)
+
+    // Full-text search on cached metadata
+    Search(ctx context.Context, query string) ([]domain.Note, error)
+}
+
+// Synchronization service maintains indices from cached notes
+type MetadataIndexer interface {
+    // Build indices from existing cache
+    Build(ctx context.Context) error
+
+    // Update indices when note changes (called after CacheWriterPort.Persist)
+    IndexNote(ctx context.Context, note domain.Note) error
+    RemoveNote(ctx context.Context, id domain.NoteID) error
+}
+```
+
+**Relevant Patterns**:
+
+- **Obsidian MetadataCache**: Separate indexed metadata for fast queries
+- **BoltDB/SQLite research**: BoltDB for hot indices (<1ms), SQLite for complex queries (<50ms)
+- **CQRS Enhancement**: Add indexed query layer on top of existing CQRS separation
+
+**Benefits**:
+
+- Fast O(1) tag/field queries vs O(n) scanning
+- Enables backlink graph queries
+- Foundation for full-text search
+- Complements existing CQRS separation
+
+**Trade-offs**:
+
+- Index maintenance complexity
+- Additional storage for indices
+- Synchronization between cache and indices
+
+**Affected Issues**:
+
+- **Group 2, Issue A5 (Storage Architecture)**: Enhanced CQRS with indexed queries
+- **Group 3 (Query Performance)**: Fast metadata queries without scanning
+
+**Recommendation**: **Add MetadataQueryPort and MetadataIndexer** - Build indexed query layer on top of existing CacheReaderPort/CacheWriterPort. Use BoltDB secondary indices or SQLite for complex queries.
+
+---
+
+#### Gap 4.2: No Hot Cache vs Deep Storage Separation
+
+**Current State**:
+
+- File-based JSON cache (`.lithos/cache/*.json`)
+- No distinction between hot cache (frequently accessed) and deep storage (historical queries)
+
+**Issue**: Single storage layer doesn't optimize for different access patterns (recent files vs historical queries).
+
+**Desired State**:
+
+```go
+// Hot Cache (BoltDB) - <1ms access, recent/active files
+type HotCachePort interface {
+    Get(ctx context.Context, key string) (*CachedMetadata, error)
+    Set(ctx context.Context, key string, metadata *CachedMetadata) error
+    Delete(ctx context.Context, key string) error
+}
+
+// Deep Storage (SQLite) - <50ms queries, all historical data
+type DeepStoragePort interface {
+    QueryComplex(ctx context.Context, query MetadataQuery) ([]NoteMetadata, error)
+    QueryByDateRange(ctx context.Context, start, end time.Time) ([]NoteMetadata, error)
+}
+
+// Cache promotion strategy
+type CachePromoter interface {
+    PromoteToHotCache(ctx context.Context, path string) error
+    EvictFromHotCache(ctx context.Context, path string) error
+}
+```
+
+**Relevant Patterns**:
+
+- **BoltDB research**: Nested buckets for hot cache, <1ms View() latency
+- **SQLite research**: JSON columns with VIRTUAL/STORED columns for deep queries
+- **Architecture Document**: "Hybrid storage (BoltDB + SQLite)"
+
+**Benefits**:
+
+- Hot cache optimizes for frequent access (<1ms)
+- Deep storage optimizes for complex queries (<50ms)
+- Cache promotion based on access patterns
+- Efficient use of resources
+
+**Trade-offs**:
+
+- Two storage systems to manage
+- Promotion/eviction strategy complexity
+- Data consistency between layers
+
+**Affected Issues**:
+
+- **Group 2, Issue A5 (Storage Architecture)**: Hybrid BoltDB + SQLite
+- **Group 3 (Query Performance)**: Performance targets
+
+**Recommendation**: **Implement hybrid storage** - Use BoltDB for hot cache (recent files, <1ms), SQLite for deep storage (all data, complex queries, <50ms). Implement cache promotion based on access patterns.
+
+---
+
+### Gap Category 5: Template Architecture
+
+#### Gap 5.1: Template Caching Not Leveraging text/template Composition
+
+**Current State**:
+
+```go
+// /internal/app/template/service.go
+type TemplateEngine struct {
+    compiled map[domain.TemplateID]cachedTemplate  // Custom caching
+}
+
+type cachedTemplate struct {
+    tpl      *template.Template
+    checksum uint64
+}
+```
+
+**Issue**: Custom caching implementation when `text/template` provides built-in template composition and caching.
+
+**Desired State**:
+
+```go
+// Leverage text/template's built-in composition
+type TemplateEngine struct {
+    // Single template with associated templates
+    root *template.Template
+}
+
+func (e *TemplateEngine) LoadTemplates(ctx context.Context) error {
+    // Load all templates into single namespace
+    e.root = template.New("root")
+
+    for _, tmpl := range templates {
+        _, err := e.root.New(tmpl.ID).Parse(tmpl.Content)
+        if err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func (e *TemplateEngine) Render(ctx context.Context, templateID string) (string, error) {
+    // Execute by name - text/template handles caching
+    var buf strings.Builder
+    if err := e.root.ExecuteTemplate(&buf, templateID, nil); err != nil {
+        return "", err
+    }
+    return buf.String(), nil
+}
+```
+
+**Relevant Patterns**:
+
+- **text/template research**: Use `ExecuteTemplate(name)` for template composition
+- **text/template research**: Built-in template association and lookup
+
+**Benefits**:
+
+- Leverage stdlib caching instead of custom implementation
+- Template composition (define shared blocks)
+- Less code to maintain
+- Well-tested stdlib implementation
+
+**Trade-offs**:
+
+- Less control over caching strategy
+- Must reload all templates on any change (vs individual invalidation)
+
+**Affected Issues**:
+
+- **Group 1 (Template Engine)**: Simplify caching implementation
+- **Code Quality**: Reduce custom code, use stdlib
+
+**Recommendation**: **Use text/template composition** - Load all templates into single namespace, use `ExecuteTemplate(name)` instead of custom caching. Re-evaluate if individual template invalidation becomes requirement.
+
+---
+
+### Gap Category 6: Type Safety and Generics
+
+#### Gap 6.1: No Generic Cache Implementation
+
+**Current State**:
+
+- Custom caching for templates (map[TemplateID]cachedTemplate)
+- Future: Custom caching for metadata (map[string]CachedMetadata)
+- No reusable cache abstraction
+
+**Issue**: Duplicating cache logic for different types. No type-safe, reusable cache implementation.
+
+**Desired State**:
+
+```go
+// Generic cache with TTL and size limits
+type Cache[K comparable, V any] struct {
+    data    map[K]cacheEntry[V]
+    maxSize int
+    mu      sync.RWMutex
+}
+
+type cacheEntry[V any] struct {
+    value      V
+    expiry     time.Time
+    lastAccess time.Time
+}
+
+func NewCache[K comparable, V any](maxSize int, ttl time.Duration) *Cache[K, V] {
+    return &Cache[K, V]{
+        data:    make(map[K]cacheEntry[V]),
+        maxSize: maxSize,
+    }
+}
+
+func (c *Cache[K, V]) Get(key K) (V, bool) { /* thread-safe get */ }
+func (c *Cache[K, V]) Set(key K, value V) { /* thread-safe set with LRU eviction */ }
+func (c *Cache[K, V]) Delete(key K) { /* thread-safe delete */ }
+func (c *Cache[K, V]) Clear() { /* clear all entries */ }
+
+// Usage
+templateCache := NewCache[TemplateID, *template.Template](100, 1*time.Hour)
+metadataCache := NewCache[string, *CachedMetadata](10000, 5*time.Minute)
+```
+
+**Relevant Patterns**:
+
+- **Go Generics research**: Generic infrastructure (Cache, collections) appropriate
+- **Go Generics research**: Avoid generics for domain types
+
+**Benefits**:
+
+- Type-safe caching without interface{} and type assertions
+- Reusable across all cache needs (templates, metadata, schemas)
+- Single implementation, multiple uses
+- LRU eviction, TTL, thread-safety built-in
+
+**Trade-offs**:
+
+- Slight performance overhead vs hand-tuned caches
+- Requires Go 1.18+ (already required per tech-stack.md)
+
+**Affected Issues**:
+
+- **Cross-cutting**: Reusable infrastructure
+- **Group 2 (Storage Architecture)**: Metadata caching
+- **Type Safety**: Eliminate interface{} usage
+
+**Recommendation**: **Implement generic Cache[K,V]** - Create reusable cache infrastructure with LRU, TTL, thread-safety. Use for templates, metadata, schemas.
+
+---
+
+### Gap Category 7: Path Handling
+
+#### Gap 7.1: Platform-Specific Path Storage
+
+**Current State**:
+
+- Paths stored with platform-specific separators
+- No normalization to forward slashes for storage
+
+**Issue**: Cache non-portable across Windows/Unix systems. Path comparisons fragile.
+
+**Desired State**:
+
+```go
+import "path/filepath"
+
+// Always store paths with forward slashes (portable)
+func NormalizePath(path string) string {
+    return filepath.ToSlash(filepath.Clean(path))
+}
+
+// Convert to platform-specific for I/O
+func LocalizePath(path string) string {
+    return filepath.FromSlash(path)
+}
+
+type VaultFile struct {
+    Path string  // Always stored with forward slashes
+}
+
+// I/O operations convert to platform-specific
+func (a *FileAdapter) Read(ctx context.Context, file VaultFile) ([]byte, error) {
+    localPath := filepath.FromSlash(file.Path)
+    return os.ReadFile(localPath)
+}
+```
+
+**Relevant Patterns**:
+
+- **path/filepath research**: `ToSlash()` for portable storage, `FromSlash()` for platform I/O
+- **path/filepath research**: `Clean()` to normalize separators and resolve . and ..
+
+**Benefits**:
+
+- Cache portable across platforms
+- Consistent path comparison
+- No platform-specific bugs in path handling
+
+**Trade-offs**:
+
+- Must convert for I/O operations
+- Slight overhead of conversion
+
+**Affected Issues**:
+
+- **Group 2 (Storage Architecture)**: Cache portability
+- **Cross-platform**: Windows vs Unix path handling
+
+**Recommendation**: **Normalize paths for storage** - Use `filepath.ToSlash()` when storing paths, `filepath.FromSlash()` for I/O. Document convention.
+
+---
+
+### Gap Summary
+
+| Gap ID | Category                  | Priority | Affected Groups | Complexity | Impact                                               |
+| ------ | ------------------------- | -------- | --------------- | ---------- | ---------------------------------------------------- |
+| 1.1    | FileMetadata Duplication  | HIGH     | 1 (DTO), 2      | LOW        | Eliminate duplication, use fs.FileInfo               |
+| 1.2    | Absolute Paths            | MEDIUM   | 2, Future       | LOW        | Cache portability, multi-vault support               |
+| 1.3    | File + Content Conflation | MEDIUM   | 2, 3            | MEDIUM     | Memory efficiency, faster metadata queries           |
+| 2.1    | No Metadata Cache         | HIGH     | 2, 3, 1 (B2)    | HIGH       | Query performance, CQRS implementation               |
+| 2.2    | Single Read Pattern       | LOW      | 2               | LOW        | Prevent stale overwrites                             |
+| 3.1    | Goldmark in Domain        | HIGH     | 1 (B2)          | MEDIUM     | Hexagonal architecture compliance                    |
+| 3.2    | No AST Metadata           | MEDIUM   | 1 (B2), Future  | MEDIUM     | Enable graph queries, backlinks                      |
+| 4.1    | No Indexed Query Layer    | HIGH     | 2, 3            | HIGH       | O(1) indexed queries vs O(n) scanning                |
+| 4.2    | No Hot/Deep Separation    | MEDIUM   | 2, 3            | HIGH       | Performance targets (<1ms hot, <50ms deep)           |
+| 5.1    | Custom Template Cache     | LOW      | 1               | LOW        | Simplify using stdlib composition                    |
+| 6.1    | No Generic Cache          | MEDIUM   | Cross-cutting   | MEDIUM     | Type-safe infrastructure, reusability                |
+| 7.1    | Platform-Specific Paths   | LOW      | 2               | LOW        | Cross-platform portability                           |
+
+**Priority Definitions**:
+
+- **HIGH**: Blocks architectural goals or Epic 3 progress
+- **MEDIUM**: Improves architecture but not blocking
+- **LOW**: Nice-to-have, can be deferred to post-Epic 3
+
+**Next Steps**: Proceed to Entity Review Scope to evaluate domain entities for anemic model anti-pattern and missing behavior, then synthesize comprehensive Epic Impact Assessment.
+
+---
+
+### Actionable Insights from Research & Gap Analysis
+
+**Status**: ✅ Complete (2025-11-08)
+
+This section provides concrete, actionable recommendations derived from research findings and gap analysis, prioritized for Epic 3 implementation.
+
+#### Priority 1: Critical Architectural Fixes (Must Address for Epic 3)
+
+**AI-1.1: Eliminate FileMetadata Duplication** (Gap 1.1 - HIGH)
+
+```go
+// Action: Replace FileMetadata with fs.FileInfo usage
+// Location: /internal/shared/dto/file.go
+
+// BEFORE (Current):
+type FileMetadata struct {
+    Path     string
+    Basename string    // computed - REMOVE
+    Folder   string    // computed - REMOVE
+    Ext      string    // computed - REMOVE
+    ModTime  time.Time // duplicate - REMOVE
+    Size     int64     // duplicate - REMOVE
+    MimeType string    // computed - REMOVE
+}
+
+// AFTER (Target):
+type VaultFile struct {
+    Path    string         // Vault-relative path (see AI-1.2)
+    Info    fs.FileInfo    // Delegate to stdlib
+    Content []byte         // Loaded on-demand
+}
+
+// Add computed methods
+func (v VaultFile) Basename() string {
+    base := filepath.Base(v.Path)
+    return strings.TrimSuffix(base, filepath.Ext(base))
+}
+func (v VaultFile) Folder() string   { return filepath.Dir(v.Path) }
+func (v VaultFile) Ext() string      { return filepath.Ext(v.Path) }
+func (v VaultFile) ModTime() time.Time { return v.Info.ModTime() }
+func (v VaultFile) Size() int64      { return v.Info.Size() }
+```
+
+**Impact**: Eliminates 5 duplicated/computed fields, uses stdlib interface, reduces memory per file
+**Effort**: LOW - Simple refactoring, update all FileMetadata usages
+**Risk**: LOW - Well-defined stdlib interface, backward compatible with methods
+
+---
+
+**AI-1.2: Adopt Vault-Relative Paths** (Gap 1.2 - MEDIUM)
+
+```go
+// Action: Store paths relative to vault root
+// Location: /internal/shared/dto/file.go, all cache adapters
+
+// BEFORE:
+type VaultFile struct {
+    Path string  // Absolute: "/Users/jack/vault/notes/meeting.md"
+}
+
+// AFTER:
+type VaultFile struct {
+    Path    string  // Relative: "notes/meeting.md"
+    VaultID string  // For multi-vault: "default"
+}
+
+// Helper for I/O operations
+func (v VaultFile) AbsolutePath(vaultRoot string) string {
+    return filepath.Join(vaultRoot, v.Path)
+}
+
+// Normalize paths when storing
+func NormalizePath(absPath, vaultRoot string) (string, error) {
+    relPath, err := filepath.Rel(vaultRoot, absPath)
+    if err != nil {
+        return "", err
+    }
+    return filepath.ToSlash(relPath), nil  // Forward slashes for portability
+}
+```
+
+**Impact**: Cache portable across machines, enables multi-vault, matches Obsidian pattern
+**Effort**: MEDIUM - Update cache read/write adapters, path normalization
+**Risk**: MEDIUM - Must handle path resolution correctly, test Windows compatibility
+
+---
+
+**AI-1.3: Extract MarkdownParserPort** (Gap 3.1 - HIGH)
+
+```go
+// Action: Move goldmark from domain to adapter layer
+// Location: Create /internal/ports/spi/markdown.go
+//           Move /internal/app/frontmatter/service.go to use port
+
+// New Port Interface (in /internal/ports/spi/markdown.go):
+type MarkdownParserPort interface {
+    // ParseMetadata extracts frontmatter, links, headings, tags from markdown
+    ParseMetadata(ctx context.Context, content []byte) (*domain.NoteMetadata, error)
+}
+
+// New Domain Model (in /internal/domain/note.go):
+type NoteMetadata struct {
+    Frontmatter map[string]any
+    Links       []Link
+    Headings    []Heading
+    Tags        []string
+}
+
+type Link struct {
+    Text        string
+    Destination string
+    IsWikilink  bool
+}
+
+type Heading struct {
+    Level int
+    Text  string
+}
+
+// Adapter Implementation (in /internal/adapters/spi/parser/goldmark.go):
+type MDFileAdapter struct {
+    md goldmark.Markdown
+}
+
+func NewMDFileAdapter() *MDFileAdapter {
+    md := goldmark.New(
+        goldmark.WithExtensions(&frontmatter.Extender{}),
+    )
+    return &MDFileAdapter{md: md}
+}
+
+func (a *MDFileAdapter) ParseMetadata(ctx context.Context, content []byte) (*domain.NoteMetadata, error) {
+    // Use goldmark AST walking to extract all metadata
+    // See goldmark research for implementation
+}
+```
+
+**Impact**: Hexagonal architecture compliance, domain framework-agnostic, enables AST metadata extraction
+**Effort**: MEDIUM - Create port, implement adapter, update FrontmatterService
+**Risk**: LOW - Clear separation, goldmark stays same, just moved to adapter
+
+---
+
+**AI-1.4: Implement MetadataQueryPort** (Gap 4.1 - HIGH)
+
+```go
+// Action: Add indexed query layer on top of existing cache
+// Location: Create /internal/ports/spi/metadata_query.go
+
+// New Query Port (complementing existing CacheReaderPort):
+type MetadataQueryPort interface {
+    // Indexed queries - O(1) instead of List() + filter (O(n))
+    QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)
+    QueryByFrontmatter(ctx context.Context, field string, value any) ([]domain.Note, error)
+    QueryByBacklinks(ctx context.Context, notePath string) ([]domain.Note, error)
+
+    // Full-text search
+    Search(ctx context.Context, query string) ([]domain.Note, error)
+}
+
+// Index Synchronization Service:
+type MetadataIndexer interface {
+    // Build indices from CacheReaderPort.List()
+    Build(ctx context.Context) error
+
+    // Update indices after CacheWriterPort.Persist()
+    IndexNote(ctx context.Context, note domain.Note) error
+    RemoveNote(ctx context.Context, id domain.NoteID) error
+}
+
+// BoltDB Adapter Example (for hot queries <1ms):
+type BoltDBQueryAdapter struct {
+    db *bolt.DB
+}
+
+func (a *BoltDBQueryAdapter) QueryByTag(ctx context.Context, tag string) ([]domain.Note, error) {
+    // Use secondary index bucket: "indices:by_tag"
+    // Key: tag → Value: []NoteID
+    // Then lookup notes from "notes" bucket
+}
+```
+
+**Impact**: O(1) indexed queries vs O(n) scanning, enables backlinks/graph queries
+**Effort**: HIGH - New port, BoltDB/SQLite adapter, index maintenance
+**Risk**: MEDIUM - Index synchronization complexity, cache invalidation
+
+---
+
+#### Priority 2: Performance & Architecture Improvements (Should Address)
+
+**AI-2.1: Implement MetadataCache Service** (Gap 2.1 - HIGH)
+
+```go
+// Action: Separate parsed metadata cache from file content
+// Location: Create /internal/app/metadata/cache_service.go
+
+type NoteMetadataCache struct {
+    Path            string
+    VaultID         string
+    Frontmatter     map[string]any
+    Links           []domain.Link
+    Headings        []domain.Heading
+    Tags            []string
+    LastParsed      time.Time
+    ContentChecksum uint64  // For invalidation
+}
+
+type MetadataCacheService struct {
+    cache      map[string]*NoteMetadataCache
+    parser     spi.MarkdownParserPort
+    fileReader spi.VaultReaderPort
+    mu         sync.RWMutex
+}
+
+func (s *MetadataCacheService) GetOrParse(ctx context.Context, path string) (*NoteMetadataCache, error) {
+    // Check cache first
+    if cached := s.getCached(path); cached != nil {
+        // Verify checksum
+        currentChecksum := s.computeChecksum(path)
+        if cached.ContentChecksum == currentChecksum {
+            return cached, nil
+        }
+    }
+
+    // Parse and cache
+    file, err := s.fileReader.Read(ctx, path)
+    if err != nil {
+        return nil, err
+    }
+
+    metadata, err := s.parser.ParseMetadata(ctx, file.Content)
+    if err != nil {
+        return nil, err
+    }
+
+    cached := &NoteMetadataCache{
+        Path:            path,
+        Frontmatter:     metadata.Frontmatter,
+        Links:           metadata.Links,
+        Headings:        metadata.Headings,
+        Tags:            metadata.Tags,
+        LastParsed:      time.Now(),
+        ContentChecksum: s.computeChecksum(path),
+    }
+
+    s.setCached(path, cached)
+    return cached, nil
+}
+```
+
+**Impact**: Avoid re-parsing markdown on every query, CQRS read model
+**Effort**: MEDIUM - New service, cache management, invalidation logic
+**Risk**: LOW - Clear responsibility, uses existing ports
+
+---
+
+**AI-2.2: Separate File Metadata from Content** (Gap 1.3 - MEDIUM)
+
+```go
+// Action: Create distinct types for metadata-only vs content-loaded
+// Location: /internal/shared/dto/file.go
+
+// Metadata only (lightweight)
+type VaultFile struct {
+    Path    string
+    Info    fs.FileInfo
+    VaultID string
+}
+
+// With content (loaded on-demand)
+type VaultFileContent struct {
+    VaultFile        // Embedded metadata
+    Content    []byte
+}
+
+// Update Port Interfaces:
+type VaultReaderPort interface {
+    // Metadata only - fast directory listing
+    GetFileInfo(ctx context.Context, path string) (dto.VaultFile, error)
+
+    // With content - when needed
+    Read(ctx context.Context, path string) (dto.VaultFileContent, error)
+}
+
+type VaultScannerPort interface {
+    // Metadata only - fast vault scanning
+    ScanAll(ctx context.Context) ([]dto.VaultFile, error)
+}
+```
+
+**Impact**: Memory efficiency for metadata-only operations, faster vault scans
+**Effort**: MEDIUM - Update DTOs, port interfaces, adapter implementations
+**Risk**: LOW - Additive change, existing Read() still works
+
+---
+
+**AI-2.3: Use text/template Composition** (Gap 5.1 - LOW)
+
+```go
+// Action: Replace custom template caching with stdlib composition
+// Location: /internal/app/template/service.go
+
+// BEFORE:
+type TemplateEngine struct {
+    compiled map[domain.TemplateID]cachedTemplate
+}
+
+type cachedTemplate struct {
+    tpl      *template.Template
+    checksum uint64
+}
+
+// AFTER:
+type TemplateEngine struct {
+    root *template.Template  // Single namespace with all templates
+}
+
+func (e *TemplateEngine) LoadTemplates(ctx context.Context) error {
+    e.root = template.New("root").Funcs(e.buildFuncMap())
+
+    templates, err := e.templatePort.LoadAll(ctx)
+    if err != nil {
+        return err
+    }
+
+    for _, tmpl := range templates {
+        _, err := e.root.New(string(tmpl.ID)).Parse(tmpl.Content)
+        if err != nil {
+            return fmt.Errorf("parse template %s: %w", tmpl.ID, err)
+        }
+    }
+    return nil
+}
+
+func (e *TemplateEngine) Render(ctx context.Context, templateID domain.TemplateID) (string, error) {
+    var buf strings.Builder
+    if err := e.root.ExecuteTemplate(&buf, string(templateID), nil); err != nil {
+        return "", err
+    }
+    return buf.String(), nil
+}
+```
+
+**Impact**: Simplify code, use stdlib caching, enable template composition
+**Effort**: LOW - Straightforward refactoring
+**Risk**: LOW - stdlib is well-tested, existing functionality preserved
+
+---
+
+#### Priority 3: Future Enhancements (Can Defer Post-Epic 3)
+
+**AI-3.1: Implement Generic Cache[K,V]** (Gap 6.1 - MEDIUM)
+
+```go
+// Action: Create reusable generic cache infrastructure
+// Location: /internal/shared/cache/generic.go
+
+type Cache[K comparable, V any] struct {
+    data    map[K]cacheEntry[V]
+    maxSize int
+    ttl     time.Duration
+    mu      sync.RWMutex
+}
+
+type cacheEntry[V any] struct {
+    value      V
+    expiry     time.Time
+    lastAccess time.Time
+}
+
+func NewCache[K comparable, V any](maxSize int, ttl time.Duration) *Cache[K, V] {
+    return &Cache[K, V]{
+        data:    make(map[K]cacheEntry[V]),
+        maxSize: maxSize,
+        ttl:     ttl,
+    }
+}
+
+func (c *Cache[K, V]) Get(key K) (V, bool) {
+    c.mu.RLock()
+    defer c.mu.RUnlock()
+
+    entry, exists := c.data[key]
+    if !exists || time.Now().After(entry.expiry) {
+        var zero V
+        return zero, false
+    }
+
+    // Update last access for LRU
+    entry.lastAccess = time.Now()
+    c.data[key] = entry
+
+    return entry.value, true
+}
+
+func (c *Cache[K, V]) Set(key K, value V) {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+
+    // LRU eviction if at max size
+    if len(c.data) >= c.maxSize {
+        c.evictLRU()
+    }
+
+    c.data[key] = cacheEntry[V]{
+        value:      value,
+        expiry:     time.Now().Add(c.ttl),
+        lastAccess: time.Now(),
+    }
+}
+
+// Usage:
+templateCache := NewCache[domain.TemplateID, *template.Template](100, 1*time.Hour)
+metadataCache := NewCache[string, *NoteMetadataCache](10000, 5*time.Minute)
+```
+
+**Impact**: Type-safe caching, reusable across all cache needs
+**Effort**: MEDIUM - Implement cache, LRU eviction, TTL
+**Risk**: LOW - Optional enhancement, doesn't block core functionality
+
+---
+
+**AI-3.2: Normalize Path Storage** (Gap 7.1 - LOW)
+
+```go
+// Action: Store paths with forward slashes for cross-platform portability
+// Location: /internal/shared/dto/file.go, all cache adapters
+
+func NormalizePath(path string) string {
+    return filepath.ToSlash(filepath.Clean(path))
+}
+
+func LocalizePath(path string) string {
+    return filepath.FromSlash(path)
+}
+
+// In VaultFile constructor:
+func NewVaultFile(absPath, vaultRoot string, info fs.FileInfo) (VaultFile, error) {
+    relPath, err := filepath.Rel(vaultRoot, absPath)
+    if err != nil {
+        return VaultFile{}, err
+    }
+
+    return VaultFile{
+        Path: NormalizePath(relPath),  // Forward slashes for storage
+        Info: info,
+    }, nil
+}
+
+// In file I/O:
+func (a *FileAdapter) Read(ctx context.Context, file VaultFile) ([]byte, error) {
+    absPath := filepath.Join(a.vaultRoot, LocalizePath(file.Path))  // Platform-specific for I/O
+    return os.ReadFile(absPath)
+}
+```
+
+**Impact**: Cross-platform path portability
+**Effort**: LOW - Add normalization functions, update constructors
+**Risk**: LOW - Path utilities well-tested
+
+---
+
+**AI-3.3: Implement Read vs CachedRead Pattern** (Gap 2.2 - LOW)
+
+```go
+// Action: Add dual read methods to prevent stale overwrites
+// Location: Update existing VaultReaderPort
+
+type VaultReaderPort interface {
+    // Read from disk (always fresh) - use before modification
+    Read(ctx context.Context, path string) (dto.VaultFileContent, error)
+
+    // Read from cache (fast) - use for display
+    CachedRead(ctx context.Context, path string) (dto.VaultFileContent, error)
+}
+
+type VaultWriterPort interface {
+    // Write with optimistic locking
+    Write(ctx context.Context, path string, content []byte, expectedModTime time.Time) error
+}
+```
+
+**Impact**: Prevent stale data overwrites
+**Effort**: LOW - Add CachedRead method, implement cache
+**Risk**: LOW - Additive change, optional optimization
+
+---
+
+#### Implementation Sequence for Epic 3
+
+**Phase 1: Foundation (Stories 3.1-3.2)**
+1. AI-1.1: FileMetadata → fs.FileInfo (LOW effort, HIGH impact)
+2. AI-1.2: Vault-relative paths (MEDIUM effort, enables portability)
+3. AI-1.3: Extract MarkdownParserPort (MEDIUM effort, hexagonal compliance)
+
+**Phase 2: Query Architecture (Stories 3.3-3.4)**
+4. AI-1.4: MetadataQueryPort (HIGH effort, enables indexed queries)
+5. AI-2.1: MetadataCacheService (MEDIUM effort, performance)
+
+**Phase 3: Optimization (Story 3.5)**
+6. AI-2.2: Separate file metadata/content (MEDIUM effort, memory efficiency)
+7. AI-2.3: text/template composition (LOW effort, code simplification)
+
+**Phase 4: Post-MVP**
+8. AI-3.1: Generic Cache[K,V] (MEDIUM effort, nice-to-have)
+9. AI-3.2: Path normalization (LOW effort, cross-platform)
+10. AI-3.3: Read/CachedRead (LOW effort, safety enhancement)
+
+**Estimated Total Effort**:
+- Phase 1: 3-4 stories
+- Phase 2: 2-3 stories
+- Phase 3: 1-2 stories
+- **Epic 3 Total: 6-9 stories**
 
 ---
 
 ## Entity Review Scope
 
+**Status**: ✅ Complete (2025-11-08)
+
+This section provides systematic evaluation of all domain entities for architecture compliance, anemic model anti-patterns, and missing behavior. Each entity is assessed against hexagonal architecture principles and DDD best practices.
+
 ### System 1: Schema System
 
-- [ ] Schema - currently has Validate() (should move to adapter per hexagonal principle)
-- [ ] PropertyBank - singleton pattern, needs method review
-- [ ] Property - has Validate() (delegates to Spec), needs review
-- [ ] PropertySpec - interface with variants, needs review
+#### Entity 1.1: Schema (/internal/domain/schema.go)
+
+**Current State**:
+```go
+type Schema struct {
+    Name               string
+    Extends            string
+    Excludes           []string
+    Properties         []Property
+    ResolvedProperties []Property
+}
+
+// Has Validate() method
+func (s *Schema) Validate(ctx context.Context) error
+```
+
+**Assessment**:
+
+✅ **CORRECT** - Rich domain model with behavior
+- Has `Validate()` method with domain logic (not infrastructure)
+- Validates structural integrity: name not empty, excludes only with extends, unique properties
+- Defensive copies in `NewSchema()` constructor
+- Short-circuit validation caching with `validated` flag
+
+❌ **ISSUE** - ResolvedProperties leaks adapter concern into domain
+- `ResolvedProperties` is populated by `SchemaResolver` service (adapter layer)
+- Domain entity should not have fields populated by adapters
+- Breaks clean domain/adapter separation
+
+**Recommendation**:
+```go
+// OPTION A: Move resolution to domain service
+type SchemaResolver interface {  // Domain service
+    Resolve(ctx context.Context, schema Schema, bank PropertyBank) (ResolvedSchema, error)
+}
+
+type ResolvedSchema struct {  // Separate type
+    Schema
+    ResolvedProperties []Property
+}
+
+// OPTION B: Keep in Schema but document clearly
+// ResolvedProperties remains but only used after SchemaResolver.Resolve()
+// Document that Schema is not fully usable until resolution
+```
+
+**Priority**: MEDIUM - Architecture purist fix, doesn't block functionality
+
+---
+
+#### Entity 1.2: Property (/internal/domain/property.go)
+
+**Current State**:
+```go
+type Property struct {
+    ID        string  // Auto-generated from hash(Name + Spec)
+    Name      string
+    Required  bool
+    Array     bool
+    Spec      PropertySpec
+    validated bool  // Short-circuit flag
+}
+
+// Has Validate() method
+func (p *Property) Validate(ctx context.Context) error
+```
+
+**Assessment**:
+
+✅ **CORRECT** - DDD Entity with identity and behavior
+- Has unique `ID` (entity identity requirement)
+- Has `Validate()` with domain logic
+- Delegates type-specific validation to `PropertySpec` (good composition)
+- Short-circuit caching with `validated` flag
+
+✅ **GOOD PRACTICE** - Deterministic ID generation
+- Uses `sha256(name + spec)` for reproducible IDs
+- Ensures same property definition always gets same ID
+
+⚠️ **MINOR ISSUE** - `validated` flag is mutable state
+- Breaks immutability principle
+- Could cause issues with concurrent validation
+
+**Recommendation**:
+```go
+// Remove mutable validated flag
+// Let caller cache validation results if needed
+type Property struct {
+    ID       string
+    Name     string
+    Required bool
+    Array    bool
+    Spec     PropertySpec
+    // Remove: validated bool
+}
+
+// Validation is stateless
+func (p Property) Validate(ctx context.Context) error {
+    // No short-circuit, but validation is cheap
+}
+```
+
+**Priority**: LOW - Minor optimization, not architecture-breaking
+
+---
+
+#### Entity 1.3: PropertyBank (/internal/domain/property_bank.go)
+
+**Current State**:
+```go
+type PropertyBank struct {
+    Properties map[string]Property
+}
+
+// Lookup returns property by ID
+func (pb *PropertyBank) Lookup(id string) (Property, bool)
+```
+
+**Assessment**:
+
+✅ **CORRECT** - Singleton registry pattern
+- Single instance per application lifecycle
+- Defensive copy in `NewPropertyBank()`
+- Validates all properties on construction
+
+⚠️ **DESIGN QUESTION** - Is this domain or infrastructure?
+- Acts as repository (typically infrastructure)
+- But contains domain logic (property definitions)
+- **Decision**: Correctly placed in domain as it's a domain registry
+
+✅ **GOOD PRACTICE** - Returns copies for immutability
+- `Lookup()` returns property copy, not reference
+
+**No changes needed** - Well-designed singleton registry
+
+**Priority**: N/A - No issues found
+
+---
 
 ### System 2: Note System
 
-- [ ] Note - anemic (just ID + Frontmatter), needs behavior methods
-- [ ] NoteID - simple identifier, likely fine
-- [ ] Frontmatter - CRITICAL needs refactoring (validation in adapter, factory in domain)
+#### Entity 2.1: Note (/internal/domain/note.go)
 
-### System 3: Config System
+**Current State**:
+```go
+type Note struct {
+    ID          NoteID
+    Frontmatter Frontmatter
+}
 
-- [ ] Config - needs embedded struct analysis for extensibility
-- [ ] Should break into: VaultConfig, SchemaConfig, TemplateConfig, LoggingConfig
+// Only behavior: delegate to Frontmatter
+func (n Note) SchemaName() string {
+    return n.Frontmatter.SchemaName()
+}
+```
+
+**Assessment**:
+
+❌ **ANEMIC MODEL** - Pure data structure with no behavior
+- Only has one delegating method
+- No validation, no business logic
+- Acts as simple data container
+
+**Missing Behavior**:
+1. Note-level validation (beyond frontmatter)
+2. Schema compliance checking
+3. Link resolution
+4. Tag management
+5. Note lifecycle methods (create, update timestamps)
+
+**Recommendation**:
+```go
+// Add rich behavior
+type Note struct {
+    ID          NoteID
+    Frontmatter Frontmatter
+    CreatedAt   time.Time
+    UpdatedAt   time.Time
+}
+
+// Validation
+func (n Note) Validate(ctx context.Context, schema Schema) error {
+    // Validate frontmatter against schema
+    return ValidateFrontmatter(n.Frontmatter, schema)
+}
+
+// Schema checking
+func (n Note) IsValid() bool {
+    return n.Frontmatter.FileClass != ""
+}
+
+// Factory method
+func NewNote(id NoteID, frontmatter Frontmatter) Note {
+    now := time.Now()
+    return Note{
+        ID:          id,
+        Frontmatter: frontmatter,
+        CreatedAt:   now,
+        UpdatedAt:   now,
+    }
+}
+
+// Update with timestamp
+func (n *Note) UpdateFrontmatter(fm Frontmatter) {
+    n.Frontmatter = fm
+    n.UpdatedAt = time.Now()
+}
+```
+
+**Priority**: HIGH - Core domain entity should have behavior
+
+---
+
+#### Entity 2.2: Frontmatter (/internal/domain/note.go)
+
+**Current State**:
+```go
+type Frontmatter struct {
+    FileClass string
+    Fields    map[string]interface{}
+}
+
+// Only behavior: accessor
+func (f Frontmatter) SchemaName() string {
+    return f.FileClass
+}
+```
+
+**Assessment**:
+
+❌ **ANEMIC MODEL** - Pure data structure
+- Only has accessor method
+- No validation
+- No field manipulation methods
+
+**Missing Behavior**:
+1. Field get/set with type safety
+2. Validation against schema
+3. Required field checking
+4. Default value application
+
+**Recommendation**:
+```go
+type Frontmatter struct {
+    FileClass string
+    Fields    map[string]any
+}
+
+// Type-safe field access
+func (f Frontmatter) GetString(key string) (string, bool) {
+    val, ok := f.Fields[key]
+    if !ok {
+        return "", false
+    }
+    str, ok := val.(string)
+    return str, ok
+}
+
+func (f Frontmatter) GetStringArray(key string) ([]string, bool) {
+    val, ok := f.Fields[key]
+    if !ok {
+        return nil, false
+    }
+    // Type conversion logic
+}
+
+// Validation
+func (f Frontmatter) ValidateAgainstSchema(schema Schema) error {
+    for _, prop := range schema.ResolvedProperties {
+        if err := f.validateProperty(prop); err != nil {
+            return err
+        }
+    }
+    return nil
+}
+
+func (f Frontmatter) validateProperty(prop Property) error {
+    val, exists := f.Fields[prop.Name]
+
+    if prop.Required && !exists {
+        return fmt.Errorf("required field %s missing", prop.Name)
+    }
+
+    if exists {
+        return prop.Spec.Validate(val)
+    }
+
+    return nil
+}
+
+// Field manipulation
+func (f Frontmatter) WithField(key string, value any) Frontmatter {
+    newFields := make(map[string]any, len(f.Fields)+1)
+    for k, v := range f.Fields {
+        newFields[k] = v
+    }
+    newFields[key] = value
+
+    return Frontmatter{
+        FileClass: f.FileClass,
+        Fields:    newFields,
+    }
+}
+```
+
+**Priority**: HIGH - Core domain model needs behavior
+
+---
+
+### System 3: Template System
+
+#### Entity 3.1: Template (/internal/domain/template.go)
+
+**Current State**:
+```go
+type Template struct {
+    ID      TemplateID
+    Content string
+}
+```
+
+**Assessment**:
+
+✅ **INTENTIONALLY ANEMIC** - Explicitly documented as pure data
+- Godoc states: "anemic domain model pattern where business logic resides in services"
+- Template rendering is infrastructure (uses text/template)
+- Validation is syntactic (belongs in adapter)
+
+✅ **CORRECT SEPARATION**:
+- Domain: Template identity and content (what it is)
+- Service: TemplateEngine (what to do with it)
+- Adapter: TemplatePort for loading
+
+**No changes needed** - Correct hexagonal separation
+
+**Priority**: N/A - Correctly designed
+
+---
+
+### System 4: Configuration System
+
+#### Entity 4.1: Config (/internal/domain/config.go)
+
+**Current State**:
+```go
+type Config struct {
+    VaultPath        string
+    TemplatesDir     string
+    SchemasDir       string
+    PropertyBankFile string
+    CacheDir         string
+    LogLevel         string
+    FileClassKey     string
+}
+
+// Only behavior: path helper
+func (c Config) PropertyBankPath() string {
+    return filepath.Join(c.SchemasDir, c.PropertyBankFile)
+}
+```
+
+**Assessment**:
+
+✅ **CORRECT AS VALUE OBJECT** - Immutable configuration
+- Documented as "immutable value object"
+- Constructor applies defaults
+- Single helper method for derived path
+
+⚠️ **DESIGN QUESTION** - Monolithic vs composed?
+- Single flat struct with 7 fields
+- Could be broken into logical groups
+
+**Recommendation** (OPTIONAL):
+```go
+// Option A: Keep flat (current - simple, works)
+type Config struct {
+    VaultPath    string
+    TemplatesDir string
+    SchemasDir   string
+    // ...
+}
+
+// Option B: Compose into logical groups
+type Config struct {
+    Vault    VaultConfig
+    Schema   SchemaConfig
+    Template TemplateConfig
+    Logging  LoggingConfig
+}
+
+type VaultConfig struct {
+    Path     string
+    CacheDir string
+}
+
+type SchemaConfig struct {
+    Dir              string
+    PropertyBankFile string
+    FileClassKey     string
+}
+
+type TemplateConfig struct {
+    Dir string
+}
+
+type LoggingConfig struct {
+    Level string
+}
+```
+
+**Priority**: LOW - Current design is fine, composition is optional improvement
+
+---
+
+### Summary of Entity Issues
+
+| Entity       | Type          | Current State | Issues                               | Priority | Effort |
+| ------------ | ------------- | ------------- | ------------------------------------ | -------- | ------ |
+| Schema       | Rich Model    | ✅ Good       | ResolvedProperties leaks adapter     | MEDIUM   | LOW    |
+| Property     | Rich Model    | ✅ Good       | Mutable validated flag               | LOW      | LOW    |
+| PropertyBank | Registry      | ✅ Good       | None                                 | N/A      | N/A    |
+| **Note**     | **Anemic**    | ❌ **Issue**  | **Missing validation, behavior**     | HIGH     | MEDIUM |
+| **Frontmatter** | **Anemic** | ❌ **Issue**  | **Missing type-safe access, validation** | HIGH | MEDIUM |
+| Template     | Intentional   | ✅ Good       | None (intentionally anemic)          | N/A      | N/A    |
+| Config       | Value Object  | ✅ Good       | Optional composition improvement     | LOW      | LOW    |
+
+**Critical Findings**:
+1. **Note and Frontmatter are anemic** - Need rich behavior for domain logic
+2. **Schema.ResolvedProperties** leaks adapter concern - Minor architectural issue
+3. All other entities are correctly designed
+
+---
 - [ ] Needs method review: Validate(), Resolve(), computed paths
 
 ### System 4: Template System
