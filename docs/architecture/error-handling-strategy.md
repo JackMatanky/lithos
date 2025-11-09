@@ -25,7 +25,7 @@
 
 - **Business Logic Errors:** Frontmatter validation failures include schema name, offending field, and remediation message; template parsing errors include line/column if available. CLI adapter surfaces these as structured output plus exit code `1`.
 
-- **Data Consistency:** VaultIndexer and JSONFileCacheAdapter always write to temp files and rename atomically; partial writes trigger rollback with warning logs. `lithos index` remains idempotent, so reruns after failures are safe.
+- **Data Consistency:** VaultIndexer uses CacheUnitOfWork to coordinate atomic writes across BoltDB and SQLite; partial writes trigger rollback with warning logs. `lithos index` remains idempotent, so reruns after failures are safe.
 
 - **Testing Contracts:** Unit tests assert both success and error return values plus logged context to ensure code respects the error model. Use `errors.Is()` and `errors.As()` to verify error types.
 
