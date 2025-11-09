@@ -112,7 +112,7 @@ func computeMimeType(ext string) string {
 - **Embeds FileMetadata:** Reuses existing metadata structure (DRY principle). VaultFile = FileMetadata + Content.
 - **DTO, not domain model:** Simple data transfer between vault scanning (adapter) and indexing (domain service). No behavior.
 - **Content optional (post-MVP):** For large files (PDFs, videos), Content may be nil. VaultIndexer checks MimeType and decides whether to load content.
-- **Used only in indexing workflow:** CommandOrchestrator.NewNote uses VaultWriterPort directly, doesn't need VaultFile.
+- **Used only in indexing workflow:** CLICommander.NewNote uses VaultWriterPort directly, doesn't need VaultFile.
 
 **Helper Functions:**
 
@@ -307,6 +307,243 @@ Goldmark integration enables advanced markdown processing during vault indexing:
 - **Future-ready architecture:** Foundation for inline tag parsing, wikilink extraction, and block reference support
 
 Current implementation indexes frontmatter only. Goldmark provides AST access for future body content parsing in Phase 3 (Enhanced Querying), enabling richer Note.Body model with heading hierarchies and content structure.
+
+---
+
+## NoteMetadata
+
+**Purpose:** Container for all parsed metadata extracted from markdown content. Represents complete note metadata including frontmatter, structural elements (links, headings), and tags. Returned by MarkdownParserPort for use by domain services.
+
+**Architecture Layer:** Domain Core (Value Object)
+
+**Key Attributes:**
+
+- `Frontmatter` (map[string]any) - Parsed YAML frontmatter as flexible map
+- `Links` ([]Link) - All links found in markdown (both wikilinks and standard markdown links)
+- `Headings` ([]Heading) - All markdown headings with hierarchy information
+- `Tags` ([]string) - Hashtags extracted from content (#tag, #nested/tag)
+- `Backlinks` ([]Link) - Computed backlinks to this note from other notes (populated by graph analysis)
+
+**Relationships:**
+
+- Returned by MarkdownParserPort.ParseMetadata()
+- Consumed by FrontmatterService.Extract() to create Frontmatter domain model
+- Used by VaultIndexer during vault indexing
+- Stored in SQLite deep storage for indexed queries via MetadataQueryPort
+
+**Design Decisions:**
+
+- **Value object:** Immutable container for parsed metadata. Two NoteMetadata instances with identical content are equivalent.
+- **Complete metadata:** Contains all metadata types in single structure for convenient parsing. Services extract what they need.
+- **Backlinks computed:** Backlinks not extracted during parsing - computed by analyzing Links across all notes during indexing.
+- **Foundation for graph queries:** Enables future graph traversal, backlink navigation, and knowledge graph features.
+- **Parser output format:** Returned by MarkdownParserPort as parse result. Domain services transform to domain models (Frontmatter, etc.).
+
+**Helper Functions:**
+
+```go
+// NewNoteMetadata creates NoteMetadata from parsed components
+// Called by MarkdownParserAdapter after goldmark AST walking
+func NewNoteMetadata(
+    frontmatter map[string]any,
+    links []Link,
+    headings []Heading,
+    tags []string,
+) NoteMetadata {
+    return NoteMetadata{
+        Frontmatter: frontmatter,
+        Links:       links,
+        Headings:    headings,
+        Tags:        tags,
+        Backlinks:   nil, // Computed later by graph analysis
+    }
+}
+```
+
+**Additional Information:**
+
+NoteMetadata serves as the data structure for markdown parsing results. MarkdownParserPort returns this structure after parsing markdown with goldmark. Domain services then extract specific components: FrontmatterService uses Frontmatter field, future LinkService would use Links field, future HeadingNavigationService would use Headings field. This separation enables parser to extract all metadata in one pass (efficient), while domain services remain focused on their specific concerns (SRP).
+
+---
+
+## Link
+
+**Purpose:** Represents a link found in markdown content. Captures both wikilinks (`[[target]]`) and standard markdown links (`[text](url)`). Used for backlink computation, graph analysis, and link validation.
+
+**Architecture Layer:** Domain Core (Value Object)
+
+**Key Attributes:**
+
+- `Text` (string) - Display text for the link. For wikilinks without alias: same as Destination. For aliased wikilinks `[[target|alias]]`: alias text. For markdown links `[text](url)`: text portion.
+- `Destination` (string) - Link target. For wikilinks: note basename or path. For markdown links: URL or relative path. For external links: full URL.
+- `IsWikilink` (bool) - True if wikilink format `[[...]]`, false if markdown format `[...](...)`. Enables different resolution strategies.
+
+**Relationships:**
+
+- Component of NoteMetadata ([]Link field)
+- Used by future LinkService for wikilink resolution and link validation
+- Enables backlink computation (Link.Destination → find notes with matching path)
+- Foundation for graph queries and knowledge graph visualization
+
+**Design Decisions:**
+
+- **Value object:** Immutable link representation. Two Link instances with identical attributes are equivalent.
+- **Unified link model:** Single structure for both wikilinks and markdown links. IsWikilink flag enables different handling.
+- **No link resolution in model:** Link stores raw destination as found in markdown. Resolution (basename → full path) happens in services.
+- **Text vs Destination:** Separate fields enable aliased wikilinks `[[note|display text]]` and markdown links `[text](url)` with different text/destination.
+
+**Helper Functions:**
+
+```go
+// NewWikilink creates Link from wikilink syntax
+// Example: [[meeting notes]] or [[notes/meeting|Meeting]]
+func NewWikilink(destination, text string) Link {
+    if text == "" {
+        text = destination // No alias, text same as destination
+    }
+    return Link{
+        Text:        text,
+        Destination: destination,
+        IsWikilink:  true,
+    }
+}
+
+// NewMarkdownLink creates Link from markdown link syntax
+// Example: [Obsidian](https://obsidian.md) or [README](./README.md)
+func NewMarkdownLink(text, destination string) Link {
+    return Link{
+        Text:        text,
+        Destination: destination,
+        IsWikilink:  false,
+    }
+}
+```
+
+**Additional Information:**
+
+Link model enables Obsidian-style wikilink features: `[[note]]` links to note by basename, `[[folder/note|alias]]` links with display alias, backlinks computed by finding all notes linking to target. Markdown links `[text](url)` also supported for external references and relative paths. Future features: link validation (check destination exists), orphaned note detection (no incoming links), broken link detection (destination not found), graph visualization (nodes=notes, edges=links).
+
+---
+
+## Heading
+
+**Purpose:** Represents a markdown heading with level and text. Enables navigation, table of contents generation, and heading-based queries.
+
+**Architecture Layer:** Domain Core (Value Object)
+
+**Key Attributes:**
+
+- `Level` (int) - Heading level (1-6). Corresponds to markdown `#` count: `# Title` = 1, `## Section` = 2, etc. Enables hierarchy detection.
+- `Text` (string) - Heading text without `#` markers. Used for display, search, and navigation. Trimmed of leading/trailing whitespace.
+
+**Relationships:**
+
+- Component of NoteMetadata ([]Heading field)
+- Used by future HeadingNavigationService for outline generation
+- Enables heading-based queries via MetadataQueryPort.QueryByHeading()
+- Foundation for document outline and table of contents features
+
+**Design Decisions:**
+
+- **Value object:** Immutable heading representation. Two Heading instances with identical attributes are equivalent.
+- **Simple structure:** Just level and text - no position, no nesting. Hierarchy computed from level sequence if needed.
+- **Level as int:** 1-6 per markdown spec. Invalid levels (0, 7+) rejected during parsing.
+- **No anchor IDs:** Heading doesn't store anchor ID (`# Title {#custom-id}`). Future enhancement if anchor links needed.
+
+**Helper Functions:**
+
+```go
+// NewHeading creates Heading from level and text
+// Called by MarkdownParserAdapter during AST walking
+func NewHeading(level int, text string) (Heading, error) {
+    if level < 1 || level > 6 {
+        return Heading{}, fmt.Errorf("invalid heading level: %d (must be 1-6)", level)
+    }
+    return Heading{
+        Level: level,
+        Text:  strings.TrimSpace(text),
+    }, nil
+}
+
+// IsTopLevel returns true if heading is level 1 (# Title)
+func (h Heading) IsTopLevel() bool {
+    return h.Level == 1
+}
+```
+
+**Additional Information:**
+
+Heading model enables document structure analysis and navigation. Future features: table of contents generation (render heading hierarchy), heading-based navigation (jump to section), outline view (collapsible heading tree), heading search (find notes with specific sections). Goldmark AST provides heading information during parsing - MarkdownParserAdapter extracts into Heading structs. Heading sequence represents document structure: increasing levels = going deeper, decreasing levels = coming back up.
+
+---
+
+## Domain Events (Epic 3 Active - Story 3.29)
+
+**Purpose:** Event models for event-driven architecture. Represents significant domain occurrences that other components react to via publish/subscribe pattern. Implemented in Epic 3 to eliminate god-objects and enable clean CQRS separation.
+
+**Architecture Layer:** Domain Core (Active in Epic 3)
+
+**Status:** ACTIVE - Epic 3 implements event-driven architecture (Story 3.29). Event bus with domain events replaces direct service dependencies to eliminate god-object pattern (CLICommander, VaultIndexer).
+
+### DomainEvent Interface
+
+**Purpose:** Base interface for all domain events. Provides common event metadata.
+
+**Key Methods:**
+
+- `EventType() string` - Returns event type identifier (e.g., "NoteIndexed", "FrontmatterValidated")
+- `OccurredAt() time.Time` - Returns event timestamp
+- `AggregateID() string` - Returns ID of aggregate that triggered event (e.g., NoteID, SchemaName)
+
+### Event Types
+
+#### Indexing Events
+
+**NoteIndexed** - Published when single note successfully indexed
+- **Fields:** NoteID, Path, FileClass, OccurredAt
+- **Use Cases:** Update search index, refresh graph, trigger backlink computation
+
+**VaultIndexingComplete** - Published when full vault indexing finishes
+- **Fields:** NotesIndexed (int), Duration, OccurredAt
+- **Use Cases:** QueryService rebuilds indices, UI shows indexing complete, cache warmup
+
+#### Validation Events
+
+**FrontmatterValidated** - Published when frontmatter validation completes
+- **Fields:** NoteID, SchemaName, IsValid (bool), Errors ([]ValidationError), OccurredAt
+- **Use Cases:** Collect validation statistics, UI shows validation errors, quality metrics
+
+#### Configuration Events
+
+**SchemaLoaded** - Published when single schema successfully loaded
+- **Fields:** SchemaName, PropertyCount (int), OccurredAt
+- **Use Cases:** Audit log, reload dependent schemas, validation cache invalidation
+
+**SchemasReloaded** - Published when all schemas reloaded (hot reload)
+- **Fields:** SchemaCount (int), OccurredAt
+- **Use Cases:** Clear validation caches, notify UI, audit configuration changes
+
+### Event-Driven Architecture Benefits (Epic 3 Implementation)
+
+**Implementation:** Story 3.29 implements EventBus infrastructure with in-memory goroutine-based async dispatch.
+
+**Benefits Realized:**
+- **God-Object Elimination:** CLICommander and VaultIndexer no longer accumulate dependencies - services communicate via events
+- **CQRS Separation:** QueryService subscribes to VaultIndexingComplete event (pure read-side), VaultIndexer publishes events (command-side)
+- **Decoupling:** Services don't directly depend on each other - add new subscribers without modifying publishers
+- **Extensibility:** New features subscribe to existing events (e.g., MetricsService subscribes to FrontmatterValidated)
+- **Testability:** Mock EventBus for unit tests, test event flows independently
+
+**Trade-offs Accepted:**
+- **Infrastructure Complexity:** EventBus implementation, subscription management (acceptable for god-object elimination)
+- **Debugging Complexity:** Async execution harder to trace (mitigated by comprehensive event logging with trace IDs)
+- **Eventual Consistency:** Subscribers process with delay (mitigated by synchronous dispatch for critical events)
+
+**Publisher/Subscriber Architecture:**
+- **Publishers:** VaultIndexer (NoteIndexed, VaultIndexingComplete), FrontmatterService (FrontmatterValidated), SchemaEngine (SchemaLoaded, SchemasReloaded)
+- **Subscribers:** VaultIndexer (NoteIndexed → update indices), QueryService (VaultIndexingComplete → rebuild query structures), MetricsService (FrontmatterValidated → stats)
+
+**Implementation Details:** See high-level-architecture.md "Orchestration Pattern Decision" section for complete event-driven architecture specification.
 
 ---
 
@@ -909,7 +1146,7 @@ The lean Template model (ID + Content only) follows clean architecture principle
 - `TemplatesDir` (string) - Path to templates directory. Default: `{VaultPath}/templates/`. Can be absolute or relative to VaultPath. Must exist for `lithos new` and `lithos find` commands. TemplateLoader scans all `.md` files in this directory.
 - `SchemasDir` (string) - Path to schemas directory. Default: `{VaultPath}/schemas/`. Can be absolute or relative to VaultPath. Must exist if schemas are used. SchemaLoader parses all schema JSON files in this directory at startup.
 - `PropertyBankFile` (string) - Filename of property bank file within SchemasDir. Default: `property_bank.json`. Full path is `{SchemasDir}/{PropertyBankFile}`. Optional—if missing, schemas cannot use `$ref` references.
-- `CacheDir` (string) - Path to index cache directory. Default: `{VaultPath}/.lithos/cache/`. Can be absolute or relative to VaultPath. Created automatically if missing. Must be writable. JSONFileCacheAdapter stores one `.json` file per indexed note.
+- `CacheDir` (string) - Path to index cache directory. Default: `{VaultPath}/.lithos/cache/`. Can be absolute or relative to VaultPath. Created automatically if missing. Must be writable. Epic 3 hybrid storage uses BoltDB (`.lithos/cache/lithos.db`) for hot cache and SQLite (`.lithos/cache/lithos_metadata.db`) for deep storage.
 - `LogLevel` (string) - Logging verbosity for zerolog. One of: "debug", "info", "warn", "error". Default: "info". Case-insensitive. Invalid values fall back to "info" with warning. Controls stdout/stderr output verbosity.
 
 **Relationships:**

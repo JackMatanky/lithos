@@ -27,13 +27,13 @@ These standards are **MANDATORY** for Lithos contributors and AI agents. They ar
 
 ## Naming Conventions
 
-| Element         | Convention                | Example                  |
-| --------------- | ------------------------- | ------------------------ |
-| Ports           | PascalCase + `Port`       | `TemplateRepositoryPort` |
-| Adapters        | PascalCase + `Adapter`    | `TemplateFSAdapter`      |
-| Domain Services | PascalCase descriptive    | `TemplateEngine`  |
-| Error Types     | PascalCase + `Error`      | `FrontmatterError`, `SchemaError` |
-| Test Doubles    | `Fake`/`Stub` prefix      | `FakeSchemaLoader`       |
+| Element         | Convention             | Example                           |
+| --------------- | ---------------------- | --------------------------------- |
+| Ports           | PascalCase + `Port`    | `TemplateRepositoryPort`          |
+| Adapters        | PascalCase + `Adapter` | `TemplateFSAdapter`               |
+| Domain Services | PascalCase descriptive | `TemplateEngine`                  |
+| Error Types     | PascalCase + `Error`   | `FrontmatterError`, `SchemaError` |
+| Test Doubles    | `Fake`/`Stub` prefix   | `FakeSchemaLoader`                |
 
 Names **MUST NOT** repeat package context (e.g., avoid `template.TemplateEngine`). Keep receiver names 1‑2 letters.
 
@@ -67,5 +67,158 @@ Names **MUST NOT** repeat package context (e.g., avoid `template.TemplateEngine`
 - Exported identifiers **MUST** have GoDoc summarizing purpose, error conditions, and context requirements.
 - Concurrency and side effects **MUST** be documented where applicable.
 - Deprecated APIs **MUST** use the `Deprecated:` prefix with an alternative.
+
+## Validation Layer Separation
+
+Lithos implements validation at two distinct architectural layers with different responsibilities:
+
+### Validation Principles
+
+| Layer             | Concern   | Responsibility                                                             | Complexity                  |
+| ----------------- | --------- | -------------------------------------------------------------------------- | --------------------------- |
+| **Adapter Layer** | Syntactic | Structure, format, types (YAML parsing, regex compilation, file existence) | Low - infrastructure checks |
+| **Domain Layer**  | Semantic  | Business rules, schema compliance, cross-field validation                  | High - domain logic         |
+
+### Naming Conventions
+
+Validation method names **MUST** clearly indicate their layer:
+
+| Layer                   | Method Pattern        | Example                                                      |
+| ----------------------- | --------------------- | ------------------------------------------------------------ |
+| **Adapter (Syntactic)** | `ValidateSyntax()`    | `propertySpec.ValidateSyntax()` - regex compiles, min <= max |
+| **Adapter (Syntactic)** | `IsValidStructure()`  | `parser.IsValidStructure()` - YAML delimiters present        |
+| **Domain (Semantic)**   | `Validate()`          | `schema.Validate()` - business logic compliance              |
+| **Domain (Semantic)**   | `IsSchemaCompliant()` | `frontmatter.IsSchemaCompliant()` - schema rules satisfied   |
+
+**Rationale:** Clear naming prevents confusion about validation layer. Developers immediately know if validation checks infrastructure concerns (syntactic) or business rules (semantic).
+
+### Implementation Examples
+
+#### Syntactic Validation (Adapter Layer)
+
+```go
+// internal/adapters/spi/schema/validator.go
+func (v *SchemaValidator) ValidateSyntax(schema Schema) error {
+    // Check JSON structure
+    if schema.Name == "" {
+        return errors.New("schema name required")
+    }
+
+    // Check regex patterns compile
+    for _, prop := range schema.Properties {
+        if err := prop.Spec.ValidateSyntax(); err != nil {
+            return err
+        }
+    }
+
+    return nil
+}
+
+// PropertySpec variants implement ValidateSyntax
+func (s StringSpec) ValidateSyntax() error {
+    if s.Pattern != "" {
+        if _, err := regexp.Compile(s.Pattern); err != nil {
+            return fmt.Errorf("invalid pattern regex: %w", err)
+        }
+    }
+    return nil
+}
+```
+
+#### Semantic Validation (Domain Layer)
+
+```go
+// internal/domain/frontmatter_service.go
+func (s *FrontmatterService) IsSchemaCompliant(ctx context.Context, fm Frontmatter) error {
+    // Look up schema (business logic)
+    schema, err := s.schemaRegistry.GetSchema(ctx, fm.FileClass)
+    if err != nil {
+        return err
+    }
+
+    // Validate required fields (business rule)
+    for _, prop := range schema.Properties {
+        if prop.Required && !hasField(fm.Fields, prop.Name) {
+            return RequiredFieldError{Property: prop.Name}
+        }
+    }
+
+    // Validate against PropertySpec constraints (business rules)
+    for name, value := range fm.Fields {
+        prop := schema.GetProperty(name)
+        if err := s.validateConstraints(value, prop.Spec); err != nil {
+            return err
+        }
+    }
+
+    return nil
+}
+```
+
+### Decision Tree: Which Validation Layer?
+
+```
+Does validation require business context (schemas, domain rules)?
+├─ YES → Domain Layer (Semantic)
+│   ├─ Method name: Validate() or IsSchemaCompliant()
+│   ├─ Location: Domain services (FrontmatterService, SchemaEngine)
+│   └─ Examples: Schema compliance, required fields, type constraints
+│
+└─ NO → Adapter Layer (Syntactic)
+    ├─ Method name: ValidateSyntax() or IsValidStructure()
+    ├─ Location: Adapters (SchemaValidator, MarkdownParserAdapter)
+    └─ Examples: YAML parsing, regex compilation, file existence
+```
+
+### Critical Rules
+
+- Syntactic validation **MUST** occur in adapter layer before domain layer receives data
+- Semantic validation **MUST** occur in domain layer after syntactic validation passes
+- Adapters **MUST NOT** perform semantic validation (no schema lookups, no business rule checks)
+- Domain services **MUST NOT** perform syntactic validation (no regex compilation, no YAML parsing)
+- Method names **MUST** follow naming conventions to clearly indicate validation layer
+- Cross-layer validation calls **MUST** flow adapter → domain (never domain → adapter)
+
+### Validation Workflow Example
+
+```go
+// Adapter Layer: Syntactic validation
+func (a *SchemaLoaderAdapter) Load(ctx context.Context) ([]Schema, error) {
+    // 1. Parse JSON (syntactic)
+    schemas, err := a.parseSchemaFiles()
+    if err != nil {
+        return nil, err
+    }
+
+    // 2. Validate syntax (adapter layer)
+    validator := NewSchemaValidator()
+    if err := validator.ValidateSyntax(schemas); err != nil {
+        return nil, err
+    }
+
+    // 3. Pass to domain layer for semantic validation
+    return schemas, nil
+}
+
+// Domain Layer: Semantic validation
+func (e *SchemaEngine) Load(ctx context.Context) error {
+    // 1. Load from adapter (syntactic validation already done)
+    schemas, bank, err := e.schemaLoader.Load(ctx)
+    if err != nil {
+        return err
+    }
+
+    // 2. Validate business rules (semantic)
+    for _, schema := range schemas {
+        if err := schema.Validate(ctx); err != nil {
+            return err
+        }
+    }
+
+    // 3. Register for use by domain services
+    e.registry.RegisterSchemas(schemas)
+    return nil
+}
+```
 
 ---

@@ -63,27 +63,30 @@ This document captures comprehensive course correction analysis using the BMad C
 
 ## Document Control
 
-- **Version**: 1.11
+- **Version**: 1.14
 - **Date**: November 8, 2025
-- **Status**: IN PROGRESS - Research & Gap Analysis complete (corrected), ready for Entity Review
+- **Status**: ✅ COMPLETE - Course Correction Plan Finalized, ready for stakeholder review and Sprint 1 kickoff
 - **Distribution**: Development team, stakeholders
 
 ### Change Log
 
-| Date       | Version | Description                                                                                                                                                                                                                                                                             | Author     |
-| ---------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- |
-| 2025-11-08 | 1.11    | Corrected Gap 4.1: Acknowledged existing CQRS ports (CacheReaderPort/CacheWriterPort, VaultReaderPort/VaultWriterPort/VaultScannerPort), clarified gap is missing indexed metadata query layer (MetadataQueryPort) for O(1) lookups vs O(n) scanning | Sarah (PO) |
-| 2025-11-08 | 1.10    | Completed Comprehensive Gap Analysis: Identified 12 specific architectural gaps across 7 categories (File Metadata, Caching, Parsing, Storage, Templates, Generics, Paths) with current state, desired state, patterns, benefits, trade-offs, priorities, and recommendations for each | Sarah (PO) |
-| 2025-11-08 | 1.9     | Completed Research Phase 2 (Obsidian API): Documented TFile/TAbstractFile abstractions, MetadataCache pattern, Vault API operations, FileStats interface, atomic frontmatter updates, and comprehensive comparison to Lithos architecture with 5 potential improvements identified | Sarah (PO) |
-| 2025-11-08 | 1.8     | Corrected Research Phase 1 for project relevancy: Fixed io/fs VaultFile examples (removed incorrect frontmatter/schema assumptions), updated bbolt/sqlite schemas to handle mixed file types with nullable frontmatter, added fs.FileInfo simplification pattern, added Sys() extension pattern for notes | Sarah (PO) |
-| 2025-11-07 | 1.7     | Completed Research Phase 1: Documented comprehensive findings for io/fs, path/filepath, text/template, bbolt, modernc.org/sqlite, goldmark, and Go generics with patterns, best practices, options, and tradeoffs for all architectural decisions | Sarah (PO) |
-| 2025-11-06 | 1.6     | Completed Section 1 (Understand Trigger & Context) for all 8 groups: comprehensive analysis of 18+ architectural issues with critical evaluation, code evidence, and impact assessment; ready for Research Phase (Go stdlib + Obsidian patterns)                                        | Sarah (PO) |
-| 2025-11-06 | 1.5     | Restructured Structured Plan to phase-based approach (Section 1 all groups → Research → Entity Review → Synthesis → Epic Impact); moved Action Items under Structured Plan; added Epic Impact Assessment placeholder section                                                            | Sarah (PO) |
-| 2025-11-06 | 1.4     | Enhanced Executive Summary with full background (Nov 2 sprint change, 6 architectural questions, course correction trigger); replaced Action Items with detailed, specific breakdown for all 8 groups + research/synthesis phases                                                       | Sarah (PO) |
-| 2025-11-06 | 1.3     | Reorganized document structure: moved analysis results under corresponding groups in Structured Analysis Plan; added progress checkboxes to each group; removed duplicate sections; reduced file from 980 to 741 lines                                                                  | Sarah (PO) |
-| 2025-11-06 | 1.2     | Completed Group 1 Section 1 comprehensive analysis (Issues D1, B2, Hexagonal Principle) with code evidence from FrontmatterService, VaultReaderAdapter, and domain entities; ready for Section 2 Epic Impact Assessment                                                                 | Sarah (PO) |
-| 2025-11-05 | 1.1     | Established structured analysis plan (8 issue groups); revised Group 2 to include missing storage/CQRS issues; moved SQLite to storage group; increased issue count to 18+                                                                                                              | Sarah (PO) |
-| 2025-11-05 | 1.0     | Initial comprehensive issue inventory (15 issues); established hexagonal validation principle; completed Section 1 for Issue D1                                                                                                                                                         | Sarah (PO) |
+| Date       | Version | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Author     |
+| ---------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- |
+| 2025-11-08 | 1.14    | **✅ SYNTHESIS PHASE COMPLETE**: Finalized comprehensive course correction plan with cross-issue dependency map, consolidated findings, complete Epic 3 renumbering (31 stories), 5-sprint timeline with milestones (~Jan 17, 2026 completion), architecture documentation roadmap, success criteria, and risk mitigation. Course correction analysis complete - ready for execution.                                                                        | Sarah (PO) |
+| 2025-11-08 | 1.13    | **CORRECTED Epic Impact Assessment**: Replaced with properly incorporated version referencing all Actionable Insights (AI-1.1 through AI-3.1), Gap Analysis findings, and Entity Review recommendations. 14 new stories (45 points, 4-5 sprints) with dependency-ordered groups: GROUP A Foundation (3.17-3.18), GROUP B Storage (3.19-3.22), GROUP C Services (3.23-3.26), GROUP D Config (3.27-3.29), COMPLETION (3.30-3.31). Final Epic 3: 18→31 stories. | Sarah (PO) |
+| 2025-11-08 | 1.12    | Completed Entity Review (8 entities including VaultFile DTO redesign) and comprehensive Epic Impact Assessment for all 8 groups: identified 12 new stories totaling 35 points across 4-5 sprints, with detailed acceptance criteria, dependencies, risks, and final Epic 3 renumbering from 18→30 stories                                                                                                                                                    | Sarah (PO) |
+| 2025-11-08 | 1.11    | Corrected Gap 4.1: Acknowledged existing CQRS ports (CacheReaderPort/CacheWriterPort, VaultReaderPort/VaultWriterPort/VaultScannerPort), clarified gap is missing indexed metadata query layer (MetadataQueryPort) for O(1) lookups vs O(n) scanning                                                                                                                                                                                                         | Sarah (PO) |
+| 2025-11-08 | 1.10    | Completed Comprehensive Gap Analysis: Identified 12 specific architectural gaps across 7 categories (File Metadata, Caching, Parsing, Storage, Templates, Generics, Paths) with current state, desired state, patterns, benefits, trade-offs, priorities, and recommendations for each                                                                                                                                                                       | Sarah (PO) |
+| 2025-11-08 | 1.9     | Completed Research Phase 2 (Obsidian API): Documented TFile/TAbstractFile abstractions, MetadataCache pattern, Vault API operations, FileStats interface, atomic frontmatter updates, and comprehensive comparison to Lithos architecture with 5 potential improvements identified                                                                                                                                                                           | Sarah (PO) |
+| 2025-11-08 | 1.8     | Corrected Research Phase 1 for project relevancy: Fixed io/fs VaultFile examples (removed incorrect frontmatter/schema assumptions), updated bbolt/sqlite schemas to handle mixed file types with nullable frontmatter, added fs.FileInfo simplification pattern, added Sys() extension pattern for notes                                                                                                                                                    | Sarah (PO) |
+| 2025-11-07 | 1.7     | Completed Research Phase 1: Documented comprehensive findings for io/fs, path/filepath, text/template, bbolt, modernc.org/sqlite, goldmark, and Go generics with patterns, best practices, options, and tradeoffs for all architectural decisions                                                                                                                                                                                                            | Sarah (PO) |
+| 2025-11-06 | 1.6     | Completed Section 1 (Understand Trigger & Context) for all 8 groups: comprehensive analysis of 18+ architectural issues with critical evaluation, code evidence, and impact assessment; ready for Research Phase (Go stdlib + Obsidian patterns)                                                                                                                                                                                                             | Sarah (PO) |
+| 2025-11-06 | 1.5     | Restructured Structured Plan to phase-based approach (Section 1 all groups → Research → Entity Review → Synthesis → Epic Impact); moved Action Items under Structured Plan; added Epic Impact Assessment placeholder section                                                                                                                                                                                                                                 | Sarah (PO) |
+| 2025-11-06 | 1.4     | Enhanced Executive Summary with full background (Nov 2 sprint change, 6 architectural questions, course correction trigger); replaced Action Items with detailed, specific breakdown for all 8 groups + research/synthesis phases                                                                                                                                                                                                                            | Sarah (PO) |
+| 2025-11-06 | 1.3     | Reorganized document structure: moved analysis results under corresponding groups in Structured Analysis Plan; added progress checkboxes to each group; removed duplicate sections; reduced file from 980 to 741 lines                                                                                                                                                                                                                                       | Sarah (PO) |
+| 2025-11-06 | 1.2     | Completed Group 1 Section 1 comprehensive analysis (Issues D1, B2, Hexagonal Principle) with code evidence from FrontmatterService, VaultReaderAdapter, and domain entities; ready for Section 2 Epic Impact Assessment                                                                                                                                                                                                                                      | Sarah (PO) |
+| 2025-11-05 | 1.1     | Established structured analysis plan (8 issue groups); revised Group 2 to include missing storage/CQRS issues; moved SQLite to storage group; increased issue count to 18+                                                                                                                                                                                                                                                                                   | Sarah (PO) |
+| 2025-11-05 | 1.0     | Initial comprehensive issue inventory (15 issues); established hexagonal validation principle; completed Section 1 for Issue D1                                                                                                                                                                                                                                                                                                                              | Sarah (PO) |
 
 ### Conversation Log
 
@@ -125,15 +128,12 @@ Analysis must be comprehensive across all issues before proceeding.
 
 ### Category A: Architectural Questions (6 issues)
 
-#### Issue A1: Component Orchestration Architecture ❌ UNRESOLVED
+#### Issue A1: Component Orchestration Architecture ✅ DECIDED
 
-- **Status**: Reconsidering - need to evaluate event-driven vs orchestrator patterns
-- **Missing Consideration**: Event-driven architecture as solution to god-object problem
-- **Questions**:
-  - Should we use event-driven design for complex orchestration?
-  - Would domain events (NoteIndexed, FrontmatterValidated, SchemaLoaded) reduce coupling?
-  - How does event-driven approach compare to orchestrator pattern?
-- **Implementation Pending**: All refactoring work from Question 1 decision
+- **Status**: DECIDED - Event-Driven Architecture for Epic 3
+- **Decision**: Implement event-driven architecture with domain events to solve god-object problem and enable clean CQRS separation
+- **Domain Events**: NoteIndexed, VaultIndexingComplete, FrontmatterValidated, SchemaLoaded, SchemasReloaded
+- **Implementation**: Epic 3 Story 3.29 (Event Infrastructure) + Service refactoring to publish/subscribe events
 
 #### Issue A2: Singleton Pattern Implementation ✅ DECISION FINALIZED
 
@@ -403,60 +403,60 @@ Three types of validation, same method name:
 
 #### Epic Impact Assessment
 
-- [ ] Group 1: Validation Architecture
-  - [ ] Identify which Epic 3 stories require validation refactoring
-  - [ ] Determine story breakdown: Frontmatter entity refactoring, Note entity refactoring, validation layer separation
-  - [ ] Assess FrontmatterService.Extract() extraction to adapter layer
-  - [ ] Evaluate Template entity impact (Epic 5 dependency)
-  - [ ] Document refactoring sequence and dependencies
+- [x] Group 1: Validation Architecture
+  - [x] Identify which Epic 3 stories require validation refactoring
+  - [x] Determine story breakdown: Frontmatter entity refactoring, Note entity refactoring, validation layer separation
+  - [x] Assess FrontmatterService.Extract() extraction to adapter layer
+  - [x] Evaluate Template entity impact (Epic 5 dependency)
+  - [x] Document refactoring sequence and dependencies
 
-- [ ] Group 2: Storage Architecture, CQRS & DTOs
-  - [ ] Determine FileMetadata/VaultFile redesign leveraging fs.FileInfo
-  - [ ] Design BoltDB vs SQLite query routing strategy
-  - [ ] Select write coordination pattern (UoW, Saga, or dual-write)
-  - [ ] Plan storage staleness detection implementation
+- [x] Group 2: Storage Architecture, CQRS & DTOs
+  - [x] Determine FileMetadata/VaultFile redesign leveraging fs.FileInfo
+  - [x] Design BoltDB vs SQLite query routing strategy
+  - [x] Select write coordination pattern (UoW, Saga, or dual-write)
+  - [x] Plan storage staleness detection implementation
 
-- [ ] Group 3: Orchestration & Coordination
-  - [ ] Select orchestration pattern and document rationale
-  - [ ] Plan CLICommander refactoring if needed
-  - [ ] Design event infrastructure if event-driven approach selected
+- [x] Group 3: Orchestration & Coordination
+  - [x] Select orchestration pattern and document rationale
+  - [x] Plan CLICommander refactoring if needed
+  - [x] Design event infrastructure if event-driven approach selected
 
-- [ ] Group 4: Configuration Management
-  - [ ] Plan singleton accessor implementation (GetConfig, GetPropertyBank)
-  - [ ] Design test harness support for instance swapping
-  - [ ] Document Config embedded struct pattern for extensibility
+- [x] Group 4: Configuration Management
+  - [x] Plan singleton accessor implementation (GetConfig, GetPropertyBank)
+  - [x] Design test harness support for instance swapping
+  - [x] Document Config embedded struct pattern for extensibility
 
-- [ ] Group 5: Schema Domain System
-  - [ ] Determine port simplification approach
-  - [ ] Plan schema loading workflow refactoring
+- [x] Group 5: Schema Domain System
+  - [x] Determine port simplification approach
+  - [x] Plan schema loading workflow refactoring
 
-- [ ] Group 6: Template System (CRITICAL - Epic 5 Dependency)
-  - [ ] Make Template struct fundamental decision
-  - [ ] Assess Epic 5 (Template Engine) impact and timeline
-  - [ ] Plan Template entity refactoring if keeping struct
+- [x] Group 6: Template System (CRITICAL - Epic 5 Dependency)
+  - [x] Make Template struct fundamental decision
+  - [x] Assess Epic 5 (Template Engine) impact and timeline
+  - [x] Plan Template entity refactoring if keeping struct
 
-- [ ] Group 7: Documentation & Patterns (META)
-  - [ ] Synthesize patterns discovered across Groups 1-6
-  - [ ] Plan architecture documentation updates (components.md, data-models.md)
-  - [ ] Create pattern decision matrix
+- [x] Group 7: Documentation & Patterns (META)
+  - [x] Synthesize patterns discovered across Groups 1-6
+  - [x] Plan architecture documentation updates (components.md, data-models.md)
+  - [x] Create pattern decision matrix
 
-- [ ] Group 8: Implementation Blockers (META)
-  - [ ] Assess implementation roadmap across all groups
-  - [ ] Determine story renumbering strategy (push 3.17-3.18 after new stories)
-  - [ ] Plan documentation updates timing
+- [x] Group 8: Implementation Blockers (META)
+  - [x] Assess implementation roadmap across all groups
+  - [x] Determine story renumbering strategy (push 3.17-3.18 after new stories)
+  - [x] Plan documentation updates timing
 
 ### Synthesis Phase (After All Groups Complete)
 
-- [ ] Create cross-issue dependency map
-- [ ] Consolidate epic impact findings from all 8 groups
-- [ ] Develop comprehensive story plan:
-  - [ ] Story breakdown with acceptance criteria
-  - [ ] Story sequencing based on dependencies
-  - [ ] Effort estimates per story
-  - [ ] Risk assessment and mitigation strategies
-- [ ] Renumber Epic 3 stories (insert new stories, push 3.17-3.18 to end)
-- [ ] Update Epic 3 timeline and milestones
-- [ ] Final architecture documentation updates
+- [x] Create cross-issue dependency map
+- [x] Consolidate epic impact findings from all 8 groups
+- [x] Develop comprehensive story plan:
+  - [x] Story breakdown with acceptance criteria
+  - [x] Story sequencing based on dependencies
+  - [x] Effort estimates per story
+  - [x] Risk assessment and mitigation strategies
+- [x] Renumber Epic 3 stories (insert new stories, push 3.17-3.18 to end)
+- [x] Update Epic 3 timeline and milestones
+- [x] Final architecture documentation updates
 
 ---
 
@@ -1051,16 +1051,16 @@ for _, note := range sqliteNotes {
    - **Orchestration Question**: Should this be orchestrator responsibility or independent pattern?
    - **Pattern Options**: Unit of Work, Saga, Event-Driven, or orchestrator-coordinated?
 
-**Root Cause**: Orchestrator pattern attempted but resulted in god-object, no comprehensive evaluation of alternative patterns (Event-Driven, Saga, Mediator, etc.) and their interaction with DI pattern.
+**Root Cause**: Orchestrator pattern attempted but resulted in god-object (CLICommander with 7 dependencies, VaultIndexer with 7 dependencies). Course correction evaluation confirms event-driven architecture is the correct solution for Epic 3 to eliminate god-objects and enable clean CQRS separation.
 
 ##### 1.3 Is this a misunderstanding, missing consideration, or new information?
 
-**Missing Consideration (Primary)**: Alternative orchestration patterns not evaluated
+**Decision Made**: Event-Driven Architecture for Epic 3
 
-- **What was missed**: Comprehensive evaluation of orchestration patterns and their trade-offs
-- **Patterns not considered**: Event-Driven, Saga, Mediator, Command, Unit of Work
-- **Question not asked**: Which pattern best fits our orchestration needs?
-- **Consequence**: Defaulted to orchestrator pattern without comparing alternatives
+- **Pattern Chosen**: Event-driven architecture with domain events (NoteIndexed, VaultIndexingComplete, FrontmatterValidated, SchemaLoaded, SchemasReloaded)
+- **Rationale**: Solves god-object problem by decoupling services via events, enables clean CQRS command/query separation, and aligns with Issue B1 fix (QueryService command/query mixing)
+- **Implementation**: Story 3.29 implements EventBus, domain events, publishers, and subscribers
+- **God-Object Mitigation**: Services communicate via events instead of direct dependencies - CLICommander and VaultIndexer dependency counts drastically reduced
 
 **Missing Consideration (Secondary)**: DI pattern interdependence
 
@@ -2274,6 +2274,7 @@ This creates cascading technical debt: incomplete implementations block new stor
    - Use `Type()` for fast checks (no syscall), only call `Info()` when you need Size, ModTime, or Mode details
 
 3. **fs.FS** - Abstract filesystem interface:
+
    ```go
    type FS interface {
        Open(name string) (File, error)
@@ -2379,7 +2380,7 @@ This creates cascading technical debt: incomplete implementations block new stor
    })
    ```
 
-4. **Testing with fstest.MapFS** - In-memory filesystem for testing:
+5. **Testing with fstest.MapFS** - In-memory filesystem for testing:
    ```go
    fsys := fstest.MapFS{
        "notes/test.md": &fstest.MapFile{
@@ -3408,7 +3409,6 @@ NOTE: The `files` bucket contains ALL vault files. Index buckets only contain en
    ```
 
    NOTE: Not all vault files have frontmatter. The `frontmatter` column is nullable and queries must handle NULL values.
-
    - **Problem**: `json_extract()` parses JSON on every call → slow for 100k+ records
 
 2. **VIRTUAL Generated Columns** (Computed at Read Time):
@@ -4708,23 +4708,23 @@ Obsidian uses a class hierarchy for vault files:
 ```typescript
 // Base class for all vault items
 abstract class TAbstractFile {
-    vault: Vault;         // Reference to containing vault
-    path: string;         // Vault-relative path with extension
-    name: string;         // File or folder name
-    parent: TFolder;      // Parent folder reference
+  vault: Vault; // Reference to containing vault
+  path: string; // Vault-relative path with extension
+  name: string; // File or folder name
+  parent: TFolder; // Parent folder reference
 }
 
 // Represents a markdown file or other file type
 class TFile extends TAbstractFile {
-    stat: FileStats;      // File statistics (ctime, mtime, size)
-    basename: string;     // Filename without extension
-    extension: string;    // File extension
+  stat: FileStats; // File statistics (ctime, mtime, size)
+  basename: string; // Filename without extension
+  extension: string; // File extension
 }
 
 // Represents a folder
 class TFolder extends TAbstractFile {
-    children: TAbstractFile[];  // Child files and folders
-    isRoot(): boolean;          // Check if vault root
+  children: TAbstractFile[]; // Child files and folders
+  isRoot(): boolean; // Check if vault root
 }
 ```
 
@@ -4732,75 +4732,75 @@ class TFolder extends TAbstractFile {
 
 ```typescript
 // Obsidian uses vault-relative paths throughout
-file.path  // "folder/subfolder/note.md" (vault-relative with extension)
-file.basename  // "note" (filename without extension)
-file.extension // "md"
-file.parent.path // "folder/subfolder"
+file.path; // "folder/subfolder/note.md" (vault-relative with extension)
+file.basename; // "note" (filename without extension)
+file.extension; // "md"
+file.parent.path; // "folder/subfolder"
 ```
 
 **FileStats Interface**:
 
 ```typescript
 interface FileStats {
-    ctime: number;  // Creation time (milliseconds since epoch)
-    mtime: number;  // Modification time (milliseconds since epoch)
-    size: number;   // File size in bytes
+  ctime: number; // Creation time (milliseconds since epoch)
+  mtime: number; // Modification time (milliseconds since epoch)
+  size: number; // File size in bytes
 }
 
 // Usage:
 const file: TFile = app.vault.getAbstractFileByPath("note.md");
-file.stat.mtime  // Modification timestamp
-file.stat.size   // File size
+file.stat.mtime; // Modification timestamp
+file.stat.size; // File size
 ```
 
 **Comparison to Lithos FileMetadata**:
 
-| Property     | Obsidian TFile         | Lithos FileMetadata           | Analysis                                      |
-| ------------ | ---------------------- | ----------------------------- | --------------------------------------------- |
-| Path         | `path` (vault-relative) | `Path` (absolute)             | Obsidian normalizes to vault-relative         |
-| Basename     | `basename` (property)  | `Basename` (cached, computed) | Obsidian provides directly, Lithos caches     |
-| Extension    | `extension` (property) | `Ext` (cached, computed)      | Obsidian provides directly, Lithos caches     |
-| Folder       | `parent.path` (object) | `Folder` (cached, computed)   | Obsidian uses object graph, Lithos caches     |
-| ModTime      | `stat.mtime`           | `ModTime` (duplicated)        | Both store modification time                  |
-| Size         | `stat.size`            | `Size` (duplicated)           | Both store file size                          |
-| MimeType     | N/A                    | `MimeType` (cached, computed) | Obsidian doesn't include, Lithos computes     |
-| Vault Ref    | `vault` (object)       | N/A                           | Obsidian maintains vault reference            |
-| Parent Ref   | `parent` (object)      | N/A                           | Obsidian maintains object graph               |
+| Property   | Obsidian TFile          | Lithos FileMetadata           | Analysis                                  |
+| ---------- | ----------------------- | ----------------------------- | ----------------------------------------- |
+| Path       | `path` (vault-relative) | `Path` (absolute)             | Obsidian normalizes to vault-relative     |
+| Basename   | `basename` (property)   | `Basename` (cached, computed) | Obsidian provides directly, Lithos caches |
+| Extension  | `extension` (property)  | `Ext` (cached, computed)      | Obsidian provides directly, Lithos caches |
+| Folder     | `parent.path` (object)  | `Folder` (cached, computed)   | Obsidian uses object graph, Lithos caches |
+| ModTime    | `stat.mtime`            | `ModTime` (duplicated)        | Both store modification time              |
+| Size       | `stat.size`             | `Size` (duplicated)           | Both store file size                      |
+| MimeType   | N/A                     | `MimeType` (cached, computed) | Obsidian doesn't include, Lithos computes |
+| Vault Ref  | `vault` (object)        | N/A                           | Obsidian maintains vault reference        |
+| Parent Ref | `parent` (object)       | N/A                           | Obsidian maintains object graph           |
 
 **MetadataCache - Cached Frontmatter and Links**:
 
 ```typescript
 // Central metadata cache for vault
 class MetadataCache extends Events {
-    // Get cached metadata for a file
-    getFileCache(file: TFile): CachedMetadata | null;
-    getCache(path: string): CachedMetadata | null;
+  // Get cached metadata for a file
+  getFileCache(file: TFile): CachedMetadata | null;
+  getCache(path: string): CachedMetadata | null;
 
-    // Get first file matching linkpath from source
-    getFirstLinkpathDest(linkpath: string, sourcePath: string): TFile | null;
+  // Get first file matching linkpath from source
+  getFirstLinkpathDest(linkpath: string, sourcePath: string): TFile | null;
 
-    // Resolved and unresolved link tracking
-    resolvedLinks: Record<string, Record<string, number>>;
-    unresolvedLinks: Record<string, Record<string, number>>;
+  // Resolved and unresolved link tracking
+  resolvedLinks: Record<string, Record<string, number>>;
+  unresolvedLinks: Record<string, Record<string, number>>;
 }
 
 // Cached metadata structure
 interface CachedMetadata {
-    links?: LinkCache[];              // [[wikilinks]] and [markdown](links)
-    embeds?: EmbedCache[];            // ![[embeds]]
-    tags?: TagCache[];                // #tags
-    headings?: HeadingCache[];        // # Headings
-    frontmatter?: FrontMatterCache;   // YAML frontmatter
-    frontmatterPosition?: Pos;        // Position in file
-    frontmatterLinks?: FrontmatterLinkCache[];  // Links in frontmatter
-    sections?: SectionCache[];        // Document sections
-    listItems?: ListItemCache[];      // List items
-    blocks?: Record<string, BlockCache>;  // ^block-refs
+  links?: LinkCache[]; // [[wikilinks]] and [markdown](links)
+  embeds?: EmbedCache[]; // ![[embeds]]
+  tags?: TagCache[]; // #tags
+  headings?: HeadingCache[]; // # Headings
+  frontmatter?: FrontMatterCache; // YAML frontmatter
+  frontmatterPosition?: Pos; // Position in file
+  frontmatterLinks?: FrontmatterLinkCache[]; // Links in frontmatter
+  sections?: SectionCache[]; // Document sections
+  listItems?: ListItemCache[]; // List items
+  blocks?: Record<string, BlockCache>; // ^block-refs
 }
 
 // Frontmatter is just key-value pairs
 interface FrontMatterCache {
-    [key: string]: any;  // No schema enforcement in cache
+  [key: string]: any; // No schema enforcement in cache
 }
 ```
 
@@ -4808,8 +4808,8 @@ interface FrontMatterCache {
 
 ```typescript
 // File data (TFile) and cached metadata (CachedMetadata) are SEPARATE
-const file = app.vault.getAbstractFileByPath("note.md");  // File object
-const metadata = app.metadataCache.getFileCache(file);    // Cached metadata
+const file = app.vault.getAbstractFileByPath("note.md"); // File object
+const metadata = app.metadataCache.getFileCache(file); // Cached metadata
 
 // File object does NOT contain frontmatter
 // Frontmatter accessed through MetadataCache
@@ -4819,23 +4819,23 @@ const metadata = app.metadataCache.getFileCache(file);    // Cached metadata
 
 ```typescript
 class Vault {
-    // Read operations
-    read(file: TFile): Promise<string>;           // Read file content from disk
-    cachedRead(file: TFile): Promise<string>;     // Read from cache (display only)
+  // Read operations
+  read(file: TFile): Promise<string>; // Read file content from disk
+  cachedRead(file: TFile): Promise<string>; // Read from cache (display only)
 
-    // File lookup
-    getAbstractFileByPath(path: string): TAbstractFile | null;
-    getMarkdownFiles(): TFile[];                  // All markdown files
-    getFiles(): TFile[];                          // All files
+  // File lookup
+  getAbstractFileByPath(path: string): TAbstractFile | null;
+  getMarkdownFiles(): TFile[]; // All markdown files
+  getFiles(): TFile[]; // All files
 
-    // Write operations
-    create(path: string, data: string): Promise<TFile>;
-    modify(file: TFile, data: string): Promise<void>;
-    rename(file: TAbstractFile, newPath: string): Promise<void>;
+  // Write operations
+  create(path: string, data: string): Promise<TFile>;
+  modify(file: TFile, data: string): Promise<void>;
+  rename(file: TAbstractFile, newPath: string): Promise<void>;
 
-    // Delete operations
-    delete(file: TAbstractFile): Promise<void>;   // Permanent deletion
-    trash(file: TAbstractFile): Promise<void>;    // Move to trash
+  // Delete operations
+  delete(file: TAbstractFile): Promise<void>; // Permanent deletion
+  trash(file: TAbstractFile): Promise<void>; // Move to trash
 }
 ```
 
@@ -4844,13 +4844,13 @@ class Vault {
 ```typescript
 // FileManager.processFrontMatter() - Atomic read-modify-write
 app.fileManager.processFrontMatter(file, (frontmatter) => {
-    // Callback receives frontmatter object
-    // Mutate synchronously
-    frontmatter.title = "New Title";
-    frontmatter.tags = ["tag1", "tag2"];
+  // Callback receives frontmatter object
+  // Mutate synchronously
+  frontmatter.title = "New Title";
+  frontmatter.tags = ["tag1", "tag2"];
 
-    // No return needed - mutations applied atomically
-    // Prevents concurrent modification data loss
+  // No return needed - mutations applied atomically
+  // Prevents concurrent modification data loss
 });
 ```
 
@@ -4867,17 +4867,17 @@ app.fileManager.processFrontMatter(file, (frontmatter) => {
 
 **Comparison to Lithos Architecture**:
 
-| Aspect                   | Obsidian Pattern                                                       | Lithos Current Implementation                     | Gap Analysis                                                            |
-| ------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------- |
-| File Abstraction         | TFile (properties only)                                                | VaultFile (FileMetadata + Content)                | Obsidian separates metadata from file data                              |
-| Path Storage             | Vault-relative                                                         | Absolute                                          | Obsidian normalizes to vault context                                    |
-| Basename/Ext             | Properties (computed on-demand?)                                       | Cached fields                                     | Obsidian may compute dynamically from `path`                            |
-| Frontmatter Storage      | Separate MetadataCache                                                 | Parsed from Content in VaultFile                  | Obsidian caches frontmatter separately                                  |
-| Object Relationships     | TFile → TFolder → Vault (object graph)                                 | Flat FileMetadata                                 | Obsidian maintains navigable structure                                  |
-| Metadata Caching         | Central MetadataCache with events                                      | No dedicated cache (parse on-demand)              | Obsidian caches parsed metadata for performance                         |
-| Atomic Updates           | processFrontMatter() callback                                          | Direct file writes                                | Obsidian prevents race conditions                                       |
-| Read Strategies          | read() vs cachedRead()                                                 | Single read pattern                               | Obsidian optimizes for display vs modification                          |
-| Link Resolution          | MetadataCache tracks resolved/unresolved links                         | No link tracking                                  | Obsidian provides graph analysis                                        |
+| Aspect               | Obsidian Pattern                               | Lithos Current Implementation        | Gap Analysis                                    |
+| -------------------- | ---------------------------------------------- | ------------------------------------ | ----------------------------------------------- |
+| File Abstraction     | TFile (properties only)                        | VaultFile (FileMetadata + Content)   | Obsidian separates metadata from file data      |
+| Path Storage         | Vault-relative                                 | Absolute                             | Obsidian normalizes to vault context            |
+| Basename/Ext         | Properties (computed on-demand?)               | Cached fields                        | Obsidian may compute dynamically from `path`    |
+| Frontmatter Storage  | Separate MetadataCache                         | Parsed from Content in VaultFile     | Obsidian caches frontmatter separately          |
+| Object Relationships | TFile → TFolder → Vault (object graph)         | Flat FileMetadata                    | Obsidian maintains navigable structure          |
+| Metadata Caching     | Central MetadataCache with events              | No dedicated cache (parse on-demand) | Obsidian caches parsed metadata for performance |
+| Atomic Updates       | processFrontMatter() callback                  | Direct file writes                   | Obsidian prevents race conditions               |
+| Read Strategies      | read() vs cachedRead()                         | Single read pattern                  | Obsidian optimizes for display vs modification  |
+| Link Resolution      | MetadataCache tracks resolved/unresolved links | No link tracking                     | Obsidian provides graph analysis                |
 
 **Potential Improvements for Lithos**:
 
@@ -5347,6 +5347,7 @@ type MarkdownParserPort interface {
 **Current State**:
 
 CQRS read/write separation already implemented:
+
 ```go
 // /internal/ports/spi/cache.go
 type CacheWriterPort interface {
@@ -5377,11 +5378,13 @@ type VaultScannerPort interface {
 ```
 
 **Issue**: While CQRS read/write separation exists, there's **no indexed metadata query layer**. Complex queries (find all notes with tag X, find notes linking to Y) require:
+
 1. `CacheReaderPort.List()` to get all notes
 2. Iterate through all notes, filtering by frontmatter fields
 3. O(n) scanning instead of O(1) indexed lookup
 
 No support for:
+
 - Indexed queries by tag, frontmatter field
 - Backlink queries (find notes linking to X)
 - Full-text search on metadata
@@ -5713,20 +5716,20 @@ func (a *FileAdapter) Read(ctx context.Context, file VaultFile) ([]byte, error) 
 
 ### Gap Summary
 
-| Gap ID | Category                  | Priority | Affected Groups | Complexity | Impact                                               |
-| ------ | ------------------------- | -------- | --------------- | ---------- | ---------------------------------------------------- |
-| 1.1    | FileMetadata Duplication  | HIGH     | 1 (DTO), 2      | LOW        | Eliminate duplication, use fs.FileInfo               |
-| 1.2    | Absolute Paths            | MEDIUM   | 2, Future       | LOW        | Cache portability, multi-vault support               |
-| 1.3    | File + Content Conflation | MEDIUM   | 2, 3            | MEDIUM     | Memory efficiency, faster metadata queries           |
-| 2.1    | No Metadata Cache         | HIGH     | 2, 3, 1 (B2)    | HIGH       | Query performance, CQRS implementation               |
-| 2.2    | Single Read Pattern       | LOW      | 2               | LOW        | Prevent stale overwrites                             |
-| 3.1    | Goldmark in Domain        | HIGH     | 1 (B2)          | MEDIUM     | Hexagonal architecture compliance                    |
-| 3.2    | No AST Metadata           | MEDIUM   | 1 (B2), Future  | MEDIUM     | Enable graph queries, backlinks                      |
-| 4.1    | No Indexed Query Layer    | HIGH     | 2, 3            | HIGH       | O(1) indexed queries vs O(n) scanning                |
-| 4.2    | No Hot/Deep Separation    | MEDIUM   | 2, 3            | HIGH       | Performance targets (<1ms hot, <50ms deep)           |
-| 5.1    | Custom Template Cache     | LOW      | 1               | LOW        | Simplify using stdlib composition                    |
-| 6.1    | No Generic Cache          | MEDIUM   | Cross-cutting   | MEDIUM     | Type-safe infrastructure, reusability                |
-| 7.1    | Platform-Specific Paths   | LOW      | 2               | LOW        | Cross-platform portability                           |
+| Gap ID | Category                  | Priority | Affected Groups | Complexity | Impact                                     |
+| ------ | ------------------------- | -------- | --------------- | ---------- | ------------------------------------------ |
+| 1.1    | FileMetadata Duplication  | HIGH     | 1 (DTO), 2      | LOW        | Eliminate duplication, use fs.FileInfo     |
+| 1.2    | Absolute Paths            | MEDIUM   | 2, Future       | LOW        | Cache portability, multi-vault support     |
+| 1.3    | File + Content Conflation | MEDIUM   | 2, 3            | MEDIUM     | Memory efficiency, faster metadata queries |
+| 2.1    | No Metadata Cache         | HIGH     | 2, 3, 1 (B2)    | HIGH       | Query performance, CQRS implementation     |
+| 2.2    | Single Read Pattern       | LOW      | 2               | LOW        | Prevent stale overwrites                   |
+| 3.1    | Goldmark in Domain        | HIGH     | 1 (B2)          | MEDIUM     | Hexagonal architecture compliance          |
+| 3.2    | No AST Metadata           | MEDIUM   | 1 (B2), Future  | MEDIUM     | Enable graph queries, backlinks            |
+| 4.1    | No Indexed Query Layer    | HIGH     | 2, 3            | HIGH       | O(1) indexed queries vs O(n) scanning      |
+| 4.2    | No Hot/Deep Separation    | MEDIUM   | 2, 3            | HIGH       | Performance targets (<1ms hot, <50ms deep) |
+| 5.1    | Custom Template Cache     | LOW      | 1               | LOW        | Simplify using stdlib composition          |
+| 6.1    | No Generic Cache          | MEDIUM   | Cross-cutting   | MEDIUM     | Type-safe infrastructure, reusability      |
+| 7.1    | Platform-Specific Paths   | LOW      | 2               | LOW        | Cross-platform portability                 |
 
 **Priority Definitions**:
 
@@ -6229,24 +6232,19 @@ type VaultWriterPort interface {
 #### Implementation Sequence for Epic 3
 
 **Phase 1: Foundation (Stories 3.1-3.2)**
+
 1. AI-1.1: FileMetadata → fs.FileInfo (LOW effort, HIGH impact)
 2. AI-1.2: Vault-relative paths (MEDIUM effort, enables portability)
 3. AI-1.3: Extract MarkdownParserPort (MEDIUM effort, hexagonal compliance)
 
-**Phase 2: Query Architecture (Stories 3.3-3.4)**
-4. AI-1.4: MetadataQueryPort (HIGH effort, enables indexed queries)
-5. AI-2.1: MetadataCacheService (MEDIUM effort, performance)
+**Phase 2: Query Architecture (Stories 3.3-3.4)** 4. AI-1.4: MetadataQueryPort (HIGH effort, enables indexed queries) 5. AI-2.1: MetadataCacheService (MEDIUM effort, performance)
 
-**Phase 3: Optimization (Story 3.5)**
-6. AI-2.2: Separate file metadata/content (MEDIUM effort, memory efficiency)
-7. AI-2.3: text/template composition (LOW effort, code simplification)
+**Phase 3: Optimization (Story 3.5)** 6. AI-2.2: Separate file metadata/content (MEDIUM effort, memory efficiency) 7. AI-2.3: text/template composition (LOW effort, code simplification)
 
-**Phase 4: Post-MVP**
-8. AI-3.1: Generic Cache[K,V] (MEDIUM effort, nice-to-have)
-9. AI-3.2: Path normalization (LOW effort, cross-platform)
-10. AI-3.3: Read/CachedRead (LOW effort, safety enhancement)
+**Phase 4: Post-MVP** 8. AI-3.1: Generic Cache[K,V] (MEDIUM effort, nice-to-have) 9. AI-3.2: Path normalization (LOW effort, cross-platform) 10. AI-3.3: Read/CachedRead (LOW effort, safety enhancement)
 
 **Estimated Total Effort**:
+
 - Phase 1: 3-4 stories
 - Phase 2: 2-3 stories
 - Phase 3: 1-2 stories
@@ -6265,6 +6263,7 @@ This section provides systematic evaluation of all domain entities for architect
 #### Entity 1.1: Schema (/internal/domain/schema.go)
 
 **Current State**:
+
 ```go
 type Schema struct {
     Name               string
@@ -6281,17 +6280,20 @@ func (s *Schema) Validate(ctx context.Context) error
 **Assessment**:
 
 ✅ **CORRECT** - Rich domain model with behavior
+
 - Has `Validate()` method with domain logic (not infrastructure)
 - Validates structural integrity: name not empty, excludes only with extends, unique properties
 - Defensive copies in `NewSchema()` constructor
 - Short-circuit validation caching with `validated` flag
 
 ❌ **ISSUE** - ResolvedProperties leaks adapter concern into domain
+
 - `ResolvedProperties` is populated by `SchemaResolver` service (adapter layer)
 - Domain entity should not have fields populated by adapters
 - Breaks clean domain/adapter separation
 
 **Recommendation**:
+
 ```go
 // OPTION A: Move resolution to domain service
 type SchemaResolver interface {  // Domain service
@@ -6315,6 +6317,7 @@ type ResolvedSchema struct {  // Separate type
 #### Entity 1.2: Property (/internal/domain/property.go)
 
 **Current State**:
+
 ```go
 type Property struct {
     ID        string  // Auto-generated from hash(Name + Spec)
@@ -6332,20 +6335,24 @@ func (p *Property) Validate(ctx context.Context) error
 **Assessment**:
 
 ✅ **CORRECT** - DDD Entity with identity and behavior
+
 - Has unique `ID` (entity identity requirement)
 - Has `Validate()` with domain logic
 - Delegates type-specific validation to `PropertySpec` (good composition)
 - Short-circuit caching with `validated` flag
 
 ✅ **GOOD PRACTICE** - Deterministic ID generation
+
 - Uses `sha256(name + spec)` for reproducible IDs
 - Ensures same property definition always gets same ID
 
 ⚠️ **MINOR ISSUE** - `validated` flag is mutable state
+
 - Breaks immutability principle
 - Could cause issues with concurrent validation
 
 **Recommendation**:
+
 ```go
 // Remove mutable validated flag
 // Let caller cache validation results if needed
@@ -6371,6 +6378,7 @@ func (p Property) Validate(ctx context.Context) error {
 #### Entity 1.3: PropertyBank (/internal/domain/property_bank.go)
 
 **Current State**:
+
 ```go
 type PropertyBank struct {
     Properties map[string]Property
@@ -6383,16 +6391,19 @@ func (pb *PropertyBank) Lookup(id string) (Property, bool)
 **Assessment**:
 
 ✅ **CORRECT** - Singleton registry pattern
+
 - Single instance per application lifecycle
 - Defensive copy in `NewPropertyBank()`
 - Validates all properties on construction
 
 ⚠️ **DESIGN QUESTION** - Is this domain or infrastructure?
+
 - Acts as repository (typically infrastructure)
 - But contains domain logic (property definitions)
 - **Decision**: Correctly placed in domain as it's a domain registry
 
 ✅ **GOOD PRACTICE** - Returns copies for immutability
+
 - `Lookup()` returns property copy, not reference
 
 **No changes needed** - Well-designed singleton registry
@@ -6406,6 +6417,7 @@ func (pb *PropertyBank) Lookup(id string) (Property, bool)
 #### Entity 2.1: Note (/internal/domain/note.go)
 
 **Current State**:
+
 ```go
 type Note struct {
     ID          NoteID
@@ -6421,11 +6433,13 @@ func (n Note) SchemaName() string {
 **Assessment**:
 
 ❌ **ANEMIC MODEL** - Pure data structure with no behavior
+
 - Only has one delegating method
 - No validation, no business logic
 - Acts as simple data container
 
 **Missing Behavior**:
+
 1. Note-level validation (beyond frontmatter)
 2. Schema compliance checking
 3. Link resolution
@@ -6433,6 +6447,7 @@ func (n Note) SchemaName() string {
 5. Note lifecycle methods (create, update timestamps)
 
 **Recommendation**:
+
 ```go
 // Add rich behavior
 type Note struct {
@@ -6478,6 +6493,7 @@ func (n *Note) UpdateFrontmatter(fm Frontmatter) {
 #### Entity 2.2: Frontmatter (/internal/domain/note.go)
 
 **Current State**:
+
 ```go
 type Frontmatter struct {
     FileClass string
@@ -6493,17 +6509,20 @@ func (f Frontmatter) SchemaName() string {
 **Assessment**:
 
 ❌ **ANEMIC MODEL** - Pure data structure
+
 - Only has accessor method
 - No validation
 - No field manipulation methods
 
 **Missing Behavior**:
+
 1. Field get/set with type safety
 2. Validation against schema
 3. Required field checking
 4. Default value application
 
 **Recommendation**:
+
 ```go
 type Frontmatter struct {
     FileClass string
@@ -6576,6 +6595,7 @@ func (f Frontmatter) WithField(key string, value any) Frontmatter {
 #### Entity 3.1: Template (/internal/domain/template.go)
 
 **Current State**:
+
 ```go
 type Template struct {
     ID      TemplateID
@@ -6586,11 +6606,13 @@ type Template struct {
 **Assessment**:
 
 ✅ **INTENTIONALLY ANEMIC** - Explicitly documented as pure data
+
 - Godoc states: "anemic domain model pattern where business logic resides in services"
 - Template rendering is infrastructure (uses text/template)
 - Validation is syntactic (belongs in adapter)
 
 ✅ **CORRECT SEPARATION**:
+
 - Domain: Template identity and content (what it is)
 - Service: TemplateEngine (what to do with it)
 - Adapter: TemplatePort for loading
@@ -6606,6 +6628,7 @@ type Template struct {
 #### Entity 4.1: Config (/internal/domain/config.go)
 
 **Current State**:
+
 ```go
 type Config struct {
     VaultPath        string
@@ -6626,15 +6649,18 @@ func (c Config) PropertyBankPath() string {
 **Assessment**:
 
 ✅ **CORRECT AS VALUE OBJECT** - Immutable configuration
+
 - Documented as "immutable value object"
 - Constructor applies defaults
 - Single helper method for derived path
 
 ⚠️ **DESIGN QUESTION** - Monolithic vs composed?
+
 - Single flat struct with 7 fields
 - Could be broken into logical groups
 
 **Recommendation** (OPTIONAL):
+
 ```go
 // Option A: Keep flat (current - simple, works)
 type Config struct {
@@ -6676,72 +6702,1792 @@ type LoggingConfig struct {
 
 ---
 
-### Summary of Entity Issues
-
-| Entity       | Type          | Current State | Issues                               | Priority | Effort |
-| ------------ | ------------- | ------------- | ------------------------------------ | -------- | ------ |
-| Schema       | Rich Model    | ✅ Good       | ResolvedProperties leaks adapter     | MEDIUM   | LOW    |
-| Property     | Rich Model    | ✅ Good       | Mutable validated flag               | LOW      | LOW    |
-| PropertyBank | Registry      | ✅ Good       | None                                 | N/A      | N/A    |
-| **Note**     | **Anemic**    | ❌ **Issue**  | **Missing validation, behavior**     | HIGH     | MEDIUM |
-| **Frontmatter** | **Anemic** | ❌ **Issue**  | **Missing type-safe access, validation** | HIGH | MEDIUM |
-| Template     | Intentional   | ✅ Good       | None (intentionally anemic)          | N/A      | N/A    |
-| Config       | Value Object  | ✅ Good       | Optional composition improvement     | LOW      | LOW    |
-
-**Critical Findings**:
-1. **Note and Frontmatter are anemic** - Need rich behavior for domain logic
-2. **Schema.ResolvedProperties** leaks adapter concern - Minor architectural issue
-3. All other entities are correctly designed
-
----
-- [ ] Needs method review: Validate(), Resolve(), computed paths
-
-### System 4: Template System
-
-- [ ] Template - CRITICAL QUESTIONS:
-  - Name conflict with text/template package?
-  - Do we even need Template struct given stdlib?
-  - If kept, should embed \*template.Template?
-  - Is it fully utilizing text/template features?
-
 ### System 5: File/Storage DTOs
 
-- [ ] FileMetadata - needs redesign with fs.FileInfo
-- [ ] VaultFile - needs redesign review
+#### 8. VaultFile (Infrastructure DTO)
+
+**Location**: `internal/shared/dto/file.go`
+
+**Type Classification**: Infrastructure Data Transfer Object
+
+**Current Implementation**:
+
+```go
+// FileMetadata - embedded in VaultFile
+type FileMetadata struct {
+    Path     string    // Absolute path (❌ Gap 1.2)
+    Basename string    // Computed
+    Folder   string    // Computed
+    Ext      string    // Computed
+    ModTime  time.Time // ❌ Duplicates fs.FileInfo (Gap 1.1)
+    Size     int64     // ❌ Duplicates fs.FileInfo (Gap 1.1)
+    MimeType string    // Computed
+}
+
+// VaultFile - combines metadata + content
+type VaultFile struct {
+    FileMetadata         // ❌ Embeds FileMetadata
+    Content      []byte  // ❌ Conflates file + content (Gap 1.3)
+}
+
+// Constructor
+func NewFileMetadata(path string, info fs.FileInfo) FileMetadata
+func NewVaultFile(metadata FileMetadata, content []byte) VaultFile
+```
+
+**Assessment**:
+
+❌ **CRITICAL REDESIGN NEEDED** - Multiple architectural issues identified in Gap Analysis
+
+**Issue 1: FileMetadata Duplicates fs.FileInfo (Gap 1.1)**
+
+- **Problem**: FileMetadata reimplements fs.FileInfo functionality (ModTime, Size)
+- **Evidence**: Go stdlib provides `fs.FileInfo` interface with ModTime(), Size(), Mode(), IsDir()
+- **Research Finding**: Obsidian uses FileStats interface paralleling fs.FileInfo
+- **Impact**: Unnecessary code duplication, potential inconsistency with fs.FileInfo values
+- **Correct Approach**: Use fs.FileInfo directly, add only vault-specific fields
+
+**Issue 2: Absolute Paths Hinder Portability (Gap 1.2)**
+
+- **Problem**: FileMetadata.Path stores absolute paths (line 33-35 in dto/file.go)
+- **Evidence**: Documentation says "Path is the absolute path to the file"
+- **Impact**: Cache not portable between systems (MacOS → Linux path incompatibility)
+- **Correct Approach**: Store vault-relative paths, compute absolute on-demand
+
+**Issue 3: File + Content Conflation (Gap 1.3)**
+
+- **Problem**: VaultFile always loads Content even when only metadata needed
+- **Evidence**: VaultFile struct combines FileMetadata + Content []byte
+- **Impact**: Memory inefficiency - metadata queries load full file content unnecessarily
+- **Research Finding**: Obsidian separates TFile (metadata) from CachedMetadata (extracted content)
+- **Correct Approach**: Separate file metadata scanning from content loading
+
+**Issue 4: Platform-Specific Path Handling (Gap 7.1)**
+
+- **Problem**: Path computations may not handle cross-platform differences
+- **Evidence**: Uses filepath.Dir, filepath.Base, filepath.Ext (platform-dependent)
+- **Impact**: Cache portability issues (Windows backslash vs Unix forward slash)
+- **Correct Approach**: Use filepath.ToSlash for vault-relative paths
+
+**Issue 5: DTO Not Storage-Focused (Gap 1.1, Issue D2)**
+
+- **Problem**: Single generic DTO for all storage systems (BoltDB, SQLite, JSON export)
+- **Evidence**: Same VaultFile used for scanning, hot cache, deep storage
+- **Impact**: Hot cache stores unnecessary fields; deep storage lacks query optimization
+- **Research Finding**: Storage-specific needs differ (BoltDB hot metadata vs SQLite queryable data)
+- **Correct Approach**: BoltDBMetadata, SQLiteMetadata, FilePathInfo separation
+
+**Recommendation**:
+
+**Phase 1: Leverage fs.FileInfo (Resolve Gap 1.1, 7.1)**
+
+```go
+// BEFORE (current - duplicates fs.FileInfo)
+type FileMetadata struct {
+    Path     string
+    Basename string
+    Folder   string
+    Ext      string
+    ModTime  time.Time  // ❌ Duplicates fs.FileInfo.ModTime()
+    Size     int64      // ❌ Duplicates fs.FileInfo.Size()
+    MimeType string
+}
+
+// AFTER (leverage stdlib)
+type VaultFileInfo struct {
+    // Vault-relative path (cross-platform portable)
+    VaultPath string  // "projects/lithos.md" (forward slashes via filepath.ToSlash)
+
+    // Use fs.FileInfo directly (don't duplicate)
+    Info fs.FileInfo  // Provides ModTime(), Size(), Mode(), IsDir()
+
+    // Vault-specific computed fields only
+    Basename string   // "lithos" (filename without path/extension)
+    Ext      string   // ".md"
+    MimeType string   // "text/markdown"
+}
+
+// Factory leverages fs.FileInfo + vault root
+func NewVaultFileInfo(vaultRoot string, absPath string, info fs.FileInfo) VaultFileInfo {
+    relPath, _ := filepath.Rel(vaultRoot, absPath)
+    return VaultFileInfo{
+        VaultPath: filepath.ToSlash(relPath),  // Cross-platform: always forward slashes
+        Info:      info,
+        Basename:  computeBasename(absPath),
+        Ext:       filepath.Ext(absPath),
+        MimeType:  computeMimeType(filepath.Ext(absPath)),
+    }
+}
+```
+
+**Phase 2: Separate Metadata from Content (Resolve Gap 1.3)**
+
+```go
+// Scanning DTO - metadata only
+type VaultFileMeta struct {
+    VaultFileInfo  // File metadata leveraging fs.FileInfo
+}
+
+// Indexing DTO - metadata + content (only when needed)
+type VaultFileWithContent struct {
+    VaultFileMeta
+    Content []byte  // Raw content for frontmatter extraction
+}
+
+// Adapter methods
+type VaultScannerPort interface {
+    // Returns metadata only (fast, low memory)
+    ScanAll(ctx) ([]VaultFileMeta, error)
+
+    // Returns metadata + content (slower, high memory)
+    ScanAllWithContent(ctx) ([]VaultFileWithContent, error)
+}
+```
+
+**Phase 3: Storage-Specific DTOs (Resolve Gap 1.1, Issue D2, A4)**
+
+```go
+// BoltDB hot cache metadata (minimal, fast lookups)
+type BoltDBMetadata struct {
+    Path      string            // Vault-relative
+    Basename  string            // For wikilink lookup
+    Aliases   []string          // For alias lookup
+    FileClass string            // For schema filtering
+    ModTime   time.Time         // For staleness detection
+}
+
+// SQLite deep storage metadata (complete, queryable)
+type SQLiteMetadata struct {
+    Path       string                 // Vault-relative
+    Frontmatter map[string]interface{} // All fields for schema-driven views
+    ModTime    time.Time               // For staleness detection
+    Size       int64                   // For filtering
+}
+
+// Conversion functions
+func VaultFileToBeoltDBMetadata(vf VaultFileMeta, fm domain.Frontmatter) BoltDBMetadata
+func VaultFileToSQLiteMetadata(vf VaultFileMeta, fm domain.Frontmatter) SQLiteMetadata
+```
+
+**Benefits of Redesign**:
+
+1. **Gap 1.1 Resolved**: Use fs.FileInfo directly, eliminate duplication
+2. **Gap 1.2 Resolved**: Vault-relative paths enable cache portability
+3. **Gap 1.3 Resolved**: Separate metadata from content (memory efficiency)
+4. **Gap 7.1 Resolved**: filepath.ToSlash ensures cross-platform paths
+5. **Issue D2 Resolved**: Storage-specific DTOs optimized for use case
+6. **Obsidian Pattern Alignment**: TFile (VaultFileMeta) + FileStats (fs.FileInfo) separation
+
+**Epic Impact**: Stories 3.2.1 (VaultFile redesign for parsed frontmatter), 3.4.1 (storage-specific DTOs), 3.13 (staleness detection)
+
+**Priority**: CRITICAL - Blocks Group 2 storage architecture (Stories 3.4, 3.5, 3.6)
+
+**Effort**: MEDIUM (3 points)
+
+- Phase 1: Refactor VaultFileInfo to use fs.FileInfo (1 pt)
+- Phase 2: Separate VaultFileMeta from VaultFileWithContent (1 pt)
+- Phase 3: Create BoltDBMetadata, SQLiteMetadata (1 pt)
+
+**Dependencies**:
+
+- Group 1 (Story 3.2.1) - VaultFile needs ParsedFrontmatter field addition
+- Group 2 (Story 3.4.1) - Storage-specific DTO design
+
+---
+
+### Summary of Entity Issues
+
+| Entity          | Type         | Current State   | Issues                                                                                   | Priority | Effort |
+| --------------- | ------------ | --------------- | ---------------------------------------------------------------------------------------- | -------- | ------ |
+| Schema          | Rich Model   | ✅ Good         | ResolvedProperties leaks adapter                                                         | MEDIUM   | LOW    |
+| Property        | Rich Model   | ✅ Good         | Mutable validated flag                                                                   | LOW      | LOW    |
+| PropertyBank    | Registry     | ✅ Good         | None                                                                                     | N/A      | N/A    |
+| **Note**        | **Anemic**   | ❌ **Issue**    | **Missing validation, behavior**                                                         | HIGH     | MEDIUM |
+| **Frontmatter** | **Anemic**   | ❌ **Issue**    | **Missing type-safe access, validation**                                                 | HIGH     | MEDIUM |
+| Template        | Intentional  | ✅ Good         | None (intentionally anemic)                                                              | N/A      | N/A    |
+| Config          | Value Object | ✅ Good         | Optional composition improvement                                                         | LOW      | LOW    |
+| **VaultFile**   | **DTO**      | ❌ **CRITICAL** | **Duplicates fs.FileInfo, absolute paths, file+content conflation, not storage-focused** | CRITICAL | MEDIUM |
+
+**Critical Findings**:
+
+1. **VaultFile has CRITICAL design issues** - Duplicates stdlib, hinders portability, conflates concerns (Gaps 1.1, 1.2, 1.3, 7.1, D2)
+2. **Note and Frontmatter are anemic** - Need rich behavior for domain logic
+3. **Schema.ResolvedProperties** leaks adapter concern - Minor architectural issue
+4. All other entities are correctly designed
 
 ---
 
 ## Epic Impact Assessment
 
----
+This section analyzes how each of the 8 issue groups impacts Epic 3 (Vault Indexing Engine) by mapping architectural gaps to concrete story insertions, dependencies, and sequencing. All recommendations incorporate findings from Research Strategy (Go stdlib + Obsidian patterns), Gap Analysis (12 gaps), Actionable Insights (AI-1.1 through AI-3.1), and Entity Review (8 entities).
 
-## Key Architectural Principles Established
+### Epic 3 Current State (Baseline for Impact Analysis)
 
-### Hexagonal Architecture Validation Layers
+**Completed Stories** (✅ DONE):
 
-- **Adapter Layer**: Syntactic validation (structure/format checking)
-  - YAML parsing validation
-  - JSON schema structure validation
-  - File format validation
-- **Domain Layer**: Semantic validation (business rules checking)
-  - Schema compliance validation
-  - Business invariant enforcement
-  - Cross-entity constraint validation
+- 3.1-3.9: Original PRD stories (Cache ports, JSON adapters, Vault ports, Indexer, Query, Frontmatter, CLI)
+- 3.10: Fix Note ID Collision and Path Handling
 
-### Rich vs Anemic Models
+**In Progress** (🔄 Ready for Done):
 
-- **Rich Models**: Entities with behavior methods for logic pertaining to their own data
-- **Anemic Models**: Just data bags (anti-pattern)
-- **Guideline**: If logic uses only entity's own data → method belongs on entity
+- 3.11-3.16: Bug fixes and refinements (memory leak, cache management, query layer, performance, integration, QA)
 
-### Validation Naming Convention (Proposed)
+**Awaiting Enhancement** (📋 Course Correction):
 
-- `Validate()` - semantic validation in domain entity
-- `IsSchemaCompliant()` - semantic validation in application service
-- `IsValidSyntax()` - syntactic validation on input data in adapter layer
-- `ValidateSyntax()` - boolean syntactic check
-- `IsWellFormed()` - alternative syntactic check
+- Current 3.17: Hybrid Architecture DI and E2E Test (Ready for Enhancement - awaiting hybrid BoltDB+SQLite)
+- Current 3.18: Documentation Update (Ready for Enhancement - awaiting architecture finalization)
+
+**Strategic Context**: November 2, 2024 Sprint Change Proposal APPROVED pivot to hybrid BoltDB + SQLite architecture for production performance. This architectural review identifies 14 NEW stories (35+ points) that must be inserted BEFORE current 3.17-3.18 can proceed.
 
 ---
 
-_This document will be updated as the course correction process continues._
+### Story Insertion Strategy
+
+Since Stories 3.1-3.16 are mostly DONE, all new work inserts **AFTER 3.16** and **BEFORE current 3.17** in dependency-ordered groups:
+
+```
+3.1-3.16 (existing - mostly done)
+  ↓
+GROUP A: Foundation DTOs & Ports (3.17-3.18) - Sprint 1
+GROUP B: Storage Implementation (3.19-3.22) - Sprint 2-3
+GROUP C: Service Refactoring (3.23-3.26) - Sprint 3-4
+GROUP D: Configuration & Docs (3.27-3.29) - Sprint 4
+  ↓
+3.30: Hybrid DI/E2E (was 3.17 - unblocked)
+3.31: Documentation (was 3.18 - enhanced)
+```
+
+---
+
+## GROUP A: Foundation DTOs & Ports (Sprint 1)
+
+### Story 3.17: VaultFile DTO Redesign with Layered Architecture
+
+**Incorporates**: AI-1.1 (Eliminate FileMetadata Duplication), AI-1.2 (Vault-Relative Paths), AI-2.2 (File vs Content Separation), Entity Review VaultFile Assessment
+
+**Priority**: CRITICAL - Foundation for all storage work
+**Effort**: 3 points
+**Insert Location**: After 3.16, before current 3.17
+
+**Description**: Redesign VaultFile DTO using layered architecture: base DTO with fs.FileInfo, content separation, and storage-specific DTOs.
+
+**Acceptance Criteria**:
+
+**Layer 1 - Base DTO** (AI-1.1 + AI-1.2):
+
+1. ✅ Refactor `VaultFile` struct:
+   ```go
+   type VaultFile struct {
+       Path    string      // Vault-relative: "notes/meeting.md"
+       Info    fs.FileInfo // Delegate to stdlib (ModTime, Size, Mode, IsDir)
+       Content []byte      // Loaded on-demand
+   }
+   ```
+2. ✅ Add computed methods: `Basename()`, `Folder()`, `Ext()`, `ModTime()`, `Size()`
+3. ✅ Remove duplicated fields: Basename, Folder, Ext, ModTime, Size, MimeType
+4. ✅ Path normalization helper: `NormalizePath(absPath, vaultRoot string) (string, error)` using filepath.ToSlash
+5. ✅ Helper: `AbsolutePath(vaultRoot string) string` for I/O operations
+
+**Layer 2 - Content Separation** (AI-2.2): 6. ✅ Create `VaultFileMeta` struct (metadata only - NO Content):
+
+```go
+type VaultFileMeta struct {
+    Path string
+    Info fs.FileInfo
+}
+```
+
+7. ✅ Create `VaultFileWithContent` struct (metadata + content):
+   ```go
+   type VaultFileWithContent struct {
+       VaultFileMeta
+       Content []byte
+   }
+   ```
+8. ✅ Update VaultScannerPort methods:
+   - `ScanAll(ctx) ([]VaultFileMeta, error)` - fast metadata scan
+   - `ScanWithContent(ctx) ([]VaultFileWithContent, error)` - when content needed
+
+**Layer 3 - Storage-Specific DTOs** (Entity Review Phase 3): 9. ✅ Create `BoltDBMetadata` (hot cache - minimal):
+
+```go
+type BoltDBMetadata struct {
+    Path      string
+    Basename  string
+    Aliases   []string
+    FileClass string
+    ModTime   time.Time
+}
+```
+
+10. ✅ Create `SQLiteMetadata` (deep storage - complete):
+    ```go
+    type SQLiteMetadata struct {
+        Path        string
+        Frontmatter map[string]any
+        ModTime     time.Time
+        Size        int64
+    }
+    ```
+11. ✅ Conversion functions: `ToBeoltDBMetadata()`, `ToSQLiteMetadata()`
+
+**Cross-Platform Paths** (Gap 7.1): 12. ✅ All path storage uses forward slashes (filepath.ToSlash) 13. ✅ I/O operations convert to OS-specific paths (filepath.FromSlash)
+
+**Testing**: 14. ✅ Unit tests: fs.FileInfo delegation, computed methods, path normalization 15. ✅ Cross-platform tests: Windows/Linux/Mac path compatibility 16. ✅ Memory tests: VaultFileMeta vs VaultFileWithContent memory usage
+
+**Dependencies**:
+
+- Depends on: Stories 3.1-3.16 (foundation complete)
+- Blocks: All GROUP B stories (storage implementations)
+- Resolves: Gap 1.1, Gap 1.2, Gap 1.3, Gap 7.1, Issue D2
+
+**Risks**:
+
+- HIGH: VaultFile used across many adapters - comprehensive impact analysis required
+- Mitigation: Update all usages in same story; comprehensive integration tests
+
+**Architecture Doc Updates**:
+
+- `docs/architecture/data-models.md`: Update VaultFile, add layered DTO explanation
+- `docs/architecture/components.md`: Update VaultScannerPort interface
+
+---
+
+### Story 3.18: MarkdownParserPort - Dedicated Parsing Port & Adapter
+
+**Incorporates**: AI-1.3 (Extract MarkdownParserPort), Gap 3.1 (Goldmark in Domain)
+
+**Priority**: CRITICAL - Fixes hexagonal architecture violation
+**Effort**: 3 points
+**Insert Location**: After 3.17
+
+**Description**: Create dedicated MarkdownParserPort and GoldmarkParserAdapter, moving goldmark parsing from domain layer (FrontmatterService) to adapter layer. This is a separate port/adapter, NOT just moving to VaultReaderAdapter.
+
+**Acceptance Criteria**:
+
+**New Port Definition**:
+
+1. ✅ Create `/internal/ports/spi/markdown.go`:
+   ```go
+   type MarkdownParserPort interface {
+       // ParseFrontmatter extracts YAML frontmatter from markdown content
+       // Returns parsed fields as map, error if invalid YAML
+       ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error)
+   }
+   ```
+
+**New Adapter Implementation**: 2. ✅ Create `/internal/adapters/spi/markdown/goldmark_parser.go`:
+
+```go
+type GoldmarkParserAdapter struct {
+    markdown goldmark.Markdown
+    log      zerolog.Logger
+}
+
+func (a *GoldmarkParserAdapter) ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error) {
+    // Use goldmark + frontmatter extension
+    // Syntactic validation (YAML structure)
+    // Return parsed map or error
+}
+```
+
+**Domain Layer Cleanup**: 3. ✅ Remove goldmark imports from `internal/app/frontmatter/service.go` 4. ✅ Remove `FrontmatterService.Extract()` method entirely 5. ✅ FrontmatterService constructor accepts `MarkdownParserPort` (injected dependency) 6. ✅ FrontmatterService focuses on **semantic validation only** (schema compliance)
+
+**Adapter Layer - Syntactic Validation**: 7. ✅ GoldmarkParserAdapter performs **syntactic validation**:
+
+- YAML structure validation
+- Parsing errors (malformed YAML)
+- Returns structured errors with line numbers
+
+**Integration**: 8. ✅ Update VaultIndexer to inject MarkdownParserPort 9. ✅ VaultIndexer workflow: Read file → Parse frontmatter → Pass to FrontmatterService 10. ✅ VaultReaderAdapter.Read() still returns raw Content (parsing happens in indexer)
+
+**Testing**: 11. ✅ Unit tests: FrontmatterService without goldmark (pure domain tests) 12. ✅ Unit tests: GoldmarkParserAdapter syntactic validation 13. ✅ Integration tests: End-to-end parsing workflow 14. ✅ Error handling tests: Malformed YAML, missing frontmatter
+
+**Dependencies**:
+
+- Depends on: Story 3.17 (VaultFile DTO ready)
+- Blocks: Story 3.23 (FrontmatterService refactoring)
+- Resolves: Gap 3.1, Issue B2, Hexagonal Principle violation
+
+**Risks**:
+
+- MEDIUM: FrontmatterService interface changes ripple to consumers
+- Mitigation: Update all consumers in same story
+
+**Future Expansion** (Post-Epic 3):
+
+- Phase 2: Expand to parse Links, Headings, Tags (domain.NoteMetadata)
+- Phase 3: Enable backlinks, graph queries
+
+**Architecture Doc Updates**:
+
+- `docs/architecture/components.md`: Add MarkdownParserPort, GoldmarkParserAdapter
+- `docs/architecture/coding-standards.md`: Document validation layer separation
+
+---
+
+## GROUP B: Storage Implementation (Sprint 2-3)
+
+### Story 3.19: Implement BoltDB Hot Cache Adapter
+
+**Priority**: CRITICAL - Hybrid storage hot layer
+**Effort**: 5 points
+**Insert Location**: After 3.18
+
+**Description**: Implement BoltDB cache adapter using BoltDBMetadata (Story 3.17) for sub-millisecond hot path queries (ByPath, ByBasename, ByAlias).
+
+**Acceptance Criteria**:
+
+1. ✅ `/internal/adapters/spi/cache/boltdb_writer.go` implements CacheWriterPort
+2. ✅ `/internal/adapters/spi/cache/boltdb_reader.go` implements CacheReaderPort
+3. ✅ Bucket structure:
+   - `/notes/` - primary bucket: NoteID → BoltDBMetadata
+   - `/indices/byPath/` - secondary index: Path → NoteID
+   - `/indices/byBasename/` - secondary index: Basename → []NoteID
+   - `/indices/byAlias/` - secondary index: Alias → []NoteID
+   - `/indices/byFileClass/` - secondary index: FileClass → []NoteID
+4. ✅ Store BoltDBMetadata only (not full Note) - minimal hot data
+5. ✅ Atomic writes using `bolt.Tx` transactions
+6. ✅ Secondary index maintenance on write (update all indices transactionally)
+7. ✅ Performance target: Path/basename/alias lookups < 1ms
+8. ✅ Error wrapping per FR9 requirements
+9. ✅ Structured logging (zerolog) for all operations
+10. ✅ Unit tests: persist/delete/read/list, index queries, error paths
+11. ✅ Integration tests: concurrent reads/writes, index consistency
+12. ✅ `golangci-lint run` and `go test` succeed
+
+**Dependencies**:
+
+- Depends on: Story 3.17 (BoltDBMetadata DTO defined)
+- Blocks: Story 3.21 (write coordination needs BoltDB ready)
+
+**Risks**:
+
+- MEDIUM: BoltDB transaction rollback complexity
+- Mitigation: Comprehensive error handling; transaction testing
+
+---
+
+### Story 3.20: Implement SQLite Deep Storage with Schema-Driven Views
+
+**Incorporates**: AI-1.4 (MetadataQueryPort for O(1) indexed queries), Gap 4.1 resolution
+
+**Priority**: CRITICAL - Hybrid storage deep layer + indexed queries
+**Effort**: 5 points
+**Insert Location**: After 3.19
+
+**Description**: Implement SQLite adapter using SQLiteMetadata (Story 3.17) with schema-driven view generation for O(1) indexed frontmatter queries.
+
+**Acceptance Criteria**:
+
+**Basic SQLite Adapter**:
+
+1. ✅ `/internal/adapters/spi/cache/sqlite_writer.go` implements CacheWriterPort
+2. ✅ `/internal/adapters/spi/cache/sqlite_reader.go` implements CacheReaderPort
+3. ✅ Table schema:
+   ```sql
+   CREATE TABLE notes (
+       id          TEXT PRIMARY KEY,
+       path        TEXT UNIQUE NOT NULL,
+       frontmatter TEXT,  -- JSON
+       mod_time    INTEGER,
+       size        INTEGER
+   );
+   CREATE INDEX idx_notes_path ON notes(path);
+   CREATE INDEX idx_notes_mod_time ON notes(mod_time);
+   ```
+
+**Schema-Driven View Generation**: 4. ✅ Function: `GenerateSchemaView(schema domain.Schema) (string, error)` 5. ✅ View naming: `v_{schema_name}_notes` (e.g., `v_contact_notes`, `v_project_notes`) 6. ✅ Typed column extraction from JSON:
+
+```sql
+CREATE VIEW v_contact_notes AS
+SELECT
+    id,
+    path,
+    json_extract(frontmatter, '$.name') AS name,
+    json_extract(frontmatter, '$.email') AS email,
+    json_extract(frontmatter, '$.phone') AS phone,
+    json_extract(frontmatter, '$.status') AS status,
+    mod_time
+FROM notes
+WHERE json_extract(frontmatter, '$.fileClass') = 'contact';
+```
+
+7. ✅ Index creation on view columns:
+   ```sql
+   CREATE INDEX idx_contact_status ON v_contact_notes(status);
+   CREATE INDEX idx_contact_name ON v_contact_notes(name);
+   ```
+8. ✅ PropertySpec type → SQL type mapping (string, integer, real, text)
+9. ✅ View generation during SQLite adapter initialization
+10. ✅ Schema changes trigger view recreation (migration strategy documented)
+
+**MetadataQueryPort Implementation**: 11. ✅ Create `/internal/ports/spi/metadata_query.go`:
+`go
+    type MetadataQueryPort interface {
+        QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)
+        QueryByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)
+        QueryByFrontmatter(ctx context.Context, field, value string) ([]domain.Note, error)
+    }
+    ` 12. ✅ SQLiteReader implements MetadataQueryPort 13. ✅ QueryByFileClass uses schema-specific view (not base table):
+`go
+    SELECT * FROM v_contact_notes WHERE status = ?
+    `
+
+**Performance**: 14. ✅ Performance test: Query `v_contact_notes WHERE status = 'active'` < 50ms for 1000 notes 15. ✅ Benchmark: O(1) indexed queries vs O(n) JSON scanning (show improvement)
+
+**Testing**: 16. ✅ Unit tests: View generation, type mapping, index creation 17. ✅ Integration tests: Schema changes, view migration 18. ✅ Performance tests: Query speed, scaling to 1000+ notes 19. ✅ `golangci-lint run` and `go test` succeed
+
+**Dependencies**:
+
+- Depends on: Story 3.17 (SQLiteMetadata DTO defined)
+- Blocks: Story 3.21 (write coordination needs SQLite ready)
+- Resolves: Gap 4.1, Issue A5
+
+**Risks**:
+
+- HIGH: View generation complexity (PropertySpec → SQL type mapping)
+- Mitigation: Start with simple types (string, integer); incremental expansion
+- MEDIUM: Schema changes require view migration
+- Mitigation: Document regeneration procedure; version views
+
+---
+
+### Story 3.21: Implement Storage Write Coordination (Unit of Work)
+
+**Incorporates**: Issue A6 (Storage Write Coordination)
+
+**Priority**: CRITICAL - Prevents data inconsistency
+**Effort**: 5 points
+**Insert Location**: After 3.20
+
+**Description**: Implement Unit of Work pattern for coordinated BoltDB + SQLite dual-write operations with transactional guarantees and rollback on partial failure.
+
+**Acceptance Criteria**:
+
+**Unit of Work Pattern**:
+
+1. ✅ Create `/internal/app/cache/unit_of_work.go`:
+
+   ```go
+   type CacheUnitOfWork struct {
+       boltWriter   spi.CacheWriterPort
+       sqliteWriter spi.CacheWriterPort
+       operations   []operation
+       mu           sync.Mutex
+   }
+
+   func (uow *CacheUnitOfWork) Begin() error
+   func (uow *CacheUnitOfWork) AddWrite(note domain.Note) error
+   func (uow *CacheUnitOfWork) AddDelete(id domain.NoteID) error
+   func (uow *CacheUnitOfWork) Commit(ctx context.Context) error
+   func (uow *CacheUnitOfWork) Rollback(ctx context.Context) error
+   ```
+
+**Transaction Semantics**: 2. ✅ Batch operations collected during transaction (not immediate writes) 3. ✅ Commit sequence: BoltDB first, then SQLite (hot cache priority) 4. ✅ BoltDB write failure → entire transaction rollback (no SQLite write attempted) 5. ✅ SQLite write failure → rollback BoltDB changes (compensating transaction) 6. ✅ Transaction isolation - concurrent transactions don't interfere (mutex)
+
+**Rollback Strategy**: 7. ✅ BoltDB rollback: Use `bolt.Tx.Rollback()` 8. ✅ SQLite rollback: Use SQL `ROLLBACK` statement 9. ✅ Compensating writes: If SQLite fails, delete from BoltDB what was written
+
+**Integration**: 10. ✅ VaultIndexer uses CacheUnitOfWork for all cache writes 11. ✅ CLI commands wrap operations in UoW transactions 12. ✅ Error handling: Proper context, structured logging
+
+**Testing**: 13. ✅ Unit tests: Begin/Commit/Rollback lifecycle 14. ✅ Integration test: Simulate SQLite write failure, verify BoltDB rollback 15. ✅ Integration test: Simulate BoltDB write failure, verify no SQLite write 16. ✅ Concurrency test: Parallel transactions don't interfere 17. ✅ Performance test: Transactional write overhead < 10% vs direct writes
+
+**Dependencies**:
+
+- Depends on: Stories 3.19 (BoltDB), 3.20 (SQLite)
+- Blocks: Story 3.30 (Hybrid DI/E2E needs coordinated writes)
+- Resolves: Issue A6, Gap 4.2 (partial)
+
+**Risks**:
+
+- HIGH: Transaction rollback complexity (two storage systems)
+- Mitigation: Comprehensive error handling; test all failure modes
+- MEDIUM: Performance impact of transactions
+- Mitigation: Benchmark; acceptable for consistency guarantees
+
+**Architecture Doc Updates**:
+
+- `docs/architecture/patterns.md`: Add Unit of Work pattern explanation
+- `docs/architecture/components.md`: Document CacheUnitOfWork
+
+---
+
+### Story 3.22: QueryService Hybrid Storage Enhancement
+
+**Incorporates**: Issue B1 (QueryService Command/Query Mixing), CQRS compliance
+
+**Priority**: HIGH - Fixes shipped CQRS violation, enables hybrid queries
+**Effort**: 3 points
+**Insert Location**: After 3.21
+
+**Description**: Refactor QueryService to support hybrid BoltDB+SQLite query routing and fix CQRS violation (RefreshFromCache is write operation in query service).
+
+**Acceptance Criteria**:
+
+**Hybrid Storage Support**:
+
+1. ✅ QueryService constructor accepts both readers:
+   ```go
+   func NewQueryService(
+       boltReader   spi.CacheReaderPort,
+       sqliteReader spi.CacheReaderPort,  // Also implements MetadataQueryPort
+       config       domain.Config,
+       log          zerolog.Logger,
+   ) *QueryService
+   ```
+
+**Query Routing Strategy**: 2. ✅ Hot path (BoltDB): `ByPath()`, `ByBasename()`, `ByAlias()` → sub-millisecond 3. ✅ Deep path (SQLite): `ByFrontmatterField()`, complex queries → use MetadataQueryPort 4. ✅ Merger logic: Combine results from both stores with consistency validation 5. ✅ Consistency check: Verify BoltDB and SQLite ModTime match before returning
+
+**CQRS Compliance Fix**: 6. ✅ Remove `RefreshFromCache()` from QueryService (write operation in query service) 7. ✅ Move index rebuilding to new `IndexMaintenanceService` (command side) 8. ✅ QueryService is now **read-only** (true CQRS query side)
+
+**Incremental Refresh Fix**: 9. ✅ Fix "ModTime filtering broken" (lines 464-467 in service.go) 10. ✅ Implement staleness detection using SQLite: `SELECT * FROM notes WHERE mod_time > ?` 11. ✅ IndexMaintenanceService.RefreshIncremental(since time.Time) loads only modified notes
+
+**Testing**: 12. ✅ Unit tests: Query routing (hot vs deep), merger logic 13. ✅ Integration test: Index 100 notes, modify 5, RefreshIncremental loads only 5 14. ✅ Performance test: Hot path < 1ms, deep path < 50ms 15. ✅ Consistency test: BoltDB/SQLite mismatch detection
+
+**Dependencies**:
+
+- Depends on: Story 3.21 (hybrid storage operational)
+- Blocks: Story 3.30 (Hybrid DI/E2E needs correct query routing)
+- Resolves: Issue B1, Gap 2.1 (partial)
+
+**Risks**:
+
+- MEDIUM: Query routing logic complexity
+- Mitigation: Clear routing rules; comprehensive testing
+- LOW: Consistency validation overhead
+- Mitigation: Only validate on mismatch suspicion (heuristic)
+
+**Architecture Doc Updates**:
+
+- `docs/architecture/components.md`: Update QueryService, add IndexMaintenanceService
+- `docs/architecture/patterns.md`: Document CQRS read/write separation
+
+---
+
+## GROUP C: Service Refactoring (Sprint 3-4)
+
+### Story 3.23: FrontmatterService Refactoring - Use MarkdownParserPort
+
+**Priority**: HIGH - Completes domain purity refactoring
+**Effort**: 2 points
+**Insert Location**: After 3.22
+
+**Description**: Refactor FrontmatterService to use MarkdownParserPort (Story 3.18) instead of direct goldmark parsing, focusing on semantic validation only.
+
+**Acceptance Criteria**:
+
+1. ✅ FrontmatterService constructor accepts MarkdownParserPort (injected)
+2. ✅ Remove all goldmark-related code from FrontmatterService
+3. ✅ FrontmatterService.Validate() renamed to `IsSchemaCompliant()` (semantic validation)
+4. ✅ Semantic validation focus: schema compliance, required fields, type checking
+5. ✅ Uses Frontmatter entity methods (from Story 3.24) for field access
+6. ✅ Unit tests run without goldmark (pure domain tests)
+7. ✅ Integration tests: End-to-end with MarkdownParserPort
+
+**Dependencies**:
+
+- Depends on: Story 3.18 (MarkdownParserPort exists), Story 3.24 (Frontmatter enriched)
+- Resolves: Hexagonal architecture compliance
+
+---
+
+### Story 3.24: Enrich Frontmatter Entity with Validation & Factory
+
+**Priority**: HIGH - Enables proper domain modeling
+**Effort**: 2 points
+**Insert Location**: After 3.23
+
+**Description**: Transform Frontmatter from anemic data bag into rich domain entity with validation, factory methods, and type-safe field access.
+
+**Acceptance Criteria**:
+
+1. ✅ `Frontmatter.Validate() error` - semantic validation
+2. ✅ `NewFrontmatter(fields map[string]any) (Frontmatter, error)` - factory with validation
+3. ✅ Type-safe accessors: `GetString()`, `GetStringSlice()`, `GetInt()`, `GetBool()`
+4. ✅ `HasField(key string) bool` - field existence check
+5. ✅ All Frontmatter creation through factory (enforced validation)
+6. ✅ FrontmatterService uses entity methods (not direct field access)
+7. ✅ Unit tests: validation edge cases, type-safe accessors
+
+**Dependencies**:
+
+- Depends on: Story 3.23 (FrontmatterService ready)
+- Blocks: Story 3.25 (Note entity needs Frontmatter methods)
+- Resolves: Issue D1 (partial - Frontmatter anemic model)
+
+---
+
+### Story 3.25: Enrich Note Entity with Behavior Methods
+
+**Priority**: MEDIUM - Completes domain model enrichment
+**Effort**: 2 points
+**Insert Location**: After 3.24
+
+**Description**: Transform Note from anemic data bag into rich domain entity with behavior methods.
+
+**Acceptance Criteria**:
+
+1. ✅ `Note.Validate() error` - semantic validation
+2. ✅ Convenience delegation methods: `HasFrontmatterField()`, `GetFrontmatterString()`
+3. ✅ `NewNote(id NoteID, frontmatter Frontmatter) (Note, error)` - factory with validation
+4. ✅ Services use Note methods instead of direct field access
+5. ✅ Unit tests: validation, delegation
+
+**Dependencies**:
+
+- Depends on: Story 3.24 (Frontmatter enriched)
+- Resolves: Issue D1 (complete - Note anemic model)
+
+---
+
+### Story 3.26: Document Validation Layer Separation
+
+**Priority**: HIGH - Clarifies hexagonal architecture pattern
+**Effort**: 1 point
+**Insert Location**: After 3.25
+
+**Description**: Document validation layer separation with clear naming conventions.
+
+**Acceptance Criteria**:
+
+1. ✅ Architecture doc: validation layer table (syntactic vs semantic)
+2. ✅ Naming convention:
+   - `ValidateSyntax()` / `IsValidSyntax()` - adapter layer
+   - `Validate()` / `IsSchemaCompliant()` - domain layer
+3. ✅ All validation call sites updated to use new naming
+4. ✅ Code comments clarify validation types
+
+**Dependencies**:
+
+- Depends on: Stories 3.23-3.25 (validation refactoring complete)
+- Resolves: Hexagonal Principle violation (complete)
+
+---
+
+## GROUP D: Configuration & Event Infrastructure (Sprint 4)
+
+### Story 3.27: Implement Singleton Pattern for Config & PropertyBank
+
+**Incorporates**: Issue A2 (Singleton Pattern Implementation)
+
+**Priority**: HIGH - Required for DI
+**Effort**: 2 points
+**Insert Location**: After 3.26
+
+**Description**: Implement singleton pattern using sync.Once for Config and PropertyBank.
+
+**Acceptance Criteria**:
+
+1. ✅ `config.Instance() *Config` - singleton accessor using sync.Once
+2. ✅ `propertybank.Instance() *PropertyBank` - singleton accessor using sync.Once
+3. ✅ Thread-safe initialization (sync.Once guarantees single initialization)
+4. ✅ Test harness support: `SetInstanceForTesting()` for test isolation
+5. ✅ Update all Config/PropertyBank usage to use Instance()
+6. ✅ Unit tests: singleton behavior, concurrency safety
+7. ✅ Integration tests: DI container uses singletons
+
+**Dependencies**:
+
+- Depends on: Stories 3.1-3.26 (foundation complete)
+- Blocks: Story 3.30 (DI needs singletons)
+- Resolves: Issue A2
+
+**Architecture Doc Updates**:
+
+- `docs/architecture/patterns.md`: Add Singleton pattern explanation
+
+---
+
+### Story 3.28: Add FileClassKey Configuration Support
+
+**Incorporates**: Issue A3 (FileClassKey Configuration Impact)
+
+**Priority**: MEDIUM - Enables schema flexibility
+**Effort**: 1 point
+**Insert Location**: After 3.27
+
+**Description**: Add Config.FileClassKey field with default "fileClass" to support custom schema selection keys.
+
+**Acceptance Criteria**:
+
+1. ✅ `Config.FileClassKey string` field added (default: "fileClass")
+2. ✅ Schema resolution uses Config.FileClassKey instead of hardcoded "fileClass"
+3. ✅ Config loading validates FileClassKey is non-empty
+4. ✅ Architecture doc: fileClass key customization guidance
+5. ✅ Unit tests: custom key resolution
+6. ✅ Integration test: vault using custom schema key (e.g., "type")
+
+**Dependencies**:
+
+- Depends on: Story 3.27 (singleton Config)
+- Resolves: Issue A3
+
+---
+
+### Story 3.29: Implement Event-Driven Architecture Infrastructure
+
+**Incorporates**: Issue A1 (Component Orchestration Architecture) - DECIDED for Epic 3
+
+**Priority**: CRITICAL - Solves god-object problem and enables CQRS separation
+**Effort**: 5 points
+**Insert Location**: After 3.28
+
+**Description**: Implement event-driven architecture with domain events, event bus, and publisher/subscriber infrastructure to eliminate god-objects and enable clean CQRS command/query separation.
+
+**Acceptance Criteria**:
+
+**Event Infrastructure**:
+
+1. ✅ Create `/internal/domain/events.go` with DomainEvent interface:
+   ```go
+   type DomainEvent interface {
+       EventType() string
+       OccurredAt() time.Time
+       AggregateID() string
+   }
+   ```
+
+**Domain Event Types**: 2. ✅ Implement NoteIndexed event (published after single note indexed) 3. ✅ Implement VaultIndexingComplete event (published after full vault index) 4. ✅ Implement FrontmatterValidated event (published after validation) 5. ✅ Implement SchemaLoaded event (published after schema load) 6. ✅ Implement SchemasReloaded event (published after schema reload)
+
+**Event Bus**: 6. ✅ Create `/internal/app/events/bus.go` with EventBus implementation:
+
+```go
+type EventBus interface {
+    Publish(ctx context.Context, event DomainEvent) error
+    Subscribe(eventType string, handler EventHandler) error
+    Unsubscribe(eventType string, handler EventHandler) error
+}
+
+type EventHandler func(ctx context.Context, event DomainEvent) error
+```
+
+7. ✅ In-memory EventBus with goroutine-based async dispatch
+8. ✅ Error handling: Failed handlers don't block other subscribers
+9. ✅ Structured logging for all event publishes and handler executions
+
+**Service Refactoring - Publishers**: 10. ✅ VaultIndexer publishes NoteIndexed after each note 11. ✅ VaultIndexer publishes VaultIndexingComplete after full scan 12. ✅ FrontmatterService publishes FrontmatterValidated after validation 13. ✅ SchemaEngine publishes SchemaLoaded/SchemasReloaded
+
+**Service Refactoring - Subscribers**: 14. ✅ IndexMaintenanceService subscribes to NoteIndexed → updates indices 15. ✅ QueryService subscribes to VaultIndexingComplete → rebuilds in-memory structures 16. ✅ MetricsService subscribes to FrontmatterValidated → tracks validation stats
+
+**CQRS Separation**: 17. ✅ Remove RefreshFromCache() from QueryService (write operation) 18. ✅ QueryService is now pure read-side (subscribes to events only) 19. ✅ IndexMaintenanceService is command-side (publishes events)
+
+**God-Object Elimination**: 20. ✅ CLICommander no longer directly calls services - publishes commands as events 21. ✅ VaultIndexer dependency count reduced (no direct service calls, publishes events) 22. ✅ Services communicate via events, not direct coupling
+
+**Testing**: 23. ✅ Unit tests: Event bus publish/subscribe, handler registration 24. ✅ Integration test: End-to-end event flow (index → event → query rebuild) 25. ✅ Concurrency test: Multiple subscribers process events in parallel 26. ✅ Error handling test: Failed handler doesn't block others 27. ✅ Performance test: Event overhead < 5ms per event
+
+**Dependencies**:
+
+- Depends on: Story 3.21 (UoW pattern), Stories 3.23-3.26 (domain enrichment)
+- Blocks: Story 3.30 (DI wiring uses event bus)
+- Resolves: Issue A1, Issue B1 (QueryService CQRS violation)
+
+**Risks**:
+
+- HIGH: Async event processing adds debugging complexity
+- Mitigation: Comprehensive event logging with trace IDs
+- MEDIUM: Event ordering guarantees
+- Mitigation: Document event ordering semantics; use synchronous dispatch for critical events
+
+**Architecture Doc Updates**:
+
+- `docs/architecture/high-level-architecture.md`: Event-Driven Architecture pattern
+- `docs/architecture/components.md`: EventBus, event handlers
+- `docs/architecture/data-models.md`: Activate domain events for Epic 3
+
+---
+
+## COMPLETION LAYER: Final Integration
+
+### Story 3.30: Hybrid Architecture DI and Production-Scale E2E Testing
+
+**Original Story**: 3.17 (Ready for Enhancement - Course Correction Applied)
+**New Number**: 3.30 (after 14 story insertions)
+**Status**: ✅ UNBLOCKED - All foundation work complete
+**Enhanced Effort**: 7 points (was 5 points)
+
+**Description**: Wire all hybrid architecture components through dependency injection and validate production-ready performance with 500+ note test vault.
+
+**Additional Acceptance Criteria** (beyond original story):
+
+1. ✅ DI container includes MarkdownParserPort → GoldmarkParserAdapter
+2. ✅ DI container includes singleton Config, PropertyBank (Story 3.27)
+3. ✅ DI container includes CacheUnitOfWork for coordinated writes (Story 3.21)
+4. ✅ DI container includes BoltDB + SQLite dual cache readers/writers
+5. ✅ QueryService wired with hybrid BoltDB+SQLite readers (Story 3.22)
+6. ✅ IndexMaintenanceService wired (CQRS command side)
+7. ✅ E2E tests use layered VaultFile DTOs (Story 3.17)
+8. ✅ E2E tests validate schema-driven view queries (Story 3.20)
+9. ✅ Performance test: Template query < 100ms at 500+ note scale
+10. ✅ Performance test: BoltDB hot path < 1ms, SQLite deep path < 50ms
+
+**Dependencies**:
+
+- Depends on: ALL stories 3.17-3.29 (complete foundation)
+- Unblocks: Story 3.31 (documentation can finalize)
+
+---
+
+### Story 3.31: Documentation Update with Architecture Patterns
+
+**Original Story**: 3.18 (Ready for Enhancement - Course Correction Applied)
+**New Number**: 3.31 (after 14 story insertions)
+**Enhanced Effort**: 3 points (was 1 point)
+
+**Description**: Update all architecture documentation including new patterns catalog.
+
+**Additional Acceptance Criteria**:
+
+1. ✅ Create `docs/architecture/patterns.md` with pattern catalog:
+   - Singleton Pattern (Config, PropertyBank)
+   - Factory Pattern (NewNote, NewFrontmatter)
+   - Repository Pattern (VaultReaderPort, CacheReaderPort)
+   - Unit of Work Pattern (CacheUnitOfWork)
+   - CQRS Pattern (read/write separation)
+   - DTO Pattern (layered architecture)
+   - Hexagonal Architecture (Ports & Adapters)
+2. ✅ Each pattern: intent, when to use, implementation example, trade-offs
+3. ✅ Update `docs/architecture/components.md`: all new components
+4. ✅ Update `docs/architecture/data-models.md`: layered DTO architecture
+5. ✅ Cross-references between docs
+
+**Dependencies**:
+
+- Depends on: Story 3.30 (all implementation complete)
+
+---
+
+## Technical Debt Items (Deferred Post-Epic 3)
+
+### Template System Refactoring (AI-2.3)
+
+**Defer to**: Epic 5 (Interactive Input Engine)
+**Effort**: 2 points
+**Description**: Refactor template caching to use text/template composition instead of custom caching.
+
+**Rationale**: Template system is functional; this is optimization, not blocker.
+
+---
+
+### MetadataCacheService (AI-2.1)
+
+**Defer to**: Post-Epic 3 optimization
+**Effort**: 3 points
+**Description**: Add in-memory parsed metadata cache with checksum validation for performance.
+
+**Rationale**: QueryService works without it; nice-to-have optimization.
+
+---
+
+### Schema System Minor Issues
+
+**Defer to**: Post-Epic 3 cleanup
+**Effort**: 2 points
+**Issues**: Property.validated flag mutation, Schema.ResolvedProperties leak
+
+**Rationale**: Minor code quality issues, not blockers.
+
+---
+
+## Epic Impact Assessment Summary
+
+### Total New Stories: 14
+
+| Group          | Stories                   | Effort     | Priority | Sprint          |
+| -------------- | ------------------------- | ---------- | -------- | --------------- |
+| **GROUP A**    | Foundation (3.17-3.18)    | 6 pts      | CRITICAL | 1               |
+| **GROUP B**    | Storage (3.19-3.22)       | 18 pts     | CRITICAL | 2-3             |
+| **GROUP C**    | Services (3.23-3.26)      | 7 pts      | HIGH     | 3-4             |
+| **GROUP D**    | Config/Events (3.27-3.29) | 8 pts      | CRITICAL | 4               |
+| **COMPLETION** | Integration (3.30-3.31)   | 10 pts     | CRITICAL | 5               |
+| **TOTAL**      | **14 stories**            | **49 pts** | -        | **4-5 sprints** |
+
+### Final Epic 3 Structure
+
+**Original Epic 3**: 18 stories (3.1-3.18)
+**After Course Correction**: 31 stories (3.1-3.31)
+
+```
+3.1-3.16   Existing stories (mostly complete)
+3.17-3.18  GROUP A: Foundation DTOs & Ports
+3.19-3.22  GROUP B: Storage Implementation
+3.23-3.26  GROUP C: Service Refactoring
+3.27-3.29  GROUP D: Configuration & Documentation
+3.30       Hybrid DI/E2E (was 3.17 - unblocked)
+3.31       Documentation (was 3.18 - enhanced)
+```
+
+### Critical Path Dependencies
+
+```
+[FOUNDATION LAYER - Sprint 1]
+3.17 VaultFile DTO Redesign
+  ↓
+3.18 MarkdownParserPort & Adapter
+  ↓
+[STORAGE LAYER - Sprint 2-3]
+3.19 BoltDB Hot Cache
+  ↓
+3.20 SQLite Deep Storage + Views
+  ↓
+3.21 Write Coordination (UoW)
+  ↓
+3.22 QueryService Hybrid Enhancement
+  ↓
+[SERVICE LAYER - Sprint 3-4]
+3.23 FrontmatterService Refactoring
+  ↓
+3.24 Enrich Frontmatter Entity
+  ↓
+3.25 Enrich Note Entity
+  ↓
+3.26 Document Validation Layers
+  ↓
+[CONFIGURATION LAYER - Sprint 4]
+3.27 Singleton Pattern
+  ↓
+3.28 FileClassKey Configuration
+  ↓
+3.29 Orchestration Pattern Decision
+  ↓
+[COMPLETION LAYER - Sprint 5]
+3.30 Hybrid DI/E2E Testing
+  ↓
+3.31 Documentation Finalization
+```
+
+### Gaps Resolved
+
+| Gap ID | Description               | Resolved By                            |
+| ------ | ------------------------- | -------------------------------------- |
+| 1.1    | FileMetadata Duplication  | Story 3.17                             |
+| 1.2    | Absolute Paths            | Story 3.17                             |
+| 1.3    | File + Content Conflation | Story 3.17                             |
+| 2.1    | No Metadata Cache         | Story 3.22 (partial), Tech Debt (full) |
+| 3.1    | Goldmark in Domain        | Story 3.18                             |
+| 4.1    | No Indexed Query Layer    | Story 3.20                             |
+| 4.2    | No Hot/Deep Separation    | Stories 3.19-3.21                      |
+| 5.1    | Custom Template Cache     | Tech Debt (Epic 5)                     |
+| 7.1    | Platform-Specific Paths   | Story 3.17                             |
+
+### Issues Resolved
+
+| Issue | Description                       | Resolved By       |
+| ----- | --------------------------------- | ----------------- |
+| D1    | Anemic Domain Model               | Stories 3.24-3.25 |
+| D2    | DTO Architecture Mismatch         | Story 3.17        |
+| B2    | IO in Domain Layer                | Story 3.18        |
+| B1    | QueryService Command/Query Mixing | Story 3.22        |
+| A1    | Component Orchestration           | Story 3.29        |
+| A2    | Singleton Pattern                 | Story 3.27        |
+| A3    | FileClassKey Config               | Story 3.28        |
+| A4    | DTO Architecture                  | Story 3.17        |
+| A5    | SQLite Schema Optimization        | Story 3.20        |
+| A6    | Storage Write Coordination        | Story 3.21        |
+
+### Performance Targets
+
+- BoltDB hot path queries: < 1ms
+- SQLite deep path queries: < 50ms
+- Template rendering at 500+ notes: < 100ms
+- Incremental indexing: Only modified notes loaded
+
+### Timeline Estimate
+
+**Total Duration**: 4-5 sprints (assuming 10-13 points per sprint)
+
+- Sprint 1: Foundation (6 pts)
+- Sprint 2: Storage Part 1 (10 pts)
+- Sprint 3: Storage Part 2 + Services Start (8 pts)
+- Sprint 4: Services Complete + Config (11 pts)
+- Sprint 5: Integration & Documentation (10 pts)
+
+**Epic 3 Completion**: ~10-12 weeks from start of course correction
+
+---
+
+_Epic Impact Assessment Complete. Ready for Synthesis Phase: Cross-group dependency map and comprehensive story plan finalization._
+
+# Synthesis Phase - Comprehensive Story Plan
+
+## Cross-Issue Dependency Map
+
+This section visualizes how the 18+ identified issues relate to each other and to the 14 new Epic 3 stories.
+
+### Issue Dependency Graph
+
+```
+[FOUNDATION ISSUES - Must resolve first]
+D2 (DTO Architecture) ────────────────┐
+                                      ├──> Story 3.17 (VaultFile DTO Redesign)
+Gap 1.1 (FileMetadata Duplication) ───┤
+Gap 1.2 (Absolute Paths) ─────────────┤
+Gap 1.3 (File+Content Conflation) ────┤
+Gap 7.1 (Platform Paths) ─────────────┘
+                    │
+                    ├──> Story 3.18 (MarkdownParserPort)
+                    │         │
+Gap 3.1 (Goldmark in Domain) ─┘       │
+B2 (IO in Domain) ────────────────────┘
+                    │
+                    ├──> Story 3.19 (BoltDB) ─────┐
+                    │                             │
+                    ├──> Story 3.20 (SQLite) ─────┤
+                    │         │                   │
+Gap 4.1 (No Indexed Queries) ─┘                  ├──> Story 3.21 (UoW)
+Gap 4.2 (No Hot/Deep Separation) ────────────────┘         │
+A6 (Write Coordination) ─────────────────────────────────┘
+                    │
+                    ├──> Story 3.22 (QueryService Hybrid)
+                    │         │
+B1 (CQRS Violation) ──────────┘
+Gap 2.1 (No Metadata Cache) ──┘
+                    │
+                    ├──> Story 3.23 (FrontmatterService Refactor)
+                    │         │
+                    ├──> Story 3.24 (Enrich Frontmatter) ─────┐
+                    │         │                               │
+D1 (Anemic Domain) ───────────┘                              ├──> Story 3.25 (Enrich Note)
+                    │                                         │
+                    │                                         │
+                    ├──> Story 3.26 (Document Validation) ────┘
+                    │
+                    ├──> Story 3.27 (Singleton Pattern)
+                    │         │
+A2 (Singleton) ───────────────┘
+                    │
+                    ├──> Story 3.28 (FileClassKey Config)
+                    │         │
+A3 (FileClassKey) ────────────┘
+                    │
+                    ├──> Story 3.29 (Orchestration Pattern)
+                    │         │
+A1 (Orchestration) ───────────┘
+                    │
+                    ├──> Story 3.30 (Hybrid DI/E2E) ─── UNBLOCKED!
+                    │
+                    └──> Story 3.31 (Documentation)
+
+[DEFERRED ISSUES - Tech Debt]
+Gap 5.1 (Template Cache) ──> Tech Debt: Epic 5
+C1 (Property Mutation) ────> Tech Debt: Post-Epic 3
+C2 (Schema Leak) ──────────> Tech Debt: Post-Epic 3
+D3 (Template Anemic) ──────> Tech Debt: Epic 5
+```
+
+### Issue Resolution Matrix
+
+| Issue Code  | Issue Description           | Resolved By           | Priority | Impact                     |
+| ----------- | --------------------------- | --------------------- | -------- | -------------------------- |
+| **D2**      | DTO Architecture Mismatch   | Story 3.17            | CRITICAL | Foundation for all storage |
+| **Gap 1.1** | FileMetadata Duplication    | Story 3.17            | CRITICAL | Memory efficiency          |
+| **Gap 1.2** | Absolute Paths              | Story 3.17            | CRITICAL | Multi-vault support        |
+| **Gap 1.3** | File+Content Conflation     | Story 3.17            | CRITICAL | Performance                |
+| **Gap 7.1** | Platform-Specific Paths     | Story 3.17            | HIGH     | Cross-platform             |
+| **Gap 3.1** | Goldmark in Domain          | Story 3.18            | CRITICAL | Hexagonal compliance       |
+| **B2**      | IO in Domain Layer          | Story 3.18            | CRITICAL | Architecture purity        |
+| **A4**      | DTO Architecture (dup)      | Story 3.17            | CRITICAL | Same as D2                 |
+| **Gap 4.1** | No Indexed Query Layer      | Story 3.20            | CRITICAL | Query performance          |
+| **Gap 4.2** | No Hot/Deep Separation      | Stories 3.19-3.21     | CRITICAL | Hybrid storage             |
+| **A6**      | Storage Write Coordination  | Story 3.21            | CRITICAL | Data consistency           |
+| **A5**      | SQLite Schema Optimization  | Story 3.20            | HIGH     | Query performance          |
+| **B1**      | QueryService CQRS Violation | Story 3.22            | HIGH     | CQRS compliance            |
+| **Gap 2.1** | No Metadata Cache           | Story 3.22, Tech Debt | MEDIUM   | Performance                |
+| **D1**      | Anemic Domain Model         | Stories 3.24-3.25     | HIGH     | Domain modeling            |
+| **A2**      | Singleton Pattern           | Story 3.27            | HIGH     | DI requirements            |
+| **A3**      | FileClassKey Config         | Story 3.28            | MEDIUM   | Schema flexibility         |
+| **A1**      | Component Orchestration     | Story 3.29            | MEDIUM   | Architecture clarity       |
+| **B3**      | Missing Patterns Docs       | Story 3.31            | HIGH     | Documentation              |
+| **Gap 5.1** | Custom Template Cache       | Tech Debt → Epic 5    | LOW      | Optimization               |
+| **C1**      | Property Mutation           | Tech Debt             | LOW      | Code quality               |
+| **C2**      | Schema Leak                 | Tech Debt             | LOW      | Code quality               |
+| **D3**      | Template Anemic             | Tech Debt → Epic 5    | LOW      | Consistency                |
+
+---
+
+## Consolidated Epic Impact Findings
+
+### Critical Path Analysis
+
+**The critical path for Epic 3 completion is:**
+
+```
+Foundation Layer (Sprint 1) → 6 points
+  VaultFile DTO (3.17) + MarkdownParserPort (3.18)
+    ↓
+Storage Layer (Sprint 2-3) → 18 points
+  BoltDB (3.19) + SQLite (3.20) → UoW (3.21) → QueryService (3.22)
+    ↓
+Service Layer (Sprint 3-4) → 7 points
+  FrontmatterService (3.23) → Frontmatter Entity (3.24) → Note Entity (3.25) → Validation Docs (3.26)
+    ↓
+Configuration Layer (Sprint 4) → 4 points
+  Singleton (3.27) → FileClassKey (3.28) → Orchestration (3.29)
+    ↓
+Completion Layer (Sprint 5) → 10 points
+  Hybrid DI/E2E (3.30) → Documentation (3.31)
+
+Total: 45 points across 14 stories over 4-5 sprints
+```
+
+### Story Complexity Distribution
+
+| Complexity | Story Count | Total Points | Stories                                                      |
+| ---------- | ----------- | ------------ | ------------------------------------------------------------ |
+| **HIGH**   | 5           | 23 pts       | 3.19, 3.20, 3.21 (Storage), 3.30 (DI/E2E), + Story 3.17 risk |
+| **MEDIUM** | 5           | 15 pts       | 3.17, 3.18, 3.22, 3.23, 3.24                                 |
+| **LOW**    | 4           | 7 pts        | 3.25, 3.26, 3.27, 3.28, 3.29, 3.31                           |
+
+**Risk Concentration**: Sprint 2-3 (Storage Layer) has highest complexity with 3 HIGH-complexity stories requiring careful execution.
+
+### Architecture Documentation Impact
+
+**New Documents Required**:
+
+1. `docs/architecture/patterns.md` - Pattern catalog (Story 3.31)
+   - Singleton, Factory, Repository, Unit of Work, CQRS, DTO, Hexagonal patterns
+   - Each with intent, usage, examples, trade-offs
+
+**Document Updates Required**:
+
+1. `docs/architecture/data-models.md` - VaultFile layered DTO architecture (Story 3.17)
+2. `docs/architecture/components.md` - All new ports/adapters (Stories 3.18, 3.19, 3.20, 3.22)
+3. `docs/architecture/coding-standards.md` - Validation layer separation (Story 3.26)
+
+---
+
+## Final Epic 3 Story Plan
+
+### Complete Story Renumbering Table
+
+| Old #   | New #    | Story Title                                                  | Status      | Effort            | Dependencies | Sprint         |
+| ------- | -------- | ------------------------------------------------------------ | ----------- | ----------------- | ------------ | -------------- |
+| 3.1     | 3.1      | Implement CacheReaderPort & CacheWriterPort                  | ✅ Done     | -                 | -            | -              |
+| 3.2     | 3.2      | Multi-Storage Cache Adapters (JSON)                          | ✅ Done     | -                 | -            | -              |
+| 3.3     | 3.3      | Implement VaultReaderPort, VaultWriterPort, VaultScannerPort | ✅ Done     | -                 | -            | -              |
+| 3.4     | 3.4      | Implement FilesystemVaultAdapter                             | ✅ Done     | -                 | -            | -              |
+| 3.5     | 3.5      | VaultIndexer Service Implementation                          | ✅ Done     | -                 | -            | -              |
+| 3.6     | 3.6      | QueryService Implementation                                  | ✅ Done     | -                 | -            | -              |
+| 3.7     | 3.7      | FrontmatterService Implementation                            | ✅ Done     | -                 | -            | -              |
+| 3.8     | 3.8      | Frontmatter Service Integration                              | ✅ Done     | -                 | -            | -              |
+| 3.9     | 3.9      | CLI Index Command Implementation                             | ✅ Done     | -                 | -            | -              |
+| 3.10    | 3.10     | Fix Note ID Collision and Path Handling                      | ✅ Done     | -                 | 3.9          | -              |
+| 3.11    | 3.11     | Fix Memory Leak in VaultIndexer                              | 🔄 Ready    | -                 | 3.10         | -              |
+| 3.12    | 3.12     | Implement Cache Management Strategy                          | 🔄 Ready    | -                 | 3.11         | -              |
+| 3.13    | 3.13     | Enhance Query Layer Performance                              | 🔄 Ready    | -                 | 3.12         | -              |
+| 3.14    | 3.14     | Optimize Indexing Performance                                | 🔄 Ready    | -                 | 3.13         | -              |
+| 3.15    | 3.15     | Integration Testing Improvements                             | 🔄 Ready    | -                 | 3.14         | -              |
+| 3.16    | 3.16     | Epic 3 Completion QA                                         | 🔄 Ready    | -                 | 3.15         | -              |
+| **NEW** | **3.17** | **VaultFile DTO Redesign (Layered Architecture)**            | 📋 New      | **3 pts**         | **3.16**     | **Sprint 1**   |
+| **NEW** | **3.18** | **MarkdownParserPort (Dedicated Port/Adapter)**              | 📋 New      | **3 pts**         | **3.17**     | **Sprint 1**   |
+| **NEW** | **3.19** | **Implement BoltDB Hot Cache Adapter**                       | 📋 New      | **5 pts**         | **3.18**     | **Sprint 2**   |
+| **NEW** | **3.20** | **Implement SQLite Deep Storage with Schema Views**          | 📋 New      | **5 pts**         | **3.19**     | **Sprint 2-3** |
+| **NEW** | **3.21** | **Implement Storage Write Coordination (UoW)**               | 📋 New      | **5 pts**         | **3.20**     | **Sprint 3**   |
+| **NEW** | **3.22** | **QueryService Hybrid Storage Enhancement**                  | 📋 New      | **3 pts**         | **3.21**     | **Sprint 3**   |
+| **NEW** | **3.23** | **FrontmatterService Refactoring (Use Parser Port)**         | 📋 New      | **2 pts**         | **3.22**     | **Sprint 3-4** |
+| **NEW** | **3.24** | **Enrich Frontmatter Entity with Validation & Factory**      | 📋 New      | **2 pts**         | **3.23**     | **Sprint 4**   |
+| **NEW** | **3.25** | **Enrich Note Entity with Behavior Methods**                 | 📋 New      | **2 pts**         | **3.24**     | **Sprint 4**   |
+| **NEW** | **3.26** | **Document Validation Layer Separation**                     | 📋 New      | **1 pt**          | **3.25**     | **Sprint 4**   |
+| **NEW** | **3.27** | **Implement Singleton Pattern (Config/PropertyBank)**        | 📋 New      | **2 pts**         | **3.26**     | **Sprint 4**   |
+| **NEW** | **3.28** | **Add FileClassKey Configuration Support**                   | 📋 New      | **1 pt**          | **3.27**     | **Sprint 4**   |
+| **NEW** | **3.29** | **Implement Event-Driven Architecture Infrastructure**       | 📋 New      | **5 pts**         | **3.28**     | **Sprint 4**   |
+| 3.17    | **3.30** | **Hybrid Architecture DI and E2E Testing**                   | 📋 Enhanced | **7 pts** (was 5) | **3.29**     | **Sprint 5**   |
+| 3.18    | **3.31** | **Documentation Update (Architecture Patterns)**             | 📋 Enhanced | **3 pts** (was 1) | **3.30**     | **Sprint 5**   |
+
+**Summary**:
+
+- **Original Epic 3**: 18 stories (3.1-3.18)
+- **Course-Corrected Epic 3**: 31 stories (3.1-3.31)
+- **New Stories Inserted**: 14 stories (3.17-3.30)
+- **Stories Renumbered**: 3.17 → 3.30, 3.18 → 3.31
+- **Total Additional Effort**: 49 points (14 new stories)
+
+### Sprint Breakdown with Velocity Planning
+
+Assuming team velocity of **10-13 points per sprint**:
+
+**Sprint 1: Foundation Layer** (6 points)
+
+- 3.17: VaultFile DTO Redesign (3 pts)
+- 3.18: MarkdownParserPort (3 pts)
+- **Goal**: Establish DTO and parsing architecture
+- **Risk**: HIGH - VaultFile used across many adapters
+
+**Sprint 2: Storage Layer Part 1** (10 points)
+
+- 3.19: BoltDB Hot Cache Adapter (5 pts)
+- 3.20: SQLite Deep Storage (5 pts - start)
+- **Goal**: Implement dual storage adapters
+- **Risk**: HIGH - BoltDB transaction complexity
+
+**Sprint 3: Storage Layer Part 2** (8 points)
+
+- 3.20: SQLite Deep Storage (complete if not done)
+- 3.21: Storage Write Coordination (5 pts)
+- 3.22: QueryService Hybrid Enhancement (3 pts)
+- **Goal**: Complete storage layer with coordination
+- **Risk**: HIGH - Dual-write rollback complexity
+
+**Sprint 4: Service, Configuration & Events** (15 points)
+
+- 3.23: FrontmatterService Refactoring (2 pts)
+- 3.24: Enrich Frontmatter Entity (2 pts)
+- 3.25: Enrich Note Entity (2 pts)
+- 3.26: Document Validation Layers (1 pt)
+- 3.27: Singleton Pattern (2 pts)
+- 3.28: FileClassKey Configuration (1 pt)
+- 3.29: Event-Driven Architecture Infrastructure (5 pts)
+- **Goal**: Complete domain enrichment, configuration, and event infrastructure
+- **Risk**: HIGH - Event-driven architecture adds complexity, async debugging
+
+**Sprint 5: Integration & Documentation** (10 points)
+
+- 3.30: Hybrid DI/E2E Testing (7 pts)
+- 3.31: Documentation Update (3 pts)
+- **Goal**: Wire everything together, validate at scale
+- **Risk**: HIGH - Integration complexity, E2E failures
+
+**Total Timeline**: **5 sprints** (~10-12 weeks, accounting for 2-week sprints)
+
+---
+
+## Timeline and Milestone Updates
+
+### Epic 3 Revised Timeline
+
+**Original Epic 3 Timeline** (from PRD):
+
+- **Start**: October 2025
+- **Original End**: December 2025 (8 weeks, 18 stories)
+- **Status**: Stories 3.1-3.16 mostly complete, 3.17-3.18 blocked
+
+**Course-Corrected Epic 3 Timeline**:
+
+- **Course Correction Start**: November 8, 2025
+- **Foundation Layer Complete**: End of Sprint 1 (2 weeks) → ~November 22, 2025
+- **Storage Layer Complete**: End of Sprint 3 (6 weeks) → ~December 20, 2025
+- **Service/Config Complete**: End of Sprint 4 (8 weeks) → ~January 3, 2026
+- **Epic 3 Complete**: End of Sprint 5 (10 weeks) → **~January 17, 2026**
+
+**Timeline Impact**: +10 weeks to original Epic 3 timeline due to architectural foundation work.
+
+### Milestones
+
+| Milestone                          | Date          | Stories   | Deliverables                             |
+| ---------------------------------- | ------------- | --------- | ---------------------------------------- |
+| **M1: Foundation Complete**        | ~Nov 22, 2025 | 3.17-3.18 | VaultFile DTO, MarkdownParserPort        |
+| **M2: Storage Layer Complete**     | ~Dec 20, 2025 | 3.19-3.22 | BoltDB, SQLite, UoW, Hybrid QueryService |
+| **M3: Domain Enrichment Complete** | ~Jan 3, 2026  | 3.23-3.26 | Rich domain models, validation docs      |
+| **M4: Configuration Complete**     | ~Jan 3, 2026  | 3.27-3.29 | Singletons, FileClassKey, orchestration  |
+| **M5: Epic 3 Complete**            | ~Jan 17, 2026 | 3.30-3.31 | Hybrid DI/E2E, patterns documentation    |
+
+### Dependency on Other Epics
+
+**No Blockers from Other Epics**:
+
+- Epic 1 (CLI Foundation): ✅ Complete
+- Epic 2 (Schema & Validation): ✅ Complete (minor tech debt deferred)
+- Epic 4 (Template Queries): ⏸️ Waiting on Epic 3
+- Epic 5 (Interactive Input): ⏸️ Waiting on Epic 3
+
+**Epic 5 Template System Dependency**:
+
+- Template cache refactoring (AI-2.3) deferred to Epic 5
+- Estimated Epic 5 start: February 2026 (after Epic 3 completion)
+- Template optimization: 2 points (LOW complexity)
+
+---
+
+## Architecture Documentation Recommendations
+
+### Critical Documentation Updates (Story 3.31)
+
+**1. Create `docs/architecture/patterns.md`** (NEW - HIGH PRIORITY)
+
+**Purpose**: Central pattern catalog for all architectural patterns used in Lithos.
+
+**Content Structure**:
+
+```markdown
+# Lithos Architecture Patterns
+
+## Pattern Catalog
+
+### 1. Hexagonal Architecture (Ports & Adapters)
+
+- **Intent**: Isolate domain logic from infrastructure concerns
+- **When to Use**: All domain/infrastructure boundaries
+- **Implementation**: VaultReaderPort, CacheWriterPort, MarkdownParserPort
+- **Trade-offs**: More abstraction vs flexibility and testability
+
+### 2. CQRS (Command Query Responsibility Segregation)
+
+- **Intent**: Separate read and write operations
+- **When to Use**: Complex domain with different read/write needs
+- **Implementation**: QueryService (read), IndexMaintenanceService (write)
+- **Trade-offs**: Complexity vs performance and scalability
+
+### 3. Unit of Work Pattern
+
+- **Intent**: Maintain transactional consistency across multiple operations
+- **When to Use**: Coordinating writes to multiple storage systems
+- **Implementation**: CacheUnitOfWork (BoltDB + SQLite coordination)
+- **Trade-offs**: Complexity vs data consistency
+
+### 4. Repository Pattern
+
+- **Intent**: Abstract data access behind collection-like interface
+- **When to Use**: Domain needs persistence but shouldn't know how
+- **Implementation**: VaultReaderPort, CacheReaderPort
+- **Trade-offs**: Indirection vs testability and flexibility
+
+### 5. Singleton Pattern
+
+- **Intent**: Ensure single instance of global state
+- **When to Use**: Configuration, shared resources
+- **Implementation**: Config.Instance(), PropertyBank.Instance()
+- **Trade-offs**: Global state vs convenient access
+
+### 6. Factory Pattern
+
+- **Intent**: Encapsulate object creation with validation
+- **When to Use**: Complex construction or validation required
+- **Implementation**: NewNote(), NewFrontmatter(), NewSchema()
+- **Trade-offs**: More code vs validation enforcement
+
+### 7. DTO Pattern (Layered Architecture)
+
+- **Intent**: Transfer data between layers with different concerns
+- **When to Use**: Crossing architectural boundaries
+- **Implementation**: VaultFile (base), BoltDBMetadata, SQLiteMetadata
+- **Trade-offs**: More types vs layer-specific optimization
+```
+
+**2. Update `docs/architecture/data-models.md`** (CRITICAL - Story 3.17)
+
+**New Section**: VaultFile DTO Layered Architecture
+
+````markdown
+## VaultFile DTO Layered Architecture
+
+### Design Philosophy
+
+VaultFile uses a **layered DTO architecture** with three levels:
+
+1. **Base Layer**: Leverages Go stdlib (fs.FileInfo) for file metadata
+2. **Content Separation Layer**: Separates metadata-only from full content DTOs
+3. **Storage-Specific Layer**: Optimized DTOs for each storage system
+
+### Layer 1: Base DTO with fs.FileInfo
+
+```go
+type VaultFile struct {
+    Path    string      // Vault-relative: "notes/meeting.md"
+    Info    fs.FileInfo // Delegate to stdlib
+    Content []byte      // Loaded on-demand
+}
+
+// Computed methods delegate to fs.FileInfo
+func (vf VaultFile) ModTime() time.Time { return vf.Info.ModTime() }
+func (vf VaultFile) Size() int64 { return vf.Info.Size() }
+func (vf VaultFile) Basename() string { return filepath.Base(vf.Path) }
+```
+````
+
+**Benefits**:
+
+- No field duplication (ModTime, Size from fs.FileInfo)
+- Cross-platform path handling (filepath.ToSlash/FromSlash)
+- Vault-relative paths enable multi-vault support
+
+### Layer 2: Content Separation
+
+```go
+type VaultFileMeta struct {
+    Path string
+    Info fs.FileInfo
+    // NO Content - memory efficient for scanning
+}
+
+type VaultFileWithContent struct {
+    VaultFileMeta
+    Content []byte
+}
+```
+
+**Benefits**:
+
+- Memory efficiency: Don't load 1MB files when only need metadata
+- Clear intent: ScanAll() vs ScanWithContent()
+
+### Layer 3: Storage-Specific DTOs
+
+```go
+// BoltDB: Hot cache - minimal fields
+type BoltDBMetadata struct {
+    Path      string
+    Basename  string
+    Aliases   []string
+    FileClass string
+    ModTime   time.Time
+}
+
+// SQLite: Deep storage - complete metadata
+type SQLiteMetadata struct {
+    Path        string
+    Frontmatter map[string]any
+    ModTime     time.Time
+    Size        int64
+}
+```
+
+**Benefits**:
+
+- Storage-specific optimization
+- BoltDB: Sub-millisecond lookups (<1KB per note)
+- SQLite: Rich queries with schema-driven views
+
+````
+
+**3. Update `docs/architecture/components.md`** (HIGH PRIORITY - Multiple Stories)
+
+**Add New Components**:
+
+```markdown
+## Component Updates (Epic 3 Course Correction)
+
+### New Ports
+
+#### MarkdownParserPort (SPI)
+**Purpose**: Abstract markdown parsing from domain layer.
+**Location**: `/internal/ports/spi/markdown.go`
+**Methods**:
+- `ParseFrontmatter(ctx, content) (map[string]any, error)`
+
+**Adapters**:
+- `GoldmarkParserAdapter` - Uses goldmark library for parsing
+
+**Rationale**: Hexagonal architecture compliance - parsing is infrastructure concern.
+
+#### MetadataQueryPort (SPI)
+**Purpose**: Enable O(1) indexed queries on metadata.
+**Location**: `/internal/ports/spi/metadata_query.go`
+**Methods**:
+- `QueryByTag(ctx, tag) ([]domain.Note, error)`
+- `QueryByFileClass(ctx, fileClass) ([]domain.Note, error)`
+- `QueryByFrontmatter(ctx, field, value) ([]domain.Note, error)`
+
+**Adapters**:
+- `SQLiteReader` (also implements CacheReaderPort)
+
+**Rationale**: Performance - indexed queries vs O(n) scanning.
+
+### New Services
+
+#### IndexMaintenanceService (Application Layer)
+**Purpose**: CQRS command side - index rebuilding and maintenance.
+**Location**: `/internal/app/index/maintenance_service.go`
+**Methods**:
+- `RefreshIncremental(since time.Time) error`
+- `RebuildIndex() error`
+
+**Rationale**: CQRS compliance - separate read (QueryService) from write operations.
+
+#### CacheUnitOfWork (Application Layer)
+**Purpose**: Coordinate dual-write to BoltDB + SQLite with transactional guarantees.
+**Location**: `/internal/app/cache/unit_of_work.go`
+**Methods**:
+- `Begin() error`
+- `AddWrite(note domain.Note) error`
+- `AddDelete(id domain.NoteID) error`
+- `Commit(ctx) error`
+- `Rollback(ctx) error`
+
+**Rationale**: Data consistency - prevent BoltDB/SQLite divergence.
+
+### Updated Services
+
+#### QueryService (Application Layer)
+**Changes**:
+- Now accepts both BoltDBReader and SQLiteReader
+- Query routing: Hot path (BoltDB) vs Deep path (SQLite)
+- Removed RefreshFromCache() (moved to IndexMaintenanceService)
+- Now read-only (true CQRS query side)
+
+#### FrontmatterService (Application Layer)
+**Changes**:
+- Removed goldmark parsing (now uses MarkdownParserPort)
+- Renamed Validate() to IsSchemaCompliant()
+- Pure semantic validation (schema compliance only)
+- Zero infrastructure dependencies
+````
+
+**4. Update `docs/architecture/coding-standards.md`** (HIGH PRIORITY - Story 3.26)
+
+**Add Section**: Validation Layer Separation
+
+````markdown
+## Validation Layer Separation
+
+### Principle
+
+Lithos follows **Hexagonal Architecture** validation layer separation:
+
+| Layer             | Validation Type | Purpose                   | Examples                                  |
+| ----------------- | --------------- | ------------------------- | ----------------------------------------- |
+| **Adapter Layer** | **Syntactic**   | Structure/format checking | YAML parsing, JSON structure, file format |
+| **Domain Layer**  | **Semantic**    | Business rules checking   | Schema compliance, business invariants    |
+
+### Naming Convention
+
+**Adapter Layer (Syntactic Validation)**:
+
+- `ValidateSyntax(data) error` - Returns error if structure invalid
+- `IsValidSyntax(data) bool` - Returns boolean for simple checks
+- `IsWellFormed(data) bool` - Alternative name for structure checks
+
+**Domain Layer (Semantic Validation)**:
+
+- `Validate() error` - Entity validates itself (business rules)
+- `IsSchemaCompliant() error` - Service validates schema compliance
+- `Satisfy(constraint) bool` - Predicate-based validation
+
+### Implementation Examples
+
+**Adapter Layer - GoldmarkParserAdapter**:
+
+```go
+func (a *GoldmarkParserAdapter) ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error) {
+    // Syntactic validation: YAML structure
+    if !isValidYAML(content) {
+        return nil, fmt.Errorf("invalid YAML syntax at line %d", lineNum)
+    }
+    // Parse and return
+}
+```
+````
+
+**Domain Layer - Frontmatter Entity**:
+
+```go
+func (f Frontmatter) Validate() error {
+    // Semantic validation: business rules
+    if f.FileClass == "" {
+        return errors.New("fileClass is required")
+    }
+    // Additional domain rules
+}
+```
+
+**Domain Layer - FrontmatterService**:
+
+```go
+func (s *FrontmatterService) IsSchemaCompliant(fm domain.Frontmatter, schema domain.Schema) error {
+    // Semantic validation: schema compliance
+    for _, prop := range schema.Properties {
+        if prop.Required && !fm.HasField(prop.Name) {
+            return fmt.Errorf("required field %s is missing", prop.Name)
+        }
+    }
+}
+```
+
+### Decision Tree
+
+When implementing validation, ask:
+
+1. **Is this checking structure/format?** → Adapter Layer (syntactic)
+   - Examples: "Is this valid YAML?", "Is this a valid file path?"
+
+2. **Is this checking business rules?** → Domain Layer (semantic)
+   - Examples: "Does this satisfy schema requirements?", "Is this a valid state transition?"
+
+3. **Does validation need infrastructure (file I/O, database)?** → Adapter Layer
+   - Examples: "Does this file exist?", "Is this ID unique in database?"
+
+```
+
+---
+
+## Final Synthesis Summary
+
+### Course Correction Outcome
+
+**Initial State** (November 2, 2025):
+- Epic 3 Stories 3.1-3.16 mostly complete
+- Stories 3.17-3.18 blocked awaiting hybrid BoltDB+SQLite architecture
+- 6 architectural questions identified (Questions 1-5 resolved, Question 6 unresolved)
+
+**Discovery** (November 5-8, 2025):
+- Comprehensive architectural review revealed **18+ systemic issues** across **8 groups**
+- Fundamental misunderstanding of hexagonal architecture and DDD principles
+- Anemic domain model anti-pattern pervasive across all entities
+- Validation layer confusion (syntactic vs semantic)
+- DTO architecture not leveraging Go idioms
+
+**Resolution** (November 8, 2025):
+- **14 new stories** (45 points, 4-5 sprints) inserted into Epic 3
+- Dependency-ordered groups: Foundation → Storage → Services → Config → Completion
+- Final Epic 3: **31 stories** (was 18)
+- Comprehensive patterns catalog and architecture documentation updates
+- Clear path forward to Epic 3 completion with solid architectural foundation
+
+### Success Criteria for Course Correction
+
+**Epic 3 Completion will be considered successful when:**
+
+1. ✅ **All 31 stories completed** (3.1-3.31)
+2. ✅ **Hexagonal architecture compliance** verified:
+   - No infrastructure code in domain layer
+   - Clear syntactic/semantic validation separation
+   - All parsing in adapter layer
+3. ✅ **Rich domain models** implemented:
+   - Frontmatter and Note entities with validation and behavior
+   - Factory pattern enforced for entity creation
+4. ✅ **Hybrid storage operational**:
+   - BoltDB hot path queries < 1ms
+   - SQLite deep path queries < 50ms
+   - Unit of Work ensures consistency
+5. ✅ **Production-scale validation**:
+   - 500+ note test vault
+   - Template queries < 100ms
+   - Memory usage stable
+6. ✅ **Architecture documentation complete**:
+   - patterns.md created with 7 pattern explanations
+   - All architecture docs updated
+   - Validation naming convention documented
+
+### Risk Mitigation Summary
+
+**Top 5 Risks Identified**:
+
+1. **Storage Layer Complexity** (Sprint 2-3)
+   - **Risk**: BoltDB/SQLite dual-write transaction rollback failures
+   - **Mitigation**: Comprehensive error handling, test all failure modes, incremental commits
+
+2. **VaultFile DTO Impact** (Sprint 1)
+   - **Risk**: Refactor ripples across many adapters
+   - **Mitigation**: Update all usages in same story, comprehensive integration tests
+
+3. **Integration Complexity** (Sprint 5)
+   - **Risk**: DI wiring failures, E2E test failures at scale
+   - **Mitigation**: Incremental integration, test at each layer boundary
+
+4. **View Generation Complexity** (Sprint 2-3)
+   - **Risk**: PropertySpec → SQL type mapping errors
+   - **Mitigation**: Start with simple types (string, integer), incremental expansion
+
+5. **Timeline Pressure** (All Sprints)
+   - **Risk**: 45 points over 5 sprints requires sustained velocity
+   - **Mitigation**: Sprint buffer built in (10-13 point capacity), tech debt deferral to post-Epic 3
+
+### Next Steps
+
+1. **Immediate**: Review this Synthesis Phase with stakeholders for approval
+2. **Sprint 1 Kickoff**: Begin Story 3.17 (VaultFile DTO Redesign)
+3. **Ongoing**: Weekly progress reviews against milestone dates
+4. **Sprint 5**: Epic 3 completion celebration and retrospective 🎉
+
+---
+
+_Synthesis Phase Complete. Epic 3 Course Correction Plan Finalized._
+```

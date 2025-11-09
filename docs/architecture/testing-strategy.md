@@ -48,6 +48,8 @@
 
 ### Production Test Data
 
+This section describes the production-scale test data available for Epic 3 vault indexing engine validation and performance testing.
+
 **Real Obsidian Vault**: `docs/refs/obsidian/`
 - **Size**: 70+ MB of real-world data (gitignored)
 - **Content**: Jack's personal Obsidian vault with production frontmatter patterns
@@ -56,6 +58,15 @@
 - **Access**: Use `ls docs/refs/obsidian/` and `find docs/refs/obsidian/ -name "*.md"` commands
 - **Guide**: See `docs/refs/obsidian-vault-guide.md` for detailed usage instructions
 
+**Vault Structure:**
+- **00_system/**: Obsidian configuration, templates, and automation scripts
+  - **07_templates/**: 50+ Templater templates for various note types
+  - **scripts/**: Dataview queries and Templater JavaScript functions
+- **44_work/**: Work-related projects and documentation
+- **70_pkm/**: Personal Knowledge Management system
+  - **00_tools_and_skills/**: Technical documentation and learning materials
+  - **python/**: Programming notes, scripts, and code examples
+
 **Test Data Generation**:
 ```bash
 # Count available notes
@@ -63,14 +74,85 @@ find docs/refs/obsidian/ -name "*.md" | wc -l
 
 # Create large test vault (500+ notes)
 mkdir -p testdata/vault-large/
-find docs/refs/obsidian/ -name "*.md" | head -500 | xargs -I {} cp {} testdata/vault-large/
+find docs/refs/obsidian/ -name "*.md" | head -500 | while read file; do
+  mkdir -p "testdata/vault-large/$(dirname "${file#docs/refs/obsidian/}")"
+  cp "$file" "testdata/vault-large/$(dirname "${file#docs/refs/obsidian/}")/"
+done
 
 # Create diverse test vault (representative sample)
 mkdir -p testdata/vault-diverse/
-find docs/refs/obsidian/00_system/07_templates/ -name "*.md" | head -10 | xargs -I {} cp {} testdata/vault-diverse/
-find docs/refs/obsidian/44_work/ -name "*.md" | head -10 | xargs -I {} cp {} testdata/vault-diverse/
-find docs/refs/obsidian/70_pkm/ -name "*.md" | head -10 | xargs -I {} cp {} testdata/vault-diverse/
+# Templates (diverse note types)
+find docs/refs/obsidian/00_system/07_templates/ -name "*.md" | head -15 | while read file; do
+  cp "$file" testdata/vault-diverse/
+done
+# Work projects
+find docs/refs/obsidian/44_work/ -name "*.md" | head -15 | while read file; do
+  cp "$file" testdata/vault-diverse/
+done
+# PKM notes
+find docs/refs/obsidian/70_pkm/ -name "*.md" | head -15 | while read file; do
+  cp "$file" testdata/vault-diverse/
+done
 ```
+
+**Expected File Classes:**
+Based on vault exploration, the following file classes are commonly used:
+- **Templates**: Various note type templates
+- **Projects**: Work and personal projects
+- **Tools**: Technical documentation
+- **Knowledge**: Learning and PKM materials
+- **Scripts**: Automation and utility documentation
+- **Contacts**: People and organization records
+- **Tasks**: Action items and workflows
+
+**Configuration Testing:**
+The vault uses various frontmatter key naming patterns:
+- **Snake case**: `file_class`, `created_date`, `due_date`
+- **Camel case**: `fileClass`, `createdDate`, `dueDate`
+- **Mixed patterns**: Different templates use different conventions
+
+This diversity is perfect for testing the configurable `file_class_key` feature.
+
+**Performance Benchmarks:**
+Use this data to validate Epic 3 performance targets:
+
+- **BoltDB Hot Cache (Path Lookups)**
+  - Target: <1ms average
+  - Test: Path-based queries on 500+ notes
+  - Command: Time individual `ByPath()` calls
+
+- **SQLite Deep Storage (Complex Queries)**
+  - Target: <50ms average
+  - Test: Frontmatter property searches
+  - Command: Time `ByFrontmatter()` calls with various criteria
+
+- **Template Rendering (End-to-End)**
+  - Target: <100ms total
+  - Test: Full template rendering pipeline
+  - Command: Time complete template execution with vault queries
+
+- **Full Vault Indexing**
+  - Target: <5s for 1000+ notes
+  - Test: Complete vault indexing from scratch
+  - Command: Time full vault index rebuild
+
+- **Incremental Updates**
+  - Target: <1s for typical change sets
+  - Test: Staleness detection and incremental indexing
+  - Command: Time incremental updates after file modifications
+
+**Data Privacy and Usage:**
+- **Content**: Personal/work vault data is included for realistic testing
+- **Anonymization**: Sensitive content should be reviewed before sharing test results
+- **Scope**: Use only for Lithos development and testing purposes
+- **Access**: Data is gitignored and only available in local development environment
+
+**Integration with Epic 3 Stories:**
+
+- **Story 3.19 (BoltDB Hot Cache)**: Use vault data to test BoltDB bucket structures and validate secondary index performance
+- **Story 3.20 (SQLite Deep Storage)**: Validate SQLite schema with real frontmatter patterns and test JSON_EXTRACT queries
+- **Story 3.22 (Hybrid Query Service)**: Performance test query routing with realistic note distribution and validate smart routing decisions
+- **Story 3.28 (FileClassKey Configuration)**: Test configurable file_class_key with actual note variations
 
 ### End-to-End / Smoke Tests
 
