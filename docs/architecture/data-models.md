@@ -329,11 +329,8 @@ NoteMetadata serves as the data structure for markdown parsing results. Markdown
 - **Anemic model:** Pure data structure with no behavior. All operations (extraction, validation) implemented in FrontmatterService.
 - **FileClass computed:** Extracted from Fields["fileClass"] for convenience
 - **Fields as authoritative source:** All frontmatter data stored in Fields map
-
 - **Fields preserved as-is:** Complete frontmatter map stored without filtering. Supports FR6 requirement (preserve unknown fields). Validation happens separately via Validator + Schema (not at model level). Unknown fields pass through untouched.
-
 - **Flexible map over struct:** Using `map[string]interface{}` instead of typed struct enables schema-free notes and user-defined fields. Aligns with Obsidian's flexible frontmatter philosophy. Type checking happens at validation layer, not model layer.
-
 - **Fields vs Properties terminology:** "Fields" = actual data values in frontmatter. "Properties" = schema definitions/rules. This distinction eliminates ambiguity and aligns with JSON Schema terminology.
 
 **Helper Functions:**
