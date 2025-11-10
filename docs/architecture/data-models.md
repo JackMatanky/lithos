@@ -165,90 +165,6 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 
 ---
 
-## NoteID
-
-**Purpose:** Abstract domain identifier for notes. Decouples domain logic from infrastructure storage mechanism.
-
-**Architecture Layer:** Domain Core
-
-**Key Attributes:**
-
-- `value` (string) - Opaque identifier. Domain doesn't know if this represents file path, UUID, database key, or URL.
-
-**Relationships:**
-
-- Used by all domain services to reference notes
-- Translated by storage adapters (VaultReadAdapter/VaultWriteAdapter map NoteID ↔ file paths)
-- Used as map keys in QueryService indices
-
-**Design Decisions:**
-
-- **Opaque to domain:** Domain never inspects or constructs IDs - adapters handle translation
-- **Simple string type:** Minimal overhead, easy to serialize and compare
-- **Future-proof:** Can change storage mechanism without changing domain logic
-
----
-
-## Frontmatter
-
-**Purpose:** Represents note content metadata extracted from YAML frontmatter. Pure data structure with no behavior.
-
-**Architecture Layer:** Domain Core
-
-**Key Attributes:**
-
-- `FileClass` (string, computed) - Schema reference extracted from `fields["fileClass"]`. Used for validation lookup. Empty string if not present.
-- `Fields` (map[string]any) - Complete parsed YAML frontmatter as flexible map. Preserves all user-defined fields. Keys are case-sensitive. Supports nested maps.
-
-**Relationships:**
-
-- Extracted from markdown by FrontmatterService.Extract()
-- Validated against Schema by FrontmatterService.Validate()
-- Composed into Note
-- Used by domain services for business logic
-
-**Design Decisions:**
-
-- **Anemic model:** Pure data structure with no behavior. All operations (extraction, validation) implemented in FrontmatterService.
-- **FileClass computed:** Extracted from Fields["fileClass"] for convenience
-- **Fields as authoritative source:** All frontmatter data stored in Fields map
-
-- **Fields preserved as-is:** Complete frontmatter map stored without filtering. Supports FR6 requirement (preserve unknown fields). Validation happens separately via Validator + Schema (not at model level). Unknown fields pass through untouched.
-
-- **Flexible map over struct:** Using `map[string]interface{}` instead of typed struct enables schema-free notes and user-defined fields. Aligns with Obsidian's flexible frontmatter philosophy. Type checking happens at validation layer, not model layer.
-
-- **Fields vs Properties terminology:** "Fields" = actual data values in frontmatter. "Properties" = schema definitions/rules. This distinction eliminates ambiguity and aligns with JSON Schema terminology.
-
-**Helper Functions:**
-
-```go
-// NewFrontmatter creates Frontmatter from parsed YAML
-// Called by adapter after YAML parsing
-func NewFrontmatter(fields map[string]interface{}) Frontmatter {
-    return Frontmatter{
-        FileClass: extractFileClass(fields),
-        Fields:    fields,
-    }
-}
-
-// extractFileClass safely extracts fileClass from frontmatter fields
-// Returns empty string if not present or wrong type
-func extractFileClass(fields map[string]interface{}) string {
-    if fc, ok := fields["fileClass"].(string); ok {
-        return fc
-    }
-    return ""
-}
-
-// SchemaName returns FileClass for schema validation lookup
-// Usage: validator.Validate(frontmatter.SchemaName(), frontmatter)
-func (f Frontmatter) SchemaName() string {
-    return f.FileClass
-}
-```
-
----
-
 ## Note
 
 **Purpose:** Core business entity representing a markdown note. Aggregate root combining identity and content metadata.
@@ -310,7 +226,31 @@ Current implementation indexes frontmatter only. Goldmark provides AST access fo
 
 ---
 
-## NoteMetadata
+### NoteID
+
+**Purpose:** Abstract domain identifier for notes. Decouples domain logic from infrastructure storage mechanism.
+
+**Architecture Layer:** Domain Core
+
+**Key Attributes:**
+
+- `value` (string) - Opaque identifier. Domain doesn't know if this represents file path, UUID, database key, or URL.
+
+**Relationships:**
+
+- Used by all domain services to reference notes
+- Translated by storage adapters (VaultReadAdapter/VaultWriteAdapter map NoteID ↔ file paths)
+- Used as map keys in QueryService indices
+
+**Design Decisions:**
+
+- **Opaque to domain:** Domain never inspects or constructs IDs - adapters handle translation
+- **Simple string type:** Minimal overhead, easy to serialize and compare
+- **Future-proof:** Can change storage mechanism without changing domain logic
+
+---
+
+### NoteMetadata
 
 **Purpose:** Container for all parsed metadata extracted from markdown content. Represents complete note metadata including frontmatter, structural elements (links, headings), and tags. Returned by MarkdownParserPort for use by domain services.
 
@@ -366,7 +306,67 @@ NoteMetadata serves as the data structure for markdown parsing results. Markdown
 
 ---
 
-## Link
+#### Frontmatter
+
+**Purpose:** Represents note content metadata extracted from YAML frontmatter. Pure data structure with no behavior.
+
+**Architecture Layer:** Domain Core
+
+**Key Attributes:**
+
+- `FileClass` (string, computed) - Schema reference extracted from `fields["fileClass"]`. Used for validation lookup. Empty string if not present.
+- `Fields` (map[string]any) - Complete parsed YAML frontmatter as flexible map. Preserves all user-defined fields. Keys are case-sensitive. Supports nested maps.
+
+**Relationships:**
+
+- Extracted from markdown by FrontmatterService.Extract()
+- Validated against Schema by FrontmatterService.Validate()
+- Composed into Note
+- Used by domain services for business logic
+
+**Design Decisions:**
+
+- **Anemic model:** Pure data structure with no behavior. All operations (extraction, validation) implemented in FrontmatterService.
+- **FileClass computed:** Extracted from Fields["fileClass"] for convenience
+- **Fields as authoritative source:** All frontmatter data stored in Fields map
+
+- **Fields preserved as-is:** Complete frontmatter map stored without filtering. Supports FR6 requirement (preserve unknown fields). Validation happens separately via Validator + Schema (not at model level). Unknown fields pass through untouched.
+
+- **Flexible map over struct:** Using `map[string]interface{}` instead of typed struct enables schema-free notes and user-defined fields. Aligns with Obsidian's flexible frontmatter philosophy. Type checking happens at validation layer, not model layer.
+
+- **Fields vs Properties terminology:** "Fields" = actual data values in frontmatter. "Properties" = schema definitions/rules. This distinction eliminates ambiguity and aligns with JSON Schema terminology.
+
+**Helper Functions:**
+
+```go
+// NewFrontmatter creates Frontmatter from parsed YAML
+// Called by adapter after YAML parsing
+func NewFrontmatter(fields map[string]interface{}) Frontmatter {
+    return Frontmatter{
+        FileClass: extractFileClass(fields),
+        Fields:    fields,
+    }
+}
+
+// extractFileClass safely extracts fileClass from frontmatter fields
+// Returns empty string if not present or wrong type
+func extractFileClass(fields map[string]interface{}) string {
+    if fc, ok := fields["fileClass"].(string); ok {
+        return fc
+    }
+    return ""
+}
+
+// SchemaName returns FileClass for schema validation lookup
+// Usage: validator.Validate(frontmatter.SchemaName(), frontmatter)
+func (f Frontmatter) SchemaName() string {
+    return f.FileClass
+}
+```
+
+---
+
+#### Link
 
 **Purpose:** Represents a link found in markdown content. Captures both wikilinks (`[[target]]`) and standard markdown links (`[text](url)`). Used for backlink computation, graph analysis, and link validation.
 
@@ -425,7 +425,7 @@ Link model enables Obsidian-style wikilink features: `[[note]]` links to note by
 
 ---
 
-## Heading
+#### Heading
 
 **Purpose:** Represents a markdown heading with level and text. Enables navigation, table of contents generation, and heading-based queries.
 
@@ -477,76 +477,6 @@ Heading model enables document structure analysis and navigation. Future feature
 
 ---
 
-## Domain Events (Epic 3 Active - Story 3.29)
-
-**Purpose:** Event models for event-driven architecture. Represents significant domain occurrences that other components react to via publish/subscribe pattern. Implemented in Epic 3 to eliminate god-objects and enable clean CQRS separation.
-
-**Architecture Layer:** Domain Core (Active in Epic 3)
-
-**Status:** ACTIVE - Epic 3 implements event-driven architecture (Story 3.29). Event bus with domain events replaces direct service dependencies to eliminate god-object pattern (CLICommander, VaultIndexer).
-
-### DomainEvent Interface
-
-**Purpose:** Base interface for all domain events. Provides common event metadata.
-
-**Key Methods:**
-
-- `EventType() string` - Returns event type identifier (e.g., "NoteIndexed", "FrontmatterValidated")
-- `OccurredAt() time.Time` - Returns event timestamp
-- `AggregateID() string` - Returns ID of aggregate that triggered event (e.g., NoteID, SchemaName)
-
-### Event Types
-
-#### Indexing Events
-
-**NoteIndexed** - Published when single note successfully indexed
-- **Fields:** NoteID, Path, FileClass, OccurredAt
-- **Use Cases:** Update search index, refresh graph, trigger backlink computation
-
-**VaultIndexingComplete** - Published when full vault indexing finishes
-- **Fields:** NotesIndexed (int), Duration, OccurredAt
-- **Use Cases:** QueryService rebuilds indices, UI shows indexing complete, cache warmup
-
-#### Validation Events
-
-**FrontmatterValidated** - Published when frontmatter validation completes
-- **Fields:** NoteID, SchemaName, IsValid (bool), Errors ([]ValidationError), OccurredAt
-- **Use Cases:** Collect validation statistics, UI shows validation errors, quality metrics
-
-#### Configuration Events
-
-**SchemaLoaded** - Published when single schema successfully loaded
-- **Fields:** SchemaName, PropertyCount (int), OccurredAt
-- **Use Cases:** Audit log, reload dependent schemas, validation cache invalidation
-
-**SchemasReloaded** - Published when all schemas reloaded (hot reload)
-- **Fields:** SchemaCount (int), OccurredAt
-- **Use Cases:** Clear validation caches, notify UI, audit configuration changes
-
-### Event-Driven Architecture Benefits (Epic 3 Implementation)
-
-**Implementation:** Story 3.29 implements EventBus infrastructure with in-memory goroutine-based async dispatch.
-
-**Benefits Realized:**
-- **God-Object Elimination:** CLICommander and VaultIndexer no longer accumulate dependencies - services communicate via events
-- **CQRS Separation:** QueryService subscribes to VaultIndexingComplete event (pure read-side), VaultIndexer publishes events (command-side)
-- **Decoupling:** Services don't directly depend on each other - add new subscribers without modifying publishers
-- **Extensibility:** New features subscribe to existing events (e.g., MetricsService subscribes to FrontmatterValidated)
-- **Testability:** Mock EventBus for unit tests, test event flows independently
-
-**Trade-offs Accepted:**
-- **Infrastructure Complexity:** EventBus implementation, subscription management (acceptable for god-object elimination)
-- **Debugging Complexity:** Async execution harder to trace (mitigated by comprehensive event logging with trace IDs)
-- **Eventual Consistency:** Subscribers process with delay (mitigated by synchronous dispatch for critical events)
-
-**Publisher/Subscriber Architecture:**
-- **Publishers:** VaultIndexer (NoteIndexed, VaultIndexingComplete), FrontmatterService (FrontmatterValidated), SchemaEngine (SchemaLoaded, SchemasReloaded)
-- **Subscribers:** VaultIndexer (NoteIndexed → update indices), QueryService (VaultIndexingComplete → rebuild query structures), MetricsService (FrontmatterValidated → stats)
-
-**Implementation Details:** See high-level-architecture.md "Orchestration Pattern Decision" section for complete event-driven architecture specification.
-
----
-
 ## Schema
 
 **Purpose:** Defines metadata structure with property constraints and inheritance. Governs validation rules for notes of a given `fileClass`. Rich domain model with structural validation behavior.
@@ -580,17 +510,11 @@ Heading model enables document structure analysis and navigation. Future feature
 - **Resolution details:** SchemaResolver now uses name-keyed maps to merge overrides and hydrates PropertyBank references within the same pass (no secondary substitution step).
 - **Properties vs Fields terminology:** Schema has "Properties" (validation rules). Frontmatter has "Fields" (actual data).
 - **Excludes dependent on Extends:** Excludes only meaningful when Extends is not empty.
-
 - **String-based Extends reference:** Uses schema name string, not Go pointer, to avoid circular dependency issues in struct definitions. Schema registry (map[string]\*Schema) resolves references after all schemas loaded.
-
 - **Eager resolution at startup:** Inheritance chains resolved during application initialization (fail-fast on circular dependencies per Epic 2, Story 2.6). Validator never sees unresolved schemas. Performance: O(n\*d) where n=schemas, d=depth, acceptable for MVP (<100 schemas expected).
-
 - **Resolution order:** (1) Load all schema files, (2) Build dependency graph, (3) Detect cycles, (4) Resolve in topological order (leaves first), (5) For each schema: get parent's ResolvedProperties → apply Excludes → merge/override with child Properties → store in ResolvedProperties.
-
 - **Property override semantics:** If child Property.Name matches parent Property.Name, child completely replaces parent (not merging property attributes). This is explicit override, not attribute-level merge.
-
 - **Immutability:** Schema instances are immutable after construction. Properties and Excludes slices are defensively copied during creation to prevent external modification.
-
 - **JSON/YAML Serialization:** Schemas serialize as JSON or YAML objects with name, extends (optional), excludes (optional), and properties array. ResolvedProperties is omitted from serialization (computed field).
 
 **JSON/YAML Format Example:**
@@ -601,8 +525,8 @@ Heading model enables document structure analysis and navigation. Future feature
   "extends": "base-note",
   "excludes": ["internal_id"],
   "properties": [
-    {"$ref": "#/properties/standard_title"},
-    {"$ref": "#/properties/standard_created"},
+    { "$ref": "#/properties/standard_title" },
+    { "$ref": "#/properties/standard_created" },
     {
       "name": "email",
       "required": true,
@@ -685,13 +609,9 @@ Property bank definitions stored in single file `schemas/property_bank.json` (co
 **Design Decisions:**
 
 - **Singleton pattern:** Only one PropertyBank instance exists per application lifecycle. Loaded once at startup from single JSON file (default: `schemas/property_bank.json`, configurable via Config.PropertyBankPath).
-
 - **Properties vs Fields terminology:** PropertyBank contains "Properties" (reusable validation rule definitions), not "Fields" (actual data). Consistent with Schema.Properties terminology.
-
 - **JSON format:** Simpler unmarshaling than YAML. Frontmatter remains YAML (Obsidian convention), but schema definitions prioritize Go stdlib integration.
-
 - **$ref resolution format:** Schemas reference properties using JSON pointer syntax: `{"$ref": "#/properties/{property-name}"}`. SchemaLoader resolves references at load time by looking up PropertyBank.Properties map.
-
 - **Simple substitution (MVP):** Referenced property completely replaces `$ref` object. No attribute-level merging or overrides. Post-MVP could support inline overrides:
 
   ```json
@@ -702,11 +622,8 @@ Property bank definitions stored in single file `schemas/property_bank.json` (co
   ```
 
 - **Load order:** PropertyBank loaded before schemas during SchemaLoader.LoadSchemas() call. Ensures all `$ref` references can be resolved. Missing references cause schema loading to fail at startup (fail-fast).
-
 - **Flat structure:** Properties cannot reference other properties (no nested `$ref` in PropertyBank itself). Post-MVP could add property composition if needed.
-
 - **Immutability:** PropertyBank instances are immutable after construction. Properties map is defensively copied during creation to prevent external modification.
-
 - **JSON/YAML Serialization:** PropertyBank serializes as JSON object with single "properties" field containing the property map. No YAML support (JSON-only for MVP).
 
 **Implementation Notes:**
@@ -728,7 +645,7 @@ PropertyBank solves the "common property definition" problem elegantly. Without 
 
 ---
 
-## Property
+### Property
 
 **Purpose:** Defines a single metadata field with validation constraints. Building block of Schema definitions. Rich domain model with structural validation behavior.
 
@@ -793,7 +710,7 @@ PropertyBank solves the "common property definition" problem elegantly. Without 
 
 ---
 
-## PropertySpec (Type-Specific Configurations)
+### PropertySpec (Type-Specific Configurations)
 
 **Purpose:** Interface for type-specific validation constraint definitions. Defines what constraints apply to a property (min/max, patterns, enums) as immutable value objects with structural validation behavior. Each PropertySpec variant validates its own constraint structure.
 
@@ -816,20 +733,15 @@ PropertyBank solves the "common property definition" problem elegantly. Without 
 **Design Decisions:**
 
 - **Value objects with behavior:** PropertySpec variants are immutable value objects that validate their own structural integrity. Two StringSpecs with identical Enum/Pattern are equivalent.
-
 - **Polymorphic validation:** Each PropertySpec variant implements Validate() for type-specific structural checks. Avoids type switches in validator service.
-
 - **Interface-based polymorphism:** PropertySpec interface enables type-safe composition. Property contains one PropertySpec variant without nullable attributes or type switches.
-
 - **Nil pointer semantics:** For optional attributes, nil pointer means "no constraint." Empty value has different meaning (e.g., empty Enum list = no values allowed, nil Enum = any value allowed).
-
 - **Immutability:** All PropertySpec variants are immutable after construction. No setters or modification methods.
-
 - **JSON/YAML Serialization:** Each PropertySpec variant serializes as JSON/YAML object with type-specific fields. Interface is resolved via discriminator pattern during unmarshaling.
 
 ---
 
-### StringSpec
+#### StringSpec
 
 **Purpose:** Defines string validation constraints (allowed values, patterns) as immutable value object with structural validation.
 
@@ -881,7 +793,7 @@ or
 
 ---
 
-### NumberSpec
+#### NumberSpec
 
 **Purpose:** Defines numeric validation constraints (min/max bounds, step increments) as immutable value object with structural validation.
 
@@ -931,7 +843,7 @@ func (n NumberSpec) Validate(ctx context.Context) error {
 
 ---
 
-### DateSpec
+#### DateSpec
 
 **Purpose:** Defines date/time format constraints as immutable value object with structural validation.
 
@@ -978,7 +890,7 @@ func (d DateSpec) Validate(ctx context.Context) error {
 
 ---
 
-### FileSpec
+#### FileSpec
 
 **Purpose:** Defines file reference validation constraints (fileClass filters, directory filters) as immutable value object with structural validation.
 
@@ -1034,7 +946,7 @@ func (f FileSpec) Validate(ctx context.Context) error {
 
 ---
 
-### BoolSpec
+#### BoolSpec
 
 **Purpose:** Defines boolean validation (no additional constraints). Marker value object with no structural validation needed.
 
@@ -1063,34 +975,6 @@ func (b BoolSpec) Validate(ctx context.Context) error {
 
 ---
 
-
-## TemplateID
-
-**Purpose:** Template name used for identification and composition. Represents the intrinsic domain concept of "template name" required by Go's `text/template` composition system.
-
-**Architecture Layer:** Domain Core
-
-**Key Attributes:**
-
-- `value` (string) - Template name. Typically basename of template file without extension (e.g., "contact-header", "daily-note"). Used in template composition syntax: `{{template "contact-header"}}`.
-
-**Relationships:**
-
-- Used by TemplateEngine for template composition via Go `text/template` package
-- Used in template references: `{{template "name"}}` and `{{block "name"}}`
-- TemplateLoader adapter derives TemplateID from filename basename (scans Config.TemplatesDir, default: `templates/`)
-- TemplateLoader uses FileMetadata (SPI adapter) to map TemplateID ↔ file paths
-- Used as map keys in template registries
-
-**Design Decisions:**
-
-- **Name as domain concept:** Unlike NoteID (truly opaque), TemplateID represents template name—an intrinsic domain requirement for Go's `text/template` composition system. Not a layer violation.
-- **Basename convention:** By convention, TemplateID matches file basename (without path/extension). Adapter derives this during loading from `templates/contact-header.md` → `"contact-header"`.
-- **Storage agnostic within constraint:** Templates could come from database, API, or filesystem, but all need a name for `{{template}}` references. Basename is pragmatic choice.
-- **Simple identifier type:** Just a string wrapper, not a DDD value object. Primitive identifier with no complex structure.
-
----
-
 ## Template
 
 **Purpose:** Represents an executable template for note generation. Pure data structure containing template identity and content. Single model used across all layers following YAGNI principle for MVP.
@@ -1115,20 +999,42 @@ func (b BoolSpec) Validate(ctx context.Context) error {
 **Design Decisions:**
 
 - **Pure data structure:** Just ID + Content. No behavior, no cached parse trees (Parsed field removed). All execution logic in TemplateEngine service.
-
 - **Single model for MVP (YAGNI):** One Template definition used for both discovery and execution eliminates translation overhead. Can split into separate models post-MVP if lazy loading becomes critical.
-
 - **TemplateID as name (domain concept):** ID represents template name—intrinsic requirement for Go's `text/template` composition. Not a layer violation because naming is core to template composition logic.
-
 - **Content loaded by adapters:** TemplateLoader adapter reads file content from Config.TemplatesDir and populates Template model. Domain receives ready-to-use templates.
-
 - **FileMetadata for path mapping:** TemplateLoader uses general-purpose FileMetadata (SPI adapter) to map TemplateID ↔ filesystem paths. No need for TemplateMetadata—FileMetadata is reusable infrastructure model.
-
 - **Composition via Go stdlib:** Template composition handled by Go's `text/template` via `{{define}}`/`{{template}}` directives. No custom section tracking needed—leverage mature, well-tested functionality.
 
 **Additional Information:**
 
 The lean Template model (ID + Content only) follows clean architecture principles—pure data structure with behavior in services. TemplateID represents an intrinsic domain concept (template name for composition), not infrastructure leakage. The distinction from Note/NoteID is important: NoteID is truly opaque (domain doesn't care about note naming), while TemplateID must be meaningful because Go's `text/template` requires names for composition (`{{template "contact-header"}}`). For MVP with small template directories (<100 templates), single model for both discovery and execution is pragmatic. FileMetadata handles filesystem concerns in adapter layer, keeping Template pure domain.
+
+---
+
+### TemplateID
+
+**Purpose:** Template name used for identification and composition. Represents the intrinsic domain concept of "template name" required by Go's `text/template` composition system.
+
+**Architecture Layer:** Domain Core
+
+**Key Attributes:**
+
+- `value` (string) - Template name. Typically basename of template file without extension (e.g., "contact-header", "daily-note"). Used in template composition syntax: `{{template "contact-header"}}`.
+
+**Relationships:**
+
+- Used by TemplateEngine for template composition via Go `text/template` package
+- Used in template references: `{{template "name"}}` and `{{block "name"}}`
+- TemplateLoader adapter derives TemplateID from filename basename (scans Config.TemplatesDir, default: `templates/`)
+- TemplateLoader uses FileMetadata (SPI adapter) to map TemplateID ↔ file paths
+- Used as map keys in template registries
+
+**Design Decisions:**
+
+- **Name as domain concept:** Unlike NoteID (truly opaque), TemplateID represents template name—an intrinsic domain requirement for Go's `text/template` composition system. Not a layer violation.
+- **Basename convention:** By convention, TemplateID matches file basename (without path/extension). Adapter derives this during loading from `templates/contact-header.md` → `"contact-header"`.
+- **Storage agnostic within constraint:** Templates could come from database, API, or filesystem, but all need a name for `{{template}}` references. Basename is pragmatic choice.
+- **Simple identifier type:** Just a string wrapper, not a DDD value object. Primitive identifier with no complex structure.
 
 ---
 
@@ -1159,26 +1065,96 @@ The lean Template model (ID + Content only) follows clean architecture principle
 **Design Decisions:**
 
 - **Value object (DDD):** Immutable configuration data identified by its attributes. Two Config instances with identical values are equivalent. Loaded once at startup, never modified.
-
 - **JSON format for MVP:** Config file is `lithos.json` for MVP. Post-MVP: expand to support TOML and YAML formats for user preference.
-
 - **Flat structure:** No nested config objects for MVP simplicity. All settings are top-level keys in JSON. This keeps config file simple and reduces unmarshaling complexity.
-
 - **Sensible defaults:** Empty config file is valid - all paths default to sensible vault-relative locations. Enables quickstart: user can run `lithos index` with zero configuration if vault uses standard directory structure.
-
 - **String paths:** Paths stored as strings, not file handles or custom Path types. Adapters resolve paths on demand using `filepath.Join` and `filepath.Abs`. This keeps config serializable and adapter-agnostic.
-
 - **PropertyBankFile is filename only:** Not a full path. Always located in SchemasDir. SchemaLoader constructs full path: `filepath.Join(config.SchemasDir, config.PropertyBankFile)`.
-
 - **Validation at load time:** ConfigLoader validates that VaultPath exists, is directory, and is readable. Other paths validated lazily when accessed (TemplatesDir validated on first `lithos find`, not at config load).
-
 - **Environment variable override:** ConfigLoader supports env vars like `LITHOS_VAULT_PATH`. Precedence: CLI flags > env vars > config file > defaults. This enables CI/CD override without modifying config files.
-
 - **No secrets in config:** Config is committed to git (per PRD, vaults are git repositories). No API keys, tokens, or passwords. Future: if external API integrations added, use separate credential files or system keychain.
 
 **Additional Information:**
 
 Config is a domain value object representing application configuration state. While loaded by infrastructure adapter (ConfigLoader), the model itself represents domain knowledge about vault structure and resource locations. The flat structure keeps configuration simple and readable for users. Sensible defaults mean a user can create an empty `lithos.json` and the application works immediately if using standard directory conventions. The precedence order (CLI flags > env vars > config file > defaults) provides flexibility for different environments - developers can override locally via flags, CI/CD can inject via environment variables, and teams can share baseline config in version control. String-based paths keep Config serializable and platform-agnostic - no special types needed. For MVP, JSON format provides simplicity with excellent Go stdlib support. Post-MVP expansion to TOML/YAML gives users format choice.
+
+---
+
+## Domain Events
+
+**Purpose:** Event models for event-driven architecture. Represents significant domain occurrences that other components react to via publish/subscribe pattern. Implemented in Epic 3 to eliminate god-objects and enable clean CQRS separation.
+
+**Architecture Layer:** Domain Core (Active in Epic 3)
+
+**Status:** ACTIVE - Epic 3 implements event-driven architecture (Story 3.29). Event bus with domain events replaces direct service dependencies to eliminate god-object pattern (CLICommander, VaultIndexer).
+
+### DomainEvent Interface
+
+**Purpose:** Base interface for all domain events. Provides common event metadata.
+
+**Key Methods:**
+
+- `EventType() string` - Returns event type identifier (e.g., "NoteIndexed", "FrontmatterValidated")
+- `OccurredAt() time.Time` - Returns event timestamp
+- `AggregateID() string` - Returns ID of aggregate that triggered event (e.g., NoteID, SchemaName)
+
+### Event Types
+
+#### Indexing Events
+
+**NoteIndexed** - Published when single note successfully indexed
+
+- **Fields:** NoteID, Path, FileClass, OccurredAt
+- **Use Cases:** Update search index, refresh graph, trigger backlink computation
+
+**VaultIndexingComplete** - Published when full vault indexing finishes
+
+- **Fields:** NotesIndexed (int), Duration, OccurredAt
+- **Use Cases:** QueryService rebuilds indices, UI shows indexing complete, cache warmup
+
+#### Validation Events
+
+**FrontmatterValidated** - Published when frontmatter validation completes
+
+- **Fields:** NoteID, SchemaName, IsValid (bool), Errors ([]ValidationError), OccurredAt
+- **Use Cases:** Collect validation statistics, UI shows validation errors, quality metrics
+
+#### Configuration Events
+
+**SchemaLoaded** - Published when single schema successfully loaded
+
+- **Fields:** SchemaName, PropertyCount (int), OccurredAt
+- **Use Cases:** Audit log, reload dependent schemas, validation cache invalidation
+
+**SchemasReloaded** - Published when all schemas reloaded (hot reload)
+
+- **Fields:** SchemaCount (int), OccurredAt
+- **Use Cases:** Clear validation caches, notify UI, audit configuration changes
+
+### Event-Driven Architecture Benefits (Epic 3 Implementation)
+
+**Implementation:** Story 3.29 implements EventBus infrastructure with in-memory goroutine-based async dispatch.
+
+**Benefits Realized:**
+
+- **God-Object Elimination:** CLICommander and VaultIndexer no longer accumulate dependencies - services communicate via events
+- **CQRS Separation:** QueryService subscribes to VaultIndexingComplete event (pure read-side), VaultIndexer publishes events (command-side)
+- **Decoupling:** Services don't directly depend on each other - add new subscribers without modifying publishers
+- **Extensibility:** New features subscribe to existing events (e.g., MetricsService subscribes to FrontmatterValidated)
+- **Testability:** Mock EventBus for unit tests, test event flows independently
+
+**Trade-offs Accepted:**
+
+- **Infrastructure Complexity:** EventBus implementation, subscription management (acceptable for god-object elimination)
+- **Debugging Complexity:** Async execution harder to trace (mitigated by comprehensive event logging with trace IDs)
+- **Eventual Consistency:** Subscribers process with delay (mitigated by synchronous dispatch for critical events)
+
+**Publisher/Subscriber Architecture:**
+
+- **Publishers:** VaultIndexer (NoteIndexed, VaultIndexingComplete), FrontmatterService (FrontmatterValidated), SchemaEngine (SchemaLoaded, SchemasReloaded)
+- **Subscribers:** VaultIndexer (NoteIndexed → update indices), QueryService (VaultIndexingComplete → rebuild query structures), MetricsService (FrontmatterValidated → stats)
+
+**Implementation Details:** See high-level-architecture.md "Orchestration Pattern Decision" section for complete event-driven architecture specification.
 
 ---
 
