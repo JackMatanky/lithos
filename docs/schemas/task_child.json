@@ -1,0 +1,48 @@
+{
+  "name": "task_child",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "action_item",
+        "appointment",
+        "evening_ritual",
+        "event",
+        "gathering",
+        "habit",
+        "hangout",
+        "interview",
+        "meeting",
+        "morning_ritual",
+        "phone_call",
+        "video_call",
+        "workday_shutdown_ritual",
+        "workday_startup_ritual"
+      ]
+    },
+    "time_start": {
+      "required": false,
+      "array": false,
+      "type": "date",
+      "format": "15:04"
+    },
+    "time_end": {
+      "required": false,
+      "array": false,
+      "type": "date",
+      "format": "15:04"
+    },
+    "duration_est": {
+      "required": false,
+      "array": false,
+      "type": "number"
+    }
+  },
+  "extends": "task",
+  "excludes": [
+    "date_start",
+    "date_end"
+  ]
+}

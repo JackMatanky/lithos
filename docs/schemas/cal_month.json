@@ -1,0 +1,20 @@
+{
+  "name": "cal_month",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "month"
+      ]
+    }
+  },
+  "extends": "cal",
+  "excludes": [
+    "date",
+    "weekday",
+    "week",
+    "year_day"
+  ]
+}

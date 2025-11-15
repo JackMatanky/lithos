@@ -1,0 +1,28 @@
+{
+  "name": "lib_documentation",
+  "properties": {
+    "aliases": {
+      "$ref": "#/properties/aliases"
+    },
+    "title": {
+      "$ref": "#/properties/title"
+    },
+    "application": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "url": {
+      "$ref": "#/properties/url"
+    },
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "documentation"
+      ]
+    }
+  },
+  "extends": "lib"
+}

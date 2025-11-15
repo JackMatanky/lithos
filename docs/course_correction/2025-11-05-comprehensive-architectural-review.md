@@ -6865,7 +6865,7 @@ type SQLiteMetadata struct {
 }
 
 // Conversion functions
-func VaultFileToBeoltDBMetadata(vf VaultFileMeta, fm domain.Frontmatter) BoltDBMetadata
+func VaultFileToBoltDBMetadata(vf VaultFileMeta, fm domain.Frontmatter) BoltDBMetadata
 func VaultFileToSQLiteMetadata(vf VaultFileMeta, fm domain.Frontmatter) SQLiteMetadata
 ```
 

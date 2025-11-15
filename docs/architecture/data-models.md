@@ -1,14 +1,25 @@
 # Data Models
 
-This section defines the data models used throughout the system, organized by architectural layer per hexagonal architecture principles. Models are classified as:
+This section defines the data models used throughout the system, organized by architectural layer per hexagonal architecture principles.
 
-- **Domain Core:** Pure business logic with no infrastructure dependencies - contains only essential business data
-- **Write Models (CQRS Command):** Domain models optimized for data integrity, validation, and persistence
-- **Read Models (CQRS Query):** Domain models denormalized and optimized for fast queries with pre-built indices
-- **API Adapter (Application Programming Interface):** Models used by driving adapters (CLI, TUI, LSP) that invoke domain operations
-- **SPI Adapter (Service Provider Interface):** Models used by driven adapters (storage, filesystem, config) that provide services to domain
+## Model Layer Classification
 
-Domain models live in the core and contain only essential business data. Infrastructure concerns (file paths, timestamps, serialization) belong in adapter layer. The CQRS pattern separates write concerns (validation, integrity) from read concerns (query performance).
+Models are classified by their architectural layer and purpose:
+
+| Layer                           | Purpose                                                       | Examples                                                            | Location Pattern                        |
+| ------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------- | --------------------------------------- |
+| **Domain Core**                 | Pure business entities and value objects with domain behavior | Note, Frontmatter, Schema, Property, PropertyBank, Template, Config | `internal/domain/`                      |
+| **Application Models**          | Service-layer coordination models (currently none for MVP)    | -                                                                   | `internal/app/*/models.go`              |
+| **Transport DTOs (Adapter)**    | Data transfer between layers, infrastructure concerns         | VaultFile, BoltDBMetadata, SQLiteMetadata                           | `internal/adapters/spi/*/dto.go`        |
+| **Projection Models (Adapter)** | Read-optimized views for queries (currently none for MVP)     | -                                                                   | `internal/adapters/spi/cache/*_view.go` |
+| **Domain Events**               | Significant domain occurrences for pub/sub                    | NoteIndexed, VaultIndexingComplete, FrontmatterValidated            | `internal/domain/events.go`             |
+
+**Key Principles:**
+
+- **Domain Core:** Pure business logic with no infrastructure dependencies - contains only essential business data + behavior
+- **Infrastructure DTOs:** Filesystem paths, timestamps, serialization details belong in adapter layer
+- **CQRS Separation:** Write concerns (validation, integrity) separated from read concerns (query performance) in operations/ports, not models (single model for MVP)
+- **Event-Driven:** Domain events enable loose coupling between services via publish/subscribe pattern
 
 ## FileMetadata
 
@@ -87,278 +98,650 @@ func computeMimeType(ext string) string {
 
 ---
 
-## VaultFile
+## VaultFile (Transport DTO)
 
-**Purpose:** Data transfer object used by VaultReaderPort to return scanned vault files with metadata and content. Embeds FileMetadata and adds raw file content. Used for vault indexing workflow.
+**Purpose:** Infrastructure data transfer object for vault file scanning. Returns vault-relative file metadata with content for use by VaultReaderAdapter internally.
 
-**Architecture Layer:** SPI Adapter (Data Transfer Object)
+**Architecture Layer:** SPI Adapter (Transport DTO)
 
-**Rationale:** VaultFile is a simple DTO that combines filesystem metadata (FileMetadata) with file content. It's the return type for VaultReaderPort.ScanAll/ScanModified, providing VaultIndexer with everything needed to construct Note domain models. Not a domain model - just infrastructure data transfer between port and service.
+**Location:** `internal/adapters/spi/dto/vault_file.go`
+
+**Rationale:** VaultFile is a lean DTO that delegates to Go stdlib `fs.FileInfo` instead of duplicating fields. Uses vault-relative paths for portability. VaultFile is **internal to adapters** - VaultReaderAdapter constructs Note domain models from VaultFile and returns Notes to application layer.
 
 **Key Attributes:**
 
-- `FileMetadata` (embedded) - All filesystem metadata (Path, Basename, Folder, Ext, ModTime, Size, MimeType)
-- `Content` ([]byte) - Raw file content. For MVP: markdown text from .md files. Post-MVP: may be nil for large files (lazy load via VaultReaderPort.Read()).
+- `Path` (string) - **Vault-relative path** with forward slashes (e.g., `"notes/meeting.md"`). Portable across platforms. Normalized using `filepath.ToSlash()`.
+- `Info` (fs.FileInfo) - **Delegates to Go stdlib** for ModTime, Size, Mode, IsDir. No duplication.
+- `Content` ([]byte) - Raw file content loaded on-demand. For MVP: markdown text from .md files.
 
-**Relationships:**
-
-- Returned by VaultReaderPort.ScanAll() and VaultReaderPort.ScanModified()
-- Consumed by VaultIndexer to construct Note domain models
-- Embeds FileMetadata for filesystem metadata
-- Content extracted by FrontmatterService to create Frontmatter
-
-**Design Decisions:**
-
-- **Embeds FileMetadata:** Reuses existing metadata structure (DRY principle). VaultFile = FileMetadata + Content.
-- **DTO, not domain model:** Simple data transfer between vault scanning (adapter) and indexing (domain service). No behavior.
-- **Content optional (post-MVP):** For large files (PDFs, videos), Content may be nil. VaultIndexer checks MimeType and decides whether to load content.
-- **Used only in indexing workflow:** CLICommander.NewNote uses VaultWriterPort directly, doesn't need VaultFile.
-
-**Helper Functions:**
+**Computed Methods:**
 
 ```go
-// NewVaultFile creates VaultFile from FileMetadata and content
-// Called by VaultReaderAdapter during vault scanning
-func NewVaultFile(metadata FileMetadata, content []byte) VaultFile {
+// Basename returns filename without extension
+func (v VaultFile) Basename() string {
+    base := filepath.Base(v.Path)
+    return strings.TrimSuffix(base, filepath.Ext(base))
+}
+
+// Folder returns parent directory path
+func (v VaultFile) Folder() string {
+    return filepath.Dir(v.Path)
+}
+
+// Ext returns file extension with dot
+func (v VaultFile) Ext() string {
+    return filepath.Ext(v.Path)
+}
+
+// ModTime delegates to fs.FileInfo
+func (v VaultFile) ModTime() time.Time {
+    return v.Info.ModTime()
+}
+
+// Size delegates to fs.FileInfo
+func (v VaultFile) Size() int64 {
+    return v.Info.Size()
+}
+
+// AbsolutePath helper for I/O operations
+func (v VaultFile) AbsolutePath(vaultRoot string) string {
+    return filepath.Join(vaultRoot, filepath.FromSlash(v.Path))
+}
+```
+
+**Path Normalization Helpers:**
+
+```go
+// NormalizePath converts absolute path to vault-relative with forward slashes
+func NormalizePath(absPath, vaultRoot string) (string, error) {
+    relPath, err := filepath.Rel(vaultRoot, absPath)
+    if err != nil {
+        return "", err
+    }
+    return filepath.ToSlash(relPath), nil
+}
+
+// NewVaultFile creates VaultFile from absolute path and fs.FileInfo
+func NewVaultFile(absPath, vaultRoot string, info fs.FileInfo, content []byte) (VaultFile, error) {
+    relPath, err := NormalizePath(absPath, vaultRoot)
+    if err != nil {
+        return VaultFile{}, err
+    }
+
     return VaultFile{
-        FileMetadata: metadata,
-        Content:      content,
-    }
+        Path:    relPath,
+        Info:    info,
+        Content: content,
+    }, nil
 }
 ```
 
-**Usage Example (VaultIndexer):**
+**Design Decisions:**
+
+- **fs.FileInfo delegation:** Eliminates 5 duplicated fields (ModTime, Size, Mode, IsDir, Name). Uses well-tested stdlib interface.
+- **Vault-relative paths:** Enables cache portability across machines. Matches Obsidian pattern. Forward slashes for cross-platform consistency.
+- **Computed methods:** No cached fields. Methods compute on-demand from Path. Minimal memory footprint.
+- **Internal to adapters:** VaultFile never exposed to application layer. VaultReaderAdapter uses it internally, constructs Note domain models, returns Notes.
+- **Transport DTO (adapter layer):** Not a domain model. Pure infrastructure data transfer within adapter layer.
+
+**Adapter Workflow:**
 
 ```go
-func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
-    // 1. Scan vault
-    vaultFiles, err := v.vaultReader.ScanAll(ctx)
+// VaultReaderAdapter (internal/adapters/spi/vault/reader.go)
+func (a *VaultReaderAdapter) ScanAll(ctx context.Context) ([]domain.Note, error) {
+    // 1. Scan filesystem → []VaultFile (internal DTO)
+    vaultFiles := a.scanFilesystem()
 
-    // 2. For each file, construct Note
+    // 2. Parse each VaultFile → Note
+    notes := make([]domain.Note, 0, len(vaultFiles))
     for _, vf := range vaultFiles {
-        // Filter: only process markdown files for MVP
-        if vf.Ext != ".md" {
-            continue
+        // Parse markdown → NoteMetadata
+        metadata, err := a.markdownParser.ParseMetadata(ctx, vf.Content)
+
+        // Construct Note from metadata + path
+        note := domain.NewNote(vf.Path, metadata)
+        notes = append(notes, note)
+    }
+
+    // 3. Return domain models (not DTOs)
+    return notes, nil
+}
+```
+
+**Relationships:**
+
+- Used internally by VaultReaderAdapter during filesystem scanning
+- Converted to Note domain models before returning to application layer
+- Path used as Note identifier (no separate NoteID abstraction)
+- Content parsed by MarkdownParserAdapter to extract frontmatter, links, headings, tasks
+
+---
+
+## FrontmatterDTO (Transport DTO)
+
+**Purpose:** Adapter-layer data transfer object for frontmatter parsing. Provides syntactic validation (YAML structure) before converting to domain.Frontmatter for semantic validation (schema compliance).
+
+**Architecture Layer:** SPI Adapter (Transport DTO)
+
+**Location:** `internal/adapters/spi/vault/frontmatter.go`
+
+**Rationale:** Two-layer validation pattern separates infrastructure concerns (YAML parsing) from domain concerns (schema compliance). MarkdownParserAdapter handles syntactic validation using FrontmatterDTO, then converts to domain.Frontmatter for business validation by FrontmatterService.
+
+**Key Attributes:**
+
+- `Fields` map[string]any - Parsed YAML frontmatter from markdown file
+
+**Adapter-Layer Validation:**
+
+```go
+// ValidateSyntax checks YAML structure without schema knowledge
+// Returns error if:
+// - YAML parsing failed
+// - Frontmatter is not a map (must be key-value pairs)
+// - Fields contain unsupported types (functions, channels, etc.)
+func (dto FrontmatterDTO) ValidateSyntax() error {
+    if dto.Fields == nil {
+        return fmt.Errorf("frontmatter fields are nil")
+    }
+
+    // Validate no unsupported types in fields
+    for key, val := range dto.Fields {
+        if !isSupportedType(val) {
+            return fmt.Errorf("field %s has unsupported type", key)
         }
+    }
 
-        // Extract frontmatter from content
-        fm, err := v.frontmatterService.Extract(vf.Content)
+    return nil
+}
 
-        // Validate frontmatter
-        v.frontmatterService.Validate(ctx, fm)
-
-        // Derive NoteID from path (adapter translates Path → NoteID)
-        noteID := deriveNoteIDFromPath(vf.Path)
-
-        // Construct Note domain model
-        note := Note{
-            ID:          noteID,
-            Frontmatter: fm,
-            // Post-MVP: Content: vf.Content
-        }
-
-        // Persist to cache
-        v.cacheWriter.Persist(ctx, note)
+// isSupportedType checks if value type is allowed in frontmatter
+// Allowed: string, int, int64, float64, bool, []any, []string, map[string]any
+func isSupportedType(val any) bool {
+    switch val.(type) {
+    case string, int, int64, float64, bool:
+        return true
+    case []any, []string, []interface{}:
+        return true
+    case map[string]any, map[string]interface{}:
+        return true
+    default:
+        return false
     }
 }
 ```
 
----
-
-## Note
-
-**Purpose:** Core business entity representing a markdown note. Aggregate root combining identity and content metadata.
-
-**Architecture Layer:** Domain Core
-
-**Key Attributes:**
-
-- `ID` (NoteID) - Abstract identifier
-- `Frontmatter` (Frontmatter) - Content metadata from YAML
-
-**Relationships:**
-
-- Stored via CacheWriter port
-- Retrieved via CacheReader port
-- Queried by QueryService (used by template engine's lookup/query functions)
-- Created during vault indexing (ID from adapter, Frontmatter from FrontmatterService)
-
-**Design Decisions:**
-
-- **Minimal composition:** Only ID + Frontmatter. No infrastructure metadata (paths, timestamps).
-- **Aggregate root:** Note is DDD aggregate root. Frontmatter is value object.
-- **Pure data structure:** No behavior or methods. Operations implemented in domain services.
-- **Single model for MVP:** Used by both write operations (CacheWriter) and read operations (CacheReader). CQRS separation in operations/ports, not models.
-- **Future extensibility:** Post-MVP can introduce schema-specific projections if needed for denormalized query data.
-
-**Helper Functions:**
+**Conversion to Domain:**
 
 ```go
-// NewNote creates Note from file and frontmatter components
-// Called by adapter during vault indexing after parsing
-func NewNote(file File, frontmatter Frontmatter) Note {
-    return Note{
-        File:        file,
-        Frontmatter: frontmatter,
-    }
-}
-
-// SchemaName returns FileClass from embedded Frontmatter
-// Convenience method for schema validation
-func (n Note) SchemaName() string {
-    return n.Frontmatter.FileClass
+// ToDomain converts FrontmatterDTO to domain.Frontmatter
+// Called by MarkdownParserAdapter after syntactic validation
+func (dto FrontmatterDTO) ToDomain() domain.Frontmatter {
+    return domain.NewFrontmatter(dto.Fields)
 }
 ```
 
-**Additional Information:**
-
-The Note model represents Lithos's pragmatic approach to domain modeling—split where it matters (File vs Frontmatter), compose where it helps (Note aggregate). This three-model structure mirrors Templater's proven module architecture while enabling Go idioms (struct embedding, value types). The composition provides flexibility: queries can return `[]File` when only paths needed, validation operates on `Frontmatter`, but template rendering gets full `Note`. CQRS benefits come from operational separation, not model separation, avoiding translation overhead.
-
-**Enhanced Body Content Indexing (Goldmark Integration):**
-
-Goldmark integration enables advanced markdown processing during vault indexing:
-
-- **Heading extraction:** Parse markdown headings (# ## ###) for navigation and search using goldmark AST
-- **Enhanced frontmatter detection:** Robust YAML delimiter detection using goldmark parser
-- **Future-ready architecture:** Foundation for inline tag parsing, wikilink extraction, and block reference support
-
-Current implementation indexes frontmatter only. Goldmark provides AST access for future body content parsing in Phase 3 (Enhanced Querying), enabling richer Note.Body model with heading hierarchies and content structure.
-
----
-
-### NoteID
-
-**Purpose:** Abstract domain identifier for notes. Decouples domain logic from infrastructure storage mechanism.
-
-**Architecture Layer:** Domain Core
-
-**Key Attributes:**
-
-- `value` (string) - Opaque identifier. Domain doesn't know if this represents file path, UUID, database key, or URL.
-
-**Relationships:**
-
-- Used by all domain services to reference notes
-- Translated by storage adapters (VaultReadAdapter/VaultWriteAdapter map NoteID ↔ file paths)
-- Used as map keys in QueryService indices
-
-**Design Decisions:**
-
-- **Opaque to domain:** Domain never inspects or constructs IDs - adapters handle translation
-- **Simple string type:** Minimal overhead, easy to serialize and compare
-- **Future-proof:** Can change storage mechanism without changing domain logic
-
----
-
-### NoteMetadata
-
-**Purpose:** Container for all parsed metadata extracted from markdown content. Represents complete note metadata including frontmatter, structural elements (links, headings), and tags. Returned by MarkdownParserPort for use by domain services.
-
-**Architecture Layer:** Domain Core (Value Object)
-
-**Key Attributes:**
-
-- `Frontmatter` (map[string]any) - Parsed YAML frontmatter as flexible map
-- `Links` ([]Link) - All links found in markdown (both wikilinks and standard markdown links)
-- `Headings` ([]Heading) - All markdown headings with hierarchy information
-- `Tags` ([]string) - Hashtags extracted from content (#tag, #nested/tag)
-- `Backlinks` ([]Link) - Computed backlinks to this note from other notes (populated by graph analysis)
-
-**Relationships:**
-
-- Returned by MarkdownParserPort.ParseMetadata()
-- Consumed by FrontmatterService.Extract() to create Frontmatter domain model
-- Used by VaultIndexer during vault indexing
-- Stored in SQLite deep storage for indexed queries via MetadataQueryPort
-
-**Design Decisions:**
-
-- **Value object:** Immutable container for parsed metadata. Two NoteMetadata instances with identical content are equivalent.
-- **Complete metadata:** Contains all metadata types in single structure for convenient parsing. Services extract what they need.
-- **Backlinks computed:** Backlinks not extracted during parsing - computed by analyzing Links across all notes during indexing.
-- **Foundation for graph queries:** Enables future graph traversal, backlink navigation, and knowledge graph features.
-- **Parser output format:** Returned by MarkdownParserPort as parse result. Domain services transform to domain models (Frontmatter, etc.).
-
-**Helper Functions:**
+**Usage in MarkdownParserAdapter:**
 
 ```go
-// NewNoteMetadata creates NoteMetadata from parsed components
-// Called by MarkdownParserAdapter after goldmark AST walking
-func NewNoteMetadata(
-    frontmatter map[string]any,
-    links []Link,
-    headings []Heading,
-    tags []string,
-) NoteMetadata {
+// MarkdownParserAdapter (internal/adapters/spi/vault/markdown_parser.go)
+func (a *MarkdownParserAdapter) ParseMetadata(ctx context.Context, content []byte) (NoteMetadata, error) {
+    // 1. Parse YAML frontmatter → FrontmatterDTO
+    dto, err := a.parseYAML(content)
+    if err != nil {
+        return NoteMetadata{}, fmt.Errorf("YAML parse error: %w", err)
+    }
+
+    // 2. Syntactic validation (adapter layer)
+    if err := dto.ValidateSyntax(); err != nil {
+        return NoteMetadata{}, fmt.Errorf("frontmatter syntax invalid: %w", err)
+    }
+
+    // 3. Convert to domain model
+    frontmatter := dto.ToDomain()
+
+    // 4. Parse other metadata (links, headings, tasks)
+    links := a.parseLinks(content)
+    headings := a.parseHeadings(content)
+    tasks := a.parseTasks(content)
+
     return NoteMetadata{
         Frontmatter: frontmatter,
         Links:       links,
         Headings:    headings,
+        Tasks:       tasks,
+    }, nil
+}
+```
+
+**Design Decisions:**
+
+- **Syntactic vs Semantic separation:** FrontmatterDTO handles YAML parsing concerns (adapter layer). domain.Frontmatter validated by FrontmatterService for schema compliance (application layer).
+- **Simple DTO:** No methods beyond ValidateSyntax() and ToDomain(). No business logic.
+- **Type safety:** ValidateSyntax() ensures only supported YAML types in frontmatter (prevents issues with complex types).
+- **One-way conversion:** FrontmatterDTO → domain.Frontmatter (no reverse). Domain models don't depend on adapter DTOs.
+- **Error context:** Validation errors indicate YAML structural issues, not schema violations.
+
+**Relationships:**
+
+- Created by MarkdownParserAdapter.parseYAML() from markdown content
+- Validated via ValidateSyntax() before domain conversion
+- Converted to domain.Frontmatter via ToDomain()
+- Never exposed outside MarkdownParserAdapter (internal DTO)
+
+---
+
+## Note (Domain Entity)
+
+**Purpose:** Core business entity representing a markdown note. Aggregate root combining identity (path), frontmatter, and structural metadata (links, headings, tasks).
+
+**Architecture Layer:** Domain Core
+
+**Location:** `internal/domain/note.go`
+
+**Key Attributes:**
+
+- `Path` (string) - **Vault-relative path as identifier** (e.g., `"notes/meeting.md"`). Unique, immutable primary key. Replaces abstract NoteID.
+- `Frontmatter` (Frontmatter) - Content metadata from YAML frontmatter
+- `Links` ([]Link) - All links found in markdown (wikilinks + standard links)
+- `Headings` ([]Heading) - Markdown heading structure with hierarchy
+- `Tags` ([]string) - Hashtags extracted from content (#tag, #nested/tag)
+- `Tasks` ([]TaskItem) - Task list items with completion status
+
+**Entity Methods (Enrichment):**
+
+```go
+// Validation
+func (n Note) Validate(ctx context.Context) error {
+    // Semantic validation - schema compliance, business rules
+    return n.Frontmatter.Validate(ctx)
+}
+
+// Factory constructor with validation
+func NewNote(path string, frontmatter Frontmatter, links []Link, headings []Heading, tags []string, tasks []TaskItem) (Note, error) {
+    note := Note{
+        Path:        path,
+        Frontmatter: frontmatter,
+        Links:       links,
+        Headings:    headings,
         Tags:        tags,
-        Backlinks:   nil, // Computed later by graph analysis
+        Tasks:       tasks,
+    }
+
+    if err := note.Validate(context.Background()); err != nil {
+        return Note{}, err
+    }
+
+    return note, nil
+}
+
+// Delegation methods for common frontmatter access
+func (n Note) FileClass() string {
+    return n.Frontmatter.FileClass
+}
+
+func (n Note) Aliases() []string {
+    return n.Frontmatter.GetStringSlice("aliases")
+}
+
+func (n Note) Title() string {
+    title, _ := n.Frontmatter.GetString("title")
+    return title
+}
+
+func (n Note) HasTag(tag string) bool {
+    for _, t := range n.Tags {
+        if t == tag {
+            return true
+        }
+    }
+    return false
+}
+
+// Extraction methods for storage adapters
+func (n Note) ModTime() time.Time {
+    // Storage adapters track ModTime separately (not in domain)
+    // See FileDatesDTO for staleness detection
+    return time.Time{}
+}
+```
+
+**Relationships:**
+
+- Constructed by VaultReaderAdapter from VaultFile + MarkdownParserAdapter
+- Stored via CacheWriterPort (BoltDB + SQLite dual-write)
+- Retrieved via CacheReaderPort
+- Queried by QueryService (template engine's lookup/query functions)
+- Path used as unique identifier across all storage (no NoteID abstraction needed)
+
+**Design Decisions:**
+
+- **Path as identifier:** Vault-relative path IS the identity. No abstract NoteID. If file moves, treat as delete+create for MVP.
+- **NoteMetadata attributes embedded:** Frontmatter, Links, Headings, Tags, Tasks directly on Note (not separate NoteMetadata wrapper).
+- **Rich domain entity:** Has validation, factory, delegation methods. NOT anemic.
+- **Storage extraction via methods:** Note provides FileClass(), Aliases(), Title() for storage adapters to extract what they need.
+- **Single model for MVP:** Used by both write and read operations. CQRS separation in operations/ports, not models.
+- **Aggregate root:** Note is DDD aggregate root. Frontmatter, Link, Heading, TaskItem are value objects.
+
+**Additional Information:**
+
+Note construction happens in **VaultReaderAdapter** (adapter layer), not VaultIndexer (application layer). Adapter parses markdown via MarkdownParserAdapter, constructs fully-formed Note domain models, returns them to VaultIndexer for validation and persistence.
+
+---
+
+### NoteID (REMOVED - Replaced by Path)
+
+**Status:** REMOVED in architectural course correction (2025-11-05)
+
+**Reason for Removal:** Over-abstraction without benefit. NoteID was opaque identifier requiring translation layer, but vault structure inherently uses paths as natural identifiers.
+
+**Replaced By:** Note.Path (vault-relative path string)
+
+**Migration:**
+
+- **Before:** NoteID abstraction with adapter translation (NoteID ↔ file path mapping)
+- **After:** Path as direct identifier (e.g., `"notes/meeting.md"`)
+
+**Benefits of Path as Identifier:**
+
+- **Simplicity:** No translation layer needed - path is natural vault identifier
+- **Portability:** Vault-relative paths work across machines when vault synced
+- **Human-readable:** `"notes/daily/2024-01-15.md"` more meaningful than opaque UUID
+- **Storage alignment:** BoltDB, SQLite, filesystem all use paths naturally
+- **Query simplicity:** Path-based lookups match user mental model
+
+**Impact:**
+
+- Removed NoteID type and translation logic from adapters
+- Note identified directly by Path field (string)
+- Storage adapters use Path as primary key
+- No mapping tables needed (simplified architecture)
+
+---
+
+### NoteMetadata (EMBEDDED IN NOTE)
+
+**Status:** Attributes embedded directly in Note entity (architectural course correction 2025-11-05)
+
+**Previous Design:** Separate NoteMetadata container returned by parser
+
+**Current Design:** Metadata attributes embedded as Note entity fields
+
+**Note Structure with Embedded Metadata:**
+
+```go
+type Note struct {
+    // Identity
+    Path string  // Vault-relative path as identifier
+
+    // Parsed metadata (from MarkdownParserAdapter)
+    Frontmatter Frontmatter
+    Links       []Link
+    Headings    []Heading
+    Tags        []string
+    Tasks       []TaskItem
+
+    // Computed metadata (populated after Note construction)
+    Backlinks   []Link  // Computed by analyzing Links across vault
+}
+```
+
+**Two-Phase Note Population:**
+
+**Phase 1 - Construction (Parsing):**
+
+```go
+// MarkdownParserAdapter parses markdown and constructs Note
+func (a *MarkdownParserAdapter) ParseNote(path string, content []byte) (domain.Note, error) {
+    // Parse all metadata from goldmark AST (single pass)
+    frontmatter := a.parseFrontmatter(content)
+    links := a.parseLinks(content)
+    headings := a.parseHeadings(content)
+    tags := a.parseTags(content)
+    tasks := a.parseTasks(content)
+
+    // Construct Note with parsed attributes (Backlinks empty)
+    note := domain.NewNote(path, frontmatter, links, headings, tags, tasks)
+    return note, nil
+}
+```
+
+**Phase 2 - Enrichment (Computation):**
+
+```go
+// BacklinkService computes backlinks after all notes parsed
+func (s *BacklinkService) ComputeBacklinks(notes []domain.Note) {
+    for i := range notes {
+        // Analyze Links from all other notes
+        backlinks := s.findReferencesToNote(notes[i].Path, notes)
+
+        // Populate Backlinks field (mutation after construction)
+        notes[i].Backlinks = backlinks
     }
 }
 ```
 
+**Design Decisions:**
+
+- **Embedded attributes:** Note directly contains metadata fields (no wrapper structure)
+- **Entity enrichment:** Note has delegation methods using these attributes (FileClass(), Title(), Aliases())
+- **Two-phase population:** Parsed metadata at construction, computed metadata (Backlinks) added later
+- **Mutable for Backlinks (MVP):** Note allows Backlinks mutation after construction for MVP simplicity
+- **Single-pass parsing:** MarkdownParserAdapter extracts all parsed metadata in one goldmark AST walk
+- **Backlinks computed:** Requires vault-wide Link analysis, populated by BacklinkService post-indexing
+
+**Benefits:**
+
+- **Simplified access:** `note.Links` instead of `note.Metadata.Links`
+- **Rich entity:** Note provides domain methods using embedded attributes
+- **No intermediate wrapper:** Direct attribute access
+- **Clear separation:** Parsed attributes vs computed attributes
+
+**Relationships:**
+
+- Note constructed by MarkdownParserAdapter with parsed attributes
+- Backlinks populated by BacklinkService after vault-wide analysis
+- All attributes stored together in Note entity
+- Services access note attributes directly
+
 **Additional Information:**
 
-NoteMetadata serves as the data structure for markdown parsing results. MarkdownParserPort returns this structure after parsing markdown with goldmark. Domain services then extract specific components: FrontmatterService uses Frontmatter field, future LinkService would use Links field, future HeadingNavigationService would use Headings field. This separation enables parser to extract all metadata in one pass (efficient), while domain services remain focused on their specific concerns (SRP).
+Entity enrichment pattern eliminates intermediate NoteMetadata wrapper. Note entity directly owns its attributes and provides delegation methods. For MVP, Note permits Backlinks mutation after construction (pragmatic choice). Post-MVP may refactor to immutable Note with BacklinkEnrichment pattern if needed.
 
 ---
 
 #### Frontmatter
 
-**Purpose:** Represents note content metadata extracted from YAML frontmatter. Pure data structure with no behavior.
+**Purpose:** Rich domain entity representing note metadata with type-safe accessors for field inspection and delegation methods for common frontmatter values.
 
-**Architecture Layer:** Domain Core
+**Architecture Layer:** Domain Core (`internal/domain/frontmatter.go`)
 
 **Key Attributes:**
 
-- `FileClass` (string, computed) - Schema reference extracted from `fields["fileClass"]`. Used for validation lookup. Empty string if not present.
-- `Fields` (map[string]any) - Complete parsed YAML frontmatter as flexible map. Preserves all user-defined fields. Keys are case-sensitive. Supports nested maps.
+- `Fields` map[string]any - Complete parsed YAML frontmatter preserving all user-defined fields
+
+**Entity Enrichment:**
+
+Frontmatter transitions from anemic data structure to rich domain entity with:
+
+1. **Generic Field Access:** Get() returns raw values, caller handles type assertions
+2. **Field Inspection:** Has() checks existence, type checkers (IsString, IsArray, etc.) validate types
+3. **Delegation Methods:** FileClass(), Title(), Aliases() provide convenient access for Note
+4. **Config Dependency:** FileClass() uses global Config.FileClassKey singleton
 
 **Relationships:**
 
-- Extracted from markdown by FrontmatterService.Extract()
-- Validated against Schema by FrontmatterService.Validate()
-- Composed into Note
-- Used by domain services for business logic
+- Parsed from FrontmatterDTO by MarkdownParserAdapter (syntactic validation in adapter)
+- Embedded in Note entity (composed aggregate)
+- Validated by FrontmatterService.Validate() in application layer (semantic validation)
+- Used by Note delegation methods (Note.FileClass(), Note.Aliases(), Note.Title())
 
 **Design Decisions:**
 
-- **Anemic model:** Pure data structure with no behavior. All operations (extraction, validation) implemented in FrontmatterService.
-- **FileClass computed:** Extracted from Fields["fileClass"] for convenience
-- **Fields as authoritative source:** All frontmatter data stored in Fields map
-- **Fields preserved as-is:** Complete frontmatter map stored without filtering. Supports FR6 requirement (preserve unknown fields). Validation happens separately via Validator + Schema (not at model level). Unknown fields pass through untouched.
-- **Flexible map over struct:** Using `map[string]interface{}` instead of typed struct enables schema-free notes and user-defined fields. Aligns with Obsidian's flexible frontmatter philosophy. Type checking happens at validation layer, not model layer.
-- **Fields vs Properties terminology:** "Fields" = actual data values in frontmatter. "Properties" = schema definitions/rules. This distinction eliminates ambiguity and aligns with JSON Schema terminology.
+- **No FileClass caching:** Computed on-demand via FileClass() method
+- **Config dependency acceptable:** Frontmatter depends on Config singleton (loaded before all other components)
+- **Two-layer validation:**
+  - Adapter layer: FrontmatterDTO.ValidateSyntax() - YAML parsing, structure
+  - Application layer: FrontmatterService.Validate() - Schema compliance (not in domain entity)
+- **Flexible map preserved:** map[string]any supports schema-free notes and unknown fields (FR6)
+- **Caller-side type safety:** Get() returns any; caller uses type checkers then type assertions
+- **Fields vs Properties:** "Fields" = data values, "Properties" = schema definitions
 
-**Helper Functions:**
+**Field Access Methods:**
 
 ```go
-// NewFrontmatter creates Frontmatter from parsed YAML
-// Called by adapter after YAML parsing
-func NewFrontmatter(fields map[string]interface{}) Frontmatter {
-    return Frontmatter{
-        FileClass: extractFileClass(fields),
-        Fields:    fields,
+// Get retrieves raw field value - caller handles type assertions
+func (f Frontmatter) Get(key string) (any, bool) {
+    val, ok := f.Fields[key]
+    return val, ok
+}
+
+// Has checks field existence
+func (f Frontmatter) Has(key string) bool {
+    _, ok := f.Fields[key]
+    return ok
+}
+```
+
+**Type Checker Methods:**
+
+```go
+// IsString checks if field is string type
+func (f Frontmatter) IsString(key string) bool {
+    val, ok := f.Fields[key]
+    if !ok {
+        return false
+    }
+    _, ok = val.(string)
+    return ok
+}
+
+// IsArray checks if field is array/slice type
+func (f Frontmatter) IsArray(key string) bool {
+    val, ok := f.Fields[key]
+    if !ok {
+        return false
+    }
+    switch val.(type) {
+    case []any, []string, []interface{}:
+        return true
+    default:
+        return false
     }
 }
 
-// extractFileClass safely extracts fileClass from frontmatter fields
-// Returns empty string if not present or wrong type
-func extractFileClass(fields map[string]interface{}) string {
-    if fc, ok := fields["fileClass"].(string); ok {
-        return fc
+// IsInt checks if field is integer type (handles YAML number parsing)
+func (f Frontmatter) IsInt(key string) bool {
+    val, ok := f.Fields[key]
+    if !ok {
+        return false
+    }
+    switch val.(type) {
+    case int, int64, float64:
+        return true
+    default:
+        return false
+    }
+}
+
+// IsBool checks if field is boolean type
+func (f Frontmatter) IsBool(key string) bool {
+    val, ok := f.Fields[key]
+    if !ok {
+        return false
+    }
+    _, ok = val.(bool)
+    return ok
+}
+
+// IsMap checks if field is map type
+func (f Frontmatter) IsMap(key string) bool {
+    val, ok := f.Fields[key]
+    if !ok {
+        return false
+    }
+    _, ok = val.(map[string]any)
+    return ok
+}
+```
+
+**Delegation Methods for Note:**
+
+```go
+// FileClass retrieves schema key using Config.FileClassKey
+// Accesses global Config singleton
+func (f Frontmatter) FileClass() string {
+    key := config.Get().FileClassKey
+    if val, ok := f.Fields[key].(string); ok {
+        return val
     }
     return ""
 }
 
-// SchemaName returns FileClass for schema validation lookup
-// Usage: validator.Validate(frontmatter.SchemaName(), frontmatter)
-func (f Frontmatter) SchemaName() string {
-    return f.FileClass
+// Title retrieves note title from "title" field
+func (f Frontmatter) Title() string {
+    if val, ok := f.Fields["title"].(string); ok {
+        return val
+    }
+    return ""
 }
+
+// Aliases retrieves note aliases from "aliases" field
+// Handles []string, []any with string elements, single string -> []string
+func (f Frontmatter) Aliases() []string {
+    val, ok := f.Fields["aliases"]
+    if !ok {
+        return []string{}
+    }
+
+    // Handle []string
+    if strSlice, ok := val.([]string); ok {
+        return strSlice
+    }
+
+    // Handle []any or []interface{}
+    if anySlice, ok := val.([]any); ok {
+        result := make([]string, 0, len(anySlice))
+        for _, item := range anySlice {
+            if str, ok := item.(string); ok {
+                result = append(result, str)
+            }
+        }
+        return result
+    }
+
+    // Single string -> slice
+    if str, ok := val.(string); ok {
+        return []string{str}
+    }
+
+    return []string{}
+}
+```
+
+**Factory Constructor:**
+
+```go
+// NewFrontmatter creates Frontmatter from parsed fields
+// Called by MarkdownParserAdapter after converting FrontmatterDTO
+func NewFrontmatter(fields map[string]any) Frontmatter {
+    return Frontmatter{Fields: fields}
+}
+```
+
+**Usage Example:**
+
+```go
+// Type-safe field access workflow
+if fm.IsString("author") {
+    val, _ := fm.Get("author")
+    author := val.(string)  // Safe: type already checked
+    // Use author
+}
+
+// Delegation methods
+fileClass := note.Frontmatter.FileClass()  // Uses Config.FileClassKey
+title := note.Frontmatter.Title()
+aliases := note.Frontmatter.Aliases()
 ```
 
 ---
@@ -471,6 +854,64 @@ func (h Heading) IsTopLevel() bool {
 **Additional Information:**
 
 Heading model enables document structure analysis and navigation. Future features: table of contents generation (render heading hierarchy), heading-based navigation (jump to section), outline view (collapsible heading tree), heading search (find notes with specific sections). Goldmark AST provides heading information during parsing - MarkdownParserAdapter extracts into Heading structs. Heading sequence represents document structure: increasing levels = going deeper, decreasing levels = coming back up.
+
+---
+
+#### TaskItem
+
+**Purpose:** Represents a task/checkbox item found in markdown content. Records task text and completion status for task management queries.
+
+**Architecture Layer:** Domain Core (Value Object)
+
+**Key Attributes:**
+
+- `Text` string - Task description extracted from TextBlock node (without checkbox markers)
+- `IsChecked` bool - Task completion status from TaskCheckBox.IsChecked (true = `[x]`, false = `[ ]`)
+- `Line` int - Line number in source markdown for reference
+
+**Relationships:**
+
+- Component of Note entity ([]TaskItem field)
+- Extracted by MarkdownParserAdapter using goldmark TaskList extension
+- Used by future TaskService for task queries
+
+**Design Decisions:**
+
+- **Value object (MVP):** Simple immutable data structure - no manipulation methods
+- **goldmark TaskList extension:** Uses goldmark's `ast.TaskCheckBox` node with `IsChecked` boolean
+- **Text from parent node:** Task text comes from parent `TextBlock` node, not TaskCheckBox itself
+- **Line number tracking:** Enables future task updates (find task by line)
+- **Binary status (MVP):** IsChecked bool handles `[x]` (true) and `[ ]` (false) only
+- **Post-MVP evolution:** Will support custom task statuses via Config (e.g., `[-]` in-progress, `[>]` deferred). Design will evolve from IsChecked bool to Status field with config-driven status definitions.
+
+**Parsing Strategy:**
+
+```go
+// MarkdownParserAdapter walks goldmark AST to extract tasks
+// 1. Find ast.TaskCheckBox nodes
+// 2. Get IsChecked boolean from TaskCheckBox
+// 3. Walk parent TextBlock to extract task text
+// 4. Get line number from node position
+// 5. Return []domain.TaskItem (no goldmark dependency in domain)
+```
+
+**Factory Constructor (MVP):**
+
+```go
+// NewTaskItem creates TaskItem from parsed values
+// Called by MarkdownParserAdapter during AST walking
+func NewTaskItem(text string, isChecked bool, line int) TaskItem {
+    return TaskItem{
+        Text:      strings.TrimSpace(text),
+        IsChecked: isChecked,
+        Line:      line,
+    }
+}
+```
+
+**Additional Information:**
+
+TaskItem model enables basic task tracking for MVP. goldmark TaskList extension provides `ast.TaskCheckBox` nodes; adapter extracts to domain model without goldmark dependency. Post-MVP will expand to support custom task statuses (in-progress, deferred, cancelled) via Config.TaskStatuses settings, evolving IsChecked bool to Status string field.
 
 ---
 
@@ -974,37 +1415,103 @@ func (b BoolSpec) Validate(ctx context.Context) error {
 
 ## Template
 
-**Purpose:** Represents an executable template for note generation. Pure data structure containing template identity and content. Single model used across all layers following YAGNI principle for MVP.
+**Purpose:** Domain interface for executable note generation templates. Wraps Go's text/template to provide domain-aligned template identity and execution behavior.
 
-**Architecture Layer:** Domain Core
+**Architecture Layer:** Domain Core (Interface)
 
-**Rationale:** Template is a pure data structure—just identity (TemplateID) and content (raw template text). All execution logic (parsing, rendering, function execution) lives in TemplateEngine service. Pure domain entity with no infrastructure dependencies.
+**Location:** `internal/domain/template.go`
 
-**Key Attributes:**
+**Rationale:** Template transitions from anemic struct to interface wrapping \*template.Template. This enables rich domain behavior (ID, Execute) while delegating parsing and rendering to stdlib. Interface provides domain abstraction and testability.
 
-- `ID` (TemplateID) - Template name for identification and composition. Used in `{{template "name"}}` references.
-- `Content` (string) - Raw template text. Contains Go `text/template` syntax with Lithos-specific function calls (`prompt`, `suggester`, `lookup`, `query`, `now`, etc.).
+**Interface Definition:**
+
+```go
+// Template represents an executable note generation template
+type Template interface {
+    // ID returns template identifier for composition and lookup
+    ID() string
+
+    // Execute renders template with provided data context
+    Execute(data any) (string, error)
+}
+```
+
+**Concrete Implementation (GoTemplate):**
+
+```go
+// GoTemplate wraps *template.Template for domain interface compliance
+// Location: internal/domain/template.go
+type GoTemplate struct {
+    id   string
+    tmpl *template.Template  // Wraps stdlib template
+}
+
+// NewGoTemplate creates Template from parsed *template.Template
+// Called by TemplateEngine application service after parsing
+func NewGoTemplate(id string, tmpl *template.Template) Template {
+    return &GoTemplate{
+        id:   id,
+        tmpl: tmpl,
+    }
+}
+
+func (t *GoTemplate) ID() string {
+    return t.id
+}
+
+func (t *GoTemplate) Execute(data any) (string, error) {
+    var buf strings.Builder
+    if err := t.tmpl.Execute(&buf, data); err != nil {
+        return "", err
+    }
+    return buf.String(), nil
+}
+```
 
 **Relationships:**
 
-- Template may reference other Templates via `{{template "name"}}` directive (resolved by Go's `text/template` engine)
-- Loaded by TemplateLoader adapter from files in Config.TemplatesDir (default: `templates/`)
-- TemplateLoader uses FileMetadata to track filesystem paths (TemplateID ↔ Path mapping)
-- Executed by TemplateEngine service with injected function map and data context
-- Template functions access ports (CacheReader, InteractivePort, FileReader) via closure during rendering
+- Template interface implemented by GoTemplate domain model
+- Wraps \*template.Template from Go stdlib (delegation pattern)
+- Created by TemplateEngine application service after parsing template files
+- Templates may reference other templates via `{{template "name"}}` composition (resolved by stdlib)
+- Executed with data context (note metadata, config values, query results)
+- Template ID used for lookup and composition within text/template namespace
 
 **Design Decisions:**
 
-- **Pure data structure:** Just ID + Content. No behavior, no cached parse trees (Parsed field removed). All execution logic in TemplateEngine service.
-- **Single model for MVP (YAGNI):** One Template definition used for both discovery and execution eliminates translation overhead. Can split into separate models post-MVP if lazy loading becomes critical.
-- **TemplateID as name (domain concept):** ID represents template name—intrinsic requirement for Go's `text/template` composition. Not a layer violation because naming is core to template composition logic.
-- **Content loaded by adapters:** TemplateLoader adapter reads file content from Config.TemplatesDir and populates Template model. Domain receives ready-to-use templates.
-- **FileMetadata for path mapping:** TemplateLoader uses general-purpose FileMetadata (SPI adapter) to map TemplateID ↔ filesystem paths. No need for TemplateMetadata—FileMetadata is reusable infrastructure model.
-- **Composition via Go stdlib:** Template composition handled by Go's `text/template` via `{{define}}`/`{{template}}` directives. No custom section tracking needed—leverage mature, well-tested functionality.
+- **Interface over struct:** Template is interface, not anemic data bag. Encapsulates identity and execution behavior.
+- **Composition wrapping:** GoTemplate wraps \*template.Template, delegates parsing/rendering to stdlib.
+- **Domain abstraction:** Interface provides domain-aligned API while hiding text/template implementation details.
+- **Testability:** Interface enables mocking Template for unit tests without filesystem dependencies.
+- **ID as domain concept:** Template ID is intrinsic domain requirement for `{{template "name"}}` composition, not infrastructure leakage.
+- **Immutable after creation:** Template wraps parsed \*template.Template (read-only), no mutation after construction.
+- **Thread-safe execution:** \*template.Template is safe for concurrent Execute calls.
+- **No custom caching:** Leverage text/template's built-in template association and lookup.
+
+**Template Composition Example:**
+
+```go
+// Domain usage: Templates reference each other via ID
+// templates/header.tmpl defines "header" template
+// templates/daily-note.tmpl uses {{template "header" .}}
+
+// TemplateEngine (application service) loads both into namespace
+// Client executes by ID
+template, _ := engine.GetTemplate("daily-note")
+output, _ := template.Execute(data)
+```
+
+**Benefits:**
+
+- **Rich domain model:** Template has behavior (Execute), not just data
+- **Stdlib leverage:** Delegates to mature, tested text/template implementation
+- **Type safety:** Interface provides compile-time guarantees
+- **Domain focus:** Hides parsing/caching concerns from domain consumers
+- **Mockable:** Interface enables test doubles without filesystem I/O
 
 **Additional Information:**
 
-The lean Template model (ID + Content only) follows clean architecture principles—pure data structure with behavior in services. TemplateID represents an intrinsic domain concept (template name for composition), not infrastructure leakage. The distinction from Note/NoteID is important: NoteID is truly opaque (domain doesn't care about note naming), while TemplateID must be meaningful because Go's `text/template` requires names for composition (`{{template "contact-header"}}`). For MVP with small template directories (<100 templates), single model for both discovery and execution is pragmatic. FileMetadata handles filesystem concerns in adapter layer, keeping Template pure domain.
+Template interface provides domain abstraction over text/template stdlib. GoTemplate is thin wrapper that delegates execution to \*template.Template while providing domain-aligned interface. Template parsing, namespace management, and function registration handled by TemplateEngine application service (see components.md). Template composition (`{{template "name"}}`) resolved by text/template stdlib namespace.
 
 ---
 
@@ -1049,6 +1556,7 @@ The lean Template model (ID + Content only) follows clean architecture principle
 - `TemplatesDir` (string) - Path to templates directory. Default: `{VaultPath}/templates/`. Can be absolute or relative to VaultPath. Must exist for `lithos new` and `lithos find` commands. TemplateLoader scans all `.md` files in this directory.
 - `SchemasDir` (string) - Path to schemas directory. Default: `{VaultPath}/schemas/`. Can be absolute or relative to VaultPath. Must exist if schemas are used. SchemaLoader parses all schema JSON files in this directory at startup.
 - `PropertyBankFile` (string) - Filename of property bank file within SchemasDir. Default: `property_bank.json`. Full path is `{SchemasDir}/{PropertyBankFile}`. Optional—if missing, schemas cannot use `$ref` references.
+- `FileClassKey` (string) - Frontmatter field name for schema selection. Default: `"fileClass"`. Supports custom keys like `"type"`, `"category"`, `"kind"` for different vault conventions. Used by Frontmatter.FileClass() to extract schema identifier. Enables schema flexibility without code changes.
 - `CacheDir` (string) - Path to index cache directory. Default: `{VaultPath}/.lithos/cache/`. Can be absolute or relative to VaultPath. Created automatically if missing. Must be writable. Epic 3 hybrid storage uses BoltDB (`.lithos/cache/lithos.db`) for hot cache and SQLite (`.lithos/cache/lithos_metadata.db`) for deep storage.
 - `LogLevel` (string) - Logging verbosity for zerolog. One of: "debug", "info", "warn", "error". Default: "info". Case-insensitive. Invalid values fall back to "info" with warning. Controls stdout/stderr output verbosity.
 
@@ -1063,12 +1571,13 @@ The lean Template model (ID + Content only) follows clean architecture principle
 
 - **Value object (DDD):** Immutable configuration data identified by its attributes. Two Config instances with identical values are equivalent. Loaded once at startup, never modified.
 - **JSON format for MVP:** Config file is `lithos.json` for MVP. Post-MVP: expand to support TOML and YAML formats for user preference.
-- **Flat structure:** No nested config objects for MVP simplicity. All settings are top-level keys in JSON. This keeps config file simple and reduces unmarshaling complexity.
-- **Sensible defaults:** Empty config file is valid - all paths default to sensible vault-relative locations. Enables quickstart: user can run `lithos index` with zero configuration if vault uses standard directory structure.
+- **Flat structure (MVP):** Flat Config struct with all settings as top-level fields for simplicity. Alternative composed structure with logical groupings (VaultConfig, SchemaConfig, TemplateConfig, LoggingConfig) available post-MVP if config grows complex.
+- **FileClassKey for schema flexibility:** Configurable field name for schema selection (default `"fileClass"`). Supports different vault conventions (`"type"`, `"category"`, `"kind"`) without code changes. Accessed via global singleton Config by Frontmatter.FileClass().
+- **Sensible defaults:** Empty config file is valid - all paths default to sensible vault-relative locations. FileClassKey defaults to `"fileClass"` (Obsidian convention). Enables quickstart: user can run `lithos index` with zero configuration if vault uses standard directory structure.
 - **String paths:** Paths stored as strings, not file handles or custom Path types. Adapters resolve paths on demand using `filepath.Join` and `filepath.Abs`. This keeps config serializable and adapter-agnostic.
 - **PropertyBankFile is filename only:** Not a full path. Always located in SchemasDir. SchemaLoader constructs full path: `filepath.Join(config.SchemasDir, config.PropertyBankFile)`.
-- **Validation at load time:** ConfigLoader validates that VaultPath exists, is directory, and is readable. Other paths validated lazily when accessed (TemplatesDir validated on first `lithos find`, not at config load).
-- **Environment variable override:** ConfigLoader supports env vars like `LITHOS_VAULT_PATH`. Precedence: CLI flags > env vars > config file > defaults. This enables CI/CD override without modifying config files.
+- **Validation at load time:** ConfigLoader validates that VaultPath exists, is directory, and is readable. FileClassKey validated as non-empty string. Other paths validated lazily when accessed (TemplatesDir validated on first `lithos find`, not at config load).
+- **Environment variable override:** ConfigLoader supports env vars like `LITHOS_VAULT_PATH`, `LITHOS_FILE_CLASS_KEY`. Precedence: CLI flags > env vars > config file > defaults. This enables CI/CD override without modifying config files.
 - **No secrets in config:** Config is committed to git (per PRD, vaults are git repositories). No API keys, tokens, or passwords. Future: if external API integrations added, use separate credential files or system keychain.
 
 **Additional Information:**
@@ -1175,11 +1684,9 @@ Config 🔷 (immutable configuration)
   ├─> TemplatesDir: string (default: "templates/")
   ├─> SchemasDir: string (default: "schemas/")
   ├─> PropertyBankFile: string (default: "property_bank.json")
+  ├─> FileClassKey: string (default: "fileClass")
   ├─> CacheDir: string (default: ".lithos/cache/")
   └─> LogLevel: string
-
-NoteID 🔵 (simple identifier)
-  └─> value: string (opaque)
 
 TemplateID 🔵 (simple identifier)
   └─> value: string (template name/basename)
@@ -1205,9 +1712,9 @@ PropertySpec 🔷 (interface for polymorphic value objects)
 ═══════════════════════════════════════════════════════════════
 
 Note 🔵 (Aggregate Root)
-  ├─> ID: NoteID
+  ├─> Path: string (vault-relative path as identifier)
   └─> Frontmatter
-        ├─> FileClass: string (computed from Fields["fileClass"])
+        ├─> FileClass: string (computed from Fields[Config.FileClassKey])
         └─> Fields: map[string]any
 
 Template 🔵 (Entity)
@@ -1256,9 +1763,6 @@ FileSpec → Note
 
 Frontmatter → Schema
   └─> Validated by FrontmatterService using Schema lookup via FileClass
-
-NoteID ↔ FileMetadata (adapter layer)
-  └─> VaultReadAdapter/VaultWriteAdapter map NoteID to Path
 
 TemplateID ↔ FileMetadata (adapter layer)
   └─> TemplateLoader maps TemplateID to Path (reuses FileMetadata)
