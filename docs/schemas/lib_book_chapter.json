@@ -1,0 +1,34 @@
+{
+  "name": "lib_book_chapter",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "book_chapter"
+      ]
+    },
+    "page_start": {
+      "required": false,
+      "array": false,
+      "type": "number"
+    },
+    "page_end": {
+      "required": false,
+      "array": false,
+      "type": "number"
+    },
+    "library": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(60_library/61_books)/"
+    }
+  },
+  "extends": "lib_book",
+  "excludes": [
+    "cover_url",
+    "issue"
+  ]
+}

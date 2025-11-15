@@ -4,18 +4,19 @@
 # Description:
 # -----------------------------------------------------------------------------
 
-# ------------------------------------------------------------
-# Tools this project needs
-# ------------------------------------------------------------
+# ------------------------------------------------------------ #
+#                             Tools                            #
+# ------------------------------------------------------------ #
 [tools]
 go = "latest"
 golangci-lint = "latest"
 
-# ------------------------------------------------------------
-# Environment
-# ------------------------------------------------------------
+
+# ------------------------------------------------------------ #
+#                          Environment                         #
+# ------------------------------------------------------------ #
 [env]
-GO111MODULE = "on"
+# GO111MODULE = "on"
 
 # If you have private org modules:
 # GOPRIVATE = "github.com/your-org/*"
@@ -26,9 +27,10 @@ GOBIN = "{{config_root}}/bin"
 # Put that bin on PATH
 PATH = "{{config_root}}/bin:{{env.PATH}}"
 
-# ------------------------------------------------------------
-# Mise settings — only what helps Go projects
-# ------------------------------------------------------------
+
+# ------------------------------------------------------------ #
+#                           Settings                           #
+# ------------------------------------------------------------ #
 [settings]
 # 1. Install what’s missing when entering the repo or running tasks
 auto_install = true
@@ -47,9 +49,7 @@ trusted_config_paths = ["{{config_root}}"]
 # 5. We want to actually write a lockfile so CI gets the same versions
 lockfile = true
 
-# ------------------------------------------------------------
-# Go-specific settings
-# ------------------------------------------------------------
+# ------------------- Go-specific Settings ------------------- #
 # make sure GOROOT is set from the tool you installed
 go_set_goroot = true
 
@@ -62,9 +62,10 @@ go_set_gobin = true
 # If you’re in a region where Google’s mirror is slow, change this:
 go_download_mirror = "https://dl.google.com/go"
 
-# ------------------------------------------------------------
-# Tasks
-# ------------------------------------------------------------
+
+# ------------------------------------------------------------ #
+#                             Tasks                            #
+# ------------------------------------------------------------ #
 # run with: `mise run build`, `mise run test`, ...
 
 [tasks.build]

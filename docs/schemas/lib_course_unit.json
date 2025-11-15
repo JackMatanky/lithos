@@ -1,0 +1,12 @@
+{
+  "name": "lib_course_unit",
+  "properties": {
+    "libraby": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(60_library/68_courses)/"
+    }
+  },
+  "extends": "lib_course"
+}

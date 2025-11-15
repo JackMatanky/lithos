@@ -1,0 +1,27 @@
+{
+  "name": "task_meeting",
+  "properties": {
+    "subtype": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "appointment",
+        "event",
+        "gathering",
+        "hangout",
+        "interview",
+        "lecture",
+        "meeting",
+        "phone_call",
+        "tutorial",
+        "video_call"
+      ]
+    }
+  },
+  "extends": "task",
+  "excludes": [
+    "date_start",
+    "date_end"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "name": "cal_week",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "week"
+      ]
+    }
+  },
+  "extends": "cal",
+  "excludes": [
+    "date",
+    "weekday",
+    "year_day"
+  ]
+}

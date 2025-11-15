@@ -8,7 +8,8 @@
       "WebSearch",
       "WebFetch(domain:pkg.go.dev)",
       "WebFetch(domain:sqlite.org)",
-      "WebFetch(domain:docs.obsidian.md)"
+      "WebFetch(domain:docs.obsidian.md)",
+      "SlashCommand(/BMad:tasks:validate-next-story:*)"
     ],
     "deny": [],
     "ask": []

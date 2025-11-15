@@ -38,7 +38,7 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 **Vault Query Functions:**
 - `lookup(basename)` - Find note by basename via QueryService
 - `query(filter)` - Query notes by criteria via QueryService
-- `fileClass(noteID)` - Get note's fileClass field
+- `fileClass(path)` - Get note's fileClass field by vault-relative path
 
 **File Path Control Functions** (inspired by Templater file module):
 - `path()` - Returns the target file path for the note being created. Used to determine where the note will be saved.
@@ -72,12 +72,11 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 
 **Key Interfaces:**
 
-- `Extract(content []byte) (Frontmatter, error)` - Extract frontmatter using MarkdownParserPort, then wrap in Frontmatter domain model
 - `IsSchemaCompliant(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (semantic validation only)
 
 **Dependencies:** MarkdownParserPort (for syntactic parsing), SchemaRegistryPort (for schema lookups), VaultReaderPort (for FileSpec validation), Logger.
 
-**Note:** FrontmatterService is now a pure domain service with zero infrastructure dependencies for parsing. Markdown parsing happens in MarkdownParserAdapter (adapter layer), while FrontmatterService focuses solely on semantic validation (schema compliance, business rules). This enables clean separation: syntactic validation (YAML structure, delimiter detection) happens in adapter layer, semantic validation (schema rules, type constraints) happens in domain layer.
+**Note:** FrontmatterService is a pure domain service with zero infrastructure dependencies. MarkdownParserAdapter (adapter layer) performs syntactic validation (YAML structure) via FrontmatterDTO.ValidateSyntax(), then converts to domain.Frontmatter. FrontmatterService performs semantic validation only (schema compliance, business rules). Clean separation: syntactic validation (YAML parsing, structure) in adapter layer, semantic validation (schema rules, type constraints) in domain layer.
 
 **Technology Stack:** Pure Go domain logic (`regexp`, `time`, `reflect`, `math`), PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints. No direct markdown parsing dependencies.
 
@@ -325,9 +324,9 @@ func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema) err
 - `Build(ctx context.Context) (IndexStats, error)` - Full vault scan and complete index rebuild (BoltDB + SQLite)
 - `Refresh(ctx context.Context, since time.Time) (IndexStats, error)` - Incremental update for files modified since timestamp
 - `AddNote(ctx context.Context, note domain.Note) error` - Add single note to index (used by CLICommander.NewNote)
-- `RemoveNote(ctx context.Context, id domain.NoteID) error` - Remove note from index
+- `RemoveNote(ctx context.Context, path string) error` - Remove note from index by vault-relative path
 
-**Dependencies:** VaultScannerPort, CacheWriterPort (BoltDB), MetadataQueryPort (SQLite writer), CacheUnitOfWork (write coordination), FrontmatterService, MarkdownParserPort, Logger, Config.
+**Dependencies:** VaultScannerPort (returns Notes), CacheWriterPort (BoltDB), MetadataQueryPort (SQLite writer), CacheUnitOfWork (write coordination), FrontmatterService, Logger, Config.
 
 **Technology Stack:** Pure Go orchestration, CacheUnitOfWork for transactional dual-write coordination, atomic indexing with rollback on partial failure, zerolog for metrics and progress tracking.
 
@@ -344,15 +343,18 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 
     // 3. For each file, parse and add to UoW
     for _, file := range files {
-        // Parse metadata via MarkdownParserPort
-        metadata, err := v.markdownParser.ParseMetadata(ctx, file.Content)
+        // Parse markdown and construct Note via MarkdownParserPort
+        note, err := v.markdownParser.ParseNote(ctx, file.Path, file.Content)
+        if err != nil {
+            continue // Log and skip invalid files
+        }
 
-        // Extract and validate frontmatter
-        frontmatter := v.frontmatterService.Extract(metadata.Frontmatter)
-        v.frontmatterService.Validate(ctx, frontmatter)
+        // Validate frontmatter against schema (semantic validation)
+        if err := v.frontmatterService.IsSchemaCompliant(ctx, note.Frontmatter); err != nil {
+            continue // Log and skip invalid notes
+        }
 
-        // Create note and stage write
-        note := domain.NewNote(file, frontmatter)
+        // Stage write
         uow.AddWrite(note)
     }
 
@@ -384,7 +386,7 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 
 - `Begin() error` - Start new unit of work (open transactions on both storages)
 - `AddWrite(note domain.Note) error` - Stage note write operation
-- `AddDelete(id domain.NoteID) error` - Stage note delete operation
+- `AddDelete(path string) error` - Stage note delete operation by vault-relative path
 - `Commit(ctx context.Context) error` - Commit all staged operations atomically to both storages
 - `Rollback(ctx context.Context) error` - Rollback all staged operations on failure
 
@@ -406,7 +408,7 @@ if err := uow.Begin(); err != nil {
 // 3. Stage operations (accumulate in memory)
 uow.AddWrite(note1)
 uow.AddWrite(note2)
-uow.AddDelete(noteID3)
+uow.AddDelete("notes/old-note.md")
 
 // 4. Commit atomically
 if err := uow.Commit(ctx); err != nil {
@@ -439,8 +441,7 @@ if err := uow.Commit(ctx); err != nil {
 
 **Key Interfaces:**
 
-- `ByID(ctx context.Context, id NoteID) (Note, error)` - Retrieve note by NoteID (hot path: BoltDB)
-- `ByPath(ctx context.Context, path string) ([]Note, error)` - Find notes by path (hot path: BoltDB)
+- `ByPath(ctx context.Context, path string) (Note, error)` - Retrieve note by vault-relative path (hot path: BoltDB)
 - `ByFileClass(ctx context.Context, fileClass string) ([]Note, error)` - Find notes by fileClass (hot path if common class, deep path if rare)
 - `ByTag(ctx context.Context, tag string) ([]Note, error)` - Find notes by tag using indexed lookup (delegates to MetadataQueryPort)
 - `ByLink(ctx context.Context, targetPath string) ([]Note, error)` - Find notes linking to target (delegates to MetadataQueryPort deep path)
@@ -471,7 +472,7 @@ func (s *QueryService) isHotFileClass(fileClass string) bool {
 ```
 
 **Hybrid Storage Benefits:**
-- **Hot Path (BoltDB):** <1ms response for common queries (by ID, by path, common fileClass)
+- **Hot Path (BoltDB):** <1ms response for common queries (by path, common fileClass)
 - **Deep Path (SQLite):** <50ms response for complex queries with indexed lookups
 - **No O(n) Scanning:** All queries use storage-native indices (BoltDB buckets, SQLite indexes)
 - **Memory Efficiency:** No large in-memory indices, storage systems provide indexing
@@ -507,32 +508,38 @@ The NewNote method orchestrates the complete note creation workflow:
 
 1. **Load Template:** Load template via TemplateEngine.Load()
 2. **Render Template:** Execute template with user prompts via TemplateEngine.Render()
-3. **Extract Frontmatter:** Parse YAML frontmatter via FrontmatterService.Extract()
-4. **Validate Frontmatter:** Validate against schema via FrontmatterService.Validate()
-5. **Generate NoteID:** Derive NoteID from frontmatter fields (filename, title slug, or UUID)
-6. **Resolve File Path:** Determine target path from template's path control functions or derive from frontmatter
-7. **Create Note Object:** Construct Note with ID, Content, and Frontmatter
-8. **Persist to Vault:** Write note via VaultWriterPort.Persist() (source of truth)
-9. **Persist to Cache:** Write note via CacheWriterPort.Persist() (projection - keeps index in sync)
-10. **Return Note:** Return Note object for CLI to display confirmation and optionally show content
+3. **Parse Frontmatter:** MarkdownParserAdapter extracts frontmatter (syntactic validation in adapter)
+4. **Validate Frontmatter:** Validate against schema via FrontmatterService.IsSchemaCompliant() (semantic validation in domain)
+5. **Resolve File Path:** Determine target vault-relative path from template's path control functions or derive from frontmatter
+6. **Create Note Object:** Construct Note with Path, Content, and Frontmatter
+7. **Persist to Vault:** Write note via VaultWriterPort.Persist() (source of truth)
+8. **Persist to Cache:** Write note via CacheWriterPort.Persist() (projection - keeps index in sync)
+9. **Return Note:** Return Note object for CLI to display confirmation and optionally show content
 
-**NoteID Generation Strategy:**
+**Path Generation Strategy:**
 
 ```go
-func (c *CLICommander) generateNoteID(fm Frontmatter) (NoteID, error) {
-    // Priority 1: Use explicit filename field from frontmatter
-    if filename, ok := fm.Fields["filename"].(string); ok {
-        return NoteID(filename), nil
+func (c *CLICommander) generatePath(fm Frontmatter, cfg Config) (string, error) {
+    // Priority 1: Use explicit path from template path control functions
+    if templatePath, ok := fm.Fields["__template_path"].(string); ok {
+        return templatePath, nil
     }
 
-    // Priority 2: Slugify title field
+    // Priority 2: Use explicit filename field from frontmatter
+    if filename, ok := fm.Fields["filename"].(string); ok {
+        // Construct vault-relative path
+        return filepath.ToSlash(filepath.Join(cfg.DefaultFolder, filename+".md")), nil
+    }
+
+    // Priority 3: Slugify title field
     if title, ok := fm.Fields["title"].(string); ok {
         slug := slugify(title)  // Convert "My Note" → "my-note"
-        return NoteID(slug), nil
+        return filepath.ToSlash(filepath.Join(cfg.DefaultFolder, slug+".md")), nil
     }
 
-    // Priority 3: Generate UUID-based ID
-    return NoteID(generateUUID()), nil
+    // Priority 4: Generate timestamp-based filename
+    timestamp := time.Now().Format("20060102-150405")
+    return filepath.ToSlash(filepath.Join(cfg.DefaultFolder, timestamp+".md")), nil
 }
 ```
 
@@ -545,7 +552,7 @@ Templates can control their save location via file path template functions:
 {{- $targetPath := join (vaultPath) "contacts" (printf "%s.md" (prompt "filename" "Filename" "")) -}}
 ```
 
-CLICommander extracts the resolved path from template execution context and passes to FileWriter.
+CLICommander extracts the resolved path from template execution context and passes to VaultWriterPort.
 
 **Example Implementation:**
 
@@ -562,26 +569,30 @@ func (c *CLICommander) NewNote(ctx context.Context, templateID TemplateID) (Note
         return Note{}, fmt.Errorf("rendering failed: %w", err)
     }
 
-    // Extract and validate
-    fm, err := o.frontmatterService.Extract([]byte(rendered))
+    // Parse frontmatter (syntactic validation in adapter)
+    frontmatterFields, err := o.markdownParser.ParseFrontmatter(ctx, []byte(rendered))
     if err != nil {
-        return Note{}, fmt.Errorf("frontmatter extraction failed: %w", err)
+        return Note{}, fmt.Errorf("frontmatter parsing failed: %w", err)
     }
 
-    if err := o.frontmatterService.Validate(ctx, fm); err != nil {
+    // Convert to domain model
+    fm := domain.NewFrontmatter(frontmatterFields)
+
+    // Validate against schema (semantic validation only)
+    if err := o.frontmatterService.IsSchemaCompliant(ctx, fm); err != nil {
         return Note{}, fmt.Errorf("frontmatter validation failed: %w", err)
     }
 
-    // Generate ID and create note
-    noteID, err := o.generateNoteID(fm)
+    // Generate path from frontmatter
+    path, err := o.generatePath(fm, o.config)
     if err != nil {
-        return Note{}, fmt.Errorf("note ID generation failed: %w", err)
+        return Note{}, fmt.Errorf("path generation failed: %w", err)
     }
 
-    note := Note{
-        ID:          noteID,
-        Content:     rendered,
-        Frontmatter: fm,
+    // Parse full Note now that we have path
+    note, err := o.markdownParser.ParseNote(ctx, path, []byte(rendered))
+    if err != nil {
+        return Note{}, fmt.Errorf("note construction failed: %w", err)
     }
 
     // Dual write pattern (vault + cache)
@@ -664,7 +675,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 **Key Interfaces:**
 
 - `Persist(ctx context.Context, note Note) error` - Persist note to cache
-- `Delete(ctx context.Context, id NoteID) error` - Remove note from cache
+- `Delete(ctx context.Context, path string) error` - Remove note from cache by vault-relative path
 
 **Dependencies:** Implemented by JSONFileCacheAdapter.
 
@@ -678,7 +689,7 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Key Interfaces:**
 
-- `Read(ctx context.Context, id NoteID) (Note, error)` - Fetch single note from cache
+- `Read(ctx context.Context, path string) (Note, error)` - Fetch single note from cache by vault-relative path
 - `List(ctx context.Context) ([]Note, error)` - List all cached notes
 
 **Dependencies:** Implemented by JSONFileCacheAdapter.
@@ -693,12 +704,12 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Key Interfaces:**
 
-- `ScanAll(ctx context.Context) ([]VaultFile, error)` - Full vault scan for initial index build
-- `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan for large vaults (future optimization for NFR4)
+- `ScanAll(ctx context.Context) ([]domain.Note, error)` - Full vault scan returning domain Notes (adapter constructs Notes internally from VaultFile DTOs)
+- `ScanModified(ctx context.Context, since time.Time) ([]domain.Note, error)` - Incremental scan for large vaults (future optimization for NFR4)
 
 **Dependencies:** Implemented by VaultReaderAdapter.
 
-**Technology Stack:** Go `filepath.Walk` for scanning, `os.Stat` for ModTime filtering (ScanModified). Returns VaultFile DTOs (FileMetadata + Content).
+**Technology Stack:** Go `filepath.Walk` for scanning, `os.Stat` for ModTime filtering (ScanModified). Internally uses VaultFile DTOs, constructs domain.Note via MarkdownParserPort, returns Notes to application layer.
 
 **Why Business-Level Abstraction:**
 - Expresses domain intent: "scan vault" (business operations)
@@ -712,11 +723,11 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 **Key Interfaces:**
 
-- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read for validation (any vault file, not just .md)
+- `Read(ctx context.Context, path string) (domain.Note, error)` - Single file read returning domain Note (adapter constructs Note internally from VaultFile DTO)
 
 **Dependencies:** Implemented by VaultReaderAdapter.
 
-**Technology Stack:** `os.ReadFile` for content, `os.Stat` for metadata. Returns VaultFile DTOs (FileMetadata + Content).
+**Technology Stack:** `os.ReadFile` for content, `os.Stat` for metadata. Internally uses VaultFile DTO, constructs domain.Note via MarkdownParserPort, returns Note to application layer.
 
 **Why Business-Level Abstraction:**
 - Expresses domain intent: "read file" (business operations)
@@ -848,12 +859,12 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 
 ### MarkdownParserPort
 
-**Responsibility:** Parse markdown content to extract frontmatter, links, headings, tags, and backlinks. Dedicated port for markdown parsing operations, enabling clean separation between markdown parsing infrastructure and domain validation logic.
+**Responsibility:** Parse markdown content and construct Note entities. Dedicated port for markdown parsing operations, enabling clean separation between markdown parsing infrastructure and domain validation logic. Constructs Note directly in adapter layer with all parsed metadata.
 
 **Key Interfaces:**
 
 - `ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error)` - Extract YAML frontmatter from markdown content
-- `ParseMetadata(ctx context.Context, content []byte) (*domain.NoteMetadata, error)` - Extract complete metadata (frontmatter, links, headings, tags, backlinks)
+- `ParseNote(ctx context.Context, path string, content []byte) (domain.Note, error)` - Parse markdown and construct Note with all metadata (frontmatter, links, headings, tags, tasks)
 
 **Dependencies:** Implemented by MarkdownParserAdapter.
 
@@ -864,20 +875,27 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 - Enables testability by mocking parsing behavior
 - Allows swapping markdown parser implementation without affecting domain logic
 - Supports future enhancements (e.g., different markdown flavors, additional metadata extraction)
+- Constructs Note directly with path as identifier and embedded metadata
 
-**domain.NoteMetadata Structure:**
+**Note Construction:**
+
+The adapter constructs Note entities directly from parsed markdown:
 
 ```go
-type NoteMetadata struct {
-    Frontmatter map[string]any
-    Links       []Link
-    Headings    []Heading
-    Tags        []string
-    Backlinks   []Backlink
-}
+// MarkdownParserAdapter.ParseNote()
+note := domain.NewNote(
+    path,           // Vault-relative path as identifier
+    frontmatter,    // Enriched Frontmatter entity
+    links,          // Parsed Links
+    headings,       // Parsed Headings
+    tags,           // Parsed Tags
+    tasks,          // Parsed TaskItems
+)
+// Backlinks populated later by BacklinkService
+return note, nil
 ```
 
-**Note:** FrontmatterService now uses MarkdownParserPort instead of direct goldmark dependency. Validation remains in FrontmatterService (semantic), while parsing is in MarkdownParserAdapter (syntactic).
+**Note:** FrontmatterService validates the Note's Frontmatter field (semantic validation), while MarkdownParserAdapter handles parsing (syntactic extraction).
 
 ### MetadataQueryPort
 
@@ -936,11 +954,11 @@ Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports 
 **Key Interfaces:**
 
 - `Persist(ctx context.Context, note Note) error` - Persist note to cache with atomic guarantees
-- `Delete(ctx context.Context, id NoteID) error` - Remove note from cache
+- `Delete(ctx context.Context, path string) error` - Remove note from cache by vault-relative path
 
 **Dependencies:** Go `encoding/json`, `moby/sys/atomicwriter`, `os`, `filepath`, Config (cache directory), Logger.
 
-**Technology Stack:** JSON serialization, `atomicwriter.WriteFile` for atomic writes (temp + rename), directory management under `.lithos/cache`, one JSON file per note (filename: `{NoteID}.json`).
+**Technology Stack:** JSON serialization, `atomicwriter.WriteFile` for atomic writes (temp + rename), directory management under `.lithos/cache`, one JSON file per note (filename derived from path hash for filesystem safety).
 
 **Note:** Shared helper functions (file path construction, directory creation) live in `internal/adapters/spi/cache/helper.go` to avoid duplication with read adapter.
 
@@ -950,7 +968,7 @@ Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports 
 
 **Key Interfaces:**
 
-- `Read(ctx context.Context, id NoteID) (Note, error)` - Fetch single note from cache
+- `Read(ctx context.Context, path string) (Note, error)` - Fetch single note from cache by vault-relative path
 - `List(ctx context.Context) ([]Note, error)` - List all cached notes
 
 **Dependencies:** Go `encoding/json`, `os`, `filepath`, Config (cache directory), Logger.
@@ -965,63 +983,84 @@ Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports 
 
 **Key Interfaces (VaultScannerPort):**
 
-- `ScanAll(ctx context.Context) ([]VaultFile, error)` - Full vault scan using filepath.Walk
-- `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan filtering by ModTime
+- `ScanAll(ctx context.Context) ([]domain.Note, error)` - Full vault scan returning domain Notes
+- `ScanModified(ctx context.Context, since time.Time) ([]domain.Note, error)` - Incremental scan filtering by ModTime
 
 **Key Interfaces (VaultReaderPort):**
 
-- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read with metadata
+- `Read(ctx context.Context, path string) (domain.Note, error)` - Single file read returning domain Note
 
-**Dependencies:** Go `os`, `filepath`, Config (vault path), Logger.
+**Dependencies:** Go `os`, `filepath`, Config (vault path), MarkdownParserPort (for Note construction), Logger.
 
 **Technology Stack:**
 - `filepath.Walk` for vault directory traversal
 - `os.ReadFile` for file content
 - `os.Stat` for file metadata (ModTime, Size)
-- Constructs VaultFile DTOs from FileMetadata + Content
+- Internally constructs VaultFile DTOs (never exposed)
+- Uses MarkdownParserPort to construct domain.Note from VaultFile
 
 **Implementation Pattern:**
 
 ```go
 type VaultReaderAdapter struct {
-    config Config
-    log    Logger
+    config         Config
+    markdownParser ports.MarkdownParserPort
+    log            Logger
 }
 
-func (a *VaultReaderAdapter) ScanAll(ctx context.Context) ([]VaultFile, error) {
+func (a *VaultReaderAdapter) ScanAll(ctx context.Context) ([]domain.Note, error) {
+    // 1. Scan filesystem → []VaultFile (internal DTO)
+    vaultFiles := a.scanFilesystem()
+
+    // 2. Parse each VaultFile → Note
+    notes := make([]domain.Note, 0, len(vaultFiles))
+    for _, vf := range vaultFiles {
+        // Parse markdown → Note with all metadata
+        note, err := a.markdownParser.ParseNote(ctx, vf.Path, vf.Content)
+        if err != nil {
+            a.log.Warn().Err(err).Str("path", vf.Path).Msg("failed to parse note")
+            continue
+        }
+        notes = append(notes, note)
+    }
+
+    // 3. Return domain models (not DTOs)
+    return notes, nil
+}
+
+// scanFilesystem is internal helper (VaultFile never exposed)
+func (a *VaultReaderAdapter) scanFilesystem() []VaultFile {
     var files []VaultFile
-    err := filepath.Walk(a.config.VaultPath, func(path string, info os.FileInfo, err error) error {
+    filepath.Walk(a.config.VaultPath, func(path string, info os.FileInfo, err error) error {
         if err != nil || info.IsDir() {
             return err
         }
-        content, err := os.ReadFile(path)
-        if err != nil {
-            return err
-        }
-        metadata := NewFileMetadata(path, info)
-        files = append(files, NewVaultFile(metadata, content))
+        content, _ := os.ReadFile(path)
+        files = append(files, NewVaultFile(path, info, content))
         return nil
     })
-    return files, err
+    return files
 }
 
-func (a *VaultReaderAdapter) Read(ctx context.Context, path string) (VaultFile, error) {
+func (a *VaultReaderAdapter) Read(ctx context.Context, path string) (domain.Note, error) {
+    // 1. Read file → VaultFile (internal DTO)
     content, err := os.ReadFile(path)
     if err != nil {
-        return VaultFile{}, err
+        return domain.Note{}, err
     }
 
-    info, err := os.Stat(path)
+    // 2. Parse markdown → Note
+    note, err := a.markdownParser.ParseNote(ctx, path, content)
     if err != nil {
-        return VaultFile{}, err
+        return domain.Note{}, fmt.Errorf("failed to parse note: %w", err)
     }
 
-    metadata := NewFileMetadata(path, info)
-    return NewVaultFile(metadata, content), nil
+    // 3. Return domain model (not DTO)
+    return note, nil
 }
 ```
 
-**Note:** Implements both scanning and reading interfaces for comprehensive vault access. Shared helper functions for FileMetadata construction can live in `internal/adapters/spi/vault/helper.go` to avoid duplication with write adapter.
+**Note:** Implements both scanning and reading interfaces for comprehensive vault access. VaultFile DTOs are internal to adapter - application layer only receives domain.Note models. Shared helper functions for VaultFile construction live in `internal/adapters/spi/vault/dto.go`.
 
 ### VaultWriterAdapter
 
@@ -1155,12 +1194,12 @@ func (a *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
 
 ### MarkdownParserAdapter
 
-**Responsibility:** Implement `MarkdownParserPort` by parsing markdown content to extract frontmatter, links, headings, tags using goldmark AST processing.
+**Responsibility:** Implement `MarkdownParserPort` by parsing markdown content and constructing Note entities with all metadata using goldmark AST processing.
 
 **Key Interfaces:**
 
 - `ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error)` - Extract YAML frontmatter from markdown
-- `ParseMetadata(ctx context.Context, content []byte) (*domain.NoteMetadata, error)` - Extract complete metadata (frontmatter, links, headings, tags)
+- `ParseNote(ctx context.Context, path string, content []byte) (domain.Note, error)` - Parse markdown and construct Note with all metadata
 
 **Dependencies:** `github.com/yuin/goldmark`, `go.abhg.dev/goldmark/frontmatter`, goldmark wikilink/tag extensions, `gopkg.in/yaml.v3`, Logger.
 
@@ -1174,25 +1213,23 @@ type MarkdownParserAdapter struct {
     log    Logger
 }
 
-func (a *MarkdownParserAdapter) ParseMetadata(ctx context.Context, content []byte) (*domain.NoteMetadata, error) {
+func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, content []byte) (domain.Note, error) {
     // 1. Parse markdown to AST
     node := a.parser.Parser().Parse(text.NewReader(content))
 
     // 2. Extract frontmatter via goldmark-frontmatter extension
-    frontmatter := extractFrontmatter(node)
+    frontmatterFields := extractFrontmatter(node)
+    frontmatter := domain.NewFrontmatter(frontmatterFields)
 
-    // 3. Walk AST to extract links, headings, tags
+    // 3. Walk AST to extract links, headings, tags, tasks
     links := walkForLinks(node)
     headings := walkForHeadings(node)
     tags := walkForTags(node)
+    tasks := walkForTasks(node)
 
-    return &domain.NoteMetadata{
-        Frontmatter: frontmatter,
-        Links:       links,
-        Headings:    headings,
-        Tags:        tags,
-        Backlinks:   nil, // Computed later by graph analysis
-    }, nil
+    // 4. Construct Note entity (Backlinks populated later)
+    note := domain.NewNote(path, frontmatter, links, headings, tags, tasks)
+    return note, nil
 }
 ```
 
@@ -1211,7 +1248,7 @@ func (a *MarkdownParserAdapter) ParseMetadata(ctx context.Context, content []byt
 
 - `QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)` - Find notes by tag via secondary index
 - `QueryByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)` - Find notes by fileClass via secondary index
-- `QueryByID(ctx context.Context, id domain.NoteID) (domain.Note, error)` - Retrieve single note by primary key
+- `QueryByPath(ctx context.Context, path string) (domain.Note, error)` - Retrieve single note by vault-relative path (primary key)
 
 **Dependencies:** `go.etcd.io/bbolt`, Config (cache directory for BoltDB file), Logger.
 
@@ -1226,7 +1263,7 @@ type BoltDBReaderAdapter struct {
 }
 
 func (a *BoltDBReaderAdapter) QueryByTag(ctx context.Context, tag string) ([]domain.Note, error) {
-    var noteIDs []domain.NoteID
+    var notePaths []string
 
     // 1. Query secondary index bucket
     err := a.db.View(func(tx *bolt.Tx) error {
@@ -1236,13 +1273,13 @@ func (a *BoltDBReaderAdapter) QueryByTag(ctx context.Context, tag string) ([]dom
         // 2. Iterate tag index entries
         prefix := []byte(tag + ":")
         for k, v := cursor.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = cursor.Next() {
-            noteIDs = append(noteIDs, domain.NoteID(string(v)))
+            notePaths = append(notePaths, string(v))
         }
         return nil
     })
 
-    // 3. Fetch notes by IDs from primary buckets
-    return a.batchGetByIDs(ctx, noteIDs)
+    // 3. Fetch notes by paths from primary buckets
+    return a.batchGetByPaths(ctx, notePaths)
 }
 ```
 
@@ -1453,7 +1490,7 @@ All public methods decompose into focused private methods following Single Respo
 - **Public:** `Start(ctx, handler)` - Orchestrates command tree setup
 - **Private Builders:** `buildRootCommand()`, `buildNewCommand()`, `buildIndexCommand()`, `buildFindCommand()` - Construct commands
 - **Private Handlers:** `handleNewCommand()`, `handleIndexCommand()`, `handleFindCommand()` - Execute command workflows
-- **Private Helpers:** `selectTemplate()`, `displayNoteCreated()`, `formatError()`, `getNotePathForDisplay()` - Single-purpose utilities
+- **Private Helpers:** `selectTemplate()`, `displayNoteCreated()`, `formatError()` - Single-purpose utilities
 
 **Example Decomposition:**
 
@@ -1515,7 +1552,7 @@ func (a *CobraCLIAdapter) selectTemplate(ctx context.Context, args []string, han
 
 // Private - display result
 func (a *CobraCLIAdapter) displayNoteCreated(cmd *cobra.Command, note Note) error {
-    fmt.Printf("✓ Created: %s\n", a.getNotePathForDisplay(note.ID))
+    fmt.Printf("✓ Created: %s\n", note.Path)
 
     if viewFlag, _ := cmd.Flags().GetBool("view"); viewFlag {
         fmt.Println("\n" + strings.Repeat("─", 80))
