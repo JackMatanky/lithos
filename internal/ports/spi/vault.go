@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/dto"
 )
 
 // VaultReaderPort defines the contract for reading individual vault files at

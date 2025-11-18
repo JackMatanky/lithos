@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/dto"
 )
 
 const testPath = "/test/path.md"
