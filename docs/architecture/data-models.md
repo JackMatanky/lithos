@@ -21,82 +21,7 @@ Models are classified by their architectural layer and purpose:
 - **CQRS Separation:** Write concerns (validation, integrity) separated from read concerns (query performance) in operations/ports, not models (single model for MVP)
 - **Event-Driven:** Domain events enable loose coupling between services via publish/subscribe pattern
 
-## FileMetadata (Deprecated; will be removed)
 
-**Purpose:** Filesystem-specific metadata used exclusively by filesystem storage adapters. Maps NoteID to file paths and tracks file system state.
-
-**Architecture Layer:** SPI Adapter (Infrastructure)
-
-**Rationale:** FileMetadata is infrastructure model used by VaultReadAdapter and VaultWriteAdapter to translate between domain identifiers (NoteID) and filesystem paths. Domain never depends on filesystem paths - adapters handle this translation. Enables filesystem implementation details to change without affecting domain.
-
-**Key Attributes:**
-
-- `Path` (string) - Absolute path to file. Serves as primary key and unique identifier across the system. Immutable once set. Used for cache keys, file identification, and adapter operations. Format: OS-specific absolute path (e.g., `/vault/notes/contact.md`).
-- `Basename` (string, computed) - Filename without path and extension. Computed from Path using `filepath.Base()` and `strings.TrimSuffix()`. Used by template `lookup()` function (returns `map[basename]Path`) and wikilink resolution `[[basename]]`. Computed once during construction, cached in struct.
-- `Folder` (string, computed) - Parent directory path. Computed from Path using `filepath.Dir()`. Used by template functions for file organization queries (e.g., "all notes in projects/"). Computed once during construction, cached in struct.
-- `Ext` (string, computed) - File extension including dot. Computed from Path using `filepath.Ext()`. Used for file type filtering (e.g., ".md", ".pdf", ".png"). Empty string if no extension. Computed once during construction, cached in struct.
-- `ModTime` (time.Time) - File modification timestamp from `os.Stat()`. Used for staleness detection by comparing cached ModTime against current filesystem ModTime. Enables incremental indexing optimizations (scan only files modified since last index). Format: RFC3339 for JSON serialization.
-- `Size` (int64) - File size in bytes from `os.Stat()`. Used for filtering large files or determining if content should be loaded. Post-MVP: may skip content loading for files above threshold.
-- `MimeType` (string, computed) - MIME type detected from file extension or content. Computed using `mime.TypeByExtension(Ext)` or `http.DetectContentType(content)`. Used for file type classification and handling. Examples: "text/markdown", "application/pdf", "image/png".
-
-**Relationships:**
-
-- Used internally by VaultReadAdapter and VaultWriteAdapter to map NoteID ↔ Path
-- Never exposed to domain services
-- Created during vault scanning by VaultReadAdapter
-- Cached in adapters for performance
-
-**Design Decisions:**
-
-- **Adapter-only model:** Domain never sees or depends on filesystem paths - keeps infrastructure concerns isolated
-- **Computed fields cached:** Basename/Folder computed once during construction to avoid repeated string operations
-- **Staleness detection:** ModTime enables incremental indexing - skip unchanged files
-- **Clean separation:** Keeps filesystem concerns out of domain layer
-- **Shared by CQRS adapters:** Both VaultReadAdapter and VaultWriteAdapter use this metadata model
-
-**Helper Functions:**
-
-```go
-// NewFileMetadata creates FileMetadata from path and fs.FileInfo
-// Called by adapter during vault scanning
-func NewFileMetadata(path string, info fs.FileInfo) FileMetadata {
-    ext := filepath.Ext(path)
-    return FileMetadata{
-        Path:     path,
-        Basename: computeBasename(path),
-        Folder:   computeFolder(path),
-        Ext:      ext,
-        ModTime:  info.ModTime(),
-        Size:     info.Size(),
-        MimeType: computeMimeType(ext),
-    }
-}
-
-// computeBasename extracts basename from file path
-// Removes path and extension (e.g., "/vault/note.md" → "note")
-func computeBasename(path string) string {
-    base := filepath.Base(path)
-    return strings.TrimSuffix(base, filepath.Ext(base))
-}
-
-// computeFolder extracts parent directory from file path
-// Returns directory path (e.g., "/vault/note.md" → "/vault")
-func computeFolder(path string) string {
-    return filepath.Dir(path)
-}
-
-// computeMimeType detects MIME type from file extension
-// Returns MIME type string (e.g., "text/markdown", "application/pdf")
-func computeMimeType(ext string) string {
-    mimeType := mime.TypeByExtension(ext)
-    if mimeType == "" {
-        return "application/octet-stream" // Default for unknown types
-    }
-    return mimeType
-}
-```
-
----
 
 ## FileDatesDTO (Transport DTO)
 
@@ -215,8 +140,8 @@ func (v VaultFile) Ext() string {
     return filepath.Ext(v.Path)
 }
 
-// ModTime delegates to fs.FileInfo
-func (v VaultFile) ModTime() time.Time {
+// ModifiedAt delegates to fs.FileInfo
+func (v VaultFile) ModifiedAt() time.Time {
     return v.Info.ModTime()
 }
 

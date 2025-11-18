@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	"github.com/JackMatanky/lithos/internal/shared/dto"
 	"github.com/rs/zerolog"
 )
 
@@ -435,7 +435,7 @@ func (v *VaultIndexer) collectVaultState(
 	totalFiles = 0
 	for i := range vaultFiles {
 		vf := vaultFiles[i]
-		if vf.Ext == markdownExt {
+		if vf.Ext() == markdownExt {
 			noteID := deriveNoteIDFromPath(v.config.VaultPath, vf.Path)
 			vaultNoteIDs[noteID] = true
 			totalFiles++
@@ -519,8 +519,15 @@ func (v *VaultIndexer) buildVaultSnapshot(
 			continue
 		}
 
-		metadata := dto.NewFileMetadata(absolute, info)
-		snapshot = append(snapshot, dto.NewVaultFile(metadata, nil))
+		vaultFile, err := dto.NewVaultFile(absolute, v.config.VaultPath, info, nil)
+		if err != nil {
+			v.log.Warn().
+				Err(err).
+				Str("path", absolute).
+				Msg("failed to create VaultFile")
+			continue
+		}
+		snapshot = append(snapshot, vaultFile)
 		seen[cleanPath] = struct{}{}
 	}
 
@@ -603,7 +610,7 @@ func (v *VaultIndexer) processFile(
 	stats *IndexStats,
 ) {
 	// Filter: only .md files for frontmatter processing
-	if file.Ext != markdownExt {
+	if file.Ext() != markdownExt {
 		return
 	}
 

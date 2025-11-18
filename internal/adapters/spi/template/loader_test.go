@@ -38,8 +38,8 @@ func TestNewTemplateLoaderAdapter(t *testing.T) {
 			adapter.config.TemplatesDir,
 		)
 	}
-	if adapter.metadata == nil {
-		t.Error("Metadata map not initialized")
+	if adapter.pathCache == nil {
+		t.Error("Path cache map not initialized")
 	}
 }
 

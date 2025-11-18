@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	"github.com/JackMatanky/lithos/internal/shared/dto"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
@@ -177,9 +177,12 @@ func (a *VaultReaderAdapter) readFileWithMetadata(
 		return dto.VaultFile{}, a.wrapVaultError("read", path, err)
 	}
 
-	// Construct metadata and VaultFile
-	metadata := dto.NewFileMetadata(path, info)
-	return dto.NewVaultFile(metadata, content), nil
+	// Construct VaultFile with vault-relative path
+	vaultFile, err := dto.NewVaultFile(path, a.config.VaultPath, info, content)
+	if err != nil {
+		return dto.VaultFile{}, fmt.Errorf("failed to create VaultFile: %w", err)
+	}
+	return vaultFile, nil
 }
 
 // scanVault performs the core vault scanning logic with a custom filter.
@@ -236,11 +239,15 @@ func (a *VaultReaderAdapter) scanVault(
 				return nil // Continue walking
 			}
 
-			// Construct FileMetadata
-			metadata := dto.NewFileMetadata(path, info)
-
-			// Create VaultFile
-			vf := dto.NewVaultFile(metadata, content)
+			// Create VaultFile with vault-relative path
+			vf, err := dto.NewVaultFile(path, a.config.VaultPath, info, content)
+			if err != nil {
+				a.log.Warn().
+					Err(err).
+					Str("path", path).
+					Msg("failed to create VaultFile")
+				return nil // Continue walking
+			}
 			files = append(files, vf)
 
 			return nil

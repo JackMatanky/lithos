@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/dto"
 	"github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -143,12 +143,12 @@ func TestScanAll_WithFiles(t *testing.T) {
 	// Check that all files are VaultFile instances with proper structure
 	for _, vf := range files {
 		assert.NotEmpty(t, vf.Path)
-		assert.NotEmpty(t, vf.Basename)
-		assert.NotEmpty(t, vf.Folder)
-		assert.Equal(t, ".md", vf.Ext)
-		assert.NotZero(t, vf.ModTime)
-		assert.Positive(t, vf.Size)
-		assert.Equal(t, "text/markdown", vf.MimeType)
+		assert.NotEmpty(t, vf.Basename())
+		assert.NotEmpty(t, vf.Folder())
+		assert.Equal(t, ".md", vf.Ext())
+		assert.NotZero(t, vf.ModifiedAt())
+		assert.Positive(t, vf.Size())
+		// MimeType not computed by VaultFile - removed from implementation
 		assert.NotNil(t, vf.Content)
 	}
 }
@@ -193,13 +193,13 @@ func TestScanAll_ConstructsVaultFileCorrectly(t *testing.T) {
 	require.Len(t, files, 1)
 
 	vf := files[0]
-	assert.Equal(t, testFile, vf.Path)
-	assert.Equal(t, "test", vf.Basename)
-	assert.Equal(t, vaultPath, vf.Folder)
-	assert.Equal(t, ".md", vf.Ext)
-	assert.Equal(t, int64(len(content)), vf.Size)
+	assert.Equal(t, "test.md", vf.Path) // Should be vault-relative path
+	assert.Equal(t, "test", vf.Basename())
+	assert.Equal(t, ".", vf.Folder())
+	assert.Equal(t, ".md", vf.Ext())
+	assert.Equal(t, int64(len(content)), vf.Size())
 	assert.Equal(t, content, vf.Content)
-	assert.Equal(t, "text/markdown", vf.MimeType)
+	// MimeType not computed by VaultFile - removed from implementation
 }
 
 // TestScanAll_WithPermissionErrors tests handling of files with permission
@@ -227,8 +227,8 @@ func TestScanAll_WithPermissionErrors(t *testing.T) {
 
 	// Should not fail completely, should return readable files
 	require.NoError(t, err)
-	assert.Len(t, files, 1) // Only the readable file
-	assert.Equal(t, testFile, files[0].Path)
+	assert.Len(t, files, 1)                       // Only the readable file
+	assert.Equal(t, "readable.md", files[0].Path) // Should be vault-relative path
 }
 
 // TestScanModified_WithRecentFiles tests scanning for files modified after a
@@ -253,7 +253,7 @@ func TestScanModified_WithRecentFiles(t *testing.T) {
 	// Ensure old file is not included
 	for _, vf := range files {
 		assert.NotEqual(t, oldFile, vf.Path, "Old file should be excluded")
-		assert.Equal(t, ".md", vf.Ext, "Only markdown files should be included")
+		assert.Equal(t, ".md", vf.Ext(), "Only markdown files should be included")
 	}
 }
 
@@ -284,12 +284,12 @@ func TestRead_ValidFile(t *testing.T) {
 	vf, err := adapter.Read(context.Background(), testFile)
 
 	require.NoError(t, err)
-	assert.Equal(t, testFile, vf.Path)
-	assert.Equal(t, "test", vf.Basename)
-	assert.Equal(t, vaultPath, vf.Folder)
-	assert.Equal(t, ".md", vf.Ext)
+	assert.Equal(t, "test.md", vf.Path) // Should be vault-relative path
+	assert.Equal(t, "test", vf.Basename())
+	assert.Equal(t, ".", vf.Folder()) // Should be vault-relative folder
+	assert.Equal(t, ".md", vf.Ext())
 	assert.Equal(t, content, vf.Content)
-	assert.Equal(t, "text/markdown", vf.MimeType)
+	// MimeType not computed by VaultFile - removed from implementation
 }
 
 // TestRead_MissingFile tests reading a file that doesn't exist.
@@ -357,9 +357,10 @@ func TestVaultFile_NewVaultFile(t *testing.T) {
 		modTime: time.Now(),
 		isDir:   false,
 	}
-	metadata := dto.NewFileMetadata("/test/file.md", info)
-	vf := dto.NewVaultFile(metadata, content)
+	vf, err := dto.NewVaultFile("/vault/file.md", "/vault", info, content)
+	require.NoError(t, err)
 
-	assert.Equal(t, metadata, vf.FileMetadata)
+	assert.Equal(t, "file.md", vf.Path) // Should be vault-relative
+	assert.Equal(t, info, vf.Info)
 	assert.Equal(t, content, vf.Content)
 }

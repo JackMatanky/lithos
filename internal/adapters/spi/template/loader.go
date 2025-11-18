@@ -13,7 +13,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/dto"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
@@ -29,8 +28,8 @@ type TemplateLoaderAdapter struct {
 	config *domain.Config
 	// log provides structured logging for operations
 	log *zerolog.Logger
-	// metadata caches TemplateID → FileMetadata mappings for fast lookups
-	metadata map[domain.TemplateID]dto.FileMetadata
+	// pathCache caches TemplateID → absolute file path mappings for fast lookups
+	pathCache map[domain.TemplateID]string
 	// readFile reads file contents from filesystem (injected for testing)
 	readFile func(string) ([]byte, error)
 	// walkDir walks directory tree (injected for testing)
@@ -44,11 +43,11 @@ func NewTemplateLoaderAdapter(
 	log *zerolog.Logger,
 ) *TemplateLoaderAdapter {
 	return &TemplateLoaderAdapter{
-		config:   config,
-		log:      log,
-		metadata: make(map[domain.TemplateID]dto.FileMetadata),
-		readFile: os.ReadFile,
-		walkDir:  filepath.Walk,
+		config:    config,
+		log:       log,
+		pathCache: make(map[domain.TemplateID]string),
+		readFile:  os.ReadFile,
+		walkDir:   filepath.Walk,
 	}
 }
 
@@ -64,7 +63,7 @@ func (a *TemplateLoaderAdapter) List(
 		Str("templates_dir", a.config.TemplatesDir).
 		Msg("scanning templates directory")
 
-	a.metadata = make(map[domain.TemplateID]dto.FileMetadata)
+	a.pathCache = make(map[domain.TemplateID]string)
 
 	var templates []domain.TemplateID
 
@@ -86,10 +85,12 @@ func (a *TemplateLoaderAdapter) List(
 
 			// Only process .md files
 			if filepath.Ext(path) == ".md" {
-				metadata := dto.NewFileMetadata(path, info)
-				templateID := domain.TemplateID(metadata.Basename)
+				// Extract basename as template ID
+				base := filepath.Base(path)
+				basename := base[:len(base)-len(filepath.Ext(base))] // Remove extension
+				templateID := domain.TemplateID(basename)
 
-				a.metadata[templateID] = metadata
+				a.pathCache[templateID] = path
 				templates = append(templates, templateID)
 
 				a.log.Debug().
@@ -125,17 +126,17 @@ func (a *TemplateLoaderAdapter) Load(
 ) (domain.Template, error) {
 	a.log.Debug().Str("template_id", string(id)).Msg("loading template")
 
-	metadata, err := a.findTemplateMetadata(ctx, id)
+	path, err := a.findTemplatePath(ctx, id)
 	if err != nil {
 		return domain.Template{}, err
 	}
 
-	content, err := a.readTemplateContent(&metadata)
+	content, err := a.readTemplateContent(path)
 	if err != nil {
 		return domain.Template{}, err
 	}
 
-	err = a.validateTemplateContent(content, metadata.Path)
+	err = a.validateTemplateContent(content, path)
 	if err != nil {
 		return domain.Template{}, err
 	}
@@ -147,21 +148,21 @@ func (a *TemplateLoaderAdapter) Load(
 	return template, nil
 }
 
-// findTemplateMetadata locates template metadata, populating cache if
+// findTemplatePath locates template file path, populating cache if
 // necessary.
-func (a *TemplateLoaderAdapter) findTemplateMetadata(
+func (a *TemplateLoaderAdapter) findTemplatePath(
 	ctx context.Context,
 	id domain.TemplateID,
-) (dto.FileMetadata, error) {
-	metadata, exists := a.metadata[id]
+) (string, error) {
+	path, exists := a.pathCache[id]
 	if exists {
-		return metadata, nil
+		return path, nil
 	}
 
 	// Template not in cache, try to populate cache if empty
-	if len(a.metadata) == 0 {
+	if len(a.pathCache) == 0 {
 		if err := a.populateCache(ctx); err != nil {
-			return dto.FileMetadata{}, errors.NewResourceError(
+			return "", errors.NewResourceError(
 				"template",
 				"load",
 				string(id),
@@ -169,14 +170,14 @@ func (a *TemplateLoaderAdapter) findTemplateMetadata(
 			)
 		}
 		// Check again after scanning
-		metadata, exists = a.metadata[id]
+		path, exists = a.pathCache[id]
 	}
 
 	if !exists {
 		a.log.Warn().
 			Str("template_id", string(id)).
 			Msg("template not found in cache")
-		return dto.FileMetadata{}, errors.NewResourceError(
+		return "", errors.NewResourceError(
 			"template",
 			"load",
 			string(id),
@@ -184,7 +185,7 @@ func (a *TemplateLoaderAdapter) findTemplateMetadata(
 		)
 	}
 
-	return metadata, nil
+	return path, nil
 }
 
 // populateCache scans the templates directory and populates the metadata cache.
@@ -200,18 +201,18 @@ func (a *TemplateLoaderAdapter) populateCache(ctx context.Context) error {
 
 // readTemplateContent reads the raw file content from disk.
 func (a *TemplateLoaderAdapter) readTemplateContent(
-	metadata *dto.FileMetadata,
+	path string,
 ) ([]byte, error) {
-	content, err := a.readFile(metadata.Path)
+	content, err := a.readFile(path)
 	if err != nil {
 		a.log.Error().
 			Err(err).
-			Str("path", metadata.Path).
+			Str("path", path).
 			Msg("failed to read template file")
 		return nil, errors.NewResourceError(
 			"template",
 			"read",
-			metadata.Path,
+			path,
 			err,
 		)
 	}
