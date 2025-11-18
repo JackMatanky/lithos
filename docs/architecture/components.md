@@ -457,11 +457,11 @@ if err := uow.Commit(ctx); err != nil {
 func (s *QueryService) ByFileClass(ctx context.Context, fileClass string) ([]Note, error) {
     // Hot path: Common fileClass queries served by BoltDB
     if s.isHotFileClass(fileClass) {
-        return s.boltReader.QueryByFileClass(ctx, fileClass)
+        return s.boltReader.FileClassQuery(ctx, fileClass)
     }
 
     // Deep path: Rare fileClass queries served by SQLite
-    return s.metadataQuery.QueryByFileClass(ctx, fileClass)
+    return s.metadataQuery.FileClassQuery(ctx, fileClass)
 }
 
 // Hot set determination (configured or learned)
@@ -903,11 +903,11 @@ return note, nil
 
 **Key Interfaces:**
 
-- `QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)` - Find notes by tag using indexed lookup
-- `QueryByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)` - Find notes by fileClass using indexed lookup
-- `QueryByLink(ctx context.Context, targetPath string) ([]domain.Note, error)` - Find notes linking to target path
-- `QueryByHeading(ctx context.Context, heading string) ([]domain.Note, error)` - Find notes with specific heading
-- `QueryByFrontmatter(ctx context.Context, field string, value any) ([]domain.Note, error)` - Generic frontmatter field query
+- `TagQuery(ctx context.Context, tag string) ([]domain.Note, error)` - Find notes by tag using indexed lookup
+- `FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)` - Find notes by fileClass using indexed lookup
+- `LinkQuery(ctx context.Context, targetPath string) ([]domain.Note, error)` - Find notes linking to target path
+- `HeadingQuery(ctx context.Context, heading string) ([]domain.Note, error)` - Find notes with specific heading
+- `FrontmatterQuery(ctx context.Context, field string, value any) ([]domain.Note, error)` - Generic frontmatter field query
 
 **Dependencies:** Implemented by SQLiteReaderAdapter.
 
@@ -921,13 +921,13 @@ return note, nil
 
 ```go
 // Hot path: Common queries served by BoltDB (<1ms)
-- QueryByTag (if tag in hot set)
-- QueryByFileClass (if fileClass in hot set)
+- TagQuery (if tag in hot set)
+- FileClassQuery (if fileClass in hot set)
 
 // Deep path: Complex queries served by SQLite (<50ms)
-- QueryByLink (requires full-text search)
-- QueryByHeading (requires content indexing)
-- QueryByFrontmatter (arbitrary field queries)
+- LinkQuery (requires full-text search)
+- HeadingQuery (requires content indexing)
+- FrontmatterQuery (arbitrary field queries)
 ```
 
 **Rationale:**
@@ -1246,9 +1246,9 @@ func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, cont
 
 **Key Interfaces:**
 
-- `QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)` - Find notes by tag via secondary index
-- `QueryByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)` - Find notes by fileClass via secondary index
-- `QueryByPath(ctx context.Context, path string) (domain.Note, error)` - Retrieve single note by vault-relative path (primary key)
+- `TagQuery(ctx context.Context, tag string) ([]domain.Note, error)` - Find notes by tag via secondary index
+- `FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)` - Find notes by fileClass via secondary index
+- `PathQuery(ctx context.Context, path string) (domain.Note, error)` - Retrieve single note by vault-relative path (primary key)
 
 **Dependencies:** `go.etcd.io/bbolt`, Config (cache directory for BoltDB file), Logger.
 
@@ -1262,7 +1262,7 @@ type BoltDBReaderAdapter struct {
     log Logger
 }
 
-func (a *BoltDBReaderAdapter) QueryByTag(ctx context.Context, tag string) ([]domain.Note, error) {
+func (a *BoltDBReaderAdapter) TagQuery(ctx context.Context, tag string) ([]domain.Note, error) {
     var notePaths []string
 
     // 1. Query secondary index bucket
@@ -1296,9 +1296,9 @@ func (a *BoltDBReaderAdapter) QueryByTag(ctx context.Context, tag string) ([]dom
 
 **Key Interfaces:**
 
-- `QueryByLink(ctx context.Context, targetPath string) ([]domain.Note, error)` - Find notes linking to target via JSON_EXTRACT
-- `QueryByHeading(ctx context.Context, heading string) ([]domain.Note, error)` - Find notes with heading via indexed query
-- `QueryByFrontmatter(ctx context.Context, field string, value any) ([]domain.Note, error)` - Generic frontmatter field query
+- `LinkQuery(ctx context.Context, targetPath string) ([]domain.Note, error)` - Find notes linking to target via JSON_EXTRACT
+- `HeadingQuery(ctx context.Context, heading string) ([]domain.Note, error)` - Find notes with heading via indexed query
+- `FrontmatterQuery(ctx context.Context, field string, value any) ([]domain.Note, error)` - Generic frontmatter field query
 
 **Dependencies:** `modernc.org/sqlite` (pure Go SQLite), Config (cache directory for SQLite file), Logger.
 
@@ -1312,7 +1312,7 @@ type SQLiteReaderAdapter struct {
     log Logger
 }
 
-func (a *SQLiteReaderAdapter) QueryByFrontmatter(ctx context.Context, field string, value any) ([]domain.Note, error) {
+func (a *SQLiteReaderAdapter) FrontmatterQuery(ctx context.Context, field string, value any) ([]domain.Note, error) {
     // 1. Use JSON_EXTRACT to query frontmatter
     query := `
         SELECT id, frontmatter, content

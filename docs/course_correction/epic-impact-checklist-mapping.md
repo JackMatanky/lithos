@@ -57,7 +57,7 @@
 
 **AI-1.4: Implement MetadataQueryPort** (Lines 5893-5926)
 - [ ] Create NEW PORT: `MetadataQueryPort` in `/internal/ports/spi/metadata_query.go`
-- [ ] Methods: QueryByTag, QueryByLink, QueryByHeading, QueryByFileClass
+- [ ] Methods: TagQuery, LinkQuery, HeadingQuery, FileClassQuery
 - [ ] Enables O(1) indexed queries vs O(n) scanning
 - [ ] BoltDB adapter: Use secondary index buckets "indices:by_tag", "indices:by_link"
 - [ ] SQLite adapter: Use schema-driven views with indexes

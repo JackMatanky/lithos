@@ -5395,9 +5395,9 @@ No support for:
 // New indexed metadata query port (layer on top of existing cache)
 type MetadataQueryPort interface {
     // Indexed queries - O(1) lookup instead of O(n) scan
-    QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)
-    QueryByFrontmatter(ctx context.Context, field string, value any) ([]domain.Note, error)
-    QueryByBacklinks(ctx context.Context, notePath string) ([]domain.Note, error)
+    TagQuery(ctx context.Context, tag string) ([]domain.Note, error)
+    FrontmatterQuery(ctx context.Context, field string, value any) ([]domain.Note, error)
+    BacklinksQuery(ctx context.Context, notePath string) ([]domain.Note, error)
 
     // Full-text search on cached metadata
     Search(ctx context.Context, query string) ([]domain.Note, error)
@@ -5464,7 +5464,7 @@ type HotCachePort interface {
 // Deep Storage (SQLite) - <50ms queries, all historical data
 type DeepStoragePort interface {
     QueryComplex(ctx context.Context, query MetadataQuery) ([]NoteMetadata, error)
-    QueryByDateRange(ctx context.Context, start, end time.Time) ([]NoteMetadata, error)
+    DateRangeQuery(ctx context.Context, start, end time.Time) ([]NoteMetadata, error)
 }
 
 // Cache promotion strategy
@@ -5893,9 +5893,9 @@ func (a *MDFileAdapter) ParseMetadata(ctx context.Context, content []byte) (*dom
 // New Query Port (complementing existing CacheReaderPort):
 type MetadataQueryPort interface {
     // Indexed queries - O(1) instead of List() + filter (O(n))
-    QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)
-    QueryByFrontmatter(ctx context.Context, field string, value any) ([]domain.Note, error)
-    QueryByBacklinks(ctx context.Context, notePath string) ([]domain.Note, error)
+    TagQuery(ctx context.Context, tag string) ([]domain.Note, error)
+    FrontmatterQuery(ctx context.Context, field string, value any) ([]domain.Note, error)
+    BacklinksQuery(ctx context.Context, notePath string) ([]domain.Note, error)
 
     // Full-text search
     Search(ctx context.Context, query string) ([]domain.Note, error)
@@ -5916,7 +5916,7 @@ type BoltDBQueryAdapter struct {
     db *bolt.DB
 }
 
-func (a *BoltDBQueryAdapter) QueryByTag(ctx context.Context, tag string) ([]domain.Note, error) {
+func (a *BoltDBQueryAdapter) TagQuery(ctx context.Context, tag string) ([]domain.Note, error) {
     // Use secondary index bucket: "indices:by_tag"
     // Key: tag → Value: []NoteID
     // Then lookup notes from "notes" bucket
@@ -7225,11 +7225,11 @@ WHERE json_extract(frontmatter, '$.fileClass') = 'contact';
 **MetadataQueryPort Implementation**: 11. ✅ Create `/internal/ports/spi/metadata_query.go`:
 `go
     type MetadataQueryPort interface {
-        QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)
-        QueryByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)
-        QueryByFrontmatter(ctx context.Context, field, value string) ([]domain.Note, error)
+        TagQuery(ctx context.Context, tag string) ([]domain.Note, error)
+        FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)
+        FrontmatterQuery(ctx context.Context, field, value string) ([]domain.Note, error)
     }
-    ` 12. ✅ SQLiteReader implements MetadataQueryPort 13. ✅ QueryByFileClass uses schema-specific view (not base table):
+    ` 12. ✅ SQLiteReader implements MetadataQueryPort 13. ✅ FileClassQuery uses schema-specific view (not base table):
 `go
     SELECT * FROM v_contact_notes WHERE status = ?
     `
@@ -8272,9 +8272,9 @@ type SQLiteMetadata struct {
 **Purpose**: Enable O(1) indexed queries on metadata.
 **Location**: `/internal/ports/spi/metadata_query.go`
 **Methods**:
-- `QueryByTag(ctx, tag) ([]domain.Note, error)`
-- `QueryByFileClass(ctx, fileClass) ([]domain.Note, error)`
-- `QueryByFrontmatter(ctx, field, value) ([]domain.Note, error)`
+- `TagQuery(ctx, tag) ([]domain.Note, error)`
+- `FileClassQuery(ctx, fileClass) ([]domain.Note, error)`
+- `FrontmatterQuery(ctx, field, value) ([]domain.Note, error)`
 
 **Adapters**:
 - `SQLiteReader` (also implements CacheReaderPort)

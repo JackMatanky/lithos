@@ -21,7 +21,7 @@ Models are classified by their architectural layer and purpose:
 - **CQRS Separation:** Write concerns (validation, integrity) separated from read concerns (query performance) in operations/ports, not models (single model for MVP)
 - **Event-Driven:** Domain events enable loose coupling between services via publish/subscribe pattern
 
-## FileMetadata
+## FileMetadata (Deprecated; will be removed)
 
 **Purpose:** Filesystem-specific metadata used exclusively by filesystem storage adapters. Maps NoteID to file paths and tracks file system state.
 
@@ -93,6 +93,88 @@ func computeMimeType(ext string) string {
         return "application/octet-stream" // Default for unknown types
     }
     return mimeType
+}
+```
+
+---
+
+## FileDatesDTO (Transport DTO)
+
+**Purpose:** Infrastructure data transfer object for file timestamp tracking and cache staleness detection. Used by cache adapters to compare filesystem modification times against cached indexing times.
+
+**Architecture Layer:** SPI Adapter (Transport DTO)
+
+**Location:** `internal/adapters/spi/dto/file_dates.go`
+
+**Rationale:** FileDatesDTO provides a clean separation between filesystem timestamps (ModifiedAt from fs.FileInfo) and cache timestamps (IndexedAt from adapter). This enables efficient staleness detection without coupling cache adapters to specific filesystem structures.
+
+**Key Attributes:**
+
+- `ModifiedAt` (time.Time) - File's last modification time from `fs.FileInfo.ModTime()`. Used to detect when files have changed on disk since last indexing.
+- `IndexedAt` (time.Time) - Timestamp when note was cached/indexed by adapter. Set to `time.Now()` during cache write operations.
+
+**Staleness Detection Pattern:**
+
+```go
+// Cache staleness check
+func (dto FileDatesDTO) IsStale() bool {
+    return dto.ModifiedAt.After(dto.IndexedAt)
+}
+
+// Usage in cache adapters
+if cachedNote.FileDates.IsStale() {
+    // File changed since indexing - needs refresh
+    return true
+}
+```
+
+**Relationships:**
+
+- Used by BoltDBWriterAdapter and SQLiteWriterAdapter for timestamp tracking
+- Consumed by cache readers for staleness detection via IsStale() method calls
+- Constructed from VaultFile.ModifiedAt() (filesystem time) + time.Now() (indexing time)
+- Enables incremental reindexing by VaultIndexer service
+
+**Design Decisions:**
+
+- **Separate DTO:** Not embedded in domain.Note to maintain clean separation between domain and infrastructure timestamp concerns
+- **Both timestamps required:** ModifiedAt alone insufficient - need IndexedAt to determine when cache entry was created
+- **IsStale() method:** Encapsulates staleness logic to prevent scattered timestamp comparisons
+- **Time zone aware:** Uses time.Time which preserves timezone information for accurate cross-system comparisons
+
+**Constructor Pattern:**
+
+```go
+// NewFileDatesDTO creates FileDatesDTO from filesystem time and current time
+func NewFileDatesDTO(modifiedAt time.Time) FileDatesDTO {
+    return FileDatesDTO{
+        ModifiedAt: modifiedAt,
+        IndexedAt:  time.Now(),
+    }
+}
+
+// FromVaultFile creates FileDatesDTO from VaultFile filesystem metadata
+func FromVaultFile(vf VaultFile) FileDatesDTO {
+    return NewFileDatesDTO(vf.ModifiedAt())
+}
+```
+
+**Usage Example:**
+
+```go
+// Cache write operation
+note := domain.Note{...}
+fileDates := FromVaultFile(vaultFile)
+
+cachedData := CachedNote{
+    Path:      note.Path(),
+    Data:      note.Frontmatter(),
+    FileDates: fileDates,
+}
+
+// Cache staleness check
+if cachedData.FileDates.IsStale() {
+    // Reindex needed
 }
 ```
 
@@ -820,7 +902,7 @@ Link model enables Obsidian-style wikilink features: `[[note]]` links to note by
 
 - Component of NoteMetadata ([]Heading field)
 - Used by future HeadingNavigationService for outline generation
-- Enables heading-based queries via MetadataQueryPort.QueryByHeading()
+- Enables heading-based queries via MetadataQueryPort.HeadingQuery()
 - Foundation for document outline and table of contents features
 
 **Design Decisions:**

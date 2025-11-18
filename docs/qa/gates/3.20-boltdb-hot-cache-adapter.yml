@@ -1,0 +1,87 @@
+schema: 1
+story: "3.19"
+story_title: "Implement BoltDB Hot Cache Adapter"
+gate: FAIL
+status_reason: "Critical architectural dependencies missing - MetadataQueryPort interface and FileDatesDTO definition do not exist, blocking implementation readiness"
+reviewer: "Quinn (Test Architect)"
+updated: "2024-11-18T21:30:00Z"
+
+waiver: { active: false }
+
+top_issues:
+  - id: "ARCH-001"
+    severity: high
+    finding: "MetadataQueryPort interface referenced in AC 3 does not exist in codebase"
+    suggested_action: "Define MetadataQueryPort interface with ByBasename(), ByAlias(), ByFileClass() methods in internal/ports/spi/"
+    refs: ["internal/ports/spi/", "docs/architecture/components.md"]
+
+  - id: "ARCH-002"
+    severity: high
+    finding: "FileDatesDTO struct referenced in AC 4 is not defined in data-models.md"
+    suggested_action: "Add FileDatesDTO definition to docs/architecture/data-models.md with ModifiedAt and IndexedAt time.Time fields"
+    refs: ["docs/architecture/data-models.md"]
+
+  - id: "IMPL-001"
+    severity: medium
+    finding: "Dual port implementation pattern not validated against hexagonal architecture principles"
+    suggested_action: "Review and document dual port adapter pattern compliance with single responsibility principle"
+    refs: ["docs/architecture/components.md"]
+
+  - id: "PERF-001"
+    severity: medium
+    finding: "Sub-millisecond performance targets lack baseline measurements for feasibility validation"
+    suggested_action: "Establish current BoltDB adapter performance baselines before setting < 1ms targets"
+
+risk_summary:
+  totals: { critical: 2, high: 2, medium: 2, low: 0 }
+  highest: "critical"
+  recommendations:
+    must_fix:
+      - "Create MetadataQueryPort interface definition"
+      - "Define FileDatesDTO in data models"
+    monitor:
+      - "Dual port architecture pattern validation"
+      - "Performance baseline establishment"
+
+quality_score: 20  # 100 - (20×2 high issues) - (10×2 medium issues)
+expires: "2024-12-02T21:30:00Z"
+
+evidence:
+  tests_reviewed: 0  # No tests exist yet - story in Draft
+  risks_identified: 6
+  trace:
+    ac_covered: [5, 7, 8, 9, 10, 11]  # Clear architecture and write operations
+    ac_gaps: [1, 2, 3, 4, 6, 12, 13, 14]  # Missing interfaces, definitions, and test strategy
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "No security-sensitive components identified in cache layer"
+  performance:
+    status: FAIL
+    notes: "Sub-millisecond targets lack baseline validation and feasibility assessment"
+  reliability:
+    status: CONCERNS
+    notes: "Staleness detection error handling and dual port failure modes under-specified"
+  maintainability:
+    status: CONCERNS
+    notes: "File reorganization and dual port pattern add complexity without architectural foundation"
+
+recommendations:
+  immediate:
+    - action: "Define MetadataQueryPort interface in internal/ports/spi/"
+      refs: ["internal/ports/spi/"]
+    - action: "Add FileDatesDTO struct to docs/architecture/data-models.md"
+      refs: ["docs/architecture/data-models.md"]
+    - action: "Validate dual port pattern against hexagonal architecture principles"
+      refs: ["docs/architecture/components.md"]
+  future:
+    - action: "Establish performance baselines for realistic target setting"
+      refs: ["internal/adapters/spi/cache/boltdb_*"]
+    - action: "Create comprehensive test strategy for dual port interactions"
+      refs: ["tests/integration/"]
+
+history:
+  - at: "2024-11-18T21:30:00Z"
+    gate: FAIL
+    note: "Initial comprehensive review - critical architectural dependencies missing"

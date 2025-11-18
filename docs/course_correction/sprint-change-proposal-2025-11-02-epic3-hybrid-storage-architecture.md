@@ -248,7 +248,7 @@ func (q *QueryService) ByPath(path string) (*Note, error) {
 
 func (q *QueryService) ByFrontmatter(key, value string) ([]*Note, error) {
     // Complex query: SQLite with optimization
-    return q.sqliteStore.QueryByProperty(key, value)
+    return q.sqliteStore.PropertyQuery(key, value)
 }
 
 func (q *QueryService) ByFileClass(fileClass string) ([]*Note, error) {
