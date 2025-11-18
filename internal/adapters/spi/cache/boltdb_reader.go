@@ -319,18 +319,18 @@ func (a *BoltDBCacheReadAdapter) GetByFileClass(
 	return notes, nil
 }
 
-// QueryByFrontmatter is not optimized for BoltDB.
+// FrontmatterQuery is not optimized for BoltDB.
 // BoltDB stores minimal metadata for hot lookups.
 // For complex frontmatter queries, use SQLite adapter.
 //
 // Returns error indicating this operation should use SQLite.
-func (a *BoltDBCacheReadAdapter) QueryByFrontmatter(
+func (a *BoltDBCacheReadAdapter) FrontmatterQuery(
 	ctx context.Context,
 	key string,
 	value interface{},
 ) ([]domain.Note, error) {
 	return nil, fmt.Errorf(
-		"QueryByFrontmatter not supported by BoltDB adapter - use SQLite for complex queries",
+		"FrontmatterQuery not supported by BoltDB adapter - use SQLite for complex queries",
 	)
 }
 

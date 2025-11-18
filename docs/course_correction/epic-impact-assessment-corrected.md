@@ -308,13 +308,13 @@ GROUP D: Configuration & Docs (3.27-3.29) - Sprint 4
 11. ✅ Create `/internal/ports/spi/metadata_query.go`:
     ```go
     type MetadataQueryPort interface {
-        QueryByTag(ctx context.Context, tag string) ([]domain.Note, error)
-        QueryByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)
-        QueryByFrontmatter(ctx context.Context, field, value string) ([]domain.Note, error)
+        TagQuery(ctx context.Context, tag string) ([]domain.Note, error)
+        FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)
+        FrontmatterQuery(ctx context.Context, field, value string) ([]domain.Note, error)
     }
     ```
 12. ✅ SQLiteReader implements MetadataQueryPort
-13. ✅ QueryByFileClass uses schema-specific view (not base table):
+13. ✅ FileClassQuery uses schema-specific view (not base table):
     ```go
     SELECT * FROM v_contact_notes WHERE status = ?
     ```

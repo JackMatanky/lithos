@@ -194,8 +194,8 @@ func (r *benchQueryReader) GetByFileClass(ctx context.Context, fileClass string,
 	return append([]domain.Note(nil), r.fileClassIndex[fileClass]...), nil
 }
 
-// QueryByFrontmatter returns notes matching a frontmatter key/value pair.
-func (r *benchQueryReader) QueryByFrontmatter(ctx context.Context, key string,
+// FrontmatterQuery returns notes matching a frontmatter key/value pair.
+func (r *benchQueryReader) FrontmatterQuery(ctx context.Context, key string,
 	value interface{}) ([]domain.Note, error) {
 	return append([]domain.Note(nil), r.frontmatterIndex[key][value]...), nil
 }
