@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+const (
+	windowsOS     = "windows"
+	testVaultPath = "/vault"
+	testNotePath  = "/vault/notes/meeting.md"
+)
+
 // mockFileInfo implements fs.FileInfo for testing.
 type mockFileInfo struct {
 	name    string
@@ -79,7 +85,7 @@ func TestVaultFileFileInfoDelegation(t *testing.T) {
 	info := mockFileInfo{
 		name:    "test.md",
 		size:    1024,
-		mode:    0644,
+		mode:    0o644,
 		modTime: testTime,
 		isDir:   false,
 	}
@@ -101,8 +107,8 @@ func TestVaultFileFileInfoDelegation(t *testing.T) {
 	}
 
 	// Test Info field access
-	if vf.Info.Mode() != 0644 {
-		t.Errorf("Info.Mode() = %v, want %v", vf.Info.Mode(), 0644)
+	if vf.Info.Mode() != 0o644 {
+		t.Errorf("Info.Mode() = %v, want %v", vf.Info.Mode(), 0o644)
 	}
 	if vf.Info.IsDir() != false {
 		t.Errorf("Info.IsDir() = %v, want %v", vf.Info.IsDir(), false)
@@ -207,7 +213,7 @@ func TestNormalizePath(t *testing.T) {
 		{
 			name:      "nested directories",
 			absPath:   "/vault/projects/work/tasks/todo.md",
-			vaultRoot: "/vault",
+			vaultRoot: testVaultPath,
 			expected:  "projects/work/tasks/todo.md",
 		},
 		{
@@ -229,10 +235,10 @@ func TestNormalizePath(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Skip platform-specific tests on wrong platforms
-			if runtime.GOOS == "windows" && !filepath.IsAbs(tt.absPath) {
+			if runtime.GOOS == windowsOS && !filepath.IsAbs(tt.absPath) {
 				t.Skip("Skipping non-Windows path test on Windows")
 			}
-			if runtime.GOOS != "windows" && len(tt.absPath) > 1 &&
+			if runtime.GOOS != windowsOS && len(tt.absPath) > 1 &&
 				tt.absPath[1] == ':' {
 				t.Skip("Skipping Windows path test on non-Windows")
 			}
@@ -269,26 +275,20 @@ func TestAbsolutePath(t *testing.T) {
 		{
 			name:      "convert to OS-specific path",
 			vaultPath: "notes/meeting.md",
-			vaultRoot: "/vault",
-			expected:  filepath.Join("/vault", "notes", "meeting.md"),
+			vaultRoot: testVaultPath,
+			expected:  filepath.Join(testVaultPath, "notes", "meeting.md"),
 		},
 		{
 			name:      "nested directories",
 			vaultPath: "projects/work/tasks/todo.md",
 			vaultRoot: "/home/user/vault",
-			expected: filepath.Join(
-				"/home/user/vault",
-				"projects",
-				"work",
-				"tasks",
-				"todo.md",
-			),
+			expected:  "/home/user/vault/projects/work/tasks/todo.md",
 		},
 		{
 			name:      "root file",
 			vaultPath: "README.md",
-			vaultRoot: "/vault",
-			expected:  filepath.Join("/vault", "README.md"),
+			vaultRoot: testVaultPath,
+			expected:  filepath.Join(testVaultPath, "README.md"),
 		},
 	}
 
@@ -426,8 +426,8 @@ func TestNilFileInfoHandling(t *testing.T) {
 
 // TestFilePathConversionRoundTrip tests round-trip path conversion.
 func TestFilePathConversionRoundTrip(t *testing.T) {
-	original := "/vault/notes/meeting.md"
-	vaultRoot := "/vault"
+	original := testNotePath
+	vaultRoot := testVaultPath
 
 	// Convert to vault-relative
 	vaultPath, err := NormalizePath(original, vaultRoot)
@@ -473,7 +473,7 @@ func BenchmarkComputedMethods(b *testing.B) {
 // BenchmarkPathNormalization benchmarks path normalization performance.
 func BenchmarkPathNormalization(b *testing.B) {
 	absPath := "/vault/projects/work/tasks/todo.md"
-	vaultRoot := "/vault"
+	vaultRoot := testVaultPath
 
 	b.ResetTimer()
 	for range b.N {
@@ -483,8 +483,8 @@ func BenchmarkPathNormalization(b *testing.B) {
 
 // BenchmarkConstructor benchmarks VaultFile constructor performance.
 func BenchmarkConstructor(b *testing.B) {
-	absPath := "/vault/notes/meeting.md"
-	vaultRoot := "/vault"
+	absPath := testNotePath
+	vaultRoot := testVaultPath
 	info := mockFileInfo{name: "meeting.md", size: 1024}
 	content := []byte("test content")
 

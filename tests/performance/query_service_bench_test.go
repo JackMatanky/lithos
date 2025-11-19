@@ -12,20 +12,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Simple mock for MetadataQueryPort
+// mockMetadataQueryPort provides a simple mock for MetadataQueryPort.
 type mockMetadataQueryPort struct{}
-
-func (m *mockMetadataQueryPort) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-func (m *mockMetadataQueryPort) ByAlias(ctx context.Context, alias string) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-func (m *mockMetadataQueryPort) ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
 
 // queryServiceBench wraps a prepared QueryService instance for benchmarks.
 type queryServiceBench struct {
@@ -43,6 +31,30 @@ type benchQueryReader struct {
 	pathIndex        map[string]domain.Note
 	fileClassIndex   map[string][]domain.Note
 	frontmatterIndex map[string]map[interface{}][]domain.Note
+}
+
+// ByBasename implements MetadataQueryPort.ByBasename.
+func (m *mockMetadataQueryPort) ByBasename(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+// ByAlias implements MetadataQueryPort.ByAlias.
+func (m *mockMetadataQueryPort) ByAlias(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+// ByFileClass implements MetadataQueryPort.ByFileClass.
+func (m *mockMetadataQueryPort) ByFileClass(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
 }
 
 // BenchmarkQueryService_Performance exercises mixed workloads (hot / deep /
@@ -278,7 +290,13 @@ func newQueryServiceBench(b *testing.B, notes []domain.Note) queryServiceBench {
 	boltReader := newBenchQueryReader(notes, config)
 	logger := zerolog.New(zerolog.NewTestWriter(b))
 	mockMetadataQuery := &mockMetadataQueryPort{}
-	qs := query.NewQueryService(mockMetadataQuery, boltReader, sqliteReader, config, logger)
+	qs := query.NewQueryService(
+		mockMetadataQuery,
+		boltReader,
+		sqliteReader,
+		config,
+		logger,
+	)
 	if err := qs.RefreshFromCache(context.Background()); err != nil {
 		b.Fatalf("RefreshFromCache failed: %v", err)
 	}

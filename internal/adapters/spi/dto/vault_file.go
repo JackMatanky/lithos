@@ -42,6 +42,24 @@ type VaultFile struct {
 	Content []byte
 }
 
+// NewVaultFile creates VaultFile from absolute path and fs.FileInfo.
+func NewVaultFile(
+	absPath, vaultRoot string,
+	info fs.FileInfo,
+	content []byte,
+) (VaultFile, error) {
+	relPath, err := NormalizePath(absPath, vaultRoot)
+	if err != nil {
+		return VaultFile{}, err
+	}
+
+	return VaultFile{
+		Path:    relPath,
+		Info:    info,
+		Content: content,
+	}, nil
+}
+
 // Basename returns filename without extension.
 func (v VaultFile) Basename() string {
 	base := filepath.Base(v.Path)
@@ -90,22 +108,4 @@ func NormalizePath(absPath, vaultRoot string) (string, error) {
 	}
 
 	return filepath.ToSlash(relPath), nil
-}
-
-// NewVaultFile creates VaultFile from absolute path and fs.FileInfo.
-func NewVaultFile(
-	absPath, vaultRoot string,
-	info fs.FileInfo,
-	content []byte,
-) (VaultFile, error) {
-	relPath, err := NormalizePath(absPath, vaultRoot)
-	if err != nil {
-		return VaultFile{}, err
-	}
-
-	return VaultFile{
-		Path:    relPath,
-		Info:    info,
-		Content: content,
-	}, nil
 }

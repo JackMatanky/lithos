@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -9,7 +10,12 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// TestMarkdownParserAdapterConstruction tests adapter struct creation
+const testMarkdownContent = `---
+title: Test
+---
+# Content`
+
+// TestMarkdownParserAdapterConstruction tests adapter struct creation.
 func TestMarkdownParserAdapterConstruction(t *testing.T) {
 	logger := zerolog.New(nil)
 
@@ -20,7 +26,8 @@ func TestMarkdownParserAdapterConstruction(t *testing.T) {
 	}
 }
 
-// TestMarkdownParserAdapterValidFrontmatter tests parsing of valid YAML frontmatter
+// TestMarkdownParserAdapterValidFrontmatter tests parsing of valid YAML
+// frontmatter.
 func TestMarkdownParserAdapterValidFrontmatter(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -73,14 +80,19 @@ func TestMarkdownParserAdapterValidFrontmatter(t *testing.T) {
 			// Check specific values for simple types
 			for key, expected := range tt.expectValues {
 				if result[key] != expected {
-					t.Errorf("For key %s: expected %v, got %v", key, expected, result[key])
+					t.Errorf(
+						"For key %s: expected %v, got %v",
+						key,
+						expected,
+						result[key],
+					)
 				}
 			}
 		})
 	}
 }
 
-// TestMarkdownParserAdapterSyntacticValidation tests YAML structure validation
+// TestMarkdownParserAdapterSyntacticValidation tests YAML structure validation.
 func TestMarkdownParserAdapterSyntacticValidation(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -131,7 +143,8 @@ func TestMarkdownParserAdapterSyntacticValidation(t *testing.T) {
 	}
 }
 
-// TestMarkdownParserAdapterLineNumberErrorReporting tests structured error messages
+// TestMarkdownParserAdapterLineNumberErrorReporting tests structured error
+// messages.
 func TestMarkdownParserAdapterLineNumberErrorReporting(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewMarkdownParserAdapter(logger)
@@ -149,11 +162,15 @@ func TestMarkdownParserAdapterLineNumberErrorReporting(t *testing.T) {
 	// Error should contain line number information
 	errMsg := err.Error()
 	if !strings.Contains(errMsg, "line") && !strings.Contains(errMsg, "3") {
-		t.Errorf("Error message should contain line number information, got: %s", errMsg)
+		t.Errorf(
+			"Error message should contain line number information, got: %s",
+			errMsg,
+		)
 	}
 }
 
-// TestMarkdownParserAdapterMissingFrontmatter tests handling of content without frontmatter
+// TestMarkdownParserAdapterMissingFrontmatter tests handling of content without
+// frontmatter.
 func TestMarkdownParserAdapterMissingFrontmatter(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -185,13 +202,16 @@ func TestMarkdownParserAdapterMissingFrontmatter(t *testing.T) {
 			}
 
 			if len(result) != 0 {
-				t.Errorf("Expected empty map for missing frontmatter, got: %v", result)
+				t.Errorf(
+					"Expected empty map for missing frontmatter, got: %v",
+					result,
+				)
 			}
 		})
 	}
 }
 
-// TestMarkdownParserAdapterEdgeCases tests various edge cases
+// TestMarkdownParserAdapterEdgeCases tests various edge cases.
 func TestMarkdownParserAdapterEdgeCases(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -232,28 +252,28 @@ func TestMarkdownParserAdapterEdgeCases(t *testing.T) {
 	}
 }
 
-// TestMarkdownParserAdapterContextCancellation tests context handling
+// TestMarkdownParserAdapterContextCancellation tests context handling.
 func TestMarkdownParserAdapterContextCancellation(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewMarkdownParserAdapter(logger)
 
-	// Create cancelled context
+	// Create canceled context
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	content := "---\ntitle: Test\n---\n# Content"
+	content := testMarkdownContent
 
 	_, err := adapter.ParseFrontmatter(ctx, []byte(content))
 	if err == nil {
 		t.Error("Expected context cancellation error")
 	}
 
-	if err != context.Canceled {
+	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Expected context.Canceled, got: %v", err)
 	}
 }
 
-// TestMarkdownParserAdapterContextTimeout tests timeout handling
+// TestMarkdownParserAdapterContextTimeout tests timeout handling.
 func TestMarkdownParserAdapterContextTimeout(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewMarkdownParserAdapter(logger)
@@ -265,14 +285,14 @@ func TestMarkdownParserAdapterContextTimeout(t *testing.T) {
 	// Wait for timeout
 	time.Sleep(1 * time.Millisecond)
 
-	content := "---\ntitle: Test\n---\n# Content"
+	content := testMarkdownContent
 
 	_, err := adapter.ParseFrontmatter(ctx, []byte(content))
 	if err == nil {
 		t.Error("Expected context timeout error")
 	}
 
-	if err != context.DeadlineExceeded {
+	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("Expected context.DeadlineExceeded, got: %v", err)
 	}
 }

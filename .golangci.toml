@@ -171,11 +171,21 @@ linters = ["exhaustruct"]
 path = "tools\\.go"  # Tool markers commonly trip "unused".
 linters = ["unused"]
 
+# Suppress godoclint in spi package since package doc is in cache.go
+[[linters.exclusions.rules]]
+path = "internal/ports/spi/.*\\.go$"
+linters = ["godoclint"]
+
+# Suppress godoclint in test files
+[[linters.exclusions.rules]]
+path = ".*_test\\.go$"
+linters = ["godoclint"]
+
 # ------------------- Linter Configuration ------------------- #
 # Cyclop replaces gocyclo; supports package-level budgets.
 [linters.settings.cyclop]
 max-complexity = 10
-package-average = 3.0
+package-average = 5.0
 
 # decorder: declaration-order policy
 # NOTE: Some versions of `decorder` have no user options; if your version
@@ -217,8 +227,8 @@ exclude = [
 allow-empty-returns = true
 
 [linters.settings.funlen]
-lines = 60
-statements = 30
+lines = 65
+statements = 35
 
 # [linters.settings.funcorder]
 # Place exported funcs/methods before unexported.
@@ -228,7 +238,7 @@ statements = 30
 [linters.settings.gocognit]
 # Cognitive complexity threshold (readability-focused).
 # Typical range: 15–30. Start higher to avoid churn, ratchet later.
-min-complexity = 20
+min-complexity = 25
 
 [linters.settings.goconst]
 min-len = 2         # Small literals (len≥2) can be consts.

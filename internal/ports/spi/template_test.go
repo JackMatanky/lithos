@@ -63,11 +63,11 @@ func TestTemplatePortInterface(t *testing.T) {
 	}
 
 	// Test Load method
-	template, err := port.Load(ctx, "test")
+	template, err := port.Load(ctx, testTemplateID)
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if template.ID != "test" {
+	if template.ID != testTemplateID {
 		t.Errorf("Load() returned ID %v, want test", template.ID)
 	}
 	if template.Content != "content" {

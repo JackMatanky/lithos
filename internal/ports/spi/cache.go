@@ -10,10 +10,15 @@ import (
 // architecture. This package contains interfaces that abstract infrastructure
 // concerns from domain logic.
 //
-// Cache ports implement CQRS pattern separation:
-// - CacheWriterPort: Write-side operations (persistence, atomic writes)
-// - CacheReaderPort: Read-side operations (retrieval, query performance)
+// Ports included:
+// - CacheWriterPort/CacheReaderPort: CQRS pattern for cache operations
+// - VaultScannerPort: Vault file system scanning and enumeration
+// - MarkdownParserPort: YAML frontmatter parsing from markdown content
+// - MetadataQueryPort: Index-based metadata queries for notes
+// - SchemaEnginePort: Schema loading and resolution operations
+// - TemplatePort: Template loading and management
 //
+// Mock implementations are provided for all ports to support testing.
 // Both ports must be thread-safe for concurrent access patterns typical in
 // multi-service architectures (QueryService + FrontmatterService reading,
 // indexing writing concurrently).

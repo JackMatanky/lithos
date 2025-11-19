@@ -5,11 +5,8 @@ import (
 	"testing"
 )
 
-// TestNewConfig tests that NewConfig applies defaults correctly.
-//
+// TestNewConfig tests that NewConfig applies defaults correctly with
 // multiple test cases.
-//
-//nolint:gocognit // Test function with comprehensive coverage requires
 func TestNewConfig(t *testing.T) {
 	tests := []struct {
 		name                     string

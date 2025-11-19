@@ -9,8 +9,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMetadataQueryPortInterfaceContract verifies the MetadataQueryPort interface contract.
-// This test ensures that any implementation of MetadataQueryPort behaves correctly
+// TestMetadataQueryPortInterfaceContract verifies the MetadataQueryPort
+// interface contract. This test ensures that any implementation of
+// MetadataQueryPort behaves correctly
 // according to the interface specification.
 func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	ctx := context.Background()
@@ -20,8 +21,18 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	t.Run("ByBasename method contract", func(t *testing.T) {
 		// Configure mock to return test data
 		testNotes := []domain.Note{
-			{ID: "test1.md", Frontmatter: domain.NewFrontmatter(map[string]any{"title": "Test 1"})},
-			{ID: "test2.md", Frontmatter: domain.NewFrontmatter(map[string]any{"title": "Test 2"})},
+			{
+				ID: "test1.md",
+				Frontmatter: domain.NewFrontmatter(
+					map[string]any{"title": "Test 1"},
+				),
+			},
+			{
+				ID: "test2.md",
+				Frontmatter: domain.NewFrontmatter(
+					map[string]any{"title": "Test 2"},
+				),
+			},
 		}
 		mock.SetByBasenameResult(testNotes, nil)
 
@@ -38,7 +49,12 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	// Test ByAlias method signature and behavior
 	t.Run("ByAlias method contract", func(t *testing.T) {
 		testNotes := []domain.Note{
-			{ID: "note1.md", Frontmatter: domain.NewFrontmatter(map[string]any{"title": "Note 1"})},
+			{
+				ID: "note1.md",
+				Frontmatter: domain.NewFrontmatter(
+					map[string]any{"title": "Note 1"},
+				),
+			},
 		}
 		mock.SetByAliasResult(testNotes, nil)
 
@@ -53,8 +69,18 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	// Test ByFileClass method signature and behavior
 	t.Run("ByFileClass method contract", func(t *testing.T) {
 		testNotes := []domain.Note{
-			{ID: "meeting1.md", Frontmatter: domain.NewFrontmatter(map[string]any{"fileClass": "meeting"})},
-			{ID: "meeting2.md", Frontmatter: domain.NewFrontmatter(map[string]any{"fileClass": "meeting"})},
+			{
+				ID: "meeting1.md",
+				Frontmatter: domain.NewFrontmatter(
+					map[string]any{"fileClass": "meeting"},
+				),
+			},
+			{
+				ID: "meeting2.md",
+				Frontmatter: domain.NewFrontmatter(
+					map[string]any{"fileClass": "meeting"},
+				),
+			},
 		}
 		mock.SetByFileClassResult(testNotes, nil)
 
@@ -78,19 +104,19 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 		result, err := mock.ByBasename(ctx, "nonexistent")
 		require.NoError(t, err)
 		assert.NotNil(t, result) // Should be empty slice, not nil
-		assert.Len(t, result, 0)
+		assert.Empty(t, result)
 
 		// ByAlias with no matches
 		result, err = mock.ByAlias(ctx, "nonexistent")
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.Len(t, result, 0)
+		assert.Empty(t, result)
 
 		// ByFileClass with no matches
 		result, err = mock.ByFileClass(ctx, "nonexistent")
 		require.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.Len(t, result, 0)
+		assert.Empty(t, result)
 	})
 
 	// Test context cancellation handling
@@ -112,11 +138,12 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 		mock.Reset()
 
 		assert.Equal(t, 0, mock.ByBasenameCallCount)
-		assert.Equal(t, "", mock.LastByBasenameArg)
+		assert.Empty(t, mock.LastByBasenameArg)
 	})
 }
 
-// TestMockMetadataQueryPortDefaultBehavior verifies the default behavior of the mock.
+// TestMockMetadataQueryPortDefaultBehavior verifies the default behavior of the
+// mock.
 func TestMockMetadataQueryPortDefaultBehavior(t *testing.T) {
 	ctx := context.Background()
 	mock := NewMockMetadataQueryPort()
@@ -125,20 +152,21 @@ func TestMockMetadataQueryPortDefaultBehavior(t *testing.T) {
 	result, err := mock.ByBasename(ctx, "any")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Len(t, result, 0)
+	assert.Empty(t, result)
 
 	result, err = mock.ByAlias(ctx, "any")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Len(t, result, 0)
+	assert.Empty(t, result)
 
 	result, err = mock.ByFileClass(ctx, "any")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
-	assert.Len(t, result, 0)
+	assert.Empty(t, result)
 }
 
-// TestMockMetadataQueryPortImplementsInterface verifies the mock implements the interface.
+// TestMockMetadataQueryPortImplementsInterface verifies the mock implements the
+// interface.
 func TestMockMetadataQueryPortImplementsInterface(t *testing.T) {
 	var _ MetadataQueryPort = (*MockMetadataQueryPort)(nil)
 	var port MetadataQueryPort = NewMockMetadataQueryPort()
