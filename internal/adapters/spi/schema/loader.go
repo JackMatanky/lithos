@@ -13,7 +13,7 @@ import (
 	"sync"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -202,7 +202,7 @@ func (a *SchemaLoaderAdapter) loadPropertyBank(
 
 	var document propertyBankDTO
 	if parseErr := json.Unmarshal(data, &document); parseErr != nil {
-		return domain.PropertyBank{}, domainerrors.NewSchemaErrorWithRemediation(
+		return domain.PropertyBank{}, lithosErr.NewSchemaErrorWithRemediation(
 			fmt.Sprintf("failed to parse property bank json: %s", path),
 			"property_bank",
 			syntaxRemediation(path),
@@ -252,7 +252,7 @@ func (a *SchemaLoaderAdapter) loadSchemas(
 	)
 
 	if walkErr != nil {
-		return nil, domainerrors.NewResourceError(
+		return nil, lithosErr.NewResourceError(
 			"schema",
 			"scan",
 			a.config.SchemasDir,
@@ -274,7 +274,7 @@ func (a *SchemaLoaderAdapter) loadSchema(
 ) (domain.Schema, error) {
 	data, err := a.readFile(path)
 	if err != nil {
-		return domain.Schema{}, domainerrors.NewResourceError(
+		return domain.Schema{}, lithosErr.NewResourceError(
 			"schema",
 			"load",
 			path,
@@ -284,7 +284,7 @@ func (a *SchemaLoaderAdapter) loadSchema(
 
 	var document schemaDTO
 	if parseErr := json.Unmarshal(data, &document); parseErr != nil {
-		return domain.Schema{}, domainerrors.NewSchemaErrorWithRemediation(
+		return domain.Schema{}, lithosErr.NewSchemaErrorWithRemediation(
 			fmt.Sprintf("failed to parse schema json: %s", path),
 			path,
 			syntaxRemediation(path),
@@ -350,18 +350,18 @@ func (a *SchemaLoaderAdapter) resolveInheritance(
 // with targeted remediation hints.
 func wrapPropertyBankReadError(path string, err error) error {
 	if errors.Is(err, os.ErrNotExist) {
-		return domainerrors.NewResourceError(
+		return lithosErr.NewResourceError(
 			"schema",
 			"load",
 			path,
 			fmt.Errorf(
-				"property bank missing: Create schemas/property_bank.json or configure PropertyBankFile: %w",
+				"create schemas/property_bank.json or configure PropertyBankFile: %w",
 				err,
 			),
 		)
 	}
 
-	return domainerrors.NewResourceError(
+	return lithosErr.NewResourceError(
 		"schema",
 		"load",
 		path,

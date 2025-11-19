@@ -13,12 +13,13 @@ import (
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	schemaadapter "github.com/JackMatanky/lithos/internal/adapters/spi/schema"
-	vaultadapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
+	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/query"
 	schemaengine "github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -61,6 +62,14 @@ func (m *mockMetadataQueryPort) ByAlias(
 func (m *mockMetadataQueryPort) ByFileClass(
 	ctx context.Context,
 	fileClass string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+// PathQuery implements MetadataQueryPort.PathQuery.
+func (m *mockMetadataQueryPort) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
 ) ([]domain.Note, error) {
 	return []domain.Note{}, nil
 }
@@ -163,7 +172,7 @@ This is a test note with frontmatter.
 	require.NoError(t, err)
 
 	// Create markdown parser adapter
-	markdownParser := vaultadapter.NewMarkdownParserAdapter(logger)
+	markdownParser := vaultAdapter.NewMarkdownParserAdapter(logger)
 
 	// Create frontmatter service
 	fmService := frontmatter.NewFrontmatterService(

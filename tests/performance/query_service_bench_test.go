@@ -8,6 +8,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
@@ -53,6 +54,14 @@ func (m *mockMetadataQueryPort) ByAlias(
 func (m *mockMetadataQueryPort) ByFileClass(
 	ctx context.Context,
 	fileClass string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+// PathQuery implements MetadataQueryPort.PathQuery.
+func (m *mockMetadataQueryPort) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
 ) ([]domain.Note, error) {
 	return []domain.Note{}, nil
 }

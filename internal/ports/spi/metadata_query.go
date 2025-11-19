@@ -3,9 +3,35 @@ package spi
 
 import (
 	"context"
+	"fmt"
+	"strings"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 )
+
+const (
+	// PathQueryScopeFull matches an exact vault-relative path.
+	PathQueryScopeFull PathQueryScope = "full"
+	// PathQueryScopeBasename matches filename without extension across folders.
+	PathQueryScopeBasename PathQueryScope = "basename"
+	// PathQueryScopeFolder matches all notes under a vault-relative folder.
+	PathQueryScopeFolder PathQueryScope = "folder"
+)
+
+// PathQueryScope enumerates the supported lookup scopes for PathQuery.
+type PathQueryScope string
+
+// PathQueryOptions convey how a PathQuery should interpret the provided value.
+// Exactly one selector field must be populated; adapters return an error when
+// none (or multiple) selectors are supplied to keep behavior deterministic.
+type PathQueryOptions struct {
+	// Value represents the path fragment to resolve. Expected format depends on
+	// Scope: vault-relative path for Full, filename for Basename, directory for
+	// Folder (trailing slash optional).
+	Value string
+	// Scope controls how Value should be matched. Defaults to Full if empty.
+	Scope PathQueryScope
+}
 
 type MetadataQueryPort interface {
 	// ByBasename finds notes by filename without extension.
@@ -86,4 +112,48 @@ type MetadataQueryPort interface {
 	//   notes, err := port.ByFileClass(ctx, "meeting")
 	//   // Returns all notes with fileClass: "meeting" in frontmatter
 	ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)
+
+	// PathQuery finds notes using a flexible path selector. Callers supply
+	// PathQueryOptions to specify whether the lookup should match a full path,
+	// a basename shared across folders, or all notes within a folder.
+	//
+	// Parameters:
+	//   ctx: Context for cancellation and timeout control
+	//   opts: Selector describing which scope/value to match
+	//
+	// Returns:
+	// []domain.Note: All notes matching the selector (empty slice if none
+	// found)
+	//   error: Context cancellation, validation failures, or infrastructure
+	//   errors
+	//
+	// Behavior:
+	//   - Full scope requires exact vault-relative path match
+	//   - Basename scope returns every note whose filename matches
+	//   - Folder scope returns all notes under the provided directory
+	//   - Empty slice (not nil) when no matches found
+	//   - Validation errors returned when opts invalid
+	//
+	// Example:
+	//   notes, err := port.PathQuery(ctx, PathQueryOptions{
+	//       Scope: PathQueryScopeFolder,
+	//       Value: "projects/",
+	//   })
+	PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)
+}
+
+// Validate normalises the options and ensures a usable scope/value pair.
+func (o PathQueryOptions) Validate() (PathQueryOptions, error) {
+	scope := o.Scope
+	if scope == "" {
+		scope = PathQueryScopeFull
+	}
+	value := strings.TrimSpace(o.Value)
+	if value == "" {
+		return PathQueryOptions{}, fmt.Errorf("path query value is required")
+	}
+	return PathQueryOptions{
+		Scope: scope,
+		Value: value,
+	}, nil
 }

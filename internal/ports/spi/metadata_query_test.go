@@ -92,6 +92,26 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 		assert.Equal(t, "meeting", mock.LastByFileClassArg)
 	})
 
+	// Test PathQuery method contract
+	t.Run("PathQuery method contract", func(t *testing.T) {
+		testNotes := []domain.Note{
+			{ID: "notes/project/foo.md"},
+			{ID: "notes/project/bar.md"},
+		}
+		opts := PathQueryOptions{
+			Scope: PathQueryScopeFolder,
+			Value: "notes/project/",
+		}
+		mock.SetPathQueryResult(testNotes, nil)
+
+		result, err := mock.PathQuery(ctx, opts)
+
+		require.NoError(t, err)
+		assert.Equal(t, testNotes, result)
+		assert.Equal(t, 1, mock.PathQueryCallCount)
+		assert.Equal(t, opts, mock.LastPathQueryOpts)
+	})
+
 	// Test empty results behavior
 	t.Run("empty results return empty slice not nil", func(t *testing.T) {
 		mock.Reset()
@@ -99,6 +119,7 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 		mock.SetByBasenameResult([]domain.Note{}, nil)
 		mock.SetByAliasResult([]domain.Note{}, nil)
 		mock.SetByFileClassResult([]domain.Note{}, nil)
+		mock.SetPathQueryResult([]domain.Note{}, nil)
 
 		// ByBasename with no matches
 		result, err := mock.ByBasename(ctx, "nonexistent")
@@ -114,6 +135,15 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 
 		// ByFileClass with no matches
 		result, err = mock.ByFileClass(ctx, "nonexistent")
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Empty(t, result)
+
+		// PathQuery with no matches
+		result, err = mock.PathQuery(
+			ctx,
+			PathQueryOptions{Value: "notes/missing.md"},
+		)
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -163,6 +193,11 @@ func TestMockMetadataQueryPortDefaultBehavior(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Empty(t, result)
+
+	result, err = mock.PathQuery(ctx, PathQueryOptions{Value: "any"})
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Empty(t, result)
 }
 
 // TestMockMetadataQueryPortImplementsInterface verifies the mock implements the
@@ -171,4 +206,18 @@ func TestMockMetadataQueryPortImplementsInterface(t *testing.T) {
 	var _ MetadataQueryPort = (*MockMetadataQueryPort)(nil)
 	var port MetadataQueryPort = NewMockMetadataQueryPort()
 	assert.NotNil(t, port)
+}
+
+func TestPathQueryOptionsValidate(t *testing.T) {
+	t.Run("defaults to full path scope", func(t *testing.T) {
+		opts, err := (PathQueryOptions{Value: "notes/foo.md"}).Validate()
+		require.NoError(t, err)
+		assert.Equal(t, PathQueryScopeFull, opts.Scope)
+		assert.Equal(t, "notes/foo.md", opts.Value)
+	})
+
+	t.Run("rejects empty value", func(t *testing.T) {
+		_, err := (PathQueryOptions{}).Validate()
+		require.Error(t, err)
+	})
 }

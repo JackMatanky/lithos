@@ -8,7 +8,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -50,7 +50,7 @@ func (m *mockTemplatePort) Load(
 	}
 	tmpl, exists := m.templates[id]
 	if !exists {
-		return domain.Template{}, domainerrors.NewResourceError(
+		return domain.Template{}, lithosErr.NewResourceError(
 			"template",
 			"load",
 			string(id),
@@ -159,7 +159,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 		_, err := engine.Render(ctx, templateID)
 
 		require.Error(t, err)
-		var templateErr *domainerrors.TemplateError
+		var templateErr *lithosErr.TemplateError
 		require.ErrorAs(t, err, &templateErr)
 		assert.Equal(t, "test-template", templateErr.TemplateID())
 		assert.Contains(t, err.Error(), "parse error")
@@ -189,7 +189,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 			_, err := engine.Render(ctx, templateID)
 
 			require.Error(t, err)
-			var templateErr *domainerrors.TemplateError
+			var templateErr *lithosErr.TemplateError
 			require.ErrorAs(t, err, &templateErr)
 			assert.Equal(t, "test-template", templateErr.TemplateID())
 			assert.Contains(t, err.Error(), "execute error")
@@ -207,7 +207,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 		_, err := engine.Render(ctx, templateID)
 
 		require.Error(t, err)
-		var resourceErr *domainerrors.ResourceError
+		var resourceErr *lithosErr.ResourceError
 		assert.ErrorAs(t, err, &resourceErr)
 	})
 }

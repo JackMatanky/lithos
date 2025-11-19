@@ -14,7 +14,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/app/schema"
-	vaultindexer "github.com/JackMatanky/lithos/internal/app/vault"
+	vaultService "github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
@@ -89,7 +89,7 @@ func TestVaultIndexing_Integration(t *testing.T) {
 	)
 
 	// Create indexer with all services
-	indexer := vaultindexer.NewVaultIndexer(
+	indexer := vaultService.NewVaultIndexer(
 		vaultReader,
 		cacheWriter,
 		cacheReader,
@@ -386,7 +386,7 @@ func testMemoryEfficientScanning(
 func testCacheManagementDeletions(
 	t *testing.T,
 	ctx context.Context,
-	indexer *vaultindexer.VaultIndexer,
+	indexer *vaultService.VaultIndexer,
 	queryService *query.QueryService,
 	vaultDir, cacheDir string,
 ) {
@@ -478,7 +478,7 @@ func testQueryLayerComprehensive(
 func testPerformanceBenchmarks(
 	t *testing.T,
 	duration time.Duration,
-	stats vaultindexer.IndexStats,
+	stats vaultService.IndexStats,
 ) {
 	// Performance requirements for realistic vault sizes
 	maxDuration := 30 * time.Second // Should complete within 30 seconds
@@ -512,7 +512,7 @@ func testPerformanceBenchmarks(
 func testErrorHandlingPipeline(
 	t *testing.T,
 	ctx context.Context,
-	indexer *vaultindexer.VaultIndexer,
+	indexer *vaultService.VaultIndexer,
 	queryService *query.QueryService,
 ) {
 	// Test continues despite individual file errors
