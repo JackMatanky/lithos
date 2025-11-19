@@ -45,11 +45,13 @@ func main() {
 	vaultScanner := vaultAdapter.NewVaultReaderAdapter(cfg, log)
 	cacheWriter := cache.NewJSONCacheWriter(cfg, log)
 	cacheReader := cache.NewJSONCacheReader(cfg, log)
-	frontmatterService := frontmatter.NewFrontmatterService(schemaEngine, log)
+	markdownParser := vaultAdapter.NewMarkdownParserAdapter(log)
+	frontmatterService := frontmatter.NewFrontmatterService(schemaEngine, markdownParser, log)
 	vaultIndexer := vault.NewVaultIndexer(
 		vaultScanner,
 		cacheWriter,
 		cacheReader,
+		markdownParser,
 		frontmatterService,
 		schemaEngine,
 		cfg,

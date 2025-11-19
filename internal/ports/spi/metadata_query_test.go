@@ -1,0 +1,146 @@
+package spi
+
+import (
+	"context"
+	"testing"
+
+	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+// TestMetadataQueryPortInterfaceContract verifies the MetadataQueryPort interface contract.
+// This test ensures that any implementation of MetadataQueryPort behaves correctly
+// according to the interface specification.
+func TestMetadataQueryPortInterfaceContract(t *testing.T) {
+	ctx := context.Background()
+	mock := NewMockMetadataQueryPort()
+
+	// Test ByBasename method signature and behavior
+	t.Run("ByBasename method contract", func(t *testing.T) {
+		// Configure mock to return test data
+		testNotes := []domain.Note{
+			{ID: "test1.md", Frontmatter: domain.NewFrontmatter(map[string]any{"title": "Test 1"})},
+			{ID: "test2.md", Frontmatter: domain.NewFrontmatter(map[string]any{"title": "Test 2"})},
+		}
+		mock.SetByBasenameResult(testNotes, nil)
+
+		// Call method
+		result, err := mock.ByBasename(ctx, "test")
+
+		// Verify contract
+		require.NoError(t, err)
+		assert.Equal(t, testNotes, result)
+		assert.Equal(t, 1, mock.ByBasenameCallCount)
+		assert.Equal(t, "test", mock.LastByBasenameArg)
+	})
+
+	// Test ByAlias method signature and behavior
+	t.Run("ByAlias method contract", func(t *testing.T) {
+		testNotes := []domain.Note{
+			{ID: "note1.md", Frontmatter: domain.NewFrontmatter(map[string]any{"title": "Note 1"})},
+		}
+		mock.SetByAliasResult(testNotes, nil)
+
+		result, err := mock.ByAlias(ctx, "project-alpha")
+
+		require.NoError(t, err)
+		assert.Equal(t, testNotes, result)
+		assert.Equal(t, 1, mock.ByAliasCallCount)
+		assert.Equal(t, "project-alpha", mock.LastByAliasArg)
+	})
+
+	// Test ByFileClass method signature and behavior
+	t.Run("ByFileClass method contract", func(t *testing.T) {
+		testNotes := []domain.Note{
+			{ID: "meeting1.md", Frontmatter: domain.NewFrontmatter(map[string]any{"fileClass": "meeting"})},
+			{ID: "meeting2.md", Frontmatter: domain.NewFrontmatter(map[string]any{"fileClass": "meeting"})},
+		}
+		mock.SetByFileClassResult(testNotes, nil)
+
+		result, err := mock.ByFileClass(ctx, "meeting")
+
+		require.NoError(t, err)
+		assert.Equal(t, testNotes, result)
+		assert.Equal(t, 1, mock.ByFileClassCallCount)
+		assert.Equal(t, "meeting", mock.LastByFileClassArg)
+	})
+
+	// Test empty results behavior
+	t.Run("empty results return empty slice not nil", func(t *testing.T) {
+		mock.Reset()
+		// Reset mock to default behavior (empty results)
+		mock.SetByBasenameResult([]domain.Note{}, nil)
+		mock.SetByAliasResult([]domain.Note{}, nil)
+		mock.SetByFileClassResult([]domain.Note{}, nil)
+
+		// ByBasename with no matches
+		result, err := mock.ByBasename(ctx, "nonexistent")
+		require.NoError(t, err)
+		assert.NotNil(t, result) // Should be empty slice, not nil
+		assert.Len(t, result, 0)
+
+		// ByAlias with no matches
+		result, err = mock.ByAlias(ctx, "nonexistent")
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Len(t, result, 0)
+
+		// ByFileClass with no matches
+		result, err = mock.ByFileClass(ctx, "nonexistent")
+		require.NoError(t, err)
+		assert.NotNil(t, result)
+		assert.Len(t, result, 0)
+	})
+
+	// Test context cancellation handling
+	t.Run("context cancellation propagation", func(t *testing.T) {
+		cancelledCtx, cancel := context.WithCancel(ctx)
+		cancel() // Cancel immediately
+
+		mock.SetByBasenameResult(nil, context.Canceled)
+
+		_, err := mock.ByBasename(cancelledCtx, "test")
+		assert.Equal(t, context.Canceled, err)
+	})
+
+	// Test call tracking reset
+	t.Run("call tracking reset functionality", func(t *testing.T) {
+		mock.ByBasenameCallCount = 5
+		mock.LastByBasenameArg = "old"
+
+		mock.Reset()
+
+		assert.Equal(t, 0, mock.ByBasenameCallCount)
+		assert.Equal(t, "", mock.LastByBasenameArg)
+	})
+}
+
+// TestMockMetadataQueryPortDefaultBehavior verifies the default behavior of the mock.
+func TestMockMetadataQueryPortDefaultBehavior(t *testing.T) {
+	ctx := context.Background()
+	mock := NewMockMetadataQueryPort()
+
+	// Default behavior should return empty slices and no errors
+	result, err := mock.ByBasename(ctx, "any")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Len(t, result, 0)
+
+	result, err = mock.ByAlias(ctx, "any")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Len(t, result, 0)
+
+	result, err = mock.ByFileClass(ctx, "any")
+	require.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.Len(t, result, 0)
+}
+
+// TestMockMetadataQueryPortImplementsInterface verifies the mock implements the interface.
+func TestMockMetadataQueryPortImplementsInterface(t *testing.T) {
+	var _ MetadataQueryPort = (*MockMetadataQueryPort)(nil)
+	var port MetadataQueryPort = NewMockMetadataQueryPort()
+	assert.NotNil(t, port)
+}

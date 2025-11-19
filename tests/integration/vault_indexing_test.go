@@ -78,8 +78,12 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		logger,
 	)
 	require.NoError(t, err)
+	// Create markdown parser
+	markdownParser := vaultAdapter.NewMarkdownParserAdapter(logger)
+
 	frontmatterService := frontmatter.NewFrontmatterService(
 		schemaEngine,
+		markdownParser,
 		logger,
 	)
 
@@ -88,12 +92,15 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		vaultReader,
 		cacheWriter,
 		cacheReader,
+		markdownParser,
 		frontmatterService,
 		schemaEngine,
 		config,
 		logger,
 	)
+	mockMetadataQuery := &mockMetadataQueryPort{}
 	queryService := query.NewQueryService(
+		mockMetadataQuery,
 		cacheReader,
 		cacheReader,
 		config,

@@ -32,13 +32,13 @@ type VaultIndexerInterface interface {
 
 // VaultIndexer orchestrates the vault indexing workflow from scan to cache
 // persistence. It implements the CQRS write-side pattern for indexing
-// operations, coordinating vault scanning, frontmatter extraction/validation,
+// operations, coordinating vault scanning, frontmatter parsing/validation,
 // note creation, and cache persistence.
 //
 // The indexer focuses solely on orchestration - it delegates scanning to
-// VaultScannerPort, frontmatter processing to FrontmatterService, schema
-// operations to SchemaEngine, and caching to CacheWriterPort and
-// CacheReaderPort.
+// VaultScannerPort, frontmatter parsing to MarkdownParserPort, validation
+// to FrontmatterService, schema operations to SchemaEngine, and caching to
+// CacheWriterPort and CacheReaderPort.
 //
 // Key Design Principles:
 //   - Focused Service: Orchestrates workflow only, does not implement
@@ -46,14 +46,15 @@ type VaultIndexerInterface interface {
 //   - Resilient Error Handling: Frontmatter validation errors logged but don't
 //     abort entire indexing; cache failures logged as warnings, indexing
 //     continues
-//   - Integrated Workflow: FrontmatterService integration enables validated
-//     frontmatter in indexed Notes
+//   - Integrated Workflow: MarkdownParserPort + FrontmatterService enables
+//     validated frontmatter in indexed Notes
 //
 // Reference: docs/architecture/components.md#vaultindexer.
 type VaultIndexer struct {
 	vaultScanner       spi.VaultScannerPort
 	cacheWriter        spi.CacheWriterPort
 	cacheReader        spi.CacheReaderPort
+	markdownParserPort spi.MarkdownParserPort
 	frontmatterService *frontmatter.FrontmatterService
 	schemaEngine       *schema.SchemaEngine
 	config             domain.Config
@@ -68,7 +69,8 @@ type VaultIndexer struct {
 //   - vaultScanner: Port for scanning vault files
 //   - cacheWriter: Port for persisting notes to cache
 //   - cacheReader: Port for reading cached notes
-//   - frontmatterService: Service for frontmatter extraction and validation
+//   - markdownParserPort: Port for parsing markdown frontmatter
+//   - frontmatterService: Service for frontmatter validation
 //   - schemaEngine: Engine for schema loading and resolution
 //   - config: Application configuration
 //   - log: Structured logger for operation tracking
@@ -79,6 +81,7 @@ func NewVaultIndexer(
 	vaultScanner spi.VaultScannerPort,
 	cacheWriter spi.CacheWriterPort,
 	cacheReader spi.CacheReaderPort,
+	markdownParserPort spi.MarkdownParserPort,
 	frontmatterService *frontmatter.FrontmatterService,
 	schemaEngine *schema.SchemaEngine,
 	config domain.Config,
@@ -88,6 +91,7 @@ func NewVaultIndexer(
 		vaultScanner:       vaultScanner,
 		cacheWriter:        cacheWriter,
 		cacheReader:        cacheReader,
+		markdownParserPort: markdownParserPort,
 		frontmatterService: frontmatterService,
 		schemaEngine:       schemaEngine,
 		config:             config,
@@ -757,7 +761,7 @@ func (v *VaultIndexer) logValidationError(filePath string, err error) {
 		Msg("frontmatter validation failed")
 }
 
-// processFileWithFrontmatter handles frontmatter extraction and validation.
+// processFileWithFrontmatter handles frontmatter parsing and validation.
 // Helper method to reduce complexity in processFile.
 //
 // Parameters:
@@ -772,59 +776,23 @@ func (v *VaultIndexer) processFileWithFrontmatter(
 	vf *dto.VaultFile,
 	stats *IndexStats,
 ) domain.Frontmatter {
-	// Extract frontmatter from file content
-	extractedFM, extractErr := v.frontmatterService.Extract(vf.Content)
-	if extractErr != nil {
-		v.logValidationError(vf.Path, extractErr)
+	// Parse frontmatter from file content (syntactic validation)
+	parsedFields, parseErr := v.markdownParserPort.ParseFrontmatter(ctx, vf.Content)
+	if parseErr != nil {
+		v.logValidationError(vf.Path, parseErr)
 		stats.ValidationFailures++
 		return domain.Frontmatter{} // Return empty to signal failure
 	}
 
-	// Get schema for validation if fileClass is present
-	if extractedFM.FileClass != "" {
-		schemaForValidation, schemaErr := v.getSchemaForValidation(
-			ctx,
-			extractedFM.FileClass,
-		)
-		if schemaErr != nil {
-			v.logValidationError(vf.Path, schemaErr)
-			stats.ValidationFailures++
-			return domain.Frontmatter{} // Return empty to signal failure
-		}
+	// Convert parsed fields to domain Frontmatter
+	parsedFM := domain.NewFrontmatter(parsedFields)
 
-		// Validate frontmatter against schema
-		validationErr := v.frontmatterService.Validate(
-			ctx,
-			extractedFM,
-			schemaForValidation,
-		)
-		if validationErr != nil {
-			v.logValidationError(vf.Path, validationErr)
-			stats.ValidationFailures++
-			return domain.Frontmatter{} // Return empty to signal failure
-		}
+	// Validate frontmatter against schema (semantic validation)
+	if validationErr := v.frontmatterService.IsSchemaCompliant(ctx, parsedFM); validationErr != nil {
+		v.logValidationError(vf.Path, validationErr)
+		stats.ValidationFailures++
+		return domain.Frontmatter{} // Return empty to signal failure
 	}
 
-	return extractedFM
-}
-
-// getSchemaForValidation retrieves a schema for frontmatter validation.
-// Helper method that wraps schema engine access with error handling.
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeout handling
-//   - fileClass: The schema name to retrieve
-//
-// Returns:
-//   - domain.Schema: The resolved schema for validation
-//   - error: Schema retrieval error if schema not found or engine unavailable
-func (v *VaultIndexer) getSchemaForValidation(
-	ctx context.Context,
-	fileClass string,
-) (domain.Schema, error) {
-	if v.schemaEngine == nil {
-		return domain.Schema{}, fmt.Errorf("schema engine not available")
-	}
-	// Use generic Get method from SchemaEngine
-	return schema.Get[domain.Schema](v.schemaEngine, ctx, fileClass)
+	return parsedFM
 }

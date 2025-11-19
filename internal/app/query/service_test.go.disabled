@@ -2,17 +2,29 @@ package query
 
 import (
 	"context"
-	"errors"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Simple mock for MetadataQueryPort
+type mockMetadataQueryPort struct{}
+
+func (m *mockMetadataQueryPort) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+func (m *mockMetadataQueryPort) ByAlias(ctx context.Context, alias string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+func (m *mockMetadataQueryPort) ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
 
 // FakeCacheReader implements CacheReaderPort for testing.
 type FakeCacheReader struct {
