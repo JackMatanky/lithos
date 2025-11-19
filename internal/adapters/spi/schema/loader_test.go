@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,9 +65,9 @@ func TestSchemaLoaderAdapter_MissingPropertyBank(t *testing.T) {
 	_, _, err := adapter.Load(context.Background())
 	require.Error(t, err)
 
-	var resourceErr *domainerrors.ResourceError
+	var resourceErr *lithosErr.ResourceError
 	require.ErrorAs(t, err, &resourceErr)
-	const expectedMissingHint = "Create schemas/property_bank.json or configure PropertyBankFile"
+	const expectedMissingHint = "create schemas/property_bank.json or configure PropertyBankFile"
 	assert.Contains(t, err.Error(), expectedMissingHint)
 	assert.Equal(t, "schema", resourceErr.Resource())
 	assert.Equal(t, "load", resourceErr.Operation())
@@ -96,7 +96,7 @@ func TestSchemaLoaderAdapter_MalformedPropertyBank(t *testing.T) {
 	_, _, err := adapter.Load(context.Background())
 	require.Error(t, err)
 
-	var schemaErr *domainerrors.SchemaError
+	var schemaErr *lithosErr.SchemaError
 	require.ErrorAs(t, err, &schemaErr)
 	assert.Contains(t, schemaErr.Remediation, "Check JSON syntax")
 }
@@ -119,7 +119,7 @@ func TestSchemaLoaderAdapter_MalformedSchemaJSON(t *testing.T) {
 	_, _, err := adapter.Load(context.Background())
 	require.Error(t, err)
 
-	var schemaErr *domainerrors.SchemaError
+	var schemaErr *lithosErr.SchemaError
 	require.ErrorAs(t, err, &schemaErr)
 	assert.Contains(t, schemaErr.Remediation, "Check JSON syntax")
 }
@@ -290,7 +290,7 @@ func TestSchemaLoaderAdapter_WalkError(t *testing.T) {
 	_, _, err := adapter.Load(context.Background())
 	require.Error(t, err)
 
-	var resourceErr *domainerrors.ResourceError
+	var resourceErr *lithosErr.ResourceError
 	require.ErrorAs(t, err, &resourceErr)
 	assert.Equal(t, "schema", resourceErr.Resource())
 	assert.Equal(t, "scan", resourceErr.Operation())

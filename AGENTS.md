@@ -232,3 +232,9 @@ tasks:
     howToUse: Reference the task in your prompt or execute via your configured commands.
     fullBrief: MUST open the source file from path
 ```
+
+# Common Commands
+
+File Formatting: `golangci-lint fmt`
+
+File Linting: `golangci-lint run --fix`

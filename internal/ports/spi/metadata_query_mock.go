@@ -32,16 +32,19 @@ type MockMetadataQueryPort struct {
 	ByBasenameFunc  func(ctx context.Context, basename string) ([]domain.Note, error)
 	ByAliasFunc     func(ctx context.Context, alias string) ([]domain.Note, error)
 	ByFileClassFunc func(ctx context.Context, fileClass string) ([]domain.Note, error)
+	PathQueryFunc   func(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)
 
 	// Call tracking for assertions
 	ByBasenameCallCount  int
 	ByAliasCallCount     int
 	ByFileClassCallCount int
+	PathQueryCallCount   int
 
 	// Last call arguments for detailed assertions
 	LastByBasenameArg  string
 	LastByAliasArg     string
 	LastByFileClassArg string
+	LastPathQueryOpts  PathQueryOptions
 }
 
 // NewMockMetadataQueryPort creates a new MockMetadataQueryPort with default
@@ -59,12 +62,17 @@ func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 		ByFileClassFunc: func(ctx context.Context, fileClass string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
+		PathQueryFunc: func(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error) {
+			return []domain.Note{}, nil
+		},
 		ByBasenameCallCount:  0,
 		ByAliasCallCount:     0,
 		ByFileClassCallCount: 0,
+		PathQueryCallCount:   0,
 		LastByBasenameArg:    "",
 		LastByAliasArg:       "",
 		LastByFileClassArg:   "",
+		LastPathQueryOpts:    PathQueryOptions{Value: "", Scope: ""},
 	}
 }
 
@@ -101,6 +109,17 @@ func (m *MockMetadataQueryPort) SetByFileClassResult(
 	}
 }
 
+// SetPathQueryResult configures the mock to return the specified result for
+// PathQuery calls.
+func (m *MockMetadataQueryPort) SetPathQueryResult(
+	notes []domain.Note,
+	err error,
+) {
+	m.PathQueryFunc = func(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error) {
+		return notes, err
+	}
+}
+
 // ByBasename implements MetadataQueryPort.ByBasename with mock behavior.
 func (m *MockMetadataQueryPort) ByBasename(
 	ctx context.Context,
@@ -131,13 +150,25 @@ func (m *MockMetadataQueryPort) ByFileClass(
 	return m.ByFileClassFunc(ctx, fileClass)
 }
 
+// PathQuery implements MetadataQueryPort.PathQuery with mock behavior.
+func (m *MockMetadataQueryPort) PathQuery(
+	ctx context.Context,
+	opts PathQueryOptions,
+) ([]domain.Note, error) {
+	m.PathQueryCallCount++
+	m.LastPathQueryOpts = opts
+	return m.PathQueryFunc(ctx, opts)
+}
+
 // Reset resets all call tracking counters and last arguments.
 // Useful for testing multiple scenarios in the same test.
 func (m *MockMetadataQueryPort) Reset() {
 	m.ByBasenameCallCount = 0
 	m.ByAliasCallCount = 0
 	m.ByFileClassCallCount = 0
+	m.PathQueryCallCount = 0
 	m.LastByBasenameArg = ""
 	m.LastByAliasArg = ""
 	m.LastByFileClassArg = ""
+	m.LastPathQueryOpts = PathQueryOptions{Value: "", Scope: ""}
 }

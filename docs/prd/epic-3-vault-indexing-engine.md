@@ -149,3 +149,46 @@ so that users can rebuild the cache and indices on demand.
 2. The CLI adapter registers an `index` command mirroring the architecture workflow: parse flags, call CommandPort, print stats, return non-zero exit code on failure.
 3. Integration or end-to-end tests execute `lithos index` against fixtures, verify cache files, CLI output, and satisfaction of FR9.
 4. Documentation or help output references the new command consistent with `docs/prd/requirements.md#functional` entries.
+
+
+---
+
+## Story 3.19 MetadataQueryPort
+
+As a system architect,
+I want a dedicated MetadataQueryPort describing every index-based query we expose,
+so that QueryService can route lookups through storage-native indices without depending on adapter details.
+
+**Prerequisites:** Stories 3.1–3.8 (cache, vault, and query foundations).
+
+### Acceptance Criteria
+1. `internal/ports/spi/metadata_query.go` defines `MetadataQueryPort` with `ByBasename`, `ByAlias`, `ByFileClass`, and the new `PathQuery(ctx context.Context, opts PathQueryOptions)` method that supports basename, full path, or folder scope lookups.
+2. `PathQueryOptions` documents supported scopes, validation rules, and error semantics; constants/enums for supported scopes live with the interface.
+3. Architecture docs (`docs/architecture/components.md#metadataqueryport`) describe each method, path query behaviour, and how the port complements `CacheReaderPort`.
+4. A mock implementation (`internal/ports/spi/metadata_query_mock.go`) exists for tests and covers every method including `PathQuery`.
+5. `internal/app/query/service.go` accepts a `MetadataQueryPort`, delegates index-based lookups to it, and keeps its public contract unchanged.
+6. Unit tests verify the interface contract, the mock behaviour, and QueryService delegation paths; `golangci-lint run ./internal/ports/spi` and `go test ./internal/.../query` succeed.
+
+---
+
+## Story 3.20 BoltDB Hot Cache Adapter
+
+As a system architect,
+I want BoltDB to serve as the hybrid storage hot layer with staleness detection,
+so that ByPath/ByBasename/ByAlias queries return in under one millisecond with cache invalidation support.
+
+**Prerequisites:** Stories 3.1–3.19 (cache contracts, MetadataQueryPort, and VaultFile/FileDates DTO updates).
+
+### Acceptance Criteria
+1. Existing BoltDB adapters are moved under `internal/adapters/spi/cache/boltdb/` and imports adjusted; documentation reflects the new layout.
+2. Bucket schema uses vault-relative paths as keys with `/notes/` for primary records plus `/indices/byBasename`, `/indices/byAlias`, and `/indices/byFileClass`; helper constants centralise bucket names.
+3. `BoltDBWriterAdapter` implements `CacheWriterPort`, writes `FileDatesDTO` metadata (`ModifiedAt` + `IndexedAt`), maintains all indices transactionally, and wraps errors per FR9.
+4. `BoltDBReaderAdapter` implements both `CacheReaderPort` and `MetadataQueryPort`, including the new `PathQuery` scope so callers can resolve basename/path/folder selectors without leaking bucket structure.
+5. Adapter-level staleness detection (`IsStale(ctx, path string) (bool, error)`) compares filesystem mod times with cached `IndexedAt` timestamps and returns `true` for missing cache entries.
+6. Atomic write operations use a single `bolt.Tx`; rollback paths are fully tested alongside error logging and context cancellation handling.
+7. Performance benchmarks show `< 1 ms` latency for Path/Basename/Alias lookups and `<10 ms` writes for representative vault sizes.
+8. Unit tests cover persist/delete/read/list operations, index maintenance, staleness detection, and MetadataQueryPort routing; integration tests exercise concurrent readers/writers.
+9. Architecture docs (`docs/architecture/components.md#boltdbreaderadapter`) describe the dual-port pattern, FileDatesDTO usage, and the PathQuery behaviour; `docs/architecture/data-models.md` details FileDatesDTO and staleness workflow.
+10. `golangci-lint run ./internal/adapters/spi/cache/boltdb` and `go test ./internal/adapters/spi/cache/boltdb ./tests/integration` succeed.
+
+---
