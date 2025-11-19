@@ -27,6 +27,9 @@ var _ api.CLIPort = (*MockCLIPort)(nil)
 // Ensure MockCacheWriterPort implements CacheWriterPort.
 var _ spi.CacheWriterPort = (*MockCacheWriterPort)(nil)
 
+// Ensure MockMarkdownParserPort implements MarkdownParserPort.
+var _ spi.MarkdownParserPort = (*MockMarkdownParserPort)(nil)
+
 // Ensure MockVaultWriterPort implements VaultWriterPort.
 var _ spi.VaultWriterPort = (*MockVaultWriterPort)(nil)
 
@@ -69,6 +72,36 @@ func (m *MockCacheWriterPort) Delete(
 	id domain.NoteID,
 ) error {
 	return m.deleteResult
+}
+
+// MockMarkdownParserPort provides a mock implementation of MarkdownParserPort for
+// testing.
+type MockMarkdownParserPort struct {
+	parseResult map[string]any
+	parseError  error
+}
+
+// NewMockMarkdownParserPort creates a new MockMarkdownParserPort with default values.
+func NewMockMarkdownParserPort() *MockMarkdownParserPort {
+	return &MockMarkdownParserPort{}
+}
+
+// SetParseResult configures the mock to return the specified frontmatter and
+// error on ParseFrontmatter calls.
+func (m *MockMarkdownParserPort) SetParseResult(
+	fm map[string]any,
+	err error,
+) {
+	m.parseResult = fm
+	m.parseError = err
+}
+
+// ParseFrontmatter returns the configured mock result for frontmatter parsing.
+func (m *MockMarkdownParserPort) ParseFrontmatter(
+	ctx context.Context,
+	content []byte,
+) (map[string]any, error) {
+	return m.parseResult, m.parseError
 }
 
 // MockVaultWriterPort provides a mock implementation of VaultWriterPort for

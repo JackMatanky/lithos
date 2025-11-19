@@ -57,10 +57,11 @@ type QueryService struct {
 	mu sync.RWMutex
 
 	// Dependencies
-	boltReader   spi.CacheReaderPort // Hot cache for fast lookups
-	sqliteReader spi.CacheReaderPort // Deep storage for complex queries
-	config       domain.Config       // For file_class_key configuration
-	log          zerolog.Logger
+	metadataQuery spi.MetadataQueryPort // Index-based metadata queries
+	boltReader    spi.CacheReaderPort   // Hot cache for fast lookups
+	sqliteReader  spi.CacheReaderPort   // Deep storage for complex queries
+	config        domain.Config         // For file_class_key configuration
+	log           zerolog.Logger
 
 	// Primary index: NoteID → Note (populated from both stores)
 	byID map[domain.NoteID]domain.Note
@@ -173,6 +174,7 @@ func isComparableForIndex(value interface{}) bool {
 //	err := qs.RefreshFromCache(ctx) // Populate indices from both stores
 //	note, err := qs.ByID(ctx, id)   // Query safely with smart routing
 func NewQueryService(
+	metadataQuery spi.MetadataQueryPort,
 	boltReader spi.CacheReaderPort,
 	sqliteReader spi.CacheReaderPort,
 	config domain.Config,
@@ -184,6 +186,7 @@ func NewQueryService(
 		byBasename:    make(map[string][]domain.Note),
 		byFileClass:   make(map[string][]domain.Note),
 		byFrontmatter: make(map[string]map[interface{}][]domain.Note),
+		metadataQuery: metadataQuery,
 		boltReader:    boltReader,
 		sqliteReader:  sqliteReader,
 		config:        config,
@@ -289,7 +292,7 @@ func (q *QueryService) ByFileClass(
 			Msg("query performance")
 	}()
 
-	return q.queryByField(q.byFileClass, "fileClass", fileClass)
+	return q.metadataQuery.ByFileClass(ctx, fileClass)
 }
 
 // ByBasename retrieves all notes matching a filename basename (without
@@ -303,7 +306,7 @@ func (q *QueryService) ByFileClass(
 // - Basename is extracted from NoteID (full path) by removing directory path
 // and file extension
 // - Logs debug message with basename and result count
-// - O(log n) lookup performance via map access.
+// - Delegates to MetadataQueryPort for index-based lookup performance
 //
 // Example: NoteID "projects/notes/meeting.md" matches basename "meeting".
 func (q *QueryService) ByBasename(
@@ -319,7 +322,35 @@ func (q *QueryService) ByBasename(
 			Msg("query performance")
 	}()
 
-	return q.queryByField(q.byBasename, "basename", basename)
+	return q.metadataQuery.ByBasename(ctx, basename)
+}
+
+// ByAlias retrieves all notes containing an alias in their frontmatter.
+// Returns a slice of notes if any match, or empty slice if none found.
+// Thread-safe: uses RLock to allow concurrent reads.
+//
+// Query Semantics:
+// - Returns empty slice (not error) for non-matching aliases (collection lookup)
+// - Searches aliases array in frontmatter for exact matches
+// - Multiple notes can contain the same alias
+// - Logs debug message with alias and result count
+// - Delegates to MetadataQueryPort for index-based lookup performance
+//
+// Example: Notes with frontmatter aliases containing "project-alpha" match alias "project-alpha".
+func (q *QueryService) ByAlias(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	start := time.Now()
+	defer func() {
+		q.log.Debug().
+			Dur("duration", time.Since(start)).
+			Str("method", "ByAlias").
+			Str("alias", alias).
+			Msg("query performance")
+	}()
+
+	return q.metadataQuery.ByAlias(ctx, alias)
 }
 
 // ByFrontmatter retrieves all notes matching a frontmatter field value.

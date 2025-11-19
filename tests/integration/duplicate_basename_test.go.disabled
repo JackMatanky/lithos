@@ -17,6 +17,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Simple mock for MetadataQueryPort
+type mockMetadataQueryPort struct{}
+
+func (m *mockMetadataQueryPort) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+func (m *mockMetadataQueryPort) ByAlias(ctx context.Context, alias string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+func (m *mockMetadataQueryPort) ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
 // TestDuplicateBasenameHandling_Integration tests that files with identical
 // basenames in different directories generate unique NoteIDs and cache entries.
 func TestDuplicateBasenameHandling_Integration(t *testing.T) {
@@ -43,11 +58,16 @@ func TestDuplicateBasenameHandling_Integration(t *testing.T) {
 	// Create cache reader
 	cacheReader := cache.NewJSONCacheReader(config, logger)
 
+	// Create markdown parser (required by indexer)
+	markdownParser := vaultAdapter.NewMarkdownParserAdapter(logger)
+
 	// Create indexer (without frontmatter/schema for simplicity)
+	mockMetadataQuery := &mockMetadataQueryPort{}
 	indexer := vaultindexer.NewVaultIndexer(
 		vaultReader,
 		cacheWriter,
 		cacheReader,
+		markdownParser,
 		nil,
 		nil,
 		config,

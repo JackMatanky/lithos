@@ -11,17 +11,33 @@ import (
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	schemaadapter "github.com/JackMatanky/lithos/internal/adapters/spi/schema"
+	vaultadapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/query"
 	schemaengine "github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/dto"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// Simple mock for MetadataQueryPort
+type mockMetadataQueryPort struct{}
+
+func (m *mockMetadataQueryPort) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+func (m *mockMetadataQueryPort) ByAlias(ctx context.Context, alias string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+func (m *mockMetadataQueryPort) ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
 
 // frontmatterTestEnv holds test environment state.
 type frontmatterTestEnv struct {
@@ -134,8 +150,11 @@ This is a test note with frontmatter.
 	)
 	require.NoError(t, err)
 
+	// Create markdown parser adapter
+	markdownParser := vaultadapter.NewMarkdownParserAdapter(logger)
+
 	// Create frontmatter service
-	fmService := frontmatter.NewFrontmatterService(schemaEngine, logger)
+	fmService := frontmatter.NewFrontmatterService(schemaEngine, markdownParser, logger)
 
 	// Create cache adapters
 	cacheWriter := cache.NewJSONCacheWriter(*config, logger)
@@ -149,6 +168,7 @@ This is a test note with frontmatter.
 		vaultScanner,
 		cacheWriter,
 		cacheReader,
+		markdownParser,
 		fmService,
 		schemaEngine,
 		*config,
@@ -156,7 +176,9 @@ This is a test note with frontmatter.
 	)
 
 	// Create QueryService
+	mockMetadataQuery := &mockMetadataQueryPort{}
 	queryService := query.NewQueryService(
+		mockMetadataQuery,
 		cacheReader,
 		cacheReader,
 		*config,
@@ -195,22 +217,16 @@ func (m *mockVaultScanner) ScanAll(
 				return readErr
 			}
 
-			relPath, relErr := filepath.Rel(m.vaultDir, path)
-			if relErr != nil {
-				return relErr
-			}
-
 			info, infoErr := d.Info()
 			if infoErr != nil {
 				return infoErr
 			}
 
-			files = append(files, dto.VaultFile{
-				FileMetadata: dto.NewFileMetadata(path, info),
-				Content:      content,
-			})
-			// Override the Path to be relative
-			files[len(files)-1].Path = relPath
+			vaultFile, err := dto.NewVaultFile(path, m.vaultDir, info, content)
+			if err != nil {
+				return err
+			}
+			files = append(files, vaultFile)
 			return nil
 		},
 	)

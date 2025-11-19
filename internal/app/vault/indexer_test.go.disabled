@@ -17,6 +17,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Simple mock for MarkdownParserPort
+type mockMarkdownParserPort struct{}
+
+func (m *mockMarkdownParserPort) ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error) {
+	return map[string]any{"title": "test"}, nil
+}
+
 // testFileInfo implements fs.FileInfo for testing.
 type testFileInfo struct {
 	name    string

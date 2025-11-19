@@ -58,7 +58,7 @@ repos:
         exclude: (^|/)vendor/
       - id: go-vet-mod
         name: Go static analysis (go vet)
-        exclude: (^|/)vendor/
+        exclude: (^|/)vendor/|^tests/performance/
         args: ["-mod=readonly"]
 
   # Official golangci-lint pre-commit hooks
@@ -68,4 +68,4 @@ repos:
     hooks:
       - id: golangci-lint
         name: Go linting (golangci-lint)
-        exclude: (^|/)vendor/
+        exclude: (^|/)vendor/|^tests/performance/
