@@ -267,8 +267,18 @@ disable = ["fieldalignment"]
 strict = true
 
 # importas: enforce consistent import aliases
-# Disabled due to CI version compatibility issues
-# [linters.settings.importas]
+[linters.settings.importas]
+# Shared packages used across Lithos.
+alias = [
+  { pkg = "github.com/JackMatanky/lithos/internal/shared/errors", alias = "lithosErr" },
+  { pkg = "github.com/JackMatanky/lithos/internal/shared/logging", alias = "lithosLog" },
+  # Packages within the template domain.
+  { pkg = "github.com/JackMatanky/lithos/internal/adapters/spi/template", alias = "templateAdapter" },
+  { pkg = "github.com/JackMatanky/lithos/internal/app/template", alias = "templateService" },
+  # Packages within the vault domain.
+  { pkg = "github.com/JackMatanky/lithos/internal/adapters/spi/vault", alias = "vaultAdapter" },
+  { pkg = "github.com/JackMatanky/lithos/internal/app/vault", alias = "vaultService" },
+]
 
 
 # interfacebloat: limit interface size
