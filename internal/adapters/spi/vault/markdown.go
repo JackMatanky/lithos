@@ -13,6 +13,9 @@ import (
 	"go.abhg.dev/goldmark/frontmatter"
 )
 
+// Ensure MarkdownParserAdapter implements MarkdownParserPort interface.
+var _ spi.MarkdownParserPort = (*MarkdownParserAdapter)(nil)
+
 // MarkdownParserAdapter implements MarkdownParserPort for syntactic markdown
 // frontmatter parsing. This adapter uses goldmark with frontmatter extension
 // to handle YAML parsing while keeping infrastructure concerns out of the
@@ -25,14 +28,18 @@ import (
 //   - Syntactic validation: YAML structure, delimiter detection
 //   - Parsing infrastructure: goldmark integration and configuration
 //   - Error handling: Structured errors with line number information
-//   - Edge case handling: Missing frontmatter, malformed YAML, context cancellation
+//
+// - Edge case handling: Missing frontmatter, malformed YAML, context
+// cancellation
 //
 // Does NOT handle:
-//   - Semantic validation: Schema compliance, business rules (domain responsibility)
+// - Semantic validation: Schema compliance, business rules (domain
+// responsibility)
 //   - Content rendering: Only parses frontmatter, ignores markdown content
 //   - Field transformation: Returns raw parsed data as-is
 //
-// Reference: docs/architecture/coding-standards.md - Validation Layer Separation
+// Reference: docs/architecture/coding-standards.md - Validation Layer
+// Separation.
 type MarkdownParserAdapter struct {
 	markdown goldmark.Markdown
 	log      zerolog.Logger
@@ -75,13 +82,14 @@ func NewMarkdownParserAdapter(logger zerolog.Logger) *MarkdownParserAdapter {
 //
 // Implementation:
 //   - Uses goldmark with frontmatter extension for robust parsing
-//   - Handles edge cases: missing frontmatter, empty frontmatter, malformed YAML
+//
+// - Handles edge cases: missing frontmatter, empty frontmatter, malformed YAML
 //   - Provides structured error messages with line number information
 //   - Supports context cancellation for long-running operations
 //   - Thread-safe with mutex protection for goldmark parser
 //
 // Error Scenarios:
-//   - Context cancellation: Returns context.Canceled or context.DeadlineExceeded
+// - Context cancellation: Returns context.Canceled or context.DeadlineExceeded
 //   - Malformed YAML: Returns parsing error with line number information
 //   - Invalid delimiters: Returns structured error with position details
 //   - Goldmark failures: Returns wrapped error with additional context
@@ -186,6 +194,3 @@ func (a *MarkdownParserAdapter) parseWithGoldmark(
 
 	return result, nil
 }
-
-// Ensure MarkdownParserAdapter implements MarkdownParserPort interface
-var _ spi.MarkdownParserPort = (*MarkdownParserAdapter)(nil)

@@ -6,33 +6,38 @@ import (
 	"testing"
 )
 
-// TestMarkdownParserPortContract tests the interface contract definition
+const testTitle = "test"
+
+// MockMarkdownParserPort for testing downstream components.
+type MockMarkdownParserPort struct {
+	ParseFrontmatterFunc func(ctx context.Context, content []byte) (map[string]any, error)
+}
+
+// TestMarkdownParserPortContract tests the interface contract definition.
 func TestMarkdownParserPortContract(t *testing.T) {
 	// Test that interface exists and has correct method signature
-	var parser MarkdownParserPort
-	if parser == nil {
-		// Interface exists, now test with mock
-		mock := &MockMarkdownParserPort{
-			ParseFrontmatterFunc: func(ctx context.Context, content []byte) (map[string]any, error) {
-				return map[string]any{"title": "test"}, nil
-			},
-		}
+	var _ MarkdownParserPort // Ensure interface compiles
 
-		ctx := context.Background()
-		content := []byte("---\ntitle: test\n---\n# Content")
+	// Test with mock implementation
+	mock := &MockMarkdownParserPort{
+		ParseFrontmatterFunc: func(ctx context.Context, content []byte) (map[string]any, error) {
+			return map[string]any{"title": testTitle}, nil
+		},
+	}
 
-		result, err := mock.ParseFrontmatter(ctx, content)
-		if err != nil {
-			t.Errorf("Unexpected error: %v", err)
-		}
+	ctx := context.Background()
+	content := []byte("---\ntitle: test\n---\n# Content")
 
-		if result["title"] != "test" {
-			t.Errorf("Expected title 'test', got %v", result["title"])
-		}
+	result, err := mock.ParseFrontmatter(ctx, content)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+	if result["title"] != testTitle {
+		t.Errorf("Expected title '%s', got %v", testTitle, result["title"])
 	}
 }
 
-// TestMarkdownParserPortErrorConditions tests expected error scenarios
+// TestMarkdownParserPortErrorConditions tests expected error scenarios.
 func TestMarkdownParserPortErrorConditions(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -58,29 +63,29 @@ func TestMarkdownParserPortErrorConditions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// This will fail until we have a concrete implementation to test against
+			// This will fail until we have a concrete implementation to test
+			// against
 			t.Skip("Interface contract test - will implement with mock")
 		})
 	}
 }
 
-// MockMarkdownParserPort for testing downstream components
-type MockMarkdownParserPort struct {
-	ParseFrontmatterFunc func(ctx context.Context, content []byte) (map[string]any, error)
-}
-
-func (m *MockMarkdownParserPort) ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error) {
+// ParseFrontmatter implements MarkdownParserPort.ParseFrontmatter.
+func (m *MockMarkdownParserPort) ParseFrontmatter(
+	ctx context.Context,
+	content []byte,
+) (map[string]any, error) {
 	if m.ParseFrontmatterFunc != nil {
 		return m.ParseFrontmatterFunc(ctx, content)
 	}
 	return nil, errors.New("mock not configured")
 }
 
-// TestMockMarkdownParserPort ensures mock implementation works
+// TestMockMarkdownParserPort ensures mock implementation works.
 func TestMockMarkdownParserPort(t *testing.T) {
 	mock := &MockMarkdownParserPort{
 		ParseFrontmatterFunc: func(ctx context.Context, content []byte) (map[string]any, error) {
-			return map[string]any{"title": "test"}, nil
+			return map[string]any{"title": testTitle}, nil
 		},
 	}
 
@@ -92,7 +97,7 @@ func TestMockMarkdownParserPort(t *testing.T) {
 		t.Fatalf("Unexpected error: %v", err)
 	}
 
-	if result["title"] != "test" {
-		t.Errorf("Expected title 'test', got %v", result["title"])
+	if result["title"] != testTitle {
+		t.Errorf("Expected title '%s', got %v", testTitle, result["title"])
 	}
 }

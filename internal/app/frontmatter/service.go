@@ -17,7 +17,8 @@ import (
 // to maintain clean hexagonal architecture separation.
 //
 // Architecture: Domain service orchestrates semantic validation using
-// MarkdownParserPort for syntactic parsing and schema validation for business rules.
+// MarkdownParserPort for syntactic parsing and schema validation for business
+// rules.
 //
 // Dependencies:
 //   - SchemaEngine: For loading and resolving schemas before validation
@@ -30,7 +31,8 @@ type FrontmatterService struct {
 }
 
 // NewFrontmatterService creates a new FrontmatterService with required
-// dependencies. It initializes the service for frontmatter validation operations.
+// dependencies. It initializes the service for frontmatter validation
+// operations.
 //
 // Parameters:
 //   - schemaEngine: Required for schema loading and resolution
@@ -85,25 +87,10 @@ func (s *FrontmatterService) IsSchemaCompliant(
 	default:
 	}
 
-	// Get schema for validation if fileClass is present
+	// Validate against schema if fileClass is present
 	if fm.FileClass != "" {
-		schema, err := s.getSchemaForValidation(ctx, fm.FileClass)
-		if err != nil {
-			return lithosErr.NewFrontmatterError(
-				"schema lookup failed",
-				"",
-				err,
-			)
-		}
-
-		// Validate required fields
-		if err := s.validateRequiredFields(fm, schema); err != nil {
-			validationErrors = append(validationErrors, err)
-		}
-
-		// Validate field types using polymorphic validators
-		if err := s.validateFieldTypes(fm, schema); err != nil {
-			validationErrors = append(validationErrors, err)
+		if schemaErr := s.validateAgainstSchema(ctx, fm); schemaErr != nil {
+			validationErrors = append(validationErrors, schemaErr)
 		}
 	}
 
@@ -212,6 +199,42 @@ func (s *FrontmatterService) validateFieldTypes(
 		return errors.Join(validationErrors...)
 	}
 	return nil
+}
+
+// validateAgainstSchema performs comprehensive schema validation for
+// frontmatter.
+// Validates required fields and field types against the schema specification.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - fm: Frontmatter to validate against schema
+//
+// Returns:
+//   - error: Validation errors or nil if validation passes
+func (s *FrontmatterService) validateAgainstSchema(
+	ctx context.Context,
+	fm domain.Frontmatter,
+) error {
+	var validationErrors []error
+
+	// Get schema for validation
+	sch, schemaErr := s.getSchemaForValidation(ctx, fm.FileClass)
+	if schemaErr != nil {
+		return schemaErr
+	}
+
+	// Validate required fields
+	if reqErr := s.validateRequiredFields(fm, sch); reqErr != nil {
+		validationErrors = append(validationErrors, reqErr)
+	}
+
+	// Validate field types
+	if typeErr := s.validateFieldTypes(fm, sch); typeErr != nil {
+		validationErrors = append(validationErrors, typeErr)
+	}
+
+	// Aggregate validation errors
+	return s.aggregateValidationErrors(validationErrors)
 }
 
 // aggregateValidationErrors aggregates multiple validation errors into a single

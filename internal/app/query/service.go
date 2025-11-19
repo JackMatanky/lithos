@@ -330,13 +330,15 @@ func (q *QueryService) ByBasename(
 // Thread-safe: uses RLock to allow concurrent reads.
 //
 // Query Semantics:
-// - Returns empty slice (not error) for non-matching aliases (collection lookup)
+// - Returns empty slice (not error) for non-matching aliases (collection
+// lookup)
 // - Searches aliases array in frontmatter for exact matches
 // - Multiple notes can contain the same alias
 // - Logs debug message with alias and result count
 // - Delegates to MetadataQueryPort for index-based lookup performance
 //
-// Example: Notes with frontmatter aliases containing "project-alpha" match alias "project-alpha".
+// Example: Notes with frontmatter aliases containing "project-alpha" match
+// alias "project-alpha".
 func (q *QueryService) ByAlias(
 	ctx context.Context,
 	alias string,
@@ -700,23 +702,4 @@ func (q *QueryService) addNoteToFrontmatterIndexes(note domain.Note) {
 			note,
 		)
 	}
-}
-
-func (q *QueryService) queryByField(
-	index map[string][]domain.Note,
-	fieldName, fieldValue string,
-) ([]domain.Note, error) {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	notes, exists := index[fieldValue]
-	if !exists || len(notes) == 0 {
-		return nil, nil // Return empty slice, not error
-	}
-
-	q.log.Debug().
-		Str(fieldName, fieldValue).
-		Int("count", len(notes)).
-		Msg(fmt.Sprintf("query by %s", fieldName))
-	return notes, nil
 }

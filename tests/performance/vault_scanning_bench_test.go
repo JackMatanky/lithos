@@ -288,8 +288,8 @@ func TestVaultScanning_MemoryUsage(t *testing.T) {
 	}
 
 	// Verify the file is the markdown one
-	if files[0].Basename != "test" {
-		t.Errorf("Expected basename 'test', got '%s'", files[0].Basename)
+	if files[0].Basename() != "test" {
+		t.Errorf("Expected basename 'test', got '%s'", files[0].Basename())
 	}
 }
 
@@ -328,8 +328,8 @@ func TestVaultScanning_SizeLimits(t *testing.T) {
 		t.Fatalf("Expected 1 file (normal.md), got %d", len(files))
 	}
 
-	if files[0].Basename != "normal" {
-		t.Errorf("Expected basename 'normal', got '%s'", files[0].Basename)
+	if files[0].Basename() != "normal" {
+		t.Errorf("Expected basename 'normal', got '%s'", files[0].Basename())
 	}
 }
 
@@ -390,7 +390,7 @@ func TestVaultScanning_CacheDirectoryExclusion(t *testing.T) {
 	// Verify basenames
 	basenames := make(map[string]bool)
 	for _, file := range files {
-		basenames[file.Basename] = true
+		basenames[file.Basename()] = true
 	}
 
 	if !basenames["note1"] || !basenames["note2"] {

@@ -7,6 +7,7 @@ The following critical files are essential and **MUST** be reviewed before start
 - Coding Standards: docs/architecture/coding-standards.md
 - Data Models: docs/architecture/data-models.md
 - Components: docs/architecture/components.md
+- Tech Stack: docs/architecture/tech-stack.md
 
 ## Agents
 

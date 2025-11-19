@@ -180,7 +180,10 @@ func (a *VaultReaderAdapter) readFileWithMetadata(
 	// Construct VaultFile with vault-relative path
 	vaultFile, err := dto.NewVaultFile(path, a.config.VaultPath, info, content)
 	if err != nil {
-		return dto.VaultFile{}, fmt.Errorf("failed to create VaultFile: %w", err)
+		return dto.VaultFile{}, fmt.Errorf(
+			"failed to create VaultFile: %w",
+			err,
+		)
 	}
 	return vaultFile, nil
 }

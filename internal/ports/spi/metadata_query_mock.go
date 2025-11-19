@@ -1,6 +1,4 @@
-// Package spi provides mock implementations of SPI ports for testing.
-// This file contains the MockMetadataQueryPort for testing components
-// that depend on MetadataQueryPort without requiring actual cache implementations.
+// MockMetadataQueryPort provides mock implementations of SPI ports for testing.
 package spi
 
 import (
@@ -9,8 +7,12 @@ import (
 	"github.com/JackMatanky/lithos/internal/domain"
 )
 
-// MockMetadataQueryPort provides a mock implementation of MetadataQueryPort for testing.
-// It allows configuring mock responses for each query method and tracks call counts
+// Ensure MockMetadataQueryPort implements MetadataQueryPort interface.
+var _ MetadataQueryPort = (*MockMetadataQueryPort)(nil)
+
+// MockMetadataQueryPort provides a mock implementation of MetadataQueryPort for
+// testing. It allows configuring mock responses for each query method and
+// tracks call counts
 // for assertion purposes.
 //
 // Usage:
@@ -42,54 +44,88 @@ type MockMetadataQueryPort struct {
 	LastByFileClassArg string
 }
 
-// NewMockMetadataQueryPort creates a new MockMetadataQueryPort with default behavior.
+// NewMockMetadataQueryPort creates a new MockMetadataQueryPort with default
+// behavior.
 // By default, all methods return empty slices and nil errors.
 // Configure specific behavior using the Set*Result methods.
 func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 	return &MockMetadataQueryPort{
-		ByBasenameFunc:  func(ctx context.Context, basename string) ([]domain.Note, error) { return []domain.Note{}, nil },
-		ByAliasFunc:     func(ctx context.Context, alias string) ([]domain.Note, error) { return []domain.Note{}, nil },
-		ByFileClassFunc: func(ctx context.Context, fileClass string) ([]domain.Note, error) { return []domain.Note{}, nil },
+		ByBasenameFunc: func(ctx context.Context, basename string) ([]domain.Note, error) {
+			return []domain.Note{}, nil
+		},
+		ByAliasFunc: func(ctx context.Context, alias string) ([]domain.Note, error) {
+			return []domain.Note{}, nil
+		},
+		ByFileClassFunc: func(ctx context.Context, fileClass string) ([]domain.Note, error) {
+			return []domain.Note{}, nil
+		},
+		ByBasenameCallCount:  0,
+		ByAliasCallCount:     0,
+		ByFileClassCallCount: 0,
+		LastByBasenameArg:    "",
+		LastByAliasArg:       "",
+		LastByFileClassArg:   "",
 	}
 }
 
-// SetByBasenameResult configures the mock to return the specified result for ByBasename calls.
-func (m *MockMetadataQueryPort) SetByBasenameResult(notes []domain.Note, err error) {
+// SetByBasenameResult configures the mock to return the specified result for
+// ByBasename calls.
+func (m *MockMetadataQueryPort) SetByBasenameResult(
+	notes []domain.Note,
+	err error,
+) {
 	m.ByBasenameFunc = func(ctx context.Context, basename string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
 
-// SetByAliasResult configures the mock to return the specified result for ByAlias calls.
-func (m *MockMetadataQueryPort) SetByAliasResult(notes []domain.Note, err error) {
+// SetByAliasResult configures the mock to return the specified result for
+// ByAlias calls.
+func (m *MockMetadataQueryPort) SetByAliasResult(
+	notes []domain.Note,
+	err error,
+) {
 	m.ByAliasFunc = func(ctx context.Context, alias string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
 
-// SetByFileClassResult configures the mock to return the specified result for ByFileClass calls.
-func (m *MockMetadataQueryPort) SetByFileClassResult(notes []domain.Note, err error) {
+// SetByFileClassResult configures the mock to return the specified result for
+// ByFileClass calls.
+func (m *MockMetadataQueryPort) SetByFileClassResult(
+	notes []domain.Note,
+	err error,
+) {
 	m.ByFileClassFunc = func(ctx context.Context, fileClass string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
 
 // ByBasename implements MetadataQueryPort.ByBasename with mock behavior.
-func (m *MockMetadataQueryPort) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
+func (m *MockMetadataQueryPort) ByBasename(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
 	m.ByBasenameCallCount++
 	m.LastByBasenameArg = basename
 	return m.ByBasenameFunc(ctx, basename)
 }
 
 // ByAlias implements MetadataQueryPort.ByAlias with mock behavior.
-func (m *MockMetadataQueryPort) ByAlias(ctx context.Context, alias string) ([]domain.Note, error) {
+func (m *MockMetadataQueryPort) ByAlias(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
 	m.ByAliasCallCount++
 	m.LastByAliasArg = alias
 	return m.ByAliasFunc(ctx, alias)
 }
 
 // ByFileClass implements MetadataQueryPort.ByFileClass with mock behavior.
-func (m *MockMetadataQueryPort) ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error) {
+func (m *MockMetadataQueryPort) ByFileClass(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
 	m.ByFileClassCallCount++
 	m.LastByFileClassArg = fileClass
 	return m.ByFileClassFunc(ctx, fileClass)
@@ -105,6 +141,3 @@ func (m *MockMetadataQueryPort) Reset() {
 	m.LastByAliasArg = ""
 	m.LastByFileClassArg = ""
 }
-
-// Ensure MockMetadataQueryPort implements MetadataQueryPort interface
-var _ MetadataQueryPort = (*MockMetadataQueryPort)(nil)

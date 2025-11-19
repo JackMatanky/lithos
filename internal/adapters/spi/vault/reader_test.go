@@ -227,8 +227,12 @@ func TestScanAll_WithPermissionErrors(t *testing.T) {
 
 	// Should not fail completely, should return readable files
 	require.NoError(t, err)
-	assert.Len(t, files, 1)                       // Only the readable file
-	assert.Equal(t, "readable.md", files[0].Path) // Should be vault-relative path
+	assert.Len(t, files, 1) // Only the readable file
+	assert.Equal(
+		t,
+		"readable.md",
+		files[0].Path,
+	) // Should be vault-relative path
 }
 
 // TestScanModified_WithRecentFiles tests scanning for files modified after a
@@ -253,7 +257,12 @@ func TestScanModified_WithRecentFiles(t *testing.T) {
 	// Ensure old file is not included
 	for _, vf := range files {
 		assert.NotEqual(t, oldFile, vf.Path, "Old file should be excluded")
-		assert.Equal(t, ".md", vf.Ext(), "Only markdown files should be included")
+		assert.Equal(
+			t,
+			".md",
+			vf.Ext(),
+			"Only markdown files should be included",
+		)
 	}
 }
 

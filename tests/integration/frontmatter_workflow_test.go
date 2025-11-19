@@ -24,20 +24,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// Simple mock for MetadataQueryPort
+// mockMetadataQueryPort provides a simple mock for MetadataQueryPort.
 type mockMetadataQueryPort struct{}
-
-func (m *mockMetadataQueryPort) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-func (m *mockMetadataQueryPort) ByAlias(ctx context.Context, alias string) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-func (m *mockMetadataQueryPort) ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
 
 // frontmatterTestEnv holds test environment state.
 type frontmatterTestEnv struct {
@@ -51,6 +39,30 @@ type frontmatterTestEnv struct {
 // mockVaultScanner implements VaultScannerPort for testing.
 type mockVaultScanner struct {
 	vaultDir string
+}
+
+// ByBasename implements MetadataQueryPort.ByBasename.
+func (m *mockMetadataQueryPort) ByBasename(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+// ByAlias implements MetadataQueryPort.ByAlias.
+func (m *mockMetadataQueryPort) ByAlias(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+// ByFileClass implements MetadataQueryPort.ByFileClass.
+func (m *mockMetadataQueryPort) ByFileClass(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
 }
 
 // setupFrontmatterTestEnvironment creates a test environment with
@@ -154,7 +166,11 @@ This is a test note with frontmatter.
 	markdownParser := vaultadapter.NewMarkdownParserAdapter(logger)
 
 	// Create frontmatter service
-	fmService := frontmatter.NewFrontmatterService(schemaEngine, markdownParser, logger)
+	fmService := frontmatter.NewFrontmatterService(
+		schemaEngine,
+		markdownParser,
+		logger,
+	)
 
 	// Create cache adapters
 	cacheWriter := cache.NewJSONCacheWriter(*config, logger)

@@ -523,7 +523,12 @@ func (v *VaultIndexer) buildVaultSnapshot(
 			continue
 		}
 
-		vaultFile, err := dto.NewVaultFile(absolute, v.config.VaultPath, info, nil)
+		vaultFile, err := dto.NewVaultFile(
+			absolute,
+			v.config.VaultPath,
+			info,
+			nil,
+		)
 		if err != nil {
 			v.log.Warn().
 				Err(err).
@@ -777,7 +782,10 @@ func (v *VaultIndexer) processFileWithFrontmatter(
 	stats *IndexStats,
 ) domain.Frontmatter {
 	// Parse frontmatter from file content (syntactic validation)
-	parsedFields, parseErr := v.markdownParserPort.ParseFrontmatter(ctx, vf.Content)
+	parsedFields, parseErr := v.markdownParserPort.ParseFrontmatter(
+		ctx,
+		vf.Content,
+	)
 	if parseErr != nil {
 		v.logValidationError(vf.Path, parseErr)
 		stats.ValidationFailures++

@@ -74,14 +74,16 @@ func (m *MockCacheWriterPort) Delete(
 	return m.deleteResult
 }
 
-// MockMarkdownParserPort provides a mock implementation of MarkdownParserPort for
+// MockMarkdownParserPort provides a mock implementation of MarkdownParserPort
+// for
 // testing.
 type MockMarkdownParserPort struct {
 	parseResult map[string]any
 	parseError  error
 }
 
-// NewMockMarkdownParserPort creates a new MockMarkdownParserPort with default values.
+// NewMockMarkdownParserPort creates a new MockMarkdownParserPort with default
+// values.
 func NewMockMarkdownParserPort() *MockMarkdownParserPort {
 	return &MockMarkdownParserPort{}
 }

@@ -1,10 +1,3 @@
-// Package spi provides Service Provider Interface (SPI) port definitions.
-// These interfaces define contracts that adapters must implement to provide
-// external service capabilities to the domain layer.
-//
-// SPI ports follow hexagonal architecture principles, allowing the domain
-// to remain independent of infrastructure concerns while defining clear
-// contracts for external dependencies.
 package spi
 
 import (

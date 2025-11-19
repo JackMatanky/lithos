@@ -28,7 +28,8 @@ type TemplateLoaderAdapter struct {
 	config *domain.Config
 	// log provides structured logging for operations
 	log *zerolog.Logger
-	// pathCache caches TemplateID → absolute file path mappings for fast lookups
+	// pathCache caches TemplateID → absolute file path mappings for fast
+	// lookups
 	pathCache map[domain.TemplateID]string
 	// readFile reads file contents from filesystem (injected for testing)
 	readFile func(string) ([]byte, error)
