@@ -306,7 +306,7 @@ func (q *QueryService) ByFileClass(
 // - Basename is extracted from NoteID (full path) by removing directory path
 // and file extension
 // - Logs debug message with basename and result count
-// - Delegates to MetadataQueryPort for index-based lookup performance
+// - Uses in-memory index for fast lookup performance
 //
 // Example: NoteID "projects/notes/meeting.md" matches basename "meeting".
 func (q *QueryService) ByBasename(
@@ -322,7 +322,16 @@ func (q *QueryService) ByBasename(
 			Msg("query performance")
 	}()
 
-	return q.metadataQuery.ByBasename(ctx, basename)
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	notes := q.byBasename[basename]
+	q.log.Debug().
+		Str("basename", basename).
+		Int("result_count", len(notes)).
+		Msg("basename query completed")
+
+	return notes, nil
 }
 
 // ByAlias retrieves all notes containing an alias in their frontmatter.
