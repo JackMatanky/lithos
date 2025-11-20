@@ -33,16 +33,21 @@ lithos/
 │   │   │   └── cli/         # Cobra CLI
 │   │   └── spi/
 │   │       ├── cache/
+│   │       │   ├── boltdb/
+│   │       │   ├── json/
+│   │       │   └── sqlite/
 │   │       ├── config/
+│   │       ├── dto/
 │   │       ├── interactive/
 │   │       ├── schema/
-│   │       │   ├── dereferencer.go     # PropertyDereferencer ($ref substitution)
-│   │       │   ├── extender.go          # SchemaExtender (inheritance resolution)
-│   │       │   ├── loader.go            # SchemaLoader (enhanced with validation/resolution)
-│   │       │   ├── registry.go          # SchemaRegistry (moved from service layer)
-│   │       │   ├── validator.go         # SchemaValidator (moved from service layer)
-│   │       │   └── dto.go               # Schema DTOs
-│   │       └── template/
+│   │       │   ├── dereferencer.go   # PropertyDereferencer ($ref substitution)
+│   │       │   ├── extender.go       # SchemaExtender (inheritance resolution)
+│   │       │   ├── loader.go         # SchemaLoader (enhanced with validation/resolution)
+│   │       │   ├── registry.go       # SchemaRegistry (moved from service layer)
+│   │       │   ├── validator.go      # SchemaValidator (moved from service layer)
+│   │       │   └── dto.go            # Schema DTOs
+│   │       ├── template/
+│   │       └── vault/
 │   └── shared/              # Cross-cutting helpers (logger, errors, registry, utilities)
 │       ├── errors/
 │       ├── logger/

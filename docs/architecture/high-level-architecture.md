@@ -128,7 +128,7 @@ graph TB
 
 *Coordinates transactional writes across multiple storage systems with atomicity guarantees*
 
-- **Rationale:** Hybrid storage architecture (BoltDB + SQLite) requires coordinated writes to maintain consistency. CacheUnitOfWork ensures both storage systems are updated atomically - if either write fails, both are rolled back. Prevents partial writes (note in BoltDB but not SQLite, or vice versa). Enables two-phase commit with automatic rollback on context cancellation. Foundation for future saga pattern if eventual consistency needed. → *(Epic 3, Story 3.21: CacheUnitOfWork implementation)*
+- **Rationale:** Hybrid storage architecture (BoltDB + SQLite) requires coordinated writes to maintain consistency. CacheUnitOfWork ensures both storage systems are updated atomically - if either write fails, both are rolled back. Prevents partial writes (note in BoltDB but not SQLite, or vice versa). Enables two-phase commit with automatic rollback on context cancellation. Foundation for future saga pattern if eventual consistency needed. → *(Epic 3, Story 3.22: CacheUnitOfWork implementation)*
 
 *Note: Unit of Work simplifies VaultIndexer by extracting transaction coordination logic. Future storage system additions (e.g., Redis cache) only require updating CacheUnitOfWork, not business logic.*
 
@@ -176,7 +176,7 @@ graph TB
 
 ## Orchestration Pattern Decision
 
-**Epic 3 Decision (Story 3.29):** Implement **Event-Driven Architecture** for Epic 3 to eliminate god-objects and enable clean CQRS separation.
+**Epic 3 Decision (Story 3.30):** Implement **Event-Driven Architecture** for Epic 3 to eliminate god-objects and enable clean CQRS separation.
 
 ### Decision Rationale
 
@@ -290,7 +290,7 @@ type SchemasReloaded struct {
 
 **Epic 3 Implementation Strategy:**
 
-1. **Story 3.29:** Implement EventBus infrastructure with in-memory goroutine-based dispatch
+1. **Story 3.30:** Implement EventBus infrastructure with in-memory goroutine-based dispatch
 2. **Service Refactoring:** Refactor services to publish/subscribe events instead of direct calls
 3. **CQRS Compliance:** Remove write operations from QueryService (subscribe to events only)
 4. **Performance Validation:** Event overhead < 5ms per event (acceptable for consistency benefits)

@@ -7,9 +7,13 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
+
+// Interface compliance checks.
+var _ spi.CacheWriterPort = (*SQLiteWriterAdapter)(nil)
 
 // SQLiteWriterAdapter implements CacheWriterPort for SQLite deep storage.
 type SQLiteWriterAdapter struct {

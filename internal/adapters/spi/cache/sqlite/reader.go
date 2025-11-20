@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -13,7 +14,28 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const selectNoteQuery = `SELECT path, frontmatter FROM notes WHERE path = ?`
+const (
+	selectNoteQuery = `SELECT path, frontmatter FROM notes WHERE path = ?`
+	// defaultNoteSliceCapacity is the default capacity for note slices to
+	// reduce allocations.
+	defaultNoteSliceCapacity = 32
+	// typicalFrontmatterSize is the typical size of frontmatter maps.
+	typicalFrontmatterSize = 8
+)
+
+// Interface compliance checks.
+var _ spi.CacheReaderPort = (*SQLiteReaderAdapter)(nil)
+var _ spi.MetadataQueryPort = (*SQLiteReaderAdapter)(nil)
+
+// Pool for reusing frontmatter field maps to reduce allocations.
+var frontmatterMapPool = sync.Pool{
+	New: func() interface{} {
+		return make(
+			map[string]interface{},
+			typicalFrontmatterSize,
+		) // Pre-size for typical frontmatter
+	},
+}
 
 // SQLiteReaderAdapter implements CacheReaderPort and MetadataQueryPort for
 // SQLite deep storage.
@@ -247,15 +269,41 @@ func (a *SQLiteReaderAdapter) FrontmatterQuery(
 		return nil, fmt.Errorf("invalid json path: %s", field)
 	}
 
-	// Use json_extract
-	// path should be $.field
+	// Use json_extract with flexible comparison
+	// Try multiple comparison strategies for different value types
 	jsonPath := "$." + field
+
+	// First try exact string match
 	query := fmt.Sprintf(
 		"SELECT path, frontmatter FROM notes WHERE json_extract(frontmatter, '%s') = ?",
 		jsonPath,
 	)
 
-	return a.executeListQuery(ctx, query, value)
+	results, err := a.executeListQuery(ctx, query, value)
+	if err == nil && len(results) > 0 {
+		return results, nil
+	}
+
+	// If no results, try numeric comparison
+	if numVal, numErr := parseNumeric(value); numErr == nil {
+		numQuery := fmt.Sprintf(
+			"SELECT path, frontmatter FROM notes WHERE json_extract(frontmatter, '%s') = ?",
+			jsonPath,
+		)
+		return a.executeListQuery(ctx, numQuery, numVal)
+	}
+
+	// If no results, try boolean comparison
+	if boolVal, boolErr := parseBoolean(value); boolErr == nil {
+		boolQuery := fmt.Sprintf(
+			"SELECT path, frontmatter FROM notes WHERE json_extract(frontmatter, '%s') = ?",
+			jsonPath,
+		)
+		return a.executeListQuery(ctx, boolQuery, boolVal)
+	}
+
+	// Return original results (may be empty)
+	return results, err
 }
 
 // ByBasename finds notes by their filename without extension.
@@ -410,6 +458,43 @@ func (a *SQLiteReaderAdapter) Close() error {
 	return a.db.Close()
 }
 
+// parseNumeric attempts to parse a string as a number.
+func parseNumeric(s string) (interface{}, error) {
+	if intVal, err := parseInt(s); err == nil {
+		return intVal, nil
+	}
+	if floatVal, err := parseFloat(s); err == nil {
+		return floatVal, nil
+	}
+	return nil, fmt.Errorf("not a number")
+}
+
+// parseInt attempts to parse a string as an integer.
+func parseInt(s string) (int64, error) {
+	var val int64
+	_, err := fmt.Sscanf(s, "%d", &val)
+	return val, err
+}
+
+// parseFloat attempts to parse a string as a float.
+func parseFloat(s string) (float64, error) {
+	var val float64
+	_, err := fmt.Sscanf(s, "%f", &val)
+	return val, err
+}
+
+// parseBoolean attempts to parse a string as a boolean.
+func parseBoolean(s string) (bool, error) {
+	switch s {
+	case "true", "1", "yes":
+		return true, nil
+	case "false", "0", "no":
+		return false, nil
+	default:
+		return false, fmt.Errorf("not a boolean")
+	}
+}
+
 func (a *SQLiteReaderAdapter) executeListQuery(
 	ctx context.Context,
 	query string,
@@ -425,7 +510,9 @@ func (a *SQLiteReaderAdapter) executeListQuery(
 	}
 	defer func() { _ = rows.Close() }()
 
-	var notes []domain.Note
+	// Pre-allocate notes slice with reasonable capacity to reduce allocations
+	notes := make([]domain.Note, 0, defaultNoteSliceCapacity)
+
 	for rows.Next() {
 		var path, fmJSON string
 		if scanErr := rows.Scan(&path, &fmJSON); scanErr != nil {
@@ -434,6 +521,9 @@ func (a *SQLiteReaderAdapter) executeListQuery(
 		}
 		if note, recErr := a.reconstructNote(path, fmJSON); recErr == nil {
 			notes = append(notes, note)
+		} else {
+			// Log reconstruction errors for debugging but continue processing
+			a.log.Debug().Err(recErr).Str("path", path).Msg("failed to reconstruct note")
 		}
 	}
 	if iterErr := rows.Err(); iterErr != nil {
@@ -448,11 +538,24 @@ func (a *SQLiteReaderAdapter) executeListQuery(
 	return notes, nil
 }
 
+// Note: Additional byte slice pooling could be added here for JSON processing
+// if further optimization is needed in the future
+
 func (a *SQLiteReaderAdapter) reconstructNote(
 	path string,
 	fmJSON string,
 ) (domain.Note, error) {
-	var fields map[string]interface{}
+	// Get pooled map for fields
+	fields := frontmatterMapPool.Get().(map[string]interface{})
+	defer func() {
+		// Clear map and return to pool
+		for k := range fields {
+			delete(fields, k)
+		}
+		frontmatterMapPool.Put(fields)
+	}()
+
+	// Optimize JSON unmarshaling with reduced allocations
 	if err := json.Unmarshal([]byte(fmJSON), &fields); err != nil {
 		return domain.Note{}, fmt.Errorf(
 			"failed to unmarshal frontmatter: %w",
@@ -460,7 +563,13 @@ func (a *SQLiteReaderAdapter) reconstructNote(
 		)
 	}
 
-	fm := domain.NewFrontmatter(fields)
+	// Create copy of fields since we're returning the map to pool
+	fieldsCopy := make(map[string]interface{}, len(fields))
+	for k, v := range fields {
+		fieldsCopy[k] = v
+	}
+
+	fm := domain.NewFrontmatter(fieldsCopy)
 	note := domain.NewNote(domain.NewNoteID(path), fm)
 	return note, nil
 }

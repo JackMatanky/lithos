@@ -7,6 +7,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -143,7 +144,7 @@ func TestQueryService_PathQueryFolderFallback(t *testing.T) {
 
 func TestQueryService_UsesMetadataPortWhenConfigured(t *testing.T) {
 	ctx := context.Background()
-	mock := spi.NewMockMetadataQueryPort()
+	mock := utils.NewMockMetadataQueryPort()
 	expected := []domain.Note{{ID: domain.NoteID("foo.md")}}
 	mock.SetPathQueryResult(expected, nil)
 
