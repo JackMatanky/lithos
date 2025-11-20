@@ -140,6 +140,35 @@ type MetadataQueryPort interface {
 	//       Value: "projects/",
 	//   })
 	PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)
+
+	// TagQuery finds notes containing a specific tag.
+	//
+	// Parameters:
+	//   ctx: Context for cancellation
+	//   tag: The tag to search for (e.g., "todo", "urgent")
+	//
+	// Returns:
+	//   []domain.Note: Notes containing the tag
+	//   error: Infrastructure errors
+	TagQuery(ctx context.Context, tag string) ([]domain.Note, error)
+
+	// FrontmatterQuery finds notes where a specific frontmatter field matches a
+	// value.
+	// This supports dynamic queries against arbitrary frontmatter fields.
+	//
+	// Parameters:
+	//   ctx: Context for cancellation
+	// field: The frontmatter field name (dot notation supported for nested
+	// fields)
+	//   value: The value to match (string representation)
+	//
+	// Returns:
+	//   []domain.Note: Notes matching the query
+	//   error: Infrastructure errors
+	FrontmatterQuery(
+		ctx context.Context,
+		field, value string,
+	) ([]domain.Note, error)
 }
 
 // Validate normalises the options and ensures a usable scope/value pair.

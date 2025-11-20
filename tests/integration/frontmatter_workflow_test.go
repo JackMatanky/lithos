@@ -74,6 +74,22 @@ func (m *mockMetadataQueryPort) PathQuery(
 	return []domain.Note{}, nil
 }
 
+// TagQuery implements MetadataQueryPort.TagQuery.
+func (m *mockMetadataQueryPort) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
+// FrontmatterQuery implements MetadataQueryPort.FrontmatterQuery.
+func (m *mockMetadataQueryPort) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	return []domain.Note{}, nil
+}
+
 // setupFrontmatterTestEnvironment creates a test environment with
 // frontmatter-enabled components..
 func setupFrontmatterTestEnvironment(t *testing.T) *frontmatterTestEnv {

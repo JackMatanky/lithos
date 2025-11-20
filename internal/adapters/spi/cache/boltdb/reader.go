@@ -354,6 +354,28 @@ func (a *BoltDBCacheReadAdapter) lookupIndex(
 	return notes, nil
 }
 
+// TagQuery finds notes containing a specific tag.
+// Not implemented in BoltDB (hot path); use SQLite (deep path) for complex
+// queries.
+func (a *BoltDBCacheReadAdapter) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return nil, errors.New("TagQuery not implemented in BoltDB (use SQLite)")
+}
+
+// FrontmatterQuery finds notes where a specific frontmatter field matches a
+// value. Not implemented in BoltDB (hot path); use SQLite (deep path) for
+// complex queries.
+func (a *BoltDBCacheReadAdapter) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	return nil, errors.New(
+		"FrontmatterQuery not implemented in BoltDB (use SQLite)",
+	)
+}
+
 func (a *BoltDBCacheReadAdapter) reconstructNote(
 	cached CachedNote,
 ) domain.Note {
