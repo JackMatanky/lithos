@@ -106,8 +106,8 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
-	// Query ByFileClass (uses view)
-	contacts, err := reader.ByFileClass(ctx, "contact")
+	// Query FileClassQuery (uses view)
+	contacts, err := reader.FileClassQuery(ctx, "contact")
 	require.NoError(t, err)
 	assert.Len(t, contacts, 2)
 
@@ -125,7 +125,8 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	assert.Equal(t, "Alice Smith", alice.Frontmatter.Fields["name"])
 
 	// Verify view-based filtering correctness (manually check if we can query
-	// the view from outside) This is covered by ByFileClass which we verified
+	// the view from outside) This is covered by FileClassQuery which we
+	// verified
 	// returns 2 (Alice and Bob) and NOT Project 1.
 
 	// 6. Check Staleness
@@ -224,7 +225,7 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
-	contacts, err := reader.ByFileClass(ctx, "contact")
+	contacts, err := reader.FileClassQuery(ctx, "contact")
 	require.NoError(t, err)
 	assert.Len(t, contacts, 1)
 	assert.Equal(t, "Alice Smith", contacts[0].Frontmatter.Fields["name"])
@@ -270,7 +271,7 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	require.NoError(t, writer.Persist(ctx, updatedNote, time.Now()))
 
 	// 8. Verify migrated view works with both old and new data
-	contacts, err = reader.ByFileClass(ctx, "contact")
+	contacts, err = reader.FileClassQuery(ctx, "contact")
 	require.NoError(t, err)
 	assert.Len(t, contacts, 2)
 
@@ -487,8 +488,8 @@ func TestSQLiteMetadataQueryPortWithRealData(t *testing.T) {
 		require.NoError(t, persistErr)
 	}
 
-	// Test ByFileClass queries
-	testByFileClassQueries(t, ctx, reader)
+	// Test FileClassQuery queries
+	testFileClassQueryQueries(t, ctx, reader)
 
 	// Test FrontmatterQuery with various data types
 	testFrontmatterQueries(t, ctx, reader)
@@ -503,26 +504,26 @@ func TestSQLiteMetadataQueryPortWithRealData(t *testing.T) {
 	testDataIntegrity(t, ctx, reader)
 }
 
-// testByFileClassQueries tests ByFileClass with different schemas.
-func testByFileClassQueries(
+// testFileClassQueryQueries tests FileClassQuery with different schemas.
+func testFileClassQueryQueries(
 	t *testing.T,
 	ctx context.Context,
 	reader *sqlite.SQLiteReaderAdapter,
 ) {
-	contacts, err := reader.ByFileClass(ctx, "contact")
+	contacts, err := reader.FileClassQuery(ctx, "contact")
 	require.NoError(t, err)
 	assert.Len(t, contacts, 3)
 
-	projects, err := reader.ByFileClass(ctx, "project")
+	projects, err := reader.FileClassQuery(ctx, "project")
 	require.NoError(t, err)
 	assert.Len(t, projects, 3)
 
-	meetings, err := reader.ByFileClass(ctx, "meeting")
+	meetings, err := reader.FileClassQuery(ctx, "meeting")
 	require.NoError(t, err)
 	assert.Len(t, meetings, 2)
 
 	// Test non-existent fileClass
-	empty, err := reader.ByFileClass(ctx, "nonexistent")
+	empty, err := reader.FileClassQuery(ctx, "nonexistent")
 	require.NoError(t, err)
 	assert.Empty(t, empty)
 }
@@ -626,12 +627,12 @@ func testPathQueries(
 	reader *sqlite.SQLiteReaderAdapter,
 ) {
 	// Test basename queries
-	contactsByBasename, err := reader.PathQuery(ctx, spi.PathQueryOptions{
+	contactsBasenameQuery, err := reader.PathQuery(ctx, spi.PathQueryOptions{
 		Value: "doe",
 		Scope: spi.PathQueryScopeBasename,
 	})
 	require.NoError(t, err)
-	assert.Len(t, contactsByBasename, 1)
+	assert.Len(t, contactsBasenameQuery, 1)
 
 	// Test folder queries
 	contactNotes, err := reader.PathQuery(ctx, spi.PathQueryOptions{
@@ -890,12 +891,12 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		require.NoError(t, writer.Persist(ctx, note, indexTime))
 	}
 
-	// 4. Test ByFileClass with different schemas
-	contacts, err := reader.ByFileClass(ctx, "contact")
+	// 4. Test FileClassQuery with different schemas
+	contacts, err := reader.FileClassQuery(ctx, "contact")
 	require.NoError(t, err)
 	assert.Len(t, contacts, 3)
 
-	projects, err := reader.ByFileClass(ctx, "project")
+	projects, err := reader.FileClassQuery(ctx, "project")
 	require.NoError(t, err)
 	assert.Len(t, projects, 3)
 

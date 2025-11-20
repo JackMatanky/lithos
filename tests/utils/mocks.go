@@ -384,25 +384,25 @@ func (m *MockCLIPort) GetHandler() api.CommandPort {
 // tracks call counts for assertion purposes.
 type MockMetadataQueryPort struct {
 	// Function fields for method delegation
-	ByBasenameFunc       func(ctx context.Context, basename string) ([]domain.Note, error)
-	ByAliasFunc          func(ctx context.Context, alias string) ([]domain.Note, error)
-	ByFileClassFunc      func(ctx context.Context, fileClass string) ([]domain.Note, error)
+	BasenameQueryFunc    func(ctx context.Context, basename string) ([]domain.Note, error)
+	AliasQueryFunc       func(ctx context.Context, alias string) ([]domain.Note, error)
+	FileClassQueryFunc   func(ctx context.Context, fileClass string) ([]domain.Note, error)
 	PathQueryFunc        func(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error)
 	TagQueryFunc         func(ctx context.Context, tag string) ([]domain.Note, error)
 	FrontmatterQueryFunc func(ctx context.Context, field, value string) ([]domain.Note, error)
 
 	// Call tracking for assertions
-	ByBasenameCallCount       int
-	ByAliasCallCount          int
-	ByFileClassCallCount      int
+	BasenameQueryCallCount    int
+	AliasQueryCallCount       int
+	FileClassQueryCallCount   int
 	PathQueryCallCount        int
 	TagQueryCallCount         int
 	FrontmatterQueryCallCount int
 
 	// Last call arguments for detailed assertions
-	LastByBasenameArg            string
-	LastByAliasArg               string
-	LastByFileClassArg           string
+	LastBasenameQueryArg         string
+	LastAliasQueryArg            string
+	LastFileClassQueryArg        string
 	LastPathQueryOpts            spi.PathQueryOptions
 	LastTagQueryArg              string
 	LastFrontmatterQueryArgField string
@@ -414,13 +414,13 @@ type MockMetadataQueryPort struct {
 // Configure specific behavior using the Set*Result methods.
 func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 	return &MockMetadataQueryPort{
-		ByBasenameFunc: func(ctx context.Context, basename string) ([]domain.Note, error) {
+		BasenameQueryFunc: func(ctx context.Context, basename string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
-		ByAliasFunc: func(ctx context.Context, alias string) ([]domain.Note, error) {
+		AliasQueryFunc: func(ctx context.Context, alias string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
-		ByFileClassFunc: func(ctx context.Context, fileClass string) ([]domain.Note, error) {
+		FileClassQueryFunc: func(ctx context.Context, fileClass string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
 		PathQueryFunc: func(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error) {
@@ -432,15 +432,15 @@ func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 		FrontmatterQueryFunc: func(ctx context.Context, field, value string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
-		ByBasenameCallCount:       0,
-		ByAliasCallCount:          0,
-		ByFileClassCallCount:      0,
+		BasenameQueryCallCount:    0,
+		AliasQueryCallCount:       0,
+		FileClassQueryCallCount:   0,
 		PathQueryCallCount:        0,
 		TagQueryCallCount:         0,
 		FrontmatterQueryCallCount: 0,
-		LastByBasenameArg:         "",
-		LastByAliasArg:            "",
-		LastByFileClassArg:        "",
+		LastBasenameQueryArg:      "",
+		LastAliasQueryArg:         "",
+		LastFileClassQueryArg:     "",
 		LastPathQueryOpts: spi.PathQueryOptions{
 			Value: "",
 			Scope: "",
@@ -451,35 +451,36 @@ func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 	}
 }
 
-// SetByBasenameResult configures the mock to return the specified result for
-// ByBasename calls.
-func (m *MockMetadataQueryPort) SetByBasenameResult(
+// SetBasenameQueryResult configures the mock to return the specified result for
+// BasenameQuery calls.
+func (m *MockMetadataQueryPort) SetBasenameQueryResult(
 	notes []domain.Note,
 	err error,
 ) {
-	m.ByBasenameFunc = func(ctx context.Context, basename string) ([]domain.Note, error) {
+	m.BasenameQueryFunc = func(ctx context.Context, basename string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
 
-// SetByAliasResult configures the mock to return the specified result for
-// ByAlias calls.
-func (m *MockMetadataQueryPort) SetByAliasResult(
+// SetAliasQueryResult configures the mock to return the specified result for
+// AliasQuery calls.
+func (m *MockMetadataQueryPort) SetAliasQueryResult(
 	notes []domain.Note,
 	err error,
 ) {
-	m.ByAliasFunc = func(ctx context.Context, alias string) ([]domain.Note, error) {
+	m.AliasQueryFunc = func(ctx context.Context, alias string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
 
-// SetByFileClassResult configures the mock to return the specified result for
-// ByFileClass calls.
-func (m *MockMetadataQueryPort) SetByFileClassResult(
+// SetFileClassQueryResult configures the mock to return the specified result
+// for
+// FileClassQuery calls.
+func (m *MockMetadataQueryPort) SetFileClassQueryResult(
 	notes []domain.Note,
 	err error,
 ) {
-	m.ByFileClassFunc = func(ctx context.Context, fileClass string) ([]domain.Note, error) {
+	m.FileClassQueryFunc = func(ctx context.Context, fileClass string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
@@ -517,34 +518,35 @@ func (m *MockMetadataQueryPort) SetFrontmatterQueryResult(
 	}
 }
 
-// ByBasename implements MetadataQueryPort.ByBasename with mock behavior.
-func (m *MockMetadataQueryPort) ByBasename(
+// BasenameQuery implements MetadataQueryPort.BasenameQuery with mock behavior.
+func (m *MockMetadataQueryPort) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
-	m.ByBasenameCallCount++
-	m.LastByBasenameArg = basename
-	return m.ByBasenameFunc(ctx, basename)
+	m.BasenameQueryCallCount++
+	m.LastBasenameQueryArg = basename
+	return m.BasenameQueryFunc(ctx, basename)
 }
 
-// ByAlias implements MetadataQueryPort.ByAlias with mock behavior.
-func (m *MockMetadataQueryPort) ByAlias(
+// AliasQuery implements MetadataQueryPort.AliasQuery with mock behavior.
+func (m *MockMetadataQueryPort) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
-	m.ByAliasCallCount++
-	m.LastByAliasArg = alias
-	return m.ByAliasFunc(ctx, alias)
+	m.AliasQueryCallCount++
+	m.LastAliasQueryArg = alias
+	return m.AliasQueryFunc(ctx, alias)
 }
 
-// ByFileClass implements MetadataQueryPort.ByFileClass with mock behavior.
-func (m *MockMetadataQueryPort) ByFileClass(
+// FileClassQuery implements MetadataQueryPort.FileClassQuery with mock
+// behavior.
+func (m *MockMetadataQueryPort) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
-	m.ByFileClassCallCount++
-	m.LastByFileClassArg = fileClass
-	return m.ByFileClassFunc(ctx, fileClass)
+	m.FileClassQueryCallCount++
+	m.LastFileClassQueryArg = fileClass
+	return m.FileClassQueryFunc(ctx, fileClass)
 }
 
 // PathQuery implements MetadataQueryPort.PathQuery with mock behavior.
@@ -582,15 +584,15 @@ func (m *MockMetadataQueryPort) FrontmatterQuery(
 // Reset resets all call tracking counters and last arguments.
 // Useful for testing multiple scenarios in the same test.
 func (m *MockMetadataQueryPort) Reset() {
-	m.ByBasenameCallCount = 0
-	m.ByAliasCallCount = 0
-	m.ByFileClassCallCount = 0
+	m.BasenameQueryCallCount = 0
+	m.AliasQueryCallCount = 0
+	m.FileClassQueryCallCount = 0
 	m.PathQueryCallCount = 0
 	m.TagQueryCallCount = 0
 	m.FrontmatterQueryCallCount = 0
-	m.LastByBasenameArg = ""
-	m.LastByAliasArg = ""
-	m.LastByFileClassArg = ""
+	m.LastBasenameQueryArg = ""
+	m.LastAliasQueryArg = ""
+	m.LastFileClassQueryArg = ""
 	m.LastPathQueryOpts = spi.PathQueryOptions{Value: "", Scope: ""}
 	m.LastTagQueryArg = ""
 	m.LastFrontmatterQueryArgField = ""

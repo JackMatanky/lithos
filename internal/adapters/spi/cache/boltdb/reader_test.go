@@ -27,9 +27,9 @@ func setupBoltDBTestData(t *testing.T, db *bbolt.DB) {
 			return err
 		}
 		subBuckets := []string{
-			BucketIndexByBasename,
-			BucketIndexByAlias,
-			BucketIndexByFileClass,
+			BucketIndexBasenameQuery,
+			BucketIndexAliasQuery,
+			BucketIndexFileClassQuery,
 			BucketIndexByFolder,
 		}
 		for _, sub := range subBuckets {

@@ -107,7 +107,7 @@ so that templates and validators can retrieve indexed notes efficiently.
 **Prerequisites:** Stories 3.1–3.5.
 
 ### Acceptance Criteria
-1. `internal/app/query/service.go` implements `ByID`, `ByPath`, `ByFileClass`, `ByFrontmatter`, and `RefreshFromCache` exactly as described in `docs/architecture/components.md#queryservice`, using in-memory indices with `sync.RWMutex`.
+1. `internal/app/query/service.go` implements `IDQuery`, `PathQuery`, `FileClassQuery`, `FrontmatterQuery`, and `RefreshFromCache` exactly as described in `docs/architecture/components.md#queryservice`, using in-memory indices with `sync.RWMutex`.
 
 2. Query methods satisfy FR9 by supporting lookups by path, basename, and schema-defined keys; helpers return errors consistent with `error-handling-strategy.md`.
 
@@ -162,7 +162,7 @@ so that QueryService can route lookups through storage-native indices without de
 **Prerequisites:** Stories 3.1–3.8 (cache, vault, and query foundations).
 
 ### Acceptance Criteria
-1. `internal/ports/spi/metadata_query.go` defines `MetadataQueryPort` with `ByBasename`, `ByAlias`, `ByFileClass`, and the new `PathQuery(ctx context.Context, opts PathQueryOptions)` method that supports basename, full path, or folder scope lookups.
+1. `internal/ports/spi/metadata_query.go` defines `MetadataQueryPort` with `BasenameQuery`, `AliasQuery`, `FileClassQuery`, and the new `PathQuery(ctx context.Context, opts PathQueryOptions)` method that supports basename, full path, or folder scope lookups.
 2. `PathQueryOptions` documents supported scopes, validation rules, and error semantics; constants/enums for supported scopes live with the interface.
 3. Architecture docs (`docs/architecture/components.md#metadataqueryport`) describe each method, path query behaviour, and how the port complements `CacheReaderPort`.
 4. A mock implementation (`internal/ports/spi/metadata_query_mock.go`) exists for tests and covers every method including `PathQuery`.
@@ -175,7 +175,7 @@ so that QueryService can route lookups through storage-native indices without de
 
 As a system architect,
 I want BoltDB to serve as the hybrid storage hot layer with staleness detection,
-so that ByPath/ByBasename/ByAlias queries return in under one millisecond with cache invalidation support.
+so that PathQuery/BasenameQuery/AliasQuery queries return in under one millisecond with cache invalidation support.
 
 **Prerequisites:** Stories 3.1–3.19 (cache contracts, MetadataQueryPort, and VaultFile/FileDates DTO updates).
 

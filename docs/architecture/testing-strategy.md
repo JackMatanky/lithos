@@ -119,12 +119,12 @@ Use this data to validate Epic 3 performance targets:
 - **BoltDB Hot Cache (Path Lookups)**
   - Target: <1ms average
   - Test: Path-based queries on 500+ notes
-  - Command: Time individual `ByPath()` calls
+  - Command: Time individual `PathQuery()` calls
 
 - **SQLite Deep Storage (Complex Queries)**
   - Target: <50ms average
   - Test: Frontmatter property searches
-  - Command: Time `ByFrontmatter()` calls with various criteria
+  - Command: Time `FrontmatterQuery()` calls with various criteria
 
 - **Template Rendering (End-to-End)**
   - Target: <100ms total

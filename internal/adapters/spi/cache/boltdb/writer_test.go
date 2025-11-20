@@ -70,9 +70,9 @@ func TestBoltDBCacheWriteAdapter_NewBoltDBCacheWriter(t *testing.T) {
 
 				if indices != nil {
 					subBuckets := []string{
-						BucketIndexByBasename,
-						BucketIndexByAlias,
-						BucketIndexByFileClass,
+						BucketIndexBasenameQuery,
+						BucketIndexAliasQuery,
+						BucketIndexFileClassQuery,
 						BucketIndexByFolder,
 					}
 					for _, sub := range subBuckets {
@@ -155,7 +155,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 					indices := tx.Bucket([]byte(BucketIndices))
 
 					// Basename
-					bnBucket := indices.Bucket([]byte(BucketIndexByBasename))
+					bnBucket := indices.Bucket([]byte(BucketIndexBasenameQuery))
 					bnData := bnBucket.Get(
 						[]byte("test-note"),
 					) // extractBasename("test-note") == "test-note"
@@ -166,12 +166,14 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 					assert.Contains(t, paths, string(note.ID))
 
 					// Aliases
-					aliasBucket := indices.Bucket([]byte(BucketIndexByAlias))
+					aliasBucket := indices.Bucket([]byte(BucketIndexAliasQuery))
 					aliasData := aliasBucket.Get([]byte("alias1"))
 					assert.NotNil(t, aliasData)
 
 					// FileClass
-					fcBucket := indices.Bucket([]byte(BucketIndexByFileClass))
+					fcBucket := indices.Bucket(
+						[]byte(BucketIndexFileClassQuery),
+					)
 					fcData := fcBucket.Get([]byte("contact"))
 					assert.NotNil(t, fcData)
 
@@ -236,7 +238,7 @@ func TestBoltDBCacheWriteAdapter_Delete(t *testing.T) {
 	// Corrupt the basename index manually to force a failure during Delete
 	err = adapter.db.Update(func(tx *bbolt.Tx) error {
 		indices := tx.Bucket([]byte(BucketIndices))
-		bnBucket := indices.Bucket([]byte(BucketIndexByBasename))
+		bnBucket := indices.Bucket([]byte(BucketIndexBasenameQuery))
 		// Write invalid JSON to force unmarshal error in removeFromIndex
 		// We must corrupt the key that corresponds to the note being deleted
 		// ("delete-test")

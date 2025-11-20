@@ -14,15 +14,15 @@ import (
 // Simple mock for MetadataQueryPort
 type mockMetadataQueryPort struct{}
 
-func (m *mockMetadataQueryPort) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
+func (m *mockMetadataQueryPort) BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error) {
 	return []domain.Note{}, nil
 }
 
-func (m *mockMetadataQueryPort) ByAlias(ctx context.Context, alias string) ([]domain.Note, error) {
+func (m *mockMetadataQueryPort) AliasQuery(ctx context.Context, alias string) ([]domain.Note, error) {
 	return []domain.Note{}, nil
 }
 
-func (m *mockMetadataQueryPort) ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error) {
+func (m *mockMetadataQueryPort) FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error) {
 	return []domain.Note{}, nil
 }
 
@@ -244,12 +244,12 @@ func TestQueryService_RefreshFromCache_SkipsNonComparableFrontmatter(
 	require.NoError(t, err)
 
 	// Ensure note is still available through other indices
-	byID, err := service.ByID(context.Background(), note.ID)
+	byID, err := service.IDQuery(context.Background(), note.ID)
 	require.NoError(t, err)
 	assert.Equal(t, note.ID, byID.ID)
 
 	// Querying by non-comparable field should return no results without panic
-	result, err := service.ByFrontmatter(
+	result, err := service.FrontmatterQuery(
 		context.Background(),
 		"tags",
 		[]string{"alpha"},
@@ -258,7 +258,7 @@ func TestQueryService_RefreshFromCache_SkipsNonComparableFrontmatter(
 	assert.Nil(t, result)
 
 	// Querying with primitive field still works
-	titleResult, err := service.ByFrontmatter(
+	titleResult, err := service.FrontmatterQuery(
 		context.Background(),
 		"title",
 		"Demo",
@@ -268,155 +268,155 @@ func TestQueryService_RefreshFromCache_SkipsNonComparableFrontmatter(
 	assert.Equal(t, note.ID, titleResult[0].ID)
 }
 
-// TestQueryService_ByID_ExistingNote verifies ByID returns note for existing
+// TestQueryService_IDQuery_ExistingNote verifies IDQuery returns note for existing
 // NoteID.
-func TestQueryService_ByID_ExistingNote(t *testing.T) {
+func TestQueryService_IDQuery_ExistingNote(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	note, err := qs.ByID(ctx, domain.NoteID("contacts/john-doe.md"))
+	note, err := qs.IDQuery(ctx, domain.NoteID("contacts/john-doe.md"))
 
-	require.NoError(t, err, "ByID should not return error for existing note")
+	require.NoError(t, err, "IDQuery should not return error for existing note")
 	assert.Equal(
 		t,
 		domain.NoteID("contacts/john-doe.md"),
 		note.ID,
-		"ByID should return correct note",
+		"IDQuery should return correct note",
 	)
 	assert.Equal(
 		t,
 		"contact",
 		note.Frontmatter.FileClass,
-		"ByID should return note with correct file class",
+		"IDQuery should return note with correct file class",
 	)
 }
 
-// TestQueryService_ByID_MissingNote verifies ByID returns ResourceError for
+// TestQueryService_IDQuery_MissingNote verifies IDQuery returns ResourceError for
 // missing NoteID.
-func TestQueryService_ByID_MissingNote(t *testing.T) {
+func TestQueryService_IDQuery_MissingNote(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	note, err := qs.ByID(ctx, domain.NoteID("missing-note.md"))
+	note, err := qs.IDQuery(ctx, domain.NoteID("missing-note.md"))
 
-	require.Error(t, err, "ByID should return error for missing note")
+	require.Error(t, err, "IDQuery should return error for missing note")
 	var resErr *lithosErr.ResourceError
 	require.ErrorAs(
 		t,
 		err,
 		&resErr,
-		"ByID should return ResourceError for missing note",
+		"IDQuery should return ResourceError for missing note",
 	)
 	assert.Equal(
 		t,
 		domain.Note{},
 		note,
-		"ByID should return zero Note for missing note",
+		"IDQuery should return zero Note for missing note",
 	)
 }
 
-// TestQueryService_ByPath_ExistingPath verifies ByPath returns note for
+// TestQueryService_PathQuery_ExistingPath verifies PathQuery returns note for
 // existing path.
-func TestQueryService_ByPath_ExistingPath(t *testing.T) {
+func TestQueryService_PathQuery_ExistingPath(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	note, err := qs.ByPath(ctx, "contacts/john-doe.md")
+	note, err := qs.PathQuery(ctx, "contacts/john-doe.md")
 
-	require.NoError(t, err, "ByPath should not return error for existing path")
+	require.NoError(t, err, "PathQuery should not return error for existing path")
 	assert.Equal(
 		t,
 		domain.NoteID("contacts/john-doe.md"),
 		note.ID,
-		"ByPath should return note with correct ID",
+		"PathQuery should return note with correct ID",
 	)
 	assert.Equal(
 		t,
 		"contact",
 		note.Frontmatter.FileClass,
-		"ByPath should return note with correct file class",
+		"PathQuery should return note with correct file class",
 	)
 }
 
-// TestQueryService_ByPath_MissingPath verifies ByPath returns ResourceError for
+// TestQueryService_PathQuery_MissingPath verifies PathQuery returns ResourceError for
 // missing path.
-func TestQueryService_ByPath_MissingPath(t *testing.T) {
+func TestQueryService_PathQuery_MissingPath(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	note, err := qs.ByPath(ctx, "missing/path.md")
+	note, err := qs.PathQuery(ctx, "missing/path.md")
 
-	require.Error(t, err, "ByPath should return error for missing path")
+	require.Error(t, err, "PathQuery should return error for missing path")
 	var resErr *lithosErr.ResourceError
 	require.ErrorAs(
 		t,
 		err,
 		&resErr,
-		"ByPath should return ResourceError for missing path",
+		"PathQuery should return ResourceError for missing path",
 	)
 	assert.Equal(
 		t,
 		domain.Note{},
 		note,
-		"ByPath should return zero Note for missing path",
+		"PathQuery should return zero Note for missing path",
 	)
 }
 
-// TestQueryService_ByFileClass_ExistingClass verifies ByFileClass returns all
+// TestQueryService_FileClassQuery_ExistingClass verifies FileClassQuery returns all
 // notes matching schema.
-func TestQueryService_ByFileClass_ExistingClass(t *testing.T) {
+func TestQueryService_FileClassQuery_ExistingClass(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	notes, err := qs.ByFileClass(ctx, "contact")
+	notes, err := qs.FileClassQuery(ctx, "contact")
 
 	require.NoError(
 		t,
 		err,
-		"ByFileClass should not return error for existing file class",
+		"FileClassQuery should not return error for existing file class",
 	)
 	assert.Len(
 		t,
 		notes,
 		2,
-		"ByFileClass should return 2 notes for 'contact' class",
+		"FileClassQuery should return 2 notes for 'contact' class",
 	)
 	assert.Equal(
 		t,
 		domain.NoteID("contacts/john-doe.md"),
 		notes[0].ID,
-		"ByFileClass should return notes in correct order",
+		"FileClassQuery should return notes in correct order",
 	)
 	assert.Equal(
 		t,
 		domain.NoteID("contacts/jane-smith.md"),
 		notes[1].ID,
-		"ByFileClass should return notes in correct order",
+		"FileClassQuery should return notes in correct order",
 	)
 }
 
-// TestQueryService_ByFileClass_NonMatchingClass verifies ByFileClass returns
+// TestQueryService_FileClassQuery_NonMatchingClass verifies FileClassQuery returns
 // empty slice for non-matching schema.
-func TestQueryService_ByFileClass_NonMatchingClass(t *testing.T) {
+func TestQueryService_FileClassQuery_NonMatchingClass(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	notes, err := qs.ByFileClass(ctx, "nonexistent")
+	notes, err := qs.FileClassQuery(ctx, "nonexistent")
 
 	require.NoError(
 		t,
 		err,
-		"ByFileClass should not return error for non-matching file class",
+		"FileClassQuery should not return error for non-matching file class",
 	)
 	assert.Empty(
 		t,
 		notes,
-		"ByFileClass should return empty slice for non-matching file class",
+		"FileClassQuery should return empty slice for non-matching file class",
 	)
 	assert.Nil(
 		t,
 		notes,
-		"ByFileClass should return nil slice for non-matching file class",
+		"FileClassQuery should return nil slice for non-matching file class",
 	)
 }
 
@@ -616,17 +616,17 @@ func TestQueryService_ConcurrentReads(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			for range opsPerGoroutine {
-				// Test ByID
-				_, _ = qs.ByID(ctx, domain.NoteID("contacts/john-doe.md"))
+				// Test IDQuery
+				_, _ = qs.IDQuery(ctx, domain.NoteID("contacts/john-doe.md"))
 
-				// Test ByPath
-				_, _ = qs.ByPath(ctx, "contacts/john-doe.md")
+				// Test PathQuery
+				_, _ = qs.PathQuery(ctx, "contacts/john-doe.md")
 
-				// Test ByFileClass
-				_, _ = qs.ByFileClass(ctx, "contact")
+				// Test FileClassQuery
+				_, _ = qs.FileClassQuery(ctx, "contact")
 
-				// Test ByBasename
-				_, _ = qs.ByBasename(ctx, "john-doe")
+				// Test BasenameQuery
+				_, _ = qs.BasenameQuery(ctx, "john-doe")
 			}
 		}()
 	}
@@ -642,30 +642,30 @@ func TestQueryService_EdgeCases_EmptyService(t *testing.T) {
 	qs := NewQueryService(fakeCacheReader, fakeCacheReader, config, logger)
 	ctx := context.Background()
 
-	// Test ByID on empty service
-	note, err := qs.ByID(ctx, domain.NoteID("any-id.md"))
-	require.Error(t, err, "ByID should return error for empty service")
+	// Test IDQuery on empty service
+	note, err := qs.IDQuery(ctx, domain.NoteID("any-id.md"))
+	require.Error(t, err, "IDQuery should return error for empty service")
 	var resErr *lithosErr.ResourceError
-	require.ErrorAs(t, err, &resErr, "ByID should return ResourceError")
-	assert.Equal(t, domain.Note{}, note, "ByID should return zero Note")
+	require.ErrorAs(t, err, &resErr, "IDQuery should return ResourceError")
+	assert.Equal(t, domain.Note{}, note, "IDQuery should return zero Note")
 
-	// Test ByPath on empty service
-	note, err = qs.ByPath(ctx, "any/path.md")
-	require.Error(t, err, "ByPath should return error for empty service")
-	require.ErrorAs(t, err, &resErr, "ByPath should return ResourceError")
-	assert.Equal(t, domain.Note{}, note, "ByPath should return zero Note")
+	// Test PathQuery on empty service
+	note, err = qs.PathQuery(ctx, "any/path.md")
+	require.Error(t, err, "PathQuery should return error for empty service")
+	require.ErrorAs(t, err, &resErr, "PathQuery should return ResourceError")
+	assert.Equal(t, domain.Note{}, note, "PathQuery should return zero Note")
 
-	// Test ByFileClass on empty service
-	notes, err := qs.ByFileClass(ctx, "any-class")
+	// Test FileClassQuery on empty service
+	notes, err := qs.FileClassQuery(ctx, "any-class")
 	require.NoError(
 		t,
 		err,
-		"ByFileClass should not return error for empty service",
+		"FileClassQuery should not return error for empty service",
 	)
 	assert.Empty(
 		t,
 		notes,
-		"ByFileClass should return empty slice for empty service",
+		"FileClassQuery should return empty slice for empty service",
 	)
 }
 
@@ -673,46 +673,46 @@ func TestQueryService_EdgeCases_EmptyService(t *testing.T) {
 func TestQueryService_EdgeCases_TODOContext(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 
-	// Test ByID with context.TODO
-	note, err := qs.ByID(context.TODO(), domain.NoteID("contacts/john-doe.md"))
+	// Test IDQuery with context.TODO
+	note, err := qs.IDQuery(context.TODO(), domain.NoteID("contacts/john-doe.md"))
 	require.NoError(
 		t,
 		err,
-		"ByID should not return error with context.TODO",
+		"IDQuery should not return error with context.TODO",
 	)
 	assert.Equal(
 		t,
 		domain.NoteID("contacts/john-doe.md"),
 		note.ID,
-		"ByID should return correct note with context.TODO",
+		"IDQuery should return correct note with context.TODO",
 	)
 
-	// Test ByPath with context.TODO
-	note, err = qs.ByPath(context.TODO(), "contacts/john-doe.md")
+	// Test PathQuery with context.TODO
+	note, err = qs.PathQuery(context.TODO(), "contacts/john-doe.md")
 	require.NoError(
 		t,
 		err,
-		"ByPath should not return error with context.TODO",
+		"PathQuery should not return error with context.TODO",
 	)
 	assert.Equal(
 		t,
 		domain.NoteID("contacts/john-doe.md"),
 		note.ID,
-		"ByPath should return correct note with context.TODO",
+		"PathQuery should return correct note with context.TODO",
 	)
 
-	// Test ByFileClass with context.TODO
-	notes, err := qs.ByFileClass(context.TODO(), "contact")
+	// Test FileClassQuery with context.TODO
+	notes, err := qs.FileClassQuery(context.TODO(), "contact")
 	require.NoError(
 		t,
 		err,
-		"ByFileClass should not return error with context.TODO",
+		"FileClassQuery should not return error with context.TODO",
 	)
 	assert.Len(
 		t,
 		notes,
 		2,
-		"ByFileClass should return correct notes with context.TODO",
+		"FileClassQuery should return correct notes with context.TODO",
 	)
 }
 
@@ -760,10 +760,10 @@ func TestQueryService_RefreshFromCache_EmptyCache(t *testing.T) {
 	)
 }
 
-// RED TESTS: ByFrontmatter method (AC: 3)
+// RED TESTS: FrontmatterQuery method (AC: 3)
 
-// TestQueryService_ByFrontmatter_ExistingField tests frontmatter field lookups.
-func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
+// TestQueryService_FrontmatterQuery_ExistingField tests frontmatter field lookups.
+func TestQueryService_FrontmatterQuery_ExistingField(t *testing.T) {
 	// Given
 	authorNote := domain.NewNote(
 		domain.NewNoteID("note1"),
@@ -792,7 +792,7 @@ func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
 	require.NoError(t, err)
 
 	// When
-	notes, err := qs.ByFrontmatter(context.Background(), "author", "John Doe")
+	notes, err := qs.FrontmatterQuery(context.Background(), "author", "John Doe")
 
 	// Then
 	require.NoError(t, err)
@@ -800,9 +800,9 @@ func TestQueryService_ByFrontmatter_ExistingField(t *testing.T) {
 	assert.Equal(t, "note1", notes[0].ID.String())
 }
 
-// TestQueryService_ByFrontmatter_MultipleMatches tests multiple notes with same
+// TestQueryService_FrontmatterQuery_MultipleMatches tests multiple notes with same
 // frontmatter value.
-func TestQueryService_ByFrontmatter_MultipleMatches(t *testing.T) {
+func TestQueryService_FrontmatterQuery_MultipleMatches(t *testing.T) {
 	// Given
 	note1 := domain.NewNote(
 		domain.NewNoteID("note1"),
@@ -829,15 +829,15 @@ func TestQueryService_ByFrontmatter_MultipleMatches(t *testing.T) {
 	require.NoError(t, err)
 
 	// When
-	notes, err := qs.ByFrontmatter(context.Background(), "status", "draft")
+	notes, err := qs.FrontmatterQuery(context.Background(), "status", "draft")
 
 	// Then
 	require.NoError(t, err)
 	assert.Len(t, notes, 2)
 }
 
-// TestQueryService_ByFrontmatter_MissingField tests missing frontmatter field.
-func TestQueryService_ByFrontmatter_MissingField(t *testing.T) {
+// TestQueryService_FrontmatterQuery_MissingField tests missing frontmatter field.
+func TestQueryService_FrontmatterQuery_MissingField(t *testing.T) {
 	// Given
 	note := domain.NewNote(
 		domain.NewNoteID("note1"),
@@ -856,16 +856,16 @@ func TestQueryService_ByFrontmatter_MissingField(t *testing.T) {
 	require.NoError(t, err)
 
 	// When
-	notes, err := qs.ByFrontmatter(context.Background(), "tags", "nonexistent")
+	notes, err := qs.FrontmatterQuery(context.Background(), "tags", "nonexistent")
 
 	// Then
 	require.NoError(t, err)
 	assert.Empty(t, notes) // Should return empty slice, not error
 }
 
-// TestQueryService_ByFrontmatter_TypeNormalization tests type-agnostic queries
+// TestQueryService_FrontmatterQuery_TypeNormalization tests type-agnostic queries
 // where int 2 matches float 2.0.
-func TestQueryService_ByFrontmatter_TypeNormalization(t *testing.T) {
+func TestQueryService_FrontmatterQuery_TypeNormalization(t *testing.T) {
 	// Given - note with float value
 	note := domain.NewNote(
 		domain.NewNoteID("note1"),
@@ -884,7 +884,7 @@ func TestQueryService_ByFrontmatter_TypeNormalization(t *testing.T) {
 	require.NoError(t, err)
 
 	// When - query with int value
-	notes, err := qs.ByFrontmatter(context.Background(), "priority", 2)
+	notes, err := qs.FrontmatterQuery(context.Background(), "priority", 2)
 
 	// Then - should find the note with float 2.0
 	require.NoError(t, err)
@@ -940,55 +940,55 @@ func TestExtractBasenameFromNoteID(t *testing.T) {
 	}
 }
 
-// TestQueryService_ByBasename_ExistingBasename verifies ByBasename returns all
+// TestQueryService_BasenameQuery_ExistingBasename verifies BasenameQuery returns all
 // notes matching basename.
-func TestQueryService_ByBasename_ExistingBasename(t *testing.T) {
+func TestQueryService_BasenameQuery_ExistingBasename(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	notes, err := qs.ByBasename(ctx, "john-doe")
+	notes, err := qs.BasenameQuery(ctx, "john-doe")
 
 	require.NoError(
 		t,
 		err,
-		"ByBasename should not return error for existing basename",
+		"BasenameQuery should not return error for existing basename",
 	)
 	assert.Len(
 		t,
 		notes,
 		1,
-		"ByBasename should return 1 note for 'john-doe' basename",
+		"BasenameQuery should return 1 note for 'john-doe' basename",
 	)
 	assert.Equal(
 		t,
 		domain.NoteID("contacts/john-doe.md"),
 		notes[0].ID,
-		"ByBasename should return note with correct ID",
+		"BasenameQuery should return note with correct ID",
 	)
 }
 
-// TestQueryService_ByBasename_NonMatchingBasename verifies ByBasename returns
+// TestQueryService_BasenameQuery_NonMatchingBasename verifies BasenameQuery returns
 // empty slice for non-matching basename.
-func TestQueryService_ByBasename_NonMatchingBasename(t *testing.T) {
+func TestQueryService_BasenameQuery_NonMatchingBasename(t *testing.T) {
 	qs := setupQueryServiceWithNotes(t)
 	ctx := context.Background()
 
-	notes, err := qs.ByBasename(ctx, "nonexistent")
+	notes, err := qs.BasenameQuery(ctx, "nonexistent")
 
 	require.NoError(
 		t,
 		err,
-		"ByBasename should not return error for non-matching basename",
+		"BasenameQuery should not return error for non-matching basename",
 	)
 	assert.Empty(
 		t,
 		notes,
-		"ByBasename should return empty slice for non-matching basename",
+		"BasenameQuery should return empty slice for non-matching basename",
 	)
 	assert.Nil(
 		t,
 		notes,
-		"ByBasename should return nil slice for non-matching basename",
+		"BasenameQuery should return nil slice for non-matching basename",
 	)
 }
 
@@ -1078,15 +1078,15 @@ func TestQueryService_ConfigurableFileClassKey(t *testing.T) {
 	require.NoError(t, err)
 
 	// Should find note using custom key
-	notes, err := qs.ByFileClass(ctx, "custom")
+	notes, err := qs.FileClassQuery(ctx, "custom")
 	require.NoError(t, err)
 	assert.Len(t, notes, 1, "should find note with custom file class key")
 	assert.Equal(t, domain.NoteID("test.md"), notes[0].ID)
 }
 
-// TestQueryService_ByBasename_MultipleMatches verifies ByBasename returns all
+// TestQueryService_BasenameQuery_MultipleMatches verifies BasenameQuery returns all
 // notes with same basename from different paths.
-func TestQueryService_ByBasename_MultipleMatches(t *testing.T) {
+func TestQueryService_BasenameQuery_MultipleMatches(t *testing.T) {
 	// Create notes with same basename in different paths
 	note1 := domain.Note{
 		ID: domain.NoteID("contacts/john-doe.md"),
@@ -1117,10 +1117,10 @@ func TestQueryService_ByBasename_MultipleMatches(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	notes, err := qs.ByBasename(ctx, "john-doe")
+	notes, err := qs.BasenameQuery(ctx, "john-doe")
 
-	require.NoError(t, err, "ByBasename should not return error")
-	assert.Len(t, notes, 2, "ByBasename should return 2 notes for 'john-doe'")
+	require.NoError(t, err, "BasenameQuery should not return error")
+	assert.Len(t, notes, 2, "BasenameQuery should return 2 notes for 'john-doe'")
 	// Verify both notes are returned
 	noteIDs := make([]string, len(notes))
 	for i, note := range notes {

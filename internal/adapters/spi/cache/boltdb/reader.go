@@ -146,28 +146,28 @@ func (a *BoltDBCacheReadAdapter) List(
 	return notes, nil
 }
 
-// ByBasename finds notes by filename without extension.
-func (a *BoltDBCacheReadAdapter) ByBasename(
+// BasenameQuery finds notes by filename without extension.
+func (a *BoltDBCacheReadAdapter) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
-	return a.lookupIndex(ctx, BucketIndexByBasename, basename)
+	return a.lookupIndex(ctx, BucketIndexBasenameQuery, basename)
 }
 
-// ByAlias finds notes by frontmatter alias values.
-func (a *BoltDBCacheReadAdapter) ByAlias(
+// AliasQuery finds notes by frontmatter alias values.
+func (a *BoltDBCacheReadAdapter) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
-	return a.lookupIndex(ctx, BucketIndexByAlias, alias)
+	return a.lookupIndex(ctx, BucketIndexAliasQuery, alias)
 }
 
-// ByFileClass finds notes by schema fileClass value.
-func (a *BoltDBCacheReadAdapter) ByFileClass(
+// FileClassQuery finds notes by schema fileClass value.
+func (a *BoltDBCacheReadAdapter) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
-	return a.lookupIndex(ctx, BucketIndexByFileClass, fileClass)
+	return a.lookupIndex(ctx, BucketIndexFileClassQuery, fileClass)
 }
 
 // PathQuery finds notes using a flexible path selector.
@@ -194,7 +194,7 @@ func (a *BoltDBCacheReadAdapter) PathQuery(
 		return []domain.Note{note}, nil
 
 	case spi.PathQueryScopeBasename:
-		return a.ByBasename(ctx, normalized.Value)
+		return a.BasenameQuery(ctx, normalized.Value)
 
 	case spi.PathQueryScopeFolder:
 		return a.lookupIndex(ctx, BucketIndexByFolder, normalized.Value)

@@ -269,7 +269,7 @@ func TestFrontmatterWorkflow(t *testing.T) {
 
 		// Step 3: Query by frontmatter fields
 
-		notes, err := env.queryService.ByFrontmatter(
+		notes, err := env.queryService.FrontmatterQuery(
 			ctx,
 			"author",
 			"Test Author",
@@ -280,7 +280,7 @@ func TestFrontmatterWorkflow(t *testing.T) {
 
 		// Note: tags query removed as tags are now stored as string, not array
 
-		notes, err = env.queryService.ByFrontmatter(ctx, "fileClass", "note")
+		notes, err = env.queryService.FrontmatterQuery(ctx, "fileClass", "note")
 		require.NoError(t, err)
 		assert.Len(t, notes, 1, "should find note by fileClass")
 	})
@@ -352,7 +352,7 @@ This is performance test note %d.
 		// baseline query time
 		start := time.Now()
 		for range 100 {
-			notes, queryErr := env.queryService.ByFrontmatter(
+			notes, queryErr := env.queryService.FrontmatterQuery(
 				ctx,
 				"author",
 				"Perf Author",

@@ -219,7 +219,7 @@ GROUP D: Configuration & Docs (3.27-3.29) - Sprint 4
 **Effort**: 5 points
 **Insert Location**: After 3.18
 
-**Description**: Implement BoltDB cache adapter using BoltDBMetadata (Story 3.17) for sub-millisecond hot path queries (ByPath, ByBasename, ByAlias).
+**Description**: Implement BoltDB cache adapter using BoltDBMetadata (Story 3.17) for sub-millisecond hot path queries (PathQuery, BasenameQuery, AliasQuery).
 
 **Acceptance Criteria**:
 1. ✅ `/internal/adapters/spi/cache/boltdb_writer.go` implements CacheWriterPort
@@ -436,8 +436,8 @@ GROUP D: Configuration & Docs (3.27-3.29) - Sprint 4
    ```
 
 **Query Routing Strategy**:
-2. ✅ Hot path (BoltDB): `ByPath()`, `ByBasename()`, `ByAlias()` → sub-millisecond
-3. ✅ Deep path (SQLite): `ByFrontmatterField()`, complex queries → use MetadataQueryPort
+2. ✅ Hot path (BoltDB): `PathQuery()`, `BasenameQuery()`, `AliasQuery()` → sub-millisecond
+3. ✅ Deep path (SQLite): `FrontmatterFieldQuery()`, complex queries → use MetadataQueryPort
 4. ✅ Merger logic: Combine results from both stores with consistency validation
 5. ✅ Consistency check: Verify BoltDB and SQLite ModTime match before returning
 

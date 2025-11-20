@@ -58,7 +58,7 @@ This proposal pivots Epic 3 (Vault Indexing Engine) from a JSON file-per-note ca
 
 ### Cross-Epic Dependencies
 - **Epic 4 (Schema-Driven Lookups)**: Depends on high-performance queries from Epic 3
-- **Template Functions**: `ByPath`, `ByFileClass`, `ByFrontmatter` all rely on fast indexing
+- **Template Functions**: `PathQuery`, `FileClassQuery`, `FrontmatterQuery` all rely on fast indexing
 - **Post-MVP Features**: Query performance affects all future capabilities
 
 ---
@@ -92,17 +92,17 @@ This proposal pivots Epic 3 (Vault Indexing Engine) from a JSON file-per-note ca
 **Fast Path (BoltDB)**:
 ```go
 // Sub-millisecond lookups
-notes := boltCache.ByPathPrefix("/projects/")
-note := boltCache.ByBasename("meeting-notes")
-aliases := boltCache.ByAlias("contact")
-fileClass := boltCache.ByFileClass("contact-schema")
+notes := boltCache.PathQueryPrefix("/projects/")
+note := boltCache.BasenameQuery("meeting-notes")
+aliases := boltCache.AliasQuery("contact")
+fileClass := boltCache.FileClassQuery("contact-schema")
 ```
 
 **Complex Queries (SQLite)**:
 ```go
 // Still fast, optimized by SQLite
-notes := sqliteStore.ByFrontmatter("status", "active")
-notes := sqliteStore.ByFileClass("contact-schema")
+notes := sqliteStore.FrontmatterQuery("status", "active")
+notes := sqliteStore.FileClassQuery("contact-schema")
 combined := sqliteStore.ComplexQuery(criteria)
 ```
 
@@ -213,18 +213,18 @@ CREATE INDEX idx_schema ON notes(schema_id);
 **New Title**: "Hybrid Query Service (Smart Routing)"
 
 **Smart Query Routing Strategy**:
-- **Hot Queries** → BoltDB: `ByPath`, `ByBasename`, `ByAlias`, directory filtering
-- **Complex Queries** → SQLite: `ByFrontmatter`, `ByFileClass`, full-text search
+- **Hot Queries** → BoltDB: `PathQuery`, `BasenameQuery`, `AliasQuery`, directory filtering
+- **Complex Queries** → SQLite: `FrontmatterQuery`, `FileClassQuery`, full-text search
 - **Hybrid Queries** → Coordinate between both stores for optimal performance
 
 **Enhanced Acceptance Criteria**:
 
 ```markdown
-1. ✅ PRESERVE: QueryService implements same public interface (`ByID`, `ByPath`, `ByFileClass`, etc.)
+1. ✅ PRESERVE: QueryService implements same public interface (`IDQuery`, `PathQuery`, `FileClassQuery`, etc.)
 
 2. 🔄 ENHANCE: Smart query routing based on query type:
-   - `ByPath`, `ByBasename`, `ByAlias` → BoltDB for sub-millisecond performance
-   - `ByFrontmatter`, complex filtering → SQLite for query optimization
+   - `PathQuery`, `BasenameQuery`, `AliasQuery` → BoltDB for sub-millisecond performance
+   - `FrontmatterQuery`, complex filtering → SQLite for query optimization
    - Directory-based queries → BoltDB for fast filesystem-like operations
 
 3. 🔄 ENHANCE: `RefreshFromCache` updates both BoltDB and SQLite stores atomically
@@ -241,20 +241,20 @@ CREATE INDEX idx_schema ON notes(schema_id);
 
 **Query Routing Logic**:
 ```go
-func (q *QueryService) ByPath(path string) (*Note, error) {
+func (q *QueryService) PathQuery(path string) (*Note, error) {
     // Fast path: BoltDB lookup
-    return q.boltStore.GetByPath(path)
+    return q.boltStore.GetPathQuery(path)
 }
 
-func (q *QueryService) ByFrontmatter(key, value string) ([]*Note, error) {
+func (q *QueryService) FrontmatterQuery(key, value string) ([]*Note, error) {
     // Complex query: SQLite with optimization
     return q.sqliteStore.PropertyQuery(key, value)
 }
 
-func (q *QueryService) ByFileClass(fileClass string) ([]*Note, error) {
+func (q *QueryService) FileClassQuery(fileClass string) ([]*Note, error) {
     // Hybrid: Use BoltDB index, fetch details as needed
-    ids := q.boltStore.GetIDsByFileClass(fileClass)
-    return q.sqliteStore.GetByIDs(ids)
+    ids := q.boltStore.GetIDsFileClassQuery(fileClass)
+    return q.sqliteStore.IDQueryQueries(ids)
 }
 ```
 
@@ -1268,7 +1268,7 @@ extra := filterNonCore(note.Frontmatter.Fields, coreKeys)
 
 **Validation Strategy**:
 1. Prototype hybrid schema on sample vault (500 notes).
-2. Benchmark queries: `ByFileClass`, `ByStatus`, combined filters.
+2. Benchmark queries: `FileClassQuery`, `ByStatus`, combined filters.
 3. Compare JSON-only vs Hybrid query latency (expect 20–40% improvement on filtered scans).
 4. Confirm storage size delta (expect modest increase from added columns, reduction from trimmed JSON).
 5. Write migration test: legacy rows with full JSON upgraded seamlessly.

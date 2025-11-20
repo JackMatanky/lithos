@@ -74,7 +74,7 @@ Critical architectural flaws have been identified in the vault indexing implemen
 
 **Problem:** Query layer fundamentally broken
 - `RefreshFromCache` only fills `byID`, `byFileClass`, `byFrontmatter` indices
-- `ByPath` and `ByBasename` methods always return "not found"
+- `PathQuery` and `BasenameQuery` methods always return "not found"
 - `domain.Note` doesn't store original path information
 - Frontmatter index panics on non-comparable types (arrays, maps)
 - Type mismatches cause lookup failures (int 2 vs float 2.0)
@@ -219,7 +219,7 @@ Critical architectural flaws have been identified in the vault indexing implemen
 - Handle missing cache directory gracefully in `List` operations
 
 **Acceptance Criteria:**
-1. `ByPath` and `ByBasename` queries return correct results
+1. `PathQuery` and `BasenameQuery` queries return correct results
 2. Frontmatter queries handle all YAML value types without panicking
 3. Fresh installation works without manual cache directory creation
 4. Type-agnostic frontmatter lookups (int 2 matches float 2.0)
@@ -273,7 +273,7 @@ Critical architectural flaws have been identified in the vault indexing implemen
 **Section: Note**
 ```markdown
 - `Path` (string) - Vault-relative path for query layer path-based lookups.
-  Enables ByPath and ByBasename query functionality.
+  Enables PathQuery and BasenameQuery query functionality.
 ```
 
 #### `docs/architecture/components.md`

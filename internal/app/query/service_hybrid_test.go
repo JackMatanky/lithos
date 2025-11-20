@@ -20,9 +20,9 @@ type MockHybridReader struct {
 	ListFunc func(ctx context.Context) ([]domain.Note, error)
 
 	// MetadataQueryPort methods
-	ByBasenameFunc       func(ctx context.Context, basename string) ([]domain.Note, error)
-	ByAliasFunc          func(ctx context.Context, alias string) ([]domain.Note, error)
-	ByFileClassFunc      func(ctx context.Context, fileClass string) ([]domain.Note, error)
+	BasenameQueryFunc    func(ctx context.Context, basename string) ([]domain.Note, error)
+	AliasQueryFunc       func(ctx context.Context, alias string) ([]domain.Note, error)
+	FileClassQueryFunc   func(ctx context.Context, fileClass string) ([]domain.Note, error)
 	PathQueryFunc        func(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error)
 	TagQueryFunc         func(ctx context.Context, tag string) ([]domain.Note, error)
 	FrontmatterQueryFunc func(ctx context.Context, field, value string) ([]domain.Note, error)
@@ -45,32 +45,32 @@ func (m *MockHybridReader) List(ctx context.Context) ([]domain.Note, error) {
 	return nil, nil
 }
 
-func (m *MockHybridReader) ByBasename(
+func (m *MockHybridReader) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
-	if m.ByBasenameFunc != nil {
-		return m.ByBasenameFunc(ctx, basename)
+	if m.BasenameQueryFunc != nil {
+		return m.BasenameQueryFunc(ctx, basename)
 	}
 	return nil, nil
 }
 
-func (m *MockHybridReader) ByAlias(
+func (m *MockHybridReader) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
-	if m.ByAliasFunc != nil {
-		return m.ByAliasFunc(ctx, alias)
+	if m.AliasQueryFunc != nil {
+		return m.AliasQueryFunc(ctx, alias)
 	}
 	return nil, nil
 }
 
-func (m *MockHybridReader) ByFileClass(
+func (m *MockHybridReader) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
-	if m.ByFileClassFunc != nil {
-		return m.ByFileClassFunc(ctx, fileClass)
+	if m.FileClassQueryFunc != nil {
+		return m.FileClassQueryFunc(ctx, fileClass)
 	}
 	return nil, nil
 }
@@ -117,7 +117,7 @@ func TestQueryService_Constructor_DualReaders(t *testing.T) {
 	require.NotNil(t, qs)
 }
 
-func TestQueryService_Routing_HotPath_ByPath(t *testing.T) {
+func TestQueryService_Routing_HotPath_PathQuery(t *testing.T) {
 	boltReader := &MockHybridReader{}
 	sqliteReader := &MockHybridReader{}
 	logger := zerolog.New(nil)
@@ -126,7 +126,7 @@ func TestQueryService_Routing_HotPath_ByPath(t *testing.T) {
 	path := "notes/test.md"
 	note := domain.Note{ID: domain.NoteID(path)}
 
-	// Expectation: ByPath calls boltReader.Read
+	// Expectation: PathQuery calls boltReader.Read
 	calledBolt := false
 	boltReader.ReadFunc = func(ctx context.Context, id domain.NoteID) (domain.Note, error) {
 		calledBolt = true
@@ -136,19 +136,19 @@ func TestQueryService_Routing_HotPath_ByPath(t *testing.T) {
 
 	// SQLite should NOT be called
 	sqliteReader.ReadFunc = func(ctx context.Context, id domain.NoteID) (domain.Note, error) {
-		assert.Fail(t, "SQLite should not be called for ByPath")
+		assert.Fail(t, "SQLite should not be called for PathQuery")
 		return domain.Note{}, nil
 	}
 
 	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
-	result, err := qs.ByPath(context.Background(), path)
+	result, err := qs.PathQuerySingle(context.Background(), path)
 
 	require.NoError(t, err)
 	assert.Equal(t, note, result)
 	assert.True(t, calledBolt, "BoltDB should have been called")
 }
 
-func TestQueryService_Routing_HotPath_ByBasename(t *testing.T) {
+func TestQueryService_Routing_HotPath_BasenameQuery(t *testing.T) {
 	boltReader := &MockHybridReader{}
 	sqliteReader := &MockHybridReader{}
 	logger := zerolog.New(nil)
@@ -157,28 +157,28 @@ func TestQueryService_Routing_HotPath_ByBasename(t *testing.T) {
 	basename := "test"
 	notes := []domain.Note{{ID: "notes/test.md"}}
 
-	// Expectation: ByBasename calls boltReader.ByBasename
+	// Expectation: BasenameQuery calls boltReader.BasenameQuery
 	calledBolt := false
-	boltReader.ByBasenameFunc = func(ctx context.Context, bn string) ([]domain.Note, error) {
+	boltReader.BasenameQueryFunc = func(ctx context.Context, bn string) ([]domain.Note, error) {
 		calledBolt = true
 		assert.Equal(t, basename, bn)
 		return notes, nil
 	}
 
-	sqliteReader.ByBasenameFunc = func(ctx context.Context, bn string) ([]domain.Note, error) {
-		assert.Fail(t, "SQLite should not be called for ByBasename")
+	sqliteReader.BasenameQueryFunc = func(ctx context.Context, bn string) ([]domain.Note, error) {
+		assert.Fail(t, "SQLite should not be called for BasenameQuery")
 		return nil, nil
 	}
 
 	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
-	result, err := qs.ByBasename(context.Background(), basename)
+	result, err := qs.BasenameQuery(context.Background(), basename)
 
 	require.NoError(t, err)
 	assert.Equal(t, notes, result)
 	assert.True(t, calledBolt, "BoltDB should have been called")
 }
 
-func TestQueryService_Routing_HotPath_ByAlias(t *testing.T) {
+func TestQueryService_Routing_HotPath_AliasQuery(t *testing.T) {
 	boltReader := &MockHybridReader{}
 	sqliteReader := &MockHybridReader{}
 	logger := zerolog.New(nil)
@@ -188,21 +188,21 @@ func TestQueryService_Routing_HotPath_ByAlias(t *testing.T) {
 	notes := []domain.Note{{ID: "notes/alias.md"}}
 
 	calledBolt := false
-	boltReader.ByAliasFunc = func(ctx context.Context, a string) ([]domain.Note, error) {
+	boltReader.AliasQueryFunc = func(ctx context.Context, a string) ([]domain.Note, error) {
 		calledBolt = true
 		assert.Equal(t, alias, a)
 		return notes, nil
 	}
 
 	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
-	result, err := qs.ByAlias(context.Background(), alias)
+	result, err := qs.AliasQuery(context.Background(), alias)
 
 	require.NoError(t, err)
 	assert.Equal(t, notes, result)
 	assert.True(t, calledBolt, "BoltDB should have been called")
 }
 
-func TestQueryService_Routing_DeepPath_ByFrontmatter(t *testing.T) {
+func TestQueryService_Routing_DeepPath_FrontmatterQuery(t *testing.T) {
 	boltReader := &MockHybridReader{}
 	sqliteReader := &MockHybridReader{}
 	logger := zerolog.New(nil)
@@ -212,7 +212,7 @@ func TestQueryService_Routing_DeepPath_ByFrontmatter(t *testing.T) {
 	value := "active"
 	notes := []domain.Note{{ID: "notes/active.md"}}
 
-	// Expectation: ByFrontmatter calls sqliteReader.FrontmatterQuery
+	// Expectation: FrontmatterQuery calls sqliteReader.FrontmatterQuery
 	calledSqlite := false
 	sqliteReader.FrontmatterQueryFunc = func(ctx context.Context, f, v string) ([]domain.Note, error) {
 		calledSqlite = true
@@ -222,12 +222,12 @@ func TestQueryService_Routing_DeepPath_ByFrontmatter(t *testing.T) {
 	}
 
 	boltReader.FrontmatterQueryFunc = func(ctx context.Context, f, v string) ([]domain.Note, error) {
-		assert.Fail(t, "BoltDB should not be called for ByFrontmatter")
+		assert.Fail(t, "BoltDB should not be called for FrontmatterQuery")
 		return nil, nil
 	}
 
 	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
-	result, err := qs.ByFrontmatter(context.Background(), field, value)
+	result, err := qs.FrontmatterQuery(context.Background(), field, value)
 
 	require.NoError(t, err)
 	assert.Equal(t, notes, result)

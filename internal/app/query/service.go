@@ -32,8 +32,9 @@ import (
 // - No data races during concurrent access patterns
 //
 // Query Routing:
-// - Hot Queries (BoltDB): ByPath, ByBasename, ByAlias, directory filtering
-// - Complex Queries (SQLite): ByFrontmatter, ByFileClass with property
+// - Hot Queries (BoltDB): PathQuery, BasenameQuery, AliasQuery, directory
+// filtering
+// - Complex Queries (SQLite): FrontmatterQuery, FileClassQuery with property
 // filtering
 // - Hybrid Queries: Coordinate between stores for optimal performance.
 type QueryService struct {
@@ -109,7 +110,7 @@ func canonicalizeFrontmatterValue(value interface{}) (interface{}, bool) {
 // Usage:
 //
 //	qs := NewQueryService(boltReader, sqliteReader, config, logger)
-//	note, err := qs.ByID(ctx, id)   // Query safely with smart routing
+//	note, err := qs.IDQuery(ctx, id)   // Query safely with smart routing
 func NewQueryService(
 	boltReader spi.CacheReaderPort,
 	sqliteReader spi.CacheReaderPort,
@@ -138,7 +139,7 @@ func NewQueryService(
 	return qs
 }
 
-// ByID retrieves a note by its NoteID.
+// IDQuery retrieves a note by its NoteID.
 // Returns the note if found, or ResourceError if not found.
 // Thread-safe: uses RLock to allow concurrent reads.
 //
@@ -146,7 +147,7 @@ func NewQueryService(
 // - Returns ResourceError for missing notes (single result lookup)
 // - Logs debug message with NoteID for troubleshooting
 // - O(1) lookup performance via map access.
-func (q *QueryService) ByID(
+func (q *QueryService) IDQuery(
 	ctx context.Context,
 	id domain.NoteID,
 ) (domain.Note, error) {
@@ -154,7 +155,7 @@ func (q *QueryService) ByID(
 	defer func() {
 		q.log.Debug().
 			Dur("duration", time.Since(start)).
-			Str("method", "ByID").
+			Str("method", "IDQuery").
 			Str("noteID", id.String()).
 			Msg("query performance")
 	}()
@@ -176,7 +177,7 @@ func (q *QueryService) ByID(
 	)
 }
 
-// ByPath retrieves a note by its file path.
+// PathQuerySingle retrieves a note by its file path.
 // Returns the note if found, or ResourceError if not found.
 // Thread-safe: uses RLock to allow concurrent reads.
 //
@@ -184,7 +185,7 @@ func (q *QueryService) ByID(
 // - Returns ResourceError for missing notes (single result lookup)
 // - Logs debug message with path for troubleshooting
 // - O(1) lookup performance via map access.
-func (q *QueryService) ByPath(
+func (q *QueryService) PathQuerySingle(
 	ctx context.Context,
 	path string,
 ) (domain.Note, error) {
@@ -192,7 +193,7 @@ func (q *QueryService) ByPath(
 	defer func() {
 		q.log.Debug().
 			Dur("duration", time.Since(start)).
-			Str("method", "ByPath").
+			Str("method", "PathQuery").
 			Str("path", path).
 			Msg("query performance")
 	}()
@@ -214,7 +215,7 @@ func (q *QueryService) ByPath(
 	)
 }
 
-// ByFileClass retrieves all notes matching a schema name (fileClass).
+// FileClassQuery retrieves all notes matching a schema name (fileClass).
 // Returns a slice of notes if any match, or empty slice if none found.
 // Thread-safe: uses RLock to allow concurrent reads.
 //
@@ -223,22 +224,22 @@ func (q *QueryService) ByPath(
 // lookup)
 // - Logs debug message with fileClass and result count
 // - O(log n) lookup performance via map access.
-func (q *QueryService) ByFileClass(
+func (q *QueryService) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
 	return q.executeMetadataQuery(
 		ctx,
-		"ByFileClass",
+		"FileClassQuery",
 		"fileClass",
 		fileClass,
 		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
-			return port.ByFileClass(ctx, param)
+			return port.FileClassQuery(ctx, param)
 		},
 	)
 }
 
-// ByBasename retrieves all notes matching a filename basename (without
+// BasenameQuery retrieves all notes matching a filename basename (without
 // extension).
 // Returns a slice of notes if any match, or empty slice if none found.
 // Thread-safe: uses RLock to allow concurrent reads.
@@ -249,38 +250,25 @@ func (q *QueryService) ByFileClass(
 // - Basename is extracted from NoteID (full path) by removing directory path
 // and file extension
 // - Logs debug message with basename and result count
-// - Uses in-memory index for fast lookup performance
+// - Delegates to MetadataQueryPort for index-based lookup performance
 //
 // Example: NoteID "projects/notes/meeting.md" matches basename "meeting".
-func (q *QueryService) ByBasename(
+func (q *QueryService) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
-	start := time.Now()
-	defer func() {
-		q.log.Debug().
-			Dur("duration", time.Since(start)).
-			Str("method", "ByBasename").
-			Str("basename", basename).
-			Msg("query performance")
-	}()
-
-	if q.boltQuery != nil {
-		return q.boltQuery.ByBasename(ctx, basename)
-	}
-
-	opts, err := (spi.PathQueryOptions{
-		Scope: spi.PathQueryScopeBasename,
-		Value: basename,
-	}).Validate()
-	if err != nil {
-		return nil, err
-	}
-
-	return q.PathQuery(ctx, opts)
+	return q.executeMetadataQuery(
+		ctx,
+		"BasenameQuery",
+		"basename",
+		basename,
+		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
+			return port.BasenameQuery(ctx, param)
+		},
+	)
 }
 
-// ByAlias retrieves all notes containing an alias in their frontmatter.
+// AliasQuery retrieves all notes containing an alias in their frontmatter.
 // Returns a slice of notes if any match, or empty slice if none found.
 // Thread-safe: uses RLock to allow concurrent reads.
 //
@@ -294,17 +282,17 @@ func (q *QueryService) ByBasename(
 //
 // Example: Notes with frontmatter aliases containing "project-alpha" match
 // alias "project-alpha".
-func (q *QueryService) ByAlias(
+func (q *QueryService) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
 	return q.executeMetadataQuery(
 		ctx,
-		"ByAlias",
+		"AliasQuery",
 		"alias",
 		alias,
 		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
-			return port.ByAlias(ctx, param)
+			return port.AliasQuery(ctx, param)
 		},
 	)
 }
@@ -344,7 +332,8 @@ func (q *QueryService) PathQuery(
 	return nil, nil
 }
 
-// ByFrontmatter finds notes where a specific frontmatter field matches a value.
+// FrontmatterQuery finds notes where a specific frontmatter field matches a
+// value.
 // Supports type-agnostic comparison (int 2 == float 2.0) and delegates to
 // MetadataQueryPort for indexed lookups.
 //
@@ -357,11 +346,11 @@ func (q *QueryService) PathQuery(
 //
 // Example:
 //
-//	notes := queryService.ByFrontmatter("author", "John Doe")
-//	notes := queryService.ByFrontmatter("tags", "project-x")
-//	notes := queryService.ByFrontmatter("status", "draft")
-//	notes := queryService.ByFrontmatter("priority", 2) // matches float 2.0
-func (q *QueryService) ByFrontmatter(
+//	notes := queryService.FrontmatterQuery("author", "John Doe")
+//	notes := queryService.FrontmatterQuery("tags", "project-x")
+//	notes := queryService.FrontmatterQuery("status", "draft")
+//	notes := queryService.FrontmatterQuery("priority", 2) // matches float 2.0
+func (q *QueryService) FrontmatterQuery(
 	ctx context.Context,
 	field string,
 	value interface{},
@@ -370,7 +359,7 @@ func (q *QueryService) ByFrontmatter(
 	defer func() {
 		q.log.Debug().
 			Dur("duration", time.Since(start)).
-			Str("method", "ByFrontmatter").
+			Str("method", "FrontmatterQuery").
 			Str("field", field).
 			Interface("value", value).
 			Msg("query performance")
