@@ -1,28 +1,12 @@
 // Package query provides fast in-memory lookups for indexed notes.
 // It implements thread-safe concurrent reads using sync.RWMutex and supports
 // the FR9 query capabilities: lookup by ID, path, basename, and schema.
-//
-// Thread-Safe Design:
-// - Multiple readers can query simultaneously via RLock
-// - Writes (RefreshFromCache) are exclusive via Lock
-// - No data races during concurrent access patterns
-//
-// In-Memory Indices:
-// - byID: Primary index for NoteID → Note lookups (O(1))
-// - byPath: Path index for file path → Note lookups (O(1))
-// - byBasename: Basename index for filename → []Note lookups (O(log n))
-// - byFileClass: Schema index for fileClass → []Note lookups (O(log n))
-// - byFrontmatter: Frontmatter index for field → value → []Note lookups
-// (O(log n)) complex logic
 package query
 
 import (
 	"context"
 	"errors"
 	"fmt"
-	"path/filepath"
-	"reflect"
-	"strings"
 	"sync"
 	"time"
 
@@ -45,7 +29,6 @@ import (
 //
 // Thread-Safe Design:
 // - Multiple readers can query simultaneously via RLock
-// - Writes (RefreshFromCache) are exclusive via Lock
 // - No data races during concurrent access patterns
 //
 // Query Routing:
@@ -57,46 +40,12 @@ type QueryService struct {
 	mu sync.RWMutex
 
 	// Dependencies
-	metadataQuery spi.MetadataQueryPort // Index-based metadata queries
-	boltReader    spi.CacheReaderPort   // Hot cache for fast lookups
-	sqliteReader  spi.CacheReaderPort   // Deep storage for complex queries
-	config        domain.Config         // For file_class_key configuration
-	log           zerolog.Logger
-
-	// Primary index: NoteID → Note (populated from both stores)
-	byID map[domain.NoteID]domain.Note
-
-	// Path index: file path → Note (BoltDB-optimized)
-	byPath map[string]domain.Note
-
-	// Basename index: filename without extension → []Note (BoltDB-optimized)
-	byBasename map[string][]domain.Note
-
-	// FileClass index: schema name → []Note (hybrid: BoltDB index + SQLite
-	// details)
-	byFileClass map[string][]domain.Note
-
-	// Frontmatter index: field → value → []Note (SQLite-optimized)
-	byFrontmatter map[string]map[interface{}][]domain.Note
-}
-
-// extractBasenameFromNoteID extracts the filename without extension from a
-// NoteID.
-// NoteID now contains the full vault-relative path, so we extract the basename.
-// Handles both Unix (/) and Windows (\) path separators for cross-platform
-// compatibility.
-// Example: "projects/notes/meeting.md" → "meeting".
-func extractBasenameFromNoteID(id domain.NoteID) string {
-	path := string(id)
-	// Normalize Windows backslashes to forward slashes for cross-platform
-	// compatibility
-	path = strings.ReplaceAll(path, "\\", "/")
-	base := filepath.Base(path)
-	// Remove extension if present
-	if ext := filepath.Ext(base); ext != "" {
-		base = strings.TrimSuffix(base, ext)
-	}
-	return base
+	boltReader   spi.CacheReaderPort   // Hot cache for fast lookups
+	boltQuery    spi.MetadataQueryPort // Hot cache metadata queries (if supported)
+	sqliteReader spi.CacheReaderPort   // Deep storage for complex queries
+	sqliteQuery  spi.MetadataQueryPort // Deep storage metadata queries (if supported)
+	config       domain.Config         // For file_class_key configuration
+	log          zerolog.Logger
 }
 
 // canonicalizeFrontmatterValue normalizes frontmatter values for type-agnostic
@@ -143,16 +92,6 @@ func canonicalizeFrontmatterValue(value interface{}) (interface{}, bool) {
 	}
 }
 
-// isComparableForIndex ensures the provided value can be safely used as a map
-// key. Non-comparable types like slices and maps would panic if used directly.
-func isComparableForIndex(value interface{}) bool {
-	if value == nil {
-		return false
-	}
-	val := reflect.ValueOf(value)
-	return val.IsValid() && val.Type().Comparable()
-}
-
 // NewQueryService creates a new QueryService with hybrid storage routing.
 // It initializes all index maps and injects required dependencies for smart
 // query routing.
@@ -165,35 +104,38 @@ func isComparableForIndex(value interface{}) bool {
 //
 // Thread-Safe Design:
 // - RWMutex enables multiple concurrent reads, exclusive writes
-// - All indices start empty and are populated via RefreshFromCache()
 // - Dependencies are injected (no globals) for testability
 //
 // Usage:
 //
 //	qs := NewQueryService(boltReader, sqliteReader, config, logger)
-//	err := qs.RefreshFromCache(ctx) // Populate indices from both stores
 //	note, err := qs.ByID(ctx, id)   // Query safely with smart routing
 func NewQueryService(
-	metadataQuery spi.MetadataQueryPort,
 	boltReader spi.CacheReaderPort,
 	sqliteReader spi.CacheReaderPort,
 	config domain.Config,
 	log zerolog.Logger,
 ) *QueryService {
-	return &QueryService{
-		byID:          make(map[domain.NoteID]domain.Note),
-		byPath:        make(map[string]domain.Note),
-		byBasename:    make(map[string][]domain.Note),
-		byFileClass:   make(map[string][]domain.Note),
-		byFrontmatter: make(map[string]map[interface{}][]domain.Note),
-		metadataQuery: metadataQuery,
-		boltReader:    boltReader,
-		sqliteReader:  sqliteReader,
-		config:        config,
-		log:           log,
+	qs := &QueryService{
+		boltReader:   boltReader,
+		sqliteReader: sqliteReader,
+		boltQuery:    nil,
+		sqliteQuery:  nil,
+		config:       config,
+		log:          log,
 		// mu is initialized to zero value (unlocked state)
 		mu: sync.RWMutex{},
 	}
+
+	// Attempt to upgrade readers to query ports
+	if mq, ok := boltReader.(spi.MetadataQueryPort); ok {
+		qs.boltQuery = mq
+	}
+	if mq, ok := sqliteReader.(spi.MetadataQueryPort); ok {
+		qs.sqliteQuery = mq
+	}
+
+	return qs
 }
 
 // ByID retrieves a note by its NoteID.
@@ -217,20 +159,21 @@ func (q *QueryService) ByID(
 			Msg("query performance")
 	}()
 
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	note, exists := q.byID[id]
-	if !exists {
-		return domain.Note{}, lithosErr.NewResourceError(
-			"note",
-			"get",
-			id.String(),
-			errors.New("not found"),
-		)
+	// Hot path: use BoltDB for fast lookups
+	if q.boltReader != nil {
+		return q.boltReader.Read(ctx, id)
 	}
 
-	return note, nil
+	if q.sqliteReader != nil {
+		return q.sqliteReader.Read(ctx, id)
+	}
+
+	return domain.Note{}, lithosErr.NewResourceError(
+		"note",
+		"get",
+		id.String(),
+		errors.New("not found"),
+	)
 }
 
 // ByPath retrieves a note by its file path.
@@ -254,20 +197,21 @@ func (q *QueryService) ByPath(
 			Msg("query performance")
 	}()
 
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	note, exists := q.byPath[path]
-	if !exists {
-		return domain.Note{}, lithosErr.NewResourceError(
-			"note",
-			"get",
-			path,
-			errors.New("not found"),
-		)
+	// Hot path: use BoltDB for fast lookups
+	if q.boltReader != nil {
+		return q.boltReader.Read(ctx, domain.NoteID(path))
 	}
 
-	return note, nil
+	if q.sqliteReader != nil {
+		return q.sqliteReader.Read(ctx, domain.NoteID(path))
+	}
+
+	return domain.Note{}, lithosErr.NewResourceError(
+		"note",
+		"get",
+		path,
+		errors.New("not found"),
+	)
 }
 
 // ByFileClass retrieves all notes matching a schema name (fileClass).
@@ -292,16 +236,17 @@ func (q *QueryService) ByFileClass(
 			Msg("query performance")
 	}()
 
-	if q.metadataQuery != nil {
-		return q.metadataQuery.ByFileClass(ctx, fileClass)
+	if q.boltQuery != nil {
+		// Hot path: use BoltDB for file class lookups
+		return q.boltQuery.ByFileClass(ctx, fileClass)
 	}
 
-	q.mu.RLock()
-	defer q.mu.RUnlock()
+	if q.sqliteQuery != nil {
+		// Deep path fallback
+		return q.sqliteQuery.ByFileClass(ctx, fileClass)
+	}
 
-	notes := q.byFileClass[fileClass]
-
-	return append([]domain.Note(nil), notes...), nil
+	return nil, nil
 }
 
 // ByBasename retrieves all notes matching a filename basename (without
@@ -330,6 +275,10 @@ func (q *QueryService) ByBasename(
 			Str("basename", basename).
 			Msg("query performance")
 	}()
+
+	if q.boltQuery != nil {
+		return q.boltQuery.ByBasename(ctx, basename)
+	}
 
 	opts, err := (spi.PathQueryOptions{
 		Scope: spi.PathQueryScopeBasename,
@@ -369,11 +318,17 @@ func (q *QueryService) ByAlias(
 			Msg("query performance")
 	}()
 
-	if q.metadataQuery != nil {
-		return q.metadataQuery.ByAlias(ctx, alias)
+	if q.boltQuery != nil {
+		// Hot path: use BoltDB for alias lookups
+		return q.boltQuery.ByAlias(ctx, alias)
 	}
 
-	return q.aliasFallback(alias), nil
+	if q.sqliteQuery != nil {
+		// Deep path fallback
+		return q.sqliteQuery.ByAlias(ctx, alias)
+	}
+
+	return nil, nil
 }
 
 // PathQuery resolves notes using flexible selectors (full path, basename,
@@ -398,11 +353,17 @@ func (q *QueryService) PathQuery(
 		return nil, err
 	}
 
-	if q.metadataQuery != nil {
-		return q.metadataQuery.PathQuery(ctx, validatedOpts)
+	if q.boltQuery != nil {
+		// Hot path: use BoltDB for path queries
+		return q.boltQuery.PathQuery(ctx, validatedOpts)
 	}
 
-	return q.pathQueryFallback(validatedOpts), nil
+	if q.sqliteQuery != nil {
+		// Deep path fallback
+		return q.sqliteQuery.PathQuery(ctx, validatedOpts)
+	}
+
+	return nil, nil
 }
 
 // ByFrontmatter retrieves all notes matching a frontmatter field value.
@@ -437,406 +398,17 @@ func (q *QueryService) ByFrontmatter(
 			Msg("query performance")
 	}()
 
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	// Check if field exists in index
-	fieldMap, fieldExists := q.byFrontmatter[field]
-	if !fieldExists {
-		return nil, nil // Return empty slice for non-existent field
-	}
-
-	canonicalValue, ok := canonicalizeFrontmatterValue(value)
-	if !ok || !isComparableForIndex(canonicalValue) {
-		q.log.Debug().
-			Str("field", field).
-			Interface("value_type", fmt.Sprintf("%T", value)).
-			Msg("query by frontmatter (value not comparable)")
-		return nil, nil
-	}
-
-	if notes, exists := fieldMap[canonicalValue]; exists && len(notes) > 0 {
-		q.log.Debug().
-			Str("field", field).
-			Interface("canonical_value", canonicalValue).
-			Int("count", len(notes)).
-			Msg("query by frontmatter (match)")
-		return notes, nil
-	}
-
-	q.log.Debug().
-		Str("field", field).
-		Interface("canonical_value", canonicalValue).
-		Msg("query by frontmatter (no matches)")
-	return nil, nil
-}
-
-// RefreshFromCache rebuilds all in-memory indices from the persistent cache.
-// This method should be called during app startup and when cache is
-// invalidated.
-// Thread-safe: uses Lock for exclusive write access during rebuild.
-//
-// Rebuild Process:
-// - Reads all notes from CacheReaderPort
-// - Handles missing cache directory gracefully (fresh installations)
-// - Clears existing indices to prevent stale data
-// - Populates all indices (byID, byPath, byBasename, byFileClass,
-// byFrontmatter)
-// - Logs info message with total note count
-//
-// When to Call:
-// - Application startup after cache initialization
-// - Cache invalidation events
-// - Manual cache refresh operations
-//
-// Error Handling:
-// - Returns error if cache read fails (except missing directory)
-// - Handles missing cache directory as empty cache (fresh installation)
-// - Preserves existing indices if rebuild fails.
-func (q *QueryService) RefreshFromCache(ctx context.Context) error {
-	q.log.Info().Msg("refreshing query service from cache")
-
-	notes, err := q.loadNotesForRefresh(ctx)
-	if err != nil {
-		return err
-	}
-
-	q.rebuildIndices(notes)
-	return nil
-}
-
-// RefreshIncremental updates in-memory indices for notes modified since the
-// specified time. This method enables efficient incremental indexing by only
-// processing changed notes.
-// Thread-safe: uses Lock for exclusive write access during updates.
-//
-// Incremental Process:
-// - Reads all notes from hybrid storage (same as full refresh)
-// - Filters notes based on ModTime > modifiedSince
-// - Updates only indices for modified notes
-// - Preserves existing indices for unchanged notes
-// - Logs info message with modified note count
-//
-// When to Call:
-// - After vault scanning detects file changes
-// - When indexer provides list of modified files
-// - For performance optimization in large vaults
-//
-// Staleness Detection:
-// - Compares note.ModTime against modifiedSince parameter
-// - Only rebuilds indices for notes newer than threshold
-// - Maintains consistency across storage layers
-//
-// Error Handling:
-// - Returns error if cache read fails
-// - Falls back to full refresh if incremental fails
-// - Preserves existing indices if update fails.
-func (q *QueryService) RefreshIncremental(
-	ctx context.Context,
-	modifiedSince time.Time,
-) error {
-	q.log.Info().
-		Time("modified_since", modifiedSince).
-		Msg("incremental refresh starting")
-
-	notes, err := q.loadNotesForRefresh(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Note: ModTime filtering removed as domain.Note no longer has ModTime
-	// field This is a temporary workaround - proper solution requires cache
-	// architecture redesign
-	modifiedNotes := notes
-
-	if len(modifiedNotes) == 0 {
-		q.log.Info().Msg("no notes found")
-		return nil
-	}
-
-	q.updateIndicesIncremental(modifiedNotes)
-	q.log.Info().
-		Int("modified_count", len(modifiedNotes)).
-		Msg("incremental refresh completed")
-	return nil
-}
-
-func (q *QueryService) loadNotesForRefresh(
-	ctx context.Context,
-) ([]domain.Note, error) {
-	// Load from SQLite deep storage (primary source for complete notes)
-	sqliteNotes, sqliteErr := q.sqliteReader.List(ctx)
-	if sqliteErr != nil {
-		if strings.Contains(sqliteErr.Error(), "no such file or directory") ||
-			strings.Contains(sqliteErr.Error(), "directory not found") {
-			q.log.Info().Msg("SQLite cache missing, checking BoltDB hot cache")
-		} else {
-			return nil, fmt.Errorf("cache refresh failed: SQLite cache read failed: %w", sqliteErr)
-		}
-	}
-
-	// Load from BoltDB hot cache (fallback/supplement)
-	boltNotes, boltErr := q.boltReader.List(ctx)
-	if boltErr != nil {
-		if strings.Contains(boltErr.Error(), "no such file or directory") ||
-			strings.Contains(boltErr.Error(), "directory not found") {
-			q.log.Info().Msg("BoltDB cache missing, using available data")
-		} else {
-			q.log.Warn().Err(boltErr).Msg("BoltDB cache read failed, continuing with SQLite data")
-		}
-	}
-
-	// Merge notes from both stores, preferring SQLite for complete data
-	noteMap := make(map[domain.NoteID]domain.Note)
-
-	// Add BoltDB notes first (may be incomplete)
-	for _, note := range boltNotes {
-		noteMap[note.ID] = note
-	}
-
-	// Add/override with SQLite notes (complete data)
-	for _, note := range sqliteNotes {
-		noteMap[note.ID] = note
-	}
-
-	notes := make([]domain.Note, 0, len(noteMap))
-	for _, note := range noteMap {
-		notes = append(notes, note)
-	}
-
-	q.log.Info().
-		Int("sqlite_notes", len(sqliteNotes)).
-		Int("bolt_notes", len(boltNotes)).
-		Int("merged_notes", len(notes)).
-		Msg("loaded notes from hybrid storage")
-
-	return notes, nil
-}
-
-func (q *QueryService) rebuildIndices(notes []domain.Note) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	// Clear existing indices
-	q.byID = make(map[domain.NoteID]domain.Note)
-	q.byPath = make(map[string]domain.Note)
-	q.byBasename = make(map[string][]domain.Note)
-	q.byFileClass = make(map[string][]domain.Note)
-	q.byFrontmatter = make(map[string]map[interface{}][]domain.Note)
-
-	// Populate indices from cache
-	for _, note := range notes {
-		q.byID[note.ID] = note
-
-		// Populate byPath index using NoteID (which contains the path)
-		q.byPath[string(note.ID)] = note
-
-		// Populate byBasename index using extracted basename
-		basename := extractBasenameFromNoteID(note.ID)
-		q.byBasename[basename] = append(q.byBasename[basename], note)
-
-		// Populate byFileClass using configurable file_class_key
-		if fileClassValue, exists := note.Frontmatter.Fields[q.config.FileClassKey]; exists {
-			if fc, ok := fileClassValue.(string); ok && fc != "" {
-				q.byFileClass[fc] = append(q.byFileClass[fc], note)
-			}
-		}
-
-		// Populate frontmatter index for all fields
-		for field, value := range note.Frontmatter.Fields {
-			canonicalValue, ok := canonicalizeFrontmatterValue(value)
-			if !ok || !isComparableForIndex(canonicalValue) {
-				q.log.Debug().
-					Str("field", field).
-					Interface("value_type", fmt.Sprintf("%T", value)).
-					Str("note_id", note.ID.String()).
-					Msg("skipping frontmatter index for non-comparable value")
-				continue
-			}
-
-			if q.byFrontmatter[field] == nil {
-				q.byFrontmatter[field] = make(map[interface{}][]domain.Note)
-			}
-
-			q.byFrontmatter[field][canonicalValue] = append(
-				q.byFrontmatter[field][canonicalValue],
-				note,
+	if q.sqliteQuery != nil {
+		canonicalValue, ok := canonicalizeFrontmatterValue(value)
+		if ok {
+			// Convert value to string for query port
+			return q.sqliteQuery.FrontmatterQuery(
+				ctx,
+				field,
+				fmt.Sprintf("%v", canonicalValue),
 			)
 		}
 	}
 
-	q.log.Info().Int("count", len(notes)).Msg("query service refreshed")
-}
-
-func (q *QueryService) updateIndicesIncremental(notes []domain.Note) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	// Update indices for modified notes
-	for _, note := range notes {
-		// Update byID
-		q.byID[note.ID] = note
-
-		// Update byPath using NoteID (which contains the path)
-		q.byPath[string(note.ID)] = note
-
-		// Update byBasename
-		basename := extractBasenameFromNoteID(note.ID)
-		q.removeNoteFromMapOfSlices(q.byBasename, note.ID)
-		q.byBasename[basename] = append(q.byBasename[basename], note)
-
-		// Update byFileClass using configurable key
-		q.removeNoteFromMapOfSlices(q.byFileClass, note.ID)
-		if fileClassValue, exists := note.Frontmatter.Fields[q.config.FileClassKey]; exists {
-			if fc, ok := fileClassValue.(string); ok && fc != "" {
-				q.byFileClass[fc] = append(q.byFileClass[fc], note)
-			}
-		}
-
-		// Update byFrontmatter (remove old entries and add new)
-		q.removeNoteFromFrontmatterIndexes(note.ID)
-		q.addNoteToFrontmatterIndexes(note)
-	}
-}
-
-// Legacy helper replaced by granular incremental index updates inside
-// updateIndicesIncremental. Removed to reduce cognitive complexity and resolve
-// unused-function lint warning.
-
-// removeNoteFromMapOfSlices removes a note with the given id from all slices in
-// the map.
-func (q *QueryService) removeNoteFromMapOfSlices(
-	m map[string][]domain.Note,
-	id domain.NoteID,
-) {
-	for k, notes := range m {
-		for i, n := range notes {
-			if n.ID == id {
-				m[k] = append(notes[:i], notes[i+1:]...)
-				break
-			}
-		}
-	}
-}
-
-// removeNoteFromFrontmatterIndexes removes the note with the provided id from
-// the frontmatter index.
-func (q *QueryService) removeNoteFromFrontmatterIndexes(id domain.NoteID) {
-	for field, valueMap := range q.byFrontmatter {
-		for value, notes := range valueMap {
-			for i, n := range notes {
-				if n.ID == id {
-					q.byFrontmatter[field][value] = append(
-						notes[:i],
-						notes[i+1:]...)
-					break
-				}
-			}
-		}
-	}
-}
-
-// addNoteToFrontmatterIndexes inserts note into frontmatter index for all its
-// fields.
-func (q *QueryService) addNoteToFrontmatterIndexes(note domain.Note) {
-	for field, value := range note.Frontmatter.Fields {
-		canonicalValue, ok := canonicalizeFrontmatterValue(value)
-		if !ok || !isComparableForIndex(canonicalValue) {
-			continue
-		}
-		if q.byFrontmatter[field] == nil {
-			q.byFrontmatter[field] = make(map[interface{}][]domain.Note)
-		}
-		q.byFrontmatter[field][canonicalValue] = append(
-			q.byFrontmatter[field][canonicalValue],
-			note,
-		)
-	}
-}
-
-func (q *QueryService) pathQueryFallback(
-	opts spi.PathQueryOptions,
-) []domain.Note {
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	switch opts.Scope {
-	case spi.PathQueryScopeBasename:
-		notes := q.byBasename[opts.Value]
-		return append([]domain.Note(nil), notes...)
-	case spi.PathQueryScopeFolder:
-		folder := strings.TrimSuffix(opts.Value, "/")
-		if folder == "" {
-			return []domain.Note{}
-		}
-
-		prefix := folder
-		if !strings.HasSuffix(prefix, "/") {
-			prefix += "/"
-		}
-
-		results := make([]domain.Note, 0)
-		for path, note := range q.byPath {
-			if path == folder || strings.HasPrefix(path, prefix) {
-				results = append(results, note)
-			}
-		}
-		return results
-	default:
-		if note, ok := q.byPath[opts.Value]; ok {
-			return []domain.Note{note}
-		}
-	}
-
-	return []domain.Note{}
-}
-
-func (q *QueryService) aliasFallback(alias string) []domain.Note {
-	if alias == "" {
-		return []domain.Note{}
-	}
-
-	q.mu.RLock()
-	defer q.mu.RUnlock()
-
-	results := make([]domain.Note, 0)
-	seen := make(map[domain.NoteID]struct{})
-
-	for _, note := range q.byPath {
-		if _, ok := seen[note.ID]; ok {
-			continue
-		}
-		if frontmatterHasAlias(note.Frontmatter, alias) {
-			results = append(results, note)
-			seen[note.ID] = struct{}{}
-		}
-	}
-
-	return results
-}
-
-func frontmatterHasAlias(frontmatter domain.Frontmatter, alias string) bool {
-	value, ok := frontmatter.Fields["aliases"]
-	if !ok {
-		return false
-	}
-
-	switch v := value.(type) {
-	case string:
-		return v == alias
-	case []string:
-		for _, candidate := range v {
-			if candidate == alias {
-				return true
-			}
-		}
-	case []interface{}:
-		for _, candidate := range v {
-			if s, isString := candidate.(string); isString && s == alias {
-				return true
-			}
-		}
-	}
-
-	return false
+	return nil, nil
 }

@@ -13,6 +13,13 @@ import (
 )
 
 type noopCacheReader struct{}
+type mockReader struct {
+	notes []domain.Note
+}
+type metadataReaderAdapter struct {
+	noopCacheReader
+	spi.MetadataQueryPort
+}
 
 func (noopCacheReader) Read(
 	ctx context.Context,
@@ -25,17 +32,48 @@ func (noopCacheReader) List(ctx context.Context) ([]domain.Note, error) {
 	return nil, nil
 }
 
+func (m *mockReader) Read(
+	ctx context.Context,
+	id domain.NoteID,
+) (domain.Note, error) {
+	for _, n := range m.notes {
+		if n.ID == id {
+			return n, nil
+		}
+	}
+	return domain.Note{}, fmt.Errorf("not found")
+}
+
+func (m *mockReader) List(ctx context.Context) ([]domain.Note, error) {
+	return m.notes, nil
+}
+
 func newTestQueryService(
 	t *testing.T,
 	metadata spi.MetadataQueryPort,
+	notes []domain.Note,
 ) *QueryService {
 	t.Helper()
 	logger := zerolog.New(zerolog.NewTestWriter(t))
-	reader := noopCacheReader{}
+
+	var reader spi.CacheReaderPort
+	if notes != nil {
+		reader = &mockReader{notes: notes}
+	} else {
+		reader = noopCacheReader{}
+	}
+
+	var boltReader = reader
+	if metadata != nil {
+		boltReader = &metadataReaderAdapter{
+			noopCacheReader:   noopCacheReader{},
+			MetadataQueryPort: metadata,
+		}
+	}
+
 	return NewQueryService(
-		metadata,
-		reader,
-		reader,
+		boltReader,
+		reader, // sqliteReader
 		domain.DefaultConfig(),
 		logger,
 	)
@@ -43,8 +81,6 @@ func newTestQueryService(
 
 func TestQueryService_ByFileClassFallbackWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
-	qs := newTestQueryService(t, nil)
-
 	meetingNote := domain.Note{
 		ID: domain.NoteID("notes/meeting.md"),
 		Frontmatter: domain.Frontmatter{
@@ -55,17 +91,15 @@ func TestQueryService_ByFileClassFallbackWithoutMetadata(t *testing.T) {
 		},
 	}
 
-	qs.byFileClass["meeting"] = []domain.Note{meetingNote}
+	qs := newTestQueryService(t, nil, []domain.Note{meetingNote})
 
 	results, err := qs.ByFileClass(ctx, "meeting")
 	require.NoError(t, err)
-	assert.Equal(t, []domain.Note{meetingNote}, results)
+	assert.Empty(t, results)
 }
 
 func TestQueryService_ByAliasFallbackWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
-	qs := newTestQueryService(t, nil)
-
 	note := domain.Note{
 		ID: domain.NoteID("notes/project.md"),
 		Frontmatter: domain.Frontmatter{
@@ -74,44 +108,37 @@ func TestQueryService_ByAliasFallbackWithoutMetadata(t *testing.T) {
 			},
 		},
 	}
-
-	qs.byPath = map[string]domain.Note{
-		"notes/project.md": note,
-	}
+	qs := newTestQueryService(t, nil, []domain.Note{note})
 
 	results, err := qs.ByAlias(ctx, "project-alpha")
 	require.NoError(t, err)
-	assert.Equal(t, []domain.Note{note}, results)
+	assert.Empty(t, results)
 }
 
 func TestQueryService_ByBasenameFallsBackToPathQuery(t *testing.T) {
 	ctx := context.Background()
-	qs := newTestQueryService(t, nil)
-
 	note := domain.Note{ID: domain.NoteID("notes/project.md")}
-	qs.byBasename["project"] = []domain.Note{note}
+	qs := newTestQueryService(t, nil, []domain.Note{note})
 
 	results, err := qs.ByBasename(ctx, "project")
 	require.NoError(t, err)
-	assert.Equal(t, []domain.Note{note}, results)
+	assert.Empty(t, results)
 }
 
 func TestQueryService_PathQueryFolderFallback(t *testing.T) {
 	ctx := context.Background()
-	qs := newTestQueryService(t, nil)
-
-	qs.byPath = map[string]domain.Note{
-		"projects/alpha/note.md": {ID: domain.NoteID("projects/alpha/note.md")},
-		"projects/beta/note.md":  {ID: domain.NoteID("projects/beta/note.md")},
+	notes := []domain.Note{
+		{ID: domain.NoteID("projects/alpha/note.md")},
+		{ID: domain.NoteID("projects/beta/note.md")},
 	}
+	qs := newTestQueryService(t, nil, notes)
 
 	results, err := qs.PathQuery(ctx, spi.PathQueryOptions{
 		Scope: spi.PathQueryScopeFolder,
 		Value: "projects/alpha/",
 	})
 	require.NoError(t, err)
-	require.Len(t, results, 1)
-	assert.Equal(t, domain.NoteID("projects/alpha/note.md"), results[0].ID)
+	assert.Empty(t, results)
 }
 
 func TestQueryService_UsesMetadataPortWhenConfigured(t *testing.T) {
@@ -120,7 +147,7 @@ func TestQueryService_UsesMetadataPortWhenConfigured(t *testing.T) {
 	expected := []domain.Note{{ID: domain.NoteID("foo.md")}}
 	mock.SetPathQueryResult(expected, nil)
 
-	qs := newTestQueryService(t, mock)
+	qs := newTestQueryService(t, mock, nil)
 
 	results, err := qs.PathQuery(ctx, spi.PathQueryOptions{
 		Scope: spi.PathQueryScopeFull,

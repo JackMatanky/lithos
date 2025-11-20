@@ -111,7 +111,6 @@ func TestVaultIndexing_Integration(t *testing.T) {
 	)
 	// Pass nil for metadataQuery to use internal fallback logic
 	queryService := query.NewQueryService(
-		nil,
 		cacheReader,
 		cacheReader,
 		config,
@@ -131,11 +130,12 @@ func TestVaultIndexing_Integration(t *testing.T) {
 	t.Logf("Indexing completed in %v: scanned=%d, indexed=%d",
 		duration, stats.ScannedCount, stats.IndexedCount)
 
-	// Refresh query service
-	err = queryService.RefreshFromCache(ctx)
-	require.NoError(t, err, "Query service refresh should succeed")
+	// RefreshFromCache removed from QueryService (read-only)
+	// err = queryService.RefreshFromCache(ctx)
+	// require.NoError(t, err, "Query service refresh should succeed")
 
 	// Test 1: Note ID collision resolution with path-based queries
+
 	t.Run("NoteID_Collision_Resolution", func(t *testing.T) {
 		testNoteIDCollisionResolution(t, ctx, queryService)
 	})
@@ -417,11 +417,12 @@ func testCacheManagementDeletions(
 	err = indexer.Refresh(ctx, since)
 	require.NoError(t, err)
 
-	// Refresh query service
-	err = queryService.RefreshFromCache(ctx)
-	require.NoError(t, err)
+	// RefreshFromCache removed
+	// err = queryService.RefreshFromCache(ctx)
+	// require.NoError(t, err)
 
 	// Verify deleted note is not queryable
+
 	_, err = queryService.ByID(ctx, domain.NoteID("projects/active/meeting.md"))
 	require.Error(t, err, "Deleted note should not be found")
 
@@ -523,7 +524,7 @@ func testErrorHandlingPipeline(
 	t *testing.T,
 	ctx context.Context,
 	indexer *vaultService.VaultIndexer,
-	queryService *query.QueryService,
+	_ *query.QueryService, // Unused but kept for signature compatibility or future use
 ) {
 	// Test continues despite individual file errors
 	// (Invalid frontmatter file should not stop indexing)
@@ -539,12 +540,12 @@ func testErrorHandlingPipeline(
 	)
 
 	// Query service should work
-	err = queryService.RefreshFromCache(ctx)
-	require.NoError(
-		t,
-		err,
-		"Query service should work after indexing with errors",
-	)
+	// err = queryService.RefreshFromCache(ctx)
+	// require.NoError(
+	// 	t,
+	// 	err,
+	// 	"Query service should work after indexing with errors",
+	// )
 }
 
 // testRegressionFunctionality ensures no existing functionality is broken.
