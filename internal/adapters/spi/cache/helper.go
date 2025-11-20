@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 )
@@ -60,4 +61,22 @@ func decodeNoteIDFromFilename(filename string) (domain.NoteID, bool) {
 // mkdir -p semantics. Permissions default to 0o750 (rwxr-x---).
 func EnsureCacheDir(cacheDir string) error {
 	return os.MkdirAll(cacheDir, cacheDirPerms)
+}
+
+// ExtractFileModTime extracts the file modification time from frontmatter
+// fields.
+// Looks for common field names like "file_mod_time", "modified", "updated".
+// Falls back to current time if not found.
+func ExtractFileModTime(fields map[string]interface{}) time.Time {
+	if modTime, ok := fields["file_mod_time"].(time.Time); ok {
+		return modTime
+	}
+	if modTime, ok := fields["modified"].(time.Time); ok {
+		return modTime
+	}
+	if modTime, ok := fields["updated"].(time.Time); ok {
+		return modTime
+	}
+	// Fallback to current time
+	return time.Now()
 }

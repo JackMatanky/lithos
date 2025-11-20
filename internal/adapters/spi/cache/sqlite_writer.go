@@ -175,7 +175,7 @@ func extractSQLiteNoteMetadata(
 	metadata["frontmatter"] = string(frontmatterJSON)
 
 	// Extract file_mod_time from frontmatter fields
-	metadata["file_mod_time"] = extractFileModTime(note.Frontmatter.Fields)
+	metadata["file_mod_time"] = ExtractFileModTime(note.Frontmatter.Fields)
 
 	return metadata, nil
 }

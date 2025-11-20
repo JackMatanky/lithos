@@ -1242,18 +1242,41 @@ func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, cont
 
 ### BoltDBReaderAdapter
 
-**Responsibility:** Implement hot-path queries for `MetadataQueryPort` using BoltDB embedded key-value store. Provides sub-millisecond query performance (<1ms) for Basename/Alias/FileClass/Path selectors backed by dedicated buckets.
+**Responsibility:** Implement `CacheReaderPort` (CQRS read-side) and `MetadataQueryPort` (hot-path queries) using BoltDB embedded key-value store. Provides sub-millisecond query performance (<1ms) for common lookups and staleness detection.
 
 **Key Interfaces:**
 
-- `ByBasename(ctx context.Context, basename string) ([]domain.Note, error)` - Resolve duplicate filenames via `/indices/byBasename`.
-- `ByAlias(ctx context.Context, alias string) ([]domain.Note, error)` - Resolve aliases via `/indices/byAlias`.
-- `ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)` - Resolve schema membership via `/indices/byFileClass`.
-- `PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)` - Handle full path (primary `/notes/` bucket), basename (delegates to `ByBasename`), or folder lookups (optional `/indices/byFolder` or prefix scans).
+- `Read(ctx, id)` - Retrieve single note (CacheReaderPort)
+- `List(ctx)` - List all notes (CacheReaderPort)
+- `ByBasename(ctx, basename)` - Index lookup via `/indices/byBasename`
+- `ByAlias(ctx, alias)` - Index lookup via `/indices/byAlias`
+- `ByFileClass(ctx, fileClass)` - Index lookup via `/indices/byFileClass`
+- `PathQuery(ctx, opts)` - Flexible lookup (full/basename/folder) via dedicated indices
+- `IsStale(ctx, path)` - Check filesystem mod time vs cached `IndexedAt` timestamp
 
-**Dependencies:** `go.etcd.io/bbolt`, Config (cache directory for BoltDB file), Logger.
+**Dependencies:** `go.etcd.io/bbolt`, Config (cache directory), Logger.
 
-**Technology Stack:** BoltDB embedded database, secondary index buckets (`indices:by_basename`, `indices:by_alias`, `indices:by_fileclass`, optional folder listings), bucket-per-note for hot cache, cursor-based iteration for index queries, zero-copy reads via memory-mapped files.
+**Technology Stack:** BoltDB buckets (`notes` for primary data, `indices/*` for secondary indexes), zero-copy reads via memory mapping, `FileDatesDTO` for staleness tracking.
+
+### BoltDBWriterAdapter
+
+**Responsibility:** Implement `CacheWriterPort` (CQRS write-side) with transactional persistence to BoltDB. Maintains primary data and all secondary indices atomically.
+
+**Key Interfaces:**
+
+- `Persist(ctx, note)` - Writes `CachedNote` (including `FileDatesDTO`) and updates all secondary indices in a single transaction.
+- `Delete(ctx, id)` - Removes note from primary bucket and cleans up indices (TODO: full cleanup).
+
+**Dependencies:** `go.etcd.io/bbolt`, Config, Logger.
+
+**Bucket Schema:**
+
+- `/notes/`: Path -> CachedNote (Primary storage)
+- `/indices/`:
+  - `byBasename`: Basename -> []Path
+  - `byAlias`: Alias -> []Path
+  - `byFileClass`: FileClass -> []Path
+  - `byFolder`: Folder -> []Path
 
 **Implementation Pattern:**
 
