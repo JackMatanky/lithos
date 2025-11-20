@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/rs/zerolog"
@@ -34,7 +35,7 @@ func TestSQLiteWriterAdapter_Persist(t *testing.T) {
 	ctx := context.Background()
 
 	// Test Persist
-	err = writer.Persist(ctx, note)
+	err = writer.Persist(ctx, note, time.Now())
 	require.NoError(t, err)
 
 	// Verify directly in DB
@@ -74,7 +75,7 @@ func TestSQLiteWriterAdapter_Delete(t *testing.T) {
 	note := domain.NewNote(noteID, fm)
 
 	ctx := context.Background()
-	err = writer.Persist(ctx, note)
+	err = writer.Persist(ctx, note, time.Now())
 	require.NoError(t, err)
 
 	// Test Delete

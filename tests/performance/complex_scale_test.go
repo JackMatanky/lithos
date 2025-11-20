@@ -119,8 +119,15 @@ contact:
 	logger := zerolog.New(zerolog.NewTestWriter(t)).With().Timestamp().Logger()
 
 	vaultReader := vaultAdapter.NewVaultReaderAdapter(config, logger)
-	cacheWriter := cache.NewJSONCacheWriter(config, logger)
-	cacheReader := cache.NewJSONCacheReader(config, logger)
+	boltCacheDir := filepath.Join(cacheDir, "bolt")
+	sqliteCacheDir := filepath.Join(cacheDir, "sqlite")
+	boltConfig := domain.Config{CacheDir: boltCacheDir}
+	sqliteConfig := domain.Config{CacheDir: sqliteCacheDir}
+
+	boltWriter := cache.NewJSONCacheWriter(boltConfig, logger)
+	sqliteWriter := cache.NewJSONCacheWriter(sqliteConfig, logger)
+
+	cacheReader := cache.NewJSONCacheReader(boltConfig, logger)
 
 	schemaLoader := schemaadapter.NewSchemaLoaderAdapter(&config, &logger)
 	schemaRegistry := schemaadapter.NewSchemaRegistryAdapter(logger)
@@ -140,7 +147,8 @@ contact:
 
 	indexer := vaultService.NewVaultIndexer(
 		vaultReader,
-		cacheWriter,
+		boltWriter,
+		sqliteWriter,
 		cacheReader,
 		markdownParser,
 		frontmatterService,

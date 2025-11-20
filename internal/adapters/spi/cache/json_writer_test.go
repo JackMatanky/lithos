@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -141,7 +142,7 @@ func TestPersist(t *testing.T) {
 			}
 
 			// Execute Persist
-			err := adapter.Persist(context.Background(), tt.note)
+			err := adapter.Persist(context.Background(), tt.note, time.Now())
 
 			// Assert error expectation
 			if tt.wantErr {

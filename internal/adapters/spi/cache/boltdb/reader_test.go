@@ -92,10 +92,13 @@ func TestBoltDBCacheReadAdapter_NewBoltDBCacheReadAdapter(t *testing.T) {
 	}
 	log := zerolog.New(zerolog.NewTestWriter(t))
 
-	// First create a writer to set up the database
-	writer, err := NewBoltDBCacheWriter(config, log)
+	db, err := Open(config)
 	require.NoError(t, err)
-	_ = writer.Close()
+	defer func() { _ = db.Close() }()
+
+	// First create a writer to set up the database
+	_, err = NewBoltDBCacheWriter(config, log, db)
+	require.NoError(t, err)
 
 	tests := []struct {
 		name    string
@@ -110,19 +113,11 @@ func TestBoltDBCacheReadAdapter_NewBoltDBCacheReadAdapter(t *testing.T) {
 			},
 			wantErr: false,
 		},
-		{
-			name: "error - database doesn't exist",
-			config: domain.Config{
-				CacheDir:     "/nonexistent/path",
-				FileClassKey: "file_class",
-			},
-			wantErr: true,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adapter, adapterErr := NewBoltDBCacheReadAdapter(tt.config, log)
+			adapter, adapterErr := NewBoltDBCacheReadAdapter(tt.config, log, db)
 
 			if tt.wantErr {
 				require.Error(t, adapterErr)
@@ -151,14 +146,17 @@ func TestBoltDBCacheReadAdapter_Read(t *testing.T) {
 	}
 	log := zerolog.New(zerolog.NewTestWriter(t))
 
+	db, err := Open(config)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
 	// Setup test data
-	writer, err := NewBoltDBCacheWriter(config, log)
+	writer, err := NewBoltDBCacheWriter(config, log, db)
 	require.NoError(t, err)
 	setupBoltDBTestData(t, writer.db)
-	_ = writer.Close()
 
 	// Create reader
-	reader, err := NewBoltDBCacheReadAdapter(config, log)
+	reader, err := NewBoltDBCacheReadAdapter(config, log, db)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
@@ -242,14 +240,17 @@ func TestBoltDBCacheReadAdapter_List(t *testing.T) {
 	}
 	log := zerolog.New(zerolog.NewTestWriter(t))
 
+	db, err := Open(config)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
 	// Setup test data
-	writer, err := NewBoltDBCacheWriter(config, log)
+	writer, err := NewBoltDBCacheWriter(config, log, db)
 	require.NoError(t, err)
 	setupBoltDBTestData(t, writer.db)
-	_ = writer.Close()
 
 	// Create reader
-	reader, err := NewBoltDBCacheReadAdapter(config, log)
+	reader, err := NewBoltDBCacheReadAdapter(config, log, db)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
@@ -284,13 +285,18 @@ func TestBoltDBCacheReadAdapter_List(t *testing.T) {
 			FileClassKey: "file_class",
 		}
 
-		emptyWriter, emptyWriterErr := NewBoltDBCacheWriter(emptyConfig, log)
+		emptyDB, openErr := Open(emptyConfig)
+		require.NoError(t, openErr)
+		defer func() { _ = emptyDB.Close() }()
+
+		_, emptyWriterErr := NewBoltDBCacheWriter(emptyConfig, log, emptyDB)
 		require.NoError(t, emptyWriterErr)
-		_ = emptyWriter.Close()
+		// No cleanup needed for writer
 
 		emptyReader, emptyReaderErr := NewBoltDBCacheReadAdapter(
 			emptyConfig,
 			log,
+			emptyDB,
 		)
 		require.NoError(t, emptyReaderErr)
 		defer func() { _ = emptyReader.Close() }()
@@ -313,8 +319,12 @@ func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
 	}
 	log := zerolog.New(zerolog.NewTestWriter(t))
 
+	db, err := Open(config)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
 	// Create writer first to set up database and persist a note
-	writer, err := NewBoltDBCacheWriter(config, log)
+	writer, err := NewBoltDBCacheWriter(config, log, db)
 	require.NoError(t, err)
 
 	testNote := domain.Note{
@@ -328,62 +338,12 @@ func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
 		},
 	}
 
-	// Mock file existence by creating it in temp dir
-	// IsStale checks filesystem
-	// We need to create the file so os.Stat succeeds
-	// and we need to set its ModTime
-
-	// For testing, we can just create the file, but setting ModTime precisely
-	// is tricky cross-platform.
-	// Instead, we rely on NewFileDatesDTO setting IndexedAt = time.Now().
-	// If we create file -> persist (IndexedAt > ModTime) -> fresh.
-	// If we persist -> touch file (ModTime > IndexedAt) -> stale.
-
-	// 1. Create file
-	// filePath := cacheDir + "/test-note.md"
-	// Create file
-	// Note: Persist uses note.ID as path. IsStale uses path.
-	// writer.Persist extracts FileModTime from frontmatter? No, writer uses
-	// ExtractFileModTime which falls back to time.Now().
-	// BUT wait, writer.Persist calls ExtractFileModTime from fields.
-	// And writer.Persist also sets IndexedAt = time.Now().
-	// IsStale compares file's ACTUAL ModTime with IndexedAt.
-
-	// So if we want IsStale to work, we must have a file on disk.
-	// And cached.FileDates.IndexedAt must be >= file.ModTime for FRESH.
-
-	// We don't need to set file_mod_time in frontmatter for IsStale to work
-	// correctly,
-	// because IsStale uses cached.FileDates.IndexedAt vs actual file.ModTime.
-	// CachedNote stores ModifiedAt too (from fields), but IsStale also checks
-	// IndexedAt.
-
-	// Let's just ensure we persist AFTER creating the file.
-
-	// Create dummy file
-	// os.Create(filePath) ...
-	// We can't easily do that here without importing os.
-	// Assume setup logic or skip file creation if IsStale handles missing file?
-	// IsStale returns true if file missing.
-
-	// We will just test the missing file case (Stale=true) and skip "fresh"
-	// test which requires FS setup,
-	// OR we import os/os.
-
-	// Since I can't easily import os here without editing imports, I'll skip
-	// FS-dependent tests
-	// or assume I can add import. I'll add "os" to imports.
-
 	ctx := context.Background()
-	err = writer.Persist(ctx, testNote)
-	require.NoError(t, err)
-
-	// Close writer
-	err = writer.Close()
+	err = writer.Persist(ctx, testNote, time.Now())
 	require.NoError(t, err)
 
 	// Create reader
-	reader, err := NewBoltDBCacheReadAdapter(config, log)
+	reader, err := NewBoltDBCacheReadAdapter(config, log, db)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
@@ -411,13 +371,16 @@ func TestBoltDBCacheReadAdapter_Close(t *testing.T) {
 	}
 	log := zerolog.New(zerolog.NewTestWriter(t))
 
-	// Create writer first to set up database
-	writer, err := NewBoltDBCacheWriter(config, log)
+	db, err := Open(config)
 	require.NoError(t, err)
-	_ = writer.Close()
+	defer func() { _ = db.Close() }()
+
+	// Create writer first to set up database
+	_, err = NewBoltDBCacheWriter(config, log, db)
+	require.NoError(t, err)
 
 	// Create reader
-	reader, err := NewBoltDBCacheReadAdapter(config, log)
+	reader, err := NewBoltDBCacheReadAdapter(config, log, db)
 	require.NoError(t, err)
 
 	// Verify database is open

@@ -2,6 +2,7 @@ package spi
 
 import (
 	"context"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 )
@@ -87,7 +88,7 @@ type CacheWriterPort interface {
 	// Thread-safe: Safe for concurrent calls.
 	// Context: Respects ctx cancellation, returns ctx.Err() if canceled.
 	// Errors: Wrapped with operation context and resource identifiers (FR9).
-	Persist(ctx context.Context, note domain.Note) error
+	Persist(ctx context.Context, note domain.Note, indexTime time.Time) error
 
 	// Delete removes note from cache. Idempotent: returns nil if note doesn't
 	// exist. Returns error wrapped with operation context if deletion fails

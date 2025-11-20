@@ -198,8 +198,14 @@ This is a test note with frontmatter.
 	)
 
 	// Create cache adapters
-	cacheWriter := cache.NewJSONCacheWriter(*config, logger)
-	cacheReader := cache.NewJSONCacheReader(*config, logger)
+	boltCacheDir := filepath.Join(cacheDir, "bolt")
+	sqliteCacheDir := filepath.Join(cacheDir, "sqlite")
+	boltConfig := domain.Config{CacheDir: boltCacheDir}
+	sqliteConfig := domain.Config{CacheDir: sqliteCacheDir}
+
+	boltWriter := cache.NewJSONCacheWriter(boltConfig, logger)
+	sqliteWriter := cache.NewJSONCacheWriter(sqliteConfig, logger)
+	cacheReader := cache.NewJSONCacheReader(boltConfig, logger)
 
 	// Mock vault scanner
 	vaultScanner := &mockVaultScanner{vaultDir: vaultDir}
@@ -207,7 +213,8 @@ This is a test note with frontmatter.
 	// Create VaultIndexer
 	indexer := vault.NewVaultIndexer(
 		vaultScanner,
-		cacheWriter,
+		boltWriter,
+		sqliteWriter,
 		cacheReader,
 		markdownParser,
 		fmService,

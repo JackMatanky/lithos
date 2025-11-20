@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/rs/zerolog"
@@ -177,12 +178,12 @@ func TestSQLiteCacheWriteAdapter_Persist(t *testing.T) {
 			validateFunc: func(t *testing.T, adapter *SQLiteCacheWriteAdapter, note domain.Note) {
 				// First persist
 				ctx := context.Background()
-				persistErr := adapter.Persist(ctx, note)
+				persistErr := adapter.Persist(ctx, note, time.Now())
 				require.NoError(t, persistErr)
 
 				// Update and persist again
 				note.Frontmatter.Fields["title"] = testUpdatedTitle
-				persistErr = adapter.Persist(ctx, note)
+				persistErr = adapter.Persist(ctx, note, time.Now())
 				require.NoError(t, persistErr)
 
 				// Verify update
@@ -207,7 +208,7 @@ func TestSQLiteCacheWriteAdapter_Persist(t *testing.T) {
 			wantErr: false,
 			validateFunc: func(t *testing.T, adapter *SQLiteCacheWriteAdapter, note domain.Note) {
 				ctx := context.Background()
-				persistErr := adapter.Persist(ctx, note)
+				persistErr := adapter.Persist(ctx, note, time.Now())
 				require.NoError(t, persistErr)
 
 				var count int
@@ -225,7 +226,7 @@ func TestSQLiteCacheWriteAdapter_Persist(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			persistErr := adapter.Persist(ctx, tt.note)
+			persistErr := adapter.Persist(ctx, tt.note, time.Now())
 
 			if tt.wantErr {
 				require.Error(t, persistErr)
@@ -264,7 +265,7 @@ func TestSQLiteCacheWriteAdapter_Delete(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = adapter.Persist(ctx, note)
+	err = adapter.Persist(ctx, note, time.Now())
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -361,7 +362,7 @@ func TestSQLiteCacheWriteAdapter_Close(t *testing.T) {
 		},
 	}
 
-	err = adapter.Persist(ctx, note)
+	err = adapter.Persist(ctx, note, time.Now())
 	require.Error(t, err) // Should fail after close
 }
 
@@ -432,7 +433,11 @@ func Test_extractSQLiteNoteMetadata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			metadata, err := extractSQLiteNoteMetadata(tt.note, tt.fileClassKey)
+			metadata, err := extractSQLiteNoteMetadata(
+				tt.note,
+				tt.fileClassKey,
+				time.Now(),
+			)
 			require.NoError(t, err)
 			tt.checkFunc(t, metadata)
 		})
