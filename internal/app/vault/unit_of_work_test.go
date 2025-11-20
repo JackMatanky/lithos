@@ -87,11 +87,14 @@ func TestCacheUnitOfWork_Commit_Success(t *testing.T) {
 	}
 
 	err := uow.Commit(ctx)
-	if err == nil {
-		t.Error("Expected error, got nil")
+	if err != nil {
+		t.Errorf("Commit() error = %v, want nil", err)
 	}
 	if sqliteCalls != 1 {
 		t.Errorf("Expected 1 sqlite write, got %d", sqliteCalls)
+	}
+	if boltCalls != 1 {
+		t.Errorf("Expected 1 bolt write, got %d", boltCalls)
 	}
 }
 
