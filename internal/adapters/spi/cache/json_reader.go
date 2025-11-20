@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,6 +18,7 @@ import (
 // This ensures JSONCacheReadAdapter implements CacheReaderPort correctly.
 // Will fail to compile if the interface contract is not satisfied.
 var _ spi.CacheReaderPort = (*JSONCacheReadAdapter)(nil)
+var _ spi.MetadataQueryPort = (*JSONCacheReadAdapter)(nil)
 
 // JSONCacheReadAdapter implements CacheReaderPort for filesystem-based
 // note retrieval with unknown field preservation. It uses the CQRS read-side
@@ -278,4 +280,223 @@ func (a *JSONCacheReadAdapter) unmarshalNote(
 		Msg("cache read successful")
 
 	return note, nil
+}
+
+// ByBasename finds notes by filename without extension via O(n) scanning.
+func (a *JSONCacheReadAdapter) ByBasename(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	notes, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []domain.Note
+	for _, note := range notes {
+		// Extract basename from NoteID (path)
+		path := string(note.ID)
+		path = strings.ReplaceAll(path, "\\", "/")
+		base := filepath.Base(path)
+		if ext := filepath.Ext(base); ext != "" {
+			base = strings.TrimSuffix(base, ext)
+		}
+
+		if base == basename {
+			results = append(results, note)
+		}
+	}
+	return results, nil
+}
+
+// ByAlias finds notes by frontmatter alias values via O(n) scanning.
+func (a *JSONCacheReadAdapter) ByAlias(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	notes, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []domain.Note
+	for _, note := range notes {
+		if hasAlias(note.Frontmatter, alias) {
+			results = append(results, note)
+		}
+	}
+	return results, nil
+}
+
+// ByFileClass finds notes by schema fileClass value via O(n) scanning.
+func (a *JSONCacheReadAdapter) ByFileClass(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
+	notes, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []domain.Note
+	for _, note := range notes {
+		// Check fileClass field from frontmatter (mapped via config key in
+		// domain)
+		// But here we check the extracted FileClass field
+		if note.Frontmatter.FileClass == fileClass {
+			results = append(results, note)
+		}
+	}
+	return results, nil
+}
+
+// PathQuery finds notes using a flexible path selector via O(n) scanning.
+func (a *JSONCacheReadAdapter) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+) ([]domain.Note, error) {
+	normalized, err := opts.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	notes, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []domain.Note
+	for _, note := range notes {
+		path := string(note.ID)
+		match := false
+
+		switch normalized.Scope {
+		case spi.PathQueryScopeFull:
+			match = path == normalized.Value
+		case spi.PathQueryScopeBasename:
+			base := filepath.Base(path)
+			if ext := filepath.Ext(base); ext != "" {
+				base = strings.TrimSuffix(base, ext)
+			}
+			match = base == normalized.Value
+		case spi.PathQueryScopeFolder:
+			match = strings.HasPrefix(path, normalized.Value)
+		}
+
+		if match {
+			results = append(results, note)
+		}
+	}
+	return results, nil
+}
+
+// TagQuery finds notes containing a specific tag via O(n) scanning.
+func (a *JSONCacheReadAdapter) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	notes, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []domain.Note
+	for _, note := range notes {
+		// Check tags field
+		if tags, ok := note.Frontmatter.Fields["tags"]; ok {
+			if containsTag(tags, tag) {
+				results = append(results, note)
+			}
+		}
+	}
+	return results, nil
+}
+
+// FrontmatterQuery finds notes where a specific frontmatter field matches a
+// value via O(n) scanning.
+func (a *JSONCacheReadAdapter) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	notes, err := a.List(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []domain.Note
+	for _, note := range notes {
+		if val, ok := note.Frontmatter.Fields[field]; ok {
+			// Simple string comparison for now
+			if fmt.Sprintf("%v", val) == value {
+				results = append(results, note)
+			}
+		}
+	}
+	return results, nil
+}
+
+// Helpers
+
+func hasAlias(fm domain.Frontmatter, alias string) bool {
+	val, ok := fm.Fields["aliases"]
+	if !ok {
+		return false
+	}
+	switch v := val.(type) {
+	case string:
+		return v == alias
+	case []string:
+		for _, s := range v {
+			if s == alias {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, s := range v {
+			if str, valid := s.(string); valid && str == alias {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func containsTag(tags interface{}, tag string) bool {
+	switch v := tags.(type) {
+	case string:
+		return containsTagString(v, tag)
+	case []string:
+		return containsTagSlice(v, tag)
+	case []interface{}:
+		return containsTagInterface(v, tag)
+	}
+	return false
+}
+
+func containsTagString(v, tag string) bool {
+	parts := strings.Split(v, ",")
+	for _, p := range parts {
+		if strings.TrimSpace(p) == tag {
+			return true
+		}
+	}
+	return false
+}
+
+func containsTagSlice(v []string, tag string) bool {
+	for _, t := range v {
+		if t == tag {
+			return true
+		}
+	}
+	return false
+}
+
+func containsTagInterface(v []interface{}, tag string) bool {
+	for _, t := range v {
+		if str, ok := t.(string); ok && str == tag {
+			return true
+		}
+	}
+	return false
 }

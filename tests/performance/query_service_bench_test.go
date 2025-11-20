@@ -314,17 +314,13 @@ func newQueryServiceBench(b *testing.B, notes []domain.Note) queryServiceBench {
 	sqliteReader := &benchCacheReader{notes: notes}
 	boltReader := newBenchQueryReader(notes, config)
 	logger := zerolog.New(zerolog.NewTestWriter(b))
-	mockMetadataQuery := &mockMetadataQueryPort{}
 	qs := query.NewQueryService(
-		mockMetadataQuery,
 		boltReader,
 		sqliteReader,
 		config,
 		logger,
 	)
-	if err := qs.RefreshFromCache(context.Background()); err != nil {
-		b.Fatalf("RefreshFromCache failed: %v", err)
-	}
+	// RefreshFromCache removed
 	return queryServiceBench{qs: qs}
 }
 

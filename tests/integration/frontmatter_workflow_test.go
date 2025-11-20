@@ -19,14 +19,10 @@ import (
 	schemaengine "github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-// mockMetadataQueryPort provides a simple mock for MetadataQueryPort.
-type mockMetadataQueryPort struct{}
 
 // frontmatterTestEnv holds test environment state.
 type frontmatterTestEnv struct {
@@ -40,54 +36,6 @@ type frontmatterTestEnv struct {
 // mockVaultScanner implements VaultScannerPort for testing.
 type mockVaultScanner struct {
 	vaultDir string
-}
-
-// ByBasename implements MetadataQueryPort.ByBasename.
-func (m *mockMetadataQueryPort) ByBasename(
-	ctx context.Context,
-	basename string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// ByAlias implements MetadataQueryPort.ByAlias.
-func (m *mockMetadataQueryPort) ByAlias(
-	ctx context.Context,
-	alias string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// ByFileClass implements MetadataQueryPort.ByFileClass.
-func (m *mockMetadataQueryPort) ByFileClass(
-	ctx context.Context,
-	fileClass string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// PathQuery implements MetadataQueryPort.PathQuery.
-func (m *mockMetadataQueryPort) PathQuery(
-	ctx context.Context,
-	opts spi.PathQueryOptions,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// TagQuery implements MetadataQueryPort.TagQuery.
-func (m *mockMetadataQueryPort) TagQuery(
-	ctx context.Context,
-	tag string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// FrontmatterQuery implements MetadataQueryPort.FrontmatterQuery.
-func (m *mockMetadataQueryPort) FrontmatterQuery(
-	ctx context.Context,
-	field, value string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
 }
 
 // setupFrontmatterTestEnvironment creates a test environment with
@@ -224,9 +172,7 @@ This is a test note with frontmatter.
 	)
 
 	// Create QueryService
-	mockMetadataQuery := &mockMetadataQueryPort{}
 	queryService := query.NewQueryService(
-		mockMetadataQuery,
 		cacheReader,
 		cacheReader,
 		*config,
@@ -234,6 +180,7 @@ This is a test note with frontmatter.
 	)
 
 	return &frontmatterTestEnv{
+
 		vaultDir:     vaultDir,
 		indexer:      indexer,
 		queryService: queryService,
@@ -316,11 +263,12 @@ func TestFrontmatterWorkflow(t *testing.T) {
 			"should have no validation failures",
 		)
 
-		// Step 2: Refresh query service from cache
-		err = env.queryService.RefreshFromCache(ctx)
-		require.NoError(t, err)
+		// Step 2: RefreshFromCache removed (QueryService is read-only)
+		// err = env.queryService.RefreshFromCache(ctx)
+		// require.NoError(t, err)
 
 		// Step 3: Query by frontmatter fields
+
 		notes, err := env.queryService.ByFrontmatter(
 			ctx,
 			"author",
@@ -395,11 +343,12 @@ This is performance test note %d.
 			"should index all notes",
 		)
 
-		// Refresh query service
-		err = env.queryService.RefreshFromCache(ctx)
-		require.NoError(t, err)
+		// RefreshFromCache removed
+		// err = env.queryService.RefreshFromCache(ctx)
+		// require.NoError(t, err)
 
 		// Benchmark frontmatter query performance - AC10: <10% overhead vs
+
 		// baseline query time
 		start := time.Now()
 		for range 100 {
