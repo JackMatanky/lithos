@@ -332,7 +332,7 @@ func testNoteIDCollisionResolution(
 	queryService *query.QueryService,
 ) {
 	// Test that all "meeting.md" files have unique NoteIDs
-	meetingNotes, err := queryService.ByBasename(ctx, "meeting")
+	meetingNotes, err := queryService.BasenameQuery(ctx, "meeting")
 	require.NoError(t, err)
 	assert.Len(t, meetingNotes, 5, "Should find 5 meeting.md files")
 
@@ -362,7 +362,7 @@ func testNoteIDCollisionResolution(
 
 	// Test individual queries work
 	for _, id := range expectedIDs {
-		foundNote, queryErr := queryService.ByID(ctx, id)
+		foundNote, queryErr := queryService.IDQuery(ctx, id)
 		require.NoError(t, queryErr, "Should find note with ID %s", id)
 		assert.Equal(t, id, foundNote.ID)
 	}
@@ -384,10 +384,10 @@ func testMemoryEfficientScanning(
 	assert.FileExists(t, largeFilePath)
 
 	// Verify markdown files are still indexed by checking specific files
-	_, err := queryService.ByPath(ctx, "templates/note-template.md")
+	_, err := queryService.PathQuerySingle(ctx, "templates/note-template.md")
 	require.NoError(t, err, "Should index markdown template files")
 
-	_, err = queryService.ByPath(ctx, "ideas/brainstorm/plain.md")
+	_, err = queryService.PathQuerySingle(ctx, "ideas/brainstorm/plain.md")
 	assert.NoError(t, err, "Should index plain markdown files")
 }
 
@@ -401,7 +401,7 @@ func testCacheManagementDeletions(
 	vaultDir, cacheDir string,
 ) {
 	// First, verify initial state
-	_, err := queryService.ByPath(ctx, "projects/active/meeting.md")
+	_, err := queryService.PathQuerySingle(ctx, "projects/active/meeting.md")
 	require.NoError(t, err, "File should exist initially")
 
 	// Delete a file from vault
@@ -423,7 +423,10 @@ func testCacheManagementDeletions(
 
 	// Verify deleted note is not queryable
 
-	_, err = queryService.ByID(ctx, domain.NoteID("projects/active/meeting.md"))
+	_, err = queryService.IDQuery(
+		ctx,
+		domain.NoteID("projects/active/meeting.md"),
+	)
 	require.Error(t, err, "Deleted note should not be found")
 
 	// Verify cache file is removed
@@ -441,8 +444,8 @@ func testQueryLayerComprehensive(
 	ctx context.Context,
 	queryService *query.QueryService,
 ) {
-	// Test ByBasename with multiple results
-	meetingNotes, err := queryService.ByBasename(ctx, "meeting")
+	// Test BasenameQuery with multiple results
+	meetingNotes, err := queryService.BasenameQuery(ctx, "meeting")
 	require.NoError(t, err)
 	assert.Len(
 		t,
@@ -451,8 +454,8 @@ func testQueryLayerComprehensive(
 		"Should find 4 remaining meeting.md files",
 	) // One was deleted
 
-	// Test ByFileClass (will be empty since no frontmatter processing)
-	meetingClassNotes, err := queryService.ByFileClass(ctx, "meeting_note")
+	// Test FileClassQuery (will be empty since no frontmatter processing)
+	meetingClassNotes, err := queryService.FileClassQuery(ctx, "meeting_note")
 	require.NoError(t, err)
 	assert.Empty(
 		t,
@@ -460,12 +463,12 @@ func testQueryLayerComprehensive(
 		"Should find no meeting_note files (no frontmatter processing)",
 	)
 
-	// Test ByPath for specific files
-	_, err = queryService.ByPath(ctx, "projects/archive/meeting.md")
+	// Test PathQuery for specific files
+	_, err = queryService.PathQuerySingle(ctx, "projects/archive/meeting.md")
 	require.NoError(t, err, "Should find notes by path")
 
-	// Test ByFrontmatter (will be empty since no frontmatter processing)
-	templateNotes, err := queryService.ByFrontmatter(
+	// Test FrontmatterQuery (will be empty since no frontmatter processing)
+	templateNotes, err := queryService.FrontmatterQuery(
 		ctx,
 		"fileClass",
 		"meeting_note",
@@ -477,7 +480,7 @@ func testQueryLayerComprehensive(
 		"Should find no notes by frontmatter (no frontmatter processing)",
 	)
 
-	// Verify no duplicates in ByBasename results
+	// Verify no duplicates in BasenameQuery results
 	noteIDs := make(map[domain.NoteID]bool)
 	for _, note := range meetingNotes {
 		assert.False(t, noteIDs[note.ID], "NoteID %s should be unique", note.ID)
@@ -555,11 +558,11 @@ func testRegressionFunctionality(
 	queryService *query.QueryService,
 ) {
 	// Test basic query functionality still works - check specific known files
-	_, err := queryService.ByPath(ctx, "templates/note-template.md")
+	_, err := queryService.PathQuerySingle(ctx, "templates/note-template.md")
 	require.NoError(t, err, "Should find template file")
 
 	// Test file class queries still work (empty results expected)
-	notes, err := queryService.ByFileClass(ctx, "meeting_note")
+	notes, err := queryService.FileClassQuery(ctx, "meeting_note")
 	require.NoError(t, err)
 	assert.Empty(
 		t,
@@ -568,10 +571,10 @@ func testRegressionFunctionality(
 	)
 
 	// Test basename queries still work
-	_, err = queryService.ByBasename(ctx, "template")
+	_, err = queryService.BasenameQuery(ctx, "template")
 	require.NoError(t, err)
 
-	// Test ByPath queries still work
-	_, err = queryService.ByPath(ctx, "templates/meeting-template.md")
+	// Test PathQuery queries still work
+	_, err = queryService.PathQuerySingle(ctx, "templates/meeting-template.md")
 	require.NoError(t, err, "Path queries should work")
 }

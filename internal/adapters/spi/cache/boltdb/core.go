@@ -20,14 +20,14 @@ const (
 	// BucketIndices is the parent bucket for secondary indices.
 	BucketIndices = "indices"
 
-	// BucketIndexByBasename is the secondary index: Basename -> []Path.
-	BucketIndexByBasename = "byBasename"
+	// BucketIndexBasenameQuery is the secondary index: Basename -> []Path.
+	BucketIndexBasenameQuery = "byBasename"
 
-	// BucketIndexByAlias is the secondary index: Alias -> []Path.
-	BucketIndexByAlias = "byAlias"
+	// BucketIndexAliasQuery is the secondary index: Alias -> []Path.
+	BucketIndexAliasQuery = "byAlias"
 
-	// BucketIndexByFileClass is the secondary index: FileClass -> []Path.
-	BucketIndexByFileClass = "byFileClass"
+	// BucketIndexFileClassQuery is the secondary index: FileClass -> []Path.
+	BucketIndexFileClassQuery = "byFileClass"
 
 	// BucketIndexByFolder is the secondary index: Folder -> []Path (for
 	// folder-scoped PathQuery).

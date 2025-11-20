@@ -461,11 +461,11 @@ type operation struct {
 
 **Key Interfaces:**
 
-- `ByPath(ctx context.Context, path string) (Note, error)` - Retrieve note by vault-relative path (hot path: BoltDB)
-- `ByFileClass(ctx context.Context, fileClass string) ([]Note, error)` - Find notes by fileClass (hot path if common class, deep path if rare)
-- `ByTag(ctx context.Context, tag string) ([]Note, error)` - Find notes by tag using indexed lookup (delegates to MetadataQueryPort)
-- `ByLink(ctx context.Context, targetPath string) ([]Note, error)` - Find notes linking to target (delegates to MetadataQueryPort deep path)
-- `ByFrontmatterField(ctx context.Context, field string, value any) ([]Note, error)` - Generic frontmatter field query (delegates to MetadataQueryPort)
+- `PathQuery(ctx context.Context, path string) (Note, error)` - Retrieve note by vault-relative path (hot path: BoltDB)
+- `FileClassQuery(ctx context.Context, fileClass string) ([]Note, error)` - Find notes by fileClass (hot path if common class, deep path if rare)
+- `TagQuery(ctx context.Context, tag string) ([]Note, error)` - Find notes by tag using indexed lookup (delegates to MetadataQueryPort)
+- `LinkQuery(ctx context.Context, targetPath string) ([]Note, error)` - Find notes linking to target (delegates to MetadataQueryPort deep path)
+- `FrontmatterFieldQuery(ctx context.Context, field string, value any) ([]Note, error)` - Generic frontmatter field query (delegates to MetadataQueryPort)
 
 **Dependencies:** CacheReaderPort (BoltDB hot cache), MetadataQueryPort (SQLite deep storage with indexed queries), Logger.
 
@@ -474,7 +474,7 @@ type operation struct {
 **Query Routing Strategy:**
 
 ```go
-func (s *QueryService) ByFileClass(ctx context.Context, fileClass string) ([]Note, error) {
+func (s *QueryService) FileClassQuery(ctx context.Context, fileClass string) ([]Note, error) {
     // Hot path: Common fileClass queries served by BoltDB
     if s.isHotFileClass(fileClass) {
         return s.boltReader.FileClassQuery(ctx, fileClass)
@@ -924,9 +924,9 @@ return note, nil
 
 **Key Interfaces:**
 
-- `ByBasename(ctx context.Context, basename string) ([]domain.Note, error)` - Find notes by filename (no extension) with duplicate handling.
-- `ByAlias(ctx context.Context, alias string) ([]domain.Note, error)` - Resolve notes that publish a specific alias in frontmatter.
-- `ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)` - Group notes by schema for validation and template lookups.
+- `BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error)` - Find notes by filename (no extension) with duplicate handling.
+- `AliasQuery(ctx context.Context, alias string) ([]domain.Note, error)` - Resolve notes that publish a specific alias in frontmatter.
+- `FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)` - Group notes by schema for validation and template lookups.
 - `PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)` - Resolve notes by full path, basename, or folder scope using a single method.
 
 **PathQueryOptions:**
@@ -949,7 +949,7 @@ Adapters validate the options (Value required, Scope defaults to `full`) and ret
 **Query Routing Strategy:**
 
 ```go
-// Hot path (<1ms): BoltDB serves ByBasename, ByAlias, ByFileClass, and PathQuery scopes
+// Hot path (<1ms): BoltDB serves BasenameQuery, AliasQuery, FileClassQuery, and PathQuery scopes
 // Deep path (<50ms): Future SQLite adapter can implement PathQuery(folder) using JSON views
 ```
 
@@ -1269,9 +1269,9 @@ func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, cont
 
 - `Read(ctx, id)` - Retrieve single note (CacheReaderPort)
 - `List(ctx)` - List all notes (CacheReaderPort)
-- `ByBasename(ctx, basename)` - Index lookup via `/indices/byBasename`
-- `ByAlias(ctx, alias)` - Index lookup via `/indices/byAlias`
-- `ByFileClass(ctx, fileClass)` - Index lookup via `/indices/byFileClass`
+- `BasenameQuery(ctx, basename)` - Index lookup via `/indices/byBasename`
+- `AliasQuery(ctx, alias)` - Index lookup via `/indices/byAlias`
+- `FileClassQuery(ctx, fileClass)` - Index lookup via `/indices/byFileClass`
 - `PathQuery(ctx, opts)` - Flexible lookup (full/basename/folder) via dedicated indices
 - `IsStale(ctx, path)` - Check filesystem mod time vs cached `IndexedAt` timestamp
 
@@ -1279,7 +1279,7 @@ func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, cont
 
 **Technology Stack:** BoltDB buckets (`notes` for primary data, `indices/*` for secondary indexes), zero-copy reads via memory mapping, `FileDatesDTO` for staleness tracking.
 
-**Performance Notes:** Benchmark target remains <1 ms for ByPath/ByBasename/ByAlias queries (Story 3.20 Feature 15). Capture actual numbers via the BoltDB benchmark suite and record them in the Story change log.
+**Performance Notes:** Benchmark target remains <1 ms for PathQuery/BasenameQuery/AliasQuery queries (Story 3.20 Feature 15). Capture actual numbers via the BoltDB benchmark suite and record them in the Story change log.
 
 ### BoltDBWriterAdapter
 
@@ -1309,22 +1309,8 @@ type BoltDBReaderAdapter struct {
     log Logger
 }
 
-func (a *BoltDBReaderAdapter) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
-    var notePaths []string
-
-    err := a.db.View(func(tx *bolt.Tx) error {
-        bucket := tx.Bucket([]byte("indices:by_basename"))
-        cursor := bucket.Cursor()
-        prefix := []byte(basename + ":")
-        for k, v := cursor.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = cursor.Next() {
-            notePaths = append(notePaths, string(v))
-        }
-        return nil
-    })
-    if err != nil {
-        return nil, err
-    }
-    return a.batchGetByPaths(ctx, notePaths)
+func (a *BoltDBReaderAdapter) BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error) {
+    return a.lookupIndex(ctx, BucketIndexBasenameQuery, basename)
 }
 
 func (a *BoltDBReaderAdapter) PathQuery(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error) {
@@ -1334,18 +1320,19 @@ func (a *BoltDBReaderAdapter) PathQuery(ctx context.Context, opts spi.PathQueryO
     }
     switch normalized.Scope {
     case spi.PathQueryScopeFull:
-        note, err := a.readByPath(ctx, normalized.Value)
+        id := domain.NewNoteID(normalized.Value)
+        note, err := a.Read(ctx, id)
         if err != nil {
+            if errors.Is(err, lithosErr.ErrNotFound) {
+                return []domain.Note{}, nil
+            }
             return nil, err
-        }
-        if note.ID == "" {
-            return []domain.Note{}, nil
         }
         return []domain.Note{note}, nil
     case spi.PathQueryScopeBasename:
-        return a.ByBasename(ctx, normalized.Value)
+        return a.BasenameQuery(ctx, normalized.Value)
     case spi.PathQueryScopeFolder:
-        return a.listFolder(ctx, normalized.Value)
+        return a.lookupIndex(ctx, BucketIndexByFolder, normalized.Value)
     default:
         return nil, fmt.Errorf("unsupported path scope %s", normalized.Scope)
     }

@@ -15,7 +15,7 @@ top_issues:
   - id: 'TEST-002'
     severity: medium
     finding: 'Missing test coverage for type-agnostic frontmatter queries (AC4: int 2 matches float 2.0)'
-    suggested_action: 'Add unit test for ByFrontmatter with numeric type normalization'
+    suggested_action: 'Add unit test for FrontmatterQuery with numeric type normalization'
 
 quality_score: 75
 evidence:
@@ -43,7 +43,7 @@ recommendations:
   immediate:
     - action: 'Fix failing RefreshFromCache unit tests'
       refs: ['internal/app/query/service_test.go']
-    - action: 'Add test for type normalization in ByFrontmatter'
+    - action: 'Add test for type normalization in FrontmatterQuery'
       refs: ['internal/app/query/service_test.go']
   future:
     - action: 'Consider refactoring canonicalizeFrontmatterValue to reduce cyclomatic complexity'

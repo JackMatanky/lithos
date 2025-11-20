@@ -20,15 +20,15 @@ import (
 // Simple mock for MetadataQueryPort
 type mockMetadataQueryPort struct{}
 
-func (m *mockMetadataQueryPort) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
+func (m *mockMetadataQueryPort) BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error) {
 	return []domain.Note{}, nil
 }
 
-func (m *mockMetadataQueryPort) ByAlias(ctx context.Context, alias string) ([]domain.Note, error) {
+func (m *mockMetadataQueryPort) AliasQuery(ctx context.Context, alias string) ([]domain.Note, error) {
 	return []domain.Note{}, nil
 }
 
-func (m *mockMetadataQueryPort) ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error) {
+func (m *mockMetadataQueryPort) FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error) {
 	return []domain.Note{}, nil
 }
 
@@ -90,11 +90,11 @@ func TestDuplicateBasenameHandling_Integration(t *testing.T) {
 	require.NoError(t, err, "Query service refresh should succeed")
 
 	// Verify unique NoteIDs
-	note1, err := queryService.ByID(ctx, domain.NoteID("projects/meeting.md"))
+	note1, err := queryService.IDQuery(ctx, domain.NoteID("projects/meeting.md"))
 	require.NoError(t, err, "Should find note with projects path")
 	assert.Equal(t, domain.NoteID("projects/meeting.md"), note1.ID)
 
-	note2, err := queryService.ByID(ctx, domain.NoteID("ideas/meeting.md"))
+	note2, err := queryService.IDQuery(ctx, domain.NoteID("ideas/meeting.md"))
 	require.NoError(t, err, "Should find note with ideas path")
 	assert.Equal(t, domain.NoteID("ideas/meeting.md"), note2.ID)
 
@@ -130,9 +130,9 @@ func TestDuplicateBasenameHandling_Integration(t *testing.T) {
 	)
 
 	// Verify byBasename returns both notes
-	notes, err := queryService.ByBasename(ctx, "meeting")
-	require.NoError(t, err, "ByBasename should succeed")
-	assert.Len(t, notes, 2, "ByBasename should return 2 notes for 'meeting'")
+	notes, err := queryService.BasenameQuery(ctx, "meeting")
+	require.NoError(t, err, "BasenameQuery should succeed")
+	assert.Len(t, notes, 2, "BasenameQuery should return 2 notes for 'meeting'")
 }
 
 // createDuplicateBasenameVault creates a test vault with files having identical

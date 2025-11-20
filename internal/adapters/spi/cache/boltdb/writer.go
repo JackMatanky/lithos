@@ -59,9 +59,9 @@ func NewBoltDBCacheWriter(
 
 		// Secondary index buckets
 		subBuckets := []string{
-			BucketIndexByBasename,
-			BucketIndexByAlias,
-			BucketIndexByFileClass,
+			BucketIndexBasenameQuery,
+			BucketIndexAliasQuery,
+			BucketIndexFileClassQuery,
 			BucketIndexByFolder,
 		}
 		for _, name := range subBuckets {
@@ -284,13 +284,13 @@ func (a *BoltDBCacheWriteAdapter) deleteFromSecondaryIndices(
 		return nil
 	}
 
-	// ByBasename
-	if err := deleteFromBucket(BucketIndexByBasename, extractBasename(cached.Path)); err != nil {
+	// BasenameQuery
+	if err := deleteFromBucket(BucketIndexBasenameQuery, extractBasename(cached.Path)); err != nil {
 		return err
 	}
 
-	// ByAlias
-	if aliasBucket := indicesBucket.Bucket([]byte(BucketIndexByAlias)); aliasBucket != nil {
+	// AliasQuery
+	if aliasBucket := indicesBucket.Bucket([]byte(BucketIndexAliasQuery)); aliasBucket != nil {
 		for _, alias := range cached.Aliases {
 			if err := removeFromIndex(aliasBucket, alias, cached.Path); err != nil {
 				return err
@@ -298,8 +298,8 @@ func (a *BoltDBCacheWriteAdapter) deleteFromSecondaryIndices(
 		}
 	}
 
-	// ByFileClass
-	if err := deleteFromBucket(BucketIndexByFileClass, cached.FileClass); err != nil {
+	// FileClassQuery
+	if err := deleteFromBucket(BucketIndexFileClassQuery, cached.FileClass); err != nil {
 		return err
 	}
 
@@ -329,7 +329,7 @@ func (a *BoltDBCacheWriteAdapter) persistNoteInTransaction(
 	indicesBucket := tx.Bucket([]byte(BucketIndices))
 
 	// 2. Update /indices/byBasename/
-	basenameBucket := indicesBucket.Bucket([]byte(BucketIndexByBasename))
+	basenameBucket := indicesBucket.Bucket([]byte(BucketIndexBasenameQuery))
 	basename := extractBasename(cached.Path)
 	// Index stores []Path for duplicates
 	if err := appendToIndex(basenameBucket, basename, cached.Path); err != nil {
@@ -337,7 +337,7 @@ func (a *BoltDBCacheWriteAdapter) persistNoteInTransaction(
 	}
 
 	// 3. Update /indices/byAlias/
-	aliasBucket := indicesBucket.Bucket([]byte(BucketIndexByAlias))
+	aliasBucket := indicesBucket.Bucket([]byte(BucketIndexAliasQuery))
 	for _, alias := range cached.Aliases {
 		if err := appendToIndex(aliasBucket, alias, cached.Path); err != nil {
 			return err
@@ -346,7 +346,7 @@ func (a *BoltDBCacheWriteAdapter) persistNoteInTransaction(
 
 	// 4. Update /indices/byFileClass/
 	if cached.FileClass != "" {
-		fcBucket := indicesBucket.Bucket([]byte(BucketIndexByFileClass))
+		fcBucket := indicesBucket.Bucket([]byte(BucketIndexFileClassQuery))
 		if err := appendToIndex(fcBucket, cached.FileClass, cached.Path); err != nil {
 			return err
 		}

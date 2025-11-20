@@ -80,7 +80,7 @@ func newTestQueryService(
 	)
 }
 
-func TestQueryService_ByFileClassFallbackWithoutMetadata(t *testing.T) {
+func TestQueryService_FileClassQueryFallbackWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
 	meetingNote := domain.Note{
 		ID: domain.NoteID("notes/meeting.md"),
@@ -94,12 +94,12 @@ func TestQueryService_ByFileClassFallbackWithoutMetadata(t *testing.T) {
 
 	qs := newTestQueryService(t, nil, []domain.Note{meetingNote})
 
-	results, err := qs.ByFileClass(ctx, "meeting")
+	results, err := qs.FileClassQuery(ctx, "meeting")
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }
 
-func TestQueryService_ByAliasFallbackWithoutMetadata(t *testing.T) {
+func TestQueryService_AliasQueryFallbackWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
 	note := domain.Note{
 		ID: domain.NoteID("notes/project.md"),
@@ -111,17 +111,17 @@ func TestQueryService_ByAliasFallbackWithoutMetadata(t *testing.T) {
 	}
 	qs := newTestQueryService(t, nil, []domain.Note{note})
 
-	results, err := qs.ByAlias(ctx, "project-alpha")
+	results, err := qs.AliasQuery(ctx, "project-alpha")
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }
 
-func TestQueryService_ByBasenameFallsBackToPathQuery(t *testing.T) {
+func TestQueryService_BasenameQueryFallsBackToPathQuery(t *testing.T) {
 	ctx := context.Background()
 	note := domain.Note{ID: domain.NoteID("notes/project.md")}
 	qs := newTestQueryService(t, nil, []domain.Note{note})
 
-	results, err := qs.ByBasename(ctx, "project")
+	results, err := qs.BasenameQuery(ctx, "project")
 	require.NoError(t, err)
 	assert.Empty(t, results)
 }

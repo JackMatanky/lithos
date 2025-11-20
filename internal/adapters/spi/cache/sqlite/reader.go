@@ -191,10 +191,10 @@ func (a *SQLiteReaderAdapter) TagQuery(
 	return a.executeListQuery(ctx, query, tag)
 }
 
-// ByFileClass finds notes by schema fileClass value.
+// FileClassQuery finds notes by schema fileClass value.
 // Uses schema-specific view if available, or base table with filter.
 // AC 15 says: "FileClassQuery uses schema-specific view (not base table)".
-func (a *SQLiteReaderAdapter) ByFileClass(
+func (a *SQLiteReaderAdapter) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
@@ -306,8 +306,8 @@ func (a *SQLiteReaderAdapter) FrontmatterQuery(
 	return results, err
 }
 
-// ByBasename finds notes by their filename without extension.
-func (a *SQLiteReaderAdapter) ByBasename(
+// BasenameQuery finds notes by their filename without extension.
+func (a *SQLiteReaderAdapter) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
@@ -320,8 +320,8 @@ func (a *SQLiteReaderAdapter) ByBasename(
 	)
 }
 
-// ByAlias finds notes by their alias.
-func (a *SQLiteReaderAdapter) ByAlias(
+// AliasQuery finds notes by their alias.
+func (a *SQLiteReaderAdapter) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {

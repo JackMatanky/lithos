@@ -79,20 +79,20 @@ func TestBoltDBCacheIntegration(t *testing.T) {
 	assert.Equal(t, "Alpha Project", note.Frontmatter.Fields["title"])
 
 	// Verify Metadata Queries
-	// ByFileClass
-	projectNotes, err := reader.ByFileClass(ctx, "project")
+	// FileClassQuery
+	projectNotes, err := reader.FileClassQuery(ctx, "project")
 	require.NoError(t, err)
 	assert.Len(t, projectNotes, 1)
 	assert.Equal(t, "notes/alpha.md", string(projectNotes[0].ID))
 
-	// ByAlias
-	aliasNotes, err := reader.ByAlias(ctx, "Project A")
+	// AliasQuery
+	aliasNotes, err := reader.AliasQuery(ctx, "Project A")
 	require.NoError(t, err)
 	assert.Len(t, aliasNotes, 1)
 	assert.Equal(t, "notes/alpha.md", string(aliasNotes[0].ID))
 
-	// ByBasename
-	basenameNotes, err := reader.ByBasename(ctx, "beta")
+	// BasenameQuery
+	basenameNotes, err := reader.BasenameQuery(ctx, "beta")
 	require.NoError(t, err)
 	assert.Len(t, basenameNotes, 1)
 	assert.Equal(t, "notes/beta.md", string(basenameNotes[0].ID))

@@ -237,8 +237,8 @@ func extractNoteIDFromPath(path string) domain.NoteID {
 	return domain.NoteID(strings.TrimSuffix(filename, ".json"))
 }
 
-// ByBasename finds notes by filename without extension via O(n) scanning.
-func (a *JSONCacheReadAdapter) ByBasename(
+// BasenameQuery finds notes by filename without extension via O(n) scanning.
+func (a *JSONCacheReadAdapter) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
@@ -264,8 +264,8 @@ func (a *JSONCacheReadAdapter) ByBasename(
 	return results, nil
 }
 
-// ByAlias finds notes by frontmatter alias values via O(n) scanning.
-func (a *JSONCacheReadAdapter) ByAlias(
+// AliasQuery finds notes by frontmatter alias values via O(n) scanning.
+func (a *JSONCacheReadAdapter) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
@@ -283,8 +283,8 @@ func (a *JSONCacheReadAdapter) ByAlias(
 	return results, nil
 }
 
-// ByFileClass finds notes by schema fileClass value via O(n) scanning.
-func (a *JSONCacheReadAdapter) ByFileClass(
+// FileClassQuery finds notes by schema fileClass value via O(n) scanning.
+func (a *JSONCacheReadAdapter) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {

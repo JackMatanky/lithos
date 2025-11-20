@@ -693,7 +693,7 @@ Three types of validation, same method name:
 
 - **Hybrid Storage Architecture Design**:
   - BoltDB (hot cache) vs SQLite (deep storage) - what belongs where?
-  - Query routing strategy: ByPath → BoltDB, ByFrontmatter → SQLite
+  - Query routing strategy: PathQuery → BoltDB, FrontmatterQuery → SQLite
   - Performance requirements: BoltDB <1ms, SQLite <50ms
 
 - **Cache vs Vault Source of Truth**:
@@ -4180,7 +4180,7 @@ func main() {
    ```go
    // Generic repository interface
    type Repository[T any] interface {
-       GetByID(id string) (*T, error)
+       IDQuery(id string) (*T, error)
        List(filter Filter) ([]*T, error)
        Save(entity *T) error
        Delete(id string) error
@@ -4191,13 +4191,13 @@ func main() {
        db *sql.DB
    }
 
-   func (r *NoteRepository) GetByID(id string) (*Note, error) {
+   func (r *NoteRepository) IDQuery(id string) (*Note, error) {
        // Implementation
    }
 
    // Usage
    var noteRepo Repository[Note] = &NoteRepository{db}
-   note, err := noteRepo.GetByID("note-123")
+   note, err := noteRepo.IDQuery("note-123")
    ```
 
 2. **Type Constraints - Built-in and Custom**:
@@ -4262,7 +4262,7 @@ func main() {
    }
 
    type Repository[T IDEntity] interface {
-       GetByID(id string) (*T, error)
+       IDQuery(id string) (*T, error)
        Save(entity *T) error
    }
 
@@ -4588,7 +4588,7 @@ func Add[T Number](a, b T) T {
 ```go
 // Generic repository interface
 type Repository[T Entity] interface {
-    GetByID(id string) (*T, error)
+    IDQuery(id string) (*T, error)
     List(filter Filter) ([]*T, error)
     Save(entity *T) error
     Delete(id string) error
@@ -4615,7 +4615,7 @@ type SQLiteRepository[T Entity] struct {
     db *sql.DB
 }
 
-func (r *SQLiteRepository[T]) GetByID(id string) (*T, error) {
+func (r *SQLiteRepository[T]) IDQuery(id string) (*T, error) {
     // Generic implementation
 }
 
@@ -4634,12 +4634,12 @@ var vaultRepo Repository[Vault] = &SQLiteRepository[Vault]{db}
 ```go
 // Separate interface per entity type
 type NoteRepository interface {
-    GetByID(id string) (*Note, error)
+    IDQuery(id string) (*Note, error)
     Save(note *Note) error
 }
 
 type VaultRepository interface {
-    GetByID(id string) (*Vault, error)
+    IDQuery(id string) (*Vault, error)
     Save(vault *Vault) error
 }
 ```
@@ -4652,7 +4652,7 @@ type VaultRepository interface {
 ```go
 // Domain: Specific ports (simple, explicit)
 type NoteRepository interface {
-    GetByID(id string) (*Note, error)
+    IDQuery(id string) (*Note, error)
     Save(note *Note) error
 }
 
@@ -4748,7 +4748,7 @@ interface FileStats {
 }
 
 // Usage:
-const file: TFile = app.vault.getAbstractFileByPath("note.md");
+const file: TFile = app.vault.getAbstractFilePathQuery("note.md");
 file.stat.mtime; // Modification timestamp
 file.stat.size; // File size
 ```
@@ -4808,7 +4808,7 @@ interface FrontMatterCache {
 
 ```typescript
 // File data (TFile) and cached metadata (CachedMetadata) are SEPARATE
-const file = app.vault.getAbstractFileByPath("note.md"); // File object
+const file = app.vault.getAbstractFilePathQuery("note.md"); // File object
 const metadata = app.metadataCache.getFileCache(file); // Cached metadata
 
 // File object does NOT contain frontmatter
@@ -4824,7 +4824,7 @@ class Vault {
   cachedRead(file: TFile): Promise<string>; // Read from cache (display only)
 
   // File lookup
-  getAbstractFileByPath(path: string): TAbstractFile | null;
+  getAbstractFilePathQuery(path: string): TAbstractFile | null;
   getMarkdownFiles(): TFile[]; // All markdown files
   getFiles(): TFile[]; // All files
 
@@ -7134,7 +7134,7 @@ func (a *GoldmarkParserAdapter) ParseFrontmatter(ctx context.Context, content []
 **Effort**: 5 points
 **Insert Location**: After 3.18
 
-**Description**: Implement BoltDB cache adapter using BoltDBMetadata (Story 3.17) for sub-millisecond hot path queries (ByPath, ByBasename, ByAlias).
+**Description**: Implement BoltDB cache adapter using BoltDBMetadata (Story 3.17) for sub-millisecond hot path queries (PathQuery, BasenameQuery, AliasQuery).
 
 **Acceptance Criteria**:
 
@@ -7336,7 +7336,7 @@ WHERE json_extract(frontmatter, '$.fileClass') = 'contact';
    ) *QueryService
    ```
 
-**Query Routing Strategy**: 2. ✅ Hot path (BoltDB): `ByPath()`, `ByBasename()`, `ByAlias()` → sub-millisecond 3. ✅ Deep path (SQLite): `ByFrontmatterField()`, complex queries → use MetadataQueryPort 4. ✅ Merger logic: Combine results from both stores with consistency validation 5. ✅ Consistency check: Verify BoltDB and SQLite ModTime match before returning
+**Query Routing Strategy**: 2. ✅ Hot path (BoltDB): `PathQuery()`, `BasenameQuery()`, `AliasQuery()` → sub-millisecond 3. ✅ Deep path (SQLite): `FrontmatterFieldQuery()`, complex queries → use MetadataQueryPort 4. ✅ Merger logic: Combine results from both stores with consistency validation 5. ✅ Consistency check: Verify BoltDB and SQLite ModTime match before returning
 
 **CQRS Compliance Fix**: 6. ✅ Remove `RefreshFromCache()` from QueryService (write operation in query service) 7. ✅ Move index rebuilding to new `IndexMaintenanceService` (command side) 8. ✅ QueryService is now **read-only** (true CQRS query side)
 

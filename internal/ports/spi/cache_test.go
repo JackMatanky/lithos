@@ -71,40 +71,40 @@ func (m *MockCacheReader) List(ctx context.Context) ([]domain.Note, error) {
 // Usage:
 //
 //	mock := NewMockMetadataQueryPort()
-//	mock.SetByBasenameResult([]domain.Note{note1, note2}, nil)
-//	mock.SetByAliasResult([]domain.Note{note3}, nil)
+//	mock.SetBasenameQueryResult([]domain.Note{note1, note2}, nil)
+//	mock.SetAliasQueryResult([]domain.Note{note3}, nil)
 //
 //	// Use in tests
 //	service := NewQueryService(mock, ...)
-//	notes, err := service.FindByBasename("test")
+//	notes, err := service.FindBasenameQuery("test")
 //
 //	// Assert calls
-//	assert.Equal(t, 1, mock.ByBasenameCallCount)
+//	assert.Equal(t, 1, mock.BasenameQueryCallCount)
 //
 // logical grouping.
 //
 //nolint:decorder // Test file - type defined after some test functions for
 type MockMetadataQueryPort struct {
 	// Function fields for method delegation
-	ByBasenameFunc       func(ctx context.Context, basename string) ([]domain.Note, error)
-	ByAliasFunc          func(ctx context.Context, alias string) ([]domain.Note, error)
-	ByFileClassFunc      func(ctx context.Context, fileClass string) ([]domain.Note, error)
+	BasenameQueryFunc    func(ctx context.Context, basename string) ([]domain.Note, error)
+	AliasQueryFunc       func(ctx context.Context, alias string) ([]domain.Note, error)
+	FileClassQueryFunc   func(ctx context.Context, fileClass string) ([]domain.Note, error)
 	PathQueryFunc        func(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)
 	TagQueryFunc         func(ctx context.Context, tag string) ([]domain.Note, error)
 	FrontmatterQueryFunc func(ctx context.Context, field, value string) ([]domain.Note, error)
 
 	// Call tracking for assertions
-	ByBasenameCallCount       int
-	ByAliasCallCount          int
-	ByFileClassCallCount      int
+	BasenameQueryCallCount    int
+	AliasQueryCallCount       int
+	FileClassQueryCallCount   int
 	PathQueryCallCount        int
 	TagQueryCallCount         int
 	FrontmatterQueryCallCount int
 
 	// Last call arguments for detailed assertions
-	LastByBasenameArg            string
-	LastByAliasArg               string
-	LastByFileClassArg           string
+	LastBasenameQueryArg         string
+	LastAliasQueryArg            string
+	LastFileClassQueryArg        string
 	LastPathQueryOpts            PathQueryOptions
 	LastTagQueryArg              string
 	LastFrontmatterQueryArgField string
@@ -117,13 +117,13 @@ type MockMetadataQueryPort struct {
 // Configure specific behavior using the Set*Result methods.
 func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 	return &MockMetadataQueryPort{
-		ByBasenameFunc: func(ctx context.Context, basename string) ([]domain.Note, error) {
+		BasenameQueryFunc: func(ctx context.Context, basename string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
-		ByAliasFunc: func(ctx context.Context, alias string) ([]domain.Note, error) {
+		AliasQueryFunc: func(ctx context.Context, alias string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
-		ByFileClassFunc: func(ctx context.Context, fileClass string) ([]domain.Note, error) {
+		FileClassQueryFunc: func(ctx context.Context, fileClass string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
 		PathQueryFunc: func(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error) {
@@ -135,15 +135,15 @@ func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 		FrontmatterQueryFunc: func(ctx context.Context, field, value string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
-		ByBasenameCallCount:          0,
-		ByAliasCallCount:             0,
-		ByFileClassCallCount:         0,
+		BasenameQueryCallCount:       0,
+		AliasQueryCallCount:          0,
+		FileClassQueryCallCount:      0,
 		PathQueryCallCount:           0,
 		TagQueryCallCount:            0,
 		FrontmatterQueryCallCount:    0,
-		LastByBasenameArg:            "",
-		LastByAliasArg:               "",
-		LastByFileClassArg:           "",
+		LastBasenameQueryArg:         "",
+		LastAliasQueryArg:            "",
+		LastFileClassQueryArg:        "",
 		LastPathQueryOpts:            PathQueryOptions{Value: "", Scope: ""},
 		LastTagQueryArg:              "",
 		LastFrontmatterQueryArgField: "",
@@ -151,35 +151,36 @@ func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 	}
 }
 
-// SetByBasenameResult configures the mock to return the specified result for
-// ByBasename calls.
-func (m *MockMetadataQueryPort) SetByBasenameResult(
+// SetBasenameQueryResult configures the mock to return the specified result for
+// BasenameQuery calls.
+func (m *MockMetadataQueryPort) SetBasenameQueryResult(
 	notes []domain.Note,
 	err error,
 ) {
-	m.ByBasenameFunc = func(ctx context.Context, basename string) ([]domain.Note, error) {
+	m.BasenameQueryFunc = func(ctx context.Context, basename string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
 
-// SetByAliasResult configures the mock to return the specified result for
-// ByAlias calls.
-func (m *MockMetadataQueryPort) SetByAliasResult(
+// SetAliasQueryResult configures the mock to return the specified result for
+// AliasQuery calls.
+func (m *MockMetadataQueryPort) SetAliasQueryResult(
 	notes []domain.Note,
 	err error,
 ) {
-	m.ByAliasFunc = func(ctx context.Context, alias string) ([]domain.Note, error) {
+	m.AliasQueryFunc = func(ctx context.Context, alias string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
 
-// SetByFileClassResult configures the mock to return the specified result for
-// ByFileClass calls.
-func (m *MockMetadataQueryPort) SetByFileClassResult(
+// SetFileClassQueryResult configures the mock to return the specified result
+// for
+// FileClassQuery calls.
+func (m *MockMetadataQueryPort) SetFileClassQueryResult(
 	notes []domain.Note,
 	err error,
 ) {
-	m.ByFileClassFunc = func(ctx context.Context, fileClass string) ([]domain.Note, error) {
+	m.FileClassQueryFunc = func(ctx context.Context, fileClass string) ([]domain.Note, error) {
 		return notes, err
 	}
 }
@@ -218,34 +219,35 @@ func (m *MockMetadataQueryPort) SetFrontmatterQueryResult(
 	}
 }
 
-// ByBasename implements MetadataQueryPort.ByBasename with mock behavior.
-func (m *MockMetadataQueryPort) ByBasename(
+// BasenameQuery implements MetadataQueryPort.BasenameQuery with mock behavior.
+func (m *MockMetadataQueryPort) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
-	m.ByBasenameCallCount++
-	m.LastByBasenameArg = basename
-	return m.ByBasenameFunc(ctx, basename)
+	m.BasenameQueryCallCount++
+	m.LastBasenameQueryArg = basename
+	return m.BasenameQueryFunc(ctx, basename)
 }
 
-// ByAlias implements MetadataQueryPort.ByAlias with mock behavior.
-func (m *MockMetadataQueryPort) ByAlias(
+// AliasQuery implements MetadataQueryPort.AliasQuery with mock behavior.
+func (m *MockMetadataQueryPort) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
-	m.ByAliasCallCount++
-	m.LastByAliasArg = alias
-	return m.ByAliasFunc(ctx, alias)
+	m.AliasQueryCallCount++
+	m.LastAliasQueryArg = alias
+	return m.AliasQueryFunc(ctx, alias)
 }
 
-// ByFileClass implements MetadataQueryPort.ByFileClass with mock behavior.
-func (m *MockMetadataQueryPort) ByFileClass(
+// FileClassQuery implements MetadataQueryPort.FileClassQuery with mock
+// behavior.
+func (m *MockMetadataQueryPort) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
-	m.ByFileClassCallCount++
-	m.LastByFileClassArg = fileClass
-	return m.ByFileClassFunc(ctx, fileClass)
+	m.FileClassQueryCallCount++
+	m.LastFileClassQueryArg = fileClass
+	return m.FileClassQueryFunc(ctx, fileClass)
 }
 
 // PathQuery implements MetadataQueryPort.PathQuery with mock behavior.
@@ -283,15 +285,15 @@ func (m *MockMetadataQueryPort) FrontmatterQuery(
 // Reset resets all call tracking counters and last arguments.
 // Useful for testing multiple scenarios in the same test.
 func (m *MockMetadataQueryPort) Reset() {
-	m.ByBasenameCallCount = 0
-	m.ByAliasCallCount = 0
-	m.ByFileClassCallCount = 0
+	m.BasenameQueryCallCount = 0
+	m.AliasQueryCallCount = 0
+	m.FileClassQueryCallCount = 0
 	m.PathQueryCallCount = 0
 	m.TagQueryCallCount = 0
 	m.FrontmatterQueryCallCount = 0
-	m.LastByBasenameArg = ""
-	m.LastByAliasArg = ""
-	m.LastByFileClassArg = ""
+	m.LastBasenameQueryArg = ""
+	m.LastAliasQueryArg = ""
+	m.LastFileClassQueryArg = ""
 	m.LastPathQueryOpts = PathQueryOptions{Value: "", Scope: ""}
 	m.LastTagQueryArg = ""
 	m.LastFrontmatterQueryArgField = ""
@@ -303,8 +305,8 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	ctx := context.Background()
 	mock := NewMockMetadataQueryPort()
 
-	// Test ByBasename method signature and behavior
-	t.Run("ByBasename method contract", func(t *testing.T) {
+	// Test BasenameQuery method signature and behavior
+	t.Run("BasenameQuery method contract", func(t *testing.T) {
 		// Configure mock to return test data
 		testNotes := []domain.Note{
 			{
@@ -320,20 +322,20 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 				),
 			},
 		}
-		mock.SetByBasenameResult(testNotes, nil)
+		mock.SetBasenameQueryResult(testNotes, nil)
 
 		// Call method
-		result, err := mock.ByBasename(ctx, "test")
+		result, err := mock.BasenameQuery(ctx, "test")
 
 		// Verify contract
 		require.NoError(t, err)
 		assert.Equal(t, testNotes, result)
-		assert.Equal(t, 1, mock.ByBasenameCallCount)
-		assert.Equal(t, "test", mock.LastByBasenameArg)
+		assert.Equal(t, 1, mock.BasenameQueryCallCount)
+		assert.Equal(t, "test", mock.LastBasenameQueryArg)
 	})
 
-	// Test ByAlias method signature and behavior
-	t.Run("ByAlias method contract", func(t *testing.T) {
+	// Test AliasQuery method signature and behavior
+	t.Run("AliasQuery method contract", func(t *testing.T) {
 		testNotes := []domain.Note{
 			{
 				ID: "note1.md",
@@ -342,18 +344,18 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 				),
 			},
 		}
-		mock.SetByAliasResult(testNotes, nil)
+		mock.SetAliasQueryResult(testNotes, nil)
 
-		result, err := mock.ByAlias(ctx, "project-alpha")
+		result, err := mock.AliasQuery(ctx, "project-alpha")
 
 		require.NoError(t, err)
 		assert.Equal(t, testNotes, result)
-		assert.Equal(t, 1, mock.ByAliasCallCount)
-		assert.Equal(t, "project-alpha", mock.LastByAliasArg)
+		assert.Equal(t, 1, mock.AliasQueryCallCount)
+		assert.Equal(t, "project-alpha", mock.LastAliasQueryArg)
 	})
 
-	// Test ByFileClass method signature and behavior
-	t.Run("ByFileClass method contract", func(t *testing.T) {
+	// Test FileClassQuery method signature and behavior
+	t.Run("FileClassQuery method contract", func(t *testing.T) {
 		testNotes := []domain.Note{
 			{
 				ID: "meeting1.md",
@@ -368,14 +370,14 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 				),
 			},
 		}
-		mock.SetByFileClassResult(testNotes, nil)
+		mock.SetFileClassQueryResult(testNotes, nil)
 
-		result, err := mock.ByFileClass(ctx, "meeting")
+		result, err := mock.FileClassQuery(ctx, "meeting")
 
 		require.NoError(t, err)
 		assert.Equal(t, testNotes, result)
-		assert.Equal(t, 1, mock.ByFileClassCallCount)
-		assert.Equal(t, "meeting", mock.LastByFileClassArg)
+		assert.Equal(t, 1, mock.FileClassQueryCallCount)
+		assert.Equal(t, "meeting", mock.LastFileClassQueryArg)
 	})
 
 	// Test PathQuery method contract
@@ -402,25 +404,25 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	t.Run("empty results return empty slice not nil", func(t *testing.T) {
 		mock.Reset()
 		// Reset mock to default behavior (empty results)
-		mock.SetByBasenameResult([]domain.Note{}, nil)
-		mock.SetByAliasResult([]domain.Note{}, nil)
-		mock.SetByFileClassResult([]domain.Note{}, nil)
+		mock.SetBasenameQueryResult([]domain.Note{}, nil)
+		mock.SetAliasQueryResult([]domain.Note{}, nil)
+		mock.SetFileClassQueryResult([]domain.Note{}, nil)
 		mock.SetPathQueryResult([]domain.Note{}, nil)
 
-		// ByBasename with no matches
-		result, err := mock.ByBasename(ctx, "nonexistent")
+		// BasenameQuery with no matches
+		result, err := mock.BasenameQuery(ctx, "nonexistent")
 		require.NoError(t, err)
 		assert.NotNil(t, result) // Should be empty slice, not nil
 		assert.Empty(t, result)
 
-		// ByAlias with no matches
-		result, err = mock.ByAlias(ctx, "nonexistent")
+		// AliasQuery with no matches
+		result, err = mock.AliasQuery(ctx, "nonexistent")
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
 
-		// ByFileClass with no matches
-		result, err = mock.ByFileClass(ctx, "nonexistent")
+		// FileClassQuery with no matches
+		result, err = mock.FileClassQuery(ctx, "nonexistent")
 		require.NoError(t, err)
 		assert.NotNil(t, result)
 		assert.Empty(t, result)
@@ -440,21 +442,21 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 		cancelledCtx, cancel := context.WithCancel(ctx)
 		cancel() // Cancel immediately
 
-		mock.SetByBasenameResult(nil, context.Canceled)
+		mock.SetBasenameQueryResult(nil, context.Canceled)
 
-		_, err := mock.ByBasename(cancelledCtx, "test")
+		_, err := mock.BasenameQuery(cancelledCtx, "test")
 		assert.Equal(t, context.Canceled, err)
 	})
 
 	// Test call tracking reset
 	t.Run("call tracking reset functionality", func(t *testing.T) {
-		mock.ByBasenameCallCount = 5
-		mock.LastByBasenameArg = "old"
+		mock.BasenameQueryCallCount = 5
+		mock.LastBasenameQueryArg = "old"
 
 		mock.Reset()
 
-		assert.Equal(t, 0, mock.ByBasenameCallCount)
-		assert.Empty(t, mock.LastByBasenameArg)
+		assert.Equal(t, 0, mock.BasenameQueryCallCount)
+		assert.Empty(t, mock.LastBasenameQueryArg)
 	})
 }
 
@@ -465,17 +467,17 @@ func TestMockMetadataQueryPortDefaultBehavior(t *testing.T) {
 	mock := NewMockMetadataQueryPort()
 
 	// Default behavior should return empty slices and no errors
-	result, err := mock.ByBasename(ctx, "any")
+	result, err := mock.BasenameQuery(ctx, "any")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Empty(t, result)
 
-	result, err = mock.ByAlias(ctx, "any")
+	result, err = mock.AliasQuery(ctx, "any")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Empty(t, result)
 
-	result, err = mock.ByFileClass(ctx, "any")
+	result, err = mock.FileClassQuery(ctx, "any")
 	require.NoError(t, err)
 	assert.NotNil(t, result)
 	assert.Empty(t, result)

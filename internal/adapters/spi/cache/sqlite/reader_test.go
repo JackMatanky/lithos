@@ -51,7 +51,7 @@ func TestSQLiteReaderAdapter_Read(t *testing.T) {
 	assert.Equal(t, "Read Me", note.Frontmatter.Fields["title"])
 }
 
-func TestSQLiteReaderAdapter_ByFileClass(t *testing.T) {
+func TestSQLiteReaderAdapter_FileClassQuery(t *testing.T) {
 	tmpDir := t.TempDir()
 	config := domain.Config{CacheDir: tmpDir}
 	log := zerolog.Nop()
@@ -62,7 +62,7 @@ func TestSQLiteReaderAdapter_ByFileClass(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	// Create the view expected by ByFileClass
+	// Create the view expected by FileClassQuery
 	_, err = db.ExecContext(ctx, `
 		CREATE VIEW v_contact_notes AS
 		SELECT path, frontmatter, modified_at, indexed_time, size
@@ -98,7 +98,7 @@ func TestSQLiteReaderAdapter_ByFileClass(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
-	notes, err := reader.ByFileClass(ctx, "contact")
+	notes, err := reader.FileClassQuery(ctx, "contact")
 	require.NoError(t, err)
 	assert.Len(t, notes, 1)
 	assert.Equal(t, domain.NoteID("test/alice.md"), notes[0].ID)

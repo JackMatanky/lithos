@@ -222,34 +222,34 @@ type CacheReaderPort interface {
 }
 
 type MetadataQueryPort interface {
-	// ByBasename finds notes by filename without extension.
+	// BasenameQuery finds notes by filename without extension.
 	// This enables fast lookups for notes with the same base filename,
 	// which is common when notes have the same title but different paths.
 	//
 	// Parameters:
 	//   ctx: Context for cancellation and timeout control
-	// basename: Filename without extension (e.g., "meeting-notes" from
-	// "meeting-notes.md")
+	// 	 basename: Filename without extension (e.g., "meeting-notes" from
+	// 		"meeting-notes.md")
 	//
 	// Returns:
-	// []domain.Note: All notes with matching basename (empty slice if none
+	// 	 []domain.Note: All notes with matching basename (empty slice if none
 	// found)
 	//   error: Context cancellation or infrastructure errors
 	//
 	// Behavior:
 	//   - Returns all notes with matching basename (handles duplicates)
 	//   - Empty slice (not nil) when no matches found
-	// - Context cancellation returns context.Canceled or
-	// context.DeadlineExceeded
+	// 	 - Context cancellation returns context.Canceled or
+	// 	   context.DeadlineExceeded
 	//   - Infrastructure errors wrapped with meaningful context
 	//
 	// Example:
-	//   notes, err := port.ByBasename(ctx, "meeting-notes")
+	//   notes, err := port.BasenameQuery(ctx, "meeting-notes")
 	// // Returns all notes named "meeting-notes.md" across different
 	// directories
-	ByBasename(ctx context.Context, basename string) ([]domain.Note, error)
+	BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error)
 
-	// ByAlias finds notes by frontmatter alias values.
+	// AliasQuery finds notes by frontmatter alias values.
 	// Aliases enable multiple names to refer to the same note, supporting
 	// flexible note referencing and linking patterns.
 	//
@@ -271,11 +271,11 @@ type MetadataQueryPort interface {
 	//   - Infrastructure errors wrapped with meaningful context
 	//
 	// Example:
-	//   notes, err := port.ByAlias(ctx, "project-alpha")
+	//   notes, err := port.AliasQuery(ctx, "project-alpha")
 	//   // Returns all notes that have "project-alpha" in their aliases array
-	ByAlias(ctx context.Context, alias string) ([]domain.Note, error)
+	AliasQuery(ctx context.Context, alias string) ([]domain.Note, error)
 
-	// ByFileClass finds notes by schema fileClass value.
+	// FileClassQuery finds notes by schema fileClass value.
 	// FileClass determines which schema validates the note's frontmatter,
 	// enabling efficient grouping and validation of notes by type.
 	//
@@ -297,9 +297,9 @@ type MetadataQueryPort interface {
 	//   - Infrastructure errors wrapped with meaningful context
 	//
 	// Example:
-	//   notes, err := port.ByFileClass(ctx, "meeting")
+	//   notes, err := port.FileClassQuery(ctx, "meeting")
 	//   // Returns all notes with fileClass: "meeting" in frontmatter
-	ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)
+	FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)
 
 	// PathQuery finds notes using a flexible path selector. Callers supply
 	// PathQueryOptions to specify whether the lookup should match a full path,
@@ -346,8 +346,8 @@ type MetadataQueryPort interface {
 	//
 	// Parameters:
 	//   ctx: Context for cancellation
-	// field: The frontmatter field name (dot notation supported for nested
-	// fields)
+	// 	 field: The frontmatter field name (dot notation supported for nested
+	// 			fields)
 	//   value: The value to match (string representation)
 	//
 	// Returns:

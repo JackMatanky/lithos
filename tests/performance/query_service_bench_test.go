@@ -40,11 +40,11 @@ func BenchmarkQueryService_Performance(b *testing.B) {
 	bench := newQueryServiceBench(b, notes) // complexity reduced via helpers
 	ctx := context.Background()
 	b.Run(
-		"BoltDB_HotPath_ByFileClass",
+		"BoltDB_HotPath_FileClassQuery",
 		func(b *testing.B) { runBoltHotPath(b, bench, ctx) },
 	)
 	b.Run(
-		"SQLite_Complex_ByFrontmatter",
+		"SQLite_Complex_FrontmatterQuery",
 		func(b *testing.B) { runSQLiteFrontmatter(b, bench, ctx) },
 	)
 	b.Run(
@@ -58,22 +58,22 @@ func BenchmarkQueryService_BoltDBPerformance(b *testing.B) {
 	notes := generateNotes(1000, nil)
 	bench := newQueryServiceBench(b, notes) // isolates BoltDB hot path queries
 	ctx := context.Background()
-	b.Run("ByPath", func(b *testing.B) {
+	b.Run("PathQuery", func(b *testing.B) {
 		b.ResetTimer()
 		size := len(notes)
 		for i := range b.N {
 			path := fmt.Sprintf("note-%d.md", i%size)
-			if _, err := bench.qs.ByPath(ctx, path); err != nil {
+			if _, err := bench.qs.PathQuerySingle(ctx, path); err != nil {
 				b.Fatal(err)
 			}
 		}
 		assertDuration(b, time.Millisecond)
 	})
-	b.Run("ByFileClass", func(b *testing.B) {
+	b.Run("FileClassQuery", func(b *testing.B) {
 		b.ResetTimer()
 		for i := range b.N {
 			class := fmt.Sprintf("class-%d", i%10)
-			if _, err := bench.qs.ByFileClass(ctx, class); err != nil {
+			if _, err := bench.qs.FileClassQuery(ctx, class); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -86,11 +86,11 @@ func BenchmarkQueryService_SQLitePerformance(b *testing.B) {
 	notes := generateAuthorNotes(1000)
 	bench := newQueryServiceBench(b, notes) // isolates deep frontmatter queries
 	ctx := context.Background()
-	b.Run("ByFrontmatter", func(b *testing.B) {
+	b.Run("FrontmatterQuery", func(b *testing.B) {
 		b.ResetTimer()
 		for i := range b.N {
 			author := fmt.Sprintf("author-%d", i%50)
-			if _, err := bench.qs.ByFrontmatter(ctx, "author", author); err != nil {
+			if _, err := bench.qs.FrontmatterQuery(ctx, "author", author); err != nil {
 				b.Fatal(err)
 			}
 		}
@@ -110,16 +110,18 @@ func BenchmarkQueryService_EndToEndTemplateRendering(b *testing.B) {
 		classes := []string{"contact", "project", "meeting", "task", "note"}
 		clen := len(classes)
 		for i := range b.N {
-			if _, err := bench.qs.ByPath(ctx, fmt.Sprintf("templates/note-%d.md", i%size)); err != nil {
+			path := fmt.Sprintf("templates/note-%d.md", i%size)
+			if _, err := bench.qs.PathQuerySingle(ctx, path); err != nil {
 				b.Fatal(err)
 			}
-			if _, err := bench.qs.ByFileClass(ctx, classes[i%clen]); err != nil {
+			if _, err := bench.qs.FileClassQuery(ctx, classes[i%clen]); err != nil {
 				b.Fatal(err)
 			}
-			if _, err := bench.qs.ByFrontmatter(ctx, "author", fmt.Sprintf("author-%d", i%25)); err != nil {
+			authorValue := fmt.Sprintf("author-%d", i%25)
+			if _, err := bench.qs.FrontmatterQuery(ctx, "author", authorValue); err != nil {
 				b.Fatal(err)
 			}
-			if _, err := bench.qs.ByID(
+			if _, err := bench.qs.IDQuery(
 				ctx, domain.NoteID(fmt.Sprintf("template-note-%d.md", i%size)),
 			); err != nil {
 				b.Fatal(err)
@@ -137,7 +139,7 @@ func runBoltHotPath(
 ) {
 	b.ResetTimer()
 	for range b.N {
-		if _, err := bench.qs.ByFileClass(ctx, "contact"); err != nil {
+		if _, err := bench.qs.FileClassQuery(ctx, "contact"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -172,7 +174,7 @@ func (r *benchQueryReader) Read(
 	ctx context.Context,
 	id domain.NoteID,
 ) (domain.Note, error) {
-	return r.getByPathString(string(id))
+	return r.getPathQueryString(string(id))
 }
 
 // List returns all notes known to the query reader.
@@ -180,17 +182,20 @@ func (r *benchQueryReader) List(ctx context.Context) ([]domain.Note, error) {
 	return append([]domain.Note(nil), r.notes...), nil
 }
 
-// GetByPath returns a note by vault-relative path.
-func (r *benchQueryReader) GetByPath(
+// PathQuerySingle returns a note by vault-relative path.
+func (r *benchQueryReader) PathQuerySingle(
 	ctx context.Context,
 	path string,
 ) (domain.Note, error) {
-	return r.getByPathString(path)
+	return r.getPathQueryString(path)
 }
 
-// GetByFileClass returns notes belonging to a file class.
-func (r *benchQueryReader) GetByFileClass(ctx context.Context, fileClass string,
-	config domain.Config) ([]domain.Note, error) {
+// GetFileClassQuery returns notes belonging to a file class.
+func (r *benchQueryReader) GetFileClassQuery(
+	ctx context.Context,
+	fileClass string,
+	config domain.Config,
+) ([]domain.Note, error) {
 	return append([]domain.Note(nil), r.fileClassIndex[fileClass]...), nil
 }
 
@@ -200,8 +205,10 @@ func (r *benchQueryReader) FrontmatterQuery(ctx context.Context, key string,
 	return append([]domain.Note(nil), r.frontmatterIndex[key][value]...), nil
 }
 
-// getByPathString performs a path lookup in the in-memory index.
-func (r *benchQueryReader) getByPathString(path string) (domain.Note, error) {
+// getPathQueryString performs a path lookup in the in-memory index.
+func (r *benchQueryReader) getPathQueryString(
+	path string,
+) (domain.Note, error) {
 	note, ok := r.pathIndex[path]
 	if !ok {
 		return domain.Note{}, lithosErr.ErrNotFound
@@ -225,7 +232,7 @@ func runSQLiteFrontmatter(
 ) {
 	b.ResetTimer()
 	for range b.N {
-		if _, err := bench.qs.ByFrontmatter(ctx, "priority", 2); err != nil {
+		if _, err := bench.qs.FrontmatterQuery(ctx, "priority", 2); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -242,13 +249,13 @@ func runMixedWorkload(
 	b.ResetTimer()
 	size := len(notes)
 	for i := range b.N {
-		if _, err := bench.qs.ByFileClass(ctx, "project"); err != nil {
+		if _, err := bench.qs.FileClassQuery(ctx, "project"); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := bench.qs.ByFrontmatter(ctx, "priority", i%5); err != nil {
+		if _, err := bench.qs.FrontmatterQuery(ctx, "priority", i%5); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := bench.qs.ByID(ctx, domain.NoteID(fmt.Sprintf("note-%d.md", i%size))); err != nil {
+		if _, err := bench.qs.IDQuery(ctx, domain.NoteID(fmt.Sprintf("note-%d.md", i%size))); err != nil {
 			b.Fatal(err)
 		}
 	}

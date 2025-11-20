@@ -12,7 +12,7 @@ Ready for Implementation
 
 ## Acceptance Criteria
 
-1. `internal/app/query/service.go` implements `ByID`, `ByPath`, `ByFileClass`, `ByFrontmatter`, and `RefreshFromCache` exactly as described in `docs/architecture/components.md#queryservice`, using in-memory indices with `sync.RWMutex`.
+1. `internal/app/query/service.go` implements `IDQuery`, `PathQuery`, `FileClassQuery`, `FrontmatterQuery`, and `RefreshFromCache` exactly as described in `docs/architecture/components.md#queryservice`, using in-memory indices with `sync.RWMutex`.
 
 2. Query methods satisfy FR9 by supporting lookups by path, basename, and schema-defined keys; helpers return errors consistent with `error-handling-strategy.md`.
 
@@ -63,35 +63,35 @@ Ready for Implementation
 
 - [ ] Task 2: Implement query methods (AC: 1, 2)
    - [ ] RED: Write failing tests for all query methods
-     - [ ] Write test for ByID() returning note for existing NoteID
-     - [ ] Write test for ByID() returning ResourceError for missing NoteID
-     - [ ] Write test for ByPath() returning note for existing path
-     - [ ] Write test for ByPath() returning ResourceError for missing path
-     - [ ] Write test for ByFileClass() returning all notes matching schema
-     - [ ] Write test for ByFileClass() returning empty slice for non-matching schema
-     - [ ] Note: ByFrontmatter tests added in Story 3.8
+     - [ ] Write test for IDQuery() returning note for existing NoteID
+     - [ ] Write test for IDQuery() returning ResourceError for missing NoteID
+     - [ ] Write test for PathQuery() returning note for existing path
+     - [ ] Write test for PathQuery() returning ResourceError for missing path
+     - [ ] Write test for FileClassQuery() returning all notes matching schema
+     - [ ] Write test for FileClassQuery() returning empty slice for non-matching schema
+     - [ ] Note: FrontmatterQuery tests added in Story 3.8
 
     - [ ] Verify tests fail (methods not implemented)
     - [ ] Run `go test ./internal/app/query` and confirm failures
-  - [ ] GREEN: Implement ByID() method
+  - [ ] GREEN: Implement IDQuery() method
     - [ ] Acquire RLock for concurrent read access
     - [ ] Lookup note in byID map
     - [ ] Return ResourceError if not found
     - [ ] Log debug message with NoteID
     - [ ] Run `go test ./internal/app/query` and verify tests pass
-  - [ ] GREEN: Implement ByPath() method
+  - [ ] GREEN: Implement PathQuery() method
     - [ ] Acquire RLock for concurrent read access
     - [ ] Lookup note in byPath map
     - [ ] Return ResourceError if not found
     - [ ] Log debug message with path
     - [ ] Run `go test ./internal/app/query` and verify tests pass
-   - [ ] GREEN: Implement ByFileClass() method
+   - [ ] GREEN: Implement FileClassQuery() method
      - [ ] Acquire RLock for concurrent read access
      - [ ] Lookup notes in byFileClass map
      - [ ] Return empty slice if not found (not error)
      - [ ] Log debug message with fileClass and count
      - [ ] Run `go test ./internal/app/query` and verify tests pass
-   - [ ] Note: ByFrontmatter method implementation deferred to Story 3.8
+   - [ ] Note: FrontmatterQuery method implementation deferred to Story 3.8
 
   - [ ] REFACTOR:
     - [ ] Decompose into SRP components:
@@ -100,7 +100,7 @@ Ready for Implementation
       - [ ] Extract filterResults(notes []Note, filters map) for filtering logic
       - [ ] Extract sortResults(notes []Note) for result sorting (future)
       - [ ] Verify query methods use RLock consistently
-    - [ ] Review naming: ByID, ByPath, ByFileClass (clear query method names)
+    - [ ] Review naming: IDQuery, PathQuery, FileClassQuery (clear query method names)
      - [ ] Add comprehensive GoDoc comments:
        - [ ] Add GoDoc for each query method explaining parameters and return values
        - [ ] Document ResourceError vs empty slice return semantics
@@ -244,10 +244,10 @@ type QueryService struct {
 
 ### Query Methods
 
-**ByID - Lookup by NoteID:**
+**IDQuery - Lookup by NoteID:**
 
 ```go
-func (q *QueryService) ByID(ctx context.Context, id NoteID) (Note, error) {
+func (q *QueryService) IDQuery(ctx context.Context, id NoteID) (Note, error) {
     q.mu.RLock()
     defer q.mu.RUnlock()
 
@@ -261,10 +261,10 @@ func (q *QueryService) ByID(ctx context.Context, id NoteID) (Note, error) {
 }
 ```
 
-**ByPath - Lookup by file path:**
+**PathQuery - Lookup by file path:**
 
 ```go
-func (q *QueryService) ByPath(ctx context.Context, path string) (Note, error) {
+func (q *QueryService) PathQuery(ctx context.Context, path string) (Note, error) {
     q.mu.RLock()
     defer q.mu.RUnlock()
 
@@ -278,10 +278,10 @@ func (q *QueryService) ByPath(ctx context.Context, path string) (Note, error) {
 }
 ```
 
-**ByFileClass - Lookup by schema name:**
+**FileClassQuery - Lookup by schema name:**
 
 ```go
-func (q *QueryService) ByFileClass(ctx context.Context, fileClass string) ([]Note, error) {
+func (q *QueryService) FileClassQuery(ctx context.Context, fileClass string) ([]Note, error) {
     q.mu.RLock()
     defer q.mu.RUnlock()
 
@@ -295,7 +295,7 @@ func (q *QueryService) ByFileClass(ctx context.Context, fileClass string) ([]Not
 }
 ```
 
-**Note:** ByFrontmatter method for frontmatter field queries added in Story 3.8
+**Note:** FrontmatterQuery method for frontmatter field queries added in Story 3.8
 
 ### Index Management
 
@@ -348,11 +348,11 @@ From `docs/prd/requirements.md#fr9`:
 
 **Query Capabilities:**
 
-- Lookup by NoteID (ByID)
-- Lookup by file path (ByPath)
+- Lookup by NoteID (IDQuery)
+- Lookup by file path (PathQuery)
 - Lookup by basename for wikilinks (basename index)
-- Filter by schema (ByFileClass)
-- Note: Filter by frontmatter fields (ByFrontmatter) added in Story 3.8
+- Filter by schema (FileClassQuery)
+- Note: Filter by frontmatter fields (FrontmatterQuery) added in Story 3.8
 
 **Performance:**
 
@@ -381,7 +381,7 @@ From `docs/prd/requirements.md#fr9`:
 - Test each query method (found and not found cases)
 - Test RefreshFromCache with fake CacheReaderPort
 - Test concurrent reads (spin up 10 goroutines querying simultaneously)
-- Note: ByFrontmatter tests added in Story 3.8
+- Note: FrontmatterQuery tests added in Story 3.8
 
 **Thread-Safety Tests:**
 
@@ -394,7 +394,7 @@ func TestQueryService_ConcurrentReads(t *testing.T) {
         wg.Add(1)
         go func() {
             defer wg.Done()
-            _, _ = qs.ByFileClass(context.Background(), "contact")
+            _, _ = qs.FileClassQuery(context.Background(), "contact")
         }()
     }
 
@@ -424,8 +424,8 @@ For this story (QueryService), functions should be decomposed into focused helpe
 
 - `buildIndex()` - Initialize empty index maps (responsibility: index setup)
 - `queryIndex(key string, index map) (result, bool)` - Generic index lookup logic (responsibility: single index lookup)
-- Query methods (ByID, ByPath, ByFileClass) orchestrate these helpers with appropriate locking
-- Note: ByFrontmatter and filtering logic added in Story 3.8
+- Query methods (IDQuery, PathQuery, FileClassQuery) orchestrate these helpers with appropriate locking
+- Note: FrontmatterQuery and filtering logic added in Story 3.8
 
 **RefreshFromCache() Decomposition:**
 
@@ -439,7 +439,7 @@ For this story (QueryService), functions should be decomposed into focused helpe
 **When to Decompose:**
 
 - If any method exceeds 15 lines, consider extraction
-- If a method has >2 concerns, extract helpers (e.g., ByFrontmatter does iteration + filtering → extract filterResults)
+- If a method has >2 concerns, extract helpers (e.g., FrontmatterQuery does iteration + filtering → extract filterResults)
 - Extract index update logic for reuse (addToIndex used by both AddNote and RefreshFromCache)
 - QueryService methods should coordinate index operations, not implement low-level index manipulation
 
@@ -447,8 +447,8 @@ For this story (QueryService), functions should be decomposed into focused helpe
 
 - Exported types: PascalCase (QueryService)
 - Constructors: NewTypeName (NewQueryService)
-- Private helpers: camelCase (buildIndex, queryIndex, filterResults, sortResults, clearIndices, populateIndices, addToIndex, extractBasename, updateByID, updateByFileClass)
-- Methods: PascalCase for exported (ByID, ByPath, ByFileClass, ByFrontmatter, RefreshFromCache), camelCase for private (AddNote is package-private)
+- Private helpers: camelCase (buildIndex, queryIndex, filterResults, sortResults, clearIndices, populateIndices, addToIndex, extractBasename, updateIDQuery, updateFileClassQuery)
+- Methods: PascalCase for exported (IDQuery, PathQuery, FileClassQuery, FrontmatterQuery, RefreshFromCache), camelCase for private (AddNote is package-private)
 - Boolean helpers: matchesFilters (predicate function for filtering)
 
 **Documentation Requirements:**
@@ -465,9 +465,9 @@ For this story (QueryService), functions should be decomposed into focused helpe
 
 **Error Handling Patterns:**
 
-- Single result not found (ByID, ByPath): Return ResourceError with operation context
-- Collection not found (ByFileClass): Return empty slice, not error (idiomatic Go)
-- Note: ByFrontmatter error handling patterns added in Story 3.8
+- Single result not found (IDQuery, PathQuery): Return ResourceError with operation context
+- Collection not found (FileClassQuery): Return empty slice, not error (idiomatic Go)
+- Note: FrontmatterQuery error handling patterns added in Story 3.8
 - Cache read failure (RefreshFromCache): Return error immediately, abort rebuild
 - Thread-safety: RWMutex prevents data races, no explicit error handling needed for lock contention
 - Structured logging: Debug level for query operations (high frequency), Info for RefreshFromCache (infrequent)
@@ -475,7 +475,7 @@ For this story (QueryService), functions should be decomposed into focused helpe
 **Testing Decomposition:**
 
 - Each helper function should have dedicated unit tests
-- Test query methods: found and not found cases for ByID/ByPath, empty results for ByFileClass
+- Test query methods: found and not found cases for IDQuery/PathQuery, empty results for FileClassQuery
 - Test index management: RefreshFromCache rebuilds indices correctly
 - Test thread-safety: 100 concurrent goroutines querying simultaneously with `go test -race`
 - Use FakeCacheReaderPort for testing RefreshFromCache without cache dependency
@@ -487,7 +487,7 @@ For this story (QueryService), functions should be decomposed into focused helpe
 | ---------- | ------- | ------------------------------------------------------------------------ | ------------------ |
 | 2025-10-28 | 1.0     | Story created from Epic 3 requirements                                   | Bob (Scrum Master) |
 | 2025-10-29 | 1.1     | Enhanced with full TDD framework, SRP decomposition, linting checkpoints | QA Specialist      |
-| 2025-10-31 | 1.2     | Removed ByFrontmatter method references; focused on core query methods only | Sarah (PO)         |
+| 2025-10-31 | 1.2     | Removed FrontmatterQuery method references; focused on core query methods only | Sarah (PO)         |
 | 2025-10-31 | 1.3     | Removed AddNote method; index updates now handled by VaultIndexer calling RefreshFromCache | Sarah (PO)         |
 
 ## Dev Agent Record
@@ -504,7 +504,7 @@ N/A - No blocking issues encountered
 
 1. QueryService implements fast in-memory lookups with sync.RWMutex for thread-safety
 2. In-memory indices: byID (primary), byPath, byBasename, byFileClass
-3. Query methods: ByID, ByPath, ByFileClass with O(1) or O(log n) lookups
+3. Query methods: IDQuery, PathQuery, FileClassQuery with O(1) or O(log n) lookups
 4. Thread-safe design: Multiple concurrent reads via RLock, exclusive writes via Lock
 5. RefreshFromCache() rebuilds all indices from persistent cache
 6. RefreshFromCache() method for loading indices from persistent cache
@@ -514,7 +514,7 @@ N/A - No blocking issues encountered
 10. Unit tests: Index population, each query method, cache refresh, concurrent reads
 11. Thread-safety tests: 100 concurrent readers verify no race conditions
 12. Quality gates: All tests pass, linting clean, test coverage >90%, race detector clean
-13. Note: ByFrontmatter method and frontmatter field queries deferred to Story 3.8
+13. Note: FrontmatterQuery method and frontmatter field queries deferred to Story 3.8
 
 ### File List
 
@@ -542,12 +542,12 @@ N/A - No blocking issues encountered
 
 **Unit Tests - Query Methods:**
 
-- ✅ ByID() returns note for existing NoteID
-- ✅ ByID() returns ResourceError for missing NoteID
-- ✅ ByPath() returns note for existing path
-- ✅ ByPath() returns ResourceError for missing path
-- ✅ ByFileClass() returns all notes matching schema name
-- ✅ ByFileClass() returns empty slice for non-matching schema
+- ✅ IDQuery() returns note for existing NoteID
+- ✅ IDQuery() returns ResourceError for missing NoteID
+- ✅ PathQuery() returns note for existing path
+- ✅ PathQuery() returns ResourceError for missing path
+- ✅ FileClassQuery() returns all notes matching schema name
+- ✅ FileClassQuery() returns empty slice for non-matching schema
 
 **Unit Tests - Index Management:**
 
@@ -578,4 +578,4 @@ N/A - No blocking issues encountered
 4. **Cache Integration:** RefreshFromCache() syncs indices with persistent storage
 5. **Cache Integration:** RefreshFromCache() syncs indices with persistent storage
 6. **Error Handling:** ResourceError for missing entries, empty slices for no matches
-7. **Frontmatter Queries:** ByFrontmatter method deferred to Story 3.8
+7. **Frontmatter Queries:** FrontmatterQuery method deferred to Story 3.8
