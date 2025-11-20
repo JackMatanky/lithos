@@ -11,57 +11,68 @@ import (
 	"github.com/rs/zerolog"
 )
 
+// setupBenchmarkData creates and populates a SQLite cache with test data.
+func setupBenchmarkData(
+	b *testing.B,
+	config domain.Config,
+	log zerolog.Logger,
+) *sqlite.SQLiteWriterAdapter {
+	writer, writeErr := sqlite.NewSQLiteWriterAdapter(config, log)
+	if writeErr != nil {
+		b.Fatal(writeErr)
+	}
+
+	ctx := context.Background()
+	indexTime := time.Now()
+
+	// Create 1000 notes across multiple fileClass types for realistic testing
+	fileClasses := []string{
+		"contact",
+		"project",
+		"meeting",
+		"task",
+		"daily-note",
+	}
+	for i := range 1000 {
+		fileClass := fileClasses[i%len(fileClasses)]
+		note := createBenchmarkNote(i, fileClass)
+		if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
+			b.Fatal(persistErr)
+		}
+	}
+
+	return writer
+}
+
+// createBenchmarkNote creates a single benchmark note with varied data.
+func createBenchmarkNote(i int, fileClass string) domain.Note {
+	return domain.Note{
+		ID: domain.NewNoteID(fmt.Sprintf("bench/note-%d.md", i)),
+		Frontmatter: domain.Frontmatter{
+			FileClass: fileClass,
+			Fields: map[string]interface{}{
+				"title":     fmt.Sprintf("Benchmark Note %d", i),
+				"fileClass": fileClass,
+				"author": fmt.Sprintf(
+					"author-%d",
+					i%50,
+				), // 50 different authors
+				"priority": i % 5, // 5 priority levels
+				"status":   []string{"active", "inactive"}[i%2],
+				"tags":     []string{"work", "personal", "urgent"}[i%3 : i%3+1],
+			},
+		},
+	}
+}
+
 func BenchmarkSQLiteCache(b *testing.B) {
 	cacheDir := b.TempDir()
 	config := domain.Config{CacheDir: cacheDir, FileClassKey: "fileClass"}
 	log := zerolog.Nop()
 
 	// Pre-populate data with 1000+ notes for target performance testing
-	var writer *sqlite.SQLiteWriterAdapter
-	{
-		var writeErr error
-		writer, writeErr = sqlite.NewSQLiteWriterAdapter(config, log)
-		if writeErr != nil {
-			b.Fatal(writeErr)
-		}
-		defer func() { _ = writer.Close() }()
-
-		ctx := context.Background()
-		indexTime := time.Now()
-
-		// Create 1000 notes across multiple fileClass types for realistic
-		// testing
-		fileClasses := []string{
-			"contact",
-			"project",
-			"meeting",
-			"task",
-			"daily-note",
-		}
-		for i := range 1000 {
-			fileClass := fileClasses[i%len(fileClasses)]
-			note := domain.Note{
-				ID: domain.NewNoteID(fmt.Sprintf("bench/note-%d.md", i)),
-				Frontmatter: domain.Frontmatter{
-					FileClass: fileClass,
-					Fields: map[string]interface{}{
-						"title":     fmt.Sprintf("Benchmark Note %d", i),
-						"fileClass": fileClass,
-						"author": fmt.Sprintf(
-							"author-%d",
-							i%50,
-						), // 50 different authors
-						"priority": i % 5, // 5 priority levels
-						"status":   []string{"active", "inactive"}[i%2],
-						"tags":     []string{"work", "personal", "urgent"}[i%3 : i%3+1],
-					},
-				},
-			}
-			if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
-				b.Fatal(persistErr)
-			}
-		}
-	}
+	writer := setupBenchmarkData(b, config, log)
+	defer func() { _ = writer.Close() }()
 
 	b.Run("Read", func(b *testing.B) {
 		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log)

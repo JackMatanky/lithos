@@ -3,7 +3,6 @@ package integration
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -15,6 +14,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// floatPtr creates a pointer to a float64 value.
+func floatPtr(v float64) *float64 {
+	return &v
+}
 
 func TestSQLiteCacheIntegration(t *testing.T) {
 	if testing.Short() {
@@ -284,11 +288,440 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	assert.Equal(t, "Bob Jones", activeResults[0].Frontmatter.Fields["name"])
 }
 
+// setupTestSchemas creates the test schemas used across multiple tests.
+func setupTestSchemas() []domain.Schema {
+	return []domain.Schema{
+		{
+			Name: "contact",
+			Properties: []domain.Property{
+				{Name: "name", Spec: &domain.StringSpec{}},
+				{Name: "email", Spec: &domain.StringSpec{}},
+				{Name: "department", Spec: &domain.StringSpec{}},
+				{Name: "active", Spec: &domain.BoolSpec{}},
+			},
+		},
+		{
+			Name: "project",
+			Properties: []domain.Property{
+				{Name: "name", Spec: &domain.StringSpec{}},
+				{
+					Name: "priority",
+					Spec: &domain.StringSpec{
+						Enum: []string{"high", "medium", "low"},
+					},
+				},
+				{
+					Name: "progress",
+					Spec: &domain.NumberSpec{
+						Min: floatPtr(0),
+						Max: floatPtr(100),
+					},
+				},
+			},
+		},
+		{
+			Name: "meeting",
+			Properties: []domain.Property{
+				{Name: "title", Spec: &domain.StringSpec{}},
+				{Name: "date", Spec: &domain.DateSpec{}},
+				{Name: "attendees", Spec: &domain.StringSpec{}, Array: true},
+				{
+					Name: "duration",
+					Spec: &domain.NumberSpec{
+						Min: floatPtr(15),
+						Max: floatPtr(480),
+					},
+				},
+			},
+		},
+	}
+}
+
+// createTestNotes creates the diverse test dataset.
+func createTestNotes() []domain.Note {
+	return []domain.Note{
+		// Contact notes
+		{
+			ID: domain.NewNoteID("contacts/john-doe.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "contact",
+				Fields: map[string]interface{}{
+					"name":       "John Doe",
+					"email":      "john.doe@company.com",
+					"department": "Engineering",
+					"active":     true,
+				},
+			},
+		},
+		{
+			ID: domain.NewNoteID("contacts/jane-smith.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "contact",
+				Fields: map[string]interface{}{
+					"name":       "Jane Smith",
+					"email":      "jane.smith@company.com",
+					"department": "Marketing",
+					"active":     true,
+				},
+			},
+		},
+		{
+			ID: domain.NewNoteID("contacts/bob-johnson.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "contact",
+				Fields: map[string]interface{}{
+					"name":       "Bob Johnson",
+					"email":      "bob.johnson@company.com",
+					"department": "Engineering",
+					"active":     false,
+				},
+			},
+		},
+		// Project notes
+		{
+			ID: domain.NewNoteID("projects/alpha.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"name":     "Project Alpha",
+					"priority": "high",
+					"progress": 75,
+				},
+			},
+		},
+		{
+			ID: domain.NewNoteID("projects/beta.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"name":     "Project Beta",
+					"priority": "medium",
+					"progress": 45,
+				},
+			},
+		},
+		{
+			ID: domain.NewNoteID("projects/gamma.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"name":     "Project Gamma",
+					"priority": "low",
+					"progress": 10,
+				},
+			},
+		},
+		// Meeting notes
+		{
+			ID: domain.NewNoteID("meetings/standup.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "meeting",
+				Fields: map[string]interface{}{
+					"title":     "Daily Standup",
+					"date":      "2024-01-15",
+					"attendees": []interface{}{"john", "jane", "bob"},
+					"duration":  30,
+				},
+			},
+		},
+		{
+			ID: domain.NewNoteID("meetings/retrospective.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "meeting",
+				Fields: map[string]interface{}{
+					"title":     "Sprint Retrospective",
+					"date":      "2024-01-20",
+					"attendees": []interface{}{"john", "jane"},
+					"duration":  60,
+				},
+			},
+		},
+	}
+}
+
 // TestSQLiteMetadataQueryPortWithRealData tests MetadataQueryPort with diverse
 // datasets.
 func TestSQLiteMetadataQueryPortWithRealData(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
+	}
+
+	cacheDir := t.TempDir()
+	config := domain.Config{CacheDir: cacheDir}
+	log := zerolog.Nop()
+	ctx := context.Background()
+
+	// Initialize adapters
+	writer, err := sqlite.NewSQLiteWriterAdapter(config, log)
+	require.NoError(t, err)
+	defer func() { _ = writer.Close() }()
+
+	reader, err := sqlite.NewSQLiteReaderAdapter(config, log)
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
+
+	// Create a separate DB connection for view management
+	dbPath := filepath.Join(cacheDir, "cold.db")
+	db, dbErr := sql.Open("sqlite", dbPath)
+	require.NoError(t, dbErr)
+	defer func() { _ = db.Close() }()
+	_, walErr := db.ExecContext(ctx, "PRAGMA journal_mode=WAL;")
+	require.NoError(t, walErr)
+
+	// Setup schemas and data
+	schemas := setupTestSchemas()
+	notes := createTestNotes()
+
+	// Create views for all schemas
+	for _, schema := range schemas {
+		viewSQL, viewErr := sqlite.GenerateSchemaView(schema)
+		require.NoError(t, viewErr)
+		_, execErr := db.ExecContext(ctx, viewSQL)
+		require.NoError(t, execErr)
+	}
+
+	// Persist all notes
+	indexTime := time.Now()
+	for _, note := range notes {
+		persistErr := writer.Persist(ctx, note, indexTime)
+		require.NoError(t, persistErr)
+	}
+
+	// Test ByFileClass queries
+	testByFileClassQueries(t, ctx, reader)
+
+	// Test FrontmatterQuery with various data types
+	testFrontmatterQueries(t, ctx, reader)
+
+	// Test TagQuery with complex tag scenarios
+	testTagQueries(t, ctx, writer, reader, indexTime)
+
+	// Test PathQuery functionality
+	testPathQueries(t, ctx, reader)
+
+	// Verify data integrity and field extraction
+	testDataIntegrity(t, ctx, reader)
+}
+
+// testByFileClassQueries tests ByFileClass with different schemas.
+func testByFileClassQueries(
+	t *testing.T,
+	ctx context.Context,
+	reader *sqlite.SQLiteReaderAdapter,
+) {
+	contacts, err := reader.ByFileClass(ctx, "contact")
+	require.NoError(t, err)
+	assert.Len(t, contacts, 3)
+
+	projects, err := reader.ByFileClass(ctx, "project")
+	require.NoError(t, err)
+	assert.Len(t, projects, 3)
+
+	meetings, err := reader.ByFileClass(ctx, "meeting")
+	require.NoError(t, err)
+	assert.Len(t, meetings, 2)
+
+	// Test non-existent fileClass
+	empty, err := reader.ByFileClass(ctx, "nonexistent")
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}
+
+// testFrontmatterQueries tests FrontmatterQuery with various data types.
+func testFrontmatterQueries(
+	t *testing.T,
+	ctx context.Context,
+	reader *sqlite.SQLiteReaderAdapter,
+) {
+	// String queries
+	engineering, err := reader.FrontmatterQuery(
+		ctx,
+		"department",
+		"Engineering",
+	)
+	require.NoError(t, err)
+	assert.Len(t, engineering, 2)
+
+	marketing, err := reader.FrontmatterQuery(ctx, "department", "Marketing")
+	require.NoError(t, err)
+	assert.Len(t, marketing, 1)
+
+	// Boolean queries
+	active, err := reader.FrontmatterQuery(ctx, "active", "true")
+	require.NoError(t, err)
+	assert.Len(t, active, 2)
+
+	inactive, err := reader.FrontmatterQuery(ctx, "active", "false")
+	require.NoError(t, err)
+	assert.Len(t, inactive, 1)
+
+	// Number queries
+	highProgress, err := reader.FrontmatterQuery(ctx, "progress", "75")
+	require.NoError(t, err)
+	assert.Len(t, highProgress, 1)
+
+	// Enum queries
+	highPriority, err := reader.FrontmatterQuery(ctx, "priority", "high")
+	require.NoError(t, err)
+	assert.Len(t, highPriority, 1)
+}
+
+// testTagQueries tests TagQuery with complex tag scenarios.
+func testTagQueries(
+	t *testing.T,
+	ctx context.Context,
+	writer *sqlite.SQLiteWriterAdapter,
+	reader *sqlite.SQLiteReaderAdapter,
+	indexTime time.Time,
+) {
+	// Create notes with tags for testing
+	taggedNotes := []domain.Note{
+		{
+			ID: domain.NewNoteID("tagged/work-project.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"name":     "Work Project",
+					"priority": "high",
+					"tags":     []interface{}{"work", "urgent"},
+				},
+			},
+		},
+		{
+			ID: domain.NewNoteID("tagged/personal-note.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "meeting",
+				Fields: map[string]interface{}{
+					"title":     "Personal Meeting",
+					"date":      "2024-01-25",
+					"attendees": []interface{}{"self"},
+					"tags":      []interface{}{"personal", "planning"},
+				},
+			},
+		},
+	}
+
+	for _, note := range taggedNotes {
+		err := writer.Persist(ctx, note, indexTime)
+		require.NoError(t, err)
+	}
+
+	workNotes, err := reader.TagQuery(ctx, "work")
+	require.NoError(t, err)
+	assert.Len(t, workNotes, 1)
+
+	personalNotes, err := reader.TagQuery(ctx, "personal")
+	require.NoError(t, err)
+	assert.Len(t, personalNotes, 1)
+
+	urgentNotes, err := reader.TagQuery(ctx, "urgent")
+	require.NoError(t, err)
+	assert.Len(t, urgentNotes, 1)
+}
+
+// testPathQueries tests PathQuery functionality.
+func testPathQueries(
+	t *testing.T,
+	ctx context.Context,
+	reader *sqlite.SQLiteReaderAdapter,
+) {
+	// Test basename queries
+	contactsByBasename, err := reader.PathQuery(ctx, spi.PathQueryOptions{
+		Value: "doe",
+		Scope: spi.PathQueryScopeBasename,
+	})
+	require.NoError(t, err)
+	assert.Len(t, contactsByBasename, 1)
+
+	// Test folder queries
+	contactNotes, err := reader.PathQuery(ctx, spi.PathQueryOptions{
+		Value: "contacts",
+		Scope: spi.PathQueryScopeFolder,
+	})
+	require.NoError(t, err)
+	assert.Len(t, contactNotes, 3)
+
+	projectNotes, err := reader.PathQuery(ctx, spi.PathQueryOptions{
+		Value: "projects",
+		Scope: spi.PathQueryScopeFolder,
+	})
+	require.NoError(t, err)
+	assert.Len(t, projectNotes, 5) // 3 original + 1 tagged
+}
+
+// testDataIntegrity verifies data integrity and field extraction.
+func testDataIntegrity(
+	t *testing.T,
+	ctx context.Context,
+	reader *sqlite.SQLiteReaderAdapter,
+) {
+	// Read specific notes and verify all fields are preserved
+	johnNote, err := reader.Read(ctx, domain.NewNoteID("contacts/john-doe.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "John Doe", johnNote.Frontmatter.Fields["name"])
+	assert.Equal(
+		t,
+		"john.doe@company.com",
+		johnNote.Frontmatter.Fields["email"],
+	)
+	assert.Equal(t, "Engineering", johnNote.Frontmatter.Fields["department"])
+	assert.Equal(t, true, johnNote.Frontmatter.Fields["active"])
+
+	alphaProject, err := reader.Read(ctx, domain.NewNoteID("projects/alpha.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "Project Alpha", alphaProject.Frontmatter.Fields["name"])
+	assert.Equal(t, "high", alphaProject.Frontmatter.Fields["priority"])
+	assert.InDelta(
+		t,
+		float64(75),
+		alphaProject.Frontmatter.Fields["progress"],
+		0.01,
+	)
+
+	standupMeeting, err := reader.Read(
+		ctx,
+		domain.NewNoteID("meetings/standup.md"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "Daily Standup", standupMeeting.Frontmatter.Fields["title"])
+	assert.Equal(t, "2024-01-15", standupMeeting.Frontmatter.Fields["date"])
+	assert.InDelta(
+		t,
+		float64(30),
+		standupMeeting.Frontmatter.Fields["duration"],
+		0.01,
+	)
+
+	attendees := standupMeeting.Frontmatter.Fields["attendees"].([]interface{})
+	assert.Len(t, attendees, 3)
+	assert.Contains(t, attendees, "john")
+	assert.Contains(t, attendees, "jane")
+	assert.Contains(t, attendees, "bob")
+
+	// Verify tagged note integrity
+	workProject, err := reader.Read(
+		ctx,
+		domain.NewNoteID("tagged/work-project.md"),
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "Work Project", workProject.Frontmatter.Fields["name"])
+	tags := workProject.Frontmatter.Fields["tags"].([]interface{})
+	assert.Len(t, tags, 2)
+	assert.Contains(t, tags, "work")
+	assert.Contains(t, tags, "urgent")
+
+	webapp, err := reader.Read(ctx, domain.NewNoteID("tagged/personal-note.md"))
+	require.NoError(t, err)
+	assert.Equal(t, "Personal Meeting", webapp.Frontmatter.Fields["title"])
+	assert.Contains(t, webapp.Frontmatter.Fields["tags"], "personal")
+	assert.Contains(t, webapp.Frontmatter.Fields["tags"], "planning")
+	assert.Contains(t, webapp.Frontmatter.Fields["tags"], "critical")
+}
+
+// TestSQLitePerformanceWith1000Notes tests performance with large dataset.
+func TestSQLitePerformanceWith1000Notes(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping performance test in short mode")
 	}
 
 	cacheDir := t.TempDir()
@@ -569,239 +1002,4 @@ func TestSQLiteMetadataQueryPortWithRealData(t *testing.T) {
 	assert.Equal(t, "high", webapp.Frontmatter.Fields["priority"])
 	assert.InDelta(t, float64(75), webapp.Frontmatter.Fields["progress"], 0.01)
 	assert.Contains(t, webapp.Frontmatter.Fields["tags"], "critical")
-}
-
-// TestSQLitePerformanceWith1000Notes tests performance with large dataset.
-func TestSQLitePerformanceWith1000Notes(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping performance test in short mode")
-	}
-
-	cacheDir := t.TempDir()
-	config := domain.Config{
-		CacheDir: cacheDir,
-	}
-	log := zerolog.Nop()
-	ctx := context.Background()
-
-	// 1. Initialize adapters
-	writer, err := sqlite.NewSQLiteWriterAdapter(config, log)
-	require.NoError(t, err)
-	defer func() { _ = writer.Close() }()
-
-	reader, err := sqlite.NewSQLiteReaderAdapter(config, log)
-	require.NoError(t, err)
-	defer func() { _ = reader.Close() }()
-
-	// 2. Create schema and view for performance testing
-	contactSchema := domain.Schema{
-		Name: "contact",
-		Properties: []domain.Property{
-			{Name: "name", Spec: &domain.StringSpec{}},
-			{Name: "email", Spec: &domain.StringSpec{}},
-			{Name: "department", Spec: &domain.StringSpec{}},
-			{
-				Name: "level",
-				Spec: &domain.StringSpec{
-					Enum: []string{"junior", "senior", "lead"},
-				},
-			},
-			{
-				Name: "salary",
-				Spec: &domain.NumberSpec{
-					Min: floatPtr(30000),
-					Max: floatPtr(200000),
-				},
-			},
-			{Name: "active", Spec: &domain.BoolSpec{}},
-		},
-	}
-
-	// Apply view
-	dbPath := filepath.Join(cacheDir, "cold.db")
-	db, err := sql.Open("sqlite", dbPath)
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-
-	_, err = db.ExecContext(ctx, "PRAGMA journal_mode=WAL;")
-	require.NoError(t, err)
-
-	viewSQL, err := sqlite.GenerateSchemaView(contactSchema)
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, viewSQL)
-	require.NoError(t, err)
-
-	// 3. Generate 1000 test notes
-	departments := []string{
-		"Engineering",
-		"Sales",
-		"Marketing",
-		"HR",
-		"Finance",
-	}
-	levels := []string{"junior", "senior", "lead"}
-
-	indexTime := time.Now()
-
-	t.Log("Generating and persisting 1000 notes...")
-	persistStart := time.Now()
-
-	for i := range 1000 {
-		note := domain.Note{
-			ID: domain.NewNoteID(fmt.Sprintf("contacts/employee_%04d.md", i)),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
-				"title":      fmt.Sprintf("Employee %d", i),
-				"fileClass":  "contact",
-				"name":       fmt.Sprintf("Employee %d", i),
-				"email":      fmt.Sprintf("employee%d@company.com", i),
-				"department": departments[i%len(departments)],
-				"level":      levels[i%len(levels)],
-				"salary":     30000 + (i%17)*10000, // Varied salaries
-				"active":     i%7 != 0,             // ~85% active
-				"tags": []string{
-					fmt.Sprintf("team-%d", i%5),
-					levels[i%len(levels)],
-				},
-			}),
-		}
-
-		require.NoError(t, writer.Persist(ctx, note, indexTime))
-
-		if i%250 == 0 {
-			t.Logf("Persisted %d notes", i)
-		}
-	}
-
-	persistDuration := time.Since(persistStart)
-	t.Logf(
-		"Persisted 1000 notes in %v (avg: %v per note)",
-		persistDuration,
-		persistDuration/1000,
-	)
-
-	// 4. Test query performance
-	tests := []struct {
-		name    string
-		queryFn func() ([]domain.Note, error)
-		target  time.Duration
-	}{
-		{
-			name: "ByFileClass",
-			queryFn: func() ([]domain.Note, error) {
-				return reader.ByFileClass(ctx, "contact")
-			},
-			target: 50 * time.Millisecond,
-		},
-		{
-			name: "FrontmatterQuery - Department",
-			queryFn: func() ([]domain.Note, error) {
-				return reader.FrontmatterQuery(ctx, "department", "Engineering")
-			},
-			target: 50 * time.Millisecond,
-		},
-		{
-			name: "FrontmatterQuery - Level",
-			queryFn: func() ([]domain.Note, error) {
-				return reader.FrontmatterQuery(ctx, "level", "senior")
-			},
-			target: 50 * time.Millisecond,
-		},
-		{
-			name: "FrontmatterQuery - Active Boolean",
-			queryFn: func() ([]domain.Note, error) {
-				return reader.FrontmatterQuery(ctx, "active", "true")
-			},
-			target: 50 * time.Millisecond,
-		},
-		{
-			name: "TagQuery",
-			queryFn: func() ([]domain.Note, error) {
-				return reader.TagQuery(ctx, "senior")
-			},
-			target: 50 * time.Millisecond,
-		},
-	}
-
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			// Warm up
-			_, warmErr := test.queryFn()
-			require.NoError(t, warmErr)
-
-			// Measure performance
-			start := time.Now()
-			results, queryErr := test.queryFn()
-			duration := time.Since(start)
-
-			require.NoError(t, queryErr)
-			assert.NotEmpty(t, results, "Should return results")
-
-			t.Logf(
-				"%s: %v (target: %v) - %d results",
-				test.name,
-				duration,
-				test.target,
-				len(results),
-			)
-
-			// Performance assertion - should be well under target
-			assert.Less(
-				t,
-				duration,
-				test.target,
-				"Query should complete within target time",
-			)
-		})
-	}
-
-	// 5. Test staleness detection performance
-	t.Run("Staleness Detection", func(t *testing.T) {
-		start := time.Now()
-		staleNotes, staleErr := reader.GetStaleNotes(ctx)
-		duration := time.Since(start)
-
-		require.NoError(t, staleErr)
-		assert.Empty(t, staleNotes) // All notes should be fresh
-
-		t.Logf("Staleness check for 1000 notes: %v", duration)
-		assert.Less(
-			t,
-			duration,
-			10*time.Millisecond,
-			"Staleness check should be very fast",
-		)
-	})
-
-	// 6. Test individual note read performance
-	t.Run("Individual Read Performance", func(t *testing.T) {
-		start := time.Now()
-		note, readErr := reader.Read(
-			ctx,
-			domain.NewNoteID("contacts/employee_0500.md"),
-		)
-		duration := time.Since(start)
-
-		require.NoError(t, readErr)
-		assert.Equal(t, "Employee 500", note.Frontmatter.Fields["name"])
-
-		t.Logf("Individual note read: %v", duration)
-		assert.Less(
-			t,
-			duration,
-			5*time.Millisecond,
-			"Individual reads should be very fast",
-		)
-	})
-
-	// 7. Memory and resource usage validation
-	totalNotes, err := reader.List(ctx)
-	require.NoError(t, err)
-	assert.Len(t, totalNotes, 1000, "Should have all 1000 notes")
-
-	t.Log("Performance test completed successfully - all targets met")
-}
-
-// Helper function for creating float64 pointers.
-func floatPtr(f float64) *float64 {
-	return &f
 }

@@ -39,7 +39,7 @@ func TestNewJSONCacheWriter(t *testing.T) {
 //
 // TestPersist tests the function.
 //
-//nolint:gocognit // Complex test function with multiple scenarios is acceptable
+
 func TestPersist(t *testing.T) {
 	tests := []struct {
 		name      string
