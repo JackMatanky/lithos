@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -33,21 +32,8 @@ type BoltDBCacheReadAdapter struct {
 func NewBoltDBCacheReadAdapter(
 	config domain.Config,
 	log zerolog.Logger,
+	db *bbolt.DB,
 ) (*BoltDBCacheReadAdapter, error) {
-	dbPath := config.CacheDir + "/hot.db"
-	options := *bbolt.DefaultOptions
-	options.ReadOnly = true
-	options.Timeout = 1 * time.Second // TODO: Use config or constant
-
-	db, err := bbolt.Open(
-		dbPath,
-		boltDBFileMode,
-		&options,
-	)
-	if err != nil {
-		return nil, lithosErr.NewCacheReadError("", dbPath, "open_db", err)
-	}
-
 	return &BoltDBCacheReadAdapter{
 		config: config,
 		log:    log,
@@ -57,7 +43,7 @@ func NewBoltDBCacheReadAdapter(
 
 // Close closes the BoltDB database connection.
 func (a *BoltDBCacheReadAdapter) Close() error {
-	return a.db.Close()
+	return nil // No-op, shared DB
 }
 
 // Read retrieves a single note by ID (Path) from the BoltDB cache.
@@ -286,6 +272,28 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 	return false, nil
 }
 
+// TagQuery finds notes containing a specific tag.
+// Not implemented in BoltDB (hot path); use SQLite (deep path) for complex
+// queries.
+func (a *BoltDBCacheReadAdapter) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return nil, errors.New("TagQuery not implemented in BoltDB (use SQLite)")
+}
+
+// FrontmatterQuery finds notes where a specific frontmatter field matches a
+// value. Not implemented in BoltDB (hot path); use SQLite (deep path) for
+// complex queries.
+func (a *BoltDBCacheReadAdapter) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	return nil, errors.New(
+		"FrontmatterQuery not implemented in BoltDB (use SQLite)",
+	)
+}
+
 // Helper methods
 
 //nolint:cyclop // complex function due to index lookup logic
@@ -352,28 +360,6 @@ func (a *BoltDBCacheReadAdapter) lookupIndex(
 	}
 
 	return notes, nil
-}
-
-// TagQuery finds notes containing a specific tag.
-// Not implemented in BoltDB (hot path); use SQLite (deep path) for complex
-// queries.
-func (a *BoltDBCacheReadAdapter) TagQuery(
-	ctx context.Context,
-	tag string,
-) ([]domain.Note, error) {
-	return nil, errors.New("TagQuery not implemented in BoltDB (use SQLite)")
-}
-
-// FrontmatterQuery finds notes where a specific frontmatter field matches a
-// value. Not implemented in BoltDB (hot path); use SQLite (deep path) for
-// complex queries.
-func (a *BoltDBCacheReadAdapter) FrontmatterQuery(
-	ctx context.Context,
-	field, value string,
-) ([]domain.Note, error) {
-	return nil, errors.New(
-		"FrontmatterQuery not implemented in BoltDB (use SQLite)",
-	)
 }
 
 func (a *BoltDBCacheReadAdapter) reconstructNote(

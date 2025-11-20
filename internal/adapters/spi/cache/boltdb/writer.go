@@ -42,23 +42,10 @@ type BoltDBCacheWriteAdapter struct {
 func NewBoltDBCacheWriter(
 	config domain.Config,
 	log zerolog.Logger,
+	db *bbolt.DB,
 ) (*BoltDBCacheWriteAdapter, error) {
-	// Open BoltDB database in cache directory
-	dbPath := config.CacheDir + "/hot.db"
-	options := *bbolt.DefaultOptions
-	options.Timeout = 1 * time.Second
-
-	db, err := bbolt.Open(
-		dbPath,
-		boltDBFileMode,
-		&options,
-	)
-	if err != nil {
-		return nil, lithosErr.NewCacheWriteError("", dbPath, "open_db", err)
-	}
-
 	// Initialize buckets
-	err = db.Update(func(tx *bbolt.Tx) error {
+	err := db.Update(func(tx *bbolt.Tx) error {
 		// Primary bucket: notes
 		if _, bucketErr := tx.CreateBucketIfNotExists([]byte(BucketNotes)); bucketErr != nil {
 			return bucketErr
@@ -86,10 +73,9 @@ func NewBoltDBCacheWriter(
 	})
 
 	if err != nil {
-		_ = db.Close()
 		return nil, lithosErr.NewCacheWriteError(
 			"",
-			dbPath,
+			config.CacheDir,
 			"init_buckets",
 			err,
 		)
@@ -104,7 +90,15 @@ func NewBoltDBCacheWriter(
 
 // Close closes the BoltDB database connection.
 func (a *BoltDBCacheWriteAdapter) Close() error {
-	return a.db.Close()
+	// We do NOT close DB here if it's shared.
+	// But adapter interface has no Close method?
+	// Wait, writer.go had Close().
+	// If we pass DB in, who owns it?
+	// The caller owns it.
+	// So we shouldn't close it?
+	// Or we keep Close() for convenience but caller must be aware.
+	// For now, let's keep Close() but typically shared DB is closed by main.
+	return nil // No-op, let caller close DB
 }
 
 // extractBasename extracts the basename from a file path.
@@ -129,15 +123,18 @@ func extractDirectory(path string) string {
 func extractCachedNote(
 	note domain.Note,
 	fileClassKey string,
+	indexTime time.Time,
 ) CachedNote {
 	var cached CachedNote
 	cached.Path = string(note.ID) // Use ID as path per current domain model
 	cached.ID = string(note.ID)
 
 	// FileDatesDTO
-	cached.FileDates = dto.NewFileDatesDTO(
+	fileDates := dto.NewFileDatesDTO(
 		cache.ExtractFileModTime(note.Frontmatter.Fields),
 	)
+	fileDates.IndexedAt = indexTime
+	cached.FileDates = fileDates
 
 	// Extract title
 	if title, ok := note.Frontmatter.Fields["title"].(string); ok {
@@ -165,6 +162,7 @@ func extractCachedNote(
 func (a *BoltDBCacheWriteAdapter) Persist(
 	ctx context.Context,
 	note domain.Note,
+	indexTime time.Time,
 ) error {
 	select {
 	case <-ctx.Done():
@@ -172,7 +170,7 @@ func (a *BoltDBCacheWriteAdapter) Persist(
 	default:
 	}
 
-	cached := extractCachedNote(note, a.config.FileClassKey)
+	cached := extractCachedNote(note, a.config.FileClassKey, indexTime)
 
 	// Serialize metadata
 	data, err := json.Marshal(cached)

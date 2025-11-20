@@ -52,7 +52,8 @@ type VaultIndexerInterface interface {
 // Reference: docs/architecture/components.md#vaultindexer.
 type VaultIndexer struct {
 	vaultScanner       spi.VaultScannerPort
-	cacheWriter        spi.CacheWriterPort
+	boltWriter         spi.CacheWriterPort
+	sqliteWriter       spi.CacheWriterPort
 	cacheReader        spi.CacheReaderPort
 	markdownParserPort spi.MarkdownParserPort
 	frontmatterService *frontmatter.FrontmatterService
@@ -67,7 +68,8 @@ type VaultIndexer struct {
 //
 // Parameters:
 //   - vaultScanner: Port for scanning vault files
-//   - cacheWriter: Port for persisting notes to cache
+//   - boltWriter: Port for persisting notes to BoltDB (hot cache)
+//   - sqliteWriter: Port for persisting notes to SQLite (deep storage)
 //   - cacheReader: Port for reading cached notes
 //   - markdownParserPort: Port for parsing markdown frontmatter
 //   - frontmatterService: Service for frontmatter validation
@@ -79,7 +81,8 @@ type VaultIndexer struct {
 //   - *VaultIndexer: Configured indexer ready for vault operations
 func NewVaultIndexer(
 	vaultScanner spi.VaultScannerPort,
-	cacheWriter spi.CacheWriterPort,
+	boltWriter spi.CacheWriterPort,
+	sqliteWriter spi.CacheWriterPort,
 	cacheReader spi.CacheReaderPort,
 	markdownParserPort spi.MarkdownParserPort,
 	frontmatterService *frontmatter.FrontmatterService,
@@ -89,7 +92,8 @@ func NewVaultIndexer(
 ) *VaultIndexer {
 	return &VaultIndexer{
 		vaultScanner:       vaultScanner,
-		cacheWriter:        cacheWriter,
+		boltWriter:         boltWriter,
+		sqliteWriter:       sqliteWriter,
 		cacheReader:        cacheReader,
 		markdownParserPort: markdownParserPort,
 		frontmatterService: frontmatterService,
@@ -151,9 +155,23 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 	}
 	stats.ScannedCount = len(vaultFiles)
 
+	// Create Unit of Work for transactional writes
+	uow := NewCacheUnitOfWork(v.boltWriter, v.sqliteWriter)
+	if beginErr := uow.Begin(); beginErr != nil {
+		return stats, fmt.Errorf("failed to begin transaction: %w", beginErr)
+	}
+
 	// Step 3: Process each file
 	for i := range vaultFiles {
-		v.processFile(ctx, &vaultFiles[i], &stats)
+		v.processFile(ctx, &vaultFiles[i], uow, &stats)
+	}
+
+	// Commit transaction
+	if commitErr := uow.Commit(ctx); commitErr != nil {
+		stats.CacheFailures++ // Log as generic failure if commit fails
+		v.log.Error().Err(commitErr).Msg("transaction commit failed")
+		// If rollback is handled in Commit (it is), we assume data is
+		// consistent (rolled back)
 	}
 
 	stats.Duration = time.Since(startTime)
@@ -222,8 +240,14 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 		}
 	}
 
+	// Create Unit of Work
+	uow := NewCacheUnitOfWork(v.boltWriter, v.sqliteWriter)
+	if beginErr := uow.Begin(); beginErr != nil {
+		return fmt.Errorf("failed to begin transaction: %w", beginErr)
+	}
+
 	// Step 2: Perform deletion reconciliation
-	retainedNotes := v.reconcileDeletions(ctx, &stats)
+	retainedNotes := v.reconcileDeletions(ctx, uow, &stats)
 
 	// Step 2: Scan modified files
 	vaultFiles, err := v.scanModifiedFiles(ctx, since)
@@ -234,7 +258,17 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 
 	// Step 3: Process each modified file
 	for i := range vaultFiles {
-		v.processFile(ctx, &vaultFiles[i], &stats)
+		v.processFile(ctx, &vaultFiles[i], uow, &stats)
+	}
+
+	// Commit transaction
+	if commitErr := uow.Commit(ctx); commitErr != nil {
+		v.log.Error().Err(commitErr).Msg("refresh transaction commit failed")
+		// Should we return error? The original code returned nil for cache
+		// failures.
+		// But UoW failure means nothing was written.
+		// We'll log and return nil to match existing contract (schema/scan
+		// errors only abort).
 	}
 
 	stats.Duration = time.Since(startTime)
@@ -273,6 +307,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 // failure).
 func (v *VaultIndexer) reconcileDeletions(
 	ctx context.Context,
+	uow *CacheUnitOfWork,
 	stats *IndexStats,
 ) []domain.Note {
 	cachedNotes, listErr := v.cacheReader.List(ctx)
@@ -298,17 +333,17 @@ func (v *VaultIndexer) reconcileDeletions(
 		}
 
 		if os.IsNotExist(statErr) {
-			if deleteErr := v.cacheWriter.Delete(ctx, note.ID); deleteErr != nil {
+			if deleteErr := uow.AddDelete(string(note.ID)); deleteErr != nil {
 				stats.CacheFailures++
 				v.log.Warn().
 					Err(deleteErr).
 					Str("noteID", string(note.ID)).
-					Msg("failed to delete orphaned cache entry")
+					Msg("failed to stage delete for orphaned cache entry")
 			} else {
 				v.log.Debug().
 					Str("noteID", string(note.ID)).
 					Str("path", absolutePath).
-					Msg("deleted orphaned cache entry")
+					Msg("staged delete for orphaned cache entry")
 			}
 			continue
 		}
@@ -616,6 +651,7 @@ func (v *VaultIndexer) scanModifiedFiles(
 func (v *VaultIndexer) processFile(
 	ctx context.Context,
 	file *dto.VaultFile,
+	uow *CacheUnitOfWork,
 	stats *IndexStats,
 ) {
 	// Filter: only .md files for frontmatter processing
@@ -644,13 +680,15 @@ func (v *VaultIndexer) processFile(
 	noteID := deriveNoteIDFromPath(v.config.VaultPath, file.Path)
 	note := domain.NewNote(noteID, noteFrontmatter)
 
-	// Persist to cache
-	if persistErr := v.cacheWriter.Persist(ctx, note); persistErr != nil {
+	// Persist to cache via Unit of Work
+	// We generate indexTime here to ensure consistency
+	indexTime := time.Now()
+	if persistErr := uow.AddWrite(note, indexTime); persistErr != nil {
 		stats.CacheFailures++
 		v.log.Warn().
 			Err(persistErr).
 			Str("noteID", string(noteID)).
-			Msg("cache persist failed")
+			Msg("cache write staging failed")
 
 		// Continue - don't abort indexing
 	} else {

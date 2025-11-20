@@ -67,8 +67,17 @@ func TestVaultIndexing_Integration(t *testing.T) {
 	vaultReader := vaultAdapter.NewVaultReaderAdapter(config, logger)
 
 	// Create cache writer and reader
-	cacheWriter := cache.NewJSONCacheWriter(config, logger)
-	cacheReader := cache.NewJSONCacheReader(config, logger)
+	boltCacheDir := filepath.Join(cacheDir, "bolt")
+	sqliteCacheDir := filepath.Join(cacheDir, "sqlite")
+
+	boltConfig := domain.Config{CacheDir: boltCacheDir}
+	sqliteConfig := domain.Config{CacheDir: sqliteCacheDir}
+
+	boltWriter := cache.NewJSONCacheWriter(boltConfig, logger)
+	sqliteWriter := cache.NewJSONCacheWriter(sqliteConfig, logger)
+
+	// Reader reads from hot cache (bolt)
+	cacheReader := cache.NewJSONCacheReader(boltConfig, logger)
 
 	// Create schema and frontmatter services
 	schemaLoader := schemaadapter.NewSchemaLoaderAdapter(&config, &logger)
@@ -91,7 +100,8 @@ func TestVaultIndexing_Integration(t *testing.T) {
 	// Create indexer with all services
 	indexer := vaultService.NewVaultIndexer(
 		vaultReader,
-		cacheWriter,
+		boltWriter,
+		sqliteWriter,
 		cacheReader,
 		markdownParser,
 		frontmatterService,

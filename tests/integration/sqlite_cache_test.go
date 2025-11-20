@@ -92,7 +92,7 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	}
 
 	for _, n := range notes {
-		require.NoError(t, writer.Persist(ctx, n))
+		require.NoError(t, writer.Persist(ctx, n, time.Now()))
 	}
 
 	// 5. Initialize Reader and Query

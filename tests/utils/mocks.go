@@ -8,6 +8,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -39,6 +40,8 @@ var _ spi.VaultWriterPort = (*MockVaultWriterPort)(nil)
 type MockCacheWriterPort struct {
 	persistResult error
 	deleteResult  error
+	PersistFunc   func(ctx context.Context, note domain.Note, indexTime time.Time) error
+	DeleteFunc    func(ctx context.Context, id domain.NoteID) error
 }
 
 // NewMockCacheWriterPort creates a new MockCacheWriterPort with default values.
@@ -62,7 +65,11 @@ func (m *MockCacheWriterPort) SetDeleteResult(err error) {
 func (m *MockCacheWriterPort) Persist(
 	ctx context.Context,
 	note domain.Note,
+	indexTime time.Time,
 ) error {
+	if m.PersistFunc != nil {
+		return m.PersistFunc(ctx, note, indexTime)
+	}
 	return m.persistResult
 }
 
@@ -71,6 +78,9 @@ func (m *MockCacheWriterPort) Delete(
 	ctx context.Context,
 	id domain.NoteID,
 ) error {
+	if m.DeleteFunc != nil {
+		return m.DeleteFunc(ctx, id)
+	}
 	return m.deleteResult
 }
 

@@ -150,11 +150,12 @@ func (a *SQLiteCacheWriteAdapter) Close() error {
 func extractSQLiteNoteMetadata(
 	note domain.Note,
 	fileClassKey string,
+	indexTime time.Time,
 ) (map[string]interface{}, error) {
 	metadata := map[string]interface{}{
 		"id":         string(note.ID),
 		"path":       string(note.ID),
-		"index_time": time.Now(),
+		"index_time": indexTime,
 	}
 
 	// Extract title
@@ -195,13 +196,18 @@ func extractSQLiteNoteMetadata(
 func (a *SQLiteCacheWriteAdapter) Persist(
 	ctx context.Context,
 	note domain.Note,
+	indexTime time.Time,
 ) error {
 	// Check for context cancellation
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
 
-	metadata, err := extractSQLiteNoteMetadata(note, a.config.FileClassKey)
+	metadata, err := extractSQLiteNoteMetadata(
+		note,
+		a.config.FileClassKey,
+		indexTime,
+	)
 	if err != nil {
 		return lithosErr.NewCacheWriteError(
 			string(note.ID),

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/boltdb"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -15,13 +16,20 @@ func BenchmarkBoltDBCache(b *testing.B) {
 	config := domain.Config{CacheDir: cacheDir, FileClassKey: "fileClass"}
 	log := zerolog.Nop()
 
+	db, openErr := boltdb.Open(config)
+	if openErr != nil {
+		b.Fatal(openErr)
+	}
+	defer func() { _ = db.Close() }()
+
 	// Pre-populate data
 	{
-		writer, err := boltdb.NewBoltDBCacheWriter(config, log)
-		if err != nil {
-			b.Fatal(err)
+		writer, writeErr := boltdb.NewBoltDBCacheWriter(config, log, db)
+		if writeErr != nil {
+			b.Fatal(writeErr)
 		}
 		ctx := context.Background()
+
 		note := domain.Note{
 			ID: domain.NewNoteID("bench/note.md"),
 			Frontmatter: domain.Frontmatter{
@@ -32,37 +40,33 @@ func BenchmarkBoltDBCache(b *testing.B) {
 				},
 			},
 		}
-		if persistErr := writer.Persist(ctx, note); persistErr != nil {
-			_ = writer.Close()
+		if persistErr := writer.Persist(ctx, note, time.Now()); persistErr != nil {
 			b.Fatal(persistErr)
 		}
-		_ = writer.Close() // Close to release lock
 	}
 
 	b.Run("Read", func(b *testing.B) {
-		reader, err := boltdb.NewBoltDBCacheReadAdapter(config, log)
-		if err != nil {
-			b.Fatal(err)
+		reader, readErr := boltdb.NewBoltDBCacheReadAdapter(config, log, db)
+		if readErr != nil {
+			b.Fatal(readErr)
 		}
-		defer func() { _ = reader.Close() }()
 
 		ctx := context.Background()
 		id := domain.NewNoteID("bench/note.md")
 		b.ResetTimer()
 		for range b.N {
-			_, readErr := reader.Read(ctx, id)
-			if readErr != nil {
-				b.Fatal(readErr)
+			_, err := reader.Read(ctx, id)
+			if err != nil {
+				b.Fatal(err)
 			}
 		}
 	})
 
 	b.Run("Write", func(b *testing.B) {
-		writer, err := boltdb.NewBoltDBCacheWriter(config, log)
-		if err != nil {
-			b.Fatal(err)
+		writer, writeErr := boltdb.NewBoltDBCacheWriter(config, log, db)
+		if writeErr != nil {
+			b.Fatal(writeErr)
 		}
-		defer func() { _ = writer.Close() }()
 
 		ctx := context.Background()
 		note := domain.Note{
@@ -78,18 +82,17 @@ func BenchmarkBoltDBCache(b *testing.B) {
 
 		b.ResetTimer()
 		for range b.N {
-			if persistErr := writer.Persist(ctx, note); persistErr != nil {
+			if persistErr := writer.Persist(ctx, note, time.Now()); persistErr != nil {
 				b.Fatal(persistErr)
 			}
 		}
 	})
 
 	b.Run("WriteUnique", func(b *testing.B) {
-		writer, err := boltdb.NewBoltDBCacheWriter(config, log)
-		if err != nil {
-			b.Fatal(err)
+		writer, writeErr := boltdb.NewBoltDBCacheWriter(config, log, db)
+		if writeErr != nil {
+			b.Fatal(writeErr)
 		}
-		defer func() { _ = writer.Close() }()
 
 		ctx := context.Background()
 		note := domain.Note{
@@ -110,7 +113,7 @@ func BenchmarkBoltDBCache(b *testing.B) {
 			n.ID = domain.NewNoteID(fmt.Sprintf("bench/note_%d.md", i))
 			b.StartTimer()
 
-			if persistErr := writer.Persist(ctx, n); persistErr != nil {
+			if persistErr := writer.Persist(ctx, n, time.Now()); persistErr != nil {
 				b.Fatal(persistErr)
 			}
 		}

@@ -105,7 +105,7 @@ func TestSQLiteCacheReadAdapter_Read(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	err = writer.Persist(ctx, note1)
+	err = writer.Persist(ctx, note1, time.Now())
 	require.NoError(t, err)
 
 	// Now test reader
@@ -223,7 +223,7 @@ func TestSQLiteCacheReadAdapter_List(t *testing.T) {
 
 	ctx := context.Background()
 	for _, note := range notes {
-		err = writer.Persist(ctx, note)
+		err = writer.Persist(ctx, note, time.Now())
 		require.NoError(t, err)
 	}
 
@@ -366,7 +366,7 @@ func TestSQLiteCacheReadAdapter_ListStale(t *testing.T) {
 
 	ctx := context.Background()
 	for _, note := range notes {
-		err = writer.Persist(ctx, note)
+		err = writer.Persist(ctx, note, time.Now())
 		require.NoError(t, err)
 	}
 

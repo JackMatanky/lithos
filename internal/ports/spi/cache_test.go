@@ -3,13 +3,14 @@ package spi
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 )
 
 // MockCacheWriter is a mock implementation of CacheWriterPort for testing.
 type MockCacheWriter struct {
-	PersistFunc func(ctx context.Context, note domain.Note) error
+	PersistFunc func(ctx context.Context, note domain.Note, indexTime time.Time) error
 	DeleteFunc  func(ctx context.Context, id domain.NoteID) error
 }
 
@@ -20,9 +21,13 @@ type MockCacheReader struct {
 }
 
 // Persist delegates to PersistFunc if set, otherwise returns nil.
-func (m *MockCacheWriter) Persist(ctx context.Context, note domain.Note) error {
+func (m *MockCacheWriter) Persist(
+	ctx context.Context,
+	note domain.Note,
+	indexTime time.Time,
+) error {
 	if m.PersistFunc != nil {
-		return m.PersistFunc(ctx, note)
+		return m.PersistFunc(ctx, note, indexTime)
 	}
 	return nil
 }
@@ -70,7 +75,7 @@ func TestCacheWriterPortPersistSignature(t *testing.T) {
 	note := domain.Note{} // This will fail until Note type is defined
 
 	// This will fail to compile until Persist method signature matches
-	err := mock.Persist(ctx, note)
+	err := mock.Persist(ctx, note, time.Now())
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}

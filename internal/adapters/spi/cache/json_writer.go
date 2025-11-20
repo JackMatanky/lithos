@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -118,6 +119,7 @@ func wrapCacheDeleteError(noteID, path, operation string, cause error) error {
 func (a *JSONCacheWriteAdapter) Persist(
 	ctx context.Context,
 	note domain.Note,
+	_ time.Time,
 ) error {
 	// Check for context cancellation
 	select {

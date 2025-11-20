@@ -40,6 +40,7 @@ func NewSQLiteWriterAdapter(
 func (a *SQLiteWriterAdapter) Persist(
 	ctx context.Context,
 	note domain.Note,
+	indexTime time.Time,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -60,7 +61,6 @@ func (a *SQLiteWriterAdapter) Persist(
 
 	// Extract timestamps
 	modTime := cache.ExtractFileModTime(note.Frontmatter.Fields)
-	indexTime := time.Now()
 
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {

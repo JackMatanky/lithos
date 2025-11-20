@@ -78,17 +78,19 @@ func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 		FrontmatterQueryFunc: func(ctx context.Context, field, value string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
-		ByBasenameCallCount:       0,
-		ByAliasCallCount:          0,
-		ByFileClassCallCount:      0,
-		PathQueryCallCount:        0,
-		TagQueryCallCount:         0,
-		FrontmatterQueryCallCount: 0,
-		LastByBasenameArg:         "",
-		LastByAliasArg:            "",
-		LastByFileClassArg:        "",
-		LastPathQueryOpts:         PathQueryOptions{Value: "", Scope: ""},
-		LastTagQueryArg:           "",
+		ByBasenameCallCount:          0,
+		ByAliasCallCount:             0,
+		ByFileClassCallCount:         0,
+		PathQueryCallCount:           0,
+		TagQueryCallCount:            0,
+		FrontmatterQueryCallCount:    0,
+		LastByBasenameArg:            "",
+		LastByAliasArg:               "",
+		LastByFileClassArg:           "",
+		LastPathQueryOpts:            PathQueryOptions{Value: "", Scope: ""},
+		LastTagQueryArg:              "",
+		LastFrontmatterQueryArgField: "",
+		LastFrontmatterQueryArgValue: "",
 	}
 }
 

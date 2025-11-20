@@ -2,13 +2,16 @@ package integration
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/boltdb"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.etcd.io/bbolt"
 )
 
 func TestBoltDBCacheIntegration(t *testing.T) {
@@ -23,8 +26,14 @@ func TestBoltDBCacheIntegration(t *testing.T) {
 	}
 	log := zerolog.Nop()
 
+	// 0. Initialize Shared DB
+	dbPath := filepath.Join(cacheDir, "lithos.db")
+	db, err := bbolt.Open(dbPath, 0o600, nil)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
 	// 1. Create Writer and persist notes
-	writer, err := boltdb.NewBoltDBCacheWriter(config, log)
+	writer, err := boltdb.NewBoltDBCacheWriter(config, log, db)
 	require.NoError(t, err)
 
 	notes := []domain.Note{
@@ -53,14 +62,14 @@ func TestBoltDBCacheIntegration(t *testing.T) {
 
 	ctx := context.Background()
 	for _, n := range notes {
-		persistErr := writer.Persist(ctx, n)
+		persistErr := writer.Persist(ctx, n, time.Now())
 		require.NoError(t, persistErr)
 	}
 	err = writer.Close()
 	require.NoError(t, err)
 
 	// 2. Create Reader and verify data
-	reader, err := boltdb.NewBoltDBCacheReadAdapter(config, log)
+	reader, err := boltdb.NewBoltDBCacheReadAdapter(config, log, db)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
