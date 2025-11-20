@@ -435,6 +435,26 @@ if err := uow.Commit(ctx); err != nil {
 
 **Note:** CacheUnitOfWork is internal coordination service, not exposed via ports. Only VaultIndexer depends on it.
 
+**Internal Structure:**
+
+- `boltWriter CacheWriterPort` – Writes primary data + indices to BoltDB within a single `bolt.Tx`.
+- `sqliteWriter CacheWriterPort` – Writes metadata rows/views inside SQLite within a matching `sql.Tx`.
+- `operations []operation` – In-memory staging buffer with pending writes/deletes and the captured `indexTime` shared between stores.
+- `mu sync.Mutex` – Guards staging so concurrent indexing goroutines cannot interleave operations.
+
+**Operation Schema:**
+
+```go
+type operation struct {
+    opType    operationType // write/delete
+    note      domain.Note   // populated for writes
+    indexTime time.Time     // shared timestamp written to both stores
+    path      string        // populated for deletes
+}
+```
+
+**Lifecycle Summary:** `Begin()` opens both transactions → `AddWrite`/`AddDelete` populate `operations` without I/O → `Commit()` replays staged ops against BoltDB first, then SQLite, propagating identical `indexTime` so FileDatesDTO/`indexed_time` stay aligned → any failure triggers compensating rollbacks and clears the staging buffer via `Rollback()`.
+
 ### QueryService
 
 **Responsibility:** CQRS query side providing fast read access with hybrid storage routing. Routes queries between BoltDB hot cache (<1ms) and SQLite deep storage (<50ms) based on query complexity. Pure read-only service (no write operations).
@@ -484,7 +504,7 @@ func (s *QueryService) isHotFileClass(fileClass string) bool {
 - Query routing enables sub-millisecond performance for common queries
 - MetadataQueryPort provides indexed queries (O(1)) instead of O(n) scanning
 - Foundation for future query optimizations (query plan analysis, adaptive hot set)
-- Additional tuning tips live in `docs/architecture/guides/query-optimization-guide.md` for operators who need to adjust hot sets or configuration values.
+- Tuning considerations: adjust `hotFileClasses`, monitor staleness logs for incremental refresh triggers, and profile MetadataQueryPort queries when adding new schema views.
 
 **Note:** QueryService is read-only (CQRS query side). VaultIndexer is write-only (CQRS command side). Clean separation enables independent optimization and scaling.
 
@@ -1259,7 +1279,7 @@ func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, cont
 
 **Technology Stack:** BoltDB buckets (`notes` for primary data, `indices/*` for secondary indexes), zero-copy reads via memory mapping, `FileDatesDTO` for staleness tracking.
 
-**Performance Notes:** Benchmark targets (<1 ms lookups) and measurement procedures are captured in `docs/architecture/performance-guide.md`.
+**Performance Notes:** Benchmark target remains <1 ms for ByPath/ByBasename/ByAlias queries (Story 3.20 Feature 15). Capture actual numbers via the BoltDB benchmark suite and record them in the Story change log.
 
 ### BoltDBWriterAdapter
 
@@ -1351,9 +1371,31 @@ func (a *BoltDBReaderAdapter) PathQuery(ctx context.Context, opts spi.PathQueryO
 
 **Dependencies:** `modernc.org/sqlite` (pure Go SQLite), Config (cache directory for SQLite file), Logger.
 
-**Technology Stack:** SQLite with JSON1 extension, JSON_EXTRACT functions for frontmatter queries, schema-driven views with pre-extracted columns (see `SchemaViewDefinition` in `docs/architecture/data-models.md`), composite indices on extracted fields, full-text search (FTS5) for content queries, pure Go implementation (no CGO).
+**Technology Stack:** SQLite with JSON1 extension, JSON_EXTRACT functions for frontmatter queries, schema-driven views with pre-extracted columns, composite indices on extracted fields, full-text search (FTS5) for content queries, pure Go implementation (no CGO).
 
-**Performance Notes:** See `docs/architecture/performance-guide.md` for the benchmark matrix (<50 ms queries, <10 ms writes) and tuning levers (pragma settings, view/index definitions).
+**Schema-Driven Views:**
+
+```sql
+CREATE VIEW v_contact_notes AS
+SELECT
+    path,
+    json_extract(frontmatter, '$.name')   AS name,
+    json_extract(frontmatter, '$.status') AS status,
+    json_extract(frontmatter, '$.fileClass') AS fileClass,
+    modified_at,
+    indexed_time,
+    size
+FROM notes
+WHERE json_extract(frontmatter, '$.fileClass') = 'contact';
+
+CREATE INDEX idx_contact_status ON v_contact_notes(status);
+```
+
+- Views follow the `v_{schema}_notes` naming convention and are regenerated whenever schemas change.
+- Columns map to PropertySpec types (string/int/real/bool) so SQLite’s native indexes can be used instead of JSON scans.
+- Benchmark expectation: schema-view queries stay under 50 ms for 1000 notes; measure via the Story 3.21 benchmark suite.
+
+**Performance Notes:** Keep schema-view queries under 50 ms for 1000 notes (Story 3.21 AC16-17). Tune SQLite pragmas and view indexes as part of the story’s benchmark suite; record metrics alongside the story change log.
 
 **Implementation Pattern:**
 

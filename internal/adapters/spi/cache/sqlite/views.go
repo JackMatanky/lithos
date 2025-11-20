@@ -8,13 +8,11 @@ import (
 )
 
 // GenerateSchemaView returns the SQL statements to create a view and associated
-// indexes
-// for a given schema.
+// indexes for a given schema.
 //
 // The view name follows the pattern: v_{schema_name}_notes
 // Indexes are created on the base table 'notes' using expression indexes to
-// support
-// the view's columns efficiently.
+// support the view's columns efficiently.
 func GenerateSchemaView(schema domain.Schema) (string, error) {
 	if schema.Name == "" {
 		return "", fmt.Errorf("schema name cannot be empty")
