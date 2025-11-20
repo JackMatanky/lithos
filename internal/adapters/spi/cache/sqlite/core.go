@@ -10,6 +10,32 @@ import (
 	_ "modernc.org/sqlite" // Register SQLite driver
 )
 
+// SQLite table and view names.
+const (
+	// TableNotes is the primary table for storing Note data.
+	// Columns: path (PRIMARY KEY), frontmatter (JSON), modified_at,
+	// indexed_time, size.
+	TableNotes = "notes"
+
+	// ViewPrefix is the prefix for schema-driven views.
+	// Format: v_{schema_name}_notes (e.g., v_contact_notes, v_project_notes).
+	ViewPrefix = "v_"
+
+	// ViewSuffix is the suffix for schema-driven views.
+	ViewSuffix = "_notes"
+)
+
+// SQLite index names.
+const (
+	// IndexNotesModifiedAt indexes the modified_at column for staleness
+	// queries.
+	IndexNotesModifiedAt = "idx_notes_modified_at"
+
+	// IndexNotesIndexedTime indexes the indexed_time column for staleness
+	// queries.
+	IndexNotesIndexedTime = "idx_notes_indexed_time"
+)
+
 const (
 	// Table schema.
 	createNotesTable = `

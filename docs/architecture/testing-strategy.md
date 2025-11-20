@@ -151,8 +151,8 @@ Use this data to validate Epic 3 performance targets:
 
 - **Story 3.19 (BoltDB Hot Cache)**: Use vault data to test BoltDB bucket structures and validate secondary index performance
 - **Story 3.20 (SQLite Deep Storage)**: Validate SQLite schema with real frontmatter patterns and test JSON_EXTRACT queries
-- **Story 3.22 (Hybrid Query Service)**: Performance test query routing with realistic note distribution and validate smart routing decisions
-- **Story 3.28 (FileClassKey Configuration)**: Test configurable file_class_key with actual note variations
+- **Story 3.23 (Hybrid Query Service)**: Performance test query routing with realistic note distribution and validate smart routing decisions
+- **Story 3.29 (FileClassKey Configuration)**: Test configurable file_class_key with actual note variations
 
 ### End-to-End / Smoke Tests
 

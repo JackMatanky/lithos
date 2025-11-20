@@ -484,6 +484,7 @@ func (s *QueryService) isHotFileClass(fileClass string) bool {
 - Query routing enables sub-millisecond performance for common queries
 - MetadataQueryPort provides indexed queries (O(1)) instead of O(n) scanning
 - Foundation for future query optimizations (query plan analysis, adaptive hot set)
+- Additional tuning tips live in `docs/architecture/guides/query-optimization-guide.md` for operators who need to adjust hot sets or configuration values.
 
 **Note:** QueryService is read-only (CQRS query side). VaultIndexer is write-only (CQRS command side). Clean separation enables independent optimization and scaling.
 
@@ -1258,6 +1259,8 @@ func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, cont
 
 **Technology Stack:** BoltDB buckets (`notes` for primary data, `indices/*` for secondary indexes), zero-copy reads via memory mapping, `FileDatesDTO` for staleness tracking.
 
+**Performance Notes:** Benchmark targets (<1 ms lookups) and measurement procedures are captured in `docs/architecture/performance-guide.md`.
+
 ### BoltDBWriterAdapter
 
 **Responsibility:** Implement `CacheWriterPort` (CQRS write-side) with transactional persistence to BoltDB. Maintains primary data and all secondary indices atomically.
@@ -1348,7 +1351,9 @@ func (a *BoltDBReaderAdapter) PathQuery(ctx context.Context, opts spi.PathQueryO
 
 **Dependencies:** `modernc.org/sqlite` (pure Go SQLite), Config (cache directory for SQLite file), Logger.
 
-**Technology Stack:** SQLite with JSON1 extension, JSON_EXTRACT functions for frontmatter queries, schema-driven views with pre-extracted columns, composite indices on extracted fields, full-text search (FTS5) for content queries, pure Go implementation (no CGO).
+**Technology Stack:** SQLite with JSON1 extension, JSON_EXTRACT functions for frontmatter queries, schema-driven views with pre-extracted columns (see `SchemaViewDefinition` in `docs/architecture/data-models.md`), composite indices on extracted fields, full-text search (FTS5) for content queries, pure Go implementation (no CGO).
+
+**Performance Notes:** See `docs/architecture/performance-guide.md` for the benchmark matrix (<50 ms queries, <10 ms writes) and tuning levers (pragma settings, view/index definitions).
 
 **Implementation Pattern:**
 

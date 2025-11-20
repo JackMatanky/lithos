@@ -149,7 +149,7 @@ linters = ["cyclop"]
 # Tests: relax noisy rules (+ cyclop here instead of the removed skip-tests).
 [[linters.exclusions.rules]]
 path = ".*_test\\.go$"
-linters = ["cyclop", "dupl", "funlen", "mnd", "ineffassign"]
+linters = ["cyclop", "dupl", "funlen", "gocognit", "maintidx", "mnd", "ineffassign"]
 
 # Only suppress G204/G304/G301/G306 from gosec in *_test.go files and test utils.
 [[linters.exclusions.rules]]

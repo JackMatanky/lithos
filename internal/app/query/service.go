@@ -227,26 +227,15 @@ func (q *QueryService) ByFileClass(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
-	start := time.Now()
-	defer func() {
-		q.log.Debug().
-			Dur("duration", time.Since(start)).
-			Str("method", "ByFileClass").
-			Str("fileClass", fileClass).
-			Msg("query performance")
-	}()
-
-	if q.boltQuery != nil {
-		// Hot path: use BoltDB for file class lookups
-		return q.boltQuery.ByFileClass(ctx, fileClass)
-	}
-
-	if q.sqliteQuery != nil {
-		// Deep path fallback
-		return q.sqliteQuery.ByFileClass(ctx, fileClass)
-	}
-
-	return nil, nil
+	return q.executeMetadataQuery(
+		ctx,
+		"ByFileClass",
+		"fileClass",
+		fileClass,
+		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
+			return port.ByFileClass(ctx, param)
+		},
+	)
 }
 
 // ByBasename retrieves all notes matching a filename basename (without
@@ -309,26 +298,15 @@ func (q *QueryService) ByAlias(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
-	start := time.Now()
-	defer func() {
-		q.log.Debug().
-			Dur("duration", time.Since(start)).
-			Str("method", "ByAlias").
-			Str("alias", alias).
-			Msg("query performance")
-	}()
-
-	if q.boltQuery != nil {
-		// Hot path: use BoltDB for alias lookups
-		return q.boltQuery.ByAlias(ctx, alias)
-	}
-
-	if q.sqliteQuery != nil {
-		// Deep path fallback
-		return q.sqliteQuery.ByAlias(ctx, alias)
-	}
-
-	return nil, nil
+	return q.executeMetadataQuery(
+		ctx,
+		"ByAlias",
+		"alias",
+		alias,
+		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
+			return port.ByAlias(ctx, param)
+		},
+	)
 }
 
 // PathQuery resolves notes using flexible selectors (full path, basename,
@@ -366,18 +344,18 @@ func (q *QueryService) PathQuery(
 	return nil, nil
 }
 
-// ByFrontmatter retrieves all notes matching a frontmatter field value.
-// Returns a slice of notes if any match, or empty slice if none found.
-// Thread-safe: uses RLock to allow concurrent reads.
+// ByFrontmatter finds notes where a specific frontmatter field matches a value.
+// Supports type-agnostic comparison (int 2 == float 2.0) and delegates to
+// MetadataQueryPort for indexed lookups.
 //
 // Query Semantics:
-// - Returns empty slice (not error) for non-matching field/value pairs
-// - Supports type-agnostic queries (int 2 matches float 2.0)
-// - Handles safe comparison for primitive types only
-// - Logs debug message with field, value, and result count
-// - O(log n) lookup performance via nested map access.
+// - Returns empty slice (not error) for non-matching frontmatter (collection
+// lookup)
+// - Type normalization: int/float conversion for numeric comparison
+// - Logs debug message with field and value for troubleshooting
+// - Routes to SQLite for complex frontmatter queries (no BoltDB support yet)
 //
-// Usage Examples:
+// Example:
 //
 //	notes := queryService.ByFrontmatter("author", "John Doe")
 //	notes := queryService.ByFrontmatter("tags", "project-x")
@@ -408,6 +386,38 @@ func (q *QueryService) ByFrontmatter(
 				fmt.Sprintf("%v", canonicalValue),
 			)
 		}
+	}
+
+	return nil, nil
+}
+
+// executeMetadataQuery executes a metadata query with smart routing and
+// performance logging. It routes to BoltDB first (hot path) then SQLite (deep
+// path) with timing instrumentation.
+func (q *QueryService) executeMetadataQuery(
+	ctx context.Context,
+	methodName string,
+	paramName string,
+	paramValue string,
+	queryFn func(spi.MetadataQueryPort, context.Context, string) ([]domain.Note, error),
+) ([]domain.Note, error) {
+	start := time.Now()
+	defer func() {
+		q.log.Debug().
+			Dur("duration", time.Since(start)).
+			Str("method", methodName).
+			Str(paramName, paramValue).
+			Msg("query performance")
+	}()
+
+	if q.boltQuery != nil {
+		// Hot path: use BoltDB for fast lookups
+		return queryFn(q.boltQuery, ctx, paramValue)
+	}
+
+	if q.sqliteQuery != nil {
+		// Deep path fallback
+		return queryFn(q.sqliteQuery, ctx, paramValue)
 	}
 
 	return nil, nil

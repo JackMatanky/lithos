@@ -181,8 +181,7 @@ Two core principles from the architectural review govern how technologies are us
 - **Architectural Pattern**: Viper is used in the `internal/adapters/spi/config` adapter. A key architectural decision is the use of a `sync.Once` pattern to manage the `domain.Config` object as a thread-safe singleton.
 - **Developer Guidance**:
   - **Usage Pattern**: Application code should not interact with Viper directly. Instead, it should receive the strongly-typed `domain.Config` struct via dependency injection.
-  - **Critical Gap**: A known gap in the current implementation is that the `ViperAdapter` does not yet load the `FileClassKey` from the configuration file or environment variables. Implementing this is a high-priority task to enable user-defined schema identifiers.
-  - **Testing Strategy**: When testing a component that needs configuration, create an instance of the `domain.Config` struct directly. The singleton pattern includes test helpers for swapping the global instance in integration tests.
+  -   - **Testing Strategy**: When testing a component that needs configuration, create an instance of the `domain.Config` struct directly. The singleton pattern includes test helpers for swapping the global instance in integration tests.
 
 #### `github.com/yuin/goldmark`
 

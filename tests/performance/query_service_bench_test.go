@@ -8,13 +8,9 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
-
-// mockMetadataQueryPort provides a simple mock for MetadataQueryPort.
-type mockMetadataQueryPort struct{}
 
 // queryServiceBench wraps a prepared QueryService instance for benchmarks.
 type queryServiceBench struct {
@@ -32,54 +28,6 @@ type benchQueryReader struct {
 	pathIndex        map[string]domain.Note
 	fileClassIndex   map[string][]domain.Note
 	frontmatterIndex map[string]map[interface{}][]domain.Note
-}
-
-// ByBasename implements MetadataQueryPort.ByBasename.
-func (m *mockMetadataQueryPort) ByBasename(
-	ctx context.Context,
-	basename string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// ByAlias implements MetadataQueryPort.ByAlias.
-func (m *mockMetadataQueryPort) ByAlias(
-	ctx context.Context,
-	alias string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// ByFileClass implements MetadataQueryPort.ByFileClass.
-func (m *mockMetadataQueryPort) ByFileClass(
-	ctx context.Context,
-	fileClass string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// PathQuery implements MetadataQueryPort.PathQuery.
-func (m *mockMetadataQueryPort) PathQuery(
-	ctx context.Context,
-	opts spi.PathQueryOptions,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// TagQuery implements MetadataQueryPort.TagQuery.
-func (m *mockMetadataQueryPort) TagQuery(
-	ctx context.Context,
-	tag string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
-}
-
-// FrontmatterQuery implements MetadataQueryPort.FrontmatterQuery.
-func (m *mockMetadataQueryPort) FrontmatterQuery(
-	ctx context.Context,
-	field, value string,
-) ([]domain.Note, error) {
-	return []domain.Note{}, nil
 }
 
 // BenchmarkQueryService_Performance exercises mixed workloads (hot / deep /

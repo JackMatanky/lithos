@@ -237,51 +237,6 @@ func extractNoteIDFromPath(path string) domain.NoteID {
 	return domain.NoteID(strings.TrimSuffix(filename, ".json"))
 }
 
-// processNoteFile processes a single cache file and returns the note if
-// successful.
-// Logs warnings for read failures but doesn't fail the entire operation.
-func (a *JSONCacheReadAdapter) processNoteFile(
-	ctx context.Context,
-	path string,
-) (domain.Note, bool) {
-	noteID := extractNoteIDFromPath(path)
-
-	note, readErr := a.Read(ctx, noteID)
-	if readErr != nil {
-		a.log.Warn().
-			Err(readErr).
-			Str("path", path).
-			Str("note_id", string(noteID)).
-			Msg("failed to read cache file during list operation")
-		return domain.Note{}, false
-	}
-
-	return note, true
-}
-
-func (a *JSONCacheReadAdapter) unmarshalNote(
-	id domain.NoteID,
-	path string,
-	data []byte,
-) (domain.Note, error) {
-	var note domain.Note
-	if unmarshalErr := json.Unmarshal(data, &note); unmarshalErr != nil {
-		return domain.Note{}, lithosErr.NewCacheReadError(
-			string(id),
-			path,
-			"unmarshal",
-			unmarshalErr,
-		)
-	}
-
-	a.log.Debug().
-		Str("note_id", string(id)).
-		Str("path", path).
-		Msg("cache read successful")
-
-	return note, nil
-}
-
 // ByBasename finds notes by filename without extension via O(n) scanning.
 func (a *JSONCacheReadAdapter) ByBasename(
 	ctx context.Context,
@@ -433,6 +388,51 @@ func (a *JSONCacheReadAdapter) FrontmatterQuery(
 		}
 	}
 	return results, nil
+}
+
+// processNoteFile processes a single cache file and returns the note if
+// successful.
+// Logs warnings for read failures but doesn't fail the entire operation.
+func (a *JSONCacheReadAdapter) processNoteFile(
+	ctx context.Context,
+	path string,
+) (domain.Note, bool) {
+	noteID := extractNoteIDFromPath(path)
+
+	note, readErr := a.Read(ctx, noteID)
+	if readErr != nil {
+		a.log.Warn().
+			Err(readErr).
+			Str("path", path).
+			Str("note_id", string(noteID)).
+			Msg("failed to read cache file during list operation")
+		return domain.Note{}, false
+	}
+
+	return note, true
+}
+
+func (a *JSONCacheReadAdapter) unmarshalNote(
+	id domain.NoteID,
+	path string,
+	data []byte,
+) (domain.Note, error) {
+	var note domain.Note
+	if unmarshalErr := json.Unmarshal(data, &note); unmarshalErr != nil {
+		return domain.Note{}, lithosErr.NewCacheReadError(
+			string(id),
+			path,
+			"unmarshal",
+			unmarshalErr,
+		)
+	}
+
+	a.log.Debug().
+		Str("note_id", string(id)).
+		Str("path", path).
+		Msg("cache read successful")
+
+	return note, nil
 }
 
 // Helpers
