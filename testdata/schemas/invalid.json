@@ -1,12 +1,6 @@
 {
   "name": "invalid",
-  "extends": "",
-  "excludes": [],
   "properties": {
-    "title": {
-      "$ref": "#/properties/standard_title"
-    }
+    "broken":
   }
 }
-  }
-  // Missing closing brace - malformed JSON

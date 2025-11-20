@@ -899,45 +899,45 @@ return note, nil
 
 ### MetadataQueryPort
 
-**Responsibility:** Provide O(1) indexed queries for note metadata using storage-native indices. Enables fast queries by tag, file class, links, and headings without scanning all notes.
+**Responsibility:** Provide O(1) indexed queries for note metadata using storage-native indices. Enables fast lookups by basename, alias, file class, and flexible path selectors without scanning the entire cache.
 
 **Key Interfaces:**
 
-- `TagQuery(ctx context.Context, tag string) ([]domain.Note, error)` - Find notes by tag using indexed lookup
-- `FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)` - Find notes by fileClass using indexed lookup
-- `LinkQuery(ctx context.Context, targetPath string) ([]domain.Note, error)` - Find notes linking to target path
-- `HeadingQuery(ctx context.Context, heading string) ([]domain.Note, error)` - Find notes with specific heading
-- `FrontmatterQuery(ctx context.Context, field string, value any) ([]domain.Note, error)` - Generic frontmatter field query
+- `ByBasename(ctx context.Context, basename string) ([]domain.Note, error)` - Find notes by filename (no extension) with duplicate handling.
+- `ByAlias(ctx context.Context, alias string) ([]domain.Note, error)` - Resolve notes that publish a specific alias in frontmatter.
+- `ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)` - Group notes by schema for validation and template lookups.
+- `PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)` - Resolve notes by full path, basename, or folder scope using a single method.
 
-**Dependencies:** Implemented by SQLiteReaderAdapter.
+**PathQueryOptions:**
+
+```go
+type PathQueryOptions struct {
+    Scope PathQueryScope // full, basename, folder
+    Value string         // path fragment matched according to scope
+}
+```
+
+Adapters validate the options (Value required, Scope defaults to `full`) and return empty slices when no matches exist.
+
+**Dependencies:** Implemented by BoltDBReaderAdapter (hot path) and, for more advanced selectors, by future SQLite adapters.
 
 **Technology Stack:**
-- SQLite with JSON_EXTRACT functions for frontmatter queries
-- SQLite indexes on extracted JSON fields for O(1) lookups
-- Schema-driven views with pre-extracted columns for common queries
-- BoltDB secondary index buckets for hot-path queries (e.g., `indices:by_tag`, `indices:by_fileclass`)
+- BoltDB secondary index buckets for `/indices/byBasename`, `/indices/byAlias`, `/indices/byFileClass`, and folder listings.
+- Optional SQLite implementations can reuse the same port to route deep-path folder queries without exposing SQL.
 
 **Query Routing Strategy:**
 
 ```go
-// Hot path: Common queries served by BoltDB (<1ms)
-- TagQuery (if tag in hot set)
-- FileClassQuery (if fileClass in hot set)
-
-// Deep path: Complex queries served by SQLite (<50ms)
-- LinkQuery (requires full-text search)
-- HeadingQuery (requires content indexing)
-- FrontmatterQuery (arbitrary field queries)
+// Hot path (<1ms): BoltDB serves ByBasename, ByAlias, ByFileClass, and PathQuery scopes
+// Deep path (<50ms): Future SQLite adapter can implement PathQuery(folder) using JSON views
 ```
 
 **Rationale:**
-- Eliminates O(n) scanning through all notes for common queries
-- Leverages storage-native indexing capabilities (SQLite views, BoltDB secondary indices)
-- Enables sub-50ms query performance for deep storage, <1ms for hot cache
-- Supports template functions (`lookup()`, `query()`) with fast performance
-- Foundation for future advanced querying (full-text search, graph queries)
+- Eliminates O(n) scanning for common metadata lookups.
+- Keeps QueryService decoupled from adapter internals while still supporting hybrid storage routing.
+- The unified PathQuery contract prevents API proliferation while still allowing adapters to optimise per-scope indices.
 
-**Note:** QueryService uses MetadataQueryPort for indexed queries and falls back to CacheReaderPort for non-indexed queries. BoltDBReaderAdapter implements hot-path queries, SQLiteReaderAdapter implements deep-path queries.
+**Note:** QueryService uses MetadataQueryPort for all indexed queries and falls back to CacheReaderPort only when raw cache iteration is unavoidable.
 
 ---
 
@@ -1242,17 +1242,18 @@ func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, cont
 
 ### BoltDBReaderAdapter
 
-**Responsibility:** Implement hot-path queries for `MetadataQueryPort` using BoltDB embedded key-value store. Provides sub-millisecond query performance (<1ms) for common queries using secondary index buckets.
+**Responsibility:** Implement hot-path queries for `MetadataQueryPort` using BoltDB embedded key-value store. Provides sub-millisecond query performance (<1ms) for Basename/Alias/FileClass/Path selectors backed by dedicated buckets.
 
 **Key Interfaces:**
 
-- `TagQuery(ctx context.Context, tag string) ([]domain.Note, error)` - Find notes by tag via secondary index
-- `FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)` - Find notes by fileClass via secondary index
-- `PathQuery(ctx context.Context, path string) (domain.Note, error)` - Retrieve single note by vault-relative path (primary key)
+- `ByBasename(ctx context.Context, basename string) ([]domain.Note, error)` - Resolve duplicate filenames via `/indices/byBasename`.
+- `ByAlias(ctx context.Context, alias string) ([]domain.Note, error)` - Resolve aliases via `/indices/byAlias`.
+- `ByFileClass(ctx context.Context, fileClass string) ([]domain.Note, error)` - Resolve schema membership via `/indices/byFileClass`.
+- `PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)` - Handle full path (primary `/notes/` bucket), basename (delegates to `ByBasename`), or folder lookups (optional `/indices/byFolder` or prefix scans).
 
 **Dependencies:** `go.etcd.io/bbolt`, Config (cache directory for BoltDB file), Logger.
 
-**Technology Stack:** BoltDB embedded database, secondary index buckets (`indices:by_tag`, `indices:by_fileclass`), bucket-per-note for hot cache, cursor-based iteration for index queries, zero-copy reads via memory-mapped files.
+**Technology Stack:** BoltDB embedded database, secondary index buckets (`indices:by_basename`, `indices:by_alias`, `indices:by_fileclass`, optional folder listings), bucket-per-note for hot cache, cursor-based iteration for index queries, zero-copy reads via memory-mapped files.
 
 **Implementation Pattern:**
 
@@ -1262,24 +1263,46 @@ type BoltDBReaderAdapter struct {
     log Logger
 }
 
-func (a *BoltDBReaderAdapter) TagQuery(ctx context.Context, tag string) ([]domain.Note, error) {
+func (a *BoltDBReaderAdapter) ByBasename(ctx context.Context, basename string) ([]domain.Note, error) {
     var notePaths []string
 
-    // 1. Query secondary index bucket
     err := a.db.View(func(tx *bolt.Tx) error {
-        bucket := tx.Bucket([]byte("indices:by_tag"))
+        bucket := tx.Bucket([]byte("indices:by_basename"))
         cursor := bucket.Cursor()
-
-        // 2. Iterate tag index entries
-        prefix := []byte(tag + ":")
+        prefix := []byte(basename + ":")
         for k, v := cursor.Seek(prefix); k != nil && bytes.HasPrefix(k, prefix); k, v = cursor.Next() {
             notePaths = append(notePaths, string(v))
         }
         return nil
     })
-
-    // 3. Fetch notes by paths from primary buckets
+    if err != nil {
+        return nil, err
+    }
     return a.batchGetByPaths(ctx, notePaths)
+}
+
+func (a *BoltDBReaderAdapter) PathQuery(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error) {
+    normalized, err := opts.Validate()
+    if err != nil {
+        return nil, err
+    }
+    switch normalized.Scope {
+    case spi.PathQueryScopeFull:
+        note, err := a.readByPath(ctx, normalized.Value)
+        if err != nil {
+            return nil, err
+        }
+        if note.ID == "" {
+            return []domain.Note{}, nil
+        }
+        return []domain.Note{note}, nil
+    case spi.PathQueryScopeBasename:
+        return a.ByBasename(ctx, normalized.Value)
+    case spi.PathQueryScopeFolder:
+        return a.listFolder(ctx, normalized.Value)
+    default:
+        return nil, fmt.Errorf("unsupported path scope %s", normalized.Scope)
+    }
 }
 ```
 

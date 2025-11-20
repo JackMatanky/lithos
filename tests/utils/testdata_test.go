@@ -26,10 +26,10 @@ func TestPathResolvesAllowedFixture(t *testing.T) {
 	require.Equal(t, "note.json", base)
 }
 
-// TestPathAllowsTopLevelFixture verifies that Path can resolve top-level
-// fixture files directly under testdata.
+// TestPathAllowsTopLevelFixture verifies that Path can resolve fixtures
+// in the notes directory.
 func TestPathAllowsTopLevelFixture(t *testing.T) {
-	path := Path(t, "basic_note.md")
+	path := Path(t, "notes", "basic_note.md")
 	require.FileExists(t, path)
 }
 

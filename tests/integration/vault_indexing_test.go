@@ -99,9 +99,9 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		config,
 		logger,
 	)
-	mockMetadataQuery := &mockMetadataQueryPort{}
+	// Pass nil for metadataQuery to use internal fallback logic
 	queryService := query.NewQueryService(
-		mockMetadataQuery,
+		nil,
 		cacheReader,
 		cacheReader,
 		config,

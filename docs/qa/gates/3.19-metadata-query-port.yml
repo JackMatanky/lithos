@@ -2,18 +2,20 @@ schema: 1
 story: "3.19"
 story_title: "MetadataQueryPort - Index-Based Query Interface"
 gate: PASS
-status_reason: "Excellent implementation of hexagonal architecture principles. Clean port interface design with comprehensive testing and documentation. Successfully establishes foundation for hybrid storage query system."
+status_reason: "QueryService now guards nil MetadataQueryPort dependencies, ByBasename routes through PathQuery, and new unit tests exercise both delegation and fallbacks."
 reviewer: "Quinn (Test Architect)"
-updated: "2025-11-19T02:15:00Z"
-
-waiver: { active: false }
+updated: "2025-11-19T23:28:36Z"
 
 top_issues: []
 
-quality_score: 98
+waiver:
+  active: false
+
+quality_score: 100
+expires: "2025-12-03T23:28:42Z"
 
 evidence:
-  tests_reviewed: 8
+  tests_reviewed: 2
   risks_identified: 0
   trace:
     ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
@@ -22,21 +24,21 @@ evidence:
 nfr_validation:
   security:
     status: PASS
-    notes: "Read-only interface with no data modification capabilities"
+    notes: "Read-only code path; guards simply restore nil safety."
   performance:
     status: PASS
-    notes: "Interface contract specifies O(1)/O(log n) performance expectations"
+    notes: "PathQuery now routes metadata queries or falls back to O(1) indices."
   reliability:
     status: PASS
-    notes: "Context cancellation support and proper error handling"
+    notes: "Nil guards and fallback search paths prevent regressions."
   maintainability:
     status: PASS
-    notes: "Clean interface design with comprehensive documentation and testing"
+    notes: "New targeted unit tests cover both metadata and fallback flows."
 
 recommendations:
-  immediate: []
+  immediate:
+    - action: "Hand back to QA after future adapter implementations to keep coverage fresh."
+      refs: []
   future:
-    - action: "Implement BoltDBReaderAdapter for MetadataQueryPort (Story 3.20)"
-      refs: ["internal/adapters/cache/boltdb_reader.go"]
-    - action: "Implement SQLiteReaderAdapter for MetadataQueryPort (Story 3.21)"
-      refs: ["internal/adapters/cache/sqlite_reader.go"]
+    - action: "Keep QueryService tests close to new adapter implementations to ensure parity."
+      refs: ["internal/app/query/service_metadata_test.go"]

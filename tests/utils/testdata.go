@@ -16,6 +16,7 @@ var (
 		"templates": {},
 		"vault":     {},
 		"golden":    {},
+		"notes":     {},
 	}
 
 	snakeCaseSegment = regexp.MustCompile(`^[a-z0-9]+(?:_[a-z0-9]+)*$`)

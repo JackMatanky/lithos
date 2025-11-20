@@ -1,0 +1,50 @@
+{
+  "name": "dir_contact",
+  "extends": "dir",
+  "properties": {
+    "name_first": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "name_last": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "gender": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": ["female", "male", "other"]
+    },
+    "email_personal": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"
+    },
+    "phone_mobile": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "organization": {
+      "$ref": "#/properties/organization"
+    },
+    "job_title": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    },
+    "uuid": {
+      "$ref": "#/properties/uuid"
+    },
+    "file_class": {
+      "required": true,
+      "array": false,
+      "type": "string",
+      "enum": ["dir_contact"]
+    }
+  }
+}
