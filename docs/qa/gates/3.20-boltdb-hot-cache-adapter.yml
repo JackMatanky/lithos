@@ -1,83 +1,75 @@
 schema: 1
-story: "3.19"
+story: "3.20"
 story_title: "Implement BoltDB Hot Cache Adapter"
-gate: FAIL
-status_reason: "Critical architectural dependencies missing - MetadataQueryPort interface and FileDatesDTO definition do not exist, blocking implementation readiness"
+gate: PENDING
+status_reason: "Spec alignment complete (PRD + architecture updates); awaiting re-review once PathQuery implementation, tests, and benchmarks are delivered"
 reviewer: "Quinn (Test Architect)"
-updated: "2024-11-18T21:30:00Z"
+updated: "2025-01-19T10:15:00Z"
 
 waiver: { active: false }
 
 top_issues:
-  - id: "ARCH-001"
-    severity: high
-    finding: "MetadataQueryPort interface referenced in AC 3 does not exist in codebase"
-    suggested_action: "Define MetadataQueryPort interface with ByBasename(), ByAlias(), ByFileClass() methods in internal/ports/spi/"
-    refs: ["internal/ports/spi/", "docs/architecture/components.md"]
-
-  - id: "ARCH-002"
-    severity: high
-    finding: "FileDatesDTO struct referenced in AC 4 is not defined in data-models.md"
-    suggested_action: "Add FileDatesDTO definition to docs/architecture/data-models.md with ModifiedAt and IndexedAt time.Time fields"
-    refs: ["docs/architecture/data-models.md"]
-
-  - id: "IMPL-001"
+  - id: "ARCH-010"
     severity: medium
-    finding: "Dual port implementation pattern not validated against hexagonal architecture principles"
-    suggested_action: "Review and document dual port adapter pattern compliance with single responsibility principle"
-    refs: ["docs/architecture/components.md"]
+    finding: "MetadataQueryPort.PathQuery scopes (full/basename/folder) require concrete adapter behaviour and documentation of bucket lookups"
+    suggested_action: "Implement PathQuery in BoltDBReaderAdapter, document folder index strategy, and add RED/GREEN coverage per Feature 3 subtasks"
+    refs: ["internal/adapters/spi/cache/boltdb", "docs/architecture/components.md#metadataqueryport"]
 
-  - id: "PERF-001"
+  - id: "IMPL-012"
     severity: medium
-    finding: "Sub-millisecond performance targets lack baseline measurements for feasibility validation"
-    suggested_action: "Establish current BoltDB adapter performance baselines before setting < 1ms targets"
+    finding: "Performance benchmarks do not yet include PathQuery and folder scans (<1 ms target)"
+    suggested_action: "Extend Feature 5 benchmarks to measure PathQuery scopes and capture before/after metrics"
+    refs: ["tests/performance/query_service_bench_test.go", "docs/stories/3.20.boltdb-hot-cache.md"]
+
+  - id: "QA-004"
+    severity: medium
+    finding: "Integration test plan for staleness detection and folder PathQuery coverage still pending execution"
+    suggested_action: "Complete Feature 17 integration tests (write → read → staleness) and record evidence in Dev Agent logs"
+    refs: ["tests/integration/boltdb_cache_test.go", "docs/stories/3.20.boltdb-hot-cache.md#feature-4-adapter-level-staleness-detection"]
 
 risk_summary:
-  totals: { critical: 2, high: 2, medium: 2, low: 0 }
-  highest: "critical"
+  totals: { critical: 0, high: 0, medium: 3, low: 0 }
+  highest: "medium"
   recommendations:
     must_fix:
-      - "Create MetadataQueryPort interface definition"
-      - "Define FileDatesDTO in data models"
+      - "Deliver PathQuery implementation/tests covering all scopes"
+      - "Collect updated benchmark + integration evidence for PathQuery and staleness workflows"
     monitor:
-      - "Dual port architecture pattern validation"
-      - "Performance baseline establishment"
+      - "Ensure documentation (PRD + architecture) stays synced with adapter code"
 
-quality_score: 20  # 100 - (20×2 high issues) - (10×2 medium issues)
-expires: "2024-12-02T21:30:00Z"
+quality_score: 70  # pending re-review after implementation evidence lands
+expires: "2025-02-02T10:15:00Z"
 
 evidence:
-  tests_reviewed: 0  # No tests exist yet - story in Draft
-  risks_identified: 6
+  tests_reviewed: 0  # Implementation not started
+  risks_identified: 3
   trace:
-    ac_covered: [5, 7, 8, 9, 10, 11]  # Clear architecture and write operations
-    ac_gaps: [1, 2, 3, 4, 6, 12, 13, 14]  # Missing interfaces, definitions, and test strategy
+    ac_covered: [1, 2, 3, 4, 5]  # Architecture + documentation alignment
+    ac_gaps: [6, 7, 8, 9, 10, 12, 13, 14]  # Implementation + testing evidence pending
 
 nfr_validation:
   security:
     status: PASS
     notes: "No security-sensitive components identified in cache layer"
   performance:
-    status: FAIL
-    notes: "Sub-millisecond targets lack baseline validation and feasibility assessment"
+    status: CONCERNS
+    notes: "Benchmarks must include PathQuery scopes once implementation lands"
   reliability:
     status: CONCERNS
-    notes: "Staleness detection error handling and dual port failure modes under-specified"
+    notes: "Integration tests for adapter-level staleness + folder scans pending"
   maintainability:
-    status: CONCERNS
-    notes: "File reorganization and dual port pattern add complexity without architectural foundation"
+    status: PASS
+    notes: "Documentation alignment complete; monitor once code changes merge"
 
 recommendations:
   immediate:
-    - action: "Define MetadataQueryPort interface in internal/ports/spi/"
-      refs: ["internal/ports/spi/"]
-    - action: "Add FileDatesDTO struct to docs/architecture/data-models.md"
-      refs: ["docs/architecture/data-models.md"]
-    - action: "Validate dual port pattern against hexagonal architecture principles"
-      refs: ["docs/architecture/components.md"]
+    - action: "Implement & test MetadataQueryPort.PathQuery (full/basename/folder) in BoltDBReaderAdapter"
+      refs: ["internal/adapters/spi/cache/boltdb"]
+    - action: "Update performance + integration suites to include PathQuery and staleness scenarios"
+      refs: ["tests/performance/query_service_bench_test.go", "tests/integration/boltdb_cache_test.go"]
   future:
-    - action: "Establish performance baselines for realistic target setting"
-      refs: ["internal/adapters/spi/cache/boltdb_*"]
+    - action: "Document performance results and capture them in Dev Agent completion logs"
+      refs: ["docs/stories/3.20.boltdb-hot-cache.md", "docs/dev-notes.md"]
     - action: "Create comprehensive test strategy for dual port interactions"
       refs: ["tests/integration/"]
 

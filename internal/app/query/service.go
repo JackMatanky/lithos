@@ -292,7 +292,16 @@ func (q *QueryService) ByFileClass(
 			Msg("query performance")
 	}()
 
-	return q.metadataQuery.ByFileClass(ctx, fileClass)
+	if q.metadataQuery != nil {
+		return q.metadataQuery.ByFileClass(ctx, fileClass)
+	}
+
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	notes := q.byFileClass[fileClass]
+
+	return append([]domain.Note(nil), notes...), nil
 }
 
 // ByBasename retrieves all notes matching a filename basename (without
@@ -322,16 +331,15 @@ func (q *QueryService) ByBasename(
 			Msg("query performance")
 	}()
 
-	q.mu.RLock()
-	defer q.mu.RUnlock()
+	opts, err := (spi.PathQueryOptions{
+		Scope: spi.PathQueryScopeBasename,
+		Value: basename,
+	}).Validate()
+	if err != nil {
+		return nil, err
+	}
 
-	notes := q.byBasename[basename]
-	q.log.Debug().
-		Str("basename", basename).
-		Int("result_count", len(notes)).
-		Msg("basename query completed")
-
-	return notes, nil
+	return q.PathQuery(ctx, opts)
 }
 
 // ByAlias retrieves all notes containing an alias in their frontmatter.
@@ -361,7 +369,40 @@ func (q *QueryService) ByAlias(
 			Msg("query performance")
 	}()
 
-	return q.metadataQuery.ByAlias(ctx, alias)
+	if q.metadataQuery != nil {
+		return q.metadataQuery.ByAlias(ctx, alias)
+	}
+
+	return q.aliasFallback(alias), nil
+}
+
+// PathQuery resolves notes using flexible selectors (full path, basename,
+// folder). MetadataQueryPort handles the fast-path lookups when configured;
+// otherwise we fall back to the in-memory indices maintained by QueryService.
+func (q *QueryService) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+) ([]domain.Note, error) {
+	start := time.Now()
+	defer func() {
+		q.log.Debug().
+			Dur("duration", time.Since(start)).
+			Str("method", "PathQuery").
+			Str("scope", string(opts.Scope)).
+			Str("value", opts.Value).
+			Msg("query performance")
+	}()
+
+	validatedOpts, err := opts.Validate()
+	if err != nil {
+		return nil, err
+	}
+
+	if q.metadataQuery != nil {
+		return q.metadataQuery.PathQuery(ctx, validatedOpts)
+	}
+
+	return q.pathQueryFallback(validatedOpts), nil
 }
 
 // ByFrontmatter retrieves all notes matching a frontmatter field value.
@@ -711,4 +752,91 @@ func (q *QueryService) addNoteToFrontmatterIndexes(note domain.Note) {
 			note,
 		)
 	}
+}
+
+func (q *QueryService) pathQueryFallback(
+	opts spi.PathQueryOptions,
+) []domain.Note {
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	switch opts.Scope {
+	case spi.PathQueryScopeBasename:
+		notes := q.byBasename[opts.Value]
+		return append([]domain.Note(nil), notes...)
+	case spi.PathQueryScopeFolder:
+		folder := strings.TrimSuffix(opts.Value, "/")
+		if folder == "" {
+			return []domain.Note{}
+		}
+
+		prefix := folder
+		if !strings.HasSuffix(prefix, "/") {
+			prefix += "/"
+		}
+
+		results := make([]domain.Note, 0)
+		for path, note := range q.byPath {
+			if path == folder || strings.HasPrefix(path, prefix) {
+				results = append(results, note)
+			}
+		}
+		return results
+	default:
+		if note, ok := q.byPath[opts.Value]; ok {
+			return []domain.Note{note}
+		}
+	}
+
+	return []domain.Note{}
+}
+
+func (q *QueryService) aliasFallback(alias string) []domain.Note {
+	if alias == "" {
+		return []domain.Note{}
+	}
+
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+
+	results := make([]domain.Note, 0)
+	seen := make(map[domain.NoteID]struct{})
+
+	for _, note := range q.byPath {
+		if _, ok := seen[note.ID]; ok {
+			continue
+		}
+		if frontmatterHasAlias(note.Frontmatter, alias) {
+			results = append(results, note)
+			seen[note.ID] = struct{}{}
+		}
+	}
+
+	return results
+}
+
+func frontmatterHasAlias(frontmatter domain.Frontmatter, alias string) bool {
+	value, ok := frontmatter.Fields["aliases"]
+	if !ok {
+		return false
+	}
+
+	switch v := value.(type) {
+	case string:
+		return v == alias
+	case []string:
+		for _, candidate := range v {
+			if candidate == alias {
+				return true
+			}
+		}
+	case []interface{}:
+		for _, candidate := range v {
+			if s, isString := candidate.(string); isString && s == alias {
+				return true
+			}
+		}
+	}
+
+	return false
 }
