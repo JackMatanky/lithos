@@ -63,6 +63,117 @@ type Config struct {
 	FileClassKey string `yaml:"file_class_key" mapstructure:"file_class_key"`
 }
 
+// ConfigBuilder provides a fluent API for building Config objects with
+// validation.
+type ConfigBuilder struct {
+	config     Config
+	validators []ConfigValidator
+}
+
+// ConfigValidator defines validation logic for config fields.
+type ConfigValidator interface {
+	Validate(config Config) error
+}
+
+// NewConfigBuilder creates a new ConfigBuilder with default values.
+func NewConfigBuilder() *ConfigBuilder {
+	return &ConfigBuilder{
+		config: Config{
+			VaultPath:        ".",
+			TemplatesDir:     "templates/",
+			SchemasDir:       "schemas/",
+			PropertyBankFile: "property_bank.json",
+			CacheDir:         ".lithos/cache/",
+			LogLevel:         "info",
+			FileClassKey:     "file_class",
+		},
+		validators: []ConfigValidator{},
+	}
+}
+
+// WithVaultPath sets the vault path.
+func (b *ConfigBuilder) WithVaultPath(path string) *ConfigBuilder {
+	b.config.VaultPath = path
+	return b
+}
+
+// WithTemplatesDir sets the templates directory.
+func (b *ConfigBuilder) WithTemplatesDir(dir string) *ConfigBuilder {
+	b.config.TemplatesDir = dir
+	return b
+}
+
+// WithSchemasDir sets the schemas directory.
+func (b *ConfigBuilder) WithSchemasDir(dir string) *ConfigBuilder {
+	b.config.SchemasDir = dir
+	return b
+}
+
+// WithPropertyBankFile sets the property bank file name.
+func (b *ConfigBuilder) WithPropertyBankFile(file string) *ConfigBuilder {
+	b.config.PropertyBankFile = file
+	return b
+}
+
+// WithCacheDir sets the cache directory.
+func (b *ConfigBuilder) WithCacheDir(dir string) *ConfigBuilder {
+	b.config.CacheDir = dir
+	return b
+}
+
+// WithLogLevel sets the log level.
+func (b *ConfigBuilder) WithLogLevel(level string) *ConfigBuilder {
+	b.config.LogLevel = level
+	return b
+}
+
+// WithFileClassKey sets the file class key.
+func (b *ConfigBuilder) WithFileClassKey(key string) *ConfigBuilder {
+	b.config.FileClassKey = key
+	return b
+}
+
+// WithValidator adds a validator to the builder.
+func (b *ConfigBuilder) WithValidator(
+	validator ConfigValidator,
+) *ConfigBuilder {
+	b.validators = append(b.validators, validator)
+	return b
+}
+
+// Build creates the final Config object with validation.
+func (b *ConfigBuilder) Build() (Config, error) {
+	// Apply defaults for relative paths
+	config := b.applyDefaults(b.config)
+
+	// Run validations
+	for _, validator := range b.validators {
+		if err := validator.Validate(config); err != nil {
+			return Config{}, err
+		}
+	}
+
+	return config, nil
+}
+
+// applyDefaults applies default values for relative paths.
+func (b *ConfigBuilder) applyDefaults(config Config) Config {
+	// If paths are relative, make them relative to VaultPath
+	if !filepath.IsAbs(config.TemplatesDir) {
+		config.TemplatesDir = filepath.Join(
+			config.VaultPath,
+			config.TemplatesDir,
+		)
+	}
+	if !filepath.IsAbs(config.SchemasDir) {
+		config.SchemasDir = filepath.Join(config.VaultPath, config.SchemasDir)
+	}
+	if !filepath.IsAbs(config.CacheDir) {
+		config.CacheDir = filepath.Join(config.VaultPath, config.CacheDir)
+	}
+	return config
+}
+
 // NewConfig creates a Config with sensible defaults applied for empty values.
 // Use this constructor when you want automatic defaults for unspecified fields.
 // The Config is immutable after creation.

@@ -8,6 +8,7 @@ package logger
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"strings"
@@ -168,4 +169,114 @@ func redactField(jsonStr, field string) string {
 
 	// Replace the value with [REDACTED]
 	return jsonStr[:valueStart] + "[REDACTED]" + jsonStr[valueEnd:]
+}
+
+// Logger defines the interface for structured logging operations.
+type Logger interface {
+	// WithContext returns a logger with context information.
+	WithContext(ctx context.Context) Logger
+
+	// WithField adds a field to the logger.
+	WithField(key string, value interface{}) Logger
+
+	// WithFields adds multiple fields to the logger.
+	WithFields(fields map[string]interface{}) Logger
+
+	// WithError adds an error to the logger.
+	WithError(err error) Logger
+
+	// Debug logs a debug message.
+	Debug(msg string)
+
+	// Info logs an info message.
+	Info(msg string)
+
+	// Warn logs a warning message.
+	Warn(msg string)
+
+	// Error logs an error message.
+	Error(msg string)
+
+	// Fatal logs a fatal message and exits.
+	Fatal(msg string)
+
+	// LogOperation logs an operation with structured context.
+	LogOperation(operation string, params map[string]interface{}, err error)
+}
+
+// ZerologAdapter adapts zerolog to the Logger interface.
+type ZerologAdapter struct {
+	logger zerolog.Logger
+}
+
+// NewZerologAdapter creates a new zerolog adapter.
+func NewZerologAdapter(logger zerolog.Logger) *ZerologAdapter {
+	return &ZerologAdapter{logger: logger}
+}
+
+// WithContext returns a logger with context information.
+func (z *ZerologAdapter) WithContext(ctx context.Context) Logger {
+	return &ZerologAdapter{logger: z.logger.With().Caller().Logger()}
+}
+
+// WithField adds a field to the logger.
+func (z *ZerologAdapter) WithField(key string, value interface{}) Logger {
+	return &ZerologAdapter{
+		logger: z.logger.With().Interface(key, value).Logger(),
+	}
+}
+
+// WithFields adds multiple fields to the logger.
+func (z *ZerologAdapter) WithFields(fields map[string]interface{}) Logger {
+	event := z.logger.With()
+	for k, v := range fields {
+		event = event.Interface(k, v)
+	}
+	return &ZerologAdapter{logger: event.Logger()}
+}
+
+// WithError adds an error to the logger.
+func (z *ZerologAdapter) WithError(err error) Logger {
+	return &ZerologAdapter{logger: z.logger.With().Err(err).Logger()}
+}
+
+// Debug logs a debug message.
+func (z *ZerologAdapter) Debug(msg string) {
+	z.logger.Debug().Msg(msg)
+}
+
+// Info logs an info message.
+func (z *ZerologAdapter) Info(msg string) {
+	z.logger.Info().Msg(msg)
+}
+
+// Warn logs a warning message.
+func (z *ZerologAdapter) Warn(msg string) {
+	z.logger.Warn().Msg(msg)
+}
+
+// Error logs an error message.
+func (z *ZerologAdapter) Error(msg string) {
+	z.logger.Error().Msg(msg)
+}
+
+// Fatal logs a fatal message and exits.
+func (z *ZerologAdapter) Fatal(msg string) {
+	z.logger.Fatal().Msg(msg)
+}
+
+// LogOperation logs an operation with structured context.
+func (z *ZerologAdapter) LogOperation(
+	operation string,
+	params map[string]interface{},
+	err error,
+) {
+	event := z.logger.Info().Str("operation", operation)
+	for k, v := range params {
+		event = event.Interface(k, v)
+	}
+	if err != nil {
+		event = event.Err(err)
+	}
+	event.Msg("operation completed")
 }
