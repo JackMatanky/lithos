@@ -46,8 +46,15 @@ type Container struct {
 // NewContainer creates a new dependency injection container.
 func NewContainer(cfg domain.Config, log zerolog.Logger) *Container {
 	return &Container{
-		config: cfg,
-		logger: log,
+		config:             cfg,
+		logger:             log,
+		schemaEngine:       nil,
+		storage:            nil,
+		templateEngine:     nil,
+		markdownParser:     nil,
+		frontmatterService: nil,
+		vaultIndexer:       nil,
+		cliOrchestrator:    nil,
 	}
 }
 

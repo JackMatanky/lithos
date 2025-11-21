@@ -10,6 +10,16 @@ import (
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 )
 
+const (
+	// OpWrite represents a write operation.
+	OpWrite OperationType = iota
+	// OpDelete represents a delete operation.
+	OpDelete
+)
+
+// OperationType identifies the kind of operation.
+type OperationType int
+
 // Operation represents a transactional operation that can be executed and
 // rolled back.
 type Operation interface {
@@ -20,16 +30,6 @@ type Operation interface {
 	// Type returns the operation type for identification.
 	Type() OperationType
 }
-
-// OperationType identifies the kind of operation.
-type OperationType int
-
-const (
-	// OpWrite represents a write operation.
-	OpWrite OperationType = iota
-	// OpDelete represents a delete operation.
-	OpDelete
-)
 
 // WriteOperation represents a write operation for a note.
 type WriteOperation struct {
@@ -42,10 +42,16 @@ type DeleteOperation struct {
 	noteID domain.NoteID
 }
 
-// TransactionStrategy defines how transactions are executed across multiple writers.
+// TransactionStrategy defines how transactions are executed across multiple
+// writers.
 type TransactionStrategy interface {
-	// Execute performs the transaction using the provided operations and writers.
-	Execute(ctx context.Context, operations []Operation, writers []spi.CacheWriterPort) error
+	// Execute performs the transaction using the provided operations and
+	// writers.
+	Execute(
+		ctx context.Context,
+		operations []Operation,
+		writers []spi.CacheWriterPort,
+	) error
 }
 
 // TwoPhaseCommitStrategy implements two-phase commit across BoltDB and SQLite.
@@ -71,12 +77,18 @@ func NewWriteOperation(note domain.Note, indexTime time.Time) *WriteOperation {
 }
 
 // Execute performs the write operation.
-func (op *WriteOperation) Execute(ctx context.Context, writer spi.CacheWriterPort) error {
+func (op *WriteOperation) Execute(
+	ctx context.Context,
+	writer spi.CacheWriterPort,
+) error {
 	return writer.Persist(ctx, op.note, op.indexTime)
 }
 
 // Rollback undoes the write operation by deleting the note.
-func (op *WriteOperation) Rollback(ctx context.Context, writer spi.CacheWriterPort) error {
+func (op *WriteOperation) Rollback(
+	ctx context.Context,
+	writer spi.CacheWriterPort,
+) error {
 	return writer.Delete(ctx, op.note.ID)
 }
 
@@ -91,12 +103,18 @@ func NewDeleteOperation(noteID domain.NoteID) *DeleteOperation {
 }
 
 // Execute performs the delete operation.
-func (op *DeleteOperation) Execute(ctx context.Context, writer spi.CacheWriterPort) error {
+func (op *DeleteOperation) Execute(
+	ctx context.Context,
+	writer spi.CacheWriterPort,
+) error {
 	return writer.Delete(ctx, op.noteID)
 }
 
 // Rollback cannot undo a delete operation easily without read-before-delete.
-func (op *DeleteOperation) Rollback(ctx context.Context, writer spi.CacheWriterPort) error {
+func (op *DeleteOperation) Rollback(
+	ctx context.Context,
+	writer spi.CacheWriterPort,
+) error {
 	// Cannot undo delete easily without read-before-delete
 	return nil
 }
@@ -117,26 +135,38 @@ func NewTwoPhaseCommitStrategy(
 	}
 }
 
-// Execute performs two-phase commit: BoltDB first, then SQLite with rollback on failure.
+// Execute performs two-phase commit: BoltDB first, then SQLite with rollback on
+// failure.
 func (s *TwoPhaseCommitStrategy) Execute(
 	ctx context.Context,
 	operations []Operation,
 	writers []spi.CacheWriterPort,
 ) error {
 	// Phase 1: Commit to BoltDB
-	committedBolt, err := s.commitOperations(ctx, operations, s.boltWriter, s.rollbackBolt)
+	committedBolt, err := s.commitOperations(
+		ctx,
+		operations,
+		s.boltWriter,
+		s.rollbackBolt,
+	)
 	if err != nil {
 		return fmt.Errorf("boltdb transaction failed: %w", err)
 	}
 
 	// Phase 2: Commit to SQLite
-	_, err = s.commitOperations(ctx, operations, s.sqliteWriter, s.rollbackSQLite)
+	_, err = s.commitOperations(
+		ctx,
+		operations,
+		s.sqliteWriter,
+		s.rollbackSQLite,
+	)
 	if err != nil {
 		// Compensating rollback: undo BoltDB changes
 		if rollbackErr := s.rollbackBolt(ctx, committedBolt); rollbackErr != nil {
 			return fmt.Errorf(
 				"sqlite transaction failed and boltdb rollback failed: %w (original: %w)",
-				rollbackErr, err,
+				rollbackErr,
+				err,
 			)
 		}
 		return fmt.Errorf("sqlite transaction failed: %w", err)
@@ -145,7 +175,8 @@ func (s *TwoPhaseCommitStrategy) Execute(
 	return nil
 }
 
-// commitOperations executes operations against a cache writer with rollback on failure.
+// commitOperations executes operations against a cache writer with rollback on
+// failure.
 func (s *TwoPhaseCommitStrategy) commitOperations(
 	ctx context.Context,
 	ops []Operation,
@@ -156,10 +187,9 @@ func (s *TwoPhaseCommitStrategy) commitOperations(
 	for _, op := range ops {
 		if err := op.Execute(ctx, writer); err != nil {
 			// Rollback any committed operations
-			if rollbackErr := rollbackFunc(ctx, committed); rollbackErr != nil {
-				// Log rollback error but don't mask original error
-				// Error will be wrapped at higher level
-			}
+			// Ignore rollback errors to avoid masking the original commit error
+			// Rollback failures are logged at higher levels if needed
+			_ = rollbackFunc(ctx, committed)
 			return nil, err
 		}
 		committed = append(committed, op)
@@ -191,4 +221,70 @@ func (s *TwoPhaseCommitStrategy) rollbackSQLite(
 		}
 	}
 	return lastErr
+}
+
+// NewCacheUnitOfWork creates a new CacheUnitOfWork.
+func NewCacheUnitOfWork(
+	boltWriter spi.CacheWriterPort,
+	sqliteWriter spi.CacheWriterPort,
+) *CacheUnitOfWork {
+	strategy := NewTwoPhaseCommitStrategy(boltWriter, sqliteWriter)
+	return &CacheUnitOfWork{
+		strategy:   strategy,
+		operations: make([]Operation, 0),
+		mu:         sync.Mutex{},
+	}
+}
+
+// Begin starts a new unit of work.
+func (uow *CacheUnitOfWork) Begin() error {
+	uow.mu.Lock()
+	defer uow.mu.Unlock()
+	uow.operations = make([]Operation, 0)
+	return nil
+}
+
+// AddWrite stages a write operation.
+func (uow *CacheUnitOfWork) AddWrite(
+	note domain.Note,
+	indexTime time.Time,
+) error {
+	uow.mu.Lock()
+	defer uow.mu.Unlock()
+	uow.operations = append(uow.operations, NewWriteOperation(note, indexTime))
+	return nil
+}
+
+// AddDelete stages a delete operation.
+func (uow *CacheUnitOfWork) AddDelete(path string) error {
+	uow.mu.Lock()
+	defer uow.mu.Unlock()
+	uow.operations = append(
+		uow.operations,
+		NewDeleteOperation(domain.NoteID(path)),
+	)
+	return nil
+}
+
+// Commit executes all staged operations atomically.
+func (uow *CacheUnitOfWork) Commit(ctx context.Context) error {
+	uow.mu.Lock()
+	defer uow.mu.Unlock()
+
+	// Execute transaction using the configured strategy
+	if err := uow.strategy.Execute(ctx, uow.operations, nil); err != nil {
+		return err
+	}
+
+	// Success - clear operations for reuse
+	uow.operations = uow.operations[:0]
+	return nil
+}
+
+// Rollback clears all staged operations.
+func (uow *CacheUnitOfWork) Rollback(ctx context.Context) error {
+	uow.mu.Lock()
+	defer uow.mu.Unlock()
+	uow.operations = make([]Operation, 0)
+	return nil
 }
