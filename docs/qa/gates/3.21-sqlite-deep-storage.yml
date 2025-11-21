@@ -1,0 +1,58 @@
+schema: 1
+story: '3.21'
+story_title: 'Implement SQLite Deep Storage with Schema-Driven Views'
+gate: FAIL
+status_reason: 'Schema views are never built and staleness metadata never reflects filesystem changes, so the deep-storage feature does not work at runtime.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2025-11-21T17:00:37Z'
+top_issues:
+  - id: QA-321-1
+    title: 'SchemaViewMigrator receives no schemas during CLI startup'
+    severity: high
+    suggested_owner: dev
+    details: 'Storage() calls initStorage with nil schemas, so EnsureViews() exits early and FileClass/Frontmatter queries fall back to json_extract scans (cmd/lithos/main.go:80-86, internal/adapters/spi/cache/sqlite/view_migrator.go:51-57).'
+  - id: QA-321-2
+    title: 'modified_at/indexed_time stored from time.Now() so staleness checks never trip'
+    severity: high
+    suggested_owner: dev
+    details: 'VaultIndexer never writes VaultFile metadata into the Note and ExtractFileModTime falls back to time.Now(), preventing AC 11-12 from ever succeeding (internal/app/vault/indexer.go:662-685, internal/adapters/spi/cache/sqlite/writer.go:118-166, internal/adapters/spi/cache/helper.go:66-81).'
+waiver:
+  active: false
+quality_score: 60
+expires: '2025-12-05T17:00:37Z'
+evidence:
+  tests_reviewed: 4
+  risks_identified: 2
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 13, 14]
+    ac_gaps: [9, 10, 11, 12, 15, 16, 17]
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'No new attack surface introduced.'
+  performance:
+    status: FAIL
+    notes: 'Without schema view creation, all metadata queries devolve to json_extract table scans.'
+  reliability:
+    status: FAIL
+    notes: 'modified_at and indexed_time are generated from the same timestamp so stale files can never be detected.'
+  maintainability:
+    status: CONCERNS
+    notes: 'SQLite reader is never wired into the container, leaving the feature unreachable and undocumented.'
+recommendations:
+  immediate:
+    - action: 'Inject SchemaEngine.SchemasSnapshot() (or similar) into initStorage so SchemaViewMigrator has data before adapters are exposed.'
+      refs:
+        - 'cmd/lithos/main.go:80-86'
+    - action: 'Persist VaultFile.ModifiedAt()/Size when constructing domain.Note and remove the time.Now fallback from cache.ExtractFileModTime.'
+      refs:
+        - 'internal/app/vault/indexer.go:662-685'
+        - 'internal/adapters/spi/cache/sqlite/writer.go:118-166'
+        - 'internal/adapters/spi/cache/helper.go:66-81'
+    - action: 'Create a SQLiteReaderAdapter in the container (and QueryService wiring) so MetadataQueryPort + schema views are used by CLI flows.'
+      refs:
+        - 'cmd/lithos/main.go:24-279'
+  future:
+    - action: 'Add an end-to-end startup test that boots the real container to ensure migrations and MetadataQueryPort wiring stay intact.'
+      refs:
+        - 'tests/integration/sqlite_cache_test.go'
