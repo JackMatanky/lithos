@@ -10,158 +10,185 @@ import (
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 )
 
+// Operation represents a transactional operation that can be executed and
+// rolled back.
+type Operation interface {
+	// Execute performs the operation on the given writer.
+	Execute(ctx context.Context, writer spi.CacheWriterPort) error
+	// Rollback undoes the operation on the given writer.
+	Rollback(ctx context.Context, writer spi.CacheWriterPort) error
+	// Type returns the operation type for identification.
+	Type() OperationType
+}
+
+// OperationType identifies the kind of operation.
+type OperationType int
+
 const (
-	opWrite operationType = iota
-	opDelete
+	// OpWrite represents a write operation.
+	OpWrite OperationType = iota
+	// OpDelete represents a delete operation.
+	OpDelete
 )
 
-type operationType int
-
-type operation struct {
-	opType    operationType
+// WriteOperation represents a write operation for a note.
+type WriteOperation struct {
 	note      domain.Note
 	indexTime time.Time
-	path      string
+}
+
+// DeleteOperation represents a delete operation for a note.
+type DeleteOperation struct {
+	noteID domain.NoteID
+}
+
+// TransactionStrategy defines how transactions are executed across multiple writers.
+type TransactionStrategy interface {
+	// Execute performs the transaction using the provided operations and writers.
+	Execute(ctx context.Context, operations []Operation, writers []spi.CacheWriterPort) error
+}
+
+// TwoPhaseCommitStrategy implements two-phase commit across BoltDB and SQLite.
+type TwoPhaseCommitStrategy struct {
+	boltWriter   spi.CacheWriterPort
+	sqliteWriter spi.CacheWriterPort
 }
 
 // CacheUnitOfWork coordinates transactional writes across multiple storage
 // systems.
 type CacheUnitOfWork struct {
-	boltWriter   spi.CacheWriterPort
-	sqliteWriter spi.CacheWriterPort
-	operations   []operation
-	mu           sync.Mutex
+	strategy   TransactionStrategy
+	operations []Operation
+	mu         sync.Mutex
 }
 
-// NewCacheUnitOfWork creates a new CacheUnitOfWork.
-func NewCacheUnitOfWork(
-	boltWriter spi.CacheWriterPort,
-	sqliteWriter spi.CacheWriterPort,
-) *CacheUnitOfWork {
-	return &CacheUnitOfWork{
-		boltWriter:   boltWriter,
-		sqliteWriter: sqliteWriter,
-		operations:   make([]operation, 0),
-		mu:           sync.Mutex{},
-	}
-}
-
-// Begin starts a new unit of work.
-func (uow *CacheUnitOfWork) Begin() error {
-	uow.mu.Lock()
-	defer uow.mu.Unlock()
-	uow.operations = make([]operation, 0)
-	return nil
-}
-
-// AddWrite stages a write operation.
-func (uow *CacheUnitOfWork) AddWrite(
-	note domain.Note,
-	indexTime time.Time,
-) error {
-	uow.mu.Lock()
-	defer uow.mu.Unlock()
-	uow.operations = append(uow.operations, operation{
-		opType:    opWrite,
+// NewWriteOperation creates a new write operation.
+func NewWriteOperation(note domain.Note, indexTime time.Time) *WriteOperation {
+	return &WriteOperation{
 		note:      note,
 		indexTime: indexTime,
-		path:      "", // Not used for writes
-	})
-	return nil
-}
-
-// AddDelete stages a delete operation.
-func (uow *CacheUnitOfWork) AddDelete(path string) error {
-	uow.mu.Lock()
-	defer uow.mu.Unlock()
-	uow.operations = append(uow.operations, operation{
-		opType: opDelete,
-		path:   path,
-		note: domain.Note{
-			ID: "",
-			Frontmatter: domain.Frontmatter{
-				FileClass: "",
-				Fields:    nil,
-			},
-		}, // Not used for deletes
-		indexTime: time.Time{}, // Not used for deletes
-	})
-	return nil
-}
-
-// Commit executes all staged operations atomically.
-func (uow *CacheUnitOfWork) Commit(ctx context.Context) error {
-	uow.mu.Lock()
-	defer uow.mu.Unlock()
-
-	var committedBolt []operation
-
-	// Phase 1: BoltDB
-	for _, op := range uow.operations {
-		var err error
-		if op.opType == opWrite {
-			err = uow.boltWriter.Persist(ctx, op.note, op.indexTime)
-		} else {
-			err = uow.boltWriter.Delete(ctx, domain.NoteID(op.path))
-		}
-
-		if err != nil {
-			uow.rollbackBolt(ctx, committedBolt)
-			return fmt.Errorf("boltdb transaction failed: %w", err)
-		}
-		committedBolt = append(committedBolt, op)
-	}
-
-	// Phase 2: SQLite
-	var committedSQLite []operation
-	for _, op := range uow.operations {
-		var err error
-		if op.opType == opWrite {
-			err = uow.sqliteWriter.Persist(ctx, op.note, op.indexTime)
-		} else {
-			err = uow.sqliteWriter.Delete(ctx, domain.NoteID(op.path))
-		}
-
-		if err != nil {
-			uow.rollbackSQLite(ctx, committedSQLite)
-			uow.rollbackBolt(ctx, committedBolt)
-			return fmt.Errorf("sqlite transaction failed: %w", err)
-		}
-		committedSQLite = append(committedSQLite, op)
-	}
-
-	// Success - clear operations
-	uow.operations = uow.operations[:0]
-	return nil
-}
-
-// Rollback clears all staged operations.
-func (uow *CacheUnitOfWork) Rollback(ctx context.Context) error {
-	uow.mu.Lock()
-	defer uow.mu.Unlock()
-	uow.operations = make([]operation, 0)
-	return nil
-}
-
-func (uow *CacheUnitOfWork) rollbackBolt(ctx context.Context, ops []operation) {
-	for i := len(ops) - 1; i >= 0; i-- {
-		op := ops[i]
-		if op.opType == opWrite {
-			// Compensating write: delete what was written
-			_ = uow.boltWriter.Delete(ctx, op.note.ID)
-		}
-		// Cannot undo delete easily without read-before-delete
 	}
 }
 
-func (uow *CacheUnitOfWork) rollbackSQLite(
+// Execute performs the write operation.
+func (op *WriteOperation) Execute(ctx context.Context, writer spi.CacheWriterPort) error {
+	return writer.Persist(ctx, op.note, op.indexTime)
+}
+
+// Rollback undoes the write operation by deleting the note.
+func (op *WriteOperation) Rollback(ctx context.Context, writer spi.CacheWriterPort) error {
+	return writer.Delete(ctx, op.note.ID)
+}
+
+// Type returns the operation type.
+func (op *WriteOperation) Type() OperationType {
+	return OpWrite
+}
+
+// NewDeleteOperation creates a new delete operation.
+func NewDeleteOperation(noteID domain.NoteID) *DeleteOperation {
+	return &DeleteOperation{noteID: noteID}
+}
+
+// Execute performs the delete operation.
+func (op *DeleteOperation) Execute(ctx context.Context, writer spi.CacheWriterPort) error {
+	return writer.Delete(ctx, op.noteID)
+}
+
+// Rollback cannot undo a delete operation easily without read-before-delete.
+func (op *DeleteOperation) Rollback(ctx context.Context, writer spi.CacheWriterPort) error {
+	// Cannot undo delete easily without read-before-delete
+	return nil
+}
+
+// Type returns the operation type.
+func (op *DeleteOperation) Type() OperationType {
+	return OpDelete
+}
+
+// NewTwoPhaseCommitStrategy creates a new two-phase commit strategy.
+func NewTwoPhaseCommitStrategy(
+	boltWriter spi.CacheWriterPort,
+	sqliteWriter spi.CacheWriterPort,
+) *TwoPhaseCommitStrategy {
+	return &TwoPhaseCommitStrategy{
+		boltWriter:   boltWriter,
+		sqliteWriter: sqliteWriter,
+	}
+}
+
+// Execute performs two-phase commit: BoltDB first, then SQLite with rollback on failure.
+func (s *TwoPhaseCommitStrategy) Execute(
 	ctx context.Context,
-	ops []operation,
-) {
+	operations []Operation,
+	writers []spi.CacheWriterPort,
+) error {
+	// Phase 1: Commit to BoltDB
+	committedBolt, err := s.commitOperations(ctx, operations, s.boltWriter, s.rollbackBolt)
+	if err != nil {
+		return fmt.Errorf("boltdb transaction failed: %w", err)
+	}
+
+	// Phase 2: Commit to SQLite
+	_, err = s.commitOperations(ctx, operations, s.sqliteWriter, s.rollbackSQLite)
+	if err != nil {
+		// Compensating rollback: undo BoltDB changes
+		if rollbackErr := s.rollbackBolt(ctx, committedBolt); rollbackErr != nil {
+			return fmt.Errorf(
+				"sqlite transaction failed and boltdb rollback failed: %w (original: %w)",
+				rollbackErr, err,
+			)
+		}
+		return fmt.Errorf("sqlite transaction failed: %w", err)
+	}
+
+	return nil
+}
+
+// commitOperations executes operations against a cache writer with rollback on failure.
+func (s *TwoPhaseCommitStrategy) commitOperations(
+	ctx context.Context,
+	ops []Operation,
+	writer spi.CacheWriterPort,
+	rollbackFunc func(context.Context, []Operation) error,
+) ([]Operation, error) {
+	var committed []Operation
+	for _, op := range ops {
+		if err := op.Execute(ctx, writer); err != nil {
+			// Rollback any committed operations
+			if rollbackErr := rollbackFunc(ctx, committed); rollbackErr != nil {
+				// Log rollback error but don't mask original error
+				// Error will be wrapped at higher level
+			}
+			return nil, err
+		}
+		committed = append(committed, op)
+	}
+	return committed, nil
+}
+
+func (s *TwoPhaseCommitStrategy) rollbackBolt(
+	ctx context.Context,
+	ops []Operation,
+) error {
+	var lastErr error
 	for i := len(ops) - 1; i >= 0; i-- {
-		op := ops[i]
-		if op.opType == opWrite {
-			_ = uow.sqliteWriter.Delete(ctx, op.note.ID)
+		if err := ops[i].Rollback(ctx, s.boltWriter); err != nil {
+			lastErr = err
 		}
 	}
+	return lastErr
+}
+
+func (s *TwoPhaseCommitStrategy) rollbackSQLite(
+	ctx context.Context,
+	ops []Operation,
+) error {
+	var lastErr error
+	for i := len(ops) - 1; i >= 0; i-- {
+		if err := ops[i].Rollback(ctx, s.sqliteWriter); err != nil {
+			lastErr = err
+		}
+	}
+	return lastErr
 }

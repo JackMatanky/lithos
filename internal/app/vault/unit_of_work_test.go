@@ -12,37 +12,117 @@ import (
 	"github.com/JackMatanky/lithos/tests/utils"
 )
 
-func TestCacheUnitOfWork_Construction(t *testing.T) {
-	bolt := utils.NewMockCacheWriterPort()
-	sqlite := utils.NewMockCacheWriterPort()
+// UnitOfWorkFixture provides a fluent API for setting up CacheUnitOfWork tests.
+type UnitOfWorkFixture struct {
+	boltWriter   *utils.MockCacheWriterPort
+	sqliteWriter *utils.MockCacheWriterPort
+	uow          *vault.CacheUnitOfWork
+}
 
+// NewUnitOfWorkFixture creates a new test fixture with default mock writers.
+func NewUnitOfWorkFixture() *UnitOfWorkFixture {
+	bolt := &utils.MockCacheWriterPort{}
+	sqlite := &utils.MockCacheWriterPort{}
 	uow := vault.NewCacheUnitOfWork(bolt, sqlite)
-	if uow == nil {
+	return &UnitOfWorkFixture{
+		boltWriter:   bolt,
+		sqliteWriter: sqlite,
+		uow:          uow,
+	}
+}
+
+// WithFailingBoltWriter configures the BoltDB writer to fail on persist
+// operations.
+func (f *UnitOfWorkFixture) WithFailingBoltWriter() *UnitOfWorkFixture {
+	f.boltWriter.PersistFunc = func(ctx context.Context, note domain.Note, indexTime time.Time) error {
+		return errors.New("bolt persist failure")
+	}
+	return f
+}
+
+// WithFailingSQLiteWriter configures the SQLite writer to fail on persist
+// operations.
+func (f *UnitOfWorkFixture) WithFailingSQLiteWriter() *UnitOfWorkFixture {
+	f.sqliteWriter.PersistFunc = func(
+		ctx context.Context, note domain.Note, indexTime time.Time,
+	) error {
+		return errors.New("sqlite persist failure")
+	}
+	return f
+}
+
+// WithFailingBoltDelete configures the BoltDB writer to fail on delete
+// operations.
+func (f *UnitOfWorkFixture) WithFailingBoltDelete() *UnitOfWorkFixture {
+	f.boltWriter.DeleteFunc = func(ctx context.Context, id domain.NoteID) error {
+		return errors.New("bolt delete failure")
+	}
+	return f
+}
+
+// WithTrackingBoltWriter configures the BoltDB writer to track calls.
+func (f *UnitOfWorkFixture) WithTrackingBoltWriter() *UnitOfWorkFixture {
+	callCount := 0
+	f.boltWriter.PersistFunc = func(
+		ctx context.Context, note domain.Note, indexTime time.Time,
+	) error {
+		callCount++
+		return nil
+	}
+	return f
+}
+
+// WithTrackingSQLiteWriter configures the SQLite writer to track calls.
+func (f *UnitOfWorkFixture) WithTrackingSQLiteWriter() *UnitOfWorkFixture {
+	callCount := 0
+	f.sqliteWriter.PersistFunc = func(
+		ctx context.Context, note domain.Note, indexTime time.Time,
+	) error {
+		callCount++
+		return nil
+	}
+	return f
+}
+
+// UnitOfWork returns the configured CacheUnitOfWork instance.
+func (f *UnitOfWorkFixture) UnitOfWork() *vault.CacheUnitOfWork {
+	return f.uow
+}
+
+// BoltWriter returns the BoltDB mock writer for assertions.
+func (f *UnitOfWorkFixture) BoltWriter() *utils.MockCacheWriterPort {
+	return f.boltWriter
+}
+
+// SQLiteWriter returns the SQLite mock writer for assertions.
+func (f *UnitOfWorkFixture) SQLiteWriter() *utils.MockCacheWriterPort {
+	return f.sqliteWriter
+}
+
+func TestCacheUnitOfWork_Construction(t *testing.T) {
+	fixture := NewUnitOfWorkFixture()
+	if fixture.UnitOfWork() == nil {
 		t.Fatal("expected CacheUnitOfWork to be created")
 	}
 }
 
 func TestCacheUnitOfWork_Begin(t *testing.T) {
-	bolt := &utils.MockCacheWriterPort{}
-	sqlite := &utils.MockCacheWriterPort{}
-	uow := vault.NewCacheUnitOfWork(bolt, sqlite)
+	fixture := NewUnitOfWorkFixture()
 
-	if err := uow.Begin(); err != nil {
+	if err := fixture.UnitOfWork().Begin(); err != nil {
 		t.Errorf("Begin() error = %v, want nil", err)
 	}
 }
 
 func TestCacheUnitOfWork_AddWrite(t *testing.T) {
-	bolt := &utils.MockCacheWriterPort{}
-	sqlite := &utils.MockCacheWriterPort{}
-	uow := vault.NewCacheUnitOfWork(bolt, sqlite)
+	fixture := NewUnitOfWorkFixture()
 
 	note := domain.Note{
 		ID: "test-note",
 	}
 	indexTime := time.Now()
 
-	if err := uow.AddWrite(note, indexTime); err != nil {
+	if err := fixture.UnitOfWork().AddWrite(note, indexTime); err != nil {
 		t.Errorf("AddWrite() error = %v, want nil", err)
 	}
 	// We can't inspect internal operations slice easily without exposing it or
@@ -51,42 +131,45 @@ func TestCacheUnitOfWork_AddWrite(t *testing.T) {
 }
 
 func TestCacheUnitOfWork_AddDelete(t *testing.T) {
-	bolt := &utils.MockCacheWriterPort{}
-	sqlite := &utils.MockCacheWriterPort{}
-	uow := vault.NewCacheUnitOfWork(bolt, sqlite)
+	fixture := NewUnitOfWorkFixture()
 
 	path := "notes/test.md"
-	if err := uow.AddDelete(path); err != nil {
+	if err := fixture.UnitOfWork().AddDelete(path); err != nil {
 		t.Errorf("AddDelete() error = %v, want nil", err)
 	}
 }
 
 func TestCacheUnitOfWork_Commit_Success(t *testing.T) {
-	var boltCalls int
-	bolt := &utils.MockCacheWriterPort{
-		PersistFunc: func(ctx context.Context, note domain.Note, indexTime time.Time) error {
-			boltCalls++
-			return nil
-		},
+	var boltCalls, sqliteCalls int
+
+	fixture := NewUnitOfWorkFixture().
+		WithTrackingBoltWriter().
+		WithTrackingSQLiteWriter()
+
+	// Override the mock functions to track calls
+	fixture.BoltWriter().PersistFunc = func(
+		ctx context.Context, note domain.Note, indexTime time.Time,
+	) error {
+		boltCalls++
+		return nil
 	}
-	var sqliteCalls int
-	sqlite := &utils.MockCacheWriterPort{
-		PersistFunc: func(ctx context.Context, note domain.Note, indexTime time.Time) error {
-			sqliteCalls++
-			return nil
-		},
+	fixture.SQLiteWriter().PersistFunc = func(
+		ctx context.Context, note domain.Note, indexTime time.Time,
+	) error {
+		sqliteCalls++
+		return nil
 	}
-	uow := vault.NewCacheUnitOfWork(bolt, sqlite)
+
 	ctx := context.Background()
 
-	if err := uow.Begin(); err != nil {
+	if err := fixture.UnitOfWork().Begin(); err != nil {
 		t.Fatalf("Begin() error = %v, want nil", err)
 	}
-	if err := uow.AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
+	if err := fixture.UnitOfWork().AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 
-	err := uow.Commit(ctx)
+	err := fixture.UnitOfWork().Commit(ctx)
 	if err != nil {
 		t.Errorf("Commit() error = %v, want nil", err)
 	}
@@ -99,30 +182,28 @@ func TestCacheUnitOfWork_Commit_Success(t *testing.T) {
 }
 
 func TestCacheUnitOfWork_Commit_BoltFail_Rollback(t *testing.T) {
-	bolt := &utils.MockCacheWriterPort{
-		PersistFunc: func(ctx context.Context, note domain.Note, indexTime time.Time) error {
-			return errors.New("bolt error")
-		},
-	}
 	var sqliteCalls int
-	sqlite := &utils.MockCacheWriterPort{
-		PersistFunc: func(ctx context.Context, note domain.Note, indexTime time.Time) error {
-			sqliteCalls++
-			return nil
-		},
+
+	fixture := NewUnitOfWorkFixture().
+		WithFailingBoltWriter()
+
+	fixture.SQLiteWriter().PersistFunc = func(
+		ctx context.Context, note domain.Note, indexTime time.Time,
+	) error {
+		sqliteCalls++
+		return nil
 	}
 
-	uow := vault.NewCacheUnitOfWork(bolt, sqlite)
 	ctx := context.Background()
 
-	if err := uow.Begin(); err != nil {
+	if err := fixture.UnitOfWork().Begin(); err != nil {
 		t.Fatalf("Begin() error = %v, want nil", err)
 	}
-	if err := uow.AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
+	if err := fixture.UnitOfWork().AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 
-	err := uow.Commit(ctx)
+	err := fixture.UnitOfWork().Commit(ctx)
 	if err == nil {
 		t.Error("Expected error, got nil")
 	}
@@ -133,32 +214,31 @@ func TestCacheUnitOfWork_Commit_BoltFail_Rollback(t *testing.T) {
 
 func TestCacheUnitOfWork_Commit_SQLiteFail_Rollback(t *testing.T) {
 	var boltDeletes int
-	bolt := &utils.MockCacheWriterPort{
-		PersistFunc: func(ctx context.Context, note domain.Note, indexTime time.Time) error {
-			return nil
-		},
-		DeleteFunc: func(ctx context.Context, id domain.NoteID) error {
-			boltDeletes++
-			return nil
-		},
+
+	fixture := NewUnitOfWorkFixture().
+		WithFailingSQLiteWriter().
+		WithFailingBoltDelete()
+
+	fixture.BoltWriter().PersistFunc = func(
+		ctx context.Context, note domain.Note, indexTime time.Time,
+	) error {
+		return nil // BoltDB write succeeds
 	}
-	sqlite := &utils.MockCacheWriterPort{
-		PersistFunc: func(ctx context.Context, note domain.Note, indexTime time.Time) error {
-			return errors.New("sqlite error")
-		},
+	fixture.BoltWriter().DeleteFunc = func(ctx context.Context, id domain.NoteID) error {
+		boltDeletes++
+		return nil
 	}
 
-	uow := vault.NewCacheUnitOfWork(bolt, sqlite)
 	ctx := context.Background()
 
-	if err := uow.Begin(); err != nil {
+	if err := fixture.UnitOfWork().Begin(); err != nil {
 		t.Fatalf("Begin() error = %v, want nil", err)
 	}
-	if err := uow.AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
+	if err := fixture.UnitOfWork().AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 
-	err := uow.Commit(ctx)
+	err := fixture.UnitOfWork().Commit(ctx)
 	if err == nil {
 		t.Error("Expected error, got nil")
 	}
@@ -171,11 +251,9 @@ func TestCacheUnitOfWork_Commit_SQLiteFail_Rollback(t *testing.T) {
 
 // Task 1.5: Write tests for transaction isolation with mutex.
 func TestCacheUnitOfWork_Concurrency(t *testing.T) {
-	bolt := &utils.MockCacheWriterPort{}
-	sqlite := &utils.MockCacheWriterPort{}
-	uow := vault.NewCacheUnitOfWork(bolt, sqlite)
+	fixture := NewUnitOfWorkFixture()
 
-	if err := uow.Begin(); err != nil {
+	if err := fixture.UnitOfWork().Begin(); err != nil {
 		t.Fatalf("Begin() error = %v, want nil", err)
 	}
 
@@ -185,7 +263,7 @@ func TestCacheUnitOfWork_Concurrency(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := uow.AddDelete("some/path"); err != nil {
+			if err := fixture.UnitOfWork().AddDelete("some/path"); err != nil {
 				// We can't report easily from goroutine in this test structure,
 				// but ignoring it is also fine for concurrency test unless it
 				// panics.

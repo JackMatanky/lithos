@@ -28,6 +28,169 @@ type storageResources struct {
 	cleanup      func()
 }
 
+// Container manages dependency injection and service lifecycle.
+type Container struct {
+	config domain.Config
+	logger zerolog.Logger
+
+	// Services with lazy initialization
+	schemaEngine       *schema.SchemaEngine
+	storage            *storageResources
+	templateEngine     *template.TemplateEngine
+	markdownParser     *vaultAdapter.MarkdownParserAdapter
+	frontmatterService *frontmatter.FrontmatterService
+	vaultIndexer       *vault.VaultIndexer
+	cliOrchestrator    *command.CLIComander
+}
+
+// NewContainer creates a new dependency injection container.
+func NewContainer(cfg domain.Config, log zerolog.Logger) *Container {
+	return &Container{
+		config: cfg,
+		logger: log,
+	}
+}
+
+// SchemaEngine returns the schema engine service with lazy initialization.
+func (c *Container) SchemaEngine() (*schema.SchemaEngine, error) {
+	if c.schemaEngine == nil {
+		schemaLoader := schemaAdapter.NewSchemaLoaderAdapter(
+			&c.config,
+			&c.logger,
+		)
+		schemaRegistry := schemaAdapter.NewSchemaRegistryAdapter(c.logger)
+		engine, err := schema.NewSchemaEngine(
+			schemaLoader,
+			schemaRegistry,
+			c.logger,
+		)
+		if err != nil {
+			return nil, err
+		}
+		if loadErr := engine.Load(context.Background()); loadErr != nil {
+			return nil, loadErr
+		}
+		c.schemaEngine = engine
+	}
+	return c.schemaEngine, nil
+}
+
+// Storage returns the storage resources with lazy initialization.
+func (c *Container) Storage() (*storageResources, error) {
+	if c.storage == nil {
+		storage, err := initStorage(
+			c.config,
+			c.logger,
+			nil,
+		) // schemas loaded separately
+		if err != nil {
+			return nil, err
+		}
+		c.storage = storage
+	}
+	return c.storage, nil
+}
+
+// TemplateEngine returns the template engine service with lazy initialization.
+func (c *Container) TemplateEngine() *template.TemplateEngine {
+	if c.templateEngine == nil {
+		c.templateEngine = template.NewTemplateEngine(
+			templateAdapter.NewTemplateLoaderAdapter(&c.config, &c.logger),
+			&c.config,
+			&c.logger,
+		)
+	}
+	return c.templateEngine
+}
+
+// MarkdownParser returns the markdown parser service.
+func (c *Container) MarkdownParser() *vaultAdapter.MarkdownParserAdapter {
+	if c.markdownParser == nil {
+		c.markdownParser = vaultAdapter.NewMarkdownParserAdapter(c.logger)
+	}
+	return c.markdownParser
+}
+
+// FrontmatterService returns the frontmatter service with lazy initialization.
+func (c *Container) FrontmatterService() (*frontmatter.FrontmatterService, error) {
+	if c.frontmatterService == nil {
+		schemaEngine, err := c.SchemaEngine()
+		if err != nil {
+			return nil, err
+		}
+		c.frontmatterService = frontmatter.NewFrontmatterService(
+			schemaEngine,
+			c.MarkdownParser(),
+			c.logger,
+		)
+	}
+	return c.frontmatterService, nil
+}
+
+// VaultIndexer returns the vault indexer service with lazy initialization.
+func (c *Container) VaultIndexer() (*vault.VaultIndexer, error) {
+	if c.vaultIndexer != nil {
+		return c.vaultIndexer, nil
+	}
+
+	storage, err := c.Storage()
+	if err != nil {
+		return nil, err
+	}
+
+	frontmatterSvc, err := c.FrontmatterService()
+	if err != nil {
+		return nil, err
+	}
+
+	schemaEngine, err := c.SchemaEngine()
+	if err != nil {
+		return nil, err
+	}
+
+	c.vaultIndexer = vault.NewVaultIndexer(
+		vaultAdapter.NewVaultReaderAdapter(c.config, c.logger),
+		storage.boltWriter,
+		storage.sqliteWriter,
+		storage.cacheReader,
+		c.MarkdownParser(),
+		frontmatterSvc,
+		schemaEngine,
+		c.config,
+		c.logger,
+	)
+	return c.vaultIndexer, nil
+}
+
+// CLIOrchestrator returns the CLI orchestrator service with lazy
+// initialization.
+func (c *Container) CLIOrchestrator() (*command.CLIComander, error) {
+	if c.cliOrchestrator == nil {
+		vaultIndexer, err := c.VaultIndexer()
+		if err != nil {
+			return nil, err
+		}
+
+		c.cliOrchestrator = command.NewCLIComander(
+			cli.NewCobraCLIAdapter(c.logger),
+			c.TemplateEngine(),
+			nil, // schemaEngine - can be added if needed
+			vaultIndexer,
+			vaultAdapter.NewVaultWriterAdapter(c.config, c.logger),
+			&c.config,
+			&c.logger,
+		)
+	}
+	return c.cliOrchestrator, nil
+}
+
+// Cleanup releases all resources managed by the container.
+func (c *Container) Cleanup() {
+	if c.storage != nil {
+		c.storage.cleanup()
+	}
+}
+
 func main() {
 	if err := run(context.Background()); err != nil {
 		log := logger.New(os.Stdout, "info")
@@ -56,55 +219,16 @@ func buildOrchestrator(
 	}
 	log = logger.New(os.Stdout, cfg.LogLevel)
 
-	// Initialize adapters
-	schemaEngine, err := initSchemaEngine(ctx, cfg, log)
+	// Use dependency injection container
+	container := NewContainer(cfg, log)
+
+	// Get the CLI orchestrator from the container
+	orchestrator, err := container.CLIOrchestrator()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	loadedSchemas := schemaEngine.SchemasSnapshot()
-
-	// Initialize hybrid storage adapters
-	storage, err := initStorage(cfg, log, loadedSchemas)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	templateEngine := template.NewTemplateEngine(
-		templateAdapter.NewTemplateLoaderAdapter(&cfg, &log),
-		&cfg,
-		&log,
-	)
-
-	markdownParser := vaultAdapter.NewMarkdownParserAdapter(log)
-	frontmatterService := frontmatter.NewFrontmatterService(
-		schemaEngine,
-		markdownParser,
-		log,
-	)
-	vaultIndexer := vault.NewVaultIndexer(
-		vaultAdapter.NewVaultReaderAdapter(cfg, log),
-		storage.boltWriter,
-		storage.sqliteWriter,
-		storage.cacheReader,
-		markdownParser,
-		frontmatterService,
-		schemaEngine,
-		cfg,
-		log,
-	)
-
-	orchestrator := command.NewCLIComander(
-		cli.NewCobraCLIAdapter(log),
-		templateEngine,
-		schemaEngine,
-		vaultIndexer,
-		vaultAdapter.NewVaultWriterAdapter(cfg, log),
-		&cfg,
-		&log,
-	)
-
-	return orchestrator, storage.cleanup, nil
+	return orchestrator, container.Cleanup, nil
 }
 
 func initStorage(
@@ -153,25 +277,4 @@ func initStorage(
 		cacheReader:  cacheReader,
 		cleanup:      cleanup,
 	}, nil
-}
-
-func initSchemaEngine(
-	ctx context.Context,
-	cfg domain.Config,
-	log zerolog.Logger,
-) (*schema.SchemaEngine, error) {
-	schemaLoader := schemaAdapter.NewSchemaLoaderAdapter(&cfg, &log)
-	schemaRegistry := schemaAdapter.NewSchemaRegistryAdapter(log)
-	schemaEngine, err := schema.NewSchemaEngine(
-		schemaLoader,
-		schemaRegistry,
-		log,
-	)
-	if err != nil {
-		return nil, err
-	}
-	if loadErr := schemaEngine.Load(ctx); loadErr != nil {
-		return nil, loadErr
-	}
-	return schemaEngine, nil
 }
