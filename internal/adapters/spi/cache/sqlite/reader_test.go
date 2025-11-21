@@ -38,7 +38,7 @@ func TestSQLiteReaderAdapter_Read(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	reader, err := NewSQLiteReaderAdapter(config, log)
+	reader, err := NewSQLiteReaderAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
@@ -53,7 +53,7 @@ func TestSQLiteReaderAdapter_Read(t *testing.T) {
 
 func TestSQLiteReaderAdapter_FileClassQuery(t *testing.T) {
 	tmpDir := t.TempDir()
-	config := domain.Config{CacheDir: tmpDir}
+	config := domain.Config{CacheDir: tmpDir, FileClassKey: "fileClass"}
 	log := zerolog.Nop()
 
 	// Setup DB with view
@@ -62,14 +62,6 @@ func TestSQLiteReaderAdapter_FileClassQuery(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	// Create the view expected by FileClassQuery
-	_, err = db.ExecContext(ctx, `
-		CREATE VIEW v_contact_notes AS
-		SELECT path, frontmatter, modified_at, indexed_time, size
-		FROM notes
-		WHERE json_extract(frontmatter, '$.fileClass') = 'contact'
-	`)
-	require.NoError(t, err)
 
 	// Insert data
 	_, err = db.ExecContext(
@@ -94,7 +86,19 @@ func TestSQLiteReaderAdapter_FileClassQuery(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	reader, err := NewSQLiteReaderAdapter(config, log)
+	testSchema := domain.Schema{
+		Name: "contact",
+		Properties: []domain.Property{
+			{Name: "title", Spec: &domain.StringSpec{}},
+		},
+	}
+	migrator := NewSchemaViewMigrator(
+		[]domain.Schema{testSchema},
+		config.FileClassKey,
+		log,
+	)
+
+	reader, err := NewSQLiteReaderAdapter(config, log, migrator)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
@@ -126,7 +130,7 @@ func TestSQLiteReaderAdapter_PathQuery(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, db.Close())
 
-	reader, err := NewSQLiteReaderAdapter(config, log)
+	reader, err := NewSQLiteReaderAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 

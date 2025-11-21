@@ -303,3 +303,77 @@ func Test_extractCachedNote(t *testing.T) {
 		})
 	}
 }
+
+func Test_extractBasename(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "unix path with extension",
+			path: "/notes/contact.md",
+			want: "contact",
+		},
+		{
+			name: "windows path with extension",
+			path: `notes\project\alpha.md`,
+			want: "alpha",
+		},
+		{
+			name: "no extension",
+			path: "notes/readme",
+			want: "readme",
+		},
+		{
+			name: "empty path",
+			path: "",
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, extractBasename(tt.path))
+		})
+	}
+}
+
+func Test_extractDirectory(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		path string
+		want string
+	}{
+		{
+			name: "nested directory",
+			path: "/notes/projects/alpha.md",
+			want: "/notes/projects",
+		},
+		{
+			name: "single directory no leading slash",
+			path: "notes/contact.md",
+			want: "notes",
+		},
+		{
+			name: "root file",
+			path: "contact.md",
+			want: "",
+		},
+		{
+			name: "windows separators",
+			path: `notes\contacts\john.md`,
+			want: "notes/contacts",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tt.want, extractDirectory(tt.path))
+		})
+	}
+}

@@ -3,6 +3,8 @@ package schema
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sync"
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -50,6 +52,11 @@ type SchemaEngine struct {
 	schemaPort   spi.SchemaPort
 	registryPort spi.SchemaRegistryPort
 	log          zerolog.Logger
+
+	// cachedSchemas stores the most recently loaded schemas for downstream
+	// consumers that need read-only snapshots (e.g., SQLite view generation).
+	cachedSchemas []domain.Schema
+	mu            sync.RWMutex
 }
 
 // NewSchemaEngine creates a new SchemaEngine with the specified dependencies.
@@ -78,9 +85,11 @@ func NewSchemaEngine(
 
 	// Create engine with dependencies
 	return &SchemaEngine{
-		schemaPort:   schemaPort,
-		registryPort: registryPort,
-		log:          log,
+		schemaPort:    schemaPort,
+		registryPort:  registryPort,
+		log:           log,
+		cachedSchemas: nil,
+		mu:            sync.RWMutex{},
 	}, nil
 }
 
@@ -111,6 +120,24 @@ func (e *SchemaEngine) Load(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// SchemasSnapshot returns a defensive copy of the most recently loaded
+// schemas. Callers can safely mutate the returned slice without affecting
+// the engine state.
+func (e *SchemaEngine) SchemasSnapshot() []domain.Schema {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	if len(e.cachedSchemas) == 0 {
+		return nil
+	}
+
+	cloned := make([]domain.Schema, len(e.cachedSchemas))
+	for i, schema := range e.cachedSchemas {
+		cloned[i] = cloneSchema(schema)
+	}
+	return cloned
 }
 
 // loadSchemas executes the schema loading stage.
@@ -154,6 +181,7 @@ func (e *SchemaEngine) registerSchemas(
 		e.log.Error().Err(err).Msg("schema registration failed")
 		return fmt.Errorf("schema registration failed: %w", err)
 	}
+	e.updateSchemaCache(schemas)
 
 	stageDuration := time.Since(stageStart)
 	totalDuration := time.Since(startTime)
@@ -165,6 +193,40 @@ func (e *SchemaEngine) registerSchemas(
 			len(schemas), totalDuration)
 
 	return nil
+}
+
+func (e *SchemaEngine) updateSchemaCache(schemas []domain.Schema) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	if len(schemas) == 0 {
+		e.cachedSchemas = nil
+		return
+	}
+
+	e.cachedSchemas = make([]domain.Schema, len(schemas))
+	for i, schema := range schemas {
+		e.cachedSchemas[i] = cloneSchema(schema)
+	}
+}
+
+func cloneSchema(src domain.Schema) domain.Schema {
+	dst := src
+	if len(src.Properties) > 0 {
+		dst.Properties = make([]domain.Property, len(src.Properties))
+		copy(dst.Properties, src.Properties)
+	}
+	if len(src.ResolvedProperties) > 0 {
+		dst.ResolvedProperties = make(
+			[]domain.Property,
+			len(src.ResolvedProperties),
+		)
+		copy(dst.ResolvedProperties, src.ResolvedProperties)
+	}
+	if len(src.Excludes) > 0 {
+		dst.Excludes = slices.Clone(src.Excludes)
+	}
+	return dst
 }
 
 // Get retrieves a schema or property by name using Go generics.

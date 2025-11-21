@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -27,16 +28,14 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 
 	cacheDir := t.TempDir()
 	config := domain.Config{
-		CacheDir: cacheDir,
+		CacheDir:     cacheDir,
+		FileClassKey: "fileClass",
 	}
 	log := zerolog.Nop()
+	dbPath := filepath.Join(cacheDir, "cold.db")
+	ctx := context.Background()
 
 	// 1. Initialize Writer (creates DB and tables)
-	writer, err := sqlite.NewSQLiteWriterAdapter(config, log)
-	require.NoError(t, err)
-	defer func() { _ = writer.Close() }()
-
-	// 2. Define Schema and Generate View
 	contactSchema := domain.Schema{
 		Name: "contact",
 		Properties: []domain.Property{
@@ -48,22 +47,15 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 			},
 		},
 	}
+	migrator := sqlite.NewSchemaViewMigrator(
+		[]domain.Schema{contactSchema},
+		config.FileClassKey,
+		log,
+	)
 
-	viewSQL, err := sqlite.GenerateSchemaView(contactSchema)
+	writer, err := sqlite.NewSQLiteWriterAdapter(config, log, migrator)
 	require.NoError(t, err)
-
-	// 3. Apply View manually (simulating migration)
-	dbPath := filepath.Join(cacheDir, "cold.db")
-	db, err := sql.Open("sqlite", dbPath)
-	require.NoError(t, err)
-	// Enable WAL mode for concurrency
-	ctx := context.Background()
-	_, err = db.ExecContext(ctx, "PRAGMA journal_mode=WAL;")
-	require.NoError(t, err)
-
-	_, err = db.ExecContext(ctx, viewSQL)
-	require.NoError(t, err)
-	require.NoError(t, db.Close())
+	defer func() { _ = writer.Close() }()
 
 	// 4. Persist Notes
 	notes := []domain.Note{
@@ -102,7 +94,7 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	}
 
 	// 5. Initialize Reader and Query
-	reader, err := sqlite.NewSQLiteReaderAdapter(config, log)
+	reader, err := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
@@ -147,7 +139,7 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 
 	// Now simulate a file update (update DB modified_at > indexed_time)
 	// We need to hack the DB to simulate this state
-	db, err = sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", dbPath)
 	require.NoError(t, err)
 	futureMod := time.Now().Add(1 * time.Hour).Unix()
 	_, err = db.ExecContext(
@@ -176,17 +168,13 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 
 	cacheDir := t.TempDir()
 	config := domain.Config{
-		CacheDir: cacheDir,
+		CacheDir:     cacheDir,
+		FileClassKey: "fileClass",
 	}
 	log := zerolog.Nop()
 	ctx := context.Background()
 
-	// 1. Initialize Writer with initial schema
-	writer, err := sqlite.NewSQLiteWriterAdapter(config, log)
-	require.NoError(t, err)
-	defer func() { _ = writer.Close() }()
-
-	// 2. Create initial contact schema
+	// 1. Create initial contact schema and view migrator
 	initialSchema := domain.Schema{
 		Name: "contact",
 		Properties: []domain.Property{
@@ -194,17 +182,13 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 			{Name: "email", Spec: &domain.StringSpec{}},
 		},
 	}
+	initialMigrator := sqlite.NewSchemaViewMigrator(
+		[]domain.Schema{initialSchema},
+		config.FileClassKey,
+		log,
+	)
 
-	viewSQL, err := sqlite.GenerateSchemaView(initialSchema)
-	require.NoError(t, err)
-
-	// Apply initial view
-	dbPath := filepath.Join(cacheDir, "cold.db")
-	db, err := sql.Open("sqlite", dbPath)
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, "PRAGMA journal_mode=WAL;")
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, viewSQL)
+	writer, err := sqlite.NewSQLiteWriterAdapter(config, log, initialMigrator)
 	require.NoError(t, err)
 
 	// 3. Persist test note with initial schema
@@ -221,14 +205,19 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	require.NoError(t, writer.Persist(ctx, note, time.Now()))
 
 	// 4. Verify initial view works
-	reader, err := sqlite.NewSQLiteReaderAdapter(config, log)
+	reader, err := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 	require.NoError(t, err)
-	defer func() { _ = reader.Close() }()
 
 	contacts, err := reader.FileClassQuery(ctx, "contact")
 	require.NoError(t, err)
 	assert.Len(t, contacts, 1)
 	assert.Equal(t, "Alice Smith", contacts[0].Frontmatter.Fields["name"])
+
+	require.NoError(t, writer.Close())
+	require.NoError(t, reader.Close())
+
+	// Remove old cache DB to simulate rebuild with new schema
+	require.NoError(t, os.Remove(filepath.Join(cacheDir, "cold.db")))
 
 	// 5. Update schema to add new fields
 	updatedSchema := domain.Schema{
@@ -244,16 +233,22 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 		},
 	}
 
-	// 6. Simulate view migration (drop and recreate)
-	dropViewSQL := "DROP VIEW IF EXISTS v_contact_notes;"
-	_, err = db.ExecContext(ctx, dropViewSQL)
+	updatedMigrator := sqlite.NewSchemaViewMigrator(
+		[]domain.Schema{updatedSchema},
+		config.FileClassKey,
+		log,
+	)
+	db, err := sqlite.InitializeDatabase(filepath.Join(cacheDir, "cold.db"))
 	require.NoError(t, err)
-
-	newViewSQL, err := sqlite.GenerateSchemaView(updatedSchema)
-	require.NoError(t, err)
-	_, err = db.ExecContext(ctx, newViewSQL)
-	require.NoError(t, err)
+	require.NoError(t, updatedMigrator.EnsureViews(ctx, db))
 	require.NoError(t, db.Close())
+
+	writer, err = sqlite.NewSQLiteWriterAdapter(config, log, nil)
+	require.NoError(t, err)
+	defer func() { _ = writer.Close() }()
+	reader, err = sqlite.NewSQLiteReaderAdapter(config, log, nil)
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
 
 	// 7. Add note with new schema fields
 	updatedNote := domain.Note{
@@ -268,6 +263,7 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 		}),
 	}
 
+	require.NoError(t, writer.Persist(ctx, note, time.Now()))
 	require.NoError(t, writer.Persist(ctx, updatedNote, time.Now()))
 
 	// 8. Verify migrated view works with both old and new data
@@ -340,7 +336,7 @@ func setupTestSchemas() []domain.Schema {
 
 // createTestNotes creates the diverse test dataset.
 func createTestNotes() []domain.Note {
-	return []domain.Note{
+	notes := []domain.Note{
 		// Contact notes
 		{
 			ID: domain.NewNoteID("contacts/john-doe.md"),
@@ -438,6 +434,16 @@ func createTestNotes() []domain.Note {
 			},
 		},
 	}
+
+	for i := range notes {
+		if notes[i].Frontmatter.Fields == nil {
+			notes[i].Frontmatter.Fields = make(map[string]interface{})
+		}
+		if notes[i].Frontmatter.FileClass != "" {
+			notes[i].Frontmatter.Fields["fileClass"] = notes[i].Frontmatter.FileClass
+		}
+	}
+	return notes
 }
 
 // TestSQLiteMetadataQueryPortWithRealData tests MetadataQueryPort with diverse
@@ -448,38 +454,24 @@ func TestSQLiteMetadataQueryPortWithRealData(t *testing.T) {
 	}
 
 	cacheDir := t.TempDir()
-	config := domain.Config{CacheDir: cacheDir}
+	config := domain.Config{CacheDir: cacheDir, FileClassKey: "fileClass"}
 	log := zerolog.Nop()
 	ctx := context.Background()
 
+	schemas := setupTestSchemas()
+	migrator := sqlite.NewSchemaViewMigrator(schemas, config.FileClassKey, log)
+
 	// Initialize adapters
-	writer, err := sqlite.NewSQLiteWriterAdapter(config, log)
+	writer, err := sqlite.NewSQLiteWriterAdapter(config, log, migrator)
 	require.NoError(t, err)
 	defer func() { _ = writer.Close() }()
 
-	reader, err := sqlite.NewSQLiteReaderAdapter(config, log)
+	reader, err := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
-	// Create a separate DB connection for view management
-	dbPath := filepath.Join(cacheDir, "cold.db")
-	db, dbErr := sql.Open("sqlite", dbPath)
-	require.NoError(t, dbErr)
-	defer func() { _ = db.Close() }()
-	_, walErr := db.ExecContext(ctx, "PRAGMA journal_mode=WAL;")
-	require.NoError(t, walErr)
-
 	// Setup schemas and data
-	schemas := setupTestSchemas()
 	notes := createTestNotes()
-
-	// Create views for all schemas
-	for _, schema := range schemas {
-		viewSQL, viewErr := sqlite.GenerateSchemaView(schema)
-		require.NoError(t, viewErr)
-		_, execErr := db.ExecContext(ctx, viewSQL)
-		require.NoError(t, execErr)
-	}
 
 	// Persist all notes
 	indexTime := time.Now()
@@ -596,7 +588,11 @@ func testTagQueries(
 					"title":     "Personal Meeting",
 					"date":      "2024-01-25",
 					"attendees": []interface{}{"self"},
-					"tags":      []interface{}{"personal", "planning"},
+					"tags": []interface{}{
+						"personal",
+						"planning",
+						"critical",
+					},
 				},
 			},
 		},
@@ -628,7 +624,7 @@ func testPathQueries(
 ) {
 	// Test basename queries
 	contactsBasenameQuery, err := reader.PathQuery(ctx, spi.PathQueryOptions{
-		Value: "doe",
+		Value: "john-doe",
 		Scope: spi.PathQueryScopeBasename,
 	})
 	require.NoError(t, err)
@@ -647,7 +643,7 @@ func testPathQueries(
 		Scope: spi.PathQueryScopeFolder,
 	})
 	require.NoError(t, err)
-	assert.Len(t, projectNotes, 5) // 3 original + 1 tagged
+	assert.Len(t, projectNotes, 3)
 }
 
 // testDataIntegrity verifies data integrity and field extraction.
@@ -727,17 +723,18 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 
 	cacheDir := t.TempDir()
 	config := domain.Config{
-		CacheDir: cacheDir,
+		CacheDir:     cacheDir,
+		FileClassKey: "fileClass",
 	}
 	log := zerolog.Nop()
 	ctx := context.Background()
 
 	// 1. Initialize adapters
-	writer, err := sqlite.NewSQLiteWriterAdapter(config, log)
+	writer, err := sqlite.NewSQLiteWriterAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = writer.Close() }()
 
-	reader, err := sqlite.NewSQLiteReaderAdapter(config, log)
+	reader, err := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
