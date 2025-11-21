@@ -57,12 +57,12 @@ func (a *SQLiteWriterAdapter) Persist(
 	}
 
 	path := string(note.ID)
-	payload, modTime, err := a.preparePersistData(note)
+	payload, modTime, size, err := a.preparePersistData(note)
 	if err != nil {
 		return err
 	}
 
-	return a.executePersist(ctx, path, payload, modTime, indexTime)
+	return a.executePersist(ctx, path, payload, modTime, indexTime, size)
 }
 
 func ensureFileClassField(
@@ -117,7 +117,7 @@ func (a *SQLiteWriterAdapter) Close() error {
 
 func (a *SQLiteWriterAdapter) preparePersistData(
 	note domain.Note,
-) (string, time.Time, error) {
+) (payload string, modTime time.Time, fileSize int64, err error) {
 	fields := ensureFileClassField(
 		note.Frontmatter.Fields,
 		note.Frontmatter.FileClass,
@@ -125,7 +125,7 @@ func (a *SQLiteWriterAdapter) preparePersistData(
 	)
 	bytes, err := json.Marshal(fields)
 	if err != nil {
-		return "", time.Time{}, lithosErr.NewCacheWriteError(
+		return "", time.Time{}, 0, lithosErr.NewCacheWriteError(
 			string(note.ID),
 			string(note.ID),
 			"marshal_frontmatter",
@@ -133,7 +133,10 @@ func (a *SQLiteWriterAdapter) preparePersistData(
 		)
 	}
 
-	return string(bytes), cache.ExtractFileModTime(fields), nil
+	payload = string(bytes)
+	modTime = cache.ExtractFileModTime(fields)
+	fileSize = extractFileSize(fields)
+	return
 }
 
 func (a *SQLiteWriterAdapter) executePersist(
@@ -142,6 +145,7 @@ func (a *SQLiteWriterAdapter) executePersist(
 	payload string,
 	modTime time.Time,
 	indexTime time.Time,
+	size int64,
 ) error {
 	tx, err := a.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -163,7 +167,7 @@ func (a *SQLiteWriterAdapter) executePersist(
 		payload,
 		toUnix(modTime),
 		toUnix(indexTime),
-		int64(0),
+		size,
 	); err != nil {
 		return lithosErr.NewCacheWriteError(path, path, "insert_note", err)
 	}
@@ -172,4 +176,31 @@ func (a *SQLiteWriterAdapter) executePersist(
 		return lithosErr.NewCacheWriteError(path, path, "commit_tx", err)
 	}
 	return nil
+}
+
+func extractFileSize(fields map[string]interface{}) int64 {
+	if fields == nil {
+		return 0
+	}
+	if size, ok := fields["file_size"]; ok {
+		switch v := size.(type) {
+		case int64:
+			return v
+		case int:
+			return int64(v)
+		case float64:
+			return int64(v)
+		}
+	}
+	if size, ok := fields["size"]; ok {
+		switch v := size.(type) {
+		case int64:
+			return v
+		case int:
+			return int64(v)
+		case float64:
+			return int64(v)
+		}
+	}
+	return 0
 }

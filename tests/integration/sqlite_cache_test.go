@@ -21,6 +21,24 @@ func floatPtr(v float64) *float64 {
 	return &v
 }
 
+func defaultFrontmatter(fields map[string]interface{}) domain.Frontmatter {
+	return frontmatterWithMetadata(fields, time.Now().Add(-time.Minute), 4096)
+}
+
+func frontmatterWithMetadata(
+	fields map[string]interface{},
+	modTime time.Time,
+	size int64,
+) domain.Frontmatter {
+	enriched := make(map[string]interface{}, len(fields)+2)
+	for k, v := range fields {
+		enriched[k] = v
+	}
+	enriched["file_mod_time"] = modTime.UTC()
+	enriched["file_size"] = size
+	return domain.NewFrontmatter(enriched)
+}
+
 func TestSQLiteCacheIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -61,7 +79,7 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	notes := []domain.Note{
 		{
 			ID: domain.NewNoteID("contacts/alice.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":     "Alice",
 				"fileClass": "contact",
 				"name":      "Alice Smith",
@@ -71,7 +89,7 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 		},
 		{
 			ID: domain.NewNoteID("contacts/bob.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":     "Bob",
 				"fileClass": "contact",
 				"name":      "Bob Jones",
@@ -81,7 +99,7 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 		},
 		{
 			ID: domain.NewNoteID("projects/project1.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":     "Project 1",
 				"fileClass": "project",
 				"status":    "active",
@@ -194,7 +212,7 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	// 3. Persist test note with initial schema
 	note := domain.Note{
 		ID: domain.NewNoteID("contacts/alice.md"),
-		Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+		Frontmatter: defaultFrontmatter(map[string]interface{}{
 			"title":     "Alice",
 			"fileClass": "contact",
 			"name":      "Alice Smith",
@@ -253,7 +271,7 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	// 7. Add note with new schema fields
 	updatedNote := domain.Note{
 		ID: domain.NewNoteID("contacts/bob.md"),
-		Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+		Frontmatter: defaultFrontmatter(map[string]interface{}{
 			"title":     "Bob",
 			"fileClass": "contact",
 			"name":      "Bob Jones",
@@ -787,7 +805,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		// Contacts
 		{
 			ID: domain.NewNoteID("contacts/alice.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":      "Alice Smith",
 				"fileClass":  "contact",
 				"name":       "Alice Smith",
@@ -799,7 +817,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		},
 		{
 			ID: domain.NewNoteID("contacts/bob.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":      "Bob Jones",
 				"fileClass":  "contact",
 				"name":       "Bob Jones",
@@ -811,7 +829,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		},
 		{
 			ID: domain.NewNoteID("contacts/carol.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":      "Carol Davis",
 				"fileClass":  "contact",
 				"name":       "Carol Davis",
@@ -823,7 +841,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		},
 		{
 			ID: domain.NewNoteID("contacts/bob.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":      "Bob Jones",
 				"fileClass":  "contact",
 				"name":       "Bob Jones",
@@ -835,7 +853,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		},
 		{
 			ID: domain.NewNoteID("contacts/carol.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":      "Carol Davis",
 				"fileClass":  "contact",
 				"name":       "Carol Davis",
@@ -848,7 +866,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		// Projects
 		{
 			ID: domain.NewNoteID("projects/webapp.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":     "Web Application",
 				"fileClass": "project",
 				"name":      "Web Application Redesign",
@@ -859,7 +877,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		},
 		{
 			ID: domain.NewNoteID("projects/api.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 
 				"title":     "API Upgrade",
 				"fileClass": "project",
@@ -871,7 +889,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 		},
 		{
 			ID: domain.NewNoteID("projects/mobile.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+			Frontmatter: defaultFrontmatter(map[string]interface{}{
 				"title":     "Mobile App",
 				"fileClass": "project",
 				"name":      "Mobile Application",

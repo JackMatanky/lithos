@@ -26,9 +26,13 @@ func TestSQLiteWriterAdapter_Persist(t *testing.T) {
 
 	// Create a test note
 	noteID := domain.NoteID("test/note.md")
+	modTime := time.Now().Add(-2 * time.Hour).UTC()
+	size := int64(512)
 	fm := domain.NewFrontmatter(map[string]interface{}{
-		"title":     "Test Note",
-		"fileClass": "contact",
+		"title":         "Test Note",
+		"fileClass":     "contact",
+		"file_mod_time": modTime,
+		"file_size":     size,
 	})
 	note := domain.NewNote(noteID, fm)
 
@@ -45,17 +49,19 @@ func TestSQLiteWriterAdapter_Persist(t *testing.T) {
 	defer func() { _ = db.Close() }()
 
 	var path, frontmatter string
-	var modTime, idxTime int64
+	var storedModTime, idxTime, storedSize int64
 	err = db.QueryRowContext(
 		ctx,
-		"SELECT path, frontmatter, modified_at, indexed_time FROM notes WHERE path = ?",
+		"SELECT path, frontmatter, modified_at, indexed_time, size FROM notes WHERE path = ?",
 		"test/note.md",
-	).Scan(&path, &frontmatter, &modTime, &idxTime)
+	).Scan(&path, &frontmatter, &storedModTime, &idxTime, &storedSize)
 	require.NoError(t, err)
 
 	assert.Equal(t, "test/note.md", path)
 	assert.Contains(t, frontmatter, `"title":"Test Note"`)
 	assert.NotZero(t, idxTime)
+	assert.Equal(t, modTime.Unix(), storedModTime)
+	assert.Equal(t, size, storedSize)
 }
 
 func TestSQLiteWriterAdapter_Delete(t *testing.T) {
@@ -71,7 +77,11 @@ func TestSQLiteWriterAdapter_Delete(t *testing.T) {
 
 	// Insert a note manually or via Persist
 	noteID := domain.NoteID("test/delete.md")
-	fm := domain.NewFrontmatter(map[string]interface{}{"title": "Delete Me"})
+	fm := domain.NewFrontmatter(map[string]interface{}{
+		"title":         "Delete Me",
+		"file_mod_time": time.Now().Add(-time.Hour).UTC(),
+		"file_size":     int64(128),
+	})
 	note := domain.NewNote(noteID, fm)
 
 	ctx := context.Background()

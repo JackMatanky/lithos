@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/JackMatanky/lithos/internal/adapters/api/cli"
@@ -13,6 +14,7 @@ import (
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/command"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
+	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
@@ -25,6 +27,7 @@ type storageResources struct {
 	boltWriter   *boltdb.BoltDBCacheWriteAdapter
 	sqliteWriter *sqlite.SQLiteWriterAdapter
 	cacheReader  *boltdb.BoltDBCacheReadAdapter
+	sqliteReader *sqlite.SQLiteReaderAdapter
 	cleanup      func()
 }
 
@@ -39,6 +42,7 @@ type Container struct {
 	templateEngine     *template.TemplateEngine
 	markdownParser     *vaultAdapter.MarkdownParserAdapter
 	frontmatterService *frontmatter.FrontmatterService
+	queryService       *query.QueryService
 	vaultIndexer       *vault.VaultIndexer
 	cliOrchestrator    *command.CLIComander
 }
@@ -53,6 +57,7 @@ func NewContainer(cfg domain.Config, log zerolog.Logger) *Container {
 		templateEngine:     nil,
 		markdownParser:     nil,
 		frontmatterService: nil,
+		queryService:       nil,
 		vaultIndexer:       nil,
 		cliOrchestrator:    nil,
 	}
@@ -85,11 +90,16 @@ func (c *Container) SchemaEngine() (*schema.SchemaEngine, error) {
 // Storage returns the storage resources with lazy initialization.
 func (c *Container) Storage() (*storageResources, error) {
 	if c.storage == nil {
+		schemaEngine, err := c.SchemaEngine()
+		if err != nil {
+			return nil, err
+		}
+		schemas := schemaEngine.SchemasSnapshot()
 		storage, err := initStorage(
 			c.config,
 			c.logger,
-			nil,
-		) // schemas loaded separately
+			schemas,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -177,6 +187,9 @@ func (c *Container) CLIOrchestrator() (*command.CLIComander, error) {
 		if err != nil {
 			return nil, err
 		}
+		if _, err = c.QueryService(); err != nil {
+			return nil, err
+		}
 
 		c.cliOrchestrator = command.NewCLIComander(
 			cli.NewCobraCLIAdapter(c.logger),
@@ -196,6 +209,27 @@ func (c *Container) Cleanup() {
 	if c.storage != nil {
 		c.storage.cleanup()
 	}
+}
+
+// QueryService returns the hybrid query service with lazy initialization.
+func (c *Container) QueryService() (*query.QueryService, error) {
+	if c.queryService != nil {
+		return c.queryService, nil
+	}
+	storage, err := c.Storage()
+	if err != nil {
+		return nil, err
+	}
+	if storage.cacheReader == nil || storage.sqliteReader == nil {
+		return nil, fmt.Errorf("cache readers are not initialized")
+	}
+	c.queryService = query.NewQueryService(
+		storage.cacheReader,
+		storage.sqliteReader,
+		c.config,
+		c.logger,
+	)
+	return c.queryService, nil
 }
 
 func main() {
@@ -266,8 +300,16 @@ func initStorage(
 		return nil, err
 	}
 
+	sqliteReader, err := sqlite.NewSQLiteReaderAdapter(cfg, log, viewMigrator)
+	if err != nil {
+		_ = sqliteWriter.Close()
+		cleanup()
+		return nil, err
+	}
+
 	baseCleanup := cleanup
 	cleanup = func() {
+		_ = sqliteReader.Close()
 		_ = sqliteWriter.Close()
 		baseCleanup()
 	}
@@ -282,6 +324,7 @@ func initStorage(
 		boltWriter:   boltWriter,
 		sqliteWriter: sqliteWriter,
 		cacheReader:  cacheReader,
+		sqliteReader: sqliteReader,
 		cleanup:      cleanup,
 	}, nil
 }

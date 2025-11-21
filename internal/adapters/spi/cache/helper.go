@@ -68,15 +68,42 @@ func EnsureCacheDir(cacheDir string) error {
 // Looks for common field names like "file_mod_time", "modified", "updated".
 // Falls back to current time if not found.
 func ExtractFileModTime(fields map[string]interface{}) time.Time {
-	if modTime, ok := fields["file_mod_time"].(time.Time); ok {
-		return modTime
+	if len(fields) == 0 {
+		return time.Time{}
 	}
-	if modTime, ok := fields["modified"].(time.Time); ok {
-		return modTime
+
+	if ts, ok := readTimeField(fields["file_mod_time"]); ok {
+		return ts
 	}
-	if modTime, ok := fields["updated"].(time.Time); ok {
-		return modTime
+	if ts, ok := readTimeField(fields["modified_at"]); ok {
+		return ts
 	}
-	// Fallback to current time
-	return time.Now()
+	if ts, ok := readTimeField(fields["modified"]); ok {
+		return ts
+	}
+	if ts, ok := readTimeField(fields["updated"]); ok {
+		return ts
+	}
+	if ts, ok := readTimeField(fields["mtime"]); ok {
+		return ts
+	}
+	return time.Time{}
+}
+
+func readTimeField(value interface{}) (time.Time, bool) {
+	switch v := value.(type) {
+	case time.Time:
+		return v, true
+	case string:
+		if parsed, err := time.Parse(time.RFC3339, v); err == nil {
+			return parsed, true
+		}
+	case int64:
+		return time.Unix(v, 0), true
+	case int:
+		return time.Unix(int64(v), 0), true
+	case float64:
+		return time.Unix(int64(v), 0), true
+	}
+	return time.Time{}, false
 }
