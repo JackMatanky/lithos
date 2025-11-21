@@ -41,12 +41,23 @@ type QueryService struct {
 	mu sync.RWMutex
 
 	// Dependencies
-	boltReader   spi.CacheReaderPort   // Hot cache for fast lookups
-	boltQuery    spi.MetadataQueryPort // Hot cache metadata queries (if supported)
-	sqliteReader spi.CacheReaderPort   // Deep storage for complex queries
-	sqliteQuery  spi.MetadataQueryPort // Deep storage metadata queries (if supported)
-	config       domain.Config         // For file_class_key configuration
+	boltReader   spi.CacheReaderPort // Hot cache for fast lookups
+	sqliteReader spi.CacheReaderPort // Deep storage for complex queries
+	router       *queryRouter        // Handles smart query routing
+	config       domain.Config       // For file_class_key configuration
 	log          zerolog.Logger
+}
+
+// queryLogger provides consistent performance logging for query operations.
+type queryLogger struct {
+	log    zerolog.Logger
+	method string
+}
+
+// queryRouter handles smart routing between storage backends.
+type queryRouter struct {
+	boltQuery   spi.MetadataQueryPort
+	sqliteQuery spi.MetadataQueryPort
 }
 
 // canonicalizeFrontmatterValue normalizes frontmatter values for type-agnostic
@@ -54,33 +65,10 @@ type QueryService struct {
 // Handles numeric type conversions (int 2 == float 2.0) and safe comparison
 // for complex types.
 // Returns the normalized value and whether normalization was successful.
-//
-//nolint:cyclop // Type normalization requires exhaustive type checking
 func canonicalizeFrontmatterValue(value interface{}) (interface{}, bool) {
 	switch v := value.(type) {
-	case int:
-		// Convert int to float64 for consistent numeric comparison
-		return float64(v), true
-	case int8:
-		return float64(v), true
-	case int16:
-		return float64(v), true
-	case int32:
-		return float64(v), true
-	case int64:
-		return float64(v), true
-	case uint:
-		return float64(v), true
-	case uint8:
-		return float64(v), true
-	case uint16:
-		return float64(v), true
-	case uint32:
-		return float64(v), true
-	case uint64:
-		return float64(v), true
-	case float32:
-		return float64(v), true
+	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32:
+		return toFloat64(v), true
 	case float64:
 		return v, true
 	case string, bool:
@@ -88,8 +76,40 @@ func canonicalizeFrontmatterValue(value interface{}) (interface{}, bool) {
 		return v, true
 	default:
 		// Complex types (arrays, maps) are not safely comparable
-		// Return false to indicate normalization failed
 		return nil, false
+	}
+}
+
+// toFloat64 converts various numeric types to float64 for consistent
+// comparison.
+//
+//nolint:cyclop // Type conversion requires exhaustive numeric type checking
+func toFloat64(value interface{}) float64 {
+	switch v := value.(type) {
+	case int:
+		return float64(v)
+	case int8:
+		return float64(v)
+	case int16:
+		return float64(v)
+	case int32:
+		return float64(v)
+	case int64:
+		return float64(v)
+	case uint:
+		return float64(v)
+	case uint8:
+		return float64(v)
+	case uint16:
+		return float64(v)
+	case uint32:
+		return float64(v)
+	case uint64:
+		return float64(v)
+	case float32:
+		return float64(v)
+	default:
+		return 0
 	}
 }
 
@@ -117,26 +137,24 @@ func NewQueryService(
 	config domain.Config,
 	log zerolog.Logger,
 ) *QueryService {
-	qs := &QueryService{
+	// Extract query ports from readers
+	var boltQuery, sqliteQuery spi.MetadataQueryPort
+	if mq, ok := boltReader.(spi.MetadataQueryPort); ok {
+		boltQuery = mq
+	}
+	if mq, ok := sqliteReader.(spi.MetadataQueryPort); ok {
+		sqliteQuery = mq
+	}
+
+	return &QueryService{
 		boltReader:   boltReader,
 		sqliteReader: sqliteReader,
-		boltQuery:    nil,
-		sqliteQuery:  nil,
+		router:       newQueryRouter(boltQuery, sqliteQuery),
 		config:       config,
 		log:          log,
 		// mu is initialized to zero value (unlocked state)
 		mu: sync.RWMutex{},
 	}
-
-	// Attempt to upgrade readers to query ports
-	if mq, ok := boltReader.(spi.MetadataQueryPort); ok {
-		qs.boltQuery = mq
-	}
-	if mq, ok := sqliteReader.(spi.MetadataQueryPort); ok {
-		qs.sqliteQuery = mq
-	}
-
-	return qs
 }
 
 // IDQuery retrieves a note by its NoteID.
@@ -151,13 +169,10 @@ func (q *QueryService) IDQuery(
 	ctx context.Context,
 	id domain.NoteID,
 ) (domain.Note, error) {
+	logger := newQueryLogger(q.log, "IDQuery")
 	start := time.Now()
 	defer func() {
-		q.log.Debug().
-			Dur("duration", time.Since(start)).
-			Str("method", "IDQuery").
-			Str("noteID", id.String()).
-			Msg("query performance")
+		logger.logSingleResult(start, "noteID", id.String())
 	}()
 
 	// Hot path: use BoltDB for fast lookups
@@ -189,13 +204,10 @@ func (q *QueryService) PathQuerySingle(
 	ctx context.Context,
 	path string,
 ) (domain.Note, error) {
+	logger := newQueryLogger(q.log, "PathQuery")
 	start := time.Now()
 	defer func() {
-		q.log.Debug().
-			Dur("duration", time.Since(start)).
-			Str("method", "PathQuery").
-			Str("path", path).
-			Msg("query performance")
+		logger.logSingleResult(start, "path", path)
 	}()
 
 	// Hot path: use BoltDB for fast lookups
@@ -230,7 +242,7 @@ func (q *QueryService) FileClassQuery(
 ) ([]domain.Note, error) {
 	return q.executeMetadataQuery(
 		ctx,
-		"FileClassQuery",
+		newQueryLogger(q.log, "FileClassQuery"),
 		"fileClass",
 		fileClass,
 		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
@@ -259,7 +271,7 @@ func (q *QueryService) BasenameQuery(
 ) ([]domain.Note, error) {
 	return q.executeMetadataQuery(
 		ctx,
-		"BasenameQuery",
+		newQueryLogger(q.log, "BasenameQuery"),
 		"basename",
 		basename,
 		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
@@ -288,7 +300,7 @@ func (q *QueryService) AliasQuery(
 ) ([]domain.Note, error) {
 	return q.executeMetadataQuery(
 		ctx,
-		"AliasQuery",
+		newQueryLogger(q.log, "AliasQuery"),
 		"alias",
 		alias,
 		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
@@ -304,32 +316,27 @@ func (q *QueryService) PathQuery(
 	ctx context.Context,
 	opts spi.PathQueryOptions,
 ) ([]domain.Note, error) {
+	logger := newQueryLogger(q.log, "PathQuery")
 	start := time.Now()
-	defer func() {
-		q.log.Debug().
-			Dur("duration", time.Since(start)).
-			Str("method", "PathQuery").
-			Str("scope", string(opts.Scope)).
-			Str("value", opts.Value).
-			Msg("query performance")
-	}()
 
 	validatedOpts, err := opts.Validate()
 	if err != nil {
 		return nil, err
 	}
 
-	if q.boltQuery != nil {
-		// Hot path: use BoltDB for path queries
-		return q.boltQuery.PathQuery(ctx, validatedOpts)
-	}
+	// Use router for path queries
+	notes, err := q.router.routeMetadataQuery(
+		ctx,
+		func(port spi.MetadataQueryPort, ctx context.Context, _ string) ([]domain.Note, error) {
+			return port.PathQuery(ctx, validatedOpts)
+		},
+		validatedOpts.Value,
+	)
 
-	if q.sqliteQuery != nil {
-		// Deep path fallback
-		return q.sqliteQuery.PathQuery(ctx, validatedOpts)
-	}
+	// Log performance after query execution
+	logger.logPerformance(start, "query", validatedOpts.Value, len(notes))
 
-	return nil, nil
+	return notes, err
 }
 
 // FrontmatterQuery finds notes where a specific frontmatter field matches a
@@ -342,7 +349,7 @@ func (q *QueryService) PathQuery(
 // lookup)
 // - Type normalization: int/float conversion for numeric comparison
 // - Logs debug message with field and value for troubleshooting
-// - Routes to SQLite for complex frontmatter queries (no BoltDB support yet)
+// - Routes directly to SQLite for complex frontmatter queries (deep path only)
 //
 // Example:
 //
@@ -355,29 +362,31 @@ func (q *QueryService) FrontmatterQuery(
 	field string,
 	value interface{},
 ) ([]domain.Note, error) {
+	logger := newQueryLogger(q.log, "FrontmatterQuery")
 	start := time.Now()
-	defer func() {
-		q.log.Debug().
-			Dur("duration", time.Since(start)).
-			Str("method", "FrontmatterQuery").
-			Str("field", field).
-			Interface("value", value).
-			Msg("query performance")
-	}()
 
-	if q.sqliteQuery != nil {
-		canonicalValue, ok := canonicalizeFrontmatterValue(value)
-		if ok {
-			// Convert value to string for query port
-			return q.sqliteQuery.FrontmatterQuery(
-				ctx,
-				field,
-				fmt.Sprintf("%v", canonicalValue),
-			)
-		}
+	canonicalValue, ok := canonicalizeFrontmatterValue(value)
+	if !ok {
+		// Cannot canonicalize value, return empty results
+		logger.logPerformance(start, "field", field, 0)
+		return nil, nil
 	}
 
-	return nil, nil
+	// Frontmatter queries are deep-path only - use SQLite directly
+	var notes []domain.Note
+	var err error
+	if sqliteQuery := q.router.getSQLiteQuery(); sqliteQuery != nil {
+		notes, err = sqliteQuery.FrontmatterQuery(
+			ctx,
+			field,
+			fmt.Sprintf("%v", canonicalValue),
+		)
+	}
+
+	// Log performance after query execution
+	logger.logPerformance(start, "field", field, len(notes))
+
+	return notes, err
 }
 
 // executeMetadataQuery executes a metadata query with smart routing and
@@ -385,29 +394,89 @@ func (q *QueryService) FrontmatterQuery(
 // path) with timing instrumentation.
 func (q *QueryService) executeMetadataQuery(
 	ctx context.Context,
-	methodName string,
+	logger *queryLogger,
 	paramName string,
 	paramValue string,
 	queryFn func(spi.MetadataQueryPort, context.Context, string) ([]domain.Note, error),
 ) ([]domain.Note, error) {
 	start := time.Now()
-	defer func() {
-		q.log.Debug().
-			Dur("duration", time.Since(start)).
-			Str("method", methodName).
-			Str(paramName, paramValue).
-			Msg("query performance")
-	}()
 
-	if q.boltQuery != nil {
-		// Hot path: use BoltDB for fast lookups
-		return queryFn(q.boltQuery, ctx, paramValue)
+	// Use router for smart query routing
+	notes, err := q.router.routeMetadataQuery(ctx, queryFn, paramValue)
+
+	// Log performance after query execution
+	logger.logPerformance(start, paramName, paramValue, len(notes))
+
+	return notes, err
+}
+
+// newQueryLogger creates a new queryLogger with the specified method name.
+func newQueryLogger(log zerolog.Logger, method string) *queryLogger {
+	return &queryLogger{
+		log:    log,
+		method: method,
+	}
+}
+
+// newQueryRouter creates a new queryRouter with the specified query ports.
+func newQueryRouter(boltQuery, sqliteQuery spi.MetadataQueryPort) *queryRouter {
+	return &queryRouter{
+		boltQuery:   boltQuery,
+		sqliteQuery: sqliteQuery,
+	}
+}
+
+// logSingleResult logs the performance of a single-result query operation.
+func (ql *queryLogger) logSingleResult(
+	start time.Time,
+	paramName, paramValue string,
+) {
+	duration := time.Since(start)
+	ql.log.Debug().
+		Dur("duration", duration).
+		Str("method", ql.method).
+		Str(paramName, paramValue).
+		Msg("query completed")
+}
+
+// logPerformance logs the performance of a multi-result query operation.
+func (ql *queryLogger) logPerformance(
+	start time.Time,
+	paramName, paramValue string,
+	resultCount int,
+) {
+	duration := time.Since(start)
+	ql.log.Debug().
+		Dur("duration", duration).
+		Str("method", ql.method).
+		Str(paramName, paramValue).
+		Int("results", resultCount).
+		Msg("query completed")
+}
+
+// routeMetadataQuery routes a metadata query to the appropriate backend.
+// It tries BoltDB first (hot path) then falls back to SQLite (deep path).
+func (qr *queryRouter) routeMetadataQuery(
+	ctx context.Context,
+	queryFn func(spi.MetadataQueryPort, context.Context, string) ([]domain.Note, error),
+	param string,
+) ([]domain.Note, error) {
+	// Try BoltDB first (hot path)
+	if qr.boltQuery != nil {
+		if notes, err := queryFn(qr.boltQuery, ctx, param); err == nil {
+			return notes, nil
+		}
 	}
 
-	if q.sqliteQuery != nil {
-		// Deep path fallback
-		return queryFn(q.sqliteQuery, ctx, paramValue)
+	// Fall back to SQLite (deep path)
+	if qr.sqliteQuery != nil {
+		return queryFn(qr.sqliteQuery, ctx, param)
 	}
 
 	return nil, nil
+}
+
+// getSQLiteQuery returns the SQLite query port for deep-path operations.
+func (qr *queryRouter) getSQLiteQuery() spi.MetadataQueryPort {
+	return qr.sqliteQuery
 }

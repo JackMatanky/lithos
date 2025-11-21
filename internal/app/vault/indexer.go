@@ -682,7 +682,7 @@ func (v *VaultIndexer) processFile(
 
 	// Persist to cache via Unit of Work
 	// We generate indexTime here to ensure consistency
-	indexTime := time.Now()
+	indexTime := time.Now().UTC()
 	if persistErr := uow.AddWrite(note, indexTime); persistErr != nil {
 		stats.CacheFailures++
 		v.log.Warn().
@@ -831,7 +831,8 @@ func (v *VaultIndexer) processFileWithFrontmatter(
 	}
 
 	// Convert parsed fields to domain Frontmatter
-	parsedFM := domain.NewFrontmatter(parsedFields)
+	withMetadata := attachFileMetadata(parsedFields, vf)
+	parsedFM := domain.NewFrontmatter(withMetadata)
 
 	// Validate frontmatter against schema (semantic validation)
 	if validationErr := v.frontmatterService.IsSchemaCompliant(ctx, parsedFM); validationErr != nil {
@@ -841,4 +842,16 @@ func (v *VaultIndexer) processFileWithFrontmatter(
 	}
 
 	return parsedFM
+}
+
+func attachFileMetadata(
+	fields map[string]interface{},
+	vf *dto.VaultFile,
+) map[string]interface{} {
+	if fields == nil {
+		fields = make(map[string]interface{})
+	}
+	fields["file_mod_time"] = vf.ModifiedAt().UTC()
+	fields["file_size"] = vf.Size()
+	return fields
 }
