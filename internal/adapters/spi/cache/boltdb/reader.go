@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -18,6 +19,8 @@ import (
 // Compile-time interface compliance check.
 var _ spi.CacheReaderPort = (*BoltDBCacheReadAdapter)(nil)
 var _ spi.MetadataQueryPort = (*BoltDBCacheReadAdapter)(nil)
+
+var errFileStale = errors.New("file stale")
 
 // BoltDBCacheReadAdapter implements CacheReaderPort and MetadataQueryPort for
 // BoltDB. It uses structured buckets for O(1) lookups and supports hot path
@@ -51,16 +54,18 @@ func (a *BoltDBCacheReadAdapter) Read(
 	ctx context.Context,
 	id domain.NoteID,
 ) (domain.Note, error) {
-	select {
-	case <-ctx.Done():
-		return domain.Note{}, ctx.Err()
-	default:
+	if err := ctx.Err(); err != nil {
+		return domain.Note{}, err
 	}
 
 	path := string(id)
 	var note domain.Note
 
 	err := a.db.View(func(tx *bbolt.Tx) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		bucket := tx.Bucket([]byte(BucketNotes))
 		if bucket == nil {
 			return lithosErr.ErrNotFound
@@ -71,8 +76,8 @@ func (a *BoltDBCacheReadAdapter) Read(
 			return lithosErr.ErrNotFound
 		}
 
-		var cached CachedNote
-		if err := json.Unmarshal(data, &cached); err != nil {
+		cached, err := decodeCachedNote(data)
+		if err != nil {
 			return fmt.Errorf("failed to unmarshal cached note: %w", err)
 		}
 
@@ -99,29 +104,29 @@ func (a *BoltDBCacheReadAdapter) Read(
 func (a *BoltDBCacheReadAdapter) List(
 	ctx context.Context,
 ) ([]domain.Note, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	var notes []domain.Note
 
 	err := a.db.View(func(tx *bbolt.Tx) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		bucket := tx.Bucket([]byte(BucketNotes))
 		if bucket == nil {
 			return nil // Empty cache is valid
 		}
 
 		return bucket.ForEach(func(k, v []byte) error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
+			if err := ctx.Err(); err != nil {
+				return err
 			}
 
-			var cached CachedNote
-			if err := json.Unmarshal(v, &cached); err != nil {
+			cached, err := decodeCachedNote(v)
+			if err != nil {
 				a.log.Warn().
 					Err(err).
 					Str("key", string(k)).
@@ -175,6 +180,10 @@ func (a *BoltDBCacheReadAdapter) PathQuery(
 	ctx context.Context,
 	opts spi.PathQueryOptions,
 ) ([]domain.Note, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	normalized, err := opts.Validate()
 	if err != nil {
 		return nil, err
@@ -211,65 +220,19 @@ func (a *BoltDBCacheReadAdapter) IsStale(
 	ctx context.Context,
 	path string,
 ) (bool, error) {
-	// Check filesystem first
-	absPath := filepath.Join(a.config.VaultPath, path)
-	fi, err := os.Stat(absPath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File missing on disk. If it's in cache, it's stale (needs
-			// removal).
-			// But IsStale usually implies "needs re-indexing".
-			// If file is gone, we can't re-index it. We should delete it.
-			// Returning true (stale) might trigger re-index which fails?
-			// Or maybe VaultIndexer handles deletion?
-			// For now, if file missing, return true (stale) so caller decides.
-			return true, nil
-		}
+	if err := ctx.Err(); err != nil {
 		return false, err
 	}
 
-	fileModTime := fi.ModTime()
-
-	// Check cache
-	var cached CachedNote
-	err = a.db.View(func(tx *bbolt.Tx) error {
-		bucket := tx.Bucket([]byte(BucketNotes))
-		if bucket == nil {
-			return lithosErr.ErrNotFound
-		}
-		data := bucket.Get([]byte(path))
-		if data == nil {
-			return lithosErr.ErrNotFound
-		}
-		return json.Unmarshal(data, &cached)
-	})
-
+	modTime, missing, err := a.statFile(path)
 	if err != nil {
-		if errors.Is(err, lithosErr.ErrNotFound) {
-			return true, nil // Missing in cache -> Stale (needs indexing)
-		}
 		return false, err
 	}
-
-	// Create FileDatesDTO from file info to compare
-	// Actually we compare:
-	// 1. If file mod time is AFTER indexed time -> Stale
-	// 2. If stored ModifiedAt != file mod time -> Stale (e.g. if file was
-	// reverted to older timestamp? Unlikely but safe)
-
-	// CachedNote has FileDatesDTO
-	// If file modified AFTER indexed -> stale
-	if fileModTime.After(cached.FileDates.IndexedAt) {
+	if missing {
 		return true, nil
 	}
 
-	// If stored ModifiedAt differs from current file ModTime -> stale
-	// (e.g. if file was reverted to older timestamp? Unlikely but safe)
-	if !cached.FileDates.ModifiedAt.Equal(fileModTime) {
-		return true, nil
-	}
-
-	return false, nil
+	return a.cacheStaleStatus(ctx, path, modTime)
 }
 
 // TagQuery finds notes containing a specific tag.
@@ -296,57 +259,35 @@ func (a *BoltDBCacheReadAdapter) FrontmatterQuery(
 
 // Helper methods
 
-//nolint:cyclop // complex function due to index lookup logic
 func (a *BoltDBCacheReadAdapter) lookupIndex(
 	ctx context.Context,
 	bucketName string,
 	key string,
 ) ([]domain.Note, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 
 	var notes []domain.Note
 
 	err := a.db.View(func(tx *bbolt.Tx) error {
-		indices := tx.Bucket([]byte(BucketIndices))
-		if indices == nil {
-			return nil // No indices yet
+		if err := ctx.Err(); err != nil {
+			return err
 		}
 
-		indexBucket := indices.Bucket([]byte(bucketName))
-		if indexBucket == nil {
-			return nil // Specific index bucket missing
+		paths, err := a.indexedPaths(tx, bucketName, key)
+		if err != nil {
+			return err
 		}
-
-		// Get list of paths
-		data := indexBucket.Get([]byte(key))
-		if data == nil {
+		if len(paths) == 0 {
 			return nil
 		}
 
-		var paths []string
-		if err := json.Unmarshal(data, &paths); err != nil {
-			return fmt.Errorf("failed to unmarshal index list: %w", err)
+		loaded, err := a.collectNotes(tx, paths)
+		if err != nil {
+			return err
 		}
-
-		// Batch lookup paths
-		notesBucket := tx.Bucket([]byte(BucketNotes))
-		if notesBucket == nil {
-			return nil
-		}
-
-		for _, p := range paths {
-			noteData := notesBucket.Get([]byte(p))
-			if noteData != nil {
-				var cached CachedNote
-				if err := json.Unmarshal(noteData, &cached); err == nil {
-					notes = append(notes, a.reconstructNote(cached))
-				}
-			}
-		}
+		notes = loaded
 		return nil
 	})
 
@@ -381,4 +322,125 @@ func (a *BoltDBCacheReadAdapter) reconstructNote(
 			},
 		},
 	}
+}
+
+func (a *BoltDBCacheReadAdapter) statFile(
+	path string,
+) (time.Time, bool, error) {
+	absPath := filepath.Join(a.config.VaultPath, path)
+	fi, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return time.Time{}, true, nil
+		}
+		return time.Time{}, false, err
+	}
+	return fi.ModTime(), false, nil
+}
+
+func (a *BoltDBCacheReadAdapter) cacheStaleStatus(
+	ctx context.Context,
+	path string,
+	fileModTime time.Time,
+) (bool, error) {
+	viewErr := a.db.View(func(tx *bbolt.Tx) error {
+		return a.evaluateCacheRecord(ctx, tx, path, fileModTime)
+	})
+
+	if viewErr != nil {
+		switch {
+		case errors.Is(viewErr, lithosErr.ErrNotFound):
+			return true, nil
+		case errors.Is(viewErr, errFileStale):
+			return true, nil
+		default:
+			return false, viewErr
+		}
+	}
+
+	return false, nil
+}
+
+func (a *BoltDBCacheReadAdapter) evaluateCacheRecord(
+	ctx context.Context,
+	tx *bbolt.Tx,
+	path string,
+	fileModTime time.Time,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	bucket := tx.Bucket([]byte(BucketNotes))
+	if bucket == nil {
+		return lithosErr.ErrNotFound
+	}
+	data := bucket.Get([]byte(path))
+	if data == nil {
+		return lithosErr.ErrNotFound
+	}
+
+	cached, decodeErr := decodeCachedNote(data)
+	if decodeErr != nil {
+		return decodeErr
+	}
+	if fileModTime.After(cached.FileDates.IndexedAt) {
+		return errFileStale
+	}
+	if !cached.FileDates.ModifiedAt.Equal(fileModTime) {
+		return errFileStale
+	}
+	return nil
+}
+
+func decodeCachedNote(data []byte) (CachedNote, error) {
+	var cached CachedNote
+	if err := json.Unmarshal(data, &cached); err != nil {
+		return CachedNote{}, err
+	}
+	return cached, nil
+}
+
+func (a *BoltDBCacheReadAdapter) indexedPaths(
+	tx *bbolt.Tx,
+	bucketName string,
+	key string,
+) ([]string, error) {
+	indices := tx.Bucket([]byte(BucketIndices))
+	if indices == nil {
+		return nil, nil
+	}
+
+	indexBucket := indices.Bucket([]byte(bucketName))
+	if indexBucket == nil {
+		return nil, nil
+	}
+
+	return readIndexPaths(indexBucket, key)
+}
+
+func (a *BoltDBCacheReadAdapter) collectNotes(
+	tx *bbolt.Tx,
+	paths []string,
+) ([]domain.Note, error) {
+	notesBucket := tx.Bucket([]byte(BucketNotes))
+	if notesBucket == nil {
+		return nil, nil
+	}
+
+	results := make([]domain.Note, 0, len(paths))
+	for _, p := range paths {
+		noteData := notesBucket.Get([]byte(p))
+		if noteData == nil {
+			continue
+		}
+
+		cached, err := decodeCachedNote(noteData)
+		if err != nil {
+			return nil, err
+		}
+		results = append(results, a.reconstructNote(cached))
+	}
+
+	return results, nil
 }

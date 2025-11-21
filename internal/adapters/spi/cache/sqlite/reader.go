@@ -49,16 +49,22 @@ type SQLiteReaderAdapter struct {
 func NewSQLiteReaderAdapter(
 	config domain.Config,
 	log zerolog.Logger,
+	migrator *SchemaViewMigrator,
 ) (*SQLiteReaderAdapter, error) {
-	dbPath := config.CacheDir + "/cold.db"
-
-	db, err := InitializeDatabase(dbPath)
+	common, err := newCommonAdapter(
+		config,
+		log,
+		migrator,
+		func(dbPath, operation string, cause error) error {
+			return lithosErr.NewCacheReadError("", dbPath, operation, cause)
+		},
+	)
 	if err != nil {
-		return nil, lithosErr.NewCacheReadError("", dbPath, "init_db", err)
+		return nil, err
 	}
 
 	return &SQLiteReaderAdapter{
-		commonAdapter: &commonAdapter{db: db, log: log},
+		commonAdapter: common,
 		config:        config,
 	}, nil
 }
@@ -204,7 +210,7 @@ func (a *SQLiteReaderAdapter) FileClassQuery(
 		return nil, fmt.Errorf("invalid fileClass identifier: %s", fileClass)
 	}
 
-	viewName := fmt.Sprintf("v_%s_notes", fileClass)
+	viewName := schemaViewName(fileClass)
 
 	// Try querying the view. If it fails (view doesn't exist), fallback to base
 	// table?
@@ -255,7 +261,19 @@ func (a *SQLiteReaderAdapter) FileClassQuery(
 	// everything.
 
 	query := fmt.Sprintf("SELECT path, frontmatter FROM %s", viewName)
-	return a.executeListQuery(ctx, query)
+	notes, err := a.executeListQuery(ctx, query)
+	if err == nil {
+		return notes, nil
+	}
+	if strings.Contains(err.Error(), "no such table") {
+		jsonPath := fmt.Sprintf("$.%s", a.config.FileClassKey)
+		fallback := fmt.Sprintf(
+			"SELECT path, frontmatter FROM notes WHERE json_extract(frontmatter, '%s') = ?",
+			jsonPath,
+		)
+		return a.executeListQuery(ctx, fallback, fileClass)
+	}
+	return nil, err
 }
 
 // FrontmatterQuery finds notes where a specific frontmatter field matches a

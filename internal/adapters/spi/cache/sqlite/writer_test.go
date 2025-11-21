@@ -20,7 +20,7 @@ func TestSQLiteWriterAdapter_Persist(t *testing.T) {
 	}
 	log := zerolog.Nop()
 
-	writer, err := NewSQLiteWriterAdapter(config, log)
+	writer, err := NewSQLiteWriterAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = writer.Close() }()
 
@@ -65,7 +65,7 @@ func TestSQLiteWriterAdapter_Delete(t *testing.T) {
 	}
 	log := zerolog.Nop()
 
-	writer, err := NewSQLiteWriterAdapter(config, log)
+	writer, err := NewSQLiteWriterAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = writer.Close() }()
 

@@ -26,16 +26,22 @@ type SQLiteWriterAdapter struct {
 func NewSQLiteWriterAdapter(
 	config domain.Config,
 	log zerolog.Logger,
+	migrator *SchemaViewMigrator,
 ) (*SQLiteWriterAdapter, error) {
-	dbPath := config.CacheDir + "/cold.db" // Using cold.db to match Tech Stack
-
-	db, err := InitializeDatabase(dbPath)
+	common, err := newCommonAdapter(
+		config,
+		log,
+		migrator,
+		func(dbPath, operation string, cause error) error {
+			return lithosErr.NewCacheWriteError("", dbPath, operation, cause)
+		},
+	)
 	if err != nil {
-		return nil, lithosErr.NewCacheWriteError("", dbPath, "init_db", err)
+		return nil, err
 	}
 
 	return &SQLiteWriterAdapter{
-		commonAdapter: &commonAdapter{db: db, log: log},
+		commonAdapter: common,
 		config:        config,
 	}, nil
 }
@@ -51,65 +57,34 @@ func (a *SQLiteWriterAdapter) Persist(
 	}
 
 	path := string(note.ID)
-
-	// Serialize frontmatter
-	fmBytes, err := json.Marshal(note.Frontmatter.Fields)
+	payload, modTime, err := a.preparePersistData(note)
 	if err != nil {
-		return lithosErr.NewCacheWriteError(
-			string(note.ID),
-			path,
-			"marshal_frontmatter",
-			err,
-		)
+		return err
 	}
 
-	// Extract timestamps
-	modTime := cache.ExtractFileModTime(note.Frontmatter.Fields)
+	return a.executePersist(ctx, path, payload, modTime, indexTime)
+}
 
-	tx, err := a.db.BeginTx(ctx, nil)
-	if err != nil {
-		return lithosErr.NewCacheWriteError(
-			string(note.ID),
-			path,
-			"begin_tx",
-			err,
-		)
+func ensureFileClassField(
+	fields map[string]interface{},
+	fileClass string,
+	fileClassKey string,
+) map[string]interface{} {
+	if fields == nil {
+		fields = map[string]interface{}{}
 	}
-	defer func() { _ = tx.Rollback() }()
-
-	query := `INSERT OR REPLACE INTO notes (path, frontmatter, modified_at, indexed_time, size) ` +
-		`VALUES (?, ?, ?, ?, ?)`
-
-	size := int64(
-		0,
-	) // Size not available in domain.Note, assume 0 for metadata cache
-
-	_, err = tx.ExecContext(ctx, query,
-		path,
-		string(fmBytes),
-		toUnix(modTime),
-		toUnix(indexTime),
-		size,
-	)
-	if err != nil {
-		return lithosErr.NewCacheWriteError(
-			string(note.ID),
-			path,
-			"insert_note",
-			err,
-		)
+	if fileClass == "" || fileClassKey == "" {
+		return fields
 	}
-
-	if err = tx.Commit(); err != nil {
-		return lithosErr.NewCacheWriteError(
-			string(note.ID),
-			path,
-			"commit_tx",
-			err,
-		)
+	if existing, ok := fields[fileClassKey]; ok && existing != "" {
+		return fields
 	}
-
-	return nil
+	copied := make(map[string]interface{}, len(fields)+1)
+	for k, v := range fields {
+		copied[k] = v
+	}
+	copied[fileClassKey] = fileClass
+	return copied
 }
 
 // Delete removes the note.
@@ -138,4 +113,63 @@ func (a *SQLiteWriterAdapter) Delete(
 // Close closes the DB.
 func (a *SQLiteWriterAdapter) Close() error {
 	return a.db.Close()
+}
+
+func (a *SQLiteWriterAdapter) preparePersistData(
+	note domain.Note,
+) (string, time.Time, error) {
+	fields := ensureFileClassField(
+		note.Frontmatter.Fields,
+		note.Frontmatter.FileClass,
+		a.config.FileClassKey,
+	)
+	bytes, err := json.Marshal(fields)
+	if err != nil {
+		return "", time.Time{}, lithosErr.NewCacheWriteError(
+			string(note.ID),
+			string(note.ID),
+			"marshal_frontmatter",
+			err,
+		)
+	}
+
+	return string(bytes), cache.ExtractFileModTime(fields), nil
+}
+
+func (a *SQLiteWriterAdapter) executePersist(
+	ctx context.Context,
+	path string,
+	payload string,
+	modTime time.Time,
+	indexTime time.Time,
+) error {
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return lithosErr.NewCacheWriteError(
+			path,
+			path,
+			"begin_tx",
+			err,
+		)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	query := `INSERT OR REPLACE INTO notes (path, frontmatter, modified_at, indexed_time, size) ` +
+		`VALUES (?, ?, ?, ?, ?)`
+	if _, err = tx.ExecContext(
+		ctx,
+		query,
+		path,
+		payload,
+		toUnix(modTime),
+		toUnix(indexTime),
+		int64(0),
+	); err != nil {
+		return lithosErr.NewCacheWriteError(path, path, "insert_note", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return lithosErr.NewCacheWriteError(path, path, "commit_tx", err)
+	}
+	return nil
 }

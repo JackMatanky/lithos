@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/rs/zerolog"
 	_ "modernc.org/sqlite" // Register SQLite driver
 )
@@ -57,6 +58,41 @@ const (
 type commonAdapter struct {
 	db  *sql.DB
 	log zerolog.Logger
+}
+
+func openSQLiteDatabase(
+	config domain.Config,
+	migrator *SchemaViewMigrator,
+	wrap func(dbPath, operation string, cause error) error,
+) (*sql.DB, error) {
+	dbPath := config.CacheDir + "/cold.db"
+
+	db, err := InitializeDatabase(dbPath)
+	if err != nil {
+		return nil, wrap(dbPath, "init_db", err)
+	}
+
+	if migrator != nil {
+		if migrateErr := migrator.EnsureViews(context.Background(), db); migrateErr != nil {
+			_ = db.Close()
+			return nil, wrap(dbPath, "ensure_views", migrateErr)
+		}
+	}
+
+	return db, nil
+}
+
+func newCommonAdapter(
+	config domain.Config,
+	log zerolog.Logger,
+	migrator *SchemaViewMigrator,
+	wrap func(dbPath, operation string, cause error) error,
+) (*commonAdapter, error) {
+	db, err := openSQLiteDatabase(config, migrator, wrap)
+	if err != nil {
+		return nil, err
+	}
+	return &commonAdapter{db: db, log: log}, nil
 }
 
 // InitializeDatabase opens the DB and sets up the base schema.

@@ -38,7 +38,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = boltWriter.Close() }()
 
-	sqliteWriter, err := sqlite.NewSQLiteWriterAdapter(config, log)
+	sqliteWriter, err := sqlite.NewSQLiteWriterAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = sqliteWriter.Close() }()
 
@@ -46,7 +46,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = boltReader.Close() }()
 
-	sqliteReader, err := sqlite.NewSQLiteReaderAdapter(config, log)
+	sqliteReader, err := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 	require.NoError(t, err)
 	defer func() { _ = sqliteReader.Close() }()
 

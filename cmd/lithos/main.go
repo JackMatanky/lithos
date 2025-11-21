@@ -62,8 +62,10 @@ func buildOrchestrator(
 		return nil, nil, err
 	}
 
+	loadedSchemas := schemaEngine.SchemasSnapshot()
+
 	// Initialize hybrid storage adapters
-	storage, err := initStorage(cfg, log)
+	storage, err := initStorage(cfg, log, loadedSchemas)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -108,6 +110,7 @@ func buildOrchestrator(
 func initStorage(
 	cfg domain.Config,
 	log zerolog.Logger,
+	schemas []domain.Schema,
 ) (*storageResources, error) {
 	boltDB, err := boltdb.Open(cfg)
 	if err != nil {
@@ -124,7 +127,9 @@ func initStorage(
 		return nil, err
 	}
 
-	sqliteWriter, err := sqlite.NewSQLiteWriterAdapter(cfg, log)
+	viewMigrator := sqlite.NewSchemaViewMigrator(schemas, cfg.FileClassKey, log)
+
+	sqliteWriter, err := sqlite.NewSQLiteWriterAdapter(cfg, log, viewMigrator)
 	if err != nil {
 		cleanup()
 		return nil, err

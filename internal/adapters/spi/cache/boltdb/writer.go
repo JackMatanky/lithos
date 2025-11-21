@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	pathpkg "path"
 	"strings"
 	"time"
 
@@ -18,17 +19,6 @@ import (
 
 // Compile-time interface compliance check.
 var _ spi.CacheWriterPort = (*BoltDBCacheWriteAdapter)(nil)
-
-// CachedNote represents the metadata stored for each note in BoltDB.
-// It matches the structure required for fast lookups and staleness detection.
-type CachedNote struct {
-	Path      string           `json:"path"`
-	ID        string           `json:"id"` // Kept for backward compatibility
-	Title     string           `json:"title"`
-	Aliases   []string         `json:"aliases,omitempty"`
-	FileClass string           `json:"file_class,omitempty"`
-	FileDates dto.FileDatesDTO `json:"file_dates"`
-}
 
 // BoltDBCacheWriteAdapter implements CacheWriterPort for BoltDB-based
 // note persistence with optimized indexing for hot data queries.
@@ -103,20 +93,29 @@ func (a *BoltDBCacheWriteAdapter) Close() error {
 
 // extractBasename extracts the basename from a file path.
 func extractBasename(path string) string {
-	parts := strings.Split(path, "/")
-	filename := parts[len(parts)-1]
-	if dotIndex := strings.LastIndex(filename, "."); dotIndex > 0 {
-		return filename[:dotIndex]
+	normalized := normalizePath(path)
+	if normalized == "" {
+		return ""
 	}
-	return filename
+
+	filename := pathpkg.Base(normalized)
+	extension := pathpkg.Ext(filename)
+	return strings.TrimSuffix(filename, extension)
 }
 
 // extractDirectory extracts the directory path from a file path.
 func extractDirectory(path string) string {
-	if lastSlash := strings.LastIndex(path, "/"); lastSlash > 0 {
-		return path[:lastSlash]
+	normalized := normalizePath(path)
+	if normalized == "" {
+		return ""
 	}
-	return ""
+
+	dir := pathpkg.Dir(normalized)
+	if dir == "." || dir == "/" {
+		return ""
+	}
+
+	return dir
 }
 
 // extractCachedNote extracts indexing metadata from a Note.
@@ -317,122 +316,211 @@ func (a *BoltDBCacheWriteAdapter) persistNoteInTransaction(
 	cached CachedNote,
 	data []byte,
 ) error {
-	pathBytes := []byte(cached.Path)
-
-	// 1. Store primary metadata in /notes/ bucket
-	notesBucket := tx.Bucket([]byte(BucketNotes))
-	if err := notesBucket.Put(pathBytes, data); err != nil {
+	notesBucket, err := requireBucket(tx, BucketNotes)
+	if err != nil {
 		return err
 	}
 
-	// Get indices parent bucket
-	indicesBucket := tx.Bucket([]byte(BucketIndices))
+	if putErr := notesBucket.Put([]byte(cached.Path), data); putErr != nil {
+		return putErr
+	}
 
-	// 2. Update /indices/byBasename/
-	basenameBucket := indicesBucket.Bucket([]byte(BucketIndexBasenameQuery))
-	basename := extractBasename(cached.Path)
-	// Index stores []Path for duplicates
-	if err := appendToIndex(basenameBucket, basename, cached.Path); err != nil {
+	indicesBucket, err := requireBucket(tx, BucketIndices)
+	if err != nil {
 		return err
 	}
 
-	// 3. Update /indices/byAlias/
-	aliasBucket := indicesBucket.Bucket([]byte(BucketIndexAliasQuery))
+	if updateErr := a.updateBasenameIndex(indicesBucket, cached); updateErr != nil {
+		return updateErr
+	}
+	if updateErr := a.updateAliasIndex(indicesBucket, cached); updateErr != nil {
+		return updateErr
+	}
+	if updateErr := a.updateFileClassIndex(indicesBucket, cached); updateErr != nil {
+		return updateErr
+	}
+	return a.updateFolderIndex(indicesBucket, cached)
+}
+
+func (a *BoltDBCacheWriteAdapter) updateBasenameIndex(
+	indicesBucket *bbolt.Bucket,
+	cached CachedNote,
+) error {
+	bucket, err := requireSubBucket(indicesBucket, BucketIndexBasenameQuery)
+	if err != nil {
+		return err
+	}
+	return appendToIndex(bucket, extractBasename(cached.Path), cached.Path)
+}
+
+func (a *BoltDBCacheWriteAdapter) updateAliasIndex(
+	indicesBucket *bbolt.Bucket,
+	cached CachedNote,
+) error {
+	if len(cached.Aliases) == 0 {
+		return nil
+	}
+	bucket, err := requireSubBucket(indicesBucket, BucketIndexAliasQuery)
+	if err != nil {
+		return err
+	}
 	for _, alias := range cached.Aliases {
-		if err := appendToIndex(aliasBucket, alias, cached.Path); err != nil {
-			return err
+		if appendErr := appendToIndex(bucket, alias, cached.Path); appendErr != nil {
+			return appendErr
 		}
 	}
-
-	// 4. Update /indices/byFileClass/
-	if cached.FileClass != "" {
-		fcBucket := indicesBucket.Bucket([]byte(BucketIndexFileClassQuery))
-		if err := appendToIndex(fcBucket, cached.FileClass, cached.Path); err != nil {
-			return err
-		}
-	}
-
-	// 5. Update /indices/byFolder/
-	directory := extractDirectory(cached.Path)
-	if directory != "" {
-		dirBucket := indicesBucket.Bucket([]byte(BucketIndexByFolder))
-		if err := appendToIndex(dirBucket, directory, cached.Path); err != nil {
-			return err
-		}
-	}
-
 	return nil
+}
+
+func (a *BoltDBCacheWriteAdapter) updateFileClassIndex(
+	indicesBucket *bbolt.Bucket,
+	cached CachedNote,
+) error {
+	if cached.FileClass == "" {
+		return nil
+	}
+	bucket, err := requireSubBucket(indicesBucket, BucketIndexFileClassQuery)
+	if err != nil {
+		return err
+	}
+	return appendToIndex(bucket, cached.FileClass, cached.Path)
+}
+
+func (a *BoltDBCacheWriteAdapter) updateFolderIndex(
+	indicesBucket *bbolt.Bucket,
+	cached CachedNote,
+) error {
+	directory := extractDirectory(cached.Path)
+	if directory == "" {
+		return nil
+	}
+	bucket, err := requireSubBucket(indicesBucket, BucketIndexByFolder)
+	if err != nil {
+		return err
+	}
+	return appendToIndex(bucket, directory, cached.Path)
 }
 
 // appendToIndex adds a path to a JSON array in the specified bucket key.
 func appendToIndex(bucket *bbolt.Bucket, key, value string) error {
-	keyBytes := []byte(key)
-	existingBytes := bucket.Get(keyBytes)
-	var list []string
-
-	if existingBytes != nil {
-		if err := json.Unmarshal(existingBytes, &list); err != nil {
-			return fmt.Errorf(
-				"failed to unmarshal index list for %s: %w",
-				key,
-				err,
-			)
-		}
+	if key == "" || value == "" {
+		return nil
 	}
 
-	// Check for duplicates
-	for _, v := range list {
-		if v == value {
-			return nil // Already present
-		}
-	}
-	list = append(list, value)
-
-	updatedBytes, err := json.Marshal(list)
+	list, err := readIndexPaths(bucket, key)
 	if err != nil {
-		return fmt.Errorf("failed to marshal index list for %s: %w", key, err)
+		return err
 	}
 
-	return bucket.Put(keyBytes, updatedBytes)
+	if containsPath(list, value) {
+		return nil
+	}
+
+	list = append(list, value)
+	return writeIndexPaths(bucket, key, list)
 }
 
 // removeFromIndex removes a path from a JSON array in the specified bucket key.
 func removeFromIndex(bucket *bbolt.Bucket, key, value string) error {
-	keyBytes := []byte(key)
-	existingBytes := bucket.Get(keyBytes)
-	if existingBytes == nil {
-		return nil // Nothing to remove
+	if key == "" || value == "" {
+		return nil
 	}
 
-	var list []string
-	if err := json.Unmarshal(existingBytes, &list); err != nil {
-		return fmt.Errorf("failed to unmarshal index list for %s: %w", key, err)
+	list, err := readIndexPaths(bucket, key)
+	if err != nil {
+		return err
 	}
 
-	// Filter out the value
+	if len(list) == 0 {
+		return nil
+	}
+
 	newList := make([]string, 0, len(list))
-	found := false
 	for _, v := range list {
 		if v != value {
 			newList = append(newList, v)
-		} else {
-			found = true
 		}
 	}
 
-	if !found {
-		return nil // Value not in list
+	if len(newList) == len(list) {
+		return nil
 	}
 
-	if len(newList) == 0 {
-		// If list is empty, delete the key
-		return bucket.Delete(keyBytes)
-	}
+	return writeIndexPaths(bucket, key, newList)
+}
 
-	updatedBytes, err := json.Marshal(newList)
+func normalizePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	sanitized := strings.ReplaceAll(path, "\\", "/")
+	clean := pathpkg.Clean(sanitized)
+	if clean == "." {
+		return ""
+	}
+	return clean
+}
+
+func readIndexPaths(bucket *bbolt.Bucket, key string) ([]string, error) {
+	if bucket == nil {
+		return nil, fmt.Errorf("bucket is nil for key %s", key)
+	}
+	data := bucket.Get([]byte(key))
+	if data == nil {
+		return nil, nil
+	}
+	var list []string
+	if err := json.Unmarshal(data, &list); err != nil {
+		return nil, fmt.Errorf(
+			"failed to unmarshal index list for %s: %w",
+			key,
+			err,
+		)
+	}
+	return list, nil
+}
+
+func writeIndexPaths(bucket *bbolt.Bucket, key string, paths []string) error {
+	if bucket == nil {
+		return fmt.Errorf("bucket is nil for key %s", key)
+	}
+	if len(paths) == 0 {
+		return bucket.Delete([]byte(key))
+	}
+	updatedBytes, err := json.Marshal(paths)
 	if err != nil {
 		return fmt.Errorf("failed to marshal index list for %s: %w", key, err)
 	}
+	return bucket.Put([]byte(key), updatedBytes)
+}
 
-	return bucket.Put(keyBytes, updatedBytes)
+func containsPath(paths []string, value string) bool {
+	for _, path := range paths {
+		if path == value {
+			return true
+		}
+	}
+	return false
+}
+
+func requireBucket(tx *bbolt.Tx, name string) (*bbolt.Bucket, error) {
+	bucket := tx.Bucket([]byte(name))
+	if bucket == nil {
+		return nil, fmt.Errorf("bucket %s does not exist", name)
+	}
+	return bucket, nil
+}
+
+func requireSubBucket(
+	parent *bbolt.Bucket,
+	name string,
+) (*bbolt.Bucket, error) {
+	if parent == nil {
+		return nil, fmt.Errorf("parent bucket missing for %s", name)
+	}
+	bucket := parent.Bucket([]byte(name))
+	if bucket == nil {
+		return nil, fmt.Errorf("bucket %s does not exist", name)
+	}
+	return bucket, nil
 }

@@ -11,6 +11,7 @@ func TestGenerateSchemaView(t *testing.T) {
 	tests := []struct {
 		name      string
 		schema    domain.Schema
+		opts      *ViewGenerationOptions
 		wantView  string
 		wantIndex []string
 		wantErr   bool
@@ -26,14 +27,34 @@ func TestGenerateSchemaView(t *testing.T) {
 			},
 			wantView: "CREATE VIEW IF NOT EXISTS v_contact_notes AS " +
 				"SELECT path, frontmatter, modified_at, indexed_time, size, " +
-				"json_extract(frontmatter, '$.name') AS name, " +
-				"json_extract(frontmatter, '$.age') AS age " +
+				"CAST(json_extract(frontmatter, '$.name') AS TEXT) AS name, " +
+				"CAST(json_extract(frontmatter, '$.age') AS REAL) AS age " +
 				"FROM notes WHERE json_extract(frontmatter, '$.fileClass') = 'contact';",
 			wantIndex: []string{
 				"CREATE INDEX IF NOT EXISTS idx_contact_name ON notes(json_extract(frontmatter, '$.name')) " +
 					"WHERE json_extract(frontmatter, '$.fileClass') = 'contact';",
 				"CREATE INDEX IF NOT EXISTS idx_contact_age ON notes(json_extract(frontmatter, '$.age')) " +
 					"WHERE json_extract(frontmatter, '$.fileClass') = 'contact';",
+			},
+			wantErr: false,
+		},
+		{
+			name: "Custom fileClass key with boolean property",
+			schema: domain.Schema{
+				Name: "project",
+				Properties: []domain.Property{
+					{Name: "active", Spec: &domain.BoolSpec{}},
+				},
+			},
+			opts: &ViewGenerationOptions{FileClassKey: "file_class"},
+			wantView: "CREATE VIEW IF NOT EXISTS v_project_notes AS " +
+				"SELECT path, frontmatter, modified_at, indexed_time, size, " +
+				"CAST(json_extract(frontmatter, '$.active') AS INTEGER) AS active " +
+				"FROM notes WHERE json_extract(frontmatter, '$.file_class') = 'project';",
+			wantIndex: []string{
+				"CREATE INDEX IF NOT EXISTS idx_project_active " +
+					"ON notes(json_extract(frontmatter, '$.active')) " +
+					"WHERE json_extract(frontmatter, '$.file_class') = 'project';",
 			},
 			wantErr: false,
 		},
@@ -46,7 +67,15 @@ func TestGenerateSchemaView(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := GenerateSchemaView(tt.schema)
+			var (
+				got string
+				err error
+			)
+			if tt.opts != nil {
+				got, err = GenerateSchemaViewWithOptions(tt.schema, *tt.opts)
+			} else {
+				got, err = GenerateSchemaView(tt.schema)
+			}
 			if (err != nil) != tt.wantErr {
 				t.Errorf(
 					"GenerateSchemaView() error = %v, wantErr %v",

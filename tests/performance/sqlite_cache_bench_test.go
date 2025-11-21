@@ -17,7 +17,7 @@ func setupBenchmarkData(
 	config domain.Config,
 	log zerolog.Logger,
 ) *sqlite.SQLiteWriterAdapter {
-	writer, writeErr := sqlite.NewSQLiteWriterAdapter(config, log)
+	writer, writeErr := sqlite.NewSQLiteWriterAdapter(config, log, nil)
 	if writeErr != nil {
 		b.Fatal(writeErr)
 	}
@@ -75,7 +75,7 @@ func BenchmarkSQLiteCache(b *testing.B) {
 	defer func() { _ = writer.Close() }()
 
 	b.Run("Read", func(b *testing.B) {
-		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log)
+		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 		if readErr != nil {
 			b.Fatal(readErr)
 		}
@@ -148,7 +148,7 @@ func BenchmarkSQLiteCache(b *testing.B) {
 	// created
 	// We'll test this in a separate benchmark that handles view creation
 	b.Run("FrontmatterQuery", func(b *testing.B) {
-		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log)
+		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 		if readErr != nil {
 			b.Fatal(readErr)
 		}
@@ -171,7 +171,7 @@ func BenchmarkSQLiteCache(b *testing.B) {
 	})
 
 	b.Run("TagQuery", func(b *testing.B) {
-		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log)
+		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 		if readErr != nil {
 			b.Fatal(readErr)
 		}
@@ -189,7 +189,7 @@ func BenchmarkSQLiteCache(b *testing.B) {
 	})
 
 	b.Run("List", func(b *testing.B) {
-		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log)
+		reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 		if readErr != nil {
 			b.Fatal(readErr)
 		}
@@ -217,7 +217,7 @@ func BenchmarkSQLiteQueryComparison(b *testing.B) {
 	log := zerolog.Nop()
 
 	// Setup test data with 1000 notes
-	writer, writeErr := sqlite.NewSQLiteWriterAdapter(config, log)
+	writer, writeErr := sqlite.NewSQLiteWriterAdapter(config, log, nil)
 	if writeErr != nil {
 		b.Fatal(writeErr)
 	}
@@ -246,7 +246,7 @@ func BenchmarkSQLiteQueryComparison(b *testing.B) {
 		}
 	}
 
-	reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log)
+	reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 	if readErr != nil {
 		b.Fatal(readErr)
 	}
@@ -296,7 +296,7 @@ func BenchmarkSQLitePerformanceTargets(b *testing.B) {
 	config := domain.Config{CacheDir: cacheDir, FileClassKey: "fileClass"}
 	log := zerolog.Nop()
 
-	writer, writeErr := sqlite.NewSQLiteWriterAdapter(config, log)
+	writer, writeErr := sqlite.NewSQLiteWriterAdapter(config, log, nil)
 	if writeErr != nil {
 		b.Fatal(writeErr)
 	}
@@ -327,7 +327,7 @@ func BenchmarkSQLitePerformanceTargets(b *testing.B) {
 		}
 	}
 
-	reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log)
+	reader, readErr := sqlite.NewSQLiteReaderAdapter(config, log, nil)
 	if readErr != nil {
 		b.Fatal(readErr)
 	}

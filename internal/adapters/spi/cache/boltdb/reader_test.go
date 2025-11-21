@@ -2,86 +2,17 @@ package boltdb
 
 import (
 	"context"
-	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
-	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"go.etcd.io/bbolt"
 )
-
-func setupBoltDBTestData(t *testing.T, db *bbolt.DB) {
-	// Insert test data
-	err := db.Update(func(tx *bbolt.Tx) error {
-		// Create buckets
-		notesBucket, err := tx.CreateBucketIfNotExists([]byte(BucketNotes))
-		if err != nil {
-			return err
-		}
-		indicesBucket, err := tx.CreateBucketIfNotExists([]byte(BucketIndices))
-		if err != nil {
-			return err
-		}
-		subBuckets := []string{
-			BucketIndexBasenameQuery,
-			BucketIndexAliasQuery,
-			BucketIndexFileClassQuery,
-			BucketIndexByFolder,
-		}
-		for _, sub := range subBuckets {
-			if _, subErr := indicesBucket.CreateBucketIfNotExists([]byte(sub)); subErr != nil {
-				return subErr
-			}
-		}
-
-		// Insert test note metadata
-		cached1 := CachedNote{
-			Path:      "/notes/test1.md",
-			ID:        "test1",
-			Title:     "Test Note 1",
-			Aliases:   []string{"alias1"},
-			FileClass: "contact",
-			FileDates: dto.NewFileDatesDTO(time.Now().Add(-time.Hour)),
-		}
-
-		data1, err := json.Marshal(cached1)
-		if err != nil {
-			return err
-		}
-
-		if putErr := notesBucket.Put([]byte(cached1.Path), data1); putErr != nil {
-			return putErr
-		}
-		// Populate indices if needed by tests (skipped for now as Read/List use
-		// primary bucket)
-
-		// Insert second test note
-		cached2 := CachedNote{
-			Path:      "/notes/test2.md",
-			ID:        "test2",
-			Title:     "Test Note 2",
-			Aliases:   []string{"alias2", "alias2b"},
-			FileClass: "project",
-			FileDates: dto.NewFileDatesDTO(time.Now().Add(-2 * time.Hour)),
-		}
-
-		data2, err := json.Marshal(cached2)
-		if err != nil {
-			return err
-		}
-
-		if putErr := notesBucket.Put([]byte(cached2.Path), data2); putErr != nil {
-			return putErr
-		}
-
-		return nil
-	})
-	require.NoError(t, err)
-}
 
 // TestBoltDBCacheReadAdapter_NewBoltDBCacheReadAdapter tests the constructor.
 func TestBoltDBCacheReadAdapter_NewBoltDBCacheReadAdapter(t *testing.T) {
@@ -139,26 +70,33 @@ func TestBoltDBCacheReadAdapter_NewBoltDBCacheReadAdapter(t *testing.T) {
 
 // TestBoltDBCacheReadAdapter_Read tests the Read method.
 func TestBoltDBCacheReadAdapter_Read(t *testing.T) {
-	cacheDir := t.TempDir()
-	config := domain.Config{
-		CacheDir:     cacheDir,
-		FileClassKey: "file_class",
-	}
-	log := zerolog.New(zerolog.NewTestWriter(t))
-
-	db, err := Open(config)
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-
-	// Setup test data
-	writer, err := NewBoltDBCacheWriter(config, log, db)
-	require.NoError(t, err)
-	setupBoltDBTestData(t, writer.db)
-
-	// Create reader
-	reader, err := NewBoltDBCacheReadAdapter(config, log, db)
-	require.NoError(t, err)
+	config, writer, reader := newTestBoltDBAdapters(t)
 	defer func() { _ = reader.Close() }()
+
+	persistNotes(t, writer,
+		domain.Note{
+			ID: domain.NewNoteID("/notes/test1.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "contact",
+				Fields: map[string]interface{}{
+					"title":      "Test Note 1",
+					"aliases":    []interface{}{"alias1"},
+					"file_class": "contact",
+				},
+			},
+		},
+		domain.Note{
+			ID: domain.NewNoteID("/notes/test2.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"title":      "Test Note 2",
+					"aliases":    []interface{}{"alias2", "alias2b"},
+					"file_class": "project",
+				},
+			},
+		},
+	)
 
 	tests := []struct {
 		name     string
@@ -233,26 +171,10 @@ func TestBoltDBCacheReadAdapter_Read(t *testing.T) {
 
 // TestBoltDBCacheReadAdapter_List tests the List method.
 func TestBoltDBCacheReadAdapter_List(t *testing.T) {
-	cacheDir := t.TempDir()
-	config := domain.Config{
-		CacheDir:     cacheDir,
-		FileClassKey: "file_class",
-	}
-	log := zerolog.New(zerolog.NewTestWriter(t))
-
-	db, err := Open(config)
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
-
-	// Setup test data
-	writer, err := NewBoltDBCacheWriter(config, log, db)
-	require.NoError(t, err)
-	setupBoltDBTestData(t, writer.db)
-
-	// Create reader
-	reader, err := NewBoltDBCacheReadAdapter(config, log, db)
-	require.NoError(t, err)
+	config, writer, reader := newTestBoltDBAdapters(t)
 	defer func() { _ = reader.Close() }()
+
+	persistNotes(t, writer, sampleNotes()...)
 
 	t.Run("success - lists all notes", func(t *testing.T) {
 		ctx := context.Background()
@@ -278,27 +200,7 @@ func TestBoltDBCacheReadAdapter_List(t *testing.T) {
 	})
 
 	t.Run("success - empty database returns nil slice", func(t *testing.T) {
-		// Create a new empty database
-		emptyCacheDir := t.TempDir()
-		emptyConfig := domain.Config{
-			CacheDir:     emptyCacheDir,
-			FileClassKey: "file_class",
-		}
-
-		emptyDB, openErr := Open(emptyConfig)
-		require.NoError(t, openErr)
-		defer func() { _ = emptyDB.Close() }()
-
-		_, emptyWriterErr := NewBoltDBCacheWriter(emptyConfig, log, emptyDB)
-		require.NoError(t, emptyWriterErr)
-		// No cleanup needed for writer
-
-		emptyReader, emptyReaderErr := NewBoltDBCacheReadAdapter(
-			emptyConfig,
-			log,
-			emptyDB,
-		)
-		require.NoError(t, emptyReaderErr)
+		_, _, emptyReader := newTestBoltDBAdapters(t)
 		defer func() { _ = emptyReader.Close() }()
 
 		ctx := context.Background()
@@ -309,56 +211,217 @@ func TestBoltDBCacheReadAdapter_List(t *testing.T) {
 	})
 }
 
-// TestBoltDBCacheReadAdapter_IsStale tests the staleness detection.
-func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
-	cacheDir := t.TempDir()
-	config := domain.Config{
-		CacheDir:     cacheDir,
-		FileClassKey: "file_class",
-		VaultPath:    cacheDir, // Use cacheDir as fake vault root for IsStale check
+func TestBoltDBCacheReadAdapter_MetadataQueries(t *testing.T) {
+	_, writer, reader := newTestBoltDBAdapters(t)
+	defer func() { _ = reader.Close() }()
+
+	persistNotes(t, writer,
+		domain.Note{
+			ID: domain.NewNoteID("notes/projects/alpha.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"title":      "Alpha",
+					"aliases":    []interface{}{"alpha-main"},
+					"file_class": "project",
+				},
+			},
+		},
+		domain.Note{
+			ID: domain.NewNoteID("notes/contacts/jane.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "contact",
+				Fields: map[string]interface{}{
+					"title":      "Jane",
+					"aliases":    []interface{}{"jane-doe"},
+					"file_class": "contact",
+				},
+			},
+		},
+	)
+
+	ctx := context.Background()
+	tests := []struct {
+		name    string
+		query   func(context.Context, *BoltDBCacheReadAdapter) ([]domain.Note, error)
+		wantIDs []string
+	}{
+		{
+			name: "BasenameQuery",
+			query: func(ctx context.Context, adapter *BoltDBCacheReadAdapter) ([]domain.Note, error) {
+				return adapter.BasenameQuery(ctx, "alpha")
+			},
+			wantIDs: []string{"notes/projects/alpha.md"},
+		},
+		{
+			name: "AliasQuery",
+			query: func(ctx context.Context, adapter *BoltDBCacheReadAdapter) ([]domain.Note, error) {
+				return adapter.AliasQuery(ctx, "jane-doe")
+			},
+			wantIDs: []string{"notes/contacts/jane.md"},
+		},
+		{
+			name: "FileClassQuery",
+			query: func(ctx context.Context, adapter *BoltDBCacheReadAdapter) ([]domain.Note, error) {
+				return adapter.FileClassQuery(ctx, "project")
+			},
+			wantIDs: []string{"notes/projects/alpha.md"},
+		},
+		{
+			name: "no matches returns empty slice",
+			query: func(ctx context.Context, adapter *BoltDBCacheReadAdapter) ([]domain.Note, error) {
+				return adapter.FileClassQuery(ctx, "unknown")
+			},
+			wantIDs: []string{},
+		},
 	}
-	log := zerolog.New(zerolog.NewTestWriter(t))
 
-	db, err := Open(config)
-	require.NoError(t, err)
-	defer func() { _ = db.Close() }()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			notes, err := tt.query(ctx, reader)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, tt.wantIDs, toIDs(notes))
+		})
+	}
+}
 
-	// Create writer first to set up database and persist a note
-	writer, err := NewBoltDBCacheWriter(config, log, db)
-	require.NoError(t, err)
+func TestBoltDBCacheReadAdapter_PathQuery(t *testing.T) {
+	_, writer, reader := newTestBoltDBAdapters(t)
+	defer func() { _ = reader.Close() }()
 
-	testNote := domain.Note{
-		ID: domain.NewNoteID("test-note.md"), // Use filename as path
-		Frontmatter: domain.Frontmatter{
-			FileClass: "note",
-			Fields: map[string]interface{}{
-				"title":      "Test Note",
-				"file_class": "note",
+	persistNotes(t, writer,
+		domain.Note{
+			ID: domain.NewNoteID("notes/projects/alpha.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"title":      "Alpha",
+					"aliases":    []interface{}{"project-alpha"},
+					"file_class": "project",
+				},
+			},
+		},
+		domain.Note{
+			ID: domain.NewNoteID("notes/projects/beta.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"title":      "Beta",
+					"aliases":    []interface{}{"project-beta"},
+					"file_class": "project",
+				},
+			},
+		},
+	)
+
+	ctx := context.Background()
+	tests := []struct {
+		name    string
+		opts    spi.PathQueryOptions
+		wantIDs []string
+	}{
+		{
+			name: "full path match",
+			opts: spi.PathQueryOptions{
+				Value: "notes/projects/alpha.md",
+				Scope: spi.PathQueryScopeFull,
+			},
+			wantIDs: []string{"notes/projects/alpha.md"},
+		},
+		{
+			name: "full path no match",
+			opts: spi.PathQueryOptions{
+				Value: "notes/unknown.md",
+				Scope: spi.PathQueryScopeFull,
+			},
+			wantIDs: []string{},
+		},
+		{
+			name: "basename scope",
+			opts: spi.PathQueryOptions{
+				Value: "beta",
+				Scope: spi.PathQueryScopeBasename,
+			},
+			wantIDs: []string{"notes/projects/beta.md"},
+		},
+		{
+			name: "folder scope",
+			opts: spi.PathQueryOptions{
+				Value: "notes/projects",
+				Scope: spi.PathQueryScopeFolder,
+			},
+			wantIDs: []string{
+				"notes/projects/alpha.md",
+				"notes/projects/beta.md",
 			},
 		},
 	}
 
-	ctx := context.Background()
-	err = writer.Persist(ctx, testNote, time.Now())
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			notes, err := reader.PathQuery(ctx, tt.opts)
+			require.NoError(t, err)
+			assert.ElementsMatch(t, tt.wantIDs, toIDs(notes))
+		})
+	}
+}
 
-	// Create reader
-	reader, err := NewBoltDBCacheReadAdapter(config, log, db)
-	require.NoError(t, err)
+// TestBoltDBCacheReadAdapter_IsStale tests the staleness detection.
+func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
+	config, writer, reader := newTestBoltDBAdapters(t)
 	defer func() { _ = reader.Close() }()
 
-	t.Run("nonexistent_note_returns_true", func(t *testing.T) {
-		// Non-existent file on disk should be considered stale (or rather,
-		// IsStale returns true)
-		isStale, staleErr := reader.IsStale(ctx, "test-note.md")
-		require.NoError(t, staleErr)
-		assert.True(t, isStale, "non-existent file should be considered stale")
+	ctx := context.Background()
+	modTime := time.Now().Add(-2 * time.Minute)
+	filePath := "notes/stale-check.md"
+	createVaultFile(t, config.VaultPath, filePath, modTime)
+
+	testNote := domain.Note{
+		ID: domain.NewNoteID(filePath),
+		Frontmatter: domain.Frontmatter{
+			FileClass: "note",
+			Fields: map[string]interface{}{
+				"title":          "Test Note",
+				"file_class":     "note",
+				"file_mod_time":  modTime,
+				"modified":       modTime,
+				"file_mod_epoch": modTime.Unix(),
+			},
+		},
+	}
+
+	indexTime := modTime.Add(time.Minute)
+	require.NoError(t, writer.Persist(ctx, testNote, indexTime))
+
+	t.Run("fresh file returns false", func(t *testing.T) {
+		stale, err := reader.IsStale(ctx, filePath)
+		require.NoError(t, err)
+		assert.False(t, stale)
 	})
 
-	t.Run("nonexistent_cache_returns_true", func(t *testing.T) {
-		isStale, staleErr := reader.IsStale(ctx, "other.md")
-		require.NoError(t, staleErr)
-		assert.True(t, isStale)
+	t.Run("modified file returns true", func(t *testing.T) {
+		updated := modTime.Add(3 * time.Minute)
+		fullPath := filepath.Join(config.VaultPath, filePath)
+		require.NoError(t, os.Chtimes(fullPath, updated, updated))
+
+		stale, err := reader.IsStale(ctx, filePath)
+		require.NoError(t, err)
+		assert.True(t, stale)
+	})
+
+	t.Run("missing file returns true", func(t *testing.T) {
+		fullPath := filepath.Join(config.VaultPath, filePath)
+		require.NoError(t, os.Remove(fullPath))
+
+		stale, err := reader.IsStale(ctx, filePath)
+		require.NoError(t, err)
+		assert.True(t, stale)
+	})
+
+	t.Run("missing cache entry returns true", func(t *testing.T) {
+		stale, err := reader.IsStale(ctx, "notes/missing.md")
+		require.NoError(t, err)
+		assert.True(t, stale)
 	})
 }
 
@@ -393,4 +456,91 @@ func TestBoltDBCacheReadAdapter_Close(t *testing.T) {
 	// Idempotent check
 	err = reader.Close()
 	assert.NoError(t, err)
+}
+
+func newTestBoltDBAdapters(
+	t *testing.T,
+) (domain.Config, *BoltDBCacheWriteAdapter, *BoltDBCacheReadAdapter) {
+	t.Helper()
+
+	cacheDir := t.TempDir()
+	config := domain.Config{
+		CacheDir:     cacheDir,
+		FileClassKey: "file_class",
+		VaultPath:    cacheDir,
+	}
+	log := zerolog.New(zerolog.NewTestWriter(t))
+
+	db, err := Open(config)
+	require.NoError(t, err)
+
+	writer, err := NewBoltDBCacheWriter(config, log, db)
+	require.NoError(t, err)
+
+	reader, err := NewBoltDBCacheReadAdapter(config, log, db)
+	require.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = reader.Close()
+		_ = writer.Close()
+		_ = db.Close()
+	})
+
+	return config, writer, reader
+}
+
+func persistNotes(
+	t *testing.T,
+	writer *BoltDBCacheWriteAdapter,
+	notes ...domain.Note,
+) {
+	t.Helper()
+	ctx := context.Background()
+	for _, note := range notes {
+		require.NoError(t, writer.Persist(ctx, note, time.Now()))
+	}
+}
+
+func sampleNotes() []domain.Note {
+	return []domain.Note{
+		{
+			ID: domain.NewNoteID("/notes/test1.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "contact",
+				Fields: map[string]interface{}{
+					"title":      "Test Note 1",
+					"aliases":    []interface{}{"alias1"},
+					"file_class": "contact",
+				},
+			},
+		},
+		{
+			ID: domain.NewNoteID("/notes/test2.md"),
+			Frontmatter: domain.Frontmatter{
+				FileClass: "project",
+				Fields: map[string]interface{}{
+					"title":      "Test Note 2",
+					"aliases":    []interface{}{"alias2", "alias2b"},
+					"file_class": "project",
+				},
+			},
+		},
+	}
+}
+
+func toIDs(notes []domain.Note) []string {
+	ids := make([]string, 0, len(notes))
+	for _, note := range notes {
+		ids = append(ids, string(note.ID))
+	}
+	return ids
+}
+
+func createVaultFile(t *testing.T, root, relPath string, modTime time.Time) {
+	t.Helper()
+
+	fullPath := filepath.Join(root, relPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o750))
+	require.NoError(t, os.WriteFile(fullPath, []byte("content"), 0o640))
+	require.NoError(t, os.Chtimes(fullPath, modTime, modTime))
 }

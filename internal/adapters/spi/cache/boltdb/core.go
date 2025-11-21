@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/domain"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"go.etcd.io/bbolt"
@@ -37,6 +38,19 @@ const (
 // boltDBFileMode represents the POSIX file permissions used when creating
 // BoltDB database files. Uses restrictive permissions (0600) for security.
 const boltDBFileMode = 0o600
+
+// CachedNote is the adapter-owned serialized form of a note stored in BoltDB.
+// It intentionally stays slim (see docs/architecture/data-models.md) so that
+// bucket layout remains stable even when domain.Note evolves; future domain
+// helpers can be used to populate these fields without embedding the struct.
+type CachedNote struct {
+	Path      string           `json:"path"`
+	ID        string           `json:"id"`
+	Title     string           `json:"title"`
+	Aliases   []string         `json:"aliases,omitempty"`
+	FileClass string           `json:"file_class,omitempty"`
+	FileDates dto.FileDatesDTO `json:"file_dates"`
+}
 
 // Open creates or opens a BoltDB instance.
 // It ensures the cache directory exists.
