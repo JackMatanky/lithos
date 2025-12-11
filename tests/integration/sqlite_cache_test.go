@@ -3,6 +3,7 @@ package integration
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -45,12 +46,13 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	}
 
 	cacheDir := t.TempDir()
+	vaultDir := t.TempDir()
 	config := domain.Config{
 		CacheDir:     cacheDir,
+		VaultPath:    vaultDir,
 		FileClassKey: "fileClass",
 	}
 	log := zerolog.Nop()
-	dbPath := filepath.Join(cacheDir, "cold.db")
 	ctx := context.Background()
 
 	// 1. Initialize Writer (creates DB and tables)
@@ -107,7 +109,18 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 		},
 	}
 
+	// Create actual files in vault with old mod times
+	oldTime := time.Now().Add(-time.Minute)
 	for _, n := range notes {
+		fullPath := filepath.Join(vaultDir, string(n.ID))
+		require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))
+		content := fmt.Sprintf(
+			"---\nfileClass: %s\ntitle: %s\n---\n\nContent.",
+			n.Frontmatter.Fields["fileClass"],
+			n.Frontmatter.Fields["title"],
+		)
+		require.NoError(t, os.WriteFile(fullPath, []byte(content), 0o644))
+		require.NoError(t, os.Chtimes(fullPath, oldTime, oldTime))
 		require.NoError(t, writer.Persist(ctx, n, time.Now()))
 	}
 
@@ -140,34 +153,14 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	// returns 2 (Alice and Bob) and NOT Project 1.
 
 	// 6. Check Staleness
-	// Since file doesn't exist, IsStale should check DB timestamps.
-	// In our writer.go, indexTime is time.Now().
-	// modified_at comes from cache.ExtractFileModTime(fields).
-	// Our fields didn't have "modified_at" or similar, so it defaults to 0
-	// (1970).
-	// indexed_time is Now (~2025).
-	// So modified_at (0) < indexed_time (2025).
-	// Thus IsStale should be false?
-	// Wait, ExtractFileModTime uses "modified" or "mtime" fields if present,
-	// else time.Time{}.
-	// 0 < Now -> Not Stale.
+	// File exists with old mod time, indexed_time is now, so not stale
 	stale, err := reader.IsStale(ctx, "contacts/alice.md")
 	require.NoError(t, err)
 	assert.False(t, stale)
 
-	// Now simulate a file update (update DB modified_at > indexed_time)
-	// We need to hack the DB to simulate this state
-	db, err := sql.Open("sqlite", dbPath)
-	require.NoError(t, err)
-	futureMod := time.Now().Add(1 * time.Hour).Unix()
-	_, err = db.ExecContext(
-		ctx,
-		"UPDATE notes SET modified_at = ? WHERE path = ?",
-		futureMod,
-		"contacts/alice.md",
-	)
-	require.NoError(t, err)
-	require.NoError(t, db.Close())
+	// Now simulate a file update by touching the file
+	fullPath := filepath.Join(vaultDir, "contacts", "alice.md")
+	require.NoError(t, os.Chtimes(fullPath, time.Now(), time.Now()))
 
 	stale, err = reader.IsStale(ctx, "contacts/alice.md")
 	require.NoError(t, err)
@@ -176,6 +169,83 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	staleList, err := reader.GetStaleNotes(ctx)
 	require.NoError(t, err)
 	assert.Contains(t, staleList, "contacts/alice.md")
+}
+
+// TestSQLiteStalenessWithFileEdits tests staleness detection when files are
+// actually modified on disk.
+func TestSQLiteStalenessWithFileEdits(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	cacheDir := t.TempDir()
+	vaultDir := t.TempDir()
+	config := domain.Config{
+		CacheDir:     cacheDir,
+		VaultPath:    vaultDir,
+		FileClassKey: "fileClass",
+	}
+	log := zerolog.Nop()
+	ctx := context.Background()
+
+	// Create a test file in vault with old mod time
+	filePath := "contacts/bob.md"
+	fullPath := filepath.Join(vaultDir, filePath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))
+	content := `---
+fileClass: contact
+name: Bob
+---
+
+Some content.`
+	require.NoError(t, os.WriteFile(fullPath, []byte(content), 0o644))
+	oldTime := time.Now().Add(-time.Minute)
+	require.NoError(t, os.Chtimes(fullPath, oldTime, oldTime))
+
+	// Index the file
+	writer, err := sqlite.NewSQLiteWriterAdapter(config, log, nil)
+	require.NoError(t, err)
+	defer func() { _ = writer.Close() }()
+
+	note := domain.Note{
+		ID: domain.NewNoteID(filePath),
+		Frontmatter: frontmatterWithMetadata(map[string]interface{}{
+			"fileClass": "contact",
+			"name":      "Bob",
+		}, oldTime, 4096),
+	}
+	indexTime := time.Now()
+	require.NoError(t, writer.Persist(ctx, note, indexTime))
+
+	// Create reader
+	reader, err := sqlite.NewSQLiteReaderAdapter(config, log, nil)
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
+
+	// Initially not stale (file mod time == indexed time approx, but since
+	// indexed_time is now, and file is old, wait no)
+	// file mod time is old, indexed_time is now, so old < now, not stale
+	stale, err := reader.IsStale(ctx, filePath)
+	require.NoError(t, err)
+	assert.False(t, stale)
+
+	staleList, err := reader.GetStaleNotes(ctx)
+	require.NoError(t, err)
+	assert.NotContains(t, staleList, filePath)
+
+	// Modify the file on disk
+	time.Sleep(10 * time.Millisecond) // Ensure mod time changes
+	newContent := content + "\n\nUpdated content."
+	require.NoError(t, os.WriteFile(fullPath, []byte(newContent), 0o644))
+
+	// Now should be stale
+	stale, err = reader.IsStale(ctx, filePath)
+	require.NoError(t, err)
+	assert.True(t, stale)
+
+	staleList, err = reader.GetStaleNotes(ctx)
+	require.NoError(t, err)
+	assert.Contains(t, staleList, filePath)
 }
 
 // TestSQLiteSchemaChangeWorkflow tests schema changes and view migration.
