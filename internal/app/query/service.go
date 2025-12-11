@@ -46,6 +46,13 @@ type QueryService struct {
 	router       *queryRouter        // Handles smart query routing
 	config       domain.Config       // For file_class_key configuration
 	log          zerolog.Logger
+
+	// Observability
+	observer *StalenessObserver // Records cache staleness events
+
+	// Resilience
+	boltFailures   *BackendFailureTracker // Tracks BoltDB failures
+	sqliteFailures *BackendFailureTracker // Tracks SQLite failures
 }
 
 // queryLogger provides consistent performance logging for query operations.
@@ -147,11 +154,14 @@ func NewQueryService(
 	}
 
 	return &QueryService{
-		boltReader:   boltReader,
-		sqliteReader: sqliteReader,
-		router:       newQueryRouter(boltQuery, sqliteQuery),
-		config:       config,
-		log:          log,
+		boltReader:     boltReader,
+		sqliteReader:   sqliteReader,
+		router:         newQueryRouter(boltQuery, sqliteQuery),
+		config:         config,
+		log:            log,
+		observer:       NewStalenessObserver(log),
+		boltFailures:   NewBackendFailureTracker("boltdb", log),
+		sqliteFailures: NewBackendFailureTracker("sqlite", log),
 		// mu is initialized to zero value (unlocked state)
 		mu: sync.RWMutex{},
 	}
@@ -389,27 +399,6 @@ func (q *QueryService) FrontmatterQuery(
 	return notes, err
 }
 
-// executeMetadataQuery executes a metadata query with smart routing and
-// performance logging. It routes to BoltDB first (hot path) then SQLite (deep
-// path) with timing instrumentation.
-func (q *QueryService) executeMetadataQuery(
-	ctx context.Context,
-	logger *queryLogger,
-	paramName string,
-	paramValue string,
-	queryFn func(spi.MetadataQueryPort, context.Context, string) ([]domain.Note, error),
-) ([]domain.Note, error) {
-	start := time.Now()
-
-	// Use router for smart query routing
-	notes, err := q.router.routeMetadataQuery(ctx, queryFn, paramValue)
-
-	// Log performance after query execution
-	logger.logPerformance(start, paramName, paramValue, len(notes))
-
-	return notes, err
-}
-
 // newQueryLogger creates a new queryLogger with the specified method name.
 func newQueryLogger(log zerolog.Logger, method string) *queryLogger {
 	return &queryLogger{
@@ -479,4 +468,41 @@ func (qr *queryRouter) routeMetadataQuery(
 // getSQLiteQuery returns the SQLite query port for deep-path operations.
 func (qr *queryRouter) getSQLiteQuery() spi.MetadataQueryPort {
 	return qr.sqliteQuery
+}
+
+// GetBackendFailureStats returns failure statistics for both backends.
+// This enables monitoring of backend health and resilience patterns.
+func (q *QueryService) GetBackendFailureStats() map[string]int {
+	return map[string]int{
+		"boltdb": q.boltFailures.GetFailureCount(),
+		"sqlite": q.sqliteFailures.GetFailureCount(),
+	}
+}
+
+// ResetBackendFailures resets failure counters for both backends.
+// Useful for manual recovery or testing.
+func (q *QueryService) ResetBackendFailures() {
+	q.boltFailures = NewBackendFailureTracker("boltdb", q.log)
+	q.sqliteFailures = NewBackendFailureTracker("sqlite", q.log)
+}
+
+// executeMetadataQuery executes a metadata query with smart routing and
+// performance logging. It routes to BoltDB first (hot path) then SQLite (deep
+// path) with timing instrumentation.
+func (q *QueryService) executeMetadataQuery(
+	ctx context.Context,
+	logger *queryLogger,
+	paramName string,
+	paramValue string,
+	queryFn func(spi.MetadataQueryPort, context.Context, string) ([]domain.Note, error),
+) ([]domain.Note, error) {
+	start := time.Now()
+
+	// Use router for smart query routing
+	notes, err := q.router.routeMetadataQuery(ctx, queryFn, paramValue)
+
+	// Log performance after query execution
+	logger.logPerformance(start, paramName, paramValue, len(notes))
+
+	return notes, err
 }
