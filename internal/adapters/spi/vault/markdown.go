@@ -1,9 +1,9 @@
 package vault
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"sync"
 
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -166,11 +166,10 @@ func (a *MarkdownParserAdapter) parseWithGoldmark(
 
 	// Parse the markdown content with thread safety
 	// The frontmatter extension populates the context with extracted data
-	var buf bytes.Buffer
 	a.parserMu.Lock()
 	convertErr := a.markdown.Convert(
 		content,
-		&buf,
+		io.Discard,
 		parser.WithContext(parserCtx),
 	)
 	a.parserMu.Unlock()

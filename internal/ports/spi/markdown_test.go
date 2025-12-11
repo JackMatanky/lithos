@@ -37,36 +37,66 @@ func TestMarkdownParserPortContract(t *testing.T) {
 	}
 }
 
-// TestMarkdownParserPortErrorConditions tests expected error scenarios.
+// TestMarkdownParserPortErrorConditions exercises contract-level error
+// scenarios
+// using a configurable mock to ensure interface consumers can rely on
+// deterministic behaviors (error vs empty-map semantics).
 func TestMarkdownParserPortErrorConditions(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name    string
-		content []byte
-		wantErr bool
+		name      string
+		mockErr   error
+		mockValue map[string]any
+		wantErr   bool
+		wantLen   int
 	}{
 		{
-			name:    "invalid YAML",
-			content: []byte("---\ninvalid: yaml: structure\n---\n# Content"),
+			name:    "invalid YAML propagates error",
+			mockErr: errors.New("frontmatter parsing failed"),
 			wantErr: true,
 		},
 		{
-			name:    "missing frontmatter",
-			content: []byte("# Content without frontmatter"),
-			wantErr: false, // This should not error, just return empty map
+			name:      "missing frontmatter returns empty map",
+			mockValue: map[string]any{},
+			wantLen:   0,
 		},
 		{
-			name:    "empty content",
-			content: []byte(""),
-			wantErr: false,
+			name:      "empty content treated as no frontmatter",
+			mockValue: map[string]any{},
+			wantLen:   0,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// This will fail until we have a concrete implementation to test
-			// against
-			t.Skip("Interface contract test - will implement with mock")
-		})
+		mock := &MockMarkdownParserPort{
+			ParseFrontmatterFunc: func(ctx context.Context, content []byte) (map[string]any, error) {
+				return tt.mockValue, tt.mockErr
+			},
+		}
+
+		result, err := mock.ParseFrontmatter(
+			context.Background(),
+			[]byte("ignored"),
+		)
+		if tt.wantErr {
+			if err == nil {
+				t.Fatalf("expected error for %s scenario", tt.name)
+			}
+			continue
+		}
+
+		if err != nil {
+			t.Fatalf("unexpected error for %s scenario: %v", tt.name, err)
+		}
+		if len(result) != tt.wantLen {
+			t.Fatalf(
+				"expected %d frontmatter entries for %s, got %d",
+				tt.wantLen,
+				tt.name,
+				len(result),
+			)
+		}
 	}
 }
 
