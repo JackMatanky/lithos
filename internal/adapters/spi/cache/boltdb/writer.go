@@ -136,22 +136,22 @@ func extractCachedNote(
 	cached.FileDates = fileDates
 
 	// Extract title
-	if title, ok := note.Frontmatter.Fields["title"].(string); ok {
-		cached.Title = title
-	}
-
-	// Extract aliases
-	if aliases, ok := note.Frontmatter.Fields["aliases"].([]interface{}); ok {
-		for _, alias := range aliases {
-			if aliasStr, isString := alias.(string); isString {
-				cached.Aliases = append(cached.Aliases, aliasStr)
-			}
+	if note.Frontmatter.IsString("title") {
+		if title, ok := note.Frontmatter.Get("title"); ok {
+			cached.Title = title.(string)
 		}
 	}
 
+	// Extract aliases
+	if note.Frontmatter.IsArray("aliases") {
+		cached.Aliases = note.Frontmatter.Aliases()
+	}
+
 	// Extract file class
-	if fileClass, ok := note.Frontmatter.Fields[fileClassKey].(string); ok {
-		cached.FileClass = fileClass
+	if note.Frontmatter.IsString(fileClassKey) {
+		if fileClass, ok := note.Frontmatter.Get(fileClassKey); ok {
+			cached.FileClass = fileClass.(string)
+		}
 	}
 
 	return cached

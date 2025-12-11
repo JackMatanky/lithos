@@ -276,7 +276,7 @@ func TestFrontmatterWorkflow(t *testing.T) {
 		)
 		require.NoError(t, err)
 		assert.Len(t, notes, 1, "should find note by author")
-		assert.Equal(t, "Test Note", notes[0].Frontmatter.Fields["title"])
+		assert.Equal(t, "Test Note", notes[0].Frontmatter.Title())
 
 		// Note: tags query removed as tags are now stored as string, not array
 
@@ -382,6 +382,136 @@ This is performance test note %d.
 			"Query performance: %v total for 100 queries (%.2f µs per query)",
 			queryDuration,
 			float64(queryDuration.Nanoseconds())/100000.0,
+		)
+	})
+
+	t.Run("frontmatter helper methods integration", func(t *testing.T) {
+		// Create a test note with various frontmatter fields to test helpers
+		testFile := filepath.Join(env.vaultDir, "helper-test-note.md")
+		testContent := `---
+fileClass: "note"
+title: "Helper Methods Test"
+aliases: ["helper test", "method test"]
+tags: "test, helper, integration"
+author: "Test Author"
+---
+
+# Helper Methods Test
+
+This note tests the Frontmatter helper methods.
+`
+		err := os.WriteFile(testFile, []byte(testContent), 0o600)
+		require.NoError(t, err)
+
+		// Re-index to include the new note
+		_, err = env.indexer.Build(ctx)
+		require.NoError(t, err)
+
+		// Query for the test note
+		notes, err := env.queryService.FrontmatterQuery(
+			ctx,
+			"title",
+			"Helper Methods Test",
+		)
+		require.NoError(t, err)
+		require.Len(t, notes, 1, "should find the helper test note")
+
+		note := notes[0]
+		fm := note.Frontmatter
+
+		// Verify the note was created with correct frontmatter using helper
+		// methods
+		assert.Equal(
+			t,
+			"Helper Methods Test",
+			fm.Title(),
+			"Title should be accessible via helper",
+		)
+		assert.Equal(
+			t,
+			[]string{"helper test", "method test"},
+			fm.Aliases(),
+			"Aliases should be accessible via helper",
+		)
+
+		// Test Get/Has methods
+		title, exists := fm.Get("title")
+		assert.True(t, exists, "title field should exist")
+		assert.Equal(t, "Helper Methods Test", title)
+
+		_, exists = fm.Get("nonexistent")
+		assert.False(t, exists, "nonexistent field should not exist")
+
+		assert.True(
+			t,
+			fm.Has("title"),
+			"Has should return true for existing field",
+		)
+		assert.False(
+			t,
+			fm.Has("nonexistent"),
+			"Has should return false for missing field",
+		)
+
+		// Test type inspectors
+		assert.True(t, fm.IsString("title"), "title should be string")
+		assert.True(t, fm.IsArray("aliases"), "aliases should be array")
+		assert.True(t, fm.IsString("tags"), "tags should be string")
+		assert.True(t, fm.IsString("author"), "author should be string")
+		assert.False(t, fm.IsMap("fileClass"), "fileClass should not be map")
+
+		// Test delegation helpers
+		assert.Equal(
+			t,
+			"note",
+			fm.GetFileClass(),
+			"GetFileClass should return fileClass",
+		)
+		assert.Equal(
+			t,
+			"Helper Methods Test",
+			fm.Title(),
+			"Title should return title",
+		)
+		assert.Equal(
+			t,
+			[]string{"helper test", "method test"},
+			fm.Aliases(),
+			"Aliases should return normalized array",
+		)
+
+		// Test with different alias formats
+		testFile2 := filepath.Join(env.vaultDir, "alias-test-note.md")
+		testContent2 := `---
+fileClass: "note"
+title: "Alias Test"
+aliases: "single alias"
+---
+
+# Alias Test
+`
+		err = os.WriteFile(testFile2, []byte(testContent2), 0o600)
+		require.NoError(t, err)
+
+		// Re-index
+		_, err = env.indexer.Build(ctx)
+		require.NoError(t, err)
+
+		// Query for the alias test note
+		notes, err = env.queryService.FrontmatterQuery(
+			ctx,
+			"title",
+			"Alias Test",
+		)
+		require.NoError(t, err)
+		require.Len(t, notes, 1)
+
+		note2 := notes[0]
+		assert.Equal(
+			t,
+			[]string{"single alias"},
+			note2.Frontmatter.Aliases(),
+			"single string alias should be normalized to array",
 		)
 	})
 }

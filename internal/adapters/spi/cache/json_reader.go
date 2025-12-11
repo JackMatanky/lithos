@@ -358,7 +358,7 @@ func (a *JSONCacheReadAdapter) TagQuery(
 	var results []domain.Note
 	for _, note := range notes {
 		// Check tags field
-		if tags, ok := note.Frontmatter.Fields["tags"]; ok {
+		if tags, ok := note.Frontmatter.Get("tags"); ok {
 			if containsTag(tags, tag) {
 				results = append(results, note)
 			}
@@ -380,7 +380,7 @@ func (a *JSONCacheReadAdapter) FrontmatterQuery(
 
 	var results []domain.Note
 	for _, note := range notes {
-		if val, ok := note.Frontmatter.Fields[field]; ok {
+		if val, ok := note.Frontmatter.Get(field); ok {
 			// Simple string comparison for now
 			if fmt.Sprintf("%v", val) == value {
 				results = append(results, note)
@@ -438,24 +438,10 @@ func (a *JSONCacheReadAdapter) unmarshalNote(
 // Helpers
 
 func hasAlias(fm domain.Frontmatter, alias string) bool {
-	val, ok := fm.Fields["aliases"]
-	if !ok {
-		return false
-	}
-	switch v := val.(type) {
-	case string:
-		return v == alias
-	case []string:
-		for _, s := range v {
-			if s == alias {
-				return true
-			}
-		}
-	case []interface{}:
-		for _, s := range v {
-			if str, valid := s.(string); valid && str == alias {
-				return true
-			}
+	aliases := fm.Aliases()
+	for _, a := range aliases {
+		if a == alias {
+			return true
 		}
 	}
 	return false
