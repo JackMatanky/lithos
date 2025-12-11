@@ -2,9 +2,9 @@ schema: 1
 story: "3.20"
 story_title: "Implement BoltDB Hot Cache Adapter"
 gate: PASS
-status_reason: "Comprehensive implementation of BoltDB hot cache adapter with dual port support, transactional index maintenance, staleness detection, and performance optimization. All acceptance criteria met with extensive testing and documentation."
+status_reason: "Revalidated BoltDB hot cache adapter via targeted `go test ./internal/adapters/spi/cache/boltdb ./tests/integration`; dual-port routing, transactional indices, and staleness detection all remain compliant with AC1-10."
 reviewer: "Quinn (Test Architect)"
-updated: "2025-11-20T14:00:00Z"
+updated: "2025-12-11T20:47:17Z"
 
 waiver: { active: false }
 
@@ -17,10 +17,10 @@ risk_summary:
     monitor: []
 
 quality_score: 95
-expires: "2025-12-20T14:00:00Z"
+expires: "2025-12-25T20:47:22Z"
 
 evidence:
-  tests_reviewed: 30
+  tests_reviewed: 2
   risks_identified: 0
   trace:
     ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]

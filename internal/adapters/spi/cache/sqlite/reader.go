@@ -4,9 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -358,84 +362,81 @@ func (a *SQLiteReaderAdapter) AliasQuery(
 
 // Helpers
 
-// IsStale implementation.
+// IsStale checks if a note is stale by comparing filesystem mod time with
+// cached indexed_time.
 func (a *SQLiteReaderAdapter) IsStale(
 	ctx context.Context,
 	path string,
 ) (bool, error) {
-	// Check DB for indexed_time vs modified_at (which is stored in DB)
-	// AC 11: "indexed_time column tracks when note was cached... modified_at
-	// column tracks file's modification time"
-	// "GetStaleNotes() returns paths where modified_at > indexed_time"
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
 
-	// For single note check:
-	query := `SELECT modified_at, indexed_time FROM notes WHERE path = ?`
-	var modAt, idxAt int64
-	err := a.db.QueryRowContext(ctx, query, path).Scan(&modAt, &idxAt)
+	// Get current filesystem mod time
+	fileModTime, missing, err := a.statFile(path)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			return true, nil // Missing = stale (needs index)
+		return false, err
+	}
+	if missing {
+		return true, nil // Missing file = stale (needs reindex or delete)
+	}
+
+	// Get cached indexed_time
+	query := `SELECT indexed_time FROM notes WHERE path = ?`
+	var idxAt int64
+	err = a.db.QueryRowContext(ctx, query, path).Scan(&idxAt)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return true, nil // Not cached = stale
 		}
 		return false, err
 	}
 
-	// Also check actual file system? The requirement says:
-	// "IsStale(ctx, path string) (bool, error) method for single-note staleness
-	// checks"
-	// AC 11 implies DB columns are used.
-	// If the DB `modified_at` is old (from previous scan), we assume it's up to
-	// date with what was scanned.
-	// BUT, `IsStale` usually compares DB vs FileSystem.
-	// If we only compare DB columns, we are checking if the *record* is stale
-	// relative to *itself* (impossible if updated atomically).
-	// Unless `modified_at` is updated separately? No.
-	// The standard pattern is: Scan file -> Get FS modtime -> Compare with DB
-	// indexed_time -> if FS > DB, then Stale.
-	// So we need to stat the file.
-	// I'll implement file stat check if I can access FS. I don't have VaultPath
-	// in config here?
-	// `domain.Config` usually has `VaultPath`.
-	// But `SQLiteReaderAdapter` has `config`.
-	// I'll implement FS check.
-
-	// Actually, the `modified_at` column in DB is what we *know* about the
-	// file. Staleness query `GetStaleNotes` (AC 11) says `WHERE modified_at >
-	// indexed_time`. This implies we update `modified_at` in the DB when we
-	// scan, even if we don't fully re-index?
-	// Or maybe `modified_at` comes from the file system during the scan.
-	// Let's stick to what the story says:
-	// "GetStaleNotes() returns paths where modified_at > indexed_time".
-	// This implies `modified_at` is UPDATED independently of `indexed_time`.
-	// This happens if we do a "fast scan" that updates `modified_at` in DB, and
-	// then "deep index" updates `indexed_time`.
-
-	if modAt > idxAt {
+	// Stale if file modified after caching
+	if fileModTime.After(time.Unix(idxAt, 0)) {
 		return true, nil
 	}
 	return false, nil
 }
 
-// GetStaleNotes returns notes that are stale.
+// GetStaleNotes returns paths of notes that are stale.
 func (a *SQLiteReaderAdapter) GetStaleNotes(
 	ctx context.Context,
 ) ([]string, error) {
-	query := `SELECT path FROM notes WHERE modified_at > indexed_time`
+	// List all cached paths
+	query := `SELECT path FROM notes`
 	rows, err := a.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
-	var paths []string
+
+	var allPaths []string
 	for rows.Next() {
 		var p string
 		if scanErr := rows.Scan(&p); scanErr == nil {
-			paths = append(paths, p)
+			allPaths = append(allPaths, p)
 		}
 	}
 	if iterErr := rows.Err(); iterErr != nil {
 		return nil, iterErr
 	}
-	return paths, nil
+
+	// Filter stale ones by checking filesystem
+	var stalePaths []string
+	for _, path := range allPaths {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		stale, staleErr := a.IsStale(ctx, path)
+		if staleErr != nil {
+			return nil, staleErr
+		}
+		if stale {
+			stalePaths = append(stalePaths, path)
+		}
+	}
+	return stalePaths, nil
 }
 
 // Helpers.
@@ -474,6 +475,19 @@ func isJSONPathChar(r rune) bool {
 // Close closes the DB.
 func (a *SQLiteReaderAdapter) Close() error {
 	return a.db.Close()
+}
+
+// statFile gets the modification time of a file in the vault.
+func (a *SQLiteReaderAdapter) statFile(path string) (time.Time, bool, error) {
+	absPath := filepath.Join(a.config.VaultPath, path)
+	fi, err := os.Stat(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return time.Time{}, true, nil
+		}
+		return time.Time{}, false, err
+	}
+	return fi.ModTime(), false, nil
 }
 
 // parseNumeric attempts to parse a string as a number.
