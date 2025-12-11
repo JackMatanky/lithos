@@ -132,7 +132,7 @@ func (s *FrontmatterService) validateRequiredFields(
 
 	for _, property := range sch.Properties {
 		if property.Required {
-			if _, exists := fm.Fields[property.Name]; !exists {
+			if !fm.Has(property.Name) {
 				validationErrors = append(
 					validationErrors,
 					lithosErr.NewFrontmatterError(
@@ -167,7 +167,7 @@ func (s *FrontmatterService) validateFieldTypes(
 	boolValidator := &BoolValidator{}
 
 	for _, property := range sch.Properties {
-		value, exists := fm.Fields[property.Name]
+		value, exists := fm.Get(property.Name)
 		if !exists {
 			// Field not present - not an error for type validation
 			continue

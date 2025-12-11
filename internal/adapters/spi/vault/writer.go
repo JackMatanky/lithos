@@ -78,8 +78,10 @@ func serializeNote(note domain.Note) ([]byte, error) {
 	}
 
 	// Add content if present in frontmatter
-	if contentField, ok := note.Frontmatter.Fields["content"].(string); ok {
-		content = append(content, []byte(contentField)...)
+	if note.Frontmatter.IsString("content") {
+		if contentField, ok := note.Frontmatter.Get("content"); ok {
+			content = append(content, []byte(contentField.(string))...)
+		}
 	}
 
 	return content, nil
