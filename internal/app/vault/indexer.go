@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -163,6 +164,10 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 
 	// Step 3: Process each file
 	for i := range vaultFiles {
+		if cancelErr := ctx.Err(); cancelErr != nil {
+			stats.Duration = time.Since(startTime)
+			return stats, cancelErr
+		}
 		v.processFile(ctx, &vaultFiles[i], uow, &stats)
 	}
 
@@ -258,6 +263,9 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 
 	// Step 3: Process each modified file
 	for i := range vaultFiles {
+		if cancelErr := ctx.Err(); cancelErr != nil {
+			return cancelErr
+		}
 		v.processFile(ctx, &vaultFiles[i], uow, &stats)
 	}
 
@@ -825,6 +833,11 @@ func (v *VaultIndexer) processFileWithFrontmatter(
 		vf.Content,
 	)
 	if parseErr != nil {
+		if errors.Is(parseErr, context.Canceled) ||
+			errors.Is(parseErr, context.DeadlineExceeded) {
+			return domain.Frontmatter{}
+		}
+
 		v.logValidationError(vf.Path, parseErr)
 		stats.ValidationFailures++
 		return domain.Frontmatter{} // Return empty to signal failure
@@ -836,6 +849,10 @@ func (v *VaultIndexer) processFileWithFrontmatter(
 
 	// Validate frontmatter against schema (semantic validation)
 	if validationErr := v.frontmatterService.IsSchemaCompliant(ctx, parsedFM); validationErr != nil {
+		if errors.Is(validationErr, context.Canceled) ||
+			errors.Is(validationErr, context.DeadlineExceeded) {
+			return domain.Frontmatter{}
+		}
 		v.logValidationError(vf.Path, validationErr)
 		stats.ValidationFailures++
 		return domain.Frontmatter{} // Return empty to signal failure

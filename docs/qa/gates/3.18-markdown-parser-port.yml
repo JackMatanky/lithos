@@ -2,18 +2,19 @@ schema: 1
 story: "3.18"
 story_title: "MarkdownParserPort - Dedicated Parsing Port & Adapter"
 gate: PASS
-status_reason: "Excellent implementation of hexagonal architecture principles. Successfully resolves architectural violation with clean separation between syntactic parsing and semantic validation. All acceptance criteria met with comprehensive testing."
+status_reason: "Contract-level error tests were added and the adapter optimization passed `go test ./...`, so prior advisory items are now closed."
 reviewer: "Quinn (Test Architect)"
-updated: "2025-11-19T02:00:00Z"
+updated: "2025-12-11T19:24:16Z"
 
 waiver: { active: false }
 
 top_issues: []
 
-quality_score: 95
+quality_score: 100
+expires: "2025-12-25T19:24:21Z"
 
 evidence:
-  tests_reviewed: 15
+  tests_reviewed: 5
   risks_identified: 0
   trace:
     ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
@@ -22,19 +23,17 @@ evidence:
 nfr_validation:
   security:
     status: PASS
-    notes: "No security concerns - maintains existing security properties while improving architecture"
+    notes: "New tests simply enforce the existing SPI boundary—no security exposure."
   performance:
     status: PASS
-    notes: "Performance maintained with proper thread safety and context cancellation"
+    notes: "Switching to io.Discard removes an allocation per parse with no regressions."
   reliability:
     status: PASS
-    notes: "Robust error handling with proper distinction between syntactic and semantic errors"
+    notes: "`go test ./...` (unit + integration + performance suites) is green."
   maintainability:
     status: PASS
-    notes: "Clean architecture with proper separation of concerns and comprehensive documentation"
+    notes: "SPI contract coverage ensures future adapters honor the interface."
 
 recommendations:
   immediate: []
-  future:
-    - action: "Update unit tests to use new API signatures"
-      refs: ["internal/app/frontmatter/service_test.go", "internal/app/vault/indexer_test.go"]
+  future: []
