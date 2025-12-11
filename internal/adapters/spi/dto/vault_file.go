@@ -102,10 +102,12 @@ func NormalizePath(absPath, vaultRoot string) (string, error) {
 		return "", err
 	}
 
-	// Check if path goes outside the vault (contains ".." at start)
-	if strings.HasPrefix(relPath, "..") {
+	relPath = filepath.Clean(relPath)
+	relPath = filepath.ToSlash(relPath)
+
+	if relPath == ".." || strings.HasPrefix(relPath, "../") {
 		return "", filepath.ErrBadPattern
 	}
 
-	return filepath.ToSlash(relPath), nil
+	return relPath, nil
 }

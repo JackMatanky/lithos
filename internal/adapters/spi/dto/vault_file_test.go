@@ -217,6 +217,19 @@ func TestNormalizePath(t *testing.T) {
 			expected:  "projects/work/tasks/todo.md",
 		},
 		{
+			name:      "folder name starts with dot dot allowed",
+			absPath:   "/vault/..drafts/meeting.md",
+			vaultRoot: testVaultPath,
+			expected:  "..drafts/meeting.md",
+		},
+		{
+			name:        "parent directory traversal blocked",
+			absPath:     "/vault/../secrets/data.md",
+			vaultRoot:   testVaultPath,
+			expected:    "",
+			expectError: true,
+		},
+		{
 			name:        "path outside vault error",
 			absPath:     "/outside/file.md",
 			vaultRoot:   "/vault",

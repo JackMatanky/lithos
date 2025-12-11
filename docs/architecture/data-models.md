@@ -1537,7 +1537,7 @@ Template interface provides domain abstraction over text/template stdlib. GoTemp
 - Used by TemplateEngine for template composition via Go `text/template` package
 - Used in template references: `{{template "name"}}` and `{{block "name"}}`
 - TemplateLoader adapter derives TemplateID from filename basename (scans Config.TemplatesDir, default: `templates/`)
-- TemplateLoader uses FileMetadata (SPI adapter) to map TemplateID ↔ file paths
+- TemplateLoader maintains an in-memory TemplateID ↔ absolute path cache (map[TemplateID]string) for filesystem lookups—no FileMetadata DTO required
 - Used as map keys in template registries
 
 **Design Decisions:**
@@ -1746,11 +1746,10 @@ PropertyBank 🔵 (Singleton)
 [SPI Adapter Layer]
 ═══════════════════════════════════════════════════════════════
 
-FileMetadata 🟢 (infrastructure - maps domain IDs to filesystem)
-  ├─> Path: string (absolute filesystem path)
-  ├─> Basename: string (computed)
-  ├─> Folder: string (computed)
-  └─> ModTime: time.Time
+VaultFile 🟢 (SPI adapter DTO for vault scanning)
+  ├─> Path: string (vault-relative path using forward slashes)
+  ├─> Info: fs.FileInfo (delegated filesystem metadata)
+  └─> Content: []byte (raw file contents for downstream parsing)
 
 ═══════════════════════════════════════════════════════════════
 Cross-Model Relationships:
@@ -1771,8 +1770,8 @@ FileSpec → Note
 Frontmatter → Schema
   └─> Validated by FrontmatterService using Schema lookup via FileClass
 
-TemplateID ↔ FileMetadata (adapter layer)
-  └─> TemplateLoader maps TemplateID to Path (reuses FileMetadata)
+TemplateID ↔ Template path cache (adapter layer)
+  └─> TemplateLoader maps TemplateID to absolute filesystem paths via its pathCache (map[TemplateID]string)
 
 Config → PropertyBank
   └─> PropertyBankFile + SchemasDir = full path to property bank file
@@ -1785,12 +1784,12 @@ Key Architecture Principles:
 ═══════════════════════════════════════════════════════════════
 
 ✓ Abstract identifiers (NoteID, TemplateID) decouple domain from storage
-✓ FileMetadata is SPI adapter - domain never sees filesystem paths
+✓ VaultFile and FileDatesDTO remain SPI adapter concerns - domain never sees filesystem paths
 ✓ PropertySpec variants are value objects - immutable constraints
 ✓ Config is value object - immutable, loaded once at startup
 ✓ Single Note model for MVP (CQRS in operations/ports, not models)
 ✓ PropertyBank is singleton - one instance per application lifecycle
 ✓ TemplateID = template name (intrinsic to Go text/template, not layer violation)
 ✓ All domain models are pure data - behavior in services (FrontmatterService, TemplateEngine)
-✓ FileMetadata reused for both notes and templates (DRY principle)
+✓ TemplateID mappings live inside TemplateLoader’s pathCache so the domain only deals with TemplateID abstractions
 ```
