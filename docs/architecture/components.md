@@ -833,7 +833,7 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 
 **Dependencies:** Implemented by TemplateLoaderAdapter.
 
-**Technology Stack:** Go `os.ReadFile`, `filepath.Walk` for scanning Config.TemplatesDir, FileMetadata for mapping TemplateID ↔ filesystem paths, derives TemplateID from basename (filename without extension).
+**Technology Stack:** Go `os.ReadFile`, `filepath.Walk` for scanning Config.TemplatesDir, TemplateLoader pathCache (`map[TemplateID]string`) for TemplateID ↔ filesystem path mapping, derives TemplateID from basename (filename without extension).
 
 ### PromptPort
 
@@ -1151,9 +1151,9 @@ func (a *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
 - `List(ctx context.Context) ([]TemplateID, error)` - List available template IDs
 - `Load(ctx context.Context, id TemplateID) (Template, error)` - Load template by ID
 
-**Dependencies:** Go `os.ReadFile`, `filepath.Walk`, FileMetadata (for mapping), Config (templates directory), Logger.
+**Dependencies:** Go `os.ReadFile`, `filepath.Walk`, TemplateLoader pathCache (for TemplateID ↔ path mapping), Config (templates directory), Logger.
 
-**Technology Stack:** Filesystem scanning of Config.TemplatesDir, derives TemplateID from basename (filename without .md extension), uses FileMetadata for TemplateID ↔ Path mapping.
+**Technology Stack:** Filesystem scanning of Config.TemplatesDir, derives TemplateID from basename (filename without .md extension), uses TemplateLoader pathCache for TemplateID ↔ path mapping.
 
 ### PromptUIAdapter
 
