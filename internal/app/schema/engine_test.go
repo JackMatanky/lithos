@@ -109,7 +109,7 @@ func TestSchemaEngine_NewSchemaEngine_ValidDependencies(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 	require.NotNil(t, engine)
 }
@@ -120,7 +120,7 @@ func TestSchemaEngine_NewSchemaEngine_NilSchemaPort(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(nil, registryPort, log)
+	engine, err := NewSchemaEngine(nil, registryPort, log, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "schemaPort cannot be nil")
 	assert.Nil(t, engine)
@@ -132,7 +132,7 @@ func TestSchemaEngine_NewSchemaEngine_NilRegistryPort(t *testing.T) {
 	schemaPort := &FakeSchemaPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, nil, log)
+	engine, err := NewSchemaEngine(schemaPort, nil, log, nil)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "registryPort cannot be nil")
 	assert.Nil(t, engine)
@@ -150,7 +150,7 @@ func TestSchemaEngine_Load_Success(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	err = engine.Load(context.Background())
@@ -169,7 +169,7 @@ func TestSchemaEngine_Load_SchemaPortFailure(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	err = engine.Load(context.Background())
@@ -189,7 +189,7 @@ func TestSchemaEngine_Load_ValidationFailure(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	err = engine.Load(context.Background())
@@ -208,7 +208,7 @@ func TestSchemaEngine_Load_ResolutionFailure(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	err = engine.Load(context.Background())
@@ -231,7 +231,7 @@ func TestSchemaEngine_Load_RegistrationFailure(t *testing.T) {
 	}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	err = engine.Load(context.Background())
@@ -251,7 +251,7 @@ func TestSchemaEngine_Get_SchemaSuccess(t *testing.T) {
 	}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	schema, err := engine.registryPort.GetSchema(
@@ -273,7 +273,7 @@ func TestSchemaEngine_Get_PropertySuccess(t *testing.T) {
 	}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	property, err := engine.registryPort.GetProperty(
@@ -290,7 +290,7 @@ func TestSchemaEngine_Get_SchemaNotFound(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	_, err = engine.registryPort.GetSchema(context.Background(), "non-existent")
@@ -304,7 +304,7 @@ func TestSchemaEngine_Get_PropertyNotFound(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	_, err = engine.registryPort.GetProperty(
@@ -325,7 +325,7 @@ func TestSchemaEngine_Has_SchemaTrue(t *testing.T) {
 	}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	assert.True(
@@ -340,7 +340,7 @@ func TestSchemaEngine_Has_SchemaFalse(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	assert.False(
@@ -359,7 +359,7 @@ func TestSchemaEngine_Has_PropertyTrue(t *testing.T) {
 	}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	assert.True(
@@ -374,7 +374,7 @@ func TestSchemaEngine_Has_PropertyFalse(t *testing.T) {
 	registryPort := &FakeSchemaRegistryPort{}
 	log := zerolog.New(nil)
 
-	engine, err := NewSchemaEngine(schemaPort, registryPort, log)
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
 	require.NoError(t, err)
 
 	assert.False(

@@ -274,6 +274,7 @@ func newQueryServiceBench(b *testing.B, notes []domain.Note) queryServiceBench {
 		sqliteReader,
 		config,
 		logger,
+		nil,
 	)
 	// RefreshFromCache removed
 	return queryServiceBench{qs: qs}

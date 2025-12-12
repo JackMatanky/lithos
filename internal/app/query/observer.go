@@ -31,3 +31,15 @@ func (o *StalenessObserver) RecordStaleness(
 		Time("detected_at", time.Now()).
 		Msg("stale cache entry detected")
 }
+
+// RecordIndexingComplete logs the completion of a vault indexing operation.
+func (o *StalenessObserver) RecordIndexingComplete(
+	notesIndexed int,
+	duration time.Duration,
+) {
+	o.log.Info().
+		Int("notes_indexed", notesIndexed).
+		Dur("duration", duration).
+		Time("recorded_at", time.Now()).
+		Msg("vault indexing complete event observed")
+}

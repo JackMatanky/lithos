@@ -113,7 +113,7 @@ func TestQueryService_Constructor_DualReaders(t *testing.T) {
 	logger := zerolog.New(nil)
 	config := domain.Config{}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
+	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
 	require.NotNil(t, qs)
 }
 
@@ -147,7 +147,7 @@ func TestQueryService_Routing_HotPath_PathQuery(t *testing.T) {
 		return domain.Note{}, nil
 	}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
+	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
 	result, err := qs.PathQuerySingle(context.Background(), path)
 
 	require.NoError(t, err)
@@ -187,7 +187,7 @@ func TestQueryService_Routing_HotPath_BasenameQuery(t *testing.T) {
 		return nil, nil
 	}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
+	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
 	result, err := qs.BasenameQuery(context.Background(), basename)
 
 	require.NoError(t, err)
@@ -221,7 +221,7 @@ func TestQueryService_Routing_HotPath_AliasQuery(t *testing.T) {
 		return notes, nil
 	}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
+	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
 	result, err := qs.AliasQuery(context.Background(), alias)
 
 	require.NoError(t, err)
@@ -263,7 +263,7 @@ func TestQueryService_Routing_DeepPath_FrontmatterQuery(t *testing.T) {
 		return nil, nil
 	}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger)
+	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
 	result, err := qs.FrontmatterQuery(context.Background(), field, value)
 
 	require.NoError(t, err)

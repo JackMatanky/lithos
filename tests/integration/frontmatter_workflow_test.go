@@ -132,6 +132,7 @@ This is a test note with frontmatter.
 		schemaLoader,
 		schemaRegistry,
 		logger,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -143,6 +144,7 @@ This is a test note with frontmatter.
 		schemaEngine,
 		markdownParser,
 		logger,
+		nil,
 	)
 
 	// Create cache adapters
@@ -169,6 +171,7 @@ This is a test note with frontmatter.
 		schemaEngine,
 		*config,
 		logger,
+		nil,
 	)
 
 	// Create QueryService
@@ -177,6 +180,7 @@ This is a test note with frontmatter.
 		cacheReader,
 		*config,
 		logger,
+		nil,
 	)
 
 	return &frontmatterTestEnv{

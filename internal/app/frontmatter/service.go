@@ -3,7 +3,10 @@ package frontmatter
 import (
 	"context"
 	"errors"
+	"strings"
+	"time"
 
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -28,6 +31,7 @@ type FrontmatterService struct {
 	schemaEngine       *schema.SchemaEngine
 	markdownParserPort spi.MarkdownParserPort
 	logger             zerolog.Logger
+	eventBus           events.EventBus
 }
 
 // NewFrontmatterService creates a new FrontmatterService with required
@@ -44,11 +48,13 @@ func NewFrontmatterService(
 	schemaEngine *schema.SchemaEngine,
 	markdownParserPort spi.MarkdownParserPort,
 	logger zerolog.Logger,
+	eventBus events.EventBus,
 ) *FrontmatterService {
 	return &FrontmatterService{
 		schemaEngine:       schemaEngine,
 		markdownParserPort: markdownParserPort,
 		logger:             logger,
+		eventBus:           eventBus,
 	}
 }
 
@@ -81,6 +87,7 @@ func NewFrontmatterService(
 //   - Supports cancellation via context
 func (s *FrontmatterService) IsSchemaCompliant(
 	ctx context.Context,
+	noteID string,
 	fm domain.Frontmatter,
 ) error {
 	var validationErrors []error
@@ -99,10 +106,9 @@ func (s *FrontmatterService) IsSchemaCompliant(
 		}
 	}
 
-	// Unknown fields are preserved per FR6 - no validation needed
-
-	// Aggregate validation errors
-	return s.aggregateValidationErrors(validationErrors)
+	validationErr := s.aggregateValidationErrors(validationErrors)
+	s.publishValidationEvent(ctx, noteID, fm.FileClass(), validationErr)
+	return validationErr
 }
 
 // getSchemaForValidation retrieves a schema for frontmatter validation.
@@ -174,28 +180,21 @@ func (s *FrontmatterService) validateFieldTypes(
 	for _, property := range sch.Properties {
 		value, exists := fm.Get(property.Name)
 		if !exists {
-			// Field not present - not an error for type validation
 			continue
 		}
 
-		// Select appropriate validator based on property spec type
-		var validator FieldValidator
-		switch property.Spec.Type() {
-		case domain.PropertyTypeString:
-			validator = stringValidator
-		case domain.PropertyTypeNumber:
-			validator = numberValidator
-		case domain.PropertyTypeDate:
-			validator = dateValidator
-		case domain.PropertyTypeBool:
-			validator = boolValidator
-		default:
-			// Unknown property type - skip validation
+		validator := s.selectValidator(
+			property.Spec.Type(),
+			stringValidator,
+			numberValidator,
+			dateValidator,
+			boolValidator,
+		)
+		if validator == nil {
 			continue
 		}
 
-		// Validate field value using appropriate validator
-		if err := validator.Validate(property.Name, value, property.Spec); err != nil {
+		if err := s.validatePropertyValue(property, value, validator); err != nil {
 			validationErrors = append(validationErrors, err)
 		}
 	}
@@ -204,6 +203,93 @@ func (s *FrontmatterService) validateFieldTypes(
 		return errors.Join(validationErrors...)
 	}
 	return nil
+}
+
+// selectValidator returns the appropriate validator for a property type.
+func (s *FrontmatterService) selectValidator(
+	propType domain.PropertySpecType,
+	stringVal, numberVal, dateVal, boolVal FieldValidator,
+) FieldValidator {
+	switch propType {
+	case domain.PropertyTypeString:
+		return stringVal
+	case domain.PropertyTypeNumber:
+		return numberVal
+	case domain.PropertyTypeDate:
+		return dateVal
+	case domain.PropertyTypeBool:
+		return boolVal
+	default:
+		return nil
+	}
+}
+
+// validatePropertyValue validates a single property value (scalar or array).
+func (s *FrontmatterService) validatePropertyValue(
+	property domain.Property,
+	value any,
+	validator FieldValidator,
+) error {
+	if property.Array {
+		return s.validateArrayProperty(
+			property.Name,
+			value,
+			property.Spec,
+			validator,
+		)
+	}
+	return s.validateScalarProperty(
+		property.Name,
+		value,
+		property.Spec,
+		validator,
+	)
+}
+
+// validateArrayProperty validates array property values.
+func (s *FrontmatterService) validateArrayProperty(
+	fieldName string,
+	value any,
+	spec domain.PropertySpec,
+	validator FieldValidator,
+) error {
+	sliceValues, ok := coerceToInterfaceSlice(value)
+	if !ok {
+		return lithosErr.NewFrontmatterError(
+			"field value is not an array",
+			fieldName,
+			nil,
+		)
+	}
+
+	var validationErrors []error
+	for _, element := range sliceValues {
+		if err := validator.Validate(fieldName, element, spec); err != nil {
+			validationErrors = append(validationErrors, err)
+		}
+	}
+
+	if len(validationErrors) > 0 {
+		return errors.Join(validationErrors...)
+	}
+	return nil
+}
+
+// validateScalarProperty validates scalar property values.
+func (s *FrontmatterService) validateScalarProperty(
+	fieldName string,
+	value any,
+	spec domain.PropertySpec,
+	validator FieldValidator,
+) error {
+	if isSliceValue(value) {
+		return lithosErr.NewFrontmatterError(
+			"field value must not be an array",
+			fieldName,
+			nil,
+		)
+	}
+	return validator.Validate(fieldName, value, spec)
 }
 
 // validateAgainstSchema performs comprehensive schema validation for
@@ -252,4 +338,76 @@ func (s *FrontmatterService) aggregateValidationErrors(
 		return nil
 	}
 	return errors.Join(validationErrors...)
+}
+
+func (s *FrontmatterService) publishValidationEvent(
+	ctx context.Context,
+	noteID string,
+	schemaName string,
+	validationErr error,
+) {
+	if s.eventBus == nil {
+		return
+	}
+	if strings.TrimSpace(noteID) == "" {
+		noteID = "frontmatter/" + schemaName
+	}
+	messages := flattenErrors(validationErr)
+	event, err := domain.NewFrontmatterValidatedEvent(
+		noteID,
+		schemaName,
+		validationErr == nil,
+		messages,
+		time.Now(),
+	)
+	if err != nil {
+		s.logger.Error().
+			Err(err).
+			Msg("failed to create frontmatter validated event")
+		return
+	}
+	if publishErr := s.eventBus.Publish(ctx, event); publishErr != nil {
+		s.logger.Warn().
+			Err(publishErr).
+			Msg("failed to publish frontmatter validated event")
+	}
+}
+
+func coerceToInterfaceSlice(value any) ([]any, bool) {
+	switch v := value.(type) {
+	case []any:
+		return v, true
+	case []string:
+		result := make([]any, len(v))
+		for i, item := range v {
+			result[i] = item
+		}
+		return result, true
+	default:
+		return nil, false
+	}
+}
+
+func isSliceValue(value any) bool {
+	switch value.(type) {
+	case []any, []string:
+		return true
+	default:
+		return false
+	}
+}
+
+func flattenErrors(err error) []string {
+	if err == nil {
+		return nil
+	}
+	type unwrapper interface{ Unwrap() []error }
+	if u, ok := err.(unwrapper); ok {
+		var result []string
+		for _, inner := range u.Unwrap() {
+			result = append(result, flattenErrors(inner)...)
+		}
+		return result
+	}
+	return []string{err.Error()}
 }

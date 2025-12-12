@@ -135,6 +135,7 @@ contact:
 		schemaLoader,
 		schemaRegistry,
 		logger,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -143,6 +144,7 @@ contact:
 		schemaEngine,
 		markdownParser,
 		logger,
+		nil,
 	)
 
 	indexer := vaultService.NewVaultIndexer(
@@ -155,6 +157,7 @@ contact:
 		schemaEngine,
 		config,
 		logger,
+		nil,
 	)
 
 	// 5. Run Indexing

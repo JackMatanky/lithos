@@ -86,6 +86,7 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		schemaLoader,
 		schemaRegistry,
 		logger,
+		nil,
 	)
 	require.NoError(t, err)
 	// Create markdown parser
@@ -95,6 +96,7 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		schemaEngine,
 		markdownParser,
 		logger,
+		nil,
 	)
 
 	// Create indexer with all services
@@ -108,6 +110,7 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		schemaEngine,
 		config,
 		logger,
+		nil,
 	)
 	// Pass nil for metadataQuery to use internal fallback logic
 	queryService := query.NewQueryService(
@@ -115,6 +118,7 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		cacheReader,
 		config,
 		logger,
+		nil,
 	)
 
 	// Execute complete indexing workflow

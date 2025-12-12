@@ -5,10 +5,12 @@ package command
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
-	"github.com/JackMatanky/lithos/internal/app/schema"
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -17,6 +19,8 @@ import (
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
+
+const indexingCompletionTimeout = 30 * time.Second
 
 // CLIComander orchestrates use case workflows by coordinating domain
 // services. It acts as the application service layer that CLI, TUI, and LSP
@@ -47,11 +51,10 @@ import (
 type CLIComander struct {
 	cliPort        api.CLIPort
 	templateEngine *template.TemplateEngine
-	schemaEngine   *schema.SchemaEngine
-	vaultIndexer   vault.VaultIndexerInterface
 	vaultWriter    spi.VaultWriterPort
 	config         domain.Config
 	log            zerolog.Logger
+	eventBus       events.EventBus
 }
 
 // NewCLIComander creates a new CLIComander with injected
@@ -76,43 +79,19 @@ type CLIComander struct {
 func NewCLIComander(
 	cliPort api.CLIPort,
 	templateEngine *template.TemplateEngine,
-	schemaEngine *schema.SchemaEngine,
-	vaultIndexer vault.VaultIndexerInterface,
 	vaultWriter spi.VaultWriterPort,
 	config *domain.Config,
 	log *zerolog.Logger,
+	eventBus events.EventBus,
 ) *CLIComander {
 	return &CLIComander{
 		cliPort:        cliPort,
 		templateEngine: templateEngine,
-		schemaEngine:   schemaEngine,
-		vaultIndexer:   vaultIndexer,
 		vaultWriter:    vaultWriter,
 		config:         *config,
 		log:            *log,
+		eventBus:       eventBus,
 	}
-}
-
-// Deprecated: NewCommandOrchestrator is retained for backward compatibility.
-// Prefer NewCLIComander.
-func NewCommandOrchestrator(
-	cliPort api.CLIPort,
-	templateEngine *template.TemplateEngine,
-	schemaEngine *schema.SchemaEngine,
-	vaultIndexer vault.VaultIndexerInterface,
-	vaultWriter spi.VaultWriterPort,
-	config *domain.Config,
-	log *zerolog.Logger,
-) *CLIComander {
-	return NewCLIComander(
-		cliPort,
-		templateEngine,
-		schemaEngine,
-		vaultIndexer,
-		vaultWriter,
-		config,
-		log,
-	)
 }
 
 // Run begins the CLI event loop and command processing.
@@ -172,27 +151,10 @@ func (o *CLIComander) NewNote(
 		Str("templateID", string(templateID)).
 		Msg("Template rendered successfully")
 
-	// Step 2: Generate path from templateID (basename strategy)
-	notePath := filepath.Base(string(templateID))
-	o.log.Debug().Str("notePath", notePath).Msg("Note path generated")
-
-	// Step 3: Create empty Frontmatter (Epic 1 requirement)
-	frontmatter := domain.NewFrontmatter(map[string]interface{}{})
-	o.log.Debug().Msg("Empty frontmatter created")
-
-	// Step 4: Construct Note
-	note, _ := domain.NewNote(
-		notePath,
-		frontmatter,
-		[]domain.Link{},
-		[]domain.Heading{},
-		[]string{},
-		[]domain.TaskItem{},
-	)
-	o.log.Debug().Str("notePath", notePath).Msg("Note constructed")
+	// Step 2-4: Create note from template
+	note, relativePath := o.createNoteFromTemplate(templateID)
 
 	// Step 5: Write file to vault
-	relativePath := notePath + ".md"
 	absolutePath := filepath.Join(o.config.VaultPath, relativePath)
 	if o.vaultWriter != nil {
 		if writeErr := o.vaultWriter.WriteContent(ctx, relativePath, []byte(content)); writeErr != nil {
@@ -222,6 +184,7 @@ func (o *CLIComander) NewNote(
 	o.log.Info().
 		Str("filePath", absolutePath).
 		Msg("Note file written successfully")
+	o.publishNoteIndexedEvent(ctx, note)
 
 	// Step 6: Return Note
 	return note, nil
@@ -257,24 +220,132 @@ func (o *CLIComander) IndexVault(
 ) (vault.IndexStats, error) {
 	o.log.Info().Msg("starting vault indexing")
 
-	// Delegate to VaultIndexer.Build()
-	stats, err := o.vaultIndexer.Build(ctx)
-	if err != nil {
-		o.log.Error().Err(err).Msg("vault indexing failed")
-		return stats, lithosErr.WrapWithContext(
-			err,
-			"vault indexing operation failed",
+	if o.eventBus == nil {
+		return vault.IndexStats{}, fmt.Errorf(
+			"event bus not configured for IndexVault",
 		)
 	}
 
-	// Log summary statistics
-	o.log.Info().
-		Int("scanned", stats.ScannedCount).
-		Int("indexed", stats.IndexedCount).
-		Int("validation_failures", stats.ValidationFailures).
-		Int("cache_failures", stats.CacheFailures).
-		Dur("duration", stats.Duration).
-		Msg("vault indexing complete")
+	statsCh, cleanup, err := o.subscribeToIndexingComplete()
+	if err != nil {
+		return vault.IndexStats{}, err
+	}
+	defer cleanup()
 
-	return stats, nil
+	if publishErr := o.publishIndexCommand(ctx); publishErr != nil {
+		return vault.IndexStats{}, publishErr
+	}
+
+	return o.awaitIndexingComplete(ctx, statsCh)
+}
+
+func (o *CLIComander) createNoteFromTemplate(
+	templateID domain.TemplateID,
+) (note domain.Note, relativePath string) {
+	basename := filepath.Base(string(templateID))
+	relativePath = basename + ".md"
+	o.log.Debug().Str("relativePath", relativePath).Msg("Note path generated")
+
+	frontmatter := domain.NewFrontmatter(map[string]interface{}{})
+	o.log.Debug().Msg("Empty frontmatter created")
+
+	note, _ = domain.NewNote(
+		relativePath,
+		frontmatter,
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	o.log.Debug().Str("notePath", relativePath).Msg("Note constructed")
+	return note, relativePath
+}
+
+func (o *CLIComander) subscribeToIndexingComplete() (
+	statsCh chan vault.IndexStats,
+	cleanup func(),
+	err error,
+) {
+	statsCh = make(chan vault.IndexStats, 1)
+	handler := func(handlerCtx context.Context, event domain.DomainEvent) error {
+		completeEvent, ok := event.(*domain.VaultIndexingCompleteEvent)
+		if !ok {
+			return nil
+		}
+		select {
+		case statsCh <- vault.IndexStats{
+			ScannedCount:        completeEvent.ScannedCount(),
+			IndexedCount:        completeEvent.NotesIndexed(),
+			ParseFailures:       completeEvent.ParseFailures(),
+			CacheFailures:       completeEvent.CacheFailures(),
+			ValidationSuccesses: completeEvent.ValidationSuccesses(),
+			ValidationFailures:  completeEvent.ValidationFailures(),
+			Duration:            completeEvent.Duration(),
+		}:
+			return nil
+		case <-handlerCtx.Done():
+			return handlerCtx.Err()
+		}
+	}
+
+	err = o.eventBus.Subscribe("VaultIndexingComplete", handler)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cleanup = func() {
+		if unsubErr := o.eventBus.Unsubscribe("VaultIndexingComplete", handler); unsubErr != nil {
+			o.log.Warn().Err(unsubErr).Msg("failed to unsubscribe")
+		}
+	}
+
+	return statsCh, cleanup, nil
+}
+
+func (o *CLIComander) publishIndexCommand(ctx context.Context) error {
+	commandEvent := domain.MustNewCommandIssuedEvent(
+		"IndexVault",
+		map[string]string{"source": "cli"},
+		time.Now(),
+	)
+	return o.eventBus.Publish(ctx, commandEvent)
+}
+
+func (o *CLIComander) awaitIndexingComplete(
+	ctx context.Context,
+	statsCh chan vault.IndexStats,
+) (vault.IndexStats, error) {
+	select {
+	case stats := <-statsCh:
+		return stats, nil
+	case <-ctx.Done():
+		return vault.IndexStats{}, ctx.Err()
+	case <-time.After(indexingCompletionTimeout):
+		return vault.IndexStats{}, fmt.Errorf(
+			"timeout waiting for indexing completion",
+		)
+	}
+}
+
+func (o *CLIComander) publishNoteIndexedEvent(
+	ctx context.Context,
+	note domain.Note,
+) {
+	if o.eventBus == nil {
+		return
+	}
+	event, err := domain.NewNoteIndexedEvent(note, time.Now())
+	if err != nil {
+		o.log.Warn().
+			Err(err).
+			Str("path", note.Path).
+			Msg("failed to create note indexed event")
+		return
+	}
+	if publishErr := o.eventBus.Publish(ctx, event); publishErr != nil {
+		o.log.Warn().
+			Err(publishErr).
+			Str("path", note.Path).
+			Msg("failed to publish note indexed event")
+	}
 }

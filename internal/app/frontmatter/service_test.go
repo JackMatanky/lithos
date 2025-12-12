@@ -121,7 +121,12 @@ func createTestSchemaEngine(
 ) *schema.SchemaEngine {
 	// Create a minimal fake schema port
 	schemaPort := &FakeSchemaPort{}
-	engine, _ := schema.NewSchemaEngine(schemaPort, registry, zerolog.Nop())
+	engine, _ := schema.NewSchemaEngine(
+		schemaPort,
+		registry,
+		zerolog.Nop(),
+		nil,
+	)
 	return engine
 }
 
@@ -138,7 +143,7 @@ func TestNewFrontmatterService_ConstructorWithDependencies(t *testing.T) {
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
 	// When
-	service := NewFrontmatterService(nil, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(nil, fakeMarkdownParser, fakeLogger, nil)
 	// Then
 	require.NotNil(t, service)
 	assert.Nil(t, service.schemaEngine) // We passed nil
@@ -153,7 +158,7 @@ func TestNewFrontmatterService_DependencyInjection(t *testing.T) {
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
 	// When
-	service := NewFrontmatterService(nil, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(nil, fakeMarkdownParser, fakeLogger, nil)
 	// Then
 	assert.NotNil(t, service.markdownParserPort)
 	assert.NotNil(t, service.logger)
@@ -165,12 +170,16 @@ func TestIsSchemaCompliant_ValidFrontmatter(t *testing.T) {
 	// Given
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(nil, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(nil, fakeMarkdownParser, fakeLogger, nil)
 	validFm := domain.NewFrontmatter(map[string]interface{}{
 		"title": "Test Note",
 	})
 	// When
-	err := service.IsSchemaCompliant(context.Background(), validFm)
+	err := service.IsSchemaCompliant(
+		context.Background(),
+		"notes/test.md",
+		validFm,
+	)
 	// Then
 	assert.NoError(t, err)
 }
@@ -182,7 +191,7 @@ func TestIsSchemaCompliant_WithFileClass(t *testing.T) {
 	// Given - nil schema engine means schema validation will fail
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(nil, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(nil, fakeMarkdownParser, fakeLogger, nil)
 	fmWithFileClass := domain.Frontmatter{
 		Fields: map[string]interface{}{
 			"fileClass": "contact",
@@ -190,7 +199,11 @@ func TestIsSchemaCompliant_WithFileClass(t *testing.T) {
 		},
 	}
 	// When
-	err := service.IsSchemaCompliant(context.Background(), fmWithFileClass)
+	err := service.IsSchemaCompliant(
+		context.Background(),
+		"notes/test.md",
+		fmWithFileClass,
+	)
 	// Then
 	// Should fail because schema validation is attempted but schema engine is
 	// nil
@@ -224,7 +237,12 @@ func TestIsSchemaCompliant_SchemaValidationSuccess(t *testing.T) {
 	engine := createTestSchemaEngine(registry)
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(engine, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(
+		engine,
+		fakeMarkdownParser,
+		fakeLogger,
+		nil,
+	)
 	invalidFm := domain.Frontmatter{
 		Fields: map[string]interface{}{
 			"fileClass": "note",
@@ -233,7 +251,11 @@ func TestIsSchemaCompliant_SchemaValidationSuccess(t *testing.T) {
 	}
 
 	// When
-	err := service.IsSchemaCompliant(context.Background(), invalidFm)
+	err := service.IsSchemaCompliant(
+		context.Background(),
+		"notes/test.md",
+		invalidFm,
+	)
 	// Then
 	require.Error(t, err)
 	// Should contain the required field missing error
@@ -265,7 +287,12 @@ func TestIsSchemaCompliant_SchemaValidationMissingRequiredField(t *testing.T) {
 	engine := createTestSchemaEngine(registry)
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(engine, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(
+		engine,
+		fakeMarkdownParser,
+		fakeLogger,
+		nil,
+	)
 	invalidFm := domain.Frontmatter{
 		Fields: map[string]interface{}{
 			"fileClass": "note",
@@ -273,14 +300,18 @@ func TestIsSchemaCompliant_SchemaValidationMissingRequiredField(t *testing.T) {
 		},
 	}
 	// When
-	err := service.IsSchemaCompliant(context.Background(), invalidFm)
+	err := service.IsSchemaCompliant(
+		context.Background(),
+		"notes/test.md",
+		invalidFm,
+	)
 	// Then
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "required field missing")
 }
 
 // TestIsSchemaCompliant_SchemaValidationInvalidFieldType verifies schema
-// validation fails when field types don't match schema requirements.
+// validation coerces scalar values to strings when appropriate.
 func TestIsSchemaCompliant_SchemaValidationInvalidFieldType(t *testing.T) {
 	// Given - test schema engine with a schema requiring string title
 	registry := NewFakeSchemaRegistryPort()
@@ -298,18 +329,44 @@ func TestIsSchemaCompliant_SchemaValidationInvalidFieldType(t *testing.T) {
 	engine := createTestSchemaEngine(registry)
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(engine, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(
+		engine,
+		fakeMarkdownParser,
+		fakeLogger,
+		nil,
+	)
+
+	// Test coercion of number to string (common YAML shorthand)
+	numericTitleFm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"title":     123, // Coerced to "123" by StringValidator
+		},
+	}
+	err := service.IsSchemaCompliant(
+		context.Background(),
+		"notes/test.md",
+		numericTitleFm,
+	)
+	require.NoError(t, err, "numeric values should coerce to strings")
+
+	// Test actual invalid type (slice/map cannot coerce)
 	invalidFm := domain.Frontmatter{
 		Fields: map[string]interface{}{
 			"fileClass": "note",
-			"title":     123, // should be string, not number
+			"title": []string{
+				"invalid",
+				"array",
+			}, // Cannot coerce array to string
 		},
 	}
-	// When
-	err := service.IsSchemaCompliant(context.Background(), invalidFm)
-	// Then
+	err = service.IsSchemaCompliant(
+		context.Background(),
+		"notes/test.md",
+		invalidFm,
+	)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "field value is not a string")
+	assert.Contains(t, err.Error(), "field value must not be an array")
 }
 
 // TestIsSchemaCompliant_SchemaValidationMultipleErrors verifies schema
@@ -337,7 +394,12 @@ func TestIsSchemaCompliant_SchemaValidationMultipleErrors(t *testing.T) {
 	engine := createTestSchemaEngine(registry)
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(engine, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(
+		engine,
+		fakeMarkdownParser,
+		fakeLogger,
+		nil,
+	)
 	invalidFm := domain.Frontmatter{
 		Fields: map[string]interface{}{
 			"fileClass": "note",
@@ -345,7 +407,11 @@ func TestIsSchemaCompliant_SchemaValidationMultipleErrors(t *testing.T) {
 		},
 	}
 	// When
-	err := service.IsSchemaCompliant(context.Background(), invalidFm)
+	err := service.IsSchemaCompliant(
+		context.Background(),
+		"notes/test.md",
+		invalidFm,
+	)
 	// Then
 	require.Error(t, err)
 	// Should contain the required field missing error
@@ -360,7 +426,12 @@ func TestIsSchemaCompliant_SchemaNotFound(t *testing.T) {
 	engine := createTestSchemaEngine(registry)
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(engine, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(
+		engine,
+		fakeMarkdownParser,
+		fakeLogger,
+		nil,
+	)
 	fmWithUnknownSchema := domain.Frontmatter{
 		Fields: map[string]interface{}{
 			"fileClass": "unknown-schema",
@@ -368,7 +439,11 @@ func TestIsSchemaCompliant_SchemaNotFound(t *testing.T) {
 		},
 	}
 	// When
-	err := service.IsSchemaCompliant(context.Background(), fmWithUnknownSchema)
+	err := service.IsSchemaCompliant(
+		context.Background(),
+		"notes/test.md",
+		fmWithUnknownSchema,
+	)
 	// Then
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "schema not found")
@@ -393,7 +468,12 @@ func TestIsSchemaCompliant_NumberFieldValidation(t *testing.T) {
 	engine := createTestSchemaEngine(registry)
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(engine, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(
+		engine,
+		fakeMarkdownParser,
+		fakeLogger,
+		nil,
+	)
 	tests := []struct {
 		name       string
 		value      interface{}
@@ -412,7 +492,11 @@ func TestIsSchemaCompliant_NumberFieldValidation(t *testing.T) {
 					"priority":  tt.value,
 				},
 			}
-			err := service.IsSchemaCompliant(context.Background(), fm)
+			err := service.IsSchemaCompliant(
+				context.Background(),
+				"notes/test.md",
+				fm,
+			)
 			if tt.shouldPass {
 				assert.NoError(
 					t,
@@ -442,7 +526,12 @@ func TestIsSchemaCompliant_BooleanFieldValidation(t *testing.T) {
 	engine := createTestSchemaEngine(registry)
 	fakeMarkdownParser := &mockMarkdownParserPort{}
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(engine, fakeMarkdownParser, fakeLogger)
+	service := NewFrontmatterService(
+		engine,
+		fakeMarkdownParser,
+		fakeLogger,
+		nil,
+	)
 	tests := []struct {
 		name       string
 		value      interface{}
@@ -461,7 +550,11 @@ func TestIsSchemaCompliant_BooleanFieldValidation(t *testing.T) {
 					"done":      tt.value,
 				},
 			}
-			err := service.IsSchemaCompliant(context.Background(), fm)
+			err := service.IsSchemaCompliant(
+				context.Background(),
+				"notes/test.md",
+				fm,
+			)
 			if tt.shouldPass {
 				assert.NoError(
 					t,

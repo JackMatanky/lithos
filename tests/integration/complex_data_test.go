@@ -89,6 +89,7 @@ func TestComplexDataIntegration(t *testing.T) {
 		schemaLoader,
 		schemaRegistry,
 		logger,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -136,6 +137,7 @@ func TestComplexDataIntegration(t *testing.T) {
 		schemaEngine,
 		markdownParser,
 		logger,
+		nil,
 	)
 
 	// 7. Validate Realistic Notes
@@ -156,7 +158,11 @@ func TestComplexDataIntegration(t *testing.T) {
 		contactFm := domain.NewFrontmatter(contactFields)
 
 		// Validate
-		validateErr := fmService.IsSchemaCompliant(ctx, contactFm)
+		validateErr := fmService.IsSchemaCompliant(
+			ctx,
+			"contacts/jane_smith.md",
+			contactFm,
+		)
 		require.NoError(
 			t,
 			validateErr,
@@ -176,7 +182,11 @@ func TestComplexDataIntegration(t *testing.T) {
 
 		taskFm := domain.NewFrontmatter(taskFields)
 
-		taskValidateErr := fmService.IsSchemaCompliant(ctx, taskFm)
+		taskValidateErr := fmService.IsSchemaCompliant(
+			ctx,
+			"tasks/project_setup.md",
+			taskFm,
+		)
 		assert.NoError(
 			t,
 			taskValidateErr,

@@ -1646,6 +1646,13 @@ Config is a domain value object representing application configuration state. Wh
 - **Fields:** SchemaCount (int), OccurredAt
 - **Use Cases:** Clear validation caches, notify UI, audit configuration changes
 
+#### Command Events
+
+**CommandIssuedEvent** - Published when CLI command is issued (event-driven orchestration)
+
+- **Fields:** CommandType (string), Parameters (map[string]interface{}), OccurredAt
+- **Use Cases:** Command auditing, async command processing, command-driven workflows
+
 ### Event-Driven Architecture Benefits (Epic 3 Implementation)
 
 **Implementation:** Story 3.30 implements EventBus infrastructure with in-memory goroutine-based async dispatch.

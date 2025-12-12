@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
@@ -52,6 +53,7 @@ type SchemaEngine struct {
 	schemaPort   spi.SchemaPort
 	registryPort spi.SchemaRegistryPort
 	log          zerolog.Logger
+	eventBus     events.EventBus
 
 	// cachedSchemas stores the most recently loaded schemas for downstream
 	// consumers that need read-only snapshots (e.g., SQLite view generation).
@@ -74,6 +76,7 @@ func NewSchemaEngine(
 	schemaPort spi.SchemaPort,
 	registryPort spi.SchemaRegistryPort,
 	log zerolog.Logger,
+	eventBus events.EventBus,
 ) (*SchemaEngine, error) {
 	// Validate injected dependencies
 	if schemaPort == nil {
@@ -88,6 +91,7 @@ func NewSchemaEngine(
 		schemaPort:    schemaPort,
 		registryPort:  registryPort,
 		log:           log,
+		eventBus:      eventBus,
 		cachedSchemas: nil,
 		mu:            sync.RWMutex{},
 	}, nil
@@ -182,6 +186,7 @@ func (e *SchemaEngine) registerSchemas(
 		return fmt.Errorf("schema registration failed: %w", err)
 	}
 	e.updateSchemaCache(schemas)
+	e.emitSchemaEvents(ctx, schemas)
 
 	stageDuration := time.Since(stageStart)
 	totalDuration := time.Since(startTime)
@@ -227,6 +232,42 @@ func cloneSchema(src domain.Schema) domain.Schema {
 		dst.Excludes = slices.Clone(src.Excludes)
 	}
 	return dst
+}
+
+func (e *SchemaEngine) emitSchemaEvents(
+	ctx context.Context,
+	schemas []domain.Schema,
+) {
+	if e.eventBus == nil {
+		return
+	}
+	for _, schema := range schemas {
+		event, err := domain.NewSchemaLoadedEvent(
+			schema.Name,
+			len(schema.Properties),
+			time.Now(),
+		)
+		if err != nil {
+			e.log.Err(err).
+				Str("schema", schema.Name).
+				Msg("failed to create schema loaded event")
+			continue
+		}
+		if publishErr := e.eventBus.Publish(ctx, event); publishErr != nil {
+			e.log.Err(publishErr).
+				Str("schema", schema.Name).
+				Msg("failed to publish schema loaded event")
+		}
+	}
+
+	reloadEvent, err := domain.NewSchemasReloadedEvent(len(schemas), time.Now())
+	if err != nil {
+		e.log.Err(err).Msg("failed to create schemas reloaded event")
+		return
+	}
+	if publishErr := e.eventBus.Publish(ctx, reloadEvent); publishErr != nil {
+		e.log.Err(publishErr).Msg("failed to publish schemas reloaded event")
+	}
 }
 
 // Get retrieves a schema or property by name using Go generics.

@@ -5,18 +5,48 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
-	"github.com/JackMatanky/lithos/internal/app/schema"
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/ports/api"
+	sharedlogger "github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type failingEventBus struct {
+	publishErr error
+}
+
+func (f *failingEventBus) Publish(
+	ctx context.Context,
+	event domain.DomainEvent,
+) error {
+	return f.publishErr
+}
+
+func (f *failingEventBus) Subscribe(
+	eventType string,
+	handler events.EventHandler,
+) error {
+	return nil
+}
+
+func (f *failingEventBus) Unsubscribe(
+	eventType string,
+	handler events.EventHandler,
+) error {
+	return nil
+}
+
+func (f *failingEventBus) Shutdown(ctx context.Context) error {
+	return nil
+}
 
 // TestCLIComanderStructExists verifies that CLIComander struct
 // can be compiled. This is a compilation test to ensure the struct definition
@@ -43,20 +73,14 @@ func TestRunCallsCLIPortStart(t *testing.T) {
 	logger := zerolog.Nop()
 
 	// Create orchestrator with mock dependencies
-	// Note: We pass nil for templateEngine, schemaEngine, and vaultIndexer
-	// since we're not
-	// testing that in this test
-	var templateEngine *template.TemplateEngine
-	var schemaEngine *schema.SchemaEngine
-	var vaultIndexer *vault.VaultIndexer
+	// Note: We pass nil for optional dependencies since they're irrelevant here
 	orchestrator := NewCLIComander(
 		mockCLIPort,
-		templateEngine,
-		schemaEngine,
-		vaultIndexer,
+		nil,
 		nil,
 		&config,
 		&logger,
+		nil,
 	)
 
 	// Execute
@@ -90,17 +114,13 @@ func TestRunPropagatesCLIError(t *testing.T) {
 	logger := zerolog.Nop()
 
 	// Create orchestrator with mock dependencies
-	var templateEngine *template.TemplateEngine
-	var schemaEngine *schema.SchemaEngine
-	var vaultIndexer *vault.VaultIndexer
 	orchestrator := NewCLIComander(
 		mockCLIPort,
-		templateEngine,
-		schemaEngine,
-		vaultIndexer,
+		nil,
 		nil,
 		&config,
 		&logger,
+		nil,
 	)
 
 	// Execute
@@ -128,7 +148,7 @@ func TestNewNoteSuccess(t *testing.T) {
 	mockTemplatePort := utils.NewMockTemplatePort()
 	expectedContent := "# Test Note\n\nThis is test content."
 	expectedTemplateID := domain.TemplateID("test-template")
-	expectedNotePath := "test-template" // basename strategy
+	expectedNotePath := "test-template.md" // basename + extension
 
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
@@ -152,16 +172,13 @@ func TestNewNoteSuccess(t *testing.T) {
 	tempDir := t.TempDir()
 	config.VaultPath = tempDir
 
-	var schemaEngine *schema.SchemaEngine
-	var vaultIndexer *vault.VaultIndexer
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
-		schemaEngine,
-		vaultIndexer,
 		vaultAdapter.NewVaultWriterAdapter(config, logger),
 		&config,
 		&logger,
+		nil,
 	)
 
 	// Execute
@@ -183,7 +200,7 @@ func TestNewNoteSuccess(t *testing.T) {
 	)
 
 	// Verify file was written
-	expectedFilePath := filepath.Join(tempDir, expectedNotePath+".md")
+	expectedFilePath := filepath.Join(tempDir, expectedNotePath)
 	assert.FileExists(
 		t,
 		expectedFilePath,
@@ -204,9 +221,8 @@ func TestNewNoteSuccess(t *testing.T) {
 // TestNewNoteTemplateNotFound verifies error handling when template is not
 // found.
 func TestNewNoteTemplateNotFound(t *testing.T) {
-	// Setup
 	mockTemplatePort := utils.NewMockTemplatePort()
-	mockTemplatePort.SetLoadError(assert.AnError) // Simulate not found
+	mockTemplatePort.SetLoadError(assert.AnError)
 
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
@@ -217,30 +233,23 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 		&logger,
 	)
 
-	var schemaEngine *schema.SchemaEngine
-	var vaultIndexer *vault.VaultIndexer
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
-		schemaEngine,
-		vaultIndexer,
 		nil,
 		&config,
 		&logger,
+		nil,
 	)
 
-	// Execute
 	ctx := context.Background()
 	_, err := orchestrator.NewNote(ctx, domain.TemplateID("nonexistent"))
 
-	// Verify
 	require.Error(t, err, "NewNote should fail when template not found")
-	// Error should be ResourceError from TemplateEngine
 }
 
 // TestNewNoteFileWriteError verifies error handling when file write fails.
 func TestNewNoteFileWriteError(t *testing.T) {
-	// Setup
 	mockTemplatePort := utils.NewMockTemplatePort()
 	expectedTemplateID := domain.TemplateID("test-template")
 
@@ -260,114 +269,98 @@ func TestNewNoteFileWriteError(t *testing.T) {
 		&logger,
 	)
 
-	var schemaEngine *schema.SchemaEngine
-	var vaultIndexer *vault.VaultIndexer
 	mockVaultWriter := utils.NewMockVaultWriterPort()
 	mockVaultWriter.SetWriteContentResult(assert.AnError)
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
-		schemaEngine,
-		vaultIndexer,
 		mockVaultWriter,
 		&config,
 		&logger,
+		nil,
 	)
 
-	// Execute
 	ctx := context.Background()
 	_, err := orchestrator.NewNote(ctx, expectedTemplateID)
 
-	// Verify
 	require.Error(t, err, "NewNote should fail when file write fails")
-	assert.Contains(
-		t,
-		err.Error(),
-		"failed to write note",
-		"Error should be wrapped with context",
-	)
+	assert.Contains(t, err.Error(), "failed to write note")
 }
 
-// TestIndexVaultSuccess verifies the complete IndexVault workflow succeeds.
+// TestIndexVaultSuccess verifies the event-driven indexing flow.
 func TestIndexVaultSuccess(t *testing.T) {
-	// Setup mock VaultIndexer
-	mockVaultIndexer := utils.NewMockVaultIndexer()
+	config := domain.DefaultConfig()
+	logger := zerolog.Nop()
+
+	busLog := sharedlogger.NewZerologAdapter(
+		zerolog.New(zerolog.NewTestWriter(t)),
+	)
+	bus := events.NewInMemoryEventBus(busLog)
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = bus.Shutdown(ctx)
+	})
+
 	expectedStats := vault.IndexStats{
 		ScannedCount:        10,
 		IndexedCount:        8,
 		CacheFailures:       1,
 		ValidationSuccesses: 7,
 		ValidationFailures:  2,
-		Duration:            150000000, // 150ms
+		Duration:            150 * time.Millisecond,
 	}
-	mockVaultIndexer.SetBuildResult(expectedStats, nil)
 
-	config := domain.DefaultConfig()
-	logger := zerolog.Nop()
+	commandHandler := func(ctx context.Context, event domain.DomainEvent) error {
+		cmd, ok := event.(*domain.CommandIssuedEvent)
+		if !ok || cmd.Command() != "IndexVault" {
+			return nil
+		}
+		completion := domain.MustNewVaultIndexingCompleteEvent(
+			statsToSummary(expectedStats),
+			expectedStats.Duration,
+			time.Now(),
+		)
+		publishErr := make(chan error, 1)
+		go func() {
+			publishErr <- bus.Publish(ctx, completion)
+		}()
+		return <-publishErr
+	}
+	require.NoError(t, bus.Subscribe("CommandIssued", commandHandler))
+	t.Cleanup(func() {
+		_ = bus.Unsubscribe("CommandIssued", commandHandler)
+	})
 
-	// Create orchestrator with mock VaultIndexer
-	var templateEngine *template.TemplateEngine
-	var schemaEngine *schema.SchemaEngine
-	var cliPort api.CLIPort
-	orchestrator := NewCLIComander(
-		cliPort,
-		templateEngine,
-		schemaEngine,
-		mockVaultIndexer,
-		nil,
-		&config,
-		&logger,
-	)
+	orchestrator := NewCLIComander(nil, nil, nil, &config, &logger, bus)
 
-	// Execute
-	ctx := context.Background()
-	stats, err := orchestrator.IndexVault(ctx)
-
-	// Verify
-	require.NoError(t, err, "IndexVault should succeed")
-	assert.Equal(t, expectedStats, stats, "Stats should match expected")
+	stats, err := orchestrator.IndexVault(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, expectedStats, stats)
 }
 
-// TestIndexVaultIndexerError verifies error handling when VaultIndexer.Build
-// fails.
-func TestIndexVaultIndexerError(t *testing.T) {
-	// Setup mock VaultIndexer
-	mockVaultIndexer := utils.NewMockVaultIndexer()
-	expectedError := assert.AnError
-	mockVaultIndexer.SetBuildResult(vault.IndexStats{}, expectedError)
-
+// TestIndexVaultPublishError verifies errors propagate when publish fails.
+func TestIndexVaultPublishError(t *testing.T) {
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
 
-	// Create orchestrator with mock VaultIndexer
-	var templateEngine *template.TemplateEngine
-	var schemaEngine *schema.SchemaEngine
-	var cliPort api.CLIPort
-	// Using deprecated alias to ensure backward compatibility still works.
-	orchestrator := NewCommandOrchestrator(
-		cliPort,
-		templateEngine,
-		schemaEngine,
-		mockVaultIndexer,
-		nil,
-		&config,
-		&logger,
-	)
+	publishErr := assert.AnError
+	bus := &failingEventBus{publishErr: publishErr}
 
-	// Execute
-	ctx := context.Background()
-	_, err := orchestrator.IndexVault(ctx)
+	orchestrator := NewCLIComander(nil, nil, nil, &config, &logger, bus)
 
-	// Verify
-	require.Error(
-		t,
-		err,
-		"IndexVault should fail when VaultIndexer.Build fails",
-	)
-	assert.Contains(
-		t,
-		err.Error(),
-		"vault indexing operation failed",
-		"Error should be wrapped with context",
-	)
+	_, err := orchestrator.IndexVault(context.Background())
+	require.Error(t, err)
+	assert.Equal(t, publishErr, err)
+}
+
+func statsToSummary(stats vault.IndexStats) domain.VaultIndexingSummary {
+	return domain.VaultIndexingSummary{
+		ScannedCount:        stats.ScannedCount,
+		IndexedCount:        stats.IndexedCount,
+		ParseFailures:       stats.ParseFailures,
+		CacheFailures:       stats.CacheFailures,
+		ValidationSuccesses: stats.ValidationSuccesses,
+		ValidationFailures:  stats.ValidationFailures,
+	}
 }
