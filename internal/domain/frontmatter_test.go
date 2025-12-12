@@ -482,29 +482,34 @@ func TestFrontmatter_IsMap(t *testing.T) {
 
 // TestFrontmatter_GetFileClass tests the GetFileClass delegation helper.
 func TestFrontmatter_GetFileClass(t *testing.T) {
+	// Setup Config singleton for testing
+	config := Config{FileClassKey: "file_class"}
+	SetInstanceForTesting(&config)
+	defer ResetConfigForTesting()
+
 	tests := []struct {
 		name     string
 		fields   map[string]interface{}
 		expected string
 	}{
 		{
-			name: "fileClass field exists and is string",
+			name: "file_class field exists and is string",
 			fields: map[string]interface{}{
-				"fileClass": "meeting",
+				"file_class": "meeting",
 			},
 			expected: "meeting",
 		},
 		{
-			name: "fileClass field missing",
+			name: "file_class field missing",
 			fields: map[string]interface{}{
 				"title": "Test",
 			},
 			expected: "",
 		},
 		{
-			name: "fileClass field is not string",
+			name: "file_class field is not string",
 			fields: map[string]interface{}{
-				"fileClass": 123,
+				"file_class": 123,
 			},
 			expected: "",
 		},
