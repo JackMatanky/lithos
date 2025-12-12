@@ -2,6 +2,7 @@ package domain
 
 import (
 	"encoding/json"
+	"sync"
 	"testing"
 )
 
@@ -312,5 +313,128 @@ func TestConfigImmutability(t *testing.T) {
 	config3 := config1 // copy
 	if config1 != config3 {
 		t.Error("copied config should equal original")
+	}
+}
+
+// TestConfigInstance_SingletonBehavior tests that Instance() returns the same
+// instance on multiple calls (singleton pattern with sync.Once).
+func TestConfigInstance_SingletonBehavior(t *testing.T) {
+	// Clear any existing instance for clean test
+	ResetConfigForTesting()
+	defer ResetConfigForTesting()
+
+	// First call to Instance()
+	instance1 := Instance()
+	if instance1 == nil {
+		t.Fatal("Instance() returned nil")
+	}
+
+	// Second call to Instance()
+	instance2 := Instance()
+	if instance2 == nil {
+		t.Fatal("Instance() returned nil on second call")
+	}
+
+	// Both calls should return the exact same pointer
+	if instance1 != instance2 {
+		t.Error("Instance() should return same instance on multiple calls")
+	}
+}
+
+// TestConfigInstance_ThreadSafe tests that Instance() is thread-safe using
+// sync.Once.
+func TestConfigInstance_ThreadSafe(t *testing.T) {
+	// Clear any existing instance for clean test
+	ResetConfigForTesting()
+	defer ResetConfigForTesting()
+
+	const goroutines = 100
+	instances := make([]*Config, goroutines)
+
+	// Use WaitGroup to coordinate goroutines
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	// Launch many goroutines simultaneously calling Instance()
+	for i := range goroutines {
+		go func(index int) {
+			defer wg.Done()
+			instances[index] = Instance()
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+
+	// Verify all goroutines got the same instance
+	firstInstance := instances[0]
+	if firstInstance == nil {
+		t.Fatal("First instance is nil")
+	}
+
+	for i := 1; i < goroutines; i++ {
+		if instances[i] != firstInstance {
+			t.Errorf(
+				"Goroutine %d got different instance: expected %p, got %p",
+				i,
+				firstInstance,
+				instances[i],
+			)
+		}
+	}
+}
+
+// TestSetInstanceForTesting_TestIsolation tests that SetInstanceForTesting()
+// allows test isolation without global state pollution.
+func TestSetInstanceForTesting_TestIsolation(t *testing.T) {
+	// Clear any existing instance for clean test
+	ResetConfigForTesting()
+	defer ResetConfigForTesting()
+
+	// Create custom config for testing
+	customConfig := NewConfig(
+		"/custom/vault",
+		"/custom/templates",
+		"/custom/schemas",
+		"custom_bank.json",
+		"/custom/cache",
+		"debug",
+		"custom_file_class",
+	)
+
+	// Set custom instance for testing
+	SetInstanceForTesting(&customConfig)
+
+	// Verify Instance() returns the custom config
+	instance := Instance()
+	if instance == nil {
+		t.Fatal("Instance() returned nil after SetInstanceForTesting()")
+	}
+	if instance.VaultPath != "/custom/vault" {
+		t.Errorf(
+			"Expected VaultPath '/custom/vault', got %q",
+			instance.VaultPath,
+		)
+	}
+	if instance.FileClassKey != "custom_file_class" {
+		t.Errorf(
+			"Expected FileClassKey 'custom_file_class', got %q",
+			instance.FileClassKey,
+		)
+	}
+
+	// Reset should clear the custom instance
+	ResetConfigForTesting()
+
+	// After reset, Instance() should create new default instance
+	newInstance := Instance()
+	if newInstance == nil {
+		t.Fatal("Instance() returned nil after reset")
+	}
+	// Should not be the same pointer as custom config
+	if newInstance == instance {
+		t.Error(
+			"Instance() should return different instance after ResetConfigForTesting()",
+		)
 	}
 }

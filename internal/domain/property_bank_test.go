@@ -2,6 +2,7 @@ package domain
 
 import (
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -309,5 +310,132 @@ func TestPropertyBank_Lookup_WithGeneratedIDs(t *testing.T) {
 	_, exists := pb.Lookup("nonexistent-id")
 	if exists {
 		t.Error("Lookup should not find property with invalid ID")
+	}
+}
+
+// TestPropertyBankInstance_SingletonBehavior tests that Instance() returns the
+// same instance on multiple calls (singleton pattern with sync.Once).
+func TestPropertyBankInstance_SingletonBehavior(t *testing.T) {
+	// Clear any existing instance for clean test
+	ResetPropertyBankForTesting()
+	defer ResetPropertyBankForTesting()
+
+	// First call to Instance()
+	instance1 := PropertyBankInstance()
+	if instance1 == nil {
+		t.Fatal("PropertyBankInstance() returned nil")
+	}
+
+	// Second call to Instance()
+	instance2 := PropertyBankInstance()
+	if instance2 == nil {
+		t.Fatal("PropertyBankInstance() returned nil on second call")
+	}
+
+	// Both calls should return the exact same pointer
+	if instance1 != instance2 {
+		t.Error(
+			"PropertyBankInstance() should return same instance on multiple calls",
+		)
+	}
+}
+
+// TestPropertyBankInstance_ThreadSafe tests that PropertyBankInstance() is
+// thread-safe using sync.Once.
+func TestPropertyBankInstance_ThreadSafe(t *testing.T) {
+	// Clear any existing instance for clean test
+	ResetPropertyBankForTesting()
+	defer ResetPropertyBankForTesting()
+
+	const goroutines = 100
+	instances := make([]*PropertyBank, goroutines)
+
+	// Use WaitGroup to coordinate goroutines
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+
+	// Launch many goroutines simultaneously calling PropertyBankInstance()
+	for i := range goroutines {
+		go func(index int) {
+			defer wg.Done()
+			instances[index] = PropertyBankInstance()
+		}(i)
+	}
+
+	// Wait for all goroutines to complete
+	wg.Wait()
+
+	// Verify all goroutines got the same instance
+	firstInstance := instances[0]
+	if firstInstance == nil {
+		t.Fatal("First instance is nil")
+	}
+
+	for i := 1; i < goroutines; i++ {
+		if instances[i] != firstInstance {
+			t.Errorf(
+				"Goroutine %d got different instance: expected %p, got %p",
+				i,
+				firstInstance,
+				instances[i],
+			)
+		}
+	}
+}
+
+// TestSetPropertyBankForTesting_TestIsolation tests that
+// SetPropertyBankForTesting() allows test isolation without global state
+// pollution.
+func TestSetPropertyBankForTesting_TestIsolation(t *testing.T) {
+	// Clear any existing instance for clean test
+	ResetPropertyBankForTesting()
+	defer ResetPropertyBankForTesting()
+
+	// Create custom PropertyBank for testing
+	prop, err := NewProperty(
+		"custom_title",
+		true,
+		false,
+		&StringSpec{Pattern: "^.{1,100}$"},
+	)
+	require.NoError(t, err)
+
+	properties := map[string]Property{
+		"custom_title": *prop,
+	}
+	customBank, err := NewPropertyBank(properties)
+	require.NoError(t, err)
+
+	// Set custom instance for testing
+	SetPropertyBankForTesting(customBank)
+
+	// Verify PropertyBankInstance() returns the custom bank
+	instance := PropertyBankInstance()
+	if instance == nil {
+		t.Fatal(
+			"PropertyBankInstance() returned nil after SetPropertyBankForTesting()",
+		)
+	}
+
+	// Verify it's the custom bank by checking properties
+	_, exists := instance.Lookup("custom_title")
+	if !exists {
+		t.Error("Custom property 'custom_title' not found in instance")
+	}
+
+	// Reset should clear the custom instance
+	ResetPropertyBankForTesting()
+
+	// After reset, PropertyBankInstance() should create new default instance
+	newInstance := PropertyBankInstance()
+	if newInstance == nil {
+		t.Fatal("PropertyBankInstance() returned nil after reset")
+	}
+
+	// Should not be the same pointer as custom bank
+	if newInstance == customBank {
+		t.Error(
+			"PropertyBankInstance() should return different instance after ResetPropertyBankForTesting()",
+		)
 	}
 }
