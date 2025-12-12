@@ -4,6 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+)
+
+// Singleton pattern implementation for PropertyBank using sync.Once.
+var (
+	propertyBankInstance *PropertyBank
+	propertyBankOnce     sync.Once
+	propertyBankMu       sync.RWMutex // Protects instance during testing
 )
 
 // PropertyBank represents a singleton registry of reusable Property
@@ -90,4 +98,56 @@ func cloneProperties(properties map[string]Property) map[string]Property {
 		dst[id] = prop
 	}
 	return dst
+}
+
+// PropertyBankInstance returns the singleton PropertyBank instance.
+// Thread-safe initialization guaranteed by sync.Once.
+// On first call, creates empty PropertyBank. Subsequent calls return same
+// instance.
+// Note: In production, PropertyBank should be loaded via SchemaLoader adapter
+// and set using SetPropertyBankForTesting() or direct assignment during
+// initialization.
+func PropertyBankInstance() *PropertyBank {
+	propertyBankMu.RLock()
+	if propertyBankInstance != nil {
+		defer propertyBankMu.RUnlock()
+		return propertyBankInstance
+	}
+	propertyBankMu.RUnlock()
+
+	propertyBankOnce.Do(func() {
+		propertyBankMu.Lock()
+		defer propertyBankMu.Unlock()
+		// Create empty PropertyBank as default
+		// In production, this will be replaced by loaded PropertyBank
+		propertyBankInstance = &PropertyBank{
+			Properties: make(map[string]Property),
+		}
+	})
+
+	propertyBankMu.RLock()
+	defer propertyBankMu.RUnlock()
+	return propertyBankInstance
+}
+
+// SetPropertyBankForTesting allows setting a custom PropertyBank instance for
+// testing.
+// This enables test isolation without global state pollution.
+// Should only be used in tests. Use ResetPropertyBankForTesting() in test
+// cleanup.
+func SetPropertyBankForTesting(pb *PropertyBank) {
+	propertyBankMu.Lock()
+	defer propertyBankMu.Unlock()
+
+	propertyBankInstance = pb
+}
+
+// ResetPropertyBankForTesting resets the singleton instance for test isolation.
+// Should be called in test cleanup (typically via defer).
+func ResetPropertyBankForTesting() {
+	propertyBankMu.Lock()
+	defer propertyBankMu.Unlock()
+
+	propertyBankOnce = sync.Once{}
+	propertyBankInstance = nil
 }

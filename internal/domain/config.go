@@ -1,6 +1,9 @@
 package domain
 
-import "path/filepath"
+import (
+	"path/filepath"
+	"sync"
+)
 
 // Default configuration values for Config.
 // These provide sensible defaults for vault structure and operational settings.
@@ -12,6 +15,13 @@ const (
 	defaultCacheDir         = ".lithos/cache/"
 	defaultLogLevel         = "info"
 	defaultFileClassKey     = "file_class"
+)
+
+// Singleton pattern implementation for Config using sync.Once.
+var (
+	configInstance *Config
+	configOnce     sync.Once
+	configMu       sync.RWMutex // Protects instance during testing
 )
 
 // Config represents application configuration as an immutable value object.
@@ -243,4 +253,47 @@ func DefaultConfig() Config {
 // SchemasDir with PropertyBankFile.
 func (c Config) PropertyBankPath() string {
 	return filepath.Join(c.SchemasDir, c.PropertyBankFile)
+}
+
+// Instance returns the singleton Config instance.
+// Thread-safe initialization guaranteed by sync.Once.
+// On first call, creates default Config. Subsequent calls return same instance.
+func Instance() *Config {
+	configMu.RLock()
+	if configInstance != nil {
+		defer configMu.RUnlock()
+		return configInstance
+	}
+	configMu.RUnlock()
+
+	configOnce.Do(func() {
+		configMu.Lock()
+		defer configMu.Unlock()
+		cfg := DefaultConfig()
+		configInstance = &cfg
+	})
+
+	configMu.RLock()
+	defer configMu.RUnlock()
+	return configInstance
+}
+
+// SetInstanceForTesting allows setting a custom Config instance for testing.
+// This enables test isolation without global state pollution.
+// Should only be used in tests. Use ResetConfigForTesting() in test cleanup.
+func SetInstanceForTesting(cfg *Config) {
+	configMu.Lock()
+	defer configMu.Unlock()
+
+	configInstance = cfg
+}
+
+// ResetConfigForTesting resets the singleton instance for test isolation.
+// Should be called in test cleanup (typically via defer).
+func ResetConfigForTesting() {
+	configMu.Lock()
+	defer configMu.Unlock()
+
+	configOnce = sync.Once{}
+	configInstance = nil
 }
