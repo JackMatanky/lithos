@@ -147,9 +147,7 @@ func TestCacheUnitOfWork_AddDelete(t *testing.T) {
 func TestCacheUnitOfWork_Commit_Success(t *testing.T) {
 	var boltCalls, sqliteCalls int
 
-	fixture := NewUnitOfWorkFixture().
-		WithTrackingBoltWriter().
-		WithTrackingSQLiteWriter()
+	fixture := NewUnitOfWorkFixture()
 
 	ctx := context.Background()
 
@@ -167,26 +165,19 @@ func TestCacheUnitOfWork_Commit_Success(t *testing.T) {
 	if err := fixture.UnitOfWork().AddWrite(testNote, time.Now()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
+
+	// Set up tracking functions
+	fixture.BoltWriter().PersistFunc = func(
+		ctx context.Context, note domain.Note, indexTime time.Time,
+	) error {
+		boltCalls++
+		return nil
+	}
 	fixture.SQLiteWriter().PersistFunc = func(
 		ctx context.Context, note domain.Note, indexTime time.Time,
 	) error {
 		sqliteCalls++
 		return nil
-	}
-
-	if err := fixture.UnitOfWork().Begin(); err != nil {
-		t.Fatalf("Begin() error = %v, want nil", err)
-	}
-	testNote2, _ := domain.NewNote(
-		"test",
-		domain.NewFrontmatter(map[string]interface{}{}),
-		[]domain.Link{},
-		[]domain.Heading{},
-		[]string{},
-		[]domain.TaskItem{},
-	)
-	if err := fixture.UnitOfWork().AddWrite(testNote2, time.Now()); err != nil {
-		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 
 	err := fixture.UnitOfWork().Commit(ctx)
