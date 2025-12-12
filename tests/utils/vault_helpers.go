@@ -5,10 +5,19 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// Statistics represents parsed CLI output statistics.
+type Statistics struct {
+	Scanned  int
+	Indexed  int
+	Duration string
+}
 
 // FindProjectRoot finds the project root by looking for go.mod.
 func FindProjectRoot(t *testing.T) string {
@@ -72,6 +81,7 @@ func ExecuteIndexCommand(binaryPath, vaultDir string) (string, error) {
 		"index",
 		vaultDir,
 	)
+	cmd.Dir = vaultDir // Change working directory to vault directory so config is loaded from there
 	output, err := cmd.CombinedOutput()
 	return string(output), err
 }
@@ -81,4 +91,62 @@ func VerifyStatistics(t *testing.T, output string) {
 	t.Helper()
 	require.Contains(t, output, "Indexed")
 	require.Contains(t, output, "files")
+}
+
+// CopyDir recursively copies a directory from src to dst.
+func CopyDir(t *testing.T, src, dst string) {
+	t.Helper()
+	require.NoError(t, os.MkdirAll(dst, 0o755))
+
+	entries, err := os.ReadDir(src)
+	require.NoError(t, err)
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+
+		if entry.IsDir() {
+			CopyDir(t, srcPath, dstPath)
+		} else {
+			CopyFile(t, srcPath, dstPath)
+		}
+	}
+}
+
+// ParseStatistics parses the CLI output and extracts statistics.
+func ParseStatistics(t *testing.T, output string) Statistics {
+	t.Helper()
+	lines := strings.Split(output, "\n")
+	stats := Statistics{
+		Scanned:  0,
+		Indexed:  0,
+		Duration: "",
+	}
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.Contains(line, "Scanned:"):
+			// Extract number from "Scanned: X files"
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				if scanned, err := strconv.Atoi(parts[1]); err == nil {
+					stats.Scanned = scanned
+				}
+			}
+		case strings.Contains(line, "Indexed:"):
+			// Extract number from "Indexed: X files"
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				if indexed, err := strconv.Atoi(parts[1]); err == nil {
+					stats.Indexed = indexed
+				}
+			}
+		case strings.Contains(line, "Duration:"):
+			stats.Duration = strings.TrimPrefix(line, "Duration:")
+			stats.Duration = strings.TrimSpace(stats.Duration)
+		}
+	}
+
+	return stats
 }

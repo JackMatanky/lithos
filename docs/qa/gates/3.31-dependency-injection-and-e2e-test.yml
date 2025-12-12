@@ -1,0 +1,63 @@
+schema: 1
+story: "3.31"
+story_title: "Hybrid Architecture DI and Production-Scale E2E Testing"
+gate: FAIL
+status_reason: "Critical quality standards not met: unit test coverage at 12.3% (vs 85% required for internal/app components). Core VaultIndexer functionality completely untested despite claims of fixes applied."
+reviewer: "Quinn (Test Architect)"
+updated: "2025-12-13T12:00:00Z"
+
+top_issues:
+  - id: "TEST-001"
+    severity: high
+    finding: "Unit test coverage critically low at 12.3% for vault components (required ≥85%)"
+    suggested_action: "Add comprehensive unit tests for VaultIndexer.Build(), processFile(), and event handling methods"
+    suggested_owner: "dev"
+  - id: "TEST-002"
+    severity: high
+    finding: "Core business logic untested - VaultIndexer orchestrator, processing services, and event handlers have zero test coverage"
+    suggested_action: "Implement unit tests for processing_orchestrator.go, markdown_processor.go, note_validator.go, and caching_service.go"
+    suggested_owner: "dev"
+  - id: "TEST-003"
+    severity: medium
+    finding: "Existing unit tests are superficial and don't validate actual functionality"
+    suggested_action: "Replace basic assertion tests with meaningful validation of business logic and error scenarios"
+    suggested_owner: "dev"
+
+quality_score: 45
+
+evidence:
+  tests_reviewed: 15
+  risks_identified: 3
+  trace:
+    ac_covered: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]
+    ac_gaps: []
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: "No security vulnerabilities identified"
+  performance:
+    status: PASS
+    notes: "Sub-100ms query performance validated with 594 real notes"
+  reliability:
+    status: PASS
+    notes: "Comprehensive error handling and E2E test coverage"
+  maintainability:
+    status: FAIL
+    notes: "Critically low test coverage makes maintenance and refactoring extremely risky"
+
+recommendations:
+  immediate:
+    - action: "Add unit tests for VaultIndexer.Build() method with comprehensive mock setup"
+      refs: ["internal/app/vault/indexer.go"]
+    - action: "Add unit tests for processFile() covering parsing, validation, and caching workflows"
+      refs: ["internal/app/vault/indexer.go"]
+    - action: "Add unit tests for event handling (CommandIssued, NoteIndexed events)"
+      refs: ["internal/app/vault/indexer.go"]
+    - action: "Add unit tests for all new service components (processing_orchestrator, markdown_processor, note_validator, caching_service)"
+      refs: ["internal/app/vault/"]
+  future:
+    - action: "Add integration tests for component interactions"
+      refs: ["internal/app/vault/"]
+    - action: "Consider benchmark tests for performance regression detection"
+      refs: ["tests/performance/"]

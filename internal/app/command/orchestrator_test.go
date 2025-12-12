@@ -12,40 +12,58 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
-	sharedlogger "github.com/JackMatanky/lithos/internal/shared/logger"
+	"github.com/JackMatanky/lithos/internal/ports/api"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-type failingEventBus struct {
-	publishErr error
+// mockVaultIndexer provides a mock implementation of VaultIndexerInterface for
+// testing.
+type mockVaultIndexer struct {
+	buildResult vault.IndexStats
+	buildError  error
 }
 
-func (f *failingEventBus) Publish(
+// mockCLIPort provides a mock implementation of CLIPort for testing.
+type mockCLIPort struct {
+	startResult error
+	startCalled bool
+	handler     api.CommandPort
+}
+
+func (m *mockVaultIndexer) Build(
 	ctx context.Context,
-	event domain.DomainEvent,
-) error {
-	return f.publishErr
+) (vault.IndexStats, error) {
+	return m.buildResult, m.buildError
 }
 
-func (f *failingEventBus) Subscribe(
-	eventType string,
-	handler events.EventHandler,
-) error {
-	return nil
+func (m *mockVaultIndexer) SetBuildResult(stats vault.IndexStats, err error) {
+	m.buildResult = stats
+	m.buildError = err
 }
 
-func (f *failingEventBus) Unsubscribe(
-	eventType string,
-	handler events.EventHandler,
+func (m *mockCLIPort) Start(
+	ctx context.Context,
+	handler api.CommandPort,
 ) error {
-	return nil
+	m.startCalled = true
+	m.handler = handler
+	return m.startResult
 }
 
-func (f *failingEventBus) Shutdown(ctx context.Context) error {
-	return nil
+func (m *mockCLIPort) SetStartError(err error) {
+	m.startResult = err
+}
+
+func (m *mockCLIPort) WasStartCalled() bool {
+	return m.startCalled
+}
+
+func (m *mockCLIPort) GetHandler() api.CommandPort {
+	return m.handler
 }
 
 // TestCLIComanderStructExists verifies that CLIComander struct
@@ -68,19 +86,24 @@ func TestCLIComanderStructExists(t *testing.T) {
 // correct parameters.
 func TestRunCallsCLIPortStart(t *testing.T) {
 	// Setup
-	mockCLIPort := utils.NewMockCLIPort()
+	mockCLIPort := &mockCLIPort{}
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
 
 	// Create orchestrator with mock dependencies
 	// Note: We pass nil for optional dependencies since they're irrelevant here
+	var mockVaultIndexer *vault.VaultIndexer
+	var mockVaultWriter spi.VaultWriterPort
+	var mockEventBus events.EventBus
+	var mockTemplateEngine *template.TemplateEngine
 	orchestrator := NewCLIComander(
 		mockCLIPort,
-		nil,
-		nil,
+		mockTemplateEngine,
+		mockVaultIndexer,
+		mockVaultWriter,
 		&config,
 		&logger,
-		nil,
+		mockEventBus,
 	)
 
 	// Execute
@@ -106,7 +129,7 @@ func TestRunCallsCLIPortStart(t *testing.T) {
 // CLIPort.Start().
 func TestRunPropagatesCLIError(t *testing.T) {
 	// Setup
-	mockCLIPort := utils.NewMockCLIPort()
+	mockCLIPort := &mockCLIPort{}
 	expectedError := assert.AnError
 	mockCLIPort.SetStartError(expectedError)
 
@@ -114,13 +137,18 @@ func TestRunPropagatesCLIError(t *testing.T) {
 	logger := zerolog.Nop()
 
 	// Create orchestrator with mock dependencies
+	var mockVaultIndexer *vault.VaultIndexer
+	var mockVaultWriter spi.VaultWriterPort
+	var mockEventBus events.EventBus
+	var mockTemplateEngine *template.TemplateEngine
 	orchestrator := NewCLIComander(
 		mockCLIPort,
-		nil,
-		nil,
+		mockTemplateEngine,
+		mockVaultIndexer,
+		mockVaultWriter,
 		&config,
 		&logger,
-		nil,
+		mockEventBus,
 	)
 
 	// Execute
@@ -172,13 +200,16 @@ func TestNewNoteSuccess(t *testing.T) {
 	tempDir := t.TempDir()
 	config.VaultPath = tempDir
 
+	var mockVaultIndexer *vault.VaultIndexer
+	var mockEventBus events.EventBus
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
+		mockVaultIndexer,
 		vaultAdapter.NewVaultWriterAdapter(config, logger),
 		&config,
 		&logger,
-		nil,
+		mockEventBus,
 	)
 
 	// Execute
@@ -233,13 +264,16 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 		&logger,
 	)
 
+	var mockVaultIndexer *vault.VaultIndexer
+	var mockEventBus events.EventBus
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
+		mockVaultIndexer,
 		nil,
 		&config,
 		&logger,
-		nil,
+		mockEventBus,
 	)
 
 	ctx := context.Background()
@@ -271,13 +305,16 @@ func TestNewNoteFileWriteError(t *testing.T) {
 
 	mockVaultWriter := utils.NewMockVaultWriterPort()
 	mockVaultWriter.SetWriteContentResult(assert.AnError)
+	var mockVaultIndexer *vault.VaultIndexer
+	var mockEventBus events.EventBus
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
+		mockVaultIndexer,
 		mockVaultWriter,
 		&config,
 		&logger,
-		nil,
+		mockEventBus,
 	)
 
 	ctx := context.Background()
@@ -292,16 +329,6 @@ func TestIndexVaultSuccess(t *testing.T) {
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
 
-	busLog := sharedlogger.NewZerologAdapter(
-		zerolog.New(zerolog.NewTestWriter(t)),
-	)
-	bus := events.NewInMemoryEventBus(busLog)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = bus.Shutdown(ctx)
-	})
-
 	expectedStats := vault.IndexStats{
 		ScannedCount:        10,
 		IndexedCount:        8,
@@ -311,56 +338,50 @@ func TestIndexVaultSuccess(t *testing.T) {
 		Duration:            150 * time.Millisecond,
 	}
 
-	commandHandler := func(ctx context.Context, event domain.DomainEvent) error {
-		cmd, ok := event.(*domain.CommandIssuedEvent)
-		if !ok || cmd.Command() != "IndexVault" {
-			return nil
-		}
-		completion := domain.MustNewVaultIndexingCompleteEvent(
-			statsToSummary(expectedStats),
-			expectedStats.Duration,
-			time.Now(),
-		)
-		publishErr := make(chan error, 1)
-		go func() {
-			publishErr <- bus.Publish(ctx, completion)
-		}()
-		return <-publishErr
-	}
-	require.NoError(t, bus.Subscribe("CommandIssued", commandHandler))
-	t.Cleanup(func() {
-		_ = bus.Unsubscribe("CommandIssued", commandHandler)
-	})
+	mockVaultIndexer := &mockVaultIndexer{}
+	mockVaultIndexer.SetBuildResult(expectedStats, nil)
 
-	orchestrator := NewCLIComander(nil, nil, nil, &config, &logger, bus)
+	var mockVaultWriter spi.VaultWriterPort
+	var mockTemplateEngine *template.TemplateEngine
+	var mockEventBus events.EventBus
+	orchestrator := NewCLIComander(
+		nil,
+		mockTemplateEngine,
+		mockVaultIndexer,
+		mockVaultWriter,
+		&config,
+		&logger,
+		mockEventBus,
+	)
 
 	stats, err := orchestrator.IndexVault(context.Background())
 	require.NoError(t, err)
 	assert.Equal(t, expectedStats, stats)
 }
 
-// TestIndexVaultPublishError verifies errors propagate when publish fails.
-func TestIndexVaultPublishError(t *testing.T) {
+// TestIndexVaultBuildError verifies errors propagate when vault indexer fails.
+func TestIndexVaultBuildError(t *testing.T) {
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
 
-	publishErr := assert.AnError
-	bus := &failingEventBus{publishErr: publishErr}
+	buildErr := assert.AnError
+	mockVaultIndexer := &mockVaultIndexer{}
+	mockVaultIndexer.SetBuildResult(vault.IndexStats{}, buildErr)
 
-	orchestrator := NewCLIComander(nil, nil, nil, &config, &logger, bus)
+	var mockVaultWriter spi.VaultWriterPort
+	var mockTemplateEngine *template.TemplateEngine
+	var mockEventBus events.EventBus
+	orchestrator := NewCLIComander(
+		nil,
+		mockTemplateEngine,
+		mockVaultIndexer,
+		mockVaultWriter,
+		&config,
+		&logger,
+		mockEventBus,
+	)
 
 	_, err := orchestrator.IndexVault(context.Background())
 	require.Error(t, err)
-	assert.Equal(t, publishErr, err)
-}
-
-func statsToSummary(stats vault.IndexStats) domain.VaultIndexingSummary {
-	return domain.VaultIndexingSummary{
-		ScannedCount:        stats.ScannedCount,
-		IndexedCount:        stats.IndexedCount,
-		ParseFailures:       stats.ParseFailures,
-		CacheFailures:       stats.CacheFailures,
-		ValidationSuccesses: stats.ValidationSuccesses,
-		ValidationFailures:  stats.ValidationFailures,
-	}
+	assert.Contains(t, err.Error(), buildErr.Error())
 }

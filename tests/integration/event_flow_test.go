@@ -78,7 +78,7 @@ func TestEventFlow_Integration(t *testing.T) {
 		time.Now(),
 	)
 	validationEvent := domain.MustNewFrontmatterValidatedEvent(
-		"/test/note.md",
+		domain.Note{Path: "/test/note.md"},
 		"test-schema",
 		true,
 		[]string{},
