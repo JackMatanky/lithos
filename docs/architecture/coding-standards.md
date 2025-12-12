@@ -221,4 +221,6 @@ func (e *SchemaEngine) Load(ctx context.Context) error {
 }
 ```
 
+**See Also:** `docs/architecture/components.md` contains detailed component documentation with validation layer responsibilities for each service and adapter.
+
 ---

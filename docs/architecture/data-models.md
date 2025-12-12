@@ -357,10 +357,12 @@ func (a *MarkdownParserAdapter) ParseMetadata(ctx context.Context, content []byt
 **Entity Methods (Enrichment):**
 
 ```go
-// Validation
+// Validation - delegates to domain service for semantic validation
 func (n Note) Validate(ctx context.Context) error {
     // Semantic validation - schema compliance, business rules
-    return n.Frontmatter.Validate(ctx)
+    // Note: Validation delegates to FrontmatterService.IsSchemaCompliant()
+    // in the domain layer. Frontmatter itself does not validate.
+    return frontmatterService.IsSchemaCompliant(ctx, n.Frontmatter)
 }
 
 // Factory constructor with validation

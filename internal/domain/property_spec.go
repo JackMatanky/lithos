@@ -98,6 +98,12 @@ func (s StringSpec) Type() PropertySpecType {
 
 // Validate checks that Pattern is a valid regex if specified.
 // Uses caching to avoid recompiling regex patterns.
+//
+// Validation Layer: Domain Layer (Semantic)
+// - Validates business rules for property specifications
+// - Performs regex compilation (infrastructure concern but in domain for
+// caching)
+// See: docs/architecture/coding-standards.md#validation-layer-separation.
 func (s *StringSpec) Validate(ctx context.Context) error {
 	if s.Pattern == "" {
 		return nil
@@ -118,6 +124,10 @@ func (n NumberSpec) Type() PropertySpecType {
 }
 
 // Validate checks Min <= Max and Step > 0 if specified.
+//
+// Validation Layer: Domain Layer (Semantic)
+// - Validates business rules for number constraints
+// See: docs/architecture/coding-standards.md#validation-layer-separation.
 func (n NumberSpec) Validate(ctx context.Context) error {
 	if err := validateNumberRange(n.Min, n.Max); err != nil {
 		return err
@@ -131,6 +141,10 @@ func (b BoolSpec) Type() PropertySpecType {
 }
 
 // Validate returns nil (no constraints to validate).
+//
+// Validation Layer: Domain Layer (Semantic)
+// - Bool specs have no additional constraints to validate
+// See: docs/architecture/coding-standards.md#validation-layer-separation.
 func (b BoolSpec) Validate(ctx context.Context) error {
 	return nil
 }
@@ -141,6 +155,10 @@ func (d DateSpec) Type() PropertySpecType {
 }
 
 // Validate performs basic validation of the DateSpec.
+//
+// Validation Layer: Domain Layer (Semantic)
+// - Validates date format constraints and layout tokens
+// See: docs/architecture/coding-standards.md#validation-layer-separation.
 func (d DateSpec) Validate(ctx context.Context) error {
 	if d.Format == "" {
 		// Empty format defaults to RFC3339, which is valid
@@ -177,6 +195,10 @@ func (f FileSpec) Type() PropertySpecType {
 
 // Validate checks that FileClass and Directory patterns are valid regexes,
 // handling negation prefix. Uses caching to avoid recompilation.
+//
+// Validation Layer: Domain Layer (Semantic)
+// - Validates file reference constraints and patterns
+// See: docs/architecture/coding-standards.md#validation-layer-separation.
 func (f *FileSpec) Validate(ctx context.Context) error {
 	if err := validateFilePatternCached("fileClass", f.FileClass, &f.compiledFileClass); err != nil {
 		return err

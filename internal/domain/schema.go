@@ -108,7 +108,12 @@ func NewSchema(
 // Returns SchemaError for structural issues with schema definition.
 // Does not validate inheritance chains - that's handled by SchemaResolver.
 //
+// Validation Layer: Domain Layer (Semantic)
+// - Validates business rules for schema definitions
+// - Does NOT perform parsing or cross-schema reference validation
+//
 // Context is used for cancellation during potentially expensive validation.
+// See: docs/architecture/coding-standards.md#validation-layer-separation.
 func (s *Schema) Validate(ctx context.Context) error {
 	// Check for cancellation
 	select {

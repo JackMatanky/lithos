@@ -724,12 +724,12 @@ func testTagQueries(
 			"title":     "Personal Meeting",
 			"date":      "2024-01-25",
 			"attendees": []interface{}{"self"},
-			"tags":      []interface{}{"personal"},
+			"tags":      []interface{}{"personal", "planning", "critical"},
 		}),
 	}
 
-	for _, note := range taggedNotes {
-		err := writer.Persist(ctx, note, indexTime)
+	for i := range taggedNotes {
+		err := writer.Persist(ctx, taggedNotes[i], indexTime)
 		require.NoError(t, err)
 	}
 

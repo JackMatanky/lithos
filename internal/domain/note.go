@@ -167,6 +167,11 @@ func NewNote(
 // Validate enforces business rules for Note construction and mutation.
 // Ensures path is non-empty, frontmatter is present, and slices are
 // initialized.
+//
+// Validation Layer: Domain Layer (Semantic)
+// - Validates business rules for Note entities
+// - Does NOT perform parsing or structural validation
+// See: docs/architecture/coding-standards.md#validation-layer-separation.
 func (n Note) Validate() error {
 	if strings.TrimSpace(n.Path) == "" {
 		return NoteValidationError{

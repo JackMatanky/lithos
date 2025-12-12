@@ -530,8 +530,8 @@ func persistNotes(
 ) {
 	t.Helper()
 	ctx := context.Background()
-	for _, note := range notes {
-		require.NoError(t, writer.Persist(ctx, note, time.Now()))
+	for i := range notes {
+		require.NoError(t, writer.Persist(ctx, notes[i], time.Now()))
 	}
 }
 
@@ -565,8 +565,8 @@ func sampleNotes() []domain.Note {
 
 func toIDs(notes []domain.Note) []string {
 	ids := make([]string, 0, len(notes))
-	for _, note := range notes {
-		ids = append(ids, note.Path)
+	for i := range notes {
+		ids = append(ids, notes[i].Path)
 	}
 	return ids
 }

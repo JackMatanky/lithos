@@ -2054,7 +2054,7 @@ func TestTemplateEngine(t *testing.T) {
 
 ## Validation Architecture Overview
 
-Lithos implements validation at two distinct levels with different concerns and complexity:
+Lithos implements validation at two distinct levels with different concerns and complexity. See `docs/architecture/coding-standards.md#validation-layer-separation` for naming conventions and architectural principles.
 
 ### Schema Validation (Structural Integrity)
 

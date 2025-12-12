@@ -346,8 +346,8 @@ func testNoteIDCollisionResolution(
 	}
 
 	actualPaths := make([]string, len(meetingNotes))
-	for i, note := range meetingNotes {
-		actualPaths[i] = note.Path
+	for i := range meetingNotes {
+		actualPaths[i] = meetingNotes[i].Path
 	}
 
 	for _, expectedPath := range expectedPaths {
@@ -482,14 +482,14 @@ func testQueryLayerComprehensive(
 
 	// Verify no duplicates in BasenameQuery results
 	notePaths := make(map[string]bool)
-	for _, note := range meetingNotes {
+	for i := range meetingNotes {
 		assert.False(
 			t,
-			notePaths[note.Path],
+			notePaths[meetingNotes[i].Path],
 			"Path %s should be unique",
-			note.Path,
+			meetingNotes[i].Path,
 		)
-		notePaths[note.Path] = true
+		notePaths[meetingNotes[i].Path] = true
 	}
 }
 
