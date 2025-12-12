@@ -317,7 +317,7 @@ func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema) err
 
 ### VaultIndexer
 
-**Responsibility:** Orchestrate vault scanning and indexing workflow with hybrid storage architecture (Epic 3). Coordinates vault scanning, note parsing, validation, and write coordination across multiple storage systems (BoltDB hot cache + SQLite deep storage). Delegates frontmatter extraction to FrontmatterService and markdown parsing to MarkdownParserPort.
+**Responsibility:** Orchestrate vault scanning and indexing workflow with hybrid BoltDB+SQLite storage architecture (Epic 3). Coordinates vault scanning, note parsing, validation, and write coordination across multiple storage systems (BoltDB hot cache for fast queries + SQLite deep storage for complex queries). Delegates frontmatter extraction to FrontmatterService and markdown parsing to MarkdownParserPort.
 
 **Key Interfaces:**
 
@@ -953,31 +953,31 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 ### CacheWriterPort
 
-**Responsibility:** Persist indexed notes to on-disk cache (CQRS write side).
+**Responsibility:** Persist indexed notes to hybrid storage system (CQRS write side). Supports both BoltDB (hot cache) and SQLite (deep storage) persistence with transactional guarantees.
 
 **Key Interfaces:**
 
-- `Persist(ctx context.Context, note Note) error` - Persist note to cache
-- `Delete(ctx context.Context, path string) error` - Remove note from cache by vault-relative path
+- `Persist(ctx context.Context, note Note) error` - Persist note to both BoltDB and SQLite storage systems
+- `Delete(ctx context.Context, path string) error` - Remove note from both storage systems by vault-relative path
 
-**Dependencies:** Implemented by JSONFileCacheAdapter.
+**Dependencies:** Implemented by BoltDBCacheWriterAdapter and SQLiteCacheWriterAdapter.
 
-**Technology Stack:** Go `encoding/json`, `moby/sys/atomicwriter` for atomic writes, filesystem directory management under `.lithos/cache`.
+**Technology Stack:** BoltDB for hot cache (<1ms queries), SQLite for deep storage (<50ms complex queries), CacheUnitOfWork for transactional dual-write coordination.
 
 **Note:** No separate FileWriterPort needed - adapters use `atomicwriter.WriteFile` directly. YAGNI principle - we don't have multiple cache storage implementations for MVP.
 
 ### CacheReaderPort
 
-**Responsibility:** Read indexed notes from on-disk cache (CQRS read side).
+**Responsibility:** Read indexed notes from hybrid storage system (CQRS read side). Routes queries between BoltDB hot cache and SQLite deep storage based on query complexity and performance requirements.
 
 **Key Interfaces:**
 
-- `Read(ctx context.Context, path string) (Note, error)` - Fetch single note from cache by vault-relative path
-- `List(ctx context.Context) ([]Note, error)` - List all cached notes
+- `Read(ctx context.Context, path string) (Note, error)` - Fetch single note from cache by vault-relative path (routes to BoltDB)
+- `List(ctx context.Context) ([]Note, error)` - List all cached notes (routes to BoltDB)
 
-**Dependencies:** Implemented by JSONFileCacheAdapter.
+**Dependencies:** Implemented by BoltDBCacheReaderAdapter and SQLiteCacheReaderAdapter.
 
-**Technology Stack:** Go `encoding/json`, lazy loading, optional memoization with `sync.RWMutex`.
+**Technology Stack:** Query routing between BoltDB (<1ms) and SQLite (<50ms), automatic selection based on query patterns, hybrid storage optimization.
 
 **Note:** No separate FileReaderPort needed - adapters use `os.ReadFile` and `filepath.Walk` directly. YAGNI principle - we don't have multiple file sources for MVP. If future needs arise (S3, HTTP, embedded), ports can be added then.
 
@@ -1220,6 +1220,46 @@ Adapters validate the options (Value required, Scope defaults to `full`) and ret
 - Keeps QueryService decoupled from adapter internals while still supporting hybrid storage routing.
 - The unified PathQuery contract prevents API proliferation while still allowing adapters to optimise per-scope indices.
 
+### MetadataQueryPort
+
+**Responsibility:** Provide O(1) indexed queries for note metadata using storage-native indices. Enables fast lookups by basename, alias, file class, and flexible path selectors without scanning the entire cache.
+
+**Key Interfaces:**
+
+- `BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error)` - Find notes by filename (no extension) with duplicate handling.
+- `AliasQuery(ctx context.Context, alias string) ([]domain.Note, error)` - Resolve notes that publish a specific alias in frontmatter.
+- `FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)` - Group notes by schema for validation and template lookups.
+- `PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)` - Resolve notes by full path, basename, or folder scope using a single method.
+
+**PathQueryOptions:**
+
+```go
+type PathQueryOptions struct {
+    Scope PathQueryScope // full, basename, folder
+    Value string         // path fragment matched according to scope
+}
+```
+
+Adapters validate the options (Value required, Scope defaults to `full`) and return empty slices when no matches exist.
+
+**Dependencies:** Implemented by BoltDBReaderAdapter (hot path) and SQLiteReaderAdapter (deep path).
+
+**Technology Stack:**
+- BoltDB secondary index buckets for `/indices/byBasename`, `/indices/byAlias`, `/indices/byFileClass`, and folder listings.
+- SQLite with JSON_EXTRACT functions for complex queries and schema-driven views.
+
+**Query Routing Strategy:**
+
+```go
+// Hot path (<1ms): BoltDB serves BasenameQuery, AliasQuery, FileClassQuery, and PathQuery scopes
+// Deep path (<50ms): SQLite serves complex queries with JSON extraction and indexed views
+```
+
+**Rationale:**
+- Eliminates O(n) scanning for common metadata lookups.
+- Keeps QueryService decoupled from adapter internals while still supporting hybrid storage routing.
+- The unified PathQuery contract prevents API proliferation while allowing adapters to optimise per-scope indices.
+
 **Note:** QueryService uses MetadataQueryPort for all indexed queries and falls back to CacheReaderPort only when raw cache iteration is unavoidable.
 
 ---
@@ -1230,33 +1270,98 @@ Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports 
 
 **Note on Filesystem Operations:** Per YAGNI principle, no separate FileSystemAdapter for MVP. Adapters use Go stdlib (`os.ReadFile`, `filepath.Walk`) and `moby/sys/atomicwriter` directly. If future needs arise (S3, HTTP, embedded), filesystem ports can be added.
 
-### JSONCacheWriteAdapter
+### BoltDBCacheWriterAdapter
 
-**Responsibility:** Implement `CacheWriterPort` with atomic JSON persistence (CQRS write side). Handles write concerns: atomic guarantees, consistency, error handling.
+**Responsibility:** Implement `CacheWriterPort` (CQRS write-side) with transactional persistence to BoltDB. Maintains primary data and all secondary indices atomically for hot-path queries.
 
 **Key Interfaces:**
 
-- `Persist(ctx context.Context, note Note) error` - Persist note to cache with atomic guarantees
-- `Delete(ctx context.Context, path string) error` - Remove note from cache by vault-relative path
+- `Persist(ctx context.Context, note Note) error` - Writes note and updates all secondary indices in a single transaction
+- `Delete(ctx context.Context, path string) error` - Removes note from primary bucket and cleans up indices
 
-**Dependencies:** Go `encoding/json`, `moby/sys/atomicwriter`, `os`, `filepath`, Config (cache directory), Logger.
+**Dependencies:** `go.etcd.io/bbolt`, Config (cache directory), Logger.
 
-**Technology Stack:** JSON serialization, `atomicwriter.WriteFile` for atomic writes (temp + rename), directory management under `.lithos/cache`, one JSON file per note (filename derived from path hash for filesystem safety).
+**Technology Stack:** BoltDB buckets (`notes` for primary data, `indices/*` for secondary indexes), transactional writes, atomic index updates.
+
+**Bucket Schema:**
+
+- `/notes/`: Path -> CachedNote (Primary storage)
+- `/indices/`:
+  - `byBasename`: Basename -> []Path
+  - `byAlias`: Alias -> []Path
+  - `byFileClass`: FileClass -> []Path
+  - `byFolder`: Folder -> []Path
+
+### SQLiteCacheWriterAdapter
+
+**Responsibility:** Implement `CacheWriterPort` (CQRS write-side) with relational persistence to SQLite. Maintains schema-driven views and indices for deep-path queries.
+
+**Key Interfaces:**
+
+- `Persist(ctx context.Context, note Note) error` - Writes note to SQLite with JSON storage and view updates
+- `Delete(ctx context.Context, path string) error` - Removes note from SQLite tables and updates views
+
+**Dependencies:** `modernc.org/sqlite`, Config (cache directory), Logger.
+
+**Technology Stack:** SQLite with JSON1 extension, schema-driven views, transactional writes, pure Go implementation (no CGO).
+
+**Schema Design:**
+
+- `notes` table: Primary storage with JSON frontmatter
+- Schema-driven views: `v_{schema}_notes` for optimized queries
+- Composite indices on extracted JSON fields
 
 **Note:** Shared helper functions (file path construction, directory creation) live in `internal/adapters/spi/cache/helper.go` to avoid duplication with read adapter.
 
-### JSONCacheReadAdapter
+### BoltDBCacheReaderAdapter
 
-**Responsibility:** Implement `CacheReaderPort` with JSON deserialization (CQRS read side). Handles read concerns: lazy loading, error handling, listing performance.
+**Responsibility:** Implement `CacheReaderPort` (CQRS read-side) and `MetadataQueryPort` (hot-path queries) using BoltDB embedded key-value store. Provides sub-millisecond query performance (<1ms) for common lookups.
 
 **Key Interfaces:**
 
-- `Read(ctx context.Context, path string) (Note, error)` - Fetch single note from cache by vault-relative path
-- `List(ctx context.Context) ([]Note, error)` - List all cached notes
+- `Read(ctx context.Context, path string) (Note, error)` - Retrieve single note (CacheReaderPort)
+- `List(ctx context.Context) ([]Note, error)` - List all notes (CacheReaderPort)
+- `BasenameQuery(ctx context.Context, basename string) ([]Note, error)` - Index lookup via `/indices/byBasename`
+- `AliasQuery(ctx context.Context, alias string) ([]Note, error)` - Index lookup via `/indices/byAlias`
+- `FileClassQuery(ctx context.Context, fileClass string) ([]Note, error)` - Index lookup via `/indices/byFileClass`
+- `PathQuery(ctx context.Context, opts PathQueryOptions) ([]Note, error)` - Flexible lookup (full/basename/folder)
 
-**Dependencies:** Go `encoding/json`, `os`, `filepath`, Config (cache directory), Logger.
+**Dependencies:** `go.etcd.io/bbolt`, Config (cache directory), Logger.
 
-**Technology Stack:** JSON deserialization, `os.ReadFile` for reads, `filepath.Walk` for directory listing, optional in-memory memoization with `sync.RWMutex` for frequently accessed notes.
+**Technology Stack:** BoltDB buckets with memory-mapped files, zero-copy reads, secondary indices for O(1) lookups, concurrent read transactions via MVCC.
+
+**Performance Characteristics:** <1ms query performance for hot-path queries (80% of use cases).
+
+### SQLiteCacheReaderAdapter
+
+**Responsibility:** Implement `MetadataQueryPort` (deep-path queries) using SQLite with JSON extraction functions. Provides indexed query performance (<50ms) for complex queries.
+
+**Key Interfaces:**
+
+- `LinkQuery(ctx context.Context, targetPath string) ([]Note, error)` - Find notes linking to target via JSON_EXTRACT
+- `FrontmatterQuery(ctx context.Context, field string, value any) ([]Note, error)` - Generic frontmatter field query
+- `HeadingQuery(ctx context.Context, heading string) ([]Note, error)` - Find notes with specific headings
+
+**Dependencies:** `modernc.org/sqlite`, Config (cache directory), Logger.
+
+**Technology Stack:** SQLite with JSON1 extension, JSON_EXTRACT functions, schema-driven views with pre-extracted columns, composite indices, full-text search (FTS5), pure Go implementation.
+
+**Schema-Driven Views:**
+
+```sql
+CREATE VIEW v_contact_notes AS
+SELECT
+    path,
+    json_extract(frontmatter, '$.name') AS name,
+    json_extract(frontmatter, '$.email') AS email,
+    json_extract(frontmatter, '$.fileClass') AS fileClass
+FROM notes
+WHERE json_extract(frontmatter, '$.fileClass') = 'contact';
+
+CREATE INDEX idx_contact_email ON v_contact_notes(email);
+```
+
+**Performance Characteristics:** <50ms query performance for deep-path queries (20% of use cases).
 
 **Note:** Read adapter optimized for query performance. Can add caching layer without affecting write adapter.
 
@@ -2071,17 +2176,19 @@ graph TD
          CP[ConfigPort]
      end
 
-     subgraph SPIAdapters[Concrete SPI Adapters]
-         VRA[VaultReaderAdapter]
-         VWA[VaultWriterAdapter]
-         JCWA[JSONCacheWriteAdapter]
-         JCRA[JSONCacheReadAdapter]
-         SLA[SchemaLoaderAdapter]
-         SRA[SchemaRegistryAdapter]
-         TFA[TemplateFSAdapter]
-         ICA[InteractiveCLIAdapter]
-         CVA[ConfigViperAdapter]
-     end
+      subgraph SPIAdapters[Concrete SPI Adapters]
+          VRA[VaultReaderAdapter]
+          VWA[VaultWriterAdapter]
+          BDBWA[BoltDBCacheWriterAdapter]
+          BDBRA[BoltDBCacheReaderAdapter]
+          SQLWA[SQLiteCacheWriterAdapter]
+          SQLRA[SQLiteCacheReaderAdapter]
+          SLA[SchemaLoaderAdapter]
+          SRA[SchemaRegistryAdapter]
+          TFA[TemplateFSAdapter]
+          ICA[InteractiveCLIAdapter]
+          CVA[ConfigViperAdapter]
+      end
 
     User --> CLI
     CLI --> CSP
@@ -2109,12 +2216,14 @@ graph TD
         SRP --> SRA
          SRA --> SL
 
-     VSP --> VRA
-     VRP --> VRA
-     VRP --> NLA
-     VW --> VWA
-    CW --> JCWA
-    CR --> JCRA
+      VSP --> VRA
+      VRP --> VRA
+      VRP --> NLA
+      VW --> VWA
+     CW --> BDBWA
+     CW --> SQLWA
+     CR --> BDBRA
+     CR --> SQLRA
      SL --> SLA
     TR --> TFA
     IP --> ICA
@@ -2128,8 +2237,8 @@ graph TD
 - VRP = VaultReaderPort
 - VRA = VaultReaderAdapter (implements both VSP and VRP)
 - VW = VaultWriterPort, VWA = VaultWriterAdapter
-- CW = CacheWriterPort, JCWA = JSONCacheWriteAdapter
-- CR = CacheReaderPort, JCRA = JSONCacheReadAdapter
+- CW = CacheWriterPort, BDBWA = BoltDBCacheWriterAdapter, SQLWA = SQLiteCacheWriterAdapter
+- CR = CacheReaderPort, BDBRA = BoltDBCacheReaderAdapter, SQLRA = SQLiteCacheReaderAdapter
 - FV = FrontmatterValidator
 - SE = SchemaEngine
 - SL = SchemaLoaderPort, SLA = SchemaLoaderAdapter
@@ -2155,7 +2264,8 @@ Dependencies are constructed in a specific order to satisfy the dependency graph
 
 **2. SPI Adapters (driven):**
 - VaultReaderAdapter, VaultWriterAdapter (depend on Config, Logger)
-- JSONCacheWriteAdapter, JSONCacheReadAdapter (depend on Config, Logger)
+- BoltDBCacheWriterAdapter, BoltDBCacheReaderAdapter (depend on Config, Logger)
+- SQLiteCacheWriterAdapter, SQLiteCacheReaderAdapter (depend on Config, Logger)
 - SchemaLoaderAdapter (depends on Config, Logger)
 - SchemaRegistryAdapter (depends on Logger)
 - TemplateLoaderAdapter (depends on Config, Logger)

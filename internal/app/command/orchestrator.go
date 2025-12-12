@@ -20,8 +20,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-const indexingCompletionTimeout = 30 * time.Second
-
 // CLIComander orchestrates use case workflows by coordinating domain
 // services. It acts as the application service layer that CLI, TUI, and LSP
 // adapters invoke
@@ -40,9 +38,8 @@ const indexingCompletionTimeout = 30 * time.Second
 //   - CLIPort: CLI framework adapter for command parsing and user interaction
 //   - TemplateEngine: Domain service for template loading and rendering
 //   - SchemaEngine: Domain service for schema loading and validation
-//
-// - VaultIndexer: Domain service for vault scanning, frontmatter processing,
-// and cache persistence
+//   - VaultIndexer: Domain service for vault scanning, frontmatter processing,
+//     and cache persistence
 //   - Config: Application configuration (vault path, etc.)
 //   - Logger: Structured logging for workflow operations and debugging
 //
@@ -51,6 +48,7 @@ const indexingCompletionTimeout = 30 * time.Second
 type CLIComander struct {
 	cliPort        api.CLIPort
 	templateEngine *template.TemplateEngine
+	vaultIndexer   vault.VaultIndexerInterface
 	vaultWriter    spi.VaultWriterPort
 	config         domain.Config
 	log            zerolog.Logger
@@ -65,10 +63,11 @@ type CLIComander struct {
 // Parameters:
 //   - cliPort: CLI framework adapter implementing CLIPort interface
 //   - templateEngine: Template rendering service for note creation
-//   - schemaEngine: Schema loading and validation service
 //   - vaultIndexer: Vault indexing service for cache rebuild operations
+//   - vaultWriter: Vault writer service for note persistence
 //   - config: Application configuration containing vault paths and settings
 //   - log: Structured logger for workflow operations and debugging
+//   - eventBus: Event bus for domain events
 //
 // Returns:
 // - *CLIComander: Fully initialized workflow coordinator (formerly
@@ -79,6 +78,7 @@ type CLIComander struct {
 func NewCLIComander(
 	cliPort api.CLIPort,
 	templateEngine *template.TemplateEngine,
+	vaultIndexer vault.VaultIndexerInterface,
 	vaultWriter spi.VaultWriterPort,
 	config *domain.Config,
 	log *zerolog.Logger,
@@ -87,6 +87,7 @@ func NewCLIComander(
 	return &CLIComander{
 		cliPort:        cliPort,
 		templateEngine: templateEngine,
+		vaultIndexer:   vaultIndexer,
 		vaultWriter:    vaultWriter,
 		config:         *config,
 		log:            *log,
@@ -220,23 +221,27 @@ func (o *CLIComander) IndexVault(
 ) (vault.IndexStats, error) {
 	o.log.Info().Msg("starting vault indexing")
 
-	if o.eventBus == nil {
+	if o.vaultIndexer == nil {
 		return vault.IndexStats{}, fmt.Errorf(
-			"event bus not configured for IndexVault",
+			"vault indexer not configured for IndexVault",
 		)
 	}
 
-	statsCh, cleanup, err := o.subscribeToIndexingComplete()
+	stats, err := o.vaultIndexer.Build(ctx)
 	if err != nil {
-		return vault.IndexStats{}, err
-	}
-	defer cleanup()
-
-	if publishErr := o.publishIndexCommand(ctx); publishErr != nil {
-		return vault.IndexStats{}, publishErr
+		o.log.Error().Err(err).Msg("vault indexing failed")
+		return vault.IndexStats{}, fmt.Errorf("indexing failed: %w", err)
 	}
 
-	return o.awaitIndexingComplete(ctx, statsCh)
+	o.log.Info().
+		Int("scanned", stats.ScannedCount).
+		Int("indexed", stats.IndexedCount).
+		Int("validation_failures", stats.ValidationFailures).
+		Int("cache_failures", stats.CacheFailures).
+		Dur("duration", stats.Duration).
+		Msg("vault indexing completed")
+
+	return stats, nil
 }
 
 func (o *CLIComander) createNoteFromTemplate(
@@ -259,72 +264,6 @@ func (o *CLIComander) createNoteFromTemplate(
 	)
 	o.log.Debug().Str("notePath", relativePath).Msg("Note constructed")
 	return note, relativePath
-}
-
-func (o *CLIComander) subscribeToIndexingComplete() (
-	statsCh chan vault.IndexStats,
-	cleanup func(),
-	err error,
-) {
-	statsCh = make(chan vault.IndexStats, 1)
-	handler := func(handlerCtx context.Context, event domain.DomainEvent) error {
-		completeEvent, ok := event.(*domain.VaultIndexingCompleteEvent)
-		if !ok {
-			return nil
-		}
-		select {
-		case statsCh <- vault.IndexStats{
-			ScannedCount:        completeEvent.ScannedCount(),
-			IndexedCount:        completeEvent.NotesIndexed(),
-			ParseFailures:       completeEvent.ParseFailures(),
-			CacheFailures:       completeEvent.CacheFailures(),
-			ValidationSuccesses: completeEvent.ValidationSuccesses(),
-			ValidationFailures:  completeEvent.ValidationFailures(),
-			Duration:            completeEvent.Duration(),
-		}:
-			return nil
-		case <-handlerCtx.Done():
-			return handlerCtx.Err()
-		}
-	}
-
-	err = o.eventBus.Subscribe("VaultIndexingComplete", handler)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	cleanup = func() {
-		if unsubErr := o.eventBus.Unsubscribe("VaultIndexingComplete", handler); unsubErr != nil {
-			o.log.Warn().Err(unsubErr).Msg("failed to unsubscribe")
-		}
-	}
-
-	return statsCh, cleanup, nil
-}
-
-func (o *CLIComander) publishIndexCommand(ctx context.Context) error {
-	commandEvent := domain.MustNewCommandIssuedEvent(
-		"IndexVault",
-		map[string]string{"source": "cli"},
-		time.Now(),
-	)
-	return o.eventBus.Publish(ctx, commandEvent)
-}
-
-func (o *CLIComander) awaitIndexingComplete(
-	ctx context.Context,
-	statsCh chan vault.IndexStats,
-) (vault.IndexStats, error) {
-	select {
-	case stats := <-statsCh:
-		return stats, nil
-	case <-ctx.Done():
-		return vault.IndexStats{}, ctx.Err()
-	case <-time.After(indexingCompletionTimeout):
-		return vault.IndexStats{}, fmt.Errorf(
-			"timeout waiting for indexing completion",
-		)
-	}
 }
 
 func (o *CLIComander) publishNoteIndexedEvent(

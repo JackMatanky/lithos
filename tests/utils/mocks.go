@@ -10,11 +10,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/JackMatanky/lithos/internal/app/vault"
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/ports/api"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 )
+
+// IndexStats represents vault indexing statistics.
+// Defined locally to avoid import cycles.
+type IndexStats struct {
+	ScannedCount        int
+	IndexedCount        int
+	ParseFailures       int
+	CacheFailures       int
+	ValidationSuccesses int
+	ValidationFailures  int
+	Duration            time.Duration
+}
 
 // Ensure MockMetadataQueryPort implements MetadataQueryPort.
 var _ spi.MetadataQueryPort = (*MockMetadataQueryPort)(nil)
@@ -31,11 +43,11 @@ var _ spi.VaultWriterPort = (*MockVaultWriterPort)(nil)
 // Ensure MockTemplatePort implements TemplatePort.
 var _ spi.TemplatePort = (*MockTemplatePort)(nil)
 
-// Ensure MockCommandPort implements CommandPort.
-var _ api.CommandPort = (*MockCommandPort)(nil)
+// Ensure MockVaultScannerPort implements VaultScannerPort.
+var _ spi.VaultScannerPort = (*MockVaultScannerPort)(nil)
 
-// Ensure MockCLIPort implements CLIPort.
-var _ api.CLIPort = (*MockCLIPort)(nil)
+// Ensure MockCacheReaderPort implements CacheReaderPort.
+var _ spi.CacheReaderPort = (*MockCacheReaderPort)(nil)
 
 // Ensure MockCacheWriterPort implements CacheWriterPort.
 var _ spi.CacheWriterPort = (*MockCacheWriterPort)(nil)
@@ -212,11 +224,12 @@ func (m *MockVaultWriterPort) WriteContent(
 }
 
 // MockFrontmatterService provides a mock implementation for frontmatter
-// extraction.
+// operations.
 // It allows configuring mock responses for frontmatter operations.
 type MockFrontmatterService struct {
-	extractResult domain.Frontmatter
-	extractError  error
+	extractResult           domain.Frontmatter
+	extractError            error
+	isSchemaCompliantResult error
 }
 
 // NewMockFrontmatterService creates a new MockFrontmatterService with default
@@ -236,6 +249,12 @@ func (m *MockFrontmatterService) SetExtractResult(
 	m.extractError = err
 }
 
+// SetIsSchemaCompliantResult configures the mock to return the specified error
+// on IsSchemaCompliant calls.
+func (m *MockFrontmatterService) SetIsSchemaCompliantResult(err error) {
+	m.isSchemaCompliantResult = err
+}
+
 // Extract returns the configured mock result for frontmatter extraction.
 func (m *MockFrontmatterService) Extract(
 	content []byte,
@@ -243,35 +262,20 @@ func (m *MockFrontmatterService) Extract(
 	return m.extractResult, m.extractError
 }
 
-// MockVaultIndexer provides a mock implementation for vault indexing.
-// It allows configuring mock responses for Build operations.
-type MockVaultIndexer struct {
-	buildResult vault.IndexStats
-	buildError  error
-}
-
-// NewMockVaultIndexer creates a new MockVaultIndexer with default values.
-func NewMockVaultIndexer() *MockVaultIndexer {
-	return &MockVaultIndexer{}
-}
-
-// SetBuildResult configures the mock to return the specified stats and error
-// on Build calls.
-func (m *MockVaultIndexer) SetBuildResult(stats vault.IndexStats, err error) {
-	m.buildResult = stats
-	m.buildError = err
-}
-
-// Build returns the configured mock result for vault indexing.
-func (m *MockVaultIndexer) Build(
+// IsSchemaCompliant returns the configured mock result for schema compliance
+// checking.
+func (m *MockFrontmatterService) IsSchemaCompliant(
 	ctx context.Context,
-) (vault.IndexStats, error) {
-	return m.buildResult, m.buildError
+	noteID string,
+	fm domain.Frontmatter,
+) error {
+	return m.isSchemaCompliantResult
 }
 
 // MockSchemaEngine provides a mock implementation for schema operations.
-// It allows configuring mock responses for schema retrieval.
+// It allows configuring mock responses for schema operations.
 type MockSchemaEngine struct {
+	loadResult      error
 	getSchemaResult domain.Schema
 	getSchemaError  error
 	hasSchemaResult bool
@@ -288,6 +292,12 @@ func NewMockSchemaEngine() *MockSchemaEngine {
 func (m *MockSchemaEngine) SetGetSchemaResult(schema domain.Schema, err error) {
 	m.getSchemaResult = schema
 	m.getSchemaError = err
+}
+
+// SetLoadResult configures the mock to return the specified error on Load
+// calls.
+func (m *MockSchemaEngine) SetLoadResult(err error) {
+	m.loadResult = err
 }
 
 // SetHasSchemaResult configures the mock to return the specified boolean
@@ -309,16 +319,22 @@ func Get[T domain.Schema | domain.Property](
 	return any(m.getSchemaResult).(T), nil
 }
 
+// Load returns the configured mock result for schema loading.
+func (m *MockSchemaEngine) Load(ctx context.Context) error {
+	return m.loadResult
+}
+
 // HasSchema returns the configured mock result for schema existence check.
 func (m *MockSchemaEngine) HasSchema(ctx context.Context, name string) bool {
 	return m.hasSchemaResult
 }
 
 // MockCommandPort provides a mock implementation of CommandPort for testing.
+// Uses interface{} to avoid import cycles.
 type MockCommandPort struct {
 	newNoteResult    domain.Note
 	newNoteError     error
-	indexVaultResult vault.IndexStats
+	indexVaultResult interface{}
 	indexVaultError  error
 }
 
@@ -335,10 +351,9 @@ func (m *MockCommandPort) SetNewNoteResult(note domain.Note, err error) {
 }
 
 // SetIndexVaultResult configures the mock to return the specified stats and
-// error
-// on IndexVault calls.
+// error on IndexVault calls.
 func (m *MockCommandPort) SetIndexVaultResult(
-	stats vault.IndexStats,
+	stats interface{},
 	err error,
 ) {
 	m.indexVaultResult = stats
@@ -356,7 +371,7 @@ func (m *MockCommandPort) NewNote(
 // IndexVault returns the configured mock result for vault indexing.
 func (m *MockCommandPort) IndexVault(
 	ctx context.Context,
-) (vault.IndexStats, error) {
+) (interface{}, error) {
 	return m.indexVaultResult, m.indexVaultError
 }
 
@@ -364,7 +379,7 @@ func (m *MockCommandPort) IndexVault(
 type MockCLIPort struct {
 	startResult error
 	startCalled bool
-	handler     api.CommandPort
+	handler     interface{}
 }
 
 // NewMockCLIPort creates a new MockCLIPort with default values.
@@ -381,7 +396,7 @@ func (m *MockCLIPort) SetStartError(err error) {
 // Start returns the configured mock result for CLI startup.
 func (m *MockCLIPort) Start(
 	ctx context.Context,
-	handler api.CommandPort,
+	handler interface{},
 ) error {
 	m.startCalled = true
 	m.handler = handler
@@ -394,8 +409,34 @@ func (m *MockCLIPort) WasStartCalled() bool {
 }
 
 // GetHandler returns the handler passed to Start.
-func (m *MockCLIPort) GetHandler() api.CommandPort {
+func (m *MockCLIPort) GetHandler() interface{} {
 	return m.handler
+}
+
+// MockVaultIndexer provides a mock implementation for vault indexing.
+// It allows configuring mock responses for Build operations.
+type MockVaultIndexer struct {
+	buildResult IndexStats
+	buildError  error
+}
+
+// NewMockVaultIndexer creates a new MockVaultIndexer with default values.
+func NewMockVaultIndexer() *MockVaultIndexer {
+	return &MockVaultIndexer{}
+}
+
+// SetBuildResult configures the mock to return the specified stats and error
+// on Build calls.
+func (m *MockVaultIndexer) SetBuildResult(stats IndexStats, err error) {
+	m.buildResult = stats
+	m.buildError = err
+}
+
+// Build returns the configured mock result for vault indexing.
+func (m *MockVaultIndexer) Build(
+	ctx context.Context,
+) (IndexStats, error) {
+	return m.buildResult, m.buildError
 }
 
 // MockMetadataQueryPort provides a mock implementation of MetadataQueryPort for
@@ -668,4 +709,182 @@ func (m *MockTemplatePort) Load(
 		return domain.Template{}, fmt.Errorf("template not found: %s", id)
 	}
 	return tmpl, nil
+}
+
+// MockVaultScannerPort provides a mock implementation of VaultScannerPort for
+// testing.
+type MockVaultScannerPort struct {
+	scanAllResult      []dto.VaultFile
+	scanAllError       error
+	scanModifiedResult []dto.VaultFile
+	scanModifiedError  error
+}
+
+// NewMockVaultScannerPort creates a new MockVaultScannerPort with default
+// values.
+func NewMockVaultScannerPort() *MockVaultScannerPort {
+	return &MockVaultScannerPort{}
+}
+
+// SetScanAllResult configures the mock to return the specified files and error
+// on ScanAll calls.
+func (m *MockVaultScannerPort) SetScanAllResult(
+	files []dto.VaultFile,
+	err error,
+) {
+	m.scanAllResult = files
+	m.scanAllError = err
+}
+
+// SetScanModifiedResult configures the mock to return the specified files and
+// error on ScanModified calls.
+func (m *MockVaultScannerPort) SetScanModifiedResult(
+	files []dto.VaultFile,
+	err error,
+) {
+	m.scanModifiedResult = files
+	m.scanModifiedError = err
+}
+
+// ScanAll returns the configured mock result for vault scanning.
+func (m *MockVaultScannerPort) ScanAll(
+	ctx context.Context,
+) ([]dto.VaultFile, error) {
+	return m.scanAllResult, m.scanAllError
+}
+
+// ScanModified returns the configured mock result for modified file scanning.
+func (m *MockVaultScannerPort) ScanModified(
+	ctx context.Context,
+	since time.Time,
+) ([]dto.VaultFile, error) {
+	return m.scanModifiedResult, m.scanModifiedError
+}
+
+// MockCacheReaderPort provides a mock implementation of CacheReaderPort for
+// testing.
+type MockCacheReaderPort struct {
+	readResult domain.Note
+	readError  error
+	listResult []domain.Note
+	listError  error
+}
+
+// NewMockCacheReaderPort creates a new MockCacheReaderPort with default values.
+func NewMockCacheReaderPort() *MockCacheReaderPort {
+	return &MockCacheReaderPort{}
+}
+
+// SetReadResult configures the mock to return the specified note and error on
+// Read calls.
+func (m *MockCacheReaderPort) SetReadResult(note domain.Note, err error) {
+	m.readResult = note
+	m.readError = err
+}
+
+// SetListResult configures the mock to return the specified notes and error on
+// List calls.
+func (m *MockCacheReaderPort) SetListResult(notes []domain.Note, err error) {
+	m.listResult = notes
+	m.listError = err
+}
+
+// Read returns the configured mock result for single note reading.
+func (m *MockCacheReaderPort) Read(
+	ctx context.Context,
+	path string,
+) (domain.Note, error) {
+	return m.readResult, m.readError
+}
+
+// List returns the configured mock result for cache reading.
+func (m *MockCacheReaderPort) List(ctx context.Context) ([]domain.Note, error) {
+	return m.listResult, m.listError
+}
+
+// MockEventBus provides a mock implementation of EventBus for testing.
+type MockEventBus struct {
+	publishResult     error
+	subscribeResult   error
+	unsubscribeResult error
+	shutdownResult    error
+	publishedEvents   []domain.DomainEvent
+	subscribedTypes   []string
+}
+
+// NewMockEventBus creates a new MockEventBus with default values.
+func NewMockEventBus() *MockEventBus {
+	return &MockEventBus{
+		publishResult:     nil,
+		subscribeResult:   nil,
+		unsubscribeResult: nil,
+		shutdownResult:    nil,
+		publishedEvents:   make([]domain.DomainEvent, 0),
+		subscribedTypes:   make([]string, 0),
+	}
+}
+
+// SetPublishResult configures the mock to return the specified error on Publish
+// calls.
+func (m *MockEventBus) SetPublishResult(err error) {
+	m.publishResult = err
+}
+
+// SetSubscribeResult configures the mock to return the specified error on
+// Subscribe calls.
+func (m *MockEventBus) SetSubscribeResult(err error) {
+	m.subscribeResult = err
+}
+
+// SetUnsubscribeResult configures the mock to return the specified error on
+// Unsubscribe calls.
+func (m *MockEventBus) SetUnsubscribeResult(err error) {
+	m.unsubscribeResult = err
+}
+
+// SetShutdownResult configures the mock to return the specified error on
+// Shutdown calls.
+func (m *MockEventBus) SetShutdownResult(err error) {
+	m.shutdownResult = err
+}
+
+// GetPublishedEvents returns all events that were published.
+func (m *MockEventBus) GetPublishedEvents() []domain.DomainEvent {
+	return m.publishedEvents
+}
+
+// GetSubscribedTypes returns all event types that were subscribed to.
+func (m *MockEventBus) GetSubscribedTypes() []string {
+	return m.subscribedTypes
+}
+
+// Publish records the event and returns the configured mock result.
+func (m *MockEventBus) Publish(
+	ctx context.Context,
+	event domain.DomainEvent,
+) error {
+	m.publishedEvents = append(m.publishedEvents, event)
+	return m.publishResult
+}
+
+// Subscribe records the subscription and returns the configured mock result.
+func (m *MockEventBus) Subscribe(
+	eventType string,
+	handler events.EventHandler,
+) error {
+	m.subscribedTypes = append(m.subscribedTypes, eventType)
+	return m.subscribeResult
+}
+
+// Unsubscribe returns the configured mock result.
+func (m *MockEventBus) Unsubscribe(
+	eventType string,
+	handler events.EventHandler,
+) error {
+	return m.unsubscribeResult
+}
+
+// Shutdown returns the configured mock result.
+func (m *MockEventBus) Shutdown(ctx context.Context) error {
+	return m.shutdownResult
 }

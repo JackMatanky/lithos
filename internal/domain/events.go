@@ -53,6 +53,7 @@ type VaultIndexingCompleteEvent struct {
 type FrontmatterValidatedEvent struct {
 	baseEvent
 
+	note       Note
 	schemaName string
 	valid      bool
 	errors     []string
@@ -80,6 +81,45 @@ type CommandIssuedEvent struct {
 
 	command string
 	payload map[string]string
+}
+
+// FileParseRequestedEvent requests parsing of a discovered file.
+type FileParseRequestedEvent struct {
+	baseEvent
+
+	content []byte
+}
+
+// NoteParsedEvent is emitted when a file has been successfully parsed into a
+// Note.
+type NoteParsedEvent struct {
+	baseEvent
+
+	note Note
+}
+
+// FrontmatterValidationRequestedEvent requests validation of frontmatter.
+type FrontmatterValidationRequestedEvent struct {
+	baseEvent
+
+	note Note
+}
+
+// NoteCacheRequestedEvent requests caching of a validated note.
+type NoteCacheRequestedEvent struct {
+	baseEvent
+
+	note Note
+}
+
+// FileDiscoveredEvent is emitted when a new file is discovered during vault
+// scanning.
+type FileDiscoveredEvent struct {
+	baseEvent
+
+	path    string
+	size    int
+	content []byte
 }
 
 func newBaseEvent(
@@ -246,18 +286,19 @@ func (e *VaultIndexingCompleteEvent) ValidationFailures() int {
 
 // NewFrontmatterValidatedEvent constructs a validation event.
 func NewFrontmatterValidatedEvent(
-	noteID, schemaName string,
+	note Note,
+	schemaName string,
 	valid bool,
 	validationErrors []string,
 	occurredAt time.Time,
 ) (*FrontmatterValidatedEvent, error) {
-	if noteID == "" {
-		return nil, fmt.Errorf("note id is required")
+	if note.Path == "" {
+		return nil, fmt.Errorf("note path is required")
 	}
 	if schemaName == "" {
 		return nil, fmt.Errorf("schema name is required")
 	}
-	base, err := newBaseEvent("FrontmatterValidated", noteID, occurredAt)
+	base, err := newBaseEvent("FrontmatterValidated", note.Path, occurredAt)
 	if err != nil {
 		return nil, err
 	}
@@ -266,6 +307,7 @@ func NewFrontmatterValidatedEvent(
 	copy(errs, validationErrors)
 	return &FrontmatterValidatedEvent{
 		baseEvent:  base,
+		note:       note,
 		schemaName: schemaName,
 		valid:      valid,
 		errors:     errs,
@@ -274,13 +316,14 @@ func NewFrontmatterValidatedEvent(
 
 // MustNewFrontmatterValidatedEvent panics when creation fails.
 func MustNewFrontmatterValidatedEvent(
-	noteID, schemaName string,
+	note Note,
+	schemaName string,
 	valid bool,
 	validationErrors []string,
 	occurredAt time.Time,
 ) *FrontmatterValidatedEvent {
 	event, err := NewFrontmatterValidatedEvent(
-		noteID,
+		note,
 		schemaName,
 		valid,
 		validationErrors,
@@ -307,6 +350,21 @@ func (e *FrontmatterValidatedEvent) Errors() []string {
 	copyErrs := make([]string, len(e.errors))
 	copy(copyErrs, e.errors)
 	return copyErrs
+}
+
+// Note returns a copy of the validated note.
+func (e *FrontmatterValidatedEvent) Note() Note {
+	return e.note
+}
+
+// NoteID returns the path of the validated note (for backward compatibility).
+func (e *FrontmatterValidatedEvent) NoteID() string {
+	return e.note.Path
+}
+
+// ValidationErrors returns validation errors (for backward compatibility).
+func (e *FrontmatterValidatedEvent) ValidationErrors() []string {
+	return e.Errors()
 }
 
 // NewSchemaLoadedEvent constructs the event after validation.
@@ -436,4 +494,214 @@ func (e *CommandIssuedEvent) Payload() map[string]string {
 		copyPayload[k] = v
 	}
 	return copyPayload
+}
+
+// NewFileDiscoveredEvent constructs a file discovery event.
+func NewFileDiscoveredEvent(
+	path string,
+	size int,
+	content []byte,
+	occurredAt time.Time,
+) (*FileDiscoveredEvent, error) {
+	if path == "" {
+		return nil, fmt.Errorf("file path is required")
+	}
+	if size < 0 {
+		return nil, fmt.Errorf("file size must be >= 0")
+	}
+	base, err := newBaseEvent("FileDiscovered", path, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	// Defensive copy of content
+	contentCopy := make([]byte, len(content))
+	copy(contentCopy, content)
+	return &FileDiscoveredEvent{
+		baseEvent: base,
+		path:      path,
+		size:      size,
+		content:   contentCopy,
+	}, nil
+}
+
+// MustNewFileDiscoveredEvent panics when construction fails.
+func MustNewFileDiscoveredEvent(
+	path string,
+	size int,
+	content []byte,
+	occurredAt time.Time,
+) *FileDiscoveredEvent {
+	event, err := NewFileDiscoveredEvent(path, size, content, occurredAt)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// Path returns the vault-relative file path.
+func (e *FileDiscoveredEvent) Path() string {
+	return e.path
+}
+
+// Size returns the file size in bytes.
+func (e *FileDiscoveredEvent) Size() int {
+	return e.size
+}
+
+// Content returns a defensive copy of the file content.
+func (e *FileDiscoveredEvent) Content() []byte {
+	contentCopy := make([]byte, len(e.content))
+	copy(contentCopy, e.content)
+	return contentCopy
+}
+
+// NewFileParseRequestedEvent constructs a parse request event.
+func NewFileParseRequestedEvent(
+	path string,
+	content []byte,
+	occurredAt time.Time,
+) (*FileParseRequestedEvent, error) {
+	if path == "" {
+		return nil, fmt.Errorf("file path is required")
+	}
+	base, err := newBaseEvent("FileParseRequested", path, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	// Defensive copy of content
+	contentCopy := make([]byte, len(content))
+	copy(contentCopy, content)
+	return &FileParseRequestedEvent{
+		baseEvent: base,
+		content:   contentCopy,
+	}, nil
+}
+
+// MustNewFileParseRequestedEvent panics when construction fails.
+func MustNewFileParseRequestedEvent(
+	path string,
+	content []byte,
+	occurredAt time.Time,
+) *FileParseRequestedEvent {
+	event, err := NewFileParseRequestedEvent(path, content, occurredAt)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// Content returns a defensive copy of the file content to parse.
+func (e *FileParseRequestedEvent) Content() []byte {
+	contentCopy := make([]byte, len(e.content))
+	copy(contentCopy, e.content)
+	return contentCopy
+}
+
+// NewNoteParsedEvent constructs a note parsed event.
+func NewNoteParsedEvent(
+	note Note,
+	occurredAt time.Time,
+) (*NoteParsedEvent, error) {
+	if note.Path == "" {
+		return nil, fmt.Errorf("note path is required")
+	}
+	base, err := newBaseEvent("NoteParsed", note.Path, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	return &NoteParsedEvent{
+		baseEvent: base,
+		note:      note,
+	}, nil
+}
+
+// MustNewNoteParsedEvent panics when construction fails.
+func MustNewNoteParsedEvent(
+	note Note,
+	occurredAt time.Time,
+) *NoteParsedEvent {
+	event, err := NewNoteParsedEvent(note, occurredAt)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// Note returns a copy of the parsed note.
+func (e *NoteParsedEvent) Note() Note {
+	return e.note
+}
+
+// NewFrontmatterValidationRequestedEvent constructs a validation request event.
+func NewFrontmatterValidationRequestedEvent(
+	note Note,
+	occurredAt time.Time,
+) (*FrontmatterValidationRequestedEvent, error) {
+	if note.Path == "" {
+		return nil, fmt.Errorf("note path is required")
+	}
+	base, err := newBaseEvent(
+		"FrontmatterValidationRequested",
+		note.Path,
+		occurredAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &FrontmatterValidationRequestedEvent{
+		baseEvent: base,
+		note:      note,
+	}, nil
+}
+
+// MustNewFrontmatterValidationRequestedEvent panics when construction fails.
+func MustNewFrontmatterValidationRequestedEvent(
+	note Note,
+	occurredAt time.Time,
+) *FrontmatterValidationRequestedEvent {
+	event, err := NewFrontmatterValidationRequestedEvent(note, occurredAt)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// Note returns a copy of the note to validate.
+func (e *FrontmatterValidationRequestedEvent) Note() Note {
+	return e.note
+}
+
+// NewNoteCacheRequestedEvent constructs a cache request event.
+func NewNoteCacheRequestedEvent(
+	note Note,
+	occurredAt time.Time,
+) (*NoteCacheRequestedEvent, error) {
+	if note.Path == "" {
+		return nil, fmt.Errorf("note path is required")
+	}
+	base, err := newBaseEvent("NoteCacheRequested", note.Path, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	return &NoteCacheRequestedEvent{
+		baseEvent: base,
+		note:      note,
+	}, nil
+}
+
+// MustNewNoteCacheRequestedEvent panics when construction fails.
+func MustNewNoteCacheRequestedEvent(
+	note Note,
+	occurredAt time.Time,
+) *NoteCacheRequestedEvent {
+	event, err := NewNoteCacheRequestedEvent(note, occurredAt)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// Note returns a copy of the note to cache.
+func (e *NoteCacheRequestedEvent) Note() Note {
+	return e.note
 }

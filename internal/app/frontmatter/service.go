@@ -107,7 +107,7 @@ func (s *FrontmatterService) IsSchemaCompliant(
 	}
 
 	validationErr := s.aggregateValidationErrors(validationErrors)
-	s.publishValidationEvent(ctx, noteID, fm.FileClass(), validationErr)
+	s.publishValidationEvent(ctx, noteID, fm, validationErr)
 	return validationErr
 }
 
@@ -343,18 +343,31 @@ func (s *FrontmatterService) aggregateValidationErrors(
 func (s *FrontmatterService) publishValidationEvent(
 	ctx context.Context,
 	noteID string,
-	schemaName string,
+	fm domain.Frontmatter,
 	validationErr error,
 ) {
 	if s.eventBus == nil {
 		return
 	}
+	schemaName := fm.FileClass()
 	if strings.TrimSpace(noteID) == "" {
 		noteID = "frontmatter/" + schemaName
 	}
 	messages := flattenErrors(validationErr)
+
+	// Create a minimal Note object for the event
+	minimalNote := domain.Note{
+		Path:        noteID,
+		Frontmatter: fm,
+		Links:       []domain.Link{},
+		Headings:    []domain.Heading{},
+		Tags:        []string{},
+		Tasks:       []domain.TaskItem{},
+		Backlinks:   []domain.Link{},
+	}
+
 	event, err := domain.NewFrontmatterValidatedEvent(
-		noteID,
+		minimalNote,
 		schemaName,
 		validationErr == nil,
 		messages,

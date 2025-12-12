@@ -19,7 +19,7 @@ func TestDomainEventImplementations(t *testing.T) {
 			time.Now(),
 		),
 		domain.MustNewFrontmatterValidatedEvent(
-			"note-999",
+			domain.Note{Path: "note-999"},
 			"contact",
 			true,
 			nil,
@@ -118,7 +118,7 @@ func TestFrontmatterValidatedEvent(t *testing.T) {
 	now := time.Now()
 	errors := []string{"missing title"}
 	event := domain.MustNewFrontmatterValidatedEvent(
-		"note-33",
+		domain.Note{Path: "note-33"},
 		"contact",
 		false,
 		errors,
@@ -134,7 +134,7 @@ func TestFrontmatterValidatedEvent(t *testing.T) {
 
 func TestFrontmatterValidatedValidation(t *testing.T) {
 	_, err := domain.NewFrontmatterValidatedEvent(
-		"",
+		domain.Note{Path: ""},
 		"contact",
 		true,
 		nil,

@@ -196,16 +196,18 @@ func (c *Container) VaultIndexer() (*vault.VaultIndexer, error) {
 // initialization.
 func (c *Container) CLIOrchestrator() (*command.CLIComander, error) {
 	if c.cliOrchestrator == nil {
-		if _, err := c.VaultIndexer(); err != nil {
+		vaultIndexer, err := c.VaultIndexer()
+		if err != nil {
 			return nil, err
 		}
-		if _, err := c.QueryService(); err != nil {
-			return nil, err
+		if _, queryErr := c.QueryService(); queryErr != nil {
+			return nil, queryErr
 		}
 
 		c.cliOrchestrator = command.NewCLIComander(
 			cli.NewCobraCLIAdapter(c.logger),
 			c.TemplateEngine(),
+			vaultIndexer,
 			vaultAdapter.NewVaultWriterAdapter(c.config, c.logger),
 			&c.config,
 			&c.logger,

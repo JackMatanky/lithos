@@ -58,7 +58,7 @@ func TestNewService(t *testing.T) {
 
 			// Verify subscription by publishing event
 			event, err := domain.NewFrontmatterValidatedEvent(
-				"note1",
+				domain.Note{Path: "note1"},
 				"test_schema",
 				true,
 				nil,
@@ -99,7 +99,7 @@ func TestService_ValidationStats(t *testing.T) {
 			svc := metrics.NewService(bus, log)
 
 			event, err := domain.NewFrontmatterValidatedEvent(
-				"note1",
+				domain.Note{Path: "note1"},
 				"test_schema",
 				true,
 				nil,
@@ -127,7 +127,7 @@ func TestService_ValidationStats(t *testing.T) {
 
 			validationErrs := []string{"title is required", "status is invalid"}
 			event, err := domain.NewFrontmatterValidatedEvent(
-				"note2",
+				domain.Note{Path: "note2"},
 				"test_schema",
 				false,
 				validationErrs,
@@ -154,7 +154,7 @@ func TestService_ValidationStats(t *testing.T) {
 		// Publish 3 successes and 2 failures
 		for range 3 {
 			event, err := domain.NewFrontmatterValidatedEvent(
-				"success",
+				domain.Note{Path: "note1"},
 				"test_schema",
 				true,
 				nil,
@@ -168,7 +168,7 @@ func TestService_ValidationStats(t *testing.T) {
 		for range 2 {
 			validationErrs := []string{"error"}
 			event, err := domain.NewFrontmatterValidatedEvent(
-				"failure",
+				domain.Note{Path: "failure"},
 				"test_schema",
 				false,
 				validationErrs,
@@ -238,7 +238,7 @@ func TestService_HandleFrontmatterValidated(t *testing.T) {
 						validationErrs = []string{"error"}
 					}
 					event, err := domain.NewFrontmatterValidatedEvent(
-						"note",
+						domain.Note{Path: "note"},
 						"test_schema",
 						isValid,
 						validationErrs,
@@ -292,7 +292,7 @@ func TestService_ConcurrentStatsReads(t *testing.T) {
 				defer wg.Done()
 				for range 100 {
 					event, err := domain.NewFrontmatterValidatedEvent(
-						"note",
+						domain.Note{Path: "note"},
 						"test_schema",
 						true,
 						nil,

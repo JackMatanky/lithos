@@ -9,12 +9,39 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
-	mocks "github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// mockCommandPort provides a mock implementation of CommandPort for testing.
+type mockCommandPort struct {
+	newNoteResult    domain.Note
+	newNoteError     error
+	indexVaultResult vault.IndexStats
+	indexVaultError  error
+}
+
+func (m *mockCommandPort) SetNewNoteResult(note domain.Note, err error) {
+	m.newNoteResult = note
+	m.newNoteError = err
+}
+
+func (m *mockCommandPort) NewNote(
+	ctx context.Context,
+	templateID domain.TemplateID,
+) (
+	domain.Note, error,
+) {
+	return m.newNoteResult, m.newNoteError
+}
+
+func (m *mockCommandPort) IndexVault(
+	ctx context.Context,
+) (vault.IndexStats, error) {
+	return m.indexVaultResult, m.indexVaultError
+}
 
 // TestCobraCLIAdapterStructExists ensures the adapter can be constructed.
 func TestCobraCLIAdapterStructExists(t *testing.T) {
@@ -31,7 +58,7 @@ func TestCobraCLIAdapterStructExists(t *testing.T) {
 func TestStart_StoresHandlerCorrectly(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
-	mockHandler := &mocks.MockCommandPort{}
+	mockHandler := &mockCommandPort{}
 
 	// Start should store the handler and execute successfully (showing help
 	// when no args)
@@ -140,7 +167,7 @@ func TestBuildNewCommand_ParsesViewFlagCorrectly(t *testing.T) {
 func TestHandleNewCommand_ExtractsTemplateIdFromArgs(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
-	mockHandler := &mocks.MockCommandPort{}
+	mockHandler := &mockCommandPort{}
 
 	// Set up mock to return success
 	expectedNote, _ := domain.NewNote(
@@ -183,7 +210,7 @@ func TestHandleNewCommand_CallsHandlerNewNoteWithCorrectArguments(
 ) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
-	mockHandler := &mocks.MockCommandPort{}
+	mockHandler := &mockCommandPort{}
 
 	// Set up mock to return success
 	expectedNote, _ := domain.NewNote(
@@ -340,7 +367,7 @@ func TestBuildIndexCommand_CreatesCommandWithCorrectStructure(t *testing.T) {
 // handler.
 func TestHandleIndexCommand_CallsHandlerIndexVault(t *testing.T) {
 	logger := zerolog.New(nil)
-	mockHandler := mocks.NewMockCommandPort()
+	mockHandler := &mockCommandPort{}
 	adapter := NewCobraCLIAdapter(logger)
 	adapter.handler = mockHandler
 
