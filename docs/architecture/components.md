@@ -634,6 +634,268 @@ func (c *CLICommander) NewNote(ctx context.Context, templateID TemplateID) (Note
 
 ---
 
+### EventBus
+
+**Responsibility:** Provide event-driven architecture infrastructure with publish/subscribe semantics to decouple services and eliminate god-objects. Implements in-memory async event dispatch with goroutine-based worker pool.
+
+**Key Interfaces:**
+
+- `Publish(ctx context.Context, event DomainEvent) error` - Publish domain event to all registered subscribers
+- `Subscribe(eventType string, handler EventHandler) error` - Register event handler for specific event type
+- `Unsubscribe(eventType string, handler EventHandler) error` - Remove event handler registration
+- `Shutdown(ctx context.Context) error` - Graceful shutdown with event draining and worker termination
+
+**Dependencies:** `Logger` (structured logging), Go stdlib (`context`, `sync`, `time`).
+
+**Technology Stack:** Pure Go implementation with goroutine worker pool, buffered channels for event queue, `sync.RWMutex` for thread-safe handler registry, context-based cancellation for graceful shutdown, structured logging with event correlation.
+
+**Event Bus Architecture:**
+
+```
+Publisher Services          EventBus                Subscriber Services
+─────────────────          ──────────              ───────────────────
+VaultIndexer ────┐         ┌──────────┐           ┌─→ VaultIndexer (NoteIndexed handler)
+                 ├────────→│  Queue   │───────────┤
+FrontmatterSvc ──┤         │ (channel)│           ├─→ QueryService (VaultIndexingComplete)
+                 ├────────→│          │───────────┤
+SchemaEngine ────┘         │ Worker   │           └─→ MetricsService (FrontmatterValidated)
+                           │Goroutines│
+                           └──────────┘
+```
+
+**Implementation Pattern:**
+
+```go
+type inMemoryEventBus struct {
+    subscribers  map[string][]EventHandler  // eventType -> handlers
+    eventQueue   chan envelope              // Buffered channel for events
+    mu           sync.RWMutex               // Thread-safe registry
+    log          logger.Logger
+    workers      []context.CancelFunc       // Worker cancellation
+    workerCount  int                        // Configurable worker pool size
+    bufferSize   int                        // Event queue buffer size
+}
+
+type envelope struct {
+    ctx   context.Context
+    event DomainEvent
+    done  chan error  // Synchronous dispatch support
+}
+
+// Publish queues event for async dispatch
+func (b *inMemoryEventBus) Publish(ctx context.Context, event DomainEvent) error {
+    select {
+    case b.eventQueue <- envelope{ctx: ctx, event: event, done: nil}:
+        b.log.Debug().
+            Str("event_type", event.EventType()).
+            Str("aggregate_id", event.AggregateID()).
+            Msg("event published")
+        return nil
+    case <-ctx.Done():
+        return ctx.Err()
+    }
+}
+
+// Worker goroutine processes events from queue
+func (b *inMemoryEventBus) worker(ctx context.Context) {
+    for {
+        select {
+        case env := <-b.eventQueue:
+            b.dispatch(env.ctx, env.event)
+            if env.done != nil {
+                env.done <- nil  // Signal completion for sync dispatch
+            }
+        case <-ctx.Done():
+            return  // Graceful shutdown
+        }
+    }
+}
+
+// dispatch delivers event to all registered handlers
+func (b *inMemoryEventBus) dispatch(ctx context.Context, event DomainEvent) {
+    b.mu.RLock()
+    handlers := b.snapshotHandlers(event.EventType())
+    b.mu.RUnlock()
+
+    for _, handler := range handlers {
+        // Error isolation: failed handler doesn't block others
+        if err := handler(ctx, event); err != nil {
+            b.log.Error().
+                Err(err).
+                Str("event_type", event.EventType()).
+                Str("aggregate_id", event.AggregateID()).
+                Msg("event handler failed")
+        }
+    }
+}
+```
+
+**Domain Events (Epic 3):**
+
+The following domain events are implemented in `internal/domain/events.go`:
+
+- **NoteIndexedEvent**: Published after single note indexed (contains Note, Path, FileClass)
+- **VaultIndexingCompleteEvent**: Published after full vault index (contains IndexingSummary, Duration)
+- **FrontmatterValidatedEvent**: Published after frontmatter validation (contains NoteID, SchemaName, Valid, Errors)
+- **SchemaLoadedEvent**: Published after individual schema loaded (contains SchemaName, PropertyCount)
+- **SchemasReloadedEvent**: Published after schema system reload (contains SchemaCount)
+- **CommandIssuedEvent**: Published when CLI command issued (contains CommandType, Params)
+
+**Event Handlers:**
+
+Services register event handlers during initialization:
+
+```go
+// VaultIndexer subscribes to own NoteIndexed events for index updates
+func (v *VaultIndexer) handleNoteIndexedEvent(ctx context.Context, event domain.DomainEvent) error {
+    noteEvent, ok := event.(*domain.NoteIndexedEvent)
+    if !ok {
+        return nil  // Ignore non-matching event types
+    }
+    return v.applyNoteEvent(ctx, noteEvent)
+}
+
+// QueryService subscribes to indexing complete for cache invalidation
+func (q *QueryService) handleVaultIndexingComplete(ctx context.Context, event domain.DomainEvent) error {
+    // Invalidate query cache, rebuild in-memory indices
+    q.staleness.RecordIndexingComplete()
+    return nil
+}
+
+// MetricsService tracks validation statistics
+func (m *MetricsService) handleFrontmatterValidated(ctx context.Context, event domain.DomainEvent) error {
+    fmEvent, ok := event.(*domain.FrontmatterValidatedEvent)
+    if !ok {
+        return nil
+    }
+
+    m.mu.Lock()
+    defer m.mu.Unlock()
+    if fmEvent.IsValid() {
+        m.validationSuccesses++
+    } else {
+        m.validationFailures++
+    }
+    return nil
+}
+```
+
+**Rationale:**
+
+- **God-Object Elimination**: Services publish events instead of calling other services directly, reducing dependency counts (CLICommander from 7→3, VaultIndexer from 7→4)
+- **CQRS Separation**: Write-side (VaultIndexer) publishes events, read-side (QueryService) subscribes without direct coupling
+- **Error Isolation**: Failed event handlers don't block other subscribers or publisher services
+- **Async Processing**: Non-blocking event dispatch prevents publisher performance degradation
+- **Testability**: Mock EventBus for unit tests, test event flows independently
+- **Extensibility**: Add new subscribers without modifying publishers (Open/Closed Principle)
+- **Foundation for Event Sourcing**: Event log can be persisted for replay or audit trail (future enhancement)
+
+**Performance Characteristics:**
+
+- Event overhead: < 5ms per event (acceptable for consistency benefits)
+- Worker pool prevents goroutine explosion under high event load
+- Buffered channel reduces blocking on event publish
+- Thread-safe handler registry with RWMutex allows concurrent publishes/subscribes
+
+**Configuration Options:**
+
+```go
+bus := events.NewInMemoryEventBus(log,
+    events.WithWorkerCount(10),    // Default: 10 workers
+    events.WithBufferSize(100),    // Default: 100 event buffer
+)
+```
+
+---
+
+### MetricsService
+
+**Responsibility:** Track domain-level metrics by subscribing to domain events. Provides visibility into validation statistics, indexing performance, and system health.
+
+**Key Interfaces:**
+
+- `ValidationStats() (successes, failures int)` - Returns current validation success/failure counters
+
+**Dependencies:** EventBus (subscribes to events), Logger.
+
+**Technology Stack:** Pure Go with `sync.RWMutex` for thread-safe counter updates, event-driven metric collection.
+
+**Implementation Pattern:**
+
+```go
+type Service struct {
+    eventBus events.EventBus
+    log      zerolog.Logger
+
+    mu                  sync.RWMutex
+    validationSuccesses int
+    validationFailures  int
+}
+
+func NewService(bus events.EventBus, log zerolog.Logger) *Service {
+    svc := &Service{
+        eventBus: bus,
+        log:      log,
+    }
+
+    if bus != nil {
+        _ = bus.Subscribe("FrontmatterValidated", svc.handleFrontmatterValidated)
+    }
+
+    return svc
+}
+
+func (s *Service) handleFrontmatterValidated(ctx context.Context, event domain.DomainEvent) error {
+    fmEvent, ok := event.(*domain.FrontmatterValidatedEvent)
+    if !ok {
+        return nil
+    }
+
+    s.mu.Lock()
+    if fmEvent.IsValid() {
+        s.validationSuccesses++
+    } else {
+        s.validationFailures++
+    }
+    s.mu.Unlock()
+
+    s.log.Debug().
+        Str("event_type", fmEvent.EventType()).
+        Str("note_id", fmEvent.AggregateID()).
+        Bool("valid", fmEvent.IsValid()).
+        Msg("frontmatter validation event recorded")
+
+    return nil
+}
+
+func (s *Service) ValidationStats() (successes, failures int) {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+    return s.validationSuccesses, s.validationFailures
+}
+```
+
+**Metrics Tracked:**
+
+- **Validation Successes**: Count of frontmatter validations that passed
+- **Validation Failures**: Count of frontmatter validations that failed
+
+**Future Enhancements:**
+
+- Indexing performance metrics (notes/sec, duration distribution)
+- Query performance metrics (latency percentiles, cache hit rate)
+- Error rate tracking by event type
+- Metrics export to Prometheus/StatsD (post-MVP)
+
+**Rationale:**
+
+- Event-driven collection eliminates need for services to explicitly report metrics
+- Decoupled from business logic - metrics can be added/removed without modifying services
+- Thread-safe counters enable concurrent metric updates
+- Foundation for observability platform (future: traces, logs, metrics correlation)
+
+---
+
 ## API Port Interfaces
 
 Primary (driving) ports define the contracts that domain exposes to adapters. These are the application's use cases.

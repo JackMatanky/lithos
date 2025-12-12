@@ -111,13 +111,29 @@ func NewFrontmatter(fields map[string]interface{}) Frontmatter {
 }
 
 // FileClass returns the fileClass field from the frontmatter.
-// Uses the configured key (default "fileClass") to extract schema reference.
+// Uses the configured key (default "fileClass") to extract schema reference
+// and gracefully falls back to the standard key for backward compatibility.
 func (f Frontmatter) FileClass() string {
-	// For now, use default key until config singleton is available
-	key := "fileClass" // defaultFileClassKey from config.go
-	if val, ok := f.Fields[key].(string); ok {
-		return val
+	primaryKey := Instance().FileClassKey
+	candidateKeys := []string{primaryKey}
+
+	// Preserve compatibility with historical vaults that use "fileClass" or
+	// "file_class" regardless of the configured key.
+	switch primaryKey {
+	case "fileClass":
+		candidateKeys = append(candidateKeys, "file_class")
+	case "file_class":
+		candidateKeys = append(candidateKeys, "fileClass")
+	default:
+		candidateKeys = append(candidateKeys, "fileClass", "file_class")
 	}
+
+	for _, key := range candidateKeys {
+		if val, ok := f.Fields[key].(string); ok && val != "" {
+			return val
+		}
+	}
+
 	return ""
 }
 

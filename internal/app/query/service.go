@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
@@ -46,6 +47,7 @@ type QueryService struct {
 	router       *queryRouter        // Handles smart query routing
 	config       domain.Config       // For file_class_key configuration
 	log          zerolog.Logger
+	eventBus     events.EventBus
 
 	// Observability
 	observer *StalenessObserver // Records cache staleness events
@@ -143,6 +145,7 @@ func NewQueryService(
 	sqliteReader spi.CacheReaderPort,
 	config domain.Config,
 	log zerolog.Logger,
+	eventBus events.EventBus,
 ) *QueryService {
 	// Extract query ports from readers
 	var boltQuery, sqliteQuery spi.MetadataQueryPort
@@ -153,18 +156,21 @@ func NewQueryService(
 		sqliteQuery = mq
 	}
 
-	return &QueryService{
+	service := &QueryService{
 		boltReader:     boltReader,
 		sqliteReader:   sqliteReader,
 		router:         newQueryRouter(boltQuery, sqliteQuery),
 		config:         config,
 		log:            log,
+		eventBus:       eventBus,
 		observer:       NewStalenessObserver(log),
 		boltFailures:   NewBackendFailureTracker("boltdb", log),
 		sqliteFailures: NewBackendFailureTracker("sqlite", log),
 		// mu is initialized to zero value (unlocked state)
 		mu: sync.RWMutex{},
 	}
+	service.registerSubscribers()
+	return service
 }
 
 // IDQuery retrieves a note by its path (formerly NoteID).
@@ -471,6 +477,49 @@ func (q *QueryService) GetBackendFailureStats() map[string]int {
 func (q *QueryService) ResetBackendFailures() {
 	q.boltFailures = NewBackendFailureTracker("boltdb", q.log)
 	q.sqliteFailures = NewBackendFailureTracker("sqlite", q.log)
+}
+
+func (q *QueryService) registerSubscribers() {
+	if q.eventBus == nil {
+		return
+	}
+	_ = q.eventBus.Subscribe(
+		"VaultIndexingComplete",
+		q.handleVaultIndexingComplete,
+	)
+}
+
+func (q *QueryService) handleVaultIndexingComplete(
+	ctx context.Context,
+	event domain.DomainEvent,
+) error {
+	completeEvent, ok := event.(*domain.VaultIndexingCompleteEvent)
+	if !ok {
+		return nil
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.boltFailures != nil {
+		q.boltFailures.RecordSuccess()
+	}
+	if q.sqliteFailures != nil {
+		q.sqliteFailures.RecordSuccess()
+	}
+	if q.observer != nil {
+		q.observer.RecordIndexingComplete(
+			completeEvent.NotesIndexed(),
+			completeEvent.Duration(),
+		)
+	}
+
+	q.log.Info().
+		Int("indexed", completeEvent.NotesIndexed()).
+		Int("scanned", completeEvent.ScannedCount()).
+		Dur("duration", completeEvent.Duration()).
+		Msg("query service observed vault indexing completion")
+
+	return nil
 }
 
 // executeMetadataQuery executes a metadata query with smart routing and

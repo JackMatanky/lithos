@@ -77,6 +77,7 @@ func newTestQueryService(
 		reader, // sqliteReader
 		domain.DefaultConfig(),
 		logger,
+		nil,
 	)
 }
 

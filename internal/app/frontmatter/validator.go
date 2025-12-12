@@ -1,7 +1,9 @@
 package frontmatter
 
 import (
+	"fmt"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -55,8 +57,9 @@ func (v *StringValidator) Validate(
 	value any,
 	spec domain.PropertySpec,
 ) error {
-	// Type assertion to ensure we have a string value
-	stringValue, ok := value.(string)
+	// Coerce numeric and boolean scalars to strings so YAML numbers without
+	// quotes can still satisfy string specs (common user shorthand).
+	stringValue, ok := coerceToStringValue(value)
 	if !ok {
 		return errors.NewFrontmatterError(
 			"field value is not a string",
@@ -65,7 +68,6 @@ func (v *StringValidator) Validate(
 		)
 	}
 
-	// Type assertion to ensure we have a StringSpec
 	stringSpec, ok := spec.(*domain.StringSpec)
 	if !ok {
 		return errors.NewFrontmatterError(
@@ -111,11 +113,15 @@ func (v *NumberValidator) Validate(
 	// Type assertion to ensure we have a NumberSpec
 	numberSpec, ok := spec.(*domain.NumberSpec)
 	if !ok {
-		return errors.NewFrontmatterError(
-			"property spec is not NumberSpec",
-			fieldName,
-			nil,
-		)
+		if valueSpec, isValue := spec.(domain.NumberSpec); isValue {
+			numberSpec = &valueSpec
+		} else {
+			return errors.NewFrontmatterError(
+				"property spec is not NumberSpec",
+				fieldName,
+				nil,
+			)
+		}
 	}
 
 	// Validate constraints
@@ -129,31 +135,38 @@ func (v *DateValidator) Validate(
 	value any,
 	spec domain.PropertySpec,
 ) error {
-	// Type assertion to ensure we have a string value (dates are stored as
-	// strings)
-	dateValue, ok := value.(string)
+	// Type assertion to handle string or time.Time values
+	// YAML parsers often decode dates into time.Time when unquoted
+	dateSpec, ok := spec.(*domain.DateSpec)
 	if !ok {
+		if valueSpec, isValue := spec.(domain.DateSpec); isValue {
+			dateSpec = &valueSpec
+		} else {
+			return errors.NewFrontmatterError(
+				"property spec is not DateSpec",
+				fieldName,
+				nil,
+			)
+		}
+	}
+
+	format := dateSpec.Format
+	if format == "" {
+		format = "2006-01-02T15:04:05Z07:00" // RFC3339
+	}
+
+	var dateValue string
+	switch v := value.(type) {
+	case string:
+		dateValue = v
+	case time.Time:
+		dateValue = v.Format(format)
+	default:
 		return errors.NewFrontmatterError(
 			"field value is not a string",
 			fieldName,
 			nil,
 		)
-	}
-
-	// Type assertion to ensure we have a DateSpec
-	dateSpec, ok := spec.(*domain.DateSpec)
-	if !ok {
-		return errors.NewFrontmatterError(
-			"property spec is not DateSpec",
-			fieldName,
-			nil,
-		)
-	}
-
-	// Use RFC3339 as default format if none specified
-	format := dateSpec.Format
-	if format == "" {
-		format = "2006-01-02T15:04:05Z07:00" // RFC3339
 	}
 
 	// Try to parse the date with the specified format
@@ -187,17 +200,18 @@ func (v *BoolValidator) Validate(
 	}
 
 	// Type assertion to ensure we have a BoolSpec
-	_, ok = spec.(*domain.BoolSpec)
-	if !ok {
-		return errors.NewFrontmatterError(
-			"property spec is not BoolSpec",
-			fieldName,
-			nil,
-		)
+	if _, isPtr := spec.(*domain.BoolSpec); isPtr {
+		return nil
+	}
+	if _, isValue := spec.(domain.BoolSpec); isValue {
+		return nil
 	}
 
-	// BoolSpec has no additional constraints to validate
-	return nil
+	return errors.NewFrontmatterError(
+		"property spec is not BoolSpec",
+		fieldName,
+		nil,
+	)
 }
 
 // extractNumericValue extracts a float64 value from an any with
@@ -252,4 +266,25 @@ func (v *NumberValidator) validateNumericConstraints(
 
 	// TODO: Add step validation when needed
 	return nil
+}
+
+func coerceToStringValue(value any) (string, bool) {
+	switch v := value.(type) {
+	case string:
+		return v, true
+	case fmt.Stringer:
+		return v.String(), true
+	case int:
+		return strconv.Itoa(v), true
+	case int64:
+		return strconv.FormatInt(v, 10), true
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), true
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32), true
+	case bool:
+		return strconv.FormatBool(v), true
+	default:
+		return "", false
+	}
 }

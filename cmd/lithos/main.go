@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/adapters/api/cli"
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/boltdb"
@@ -13,7 +14,9 @@ import (
 	templateAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/template"
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/command"
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
@@ -22,6 +25,8 @@ import (
 	"github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/rs/zerolog"
 )
+
+const eventBusShutdownTimeout = 5 * time.Second
 
 type storageResources struct {
 	boltWriter   *boltdb.BoltDBCacheWriteAdapter
@@ -33,8 +38,10 @@ type storageResources struct {
 
 // Container manages dependency injection and service lifecycle.
 type Container struct {
-	config domain.Config
-	logger zerolog.Logger
+	config         domain.Config
+	logger         zerolog.Logger
+	eventBus       events.EventBus
+	metricsService *metrics.Service
 
 	// Services with lazy initialization
 	schemaEngine       *schema.SchemaEngine
@@ -49,9 +56,12 @@ type Container struct {
 
 // NewContainer creates a new dependency injection container.
 func NewContainer(cfg domain.Config, log zerolog.Logger) *Container {
+	eventBus := events.NewInMemoryEventBus(logger.NewZerologAdapter(log))
 	return &Container{
 		config:             cfg,
 		logger:             log,
+		eventBus:           eventBus,
+		metricsService:     metrics.NewService(eventBus, log),
 		schemaEngine:       nil,
 		storage:            nil,
 		templateEngine:     nil,
@@ -75,6 +85,7 @@ func (c *Container) SchemaEngine() (*schema.SchemaEngine, error) {
 			schemaLoader,
 			schemaRegistry,
 			c.logger,
+			c.eventBus,
 		)
 		if err != nil {
 			return nil, err
@@ -139,6 +150,7 @@ func (c *Container) FrontmatterService() (*frontmatter.FrontmatterService, error
 			schemaEngine,
 			c.MarkdownParser(),
 			c.logger,
+			c.eventBus,
 		)
 	}
 	return c.frontmatterService, nil
@@ -175,6 +187,7 @@ func (c *Container) VaultIndexer() (*vault.VaultIndexer, error) {
 		schemaEngine,
 		c.config,
 		c.logger,
+		c.eventBus,
 	)
 	return c.vaultIndexer, nil
 }
@@ -183,22 +196,20 @@ func (c *Container) VaultIndexer() (*vault.VaultIndexer, error) {
 // initialization.
 func (c *Container) CLIOrchestrator() (*command.CLIComander, error) {
 	if c.cliOrchestrator == nil {
-		vaultIndexer, err := c.VaultIndexer()
-		if err != nil {
+		if _, err := c.VaultIndexer(); err != nil {
 			return nil, err
 		}
-		if _, err = c.QueryService(); err != nil {
+		if _, err := c.QueryService(); err != nil {
 			return nil, err
 		}
 
 		c.cliOrchestrator = command.NewCLIComander(
 			cli.NewCobraCLIAdapter(c.logger),
 			c.TemplateEngine(),
-			nil, // schemaEngine - can be added if needed
-			vaultIndexer,
 			vaultAdapter.NewVaultWriterAdapter(c.config, c.logger),
 			&c.config,
 			&c.logger,
+			c.eventBus,
 		)
 	}
 	return c.cliOrchestrator, nil
@@ -208,6 +219,14 @@ func (c *Container) CLIOrchestrator() (*command.CLIComander, error) {
 func (c *Container) Cleanup() {
 	if c.storage != nil {
 		c.storage.cleanup()
+	}
+	if c.eventBus != nil {
+		ctx, cancel := context.WithTimeout(
+			context.Background(),
+			eventBusShutdownTimeout,
+		)
+		defer cancel()
+		_ = c.eventBus.Shutdown(ctx)
 	}
 }
 
@@ -228,6 +247,7 @@ func (c *Container) QueryService() (*query.QueryService, error) {
 		storage.sqliteReader,
 		c.config,
 		c.logger,
+		c.eventBus,
 	)
 	return c.queryService, nil
 }

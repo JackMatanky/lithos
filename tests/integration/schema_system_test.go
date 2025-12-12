@@ -74,6 +74,7 @@ func TestSchemaEngine_LoadValidSchemas(t *testing.T) {
 		schemaLoader,
 		schemaRegistry,
 		log,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -177,6 +178,7 @@ func TestSchemaEngine_ComplexInheritance(t *testing.T) {
 		schemaLoader,
 		schemaRegistry,
 		log,
+		nil,
 	)
 	require.NoError(t, err)
 
@@ -254,6 +256,7 @@ func TestSchemaEngine_ErrorMessages(t *testing.T) {
 		schemaLoader,
 		schemaRegistry,
 		log,
+		nil,
 	)
 	require.NoError(t, err)
 

@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -60,6 +62,8 @@ type VaultIndexer struct {
 	schemaEngine       *schema.SchemaEngine
 	config             domain.Config
 	log                zerolog.Logger
+	eventBus           events.EventBus
+	suppressCount      atomic.Int32
 }
 
 // NewVaultIndexer creates a new VaultIndexer with injected dependencies.
@@ -89,8 +93,9 @@ func NewVaultIndexer(
 	schemaEngine *schema.SchemaEngine,
 	config domain.Config,
 	log zerolog.Logger,
+	eventBus events.EventBus,
 ) *VaultIndexer {
-	return &VaultIndexer{
+	indexer := &VaultIndexer{
 		vaultScanner:       vaultScanner,
 		boltWriter:         boltWriter,
 		sqliteWriter:       sqliteWriter,
@@ -100,7 +105,17 @@ func NewVaultIndexer(
 		schemaEngine:       schemaEngine,
 		config:             config,
 		log:                log,
+		eventBus:           eventBus,
+		suppressCount:      atomic.Int32{},
 	}
+	if eventBus != nil {
+		_ = eventBus.Subscribe(
+			"CommandIssued",
+			indexer.handleCommandIssuedEvent,
+		)
+		_ = eventBus.Subscribe("NoteIndexed", indexer.handleNoteIndexedEvent)
+	}
+	return indexer
 }
 
 // Build orchestrates the complete vault indexing workflow.
@@ -131,6 +146,9 @@ func NewVaultIndexer(
 //
 // Thread-safe: Safe for concurrent calls (dependencies handle synchronization).
 func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
+	v.suppressCount.Add(1)
+	defer v.suppressCount.Add(-1)
+
 	startTime := time.Now()
 	stats := IndexStats{
 		ScannedCount:        0,
@@ -197,6 +215,7 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 
 	// Step 5: Log summary
 	v.logStats(stats)
+	v.publishIndexingCompleteEvent(ctx, stats)
 
 	return stats, nil
 }
@@ -228,6 +247,9 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 //
 // Thread-safe: Safe for concurrent calls (dependencies handle synchronization).
 func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
+	v.suppressCount.Add(1)
+	defer v.suppressCount.Add(-1)
+
 	startTime := time.Now()
 	stats := IndexStats{
 		ScannedCount:        0,
@@ -675,7 +697,8 @@ func (v *VaultIndexer) processFile(
 	// If frontmatterService is available, validate the parsed frontmatter
 	if v.frontmatterService != nil {
 		if validationErr := v.frontmatterService.IsSchemaCompliant(
-			ctx, note.Frontmatter,
+			ctx, note.Path,
+			note.Frontmatter,
 		); validationErr != nil {
 			stats.ValidationFailures++
 			v.log.Warn().
@@ -700,6 +723,7 @@ func (v *VaultIndexer) processFile(
 		// Continue - don't abort indexing
 	} else {
 		stats.IndexedCount++
+		v.publishNoteIndexedEvent(ctx, note)
 	}
 }
 
@@ -717,6 +741,118 @@ func (v *VaultIndexer) logStats(stats IndexStats) {
 		Int("validation_failures", stats.ValidationFailures).
 		Dur("duration", stats.Duration).
 		Msg("vault indexing complete")
+}
+
+func (v *VaultIndexer) publishNoteIndexedEvent(
+	ctx context.Context,
+	note domain.Note,
+) {
+	if v.eventBus == nil {
+		return
+	}
+	event, err := domain.NewNoteIndexedEvent(note, time.Now())
+	if err != nil {
+		v.log.Warn().
+			Err(err).
+			Str("path", note.Path).
+			Msg("failed to create note indexed event")
+		return
+	}
+	if publishErr := v.eventBus.Publish(ctx, event); publishErr != nil {
+		v.log.Warn().
+			Err(publishErr).
+			Str("path", note.Path).
+			Msg("failed to publish note indexed event")
+	}
+}
+
+func (v *VaultIndexer) publishIndexingCompleteEvent(
+	ctx context.Context,
+	stats IndexStats,
+) {
+	if v.eventBus == nil {
+		return
+	}
+	summary := domain.VaultIndexingSummary{
+		ScannedCount:        stats.ScannedCount,
+		IndexedCount:        stats.IndexedCount,
+		ParseFailures:       stats.ParseFailures,
+		CacheFailures:       stats.CacheFailures,
+		ValidationSuccesses: stats.ValidationSuccesses,
+		ValidationFailures:  stats.ValidationFailures,
+	}
+	event, err := domain.NewVaultIndexingCompleteEvent(
+		summary,
+		stats.Duration,
+		time.Now(),
+	)
+	if err != nil {
+		v.log.Warn().
+			Err(err).
+			Msg("failed to create vault indexing complete event")
+		return
+	}
+	if publishErr := v.eventBus.Publish(ctx, event); publishErr != nil {
+		v.log.Warn().
+			Err(publishErr).
+			Msg("failed to publish vault indexing complete event")
+	}
+}
+
+func (v *VaultIndexer) handleCommandIssuedEvent(
+	ctx context.Context,
+	event domain.DomainEvent,
+) error {
+	commandEvent, ok := event.(*domain.CommandIssuedEvent)
+	if !ok {
+		return nil
+	}
+	if commandEvent.Command() != "IndexVault" {
+		return nil
+	}
+	v.log.Info().Msg("received IndexVault command event")
+	_, err := v.Build(ctx)
+	return err
+}
+
+func (v *VaultIndexer) handleNoteIndexedEvent(
+	ctx context.Context,
+	event domain.DomainEvent,
+) error {
+	if v.suppressCount.Load() > 0 {
+		return nil
+	}
+	noteEvent, ok := event.(*domain.NoteIndexedEvent)
+	if !ok {
+		return nil
+	}
+	return v.applyNoteEvent(ctx, noteEvent.Note())
+}
+
+func (v *VaultIndexer) applyNoteEvent(
+	ctx context.Context,
+	note domain.Note,
+) error {
+	if v.frontmatterService != nil {
+		if err := v.frontmatterService.IsSchemaCompliant(ctx, note.Path, note.Frontmatter); err != nil {
+			return err
+		}
+	}
+	uow := NewCacheUnitOfWork(v.boltWriter, v.sqliteWriter)
+	if beginErr := uow.Begin(); beginErr != nil {
+		return beginErr
+	}
+	indexTime := time.Now().UTC()
+	if persistErr := uow.AddWrite(note, indexTime); persistErr != nil {
+		return persistErr
+	}
+	if commitErr := uow.Commit(ctx); commitErr != nil {
+		return commitErr
+	}
+	v.log.Debug().
+		Str("path", note.Path).
+		Msg("applied note indexed event to caches")
+	return nil
 }
 
 // logRefreshStats logs incremental refresh statistics using structured logging.

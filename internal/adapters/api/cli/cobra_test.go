@@ -214,7 +214,7 @@ func TestDisplayNoteCreated_FormatsOutputCorrectlyWithoutViewFlag(
 	adapter := NewCobraCLIAdapter(logger)
 
 	note, _ := domain.NewNote(
-		"test123",
+		"test123.md",
 		domain.NewFrontmatter(map[string]interface{}{}),
 		[]domain.Link{},
 		[]domain.Heading{},
@@ -239,7 +239,7 @@ func TestDisplayNoteCreated_DisplaysContentWithViewFlag(t *testing.T) {
 	adapter := NewCobraCLIAdapter(logger)
 
 	note, _ := domain.NewNote(
-		"test123",
+		"test123.md",
 		domain.NewFrontmatter(map[string]interface{}{}),
 		[]domain.Link{},
 		[]domain.Heading{},
