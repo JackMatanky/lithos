@@ -167,39 +167,26 @@ func NewQueryService(
 	}
 }
 
-// IDQuery retrieves a note by its NoteID.
-// Returns the note if found, or ResourceError if not found.
-// Thread-safe: uses RLock to allow concurrent reads.
+// IDQuery retrieves a note by its path (formerly NoteID).
+// IDQuery retrieves a note by its path (formerly NoteID).
 //
-// Query Semantics:
-// - Returns ResourceError for missing notes (single result lookup)
-// - Logs debug message with NoteID for troubleshooting
-// - O(1) lookup performance via map access.
+// Parameters:
+//   - ctx: Request context for cancellation and logging
+//   - path: Vault-relative path to the note (e.g., "notes/meeting.md")
+//
+// Returns:
+//   - Note: The requested note with all metadata
+//   - error: ResourceError if not found, or implementation error
+//
+// Behavior:
+//   - Delegates to PathQuerySingle for consistent behavior
+//   - Logs debug message with path for troubleshooting
+//   - O(1) lookup performance via map access.
 func (q *QueryService) IDQuery(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
-	logger := newQueryLogger(q.log, "IDQuery")
-	start := time.Now()
-	defer func() {
-		logger.logSingleResult(start, "noteID", id.String())
-	}()
-
-	// Hot path: use BoltDB for fast lookups
-	if q.boltReader != nil {
-		return q.boltReader.Read(ctx, id)
-	}
-
-	if q.sqliteReader != nil {
-		return q.sqliteReader.Read(ctx, id)
-	}
-
-	return domain.Note{}, lithosErr.NewResourceError(
-		"note",
-		"get",
-		id.String(),
-		errors.New("not found"),
-	)
+	return q.PathQuerySingle(ctx, path)
 }
 
 // PathQuerySingle retrieves a note by its file path.
@@ -222,11 +209,11 @@ func (q *QueryService) PathQuerySingle(
 
 	// Hot path: use BoltDB for fast lookups
 	if q.boltReader != nil {
-		return q.boltReader.Read(ctx, domain.NoteID(path))
+		return q.boltReader.Read(ctx, path)
 	}
 
 	if q.sqliteReader != nil {
-		return q.sqliteReader.Read(ctx, domain.NoteID(path))
+		return q.sqliteReader.Read(ctx, path)
 	}
 
 	return domain.Note{}, lithosErr.NewResourceError(

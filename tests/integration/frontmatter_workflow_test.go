@@ -464,8 +464,8 @@ This note tests the Frontmatter helper methods.
 		assert.Equal(
 			t,
 			"note",
-			fm.GetFileClass(),
-			"GetFileClass should return fileClass",
+			fm.FileClass(),
+			"FileClass should return fileClass",
 		)
 		assert.Equal(
 			t,

@@ -172,20 +172,27 @@ func (o *CLIComander) NewNote(
 		Str("templateID", string(templateID)).
 		Msg("Template rendered successfully")
 
-	// Step 2: Generate NoteID from templateID (basename strategy)
-	noteID := domain.NewNoteID(filepath.Base(string(templateID)))
-	o.log.Debug().Str("noteID", string(noteID)).Msg("NoteID generated")
+	// Step 2: Generate path from templateID (basename strategy)
+	notePath := filepath.Base(string(templateID))
+	o.log.Debug().Str("notePath", notePath).Msg("Note path generated")
 
 	// Step 3: Create empty Frontmatter (Epic 1 requirement)
 	frontmatter := domain.NewFrontmatter(map[string]interface{}{})
 	o.log.Debug().Msg("Empty frontmatter created")
 
 	// Step 4: Construct Note
-	note := domain.NewNote(noteID, frontmatter)
-	o.log.Debug().Str("noteID", string(noteID)).Msg("Note constructed")
+	note, _ := domain.NewNote(
+		notePath,
+		frontmatter,
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	o.log.Debug().Str("notePath", notePath).Msg("Note constructed")
 
 	// Step 5: Write file to vault
-	relativePath := string(noteID) + ".md"
+	relativePath := notePath + ".md"
 	absolutePath := filepath.Join(o.config.VaultPath, relativePath)
 	if o.vaultWriter != nil {
 		if writeErr := o.vaultWriter.WriteContent(ctx, relativePath, []byte(content)); writeErr != nil {

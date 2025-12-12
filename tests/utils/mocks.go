@@ -53,7 +53,7 @@ type MockCacheWriterPort struct {
 	persistResult error
 	deleteResult  error
 	PersistFunc   func(ctx context.Context, note domain.Note, indexTime time.Time) error
-	DeleteFunc    func(ctx context.Context, id domain.NoteID) error
+	DeleteFunc    func(ctx context.Context, path string) error
 }
 
 // NewMockCacheWriterPort creates a new MockCacheWriterPort with default values.
@@ -88,10 +88,10 @@ func (m *MockCacheWriterPort) Persist(
 // Delete returns the configured mock result for cache deletion.
 func (m *MockCacheWriterPort) Delete(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) error {
 	if m.DeleteFunc != nil {
-		return m.DeleteFunc(ctx, id)
+		return m.DeleteFunc(ctx, path)
 	}
 	return m.deleteResult
 }
@@ -126,6 +126,25 @@ func (m *MockMarkdownParserPort) ParseFrontmatter(
 	content []byte,
 ) (map[string]any, error) {
 	return m.parseResult, m.parseError
+}
+
+// ParseNote returns a mock note for testing. Uses the configured frontmatter
+// to create a basic note.
+func (m *MockMarkdownParserPort) ParseNote(
+	ctx context.Context,
+	path string,
+	content []byte,
+) (domain.Note, error) {
+	if m.parseError != nil {
+		return domain.Note{}, m.parseError
+	}
+
+	fm := domain.NewFrontmatter(m.parseResult)
+	note, err := domain.NewNote(path, fm, nil, nil, nil, nil)
+	if err != nil {
+		return domain.Note{}, err
+	}
+	return note, nil
 }
 
 // MockVaultWriterPort provides a mock implementation of VaultWriterPort for

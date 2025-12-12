@@ -42,12 +42,12 @@ func TestSQLiteReaderAdapter_Read(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = reader.Close() }()
 
-	noteID := domain.NoteID("test/read.md")
+	notePath := "test/read.md"
 
 	// Test Read
-	note, err := reader.Read(ctx, noteID)
+	note, err := reader.Read(ctx, notePath)
 	require.NoError(t, err)
-	assert.Equal(t, noteID, note.ID)
+	assert.Equal(t, notePath, note.Path)
 	assert.Equal(t, "Read Me", note.Frontmatter.Fields["title"])
 }
 
@@ -105,7 +105,7 @@ func TestSQLiteReaderAdapter_FileClassQuery(t *testing.T) {
 	notes, err := reader.FileClassQuery(ctx, "contact")
 	require.NoError(t, err)
 	assert.Len(t, notes, 1)
-	assert.Equal(t, domain.NoteID("test/alice.md"), notes[0].ID)
+	assert.Equal(t, "test/alice.md", notes[0].Path)
 }
 
 func TestSQLiteReaderAdapter_PathQuery(t *testing.T) {

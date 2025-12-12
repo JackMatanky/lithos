@@ -49,16 +49,15 @@ func (a *BoltDBCacheReadAdapter) Close() error {
 	return nil // No-op, shared DB
 }
 
-// Read retrieves a single note by ID (Path) from the BoltDB cache.
+// Read retrieves a single note by path from the BoltDB cache.
 func (a *BoltDBCacheReadAdapter) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
 	if err := ctx.Err(); err != nil {
 		return domain.Note{}, err
 	}
 
-	path := string(id)
 	var note domain.Note
 
 	err := a.db.View(func(tx *bbolt.Tx) error {
@@ -192,8 +191,7 @@ func (a *BoltDBCacheReadAdapter) PathQuery(
 	switch normalized.Scope {
 	case spi.PathQueryScopeFull:
 		// Direct lookup by path
-		id := domain.NewNoteID(normalized.Value)
-		note, readErr := a.Read(ctx, id)
+		note, readErr := a.Read(ctx, normalized.Value)
 		if readErr != nil {
 			if errors.Is(readErr, lithosErr.ErrNotFound) {
 				return []domain.Note{}, nil
@@ -307,21 +305,31 @@ func (a *BoltDBCacheReadAdapter) reconstructNote(
 	cached CachedNote,
 ) domain.Note {
 	// Reconstruct minimal domain.Note from cached metadata
-	return domain.Note{
-		ID: domain.NewNoteID(cached.Path),
-		Frontmatter: domain.Frontmatter{
-			FileClass: cached.FileClass,
-			Fields: map[string]interface{}{
-				"title":               cached.Title,
-				"aliases":             cached.Aliases,
-				a.config.FileClassKey: cached.FileClass,
-				// Restore timestamps into fields if needed?
-				// Domain note usually doesn't carry timestamps in fields,
-				// but we have them in FileDates.
-				// The original reader put them in map.
-			},
-		},
+	fields := map[string]interface{}{
+		"title":   cached.Title,
+		"aliases": cached.Aliases,
 	}
+	if cached.FileClass != "" {
+		fields[a.config.FileClassKey] = cached.FileClass
+	}
+
+	note, err := domain.NewNote(
+		cached.Path,
+		domain.Frontmatter{Fields: fields},
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if err != nil {
+		// This shouldn't happen for cached data, but handle gracefully
+		a.log.Warn().
+			Err(err).
+			Str("path", cached.Path).
+			Msg("failed to reconstruct note from cache")
+		return domain.Note{}
+	}
+	return note
 }
 
 func (a *BoltDBCacheReadAdapter) statFile(

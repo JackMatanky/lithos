@@ -16,7 +16,7 @@ import (
 
 type MockHybridReader struct {
 	// CacheReaderPort methods
-	ReadFunc func(ctx context.Context, id domain.NoteID) (domain.Note, error)
+	ReadFunc func(ctx context.Context, path string) (domain.Note, error)
 	ListFunc func(ctx context.Context) ([]domain.Note, error)
 
 	// MetadataQueryPort methods
@@ -30,10 +30,10 @@ type MockHybridReader struct {
 
 func (m *MockHybridReader) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
 	if m.ReadFunc != nil {
-		return m.ReadFunc(ctx, id)
+		return m.ReadFunc(ctx, path)
 	}
 	return domain.Note{}, nil
 }
@@ -124,18 +124,25 @@ func TestQueryService_Routing_HotPath_PathQuery(t *testing.T) {
 	config := domain.Config{}
 
 	path := "notes/test.md"
-	note := domain.Note{ID: domain.NoteID(path)}
+	note, _ := domain.NewNote(
+		path,
+		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
 
 	// Expectation: PathQuery calls boltReader.Read
 	calledBolt := false
-	boltReader.ReadFunc = func(ctx context.Context, id domain.NoteID) (domain.Note, error) {
+	boltReader.ReadFunc = func(ctx context.Context, p string) (domain.Note, error) {
 		calledBolt = true
-		assert.Equal(t, domain.NoteID(path), id)
+		assert.Equal(t, path, p)
 		return note, nil
 	}
 
 	// SQLite should NOT be called
-	sqliteReader.ReadFunc = func(ctx context.Context, id domain.NoteID) (domain.Note, error) {
+	sqliteReader.ReadFunc = func(ctx context.Context, p string) (domain.Note, error) {
 		assert.Fail(t, "SQLite should not be called for PathQuery")
 		return domain.Note{}, nil
 	}
@@ -155,7 +162,17 @@ func TestQueryService_Routing_HotPath_BasenameQuery(t *testing.T) {
 	config := domain.Config{}
 
 	basename := "test"
-	notes := []domain.Note{{ID: "notes/test.md"}}
+	notes := []domain.Note{func() domain.Note {
+		n, _ := domain.NewNote(
+			"notes/test.md",
+			domain.NewFrontmatter(map[string]interface{}{}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
+		return n
+	}()}
 
 	// Expectation: BasenameQuery calls boltReader.BasenameQuery
 	calledBolt := false
@@ -185,7 +202,17 @@ func TestQueryService_Routing_HotPath_AliasQuery(t *testing.T) {
 	config := domain.Config{}
 
 	alias := "my-alias"
-	notes := []domain.Note{{ID: "notes/alias.md"}}
+	notes := []domain.Note{func() domain.Note {
+		n, _ := domain.NewNote(
+			"notes/alias.md",
+			domain.NewFrontmatter(map[string]interface{}{}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
+		return n
+	}()}
 
 	calledBolt := false
 	boltReader.AliasQueryFunc = func(ctx context.Context, a string) ([]domain.Note, error) {
@@ -210,7 +237,17 @@ func TestQueryService_Routing_DeepPath_FrontmatterQuery(t *testing.T) {
 
 	field := "status"
 	value := "active"
-	notes := []domain.Note{{ID: "notes/active.md"}}
+	notes := []domain.Note{func() domain.Note {
+		n, _ := domain.NewNote(
+			"notes/active.md",
+			domain.NewFrontmatter(map[string]interface{}{}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
+		return n
+	}()}
 
 	// Expectation: FrontmatterQuery calls sqliteReader.FrontmatterQuery
 	calledSqlite := false

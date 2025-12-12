@@ -11,6 +11,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosLog "github.com/JackMatanky/lithos/internal/shared/logger"
+	"github.com/stretchr/testify/require"
 )
 
 const testNoteFilename = "test-note.md"
@@ -57,10 +58,8 @@ func TestPersistCreatesNewFile(t *testing.T) {
 		"tags":    []string{"test"},
 		"content": "This is test content",
 	})
-	note := domain.NewNote(
-		domain.NewNoteID("test-note"),
-		frontmatter,
-	)
+	note, err := domain.NewNote("test-note", frontmatter, nil, nil, nil, nil)
+	require.NoError(t, err)
 	path := testNoteFilename
 
 	// Call Persist (will fail until implemented)
@@ -153,11 +152,12 @@ func TestPersistOverwritesExistingFile(t *testing.T) {
 	log := lithosLog.NewTest()
 	adapter := NewVaultWriterAdapter(config, log)
 
-	note := domain.NewNote(domain.NewNoteID("test-note"),
+	note, err := domain.NewNote("test-note",
 		domain.NewFrontmatter(map[string]interface{}{
 			"title":   "Updated Note",
 			"content": "new content",
-		}))
+		}), nil, nil, nil, nil)
+	require.NoError(t, err)
 
 	// Call Persist
 	err = adapter.Persist(context.Background(), note, testNoteFilename)
@@ -194,11 +194,12 @@ func TestPersistCreatesParentDirectories(t *testing.T) {
 	adapter := NewVaultWriterAdapter(config, log)
 
 	nestedPath := "contacts/work/alice.md"
-	note := domain.NewNote(domain.NewNoteID("test-note"),
+	note, err := domain.NewNote("test-note",
 		domain.NewFrontmatter(map[string]interface{}{
 			"title":   "Alice Smith",
 			"content": "Contact info",
-		}))
+		}), nil, nil, nil, nil)
+	require.NoError(t, err)
 
 	// Call Persist
 	err = adapter.Persist(context.Background(), note, nestedPath)
@@ -235,7 +236,7 @@ func TestPersistPreservesFrontmatter(t *testing.T) {
 	adapter := NewVaultWriterAdapter(config, log)
 
 	// Note with custom frontmatter fields
-	note := domain.NewNote(domain.NewNoteID("test-note"),
+	note, err := domain.NewNote("test-note",
 		domain.NewFrontmatter(map[string]interface{}{
 			"fileClass":    "contact",
 			"title":        "Test Contact",
@@ -244,7 +245,8 @@ func TestPersistPreservesFrontmatter(t *testing.T) {
 			"metadata": map[string]interface{}{
 				"created": "2023-01-01",
 			},
-		}))
+		}), nil, nil, nil, nil)
+	require.NoError(t, err)
 
 	// Call Persist
 	err = adapter.Persist(context.Background(), note, testNoteFilename)

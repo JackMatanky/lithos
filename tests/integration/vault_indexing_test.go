@@ -336,8 +336,8 @@ func testNoteIDCollisionResolution(
 	require.NoError(t, err)
 	assert.Len(t, meetingNotes, 5, "Should find 5 meeting.md files")
 
-	// Verify each has unique ID based on path
-	expectedIDs := []domain.NoteID{
+	// Verify each has unique path
+	expectedPaths := []string{
 		"projects/active/meeting.md",
 		"projects/archive/meeting.md",
 		"ideas/brainstorm/meeting.md",
@@ -345,26 +345,26 @@ func testNoteIDCollisionResolution(
 		"meetings/2024/meeting.md",
 	}
 
-	actualIDs := make([]domain.NoteID, len(meetingNotes))
+	actualPaths := make([]string, len(meetingNotes))
 	for i, note := range meetingNotes {
-		actualIDs[i] = note.ID
+		actualPaths[i] = note.Path
 	}
 
-	for _, expectedID := range expectedIDs {
+	for _, expectedPath := range expectedPaths {
 		assert.Contains(
 			t,
-			actualIDs,
-			expectedID,
-			"Should contain NoteID %s",
-			expectedID,
+			actualPaths,
+			expectedPath,
+			"Should contain path %s",
+			expectedPath,
 		)
 	}
 
 	// Test individual queries work
-	for _, id := range expectedIDs {
-		foundNote, queryErr := queryService.IDQuery(ctx, id)
-		require.NoError(t, queryErr, "Should find note with ID %s", id)
-		assert.Equal(t, id, foundNote.ID)
+	for _, path := range expectedPaths {
+		foundNote, queryErr := queryService.IDQuery(ctx, path)
+		require.NoError(t, queryErr, "Should find note with path %s", path)
+		assert.Equal(t, path, foundNote.Path)
 	}
 }
 
@@ -425,7 +425,7 @@ func testCacheManagementDeletions(
 
 	_, err = queryService.IDQuery(
 		ctx,
-		domain.NoteID("projects/active/meeting.md"),
+		"projects/active/meeting.md",
 	)
 	require.Error(t, err, "Deleted note should not be found")
 
@@ -481,10 +481,15 @@ func testQueryLayerComprehensive(
 	)
 
 	// Verify no duplicates in BasenameQuery results
-	noteIDs := make(map[domain.NoteID]bool)
+	notePaths := make(map[string]bool)
 	for _, note := range meetingNotes {
-		assert.False(t, noteIDs[note.ID], "NoteID %s should be unique", note.ID)
-		noteIDs[note.ID] = true
+		assert.False(
+			t,
+			notePaths[note.Path],
+			"Path %s should be unique",
+			note.Path,
+		)
+		notePaths[note.Path] = true
 	}
 }
 

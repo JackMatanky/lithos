@@ -24,7 +24,7 @@ type metadataReaderAdapter struct {
 
 func (noopCacheReader) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
 	return domain.Note{}, fmt.Errorf("not implemented")
 }
@@ -35,10 +35,10 @@ func (noopCacheReader) List(ctx context.Context) ([]domain.Note, error) {
 
 func (m *mockReader) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
 	for _, n := range m.notes {
-		if n.ID == id {
+		if n.Path == path {
 			return n, nil
 		}
 	}
@@ -82,15 +82,16 @@ func newTestQueryService(
 
 func TestQueryService_FileClassQueryFallbackWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
-	meetingNote := domain.Note{
-		ID: domain.NoteID("notes/meeting.md"),
-		Frontmatter: domain.Frontmatter{
-			FileClass: "meeting",
-			Fields: map[string]interface{}{
-				"file_class": "meeting",
-			},
-		},
-	}
+	meetingNote, _ := domain.NewNote(
+		"notes/meeting.md",
+		domain.NewFrontmatter(map[string]interface{}{
+			"file_class": "meeting",
+		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
 
 	qs := newTestQueryService(t, nil, []domain.Note{meetingNote})
 
@@ -101,14 +102,16 @@ func TestQueryService_FileClassQueryFallbackWithoutMetadata(t *testing.T) {
 
 func TestQueryService_AliasQueryFallbackWithoutMetadata(t *testing.T) {
 	ctx := context.Background()
-	note := domain.Note{
-		ID: domain.NoteID("notes/project.md"),
-		Frontmatter: domain.Frontmatter{
-			Fields: map[string]interface{}{
-				"aliases": []interface{}{"project-alpha", "alpha"},
-			},
-		},
-	}
+	note, _ := domain.NewNote(
+		"notes/project.md",
+		domain.NewFrontmatter(map[string]interface{}{
+			"aliases": []interface{}{"project-alpha", "alpha"},
+		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
 	qs := newTestQueryService(t, nil, []domain.Note{note})
 
 	results, err := qs.AliasQuery(ctx, "project-alpha")
@@ -118,7 +121,14 @@ func TestQueryService_AliasQueryFallbackWithoutMetadata(t *testing.T) {
 
 func TestQueryService_BasenameQueryFallsBackToPathQuery(t *testing.T) {
 	ctx := context.Background()
-	note := domain.Note{ID: domain.NoteID("notes/project.md")}
+	note, _ := domain.NewNote(
+		"notes/project.md",
+		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
 	qs := newTestQueryService(t, nil, []domain.Note{note})
 
 	results, err := qs.BasenameQuery(ctx, "project")
@@ -129,8 +139,28 @@ func TestQueryService_BasenameQueryFallsBackToPathQuery(t *testing.T) {
 func TestQueryService_PathQueryFolderFallback(t *testing.T) {
 	ctx := context.Background()
 	notes := []domain.Note{
-		{ID: domain.NoteID("projects/alpha/note.md")},
-		{ID: domain.NoteID("projects/beta/note.md")},
+		func() domain.Note {
+			n, _ := domain.NewNote(
+				"projects/alpha/note.md",
+				domain.NewFrontmatter(map[string]interface{}{}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
+			return n
+		}(),
+		func() domain.Note {
+			n, _ := domain.NewNote(
+				"projects/beta/note.md",
+				domain.NewFrontmatter(map[string]interface{}{}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
+			return n
+		}(),
 	}
 	qs := newTestQueryService(t, nil, notes)
 
@@ -145,7 +175,17 @@ func TestQueryService_PathQueryFolderFallback(t *testing.T) {
 func TestQueryService_UsesMetadataPortWhenConfigured(t *testing.T) {
 	ctx := context.Background()
 	mock := utils.NewMockMetadataQueryPort()
-	expected := []domain.Note{{ID: domain.NoteID("foo.md")}}
+	expected := []domain.Note{func() domain.Note {
+		n, _ := domain.NewNote(
+			"foo.md",
+			domain.NewFrontmatter(map[string]interface{}{}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
+		return n
+	}()}
 	mock.SetPathQueryResult(expected, nil)
 
 	qs := newTestQueryService(t, mock, nil)

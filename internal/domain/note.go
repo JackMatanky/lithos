@@ -1,45 +1,97 @@
 // Package domain provides core domain types and business logic for Lithos.
 package domain
 
-// Note represents a core business entity for a markdown note.
-// It is a pure domain aggregate root combining identity and content metadata.
-// Infrastructure concerns (file paths, modification times) are kept in DTOs.
-type Note struct {
-	// ID is the abstract identifier for this note.
-	// Opaque to the domain - could represent file path, UUID, or database key.
-	ID NoteID
-	// Frontmatter contains content metadata from YAML frontmatter.
-	// Composed (not embedded) to maintain clean domain boundaries.
-	Frontmatter Frontmatter
+import (
+	"fmt"
+	"strings"
+)
+
+// NoteValidationError represents validation errors for Note construction.
+type NoteValidationError struct {
+	Field   string
+	Message string
 }
 
-// NoteID represents an opaque domain identifier for notes.
-// It abstracts the storage mechanism (file paths, UUIDs, database keys)
-// from the domain logic.
-type NoteID string
+// NoteFieldError represents errors accessing frontmatter fields.
+type NoteFieldError struct {
+	Field   string
+	Message string
+}
+
+// Note represents a core business entity for a markdown note.
+// It is a rich domain aggregate root combining identity and parsed metadata.
+// Infrastructure concerns (file paths, modification times) are kept in DTOs.
+type Note struct {
+	// Path is the vault-relative path as the note's identifier.
+	Path string
+	// Frontmatter contains content metadata from YAML frontmatter.
+	Frontmatter Frontmatter
+	// Links contains all links found in the markdown content.
+	Links []Link
+	// Headings contains the document structure hierarchy.
+	Headings []Heading
+	// Tags contains hashtags extracted from content.
+	Tags []string
+	// Tasks contains task list items with completion status.
+	Tasks []TaskItem
+	// Backlinks contains computed references to this note (populated after
+	// construction).
+	Backlinks []Link
+}
+
+// Link represents a link found in markdown content.
+type Link struct {
+	// Text is the display text for the link.
+	Text string
+	// Destination is the link target (note path, URL, etc.).
+	Destination string
+	// IsWikilink indicates if this is a wikilink format [[...]] vs markdown
+	// [...](...).
+	IsWikilink bool
+}
+
+// Heading represents a markdown heading with level and text.
+type Heading struct {
+	// Level is the heading level (1-6) corresponding to # count.
+	Level int
+	// Text is the heading text without # markers, trimmed of whitespace.
+	Text string
+}
+
+// TaskItem represents a task/checkbox item from markdown.
+type TaskItem struct {
+	// Text is the task description without checkbox markers.
+	Text string
+	// IsChecked indicates completion status ([x] = true, [ ] = false).
+	IsChecked bool
+	// Line is the line number in the source markdown.
+	Line int
+}
 
 // Frontmatter represents note content metadata extracted from YAML frontmatter.
-// It is a pure data structure with no behavior (anemic model).
+// It is a rich domain entity with type-safe accessors and delegation methods.
 type Frontmatter struct {
-	// FileClass is the schema reference extracted from Fields["fileClass"].
-	// Used for validation lookup. Empty if not present in Fields.
-	FileClass string
 	// Fields contains the complete parsed YAML frontmatter as a flexible map.
 	// Preserves all user-defined fields without filtering.
 	Fields map[string]interface{}
 }
 
-// NewNoteID creates a new NoteID from a string value.
-// The domain doesn't know or care what this string represents -
-// it could be a file path, UUID, or database key.
-func NewNoteID(value string) NoteID {
-	return NoteID(value)
+// Error returns the error message for NoteValidationError.
+func (e NoteValidationError) Error() string {
+	return fmt.Sprintf(
+		"note validation failed for field '%s': %s",
+		e.Field,
+		e.Message,
+	)
 }
 
-// String returns the string representation of the NoteID.
-// This implements the Stringer interface for logging and debugging.
-func (id NoteID) String() string {
-	return string(id)
+// Error returns the error message for NoteFieldError.
+func (e NoteFieldError) Error() string {
+	return fmt.Sprintf(
+		"note field access failed for '%s': %s",
+		e.Field,
+		e.Message,
+	)
 }
 
 // NewFrontmatter creates a new Frontmatter from parsed YAML fields.
@@ -54,41 +106,134 @@ func NewFrontmatter(fields map[string]interface{}) Frontmatter {
 		fieldsCopy[k] = v
 	}
 	return Frontmatter{
-		FileClass: extractFileClass(fieldsCopy),
-		Fields:    fieldsCopy,
+		Fields: fieldsCopy,
 	}
 }
 
-// extractFileClass extracts the fileClass from the fields map.
-// Returns empty string if fileClass key is missing or not a string.
-func extractFileClass(fields map[string]interface{}) string {
-	if fc, ok := fields["fileClass"].(string); ok {
-		return fc
+// FileClass returns the fileClass field from the frontmatter.
+// Uses the configured key (default "fileClass") to extract schema reference.
+func (f Frontmatter) FileClass() string {
+	// For now, use default key until config singleton is available
+	key := "fileClass" // defaultFileClassKey from config.go
+	if val, ok := f.Fields[key].(string); ok {
+		return val
 	}
 	return ""
 }
 
 // SchemaName returns the schema name (FileClass) for this frontmatter.
 // This method provides a consistent interface for schema resolution.
-// TODO: Update to use FileClass() method once consumers are migrated.
+// Delegates to FileClass() method.
 func (f Frontmatter) SchemaName() string {
-	return f.FileClass
+	return f.FileClass()
 }
 
-// NewNote creates a new Note from its constituent parts.
+// NewNote creates a new Note from parsed metadata.
 // This is the aggregate root constructor for the Note entity.
-// Infrastructure concerns (paths, timestamps) are handled by DTOs.
-func NewNote(id NoteID, frontmatter Frontmatter) Note {
-	return Note{
-		ID:          id,
+// Validates business rules and ensures defensive copies of slices.
+// Backlinks start empty and are populated during enrichment phase.
+func NewNote(
+	path string,
+	frontmatter Frontmatter,
+	links []Link,
+	headings []Heading,
+	tags []string,
+	tasks []TaskItem,
+) (Note, error) {
+	note := Note{
+		Path:        path,
 		Frontmatter: frontmatter,
+		Links:       make([]Link, len(links)),
+		Headings:    make([]Heading, len(headings)),
+		Tags:        make([]string, len(tags)),
+		Tasks:       make([]TaskItem, len(tasks)),
+		Backlinks:   []Link{}, // Empty initially, populated during enrichment
 	}
+
+	// Defensive copy slices to prevent external mutation
+	copy(note.Links, links)
+	copy(note.Headings, headings)
+	copy(note.Tags, tags)
+	copy(note.Tasks, tasks)
+
+	// Validate the note
+	if err := note.Validate(); err != nil {
+		return Note{}, err
+	}
+
+	return note, nil
+}
+
+// Validate enforces business rules for Note construction and mutation.
+// Ensures path is non-empty, frontmatter is present, and slices are
+// initialized.
+func (n Note) Validate() error {
+	if strings.TrimSpace(n.Path) == "" {
+		return NoteValidationError{
+			Field:   "Path",
+			Message: "path cannot be empty",
+		}
+	}
+	if n.Frontmatter.Fields == nil {
+		return NoteValidationError{
+			Field:   "Frontmatter",
+			Message: "frontmatter fields cannot be nil",
+		}
+	}
+	// Links, Headings, Tags, Tasks can be empty but not nil (ensured by
+	// factory)
+	// Backlinks can be empty during construction, populated during enrichment
+	return nil
+}
+
+// WithBacklinks creates a new Note with updated backlinks.
+// Used during the enrichment phase to populate computed references.
+func (n Note) WithBacklinks(backlinks []Link) Note {
+	n.Backlinks = make([]Link, len(backlinks))
+	copy(n.Backlinks, backlinks)
+	return n
 }
 
 // SchemaName returns the schema name for this note.
 // Delegates to the Frontmatter's SchemaName method.
 func (n Note) SchemaName() string {
 	return n.Frontmatter.SchemaName()
+}
+
+// FileClass returns the fileClass field from frontmatter.
+// Delegates to Frontmatter.FileClass() method.
+func (n Note) FileClass() string {
+	return n.Frontmatter.FileClass()
+}
+
+// Title returns the title field from frontmatter.
+// Delegates to Frontmatter.Title() method.
+func (n Note) Title() string {
+	return n.Frontmatter.Title()
+}
+
+// Aliases returns the aliases field from frontmatter.
+// Delegates to Frontmatter.Aliases() method.
+func (n Note) Aliases() []string {
+	return n.Frontmatter.Aliases()
+}
+
+// HasFrontmatterField checks if a field exists in frontmatter.
+// Delegates to Frontmatter.Has() method.
+func (n Note) HasFrontmatterField(key string) bool {
+	return n.Frontmatter.Has(key)
+}
+
+// GetFrontmatterString retrieves a string field from frontmatter.
+// Returns the value and true if it exists and is a string, empty string and
+// false otherwise.
+func (n Note) GetFrontmatterString(key string) (string, bool) {
+	val, ok := n.Frontmatter.Get(key)
+	if !ok {
+		return "", false
+	}
+	str, ok := val.(string)
+	return str, ok
 }
 
 // Get retrieves a field value from the frontmatter.
@@ -181,13 +326,10 @@ func (f Frontmatter) IsMap(key string) bool {
 // Returns the fileClass value if it exists and is a string, empty string
 // otherwise. Part of domain-level delegation helpers in
 // docs/architecture/data-models.md#frontmatter.
+//
+// Deprecated: Use FileClass() method instead.
 func (f Frontmatter) GetFileClass() string {
-	// For now, use default key until config singleton is available
-	key := "fileClass" // defaultFileClassKey from config.go
-	if val, ok := f.Fields[key].(string); ok {
-		return val
-	}
-	return ""
+	return f.FileClass()
 }
 
 // Title retrieves the title field from the frontmatter.

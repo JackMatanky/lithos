@@ -74,79 +74,96 @@ func TestBoltDBCacheReadAdapter_Read(t *testing.T) {
 	defer func() { _ = reader.Close() }()
 
 	persistNotes(t, writer,
-		domain.Note{
-			ID: domain.NewNoteID("/notes/test1.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "contact",
-				Fields: map[string]interface{}{
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"/notes/test1.md",
+				domain.NewFrontmatter(map[string]interface{}{
 					"title":      "Test Note 1",
 					"aliases":    []interface{}{"alias1"},
 					"file_class": "contact",
-				},
-			},
-		},
-		domain.Note{
-			ID: domain.NewNoteID("/notes/test2.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
+			return note
+		}(),
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"/notes/test2.md",
+				domain.NewFrontmatter(map[string]interface{}{
 					"title":      "Test Note 2",
 					"aliases":    []interface{}{"alias2", "alias2b"},
 					"file_class": "project",
-				},
-			},
-		},
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
+			return note
+		}(),
 	)
 
 	tests := []struct {
 		name     string
-		noteID   domain.NoteID
+		notePath string
 		wantErr  bool
 		expected domain.Note
 	}{
 		{
-			name:    "success - reads existing note",
-			noteID:  domain.NewNoteID("/notes/test1.md"), // Use path as ID
-			wantErr: false,
-			expected: domain.Note{
-				ID: domain.NewNoteID("/notes/test1.md"),
-				Frontmatter: domain.Frontmatter{
-					FileClass: "contact",
-					Fields: map[string]interface{}{
+			name:     "success - reads existing note",
+			notePath: "/notes/test1.md", // Use path as ID
+			wantErr:  false,
+			expected: func() domain.Note {
+				note, _ := domain.NewNote(
+					"/notes/test1.md",
+					domain.NewFrontmatter(map[string]interface{}{
 						"title":      "Test Note 1",
 						"aliases":    []string{"alias1"},
 						"file_class": "contact",
-					},
-				},
-			},
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 		},
 		{
-			name:    "success - reads second note",
-			noteID:  domain.NewNoteID("/notes/test2.md"),
-			wantErr: false,
-			expected: domain.Note{
-				ID: domain.NewNoteID("/notes/test2.md"),
-				Frontmatter: domain.Frontmatter{
-					FileClass: "project",
-					Fields: map[string]interface{}{
+			name:     "success - reads another existing note",
+			notePath: "/notes/test2.md",
+			wantErr:  false,
+			expected: func() domain.Note {
+				note, _ := domain.NewNote(
+					"/notes/test2.md",
+					domain.NewFrontmatter(map[string]interface{}{
 						"title":      "Test Note 2",
-						"aliases":    []string{"alias2", "alias2b"},
+						"aliases":    []string{"alias2"},
 						"file_class": "project",
-					},
-				},
-			},
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 		},
 		{
-			name:    "error - note not found",
-			noteID:  domain.NewNoteID("nonexistent"),
-			wantErr: true,
+			name:     "error - note not found",
+			notePath: "nonexistent",
+			wantErr:  true,
+			expected: domain.Note{},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			note, readErr := reader.Read(ctx, tt.noteID)
+			note, readErr := reader.Read(ctx, tt.notePath)
 
 			if tt.wantErr {
 				assert.Error(t, readErr)
@@ -154,11 +171,11 @@ func TestBoltDBCacheReadAdapter_Read(t *testing.T) {
 			}
 
 			require.NoError(t, readErr)
-			assert.Equal(t, tt.expected.ID, note.ID)
+			assert.Equal(t, tt.expected.Path, note.Path)
 			assert.Equal(
 				t,
-				tt.expected.Frontmatter.FileClass,
-				note.Frontmatter.FileClass,
+				tt.expected.FileClass(),
+				note.FileClass(),
 			)
 
 			// Check that fields are reconstructed correctly
@@ -186,7 +203,7 @@ func TestBoltDBCacheReadAdapter_List(t *testing.T) {
 		// Check that both notes are present
 		noteIDs := make(map[string]bool)
 		for _, note := range notes {
-			noteIDs[string(note.ID)] = true
+			noteIDs[note.Path] = true
 		}
 		assert.True(t, noteIDs["/notes/test1.md"])
 		assert.True(t, noteIDs["/notes/test2.md"])
@@ -216,28 +233,36 @@ func TestBoltDBCacheReadAdapter_MetadataQueries(t *testing.T) {
 	defer func() { _ = reader.Close() }()
 
 	persistNotes(t, writer,
-		domain.Note{
-			ID: domain.NewNoteID("notes/projects/alpha.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"notes/projects/alpha.md",
+				domain.NewFrontmatter(map[string]interface{}{
 					"title":      "Alpha",
 					"aliases":    []interface{}{"alpha-main"},
 					"file_class": "project",
-				},
-			},
-		},
-		domain.Note{
-			ID: domain.NewNoteID("notes/contacts/jane.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "contact",
-				Fields: map[string]interface{}{
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
+			return note
+		}(),
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"notes/contacts/jane.md",
+				domain.NewFrontmatter(map[string]interface{}{
 					"title":      "Jane",
 					"aliases":    []interface{}{"jane-doe"},
 					"file_class": "contact",
-				},
-			},
-		},
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
+			return note
+		}(),
 	)
 
 	ctx := context.Background()
@@ -290,28 +315,36 @@ func TestBoltDBCacheReadAdapter_PathQuery(t *testing.T) {
 	defer func() { _ = reader.Close() }()
 
 	persistNotes(t, writer,
-		domain.Note{
-			ID: domain.NewNoteID("notes/projects/alpha.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"notes/projects/alpha.md",
+				domain.NewFrontmatter(map[string]interface{}{
 					"title":      "Alpha",
 					"aliases":    []interface{}{"project-alpha"},
 					"file_class": "project",
-				},
-			},
-		},
-		domain.Note{
-			ID: domain.NewNoteID("notes/projects/beta.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
+			return note
+		}(),
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"notes/projects/beta.md",
+				domain.NewFrontmatter(map[string]interface{}{
 					"title":      "Beta",
 					"aliases":    []interface{}{"project-beta"},
 					"file_class": "project",
-				},
-			},
-		},
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
+			return note
+		}(),
 	)
 
 	ctx := context.Background()
@@ -376,19 +409,20 @@ func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
 	filePath := "notes/stale-check.md"
 	createVaultFile(t, config.VaultPath, filePath, modTime)
 
-	testNote := domain.Note{
-		ID: domain.NewNoteID(filePath),
-		Frontmatter: domain.Frontmatter{
-			FileClass: "note",
-			Fields: map[string]interface{}{
-				"title":          "Test Note",
-				"file_class":     "note",
-				"file_mod_time":  modTime,
-				"modified":       modTime,
-				"file_mod_epoch": modTime.Unix(),
-			},
-		},
-	}
+	testNote, _ := domain.NewNote(
+		filePath,
+		domain.NewFrontmatter(map[string]interface{}{
+			"title":          "Test Note",
+			"file_class":     "note",
+			"file_mod_time":  modTime,
+			"modified":       modTime,
+			"file_mod_epoch": modTime.Unix(),
+		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
 
 	indexTime := modTime.Add(time.Minute)
 	require.NoError(t, writer.Persist(ctx, testNote, indexTime))
@@ -502,36 +536,37 @@ func persistNotes(
 }
 
 func sampleNotes() []domain.Note {
-	return []domain.Note{
-		{
-			ID: domain.NewNoteID("/notes/test1.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "contact",
-				Fields: map[string]interface{}{
-					"title":      "Test Note 1",
-					"aliases":    []interface{}{"alias1"},
-					"file_class": "contact",
-				},
-			},
-		},
-		{
-			ID: domain.NewNoteID("/notes/test2.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
-					"title":      "Test Note 2",
-					"aliases":    []interface{}{"alias2", "alias2b"},
-					"file_class": "project",
-				},
-			},
-		},
-	}
+	note1, _ := domain.NewNote(
+		"/notes/test1.md",
+		domain.NewFrontmatter(map[string]interface{}{
+			"title":      "Test Note 1",
+			"aliases":    []interface{}{"alias1"},
+			"file_class": "contact",
+		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	note2, _ := domain.NewNote(
+		"/notes/test2.md",
+		domain.NewFrontmatter(map[string]interface{}{
+			"title":      "Test Note 2",
+			"aliases":    []interface{}{"alias2", "alias2b"},
+			"file_class": "project",
+		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	return []domain.Note{note1, note2}
 }
 
 func toIDs(notes []domain.Note) []string {
 	ids := make([]string, 0, len(notes))
 	for _, note := range notes {
-		ids = append(ids, string(note.ID))
+		ids = append(ids, note.Path)
 	}
 	return ids
 }

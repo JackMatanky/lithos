@@ -172,7 +172,7 @@ func (a *CobraCLIAdapter) displayNoteCreated(
 	cmd *cobra.Command,
 	note domain.Note,
 ) error {
-	cmd.Printf("✓ Created: %s.md\n", note.ID)
+	cmd.Printf("✓ Created: %s\n", note.Path)
 
 	if viewFlag, _ := cmd.Flags().GetBool("view"); viewFlag {
 		cmd.Println(strings.Repeat("=", separatorWidth))

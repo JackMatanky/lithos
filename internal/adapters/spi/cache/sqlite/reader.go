@@ -76,13 +76,11 @@ func NewSQLiteReaderAdapter(
 // Read retrieves a single note by ID.
 func (a *SQLiteReaderAdapter) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
 	if err := ctx.Err(); err != nil {
 		return domain.Note{}, err
 	}
-
-	path := string(id)
 	query := selectNoteQuery
 
 	var fmJSON string
@@ -602,6 +600,9 @@ func (a *SQLiteReaderAdapter) reconstructNote(
 	}
 
 	fm := domain.NewFrontmatter(fieldsCopy)
-	note := domain.NewNote(domain.NewNoteID(path), fm)
+	note, err := domain.NewNote(path, fm, nil, nil, nil, nil)
+	if err != nil {
+		return domain.Note{}, fmt.Errorf("failed to create note: %w", err)
+	}
 	return note, nil
 }

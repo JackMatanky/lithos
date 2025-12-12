@@ -40,6 +40,74 @@ func frontmatterWithMetadata(
 	return domain.NewFrontmatter(enriched)
 }
 
+func createTestNote(path string, fields map[string]interface{}) domain.Note {
+	note, _ := domain.NewNote(
+		path,
+		domain.NewFrontmatter(fields),
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	return note
+}
+
+func createComplexTestNotes() []domain.Note {
+	return []domain.Note{
+		createTestNote("contacts/alice.md", map[string]interface{}{
+			"title":      "Alice Smith",
+			"fileClass":  "contact",
+			"name":       "Alice Smith",
+			"email":      "alice@company.com",
+			"department": "Engineering",
+			"active":     true,
+			"tags":       []string{"team-lead", "senior", "backend"},
+		}),
+		createTestNote("contacts/bob.md", map[string]interface{}{
+			"title":      "Bob Jones",
+			"fileClass":  "contact",
+			"name":       "Bob Jones",
+			"email":      "bob@company.com",
+			"department": "Sales",
+			"active":     false,
+			"tags":       []string{"junior", "frontend"},
+		}),
+		createTestNote("contacts/carol.md", map[string]interface{}{
+			"title":      "Carol Davis",
+			"fileClass":  "contact",
+			"name":       "Carol Davis",
+			"email":      "carol@company.com",
+			"department": "Engineering",
+			"active":     true,
+			"tags":       []string{"senior", "fullstack"},
+		}),
+		createTestNote("projects/webapp.md", map[string]interface{}{
+			"title":     "Web Application",
+			"fileClass": "project",
+			"name":      "Web Application Redesign",
+			"priority":  "high",
+			"progress":  75,
+			"tags":      []string{"web", "ui", "critical"},
+		}),
+		createTestNote("projects/api.md", map[string]interface{}{
+			"title":     "API Upgrade",
+			"fileClass": "project",
+			"name":      "API Performance Upgrade",
+			"priority":  "medium",
+			"progress":  30,
+			"tags":      []string{"backend", "performance"},
+		}),
+		createTestNote("projects/mobile.md", map[string]interface{}{
+			"title":     "Mobile App",
+			"fileClass": "project",
+			"name":      "Mobile Application",
+			"priority":  "low",
+			"progress":  10,
+			"tags":      []string{"mobile", "ios", "android"},
+		}),
+	}
+}
+
 func TestSQLiteCacheIntegration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -79,40 +147,61 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 
 	// 4. Persist Notes
 	notes := []domain.Note{
-		{
-			ID: domain.NewNoteID("contacts/alice.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":     "Alice",
-				"fileClass": "contact",
-				"name":      "Alice Smith",
-				"email":     "alice@example.com",
-				"status":    "active",
-			}),
-		},
-		{
-			ID: domain.NewNoteID("contacts/bob.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":     "Bob",
-				"fileClass": "contact",
-				"name":      "Bob Jones",
-				"email":     "bob@example.com",
-				"status":    "inactive",
-			}),
-		},
-		{
-			ID: domain.NewNoteID("projects/project1.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":     "Project 1",
-				"fileClass": "project",
-				"status":    "active",
-			}),
-		},
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"contacts/alice.md",
+				defaultFrontmatter(map[string]interface{}{
+					"title":     "Alice",
+					"fileClass": "contact",
+					"name":      "Alice Smith",
+					"email":     "alice@example.com",
+					"status":    "active",
+				}),
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+			return note
+		}(),
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"contacts/bob.md",
+				defaultFrontmatter(map[string]interface{}{
+					"title":     "Bob",
+					"fileClass": "contact",
+					"name":      "Bob Jones",
+					"email":     "bob@example.com",
+					"status":    "inactive",
+				}),
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+			return note
+		}(),
+		func() domain.Note {
+			note, _ := domain.NewNote(
+				"projects/project1.md",
+				defaultFrontmatter(map[string]interface{}{
+					"title":     "Project 1",
+					"fileClass": "project",
+					"status":    "active",
+				}),
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+			return note
+		}(),
 	}
 
 	// Create actual files in vault with old mod times
 	oldTime := time.Now().Add(-time.Minute)
 	for _, n := range notes {
-		fullPath := filepath.Join(vaultDir, string(n.ID))
+		fullPath := filepath.Join(vaultDir, n.Path)
 		require.NoError(t, os.MkdirAll(filepath.Dir(fullPath), 0o755))
 		content := fmt.Sprintf(
 			"---\nfileClass: %s\ntitle: %s\n---\n\nContent.",
@@ -143,7 +232,7 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 	assert.Len(t, activeContacts, 2)
 
 	// Verify specific note content
-	alice, err := reader.Read(ctx, domain.NewNoteID("contacts/alice.md"))
+	alice, err := reader.Read(ctx, "contacts/alice.md")
 	require.NoError(t, err)
 	assert.Equal(t, "Alice Smith", alice.Frontmatter.Fields["name"])
 
@@ -207,13 +296,18 @@ Some content.`
 	require.NoError(t, err)
 	defer func() { _ = writer.Close() }()
 
-	note := domain.Note{
-		ID: domain.NewNoteID(filePath),
-		Frontmatter: frontmatterWithMetadata(map[string]interface{}{
+	note, err := domain.NewNote(
+		filePath,
+		frontmatterWithMetadata(map[string]interface{}{
 			"fileClass": "contact",
 			"name":      "Bob",
 		}, oldTime, 4096),
-	}
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
 	indexTime := time.Now()
 	require.NoError(t, writer.Persist(ctx, note, indexTime))
 
@@ -280,15 +374,20 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	require.NoError(t, err)
 
 	// 3. Persist test note with initial schema
-	note := domain.Note{
-		ID: domain.NewNoteID("contacts/alice.md"),
-		Frontmatter: defaultFrontmatter(map[string]interface{}{
+	note, err := domain.NewNote(
+		"contacts/alice.md",
+		defaultFrontmatter(map[string]interface{}{
 			"title":     "Alice",
 			"fileClass": "contact",
 			"name":      "Alice Smith",
 			"email":     "alice@example.com",
 		}),
-	}
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
 
 	require.NoError(t, writer.Persist(ctx, note, time.Now()))
 
@@ -339,9 +438,9 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	defer func() { _ = reader.Close() }()
 
 	// 7. Add note with new schema fields
-	updatedNote := domain.Note{
-		ID: domain.NewNoteID("contacts/bob.md"),
-		Frontmatter: defaultFrontmatter(map[string]interface{}{
+	updatedNote, err := domain.NewNote(
+		"contacts/bob.md",
+		defaultFrontmatter(map[string]interface{}{
 			"title":     "Bob",
 			"fileClass": "contact",
 			"name":      "Bob Jones",
@@ -349,7 +448,12 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 			"phone":     "555-0123",
 			"status":    "active",
 		}),
-	}
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	require.NoError(t, err)
 
 	require.NoError(t, writer.Persist(ctx, note, time.Now()))
 	require.NoError(t, writer.Persist(ctx, updatedNote, time.Now()))
@@ -426,111 +530,63 @@ func setupTestSchemas() []domain.Schema {
 func createTestNotes() []domain.Note {
 	notes := []domain.Note{
 		// Contact notes
-		{
-			ID: domain.NewNoteID("contacts/john-doe.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "contact",
-				Fields: map[string]interface{}{
-					"name":       "John Doe",
-					"email":      "john.doe@company.com",
-					"department": "Engineering",
-					"active":     true,
-				},
-			},
-		},
-		{
-			ID: domain.NewNoteID("contacts/jane-smith.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "contact",
-				Fields: map[string]interface{}{
-					"name":       "Jane Smith",
-					"email":      "jane.smith@company.com",
-					"department": "Marketing",
-					"active":     true,
-				},
-			},
-		},
-		{
-			ID: domain.NewNoteID("contacts/bob-johnson.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "contact",
-				Fields: map[string]interface{}{
-					"name":       "Bob Johnson",
-					"email":      "bob.johnson@company.com",
-					"department": "Engineering",
-					"active":     false,
-				},
-			},
-		},
+		createTestNote("contacts/john-doe.md", map[string]interface{}{
+			"fileClass":  "contact",
+			"name":       "John Doe",
+			"email":      "john.doe@company.com",
+			"department": "Engineering",
+			"active":     true,
+		}),
+		createTestNote("contacts/jane-smith.md", map[string]interface{}{
+			"fileClass":  "contact",
+			"name":       "Jane Smith",
+			"email":      "jane.smith@company.com",
+			"department": "Marketing",
+			"active":     true,
+		}),
+		createTestNote("contacts/bob-johnson.md", map[string]interface{}{
+			"fileClass":  "contact",
+			"name":       "Bob Johnson",
+			"email":      "bob.johnson@company.com",
+			"department": "Engineering",
+			"active":     false,
+		}),
 		// Project notes
-		{
-			ID: domain.NewNoteID("projects/alpha.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
-					"name":     "Project Alpha",
-					"priority": "high",
-					"progress": 75,
-				},
-			},
-		},
-		{
-			ID: domain.NewNoteID("projects/beta.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
-					"name":     "Project Beta",
-					"priority": "medium",
-					"progress": 45,
-				},
-			},
-		},
-		{
-			ID: domain.NewNoteID("projects/gamma.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
-					"name":     "Project Gamma",
-					"priority": "low",
-					"progress": 10,
-				},
-			},
-		},
+		createTestNote("projects/alpha.md", map[string]interface{}{
+			"fileClass": "project",
+			"name":      "Project Alpha",
+			"priority":  "high",
+			"progress":  75,
+		}),
+		createTestNote("projects/beta.md", map[string]interface{}{
+			"fileClass": "project",
+			"name":      "Project Beta",
+			"priority":  "medium",
+			"progress":  45,
+		}),
+		createTestNote("projects/gamma.md", map[string]interface{}{
+			"fileClass": "project",
+			"name":      "Project Gamma",
+			"priority":  "low",
+			"progress":  10,
+		}),
 		// Meeting notes
-		{
-			ID: domain.NewNoteID("meetings/standup.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "meeting",
-				Fields: map[string]interface{}{
-					"title":     "Daily Standup",
-					"date":      "2024-01-15",
-					"attendees": []interface{}{"john", "jane", "bob"},
-					"duration":  30,
-				},
-			},
-		},
-		{
-			ID: domain.NewNoteID("meetings/retrospective.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "meeting",
-				Fields: map[string]interface{}{
-					"title":     "Sprint Retrospective",
-					"date":      "2024-01-20",
-					"attendees": []interface{}{"john", "jane"},
-					"duration":  60,
-				},
-			},
-		},
+		createTestNote("meetings/standup.md", map[string]interface{}{
+			"fileClass": "meeting",
+			"title":     "Daily Standup",
+			"date":      "2024-01-15",
+			"attendees": []interface{}{"john", "jane", "bob"},
+			"duration":  30,
+		}),
+		createTestNote("meetings/retrospective.md", map[string]interface{}{
+			"fileClass": "meeting",
+			"title":     "Sprint Retrospective",
+			"date":      "2024-01-20",
+			"attendees": []interface{}{"john", "jane"},
+			"duration":  60,
+		}),
 	}
 
-	for i := range notes {
-		if notes[i].Frontmatter.Fields == nil {
-			notes[i].Frontmatter.Fields = make(map[string]interface{})
-		}
-		if notes[i].Frontmatter.FileClass != "" {
-			notes[i].Frontmatter.Fields["fileClass"] = notes[i].Frontmatter.FileClass
-		}
-	}
 	return notes
 }
 
@@ -657,33 +713,19 @@ func testTagQueries(
 ) {
 	// Create notes with tags for testing
 	taggedNotes := []domain.Note{
-		{
-			ID: domain.NewNoteID("tagged/work-project.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
-				Fields: map[string]interface{}{
-					"name":     "Work Project",
-					"priority": "high",
-					"tags":     []interface{}{"work", "urgent"},
-				},
-			},
-		},
-		{
-			ID: domain.NewNoteID("tagged/personal-note.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "meeting",
-				Fields: map[string]interface{}{
-					"title":     "Personal Meeting",
-					"date":      "2024-01-25",
-					"attendees": []interface{}{"self"},
-					"tags": []interface{}{
-						"personal",
-						"planning",
-						"critical",
-					},
-				},
-			},
-		},
+		createTestNote("tagged/work-project.md", map[string]interface{}{
+			"fileClass": "project",
+			"name":      "Work Project",
+			"priority":  "high",
+			"tags":      []interface{}{"work", "urgent"},
+		}),
+		createTestNote("tagged/personal-note.md", map[string]interface{}{
+			"fileClass": "meeting",
+			"title":     "Personal Meeting",
+			"date":      "2024-01-25",
+			"attendees": []interface{}{"self"},
+			"tags":      []interface{}{"personal"},
+		}),
 	}
 
 	for _, note := range taggedNotes {
@@ -741,7 +783,7 @@ func testDataIntegrity(
 	reader *sqlite.SQLiteReaderAdapter,
 ) {
 	// Read specific notes and verify all fields are preserved
-	johnNote, err := reader.Read(ctx, domain.NewNoteID("contacts/john-doe.md"))
+	johnNote, err := reader.Read(ctx, "contacts/john-doe.md")
 	require.NoError(t, err)
 	assert.Equal(t, "John Doe", johnNote.Frontmatter.Fields["name"])
 	assert.Equal(
@@ -752,7 +794,7 @@ func testDataIntegrity(
 	assert.Equal(t, "Engineering", johnNote.Frontmatter.Fields["department"])
 	assert.Equal(t, true, johnNote.Frontmatter.Fields["active"])
 
-	alphaProject, err := reader.Read(ctx, domain.NewNoteID("projects/alpha.md"))
+	alphaProject, err := reader.Read(ctx, "projects/alpha.md")
 	require.NoError(t, err)
 	assert.Equal(t, "Project Alpha", alphaProject.Frontmatter.Fields["name"])
 	assert.Equal(t, "high", alphaProject.Frontmatter.Fields["priority"])
@@ -765,7 +807,7 @@ func testDataIntegrity(
 
 	standupMeeting, err := reader.Read(
 		ctx,
-		domain.NewNoteID("meetings/standup.md"),
+		"meetings/standup.md",
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "Daily Standup", standupMeeting.Frontmatter.Fields["title"])
@@ -786,7 +828,7 @@ func testDataIntegrity(
 	// Verify tagged note integrity
 	workProject, err := reader.Read(
 		ctx,
-		domain.NewNoteID("tagged/work-project.md"),
+		"tagged/work-project.md",
 	)
 	require.NoError(t, err)
 	assert.Equal(t, "Work Project", workProject.Frontmatter.Fields["name"])
@@ -795,7 +837,7 @@ func testDataIntegrity(
 	assert.Contains(t, tags, "work")
 	assert.Contains(t, tags, "urgent")
 
-	webapp, err := reader.Read(ctx, domain.NewNoteID("tagged/personal-note.md"))
+	webapp, err := reader.Read(ctx, "tagged/personal-note.md")
 	require.NoError(t, err)
 	assert.Equal(t, "Personal Meeting", webapp.Frontmatter.Fields["title"])
 	assert.Contains(t, webapp.Frontmatter.Fields["tags"], "personal")
@@ -871,104 +913,7 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 	}
 
 	// 3. Create diverse test dataset
-	notes := []domain.Note{
-		// Contacts
-		{
-			ID: domain.NewNoteID("contacts/alice.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":      "Alice Smith",
-				"fileClass":  "contact",
-				"name":       "Alice Smith",
-				"email":      "alice@company.com",
-				"department": "Engineering",
-				"active":     true,
-				"tags":       []string{"team-lead", "senior", "backend"},
-			}),
-		},
-		{
-			ID: domain.NewNoteID("contacts/bob.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":      "Bob Jones",
-				"fileClass":  "contact",
-				"name":       "Bob Jones",
-				"email":      "bob@company.com",
-				"department": "Sales",
-				"active":     false,
-				"tags":       []string{"junior", "frontend"},
-			}),
-		},
-		{
-			ID: domain.NewNoteID("contacts/carol.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":      "Carol Davis",
-				"fileClass":  "contact",
-				"name":       "Carol Davis",
-				"email":      "carol@company.com",
-				"department": "Engineering",
-				"active":     true,
-				"tags":       []string{"senior", "fullstack"},
-			}),
-		},
-		{
-			ID: domain.NewNoteID("contacts/bob.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":      "Bob Jones",
-				"fileClass":  "contact",
-				"name":       "Bob Jones",
-				"email":      "bob@company.com",
-				"department": "Sales",
-				"active":     false,
-				"tags":       []string{"junior", "frontend"},
-			}),
-		},
-		{
-			ID: domain.NewNoteID("contacts/carol.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":      "Carol Davis",
-				"fileClass":  "contact",
-				"name":       "Carol Davis",
-				"email":      "carol@company.com",
-				"department": "Engineering",
-				"active":     true,
-				"tags":       []string{"senior", "fullstack"},
-			}),
-		},
-		// Projects
-		{
-			ID: domain.NewNoteID("projects/webapp.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":     "Web Application",
-				"fileClass": "project",
-				"name":      "Web Application Redesign",
-				"priority":  "high",
-				"progress":  75,
-				"tags":      []string{"web", "ui", "critical"},
-			}),
-		},
-		{
-			ID: domain.NewNoteID("projects/api.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-
-				"title":     "API Upgrade",
-				"fileClass": "project",
-				"name":      "API Performance Upgrade",
-				"priority":  "medium",
-				"progress":  30,
-				"tags":      []string{"backend", "performance"},
-			}),
-		},
-		{
-			ID: domain.NewNoteID("projects/mobile.md"),
-			Frontmatter: defaultFrontmatter(map[string]interface{}{
-				"title":     "Mobile App",
-				"fileClass": "project",
-				"name":      "Mobile Application",
-				"priority":  "low",
-				"progress":  10,
-				"tags":      []string{"mobile", "ios", "android"},
-			}),
-		},
-	}
+	notes := createComplexTestNotes()
 
 	// Persist all notes
 	indexTime := time.Now()
@@ -1071,14 +1016,14 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 	assert.Len(t, projectResults, 3) // All projects
 
 	// 8. Verify data integrity and field extraction
-	alice, err := reader.Read(ctx, domain.NewNoteID("contacts/alice.md"))
+	alice, err := reader.Read(ctx, "contacts/alice.md")
 	require.NoError(t, err)
 	assert.Equal(t, "Alice Smith", alice.Frontmatter.Fields["name"])
 	assert.Equal(t, "Engineering", alice.Frontmatter.Fields["department"])
 	assert.Equal(t, true, alice.Frontmatter.Fields["active"])
 	assert.Contains(t, alice.Frontmatter.Fields["tags"], "team-lead")
 
-	webapp, err := reader.Read(ctx, domain.NewNoteID("projects/webapp.md"))
+	webapp, err := reader.Read(ctx, "projects/webapp.md")
 	require.NoError(t, err)
 	assert.Equal(
 		t,

@@ -88,7 +88,7 @@ func (s *FrontmatterService) IsSchemaCompliant(
 	}
 
 	// Validate against schema if fileClass is present
-	if fm.FileClass != "" {
+	if fm.FileClass() != "" {
 		if schemaErr := s.validateAgainstSchema(ctx, fm); schemaErr != nil {
 			validationErrors = append(validationErrors, schemaErr)
 		}
@@ -218,7 +218,7 @@ func (s *FrontmatterService) validateAgainstSchema(
 	var validationErrors []error
 
 	// Get schema for validation
-	sch, schemaErr := s.getSchemaForValidation(ctx, fm.FileClass)
+	sch, schemaErr := s.getSchemaForValidation(ctx, fm.FileClass())
 	if schemaErr != nil {
 		return schemaErr
 	}

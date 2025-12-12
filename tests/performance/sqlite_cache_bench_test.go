@@ -46,23 +46,25 @@ func setupBenchmarkData(
 
 // createBenchmarkNote creates a single benchmark note with varied data.
 func createBenchmarkNote(i int, fileClass string) domain.Note {
-	return domain.Note{
-		ID: domain.NewNoteID(fmt.Sprintf("bench/note-%d.md", i)),
-		Frontmatter: domain.Frontmatter{
-			FileClass: fileClass,
-			Fields: map[string]interface{}{
-				"title":     fmt.Sprintf("Benchmark Note %d", i),
-				"fileClass": fileClass,
-				"author": fmt.Sprintf(
-					"author-%d",
-					i%50,
-				), // 50 different authors
-				"priority": i % 5, // 5 priority levels
-				"status":   []string{"active", "inactive"}[i%2],
-				"tags":     []string{"work", "personal", "urgent"}[i%3 : i%3+1],
-			},
-		},
-	}
+	note, _ := domain.NewNote(
+		fmt.Sprintf("bench/note-%d.md", i),
+		domain.NewFrontmatter(map[string]interface{}{
+			"title":     fmt.Sprintf("Benchmark Note %d", i),
+			"fileClass": fileClass,
+			"author": fmt.Sprintf(
+				"author-%d",
+				i%50,
+			), // 50 different authors
+			"priority": i % 5, // 5 priority levels
+			"status":   []string{"active", "inactive"}[i%2],
+			"tags":     []string{"work", "personal", "urgent"}[i%3 : i%3+1],
+		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	return note
 }
 
 func BenchmarkSQLiteCache(b *testing.B) {
@@ -82,10 +84,10 @@ func BenchmarkSQLiteCache(b *testing.B) {
 		defer func() { _ = reader.Close() }()
 
 		ctx := context.Background()
-		id := domain.NewNoteID("bench/note-0.md")
+		path := "bench/note-0.md"
 		b.ResetTimer()
 		for range b.N {
-			_, err := reader.Read(ctx, id)
+			_, err := reader.Read(ctx, path)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -95,16 +97,17 @@ func BenchmarkSQLiteCache(b *testing.B) {
 
 	b.Run("Write", func(b *testing.B) {
 		ctx := context.Background()
-		note := domain.Note{
-			ID: domain.NewNoteID("bench/write-test.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "benchmark",
-				Fields: map[string]interface{}{
-					"title":     "Write Benchmark Note",
-					"fileClass": "benchmark",
-				},
-			},
-		}
+		note, _ := domain.NewNote(
+			"bench/write-test.md",
+			domain.NewFrontmatter(map[string]interface{}{
+				"title":     "Write Benchmark Note",
+				"fileClass": "benchmark",
+			}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
 		indexTime := time.Now()
 
 		b.ResetTimer()
@@ -118,23 +121,22 @@ func BenchmarkSQLiteCache(b *testing.B) {
 
 	b.Run("WriteUnique", func(b *testing.B) {
 		ctx := context.Background()
-		note := domain.Note{
-			ID: domain.NewNoteID("bench/note-0.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "benchmark",
-				Fields: map[string]interface{}{
-					"title":     "Unique Write Benchmark Note",
-					"fileClass": "benchmark",
-				},
-			},
-		}
 		indexTime := time.Now()
 
 		b.ResetTimer()
 		for i := range b.N {
 			b.StopTimer()
-			n := note
-			n.ID = domain.NewNoteID(fmt.Sprintf("bench/unique-note-%d.md", i))
+			n, _ := domain.NewNote(
+				fmt.Sprintf("bench/unique-note-%d.md", i),
+				domain.NewFrontmatter(map[string]interface{}{
+					"title":     "Unique Write Benchmark Note",
+					"fileClass": "benchmark",
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
 			b.StartTimer()
 
 			if persistErr := writer.Persist(ctx, n, indexTime); persistErr != nil {
@@ -229,18 +231,19 @@ func BenchmarkSQLiteQueryComparison(b *testing.B) {
 	// Create 1000 notes with varied data
 	for i := range 1000 {
 		fileClass := []string{"contact", "project", "meeting"}[i%3]
-		note := domain.Note{
-			ID: domain.NewNoteID(fmt.Sprintf("comparison/note-%d.md", i)),
-			Frontmatter: domain.Frontmatter{
-				FileClass: fileClass,
-				Fields: map[string]interface{}{
-					"title":     fmt.Sprintf("Comparison Note %d", i),
-					"fileClass": fileClass,
-					"status":    []string{"active", "inactive", "pending"}[i%3],
-					"priority":  i % 5,
-				},
-			},
-		}
+		note, _ := domain.NewNote(
+			fmt.Sprintf("comparison/note-%d.md", i),
+			domain.NewFrontmatter(map[string]interface{}{
+				"title":     fmt.Sprintf("Comparison Note %d", i),
+				"fileClass": fileClass,
+				"status":    []string{"active", "inactive", "pending"}[i%3],
+				"priority":  i % 5,
+			}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
 		if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
 			b.Fatal(persistErr)
 		}
@@ -309,19 +312,20 @@ func BenchmarkSQLitePerformanceTargets(b *testing.B) {
 	b.Logf("Creating 1000+ notes for performance target testing...")
 	for i := range 1200 { // Exceed 1000 to ensure target is met
 		fileClass := []string{"contact", "project", "meeting", "task"}[i%4]
-		note := domain.Note{
-			ID: domain.NewNoteID(fmt.Sprintf("perf/note-%d.md", i)),
-			Frontmatter: domain.Frontmatter{
-				FileClass: fileClass,
-				Fields: map[string]interface{}{
-					"fileClass": fileClass,
-					"title":     fmt.Sprintf("Performance Note %d", i),
-					"priority":  i % 5,
-					"status":    []string{"active", "inactive", "pending"}[i%3],
-					"author":    fmt.Sprintf("author-%d", i%20),
-				},
-			},
-		}
+		note, _ := domain.NewNote(
+			fmt.Sprintf("perf/note-%d.md", i),
+			domain.NewFrontmatter(map[string]interface{}{
+				"fileClass": fileClass,
+				"title":     fmt.Sprintf("Performance Note %d", i),
+				"priority":  i % 5,
+				"status":    []string{"active", "inactive", "pending"}[i%3],
+				"author":    fmt.Sprintf("author-%d", i%20),
+			}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
 		if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
 			b.Fatal(persistErr)
 		}
@@ -359,16 +363,17 @@ func BenchmarkSQLitePerformanceTargets(b *testing.B) {
 	b.Run("TagQuery_1000Plus_Notes", func(b *testing.B) {
 		// Add tags to some notes for testing
 		for i := range 100 {
-			note := domain.Note{
-				ID: domain.NewNoteID(fmt.Sprintf("perf/tagged-note-%d.md", i)),
-				Frontmatter: domain.Frontmatter{
-					FileClass: "project",
-					Fields: map[string]interface{}{
-						"fileClass": "project",
-						"tags":      []string{"performance", "test"},
-					},
-				},
-			}
+			note, _ := domain.NewNote(
+				fmt.Sprintf("perf/tagged-note-%d.md", i),
+				domain.NewFrontmatter(map[string]interface{}{
+					"fileClass": "project",
+					"tags":      []string{"performance", "test"},
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
 			if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
 				b.Fatal(persistErr)
 			}

@@ -115,22 +115,26 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 	}{
 		{
 			name: "success - persists note metadata",
-			note: domain.Note{
-				ID: domain.NewNoteID("test-note"),
-				Frontmatter: domain.Frontmatter{
-					FileClass: "contact",
-					Fields: map[string]interface{}{
+			note: func() domain.Note {
+				note, _ := domain.NewNote(
+					"test-note",
+					domain.NewFrontmatter(map[string]interface{}{
 						"title":      "Test Note",
 						"aliases":    []interface{}{"alias1", "alias2"},
 						"file_class": "contact",
-					},
-				},
-			},
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 			wantErr: false,
 			validateFunc: func(t *testing.T, adapter *BoltDBCacheWriteAdapter, note domain.Note) {
 				viewErr := adapter.db.View(func(tx *bbolt.Tx) error {
 					notesBucket := tx.Bucket([]byte(BucketNotes))
-					data := notesBucket.Get([]byte(string(note.ID)))
+					data := notesBucket.Get([]byte(note.Path))
 					assert.NotNil(
 						t,
 						data,
@@ -140,8 +144,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 					var cached CachedNote
 					unmarshalErr := json.Unmarshal(data, &cached)
 					require.NoError(t, unmarshalErr)
-					assert.Equal(t, string(note.ID), cached.Path)
-					assert.Equal(t, string(note.ID), cached.ID)
+					assert.Equal(t, note.Path, cached.Path)
 					assert.Equal(t, "Test Note", cached.Title)
 					assert.Equal(
 						t,
@@ -163,7 +166,7 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 					var paths []string
 					pathsErr := json.Unmarshal(bnData, &paths)
 					require.NoError(t, pathsErr)
-					assert.Contains(t, paths, string(note.ID))
+					assert.Contains(t, paths, note.Path)
 
 					// Aliases
 					aliasBucket := indices.Bucket([]byte(BucketIndexAliasQuery))
@@ -219,17 +222,18 @@ func TestBoltDBCacheWriteAdapter_Delete(t *testing.T) {
 	defer func() { _ = adapter.Close() }()
 
 	// Setup: persist a note first with all metadata for indices
-	note := domain.Note{
-		ID: domain.NewNoteID("notes/delete-test.md"),
-		Frontmatter: domain.Frontmatter{
-			FileClass: "test-class",
-			Fields: map[string]interface{}{
-				"title":      "Delete Test",
-				"aliases":    []interface{}{"del-alias"},
-				"file_class": "test-class",
-			},
-		},
-	}
+	note, _ := domain.NewNote(
+		"notes/delete-test.md",
+		domain.NewFrontmatter(map[string]interface{}{
+			"title":      "Delete Test",
+			"aliases":    []interface{}{"del-alias"},
+			"file_class": "test-class",
+		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
 
 	ctx := context.Background()
 	err = adapter.Persist(ctx, note, time.Now())
@@ -247,14 +251,14 @@ func TestBoltDBCacheWriteAdapter_Delete(t *testing.T) {
 	require.NoError(t, err)
 
 	// Attempt Delete - should fail
-	err = adapter.Delete(ctx, note.ID)
+	err = adapter.Delete(ctx, note.Path)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to unmarshal index list")
 
 	// Verify Note still exists (Rollback)
 	viewErr := adapter.db.View(func(tx *bbolt.Tx) error {
 		notesBucket := tx.Bucket([]byte(BucketNotes))
-		data := notesBucket.Get([]byte(string(note.ID)))
+		data := notesBucket.Get([]byte(note.Path))
 		assert.NotNil(t, data, "Note should still exist after rollback")
 		return nil
 	})
@@ -270,16 +274,21 @@ func Test_extractCachedNote(t *testing.T) {
 	}{
 		{
 			name: "extracts all metadata fields",
-			note: domain.Note{
-				ID: domain.NewNoteID("/notes/contact.md"),
-				Frontmatter: domain.Frontmatter{
-					Fields: map[string]interface{}{
+			note: func() domain.Note {
+				note, _ := domain.NewNote(
+					"/notes/contact.md",
+					domain.NewFrontmatter(map[string]interface{}{
 						"title":      "John Doe",
 						"aliases":    []interface{}{"JD", "Johnny"},
 						"file_class": "contact",
-					},
-				},
-			},
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 			fileClassKey: "file_class",
 			expected: CachedNote{
 				ID:        "/notes/contact.md",

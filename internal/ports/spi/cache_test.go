@@ -13,12 +13,12 @@ import (
 // MockCacheWriter is a mock implementation of CacheWriterPort for testing.
 type MockCacheWriter struct {
 	PersistFunc func(ctx context.Context, note domain.Note, indexTime time.Time) error
-	DeleteFunc  func(ctx context.Context, id domain.NoteID) error
+	DeleteFunc  func(ctx context.Context, path string) error
 }
 
 // MockCacheReader is a mock implementation of CacheReaderPort for testing.
 type MockCacheReader struct {
-	ReadFunc func(ctx context.Context, id domain.NoteID) (domain.Note, error)
+	ReadFunc func(ctx context.Context, path string) (domain.Note, error)
 	ListFunc func(ctx context.Context) ([]domain.Note, error)
 }
 
@@ -35,9 +35,9 @@ func (m *MockCacheWriter) Persist(
 }
 
 // Delete delegates to DeleteFunc if set, otherwise returns nil.
-func (m *MockCacheWriter) Delete(ctx context.Context, id domain.NoteID) error {
+func (m *MockCacheWriter) Delete(ctx context.Context, path string) error {
 	if m.DeleteFunc != nil {
-		return m.DeleteFunc(ctx, id)
+		return m.DeleteFunc(ctx, path)
 	}
 	return nil
 }
@@ -46,10 +46,10 @@ func (m *MockCacheWriter) Delete(ctx context.Context, id domain.NoteID) error {
 // error.
 func (m *MockCacheReader) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
 	if m.ReadFunc != nil {
-		return m.ReadFunc(ctx, id)
+		return m.ReadFunc(ctx, path)
 	}
 	return domain.Note{}, nil
 }
@@ -309,18 +309,18 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	t.Run("BasenameQuery method contract", func(t *testing.T) {
 		// Configure mock to return test data
 		testNotes := []domain.Note{
-			{
-				ID: "test1.md",
-				Frontmatter: domain.NewFrontmatter(
+			func() domain.Note {
+				note, _ := domain.NewNote("test1.md", domain.NewFrontmatter(
 					map[string]any{"title": "Test 1"},
-				),
-			},
-			{
-				ID: "test2.md",
-				Frontmatter: domain.NewFrontmatter(
+				), []domain.Link{}, []domain.Heading{}, []string{}, []domain.TaskItem{})
+				return note
+			}(),
+			func() domain.Note {
+				note, _ := domain.NewNote("test2.md", domain.NewFrontmatter(
 					map[string]any{"title": "Test 2"},
-				),
-			},
+				), []domain.Link{}, []domain.Heading{}, []string{}, []domain.TaskItem{})
+				return note
+			}(),
 		}
 		mock.SetBasenameQueryResult(testNotes, nil)
 
@@ -337,12 +337,12 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	// Test AliasQuery method signature and behavior
 	t.Run("AliasQuery method contract", func(t *testing.T) {
 		testNotes := []domain.Note{
-			{
-				ID: "note1.md",
-				Frontmatter: domain.NewFrontmatter(
+			func() domain.Note {
+				note, _ := domain.NewNote("note1.md", domain.NewFrontmatter(
 					map[string]any{"title": "Note 1"},
-				),
-			},
+				), []domain.Link{}, []domain.Heading{}, []string{}, []domain.TaskItem{})
+				return note
+			}(),
 		}
 		mock.SetAliasQueryResult(testNotes, nil)
 
@@ -357,18 +357,18 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	// Test FileClassQuery method signature and behavior
 	t.Run("FileClassQuery method contract", func(t *testing.T) {
 		testNotes := []domain.Note{
-			{
-				ID: "meeting1.md",
-				Frontmatter: domain.NewFrontmatter(
+			func() domain.Note {
+				note, _ := domain.NewNote("meeting1.md", domain.NewFrontmatter(
 					map[string]any{"fileClass": "meeting"},
-				),
-			},
-			{
-				ID: "meeting2.md",
-				Frontmatter: domain.NewFrontmatter(
+				), []domain.Link{}, []domain.Heading{}, []string{}, []domain.TaskItem{})
+				return note
+			}(),
+			func() domain.Note {
+				note, _ := domain.NewNote("meeting2.md", domain.NewFrontmatter(
 					map[string]any{"fileClass": "meeting"},
-				),
-			},
+				), []domain.Link{}, []domain.Heading{}, []string{}, []domain.TaskItem{})
+				return note
+			}(),
 		}
 		mock.SetFileClassQueryResult(testNotes, nil)
 
@@ -383,8 +383,28 @@ func TestMetadataQueryPortInterfaceContract(t *testing.T) {
 	// Test PathQuery method contract
 	t.Run("PathQuery method contract", func(t *testing.T) {
 		testNotes := []domain.Note{
-			{ID: "notes/project/foo.md"},
-			{ID: "notes/project/bar.md"},
+			func() domain.Note {
+				note, _ := domain.NewNote(
+					"notes/project/foo.md",
+					domain.NewFrontmatter(map[string]any{}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
+			func() domain.Note {
+				note, _ := domain.NewNote(
+					"notes/project/bar.md",
+					domain.NewFrontmatter(map[string]any{}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 		}
 		opts := PathQueryOptions{
 			Scope: PathQueryScopeFolder,

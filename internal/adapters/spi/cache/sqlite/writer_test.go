@@ -25,7 +25,7 @@ func TestSQLiteWriterAdapter_Persist(t *testing.T) {
 	defer func() { _ = writer.Close() }()
 
 	// Create a test note
-	noteID := domain.NoteID("test/note.md")
+	notePath := "test/note.md"
 	modTime := time.Now().Add(-2 * time.Hour).UTC()
 	size := int64(512)
 	fm := domain.NewFrontmatter(map[string]interface{}{
@@ -34,7 +34,8 @@ func TestSQLiteWriterAdapter_Persist(t *testing.T) {
 		"file_mod_time": modTime,
 		"file_size":     size,
 	})
-	note := domain.NewNote(noteID, fm)
+	note, err := domain.NewNote(notePath, fm, nil, nil, nil, nil)
+	require.NoError(t, err)
 
 	ctx := context.Background()
 
@@ -76,20 +77,21 @@ func TestSQLiteWriterAdapter_Delete(t *testing.T) {
 	defer func() { _ = writer.Close() }()
 
 	// Insert a note manually or via Persist
-	noteID := domain.NoteID("test/delete.md")
+	notePath := "test/delete.md"
 	fm := domain.NewFrontmatter(map[string]interface{}{
 		"title":         "Delete Me",
 		"file_mod_time": time.Now().Add(-time.Hour).UTC(),
 		"file_size":     int64(128),
 	})
-	note := domain.NewNote(noteID, fm)
+	note, err := domain.NewNote(notePath, fm, nil, nil, nil, nil)
+	require.NoError(t, err)
 
 	ctx := context.Background()
 	err = writer.Persist(ctx, note, time.Now())
 	require.NoError(t, err)
 
 	// Test Delete
-	err = writer.Delete(ctx, noteID)
+	err = writer.Delete(ctx, notePath)
 	require.NoError(t, err)
 
 	// Verify deletion

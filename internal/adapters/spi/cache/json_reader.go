@@ -93,7 +93,7 @@ func NewJSONCacheReader(
 // Errors: Wrapped with operation context and resource identifiers (FR9).
 func (a *JSONCacheReadAdapter) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
 	// Check for context cancellation
 	select {
@@ -103,32 +103,32 @@ func (a *JSONCacheReadAdapter) Read(
 	}
 
 	// Construct file path
-	path := noteFilePath(a.config.CacheDir, id)
+	filePath := noteFilePath(a.config.CacheDir, path)
 
-	data, readErr := a.readFile(path)
+	data, readErr := a.readFile(filePath)
 	if readErr == nil {
-		return a.unmarshalNote(id, path, data)
+		return a.unmarshalNote(path, filePath, data)
 	}
 
 	if !os.IsNotExist(readErr) {
 		return domain.Note{}, lithosErr.NewCacheReadError(
-			string(id),
 			path,
+			filePath,
 			"read",
 			readErr,
 		)
 	}
 
-	legacyPath := legacyNoteFilePath(a.config.CacheDir, id)
+	legacyPath := legacyNoteFilePath(a.config.CacheDir, path)
 	legacyData, legacyErr := a.readFile(legacyPath)
 	switch {
 	case legacyErr == nil:
-		return a.unmarshalNote(id, legacyPath, legacyData)
+		return a.unmarshalNote(path, legacyPath, legacyData)
 	case os.IsNotExist(legacyErr):
 		return domain.Note{}, lithosErr.ErrNotFound
 	default:
 		return domain.Note{}, lithosErr.NewCacheReadError(
-			string(id),
+			path,
 			legacyPath,
 			"read_legacy",
 			legacyErr,
@@ -227,14 +227,14 @@ func shouldIncludeFile(info os.FileInfo, path string) bool {
 	return !info.IsDir() && filepath.Ext(path) == ".json"
 }
 
-// extractNoteIDFromPath extracts the note ID from a cache file path.
-// Removes the .json extension from the filename.
-func extractNoteIDFromPath(path string) domain.NoteID {
+// extractPathFromCachePath extracts the note path from a cache file path.
+// Removes the .json extension and decodes the filename.
+func extractPathFromCachePath(path string) string {
 	filename := filepath.Base(path)
-	if id, ok := decodeNoteIDFromFilename(filename); ok {
-		return id
+	if decodedPath, ok := decodePathFromFilename(filename); ok {
+		return decodedPath
 	}
-	return domain.NoteID(strings.TrimSuffix(filename, ".json"))
+	return strings.TrimSuffix(filename, ".json")
 }
 
 // BasenameQuery finds notes by filename without extension via O(n) scanning.
@@ -249,9 +249,8 @@ func (a *JSONCacheReadAdapter) BasenameQuery(
 
 	var results []domain.Note
 	for _, note := range notes {
-		// Extract basename from NoteID (path)
-		path := string(note.ID)
-		path = strings.ReplaceAll(path, "\\", "/")
+		// Extract basename from path
+		path := strings.ReplaceAll(note.Path, "\\", "/")
 		base := filepath.Base(path)
 		if ext := filepath.Ext(base); ext != "" {
 			base = strings.TrimSuffix(base, ext)
@@ -298,7 +297,7 @@ func (a *JSONCacheReadAdapter) FileClassQuery(
 		// Check fileClass field from frontmatter (mapped via config key in
 		// domain)
 		// But here we check the extracted FileClass field
-		if note.Frontmatter.FileClass == fileClass {
+		if note.Frontmatter.FileClass() == fileClass {
 			results = append(results, note)
 		}
 	}
@@ -322,7 +321,7 @@ func (a *JSONCacheReadAdapter) PathQuery(
 
 	var results []domain.Note
 	for _, note := range notes {
-		path := string(note.ID)
+		path := note.Path
 		match := false
 
 		switch normalized.Scope {
@@ -397,14 +396,14 @@ func (a *JSONCacheReadAdapter) processNoteFile(
 	ctx context.Context,
 	path string,
 ) (domain.Note, bool) {
-	noteID := extractNoteIDFromPath(path)
+	notePath := extractPathFromCachePath(path)
 
-	note, readErr := a.Read(ctx, noteID)
+	note, readErr := a.Read(ctx, notePath)
 	if readErr != nil {
 		a.log.Warn().
 			Err(readErr).
-			Str("path", path).
-			Str("note_id", string(noteID)).
+			Str("file_path", path).
+			Str("note_path", notePath).
 			Msg("failed to read cache file during list operation")
 		return domain.Note{}, false
 	}
@@ -413,23 +412,23 @@ func (a *JSONCacheReadAdapter) processNoteFile(
 }
 
 func (a *JSONCacheReadAdapter) unmarshalNote(
-	id domain.NoteID,
-	path string,
+	notePath string,
+	filePath string,
 	data []byte,
 ) (domain.Note, error) {
 	var note domain.Note
 	if unmarshalErr := json.Unmarshal(data, &note); unmarshalErr != nil {
 		return domain.Note{}, lithosErr.NewCacheReadError(
-			string(id),
-			path,
+			notePath,
+			filePath,
 			"unmarshal",
 			unmarshalErr,
 		)
 	}
 
 	a.log.Debug().
-		Str("note_id", string(id)).
-		Str("path", path).
+		Str("note_path", notePath).
+		Str("file_path", filePath).
 		Msg("cache read successful")
 
 	return note, nil
