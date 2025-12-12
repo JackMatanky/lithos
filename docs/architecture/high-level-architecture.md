@@ -136,9 +136,40 @@ graph TB
 
 *Ensures single instance of critical resources with thread-safe initialization*
 
-- **Rationale:** Config and PropertyBank are loaded once at application startup and never modified. Using `sync.Once` ensures thread-safe initialization even with concurrent goroutines. Prevents duplicate loading of schemas/properties from disk. Guarantees consistent state across all domain services - all services see the same Config/PropertyBank instance. Go's `sync.Once` provides race-free initialization without global variables. → *(Epic 2, Story 2.3: PropertyBank loading; Config loading at startup)*
+- **Rationale:** Config and PropertyBank are loaded once at application startup and never modified. Using `sync.Once` ensures thread-safe initialization even with concurrent goroutines. Prevents duplicate loading of schemas/properties from disk. Guarantees consistent state across all domain services - all services see the same Config/PropertyBank instance. Go's `sync.Once` provides race-free initialization without global variables. → *(Story 3.28: Singleton Pattern Implementation)*
 
-*Note: Singleton pattern is limited to immutable resources loaded at startup. Runtime state (indexes, caches) uses different concurrency patterns (sync.RWMutex for read-heavy access).*
+**Implementation Details:**
+
+- **Double-Checked Locking:** Uses `sync.RWMutex` with `sync.Once` for optimal performance
+  - Fast path: `RLock` check if instance exists (no blocking for concurrent readers)
+  - Slow path: `sync.Once` initialization (executed exactly once)
+  - Minimal lock contention after initialization
+
+- **Thread-Safety Guarantees:**
+  - `sync.Once` ensures initialization happens exactly once
+  - No data races even with 100+ concurrent goroutines
+  - Verified with Go race detector (`go test -race`)
+
+- **Test Isolation:**
+  - `SetInstanceForTesting()` allows custom instances for tests
+  - `ResetConfigForTesting()` / `ResetPropertyBankForTesting()` for cleanup
+  - Enables independent parallel test execution
+  - Prevents global state pollution across test suites
+
+**API:**
+```go
+// Config singleton
+cfg := config.Instance()                    // Thread-safe accessor
+config.SetInstanceForTesting(&customCfg)    // Test isolation
+defer config.ResetConfigForTesting()        // Test cleanup
+
+// PropertyBank singleton
+bank := propertybank.PropertyBankInstance()              // Thread-safe accessor
+propertybank.SetPropertyBankForTesting(customBank)       // Test isolation
+defer propertybank.ResetPropertyBankForTesting()         // Test cleanup
+```
+
+*Note: Singleton pattern is limited to immutable resources loaded at startup (Config, PropertyBank). Runtime state (indexes, caches) uses different concurrency patterns (sync.RWMutex for read-heavy access). Future DI container (Story 3.30) will provide singleton instances to services via dependency injection.*
 
 **8. Factory Pattern**
 
