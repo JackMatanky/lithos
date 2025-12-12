@@ -248,16 +248,16 @@ func (a *JSONCacheReadAdapter) BasenameQuery(
 	}
 
 	var results []domain.Note
-	for _, note := range notes {
+	for i := range notes {
 		// Extract basename from path
-		path := strings.ReplaceAll(note.Path, "\\", "/")
+		path := strings.ReplaceAll(notes[i].Path, "\\", "/")
 		base := filepath.Base(path)
 		if ext := filepath.Ext(base); ext != "" {
 			base = strings.TrimSuffix(base, ext)
 		}
 
 		if base == basename {
-			results = append(results, note)
+			results = append(results, notes[i])
 		}
 	}
 	return results, nil
@@ -274,9 +274,9 @@ func (a *JSONCacheReadAdapter) AliasQuery(
 	}
 
 	var results []domain.Note
-	for _, note := range notes {
-		if hasAlias(note.Frontmatter, alias) {
-			results = append(results, note)
+	for i := range notes {
+		if hasAlias(notes[i].Frontmatter, alias) {
+			results = append(results, notes[i])
 		}
 	}
 	return results, nil
@@ -293,12 +293,12 @@ func (a *JSONCacheReadAdapter) FileClassQuery(
 	}
 
 	var results []domain.Note
-	for _, note := range notes {
+	for i := range notes {
 		// Check fileClass field from frontmatter (mapped via config key in
 		// domain)
 		// But here we check the extracted FileClass field
-		if note.Frontmatter.FileClass() == fileClass {
-			results = append(results, note)
+		if notes[i].Frontmatter.FileClass() == fileClass {
+			results = append(results, notes[i])
 		}
 	}
 	return results, nil
@@ -320,8 +320,8 @@ func (a *JSONCacheReadAdapter) PathQuery(
 	}
 
 	var results []domain.Note
-	for _, note := range notes {
-		path := note.Path
+	for i := range notes {
+		path := notes[i].Path
 		match := false
 
 		switch normalized.Scope {
@@ -338,7 +338,7 @@ func (a *JSONCacheReadAdapter) PathQuery(
 		}
 
 		if match {
-			results = append(results, note)
+			results = append(results, notes[i])
 		}
 	}
 	return results, nil
@@ -355,11 +355,11 @@ func (a *JSONCacheReadAdapter) TagQuery(
 	}
 
 	var results []domain.Note
-	for _, note := range notes {
+	for i := range notes {
 		// Check tags field
-		if tags, ok := note.Frontmatter.Get("tags"); ok {
+		if tags, ok := notes[i].Frontmatter.Get("tags"); ok {
 			if containsTag(tags, tag) {
-				results = append(results, note)
+				results = append(results, notes[i])
 			}
 		}
 	}
@@ -378,11 +378,11 @@ func (a *JSONCacheReadAdapter) FrontmatterQuery(
 	}
 
 	var results []domain.Note
-	for _, note := range notes {
-		if val, ok := note.Frontmatter.Get(field); ok {
+	for i := range notes {
+		if val, ok := notes[i].Frontmatter.Get(field); ok {
 			// Simple string comparison for now
 			if fmt.Sprintf("%v", val) == value {
-				results = append(results, note)
+				results = append(results, notes[i])
 			}
 		}
 	}

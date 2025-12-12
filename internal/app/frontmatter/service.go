@@ -56,6 +56,11 @@ func NewFrontmatterService(
 // business logic enforcement. Pure domain service focused on schema compliance
 // validation. Frontmatter must be pre-parsed using MarkdownParserPort.
 //
+// Validation Layer: Domain Layer (Semantic)
+// - Performs business rule validation (schema compliance, required fields)
+// - Uses pre-parsed frontmatter (syntactic validation done in adapter layer)
+// - Does NOT perform parsing or structural validation
+//
 // Validation Process:
 //  1. Validates all required fields are present
 //  2. Validates field types using appropriate field validators

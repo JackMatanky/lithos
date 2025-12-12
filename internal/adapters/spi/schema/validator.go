@@ -38,8 +38,13 @@ func NewSchemaValidator() *SchemaValidator {
 	return &SchemaValidator{}
 }
 
-// ValidateAll performs comprehensive validation of schemas.
+// ValidateAll performs comprehensive syntactic validation of schemas.
 // It orchestrates model-level and cross-schema validation.
+//
+// Validation Layer: Adapter Layer (Syntactic)
+// - Checks schema structure, property specs, cross-schema references
+// - Performs infrastructure concerns (regex compilation, type validation)
+// - Does NOT perform semantic validation (business rules, domain logic)
 //
 // Parameters:
 //   - ctx: Context for cancellation during long-running validation
@@ -48,6 +53,7 @@ func NewSchemaValidator() *SchemaValidator {
 // Returns aggregated error if any validation fails.
 //
 // Context is used for cancellation during potentially long-running validation.
+// See: docs/architecture/coding-standards.md#validation-layer-separation.
 func (v *SchemaValidator) ValidateAll(
 	ctx context.Context,
 	schemas []domain.Schema,

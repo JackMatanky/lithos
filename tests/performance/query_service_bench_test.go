@@ -151,9 +151,9 @@ func (r *benchCacheReader) Read(
 	ctx context.Context,
 	path string,
 ) (domain.Note, error) {
-	for _, note := range r.notes {
-		if note.Path == path {
-			return note, nil
+	for i := range r.notes {
+		if r.notes[i].Path == path {
+			return r.notes[i], nil
 		}
 	}
 	return domain.Note{}, lithosErr.NewResourceError(
@@ -357,20 +357,20 @@ func newBenchQueryReader(
 		fileClassIndex:   make(map[string][]domain.Note),
 		frontmatterIndex: make(map[string]map[interface{}][]domain.Note),
 	}
-	for _, note := range notes {
-		r.pathIndex[note.Path] = note
-		if class, ok := note.Frontmatter.Fields[config.FileClassKey]; ok {
+	for i := range notes {
+		r.pathIndex[notes[i].Path] = notes[i]
+		if class, ok := notes[i].Frontmatter.Fields[config.FileClassKey]; ok {
 			if str, ok2 := class.(string); ok2 {
-				r.fileClassIndex[str] = append(r.fileClassIndex[str], note)
+				r.fileClassIndex[str] = append(r.fileClassIndex[str], notes[i])
 			}
 		}
-		for field, value := range note.Frontmatter.Fields {
+		for field, value := range notes[i].Frontmatter.Fields {
 			if r.frontmatterIndex[field] == nil {
 				r.frontmatterIndex[field] = make(map[interface{}][]domain.Note)
 			}
 			r.frontmatterIndex[field][value] = append(
 				r.frontmatterIndex[field][value],
-				note,
+				notes[i],
 			)
 		}
 	}

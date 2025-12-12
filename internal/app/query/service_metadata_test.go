@@ -37,9 +37,9 @@ func (m *mockReader) Read(
 	ctx context.Context,
 	path string,
 ) (domain.Note, error) {
-	for _, n := range m.notes {
-		if n.Path == path {
-			return n, nil
+	for i := range m.notes {
+		if m.notes[i].Path == path {
+			return m.notes[i], nil
 		}
 	}
 	return domain.Note{}, fmt.Errorf("not found")
