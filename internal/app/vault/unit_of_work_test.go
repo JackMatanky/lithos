@@ -54,7 +54,7 @@ func (f *UnitOfWorkFixture) WithFailingSQLiteWriter() *UnitOfWorkFixture {
 // WithFailingBoltDelete configures the BoltDB writer to fail on delete
 // operations.
 func (f *UnitOfWorkFixture) WithFailingBoltDelete() *UnitOfWorkFixture {
-	f.boltWriter.DeleteFunc = func(ctx context.Context, id domain.NoteID) error {
+	f.boltWriter.DeleteFunc = func(ctx context.Context, path string) error {
 		return errors.New("bolt delete failure")
 	}
 	return f
@@ -117,9 +117,14 @@ func TestCacheUnitOfWork_Begin(t *testing.T) {
 func TestCacheUnitOfWork_AddWrite(t *testing.T) {
 	fixture := NewUnitOfWorkFixture()
 
-	note := domain.Note{
-		ID: "test-note",
-	}
+	note, _ := domain.NewNote(
+		"test-note",
+		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
 	indexTime := time.Now()
 
 	if err := fixture.UnitOfWork().AddWrite(note, indexTime); err != nil {
@@ -146,12 +151,21 @@ func TestCacheUnitOfWork_Commit_Success(t *testing.T) {
 		WithTrackingBoltWriter().
 		WithTrackingSQLiteWriter()
 
-	// Override the mock functions to track calls
-	fixture.BoltWriter().PersistFunc = func(
-		ctx context.Context, note domain.Note, indexTime time.Time,
-	) error {
-		boltCalls++
-		return nil
+	ctx := context.Background()
+
+	if err := fixture.UnitOfWork().Begin(); err != nil {
+		t.Fatalf("Begin() error = %v, want nil", err)
+	}
+	testNote, _ := domain.NewNote(
+		"test",
+		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	if err := fixture.UnitOfWork().AddWrite(testNote, time.Now()); err != nil {
+		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 	fixture.SQLiteWriter().PersistFunc = func(
 		ctx context.Context, note domain.Note, indexTime time.Time,
@@ -160,12 +174,18 @@ func TestCacheUnitOfWork_Commit_Success(t *testing.T) {
 		return nil
 	}
 
-	ctx := context.Background()
-
 	if err := fixture.UnitOfWork().Begin(); err != nil {
 		t.Fatalf("Begin() error = %v, want nil", err)
 	}
-	if err := fixture.UnitOfWork().AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
+	testNote2, _ := domain.NewNote(
+		"test",
+		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	if err := fixture.UnitOfWork().AddWrite(testNote2, time.Now()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 
@@ -199,7 +219,15 @@ func TestCacheUnitOfWork_Commit_BoltFail_Rollback(t *testing.T) {
 	if err := fixture.UnitOfWork().Begin(); err != nil {
 		t.Fatalf("Begin() error = %v, want nil", err)
 	}
-	if err := fixture.UnitOfWork().AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
+	testNote, _ := domain.NewNote(
+		"test",
+		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	if err := fixture.UnitOfWork().AddWrite(testNote, time.Now()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 
@@ -224,7 +252,7 @@ func TestCacheUnitOfWork_Commit_SQLiteFail_Rollback(t *testing.T) {
 	) error {
 		return nil // BoltDB write succeeds
 	}
-	fixture.BoltWriter().DeleteFunc = func(ctx context.Context, id domain.NoteID) error {
+	fixture.BoltWriter().DeleteFunc = func(ctx context.Context, path string) error {
 		boltDeletes++
 		return nil
 	}
@@ -234,7 +262,15 @@ func TestCacheUnitOfWork_Commit_SQLiteFail_Rollback(t *testing.T) {
 	if err := fixture.UnitOfWork().Begin(); err != nil {
 		t.Fatalf("Begin() error = %v, want nil", err)
 	}
-	if err := fixture.UnitOfWork().AddWrite(domain.Note{ID: "test"}, time.Now()); err != nil {
+	testNote4, _ := domain.NewNote(
+		"test",
+		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+	if err := fixture.UnitOfWork().AddWrite(testNote4, time.Now()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 

@@ -37,27 +37,25 @@ func TestBoltDBCacheIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	notes := []domain.Note{
-		{
-			ID: domain.NewNoteID("notes/alpha.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "project",
+		func() domain.Note {
+			note, _ := domain.NewNote("notes/alpha.md", domain.Frontmatter{
 				Fields: map[string]interface{}{
 					"title":     "Alpha Project",
 					"fileClass": "project",
 					"aliases":   []interface{}{"Alpha", "Project A"},
 				},
-			},
-		},
-		{
-			ID: domain.NewNoteID("notes/beta.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "contact",
+			}, nil, nil, nil, nil)
+			return note
+		}(),
+		func() domain.Note {
+			note, _ := domain.NewNote("notes/beta.md", domain.Frontmatter{
 				Fields: map[string]interface{}{
 					"title":     "Beta Contact",
 					"fileClass": "contact",
 				},
-			},
-		},
+			}, nil, nil, nil, nil)
+			return note
+		}(),
 	}
 
 	ctx := context.Background()
@@ -74,7 +72,7 @@ func TestBoltDBCacheIntegration(t *testing.T) {
 	defer func() { _ = reader.Close() }()
 
 	// Verify Read by ID
-	note, err := reader.Read(ctx, domain.NewNoteID("notes/alpha.md"))
+	note, err := reader.Read(ctx, "notes/alpha.md")
 	require.NoError(t, err)
 	assert.Equal(t, "Alpha Project", note.Frontmatter.Fields["title"])
 
@@ -83,19 +81,19 @@ func TestBoltDBCacheIntegration(t *testing.T) {
 	projectNotes, err := reader.FileClassQuery(ctx, "project")
 	require.NoError(t, err)
 	assert.Len(t, projectNotes, 1)
-	assert.Equal(t, "notes/alpha.md", string(projectNotes[0].ID))
+	assert.Equal(t, "notes/alpha.md", projectNotes[0].Path)
 
 	// AliasQuery
 	aliasNotes, err := reader.AliasQuery(ctx, "Project A")
 	require.NoError(t, err)
 	assert.Len(t, aliasNotes, 1)
-	assert.Equal(t, "notes/alpha.md", string(aliasNotes[0].ID))
+	assert.Equal(t, "notes/alpha.md", aliasNotes[0].Path)
 
 	// BasenameQuery
 	basenameNotes, err := reader.BasenameQuery(ctx, "beta")
 	require.NoError(t, err)
 	assert.Len(t, basenameNotes, 1)
-	assert.Equal(t, "notes/beta.md", string(basenameNotes[0].ID))
+	assert.Equal(t, "notes/beta.md", basenameNotes[0].Path)
 
 	// 3. Verify Staleness (Basic check)
 	// Since file doesn't exist on disk, should be stale

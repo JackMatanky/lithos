@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,7 +14,7 @@ import (
 // TestNoteFilePath tests the function.
 func TestNoteFilePath(t *testing.T) {
 	cacheDir := "/tmp/cache"
-	tests := []domain.NoteID{
+	tests := []string{
 		"test-note",
 		"projects/notes/meeting.md",
 		"projects\\notes\\meeting.md",
@@ -23,7 +22,7 @@ func TestNoteFilePath(t *testing.T) {
 	}
 
 	for _, id := range tests {
-		t.Run(string(id), func(t *testing.T) {
+		t.Run(id, func(t *testing.T) {
 			result := noteFilePath(cacheDir, id)
 
 			assert.True(
@@ -38,17 +37,18 @@ func TestNoteFilePath(t *testing.T) {
 			)
 
 			filename := filepath.Base(result)
+			// Note: The new encoding uses base64 directly without prefix
 			assert.True(
 				t,
-				strings.HasPrefix(filename, cacheFilenamePrefix),
-				"filename should use new prefix",
+				strings.HasSuffix(filename, cacheFileExt),
+				"filename should end with .json",
 			)
 
-			decoded, ok := decodeNoteIDFromFilename(filename)
+			decoded, ok := decodePathFromFilename(filename)
 			require.True(t, ok, "filename should decode using new scheme")
 			assert.Equal(
 				t,
-				domain.NoteID(strings.ReplaceAll(string(id), "\\", "/")),
+				strings.ReplaceAll(id, "\\", "/"),
 				decoded,
 			)
 		})

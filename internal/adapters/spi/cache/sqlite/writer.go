@@ -56,7 +56,7 @@ func (a *SQLiteWriterAdapter) Persist(
 		return err
 	}
 
-	path := string(note.ID)
+	path := note.Path
 	payload, modTime, size, err := a.preparePersistData(note)
 	if err != nil {
 		return err
@@ -90,18 +90,16 @@ func ensureFileClassField(
 // Delete removes the note.
 func (a *SQLiteWriterAdapter) Delete(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	path := string(id)
-
 	_, err := a.db.ExecContext(ctx, "DELETE FROM notes WHERE path = ?", path)
 	if err != nil {
 		return lithosErr.NewCacheDeleteError(
-			string(id),
+			path,
 			path,
 			"delete_note",
 			err,
@@ -120,14 +118,14 @@ func (a *SQLiteWriterAdapter) preparePersistData(
 ) (payload string, modTime time.Time, fileSize int64, err error) {
 	fields := ensureFileClassField(
 		note.Frontmatter.Fields,
-		note.Frontmatter.FileClass,
+		note.Frontmatter.FileClass(),
 		a.config.FileClassKey,
 	)
 	bytes, err := json.Marshal(fields)
 	if err != nil {
 		return "", time.Time{}, 0, lithosErr.NewCacheWriteError(
-			string(note.ID),
-			string(note.ID),
+			note.Path,
+			note.Path,
 			"marshal_frontmatter",
 			err,
 		)

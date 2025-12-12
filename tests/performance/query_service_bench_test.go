@@ -122,7 +122,7 @@ func BenchmarkQueryService_EndToEndTemplateRendering(b *testing.B) {
 				b.Fatal(err)
 			}
 			if _, err := bench.qs.IDQuery(
-				ctx, domain.NoteID(fmt.Sprintf("template-note-%d.md", i%size)),
+				ctx, fmt.Sprintf("template-note-%d.md", i%size),
 			); err != nil {
 				b.Fatal(err)
 			}
@@ -146,20 +146,20 @@ func runBoltHotPath(
 	assertDuration(b, time.Millisecond)
 }
 
-// Read returns a note by ID from the cache reader.
+// Read returns a note by path from the cache reader.
 func (r *benchCacheReader) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
 	for _, note := range r.notes {
-		if note.ID == id {
+		if note.Path == path {
 			return note, nil
 		}
 	}
 	return domain.Note{}, lithosErr.NewResourceError(
 		"note",
 		"read",
-		id.String(),
+		path,
 		fmt.Errorf("not found"),
 	)
 }
@@ -169,12 +169,12 @@ func (r *benchCacheReader) List(ctx context.Context) ([]domain.Note, error) {
 	return append([]domain.Note(nil), r.notes...), nil
 }
 
-// Read looks up a note by ID using the path index.
+// Read looks up a note by path using the path index.
 func (r *benchQueryReader) Read(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) (domain.Note, error) {
-	return r.getPathQueryString(string(id))
+	return r.getPathQueryString(path)
 }
 
 // List returns all notes known to the query reader.
@@ -255,7 +255,7 @@ func runMixedWorkload(
 		if _, err := bench.qs.FrontmatterQuery(ctx, "priority", i%5); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := bench.qs.IDQuery(ctx, domain.NoteID(fmt.Sprintf("note-%d.md", i%size))); err != nil {
+		if _, err := bench.qs.IDQuery(ctx, fmt.Sprintf("note-%d.md", i%size)); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -287,12 +287,17 @@ func generateNotes(count int, classes []string) []domain.Note {
 	notes := make([]domain.Note, 0, count)
 	for i := range count {
 		class := classes[i%len(classes)]
-		notes = append(notes, domain.NewNote(
-			domain.NewNoteID(fmt.Sprintf("note-%d.md", i)),
+		note, _ := domain.NewNote(
+			fmt.Sprintf("note-%d.md", i),
 			domain.NewFrontmatter(
 				map[string]any{"file_class": class, "priority": i % 5},
 			),
-		))
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
+		notes = append(notes, note)
 	}
 	return notes
 }
@@ -301,14 +306,19 @@ func generateNotes(count int, classes []string) []domain.Note {
 func generateAuthorNotes(count int) []domain.Note {
 	notes := make([]domain.Note, 0, count)
 	for i := range count {
-		notes = append(notes, domain.NewNote(
-			domain.NewNoteID(fmt.Sprintf("note-%d.md", i)),
+		note, _ := domain.NewNote(
+			fmt.Sprintf("note-%d.md", i),
 			domain.NewFrontmatter(map[string]any{
 				"author":     fmt.Sprintf("author-%d", i%50),
 				"priority":   i % 5,
 				"file_class": fmt.Sprintf("class-%d", i%10),
 			}),
-		))
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
+		notes = append(notes, note)
 	}
 	return notes
 }
@@ -319,14 +329,19 @@ func generateTemplateNotes(count int) []domain.Note {
 	classes := []string{"contact", "project", "meeting", "task", "note"}
 	clen := len(classes)
 	for i := range count {
-		notes = append(notes, domain.NewNote(
-			domain.NewNoteID(fmt.Sprintf("templates/note-%d.md", i)),
+		note, _ := domain.NewNote(
+			fmt.Sprintf("templates/note-%d.md", i),
 			domain.NewFrontmatter(map[string]any{
 				"file_class": classes[i%clen],
 				"author":     fmt.Sprintf("author-%d", i%25),
 				"priority":   i % 3,
 			}),
-		))
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
+		notes = append(notes, note)
 	}
 	return notes
 }
@@ -343,7 +358,7 @@ func newBenchQueryReader(
 		frontmatterIndex: make(map[string]map[interface{}][]domain.Note),
 	}
 	for _, note := range notes {
-		r.pathIndex[string(note.ID)] = note
+		r.pathIndex[note.Path] = note
 		if class, ok := note.Frontmatter.Fields[config.FileClassKey]; ok {
 			if str, ok2 := class.(string); ok2 {
 				r.fileClassIndex[str] = append(r.fileClassIndex[str], note)

@@ -125,8 +125,8 @@ func extractCachedNote(
 	indexTime time.Time,
 ) CachedNote {
 	var cached CachedNote
-	cached.Path = string(note.ID) // Use ID as path per current domain model
-	cached.ID = string(note.ID)
+	cached.Path = note.Path // Use Path as identifier per new domain model
+	cached.ID = note.Path
 
 	// FileDatesDTO
 	fileDates := dto.NewFileDatesDTO(
@@ -206,15 +206,13 @@ func (a *BoltDBCacheWriteAdapter) Persist(
 // Delete removes note metadata from all BoltDB buckets.
 func (a *BoltDBCacheWriteAdapter) Delete(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
 	}
-
-	path := string(id)
 
 	err := a.db.Update(func(tx *bbolt.Tx) error {
 		// 1. Primary bucket

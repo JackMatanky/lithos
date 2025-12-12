@@ -117,11 +117,11 @@ func (v *VaultWriterAdapter) Persist(
 	if err != nil {
 		v.logger.Error().
 			Err(err).
-			Str("note_id", string(note.ID)).
+			Str("note_path", note.Path).
 			Msg("Failed to serialize note")
 		return fmt.Errorf(
 			"failed to serialize note %s: %w",
-			note.ID,
+			note.Path,
 			err,
 		)
 	}
@@ -131,11 +131,11 @@ func (v *VaultWriterAdapter) Persist(
 		v.logger.Error().
 			Err(writeErr).
 			Str("path", fullPath).
-			Str("note_id", string(note.ID)).
+			Str("note_path", note.Path).
 			Msg("Failed to write note atomically")
 		return fmt.Errorf(
 			"failed to persist note %s to %s: %w",
-			note.ID,
+			note.Path,
 			fullPath,
 			writeErr,
 		)
@@ -143,7 +143,7 @@ func (v *VaultWriterAdapter) Persist(
 
 	v.logger.Info().
 		Str("path", fullPath).
-		Str("note_id", string(note.ID)).
+		Str("note_path", note.Path).
 		Msg("Successfully persisted note")
 
 	return nil

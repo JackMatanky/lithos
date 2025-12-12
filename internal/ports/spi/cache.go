@@ -133,7 +133,7 @@ type CacheWriterPort interface {
 	// Thread-safe: Safe for concurrent calls.
 	// Context: Respects ctx cancellation, returns ctx.Err() if canceled.
 	// Errors: Wrapped with operation context and resource identifiers (FR9).
-	Delete(ctx context.Context, id domain.NoteID) error
+	Delete(ctx context.Context, path string) error
 }
 
 // CacheReaderPort defines the CQRS read-side contract for cache retrieval.
@@ -198,7 +198,7 @@ type CacheReaderPort interface {
 	// Thread-safe: Safe for concurrent calls.
 	// Context: Respects ctx cancellation, returns ctx.Err() if canceled.
 	// Errors: Wrapped with operation context and resource identifiers (FR9).
-	Read(ctx context.Context, id domain.NoteID) (domain.Note, error)
+	Read(ctx context.Context, path string) (domain.Note, error)
 
 	// List returns all notes currently in the cache.
 	// May return partial results with warnings if some notes fail to load.

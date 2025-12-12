@@ -47,21 +47,20 @@ func TestRead(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		noteID       domain.NoteID
-		setupFunc    func(t *testing.T, cacheDir string, noteID domain.NoteID)
+		notePath     string
+		setupFunc    func(t *testing.T, cacheDir string, notePath string)
 		wantErr      bool
 		errContains  string
 		validateFunc func(t *testing.T, note domain.Note, err error)
 	}{
 		{
-			name:   "success - deserializes valid JSON",
-			noteID: "test-note",
-			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
-				path := noteFilePath(cacheDir, noteID)
+			name:     "success - deserializes valid JSON",
+			notePath: "test-note",
+			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
+				path := noteFilePath(cacheDir, notePath)
 				jsonData := `{
-					"ID": "test-note",
+					"Path": "test-note",
 					"Frontmatter": {
-						"FileClass": "contact",
 						"Fields": {
 							"fileClass": "contact",
 							"title": "Test Note",
@@ -74,8 +73,8 @@ func TestRead(t *testing.T) {
 			},
 			wantErr: false,
 			validateFunc: func(t *testing.T, note domain.Note, err error) {
-				assert.Equal(t, domain.NoteID("test-note"), note.ID)
-				assert.Equal(t, "contact", note.Frontmatter.FileClass)
+				assert.Equal(t, "test-note", note.Path)
+				assert.Equal(t, "contact", note.FileClass())
 				assert.Equal(t, "Test Note", note.Frontmatter.Fields["title"])
 				assert.Equal(
 					t,
@@ -85,9 +84,9 @@ func TestRead(t *testing.T) {
 			},
 		},
 		{
-			name:   "error - returns ErrNotFound for missing file",
-			noteID: "missing-note",
-			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
+			name:     "error - returns ErrNotFound for missing file",
+			notePath: "missing-note",
+			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
 				// No setup - file doesn't exist
 			},
 			wantErr:     true,
@@ -97,14 +96,13 @@ func TestRead(t *testing.T) {
 			},
 		},
 		{
-			name:   "success - reads legacy cache filename",
-			noteID: "legacy/path/note.md",
-			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
-				path := legacyNoteFilePath(cacheDir, noteID)
+			name:     "success - reads legacy cache filename",
+			notePath: "legacy/path/note.md",
+			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
+				path := legacyNoteFilePath(cacheDir, notePath)
 				writeErr := os.WriteFile(path, []byte(`{
-						"ID": "legacy/path/note.md",
+						"Path": "legacy/path/note.md",
 						"Frontmatter": {
-							"FileClass": "legacy",
 							"Fields": {"fileClass": "legacy"}
 						}
 					}`), 0o600)
@@ -112,19 +110,18 @@ func TestRead(t *testing.T) {
 			},
 			wantErr: false,
 			validateFunc: func(t *testing.T, note domain.Note, err error) {
-				assert.Equal(t, domain.NoteID("legacy/path/note.md"), note.ID)
-				assert.Equal(t, "legacy", note.Frontmatter.FileClass)
+				assert.Equal(t, "legacy/path/note.md", note.Path)
+				assert.Equal(t, "legacy", note.FileClass())
 			},
 		},
 		{
-			name:   "success - preserves unknown fields (FR6)",
-			noteID: "unknown-fields-note",
-			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
-				path := noteFilePath(cacheDir, noteID)
+			name:     "success - preserves unknown fields (FR6)",
+			notePath: "unknown-fields-note",
+			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
+				path := noteFilePath(cacheDir, notePath)
 				jsonData := `{
-					"ID": "unknown-fields-note",
+					"Path": "unknown-fields-note",
 					"Frontmatter": {
-						"FileClass": "meeting",
 						"Fields": {
 							"fileClass": "meeting",
 							"title": "Team Meeting",
@@ -145,8 +142,8 @@ func TestRead(t *testing.T) {
 			},
 			wantErr: false,
 			validateFunc: func(t *testing.T, note domain.Note, err error) {
-				assert.Equal(t, domain.NoteID("unknown-fields-note"), note.ID)
-				assert.Equal(t, "meeting", note.Frontmatter.FileClass)
+				assert.Equal(t, "unknown-fields-note", note.Path)
+				assert.Equal(t, "meeting", note.FileClass())
 				// Verify all unknown fields are preserved
 				assert.Equal(
 					t,
@@ -175,11 +172,11 @@ func TestRead(t *testing.T) {
 			},
 		},
 		{
-			name:   "error - wraps errors correctly for malformed JSON",
-			noteID: "malformed-note",
-			setupFunc: func(t *testing.T, cacheDir string, noteID domain.NoteID) {
-				path := noteFilePath(cacheDir, noteID)
-				jsonData := `{"ID": "malformed-note", "Frontmatter": {invalid json}`
+			name:     "error - wraps errors correctly for malformed JSON",
+			notePath: "malformed-note",
+			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
+				path := noteFilePath(cacheDir, notePath)
+				jsonData := `{"Path": "malformed-note", "Frontmatter": {invalid json}`
 				writeErr := os.WriteFile(path, []byte(jsonData), 0o600)
 				require.NoError(t, writeErr)
 			},
@@ -195,10 +192,10 @@ func TestRead(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup test data
-			tt.setupFunc(t, cacheDir, tt.noteID)
+			tt.setupFunc(t, cacheDir, tt.notePath)
 
 			// Execute Read
-			note, readErr := adapter.Read(context.Background(), tt.noteID)
+			note, readErr := adapter.Read(context.Background(), tt.notePath)
 
 			// Validate results
 			if tt.wantErr {
@@ -232,23 +229,21 @@ func TestList(t *testing.T) {
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Create multiple valid JSON files
 				note1 := `{
-					"ID": "note1",
+					"Path": "note1",
 					"Frontmatter": {
-						"FileClass": "contact",
-						"Fields": {"title": "Note 1"}
+						"Fields": {"fileClass": "contact", "title": "Note 1"}
 					}
 				}`
 				note2 := `{
-					"ID": "note2",
+					"Path": "note2",
 					"Frontmatter": {
-						"FileClass": "meeting",
-						"Fields": {"title": "Note 2"}
+						"Fields": {"fileClass": "meeting", "title": "Note 2"}
 					}
 				}`
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, domain.NoteID("note1")),
+						noteFilePath(cacheDir, "note1"),
 						[]byte(note1),
 						0o600,
 					),
@@ -256,7 +251,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, domain.NoteID("note2")),
+						noteFilePath(cacheDir, "note2"),
 						[]byte(note2),
 						0o600,
 					),
@@ -266,12 +261,12 @@ func TestList(t *testing.T) {
 			validateFunc: func(t *testing.T, notes []domain.Note, err error) {
 				assert.Len(t, notes, 2)
 				// Check that both notes are present (order may vary)
-				noteIDs := make(map[domain.NoteID]bool)
+				notePaths := make(map[string]bool)
 				for _, note := range notes {
-					noteIDs[note.ID] = true
+					notePaths[note.Path] = true
 				}
-				assert.True(t, noteIDs["note1"])
-				assert.True(t, noteIDs["note2"])
+				assert.True(t, notePaths["note1"])
+				assert.True(t, notePaths["note2"])
 			},
 		},
 		{
@@ -289,16 +284,15 @@ func TestList(t *testing.T) {
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Create valid JSON file
 				validNote := `{
-					"ID": "valid-note",
+					"Path": "valid-note",
 					"Frontmatter": {
-						"FileClass": "contact",
-						"Fields": {"title": "Valid Note"}
+						"Fields": {"fileClass": "contact", "title": "Valid Note"}
 					}
 				}`
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, domain.NoteID("valid-note")),
+						noteFilePath(cacheDir, "valid-note"),
 						[]byte(validNote),
 						0o600,
 					),
@@ -308,7 +302,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, domain.NoteID("invalid-note")),
+						noteFilePath(cacheDir, "invalid-note"),
 						[]byte(`{"invalid": json`),
 						0o600,
 					),
@@ -318,7 +312,7 @@ func TestList(t *testing.T) {
 			validateFunc: func(t *testing.T, notes []domain.Note, err error) {
 				// Should return only the valid note, despite invalid file
 				assert.Len(t, notes, 1)
-				assert.Equal(t, domain.NoteID("valid-note"), notes[0].ID)
+				assert.Equal(t, "valid-note", notes[0].Path)
 			},
 		},
 		{
@@ -326,16 +320,15 @@ func TestList(t *testing.T) {
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Create valid JSON file
 				validNote := `{
-					"ID": "json-note",
+					"Path": "json-note",
 					"Frontmatter": {
-						"FileClass": "contact",
-						"Fields": {"title": "JSON Note"}
+						"Fields": {"fileClass": "contact", "title": "JSON Note"}
 					}
 				}`
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, domain.NoteID("json-note")),
+						noteFilePath(cacheDir, "json-note"),
 						[]byte(validNote),
 						0o600,
 					),
@@ -363,7 +356,7 @@ func TestList(t *testing.T) {
 			validateFunc: func(t *testing.T, notes []domain.Note, err error) {
 				// Should return only the JSON file, ignore others
 				assert.Len(t, notes, 1)
-				assert.Equal(t, domain.NoteID("json-note"), notes[0].ID)
+				assert.Equal(t, "json-note", notes[0].Path)
 			},
 		},
 

@@ -6,6 +6,7 @@ import (
 	"io"
 	"sync"
 
+	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/yuin/goldmark"
@@ -138,6 +139,40 @@ func (a *MarkdownParserAdapter) ParseFrontmatter(
 	return result, nil
 }
 
+// ParseNote parses complete markdown content and constructs a domain Note.
+// Currently implements basic parsing - frontmatter only with empty metadata
+// slices.
+// TODO: Extend with full AST parsing for links, headings, tags, and tasks.
+func (a *MarkdownParserAdapter) ParseNote(
+	ctx context.Context,
+	path string,
+	content []byte,
+) (domain.Note, error) {
+	// Parse frontmatter
+	fields, err := a.ParseFrontmatter(ctx, content)
+	if err != nil {
+		return domain.Note{}, fmt.Errorf("frontmatter parsing failed: %w", err)
+	}
+
+	// Create frontmatter domain object
+	fm := domain.NewFrontmatter(fields)
+
+	// TODO: Implement full AST parsing for links, headings, tags, tasks
+	// For now, create empty slices
+	var links []domain.Link
+	var headings []domain.Heading
+	var tags []string
+	var tasks []domain.TaskItem
+
+	// Construct note using factory
+	note, err := domain.NewNote(path, fm, links, headings, tags, tasks)
+	if err != nil {
+		return domain.Note{}, fmt.Errorf("note construction failed: %w", err)
+	}
+
+	return note, nil
+}
+
 // parseWithGoldmark performs the actual parsing using goldmark with frontmatter
 // extension. This helper method isolates goldmark-specific logic and provides
 // proper error handling for parsing failures.
@@ -145,6 +180,10 @@ func (a *MarkdownParserAdapter) ParseFrontmatter(
 // The method uses goldmark's parser context to safely extract frontmatter
 // without interference from code blocks or other markdown constructs that
 // might contain similar delimiter patterns.
+//
+// Returns:
+//   - map[string]any: Parsed frontmatter fields, empty map if no frontmatter
+//   - error: Parsing errors with additional context and line information
 //
 // Returns:
 //   - map[string]any: Parsed frontmatter fields, empty map if no frontmatter
@@ -179,15 +218,15 @@ func (a *MarkdownParserAdapter) parseWithGoldmark(
 	}
 
 	// Extract frontmatter data from parser context
-	frontmatterData := frontmatter.Get(parserCtx)
-	if frontmatterData == nil {
+	fmData := frontmatter.Get(parserCtx)
+	if fmData == nil {
 		// No frontmatter found - return empty map (not an error)
 		return make(map[string]any), nil
 	}
 
 	// Decode frontmatter.Data into standard map[string]any
 	result := make(map[string]any)
-	if err := frontmatterData.Decode(&result); err != nil {
+	if err := fmData.Decode(&result); err != nil {
 		return nil, fmt.Errorf("frontmatter decode failed: %w", err)
 	}
 

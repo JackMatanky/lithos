@@ -50,52 +50,80 @@ func TestPersist(t *testing.T) {
 	}{
 		{
 			name: "success - creates directory and writes JSON",
-			note: domain.NewNote(
-				domain.NewNoteID("test-note"),
-				domain.NewFrontmatter(map[string]interface{}{
-					"fileClass": "contact",
-					"title":     "Test Note",
-				}),
-			),
+			note: func() domain.Note {
+				note, _ := domain.NewNote(
+					"test-note",
+					domain.NewFrontmatter(map[string]interface{}{
+						"fileClass": "contact",
+						"title":     "Test Note",
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 			wantErr: false,
 		},
 		{
 			name: "success - serializes Note to JSON with proper structure",
-			note: domain.NewNote(
-				domain.NewNoteID("json-test"),
-				domain.NewFrontmatter(map[string]interface{}{
-					"fileClass": "meeting",
-					"title":     "JSON Test",
-					"tags":      []string{"test", "json"},
-				}),
-			),
+			note: func() domain.Note {
+				note, _ := domain.NewNote(
+					"json-test",
+					domain.NewFrontmatter(map[string]interface{}{
+						"fileClass": "meeting",
+						"title":     "JSON Test",
+						"tags":      []string{"test", "json"},
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 			wantErr: false,
 		},
 		{
 			name: "success - uses atomic write (temp file + rename)",
-			note: domain.NewNote(
-				domain.NewNoteID("atomic-test"),
-				domain.NewFrontmatter(map[string]interface{}{
-					"fileClass": "contact",
-					"title":     "Atomic Test",
-				}),
-			),
+			note: func() domain.Note {
+				note, _ := domain.NewNote(
+					"atomic-test",
+					domain.NewFrontmatter(map[string]interface{}{
+						"fileClass": "contact",
+						"title":     "Atomic Test",
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 			wantErr: false,
 		},
 		{
 			name: "success - overwrites existing file atomically",
-			note: domain.NewNote(
-				domain.NewNoteID("overwrite-test"),
-				domain.NewFrontmatter(map[string]interface{}{
-					"fileClass": "contact",
-					"title":     "Overwrite Test",
-				}),
-			),
+			note: func() domain.Note {
+				note, _ := domain.NewNote(
+					"overwrite-test",
+					domain.NewFrontmatter(map[string]interface{}{
+						"fileClass": "contact",
+						"title":     "Overwrite Test",
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Pre-create a file to test overwrite
 				path := noteFilePath(
 					cacheDir,
-					domain.NewNoteID("overwrite-test"),
+					"overwrite-test",
 				)
 				err := os.MkdirAll(cacheDir, 0o750)
 				require.NoError(t, err)
@@ -105,22 +133,43 @@ func TestPersist(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "error - wraps errors with context",
-			note: domain.NewNote(
-				domain.NewNoteID("error-test"),
-				domain.NewFrontmatter(map[string]interface{}{
-					"fileClass": "contact",
-					"title":     "Error Test",
-				}),
-			),
+			name: "error - context canceled",
+			note: func() domain.Note {
+				note, _ := domain.NewNote(
+					"error-test",
+					domain.NewFrontmatter(map[string]interface{}{
+						"fileClass": "contact",
+						"title":     "Error Test",
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
+			wantErr: true,
+			errMsg:  "context canceled",
+		},
+		{
+			name: "error - cache write failed",
+			note: func() domain.Note {
+				note, _ := domain.NewNote(
+					"write-fail-test",
+					domain.NewFrontmatter(map[string]interface{}{
+						"fileClass": "contact",
+						"title":     "Write Fail Test",
+					}),
+					[]domain.Link{},
+					[]domain.Heading{},
+					[]string{},
+					[]domain.TaskItem{},
+				)
+				return note
+			}(),
 			setupFunc: func(t *testing.T, cacheDir string) {
-				// Make cache directory read-only to trigger error
-				err := os.MkdirAll(cacheDir, 0o750)
-				require.NoError(t, err)
-				//nolint:gosec // Intentional for testing permission error
-				// scenarios
-				err = os.Chmod(cacheDir, 0o444) // Read-only
-
+				// Make cache directory inaccessible to cause write failure
+				err := os.Chmod(cacheDir, 0o000)
 				require.NoError(t, err)
 			},
 			wantErr: true,
@@ -142,7 +191,13 @@ func TestPersist(t *testing.T) {
 			}
 
 			// Execute Persist
-			err := adapter.Persist(context.Background(), tt.note, time.Now())
+			ctx := context.Background()
+			if tt.name == testContextCanceled {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithCancel(context.Background())
+				cancel() // Cancel immediately
+			}
+			err := adapter.Persist(ctx, tt.note, time.Now())
 
 			// Assert error expectation
 			if tt.wantErr {
@@ -156,11 +211,11 @@ func TestPersist(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify file was created
-			expectedPath := noteFilePath(cacheDir, tt.note.ID)
+			expectedPath := noteFilePath(cacheDir, tt.note.Path)
 			assert.FileExists(t, expectedPath)
 
 			// Legacy cache filename should be gone to avoid duplicates
-			legacyPath := legacyNoteFilePath(cacheDir, tt.note.ID)
+			legacyPath := legacyNoteFilePath(cacheDir, tt.note.Path)
 			assert.False(
 				t,
 				fileExists(legacyPath),
@@ -176,8 +231,8 @@ func TestPersist(t *testing.T) {
 			err = json.Unmarshal(content, &jsonData)
 			require.NoError(t, err)
 
-			// Verify ID field
-			assert.Equal(t, string(tt.note.ID), jsonData["ID"])
+			// Verify Path field
+			assert.Equal(t, tt.note.Path, jsonData["Path"])
 
 			// Verify Frontmatter structure
 			frontmatter, ok := jsonData["Frontmatter"].(map[string]interface{})
@@ -247,14 +302,14 @@ func fileExists(path string) bool {
 func TestDelete(t *testing.T) {
 	tests := []struct {
 		name      string
-		noteID    domain.NoteID
+		notePath  string
 		setupFunc func(t *testing.T, cacheDir string)
 		wantErr   bool
 		errMsg    string
 	}{
 		{
-			name:   "success - removes file",
-			noteID: domain.NewNoteID("delete-test"),
+			name:     "success - removes file",
+			notePath: "delete-test",
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Pre-create a file to delete
 				path := filepath.Join(cacheDir, "delete-test.json")
@@ -266,8 +321,8 @@ func TestDelete(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:   "success - idempotent (non-existent file)",
-			noteID: domain.NewNoteID("non-existent"),
+			name:     "success - idempotent (non-existent file)",
+			notePath: "non-existent",
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Ensure cache directory exists but file doesn't
 				err := os.MkdirAll(cacheDir, 0o750)
@@ -276,8 +331,8 @@ func TestDelete(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:   "error - context canceled",
-			noteID: domain.NewNoteID("cancel-test"),
+			name:     "error - context canceled",
+			notePath: "cancel-test",
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Create file to delete
 				path := filepath.Join(cacheDir, "cancel-test.json")
@@ -311,7 +366,7 @@ func TestDelete(t *testing.T) {
 				ctx, cancel = context.WithCancel(context.Background())
 				cancel() // Cancel immediately
 			}
-			err := adapter.Delete(ctx, tt.noteID)
+			err := adapter.Delete(ctx, tt.notePath)
 
 			// Assert error expectation
 			if tt.wantErr {
@@ -325,7 +380,7 @@ func TestDelete(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify file was removed (if it existed)
-			expectedPath := noteFilePath(cacheDir, tt.noteID)
+			expectedPath := noteFilePath(cacheDir, tt.notePath)
 			assert.NoFileExists(t, expectedPath)
 		})
 	}
@@ -334,11 +389,15 @@ func TestDelete(t *testing.T) {
 // BenchmarkMarshalNote benchmarks JSON serialization performance.
 // Measures the performance of compact JSON marshaling.
 func BenchmarkMarshalNote(b *testing.B) {
-	note := domain.NewNote(
-		domain.NewNoteID("bench"),
+	note, _ := domain.NewNote(
+		"bench",
 		domain.NewFrontmatter(map[string]interface{}{
 			"title": "test",
 		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
 	)
 	for range b.N {
 		_, _ = marshalNote(note)
@@ -348,17 +407,22 @@ func BenchmarkMarshalNote(b *testing.B) {
 // TestMarshalNoteCompact verifies that JSON output is compact (not indented).
 // TestMarshalNoteCompact tests the function.
 func TestMarshalNoteCompact(t *testing.T) {
-	note := domain.NewNote(
-		domain.NewNoteID("compact-test"),
+	note, err := domain.NewNote(
+		"compact-test",
 		domain.NewFrontmatter(map[string]interface{}{
 			"fileClass": "contact",
 			"title":     "Compact Test",
 			"tags":      []string{"test", "compact"},
 		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
 	)
-
-	data, err := marshalNote(note)
 	require.NoError(t, err)
+
+	data, marshalErr := marshalNote(note)
+	require.NoError(t, marshalErr)
 
 	// Verify it's valid JSON
 	var result map[string]interface{}
@@ -381,7 +445,7 @@ func TestMarshalNoteCompact(t *testing.T) {
 	)
 
 	// Verify structure is preserved
-	assert.Equal(t, "compact-test", result["ID"])
+	assert.Equal(t, "compact-test", result["Path"])
 	frontmatter := result["Frontmatter"].(map[string]interface{})
 	fields := frontmatter["Fields"].(map[string]interface{})
 	assert.Equal(t, "Compact Test", fields["title"])

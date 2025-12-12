@@ -131,7 +131,7 @@ func (a *JSONCacheWriteAdapter) Persist(
 	// 1. Ensure cache directory exists
 	if err := EnsureCacheDir(a.config.CacheDir); err != nil {
 		return wrapCacheWriteError(
-			string(note.ID),
+			note.Path,
 			a.config.CacheDir,
 			"ensure_cache_dir",
 			err,
@@ -142,30 +142,30 @@ func (a *JSONCacheWriteAdapter) Persist(
 	data, marshalErr := marshalNote(note)
 	if marshalErr != nil {
 		return wrapCacheWriteError(
-			string(note.ID),
-			noteFilePath(a.config.CacheDir, note.ID),
+			note.Path,
+			noteFilePath(a.config.CacheDir, note.Path),
 			"serialize",
 			marshalErr,
 		)
 	}
 
 	// 3. Atomic write
-	path := noteFilePath(a.config.CacheDir, note.ID)
-	if writeErr := a.writeFile(path, data, cacheFilePerms); writeErr != nil {
+	filePath := noteFilePath(a.config.CacheDir, note.Path)
+	if writeErr := a.writeFile(filePath, data, cacheFilePerms); writeErr != nil {
 		return wrapCacheWriteError(
-			string(note.ID),
-			path,
+			note.Path,
+			filePath,
 			"atomic_write",
 			writeErr,
 		)
 	}
 
 	// 3b. Clean up legacy cache filename if it exists to avoid duplicates
-	legacyPath := legacyNoteFilePath(a.config.CacheDir, note.ID)
-	if legacyPath != path {
+	legacyPath := legacyNoteFilePath(a.config.CacheDir, note.Path)
+	if legacyPath != filePath {
 		if err := a.removeFile(legacyPath); err == nil {
 			a.log.Debug().
-				Str("note_id", string(note.ID)).
+				Str("note_path", note.Path).
 				Str("path", legacyPath).
 				Msg("removed legacy cache entry")
 		}
@@ -173,8 +173,8 @@ func (a *JSONCacheWriteAdapter) Persist(
 
 	// 4. Log success
 	a.log.Debug().
-		Str("note_id", string(note.ID)).
-		Str("path", path).
+		Str("note_path", note.Path).
+		Str("path", filePath).
 		Msg("cache write successful")
 
 	return nil
@@ -199,7 +199,7 @@ func (a *JSONCacheWriteAdapter) Persist(
 // Errors: Wrapped with operation context and resource identifiers (FR9).
 func (a *JSONCacheWriteAdapter) Delete(
 	ctx context.Context,
-	id domain.NoteID,
+	path string,
 ) error {
 	// Check for context cancellation
 	select {
@@ -209,43 +209,43 @@ func (a *JSONCacheWriteAdapter) Delete(
 	}
 
 	// Get file path
-	path := noteFilePath(a.config.CacheDir, id)
+	filePath := noteFilePath(a.config.CacheDir, path)
 
 	// Attempt deletion
-	removeErr := a.removeFile(path)
+	removeErr := a.removeFile(filePath)
 	if removeErr == nil {
 		a.log.Debug().
-			Str("note_id", string(id)).
-			Str("path", path).
+			Str("note_path", path).
+			Str("file_path", filePath).
 			Msg("cache delete successful")
 		return nil
 	}
 
 	if !os.IsNotExist(removeErr) {
 		return wrapCacheDeleteError(
-			string(id),
 			path,
+			filePath,
 			"delete",
 			removeErr,
 		)
 	}
 
-	legacyPath := legacyNoteFilePath(a.config.CacheDir, id)
+	legacyPath := legacyNoteFilePath(a.config.CacheDir, path)
 	legacyErr := a.removeFile(legacyPath)
 	switch {
 	case legacyErr == nil:
 		a.log.Debug().
-			Str("note_id", string(id)).
-			Str("path", legacyPath).
+			Str("note_path", path).
+			Str("file_path", legacyPath).
 			Msg("cache delete successful (legacy)")
 	case os.IsNotExist(legacyErr):
 		a.log.Debug().
-			Str("note_id", string(id)).
-			Str("path", path).
+			Str("note_path", path).
+			Str("file_path", filePath).
 			Msg("cache delete successful (file not found)")
 	default:
 		return wrapCacheDeleteError(
-			string(id),
+			path,
 			legacyPath,
 			"delete_legacy",
 			legacyErr,

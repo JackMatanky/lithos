@@ -2,7 +2,6 @@ package vault
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -136,6 +135,7 @@ func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
 	stats := IndexStats{
 		ScannedCount:        0,
 		IndexedCount:        0,
+		ParseFailures:       0,
 		CacheFailures:       0,
 		ValidationSuccesses: 0,
 		ValidationFailures:  0,
@@ -232,6 +232,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 	stats := IndexStats{
 		ScannedCount:        0,
 		IndexedCount:        0,
+		ParseFailures:       0,
 		CacheFailures:       0,
 		ValidationSuccesses: 0,
 		ValidationFailures:  0,
@@ -329,10 +330,7 @@ func (v *VaultIndexer) reconcileDeletions(
 	var retained []domain.Note
 	for i := range cachedNotes {
 		note := cachedNotes[i]
-		relativePath := filepath.FromSlash(
-			string(note.ID),
-		) // Derive path from NoteID
-		absolutePath := filepath.Join(v.config.VaultPath, relativePath)
+		absolutePath := filepath.Join(v.config.VaultPath, note.Path)
 
 		_, statErr := os.Stat(absolutePath)
 		if statErr == nil {
@@ -341,15 +339,15 @@ func (v *VaultIndexer) reconcileDeletions(
 		}
 
 		if os.IsNotExist(statErr) {
-			if deleteErr := uow.AddDelete(string(note.ID)); deleteErr != nil {
+			if deleteErr := uow.AddDelete(note.Path); deleteErr != nil {
 				stats.CacheFailures++
 				v.log.Warn().
 					Err(deleteErr).
-					Str("noteID", string(note.ID)).
+					Str("notePath", note.Path).
 					Msg("failed to stage delete for orphaned cache entry")
 			} else {
 				v.log.Debug().
-					Str("noteID", string(note.ID)).
+					Str("notePath", note.Path).
 					Str("path", absolutePath).
 					Msg("staged delete for orphaned cache entry")
 			}
@@ -358,7 +356,7 @@ func (v *VaultIndexer) reconcileDeletions(
 
 		v.log.Warn().
 			Err(statErr).
-			Str("noteID", string(note.ID)).
+			Str("notePath", note.Path).
 			Str("path", absolutePath).
 			Msg("failed to stat note path during reconciliation")
 		retained = append(retained, note)
@@ -400,7 +398,7 @@ func (v *VaultIndexer) validateCacheState(
 	}
 
 	// Collect vault state
-	vaultNoteIDs, totalVaultFiles, vaultErr := v.collectVaultState(
+	vaultNotePaths, totalVaultFiles, vaultErr := v.collectVaultState(
 		ctx,
 		snapshot,
 	)
@@ -412,7 +410,7 @@ func (v *VaultIndexer) validateCacheState(
 	}
 
 	// Collect cache state
-	cacheNoteIDs, totalCacheEntries, cachedNotes, cacheErr := v.collectCacheState(
+	cacheNotePaths, totalCacheEntries, cachedNotes, cacheErr := v.collectCacheState(
 		ctx,
 		retainedNotes,
 	)
@@ -426,8 +424,8 @@ func (v *VaultIndexer) validateCacheState(
 	// Find inconsistencies
 	orphanedCount, missingCount, orphanedDetails, missingDetails, isConsistent :=
 		v.findInconsistencies(
-			vaultNoteIDs,
-			cacheNoteIDs,
+			vaultNotePaths,
+			cacheNotePaths,
 			cachedNotes,
 		)
 
@@ -457,14 +455,14 @@ func (v *VaultIndexer) scanFiles(ctx context.Context) ([]dto.VaultFile, error) {
 	return v.vaultScanner.ScanAll(ctx)
 }
 
-// collectVaultState scans the vault and builds a map of NoteIDs for markdown
+// collectVaultState scans the vault and builds a map of note paths for markdown
 // files.
-// Returns the NoteID map, total count, and any scanning error.
+// Returns the path map, total count, and any scanning error.
 func (v *VaultIndexer) collectVaultState(
 	ctx context.Context,
 	cachedVault []dto.VaultFile,
 ) (
-	vaultNoteIDs map[domain.NoteID]bool,
+	vaultNotePaths map[string]bool,
 	totalFiles int,
 	err error,
 ) {
@@ -478,27 +476,26 @@ func (v *VaultIndexer) collectVaultState(
 		}
 	}
 
-	vaultNoteIDs = make(map[domain.NoteID]bool)
+	vaultNotePaths = make(map[string]bool)
 	totalFiles = 0
 	for i := range vaultFiles {
 		vf := vaultFiles[i]
 		if vf.Ext() == markdownExt {
-			noteID := deriveNoteIDFromPath(v.config.VaultPath, vf.Path)
-			vaultNoteIDs[noteID] = true
+			vaultNotePaths[vf.Path] = true
 			totalFiles++
 		}
 	}
-	return vaultNoteIDs, totalFiles, nil
+	return vaultNotePaths, totalFiles, nil
 }
 
-// collectCacheState retrieves all cached notes and builds a map of NoteIDs.
-// Returns the NoteID map, total count, cached notes slice, and any listing
+// collectCacheState retrieves all cached notes and builds a map of note paths.
+// Returns the path map, total count, cached notes slice, and any listing
 // error.
 func (v *VaultIndexer) collectCacheState(
 	ctx context.Context,
 	preloaded []domain.Note,
 ) (
-	cacheNoteIDs map[domain.NoteID]bool,
+	cacheNotePaths map[string]bool,
 	totalEntries int,
 	cachedNotes []domain.Note,
 	err error,
@@ -512,11 +509,11 @@ func (v *VaultIndexer) collectCacheState(
 		}
 	}
 
-	cacheNoteIDs = make(map[domain.NoteID]bool)
+	cacheNotePaths = make(map[string]bool)
 	totalEntries = len(cachedNotes)
 	for i := range cachedNotes {
 		note := cachedNotes[i]
-		cacheNoteIDs[note.ID] = true
+		cacheNotePaths[note.Path] = true
 	}
 	return
 }
@@ -545,10 +542,7 @@ func (v *VaultIndexer) buildVaultSnapshot(
 		}
 
 		note := retained[i]
-		relative := filepath.FromSlash(
-			string(note.ID),
-		) // Derive path from NoteID
-		absolute := filepath.Join(v.config.VaultPath, relative)
+		absolute := filepath.Join(v.config.VaultPath, note.Path)
 		cleanPath := filepath.Clean(absolute)
 
 		if _, exists := seen[cleanPath]; exists {
@@ -586,12 +580,12 @@ func (v *VaultIndexer) buildVaultSnapshot(
 	return snapshot, nil
 }
 
-// findInconsistencies compares vault and cache NoteID sets to identify
+// findInconsistencies compares vault and cache path sets to identify
 // orphaned and missing entries. Returns orphaned count, missing count,
 // orphaned details, missing details, and consistency flag.
 func (v *VaultIndexer) findInconsistencies(
-	vaultNoteIDs map[domain.NoteID]bool,
-	cacheNoteIDs map[domain.NoteID]bool,
+	vaultNotePaths map[string]bool,
+	cacheNotePaths map[string]bool,
 	cachedNotes []domain.Note,
 ) (
 	orphanedCount int,
@@ -607,18 +601,18 @@ func (v *VaultIndexer) findInconsistencies(
 	// Find orphaned cache entries (in cache but not in vault)
 	for i := range cachedNotes {
 		note := cachedNotes[i]
-		if !vaultNoteIDs[note.ID] {
+		if !vaultNotePaths[note.Path] {
 			orphanedCount++
-			orphanedDetails = append(orphanedDetails, string(note.ID))
+			orphanedDetails = append(orphanedDetails, note.Path)
 			isConsistent = false
 		}
 	}
 
 	// Find missing cache entries (in vault but not in cache)
-	for noteID := range vaultNoteIDs {
-		if !cacheNoteIDs[noteID] {
+	for notePath := range vaultNotePaths {
+		if !cacheNotePaths[notePath] {
 			missingCount++
-			missingDetails = append(missingDetails, string(noteID))
+			missingDetails = append(missingDetails, notePath)
 			isConsistent = false
 		}
 	}
@@ -667,26 +661,31 @@ func (v *VaultIndexer) processFile(
 		return
 	}
 
-	var noteFrontmatter domain.Frontmatter
-
-	// If frontmatterService is available, use it for extraction and validation
-	if v.frontmatterService != nil {
-		noteFrontmatter = v.processFileWithFrontmatter(ctx, file, stats)
-		if noteFrontmatter.Fields == nil {
-			return // Processing failed, stats already updated
-		}
-		stats.ValidationSuccesses++
-	} else {
-		// Fallback: create basic empty frontmatter for backward compatibility
-		noteFrontmatter = domain.Frontmatter{
-			FileClass: "",
-			Fields:    map[string]interface{}{},
-		}
+	// Parse note using markdown parser
+	note, err := v.markdownParserPort.ParseNote(ctx, file.Path, file.Content)
+	if err != nil {
+		stats.ParseFailures++
+		v.log.Error().
+			Err(err).
+			Str("path", file.Path).
+			Msg("failed to parse note")
+		return
 	}
 
-	// Create Note with frontmatter (validated or basic)
-	noteID := deriveNoteIDFromPath(v.config.VaultPath, file.Path)
-	note := domain.NewNote(noteID, noteFrontmatter)
+	// If frontmatterService is available, validate the parsed frontmatter
+	if v.frontmatterService != nil {
+		if validationErr := v.frontmatterService.IsSchemaCompliant(
+			ctx, note.Frontmatter,
+		); validationErr != nil {
+			stats.ValidationFailures++
+			v.log.Warn().
+				Err(validationErr).
+				Str("path", file.Path).
+				Msg("frontmatter validation failed")
+			return
+		}
+		stats.ValidationSuccesses++
+	}
 
 	// Persist to cache via Unit of Work
 	// We generate indexTime here to ensure consistency
@@ -695,7 +694,7 @@ func (v *VaultIndexer) processFile(
 		stats.CacheFailures++
 		v.log.Warn().
 			Err(persistErr).
-			Str("noteID", string(noteID)).
+			Str("notePath", note.Path).
 			Msg("cache write staging failed")
 
 		// Continue - don't abort indexing
@@ -763,112 +762,4 @@ func (v *VaultIndexer) logCacheValidationResult(result CacheValidationResult) {
 			Strs("missing_details", result.MissingDetails).
 			Msg("cache state validation: inconsistencies found")
 	}
-}
-
-// deriveNoteIDFromPath creates a NoteID from a file path.
-// Preserves vault-relative path information to prevent collisions.
-//
-// Example: "/vault/projects/foo.md" → "projects/foo.md"
-//
-// Path Normalization:
-// - Converts backslashes to forward slashes for consistency
-// - Strips vault root prefix to get relative path
-// - Preserves full relative path from vault root
-// - Keeps .md extension for uniqueness and clarity.
-func deriveNoteIDFromPath(vaultRoot, path string) domain.NoteID {
-	// Normalize path separators to forward slashes for cross-platform
-	// consistency
-	normalizedPath := strings.ReplaceAll(path, "\\", "/")
-	normalizedRoot := strings.ReplaceAll(vaultRoot, "\\", "/")
-
-	// Strip vault root prefix to get relative path
-	// Ensure root ends with separator for proper stripping
-	if !strings.HasSuffix(normalizedRoot, "/") {
-		normalizedRoot += "/"
-	}
-
-	var relativePath string
-	if strings.HasPrefix(normalizedPath, normalizedRoot) {
-		relativePath = strings.TrimPrefix(normalizedPath, normalizedRoot)
-	} else {
-		// Fallback: assume path is already relative
-		relativePath = normalizedPath
-	}
-
-	return domain.NewNoteID(relativePath)
-}
-
-// logValidationError logs frontmatter validation errors with structured
-// context.
-// Used for tracking validation failures without aborting indexing.
-//
-// Parameters:
-//   - filePath: Path of the file that failed validation
-//   - err: The validation error that occurred
-func (v *VaultIndexer) logValidationError(filePath string, err error) {
-	v.log.Warn().
-		Err(err).
-		Str("filePath", filePath).
-		Msg("frontmatter validation failed")
-}
-
-// processFileWithFrontmatter handles frontmatter parsing and validation.
-// Helper method to reduce complexity in processFile.
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeout handling
-//   - vf: Vault file to process
-//   - stats: IndexStats to update with processing results
-//
-// Returns:
-//   - domain.Frontmatter: Validated frontmatter or empty if processing failed
-func (v *VaultIndexer) processFileWithFrontmatter(
-	ctx context.Context,
-	vf *dto.VaultFile,
-	stats *IndexStats,
-) domain.Frontmatter {
-	// Parse frontmatter from file content (syntactic validation)
-	parsedFields, parseErr := v.markdownParserPort.ParseFrontmatter(
-		ctx,
-		vf.Content,
-	)
-	if parseErr != nil {
-		if errors.Is(parseErr, context.Canceled) ||
-			errors.Is(parseErr, context.DeadlineExceeded) {
-			return domain.Frontmatter{}
-		}
-
-		v.logValidationError(vf.Path, parseErr)
-		stats.ValidationFailures++
-		return domain.Frontmatter{} // Return empty to signal failure
-	}
-
-	// Convert parsed fields to domain Frontmatter
-	withMetadata := attachFileMetadata(parsedFields, vf)
-	parsedFM := domain.NewFrontmatter(withMetadata)
-
-	// Validate frontmatter against schema (semantic validation)
-	if validationErr := v.frontmatterService.IsSchemaCompliant(ctx, parsedFM); validationErr != nil {
-		if errors.Is(validationErr, context.Canceled) ||
-			errors.Is(validationErr, context.DeadlineExceeded) {
-			return domain.Frontmatter{}
-		}
-		v.logValidationError(vf.Path, validationErr)
-		stats.ValidationFailures++
-		return domain.Frontmatter{} // Return empty to signal failure
-	}
-
-	return parsedFM
-}
-
-func attachFileMetadata(
-	fields map[string]interface{},
-	vf *dto.VaultFile,
-) map[string]interface{} {
-	if fields == nil {
-		fields = make(map[string]interface{})
-	}
-	fields["file_mod_time"] = vf.ModifiedAt().UTC()
-	fields["file_size"] = vf.Size()
-	return fields
 }

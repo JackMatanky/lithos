@@ -8,6 +8,7 @@ import "time"
 // Fields:
 // - ScannedCount: Total files scanned from vault
 // - IndexedCount: Notes successfully persisted to cache
+// - ParseFailures: Markdown parsing errors
 // - CacheFailures: Cache write errors (logged as warnings)
 // - ValidationSuccesses: Frontmatter validations that passed
 // - ValidationFailures: Frontmatter validations that failed (logged but don't
@@ -16,6 +17,7 @@ import "time"
 type IndexStats struct {
 	ScannedCount        int
 	IndexedCount        int
+	ParseFailures       int
 	CacheFailures       int
 	ValidationSuccesses int
 	ValidationFailures  int

@@ -143,9 +143,13 @@ func TestHandleNewCommand_ExtractsTemplateIdFromArgs(t *testing.T) {
 	mockHandler := &mocks.MockCommandPort{}
 
 	// Set up mock to return success
-	expectedNote := domain.NewNote(
-		domain.NewNoteID("test123"),
+	expectedNote, _ := domain.NewNote(
+		"test123",
 		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
 	)
 	mockHandler.SetNewNoteResult(expectedNote, nil)
 
@@ -182,9 +186,13 @@ func TestHandleNewCommand_CallsHandlerNewNoteWithCorrectArguments(
 	mockHandler := &mocks.MockCommandPort{}
 
 	// Set up mock to return success
-	expectedNote := domain.NewNote(
-		domain.NewNoteID("test123"),
+	expectedNote, _ := domain.NewNote(
+		"test123",
 		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
 	)
 	mockHandler.SetNewNoteResult(expectedNote, nil)
 
@@ -205,9 +213,13 @@ func TestDisplayNoteCreated_FormatsOutputCorrectlyWithoutViewFlag(
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	note := domain.NewNote(
-		domain.NewNoteID("test123"),
+	note, _ := domain.NewNote(
+		"test123",
 		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
 	)
 
 	cmd := adapter.buildNewCommand()
@@ -226,9 +238,13 @@ func TestDisplayNoteCreated_DisplaysContentWithViewFlag(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	note := domain.NewNote(
-		domain.NewNoteID("test123"),
+	note, _ := domain.NewNote(
+		"test123",
 		domain.NewFrontmatter(map[string]interface{}{}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
 	)
 
 	cmd := adapter.buildNewCommand()

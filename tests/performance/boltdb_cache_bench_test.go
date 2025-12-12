@@ -30,16 +30,17 @@ func BenchmarkBoltDBCache(b *testing.B) {
 		}
 		ctx := context.Background()
 
-		note := domain.Note{
-			ID: domain.NewNoteID("bench/note.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "bench",
-				Fields: map[string]interface{}{
-					"title":     "Benchmark Note",
-					"fileClass": "bench",
-				},
-			},
-		}
+		note, _ := domain.NewNote(
+			"bench/note.md",
+			domain.NewFrontmatter(map[string]interface{}{
+				"title":     "Benchmark Note",
+				"fileClass": "bench",
+			}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
 		if persistErr := writer.Persist(ctx, note, time.Now()); persistErr != nil {
 			b.Fatal(persistErr)
 		}
@@ -52,10 +53,10 @@ func BenchmarkBoltDBCache(b *testing.B) {
 		}
 
 		ctx := context.Background()
-		id := domain.NewNoteID("bench/note.md")
+		path := "bench/note.md"
 		b.ResetTimer()
 		for range b.N {
-			_, err := reader.Read(ctx, id)
+			_, err := reader.Read(ctx, path)
 			if err != nil {
 				b.Fatal(err)
 			}
@@ -69,16 +70,17 @@ func BenchmarkBoltDBCache(b *testing.B) {
 		}
 
 		ctx := context.Background()
-		note := domain.Note{
-			ID: domain.NewNoteID("bench/note.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "bench",
-				Fields: map[string]interface{}{
-					"title":     "Benchmark Note",
-					"fileClass": "bench",
-				},
-			},
-		}
+		note, _ := domain.NewNote(
+			"bench/note.md",
+			domain.NewFrontmatter(map[string]interface{}{
+				"title":     "Benchmark Note",
+				"fileClass": "bench",
+			}),
+			[]domain.Link{},
+			[]domain.Heading{},
+			[]string{},
+			[]domain.TaskItem{},
+		)
 
 		b.ResetTimer()
 		for range b.N {
@@ -95,22 +97,21 @@ func BenchmarkBoltDBCache(b *testing.B) {
 		}
 
 		ctx := context.Background()
-		note := domain.Note{
-			ID: domain.NewNoteID("bench/note.md"),
-			Frontmatter: domain.Frontmatter{
-				FileClass: "bench",
-				Fields: map[string]interface{}{
-					"title":     "Benchmark Note",
-					"fileClass": "bench",
-				},
-			},
-		}
 
 		b.ResetTimer()
 		for i := range b.N {
 			b.StopTimer()
-			n := note
-			n.ID = domain.NewNoteID(fmt.Sprintf("bench/note_%d.md", i))
+			n, _ := domain.NewNote(
+				fmt.Sprintf("bench/note_%d.md", i),
+				domain.NewFrontmatter(map[string]interface{}{
+					"title":     "Benchmark Note",
+					"fileClass": "bench",
+				}),
+				[]domain.Link{},
+				[]domain.Heading{},
+				[]string{},
+				[]domain.TaskItem{},
+			)
 			b.StartTimer()
 
 			if persistErr := writer.Persist(ctx, n, time.Now()); persistErr != nil {

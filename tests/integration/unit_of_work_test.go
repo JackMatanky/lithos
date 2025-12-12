@@ -57,25 +57,31 @@ func TestUnitOfWork_Integration(t *testing.T) {
 
 		require.NoError(t, uow.Begin())
 
-		note := domain.Note{
-			ID: domain.NewNoteID("integration/test1.md"),
-			Frontmatter: domain.NewFrontmatter(map[string]interface{}{
+		note, noteErr := domain.NewNote(
+			"integration/test1.md",
+			domain.NewFrontmatter(map[string]interface{}{
 				"title":     "Integration Test",
 				"fileClass": "test",
 			}),
-		}
+			nil,
+			nil,
+			nil,
+			nil,
+		)
+		require.NoError(t, noteErr)
+		require.NoError(t, err)
 		indexTime := time.Now()
 
 		require.NoError(t, uow.AddWrite(note, indexTime))
 		require.NoError(t, uow.Commit(ctx))
 
 		// Verify BoltDB
-		bNote, readErr := boltReader.Read(ctx, note.ID)
+		bNote, readErr := boltReader.Read(ctx, note.Path)
 		require.NoError(t, readErr)
 		require.Equal(t, "Integration Test", bNote.Frontmatter.Fields["title"])
 
 		// Verify SQLite
-		sNote, readErr2 := sqliteReader.Read(ctx, note.ID)
+		sNote, readErr2 := sqliteReader.Read(ctx, note.Path)
 		require.NoError(t, readErr2)
 		require.Equal(t, "Integration Test", sNote.Frontmatter.Fields["title"])
 	})
@@ -91,9 +97,15 @@ func TestUnitOfWork_Integration(t *testing.T) {
 
 		require.NoError(t, uow.Begin())
 
-		note := domain.Note{
-			ID: domain.NewNoteID("integration/rollback.md"),
-		}
+		note, noteErr := domain.NewNote(
+			"integration/rollback.md",
+			domain.NewFrontmatter(map[string]interface{}{}),
+			nil,
+			nil,
+			nil,
+			nil,
+		)
+		require.NoError(t, noteErr)
 		indexTime := time.Now()
 		require.NoError(t, uow.AddWrite(note, indexTime))
 
@@ -104,7 +116,7 @@ func TestUnitOfWork_Integration(t *testing.T) {
 		require.NoError(t, uow.Commit(ctx))
 
 		// Verify NOT present
-		_, readErr := boltReader.Read(ctx, note.ID)
+		_, readErr := boltReader.Read(ctx, note.Path)
 		require.Error(t, readErr) // Should fail
 	})
 }

@@ -39,7 +39,7 @@ type WriteOperation struct {
 
 // DeleteOperation represents a delete operation for a note.
 type DeleteOperation struct {
-	noteID domain.NoteID
+	notePath string
 }
 
 // TransactionStrategy defines how transactions are executed across multiple
@@ -89,7 +89,7 @@ func (op *WriteOperation) Rollback(
 	ctx context.Context,
 	writer spi.CacheWriterPort,
 ) error {
-	return writer.Delete(ctx, op.note.ID)
+	return writer.Delete(ctx, op.note.Path)
 }
 
 // Type returns the operation type.
@@ -98,8 +98,8 @@ func (op *WriteOperation) Type() OperationType {
 }
 
 // NewDeleteOperation creates a new delete operation.
-func NewDeleteOperation(noteID domain.NoteID) *DeleteOperation {
-	return &DeleteOperation{noteID: noteID}
+func NewDeleteOperation(notePath string) *DeleteOperation {
+	return &DeleteOperation{notePath: notePath}
 }
 
 // Execute performs the delete operation.
@@ -107,7 +107,7 @@ func (op *DeleteOperation) Execute(
 	ctx context.Context,
 	writer spi.CacheWriterPort,
 ) error {
-	return writer.Delete(ctx, op.noteID)
+	return writer.Delete(ctx, op.notePath)
 }
 
 // Rollback cannot undo a delete operation easily without read-before-delete.
@@ -261,7 +261,7 @@ func (uow *CacheUnitOfWork) AddDelete(path string) error {
 	defer uow.mu.Unlock()
 	uow.operations = append(
 		uow.operations,
-		NewDeleteOperation(domain.NoteID(path)),
+		NewDeleteOperation(path),
 	)
 	return nil
 }

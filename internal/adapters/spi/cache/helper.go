@@ -10,8 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/JackMatanky/lithos/internal/domain"
 )
 
 const (
@@ -21,40 +19,38 @@ const (
 	cacheDirPerms        = 0o750
 )
 
-// noteFilePath constructs the cache file path for a given note ID using a
-// reversible, collision-free encoding. The ID is normalised to forward slashes,
-// Base64 URL-encoded, and prefixed to make detection of the new scheme trivial.
-// Format: {cacheDir}/id-{base64(noteID)}.json.
-func noteFilePath(cacheDir string, id domain.NoteID) string {
-	normalized := strings.ReplaceAll(string(id), "\\", "/")
+// noteFilePath constructs the cache file path for a given note path.
+// Since paths are now used directly as identifiers, we use a simple
+// filesystem-safe encoding. Format: {cacheDir}/{base64(path)}.json.
+func noteFilePath(cacheDir, path string) string {
+	normalized := strings.ReplaceAll(path, "\\", "/")
 	encoded := base64.RawURLEncoding.EncodeToString([]byte(normalized))
-	filename := cacheFilenamePrefix + encoded + cacheFileExt
+	filename := encoded + cacheFileExt
 	return filepath.Join(cacheDir, filename)
 }
 
 // legacyNoteFilePath reproduces the pre-3.10 cache file naming logic so the
 // reader and writer can clean up or read existing cache entries during the
 // rollout of the new encoding scheme.
-func legacyNoteFilePath(cacheDir string, id domain.NoteID) string {
-	safeName := strings.ReplaceAll(string(id), "/", legacySeparatorToken)
+func legacyNoteFilePath(cacheDir, path string) string {
+	safeName := strings.ReplaceAll(path, "/", legacySeparatorToken)
 	safeName = strings.ReplaceAll(safeName, "\\", legacySeparatorToken)
 	return filepath.Join(cacheDir, safeName+cacheFileExt)
 }
 
-// decodeNoteIDFromFilename attempts to recover the original NoteID from a cache
+// decodePathFromFilename attempts to recover the original path from a cache
 // filename. It first checks for the new Base64 encoding, then falls back to the
 // legacy flat naming. The boolean return value indicates whether the new scheme
 // was used.
-func decodeNoteIDFromFilename(filename string) (domain.NoteID, bool) {
+func decodePathFromFilename(filename string) (string, bool) {
 	base := strings.TrimSuffix(filename, cacheFileExt)
-	if strings.HasPrefix(base, cacheFilenamePrefix) {
-		raw := base[len(cacheFilenamePrefix):]
-		decoded, err := base64.RawURLEncoding.DecodeString(raw)
-		if err == nil {
-			return domain.NoteID(decoded), true
-		}
+	decoded, err := base64.RawURLEncoding.DecodeString(base)
+	if err == nil {
+		return string(decoded), true
 	}
-	return domain.NoteID(base), false
+	// Legacy format: replace tokens back to slashes
+	path := strings.ReplaceAll(base, legacySeparatorToken, "/")
+	return path, false
 }
 
 // EnsureCacheDir creates the cache directory if missing using

@@ -128,7 +128,7 @@ func TestNewNoteSuccess(t *testing.T) {
 	mockTemplatePort := utils.NewMockTemplatePort()
 	expectedContent := "# Test Note\n\nThis is test content."
 	expectedTemplateID := domain.TemplateID("test-template")
-	expectedNoteID := domain.NoteID("test-template") // basename strategy
+	expectedNotePath := "test-template" // basename strategy
 
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
@@ -172,9 +172,9 @@ func TestNewNoteSuccess(t *testing.T) {
 	require.NoError(t, err, "NewNote should succeed")
 	assert.Equal(
 		t,
-		expectedNoteID,
-		note.ID,
-		"NoteID should be generated from templateID basename",
+		expectedNotePath,
+		note.Path,
+		"Note path should be generated from templateID basename",
 	)
 	assert.Empty(
 		t,
@@ -183,7 +183,7 @@ func TestNewNoteSuccess(t *testing.T) {
 	)
 
 	// Verify file was written
-	expectedFilePath := filepath.Join(tempDir, string(expectedNoteID)+".md")
+	expectedFilePath := filepath.Join(tempDir, expectedNotePath+".md")
 	assert.FileExists(
 		t,
 		expectedFilePath,
