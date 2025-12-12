@@ -113,8 +113,8 @@ func NewFrontmatter(fields map[string]interface{}) Frontmatter {
 // FileClass returns the fileClass field from the frontmatter.
 // Uses the configured key (default "fileClass") to extract schema reference.
 func (f Frontmatter) FileClass() string {
-	// For now, use default key until config singleton is available
-	key := "fileClass" // defaultFileClassKey from config.go
+	// Use Config singleton to get the fileClass key
+	key := Instance().FileClassKey
 	if val, ok := f.Fields[key].(string); ok {
 		return val
 	}
