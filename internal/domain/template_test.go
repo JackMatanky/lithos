@@ -3,6 +3,8 @@ package domain
 import (
 	"reflect"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 const (
@@ -57,43 +59,74 @@ func TestTemplateIDAsMapKey(t *testing.T) {
 	}
 }
 
-// TestNewTemplate tests the NewTemplate constructor.
+// TestNewTemplate tests the NewTemplate constructor and execution.
 func TestNewTemplate(t *testing.T) {
 	id := NewTemplateID("contact-header")
 	content := "Hello {{.name}}"
 
 	template := NewTemplate(id, content)
 
-	if template.ID != id {
-		t.Errorf("expected ID %v, got %v", id, template.ID)
+	if template.ID() != id {
+		t.Errorf("expected ID %v, got %v", id, template.ID())
 	}
-	if template.Content != content {
-		t.Errorf("expected Content %q, got %q", content, template.Content)
+
+	// Test execution
+	result, err := template.Execute(map[string]string{"name": "World"})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if result != "Hello World" {
+		t.Errorf("expected 'Hello World', got %q", result)
 	}
 }
 
-// TestTemplateWithGoTemplateSyntax tests that Template can store complex Go
+// TestTemplateWithGoTemplateSyntax tests that Template can execute complex Go
 // template syntax.
 func TestTemplateWithGoTemplateSyntax(t *testing.T) {
 	id := NewTemplateID("complex-template")
 	content := `---
 fileClass: contact
-name: {{ prompt "name" "Contact Name" "" }}
-email: {{ prompt "email" "Email Address" "" }}
-created: {{ now "2006-01-02" }}
+name: {{ .name }}
+email: {{ .email }}
+created: {{ .created }}
 ---
 
 # {{ .name }}
 
 **Email:** {{ .email }}
-**Created:** {{ .created }}
-
-{{ template "contact-footer" }}`
+**Created:** {{ .created }}`
 
 	template := NewTemplate(id, content)
 
-	if template.Content != content {
-		t.Errorf("Template Content does not match expected Go template syntax")
+	data := map[string]string{
+		"name":    "John Doe",
+		"email":   "john@example.com",
+		"created": "2025-01-01",
+	}
+
+	result, err := template.Execute(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := `---
+fileClass: contact
+name: John Doe
+email: john@example.com
+created: 2025-01-01
+---
+
+# John Doe
+
+**Email:** john@example.com
+**Created:** 2025-01-01`
+
+	if result != expected {
+		t.Errorf(
+			"Template execution failed.\nExpected:\n%s\nGot:\n%s",
+			expected,
+			result,
+		)
 	}
 }
 
@@ -106,6 +139,9 @@ func TestTemplate_NoFilePathField(t *testing.T) {
 	template := NewTemplate(NewTemplateID("test"), "content")
 
 	v := reflect.ValueOf(template)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
 	typ := v.Type()
 
 	for i := 0; i < typ.NumField(); i++ { //nolint:intrange // reflection requires index-based access
@@ -126,6 +162,9 @@ func TestTemplate_NoParsedField(t *testing.T) {
 	template := NewTemplate(NewTemplateID("test"), "content")
 
 	v := reflect.ValueOf(template)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
 	typ := v.Type()
 
 	for i := 0; i < typ.NumField(); i++ { //nolint:intrange // reflection requires index-based access
@@ -137,4 +176,62 @@ func TestTemplate_NoParsedField(t *testing.T) {
 			)
 		}
 	}
+}
+
+// TDD RED Phase Tests - These will fail until interface is implemented
+
+// TestTemplateInterfaceContract tests that the Template struct implements the
+// expected interface.
+func TestTemplateInterfaceContract(t *testing.T) {
+	// Test that Template has ID() and Execute() methods
+	template := NewTemplate(NewTemplateID("test"), "{{invalid syntax")
+
+	// Test ID method
+	id := template.ID()
+	if id != NewTemplateID("test") {
+		t.Errorf("expected ID 'test', got %v", id)
+	}
+
+	// Test Execute method exists and can be called
+	_, err := template.Execute(nil)
+	// We expect an error for invalid template syntax
+	if err == nil {
+		t.Error("expected error for invalid template syntax, but got none")
+	}
+}
+
+// TestTemplateIDTypeSafety tests that TemplateID provides type safety.
+func TestTemplateIDTypeSafety(t *testing.T) {
+	// This test will fail until TemplateID is defined
+	// TemplateID should be a string alias for type safety
+
+	var id TemplateID = "test-template"
+	assert.Equal(t, "test-template", string(id))
+	assert.IsType(t, TemplateID(""), id)
+}
+
+// TestGoTemplateConstruction tests GoTemplate struct creation.
+func TestGoTemplateConstruction(t *testing.T) {
+	// This test will fail until GoTemplate is implemented
+	// GoTemplate should wrap *template.Template
+
+	// This is a placeholder - actual test will be written after implementation
+	t.Skip("Test will be implemented after GoTemplate struct is created")
+}
+
+// TestGoTemplateExecuteWrapping tests that GoTemplate.Execute() wraps
+// *template.Template.
+func TestGoTemplateExecuteWrapping(t *testing.T) {
+	// This test will fail until GoTemplate.Execute is implemented
+	// Execute should delegate to *template.Template and handle buffering
+
+	t.Skip("Test will be implemented after GoTemplate.Execute is created")
+}
+
+// TestMockTemplateImplementation tests that mock Template implementations work.
+func TestMockTemplateImplementation(t *testing.T) {
+	// This test will fail until Template interface exists
+	// We should be able to create mock implementations for testing
+
+	t.Skip("Test will be implemented after Template interface exists")
 }

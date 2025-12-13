@@ -131,11 +131,16 @@ func TestTemplateLoaderAdapter_Load_Success(t *testing.T) {
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if template.ID != "test-template" {
-		t.Errorf("Template ID = %s, want test-template", template.ID)
+	if template.ID() != "test-template" {
+		t.Errorf("Template ID = %s, want test-template", template.ID())
 	}
-	if template.Content != content {
-		t.Errorf("Template content = %q, want %q", template.Content, content)
+	// Test that the template can execute the expected content
+	result, err := template.Execute(nil)
+	if err != nil {
+		t.Fatalf("Template execution failed: %v", err)
+	}
+	if result != content {
+		t.Errorf("Template execution result = %q, want %q", result, content)
 	}
 }
 

@@ -129,17 +129,17 @@ func (a *TemplateLoaderAdapter) Load(
 
 	path, err := a.findTemplatePath(ctx, id)
 	if err != nil {
-		return domain.Template{}, err
+		return nil, err
 	}
 
 	content, err := a.readTemplateContent(path)
 	if err != nil {
-		return domain.Template{}, err
+		return nil, err
 	}
 
 	err = a.validateTemplateContent(content, path)
 	if err != nil {
-		return domain.Template{}, err
+		return nil, err
 	}
 
 	template := domain.NewTemplate(id, string(content))

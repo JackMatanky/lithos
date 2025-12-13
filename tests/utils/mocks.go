@@ -702,11 +702,11 @@ func (m *MockTemplatePort) Load(
 	id domain.TemplateID,
 ) (domain.Template, error) {
 	if m.loadError != nil {
-		return domain.Template{}, m.loadError
+		return nil, m.loadError
 	}
 	tmpl, exists := m.templates[id]
 	if !exists {
-		return domain.Template{}, fmt.Errorf("template not found: %s", id)
+		return nil, fmt.Errorf("template not found: %s", id)
 	}
 	return tmpl, nil
 }
