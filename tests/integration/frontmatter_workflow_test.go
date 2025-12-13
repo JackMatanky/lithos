@@ -458,11 +458,19 @@ This note tests the Frontmatter helper methods.
 		)
 
 		// Test type inspectors
-		assert.True(t, fm.IsString("title"), "title should be string")
+		assert.True(t, domain.Is[string](fm, "title"), "title should be string")
 		assert.True(t, fm.IsArray("aliases"), "aliases should be array")
-		assert.True(t, fm.IsString("tags"), "tags should be string")
-		assert.True(t, fm.IsString("author"), "author should be string")
-		assert.False(t, fm.IsMap("fileClass"), "fileClass should not be map")
+		assert.True(t, domain.Is[string](fm, "tags"), "tags should be string")
+		assert.True(
+			t,
+			domain.Is[string](fm, "author"),
+			"author should be string",
+		)
+		assert.False(
+			t,
+			domain.Is[map[string]any](fm, "fileClass"),
+			"fileClass should not be map",
+		)
 
 		// Test delegation helpers
 		assert.Equal(
