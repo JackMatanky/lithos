@@ -2,238 +2,272 @@ package template
 
 import (
 	"context"
-	"strings"
+	"errors"
+	"path/filepath"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestTemplateEngine_ProcessTemplate(t *testing.T) {
-	parser := NewStaticTemplateParser()
-	executor := NewGoTemplateExecutor()
-	engine := NewTemplateEngine(parser, executor)
-	ctx := context.Background()
+// Ensure mockTemplatePort implements TemplatePort.
+var _ spi.TemplatePort = (*mockTemplatePort)(nil)
 
-	tests := []templateTestCase{
-		{
-			name:         "successful processing of static template",
-			content:      "Hello, World!",
-			templateName: "static",
-			want:         "Hello, World!",
-			wantErr:      false,
-		},
-		{
-			name: "successful processing with custom functions",
-			content: "Now: {{now \"2006-01-02\"}} Upper: {{toUpper \"hello\"}} " +
-				"Lower: {{toLower \"WORLD\"}}",
-			templateName: "functions",
-			want:         "", // Will be validated in test logic
-			wantErr:      false,
-		},
-		{
-			name:         "empty content",
-			content:      "",
-			templateName: "empty",
-			want:         "",
-			wantErr:      true,
-			errContains:  "cannot process empty template content",
-		},
-		{
-			name:         "template execution error",
-			content:      "{{len .InvalidField}}",
-			templateName: "error",
-			want:         "",
-			wantErr:      true,
-			errContains:  "failed to execute parsed template",
-		},
-	}
+// mockTemplatePort provides a mock implementation of TemplatePort for testing.
+type mockTemplatePort struct {
+	templates map[domain.TemplateID]domain.Template
+	loadError error
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runTemplateEngineTest(t, engine, ctx, &tt)
-		})
+func newMockTemplatePort() *mockTemplatePort {
+	return &mockTemplatePort{
+		templates: make(map[domain.TemplateID]domain.Template),
 	}
 }
 
-type templateTestCase struct {
-	name         string
-	content      string
-	templateName string
-	want         string
-	wantErr      bool
-	errContains  string
-}
-
-func runTemplateEngineTest(
-	t *testing.T,
-	engine *TemplateEngine,
+// List returns a list of available template IDs.
+func (m *mockTemplatePort) List(
 	ctx context.Context,
-	tt *templateTestCase,
+) ([]domain.TemplateID, error) {
+	var ids []domain.TemplateID
+	for id := range m.templates {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+// Load retrieves a template by ID.
+func (m *mockTemplatePort) Load(
+	ctx context.Context,
+	id domain.TemplateID,
+) (domain.Template, error) {
+	if m.loadError != nil {
+		return domain.Template{}, m.loadError
+	}
+	tmpl, exists := m.templates[id]
+	if !exists {
+		return domain.Template{}, lithosErr.NewResourceError(
+			"template",
+			"load",
+			string(id),
+			nil,
+		)
+	}
+	return tmpl, nil
+}
+
+func (m *mockTemplatePort) setTemplates(
+	templates map[domain.TemplateID]domain.Template,
 ) {
-	got, err := engine.ProcessTemplate(ctx, tt.content, tt.templateName)
-
-	if tt.wantErr {
-		if err == nil {
-			t.Errorf("ProcessTemplate() expected error, got nil")
-			return
-		}
-		if tt.errContains != "" &&
-			!strings.Contains(err.Error(), tt.errContains) {
-			t.Errorf(
-				"ProcessTemplate() error = %v, expected to contain %q",
-				err,
-				tt.errContains,
-			)
-		}
-		return
-	}
-
-	if err != nil {
-		t.Errorf("ProcessTemplate() unexpected error = %v", err)
-		return
-	}
-
-	if tt.name == "successful processing with custom functions" {
-		validateTemplateEngineCustomFunctionsOutput(t, got)
-		return
-	}
-
-	if got != tt.want {
-		t.Errorf("ProcessTemplate() = %q, want %q", got, tt.want)
-	}
+	m.templates = templates
 }
 
-func TestTemplateEngine_ExecuteParsedTemplate(t *testing.T) {
-	parser := NewStaticTemplateParser()
-	executor := NewGoTemplateExecutor()
-	engine := NewTemplateEngine(parser, executor)
+func (m *mockTemplatePort) setLoadError(err error) {
+	m.loadError = err
+}
+
+// TestTemplateEngine_Load tests the TemplateEngine Load functionality.
+func TestTemplateEngine_Load(t *testing.T) {
 	ctx := context.Background()
+	templateID := domain.NewTemplateID("test-template")
+	template := domain.NewTemplate(templateID, "test content")
 
-	tests := []struct {
-		name        string
-		template    *domain.Template
-		want        string
-		wantErr     bool
-		errContains string
-	}{
-		{
-			name:        "nil template",
-			template:    nil,
-			want:        "",
-			wantErr:     true,
-			errContains: "cannot execute nil template",
-		},
-		{
-			name: "template not parsed",
-			template: &domain.Template{
-				Name:    "test",
-				Content: "Hello",
-				Parsed:  nil,
-			},
-			want:        "",
-			wantErr:     true,
-			errContains: "template must be parsed before execution",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, err := engine.ExecuteParsedTemplate(ctx, tt.template)
-
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("ExecuteParsedTemplate() expected error, got nil")
-					return
-				}
-				if tt.errContains != "" &&
-					!strings.Contains(err.Error(), tt.errContains) {
-					t.Errorf(
-						"ExecuteParsedTemplate() error = %v, expected to contain %q",
-						err,
-						tt.errContains,
-					)
-				}
-				return
-			}
-
-			if err != nil {
-				t.Errorf("ExecuteParsedTemplate() unexpected error = %v", err)
-				return
-			}
-
-			if got != tt.want {
-				t.Errorf("ExecuteParsedTemplate() = %q, want %q", got, tt.want)
-			}
+	t.Run("delegates to TemplatePort correctly", func(t *testing.T) {
+		mockPort := newMockTemplatePort()
+		mockPort.setTemplates(map[domain.TemplateID]domain.Template{
+			templateID: template,
 		})
-	}
+
+		config := domain.Config{}
+		logger := zerolog.Nop()
+		engine := NewTemplateEngine(mockPort, &config, &logger)
+
+		result, err := engine.Load(ctx, templateID)
+
+		require.NoError(t, err)
+		assert.Equal(t, template, result)
+	})
+
+	t.Run("propagates errors from port", func(t *testing.T) {
+		expectedErr := errors.New("port error")
+		mockPort := newMockTemplatePort()
+		mockPort.setLoadError(expectedErr)
+
+		config := domain.Config{}
+		logger := zerolog.Nop()
+		engine := NewTemplateEngine(mockPort, &config, &logger)
+
+		_, err := engine.Load(ctx, templateID)
+
+		assert.Equal(t, expectedErr, err)
+	})
+
+	t.Run("uses path control functions correctly", func(t *testing.T) {
+		testTemplate := domain.NewTemplate(
+			templateID,
+			`Path: {{path}}, Vault: {{vaultPath}}`,
+		)
+		mockPort := newMockTemplatePort()
+		mockPort.setTemplates(map[domain.TemplateID]domain.Template{
+			templateID: testTemplate,
+		})
+
+		config := domain.Config{VaultPath: "/test/vault"}
+		logger := zerolog.Nop()
+		engine := NewTemplateEngine(mockPort, &config, &logger)
+
+		result, err := engine.Render(ctx, templateID)
+
+		require.NoError(t, err)
+		assert.Equal(t, "Path: , Vault: /test/vault", result)
+	})
+
+	t.Run("uses now function correctly", func(t *testing.T) {
+		tmpl := domain.NewTemplate(templateID, `Date: {{now "2006-01-02"}}`)
+		mockPort := newMockTemplatePort()
+		mockPort.setTemplates(map[domain.TemplateID]domain.Template{
+			templateID: tmpl,
+		})
+
+		config := domain.Config{}
+		logger := zerolog.Nop()
+		engine := NewTemplateEngine(mockPort, &config, &logger)
+
+		result, err := engine.Render(ctx, templateID)
+
+		require.NoError(t, err)
+		// Should be today's date in YYYY-MM-DD format
+		assert.Regexp(t, `^Date: \d{4}-\d{2}-\d{2}$`, result)
+	})
+
+	t.Run("parse error returns TemplateError with details", func(t *testing.T) {
+		// Invalid template syntax
+		invalidTemplate := domain.NewTemplate(templateID, `{{invalid syntax}}`)
+		mockPort := newMockTemplatePort()
+		mockPort.setTemplates(map[domain.TemplateID]domain.Template{
+			templateID: invalidTemplate,
+		})
+
+		config := domain.Config{}
+		logger := zerolog.Nop()
+		engine := NewTemplateEngine(mockPort, &config, &logger)
+
+		_, err := engine.Render(ctx, templateID)
+
+		require.Error(t, err)
+		var templateErr *lithosErr.TemplateError
+		require.ErrorAs(t, err, &templateErr)
+		assert.Equal(t, "test-template", templateErr.TemplateID())
+		assert.Contains(t, err.Error(), "parse error")
+	})
+
+	t.Run(
+		"execute error returns TemplateError with context",
+		func(t *testing.T) {
+			// Template that references a non-existent template
+			errorTemplate := domain.NewTemplate(
+				templateID,
+				`{{template "nonexistent"}}`,
+			)
+			mockPort := newMockTemplatePort()
+			mockPort.setTemplates(map[domain.TemplateID]domain.Template{
+				templateID: errorTemplate,
+			})
+
+			config := domain.Config{}
+			logger := zerolog.Nop()
+			engine := NewTemplateEngine(
+				mockPort,
+				&config,
+				&logger,
+			)
+
+			_, err := engine.Render(ctx, templateID)
+
+			require.Error(t, err)
+			var templateErr *lithosErr.TemplateError
+			require.ErrorAs(t, err, &templateErr)
+			assert.Equal(t, "test-template", templateErr.TemplateID())
+			assert.Contains(t, err.Error(), "execute error")
+		},
+	)
+
+	t.Run("template not found propagates ResourceError", func(t *testing.T) {
+		mockPort := newMockTemplatePort()
+		// No templates set, so Load will fail
+
+		config := domain.Config{}
+		logger := zerolog.Nop()
+		engine := NewTemplateEngine(mockPort, &config, &logger)
+
+		_, err := engine.Render(ctx, templateID)
+
+		require.Error(t, err)
+		var resourceErr *lithosErr.ResourceError
+		assert.ErrorAs(t, err, &resourceErr)
+	})
 }
 
-func TestTemplateEngine_ProcessTemplateFromPath(t *testing.T) {
-	parser := NewStaticTemplateParser()
-	executor := NewGoTemplateExecutor()
-	engine := NewTemplateEngine(parser, executor)
-	ctx := context.Background()
+// TestTemplateEngine_BuildFuncMap tests the buildFuncMap method and all custom
+// template functions.
+func TestTemplateEngine_BuildFuncMap(t *testing.T) {
+	config := domain.Config{VaultPath: "/test/vault"}
+	logger := zerolog.Nop()
+	engine := NewTemplateEngine(nil, &config, &logger)
+	funcMap := engine.buildFuncMap()
 
-	_, err := engine.ProcessTemplateFromPath(ctx, "dummy-path")
-	if err == nil {
-		t.Error("ProcessTemplateFromPath() expected error, got nil")
-		return
-	}
+	t.Run("now function returns formatted timestamp", func(t *testing.T) {
+		nowFunc := funcMap["now"].(func(string) string)
+		result := nowFunc("2006-01-02")
+		// Should be today's date in YYYY-MM-DD format
+		assert.Regexp(t, `^\d{4}-\d{2}-\d{2}$`, result)
+	})
 
-	if !strings.Contains(err.Error(), "not implemented") {
-		t.Errorf(
-			"ProcessTemplateFromPath() error = %v, expected to contain 'not implemented'",
-			err,
-		)
-	}
-}
+	t.Run("toLower converts to lowercase", func(t *testing.T) {
+		toLowerFunc := funcMap["toLower"].(func(string) string)
+		assert.Equal(t, "hello", toLowerFunc("HELLO"))
+		assert.Equal(t, "world", toLowerFunc("World"))
+	})
 
-func TestNewTemplateEngine(t *testing.T) {
-	parser := NewStaticTemplateParser()
-	executor := NewGoTemplateExecutor()
-	engine := NewTemplateEngine(parser, executor)
+	t.Run("toUpper converts to uppercase", func(t *testing.T) {
+		toUpperFunc := funcMap["toUpper"].(func(string) string)
+		assert.Equal(t, "HELLO", toUpperFunc("hello"))
+		assert.Equal(t, "WORLD", toUpperFunc("World"))
+	})
 
-	if engine == nil {
-		t.Error("NewTemplateEngine() returned nil")
-	}
-}
+	t.Run("folder returns parent directory", func(t *testing.T) {
+		folderFunc := funcMap["folder"].(func(string) string)
+		assert.Equal(t, "/path/to", folderFunc("/path/to/file.txt"))
+		assert.Equal(t, ".", folderFunc("file.txt"))
+	})
 
-// validateTemplateEngineCustomFunctionsOutput validates the output of custom
-// functions test.
-func validateTemplateEngineCustomFunctionsOutput(t *testing.T, got string) {
-	t.Helper()
+	t.Run("basename strips path and extension", func(t *testing.T) {
+		basenameFunc := funcMap["basename"].(func(string) string)
+		assert.Equal(t, "file", basenameFunc("/path/to/file.txt"))
+		assert.Equal(t, "document", basenameFunc("document.md"))
+		assert.Equal(t, "test", basenameFunc("test"))
+	})
 
-	if !strings.HasPrefix(got, "Now: ") {
-		t.Errorf("ProcessTemplate() = %q, expected to start with 'Now: '", got)
-	}
-	if !strings.Contains(got, "Upper: HELLO") {
-		t.Errorf(
-			"ProcessTemplate() = %q, expected to contain 'Upper: HELLO'",
-			got,
-		)
-	}
-	if !strings.Contains(got, "Lower: world") {
-		t.Errorf(
-			"ProcessTemplate() = %q, expected to contain 'Lower: world'",
-			got,
-		)
-	}
+	t.Run("extension returns extension with dot", func(t *testing.T) {
+		extensionFunc := funcMap["extension"].(func(string) string)
+		assert.Equal(t, ".txt", extensionFunc("/path/to/file.txt"))
+		assert.Equal(t, ".md", extensionFunc("document.md"))
+		assert.Empty(t, extensionFunc("test"))
+	})
 
-	// Validate the date format in the now function
-	parts := strings.Split(got, " ")
-	if len(parts) < 2 {
-		t.Errorf(
-			"ProcessTemplate() = %q, expected format 'Now: YYYY-MM-DD Upper: HELLO Lower: world'",
-			got,
-		)
-		return
-	}
+	t.Run("join uses OS-appropriate path separator", func(t *testing.T) {
+		joinFunc := funcMap["join"].(func(...string) string)
+		result := joinFunc("path", "to", "file")
+		// Should contain path separator appropriate for the OS
+		assert.Contains(t, result, string(filepath.Separator))
+	})
 
-	datePart := strings.TrimPrefix(parts[1], "Now: ")
-	if len(datePart) != 10 || datePart[4] != '-' || datePart[7] != '-' {
-		t.Errorf(
-			"ProcessTemplate() date part = %q, expected format YYYY-MM-DD",
-			datePart,
-		)
-	}
+	t.Run("vaultPath returns config value", func(t *testing.T) {
+		vaultPathFunc := funcMap["vaultPath"].(func() string)
+		assert.Equal(t, "/test/vault", vaultPathFunc())
+	})
 }

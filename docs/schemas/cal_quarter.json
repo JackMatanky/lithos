@@ -1,0 +1,24 @@
+{
+  "name": "cal_quarter",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "quarter"
+      ]
+    }
+  },
+  "extends": "cal",
+  "excludes": [
+    "date",
+    "year_day",
+    "month_name",
+    "month_number",
+    "month_day",
+    "week_number",
+    "weekday_name",
+    "weekday_number"
+  ]
+}

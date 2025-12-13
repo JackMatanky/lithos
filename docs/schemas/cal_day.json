@@ -1,0 +1,21 @@
+{
+  "name": "cal_day",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "lib",
+        "pdev",
+        "pkm",
+        "task_event"
+      ]
+    }
+  },
+  "extends": "cal",
+  "excludes": [
+    "date_start",
+    "date_end"
+  ]
+}

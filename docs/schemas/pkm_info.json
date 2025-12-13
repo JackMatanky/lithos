@@ -1,0 +1,16 @@
+{
+  "name": "pkm_info",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "concept",
+        "definition",
+        "general"
+      ]
+    }
+  },
+  "extends": "pkm"
+}

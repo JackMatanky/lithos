@@ -1,0 +1,165 @@
+{
+  "name": "dir_contact",
+  "properties": {
+    "name_last": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "name_first": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "name_last_maiden": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "gender": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "female",
+        "male",
+        "other"
+      ]
+    },
+    "date_birth": {
+      "$ref": "#/properties/date_iso_8601"
+    },
+    "date_death": {
+      "$ref": "#/properties/date_iso_8601"
+    },
+    "address": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "utc": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "+01:00",
+        "+02:00",
+        "+03:00",
+        "+03:30",
+        "+04:00",
+        "+04:30",
+        "+05:00",
+        "+05:30",
+        "+05:45",
+        "+06:00",
+        "+06:30",
+        "+07:00",
+        "+08:00",
+        "+08:45",
+        "+09:00",
+        "+09:30",
+        "-01:00",
+        "-02:00",
+        "-03:00",
+        "-03:30",
+        "-04:00",
+        "-05:00",
+        "-06:00",
+        "-07:00",
+        "-08:00",
+        "-09:00",
+        "-09:30",
+        "-600",
+        "-660",
+        "-720",
+        "600",
+        "630",
+        "660",
+        "720",
+        "765",
+        "780",
+        "840",
+        "\u00b100:00"
+      ]
+    },
+    "dst": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "+01:00",
+        "+02:00",
+        "+03:00",
+        "+03:30",
+        "+04:00",
+        "+04:30",
+        "+05:00",
+        "+05:30",
+        "+05:45",
+        "+06:00",
+        "+06:30",
+        "+07:00",
+        "+08:00",
+        "+08:45",
+        "+09:00",
+        "+09:30",
+        "-01:00",
+        "-02:00",
+        "-03:00",
+        "-03:30",
+        "-04:00",
+        "-05:00",
+        "-06:00",
+        "-07:00",
+        "-08:00",
+        "-09:00",
+        "-09:30",
+        "-600",
+        "-660",
+        "-720",
+        "600",
+        "630",
+        "660",
+        "720",
+        "765",
+        "780",
+        "840",
+        "\u00b100:00"
+      ]
+    },
+    "phone_mobile": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "phone_home": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "phone_work": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "email_personal": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "email_work": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "organization": {
+      "$ref": "#/properties/organization"
+    },
+    "job_title": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    }
+  },
+  "extends": "dir"
+}

@@ -1,64 +1,34 @@
-// Package spi defines service provider interface ports for template operations.
 package spi
 
 import (
 	"context"
-	"text/template"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
-// TemplateMetadata provides information about an available template.
-type TemplateMetadata struct {
-	ID       string
-	Name     string
-	FilePath string
-	Content  string
-}
+// TemplatePort defines the Service Provider Interface for template operations.
+// This port provides access to template content stored in the filesystem.
+// It abstracts the storage mechanism, allowing different adapters (filesystem,
+// database, remote storage) to implement template loading.
+//
+// The port focuses on two core operations:
+// 1. Discovering available templates (List)
+// 2. Retrieving specific template content (Load)
+//
+// TemplatePort is implemented by adapters like TemplateLoaderAdapter.
+type TemplatePort interface {
+	// List returns all available template IDs in the system.
+	// Template IDs are derived from template filenames (basename without
+	// extension).
+	// The returned slice is sorted alphabetically for consistent ordering.
+	// Returns an error if the template directory cannot be accessed.
+	List(ctx context.Context) ([]domain.TemplateID, error)
 
-// TemplateRepositoryPort provides access to template storage and enumeration.
-// This port allows the domain to access templates without knowing the specific
-// storage mechanism (filesystem, remote, etc.).
-type TemplateRepositoryPort interface {
-	// List returns metadata for all available templates.
-	List(ctx context.Context) ([]TemplateMetadata, error)
-
-	// Get retrieves a specific template by ID.
-	// Returns an error if the template is not found.
-	Get(ctx context.Context, id string) (*domain.Template, error)
-
-	// GetByPath loads a template from a specific file path.
-	// This method supports the current CLI workflow where users specify
-	// template paths.
-	GetByPath(
-		ctx context.Context,
-		path string,
-	) (*domain.Template, error)
-}
-
-// TemplateParser defines the interface for parsing template content.
-// This port allows the domain to parse templates without depending on
-// specific template engines or parsing implementations.
-type TemplateParser interface {
-	// Parse parses the given template content and returns a parsed template.
-	// Returns an error if the template has syntax errors.
-	Parse(
-		ctx context.Context,
-		templateContent string,
-	) errors.Result[*template.Template]
-}
-
-// TemplateExecutor defines the interface for executing parsed templates.
-// This port allows the domain to execute templates without depending on
-// specific template execution implementations.
-type TemplateExecutor interface {
-	// Execute executes a parsed template with the given data and returns the
-	// rendered content.
-	// Returns an error if template execution fails.
-	Execute(
-		ctx context.Context,
-		tmpl *domain.Template,
-		data interface{},
-	) errors.Result[string]
+	// Load retrieves the content of a specific template by its ID.
+	// The ID corresponds to the template filename without path or extension.
+	// Returns the complete Template with ID and content.
+	// Returns ResourceError if template not found or cannot be read.
+	// Returns ValidationError if template content is invalid (e.g., not valid
+	// UTF-8).
+	Load(ctx context.Context, id domain.TemplateID) (domain.Template, error)
 }

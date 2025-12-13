@@ -1,0 +1,37 @@
+{
+  "name": "contact",
+  "extends": "base-note",
+  "excludes": ["internal_id"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9\\s]+$"
+    },
+    "email": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-zA-Z]{2,}$"
+    },
+    "phone": {
+      "type": "string",
+      "required": false,
+      "pattern": "^\\+?[1-9]\\d{1,14}$"
+    },
+    "tags": {
+      "type": "string",
+      "required": false,
+      "array": true,
+      "enum": ["colleague", "client", "vendor", "friend", "family"]
+    },
+    "company": {
+      "type": "file",
+      "required": false,
+      "file_class": "organization",
+      "directory": "companies/"
+    },
+    "author": {
+      "$ref": "#/properties/author"
+    }
+  }
+}

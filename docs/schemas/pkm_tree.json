@@ -1,0 +1,19 @@
+{
+  "name": "pkm_tree",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "branch",
+        "category",
+        "field",
+        "subject",
+        "subtopic",
+        "topic"
+      ]
+    }
+  },
+  "extends": "pkm"
+}

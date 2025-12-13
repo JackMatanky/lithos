@@ -1,403 +1,455 @@
-// Package schema provides filesystem-based implementations of schema loading
-// ports for hexagonal architecture.
-//
-// This file contains the main SchemaLoaderAdapter structure and coordination
-// logic.
 package schema
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path/filepath"
+	"sort"
+	"strings"
+	"sync"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/ports/spi"
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/rs/zerolog"
 )
 
-// SchemaLoaderAdapter implements SchemaLoaderPort for filesystem-based schema
-// loading.
-// Handles JSON parsing, PropertySpec discriminator logic, $ref resolution,
-// and domain object creation.
-//
-// Architecture: SPI Adapter implementing SchemaLoaderPort
-// Dependencies: FileSystemPort for file operations, ConfigPort for paths.
+// SchemaLoaderAdapter implements SchemaPort by loading schema JSON files and
+// the property bank from the filesystem configured in domain.Config.
+// It validates and resolves inheritance for loaded schemas.
 type SchemaLoaderAdapter struct {
-	fs     spi.FileSystemPort
-	config spi.ConfigPort
-	refMap map[string]string // Tracks $ref mappings for property resolution
+	config    *domain.Config
+	log       *zerolog.Logger
+	readFile  func(string) ([]byte, error)
+	walkDir   func(string, fs.WalkDirFunc) error
+	validator *SchemaValidator
+	extender  *SchemaExtender
+	mu        sync.RWMutex
+	signature string
+	cache     []domain.Schema
+	cacheBank domain.PropertyBank
 }
 
-/* ---------------------------------------------------------- */
-/*                         Constructor                        */
-/* ---------------------------------------------------------- */
-
-// NewSchemaLoaderAdapter creates a new SchemaLoaderAdapter with dependency
-// injection.
+// NewSchemaLoaderAdapter creates a new filesystem-backed schema loader.
 func NewSchemaLoaderAdapter(
-	fs spi.FileSystemPort,
-	config spi.ConfigPort,
+	config *domain.Config,
+	log *zerolog.Logger,
 ) *SchemaLoaderAdapter {
 	return &SchemaLoaderAdapter{
-		fs:     fs,
-		config: config,
-		refMap: make(map[string]string),
+		config:    config,
+		log:       log,
+		readFile:  os.ReadFile,
+		walkDir:   filepath.WalkDir,
+		validator: NewSchemaValidator(),
+		extender:  NewSchemaExtender(),
+		mu:        sync.RWMutex{},
+		signature: "",
+		cache:     nil,
+		cacheBank: domain.PropertyBank{
+			Properties: make(map[string]domain.Property),
+		},
 	}
 }
 
-/* ---------------------------------------------------------- */
-/*               SchemaLoaderPort Implementation              */
-/* ---------------------------------------------------------- */
-
-// LoadSchemas implements SchemaLoaderPort.LoadSchemas.
-func (s *SchemaLoaderAdapter) LoadSchemas(
+// Load loads the property bank first, then all schema documents, validates
+// them, resolves inheritance, and returns fully processed schemas alongside
+// the shared property bank.
+func (a *SchemaLoaderAdapter) Load(
 	ctx context.Context,
+) ([]domain.Schema, domain.PropertyBank, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, domain.PropertyBank{}, err
+	}
+
+	// Try to use cache first
+	schemas, bank, useCache := a.tryUseCache()
+	if useCache {
+		return schemas, bank, nil
+	}
+
+	// Load fresh data
+	return a.loadFreshData(ctx)
+}
+
+// tryUseCache attempts to return cached results if available and valid.
+func (a *SchemaLoaderAdapter) tryUseCache() ([]domain.Schema, domain.PropertyBank, bool) {
+	signature, sigErr := a.computeSignature()
+	if sigErr != nil {
+		return nil, domain.PropertyBank{}, false
+	}
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	if signature == a.signature && len(a.cache) > 0 {
+		if a.log != nil {
+			a.log.Debug().Msg("using cached schemas and property bank")
+		}
+		return cloneSchemas(a.cache), clonePropertyBank(a.cacheBank), true
+	}
+
+	return nil, domain.PropertyBank{}, false
+}
+
+// loadFreshData loads and processes schemas from scratch.
+func (a *SchemaLoaderAdapter) loadFreshData(
+	ctx context.Context,
+) ([]domain.Schema, domain.PropertyBank, error) {
+	bank, err := a.loadAndLogPropertyBank(ctx)
+	if err != nil {
+		return nil, domain.PropertyBank{}, err
+	}
+
+	schemas, err := a.loadAndLogSchemas(ctx, bank)
+	if err != nil {
+		return nil, domain.PropertyBank{}, err
+	}
+
+	extendedSchemas, err := a.validateAndExtendSchemas(ctx, schemas)
+	if err != nil {
+		return nil, domain.PropertyBank{}, err
+	}
+
+	a.updateCache(extendedSchemas, bank)
+	return extendedSchemas, bank, nil
+}
+
+// loadAndLogPropertyBank loads the property bank with logging.
+func (a *SchemaLoaderAdapter) loadAndLogPropertyBank(
+	ctx context.Context,
+) (domain.PropertyBank, error) {
+	bank, err := a.loadPropertyBank(ctx)
+	if err != nil {
+		return domain.PropertyBank{}, err
+	}
+
+	if a.log != nil {
+		a.log.Debug().
+			Str("path", a.config.PropertyBankPath()).
+			Int("properties", len(bank.Properties)).
+			Msg("property bank loaded")
+	}
+
+	return bank, nil
+}
+
+// loadAndLogSchemas loads schemas with logging.
+func (a *SchemaLoaderAdapter) loadAndLogSchemas(
+	ctx context.Context, bank domain.PropertyBank,
 ) ([]domain.Schema, error) {
-	schemasDir, err := s.getSchemasDirectory()
+	schemas, err := a.loadSchemas(ctx, bank)
 	if err != nil {
 		return nil, err
 	}
 
-	var schemas []domain.Schema
-	walkFn := s.createSchemaWalkFunction(ctx, schemasDir, &schemas)
-
-	if walkErr := s.fs.Walk(schemasDir, walkFn); walkErr != nil {
-		return nil, errors.NewResourceError(
-			"filesystem",
-			"walk",
-			schemasDir,
-			walkErr,
-		)
+	if a.log != nil {
+		a.log.Debug().
+			Int("count", len(schemas)).
+			Str("directory", a.config.SchemasDir).
+			Msg("raw schemas loaded")
 	}
 
 	return schemas, nil
 }
 
-// LoadPropertyBank implements SchemaLoaderPort.LoadPropertyBank.
-func (s *SchemaLoaderAdapter) LoadPropertyBank(
-	ctx context.Context,
-) (*domain.PropertyBank, error) {
-	propertiesDir, err := s.getPropertiesDirectory()
+// validateAndExtendSchemas validates and resolves inheritance.
+func (a *SchemaLoaderAdapter) validateAndExtendSchemas(
+	ctx context.Context, schemas []domain.Schema,
+) ([]domain.Schema, error) {
+	if err := a.validateSchemas(ctx, schemas); err != nil {
+		return nil, err
+	}
+
+	extendedSchemas, err := a.resolveInheritance(ctx, schemas)
 	if err != nil {
 		return nil, err
 	}
 
-	propertyFiles, err := s.loadAllPropertyFiles(propertiesDir)
+	if a.log != nil {
+		a.log.Debug().
+			Int("count", len(extendedSchemas)).
+			Msg("schemas validated and inheritance resolved")
+	}
+
+	return extendedSchemas, nil
+}
+
+// updateCache stores the results in cache.
+func (a *SchemaLoaderAdapter) updateCache(
+	schemas []domain.Schema, bank domain.PropertyBank,
+) {
+	signature, sigErr := a.computeSignature()
+	if sigErr == nil {
+		a.mu.Lock()
+		a.signature = signature
+		a.cache = cloneSchemas(schemas)
+		a.cacheBank = clonePropertyBank(bank)
+		a.mu.Unlock()
+	}
+}
+
+func (a *SchemaLoaderAdapter) loadPropertyBank(
+	ctx context.Context,
+) (domain.PropertyBank, error) {
+	path := a.config.PropertyBankPath()
+	data, err := a.readFile(path)
 	if err != nil {
-		return nil, err
+		return domain.PropertyBank{}, wrapPropertyBankReadError(path, err)
 	}
 
-	bank := s.createPropertyBank(propertiesDir)
-
-	if popErr := s.populatePropertyBank(propertyFiles, &bank); popErr != nil {
-		return nil, popErr
-	}
-
-	return &bank, nil
-}
-
-/* ---------------------------------------------------------- */
-/*                 Schema Loading Coordination                */
-/* ---------------------------------------------------------- */
-
-// getSchemasDirectory gets and validates the schemas directory path.
-func (s *SchemaLoaderAdapter) getSchemasDirectory() (string, error) {
-	cfg := s.config.Config()
-	schemasDir := cfg.SchemasDir
-
-	if err := s.validateDirectoryPath(schemasDir); err != nil {
-		return "", errors.NewSchemaError(
-			"schemas",
-			fmt.Sprintf("invalid schemas directory: %v", err),
-			err,
+	var document propertyBankDTO
+	if parseErr := json.Unmarshal(data, &document); parseErr != nil {
+		return domain.PropertyBank{}, lithosErr.NewSchemaErrorWithRemediation(
+			fmt.Sprintf("failed to parse property bank json: %s", path),
+			"property_bank",
+			syntaxRemediation(path),
+			parseErr,
 		)
 	}
 
-	return schemasDir, nil
+	return document.toDomain(ctx, path)
 }
 
-// createSchemaWalkFunction creates a walk function for processing schema files.
-func (s *SchemaLoaderAdapter) createSchemaWalkFunction(
+func (a *SchemaLoaderAdapter) loadSchemas(
 	ctx context.Context,
-	schemasDir string,
-	schemas *[]domain.Schema,
-) spi.WalkFunc {
-	return func(path string, isDir bool) error {
-		return s.processSchemaFileInWalk(ctx, path, isDir, schemasDir, schemas)
+	bank domain.PropertyBank,
+) ([]domain.Schema, error) {
+	var schemas []domain.Schema
+
+	walkErr := a.walkDir(
+		a.config.SchemasDir,
+		func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if d.IsDir() {
+				return nil
+			}
+
+			if filepath.Clean(
+				path,
+			) == filepath.Clean(
+				a.config.PropertyBankPath(),
+			) {
+				return nil
+			}
+
+			if !strings.EqualFold(filepath.Ext(path), ".json") {
+				return nil
+			}
+
+			schema, err := a.loadSchema(ctx, path, bank)
+			if err != nil {
+				return err
+			}
+
+			schemas = append(schemas, schema)
+			return nil
+		},
+	)
+
+	if walkErr != nil {
+		return nil, lithosErr.NewResourceError(
+			"schema",
+			"scan",
+			a.config.SchemasDir,
+			fmt.Errorf("failed to scan schemas directory: %w", walkErr),
+		)
 	}
+
+	sort.Slice(schemas, func(i, j int) bool {
+		return schemas[i].Name < schemas[j].Name
+	})
+
+	return schemas, nil
 }
 
-// processSchemaFileInWalk processes a single file during schema directory walk.
-func (s *SchemaLoaderAdapter) processSchemaFileInWalk(
+func (a *SchemaLoaderAdapter) loadSchema(
 	ctx context.Context,
 	path string,
-	isDir bool,
-	schemasDir string,
-	schemas *[]domain.Schema,
-) error {
-	if s.shouldSkipFile(path, isDir, schemasDir) {
-		return nil
-	}
-
-	return s.loadAndAppendSchema(ctx, path, schemas)
-}
-
-// shouldSkipFile determines if a file should be skipped during walk.
-func (s *SchemaLoaderAdapter) shouldSkipFile(
-	path string,
-	isDir bool,
-	schemasDir string,
-) bool {
-	if isDir {
-		return true
-	}
-
-	return !s.isValidSchemaFile(path, schemasDir)
-}
-
-// isValidSchemaFile checks if a file is a valid schema file to process.
-func (s *SchemaLoaderAdapter) isValidSchemaFile(path, schemasDir string) bool {
-	return s.isFileSecure(path, schemasDir) &&
-		s.isJSONFile(path) &&
-		s.isNotPropertyBankFile(path)
-}
-
-// loadAndAppendSchema loads a schema and appends it to the collection.
-func (s *SchemaLoaderAdapter) loadAndAppendSchema(
-	ctx context.Context,
-	path string,
-	schemas *[]domain.Schema,
-) error {
-	schema, err := s.loadSingleSchema(ctx, path)
+	bank domain.PropertyBank,
+) (domain.Schema, error) {
+	data, err := a.readFile(path)
 	if err != nil {
-		return s.wrapSchemaLoadError(path, err)
-	}
-
-	*schemas = append(*schemas, schema)
-	return nil
-}
-
-// wrapSchemaLoadError wraps schema loading errors with context.
-func (s *SchemaLoaderAdapter) wrapSchemaLoadError(
-	path string,
-	err error,
-) error {
-	return fmt.Errorf("failed to load schema from %s: %w", path, err)
-}
-
-/* ---------------------------------------------------------- */
-/*             Property Bank Loading Coordination             */
-/* ---------------------------------------------------------- */
-
-// createPropertyBank creates a new property bank instance.
-func (s *SchemaLoaderAdapter) createPropertyBank(
-	propertiesDir string,
-) domain.PropertyBank {
-	return domain.NewPropertyBank(propertiesDir)
-}
-
-// populatePropertyBank resolves references and populates the property bank.
-func (s *SchemaLoaderAdapter) populatePropertyBank(
-	propertyFiles map[string]propertyBankDTO,
-	bank *domain.PropertyBank,
-) error {
-	return s.resolvePropertyReferences(propertyFiles, bank)
-}
-
-// getPropertiesDirectory gets and validates the properties directory path.
-func (s *SchemaLoaderAdapter) getPropertiesDirectory() (string, error) {
-	cfg := s.config.Config()
-	propertiesDir := filepath.Join(cfg.SchemasDir, "properties")
-
-	if err := s.validateDirectoryPath(propertiesDir); err != nil {
-		return "", errors.NewSchemaError(
-			"properties",
-			fmt.Sprintf("invalid properties directory: %v", err),
-			err,
-		)
-	}
-
-	return propertiesDir, nil
-}
-
-// loadAllPropertyFiles loads all property bank files from the properties
-// directory.
-func (s *SchemaLoaderAdapter) loadAllPropertyFiles(
-	propertiesDir string,
-) (map[string]propertyBankDTO, error) {
-	propertyFiles := make(map[string]propertyBankDTO)
-
-	walkFn := s.createPropertyBankWalkFunction(propertiesDir, propertyFiles)
-
-	if err := s.fs.Walk(propertiesDir, walkFn); err != nil {
-		return nil, errors.NewResourceError(
-			"filesystem",
-			"walk",
-			propertiesDir,
-			err,
-		)
-	}
-
-	return propertyFiles, nil
-}
-
-// createPropertyBankWalkFunction creates a walk function for processing
-// property bank files.
-func (s *SchemaLoaderAdapter) createPropertyBankWalkFunction(
-	propertiesDir string,
-	propertyFiles map[string]propertyBankDTO,
-) spi.WalkFunc {
-	return func(path string, isDir bool) error {
-		return s.processPropertyBankFileInWalk(
+		return domain.Schema{}, lithosErr.NewResourceError(
+			"schema",
+			"load",
 			path,
-			isDir,
-			propertiesDir,
-			propertyFiles,
+			fmt.Errorf("failed to read schema file: %w", err),
 		)
 	}
-}
 
-// processPropertyBankFileInWalk processes a single property bank file during
-// walk.
-func (s *SchemaLoaderAdapter) processPropertyBankFileInWalk(
-	path string,
-	isDir bool,
-	propertiesDir string,
-	propertyFiles map[string]propertyBankDTO,
-) error {
-	if s.shouldSkipPropertyBankFile(path, isDir) {
-		return nil
-	}
-
-	if err := s.validatePropertyBankFilePath(path, propertiesDir); err != nil {
-		return err
-	}
-
-	return s.loadAndStorePropertyBank(path, propertyFiles)
-}
-
-// shouldSkipPropertyBankFile determines if a property bank file should be
-// skipped.
-func (s *SchemaLoaderAdapter) shouldSkipPropertyBankFile(
-	path string,
-	isDir bool,
-) bool {
-	return isDir || !s.isJSONFile(path)
-}
-
-// validatePropertyBankFilePath validates the property bank file path.
-func (s *SchemaLoaderAdapter) validatePropertyBankFilePath(
-	path,
-	propertiesDir string,
-) error {
-	if err := s.validateFilePath(path, propertiesDir); err != nil {
-		return errors.NewSchemaError(
+	var document schemaDTO
+	if parseErr := json.Unmarshal(data, &document); parseErr != nil {
+		return domain.Schema{}, lithosErr.NewSchemaErrorWithRemediation(
+			fmt.Sprintf("failed to parse schema json: %s", path),
 			path,
-			fmt.Sprintf("security validation failed: %v", err),
-			err,
+			syntaxRemediation(path),
+			parseErr,
 		)
 	}
-	return nil
+
+	schema, err := document.toDomain(ctx, path, bank)
+	if err != nil {
+		return domain.Schema{}, err
+	}
+	return schema, nil
 }
 
-// loadAndStorePropertyBank loads a property bank file and stores it.
-func (s *SchemaLoaderAdapter) loadAndStorePropertyBank(
-	path string,
-	propertyFiles map[string]propertyBankDTO,
+// validateSchemas performs validation on loaded schemas.
+func (a *SchemaLoaderAdapter) validateSchemas(
+	ctx context.Context,
+	schemas []domain.Schema,
 ) error {
-	bankDTO, err := s.loadPropertyBankFile(path)
-	if err != nil {
-		return s.wrapPropertyBankLoadError(path, err)
+	if a.log != nil {
+		a.log.Debug().Msg("validating schemas")
 	}
 
-	propertyFiles[path] = bankDTO
+	if err := a.validator.ValidateAll(ctx, schemas); err != nil {
+		if a.log != nil {
+			a.log.Error().Err(err).Msg("schema validation failed")
+		}
+		return fmt.Errorf("schema validation failed: %w", err)
+	}
+
+	if a.log != nil {
+		a.log.Debug().Msg("schema validation complete")
+	}
+
 	return nil
 }
 
-// wrapPropertyBankLoadError wraps property bank loading errors with context.
-func (s *SchemaLoaderAdapter) wrapPropertyBankLoadError(
-	path string,
-	err error,
-) error {
-	return fmt.Errorf(
-		"failed to load property bank from %s: %w",
+// resolveInheritance resolves inheritance chains in schemas.
+func (a *SchemaLoaderAdapter) resolveInheritance(
+	ctx context.Context,
+	schemas []domain.Schema,
+) ([]domain.Schema, error) {
+	if a.log != nil {
+		a.log.Debug().Msg("resolving inheritance")
+	}
+
+	extendedSchemas, err := a.extender.ExtendSchemas(ctx, schemas)
+	if err != nil {
+		if a.log != nil {
+			a.log.Error().Err(err).Msg("inheritance resolution failed")
+		}
+		return nil, fmt.Errorf("inheritance resolution failed: %w", err)
+	}
+
+	if a.log != nil {
+		a.log.Debug().Msg("inheritance resolution complete")
+	}
+
+	return extendedSchemas, nil
+}
+
+// wrapPropertyBankReadError converts filesystem failures into ResourceErrors
+// with targeted remediation hints.
+func wrapPropertyBankReadError(path string, err error) error {
+	if errors.Is(err, os.ErrNotExist) {
+		return lithosErr.NewResourceError(
+			"schema",
+			"load",
+			path,
+			fmt.Errorf(
+				"create schemas/property_bank.json or configure PropertyBankFile: %w",
+				err,
+			),
+		)
+	}
+
+	return lithosErr.NewResourceError(
+		"schema",
+		"load",
 		path,
-		err,
+		fmt.Errorf("failed to read property bank file: %w", err),
 	)
 }
 
-/* ---------------------------------------------------------- */
-/*                File Operation Helper Methods               */
-/* ---------------------------------------------------------- */
-
-// readAndValidateFile reads a file and validates its size.
-func (s *SchemaLoaderAdapter) readAndValidateFile(path string) ([]byte, error) {
-	data, err := s.readFileData(path)
-	if err != nil {
-		return nil, err
-	}
-
-	if sizeErr := s.validateFileSize(path, data); sizeErr != nil {
-		return nil, sizeErr
-	}
-
-	return data, nil
+// syntaxRemediation constructs a consistent remediation hint for malformed
+// JSON payloads.
+func syntaxRemediation(path string) string {
+	return fmt.Sprintf("Check JSON syntax in %s", path)
 }
 
-// readFileData reads file data from the filesystem.
-func (s *SchemaLoaderAdapter) readFileData(path string) ([]byte, error) {
-	data, err := s.fs.ReadFile(path)
-	if err != nil {
-		return nil, errors.NewResourceError("filesystem", "read", path, err)
+func (a *SchemaLoaderAdapter) computeSignature() (string, error) {
+	var parts []string
+
+	bankInfo, err := os.Stat(a.config.PropertyBankPath())
+	switch {
+	case err == nil:
+		parts = append(parts, fmt.Sprintf(
+			"bank:%d:%d",
+			bankInfo.ModTime().UnixNano(),
+			bankInfo.Size(),
+		))
+	case errors.Is(err, os.ErrNotExist):
+		parts = append(parts, "bank:none")
+	default:
+		return "", err
 	}
-	return data, nil
+
+	err = a.walkDir(
+		a.config.SchemasDir,
+		func(path string, d fs.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if filepath.Clean(
+				path,
+			) == filepath.Clean(
+				a.config.PropertyBankPath(),
+			) {
+				return nil
+			}
+			if !strings.EqualFold(filepath.Ext(path), ".json") {
+				return nil
+			}
+
+			fileInfo, statErr := d.Info()
+			if statErr != nil {
+				return statErr
+			}
+
+			parts = append(parts, fmt.Sprintf(
+				"schema:%s:%d:%d",
+				filepath.ToSlash(path),
+				fileInfo.ModTime().UnixNano(),
+				fileInfo.Size(),
+			))
+			return nil
+		},
+	)
+	if err != nil {
+		return "", err
+	}
+
+	sort.Strings(parts)
+	return strings.Join(parts, "|"), nil
 }
 
-// resolveAbsolutePath resolves a path to its absolute form.
-func (s *SchemaLoaderAdapter) resolveAbsolutePath(path string) (string, error) {
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("failed to resolve absolute path: %w", err)
+func cloneSchemas(schemas []domain.Schema) []domain.Schema {
+	if len(schemas) == 0 {
+		return nil
 	}
-	return absPath, nil
+	cloned := make([]domain.Schema, len(schemas))
+	copy(cloned, schemas)
+	return cloned
 }
 
-// loadSingleSchema loads and parses a single schema file.
-func (s *SchemaLoaderAdapter) loadSingleSchema(
-	_ context.Context,
-	path string,
-) (domain.Schema, error) {
-	data, err := s.readAndValidateFile(path)
-	if err != nil {
-		return domain.Schema{}, err
+func clonePropertyBank(bank domain.PropertyBank) domain.PropertyBank {
+	if len(bank.Properties) == 0 {
+		return domain.PropertyBank{Properties: map[string]domain.Property{}}
 	}
-
-	dto, err := s.parseSchemaJSON(path, data)
-	if err != nil {
-		return domain.Schema{}, err
+	props := make(map[string]domain.Property, len(bank.Properties))
+	for k, v := range bank.Properties {
+		props[k] = v
 	}
-
-	properties, err := s.convertDTOPropertiesToDomain(dto)
-	if err != nil {
-		return domain.Schema{}, err
-	}
-
-	return s.createAndValidateSchema(dto, properties)
-}
-
-// loadPropertyBankFile loads and parses a single property bank file.
-func (s *SchemaLoaderAdapter) loadPropertyBankFile(
-	path string,
-) (propertyBankDTO, error) {
-	data, err := s.readAndValidateFile(path)
-	if err != nil {
-		return propertyBankDTO{}, err
-	}
-
-	dto, err := s.parsePropertyBankJSON(path, data)
-	if err != nil {
-		return propertyBankDTO{}, err
-	}
-
-	return dto, nil
+	return domain.PropertyBank{Properties: props}
 }

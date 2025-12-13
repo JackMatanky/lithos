@@ -1,11 +1,15 @@
 {
   "permissions": {
     "allow": [
+      "Bash(go mod vendor:*)",
+      "Bash(go mod tidy:*)",
+      "Bash(go env:*)",
+      "Bash(git checkout:*)",
+      "WebSearch",
       "WebFetch(domain:pkg.go.dev)",
-      "Bash(go build:*)",
-      "Bash(golines:*)",
-      "Bash(gofmt:*)",
-      "Bash(go tool cover:*)"
+      "WebFetch(domain:sqlite.org)",
+      "WebFetch(domain:docs.obsidian.md)",
+      "SlashCommand(/BMad:tasks:validate-next-story:*)"
     ],
     "deny": [],
     "ask": []

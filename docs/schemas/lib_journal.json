@@ -1,0 +1,51 @@
+{
+  "name": "lib_journal",
+  "properties": {
+    "author": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(51_contacts)/"
+    },
+    "translator": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(51_contacts)/"
+    },
+    "publisher": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(52_organizations)/"
+    },
+    "year_published": {
+      "$ref": "#/properties/year_published"
+    },
+    "volume": {
+      "$ref": "#/properties/volume"
+    },
+    "issue": {
+      "required": false,
+      "array": false,
+      "type": "number",
+      "step": 1.0
+    },
+    "page_start": {
+      "required": false,
+      "array": false,
+      "type": "number",
+      "step": 1.0
+    },
+    "page_end": {
+      "required": false,
+      "array": false,
+      "type": "number",
+      "step": 1.0
+    },
+    "doi": {
+      "$ref": "#/properties/doi"
+    }
+  },
+  "extends": "lib"
+}

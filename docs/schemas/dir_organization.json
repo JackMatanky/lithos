@@ -1,0 +1,29 @@
+{
+  "name": "dir_organization",
+  "properties": {
+    "phone": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "email": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "about": {
+      "$ref": "#/properties/about"
+    },
+    "industry": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    },
+    "specialties": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    }
+  },
+  "extends": "dir"
+}

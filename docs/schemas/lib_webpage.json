@@ -1,0 +1,29 @@
+{
+  "name": "lib_webpage",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "blog",
+        "webpage"
+      ]
+    }
+  },
+  "extends": "lib",
+  "excludes": [
+    "city",
+    "edition",
+    "series",
+    "volume",
+    "issue",
+    "page_start",
+    "page_end",
+    "isbn10",
+    "isbn13",
+    "doi",
+    "cover_url",
+    "cover_path"
+  ]
+}

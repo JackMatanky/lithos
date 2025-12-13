@@ -1,0 +1,22 @@
+{
+  "name": "pkm_zettel",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "conclusion",
+        "evidence",
+        "idea",
+        "proof",
+        "question",
+        "quote",
+        "step",
+        "summary",
+        "theorem"
+      ]
+    }
+  },
+  "extends": "pkm"
+}

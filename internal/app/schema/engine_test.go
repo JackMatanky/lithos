@@ -1,553 +1,384 @@
-// Package schema provides domain services for schema validation and processing.
 package schema
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	lithoserrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// assertSchemaResult checks result against error expectation.
-func assertSchemaResult[T any](
-	t *testing.T,
-	result lithoserrors.Result[T],
-	expectErr bool,
-) {
-	t.Helper()
-	if expectErr {
-		if result.IsOk() {
-			t.Errorf("expected error, got success")
-		}
-		return
-	}
-
-	if result.IsErr() {
-		t.Errorf("expected success, got error: %v", result.Error())
-	}
+// FakeSchemaPort implements SchemaPort for testing.
+type FakeSchemaPort struct {
+	schemas []domain.Schema
+	bank    domain.PropertyBank
+	err     error
 }
 
-// verifyPropertyBankLoaded checks that property bank was loaded successfully.
-func verifyPropertyBankLoaded(
-	t *testing.T,
-	result lithoserrors.Result[*domain.PropertyBank],
-	engine *SchemaEngine,
-) {
-	t.Helper()
-	bank, _ := result.Unwrap()
-	if bank == nil {
-		t.Errorf("expected property bank, got nil")
-	}
-	if engine.propertyBankMap == nil {
-		t.Errorf("property bank not stored in engine")
-	}
+// FakeSchemaRegistryPort implements SchemaRegistryPort for testing.
+type FakeSchemaRegistryPort struct {
+	schemas        map[string]domain.Schema
+	properties     map[string]domain.Property
+	getSchemaErr   error
+	getPropertyErr error
+	registerAllErr error
 }
 
-// loadPropertyBankForTest loads property bank for testing.
-func loadPropertyBankForTest(t *testing.T, engine *SchemaEngine) {
-	t.Helper()
-	loadResult := engine.LoadPropertyBank(context.Background())
-	if loadResult.IsErr() {
-		t.Fatalf("failed to load property bank: %v", loadResult.Error())
-	}
-}
-
-// verifyPropertyName checks that retrieved property has expected name.
-func verifyPropertyName(
-	t *testing.T,
-	result lithoserrors.Result[domain.Property],
-	expectedName string,
-) {
-	t.Helper()
-	property, _ := result.Unwrap()
-	if property.Name != expectedName {
-		t.Errorf(
-			"expected property name %s, got %s",
-			expectedName,
-			property.Name,
-		)
-	}
-}
-
-// verifyPropertyExists checks that property existence matches expectation.
-func verifyPropertyExists(
-	t *testing.T,
-	result lithoserrors.Result[bool],
-	expected bool,
-) {
-	t.Helper()
-	exists, _ := result.Unwrap()
-	if exists != expected {
-		t.Errorf("expected %v, got %v", expected, exists)
-	}
-}
-
-// verifySchemaName checks that retrieved schema has expected name.
-func verifySchemaName(
-	t *testing.T,
-	result lithoserrors.Result[domain.Schema],
-	expectedName string,
-) {
-	t.Helper()
-	schema, _ := result.Unwrap()
-	if schema.Name != expectedName {
-		t.Errorf("expected schema name %s, got %s", expectedName, schema.Name)
-	}
-}
-
-// verifySchemaExists checks that schema existence matches expectation.
-func verifySchemaExists(
-	t *testing.T,
-	result lithoserrors.Result[bool],
-	expected bool,
-) {
-	t.Helper()
-	exists, _ := result.Unwrap()
-	if exists != expected {
-		t.Errorf("expected %v, got %v", expected, exists)
-	}
-}
-
-// mockSchemaLoaderPort implements SchemaLoaderPort for testing.
-type mockSchemaLoaderPort struct {
-	schemas      []domain.Schema
-	propertyBank *domain.PropertyBank
-	loadErr      error
-}
-
-func (m *mockSchemaLoaderPort) LoadSchemas(
+// Load implements SchemaPort.Load for testing.
+func (f *FakeSchemaPort) Load(
 	ctx context.Context,
-) ([]domain.Schema, error) {
-	if m.loadErr != nil {
-		return nil, m.loadErr
+) ([]domain.Schema, domain.PropertyBank, error) {
+	if f.err != nil {
+		return nil, domain.PropertyBank{}, f.err
 	}
-	return m.schemas, nil
+	return f.schemas, f.bank, nil
 }
 
-func (m *mockSchemaLoaderPort) LoadPropertyBank(
+// GetSchema implements SchemaRegistryPort.GetSchema for testing.
+func (f *FakeSchemaRegistryPort) GetSchema(
 	ctx context.Context,
-) (*domain.PropertyBank, error) {
-	if m.loadErr != nil {
-		return nil, m.loadErr
+	name string,
+) (domain.Schema, error) {
+	if f.getSchemaErr != nil {
+		return domain.Schema{}, f.getSchemaErr
 	}
-	return m.propertyBank, nil
+	if schema, exists := f.schemas[name]; exists {
+		return schema, nil
+	}
+	return domain.Schema{}, errors.New("schema not found")
 }
 
-// mockSchemaRegistryPort implements SchemaRegistryPort for testing.
-type mockSchemaRegistryPort struct {
-	schemas map[string]domain.Schema
+// GetProperty implements SchemaRegistryPort.GetProperty for testing.
+func (f *FakeSchemaRegistryPort) GetProperty(
+	ctx context.Context,
+	name string,
+) (domain.Property, error) {
+	if f.getPropertyErr != nil {
+		return domain.Property{}, f.getPropertyErr
+	}
+	if prop, exists := f.properties[name]; exists {
+		return prop, nil
+	}
+	return domain.Property{}, errors.New("property not found")
 }
 
-func (m *mockSchemaRegistryPort) Get(name string) (domain.Schema, bool) {
-	schema, exists := m.schemas[name]
-	return schema, exists
+// HasSchema checks if a schema exists in the fake registry.
+func (f *FakeSchemaRegistryPort) HasSchema(
+	ctx context.Context,
+	name string,
+) bool {
+	_, exists := f.schemas[name]
+	return exists
 }
 
-func TestSchemaEngine_LoadSchema(t *testing.T) {
-	tests := []struct {
-		name          string
-		schemas       []domain.Schema
-		loaderErr     error
-		validatorErr  error
-		expectErr     bool
-		expectedCount int
-	}{
-		{
-			name: "successful schema loading and validation",
-			schemas: []domain.Schema{
-				{Name: "test1", Properties: []domain.Property{}},
-				{Name: "test2", Properties: []domain.Property{}},
-			},
-			expectErr:     false,
-			expectedCount: 2,
-		},
-		{
-			name:      "loader error",
-			loaderErr: errors.New("load failed"),
-			expectErr: true,
-		},
-		{
-			name: "validation error",
-			schemas: []domain.Schema{
-				{Name: "", Properties: []domain.Property{}}, // Invalid name
-			},
-			expectErr: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup mocks
-			loader := &mockSchemaLoaderPort{
-				schemas: tt.schemas,
-				loadErr: tt.loaderErr,
-			}
-			registry := &mockSchemaRegistryPort{}
-			validator := NewSchemaValidator()
-
-			engine := NewSchemaEngine(loader, registry, validator)
-
-			// Execute
-			result := engine.LoadSchema(context.Background())
-
-			// Assert
-			assertSchemaResult(t, result, tt.expectErr)
-			if !tt.expectErr {
-				schemas, _ := result.Unwrap()
-				if len(schemas) != tt.expectedCount {
-					t.Errorf(
-						"expected %d schemas, got %d",
-						tt.expectedCount,
-						len(schemas),
-					)
-				}
-			}
-		})
-	}
+// HasProperty checks if a property exists in the fake registry.
+// HasProperty checks if a property exists in the fake registry.
+func (f *FakeSchemaRegistryPort) HasProperty(
+	ctx context.Context,
+	name string,
+) bool {
+	_, exists := f.properties[name]
+	return exists
 }
 
-func TestSchemaEngine_LoadPropertyBank(t *testing.T) {
-	tests := []struct {
-		name         string
-		propertyBank *domain.PropertyBank
-		loaderErr    error
-		expectErr    bool
-	}{
-		{
-			name: "successful property bank loading and validation",
-			propertyBank: &domain.PropertyBank{
-				Location:   "test",
-				Properties: map[string]domain.Property{},
-			},
-			expectErr: false,
-		},
-		{
-			name:      "loader error",
-			loaderErr: errors.New("load failed"),
-			expectErr: true,
-		},
-		{
-			name: "validation error",
-			propertyBank: &domain.PropertyBank{
-				Location:   "",
-				Properties: map[string]domain.Property{}, // Invalid location
-			},
-			expectErr: true,
-		},
+// RegisterAll registers all schemas and the property bank in the fake registry.
+func (f *FakeSchemaRegistryPort) RegisterAll(
+	ctx context.Context,
+	schemas []domain.Schema,
+	bank domain.PropertyBank,
+) error {
+	if f.registerAllErr != nil {
+		return f.registerAllErr
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup mocks
-			loader := &mockSchemaLoaderPort{
-				propertyBank: tt.propertyBank,
-				loadErr:      tt.loaderErr,
-			}
-			registry := &mockSchemaRegistryPort{}
-			validator := NewSchemaValidator()
-
-			engine := NewSchemaEngine(loader, registry, validator)
-
-			// Execute
-			result := engine.LoadPropertyBank(context.Background())
-
-			// Assert
-			assertSchemaResult(t, result, tt.expectErr)
-			if !tt.expectErr {
-				verifyPropertyBankLoaded(t, result, engine)
-			}
-		})
+	f.schemas = make(map[string]domain.Schema)
+	for _, schema := range schemas {
+		f.schemas[schema.Name] = schema
 	}
+	f.properties = bank.Properties
+	return nil
 }
 
-func TestSchemaEngine_GetSchema(t *testing.T) {
-	testSchema := domain.Schema{Name: "test", Properties: []domain.Property{}}
+// TestSchemaEngine_NewSchemaEngine_ValidDependencies tests constructor with
+// valid dependencies.
+func TestSchemaEngine_NewSchemaEngine_ValidDependencies(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
 
-	tests := []struct {
-		name       string
-		schemaName string
-		schemas    map[string]domain.Schema
-		expectErr  bool
-	}{
-		{
-			name:       "schema found",
-			schemaName: "test",
-			schemas:    map[string]domain.Schema{"test": testSchema},
-			expectErr:  false,
-		},
-		{
-			name:       "schema not found",
-			schemaName: "missing",
-			schemas:    map[string]domain.Schema{"test": testSchema},
-			expectErr:  true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup mocks
-			loader := &mockSchemaLoaderPort{}
-			registry := &mockSchemaRegistryPort{schemas: tt.schemas}
-			validator := NewSchemaValidator()
-
-			engine := NewSchemaEngine(loader, registry, validator)
-
-			// Execute
-			result := engine.GetSchema(context.Background(), tt.schemaName)
-
-			// Assert
-			assertSchemaResult(t, result, tt.expectErr)
-			if !tt.expectErr {
-				verifySchemaName(t, result, tt.schemaName)
-			}
-		})
-	}
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+	require.NotNil(t, engine)
 }
 
-func TestSchemaEngine_HasSchema(t *testing.T) {
-	testSchema := domain.Schema{Name: "test", Properties: []domain.Property{}}
+// TestSchemaEngine_NewSchemaEngine_NilSchemaPort tests constructor with nil
+// schema port.
+func TestSchemaEngine_NewSchemaEngine_NilSchemaPort(t *testing.T) {
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
 
-	tests := []struct {
-		name       string
-		schemaName string
-		schemas    map[string]domain.Schema
-		expected   bool
-	}{
-		{
-			name:       "schema exists",
-			schemaName: "test",
-			schemas:    map[string]domain.Schema{"test": testSchema},
-			expected:   true,
-		},
-		{
-			name:       "schema does not exist",
-			schemaName: "missing",
-			schemas:    map[string]domain.Schema{"test": testSchema},
-			expected:   false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup mocks
-			loader := &mockSchemaLoaderPort{}
-			registry := &mockSchemaRegistryPort{schemas: tt.schemas}
-			validator := NewSchemaValidator()
-
-			engine := NewSchemaEngine(loader, registry, validator)
-
-			// Execute
-			result := engine.HasSchema(context.Background(), tt.schemaName)
-
-			// Assert
-			assertSchemaResult(t, result, false)
-			if result.IsOk() {
-				verifySchemaExists(t, result, tt.expected)
-			}
-		})
-	}
+	engine, err := NewSchemaEngine(nil, registryPort, log, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schemaPort cannot be nil")
+	assert.Nil(t, engine)
 }
 
-func TestSchemaEngine_GetProperty(t *testing.T) {
-	testProperty := domain.Property{
-		Name: "testProp",
-		Spec: domain.StringPropertySpec{},
-	}
+// TestSchemaEngine_NewSchemaEngine_NilRegistryPort tests constructor with nil
+// registry port.
+func TestSchemaEngine_NewSchemaEngine_NilRegistryPort(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	log := zerolog.New(nil)
 
-	propertyBank := &domain.PropertyBank{
-		Location:   "test",
-		Properties: map[string]domain.Property{"testProp": testProperty},
-	}
-
-	tests := []struct {
-		name         string
-		propertyName string
-		loadBank     bool
-		expectErr    bool
-	}{
-		{
-			name:         "property found",
-			propertyName: "testProp",
-			loadBank:     true,
-			expectErr:    false,
-		},
-		{
-			name:         "property not found",
-			propertyName: "missing",
-			loadBank:     true,
-			expectErr:    true,
-		},
-		{
-			name:         "property bank not loaded",
-			propertyName: "testProp",
-			loadBank:     false,
-			expectErr:    true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup mocks
-			loader := &mockSchemaLoaderPort{propertyBank: propertyBank}
-			registry := &mockSchemaRegistryPort{}
-			validator := NewSchemaValidator()
-
-			engine := NewSchemaEngine(loader, registry, validator)
-
-			// Load property bank if required
-			if tt.loadBank {
-				loadPropertyBankForTest(t, engine)
-			}
-
-			// Execute
-			result := engine.GetProperty(context.Background(), tt.propertyName)
-
-			// Assert
-			assertSchemaResult(t, result, tt.expectErr)
-			if !tt.expectErr {
-				verifyPropertyName(t, result, tt.propertyName)
-			}
-		})
-	}
+	engine, err := NewSchemaEngine(schemaPort, nil, log, nil)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "registryPort cannot be nil")
+	assert.Nil(t, engine)
 }
 
-func TestSchemaEngine_HasProperty(t *testing.T) {
-	testProperty := domain.Property{
-		Name: "testProp",
-		Spec: domain.StringPropertySpec{},
-	}
-
-	propertyBank := &domain.PropertyBank{
-		Location:   "test",
-		Properties: map[string]domain.Property{"testProp": testProperty},
-	}
-
-	tests := []struct {
-		name         string
-		propertyName string
-		loadBank     bool
-		expected     bool
-		expectErr    bool
-	}{
-		{
-			name:         "property exists",
-			propertyName: "testProp",
-			loadBank:     true,
-			expected:     true,
-			expectErr:    false,
+// TestSchemaEngine_Load_Success tests successful Load() execution through all
+// stages.
+func TestSchemaEngine_Load_Success(t *testing.T) {
+	schemaPort := &FakeSchemaPort{
+		schemas: []domain.Schema{
+			{Name: "test-schema", Properties: []domain.Property{}},
 		},
-		{
-			name:         "property does not exist",
-			propertyName: "missing",
-			loadBank:     true,
-			expected:     false,
-			expectErr:    false,
-		},
-		{
-			name:         "property bank not loaded",
-			propertyName: "testProp",
-			loadBank:     false,
-			expectErr:    true,
-		},
+		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
 	}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Setup mocks
-			loader := &mockSchemaLoaderPort{propertyBank: propertyBank}
-			registry := &mockSchemaRegistryPort{}
-			validator := NewSchemaValidator()
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
 
-			engine := NewSchemaEngine(loader, registry, validator)
+	err = engine.Load(context.Background())
+	require.NoError(t, err)
 
-			// Load property bank if required
-			if tt.loadBank {
-				loadPropertyBankForTest(t, engine)
-			}
-
-			// Execute
-			result := engine.HasProperty(context.Background(), tt.propertyName)
-
-			// Assert
-			assertSchemaResult(t, result, tt.expectErr)
-			if !tt.expectErr {
-				verifyPropertyExists(t, result, tt.expected)
-			}
-		})
-	}
+	// Verify schemas were registered
+	assert.True(t, registryPort.HasSchema(context.Background(), "test-schema"))
 }
 
-func TestSchemaEngine_ContextCancellation(t *testing.T) {
-	// Setup mocks
-	loader := &mockSchemaLoaderPort{}
-	registry := &mockSchemaRegistryPort{}
-	validator := NewSchemaValidator()
-
-	engine := NewSchemaEngine(loader, registry, validator)
-
-	// Create canceled context
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
-
-	// Test all methods with canceled context
-	testCases := []struct {
-		name string
-		test func() error
-	}{
-		{"LoadSchema", func() error {
-			result := engine.LoadSchema(ctx)
-			if result.IsOk() {
-				return nil
-			}
-			return result.Error()
-		}},
-		{"LoadPropertyBank", func() error {
-			result := engine.LoadPropertyBank(ctx)
-			if result.IsOk() {
-				return nil
-			}
-			return result.Error()
-		}},
-		{"GetSchema", func() error {
-			result := engine.GetSchema(ctx, "test")
-			if result.IsOk() {
-				return nil
-			}
-			return result.Error()
-		}},
-		{"HasSchema", func() error {
-			result := engine.HasSchema(ctx, "test")
-			if result.IsOk() {
-				return nil
-			}
-			return result.Error()
-		}},
-		{"GetProperty", func() error {
-			result := engine.GetProperty(ctx, "test")
-			if result.IsOk() {
-				return nil
-			}
-			return result.Error()
-		}},
-		{"HasProperty", func() error {
-			result := engine.HasProperty(ctx, "test")
-			if result.IsOk() {
-				return nil
-			}
-			return result.Error()
-		}},
+// TestSchemaEngine_Load_SchemaPortFailure tests Load() failure at
+// SchemaPort.Load stage.
+func TestSchemaEngine_Load_SchemaPortFailure(t *testing.T) {
+	schemaPort := &FakeSchemaPort{
+		err: errors.New("schema port error"),
 	}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
 
-	for _, tc := range testCases {
-		t.Run(tc.name+"_canceled_context", func(t *testing.T) {
-			err := tc.test()
-			if err == nil {
-				t.Errorf("expected context cancellation error, got success")
-			} else if !errors.Is(err, context.Canceled) {
-				t.Errorf("expected context.Canceled error, got %v", err)
-			}
-		})
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	err = engine.Load(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema loading failed")
+	assert.Contains(t, err.Error(), "schema port error")
+}
+
+// TestSchemaEngine_Load_ValidationFailure tests Load() failure at
+// schema port (adapter validation).
+func TestSchemaEngine_Load_ValidationFailure(t *testing.T) {
+	schemaPort := &FakeSchemaPort{
+		err: fmt.Errorf(
+			"schema validation failed: schema name cannot be empty",
+		),
 	}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	err = engine.Load(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema validation failed")
+}
+
+// TestSchemaEngine_Load_ResolutionFailure tests Load() failure at
+// schema port (adapter resolution).
+func TestSchemaEngine_Load_ResolutionFailure(t *testing.T) {
+	schemaPort := &FakeSchemaPort{
+		err: fmt.Errorf(
+			"schema inheritance resolution failed: circular inheritance detected",
+		),
+	}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	err = engine.Load(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema inheritance resolution failed")
+	assert.Contains(t, err.Error(), "circular inheritance")
+}
+
+// TestSchemaEngine_Load_RegistrationFailure tests Load() failure at
+// SchemaRegistryPort stage.
+func TestSchemaEngine_Load_RegistrationFailure(t *testing.T) {
+	schemaPort := &FakeSchemaPort{
+		schemas: []domain.Schema{
+			{Name: "test-schema", Properties: []domain.Property{}},
+		},
+		bank: domain.PropertyBank{Properties: map[string]domain.Property{}},
+	}
+	registryPort := &FakeSchemaRegistryPort{
+		registerAllErr: errors.New("registration error"),
+	}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	err = engine.Load(context.Background())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema registration failed")
+	assert.Contains(t, err.Error(), "registration error")
+}
+
+// TestSchemaEngine_Get_SchemaSuccess tests registry port GetSchema success
+// case.
+func TestSchemaEngine_Get_SchemaSuccess(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{
+		schemas: map[string]domain.Schema{
+			"test-schema": {Name: "test-schema"},
+		},
+	}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	schema, err := engine.registryPort.GetSchema(
+		context.Background(),
+		"test-schema",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "test-schema", schema.Name)
+}
+
+// TestSchemaEngine_Get_PropertySuccess tests registry port GetProperty success
+// case.
+func TestSchemaEngine_Get_PropertySuccess(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{
+		properties: map[string]domain.Property{
+			"test-prop": {Name: "test-prop"},
+		},
+	}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	property, err := engine.registryPort.GetProperty(
+		context.Background(),
+		"test-prop",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, "test-prop", property.Name)
+}
+
+// TestSchemaEngine_Get_SchemaNotFound tests Get[Schema]() error case.
+func TestSchemaEngine_Get_SchemaNotFound(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	_, err = engine.registryPort.GetSchema(context.Background(), "non-existent")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "schema not found")
+}
+
+// TestSchemaEngine_Get_PropertyNotFound tests Get[Property]() error case.
+func TestSchemaEngine_Get_PropertyNotFound(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	_, err = engine.registryPort.GetProperty(
+		context.Background(),
+		"non-existent",
+	)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "property not found")
+}
+
+// TestSchemaEngine_Has_SchemaTrue tests Has[Schema]() true case.
+func TestSchemaEngine_Has_SchemaTrue(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{
+		schemas: map[string]domain.Schema{
+			"test-schema": {Name: "test-schema"},
+		},
+	}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	assert.True(
+		t,
+		engine.registryPort.HasSchema(context.Background(), "test-schema"),
+	)
+}
+
+// TestSchemaEngine_Has_SchemaFalse tests Has[Schema]() false case.
+func TestSchemaEngine_Has_SchemaFalse(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	assert.False(
+		t,
+		engine.registryPort.HasSchema(context.Background(), "non-existent"),
+	)
+}
+
+// TestSchemaEngine_Has_PropertyTrue tests Has[Property]() true case.
+func TestSchemaEngine_Has_PropertyTrue(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{
+		properties: map[string]domain.Property{
+			"test-prop": {Name: "test-prop"},
+		},
+	}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	assert.True(
+		t,
+		engine.registryPort.HasProperty(context.Background(), "test-prop"),
+	)
+}
+
+// TestSchemaEngine_Has_PropertyFalse tests Has[Property]() false case.
+func TestSchemaEngine_Has_PropertyFalse(t *testing.T) {
+	schemaPort := &FakeSchemaPort{}
+	registryPort := &FakeSchemaRegistryPort{}
+	log := zerolog.New(nil)
+
+	engine, err := NewSchemaEngine(schemaPort, registryPort, log, nil)
+	require.NoError(t, err)
+
+	assert.False(
+		t,
+		engine.registryPort.HasProperty(context.Background(), "non-existent"),
+	)
 }

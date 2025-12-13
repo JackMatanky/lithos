@@ -1,131 +1,45 @@
-package testutils
+package utils
 
 import (
 	"path/filepath"
-	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-func TestLoadTestData(t *testing.T) {
-	// Test loading schema test data
-	data, err := LoadTestData("schema/valid/complete-user.json")
-	if err != nil {
-		t.Fatalf("Failed to load test data: %v", err)
-	}
+// TestRootReturnsExistingDirectory verifies that Root returns an absolute path
+// to an existing testdata directory.
+func TestRootReturnsExistingDirectory(t *testing.T) {
+	root := Root(t)
 
-	if !strings.Contains(data, `"name": "user"`) {
-		t.Error("Test data does not contain expected content")
-	}
+	require.DirExists(t, root)
+	require.True(t, filepath.IsAbs(root), "root should be absolute")
 }
 
-func TestLoadSchemaTestData(t *testing.T) {
-	// Test the convenience wrapper
-	data, err := LoadSchemaTestData("valid/complete-user.json")
-	if err != nil {
-		t.Fatalf("Failed to load schema test data: %v", err)
-	}
+// TestPathResolvesAllowedFixture verifies that Path correctly resolves paths
+// within allowed root directories.
+func TestPathResolvesAllowedFixture(t *testing.T) {
+	path := Path(t, "schemas", "valid", "note.json")
+	require.FileExists(t, path)
 
-	if !strings.Contains(data, `"name": "user"`) {
-		t.Error("Schema test data does not contain expected content")
-	}
+	base := filepath.Base(path)
+	require.Equal(t, "note.json", base)
 }
 
-func TestGetTestDataPath(t *testing.T) {
-	path, err := GetTestDataPath("schema/valid/complete-user.json")
-	if err != nil {
-		t.Fatalf("Failed to get test data path: %v", err)
-	}
-
-	if !strings.HasSuffix(
-		path,
-		filepath.Join("testdata", "schema", "valid", "complete-user.json"),
-	) {
-		t.Errorf("Path does not end with expected suffix: %s", path)
-	}
+// TestPathAllowsTopLevelFixture verifies that Path can resolve fixtures
+// in the notes directory.
+func TestPathAllowsTopLevelFixture(t *testing.T) {
+	path := Path(t, "notes", "basic_note.md")
+	require.FileExists(t, path)
 }
 
-func TestGetSchemaTestDataPath(t *testing.T) {
-	path, err := GetSchemaTestDataPath("valid/complete-user.json")
-	if err != nil {
-		t.Fatalf("Failed to get schema test data path: %v", err)
-	}
+// TestOpenReturnsReadableFile verifies that Open returns a readable file
+// handle for valid fixtures.
+func TestOpenReturnsReadableFile(t *testing.T) {
+	file := Open(t, "templates", "static_template.md")
+	t.Cleanup(func() { _ = file.Close() })
 
-	if !strings.HasSuffix(
-		path,
-		filepath.Join("testdata", "schema", "valid", "complete-user.json"),
-	) {
-		t.Errorf("Path does not end with expected suffix: %s", path)
-	}
-}
-
-func TestNewTestDataPaths(t *testing.T) {
-	paths := NewTestDataPaths()
-
-	// Test that directory paths are properly initialized
-	if paths.SchemaValid != "schema/valid" {
-		t.Errorf("SchemaValid = %s, want %s", paths.SchemaValid, "schema/valid")
-	}
-
-	if paths.SchemaProperties != "schema/properties" {
-		t.Errorf(
-			"SchemaProperties = %s, want %s",
-			paths.SchemaProperties,
-			"schema/properties",
-		)
-	}
-
-	if paths.SchemaInvalid != "schema/invalid" {
-		t.Errorf(
-			"SchemaInvalid = %s, want %s",
-			paths.SchemaInvalid,
-			"schema/invalid",
-		)
-	}
-
-	if paths.Golden != "golden" {
-		t.Errorf("Golden = %s, want %s", paths.Golden, "golden")
-	}
-}
-
-func TestTestDataPathsFileMethod(t *testing.T) {
-	paths := NewTestDataPaths()
-
-	// Test the File method
-	completeUserPath := paths.File(paths.SchemaValid, "complete-user.json")
-	expected := filepath.Join(paths.SchemaValid, "complete-user.json")
-	if completeUserPath != expected {
-		t.Errorf("File method returned %s, want %s", completeUserPath, expected)
-	}
-
-	// Test with properties
-	bankPath := paths.File(paths.SchemaProperties, "bank.json")
-	expectedBank := filepath.Join(paths.SchemaProperties, "bank.json")
-	if bankPath != expectedBank {
-		t.Errorf("File method returned %s, want %s", bankPath, expectedBank)
-	}
-}
-
-func TestTestDataPathsWithLoaders(t *testing.T) {
-	paths := NewTestDataPaths()
-
-	// Test that paths work with the loader functions
-	completeUserPath := paths.File(paths.SchemaValid, "complete-user.json")
-	data, err := LoadTestData(completeUserPath)
-	if err != nil {
-		t.Fatalf("Failed to load test data using paths: %v", err)
-	}
-
-	if !strings.Contains(data, `"name": "user"`) {
-		t.Error("Loaded data does not contain expected content")
-	}
-
-	// Test with LoadSchemaTestData convenience function
-	data2, err := LoadSchemaTestData(paths.File("valid", "complete-user.json"))
-	if err != nil {
-		t.Fatalf("Failed to load schema test data using paths: %v", err)
-	}
-
-	if !strings.Contains(data2, `"name": "user"`) {
-		t.Error("Schema test data does not contain expected content")
-	}
+	info, err := file.Stat()
+	require.NoError(t, err)
+	require.Positive(t, info.Size())
 }

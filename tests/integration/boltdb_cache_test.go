@@ -1,0 +1,103 @@
+package integration
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/boltdb"
+	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.etcd.io/bbolt"
+)
+
+func TestBoltDBCacheIntegration(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	cacheDir := t.TempDir()
+	config := domain.Config{
+		CacheDir:     cacheDir,
+		FileClassKey: "fileClass",
+	}
+	log := zerolog.Nop()
+
+	// 0. Initialize Shared DB
+	dbPath := filepath.Join(cacheDir, "lithos.db")
+	db, err := bbolt.Open(dbPath, 0o600, nil)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	// 1. Create Writer and persist notes
+	writer, err := boltdb.NewBoltDBCacheWriter(config, log, db)
+	require.NoError(t, err)
+
+	notes := []domain.Note{
+		func() domain.Note {
+			note, _ := domain.NewNote("notes/alpha.md", domain.Frontmatter{
+				Fields: map[string]interface{}{
+					"title":     "Alpha Project",
+					"fileClass": "project",
+					"aliases":   []interface{}{"Alpha", "Project A"},
+				},
+			}, nil, nil, nil, nil)
+			return note
+		}(),
+		func() domain.Note {
+			note, _ := domain.NewNote("notes/beta.md", domain.Frontmatter{
+				Fields: map[string]interface{}{
+					"title":     "Beta Contact",
+					"fileClass": "contact",
+				},
+			}, nil, nil, nil, nil)
+			return note
+		}(),
+	}
+
+	ctx := context.Background()
+	for _, n := range notes {
+		persistErr := writer.Persist(ctx, n, time.Now())
+		require.NoError(t, persistErr)
+	}
+	err = writer.Close()
+	require.NoError(t, err)
+
+	// 2. Create Reader and verify data
+	reader, err := boltdb.NewBoltDBCacheReadAdapter(config, log, db)
+	require.NoError(t, err)
+	defer func() { _ = reader.Close() }()
+
+	// Verify Read by ID
+	note, err := reader.Read(ctx, "notes/alpha.md")
+	require.NoError(t, err)
+	assert.Equal(t, "Alpha Project", note.Frontmatter.Fields["title"])
+
+	// Verify Metadata Queries
+	// FileClassQuery
+	projectNotes, err := reader.FileClassQuery(ctx, "project")
+	require.NoError(t, err)
+	assert.Len(t, projectNotes, 1)
+	assert.Equal(t, "notes/alpha.md", projectNotes[0].Path)
+
+	// AliasQuery
+	aliasNotes, err := reader.AliasQuery(ctx, "Project A")
+	require.NoError(t, err)
+	assert.Len(t, aliasNotes, 1)
+	assert.Equal(t, "notes/alpha.md", aliasNotes[0].Path)
+
+	// BasenameQuery
+	basenameNotes, err := reader.BasenameQuery(ctx, "beta")
+	require.NoError(t, err)
+	assert.Len(t, basenameNotes, 1)
+	assert.Equal(t, "notes/beta.md", basenameNotes[0].Path)
+
+	// 3. Verify Staleness (Basic check)
+	// Since file doesn't exist on disk, should be stale
+	stale, err := reader.IsStale(ctx, "notes/alpha.md")
+	require.NoError(t, err)
+	assert.True(t, stale)
+}

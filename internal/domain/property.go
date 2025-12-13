@@ -1,276 +1,164 @@
-// Package domain contains the core business logic models for Lithos.
-// These models represent domain concepts and contain no infrastructure
-// dependencies.
 package domain
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
-	"strings"
-	"sync"
-
-	domainerrors "github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
-const (
-	propertyTypeString = "string"
-	propertyTypeNumber = "number"
-	propertyTypeDate   = "date"
-	propertyTypeFile   = "file"
-	propertyTypeBool   = "bool"
-)
-
-// PropertySpec defines the interface for type-specific property specifications.
-// Each implementation encapsulates configuration for a specific property type.
-type PropertySpec interface {
-	// PropertySpec is now a pure data interface - validation moved to services
-}
-
-// Property defines a single metadata property with type constraints and
-// validation rules. Properties describe what data can be stored in frontmatter
-// and how it should be validated.
+// Property represents a DDD entity for schema property definitions with
+// validation constraints.
+// It defines how a frontmatter field should be validated in notes.
+// As a DDD entity, Property has identity determined by its ID field.
+//
+// Reference: docs/architecture/data-models.md#property.
 type Property struct {
-	// Name is the property identifier matching frontmatter key.
-	// Case-sensitive, must be valid YAML key.
-	Name string
+	// ID is the unique identifier for this property entity, generated from
+	// hash of (Name + Spec content) to ensure deterministic identity.
+	ID string `json:"id"`
 
-	// Required indicates whether this property must be present in note
-	// frontmatter.
-	Required bool
+	// Name is the property identifier matching frontmatter key
+	// (case-sensitive).
+	Name string `json:"name"`
 
-	// Array indicates whether this property accepts multiple values (YAML
-	// list). If true, values must be slices/arrays. If false, values must be
+	// Required indicates whether property must be present in frontmatter.
+	Required bool `json:"required"`
+
+	// Array indicates whether property accepts multiple values vs single
 	// scalar.
-	Array bool
+	Array bool `json:"array"`
 
-	// Spec contains type-specific configuration and validation rules.
-	// Exactly one spec type per property based on semantic type.
-	Spec PropertySpec
+	// Spec defines type-specific validation constraints.
+	Spec PropertySpec `json:"spec"`
+
+	// validated tracks whether this property has been validated to enable
+	// short-circuiting redundant validations.
+	validated bool
 }
 
-// NewProperty creates a new Property with the given specification. Callers
-// should invoke Validate on the resulting property before using it to ensure
-// the configuration is valid.
+// NewProperty creates a new Property entity with auto-generated ID.
+// The ID is generated using hash of (Name + Spec content) for deterministic
+// identity.
+// Returns error if the property definition is invalid.
 func NewProperty(
 	name string,
 	required, array bool,
 	spec PropertySpec,
-) Property {
-	return Property{
-		Name:     name,
-		Required: required,
-		Array:    array,
-		Spec:     spec,
-	}
+) (*Property, error) {
+	return NewPropertyWithContext(
+		context.Background(),
+		name,
+		required,
+		array,
+		spec,
+	)
 }
 
-// TypeName returns the semantic type name (string/number/date/file/bool) for
-// this property based on its spec.
-func (p Property) TypeName() (string, error) {
-	normalized, err := normalizeSpec(p.Spec)
-	if err != nil {
-		return "", err
+// NewPropertyWithContext creates a new Property entity with auto-generated ID.
+// The ID is generated using hash of (Name + Spec content) for deterministic
+// identity.
+// Returns error if the property definition is invalid.
+func NewPropertyWithContext(
+	ctx context.Context,
+	name string,
+	required, array bool,
+	spec PropertySpec,
+) (*Property, error) {
+	// Generate deterministic ID from name and spec content
+	id := generatePropertyID(name, spec)
+
+	property := Property{
+		ID:        id,
+		Name:      name,
+		Required:  required,
+		Array:     array,
+		Spec:      spec,
+		validated: false,
 	}
 
-	return propertyTypeName(normalized)
+	// Validate the property
+	if err := (&property).Validate(ctx); err != nil {
+		return nil, err
+	}
+
+	return &property, nil
 }
 
-// Property spec normalization helpers
-
-func normalizeSpec(spec PropertySpec) (PropertySpec, error) {
-	if spec == nil {
-		return nil, fmt.Errorf("property spec cannot be nil")
+// Validate performs structural validation of the Property definition.
+// It checks basic constraints and delegates type-specific validation to Spec.
+// Uses short-circuiting to avoid redundant validations.
+func (p *Property) Validate(ctx context.Context) error {
+	if p.validated {
+		return nil
 	}
 
-	if deref, handled, err := dereferencedSpec(spec); handled {
-		return deref, err
+	if err := validatePropertyName(p.Name); err != nil {
+		return err
 	}
 
-	return spec, nil
-}
-
-func dereferencedSpec(spec PropertySpec) (PropertySpec, bool, error) {
-	switch typed := spec.(type) {
-	case *StringPropertySpec:
-		return dereferenceStringSpec(typed)
-	case *NumberPropertySpec:
-		return dereferenceNumberSpec(typed)
-	case *DatePropertySpec:
-		return dereferenceDateSpec(typed)
-	case *FilePropertySpec:
-		return dereferenceFileSpec(typed)
-	case *BoolPropertySpec:
-		return dereferenceBoolSpec(typed)
-	default:
-		return nil, false, nil
+	// Validate the spec
+	if err := ensurePropertySpec(p.Spec); err != nil {
+		return err
 	}
-}
-
-func dereferenceStringSpec(
-	spec *StringPropertySpec,
-) (PropertySpec, bool, error) {
-	if spec == nil {
-		return nil, true, fmt.Errorf("string property spec cannot be nil")
-	}
-	return *spec, true, nil
-}
-
-func dereferenceNumberSpec(
-	spec *NumberPropertySpec,
-) (PropertySpec, bool, error) {
-	if spec == nil {
-		return nil, true, fmt.Errorf("number property spec cannot be nil")
-	}
-	return *spec, true, nil
-}
-
-func dereferenceDateSpec(spec *DatePropertySpec) (PropertySpec, bool, error) {
-	if spec == nil {
-		return nil, true, fmt.Errorf("date property spec cannot be nil")
-	}
-	return *spec, true, nil
-}
-
-func dereferenceFileSpec(spec *FilePropertySpec) (PropertySpec, bool, error) {
-	if spec == nil {
-		return nil, true, fmt.Errorf("file property spec cannot be nil")
-	}
-	return *spec, true, nil
-}
-
-func dereferenceBoolSpec(spec *BoolPropertySpec) (PropertySpec, bool, error) {
-	if spec == nil {
-		return nil, true, fmt.Errorf("bool property spec cannot be nil")
-	}
-	return *spec, true, nil
-}
-
-func propertyTypeName(spec PropertySpec) (string, error) {
-	switch spec.(type) {
-	case StringPropertySpec:
-		return propertyTypeString, nil
-	case NumberPropertySpec:
-		return propertyTypeNumber, nil
-	case DatePropertySpec:
-		return propertyTypeDate, nil
-	case FilePropertySpec:
-		return propertyTypeFile, nil
-	case BoolPropertySpec:
-		return propertyTypeBool, nil
-	default:
-		return "", fmt.Errorf("unknown property spec type: %T", spec)
-	}
-}
-
-// PropertyBank provides a library of reusable, pre-configured Property
-// definitions that schemas can reference by name. Reduces duplication across
-// schema definitions, ensures consistency for common properties.
-type PropertyBank struct {
-	// Properties contains named property definitions keyed by unique
-	// identifier.
-	// Keys should be descriptive names like "standard_title", "iso_date".
-	Properties map[string]Property
-
-	// Location is the path to property bank JSON file.
-	// Default: "schemas/property_bank.json"
-	Location string
-	mu       sync.RWMutex
-}
-
-// NewPropertyBank creates a new PropertyBank with the given location.
-func NewPropertyBank(location string) PropertyBank {
-	trimmed := strings.TrimSpace(location)
-	if trimmed == "" {
-		trimmed = "schemas/properties/"
+	if err := validatePropertySpec(ctx, p.Name, p.Spec); err != nil {
+		return err
 	}
 
-	return PropertyBank{
-		Properties: make(map[string]Property),
-		Location:   trimmed,
-		mu:         sync.RWMutex{},
-	}
-}
-
-// RegisterProperty adds a reusable property definition to the bank.
-// Returns an error if a property with the same name already exists.
-func (pb *PropertyBank) RegisterProperty(name string, property Property) error {
-	trimmed := strings.TrimSpace(name)
-	if trimmed == "" {
-		return domainerrors.NewValidationError("name", "cannot be empty", name)
-	}
-
-	if trimmed != name {
-		return domainerrors.NewValidationError(
-			"name",
-			"cannot have leading/trailing whitespace",
-			name,
-		)
-	}
-
-	pb.mu.Lock()
-	defer pb.mu.Unlock()
-
-	if _, exists := pb.Properties[name]; exists {
-		return domainerrors.NewValidationError(
-			"name",
-			"property already exists",
-			name,
-		)
-	}
-
-	pb.Properties[name] = property
+	// Mark as validated to enable short-circuiting
+	p.validated = true
 	return nil
 }
 
-// StringPropertySpec validates string values with optional enum and pattern
-// constraints.
-type StringPropertySpec struct {
-	// Enum contains allowed values as fixed list. If non-empty, value must be
-	// in list.
-	// Empty list means no enum constraint (any string valid).
-	Enum []string
-
-	// Pattern is a regex pattern for custom string validation.
-	// If non-empty, value must match pattern. Uses Go regexp package.
-	Pattern string
+// validatePropertyName checks that property name is not empty.
+func validatePropertyName(name string) error {
+	if name != "" {
+		return nil
+	}
+	return fmt.Errorf("property name cannot be empty")
 }
 
-// NumberPropertySpec validates numeric values with optional min/max/step
-// constraints.
-type NumberPropertySpec struct {
-	// Min is the minimum allowed value (inclusive). Nil means no minimum
-	// constraint.
-	Min *float64
-
-	// Max is the maximum allowed value (inclusive). Nil means no maximum
-	// constraint.
-	Max *float64
-
-	// Step is the increment/decrement amount. If 1.0, implies integer values.
-	// If nil, any precision allowed.
-	Step *float64
+// ensurePropertySpec checks that property spec is not nil.
+func ensurePropertySpec(spec PropertySpec) error {
+	if spec != nil {
+		return nil
+	}
+	return fmt.Errorf("property spec cannot be nil")
 }
 
-// DatePropertySpec validates date/time values with format constraints.
-type DatePropertySpec struct {
-	// Format is the Go time layout string for parsing.
-	// If empty, defaults to RFC3339.
-	Format string
+// validatePropertySpec delegates validation to the PropertySpec implementation.
+func validatePropertySpec(
+	ctx context.Context,
+	name string,
+	spec PropertySpec,
+) error {
+	if err := spec.Validate(ctx); err != nil {
+		return fmt.Errorf("property %s: %w", name, err)
+	}
+	return nil
 }
 
-// FilePropertySpec validates file reference values with optional
-// class/directory constraints.
-type FilePropertySpec struct {
-	// FileClass restricts valid file references to notes with specific
-	// fileClass value. Supports negation via ^ prefix. Empty string means no
-	// fileClass restriction.
-	FileClass string
-
-	// Directory restricts valid file references to notes within specific vault
-	// directory path.
-	// Path is relative to vault root. Supports negation via ^ prefix.
-	Directory string
+// InPropertyBank checks if this property originated from the given PropertyBank
+// by verifying that its ID exists as a key in the bank's properties map.
+// This enables membership checking for properties that were resolved from $ref.
+func (p Property) InPropertyBank(bank PropertyBank) bool {
+	_, exists := bank.Properties[p.ID]
+	return exists
 }
 
-// BoolPropertySpec validates boolean values. No additional configuration
-// needed.
-type BoolPropertySpec struct{}
+// generatePropertyID creates a deterministic hash-based ID from property name
+// and full spec content for maximum uniqueness.
+func generatePropertyID(name string, spec PropertySpec) string {
+	// Serialize the full spec to JSON for comprehensive content hashing
+	specJSON, err := json.Marshal(spec)
+	if err != nil {
+		// Fallback to type-only if serialization fails (shouldn't happen)
+		specJSON = []byte(fmt.Sprintf(`{"type":%q}`, spec.Type()))
+	}
+
+	// Include name and full spec content
+	content := fmt.Sprintf("%s|%s", name, string(specJSON))
+	hash := sha256.Sum256([]byte(content))
+	return hex.EncodeToString(hash[:])
+}

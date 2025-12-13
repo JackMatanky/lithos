@@ -1,0 +1,70 @@
+{
+  "name": "lib_book",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "book"
+      ]
+    },
+    "author": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(51_contacts)/"
+    },
+    "editor": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(51_contacts)/"
+    },
+    "translator": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(51_contacts)/"
+    },
+    "publisher": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(52_organizations)/"
+    },
+    "doi": {
+      "$ref": "#/properties/doi"
+    },
+    "isbn10": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "isbn13": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "year_published": {
+      "$ref": "#/properties/year_published"
+    },
+    "city": {
+      "$ref": "#/properties/city"
+    },
+    "edition": {
+      "required": false,
+      "array": false,
+      "type": "number"
+    },
+    "cover_url": {
+      "$ref": "#/properties/url"
+    },
+    "cover_path": {
+      "required": false,
+      "array": false,
+      "type": "file"
+    }
+  },
+  "extends": "lib"
+}

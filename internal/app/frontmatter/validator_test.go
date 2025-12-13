@@ -1,553 +1,168 @@
-// Package frontmatter provides tests for frontmatter validation services.
 package frontmatter
 
 import (
-	"context"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/stretchr/testify/require"
 )
 
-// assertValidation checks validation result against expectation.
-func assertValidation[T any](
-	t *testing.T,
-	result errors.Result[T],
-	wantValid bool,
-) {
-	t.Helper()
-	if wantValid {
-		if result.IsErr() {
-			t.Errorf("expected valid result, got error: %v", result.Error())
-		}
-		return
-	}
-
-	if result.IsOk() {
-		t.Errorf("expected error result, got valid")
-	}
+// TestFieldValidator_InterfaceExists verifies FieldValidator interface exists.
+func TestFieldValidator_InterfaceExists(t *testing.T) {
+	// This test verifies FieldValidator interface exists
+	var _ FieldValidator // This will fail if interface doesn't exist
 }
 
-// mockSchemaEngine implements the interface needed for testing.
-type mockSchemaEngine struct {
-	schema domain.Schema
-	err    error
+// TestStringValidator_ImplementsFieldValidator verifies StringValidator
+// implements FieldValidator.
+func TestStringValidator_ImplementsFieldValidator(t *testing.T) {
+	// This test verifies StringValidator implements FieldValidator
+	validator := &StringValidator{}
+	var _ FieldValidator = validator // This will fail if StringValidator doesn't implement interface
 }
 
-func (m *mockSchemaEngine) GetSchema(
-	ctx context.Context,
-	name string,
-) errors.Result[domain.Schema] {
-	if m.err != nil {
-		return errors.Err[domain.Schema](m.err)
-	}
-	return errors.Ok[domain.Schema](m.schema)
+// TestNumberValidator_ImplementsFieldValidator verifies NumberValidator
+// implements FieldValidator.
+func TestNumberValidator_ImplementsFieldValidator(t *testing.T) {
+	// This test verifies NumberValidator implements FieldValidator
+	validator := &NumberValidator{}
+	var _ FieldValidator = validator // This will fail if NumberValidator doesn't implement interface
 }
 
-func TestFrontmatterValidator_Validate(t *testing.T) {
-	tests := []struct {
-		name         string
-		schemaName   string
-		frontmatter  domain.Frontmatter
-		mockSchema   domain.Schema
-		mockError    error
-		wantValid    bool
-		wantErrCount int
-	}{
-		{
-			name:       "valid frontmatter with all required fields",
-			schemaName: "test",
-			frontmatter: domain.Frontmatter{
-				Fields: map[string]interface{}{
-					"title": "Test Note",
-					"tags":  []string{"test", "validation"},
-				},
-			},
-			mockSchema: domain.Schema{
-				Name: "test",
-				Properties: []domain.Property{
-					{
-						Name:     "title",
-						Required: true,
-						Array:    false,
-						Spec:     &domain.StringPropertySpec{},
-					},
-					{
-						Name:     "tags",
-						Required: false,
-						Array:    true,
-						Spec:     &domain.StringPropertySpec{},
-					},
-				},
-				ResolvedProperties: []domain.Property{
-					{
-						Name:     "title",
-						Required: true,
-						Array:    false,
-						Spec:     &domain.StringPropertySpec{},
-					},
-					{
-						Name:     "tags",
-						Required: false,
-						Array:    true,
-						Spec:     &domain.StringPropertySpec{},
-					},
-				},
-			},
-			wantValid:    true,
-			wantErrCount: 0,
-		},
-		{
-			name:       "missing required field",
-			schemaName: "test",
-			frontmatter: domain.Frontmatter{
-				Fields: map[string]interface{}{},
-			},
-			mockSchema: domain.Schema{
-				Name: "test",
-				Properties: []domain.Property{
-					{
-						Name:     "title",
-						Required: true,
-						Array:    false,
-						Spec:     &domain.StringPropertySpec{},
-					},
-				},
-				ResolvedProperties: []domain.Property{
-					{
-						Name:     "title",
-						Required: true,
-						Array:    false,
-						Spec:     &domain.StringPropertySpec{},
-					},
-				},
-			},
-			wantValid:    false,
-			wantErrCount: 1,
-		},
-		{
-			name:       "schema not found",
-			schemaName: "nonexistent",
-			frontmatter: domain.Frontmatter{
-				Fields: map[string]interface{}{},
-			},
-			mockError: errors.NewValidationError(
-				"schema",
-				"not found",
-				"nonexistent",
-			),
-			wantValid:    false,
-			wantErrCount: 0, // Different error type
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockEngine := &mockSchemaEngine{
-				schema: tt.mockSchema,
-				err:    tt.mockError,
-			}
-
-			validator := NewFrontmatterValidator(mockEngine)
-			result := validator.Validate(
-				context.Background(),
-				tt.schemaName,
-				tt.frontmatter,
-			)
-
-			assertValidation(t, result, tt.wantValid)
-		})
-	}
+// TestDateValidator_ImplementsFieldValidator verifies DateValidator implements
+// FieldValidator.
+func TestDateValidator_ImplementsFieldValidator(t *testing.T) {
+	// This test verifies DateValidator implements FieldValidator
+	validator := &DateValidator{}
+	var _ FieldValidator = validator // This will fail if DateValidator doesn't implement interface
 }
 
-func TestFrontmatterValidator_validateStringPropertySpec(t *testing.T) {
-	validator := NewFrontmatterValidator(nil)
-
-	tests := []struct {
-		name      string
-		fieldName string
-		value     interface{}
-		spec      *domain.StringPropertySpec
-		wantValid bool
-	}{
-		{
-			name:      "valid string",
-			fieldName: "title",
-			value:     "Test Title",
-			spec:      &domain.StringPropertySpec{},
-			wantValid: true,
-		},
-		{
-			name:      "invalid type",
-			fieldName: "title",
-			value:     123,
-			spec:      &domain.StringPropertySpec{},
-			wantValid: false,
-		},
-		{
-			name:      "enum validation - valid",
-			fieldName: "status",
-			value:     "draft",
-			spec: &domain.StringPropertySpec{
-				Enum: []string{"draft", "published"},
-			},
-			wantValid: true,
-		},
-		{
-			name:      "enum validation - invalid",
-			fieldName: "status",
-			value:     "invalid",
-			spec: &domain.StringPropertySpec{
-				Enum: []string{"draft", "published"},
-			},
-			wantValid: false,
-		},
-		{
-			name:      "pattern validation - valid",
-			fieldName: "email",
-			value:     "test@example.com",
-			spec: &domain.StringPropertySpec{
-				Pattern: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`,
-			},
-			wantValid: true,
-		},
-		{
-			name:      "pattern validation - invalid",
-			fieldName: "email",
-			value:     "invalid-email",
-			spec: &domain.StringPropertySpec{
-				Pattern: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`,
-			},
-			wantValid: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := validator.validateStringPropertySpec(
-				tt.fieldName,
-				tt.value,
-				tt.spec,
-			)
-
-			assertValidation(t, result, tt.wantValid)
-		})
-	}
+// TestBoolValidator_ImplementsFieldValidator verifies BoolValidator implements
+// FieldValidator.
+func TestBoolValidator_ImplementsFieldValidator(t *testing.T) {
+	// This test verifies BoolValidator implements FieldValidator
+	validator := &BoolValidator{}
+	var _ FieldValidator = validator // This will fail if BoolValidator doesn't implement interface
 }
 
-func TestFrontmatterValidator_validateNumberPropertySpec(t *testing.T) {
-	validator := NewFrontmatterValidator(nil)
-
-	minVal := 0.0
-	maxVal := 100.0
-	stepVal := 1.0
-
-	tests := []struct {
-		name      string
-		fieldName string
-		value     interface{}
-		spec      *domain.NumberPropertySpec
-		wantValid bool
-	}{
-		{
-			name:      "valid integer",
-			fieldName: "count",
-			value:     42,
-			spec:      &domain.NumberPropertySpec{},
-			wantValid: true,
-		},
-		{
-			name:      "valid float",
-			fieldName: "price",
-			value:     19.99,
-			spec:      &domain.NumberPropertySpec{},
-			wantValid: true,
-		},
-		{
-			name:      "invalid type",
-			fieldName: "count",
-			value:     "not-a-number",
-			spec:      &domain.NumberPropertySpec{},
-			wantValid: false,
-		},
-		{
-			name:      "minimum constraint - valid",
-			fieldName: "age",
-			value:     25,
-			spec:      &domain.NumberPropertySpec{Min: &minVal},
-			wantValid: true,
-		},
-		{
-			name:      "minimum constraint - invalid",
-			fieldName: "age",
-			value:     -5,
-			spec:      &domain.NumberPropertySpec{Min: &minVal},
-			wantValid: false,
-		},
-		{
-			name:      "maximum constraint - valid",
-			fieldName: "percentage",
-			value:     85,
-			spec:      &domain.NumberPropertySpec{Max: &maxVal},
-			wantValid: true,
-		},
-		{
-			name:      "maximum constraint - invalid",
-			fieldName: "percentage",
-			value:     150,
-			spec:      &domain.NumberPropertySpec{Max: &maxVal},
-			wantValid: false,
-		},
-		{
-			name:      "step constraint - valid",
-			fieldName: "quantity",
-			value:     10,
-			spec:      &domain.NumberPropertySpec{Step: &stepVal},
-			wantValid: true,
-		},
-		{
-			name:      "step constraint - invalid",
-			fieldName: "quantity",
-			value:     7.5,
-			spec:      &domain.NumberPropertySpec{Step: &stepVal},
-			wantValid: false,
-		},
+// TestStringValidator_ValidateMethod verifies StringValidator validation logic.
+func TestStringValidator_ValidateMethod(t *testing.T) {
+	validator := &StringValidator{}
+	stringSpec := &domain.StringSpec{
+		Enum: []string{"allowed", "valid"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := validator.validateNumberPropertySpec(
-				tt.fieldName,
-				tt.value,
-				tt.spec,
-			)
+	// This will fail until validation logic is implemented
+	err := validator.Validate("testField", "allowed", stringSpec)
+	require.NoError(t, err, "Valid enum value should pass validation")
 
-			assertValidation(t, result, tt.wantValid)
-		})
-	}
+	err = validator.Validate("testField", "invalid", stringSpec)
+	require.Error(t, err, "Invalid enum value should fail validation")
+
+	// Test non-string value
+	err = validator.Validate("testField", 123, stringSpec)
+	require.Error(t, err, "Non-string value should fail validation")
+
+	// Test wrong spec type
+	wrongSpec := &domain.NumberSpec{}
+	err = validator.Validate("testField", "valid", wrongSpec)
+	require.Error(t, err, "Wrong spec type should fail validation")
+
+	// Test string without enum (should pass)
+	noEnumSpec := &domain.StringSpec{}
+	err = validator.Validate("testField", "any string", noEnumSpec)
+	require.NoError(t, err, "String without enum constraints should pass")
 }
 
-func TestFrontmatterValidator_validateDatePropertySpec(t *testing.T) {
-	validator := NewFrontmatterValidator(nil)
-
-	tests := []struct {
-		name      string
-		fieldName string
-		value     interface{}
-		spec      *domain.DatePropertySpec
-		wantValid bool
-	}{
-		{
-			name:      "valid RFC3339 date",
-			fieldName: "created",
-			value:     "2023-10-22T10:15:00Z",
-			spec:      &domain.DatePropertySpec{},
-			wantValid: true,
-		},
-		{
-			name:      "invalid type",
-			fieldName: "created",
-			value:     123456789,
-			spec:      &domain.DatePropertySpec{},
-			wantValid: false,
-		},
-		{
-			name:      "custom format - valid",
-			fieldName: "date",
-			value:     "2023-10-22",
-			spec:      &domain.DatePropertySpec{Format: "2006-01-02"},
-			wantValid: true,
-		},
-		{
-			name:      "custom format - invalid",
-			fieldName: "date",
-			value:     "10/22/2023",
-			spec:      &domain.DatePropertySpec{Format: "2006-01-02"},
-			wantValid: false,
-		},
+// TestNumberValidator_ValidateMethod verifies NumberValidator validation logic.
+func TestNumberValidator_ValidateMethod(t *testing.T) {
+	validator := &NumberValidator{}
+	minValue := 0.0
+	maxValue := 100.0
+	numberSpec := &domain.NumberSpec{
+		Min: &minValue,
+		Max: &maxValue,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := validator.validateDatePropertySpec(
-				tt.fieldName,
-				tt.value,
-				tt.spec,
-			)
+	// This will fail until validation logic is implemented
+	err := validator.Validate("testField", 50.0, numberSpec)
+	require.NoError(t, err, "Value within range should pass validation")
 
-			assertValidation(t, result, tt.wantValid)
-		})
-	}
+	err = validator.Validate("testField", 150.0, numberSpec)
+	require.Error(t, err, "Value above max should fail validation")
+
+	// Test different numeric types
+	err = validator.Validate("testField", int(25), numberSpec)
+	require.NoError(t, err, "Int value should pass validation")
+
+	err = validator.Validate("testField", int64(25), numberSpec)
+	require.NoError(t, err, "Int64 value should pass validation")
+
+	err = validator.Validate("testField", float32(25.5), numberSpec)
+	require.NoError(t, err, "Float32 value should pass validation")
+
+	// Test non-numeric value
+	err = validator.Validate("testField", "not a number", numberSpec)
+	require.Error(t, err, "Non-numeric value should fail validation")
+
+	// Test wrong spec type
+	wrongSpec := &domain.StringSpec{}
+	err = validator.Validate("testField", 25.0, wrongSpec)
+	require.Error(t, err, "Wrong spec type should fail validation")
 }
 
-func TestFrontmatterValidator_validateFilePropertySpec(t *testing.T) {
-	validator := NewFrontmatterValidator(nil)
+// TestBoolValidator_ValidateMethod verifies BoolValidator validation logic.
+func TestBoolValidator_ValidateMethod(t *testing.T) {
+	validator := &BoolValidator{}
+	boolSpec := &domain.BoolSpec{}
 
-	tests := []struct {
-		name      string
-		fieldName string
-		value     interface{}
-		spec      *domain.FilePropertySpec
-		wantValid bool
-	}{
-		{
-			name:      "valid file path",
-			fieldName: "attachment",
-			value:     "docs/file.md",
-			spec:      &domain.FilePropertySpec{},
-			wantValid: true,
-		},
-		{
-			name:      "invalid type",
-			fieldName: "attachment",
-			value:     123,
-			spec:      &domain.FilePropertySpec{},
-			wantValid: false,
-		},
-		// File class validation is not implemented in this validator
-		// (would require filesystem integration)
-	}
+	// This will fail until validation logic is implemented
+	err := validator.Validate("testField", true, boolSpec)
+	require.NoError(t, err, "Boolean value should pass validation")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := validator.validateFilePropertySpec(
-				tt.fieldName,
-				tt.value,
-				tt.spec,
-			)
+	err = validator.Validate("testField", "not a bool", boolSpec)
+	require.Error(t, err, "Non-boolean value should fail validation")
 
-			assertValidation(t, result, tt.wantValid)
-		})
-	}
+	// Test false value
+	err = validator.Validate("testField", false, boolSpec)
+	require.NoError(t, err, "False boolean should pass validation")
+
+	// Test wrong spec type
+	wrongSpec := &domain.StringSpec{}
+	err = validator.Validate("testField", true, wrongSpec)
+	require.Error(t, err, "Wrong spec type should fail validation")
 }
 
-func TestFrontmatterValidator_validateBoolPropertySpec(t *testing.T) {
-	validator := NewFrontmatterValidator(nil)
-
-	tests := []struct {
-		name      string
-		fieldName string
-		value     interface{}
-		spec      *domain.BoolPropertySpec
-		wantValid bool
-	}{
-		{
-			name:      "valid true",
-			fieldName: "published",
-			value:     true,
-			spec:      &domain.BoolPropertySpec{},
-			wantValid: true,
-		},
-		{
-			name:      "valid false",
-			fieldName: "draft",
-			value:     false,
-			spec:      &domain.BoolPropertySpec{},
-			wantValid: true,
-		},
-		{
-			name:      "invalid type",
-			fieldName: "published",
-			value:     "yes",
-			spec:      &domain.BoolPropertySpec{},
-			wantValid: false,
-		},
+// TestDateValidator_ValidateMethod verifies DateValidator validation logic.
+func TestDateValidator_ValidateMethod(t *testing.T) {
+	validator := &DateValidator{}
+	dateSpec := &domain.DateSpec{
+		Format: "2006-01-02", // YYYY-MM-DD format
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := validator.validateBoolPropertySpec(
-				tt.fieldName,
-				tt.value,
-				tt.spec,
-			)
+	// Test valid date
+	err := validator.Validate("testField", "2023-12-01", dateSpec)
+	require.NoError(t, err, "Valid date should pass validation")
 
-			assertValidation(t, result, tt.wantValid)
-		})
-	}
-}
+	// Test invalid date format
+	err = validator.Validate("testField", "invalid-date", dateSpec)
+	require.Error(t, err, "Invalid date format should fail validation")
 
-func TestFrontmatterValidator_validateField(t *testing.T) {
-	validator := NewFrontmatterValidator(nil)
+	// Test non-string value
+	err = validator.Validate("testField", 123, dateSpec)
+	require.Error(t, err, "Non-string value should fail validation")
 
-	tests := []struct {
-		name        string
-		frontmatter domain.Frontmatter
-		property    domain.Property
-		wantValid   bool
-	}{
-		{
-			name: "required field present",
-			frontmatter: domain.Frontmatter{
-				Fields: map[string]interface{}{"title": "Test"},
-			},
-			property: domain.Property{
-				Name:     "title",
-				Required: true,
-				Array:    false,
-				Spec:     &domain.StringPropertySpec{},
-			},
-			wantValid: true,
-		},
-		{
-			name: "required field missing",
-			frontmatter: domain.Frontmatter{
-				Fields: map[string]interface{}{},
-			},
-			property: domain.Property{
-				Name:     "title",
-				Required: true,
-				Array:    false,
-				Spec:     &domain.StringPropertySpec{},
-			},
-			wantValid: false,
-		},
-		{
-			name: "optional field missing",
-			frontmatter: domain.Frontmatter{
-				Fields: map[string]interface{}{},
-			},
-			property: domain.Property{
-				Name:     "tags",
-				Required: false,
-				Array:    true,
-				Spec:     &domain.StringPropertySpec{},
-			},
-			wantValid: true,
-		},
-		{
-			name: "array constraint - valid",
-			frontmatter: domain.Frontmatter{
-				Fields: map[string]interface{}{"tags": []string{"test"}},
-			},
-			property: domain.Property{
-				Name:     "tags",
-				Required: true,
-				Array:    true,
-				Spec:     &domain.StringPropertySpec{},
-			},
-			wantValid: true,
-		},
-		{
-			name: "array constraint - invalid",
-			frontmatter: domain.Frontmatter{
-				Fields: map[string]interface{}{"tags": "single-tag"},
-			},
-			property: domain.Property{
-				Name:     "tags",
-				Required: true,
-				Array:    true,
-				Spec:     &domain.StringPropertySpec{},
-			},
-			wantValid: false,
-		},
-	}
+	// Test with default RFC3339 format
+	defaultDateSpec := &domain.DateSpec{}
+	err = validator.Validate(
+		"testField",
+		"2023-12-01T10:15:30Z",
+		defaultDateSpec,
+	)
+	require.NoError(t, err, "Valid RFC3339 date should pass validation")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := validator.validateField(tt.frontmatter, tt.property)
-
-			assertValidation(t, result, tt.wantValid)
-		})
-	}
+	// Test wrong spec type
+	wrongSpec := &domain.StringSpec{}
+	err = validator.Validate("testField", "2023-12-01", wrongSpec)
+	require.Error(t, err, "Wrong spec type should fail validation")
 }

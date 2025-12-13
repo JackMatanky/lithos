@@ -1,0 +1,69 @@
+{
+  "name": "goal",
+  "properties": {
+    "title": {
+      "$ref": "#/properties/title"
+    },
+    "aliases": {
+      "$ref": "#/properties/aliases"
+    },
+    "duration": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "challenge_1-2_months",
+        "immediate_2-4_months",
+        "long_>1_year",
+        "medium_6-12_months",
+        "short_4-6_months"
+      ]
+    },
+    "date_start": {
+      "$ref": "#/properties/date_iso_8601"
+    },
+    "date_end": {
+      "$ref": "#/properties/date_iso_8601"
+    },
+    "context": {
+      "$ref": "#/properties/context"
+    },
+    "pillar": {
+      "$ref": "#/properties/pillar"
+    },
+    "organization": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    },
+    "contact": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    },
+    "priority": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "1st_highest",
+        "2nd_high",
+        "3rd_medium",
+        "4th_low",
+        "5th_lowest"
+      ]
+    },
+    "status": {
+      "$ref": "#/properties/task_status"
+    },
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "outcome",
+        "value"
+      ]
+    }
+  }
+}

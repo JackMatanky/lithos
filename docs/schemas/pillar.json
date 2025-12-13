@@ -1,0 +1,26 @@
+{
+  "name": "pillar",
+  "properties": {
+    "status": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "on_hold"
+      ]
+    },
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "growth",
+        "interpersonal",
+        "personal",
+        "professional"
+      ]
+    }
+  }
+}

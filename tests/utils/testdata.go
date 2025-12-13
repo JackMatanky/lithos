@@ -1,90 +1,126 @@
-// Package testutils provides shared test utilities and testdata paths
-// for consistent access to test resources across the lithos project.
-package testutils
+package utils
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
+	"regexp"
+	"strings"
+	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
-// TestDataPaths provides constants for commonly used test data directory paths.
-// Use the File() method to append specific filenames to directory paths.
-type TestDataPaths struct {
-	// Schema test data directories
-	SchemaValid      string // schema/valid/
-	SchemaInvalid    string // schema/invalid/
-	SchemaProperties string // schema/properties/
+var (
+	allowedRoots = map[string]struct{}{
+		"schemas":   {},
+		"templates": {},
+		"vault":     {},
+		"golden":    {},
+		"notes":     {},
+	}
 
-	// Other test data directories
-	Golden    string // golden/
-	Templates string // templates/
-	Notes     string // notes/
+	snakeCaseSegment = regexp.MustCompile(`^[a-z0-9]+(?:_[a-z0-9]+)*$`)
+)
+
+func isSnakeCase(value string) bool {
+	return snakeCaseSegment.MatchString(value)
 }
 
-// NewTestDataPaths creates a TestDataPaths instance with all directory paths
-// initialized.
-func NewTestDataPaths() *TestDataPaths {
-	return &TestDataPaths{
-		// Schema directories
-		SchemaValid:      "schema/valid",
-		SchemaInvalid:    "schema/invalid",
-		SchemaProperties: "schema/properties",
+// Root returns the absolute path to the project's testdata directory.
+func Root(t *testing.T) string {
+	t.Helper()
 
-		// Other directories
-		Golden:    "golden",
-		Templates: "templates",
-		Notes:     "notes",
+	dir, err := os.Getwd()
+	require.NoError(t, err)
+
+	for {
+		if _, statErr := os.Stat(filepath.Join(dir, "go.mod")); statErr == nil {
+			break
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			t.Fatalf(
+				"could not locate project root containing go.mod from %s",
+				dir,
+			)
+		}
+		dir = parent
+	}
+
+	return filepath.Join(dir, "testdata")
+}
+
+// Path resolves a fixture path under testdata, enforcing allowed roots and
+// snake_case naming.
+func Path(t *testing.T, segments ...string) string {
+	t.Helper()
+
+	require.NotEmpty(t, segments, "testdata path segments must not be empty")
+
+	first := segments[0]
+	root := Root(t)
+
+	if _, ok := allowedRoots[first]; ok {
+		validateSegments(t, segments)
+		full := filepath.Join(append([]string{root}, segments...)...)
+		ensurePathExists(t, full)
+		return full
+	}
+
+	// Allow direct top-level files (e.g., basic fixtures)
+	require.Len(
+		t,
+		segments,
+		1,
+		"top-level fixtures must be referenced with a single segment",
+	)
+	validateTestdataSegment(t, first)
+
+	full := filepath.Join(root, first)
+	ensurePathExists(t, full)
+	return full
+}
+
+// Open returns an *os.File for the requested fixture, failing the test on
+// error.
+func Open(t *testing.T, segments ...string) *os.File {
+	t.Helper()
+
+	path := Path(t, segments...)
+	cleanPath := filepath.Clean(path)
+	file, err := os.Open(cleanPath)
+	require.NoError(t, err, "open fixture %s", path)
+	return file
+}
+
+func validateSegments(t *testing.T, segments []string) {
+	for _, seg := range segments {
+		validateTestdataSegment(t, seg)
 	}
 }
 
-// File appends a filename to a directory path, returning the complete relative
-// path.
-func (p *TestDataPaths) File(directory, filename string) string {
-	return filepath.Join(directory, filename)
+func validateTestdataSegment(t *testing.T, segment string) {
+	name := trimSegment(segment)
+	require.Truef(
+		t,
+		isSnakeCase(name),
+		"segment %q must be snake_case",
+		segment,
+	)
 }
 
-// LoadTestData loads test data from a file in the testdata directory.
-// The filename should be relative to the testdata root (e.g.,
-// "schema/valid/user.json").
-func LoadTestData(filename string) (string, error) {
-	// Find the testdata directory relative to this file
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", errors.New("failed to get caller information")
+func trimSegment(segment string) string {
+	trimmed := strings.TrimPrefix(segment, ".")
+	if ext := filepath.Ext(trimmed); ext != "" {
+		trimmed = trimmed[:len(trimmed)-len(ext)]
 	}
-	testdataDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "testdata")
-	path := filepath.Join(testdataDir, filename)
-	data, err := os.ReadFile(path) // #nosec G304 - testdata files are safe
-	if err != nil {
-		return "", err
-	}
-	return string(data), nil
+	return trimmed
 }
 
-// LoadSchemaTestData loads test data from the testdata/schema directory.
-// The filename should be relative to testdata/schema (e.g., "valid/user.json").
-func LoadSchemaTestData(filename string) (string, error) {
-	return LoadTestData(filepath.Join("schema", filename))
-}
+func ensurePathExists(t *testing.T, path string) {
+	t.Helper()
 
-// GetTestDataPath returns the absolute path to a testdata file.
-func GetTestDataPath(filename string) (string, error) {
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", errors.New("failed to get caller information")
-	}
-	testdataDir := filepath.Join(filepath.Dir(thisFile), "..", "..", "testdata")
-	path := filepath.Join(testdataDir, filename)
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-	return absPath, nil
-}
-
-// GetSchemaTestDataPath returns the absolute path to a schema testdata file.
-func GetSchemaTestDataPath(filename string) (string, error) {
-	return GetTestDataPath(filepath.Join("schema", filename))
+	_, err := os.Stat(path)
+	require.NoErrorf(t, err, "fixture %s does not exist", path)
 }

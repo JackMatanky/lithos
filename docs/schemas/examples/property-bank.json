@@ -1,0 +1,29 @@
+{
+  "properties": {
+    "author": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9\\s]+$"
+    },
+    "standard_title": {
+      "type": "string",
+      "required": true,
+      "pattern": "^.{1,200}$"
+    },
+    "standard_created": {
+      "type": "date",
+      "required": true,
+      "format": "2006-01-02T15:04:05Z07:00"
+    },
+    "standard_tags": {
+      "type": "string",
+      "required": false,
+      "array": true
+    },
+    "iso_date": {
+      "type": "date",
+      "required": true,
+      "format": "2006-01-02"
+    }
+  }
+}

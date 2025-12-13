@@ -1,0 +1,47 @@
+schema: 1
+story: '3.20'
+story_title: 'Implement BoltDB Hot Cache Adapter'
+gate: CONCERNS
+status_reason: 'Delete operation fails to clean up secondary indices (TODO left in code), violating AC 3 and Task 6.4. Index bloat risk.'
+reviewer: 'Quinn (Test Architect)'
+updated: '2025-11-20T10:00:00Z'
+
+top_issues:
+  - severity: high
+    description: 'Delete() does not remove entries from secondary indices (byBasename, byAlias, etc), leading to index bloat.'
+    file: 'internal/adapters/spi/cache/boltdb/writer.go'
+    suggested_owner: dev
+  - severity: medium
+    description: 'Missing tests for transaction rollback scenarios required by AC 6.'
+    file: 'internal/adapters/spi/cache/boltdb/writer_test.go'
+    suggested_owner: dev
+
+waiver: { active: false }
+
+evidence:
+  tests_reviewed: 15
+  risks_identified: 1
+  trace:
+    ac_covered: [1, 2, 4, 5, 7, 8, 9, 10]
+    ac_gaps: [3, 6]
+
+nfr_validation:
+  security:
+    status: PASS
+    notes: 'File permissions 0600 correct.'
+  performance:
+    status: PASS
+    notes: 'Benchmarks met targets: Read ~1.6µs (<1ms), Write ~8ms (<10ms).'
+  reliability:
+    status: CONCERNS
+    notes: 'Transaction rollback not fully tested; Delete atomicity incomplete.'
+  maintainability:
+    status: PASS
+    notes: 'Code structure is clean and follows patterns.'
+
+recommendations:
+  immediate:
+    - action: 'Implement secondary index cleanup in Delete()'
+      refs: ['internal/adapters/spi/cache/boltdb/writer.go']
+    - action: 'Add tests for index cleanup and rollback'
+      refs: ['internal/adapters/spi/cache/boltdb/writer_test.go']

@@ -1,0 +1,54 @@
+{
+  "name": "pdev",
+  "properties": {
+    "title": {
+      "$ref": "#/properties/title"
+    },
+    "aliases": {
+      "$ref": "#/properties/aliases"
+    },
+    "date": {
+      "$ref": "#/properties/date_iso_8601"
+    },
+    "subtype": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "daily",
+        "monthly",
+        "prompt",
+        "quarterly",
+        "weekly",
+        "yearly"
+      ]
+    },
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "detachment",
+        "general",
+        "gratitude",
+        "limiting_belief",
+        "reflection"
+      ]
+    },
+    "pillar": {
+      "required": false,
+      "array": true,
+      "type": "file",
+      "directory": "(20_pillars)/"
+    },
+    "goal": {
+      "$ref": "#/properties/goal"
+    },
+    "project": {
+      "$ref": "#/properties/project"
+    },
+    "parent_task": {
+      "$ref": "#/properties/parent_task"
+    }
+  }
+}

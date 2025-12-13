@@ -109,10 +109,11 @@ regexes = [
 
 # Allow specific known false positives
 paths = [
-  '''^docs/refs/''',
-  '''\.gitleaks\.toml''',
-  '''\.pre-commit-config\.yaml''',
-  '''go\.mod''',
-  '''go\.sum''',
-  '''README\.md''',
+   '''^docs/refs/''',
+   '''^testdata/''',
+   '''\.gitleaks\.toml''',
+   '''\.pre-commit-config\.yaml''',
+   '''go\.mod''',
+   '''go\.sum''',
+   '''README\.md''',
 ]
