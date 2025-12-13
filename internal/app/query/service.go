@@ -42,10 +42,10 @@ type QueryService struct {
 	mu sync.RWMutex
 
 	// Dependencies
-	boltReader   spi.CacheReaderPort // Hot cache for fast lookups
-	sqliteReader spi.CacheReaderPort // Deep storage for complex queries
-	router       *queryRouter        // Handles smart query routing
-	config       domain.Config       // For file_class_key configuration
+	boltReader   spi.CacheReaderPort  // Hot cache for fast lookups
+	sqliteReader spi.CacheReaderPort  // Deep storage for complex queries
+	router       *HybridStorageRouter // Handles smart query routing
+	config       domain.Config        // For file_class_key configuration
 	log          zerolog.Logger
 	eventBus     events.EventBus
 
@@ -61,12 +61,6 @@ type QueryService struct {
 type queryLogger struct {
 	log    zerolog.Logger
 	method string
-}
-
-// queryRouter handles smart routing between storage backends.
-type queryRouter struct {
-	boltQuery   spi.MetadataQueryPort
-	sqliteQuery spi.MetadataQueryPort
 }
 
 // canonicalizeFrontmatterValue normalizes frontmatter values for type-agnostic
@@ -159,7 +153,7 @@ func NewQueryService(
 	service := &QueryService{
 		boltReader:     boltReader,
 		sqliteReader:   sqliteReader,
-		router:         newQueryRouter(boltQuery, sqliteQuery),
+		router:         NewHybridStorageRouter(boltQuery, sqliteQuery),
 		config:         config,
 		log:            log,
 		eventBus:       eventBus,
@@ -328,7 +322,7 @@ func (q *QueryService) PathQuery(
 	}
 
 	// Use router for path queries
-	notes, err := q.router.routeMetadataQuery(
+	notes, err := q.router.RouteMetadataQuery(
 		ctx,
 		func(port spi.MetadataQueryPort, ctx context.Context, _ string) ([]domain.Note, error) {
 			return port.PathQuery(ctx, validatedOpts)
@@ -378,7 +372,7 @@ func (q *QueryService) FrontmatterQuery(
 	// Frontmatter queries are deep-path only - use SQLite directly
 	var notes []domain.Note
 	var err error
-	if sqliteQuery := q.router.getSQLiteQuery(); sqliteQuery != nil {
+	if sqliteQuery := q.router.GetSQLiteQuery(); sqliteQuery != nil {
 		notes, err = sqliteQuery.FrontmatterQuery(
 			ctx,
 			field,
@@ -397,14 +391,6 @@ func newQueryLogger(log zerolog.Logger, method string) *queryLogger {
 	return &queryLogger{
 		log:    log,
 		method: method,
-	}
-}
-
-// newQueryRouter creates a new queryRouter with the specified query ports.
-func newQueryRouter(boltQuery, sqliteQuery spi.MetadataQueryPort) *queryRouter {
-	return &queryRouter{
-		boltQuery:   boltQuery,
-		sqliteQuery: sqliteQuery,
 	}
 }
 
@@ -434,33 +420,6 @@ func (ql *queryLogger) logPerformance(
 		Str(paramName, paramValue).
 		Int("results", resultCount).
 		Msg("query completed")
-}
-
-// routeMetadataQuery routes a metadata query to the appropriate backend.
-// It tries BoltDB first (hot path) then falls back to SQLite (deep path).
-func (qr *queryRouter) routeMetadataQuery(
-	ctx context.Context,
-	queryFn func(spi.MetadataQueryPort, context.Context, string) ([]domain.Note, error),
-	param string,
-) ([]domain.Note, error) {
-	// Try BoltDB first (hot path)
-	if qr.boltQuery != nil {
-		if notes, err := queryFn(qr.boltQuery, ctx, param); err == nil {
-			return notes, nil
-		}
-	}
-
-	// Fall back to SQLite (deep path)
-	if qr.sqliteQuery != nil {
-		return queryFn(qr.sqliteQuery, ctx, param)
-	}
-
-	return nil, nil
-}
-
-// getSQLiteQuery returns the SQLite query port for deep-path operations.
-func (qr *queryRouter) getSQLiteQuery() spi.MetadataQueryPort {
-	return qr.sqliteQuery
 }
 
 // GetBackendFailureStats returns failure statistics for both backends.
@@ -535,7 +494,7 @@ func (q *QueryService) executeMetadataQuery(
 	start := time.Now()
 
 	// Use router for smart query routing
-	notes, err := q.router.routeMetadataQuery(ctx, queryFn, paramValue)
+	notes, err := q.router.RouteMetadataQuery(ctx, queryFn, paramValue)
 
 	// Log performance after query execution
 	logger.logPerformance(start, paramName, paramValue, len(notes))

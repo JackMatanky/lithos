@@ -136,7 +136,7 @@ func extractCachedNote(
 	cached.FileDates = fileDates
 
 	// Extract title
-	if note.Frontmatter.IsString("title") {
+	if domain.Is[string](note.Frontmatter, "title") {
 		if title, ok := note.Frontmatter.Get("title"); ok {
 			cached.Title = title.(string)
 		}
@@ -148,7 +148,7 @@ func extractCachedNote(
 	}
 
 	// Extract file class
-	if note.Frontmatter.IsString(fileClassKey) {
+	if domain.Is[string](note.Frontmatter, fileClassKey) {
 		if fileClass, ok := note.Frontmatter.Get(fileClassKey); ok {
 			cached.FileClass = fileClass.(string)
 		}
