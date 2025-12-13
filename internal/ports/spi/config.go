@@ -1,17 +1,47 @@
 package spi
 
-import "github.com/JackMatanky/lithos/internal/adapters/spi/config"
+import (
+	"context"
 
-// ConfigPort defines the interface for configuration management adapters.
-// This is an SPI (Service Provider Interface) port for driven adapters that
-// provide configuration services to the domain.
+	"github.com/JackMatanky/lithos/internal/domain"
+)
+
+// ConfigPort defines the contract for loading application configuration.
+// Implementations must load configuration from various sources with proper
+// precedence and validation.
 //
-// Follows hexagonal architecture patterns where ports define contracts
-// and adapters implement the actual infrastructure concerns.
+// The port follows hexagonal architecture principles, allowing domain services
+// to request configuration without knowing the implementation details (file,
+// environment variables, CLI flags, etc.).
+//
+// Load method must handle:
+//   - Configuration precedence (CLI flags > env vars > config file > defaults)
+//   - Validation of critical paths (VaultPath must exist and be directory)
+//   - Graceful fallback for optional configuration
+//   - Context cancellation for timeout handling
 type ConfigPort interface {
-	// Config returns the current application configuration.
-	// The configuration is loaded at application startup and cached.
-	// This method should not perform I/O operations - configuration
-	// loading happens during adapter initialization.
-	Config() *config.Config
+	// Load retrieves and validates application configuration from all available
+	// sources. Returns a fully resolved Config value object or an error if
+	// critical configuration is invalid.
+	//
+	// The method must implement the following precedence order:
+	// 1. CLI flags (highest priority, reserved for future implementation)
+	// 2. Environment variables (LITHOS_* prefix)
+	// 3. Config file (lithos.json found via upward directory search)
+	// 4. Default values (lowest priority)
+	//
+	// Parameters:
+	//   - ctx: Context for cancellation and timeout handling
+	//
+	// Returns:
+	//   - Config: Fully resolved configuration value object
+	//   - error: Non-nil if critical configuration validation fails
+	//
+	// Error conditions:
+	//   - VaultPath does not exist: returns descriptive error
+	//   - VaultPath is not a directory: returns descriptive error
+	//   - Context canceled: returns context.Canceled error
+	// 	 - Config file parse errors: logged but not returned (fallback to
+	// 	   defaults)
+	Load(ctx context.Context) (domain.Config, error)
 }

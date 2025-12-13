@@ -1,0 +1,19 @@
+{
+  "name": "task_project",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "project"
+      ]
+    }
+  },
+  "extends": "task",
+  "excludes": [
+    "date",
+    "project",
+    "parent_task"
+  ]
+}

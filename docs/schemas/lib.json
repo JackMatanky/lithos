@@ -1,0 +1,83 @@
+{
+  "name": "lib",
+  "properties": {
+    "title": {
+      "$ref": "#/properties/title"
+    },
+    "aliases": {
+      "$ref": "#/properties/aliases"
+    },
+    "main_title": {
+      "$ref": "#/properties/title"
+    },
+    "subtitle": {
+      "$ref": "#/properties/title"
+    },
+    "date_published": {
+      "$ref": "#/properties/date_iso_8601"
+    },
+    "series": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "volume": {
+      "$ref": "#/properties/volume"
+    },
+    "url": {
+      "$ref": "#/properties/url"
+    },
+    "about": {
+      "$ref": "#/properties/about"
+    },
+    "status": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "done",
+        "in_progress",
+        "on_hold",
+        "resource",
+        "schedule",
+        "to_do",
+        "undetermined"
+      ]
+    },
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "audio",
+        "blog",
+        "book",
+        "book_chapter",
+        "course",
+        "course_lecture",
+        "documentary",
+        "documentation",
+        "journal",
+        "magazine",
+        "news",
+        "podcast",
+        "report",
+        "video",
+        "webpage",
+        "youtube"
+      ]
+    },
+    "author": {
+      "$ref": "#/properties/contact"
+    },
+    "editor": {
+      "$ref": "#/properties/contact"
+    },
+    "translator": {
+      "$ref": "#/properties/contact"
+    },
+    "publisher": {
+      "$ref": "#/properties/organization"
+    }
+  }
+}

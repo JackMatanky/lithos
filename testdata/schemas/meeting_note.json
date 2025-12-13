@@ -1,0 +1,11 @@
+{
+  "name": "meeting_note",
+  "extends": "base-note",
+  "properties": {
+    "attendees": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    }
+  }
+}

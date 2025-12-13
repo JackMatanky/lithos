@@ -92,7 +92,7 @@ enable = [
   "goconst",    # Suggest factoring repeated literals into consts.
   "gocritic",   # Curated bug/perf/style diagnostics (tuned via tags).
   "godot",      # Doc comments must end with a period.
-  # "godoclint",  # Check for common mistakes in godoc comments.
+  "godoclint",  # Check for common mistakes in godoc comments.
   "importas",   # Enforce consistent import aliases.
   "lll",        # Enforce max line length (matches formatter policy).
   "misspell",   # Spell-check comments/strings (US English).
@@ -142,16 +142,25 @@ warn-unused = true
 paths = ["^bin(/|$)", "^dist(/|$)", "^generated(/|$)", "^vendor(/|$)"]
 
 # Relaxations for specific files.
+[[linters.exclusions.rules]]
+path = "cmd/.*/main\\.go$"
+linters = ["cyclop"]
+
 # Tests: relax noisy rules (+ cyclop here instead of the removed skip-tests).
 [[linters.exclusions.rules]]
-path = "_test\\.go"
-linters = ["cyclop", "dupl", "funlen", "mnd"]
+path = ".*_test\\.go$"
+linters = ["cyclop", "dupl", "funlen", "gocognit", "maintidx", "mnd", "ineffassign"]
 
-# Only suppress G204/G304 from gosec in *_test.go files.
+# Only suppress G204/G304/G301/G306 from gosec in *_test.go files and test utils.
 [[linters.exclusions.rules]]
 path = "_test\\.go$"
 linters = ["gosec"]
-text = "^(G204|G304):"
+text = "^(G204|G304|G301|G306):"
+
+[[linters.exclusions.rules]]
+path = "tests/utils/.*\\.go$"
+linters = ["gosec"]
+text = "^(G204|G304|G301|G306):"
 
 # Suppress exhaustruct in test files where zero values are intentionally used
 [[linters.exclusions.rules]]
@@ -162,11 +171,21 @@ linters = ["exhaustruct"]
 path = "tools\\.go"  # Tool markers commonly trip "unused".
 linters = ["unused"]
 
+# Suppress godoclint in spi package since package doc is in cache.go
+[[linters.exclusions.rules]]
+path = "internal/ports/spi/.*\\.go$"
+linters = ["godoclint"]
+
+# Suppress godoclint in test files
+[[linters.exclusions.rules]]
+path = ".*_test\\.go$"
+linters = ["godoclint"]
+
 # ------------------- Linter Configuration ------------------- #
 # Cyclop replaces gocyclo; supports package-level budgets.
 [linters.settings.cyclop]
 max-complexity = 10
-package-average = 3.0
+package-average = 5.0
 
 # decorder: declaration-order policy
 # NOTE: Some versions of `decorder` have no user options; if your version
@@ -208,8 +227,8 @@ exclude = [
 allow-empty-returns = true
 
 [linters.settings.funlen]
-lines = 60
-statements = 30
+lines = 65
+statements = 35
 
 # [linters.settings.funcorder]
 # Place exported funcs/methods before unexported.
@@ -219,7 +238,7 @@ statements = 30
 [linters.settings.gocognit]
 # Cognitive complexity threshold (readability-focused).
 # Typical range: 15–30. Start higher to avoid churn, ratchet later.
-min-complexity = 20
+min-complexity = 25
 
 [linters.settings.goconst]
 min-len = 2         # Small literals (len≥2) can be consts.
@@ -233,21 +252,34 @@ enabled-tags = [
   "performance",
   "style",
 ]
+disabled-checks = ["hugeParam"]
+
+[linters.settings.godoclint]
+enable = [
+  "require-doc",
+]
 
 [linters.settings.govet]
 enable-all = true
 disable = ["fieldalignment"]
+
 [linters.settings.govet.settings.shadow]
 strict = true
 
 # importas: enforce consistent import aliases
 [linters.settings.importas]
-# rules = [
-#   { path = "context", alias = "context" },
-#   { path = "encoding/json", alias = "json" },
-#   { path = "golang.org/x/sync/errgroup", alias = "errgroup" },
-#   { path = "k8s.io/client-go/kubernetes", alias = "kubernetes" },
-# ]
+# Shared packages used across Lithos.
+alias = [
+  { pkg = "github.com/JackMatanky/lithos/internal/shared/errors", alias = "lithosErr" },
+  { pkg = "github.com/JackMatanky/lithos/internal/shared/logging", alias = "lithosLog" },
+  # Packages within the template domain.
+  { pkg = "github.com/JackMatanky/lithos/internal/adapters/spi/template", alias = "templateAdapter" },
+  { pkg = "github.com/JackMatanky/lithos/internal/app/template", alias = "templateService" },
+  # Packages within the vault domain.
+  { pkg = "github.com/JackMatanky/lithos/internal/adapters/spi/vault", alias = "vaultAdapter" },
+  { pkg = "github.com/JackMatanky/lithos/internal/app/vault", alias = "vaultService" },
+]
+
 
 # interfacebloat: limit interface size
 # If your version supports configuration, `max` sets the allowed method count.

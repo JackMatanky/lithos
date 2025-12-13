@@ -3,507 +3,295 @@ package schema
 import (
 	"context"
 	"errors"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 
-	sharederrors "github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/internal/domain"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/internal/shared/logger"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-const (
-	testResourceFilesystem = "filesystem"
-	testOperationWalk      = "walk"
-	testSchemaName         = "user"
-)
+// TestSchemaLoaderAdapter_LoadSuccess verifies a full property bank and schema
+// load.
+func TestSchemaLoaderAdapter_LoadSuccess(t *testing.T) {
+	t.Parallel()
 
-func TestNewSchemaLoaderAdapter(t *testing.T) {
-	fs := newMockFileSystemPort()
-	cfg := newMockConfigPort("/test/vault")
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
+	copySchemaFixture(t, tempDir, "meeting_note.json")
 
-	adapter := NewSchemaLoaderAdapter(fs, cfg)
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
 
-	if adapter == nil {
-		t.Fatal("NewSchemaLoaderAdapter returned nil")
-	}
-	if adapter.fs != fs {
-		t.Error("FileSystemPort not set correctly")
-	}
-	if adapter.config != cfg {
-		t.Error("ConfigPort not set correctly")
-	}
-}
+	schemas, bank, err := adapter.Load(context.Background())
+	require.NoError(t, err)
 
-func TestLoadSchemas_Success(t *testing.T) {
-	adapter, fs, cfg := createTestAdapter()
+	assert.Len(t, bank.Properties, 5)
+	assert.Len(t, schemas, 2)
 
-	// Setup test data
-	validSchema, err := loadTestData("valid/complete-user.json")
-	if err != nil {
-		t.Fatalf("Failed to load test data: %v", err)
-	}
-	setupSchemaFile(fs, cfg, "user.json", validSchema)
-
-	// Execute
-	ctx := context.Background()
-	schemas, err := adapter.LoadSchemas(ctx)
-
-	// Verify
-	if err != nil {
-		t.Fatalf("LoadSchemas failed: %v", err)
-	}
-	if len(schemas) != 1 {
-		t.Fatalf("Expected 1 schema, got %d", len(schemas))
-	}
-
-	schema := schemas[0]
-	if schema.Name != testSchemaName {
-		t.Errorf(
-			"Expected schema name '%s', got '%s'",
-			testSchemaName,
-			schema.Name,
-		)
-	}
-	if schema.Extends != "base" {
-		t.Errorf("Expected extends 'base', got '%s'", schema.Extends)
-	}
-	if len(schema.Excludes) != 1 || schema.Excludes[0] != "internal_id" {
-		t.Errorf("Expected excludes ['internal_id'], got %v", schema.Excludes)
-	}
-	if len(schema.Properties) != 3 {
-		t.Errorf("Expected 3 properties, got %d", len(schema.Properties))
+	names := []string{schemas[0].Name, schemas[1].Name}
+	assert.ElementsMatch(t, []string{"base-note", "meeting_note"}, names)
+	for _, schema := range schemas {
+		assert.NotNil(t, schema.Properties)
 	}
 }
 
-func TestLoadSchemas_FileSystemError(t *testing.T) {
-	adapter, fs, _ := createTestAdapter()
+// TestSchemaLoaderAdapter_MissingPropertyBank asserts missing property bank
+// errors.
+func TestSchemaLoaderAdapter_MissingPropertyBank(t *testing.T) {
+	t.Parallel()
 
-	// Setup walk error
-	fs.SetWalkError(errors.New("permission denied"))
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "base_note.json")
 
-	// Execute
-	ctx := context.Background()
-	_, err := adapter.LoadSchemas(ctx)
-
-	// Verify error
-	if err == nil {
-		t.Fatal("Expected error for filesystem failure")
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
 	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
 
-	var resErr sharederrors.ResourceError
-	if !errors.As(err, &resErr) {
-		t.Fatalf("Expected ResourceError, got %T", err)
-	}
-	if resErr.Resource() != testResourceFilesystem ||
-		resErr.Operation() != testOperationWalk {
-		t.Fatalf("unexpected resource metadata: %+v", resErr)
-	}
+	_, _, err := adapter.Load(context.Background())
+	require.Error(t, err)
+
+	var resourceErr *lithosErr.ResourceError
+	require.ErrorAs(t, err, &resourceErr)
+	const expectedMissingHint = "create schemas/property_bank.json or configure PropertyBankFile"
+	assert.Contains(t, err.Error(), expectedMissingHint)
+	assert.Equal(t, "schema", resourceErr.Resource())
+	assert.Equal(t, "load", resourceErr.Operation())
 }
 
-func TestLoadSchemas_SkipsNonJSONFiles(t *testing.T) {
-	adapter, fs, cfg := createTestAdapter()
+// TestSchemaLoaderAdapter_MalformedPropertyBank reports malformed JSON with
+// remediation.
+func TestSchemaLoaderAdapter_MalformedPropertyBank(t *testing.T) {
+	t.Parallel()
 
-	// Setup mixed file types
-	validSchema, err := loadTestData("valid/complete-user.json")
-	if err != nil {
-		t.Fatalf("Failed to load test data: %v", err)
-	}
-	setupSchemaFile(fs, cfg, "user.json", validSchema)
-	txtPath := filepath.Join(cfg.Config().SchemasDir, "readme.txt")
-
-	fs.AddFile(txtPath, []byte("some text"))
-	fs.AddWalkPath(txtPath)
-
-	// Execute
-	ctx := context.Background()
-	schemas, err := adapter.LoadSchemas(ctx)
-
-	// Verify only JSON file was processed
-	if err != nil {
-		t.Fatalf("LoadSchemas failed: %v", err)
-	}
-	if len(schemas) != 1 {
-		t.Errorf("Expected 1 schema (only JSON file), got %d", len(schemas))
-	}
-}
-
-func TestLoadSchemas_SkipsPropertyBankFiles(t *testing.T) {
-	adapter, fs, cfg := createTestAdapter()
-
-	// Setup schema and property bank files
-	validSchema, err := loadTestData("valid/complete-user.json")
-	if err != nil {
-		t.Fatalf("Failed to load test data: %v", err)
-	}
-	validPropertyBank, err := loadTestData("properties/bank.json")
-	if err != nil {
-		t.Fatalf("Failed to load test data: %v", err)
-	}
-	setupSchemaFile(fs, cfg, "user.json", validSchema)
-	setupPropertyBankFile(fs, cfg, "common.json", validPropertyBank)
-
-	// Execute
-	ctx := context.Background()
-	schemas, err := adapter.LoadSchemas(ctx)
-
-	// Verify only schema file was processed
-	if err != nil {
-		t.Fatalf("LoadSchemas failed: %v", err)
-	}
-	if len(schemas) != 1 {
-		t.Errorf("Expected 1 schema (skip property bank), got %d", len(schemas))
-	}
-	if schemas[0].Name != "user" {
-		t.Errorf("Expected user schema, got %s", schemas[0].Name)
-	}
-}
-
-func TestLoadPropertyBank_Success(t *testing.T) {
-	adapter, fs, cfg := createTestAdapter()
-
-	// Setup property bank file
-	validPropertyBank, err := loadTestData("properties/bank.json")
-	if err != nil {
-		t.Fatalf("Failed to load test data: %v", err)
-	}
-	setupPropertyBankFile(fs, cfg, "common.json", validPropertyBank)
-
-	// Execute
-	ctx := context.Background()
-	bank, err := adapter.LoadPropertyBank(ctx)
-
-	// Verify
-	if err != nil {
-		t.Fatalf("LoadPropertyBank failed: %v", err)
-	}
-
-	if _, exists := bank.Properties["common-email"]; !exists {
-		t.Error("Expected property 'common-email' in bank")
-	}
-	if _, exists := bank.Properties["user-profile"]; !exists {
-		t.Error("Expected property 'user-profile' in bank")
-	}
-
-	// Verify property details
-	emailProp, exists := bank.Properties["common-email"]
-	if !exists {
-		t.Fatal("common-email property not found")
-	}
-	if !emailProp.Required {
-		t.Error("Expected common-email to be required")
-	}
-}
-
-func TestLoadPropertyBank_MalformedJSON(t *testing.T) {
-	adapter, fs, cfg := createTestAdapter()
-
-	// Setup malformed property bank
-	setupPropertyBankFile(
-		fs,
-		cfg,
-		"malformed.json",
-		`{"properties": {"invalid": {`,
+	tempDir := t.TempDir()
+	writeFile(
+		t,
+		filepath.Join(tempDir, "property_bank.json"),
+		`{"properties": {`,
 	)
+	copySchemaFixture(t, tempDir, "base_note.json")
 
-	// Execute
-	ctx := context.Background()
-	_, err := adapter.LoadPropertyBank(ctx)
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
 
-	// Verify error - wrapped error from Walk function will be ResourceError
-	if err == nil {
-		t.Fatal("Expected error for malformed property bank JSON")
-	}
+	_, _, err := adapter.Load(context.Background())
+	require.Error(t, err)
 
-	// Should be wrapped in ResourceError since it comes from Walk callback
-	var resErr sharederrors.ResourceError
-	if !errors.As(err, &resErr) {
-		t.Fatalf("Expected ResourceError, got %T", err)
-	}
-	if resErr.Resource() != testResourceFilesystem {
-		t.Fatalf("unexpected resource error domain: %+v", resErr)
-	}
-
-	// But the underlying error should contain property bank parsing info
-	if !strings.Contains(err.Error(), "malformed JSON") {
-		t.Errorf("Expected malformed JSON error message, got: %s", err.Error())
-	}
+	var schemaErr *lithosErr.SchemaError
+	require.ErrorAs(t, err, &schemaErr)
+	assert.Contains(t, schemaErr.Remediation, "Check JSON syntax")
 }
 
-// =============================================================================
-// Security Validation Tests
-// =============================================================================
+// TestSchemaLoaderAdapter_MalformedSchemaJSON reports malformed schema JSON.
+func TestSchemaLoaderAdapter_MalformedSchemaJSON(t *testing.T) {
+	t.Parallel()
 
-func TestSecurity_PathTraversalPrevention(t *testing.T) {
-	adapter, _, cfg := createTestAdapter()
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "invalid.json")
 
-	tests := []struct {
-		name     string
-		filePath string
-		wantErr  bool
-	}{
-		{
-			"valid path",
-			filepath.Join(cfg.Config().SchemasDir, "user.json"),
-			false,
-		},
-		{
-			"path traversal with ..",
-			cfg.Config().SchemasDir + "/../../../etc/passwd.json",
-			true,
-		},
-		{"path traversal at start", "../../../etc/passwd.json", true},
-		{
-			"path traversal in middle",
-			cfg.Config().SchemasDir + "/valid/../../../etc/passwd.json",
-			true,
-		},
-		{
-			"encoded traversal",
-			cfg.Config().SchemasDir + "/..%2F..%2Fetc/passwd.json",
-			true,
-		},
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
 	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := adapter.validateFilePath(
-				tt.filePath,
-				cfg.Config().SchemasDir,
-			)
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"validateFilePath(%q) error = %v, wantErr %v",
-					tt.filePath,
-					err,
-					tt.wantErr,
-				)
-			}
-			if tt.wantErr && err != nil &&
-				!strings.Contains(err.Error(), "traversal") {
-				t.Errorf("Expected traversal error, got: %s", err.Error())
-			}
-		})
-	}
+	_, _, err := adapter.Load(context.Background())
+	require.Error(t, err)
+
+	var schemaErr *lithosErr.SchemaError
+	require.ErrorAs(t, err, &schemaErr)
+	assert.Contains(t, schemaErr.Remediation, "Check JSON syntax")
 }
 
-func TestSecurity_DirectoryBoundsChecking(t *testing.T) {
-	adapter, _, cfg := createTestAdapter()
+// TestSchemaLoaderAdapter_EmptySchemasDirectory returns an empty slice when no
+// schemas exist.
+func TestSchemaLoaderAdapter_EmptySchemasDirectory(t *testing.T) {
+	t.Parallel()
 
-	tests := []struct {
-		name     string
-		filePath string
-		wantErr  bool
-	}{
-		{
-			"within bounds",
-			filepath.Join(cfg.Config().SchemasDir, "user.json"),
-			false,
-		},
-		{"outside bounds", "/etc/passwd", true},
-		{"outside bounds absolute", "/tmp/malicious.json", true},
-		{
-			"sibling directory",
-			filepath.Join(
-				cfg.Config().VaultPath,
-				"../other", //nolint:gocritic // intentional path traversal test case
-				"file.json",
-			),
-			true,
-		},
-	}
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := adapter.validateFilePath(
-				tt.filePath,
-				cfg.Config().SchemasDir,
-			)
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"validateFilePath(%q) error = %v, wantErr %v",
-					tt.filePath,
-					err,
-					tt.wantErr,
-				)
-			}
-		})
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
 	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	schemas, bank, err := adapter.Load(context.Background())
+	require.NoError(t, err)
+
+	assert.Empty(t, schemas)
+	assert.NotNil(t, bank.Properties)
 }
 
-func TestSecurity_FileExtensionValidation(t *testing.T) {
-	adapter, _, _ := createTestAdapter()
+// TestSchemaLoaderAdapter_PropertyBankReadOnce ensures the property bank file
+// is read once.
+func TestSchemaLoaderAdapter_PropertyBankReadOnce(t *testing.T) {
+	t.Parallel()
 
-	tests := []struct {
-		name     string
-		filePath string
-		wantErr  bool
-	}{
-		{"valid json", "user.json", false},
-		{"uppercase JSON", "user.JSON", false},
-		{"invalid txt", "user.txt", true},
-		{"invalid executable", "user.exe", true},
-		{"no extension", "user", true},
-		{"empty string", "", true},
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	var propertyReads atomic.Int32
+	adapter.readFile = func(path string) ([]byte, error) {
+		if strings.HasSuffix(path, "property_bank.json") {
+			propertyReads.Add(1)
+		}
+		return os.ReadFile(path)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := adapter.checkFileExtension(tt.filePath)
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"checkFileExtension(%q) error = %v, wantErr %v",
-					tt.filePath,
-					err,
-					tt.wantErr,
-				)
-			}
-		})
-	}
+	_, _, err := adapter.Load(context.Background())
+	require.NoError(t, err)
+	assert.Equal(t, int32(1), propertyReads.Load())
 }
 
-func TestSecurity_FileSizeLimits(t *testing.T) {
-	adapter, _, _ := createTestAdapter()
+// TestSchemaLoaderAdapter_RespectsConfigPropertyBankPath honors custom property
+// bank filenames.
+func TestSchemaLoaderAdapter_RespectsConfigPropertyBankPath(t *testing.T) {
+	t.Parallel()
 
-	// Test data sizes
-	smallData := []byte(`{"name": "test"}`) // ~18 bytes
-	largeData := make([]byte, 11*1024*1024) // 11MB, over 10MB limit
+	tempDir := t.TempDir()
+	writeFile(t, filepath.Join(tempDir, "custom_bank.json"), `{
+  "properties": {
+    "standard_title": {
+      "type": "string",
+      "required": true,
+      "array": false
+    },
+    "standard_tags": {
+      "type": "string",
+      "required": false,
+      "array": true
+    },
+    "iso_date": {
+      "type": "string",
+      "format": "date-time",
+      "required": true,
+      "array": false
+    }
+  }
+}`)
+	copySchemaFixture(t, tempDir, "base_note.json")
 
-	tests := []struct {
-		name    string
-		data    []byte
-		wantErr bool
-	}{
-		{"small file", smallData, false},
-		{"exactly 10MB", make([]byte, 10*1024*1024), false},
-		{"over 10MB", largeData, true},
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "custom_bank.json",
 	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := adapter.validateFileSize("test.json", tt.data)
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"validateFileSize() error = %v, wantErr %v",
-					err,
-					tt.wantErr,
-				)
-			}
-			if tt.wantErr && err != nil &&
-				!strings.Contains(err.Error(), "exceeds maximum") {
-				t.Errorf("Expected size limit error, got: %s", err.Error())
-			}
-		})
-	}
+	_, _, err := adapter.Load(context.Background())
+	require.NoError(t, err)
 }
 
-func TestSecurity_CircularReferenceDetection(t *testing.T) {
-	adapter, _, _ := createTestAdapter()
+func copySchemaFixture(t *testing.T, dstDir, filename string) {
+	t.Helper()
 
-	// Test exceeding max depth
-	err := adapter.checkCircularReferenceDepth("test-prop", 11)
-	if err == nil {
-		t.Error("Expected max depth exceeded error")
-	}
-	if !strings.Contains(err.Error(), "max depth exceeded") {
-		t.Errorf("Expected max depth error message, got: %s", err.Error())
-	}
-
-	// Test valid depth
-	err = adapter.checkCircularReferenceDepth("test-prop", 5)
-	if err != nil {
-		t.Errorf("Expected no error for valid depth, got: %v", err)
-	}
-}
-
-func TestSecurity_SelfReferencePrevention(t *testing.T) {
-	adapter, _, _ := createTestAdapter()
-
-	tests := []struct {
-		name    string
-		refName string
-		wantErr bool
-	}{
-		{"no self reference", "other-prop", false},
-		{"self reference", "user-profile", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := adapter.checkSelfReference("user-profile", tt.refName)
-			if (err != nil) != tt.wantErr {
-				t.Errorf(
-					"checkSelfReference() error = %v, wantErr %v",
-					err,
-					tt.wantErr,
-				)
-			}
-		})
-	}
-}
-
-func TestSecurity_LoadSchemas_PathTraversalBlocked(t *testing.T) {
-	adapter, fs, cfg := createTestAdapter()
-
-	// Setup malicious file
-	maliciousPath := filepath.Join(
-		cfg.Config().SchemasDir,
+	src := filepath.Join(
 		"..",
 		"..",
-		"etc",
-		"passwd",
+		"..",
+		"..",
+		"testdata",
+		"schemas",
+		filename,
 	)
-	fs.AddFile(maliciousPath, []byte(`{"name": "malicious"}`))
-	fs.AddWalkPath(maliciousPath)
+	data, err := os.ReadFile(src)
+	require.NoError(t, err)
 
-	// Execute
-	ctx := context.Background()
-	schemas, err := adapter.LoadSchemas(ctx)
-
-	// Should succeed but skip the malicious file
-	if err != nil {
-		t.Fatalf("LoadSchemas should not fail on path traversal, got: %v", err)
-	}
-
-	// Should not load any schemas (malicious file should be skipped)
-	if len(schemas) != 0 {
-		t.Errorf(
-			"Expected 0 schemas (malicious file skipped), got %d",
-			len(schemas),
-		)
-	}
+	dest := filepath.Join(dstDir, filename)
+	require.NoError(t, os.MkdirAll(filepath.Dir(dest), 0o750))
+	require.NoError(t, os.WriteFile(dest, data, 0o600))
 }
 
-func TestSecurity_LoadPropertyBank_PathTraversalBlocked(t *testing.T) {
-	adapter, fs, cfg := createTestAdapter()
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
 
-	// Setup malicious property file
-	maliciousPath := filepath.Join(
-		cfg.Config().SchemasDir,
-		"properties",
-		"..",
-		"..",
-		"etc",
-		"shadow",
-	)
-	fs.AddFile(maliciousPath, []byte(`{"properties": {}}`))
-	fs.AddWalkPath(maliciousPath)
+	require.NoError(t, os.MkdirAll(filepath.Dir(path), 0o750))
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+}
 
-	// Execute
-	ctx := context.Background()
-	bank, err := adapter.LoadPropertyBank(ctx)
+// TestSchemaLoaderAdapter_PropertyBankBeforeSchemas verifies load order
+// logging.
+func TestSchemaLoaderAdapter_PropertyBankBeforeSchemas(t *testing.T) {
+	t.Parallel()
 
-	// Should succeed but return empty bank
-	if err != nil {
-		t.Fatalf(
-			"LoadPropertyBank should not fail on path traversal, got: %v",
-			err,
-		)
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+	copySchemaFixture(t, tempDir, "base_note.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
+	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	var order []string
+	adapter.readFile = func(path string) ([]byte, error) {
+		order = append(order, filepath.Base(path))
+		return os.ReadFile(path)
 	}
 
-	// Should have empty properties
-	if len(bank.Properties) != 0 {
-		t.Errorf(
-			"Expected empty property bank, got %d properties",
-			len(bank.Properties),
-		)
+	_, _, err := adapter.Load(context.Background())
+	require.NoError(t, err)
+	require.NotEmpty(t, order)
+	assert.Equal(t, "property_bank.json", order[0])
+}
+
+// TestSchemaLoaderAdapter_WalkError surfaces directory walk failures.
+func TestSchemaLoaderAdapter_WalkError(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	copySchemaFixture(t, tempDir, "property_bank.json")
+
+	cfg := &domain.Config{
+		SchemasDir:       tempDir,
+		PropertyBankFile: "property_bank.json",
 	}
+	log := logger.NewTest()
+	adapter := NewSchemaLoaderAdapter(cfg, &log)
+
+	adapter.walkDir = func(string, fs.WalkDirFunc) error {
+		return errors.New("walk failure")
+	}
+
+	_, _, err := adapter.Load(context.Background())
+	require.Error(t, err)
+
+	var resourceErr *lithosErr.ResourceError
+	require.ErrorAs(t, err, &resourceErr)
+	assert.Equal(t, "schema", resourceErr.Resource())
+	assert.Equal(t, "scan", resourceErr.Operation())
 }

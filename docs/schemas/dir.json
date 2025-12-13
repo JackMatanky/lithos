@@ -1,0 +1,56 @@
+{
+  "name": "dir",
+  "properties": {
+    "title": {
+      "$ref": "#/properties/title"
+    },
+    "aliases": {
+      "$ref": "#/properties/aliases"
+    },
+    "country": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    },
+    "city": {
+      "$ref": "#/properties/city"
+    },
+    "url": {
+      "$ref": "#/properties/url"
+    },
+    "linkedin_url": {
+      "$ref": "#/properties/url"
+    },
+    "connection": {
+      "required": false,
+      "array": true,
+      "type": "string",
+      "enum": [
+        "education",
+        "null",
+        "personal",
+        "professional",
+        "work"
+      ]
+    },
+    "source": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "family",
+        "garin_tsabar",
+        "hatashtit",
+        "informed_decisions",
+        "jolt",
+        "secular_yeshiva",
+        "shalem_college"
+      ]
+    },
+    "picture_path": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    }
+  }
+}

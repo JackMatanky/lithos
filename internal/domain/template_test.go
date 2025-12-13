@@ -1,162 +1,140 @@
 package domain
 
 import (
+	"reflect"
 	"testing"
-	"text/template"
 )
 
 const (
-	testTemplateName    = "test"
-	testTemplateTitle   = "Test Name"
-	testTemplateContent = "Test Content"
+	testTemplateValue    = "test-template"
+	testContactHeader    = "contact-header"
+	testTemplate1        = "template1"
+	testTemplate2        = "template2"
+	templateTestContent1 = "content1"
+	templateTestContent2 = "content2"
 )
 
-func TestTemplateStruct(t *testing.T) {
-	// Test that Template struct can be created and accessed
-	tmpl := Template{
-		FilePath: "/vault/templates/note.md",
-		Name:     "Basic Note",
-		Content:  "# {{.title}}\n\nContent: {{.content}}",
-		Parsed:   nil,
-	}
-
-	if tmpl.FilePath != "/vault/templates/note.md" {
-		t.Errorf(
-			"FilePath = %q, want %q",
-			tmpl.FilePath,
-			"/vault/templates/note.md",
-		)
-	}
-	if tmpl.Name != "Basic Note" {
-		t.Errorf("Name = %q, want %q", tmpl.Name, "Basic Note")
-	}
-	if tmpl.Content != "# {{.title}}\n\nContent: {{.content}}" {
-		t.Errorf(
-			"Content = %q, want %q",
-			tmpl.Content,
-			"# {{.title}}\n\nContent: {{.content}}",
-		)
-	}
-	if tmpl.Parsed != nil {
-		t.Errorf("Parsed = %v, want nil", tmpl.Parsed)
+// TestNewTemplateID tests the NewTemplateID constructor creates a valid
+// TemplateID instance.
+func TestNewTemplateID(t *testing.T) {
+	id := NewTemplateID(testTemplateValue)
+	if id.String() != testTemplateValue {
+		t.Errorf("expected '%s', got %s", testTemplateValue, id.String())
 	}
 }
 
-func TestTemplateWithParsedTemplate(t *testing.T) {
-	// Test Template with a parsed Go template
-	content := "Hello {{.name}}!"
-	parsed, err := template.New("test").Parse(content)
-	if err != nil {
-		t.Fatalf("Failed to parse template: %v", err)
+// TestTemplateIDString tests the String method returns the underlying value.
+func TestTemplateIDString(t *testing.T) {
+	id := NewTemplateID(testContactHeader)
+	result := id.String()
+	if result != testContactHeader {
+		t.Errorf("expected '%s', got %s", testContactHeader, result)
 	}
+}
 
-	tmpl := Template{
-		FilePath: "/vault/templates/greeting.md",
-		Name:     "Greeting Template",
-		Content:  content,
-		Parsed:   parsed,
-	}
+// TestTemplateIDAsMapKey tests that TemplateID can be used as a map key.
+func TestTemplateIDAsMapKey(t *testing.T) {
+	id1 := NewTemplateID(testTemplate1)
+	id2 := NewTemplateID(testTemplate2)
 
-	if tmpl.FilePath != "/vault/templates/greeting.md" {
+	templateMap := make(map[TemplateID]string)
+	templateMap[id1] = templateTestContent1
+	templateMap[id2] = templateTestContent2
+
+	if templateMap[id1] != templateTestContent1 {
 		t.Errorf(
-			"FilePath = %q, want %q",
-			tmpl.FilePath,
-			"/vault/templates/greeting.md",
+			"expected '%s', got %s",
+			templateTestContent1,
+			templateMap[id1],
 		)
 	}
-	if tmpl.Name != "Greeting Template" {
-		t.Errorf("Name = %q, want %q", tmpl.Name, "Greeting Template")
-	}
-	if tmpl.Content != content {
-		t.Errorf("Content = %q, want %q", tmpl.Content, content)
-	}
-	if tmpl.Parsed == nil {
-		t.Error("Parsed = nil, want non-nil")
-	}
-	if tmpl.Parsed != nil && tmpl.Parsed.Name() != testTemplateName {
+	if templateMap[id2] != templateTestContent2 {
 		t.Errorf(
-			"Parsed.Name() = %q, want %q",
-			tmpl.Parsed.Name(),
-			testTemplateName,
+			"expected '%s', got %s",
+			templateTestContent2,
+			templateMap[id2],
 		)
 	}
 }
 
-func TestTemplateFieldTypes(t *testing.T) {
-	// Test that all fields have the correct types
-	const testPath = "/test/path"
+// TestNewTemplate tests the NewTemplate constructor.
+func TestNewTemplate(t *testing.T) {
+	id := NewTemplateID("contact-header")
+	content := "Hello {{.name}}"
 
-	tmpl := Template{
-		FilePath: "",
-		Name:     "",
-		Content:  "",
-		Parsed:   nil,
-	}
+	template := NewTemplate(id, content)
 
-	// Test zero values
-	if tmpl.FilePath != "" {
-		t.Errorf("Zero value FilePath = %q, want empty string", tmpl.FilePath)
+	if template.ID != id {
+		t.Errorf("expected ID %v, got %v", id, template.ID)
 	}
-	if tmpl.Name != "" {
-		t.Errorf("Zero value Name = %q, want empty string", tmpl.Name)
-	}
-	if tmpl.Content != "" {
-		t.Errorf("Zero value Content = %q, want empty string", tmpl.Content)
-	}
-	if tmpl.Parsed != nil {
-		t.Errorf("Zero value Parsed = %v, want nil", tmpl.Parsed)
-	}
-
-	// Test assignment
-	tmpl.FilePath = testPath
-	tmpl.Name = testTemplateTitle
-	tmpl.Content = testTemplateContent
-	tmpl.Parsed = &template.Template{Tree: nil}
-
-	if tmpl.FilePath != testPath {
-		t.Errorf("FilePath assignment failed")
-	}
-	if tmpl.Name != "Test Name" {
-		t.Errorf("Name assignment failed")
-	}
-	if tmpl.Content != "Test Content" {
-		t.Errorf("Content assignment failed")
-	}
-	if tmpl.Parsed == nil {
-		t.Errorf("Parsed assignment failed")
+	if template.Content != content {
+		t.Errorf("expected Content %q, got %q", content, template.Content)
 	}
 }
 
-func TestTemplateComplexContent(t *testing.T) {
-	// Test with more complex template content
-	complexContent := `# {{.title}}
-
-Created: {{.created | formatDate}}
-Author: {{.author}}
-
-{{range .tags}}
-- #{{.}}
-{{end}}
-
-## Content
-
-{{.body}}
-
-{{if .footer}}
+// TestTemplateWithGoTemplateSyntax tests that Template can store complex Go
+// template syntax.
+func TestTemplateWithGoTemplateSyntax(t *testing.T) {
+	id := NewTemplateID("complex-template")
+	content := `---
+fileClass: contact
+name: {{ prompt "name" "Contact Name" "" }}
+email: {{ prompt "email" "Email Address" "" }}
+created: {{ now "2006-01-02" }}
 ---
-{{.footer}}
-{{end}}`
 
-	tmpl := Template{
-		Content: complexContent,
+# {{ .name }}
+
+**Email:** {{ .email }}
+**Created:** {{ .created }}
+
+{{ template "contact-footer" }}`
+
+	template := NewTemplate(id, content)
+
+	if template.Content != content {
+		t.Errorf("Template Content does not match expected Go template syntax")
 	}
+}
 
-	if tmpl.Content != complexContent {
-		t.Errorf("Complex content not preserved correctly")
+// TestTemplate_NoFilePathField tests that Template struct has no FilePath
+// field.
+func TestTemplate_NoFilePathField(t *testing.T) {
+	// This test verifies that the Template struct does not have a FilePath
+	// field
+	// We use reflection to inspect the struct fields
+	template := NewTemplate(NewTemplateID("test"), "content")
+
+	v := reflect.ValueOf(template)
+	typ := v.Type()
+
+	for i := 0; i < typ.NumField(); i++ { //nolint:intrange // reflection requires index-based access
+		field := typ.Field(i)
+		if field.Name == "FilePath" {
+			t.Errorf(
+				"Template struct should not have a FilePath field, but found: %s",
+				field.Name,
+			)
+		}
 	}
+}
 
-	// Verify the content contains expected template syntax
-	if tmpl.Content == "" {
-		t.Error("Template content is empty")
+// TestTemplate_NoParsedField tests that Template struct has no Parsed field.
+func TestTemplate_NoParsedField(t *testing.T) {
+	// This test verifies that the Template struct does not have a Parsed field
+	// We use reflection to inspect the struct fields
+	template := NewTemplate(NewTemplateID("test"), "content")
+
+	v := reflect.ValueOf(template)
+	typ := v.Type()
+
+	for i := 0; i < typ.NumField(); i++ { //nolint:intrange // reflection requires index-based access
+		field := typ.Field(i)
+		if field.Name == "Parsed" {
+			t.Errorf(
+				"Template struct should not have a Parsed field, but found: %s",
+				field.Name,
+			)
+		}
 	}
 }

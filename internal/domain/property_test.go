@@ -1,170 +1,202 @@
 package domain
 
 import (
-	"fmt"
-	"sync"
+	"context"
+	"errors"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-const testPropertyName = "test_prop"
-
-func TestNewProperty(t *testing.T) {
-	spec := StringPropertySpec{}
-	prop := NewProperty(testPropertyName, true, false, spec)
-
-	if prop.Name != testPropertyName {
-		t.Errorf("Name = %q, want %q", prop.Name, testPropertyName)
-	}
-	if !prop.Required {
-		t.Errorf("Required = %v, want %v", prop.Required, true)
-	}
-	if prop.Array {
-		t.Errorf("Array = %v, want %v", prop.Array, false)
-	}
-	if prop.Spec == nil {
-		t.Error("Spec should not be nil")
-	}
-
-	typeName, err := prop.TypeName()
-	if err != nil {
-		t.Fatalf("TypeName() error = %v", err)
-	}
-	if typeName != propertyTypeString {
-		t.Errorf("TypeName() = %q, want %q", typeName, propertyTypeString)
-	}
+// mockPropertySpec is a test implementation of PropertySpec for testing
+// delegation.
+type mockPropertySpec struct {
+	validateError error
+	specType      PropertySpecType
 }
 
-func TestPropertyTypeNamePointerSpec(t *testing.T) {
-	spec := &NumberPropertySpec{}
-	prop := NewProperty("count", false, false, spec)
-
-	typeName, err := prop.TypeName()
-	if err != nil {
-		t.Fatalf("TypeName() error = %v", err)
-	}
-	if typeName != propertyTypeNumber {
-		t.Errorf("TypeName() = %q, want %q", typeName, propertyTypeNumber)
-	}
+// Type returns the mock spec type.
+func (m mockPropertySpec) Type() PropertySpecType {
+	return m.specType
 }
 
-func TestNewPropertyBank(t *testing.T) {
-	tests := []struct {
-		name         string
-		location     string
-		wantLocation string
-	}{
-		{
-			name:         "empty location uses default",
-			location:     "",
-			wantLocation: "schemas/properties/",
-		},
-		{
-			name:         "custom location",
-			location:     "custom/path/",
-			wantLocation: "custom/path/",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := NewPropertyBank(tt.location)
-			if got.Location != tt.wantLocation {
-				t.Errorf(
-					"NewPropertyBank() location = %v, want %v",
-					got.Location,
-					tt.wantLocation,
-				)
-			}
-			if len(got.Properties) != 0 {
-				t.Errorf(
-					"NewPropertyBank() properties should be empty, got %v",
-					got.Properties,
-				)
-			}
-		})
-	}
+// Validate returns the mock validation error.
+func (m mockPropertySpec) Validate(ctx context.Context) error {
+	return m.validateError
 }
 
-func TestPropertyBank_RegisterProperty(t *testing.T) {
-	pb := NewPropertyBank("")
+// TestPropertyValidate tests Property.Validate method.
+func TestPropertyValidate(t *testing.T) {
+	ctx := context.Background()
 
-	stringProp := NewProperty("title", true, false, StringPropertySpec{
-		Enum: []string{"Mr", "Mrs", "Dr"},
+	t.Run("success with valid spec", func(t *testing.T) {
+		spec := mockPropertySpec{
+			validateError: nil,
+			specType:      PropertyTypeString,
+		}
+		property := Property{
+			Name:     "testProp",
+			Required: false,
+			Array:    false,
+			Spec:     spec,
+		}
+
+		err := (&property).Validate(ctx)
+
+		assert.NoError(t, err)
 	})
 
-	tests := []struct {
-		name      string
-		regName   string
-		property  Property
-		wantError bool
-	}{
-		{
-			name:      "valid registration",
-			regName:   "another_title",
-			property:  stringProp,
-			wantError: false,
-		},
-		{
-			name:      "empty name",
-			regName:   "",
-			property:  stringProp,
-			wantError: true,
-		},
-		{
-			name:      "whitespace name",
-			regName:   "  test  ",
-			property:  stringProp,
-			wantError: true,
-		},
-		{
-			name:      "duplicate name",
-			regName:   "standard_title",
-			property:  stringProp,
-			wantError: true,
-		},
+	t.Run("error when name is empty", func(t *testing.T) {
+		spec := mockPropertySpec{
+			validateError: nil,
+			specType:      PropertyTypeString,
+		}
+		property := Property{
+			Name:     "",
+			Required: false,
+			Array:    false,
+			Spec:     spec,
+		}
+
+		err := (&property).Validate(ctx)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "property name cannot be empty")
+	})
+
+	t.Run("error when spec is nil", func(t *testing.T) {
+		property := Property{
+			Name:     "testProp",
+			Required: false,
+			Array:    false,
+			Spec:     nil,
+		}
+
+		err := (&property).Validate(ctx)
+
+		require.Error(t, err)
+		assert.Contains(
+			t,
+			err.Error(),
+			"property spec cannot be nil",
+		)
+	})
+
+	t.Run("delegates to spec validate", func(t *testing.T) {
+		expectedError := errors.New("spec validation failed")
+		spec := mockPropertySpec{
+			validateError: expectedError,
+			specType:      PropertyTypeString,
+		}
+		property := Property{
+			Name:     "testProp",
+			Required: false,
+			Array:    false,
+			Spec:     spec,
+		}
+
+		err := (&property).Validate(ctx)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "spec validation failed")
+	})
+}
+
+// TestNewProperty tests the Property entity constructor with ID generation.
+func TestNewProperty(t *testing.T) {
+	spec := mockPropertySpec{
+		validateError: nil,
+		specType:      PropertyTypeString,
 	}
 
-	// Register first property
-	err := pb.RegisterProperty("standard_title", stringProp)
-	if err != nil {
-		t.Fatalf("Failed to register initial property: %v", err)
+	t.Run("creates Property with auto-generated ID", func(t *testing.T) {
+		property, err := NewProperty("testProp", true, false, spec)
+
+		require.NoError(t, err)
+		assert.Equal(t, "testProp", property.Name)
+		assert.True(t, property.Required)
+		assert.False(t, property.Array)
+		assert.Equal(t, spec, property.Spec)
+
+		// Property should have a non-empty ID
+		assert.NotEmpty(t, property.ID)
+
+		// ID should be deterministic based on name and spec content
+		property2, err2 := NewProperty("testProp", true, false, spec)
+		require.NoError(t, err2)
+		assert.Equal(
+			t,
+			property.ID,
+			property2.ID,
+			"Properties with same name and spec should have same ID",
+		)
+	})
+
+	t.Run(
+		"generates different IDs for different properties",
+		func(t *testing.T) {
+			property1, err1 := NewProperty("prop1", true, false, spec)
+			property2, err2 := NewProperty("prop2", true, false, spec)
+
+			require.NoError(t, err1)
+			require.NoError(t, err2)
+			assert.NotEqual(
+				t,
+				property1.ID,
+				property2.ID,
+				"Different properties should have different IDs",
+			)
+		},
+	)
+
+	t.Run("fails validation for invalid property", func(t *testing.T) {
+		_, err := NewProperty("", true, false, spec)
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "property name cannot be empty")
+	})
+}
+
+// BenchmarkPropertyValidate benchmarks property validation performance.
+// Measures the impact of validation caching on repeated validations.
+func BenchmarkPropertyValidate(b *testing.B) {
+	ctx := context.Background()
+
+	// Test with regex pattern (triggers compilation caching)
+	spec := StringSpec{
+		Pattern: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`, // Email regex
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			regErr := pb.RegisterProperty(tt.regName, tt.property)
-			if (regErr != nil) != tt.wantError {
-				t.Errorf(
-					"RegisterProperty() error = %v, wantError %v",
-					regErr,
-					tt.wantError,
-				)
-			}
-		})
+	property, err := NewProperty("email", true, false, &spec)
+	require.NoError(b, err)
+
+	b.ResetTimer()
+	for range b.N {
+		_ = property.Validate(ctx)
 	}
 }
 
-func TestPropertyBank_RegisterPropertyConcurrent(t *testing.T) {
-	pb := NewPropertyBank("")
-	baseProp := NewProperty("title", false, false, StringPropertySpec{})
+// BenchmarkPropertyValidateNoCache benchmarks validation without caching
+// (simulating old behavior with repeated regex compilation).
+func BenchmarkPropertyValidateNoCache(b *testing.B) {
+	ctx := context.Background()
 
-	const total = 20
-	var wg sync.WaitGroup
-
-	for i := range total {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
-			name := fmt.Sprintf("prop_%d", i)
-			if err := pb.RegisterProperty(name, baseProp); err != nil {
-				t.Errorf("RegisterProperty(%s) error = %v", name, err)
-			}
-		}(i)
+	// Create property without caching by using value receiver
+	spec := StringSpec{
+		Pattern: `^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`,
 	}
 
-	wg.Wait()
+	property := Property{
+		ID:       "test-id",
+		Name:     "email",
+		Required: true,
+		Array:    false,
+		Spec:     &spec, // Pointer to enable caching
+	}
 
-	if got := len(pb.Properties); got != total {
-		t.Errorf("len(Properties) = %d, want %d", got, total)
+	b.ResetTimer()
+	for range b.N {
+		_ = property.Validate(ctx)
 	}
 }

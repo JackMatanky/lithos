@@ -1,180 +1,292 @@
-// Package schema provides filesystem-based implementations of schema loading
-// ports for hexagonal architecture.
+// Package schema provides SPI adapter implementations for schema registry
+// operations.
 //
-// This file contains the SchemaRegistryAdapter which coordinates schema
-// loading, inheritance resolution, and registry storage behind the SPI port.
+// It implements the hexagonal architecture pattern by providing concrete
+// implementations of the SchemaRegistryPort interface defined in the ports
+// layer.
+// The SchemaRegistryAdapter specifically provides thread-safe in-memory storage
+// and retrieval of loaded and resolved schemas and properties.
 package schema
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	sharederrors "github.com/JackMatanky/lithos/internal/shared/errors"
-	"github.com/JackMatanky/lithos/internal/shared/logger"
-	"github.com/JackMatanky/lithos/internal/shared/registry"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/rs/zerolog"
 )
 
-// SchemaRegistryAdapter implements SchemaRegistryPort using the shared
-// registry package for thread-safe schema storage.
-//
-// The adapter coordinates schema loading via SchemaLoaderPort, resolves
-// inheritance chains, and exposes read-only access to resolved schemas.
-type SchemaRegistryAdapter struct {
-	loader spi.SchemaLoaderPort
-	config spi.ConfigPort
-	store  registry.Registry[domain.Schema]
-}
+// Ensure SchemaRegistryAdapter implements SchemaRegistryPort at compile time.
+var _ spi.SchemaRegistryPort = (*SchemaRegistryAdapter)(nil)
 
-/* ---------------------------------------------------------- */
-/*                         Constructor                        */
-/* ---------------------------------------------------------- */
+// SchemaRegistryAdapter implements the SchemaRegistryPort interface using
+// thread-safe in-memory maps for schema and property storage.
+//
+// It provides fast lookups for schemas and properties with defensive copying
+// to prevent external mutation of internal state. The adapter uses RWMutex
+// for concurrent read access while ensuring exclusive write access during
+// registration operations.
+//
+// Architecture Reference: docs/architecture/components.md#schemaregistryport
+// Implementation: In-memory registry with thread-safe access patterns.
+type SchemaRegistryAdapter struct {
+	// schemas stores schema definitions keyed by name
+	schemas map[string]domain.Schema
+	// properties stores property definitions keyed by name
+	properties map[string]domain.Property
+	// mu provides thread-safe access with read/write locking
+	mu sync.RWMutex
+	// log provides structured logging for operations
+	log zerolog.Logger
+	// signature keeps a lightweight fingerprint of the current registry state
+	signature string
+}
 
 // NewSchemaRegistryAdapter creates a new SchemaRegistryAdapter with dependency
-// injection for loader and config ports.
-func NewSchemaRegistryAdapter(
-	loader spi.SchemaLoaderPort,
-	config spi.ConfigPort,
-) *SchemaRegistryAdapter {
+// injection.
+//
+// The adapter is initialized with empty maps and ready for RegisterAll() calls.
+// Logger is injected for structured logging of registry operations.
+//
+// Returns a pointer to the initialized adapter.
+// gocritic hugeParam warning suppressed as this is the correct zerolog usage
+// pattern.
+func NewSchemaRegistryAdapter(log zerolog.Logger) *SchemaRegistryAdapter {
 	return &SchemaRegistryAdapter{
-		loader: loader,
-		config: config,
-		store:  registry.New[domain.Schema](),
+		schemas:    make(map[string]domain.Schema),
+		properties: make(map[string]domain.Property),
+		mu:         sync.RWMutex{},
+		log:        log,
+		signature:  "",
 	}
 }
 
-/* ---------------------------------------------------------- */
-/*                    SchemaRegistryPort API                  */
-/* ---------------------------------------------------------- */
-
-// Get implements SchemaRegistryPort.Get.
-func (s *SchemaRegistryAdapter) Get(name string) (domain.Schema, bool) {
-	if strings.TrimSpace(name) == "" {
-		return domain.Schema{}, false
-	}
-
-	if !s.store.Exists(name) {
-		return domain.Schema{}, false
-	}
-
-	return s.store.Get(name), true
-}
-
-/* ---------------------------------------------------------- */
-/*                    Initialization Process                  */
-/* ---------------------------------------------------------- */
-
-// Initialize loads schemas and property bank data, resolves inheritance, and
-// populates the internal registry. Uses Result[T] pattern for error handling.
-func (s *SchemaRegistryAdapter) Initialize(
+// RegisterAll implements SchemaRegistryPort.RegisterAll.
+// Registers all schemas and properties into the registry with thread-safe write
+// access.
+//
+// Clears existing entries before registration (idempotent behavior).
+// Stores defensive copies to prevent external mutation of registry state.
+// Enables re-registration without stale data (aligns with FR9).
+//
+// Context is used for cancellation during potentially long-running operations.
+func (a *SchemaRegistryAdapter) RegisterAll(
 	ctx context.Context,
-) sharederrors.Result[struct{}] {
-	if err := s.ensureContextActive(ctx); err != nil {
-		return sharederrors.Err[struct{}](err)
-	}
-
-	s.logInitialization()
-
-	schemas, schemaErr := s.loadSchemas(ctx)
-	if schemaErr != nil {
-		return sharederrors.Err[struct{}](schemaErr)
-	}
-
-	propertyBank, bankErr := s.loadPropertyBank(ctx)
-	if bankErr != nil {
-		return sharederrors.Err[struct{}](bankErr)
-	}
-
-	if err := s.ensurePropertyBankValid(propertyBank); err != nil {
-		return sharederrors.Err[struct{}](err)
-	}
-
-	resolved, resolveErr := s.resolveSchemas(ctx, schemas)
-	if resolveErr != nil {
-		return sharederrors.Err[struct{}](resolveErr)
-	}
-
-	s.refreshRegistry(resolved)
-	s.logCompletion(len(resolved))
-
-	return sharederrors.Ok(struct{}{})
-}
-
-func (s *SchemaRegistryAdapter) ensureContextActive(ctx context.Context) error {
-	return ctx.Err()
-}
-
-func (s *SchemaRegistryAdapter) loadSchemas(
-	ctx context.Context,
-) ([]domain.Schema, error) {
-	return s.loader.LoadSchemas(ctx)
-}
-
-func (s *SchemaRegistryAdapter) loadPropertyBank(
-	ctx context.Context,
-) (*domain.PropertyBank, error) {
-	bank, err := s.loader.LoadPropertyBank(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	if bank == nil {
-		return nil, sharederrors.NewSchemaError(
-			"property_bank",
-			"loader returned nil property bank",
-			nil,
-		)
-	}
-
-	return bank, nil
-}
-
-func (s *SchemaRegistryAdapter) ensurePropertyBankValid(
-	propertyBank *domain.PropertyBank,
+	schemas []domain.Schema,
+	bank domain.PropertyBank,
 ) error {
-	// Validation moved to SchemaEngine.LoadPropertyBank()
+	newSignature := registrySignature(schemas, bank)
+
+	// Check for cancellation
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.signature != "" && a.signature == newSignature {
+		a.log.Debug().
+			Int("schemas", len(schemas)).
+			Int("properties", len(bank.Properties)).
+			Msg("registry unchanged, skipping re-registration")
+		return nil
+	}
+
+	// Clear existing entries (idempotent)
+	a.schemas = make(map[string]domain.Schema)
+	a.properties = make(map[string]domain.Property)
+
+	// Register schemas (defensive copy - deep copy Properties and
+	// ResolvedProperties slices)
+	for _, schema := range schemas {
+		// Deep copy the Properties slice to prevent external mutation
+		propertiesCopy := make([]domain.Property, len(schema.Properties))
+		copy(propertiesCopy, schema.Properties)
+		// Deep copy the ResolvedProperties slice to prevent external mutation
+		resolvedPropertiesCopy := make(
+			[]domain.Property,
+			len(schema.ResolvedProperties),
+		)
+		copy(resolvedPropertiesCopy, schema.ResolvedProperties)
+		schemaCopy := schema
+		schemaCopy.Properties = propertiesCopy
+		schemaCopy.ResolvedProperties = resolvedPropertiesCopy
+		a.schemas[schema.Name] = schemaCopy
+	}
+
+	// Register properties (defensive copy - Go value semantics)
+	for id, prop := range bank.Properties {
+		a.properties[id] = prop // Go copies by value
+	}
+
+	// Log registration
+	a.log.Info().
+		Int("schemas", len(schemas)).
+		Int("properties", len(bank.Properties)).
+		Msg("registered schemas and properties")
+	a.signature = newSignature
+
 	return nil
 }
 
-func (s *SchemaRegistryAdapter) resolveSchemas(
+// GetSchema implements SchemaRegistryPort.GetSchema.
+// Retrieves a schema by name from the registry with thread-safe read access.
+//
+// Returns SchemaError with ErrNotFound classification when schema doesn't
+// exist.
+// Returns defensive copy to prevent external mutation of registry state.
+//
+// Context is used for cancellation during potentially long-running operations.
+func (a *SchemaRegistryAdapter) GetSchema(
 	ctx context.Context,
+	name string,
+) (domain.Schema, error) {
+	// Check for cancellation
+	select {
+	case <-ctx.Done():
+		return domain.Schema{}, ctx.Err()
+	default:
+	}
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	schema, exists := a.schemas[name]
+	if !exists {
+		return domain.Schema{}, lithosErr.NewSchemaError(
+			"schema not found",
+			name,
+			lithosErr.ErrNotFound,
+		)
+	}
+
+	// Return defensive copy to prevent external mutation
+	propertiesCopy := make([]domain.Property, len(schema.Properties))
+	copy(propertiesCopy, schema.Properties)
+	resolvedPropertiesCopy := make(
+		[]domain.Property,
+		len(schema.ResolvedProperties),
+	)
+	copy(resolvedPropertiesCopy, schema.ResolvedProperties)
+	schemaCopy := schema
+	schemaCopy.Properties = propertiesCopy
+	schemaCopy.ResolvedProperties = resolvedPropertiesCopy
+
+	return schemaCopy, nil
+}
+
+// GetProperty implements SchemaRegistryPort.GetProperty.
+// Retrieves a property from the property bank by name with thread-safe read
+// access.
+//
+// Returns SchemaError with ErrNotFound classification when property doesn't
+// exist.
+// Returns defensive copy to prevent external mutation of registry state.
+//
+// Context is used for cancellation during potentially long-running operations.
+func (a *SchemaRegistryAdapter) GetProperty(
+	ctx context.Context,
+	name string,
+) (domain.Property, error) {
+	// Check for cancellation
+	select {
+	case <-ctx.Done():
+		return domain.Property{}, ctx.Err()
+	default:
+	}
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	property, exists := a.properties[name]
+	if !exists {
+		return domain.Property{}, lithosErr.NewSchemaError(
+			"property not found",
+			name,
+			lithosErr.ErrNotFound,
+		)
+	}
+
+	return property, nil // Returns copy (Go value semantics)
+}
+
+// HasSchema implements SchemaRegistryPort.HasSchema.
+// Checks if a schema exists in the registry with thread-safe read access.
+//
+// Never errors, returns bool only for existence check.
+// Thread-safe for concurrent access.
+//
+// Context is used for cancellation during potentially long-running operations.
+func (a *SchemaRegistryAdapter) HasSchema(
+	ctx context.Context,
+	name string,
+) bool {
+	// Check for cancellation
+	select {
+	case <-ctx.Done():
+		return false
+	default:
+	}
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	_, exists := a.schemas[name]
+	return exists
+}
+
+// HasProperty implements SchemaRegistryPort.HasProperty.
+// Checks if a property exists in the property bank with thread-safe read
+// access.
+//
+// Never errors, returns bool only for existence check.
+// Thread-safe for concurrent access.
+//
+// Context is used for cancellation during potentially long-running operations.
+func (a *SchemaRegistryAdapter) HasProperty(
+	ctx context.Context,
+	name string,
+) bool {
+	// Check for cancellation
+	select {
+	case <-ctx.Done():
+		return false
+	default:
+	}
+
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+
+	_, exists := a.properties[name]
+	return exists
+}
+
+func registrySignature(
 	schemas []domain.Schema,
-) (map[string]domain.Schema, error) {
-	resolver, err := NewInheritanceResolver(schemas)
-	if err != nil {
-		return nil, err
+	bank domain.PropertyBank,
+) string {
+	parts := make([]string, 0, len(schemas)+len(bank.Properties))
+
+	for _, schema := range schemas {
+		parts = append(parts, fmt.Sprintf(
+			"schema:%s:%d:%d",
+			schema.Name,
+			len(schema.Properties),
+			len(schema.ResolvedProperties),
+		))
+	}
+	for id := range bank.Properties {
+		parts = append(parts, fmt.Sprintf("property:%s", id))
 	}
 
-	return resolver.ResolveAll(ctx)
-}
-
-func (s *SchemaRegistryAdapter) refreshRegistry(
-	resolved map[string]domain.Schema,
-) {
-	s.store.Clear()
-	for name, schema := range resolved {
-		s.store.Register(name, schema)
-	}
-}
-
-func (s *SchemaRegistryAdapter) logInitialization() {
-	cfg := s.config.Config()
-	entry := newRegistryLogger()
-	entry.Info().
-		Str("operation", "initialize").
-		Str("schemas_dir", cfg.SchemasDir).
-		Msg("initializing schema registry")
-}
-
-func (s *SchemaRegistryAdapter) logCompletion(count int) {
-	entry := newRegistryLogger()
-	entry.Info().
-		Str("operation", "initialize").
-		Int("schema_count", count).
-		Msg("schema registry initialized successfully")
-}
-
-func newRegistryLogger() logger.Logger {
-	return logger.WithComponent("spi.schema.registry")
+	sort.Strings(parts)
+	return strings.Join(parts, "|")
 }

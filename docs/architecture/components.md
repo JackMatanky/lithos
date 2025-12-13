@@ -15,16 +15,16 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 
 ### TemplateEngine
 
-**Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and frontmatter validation. Pure domain service orchestrating template execution with custom function map for user interaction and file path control.
+**Responsibility:** Execute template rendering for `lithos new`/`find`, wiring together interactive prompts, lookups, and frontmatter validation. Pure domain service orchestrating template execution with custom function map for user interaction and file path control. Enhanced with goldmark for markdown rendering capabilities in templates.
 
 **Key Interfaces:**
 
-- `Render(ctx context.Context, templateID TemplateID) (string, error)` - Render template to markdown string
+- `Render(ctx context.Context, templateID TemplateID) (string, error)` - Render template to markdown string with goldmark markdown processing
 - `Load(ctx context.Context, templateID TemplateID) (Template, error)` - Load template via TemplateLoader port
 
 **Dependencies:** TemplateLoader (port), InteractivePort, QueryService, FrontmatterService, Config, Logger.
 
-**Technology Stack:** Go `text/template`, custom function map with user interaction and file control functions, closures wrapping port calls for dependency injection, zerolog for instrumentation.
+**Technology Stack:** Go `text/template`, `github.com/yuin/goldmark` for markdown rendering in templates, custom function map with user interaction and file control functions, closures wrapping port calls for dependency injection, zerolog for instrumentation.
 
 **Custom Template Functions:**
 
@@ -38,7 +38,7 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 **Vault Query Functions:**
 - `lookup(basename)` - Find note by basename via QueryService
 - `query(filter)` - Query notes by criteria via QueryService
-- `fileClass(noteID)` - Get note's fileClass field
+- `fileClass(path)` - Get note's fileClass field by vault-relative path
 
 **File Path Control Functions** (inspired by Templater file module):
 - `path()` - Returns the target file path for the note being created. Used to determine where the note will be saved.
@@ -53,7 +53,7 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 ```go
 // Template can control its own save location
 {{- $targetPath := join (vaultPath) "contacts" (printf "%s.md" (prompt "filename" "Filename" "")) -}}
-// Sets target path for CommandOrchestrator to use when saving
+// Sets target path for CLICommander to use when saving
 
 // Or derive from frontmatter fields
 {{- $slug := lower (replace (prompt "title" "Title" "") " " "-") -}}
@@ -64,20 +64,21 @@ The TemplateEngine provides a function map injected into Go's `text/template` fo
 {{- $currentName := basename (path) -}}
 ```
 
-**Note:** The `path()` function returns the target path being constructed during rendering. Templates set this implicitly through frontmatter or explicitly via `$targetPath` variable. CommandOrchestrator uses the resolved path to save the note via `atomicwriter.WriteFile` directly (no FileWriter port - YAGNI principle).
+**Note:** The `path()` function returns the target path being constructed during rendering. Templates set this implicitly through frontmatter or explicitly via `$targetPath` variable. CLICommander uses the resolved path to save the note via `atomicwriter.WriteFile` directly (no FileWriter port - YAGNI principle).
 
 ### FrontmatterService
 
-**Responsibility:** Extract YAML frontmatter from markdown and validate against schema rules with strict type checking. Single domain service handling both extraction and validation concerns.
+**Responsibility:** Validate frontmatter against schema rules with semantic business logic enforcement. Pure domain service focused on schema compliance validation. Delegates markdown parsing to MarkdownParserPort (adapter layer) to maintain clean hexagonal architecture separation.
 
 **Key Interfaces:**
 
-- `Extract(content []byte) (Frontmatter, error)` - Parse YAML frontmatter from markdown content
-- `Validate(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (looked up via FileClass) with in-memory type normalization for validation logic only
+- `IsSchemaCompliant(ctx context.Context, frontmatter Frontmatter) error` - Validate frontmatter against schema (semantic validation only)
 
-**Dependencies:** SchemaRegistry (port for schema lookup), QueryService (for FileSpec file existence validation), Logger.
+**Dependencies:** MarkdownParserPort (for syntactic parsing), SchemaRegistryPort (for schema lookups), VaultReaderPort (for FileSpec validation), Logger.
 
-**Technology Stack:** Go stdlib (`regexp`, `time`, `reflect`, `math`), `goccy/go-yaml` for YAML parsing, PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints.
+**Note:** FrontmatterService is a pure domain service with zero infrastructure dependencies. MarkdownParserAdapter (adapter layer) performs syntactic validation (YAML structure) via FrontmatterDTO.ValidateSyntax(), then converts to domain.Frontmatter. FrontmatterService performs semantic validation only (schema compliance, business rules). Clean separation: syntactic validation (YAML parsing, structure) in adapter layer, semantic validation (schema rules, type constraints) in domain layer.
+
+**Technology Stack:** Pure Go domain logic (`regexp`, `time`, `reflect`, `math`), PropertySpec polymorphism for type-specific validation, in-memory type normalization for validation logic, structured FrontmatterError with remediation hints. No direct markdown parsing dependencies.
 
 **Frontmatter Validation (Business Rules with Strict Type Checking):**
 
@@ -95,7 +96,7 @@ FrontmatterService.Validate() performs strict validation with in-memory type nor
 3. **Array vs Scalar Check:** Verify array/scalar expectation matches (no auto-coercion)
 4. **Type Normalization (In-Memory Only):** Normalize YAML types for validation logic without modifying files
 5. **Constraint Validation:** Validate normalized value against PropertySpec constraints (pattern, min/max, enum, etc.)
-6. **File Reference Validation:** For FileSpec properties, validate file exists via QueryService.ByPath()
+6. **File Reference Validation:** For FileSpec properties, validate file exists via VaultReaderPort.Read() (avoids circular dependency with QueryService)
 7. **Error Aggregation:** Return all validation errors with field-level remediation hints
 
 **YAML Type Handling:**
@@ -178,28 +179,26 @@ Validation errors returned as structured FrontmatterError types with schema name
 
 ### SchemaEngine
 
-**Responsibility:** Coordinate schema loading, validation, resolution, and provide unified access to schemas and properties. Orchestrates SchemaLoader, SchemaValidator, SchemaResolver, and SchemaRegistry using Go generics for type-safe retrieval.
+**Responsibility:** Pure orchestration service coordinating schema initialization and providing unified access to loaded schemas and properties. Delegates all infrastructure concerns (validation, inheritance resolution, $ref substitution) to adapter layer components.
 
 **Key Interfaces:**
 
-- `Load(ctx context.Context) error` - Load schemas and property bank, validate structure, resolve inheritance, populate SchemaRegistry
+- `Load(ctx context.Context) error` - Orchestrate schema loading through SchemaLoader adapter (which handles validation, inheritance resolution, and registration internally)
 - `Get[T Schema | Property](ctx context.Context, name string) (T, error)` - Retrieve schema or property by name using generics
 - `Has[T Schema | Property](ctx context.Context, name string) bool` - Check if schema or property exists using generics
 
-**Dependencies:** SchemaLoader (port), SchemaValidator (service), SchemaResolver (service), SchemaRegistry (port), Logger.
+**Dependencies:** SchemaLoader (port), SchemaRegistry (port), Logger.
 
-**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics. Delegates to SchemaLoader for I/O, SchemaValidator for structural validation, SchemaResolver for inheritance resolution, and SchemaRegistry for lookups. Idiomatic (T, error) return signatures.
+**Technology Stack:** Pure Go orchestration layer with Go 1.18+ generics. Delegates complex infrastructure logic to adapter layer components. Maintains stable interface for Epic 3+ compatibility.
 
-**Schema Loading and Validation Workflow:**
+**Schema Loading Workflow:**
 
-The Load() method orchestrates the complete schema initialization pipeline:
+The Load() method orchestrates schema initialization through the adapter layer:
 
-1. **Load:** SchemaLoader reads JSON files from disk and parses into Schema DTOs and PropertyBank
-2. **Validate:** SchemaValidator validates structural integrity by calling schema.Validate() on each schema (which delegates to property.Validate() → propertySpec.Validate()). Also performs cross-schema validation (Extends references exist).
-3. **Resolve:** SchemaResolver resolves inheritance chains (flattens Extends/Excludes) and substitutes $ref with PropertyBank definitions. Detects circular dependencies.
-4. **Register:** SchemaRegistry populates in-memory maps with resolved schemas for fast lookups
+1. **Load & Process:** SchemaLoader adapter handles complete pipeline (JSON parsing → validation → inheritance resolution → $ref substitution → registration)
+2. **Register:** SchemaRegistry populated with fully resolved schemas for fast lookups
 
-**Fails Fast:** Any error in steps 1-3 terminates application at startup. No invalid schemas reach runtime.
+**Fails Fast:** Any error in adapter layer terminates application at startup. No invalid schemas reach runtime.
 
 **Usage Examples:**
 ```go
@@ -214,17 +213,47 @@ property, err := schemaEngine.Get[Property](ctx, "standard_title")
 exists := schemaEngine.Has[Schema](ctx, "contact")
 ```
 
-### SchemaValidator
+### SchemaValidator (Adapter Layer)
 
-**Responsibility:** Orchestrate schema validation by calling model-level Validate() methods and performing cross-schema validation that requires seeing multiple schemas together. Pure domain service with no external dependencies.
+**Responsibility:** Infrastructure adapter for JSON schema file structure validation. Performs cross-schema validation that requires seeing multiple schemas together. Pure infrastructure logic separated from domain concerns.
 
 **Key Interfaces:**
 
-- `ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error` - Orchestrate validation of all schemas and check cross-schema references
+- `ValidateAll(ctx context.Context, schemas []Schema) error` - Orchestrate validation of all schemas and check cross-schema references
 
-**Dependencies:** None (pure domain logic).
+**Dependencies:** None (pure infrastructure logic).
 
 **Technology Stack:** Orchestrates schema.Validate() calls, validates cross-schema references, aggregates errors using errors.Join().
+
+**Location:** `internal/adapters/spi/schema/validator.go`
+
+### PropertyDereferencer (Adapter Layer)
+
+**Responsibility:** Infrastructure adapter handling $ref substitution with PropertyBank lookups. Pure infrastructure concern for JSON pointer resolution.
+
+**Key Interfaces:**
+
+- `Dereference(ctx context.Context, schemas []Schema, bank PropertyBank) ([]Schema, error)` - Replace all $ref references with PropertyBank property definitions
+
+**Dependencies:** None (pure infrastructure logic).
+
+**Technology Stack:** JSON pointer resolution, PropertyBank lookups, error aggregation.
+
+**Location:** `internal/adapters/spi/schema/dereferencer.go`
+
+### SchemaExtender (Adapter Layer)
+
+**Responsibility:** Infrastructure adapter handling extends/excludes inheritance attribute processing. Pure infrastructure concern for inheritance resolution.
+
+**Key Interfaces:**
+
+- `Extend(ctx context.Context, schemas []Schema) ([]Schema, error)` - Resolve inheritance chains, flatten Extends/Excludes, detect circular dependencies
+
+**Dependencies:** None (pure infrastructure logic).
+
+**Technology Stack:** Topological sorting, inheritance merging, cycle detection.
+
+**Location:** `internal/adapters/spi/schema/extender.go`
 
 **Validation Responsibilities:**
 
@@ -245,13 +274,14 @@ SchemaValidator has two distinct responsibilities that require service-level log
 **What SchemaValidator Does NOT Do:**
 
 - Structural validation of individual schemas (delegated to schema.Validate())
-- Inheritance resolution (handled by SchemaResolver)
-- Circular dependency detection (handled by SchemaResolver during topological sort)
+- Inheritance resolution (handled by SchemaExtender adapter)
+- $ref substitution (handled by PropertyDereferencer adapter)
+- Circular dependency detection (handled by SchemaExtender during topological sort)
 
 **Example Implementation Pattern:**
 
 ```go
-func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema, bank PropertyBank) error {
+func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema) error {
     var errors []error
 
     // 1. Orchestrate model-level validation
@@ -285,83 +315,213 @@ func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema, ban
 }
 ```
 
-### SchemaResolver
+### VaultIndexer
 
-**Responsibility:** Resolve schema inheritance chains and PropertyBank $ref substitutions. Pure domain service implementing inheritance resolution algorithm.
+**Responsibility:** Orchestrate vault scanning and indexing workflow with hybrid BoltDB+SQLite storage architecture (Epic 3). Coordinates vault scanning, note parsing, validation, and write coordination across multiple storage systems (BoltDB hot cache for fast queries + SQLite deep storage for complex queries). Delegates frontmatter extraction to FrontmatterService and markdown parsing to MarkdownParserPort.
 
 **Key Interfaces:**
 
-- `Resolve(ctx context.Context, schemas []Schema, bank PropertyBank) ([]Schema, error)` - Resolve all schemas, returning flattened schemas with inheritance applied and $ref substituted
+- `Build(ctx context.Context) (IndexStats, error)` - Full vault scan and complete index rebuild (BoltDB + SQLite)
+- `Refresh(ctx context.Context, since time.Time) (IndexStats, error)` - Incremental update for files modified since timestamp
+- `AddNote(ctx context.Context, note domain.Note) error` - Add single note to index (used by CLICommander.NewNote)
+- `RemoveNote(ctx context.Context, path string) error` - Remove note from index by vault-relative path
 
-**Dependencies:** None (pure domain logic).
+**Dependencies:** VaultScannerPort (returns Notes), CacheWriterPort (BoltDB), MetadataQueryPort (SQLite writer), CacheUnitOfWork (write coordination), FrontmatterService, Logger, Config.
 
-**Technology Stack:** Topological sort for dependency ordering, depth-first search for cycle detection, property merging with override semantics.
+**Technology Stack:** Pure Go orchestration, CacheUnitOfWork for transactional dual-write coordination, atomic indexing with rollback on partial failure, zerolog for metrics and progress tracking.
 
-**Resolution Algorithm:**
+**Write Coordination Pattern:**
 
-1. **Build Dependency Graph:** Map each schema to its Extends parent
-2. **Detect Cycles:** DFS to find circular inheritance chains (Schema A extends B extends A)
-3. **Topological Sort:** Order schemas so parents resolve before children
-4. **Resolve Inheritance:** For each schema in order:
-   - Get parent's resolved properties (or empty if root schema)
-   - Apply Excludes (remove properties by name)
-   - Merge child properties (override parent properties with same name)
-   - Store as resolved properties
-5. **Substitute $ref:** Replace all `{$ref: "#/properties/name"}` with PropertyBank.Properties[name]
-
-**Example:**
 ```go
-resolver := NewSchemaResolver()
-resolved, err := resolver.Resolve(ctx, schemas, propertyBank)
-if err != nil {
-    return fmt.Errorf("schema resolution failed: %w", err)
+func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
+    // 1. Scan vault
+    files, err := v.vaultScanner.ScanAll(ctx)
+
+    // 2. Begin Unit of Work
+    uow := v.newUnitOfWork()
+    uow.Begin()
+
+    // 3. For each file, parse and add to UoW
+    for _, file := range files {
+        // Parse markdown and construct Note via MarkdownParserPort
+        note, err := v.markdownParser.ParseNote(ctx, file.Path, file.Content)
+        if err != nil {
+            continue // Log and skip invalid files
+        }
+
+        // Validate frontmatter against schema (semantic validation)
+        if err := v.frontmatterService.IsSchemaCompliant(ctx, note.Frontmatter); err != nil {
+            continue // Log and skip invalid notes
+        }
+
+        // Stage write
+        uow.AddWrite(note)
+    }
+
+    // 4. Commit writes to both BoltDB and SQLite atomically
+    if err := uow.Commit(ctx); err != nil {
+        uow.Rollback(ctx)
+        return IndexStats{}, err
+    }
+
+    return IndexStats{NotesIndexed: len(files)}, nil
 }
 ```
 
-### VaultIndexer
+**Rationale:**
+- Updated for Epic 3 hybrid storage architecture (BoltDB + SQLite)
+- Coordinates dual writes to hot cache (BoltDB <1ms) and deep storage (SQLite <50ms)
+- Uses CacheUnitOfWork for transactional guarantees across storage systems
+- Delegates markdown parsing to MarkdownParserPort (adapter layer)
+- Delegates frontmatter validation to FrontmatterService (domain layer)
+- Foundation for future optimizations (parallel processing, batch operations)
 
-**Responsibility:** Orchestrate vault scanning and indexing workflow (CQRS write side). Coordinates vault scanning, frontmatter extraction, validation, cache persistence, and query index population.
+**Note:** VaultIndexer is write-only (CQRS command side). QueryService is read-only (CQRS query side). Clean separation enables independent optimization and scaling.
+
+### CacheUnitOfWork
+
+**Responsibility:** Coordinate transactional writes across multiple storage systems (BoltDB + SQLite) using Unit of Work pattern. Ensures atomicity for dual-write operations with rollback on partial failure.
 
 **Key Interfaces:**
 
-- `Build(ctx context.Context) (IndexStats, error)` - Full vault scan, cache rebuild, and query index population
-- `Refresh(ctx context.Context, since time.Time) error` - Incremental update for large vaults (post-MVP optimization)
+- `Begin() error` - Start new unit of work (open transactions on both storages)
+- `AddWrite(note domain.Note) error` - Stage note write operation
+- `AddDelete(path string) error` - Stage note delete operation by vault-relative path
+- `Commit(ctx context.Context) error` - Commit all staged operations atomically to both storages
+- `Rollback(ctx context.Context) error` - Rollback all staged operations on failure
 
-**Dependencies:** VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService (direct access to populate indices), Logger, Config.
+**Dependencies:** CacheWriterPort (BoltDB writer), MetadataQueryPort (SQLite writer - also provides write operations), Logger.
 
-**Technology Stack:** Pure Go orchestration, delegates file operations to ports, atomic indexing with temp file + rename pattern for consistency, directly populates QueryService in-memory indices after cache write completes, zerolog for metrics and progress tracking.
+**Technology Stack:** Pure Go orchestration, transactional coordination across BoltDB bolt.Tx and SQLite sql.Tx, two-phase commit pattern, automatic rollback on context cancellation.
 
-**Note:** VaultIndexer has direct access to QueryService's internal index structures (same package or package-private methods) to populate indices after successful cache write. This keeps write-side concerns (index building) in VaultIndexer while read-side concerns (querying) in QueryService.
+**Transaction Lifecycle:**
+
+```go
+// 1. Create Unit of Work
+uow := NewCacheUnitOfWork(boltWriter, sqliteWriter, log)
+
+// 2. Begin transactions
+if err := uow.Begin(); err != nil {
+    return err
+}
+
+// 3. Stage operations (accumulate in memory)
+uow.AddWrite(note1)
+uow.AddWrite(note2)
+uow.AddDelete("notes/old-note.md")
+
+// 4. Commit atomically
+if err := uow.Commit(ctx); err != nil {
+    uow.Rollback(ctx) // Automatic rollback on failure
+    return err
+}
+
+// Both BoltDB and SQLite now contain consistent data
+```
+
+**Failure Handling:**
+
+- **BoltDB write succeeds, SQLite write fails:** Rollback BoltDB transaction
+- **SQLite write succeeds, BoltDB write fails:** Rollback SQLite transaction
+- **Context cancelled during Commit:** Rollback both transactions
+- **Network partition:** Each storage system maintains its own transaction isolation
+
+**Rationale:**
+- Ensures dual-write atomicity across heterogeneous storage systems
+- Prevents partial writes (note in BoltDB but not SQLite, or vice versa)
+- Simplifies VaultIndexer by extracting transaction coordination logic
+- Enables future storage system additions without changing business logic
+- Foundation for saga pattern if eventual consistency needed later
+
+**Note:** CacheUnitOfWork is internal coordination service, not exposed via ports. Only VaultIndexer depends on it.
+
+**Internal Structure:**
+
+- `boltWriter CacheWriterPort` – Writes primary data + indices to BoltDB within a single `bolt.Tx`.
+- `sqliteWriter CacheWriterPort` – Writes metadata rows/views inside SQLite within a matching `sql.Tx`.
+- `operations []operation` – In-memory staging buffer with pending writes/deletes and the captured `indexTime` shared between stores.
+- `mu sync.Mutex` – Guards staging so concurrent indexing goroutines cannot interleave operations.
+
+**Operation Schema:**
+
+```go
+type operation struct {
+    opType    operationType // write/delete
+    note      domain.Note   // populated for writes
+    indexTime time.Time     // shared timestamp written to both stores
+    path      string        // populated for deletes
+}
+```
+
+**Lifecycle Summary:** `Begin()` opens both transactions → `AddWrite`/`AddDelete` populate `operations` without I/O → `Commit()` replays staged ops against BoltDB first, then SQLite, propagating identical `indexTime` so FileDatesDTO/`indexed_time` stay aligned → any failure triggers compensating rollbacks and clears the staging buffer via `Rollback()`.
 
 ### QueryService
 
-**Responsibility:** Provide fast CQRS read-side access for template functions, suggesters, and validators. Maintains in-memory indices for optimized queries.
+**Responsibility:** CQRS query side providing fast read access with hybrid storage routing. Routes queries between BoltDB hot cache (<1ms) and SQLite deep storage (<50ms) based on query complexity. Pure read-only service (no write operations).
 
 **Key Interfaces:**
 
-- `ByID(ctx context.Context, id NoteID) (Note, error)` - Retrieve note by NoteID
-- `ByPath(ctx context.Context, path string) ([]Note, error)` - Find notes by path (returns single note if file path, multiple if directory path)
-- `ByFileClass(ctx context.Context, fileClass string) ([]Note, error)` - Find all notes with matching fileClass (convenience for common frontmatter query)
-- `ByFrontmatter(ctx context.Context, field string, value any) ([]Note, error)` - Generic frontmatter field query
+- `PathQuery(ctx context.Context, path string) (Note, error)` - Retrieve note by vault-relative path (hot path: BoltDB)
+- `FileClassQuery(ctx context.Context, fileClass string) ([]Note, error)` - Find notes by fileClass (hot path if common class, deep path if rare)
+- `TagQuery(ctx context.Context, tag string) ([]Note, error)` - Find notes by tag using indexed lookup (delegates to MetadataQueryPort)
+- `LinkQuery(ctx context.Context, targetPath string) ([]Note, error)` - Find notes linking to target (delegates to MetadataQueryPort deep path)
+- `FrontmatterFieldQuery(ctx context.Context, field string, value any) ([]Note, error)` - Generic frontmatter field query (delegates to MetadataQueryPort)
 
-**Dependencies:** CacheReader (port), Logger.
+**Dependencies:** CacheReaderPort (BoltDB hot cache), MetadataQueryPort (SQLite deep storage with indexed queries), Logger.
 
-**Technology Stack:** In-memory indices backed by Go maps with `sync.RWMutex` for concurrent safety, multiple specialized indices (by ID, path, fileClass, frontmatter fields) for fast lookups, indices populated directly by VaultIndexer after cache write.
+**Technology Stack:** Hybrid storage routing with performance-based selection, BoltDB for hot-path queries (<1ms), SQLite for deep-path indexed queries (<50ms), no in-memory indices (storage-native indexing only), concurrent read access with storage-level concurrency control.
 
-### CommandOrchestrator
+**Query Routing Strategy:**
 
-**Responsibility:** Orchestrate use case workflows by coordinating domain services. Acts as the application service layer that CLI, TUI, and LSP adapters invoke via CLICommandPort. Owns application startup and control flow.
+```go
+func (s *QueryService) FileClassQuery(ctx context.Context, fileClass string) ([]Note, error) {
+    // Hot path: Common fileClass queries served by BoltDB
+    if s.isHotFileClass(fileClass) {
+        return s.boltReader.FileClassQuery(ctx, fileClass)
+    }
+
+    // Deep path: Rare fileClass queries served by SQLite
+    return s.metadataQuery.FileClassQuery(ctx, fileClass)
+}
+
+// Hot set determination (configured or learned)
+func (s *QueryService) isHotFileClass(fileClass string) bool {
+    // Common file classes: contact, project, daily-note, meeting-note
+    return contains(s.hotFileClasses, fileClass)
+}
+```
+
+**Hybrid Storage Benefits:**
+- **Hot Path (BoltDB):** <1ms response for common queries (by path, common fileClass)
+- **Deep Path (SQLite):** <50ms response for complex queries with indexed lookups
+- **No O(n) Scanning:** All queries use storage-native indices (BoltDB buckets, SQLite indexes)
+- **Memory Efficiency:** No large in-memory indices, storage systems provide indexing
+- **Scalability:** SQLite handles large datasets efficiently with proper indexing
+
+**Rationale:**
+- Replaced in-memory indices with storage-native indexing (BoltDB + SQLite)
+- True CQRS query side (read-only, no RefreshFromCache method - removed)
+- Query routing enables sub-millisecond performance for common queries
+- MetadataQueryPort provides indexed queries (O(1)) instead of O(n) scanning
+- Foundation for future query optimizations (query plan analysis, adaptive hot set)
+- Tuning considerations: adjust `hotFileClasses`, monitor staleness logs for incremental refresh triggers, and profile MetadataQueryPort queries when adding new schema views.
+
+**Note:** QueryService is read-only (CQRS query side). VaultIndexer is write-only (CQRS command side). Clean separation enables independent optimization and scaling.
+
+### CLICommander
+
+**Responsibility:** Orchestrate use case workflows by coordinating domain services. Acts as the application service layer that CLI, TUI, and LSP adapters invoke via CLIPort. Owns application startup and control flow.
 
 **Key Interfaces:**
 
-- `Run(ctx context.Context) error` - Start the application by calling CLICommandPort.Start()
-- `NewNote(ctx context.Context, templateID TemplateID) (Note, error)` - Create new note from template (implements CommandHandler)
-- `IndexVault(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache (implements CommandHandler)
-- `FindTemplates(ctx context.Context, query string) ([]Template, error)` - List available templates (implements CommandHandler)
+- `Run(ctx context.Context) error` - Start the application by calling CLIPort.Start()
+- `NewNote(ctx context.Context, templateID TemplateID) (Note, error)` - Create new note from template (implements CommandPort)
+- `IndexVault(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache (implements CommandPort)
+- `FindTemplates(ctx context.Context, query string) ([]Template, error)` - List available templates (implements CommandPort)
 
-**Dependencies:** CLICommandPort (injected API port), TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger.
+**Dependencies:** CLIPort (injected API port), TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger.
 
-**Technology Stack:** Pure Go orchestration, implements CommandHandler interface for CLI callbacks, uses dependency injection from main.go.
+**Technology Stack:** Pure Go orchestration, implements CommandPort interface for CLI callbacks, uses dependency injection from main.go.
 
 **NewNote Use Case Workflow:**
 
@@ -369,32 +529,38 @@ The NewNote method orchestrates the complete note creation workflow:
 
 1. **Load Template:** Load template via TemplateEngine.Load()
 2. **Render Template:** Execute template with user prompts via TemplateEngine.Render()
-3. **Extract Frontmatter:** Parse YAML frontmatter via FrontmatterService.Extract()
-4. **Validate Frontmatter:** Validate against schema via FrontmatterService.Validate()
-5. **Generate NoteID:** Derive NoteID from frontmatter fields (filename, title slug, or UUID)
-6. **Resolve File Path:** Determine target path from template's path control functions or derive from frontmatter
-7. **Create Note Object:** Construct Note with ID, Content, and Frontmatter
-8. **Persist to Vault:** Write note via VaultWriterPort.Persist() (source of truth)
-9. **Persist to Cache:** Write note via CacheWriterPort.Persist() (projection - keeps index in sync)
-10. **Return Note:** Return Note object for CLI to display confirmation and optionally show content
+3. **Parse Frontmatter:** MarkdownParserAdapter extracts frontmatter (syntactic validation in adapter)
+4. **Validate Frontmatter:** Validate against schema via FrontmatterService.IsSchemaCompliant() (semantic validation in domain)
+5. **Resolve File Path:** Determine target vault-relative path from template's path control functions or derive from frontmatter
+6. **Create Note Object:** Construct Note with Path, Content, and Frontmatter
+7. **Persist to Vault:** Write note via VaultWriterPort.Persist() (source of truth)
+8. **Persist to Cache:** Write note via CacheWriterPort.Persist() (projection - keeps index in sync)
+9. **Return Note:** Return Note object for CLI to display confirmation and optionally show content
 
-**NoteID Generation Strategy:**
+**Path Generation Strategy:**
 
 ```go
-func (o *CommandOrchestrator) generateNoteID(fm Frontmatter) (NoteID, error) {
-    // Priority 1: Use explicit filename field from frontmatter
-    if filename, ok := fm.Fields["filename"].(string); ok {
-        return NoteID(filename), nil
+func (c *CLICommander) generatePath(fm Frontmatter, cfg Config) (string, error) {
+    // Priority 1: Use explicit path from template path control functions
+    if templatePath, ok := fm.Fields["__template_path"].(string); ok {
+        return templatePath, nil
     }
 
-    // Priority 2: Slugify title field
+    // Priority 2: Use explicit filename field from frontmatter
+    if filename, ok := fm.Fields["filename"].(string); ok {
+        // Construct vault-relative path
+        return filepath.ToSlash(filepath.Join(cfg.DefaultFolder, filename+".md")), nil
+    }
+
+    // Priority 3: Slugify title field
     if title, ok := fm.Fields["title"].(string); ok {
         slug := slugify(title)  // Convert "My Note" → "my-note"
-        return NoteID(slug), nil
+        return filepath.ToSlash(filepath.Join(cfg.DefaultFolder, slug+".md")), nil
     }
 
-    // Priority 3: Generate UUID-based ID
-    return NoteID(generateUUID()), nil
+    // Priority 4: Generate timestamp-based filename
+    timestamp := time.Now().Format("20060102-150405")
+    return filepath.ToSlash(filepath.Join(cfg.DefaultFolder, timestamp+".md")), nil
 }
 ```
 
@@ -407,12 +573,12 @@ Templates can control their save location via file path template functions:
 {{- $targetPath := join (vaultPath) "contacts" (printf "%s.md" (prompt "filename" "Filename" "")) -}}
 ```
 
-CommandOrchestrator extracts the resolved path from template execution context and passes to FileWriter.
+CLICommander extracts the resolved path from template execution context and passes to VaultWriterPort.
 
 **Example Implementation:**
 
 ```go
-func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID) (Note, error) {
+func (c *CLICommander) NewNote(ctx context.Context, templateID TemplateID) (Note, error) {
     // Load and render
     template, err := o.templateEngine.Load(ctx, templateID)
     if err != nil {
@@ -424,26 +590,30 @@ func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID
         return Note{}, fmt.Errorf("rendering failed: %w", err)
     }
 
-    // Extract and validate
-    fm, err := o.frontmatterService.Extract([]byte(rendered))
+    // Parse frontmatter (syntactic validation in adapter)
+    frontmatterFields, err := o.markdownParser.ParseFrontmatter(ctx, []byte(rendered))
     if err != nil {
-        return Note{}, fmt.Errorf("frontmatter extraction failed: %w", err)
+        return Note{}, fmt.Errorf("frontmatter parsing failed: %w", err)
     }
 
-    if err := o.frontmatterService.Validate(ctx, fm); err != nil {
+    // Convert to domain model
+    fm := domain.NewFrontmatter(frontmatterFields)
+
+    // Validate against schema (semantic validation only)
+    if err := o.frontmatterService.IsSchemaCompliant(ctx, fm); err != nil {
         return Note{}, fmt.Errorf("frontmatter validation failed: %w", err)
     }
 
-    // Generate ID and create note
-    noteID, err := o.generateNoteID(fm)
+    // Generate path from frontmatter
+    path, err := o.generatePath(fm, o.config)
     if err != nil {
-        return Note{}, fmt.Errorf("note ID generation failed: %w", err)
+        return Note{}, fmt.Errorf("path generation failed: %w", err)
     }
 
-    note := Note{
-        ID:          noteID,
-        Content:     rendered,
-        Frontmatter: fm,
+    // Parse full Note now that we have path
+    note, err := o.markdownParser.ParseNote(ctx, path, []byte(rendered))
+    if err != nil {
+        return Note{}, fmt.Errorf("note construction failed: %w", err)
     }
 
     // Dual write pattern (vault + cache)
@@ -464,24 +634,286 @@ func (o *CommandOrchestrator) NewNote(ctx context.Context, templateID TemplateID
 
 ---
 
+### EventBus
+
+**Responsibility:** Provide event-driven architecture infrastructure with publish/subscribe semantics to decouple services and eliminate god-objects. Implements in-memory async event dispatch with goroutine-based worker pool.
+
+**Key Interfaces:**
+
+- `Publish(ctx context.Context, event DomainEvent) error` - Publish domain event to all registered subscribers
+- `Subscribe(eventType string, handler EventHandler) error` - Register event handler for specific event type
+- `Unsubscribe(eventType string, handler EventHandler) error` - Remove event handler registration
+- `Shutdown(ctx context.Context) error` - Graceful shutdown with event draining and worker termination
+
+**Dependencies:** `Logger` (structured logging), Go stdlib (`context`, `sync`, `time`).
+
+**Technology Stack:** Pure Go implementation with goroutine worker pool, buffered channels for event queue, `sync.RWMutex` for thread-safe handler registry, context-based cancellation for graceful shutdown, structured logging with event correlation.
+
+**Event Bus Architecture:**
+
+```
+Publisher Services          EventBus                Subscriber Services
+─────────────────          ──────────              ───────────────────
+VaultIndexer ────┐         ┌──────────┐           ┌─→ VaultIndexer (NoteIndexed handler)
+                 ├────────→│  Queue   │───────────┤
+FrontmatterSvc ──┤         │ (channel)│           ├─→ QueryService (VaultIndexingComplete)
+                 ├────────→│          │───────────┤
+SchemaEngine ────┘         │ Worker   │           └─→ MetricsService (FrontmatterValidated)
+                           │Goroutines│
+                           └──────────┘
+```
+
+**Implementation Pattern:**
+
+```go
+type inMemoryEventBus struct {
+    subscribers  map[string][]EventHandler  // eventType -> handlers
+    eventQueue   chan envelope              // Buffered channel for events
+    mu           sync.RWMutex               // Thread-safe registry
+    log          logger.Logger
+    workers      []context.CancelFunc       // Worker cancellation
+    workerCount  int                        // Configurable worker pool size
+    bufferSize   int                        // Event queue buffer size
+}
+
+type envelope struct {
+    ctx   context.Context
+    event DomainEvent
+    done  chan error  // Synchronous dispatch support
+}
+
+// Publish queues event for async dispatch
+func (b *inMemoryEventBus) Publish(ctx context.Context, event DomainEvent) error {
+    select {
+    case b.eventQueue <- envelope{ctx: ctx, event: event, done: nil}:
+        b.log.Debug().
+            Str("event_type", event.EventType()).
+            Str("aggregate_id", event.AggregateID()).
+            Msg("event published")
+        return nil
+    case <-ctx.Done():
+        return ctx.Err()
+    }
+}
+
+// Worker goroutine processes events from queue
+func (b *inMemoryEventBus) worker(ctx context.Context) {
+    for {
+        select {
+        case env := <-b.eventQueue:
+            b.dispatch(env.ctx, env.event)
+            if env.done != nil {
+                env.done <- nil  // Signal completion for sync dispatch
+            }
+        case <-ctx.Done():
+            return  // Graceful shutdown
+        }
+    }
+}
+
+// dispatch delivers event to all registered handlers
+func (b *inMemoryEventBus) dispatch(ctx context.Context, event DomainEvent) {
+    b.mu.RLock()
+    handlers := b.snapshotHandlers(event.EventType())
+    b.mu.RUnlock()
+
+    for _, handler := range handlers {
+        // Error isolation: failed handler doesn't block others
+        if err := handler(ctx, event); err != nil {
+            b.log.Error().
+                Err(err).
+                Str("event_type", event.EventType()).
+                Str("aggregate_id", event.AggregateID()).
+                Msg("event handler failed")
+        }
+    }
+}
+```
+
+**Domain Events (Epic 3):**
+
+The following domain events are implemented in `internal/domain/events.go`:
+
+- **NoteIndexedEvent**: Published after single note indexed (contains Note, Path, FileClass)
+- **VaultIndexingCompleteEvent**: Published after full vault index (contains IndexingSummary, Duration)
+- **FrontmatterValidatedEvent**: Published after frontmatter validation (contains NoteID, SchemaName, Valid, Errors)
+- **SchemaLoadedEvent**: Published after individual schema loaded (contains SchemaName, PropertyCount)
+- **SchemasReloadedEvent**: Published after schema system reload (contains SchemaCount)
+- **CommandIssuedEvent**: Published when CLI command issued (contains CommandType, Params)
+
+**Event Handlers:**
+
+Services register event handlers during initialization:
+
+```go
+// VaultIndexer subscribes to own NoteIndexed events for index updates
+func (v *VaultIndexer) handleNoteIndexedEvent(ctx context.Context, event domain.DomainEvent) error {
+    noteEvent, ok := event.(*domain.NoteIndexedEvent)
+    if !ok {
+        return nil  // Ignore non-matching event types
+    }
+    return v.applyNoteEvent(ctx, noteEvent)
+}
+
+// QueryService subscribes to indexing complete for cache invalidation
+func (q *QueryService) handleVaultIndexingComplete(ctx context.Context, event domain.DomainEvent) error {
+    // Invalidate query cache, rebuild in-memory indices
+    q.staleness.RecordIndexingComplete()
+    return nil
+}
+
+// MetricsService tracks validation statistics
+func (m *MetricsService) handleFrontmatterValidated(ctx context.Context, event domain.DomainEvent) error {
+    fmEvent, ok := event.(*domain.FrontmatterValidatedEvent)
+    if !ok {
+        return nil
+    }
+
+    m.mu.Lock()
+    defer m.mu.Unlock()
+    if fmEvent.IsValid() {
+        m.validationSuccesses++
+    } else {
+        m.validationFailures++
+    }
+    return nil
+}
+```
+
+**Rationale:**
+
+- **God-Object Elimination**: Services publish events instead of calling other services directly, reducing dependency counts (CLICommander from 7→3, VaultIndexer from 7→4)
+- **CQRS Separation**: Write-side (VaultIndexer) publishes events, read-side (QueryService) subscribes without direct coupling
+- **Error Isolation**: Failed event handlers don't block other subscribers or publisher services
+- **Async Processing**: Non-blocking event dispatch prevents publisher performance degradation
+- **Testability**: Mock EventBus for unit tests, test event flows independently
+- **Extensibility**: Add new subscribers without modifying publishers (Open/Closed Principle)
+- **Foundation for Event Sourcing**: Event log can be persisted for replay or audit trail (future enhancement)
+
+**Performance Characteristics:**
+
+- Event overhead: < 5ms per event (acceptable for consistency benefits)
+- Worker pool prevents goroutine explosion under high event load
+- Buffered channel reduces blocking on event publish
+- Thread-safe handler registry with RWMutex allows concurrent publishes/subscribes
+
+**Configuration Options:**
+
+```go
+bus := events.NewInMemoryEventBus(log,
+    events.WithWorkerCount(10),    // Default: 10 workers
+    events.WithBufferSize(100),    // Default: 100 event buffer
+)
+```
+
+---
+
+### MetricsService
+
+**Responsibility:** Track domain-level metrics by subscribing to domain events. Provides visibility into validation statistics, indexing performance, and system health.
+
+**Key Interfaces:**
+
+- `ValidationStats() (successes, failures int)` - Returns current validation success/failure counters
+
+**Dependencies:** EventBus (subscribes to events), Logger.
+
+**Technology Stack:** Pure Go with `sync.RWMutex` for thread-safe counter updates, event-driven metric collection.
+
+**Implementation Pattern:**
+
+```go
+type Service struct {
+    eventBus events.EventBus
+    log      zerolog.Logger
+
+    mu                  sync.RWMutex
+    validationSuccesses int
+    validationFailures  int
+}
+
+func NewService(bus events.EventBus, log zerolog.Logger) *Service {
+    svc := &Service{
+        eventBus: bus,
+        log:      log,
+    }
+
+    if bus != nil {
+        _ = bus.Subscribe("FrontmatterValidated", svc.handleFrontmatterValidated)
+    }
+
+    return svc
+}
+
+func (s *Service) handleFrontmatterValidated(ctx context.Context, event domain.DomainEvent) error {
+    fmEvent, ok := event.(*domain.FrontmatterValidatedEvent)
+    if !ok {
+        return nil
+    }
+
+    s.mu.Lock()
+    if fmEvent.IsValid() {
+        s.validationSuccesses++
+    } else {
+        s.validationFailures++
+    }
+    s.mu.Unlock()
+
+    s.log.Debug().
+        Str("event_type", fmEvent.EventType()).
+        Str("note_id", fmEvent.AggregateID()).
+        Bool("valid", fmEvent.IsValid()).
+        Msg("frontmatter validation event recorded")
+
+    return nil
+}
+
+func (s *Service) ValidationStats() (successes, failures int) {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+    return s.validationSuccesses, s.validationFailures
+}
+```
+
+**Metrics Tracked:**
+
+- **Validation Successes**: Count of frontmatter validations that passed
+- **Validation Failures**: Count of frontmatter validations that failed
+
+**Future Enhancements:**
+
+- Indexing performance metrics (notes/sec, duration distribution)
+- Query performance metrics (latency percentiles, cache hit rate)
+- Error rate tracking by event type
+- Metrics export to Prometheus/StatsD (post-MVP)
+
+**Rationale:**
+
+- Event-driven collection eliminates need for services to explicitly report metrics
+- Decoupled from business logic - metrics can be added/removed without modifying services
+- Thread-safe counters enable concurrent metric updates
+- Foundation for observability platform (future: traces, logs, metrics correlation)
+
+---
+
 ## API Port Interfaces
 
 Primary (driving) ports define the contracts that domain exposes to adapters. These are the application's use cases.
 
-### CLICommandPort
+### CLIPort
 
-**Responsibility:** Define the contract for CLI framework integration. Implemented by CLI adapter to handle command parsing, flag processing, and output formatting. Domain injects this port into CommandOrchestrator to decouple from specific CLI frameworks.
+**Responsibility:** Define the contract for CLI framework integration. Implemented by CLI adapter to handle command parsing, flag processing, and output formatting. Domain injects this port into CLICommander to decouple from specific CLI frameworks.
 
 **Key Interfaces:**
 
-- `Start(ctx context.Context, handler CommandHandler) error` - Start the CLI event loop, parse commands, and delegate to handler for business logic
+- `Start(ctx context.Context, handler CommandPort) error` - Start the CLI event loop, parse commands, and delegate to handler for business logic
 
-**CommandHandler Interface:**
+**CommandPort Interface:**
 
-The CLI adapter calls back to CommandOrchestrator through this interface:
+The CLI adapter calls back to CLICommander through this interface:
 
 ```go
-type CommandHandler interface {
+type CommandPort interface {
     NewNote(ctx context.Context, templateID TemplateID) (Note, error)
     IndexVault(ctx context.Context) (IndexStats, error)
     FindTemplates(ctx context.Context, query string) ([]Template, error)
@@ -491,25 +923,25 @@ type CommandHandler interface {
 **Architecture Pattern:**
 
 ```
-CommandOrchestrator (Domain)
-  └─> Calls CLICommandPort.Start(itself as CommandHandler)
+CLICommander (Domain)
+  └─> Calls CLIPort.Start(itself as CommandPort)
       └─> CobraCLIAdapter receives control
           └─> Sets up Cobra commands
           └─> Parses user input
-          └─> Calls back to CommandHandler.NewNote/IndexVault/FindTemplates
-              └─> CommandOrchestrator orchestrates domain services
+          └─> Calls back to CommandPort.NewNote/IndexVault/FindTemplates
+              └─> CLICommander orchestrates domain services
               └─> Returns result to CLI adapter
           └─> Formats and displays output
 ```
 
 **Why This Design:**
 
-- **Decouples CLI framework from domain:** CommandOrchestrator never imports Cobra
-- **Enables multiple adapters:** TUI/LSP can implement CLICommandPort without affecting domain
-- **Testable:** Mock CLICommandPort to test CommandOrchestrator without CLI framework
+- **Decouples CLI framework from domain:** CLICommander never imports Cobra
+- **Enables multiple adapters:** TUI/LSP can implement CLIPort without affecting domain
+- **Testable:** Mock CLIPort to test CLICommander without CLI framework
 - **Inversion of Control:** Domain starts the application and delegates command parsing to adapter
 
-**Dependencies:** Implemented by CobraCLIAdapter. Injected into CommandOrchestrator via constructor.
+**Dependencies:** Implemented by CobraCLIAdapter. Injected into CLICommander via constructor.
 
 **Technology Stack:** Defined in `internal/ports/api/` as pure Go interfaces. No framework dependencies.
 
@@ -521,53 +953,70 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 
 ### CacheWriterPort
 
-**Responsibility:** Persist indexed notes to on-disk cache (CQRS write side).
+**Responsibility:** Persist indexed notes to hybrid storage system (CQRS write side). Supports both BoltDB (hot cache) and SQLite (deep storage) persistence with transactional guarantees.
 
 **Key Interfaces:**
 
-- `Persist(ctx context.Context, note Note) error` - Persist note to cache
-- `Delete(ctx context.Context, id NoteID) error` - Remove note from cache
+- `Persist(ctx context.Context, note Note) error` - Persist note to both BoltDB and SQLite storage systems
+- `Delete(ctx context.Context, path string) error` - Remove note from both storage systems by vault-relative path
 
-**Dependencies:** Implemented by JSONFileCacheAdapter.
+**Dependencies:** Implemented by BoltDBCacheWriterAdapter and SQLiteCacheWriterAdapter.
 
-**Technology Stack:** Go `encoding/json`, `moby/sys/atomicwriter` for atomic writes, filesystem directory management under `.lithos/cache`.
+**Technology Stack:** BoltDB for hot cache (<1ms queries), SQLite for deep storage (<50ms complex queries), CacheUnitOfWork for transactional dual-write coordination.
 
 **Note:** No separate FileWriterPort needed - adapters use `atomicwriter.WriteFile` directly. YAGNI principle - we don't have multiple cache storage implementations for MVP.
 
 ### CacheReaderPort
 
-**Responsibility:** Read indexed notes from on-disk cache (CQRS read side).
+**Responsibility:** Read indexed notes from hybrid storage system (CQRS read side). Routes queries between BoltDB hot cache and SQLite deep storage based on query complexity and performance requirements.
 
 **Key Interfaces:**
 
-- `Read(ctx context.Context, id NoteID) (Note, error)` - Fetch single note from cache
-- `List(ctx context.Context) ([]Note, error)` - List all cached notes
+- `Read(ctx context.Context, path string) (Note, error)` - Fetch single note from cache by vault-relative path (routes to BoltDB)
+- `List(ctx context.Context) ([]Note, error)` - List all cached notes (routes to BoltDB)
 
-**Dependencies:** Implemented by JSONFileCacheAdapter.
+**Dependencies:** Implemented by BoltDBCacheReaderAdapter and SQLiteCacheReaderAdapter.
 
-**Technology Stack:** Go `encoding/json`, lazy loading, optional memoization with `sync.RWMutex`.
+**Technology Stack:** Query routing between BoltDB (<1ms) and SQLite (<50ms), automatic selection based on query patterns, hybrid storage optimization.
 
 **Note:** No separate FileReaderPort needed - adapters use `os.ReadFile` and `filepath.Walk` directly. YAGNI principle - we don't have multiple file sources for MVP. If future needs arise (S3, HTTP, embedded), ports can be added then.
 
-### VaultReaderPort
+### VaultScannerPort
 
-**Responsibility:** Provide CQRS read-side access to vault files for indexing and validation. Abstracts vault scanning operations at business level. Supports both full scans (initial indexing) and incremental scans (large vault optimization).
+**Responsibility:** Provide CQRS read-side access to vault scanning operations for indexing. Abstracts vault scanning operations at business level. Supports both full scans (initial indexing) and incremental scans (large vault optimization).
 
 **Key Interfaces:**
 
-- `ScanAll(ctx context.Context) ([]VaultFile, error)` - Full vault scan for initial index build
-- `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan for large vaults (future optimization for NFR4)
-- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read for validation (any vault file, not just .md)
+- `ScanAll(ctx context.Context) ([]domain.Note, error)` - Full vault scan returning domain Notes (adapter constructs Notes internally from VaultFile DTOs)
+- `ScanModified(ctx context.Context, since time.Time) ([]domain.Note, error)` - Incremental scan for large vaults (future optimization for NFR4)
 
-**Dependencies:** Implemented by FileSystemVaultAdapter.
+**Dependencies:** Implemented by VaultReaderAdapter.
 
-**Technology Stack:** Go `filepath.Walk` for scanning, `os.ReadFile` for content, `os.Stat` for ModTime filtering (ScanModified). Returns VaultFile DTOs (FileMetadata + Content).
+**Technology Stack:** Go `filepath.Walk` for scanning, `os.Stat` for ModTime filtering (ScanModified). Internally uses VaultFile DTOs, constructs domain.Note via MarkdownParserPort, returns Notes to application layer.
 
 **Why Business-Level Abstraction:**
-- Expresses domain intent: "scan vault", "read file" (business operations)
-- NOT infrastructure operations: "walk directory", "read bytes" (too low-level)
+- Expresses domain intent: "scan vault" (business operations)
+- NOT infrastructure operations: "walk directory" (too low-level)
 - Future-proof: Can swap filesystem → S3 → HTTP without changing domain
 - Enables incremental indexing for hybrid index architecture (NFR4)
+
+### VaultReaderPort
+
+**Responsibility:** Provide CQRS read-side access to individual vault files for validation and processing. Abstracts single file reading operations at business level.
+
+**Key Interfaces:**
+
+- `Read(ctx context.Context, path string) (domain.Note, error)` - Single file read returning domain Note (adapter constructs Note internally from VaultFile DTO)
+
+**Dependencies:** Implemented by VaultReaderAdapter.
+
+**Technology Stack:** `os.ReadFile` for content, `os.Stat` for metadata. Internally uses VaultFile DTO, constructs domain.Note via MarkdownParserPort, returns Note to application layer.
+
+**Why Business-Level Abstraction:**
+- Expresses domain intent: "read file" (business operations)
+- NOT infrastructure operations: "read bytes" (too low-level)
+- Future-proof: Can swap filesystem → S3 → HTTP without changing domain
+- Enables focused file access for validation operations
 
 ### VaultWriterPort
 
@@ -578,13 +1027,13 @@ Driven ports describe how the domain expects infrastructure services to behave. 
 - `Persist(ctx context.Context, note Note, path string) error` - Write note to vault with atomic guarantees
 - `Delete(ctx context.Context, path string) error` - Remove note from vault
 
-**Dependencies:** Implemented by FileSystemVaultAdapter.
+**Dependencies:** Implemented by VaultWriterAdapter.
 
 **Technology Stack:** `moby/sys/atomicwriter` for atomic writes (temp + rename), `os.Remove` for deletion.
 
 **Dual Write Pattern:**
 
-CommandOrchestrator uses dual writes to keep vault (source of truth) and cache (projection) in sync:
+CLICommander uses dual writes to keep vault (source of truth) and cache (projection) in sync:
 
 ```go
 // 1. Persist to vault (source of truth)
@@ -618,6 +1067,23 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 
 **Note:** SchemaLoaderAdapter handles all validation and inheritance resolution internally. Domain receives fully resolved schemas (no Extends/Excludes, flattened properties with $ref substituted). Fails fast at startup on circular dependencies or invalid $ref. SchemaEngine consumes this port and provides generic `Get[T](name)` access to loaded schemas/properties.
 
+### SchemaRegistryPort
+
+**Responsibility:** Provide fast in-memory access to loaded and resolved schemas and properties. Acts as registry for schema lookups by FrontmatterService and QueryService.
+
+**Key Interfaces:**
+
+- `GetSchema(ctx context.Context, name string) (Schema, error)` - Retrieve schema by name
+- `GetProperty(ctx context.Context, name string) (Property, error)` - Retrieve property from bank by name
+- `HasSchema(ctx context.Context, name string) bool` - Check if schema exists
+- `HasProperty(ctx context.Context, name string) bool` - Check if property exists in bank
+
+**Dependencies:** Implemented by SchemaRegistryAdapter.
+
+**Technology Stack:** In-memory map with `sync.RWMutex` for concurrent reads, populated by SchemaEngine at startup from SchemaPort.Load() results.
+
+**Note:** SchemaEngine wraps this port with generic API: `Get[T Schema | Property](name)` and `Has[T Schema | Property](name)` for convenient type-safe access. Engine translates generic calls to specific port methods (GetSchema/GetProperty).
+
 ### TemplatePort
 
 **Responsibility:** Load template content from storage. Provides templates to TemplateEngine for rendering.
@@ -629,7 +1095,7 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 
 **Dependencies:** Implemented by TemplateLoaderAdapter.
 
-**Technology Stack:** Go `os.ReadFile`, `filepath.Walk` for scanning Config.TemplatesDir, FileMetadata for mapping TemplateID ↔ filesystem paths, derives TemplateID from basename (filename without extension).
+**Technology Stack:** Go `os.ReadFile`, `filepath.Walk` for scanning Config.TemplatesDir, TemplateLoader pathCache (`map[TemplateID]string`) for TemplateID ↔ filesystem path mapping, derives TemplateID from basename (filename without extension).
 
 ### PromptPort
 
@@ -654,7 +1120,7 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 
 - `Find(ctx context.Context, templates []Template) (Template, error)` - Fuzzy finder for template selection
 
-**Dependencies:** Implemented by FuzzyfindAdapter.
+**Dependencies:** Implemented by FuzzyFinderAdapter.
 
 **Technology Stack:** `github.com/ktr0731/go-fuzzyfinder`, `golang.org/x/term` for TTY detection.
 
@@ -674,22 +1140,127 @@ if err := o.cacheWriter.Persist(ctx, note); err != nil {
 
 **Note:** Config is value object (immutable). Loaded once at startup. Post-MVP: Add `Reload()` for dynamic config updates.
 
-### SchemaRegistryPort
+### MarkdownParserPort
 
-**Responsibility:** Provide fast in-memory access to loaded and resolved schemas and properties. Acts as registry for schema lookups by FrontmatterService and QueryService.
+**Responsibility:** Parse markdown content and construct Note entities. Dedicated port for markdown parsing operations, enabling clean separation between markdown parsing infrastructure and domain validation logic. Constructs Note directly in adapter layer with all parsed metadata.
 
 **Key Interfaces:**
 
-- `GetSchema(ctx context.Context, name string) (Schema, error)` - Retrieve schema by name
-- `GetProperty(ctx context.Context, name string) (Property, error)` - Retrieve property from bank by name
-- `HasSchema(ctx context.Context, name string) bool` - Check if schema exists
-- `HasProperty(ctx context.Context, name string) bool` - Check if property exists in bank
+- `ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error)` - Extract YAML frontmatter from markdown content
+- `ParseNote(ctx context.Context, path string, content []byte) (domain.Note, error)` - Parse markdown and construct Note with all metadata (frontmatter, links, headings, tags, tasks)
 
-**Dependencies:** Implemented by SchemaRegistryAdapter.
+**Dependencies:** Implemented by MarkdownParserAdapter.
 
-**Technology Stack:** In-memory map with `sync.RWMutex` for concurrent reads, populated by SchemaEngine at startup from SchemaPort.Load() results.
+**Technology Stack:** `github.com/yuin/goldmark` for markdown AST parsing, `go.abhg.dev/goldmark/frontmatter` for frontmatter extraction, goldmark extensions for wikilink and tag parsing.
 
-**Note:** SchemaEngine wraps this port with generic API: `Get[T Schema | Property](name)` and `Has[T Schema | Property](name)` for convenient type-safe access. Engine translates generic calls to specific port methods (GetSchema/GetProperty).
+**Rationale:**
+- Separates markdown parsing infrastructure from FrontmatterService semantic validation
+- Enables testability by mocking parsing behavior
+- Allows swapping markdown parser implementation without affecting domain logic
+- Supports future enhancements (e.g., different markdown flavors, additional metadata extraction)
+- Constructs Note directly with path as identifier and embedded metadata
+
+**Note Construction:**
+
+The adapter constructs Note entities directly from parsed markdown:
+
+```go
+// MarkdownParserAdapter.ParseNote()
+note := domain.NewNote(
+    path,           // Vault-relative path as identifier
+    frontmatter,    // Enriched Frontmatter entity
+    links,          // Parsed Links
+    headings,       // Parsed Headings
+    tags,           // Parsed Tags
+    tasks,          // Parsed TaskItems
+)
+// Backlinks populated later by BacklinkService
+return note, nil
+```
+
+**Note:** FrontmatterService validates the Note's Frontmatter field (semantic validation), while MarkdownParserAdapter handles parsing (syntactic extraction).
+
+### MetadataQueryPort
+
+**Responsibility:** Provide O(1) indexed queries for note metadata using storage-native indices. Enables fast lookups by basename, alias, file class, and flexible path selectors without scanning the entire cache.
+
+**Key Interfaces:**
+
+- `BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error)` - Find notes by filename (no extension) with duplicate handling.
+- `AliasQuery(ctx context.Context, alias string) ([]domain.Note, error)` - Resolve notes that publish a specific alias in frontmatter.
+- `FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)` - Group notes by schema for validation and template lookups.
+- `PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)` - Resolve notes by full path, basename, or folder scope using a single method.
+
+**PathQueryOptions:**
+
+```go
+type PathQueryOptions struct {
+    Scope PathQueryScope // full, basename, folder
+    Value string         // path fragment matched according to scope
+}
+```
+
+Adapters validate the options (Value required, Scope defaults to `full`) and return empty slices when no matches exist.
+
+**Dependencies:** Implemented by BoltDBReaderAdapter (hot path) and, for more advanced selectors, by future SQLite adapters.
+
+**Technology Stack:**
+- BoltDB secondary index buckets for `/indices/byBasename`, `/indices/byAlias`, `/indices/byFileClass`, and folder listings.
+- Optional SQLite implementations can reuse the same port to route deep-path folder queries without exposing SQL.
+
+**Query Routing Strategy:**
+
+```go
+// Hot path (<1ms): BoltDB serves BasenameQuery, AliasQuery, FileClassQuery, and PathQuery scopes
+// Deep path (<50ms): Future SQLite adapter can implement PathQuery(folder) using JSON views
+```
+
+**Rationale:**
+- Eliminates O(n) scanning for common metadata lookups.
+- Keeps QueryService decoupled from adapter internals while still supporting hybrid storage routing.
+- The unified PathQuery contract prevents API proliferation while still allowing adapters to optimise per-scope indices.
+
+### MetadataQueryPort
+
+**Responsibility:** Provide O(1) indexed queries for note metadata using storage-native indices. Enables fast lookups by basename, alias, file class, and flexible path selectors without scanning the entire cache.
+
+**Key Interfaces:**
+
+- `BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error)` - Find notes by filename (no extension) with duplicate handling.
+- `AliasQuery(ctx context.Context, alias string) ([]domain.Note, error)` - Resolve notes that publish a specific alias in frontmatter.
+- `FileClassQuery(ctx context.Context, fileClass string) ([]domain.Note, error)` - Group notes by schema for validation and template lookups.
+- `PathQuery(ctx context.Context, opts PathQueryOptions) ([]domain.Note, error)` - Resolve notes by full path, basename, or folder scope using a single method.
+
+**PathQueryOptions:**
+
+```go
+type PathQueryOptions struct {
+    Scope PathQueryScope // full, basename, folder
+    Value string         // path fragment matched according to scope
+}
+```
+
+Adapters validate the options (Value required, Scope defaults to `full`) and return empty slices when no matches exist.
+
+**Dependencies:** Implemented by BoltDBReaderAdapter (hot path) and SQLiteReaderAdapter (deep path).
+
+**Technology Stack:**
+- BoltDB secondary index buckets for `/indices/byBasename`, `/indices/byAlias`, `/indices/byFileClass`, and folder listings.
+- SQLite with JSON_EXTRACT functions for complex queries and schema-driven views.
+
+**Query Routing Strategy:**
+
+```go
+// Hot path (<1ms): BoltDB serves BasenameQuery, AliasQuery, FileClassQuery, and PathQuery scopes
+// Deep path (<50ms): SQLite serves complex queries with JSON extraction and indexed views
+```
+
+**Rationale:**
+- Eliminates O(n) scanning for common metadata lookups.
+- Keeps QueryService decoupled from adapter internals while still supporting hybrid storage routing.
+- The unified PathQuery contract prevents API proliferation while allowing adapters to optimise per-scope indices.
+
+**Note:** QueryService uses MetadataQueryPort for all indexed queries and falls back to CacheReaderPort only when raw cache iteration is unavoidable.
 
 ---
 
@@ -699,81 +1270,185 @@ Concrete adapters live in `internal/adapters/spi/` and satisfy the driven ports 
 
 **Note on Filesystem Operations:** Per YAGNI principle, no separate FileSystemAdapter for MVP. Adapters use Go stdlib (`os.ReadFile`, `filepath.Walk`) and `moby/sys/atomicwriter` directly. If future needs arise (S3, HTTP, embedded), filesystem ports can be added.
 
-### JSONCacheWriteAdapter
+### BoltDBCacheWriterAdapter
 
-**Responsibility:** Implement `CacheWriterPort` with atomic JSON persistence (CQRS write side). Handles write concerns: atomic guarantees, consistency, error handling.
+**Responsibility:** Implement `CacheWriterPort` (CQRS write-side) with transactional persistence to BoltDB. Maintains primary data and all secondary indices atomically for hot-path queries.
 
 **Key Interfaces:**
 
-- `Persist(ctx context.Context, note Note) error` - Persist note to cache with atomic guarantees
-- `Delete(ctx context.Context, id NoteID) error` - Remove note from cache
+- `Persist(ctx context.Context, note Note) error` - Writes note and updates all secondary indices in a single transaction
+- `Delete(ctx context.Context, path string) error` - Removes note from primary bucket and cleans up indices
 
-**Dependencies:** Go `encoding/json`, `moby/sys/atomicwriter`, `os`, `filepath`, Config (cache directory), Logger.
+**Dependencies:** `go.etcd.io/bbolt`, Config (cache directory), Logger.
 
-**Technology Stack:** JSON serialization, `atomicwriter.WriteFile` for atomic writes (temp + rename), directory management under `.lithos/cache`, one JSON file per note (filename: `{NoteID}.json`).
+**Technology Stack:** BoltDB buckets (`notes` for primary data, `indices/*` for secondary indexes), transactional writes, atomic index updates.
+
+**Bucket Schema:**
+
+- `/notes/`: Path -> CachedNote (Primary storage)
+- `/indices/`:
+  - `byBasename`: Basename -> []Path
+  - `byAlias`: Alias -> []Path
+  - `byFileClass`: FileClass -> []Path
+  - `byFolder`: Folder -> []Path
+
+### SQLiteCacheWriterAdapter
+
+**Responsibility:** Implement `CacheWriterPort` (CQRS write-side) with relational persistence to SQLite. Maintains schema-driven views and indices for deep-path queries.
+
+**Key Interfaces:**
+
+- `Persist(ctx context.Context, note Note) error` - Writes note to SQLite with JSON storage and view updates
+- `Delete(ctx context.Context, path string) error` - Removes note from SQLite tables and updates views
+
+**Dependencies:** `modernc.org/sqlite`, Config (cache directory), Logger.
+
+**Technology Stack:** SQLite with JSON1 extension, schema-driven views, transactional writes, pure Go implementation (no CGO).
+
+**Schema Design:**
+
+- `notes` table: Primary storage with JSON frontmatter
+- Schema-driven views: `v_{schema}_notes` for optimized queries
+- Composite indices on extracted JSON fields
 
 **Note:** Shared helper functions (file path construction, directory creation) live in `internal/adapters/spi/cache/helper.go` to avoid duplication with read adapter.
 
-### JSONCacheReadAdapter
+### BoltDBCacheReaderAdapter
 
-**Responsibility:** Implement `CacheReaderPort` with JSON deserialization (CQRS read side). Handles read concerns: lazy loading, error handling, listing performance.
+**Responsibility:** Implement `CacheReaderPort` (CQRS read-side) and `MetadataQueryPort` (hot-path queries) using BoltDB embedded key-value store. Provides sub-millisecond query performance (<1ms) for common lookups.
 
 **Key Interfaces:**
 
-- `Read(ctx context.Context, id NoteID) (Note, error)` - Fetch single note from cache
-- `List(ctx context.Context) ([]Note, error)` - List all cached notes
+- `Read(ctx context.Context, path string) (Note, error)` - Retrieve single note (CacheReaderPort)
+- `List(ctx context.Context) ([]Note, error)` - List all notes (CacheReaderPort)
+- `BasenameQuery(ctx context.Context, basename string) ([]Note, error)` - Index lookup via `/indices/byBasename`
+- `AliasQuery(ctx context.Context, alias string) ([]Note, error)` - Index lookup via `/indices/byAlias`
+- `FileClassQuery(ctx context.Context, fileClass string) ([]Note, error)` - Index lookup via `/indices/byFileClass`
+- `PathQuery(ctx context.Context, opts PathQueryOptions) ([]Note, error)` - Flexible lookup (full/basename/folder)
 
-**Dependencies:** Go `encoding/json`, `os`, `filepath`, Config (cache directory), Logger.
+**Dependencies:** `go.etcd.io/bbolt`, Config (cache directory), Logger.
 
-**Technology Stack:** JSON deserialization, `os.ReadFile` for reads, `filepath.Walk` for directory listing, optional in-memory memoization with `sync.RWMutex` for frequently accessed notes.
+**Technology Stack:** BoltDB buckets with memory-mapped files, zero-copy reads, secondary indices for O(1) lookups, concurrent read transactions via MVCC.
+
+**Performance Characteristics:** <1ms query performance for hot-path queries (80% of use cases).
+
+### SQLiteCacheReaderAdapter
+
+**Responsibility:** Implement `MetadataQueryPort` (deep-path queries) using SQLite with JSON extraction functions. Provides indexed query performance (<50ms) for complex queries.
+
+**Key Interfaces:**
+
+- `LinkQuery(ctx context.Context, targetPath string) ([]Note, error)` - Find notes linking to target via JSON_EXTRACT
+- `FrontmatterQuery(ctx context.Context, field string, value any) ([]Note, error)` - Generic frontmatter field query
+- `HeadingQuery(ctx context.Context, heading string) ([]Note, error)` - Find notes with specific headings
+
+**Dependencies:** `modernc.org/sqlite`, Config (cache directory), Logger.
+
+**Technology Stack:** SQLite with JSON1 extension, JSON_EXTRACT functions, schema-driven views with pre-extracted columns, composite indices, full-text search (FTS5), pure Go implementation.
+
+**Schema-Driven Views:**
+
+```sql
+CREATE VIEW v_contact_notes AS
+SELECT
+    path,
+    json_extract(frontmatter, '$.name') AS name,
+    json_extract(frontmatter, '$.email') AS email,
+    json_extract(frontmatter, '$.fileClass') AS fileClass
+FROM notes
+WHERE json_extract(frontmatter, '$.fileClass') = 'contact';
+
+CREATE INDEX idx_contact_email ON v_contact_notes(email);
+```
+
+**Performance Characteristics:** <50ms query performance for deep-path queries (20% of use cases).
 
 **Note:** Read adapter optimized for query performance. Can add caching layer without affecting write adapter.
 
 ### VaultReaderAdapter
 
-**Responsibility:** Implement `VaultReaderPort` by providing filesystem-based vault scanning and reading for indexing operations (CQRS read side).
+**Responsibility:** Implement both `VaultScannerPort` and `VaultReaderPort` by providing filesystem-based vault scanning and reading operations (CQRS read side).
 
-**Key Interfaces:**
+**Key Interfaces (VaultScannerPort):**
 
-- `ScanAll(ctx context.Context) ([]VaultFile, error)` - Full vault scan using filepath.Walk
-- `ScanModified(ctx context.Context, since time.Time) ([]VaultFile, error)` - Incremental scan filtering by ModTime
-- `Read(ctx context.Context, path string) (VaultFile, error)` - Single file read with metadata
+- `ScanAll(ctx context.Context) ([]domain.Note, error)` - Full vault scan returning domain Notes
+- `ScanModified(ctx context.Context, since time.Time) ([]domain.Note, error)` - Incremental scan filtering by ModTime
 
-**Dependencies:** Go `os`, `filepath`, Config (vault path), Logger.
+**Key Interfaces (VaultReaderPort):**
+
+- `Read(ctx context.Context, path string) (domain.Note, error)` - Single file read returning domain Note
+
+**Dependencies:** Go `os`, `filepath`, Config (vault path), MarkdownParserPort (for Note construction), Logger.
 
 **Technology Stack:**
 - `filepath.Walk` for vault directory traversal
 - `os.ReadFile` for file content
 - `os.Stat` for file metadata (ModTime, Size)
-- Constructs VaultFile DTOs from FileMetadata + Content
+- Internally constructs VaultFile DTOs (never exposed)
+- Uses MarkdownParserPort to construct domain.Note from VaultFile
 
 **Implementation Pattern:**
 
 ```go
 type VaultReaderAdapter struct {
-    config Config
-    log    Logger
+    config         Config
+    markdownParser ports.MarkdownParserPort
+    log            Logger
 }
 
-func (a *VaultReaderAdapter) ScanAll(ctx context.Context) ([]VaultFile, error) {
+func (a *VaultReaderAdapter) ScanAll(ctx context.Context) ([]domain.Note, error) {
+    // 1. Scan filesystem → []VaultFile (internal DTO)
+    vaultFiles := a.scanFilesystem()
+
+    // 2. Parse each VaultFile → Note
+    notes := make([]domain.Note, 0, len(vaultFiles))
+    for _, vf := range vaultFiles {
+        // Parse markdown → Note with all metadata
+        note, err := a.markdownParser.ParseNote(ctx, vf.Path, vf.Content)
+        if err != nil {
+            a.log.Warn().Err(err).Str("path", vf.Path).Msg("failed to parse note")
+            continue
+        }
+        notes = append(notes, note)
+    }
+
+    // 3. Return domain models (not DTOs)
+    return notes, nil
+}
+
+// scanFilesystem is internal helper (VaultFile never exposed)
+func (a *VaultReaderAdapter) scanFilesystem() []VaultFile {
     var files []VaultFile
-    err := filepath.Walk(a.config.VaultPath, func(path string, info os.FileInfo, err error) error {
+    filepath.Walk(a.config.VaultPath, func(path string, info os.FileInfo, err error) error {
         if err != nil || info.IsDir() {
             return err
         }
-        content, err := os.ReadFile(path)
-        if err != nil {
-            return err
-        }
-        metadata := NewFileMetadata(path, info)
-        files = append(files, NewVaultFile(metadata, content))
+        content, _ := os.ReadFile(path)
+        files = append(files, NewVaultFile(path, info, content))
         return nil
     })
-    return files, err
+    return files
+}
+
+func (a *VaultReaderAdapter) Read(ctx context.Context, path string) (domain.Note, error) {
+    // 1. Read file → VaultFile (internal DTO)
+    content, err := os.ReadFile(path)
+    if err != nil {
+        return domain.Note{}, err
+    }
+
+    // 2. Parse markdown → Note
+    note, err := a.markdownParser.ParseNote(ctx, path, content)
+    if err != nil {
+        return domain.Note{}, fmt.Errorf("failed to parse note: %w", err)
+    }
+
+    // 3. Return domain model (not DTO)
+    return note, nil
 }
 ```
 
-**Note:** Shared helper functions for FileMetadata construction can live in `internal/adapters/spi/vault/helper.go` to avoid duplication with write adapter.
+**Note:** Implements both scanning and reading interfaces for comprehensive vault access. VaultFile DTOs are internal to adapter - application layer only receives domain.Note models. Shared helper functions for VaultFile construction live in `internal/adapters/spi/vault/dto.go`.
 
 ### VaultWriterAdapter
 
@@ -843,9 +1518,9 @@ func (a *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
 - `List(ctx context.Context) ([]TemplateID, error)` - List available template IDs
 - `Load(ctx context.Context, id TemplateID) (Template, error)` - Load template by ID
 
-**Dependencies:** Go `os.ReadFile`, `filepath.Walk`, FileMetadata (for mapping), Config (templates directory), Logger.
+**Dependencies:** Go `os.ReadFile`, `filepath.Walk`, TemplateLoader pathCache (for TemplateID ↔ path mapping), Config (templates directory), Logger.
 
-**Technology Stack:** Filesystem scanning of Config.TemplatesDir, derives TemplateID from basename (filename without .md extension), uses FileMetadata for TemplateID ↔ Path mapping.
+**Technology Stack:** Filesystem scanning of Config.TemplatesDir, derives TemplateID from basename (filename without .md extension), uses TemplateLoader pathCache for TemplateID ↔ path mapping.
 
 ### PromptUIAdapter
 
@@ -862,7 +1537,7 @@ func (a *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
 
 **Note:** Post-MVP (Phase 4) will migrate to `charmbracelet/huh` for TUI support. Port abstraction enables swap without domain changes.
 
-### FuzzyfindAdapter
+### FuzzyFinderAdapter
 
 **Responsibility:** Implement `FinderPort` for fuzzy finding template selection in `lithos find` command.
 
@@ -905,6 +1580,338 @@ func (a *VaultWriterAdapter) Delete(ctx context.Context, path string) error {
 
 **Note:** SchemaEngine wraps this adapter and provides generic `Get[T](name)` API. Registry is read-only after startup initialization.
 
+### MarkdownParserAdapter
+
+**Responsibility:** Implement `MarkdownParserPort` by parsing markdown content and constructing Note entities with all metadata using goldmark AST processing.
+
+**Key Interfaces:**
+
+- `ParseFrontmatter(ctx context.Context, content []byte) (map[string]any, error)` - Extract YAML frontmatter from markdown
+- `ParseNote(ctx context.Context, path string, content []byte) (domain.Note, error)` - Parse markdown and construct Note with all metadata
+
+**Dependencies:** `github.com/yuin/goldmark`, `go.abhg.dev/goldmark/frontmatter`, goldmark wikilink/tag extensions, `gopkg.in/yaml.v3`, Logger.
+
+**Technology Stack:** Goldmark markdown AST parsing, goldmark-frontmatter extension for YAML extraction, custom goldmark extensions for wikilink and tag parsing, AST walking for heading/link extraction, YAML unmarshaling via `gopkg.in/yaml.v3`.
+
+**Implementation Pattern:**
+
+```go
+type MarkdownParserAdapter struct {
+    parser goldmark.Markdown
+    log    Logger
+}
+
+func (a *MarkdownParserAdapter) ParseNote(ctx context.Context, path string, content []byte) (domain.Note, error) {
+    // 1. Parse markdown to AST
+    node := a.parser.Parser().Parse(text.NewReader(content))
+
+    // 2. Extract frontmatter via goldmark-frontmatter extension
+    frontmatterFields := extractFrontmatter(node)
+    frontmatter := domain.NewFrontmatter(frontmatterFields)
+
+    // 3. Walk AST to extract links, headings, tags, tasks
+    links := walkForLinks(node)
+    headings := walkForHeadings(node)
+    tags := walkForTags(node)
+    tasks := walkForTasks(node)
+
+    // 4. Construct Note entity (Backlinks populated later)
+    note := domain.NewNote(path, frontmatter, links, headings, tags, tasks)
+    return note, nil
+}
+```
+
+**Rationale:**
+- Goldmark provides robust, extensible markdown parsing with AST access
+- Goldmark-frontmatter extension handles YAML delimiter detection and extraction
+- Single parse pass extracts all metadata (efficient)
+- Adapter isolates markdown library dependency from domain layer
+- Enables future parser swap (e.g., different markdown flavor) without domain changes
+
+### BoltDBReaderAdapter
+
+**Responsibility:** Implement `CacheReaderPort` (CQRS read-side) and `MetadataQueryPort` (hot-path queries) using BoltDB embedded key-value store. Provides sub-millisecond query performance (<1ms) for common lookups and staleness detection.
+
+**Key Interfaces:**
+
+- `Read(ctx, id)` - Retrieve single note (CacheReaderPort)
+- `List(ctx)` - List all notes (CacheReaderPort)
+- `BasenameQuery(ctx, basename)` - Index lookup via `/indices/byBasename`
+- `AliasQuery(ctx, alias)` - Index lookup via `/indices/byAlias`
+- `FileClassQuery(ctx, fileClass)` - Index lookup via `/indices/byFileClass`
+- `PathQuery(ctx, opts)` - Flexible lookup (full/basename/folder) via dedicated indices
+- `IsStale(ctx, path)` - Check filesystem mod time vs cached `IndexedAt` timestamp
+
+**Dependencies:** `go.etcd.io/bbolt`, Config (cache directory), Logger.
+
+**Technology Stack:** BoltDB buckets (`notes` for primary data, `indices/*` for secondary indexes), zero-copy reads via memory mapping, `FileDatesDTO` for staleness tracking.
+
+**Performance Notes:** Benchmark target remains <1 ms for PathQuery/BasenameQuery/AliasQuery queries (Story 3.20 Feature 15). Capture actual numbers via the BoltDB benchmark suite and record them in the Story change log.
+
+### BoltDBWriterAdapter
+
+**Responsibility:** Implement `CacheWriterPort` (CQRS write-side) with transactional persistence to BoltDB. Maintains primary data and all secondary indices atomically.
+
+**Key Interfaces:**
+
+- `Persist(ctx, note)` - Writes `CachedNote` (including `FileDatesDTO`) and updates all secondary indices in a single transaction.
+- `Delete(ctx, id)` - Removes note from primary bucket and cleans up indices (TODO: full cleanup).
+
+**Dependencies:** `go.etcd.io/bbolt`, Config, Logger.
+
+**Bucket Schema:**
+
+- `/notes/`: Path -> CachedNote (Primary storage)
+- `/indices/`:
+  - `byBasename`: Basename -> []Path
+  - `byAlias`: Alias -> []Path
+  - `byFileClass`: FileClass -> []Path
+  - `byFolder`: Folder -> []Path
+
+**Implementation Pattern:**
+
+```go
+type BoltDBReaderAdapter struct {
+    db  *bolt.DB
+    log Logger
+}
+
+func (a *BoltDBReaderAdapter) BasenameQuery(ctx context.Context, basename string) ([]domain.Note, error) {
+    return a.lookupIndex(ctx, BucketIndexBasenameQuery, basename)
+}
+
+func (a *BoltDBReaderAdapter) PathQuery(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error) {
+    normalized, err := opts.Validate()
+    if err != nil {
+        return nil, err
+    }
+    switch normalized.Scope {
+    case spi.PathQueryScopeFull:
+        id := domain.NewNoteID(normalized.Value)
+        note, err := a.Read(ctx, id)
+        if err != nil {
+            if errors.Is(err, lithosErr.ErrNotFound) {
+                return []domain.Note{}, nil
+            }
+            return nil, err
+        }
+        return []domain.Note{note}, nil
+    case spi.PathQueryScopeBasename:
+        return a.BasenameQuery(ctx, normalized.Value)
+    case spi.PathQueryScopeFolder:
+        return a.lookupIndex(ctx, BucketIndexByFolder, normalized.Value)
+    default:
+        return nil, fmt.Errorf("unsupported path scope %s", normalized.Scope)
+    }
+}
+```
+
+**Rationale:**
+- BoltDB provides <1ms query performance via memory-mapped files
+- Secondary indices enable O(1) lookups for common queries (tag, fileClass)
+- Embedded database eliminates network latency (no separate server)
+- Concurrent read transactions via MVCC (multiple readers, single writer)
+- Hot-path optimization for frequently accessed data (80% of queries)
+
+### SQLiteReaderAdapter
+
+**Responsibility:** Implement deep-path queries for `MetadataQueryPort` using SQLite with JSON extraction functions. Provides indexed query performance (<50ms) for complex queries using schema-driven views.
+
+**Key Interfaces:**
+
+- `LinkQuery(ctx context.Context, targetPath string) ([]domain.Note, error)` - Find notes linking to target via JSON_EXTRACT
+- `HeadingQuery(ctx context.Context, heading string) ([]domain.Note, error)` - Find notes with heading via indexed query
+- `FrontmatterQuery(ctx context.Context, field string, value any) ([]domain.Note, error)` - Generic frontmatter field query
+
+**Dependencies:** `modernc.org/sqlite` (pure Go SQLite), Config (cache directory for SQLite file), Logger.
+
+**Technology Stack:** SQLite with JSON1 extension, JSON_EXTRACT functions for frontmatter queries, schema-driven views with pre-extracted columns, composite indices on extracted fields, full-text search (FTS5) for content queries, pure Go implementation (no CGO).
+
+**Schema-Driven Views:**
+
+```sql
+CREATE VIEW v_contact_notes AS
+SELECT
+    path,
+    json_extract(frontmatter, '$.name')   AS name,
+    json_extract(frontmatter, '$.status') AS status,
+    json_extract(frontmatter, '$.fileClass') AS fileClass,
+    modified_at,
+    indexed_time,
+    size
+FROM notes
+WHERE json_extract(frontmatter, '$.fileClass') = 'contact';
+
+CREATE INDEX idx_contact_status ON v_contact_notes(status);
+```
+
+- Views follow the `v_{schema}_notes` naming convention and are regenerated whenever schemas change.
+- Columns map to PropertySpec types (string/int/real/bool) so SQLite’s native indexes can be used instead of JSON scans.
+- Benchmark expectation: schema-view queries stay under 50 ms for 1000 notes; measure via the Story 3.21 benchmark suite.
+
+**Performance Notes:** Keep schema-view queries under 50 ms for 1000 notes (Story 3.21 AC16-17). Tune SQLite pragmas and view indexes as part of the story’s benchmark suite; record metrics alongside the story change log.
+
+**Implementation Pattern:**
+
+```go
+type SQLiteReaderAdapter struct {
+    db  *sql.DB
+    log Logger
+}
+
+func (a *SQLiteReaderAdapter) FrontmatterQuery(ctx context.Context, field string, value any) ([]domain.Note, error) {
+    // 1. Use JSON_EXTRACT to query frontmatter
+    query := `
+        SELECT id, frontmatter, content
+        FROM notes
+        WHERE JSON_EXTRACT(frontmatter, '$.` + field + `') = ?
+    `
+
+    // 2. Execute indexed query
+    rows, err := a.db.QueryContext(ctx, query, value)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    // 3. Scan results into domain.Note
+    return scanNotes(rows)
+}
+```
+
+**Schema-Driven Views Example:**
+
+```sql
+-- Pre-extract common frontmatter fields for fast indexing
+CREATE VIEW notes_contact AS
+SELECT
+    id,
+    JSON_EXTRACT(frontmatter, '$.title') AS title,
+    JSON_EXTRACT(frontmatter, '$.email') AS email,
+    JSON_EXTRACT(frontmatter, '$.tags') AS tags
+FROM notes
+WHERE JSON_EXTRACT(frontmatter, '$.fileClass') = 'contact';
+
+-- Create index on extracted email field
+CREATE INDEX idx_contact_email ON notes((JSON_EXTRACT(frontmatter, '$.email')));
+```
+
+**Rationale:**
+- SQLite provides <50ms query performance with proper indexing
+- JSON_EXTRACT enables querying arbitrary frontmatter fields without schema migration
+- Schema-driven views optimize common queries (pre-extracted columns with indices)
+- Full-text search (FTS5) enables content queries for future features
+- Pure Go implementation (modernc.org/sqlite) eliminates CGO dependency
+- Deep-path optimization for less frequent, more complex queries (20% of queries)
+
+### EventBusAdapter
+
+**Responsibility:** Implement event-driven architecture infrastructure with in-memory goroutine-based async event dispatch. Provides publish/subscribe event bus for decoupling services and eliminating god-objects.
+
+**Key Interfaces:**
+
+- `Publish(ctx context.Context, event domain.DomainEvent) error` - Publish event to all subscribers
+- `Subscribe(eventType string, handler domain.EventHandler) error` - Register event handler
+- `Unsubscribe(eventType string, handler domain.EventHandler) error` - Remove event handler
+- `Shutdown(ctx context.Context) error` - Graceful shutdown with event draining
+
+**Dependencies:** Go stdlib `context`, `sync`, Logger.
+
+**Technology Stack:** Pure Go implementation, goroutine-based async dispatch, buffered channels for event queuing, `sync.RWMutex` for subscriber registry, context-based cancellation, structured logging with trace IDs for event correlation.
+
+**Implementation Pattern:**
+
+```go
+type EventBusAdapter struct {
+    subscribers map[string][]domain.EventHandler
+    eventQueue  chan eventEnvelope
+    mu          sync.RWMutex
+    log         Logger
+    wg          sync.WaitGroup
+}
+
+type eventEnvelope struct {
+    ctx   context.Context
+    event domain.DomainEvent
+}
+
+func (b *EventBusAdapter) Publish(ctx context.Context, event domain.DomainEvent) error {
+    // 1. Add trace ID for correlation
+    traceID := extractOrGenerateTraceID(ctx)
+
+    // 2. Queue event with context
+    select {
+    case b.eventQueue <- eventEnvelope{ctx: ctx, event: event}:
+        b.log.Debug().
+            Str("event_type", event.EventType()).
+            Str("trace_id", traceID).
+            Msg("event published")
+        return nil
+    case <-ctx.Done():
+        return ctx.Err()
+    }
+}
+
+func (b *EventBusAdapter) Subscribe(eventType string, handler domain.EventHandler) error {
+    b.mu.Lock()
+    defer b.mu.Unlock()
+
+    b.subscribers[eventType] = append(b.subscribers[eventType], handler)
+    b.log.Debug().
+        Str("event_type", eventType).
+        Int("subscriber_count", len(b.subscribers[eventType])).
+        Msg("handler subscribed")
+    return nil
+}
+
+// Worker goroutine for async event dispatch
+func (b *EventBusAdapter) worker() {
+    defer b.wg.Done()
+
+    for envelope := range b.eventQueue {
+        b.dispatch(envelope.ctx, envelope.event)
+    }
+}
+
+func (b *EventBusAdapter) dispatch(ctx context.Context, event domain.DomainEvent) {
+    b.mu.RLock()
+    handlers := b.subscribers[event.EventType()]
+    b.mu.RUnlock()
+
+    for _, handler := range handlers {
+        if err := handler(ctx, event); err != nil {
+            b.log.Error().
+                Err(err).
+                Str("event_type", event.EventType()).
+                Msg("handler failed")
+        }
+    }
+}
+```
+
+**Event Bus Architecture:**
+
+```
+Publisher Services          EventBus                Subscriber Services
+─────────────────          ──────────              ───────────────────
+VaultIndexer ────┐         ┌──────────┐           ┌─→ QueryService
+                 ├────────→│  Queue   │───────────┤
+FrontmatterService ────┐  │ (channel)│           ├─→ QueryService
+                       ├──→│          │───────────┤
+SchemaEngine ──────────┘   │ Worker   │           └─→ MetricsService
+                            │Goroutines│
+                            └──────────┘
+```
+
+**Rationale:**
+- Eliminates god-objects (CLICommander, VaultIndexer) via event-driven decoupling
+- Async dispatch prevents blocking publisher services
+- Goroutine-based workers provide concurrent event processing
+- Trace IDs enable event correlation across async boundaries
+- Context-based cancellation enables graceful shutdown
+- Pure Go implementation with no external dependencies
+- Foundation for future event sourcing or event replay features
+
 ---
 
 ## API Adapters
@@ -913,11 +1920,11 @@ Driving adapters implement API ports and coordinate domain services. Located in 
 
 ### CobraCLIAdapter
 
-**Responsibility:** Implement `CLICommandPort` by handling Cobra-specific command parsing, flag processing, and output formatting. Receives CommandHandler from CommandOrchestrator to delegate business logic.
+**Responsibility:** Implement `CLIPort` by handling Cobra-specific command parsing, flag processing, and output formatting. Receives CommandPort from CLICommander to delegate business logic.
 
-**Key Interfaces (implements CLICommandPort):**
+**Key Interfaces (implements CLIPort):**
 
-- `Start(ctx context.Context, handler CommandHandler) error` - Set up Cobra command tree, parse user input, delegate to handler, format output
+- `Start(ctx context.Context, handler CommandPort) error` - Set up Cobra command tree, parse user input, delegate to handler, format output
 
 **Dependencies:** FinderPort (for fuzzy template selection), Logger, `github.com/spf13/cobra`, `github.com/spf13/pflag`.
 
@@ -930,13 +1937,13 @@ All public methods decompose into focused private methods following Single Respo
 - **Public:** `Start(ctx, handler)` - Orchestrates command tree setup
 - **Private Builders:** `buildRootCommand()`, `buildNewCommand()`, `buildIndexCommand()`, `buildFindCommand()` - Construct commands
 - **Private Handlers:** `handleNewCommand()`, `handleIndexCommand()`, `handleFindCommand()` - Execute command workflows
-- **Private Helpers:** `selectTemplate()`, `displayNoteCreated()`, `formatError()`, `getNotePathForDisplay()` - Single-purpose utilities
+- **Private Helpers:** `selectTemplate()`, `displayNoteCreated()`, `formatError()` - Single-purpose utilities
 
 **Example Decomposition:**
 
 ```go
 // Public - orchestrates
-func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandHandler) error {
+func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandPort) error {
     rootCmd := a.buildRootCommand()
     rootCmd.AddCommand(
         a.buildNewCommand(handler),
@@ -947,7 +1954,7 @@ func (a *CobraCLIAdapter) Start(ctx context.Context, handler CommandHandler) err
 }
 
 // Private - builds new command
-func (a *CobraCLIAdapter) buildNewCommand(handler CommandHandler) *cobra.Command {
+func (a *CobraCLIAdapter) buildNewCommand(handler CommandPort) *cobra.Command {
     cmd := &cobra.Command{
         Use:   "new [template-id]",
         Short: "Create a new note from template",
@@ -961,7 +1968,7 @@ func (a *CobraCLIAdapter) buildNewCommand(handler CommandHandler) *cobra.Command
 }
 
 // Private - handles new command workflow
-func (a *CobraCLIAdapter) handleNewCommand(cmd *cobra.Command, args []string, handler CommandHandler) error {
+func (a *CobraCLIAdapter) handleNewCommand(cmd *cobra.Command, args []string, handler CommandPort) error {
     templateID, err := a.selectTemplate(cmd.Context(), args, handler)
     if err != nil {
         return err
@@ -976,7 +1983,7 @@ func (a *CobraCLIAdapter) handleNewCommand(cmd *cobra.Command, args []string, ha
 }
 
 // Private - template selection (direct or fuzzy)
-func (a *CobraCLIAdapter) selectTemplate(ctx context.Context, args []string, handler CommandHandler) (TemplateID, error) {
+func (a *CobraCLIAdapter) selectTemplate(ctx context.Context, args []string, handler CommandPort) (TemplateID, error) {
     if len(args) > 0 {
         return TemplateID(args[0]), nil
     }
@@ -992,7 +1999,7 @@ func (a *CobraCLIAdapter) selectTemplate(ctx context.Context, args []string, han
 
 // Private - display result
 func (a *CobraCLIAdapter) displayNoteCreated(cmd *cobra.Command, note Note) error {
-    fmt.Printf("✓ Created: %s\n", a.getNotePathForDisplay(note.ID))
+    fmt.Printf("✓ Created: %s\n", note.Path)
 
     if viewFlag, _ := cmd.Flags().GetBool("view"); viewFlag {
         fmt.Println("\n" + strings.Repeat("─", 80))
@@ -1013,22 +2020,22 @@ func (a *CobraCLIAdapter) displayNoteCreated(cmd *cobra.Command, note Note) erro
 
 **What It Does NOT Do:**
 
-- Business logic orchestration (delegated to CommandHandler)
-- Domain service coordination (handled by CommandOrchestrator)
+- Business logic orchestration (delegated to CommandPort)
+- Domain service coordination (handled by CLICommander)
 - Template rendering, validation, or persistence (all domain concerns)
 
 **Implementation Note:** Each public method with multiple steps decomposes into focused private methods with single responsibilities (build, handle, select, display, format).
 
 ### BubbleTeaTUIAdapter (Post-MVP)
 
-**Responsibility:** Planned TUI that provides rich terminal UX (status dashboard, live previews) while calling `CLICommandPort`.
+**Responsibility:** Planned TUI that provides rich terminal UX (status dashboard, live previews) while calling `CLIPort`.
 
 **Key Interfaces:**
 
 - `Run(ctx context.Context) error`
 - `Update(msg tea.Msg) (tea.Model, tea.Cmd)`
 
-**Dependencies:** `CLICommandPort`, `InteractivePort`, `github.com/charmbracelet/bubbletea`, Logger.
+**Dependencies:** `CLIPort`, `InteractivePort`, `github.com/charmbracelet/bubbletea`, Logger.
 
 **Technology Stack:** Bubble Tea state machine (`tea.Model`), `lipgloss` styling, reuse of existing prompt/fuzzy finder ports for list selections.
 
@@ -1041,7 +2048,7 @@ func (a *CobraCLIAdapter) displayNoteCreated(cmd *cobra.Command, note Note) erro
 - `Initialize(params protocol.InitializeParams) (protocol.InitializeResult, error)`
 - `ExecuteCommand(params protocol.ExecuteCommandParams) (interface{}, error)`
 
-**Dependencies:** `CLICommandPort`, `ConfigPort`, LSP JSON-RPC server library, Logger.
+**Dependencies:** `CLIPort`, `ConfigPort`, LSP JSON-RPC server library, Logger.
 
 **Technology Stack:** `golang.org/x/tools` LSP packages or `sourcegraph/jsonrpc2`, JSON message codecs, reuse of command results formatted for editor diagnostics.
 
@@ -1143,11 +2150,11 @@ graph TD
     end
 
     subgraph APIPorts
-        CSP[CLICommandPort]
+        CSP[CLIPort]
     end
 
     subgraph DomainCore[Domain Core]
-        CO[CommandOrchestrator]
+        CO[CLICommander]
         TE[TemplateEngine]
         QS[QueryService]
         FV[FrontmatterValidator]
@@ -1157,28 +2164,31 @@ graph TD
     end
 
      subgraph SPIPorts[Driven Ports]
-        VR[VaultReaderPort]
-        VW[VaultWriterPort]
-        CW[CacheWriterPort]
-        CR[CacheReaderPort]
-        SL[SchemaLoaderPort]
-        SRP[SchemaRegistryPort]
-        TR[TemplateRepositoryPort]
-        IP[InteractivePort]
-        CP[ConfigPort]
-    end
+         VSP[VaultScannerPort]
+         VRP[VaultReaderPort]
+         VW[VaultWriterPort]
+         CW[CacheWriterPort]
+         CR[CacheReaderPort]
+         SL[SchemaLoaderPort]
+         SRP[SchemaRegistryPort]
+         TR[TemplateRepositoryPort]
+         IP[InteractivePort]
+         CP[ConfigPort]
+     end
 
-    subgraph SPIAdapters[Concrete SPI Adapters]
-        VRA[VaultReaderAdapter]
-        VWA[VaultWriterAdapter]
-        JCWA[JSONCacheWriteAdapter]
-        JCRA[JSONCacheReadAdapter]
-        SLA[SchemaLoaderAdapter]
-        SRA[SchemaRegistryAdapter]
-        TFA[TemplateFSAdapter]
-        ICA[InteractiveCLIAdapter]
-        CVA[ConfigViperAdapter]
-    end
+      subgraph SPIAdapters[Concrete SPI Adapters]
+          VRA[VaultReaderAdapter]
+          VWA[VaultWriterAdapter]
+          BDBWA[BoltDBCacheWriterAdapter]
+          BDBRA[BoltDBCacheReaderAdapter]
+          SQLWA[SQLiteCacheWriterAdapter]
+          SQLRA[SQLiteCacheReaderAdapter]
+          SLA[SchemaLoaderAdapter]
+          SRA[SchemaRegistryAdapter]
+          TFA[TemplateFSAdapter]
+          ICA[InteractiveCLIAdapter]
+          CVA[ConfigViperAdapter]
+      end
 
     User --> CLI
     CLI --> CSP
@@ -1195,20 +2205,25 @@ graph TD
        FV --> SRP
      TE --> IP
      TE --> TR
-     VI --> VR
-     VI --> CW
-     CO --> VW
-     CO --> CW
-     QS --> CR
-     SV --> SRP
-     CO --> CP
-     SRP --> SRA
-      SRA --> SL
+        VI --> VSP
+        VI --> CW
+        FV --> VRP
+        CO --> VW
+        CO --> CW
+        QS --> CR
+        SV --> SRP
+        CO --> CP
+        SRP --> SRA
+         SRA --> SL
 
-    VR --> VRA
-    VW --> VWA
-    CW --> JCWA
-    CR --> JCRA
+      VSP --> VRA
+      VRP --> VRA
+      VRP --> NLA
+      VW --> VWA
+     CW --> BDBWA
+     CW --> SQLWA
+     CR --> BDBRA
+     CR --> SQLRA
      SL --> SLA
     TR --> TFA
     IP --> ICA
@@ -1217,16 +2232,18 @@ graph TD
 
 **Legend:**
 
-- CSP = CLICommandPort
-- VR = VaultReaderPort, VRA = VaultReaderAdapter
+- CSP = CLIPort
+- VSP = VaultScannerPort
+- VRP = VaultReaderPort
+- VRA = VaultReaderAdapter (implements both VSP and VRP)
 - VW = VaultWriterPort, VWA = VaultWriterAdapter
-- CW = CacheWriterPort, JCWA = JSONCacheWriteAdapter
-- CR = CacheReaderPort, JCRA = JSONCacheReadAdapter
+- CW = CacheWriterPort, BDBWA = BoltDBCacheWriterAdapter, SQLWA = SQLiteCacheWriterAdapter
+- CR = CacheReaderPort, BDBRA = BoltDBCacheReaderAdapter, SQLRA = SQLiteCacheReaderAdapter
 - FV = FrontmatterValidator
 - SE = SchemaEngine
 - SL = SchemaLoaderPort, SLA = SchemaLoaderAdapter
 - SRP = SchemaRegistryPort, SRA = SchemaRegistryAdapter
-- SV = SchemaValidator
+- SV = SchemaValidator (moved to adapter layer in DDD refactoring)
 - TR = TemplateRepositoryPort, TFA = TemplateFSAdapter
 - IP = InteractivePort, ICA = InteractiveCLIAdapter
 - CP = ConfigPort, CVA = ConfigViperAdapter
@@ -1247,22 +2264,23 @@ Dependencies are constructed in a specific order to satisfy the dependency graph
 
 **2. SPI Adapters (driven):**
 - VaultReaderAdapter, VaultWriterAdapter (depend on Config, Logger)
-- JSONCacheWriteAdapter, JSONCacheReadAdapter (depend on Config, Logger)
+- BoltDBCacheWriterAdapter, BoltDBCacheReaderAdapter (depend on Config, Logger)
+- SQLiteCacheWriterAdapter, SQLiteCacheReaderAdapter (depend on Config, Logger)
 - SchemaLoaderAdapter (depends on Config, Logger)
 - SchemaRegistryAdapter (depends on Logger)
 - TemplateLoaderAdapter (depends on Config, Logger)
-- PromptUIAdapter, FuzzyfindAdapter (depend on Logger)
+- PromptUIAdapter, FuzzyFinderAdapter (depend on Logger)
 
 **3. Domain Services (core):**
 - SchemaEngine (depends on SchemaLoaderPort, SchemaRegistryPort, Logger)
   - **Internally instantiates:** SchemaValidator, SchemaResolver (not injected - used only by SchemaEngine)
-- QueryService (depends on CacheReaderPort, Logger)
-- FrontmatterService (depends on SchemaRegistryPort, QueryService, Logger)
+- QueryService (depends on CacheReaderPort, FrontmatterService, Logger)
+- FrontmatterService (depends on SchemaRegistryPort, VaultReaderPort, Logger)
 - TemplateEngine (depends on TemplatePort, PromptPort, QueryService, FrontmatterService, Config, Logger)
-- VaultIndexer (depends on VaultReaderPort, FrontmatterService, CacheWriterPort, QueryService, Logger, Config)
+- VaultIndexer (depends on VaultReaderPort, CacheWriterPort, Logger, Config)
 
-**4. CommandOrchestrator (application service):**
-- CommandOrchestrator (depends on CLICommandPort, TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger)
+**4. CLICommander (application service):**
+- CLICommander (depends on CLIPort, TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger)
 
 **5. API Adapters (driving):**
 - CobraCLIAdapter (depends on FinderPort, Logger)
@@ -1283,7 +2301,7 @@ func main() {
     }
 
     // 2. SPI Adapters
-    vaultReader := vault.NewReaderAdapter(cfg, log)
+    vaultReader := vault.NewReaderAdapter(cfg, log)    // Implements both VaultScannerPort and VaultReaderPort
     vaultWriter := vault.NewWriterAdapter(cfg, log)
 
     cacheWriter := cache.NewJSONCacheWriter(cfg, log)
@@ -1298,7 +2316,7 @@ func main() {
     finder := fuzzyfind.NewAdapter(log)
 
     // 3. Domain Services
-    // SchemaEngine internally instantiates SchemaValidator and SchemaResolver
+    // SchemaEngine is pure orchestration - complex logic handled by adapter layer
     schemaEngine := domain.NewSchemaEngine(
         schemaLoader,
         schemaRegistry,
@@ -1308,13 +2326,13 @@ func main() {
         log.Fatal().Err(err).Msg("failed to load schemas")
     }
 
-    queryService := domain.NewQueryService(cacheReader, log)
-
     frontmatterService := domain.NewFrontmatterService(
         schemaRegistry,
-        queryService,
+        vaultReader,  // For FileSpec validation
         log,
     )
+
+    queryService := domain.NewQueryService(cacheReader, frontmatterService, log)
 
     templateEngine := domain.NewTemplateEngine(
         templateLoader,
@@ -1326,10 +2344,8 @@ func main() {
     )
 
     vaultIndexer := domain.NewVaultIndexer(
-        vaultReader,
-        frontmatterService,
+        vaultReader,  // VaultScannerPort for scanning operations
         cacheWriter,
-        queryService,
         log,
         cfg,
     )
@@ -1337,16 +2353,13 @@ func main() {
     // 4. API Adapter
     cliAdapter := cobra.NewCLIAdapter(finder, log)
 
-    // 5. CommandOrchestrator (application service)
-    orchestrator := domain.NewCommandOrchestrator(
-        cliAdapter,  // CLICommandPort injected!
+    // 5. CLICommander (application service)
+    commander := domain.NewCLICommander(
+        cliAdapter,  // CLIPort injected!
         templateEngine,
-        vaultIndexer,
-        queryService,
-        frontmatterService,
         schemaEngine,
+        vaultIndexer,
         vaultWriter,
-        cacheWriter,
         cfg,
         log,
     )
@@ -1375,9 +2388,10 @@ func main() {
 - Shared services (used by multiple components)
 - Configuration (external data)
 
-**Internal Dependencies** (single-use, internal logic):
-- SchemaValidator - only used by SchemaEngine, instantiated internally
-- SchemaResolver - only used by SchemaEngine, instantiated internally
+**Internal Dependencies** (infrastructure adapters):
+- SchemaValidator - infrastructure adapter instantiated by SchemaLoader
+- PropertyDereferencer - infrastructure adapter instantiated by SchemaLoader
+- SchemaExtender - infrastructure adapter instantiated by SchemaLoader
 
 **Rationale:** Reduces main.go complexity by not exposing internal implementation details. SchemaEngine's constructor signature shows only what it needs from outside, not internal orchestration details.
 
@@ -1412,7 +2426,7 @@ func TestTemplateEngine(t *testing.T) {
 
 ## Validation Architecture Overview
 
-Lithos implements validation at two distinct levels with different concerns and complexity:
+Lithos implements validation at two distinct levels with different concerns and complexity. See `docs/architecture/coding-standards.md#validation-layer-separation` for naming conventions and architectural principles.
 
 ### Schema Validation (Structural Integrity)
 
@@ -1422,7 +2436,7 @@ Lithos implements validation at two distinct levels with different concerns and 
 
 **Complexity:** Low - structural checks only
 
-**Responsibility:** SchemaValidator service orchestrates, Schema/Property/PropertySpec models self-validate
+**Responsibility:** SchemaValidator adapter orchestrates, Schema/Property/PropertySpec models self-validate
 
 **Architecture:**
 
@@ -1432,7 +2446,7 @@ Schema Models (Rich Domain Models)
       └─> property.Validate() checks each property
           └─> propertySpec.Validate() checks constraints (e.g., regex compiles, min <= max)
 
-SchemaValidator Service (Orchestrator)
+SchemaValidator Adapter (Orchestrator)
   └─> Calls schema.Validate() on each schema
   └─> Cross-schema validation (Extends references exist, no duplicate names, $ref valid)
 ```
@@ -1498,7 +2512,7 @@ FrontmatterService (Domain Service)
 | **When** | Once at startup | Every note operation |
 | **Complexity** | Low (structural) | High (business rules) |
 | **Models** | Rich (self-validating) | Anemic (service validates) |
-| **Dependencies** | None (pure domain logic) | SchemaRegistry, QueryService |
+| **Dependencies** | None (pure domain logic) | SchemaRegistry, VaultReaderPort |
 | **Failure Impact** | Application won't start | Note indexing fails |
 | **Validation Type** | Structural integrity | Business rule enforcement |
 | **Coercion** | None | In-memory normalization only |

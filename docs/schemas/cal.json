@@ -1,0 +1,117 @@
+{
+  "name": "cal",
+  "properties": {
+    "date": {
+      "required": false,
+      "array": false,
+      "type": "string"
+    },
+    "date_start": {
+      "$ref": "#/properties/datetime_local"
+    },
+    "date_end": {
+      "$ref": "#/properties/datetime_local"
+    },
+    "year": {
+      "$ref": "#/properties/date_year"
+    },
+    "year_day": {
+      "required": false,
+      "array": false,
+      "type": "date"
+    },
+    "quarter": {
+      "required": false,
+      "array": false,
+      "type": "date"
+    },
+    "month_name": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "April",
+        "August",
+        "December",
+        "February",
+        "January",
+        "July",
+        "June",
+        "March",
+        "May",
+        "November",
+        "October",
+        "September"
+      ]
+    },
+    "month_number": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06",
+        "07",
+        "08",
+        "09",
+        "10",
+        "11",
+        "12"
+      ]
+    },
+    "month_day": {
+      "required": false,
+      "array": false,
+      "type": "date"
+    },
+    "week_number": {
+      "required": false,
+      "array": false,
+      "type": "date"
+    },
+    "weekday_name": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "Friday",
+        "Monday",
+        "Saturday",
+        "Sunday",
+        "Thursday",
+        "Tuesday",
+        "Wednesday"
+      ]
+    },
+    "weekday_number": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "00",
+        "01",
+        "02",
+        "03",
+        "04",
+        "05",
+        "06"
+      ]
+    },
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "day",
+        "month",
+        "quarter",
+        "week",
+        "year"
+      ]
+    }
+  }
+}

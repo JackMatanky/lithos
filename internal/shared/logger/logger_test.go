@@ -1,274 +1,253 @@
-// Package logger provides unit tests for the shared logger package.
 package logger
 
 import (
 	"bytes"
-	"encoding/json"
-	"strings"
 	"testing"
 
 	"github.com/rs/zerolog"
 )
 
-const (
-	testComponent = "test.component"
-	testMessage   = "test message"
-)
-
-func TestWithComponent(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
-
-	componentLogger := WithComponent("test.component")
-	componentLogger.Info().Msg("test message")
-
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("Failed to unmarshal log entry: %v", err)
+// TestNew verifies logger creation with different levels and TTY detection.
+func TestNew(t *testing.T) {
+	tests := []struct {
+		name     string
+		level    string
+		expected zerolog.Level
+	}{
+		{
+			name:     "debug level",
+			level:    "debug",
+			expected: zerolog.DebugLevel,
+		},
+		{
+			name:     "info level",
+			level:    "info",
+			expected: zerolog.InfoLevel,
+		},
+		{
+			name:     "warn level",
+			level:    "warn",
+			expected: zerolog.WarnLevel,
+		},
+		{
+			name:     "warning level",
+			level:    "warning",
+			expected: zerolog.WarnLevel,
+		},
+		{
+			name:     "error level",
+			level:    "error",
+			expected: zerolog.ErrorLevel,
+		},
+		{
+			name:     "case insensitive",
+			level:    "DEBUG",
+			expected: zerolog.DebugLevel,
+		},
+		{
+			name:     "invalid level defaults to info",
+			level:    "invalid",
+			expected: zerolog.InfoLevel,
+		},
 	}
 
-	if logEntry["component"] != testComponent {
-		t.Errorf(
-			"Expected component '%s', got %v",
-			testComponent,
-			logEntry["component"],
-		)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := New(&buf, tt.level)
 
-	if logEntry["message"] != testMessage {
-		t.Errorf(
-			"Expected message '%s', got %v",
-			testMessage,
-			logEntry["message"],
-		)
-	}
-}
+			// Check that the logger has the correct level
+			if logger.GetLevel() != tt.expected {
+				t.Errorf(
+					"New() level = %v, expected %v",
+					logger.GetLevel(),
+					tt.expected,
+				)
+			}
 
-func TestWithOperation(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
-
-	opLogger := WithOperation("test.operation")
-	opLogger.Info().Msg("test message")
-
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("Failed to unmarshal log entry: %v", err)
-	}
-
-	if logEntry["operation"] != "test.operation" {
-		t.Errorf(
-			"Expected operation 'test.operation', got %v",
-			logEntry["operation"],
-		)
-	}
-}
-
-func TestWithCorrelationID(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
-
-	corrLogger := WithCorrelationID("test-correlation-id")
-	corrLogger.Info().Msg("test message")
-
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("Failed to unmarshal log entry: %v", err)
-	}
-
-	if logEntry["correlation_id"] != "test-correlation-id" {
-		t.Errorf(
-			"Expected correlation_id 'test-correlation-id', got %v",
-			logEntry["correlation_id"],
-		)
-	}
-}
-
-func TestWithCommand(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
-
-	cmdLogger := WithCommand("new")
-	cmdLogger.Info().Msg("test message")
-
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("Failed to unmarshal log entry: %v", err)
-	}
-
-	if logEntry["command"] != "new" {
-		t.Errorf("Expected command 'new', got %v", logEntry["command"])
+			// Verify logger can write output at the configured level
+			switch tt.expected {
+			case zerolog.DebugLevel:
+				logger.Debug().Msg("test message")
+			case zerolog.InfoLevel:
+				logger.Info().Msg("test message")
+			case zerolog.WarnLevel:
+				logger.Warn().Msg("test message")
+			case zerolog.ErrorLevel:
+				logger.Error().Msg("test message")
+			}
+			output := buf.String()
+			if output == "" {
+				t.Error("New() should produce output")
+			}
+		})
 	}
 }
 
-func TestWithTemplateID(t *testing.T) {
+// TestTTYDetection verifies pretty-print vs JSON output based on TTY detection.
+func TestTTYDetection(t *testing.T) {
+	// Note: Testing TTY detection properly requires mocking term.IsTerminal
+	// This is a basic smoke test to ensure the logger works
 	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
+	logger := New(&buf, "info")
 
-	tmplLogger := WithTemplateID("note.md")
-	tmplLogger.Info().Msg("test message")
-
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("Failed to unmarshal log entry: %v", err)
-	}
-
-	if logEntry["template_id"] != "note.md" {
-		t.Errorf(
-			"Expected template_id 'note.md', got %v",
-			logEntry["template_id"],
-		)
-	}
-}
-
-func TestWithFilePath(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
-
-	fileLogger := WithFilePath("notes/test.md")
-	fileLogger.Info().Msg("test message")
-
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("Failed to unmarshal log entry: %v", err)
-	}
-
-	if logEntry["file_path"] != "notes/test.md" {
-		t.Errorf(
-			"Expected file_path 'notes/test.md', got %v",
-			logEntry["file_path"],
-		)
-	}
-}
-
-func TestLogLevels(t *testing.T) {
-	// Save original level
-	originalLevel := zerolog.GlobalLevel()
-
-	// Test Info level (default)
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
-
-	Log.Debug().Msg("debug message") // Should not appear
-	Log.Info().Msg("info message")   // Should appear
-	Log.Warn().Msg("warn message")   // Should appear
-	Log.Error().Msg("error message") // Should appear
+	// Log a message
+	logger.Info().Str("test", "value").Msg("test message")
 
 	output := buf.String()
-	if strings.Contains(output, "debug message") {
-		t.Error("Debug message should not appear at Info level")
-	}
-	if !strings.Contains(output, "info message") {
-		t.Error("Info message should appear at Info level")
-	}
-	if !strings.Contains(output, "warn message") {
-		t.Error("Warn message should appear at Info level")
-	}
-	if !strings.Contains(output, "error message") {
-		t.Error("Error message should appear at Info level")
+
+	// Verify output is produced (exact format depends on TTY detection)
+	if output == "" {
+		t.Error("Expected output from logger")
 	}
 
-	// Restore original level
-	zerolog.SetGlobalLevel(originalLevel)
+	// In a real implementation, we'd mock term.IsTerminal to test both paths
+	// For now, this ensures the basic functionality works
 }
 
-func TestJSONOutput(t *testing.T) {
+// TestWithComponent verifies WithComponent adds component field to logs.
+func TestWithComponent(t *testing.T) {
 	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
+	baseLogger := New(&buf, "info")
 
-	Log.Info().Msg("test message")
+	// Test WithComponent
+	componentLogger := WithComponent(baseLogger, "vault")
+	componentLogger.Info().Msg("test message")
 
-	// Should be valid JSON
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("Log output is not valid JSON: %v", err)
-	}
-
-	if logEntry["level"] != "info" {
-		t.Errorf("Expected level 'info', got %v", logEntry["level"])
-	}
-
-	if logEntry["message"] != "test message" {
-		t.Errorf("Expected message 'test message', got %v", logEntry["message"])
-	}
-
-	// Should have timestamp
-	if _, exists := logEntry["time"]; !exists {
-		t.Error("Log entry should have timestamp field")
-	}
-}
-
-func TestParseLevel(t *testing.T) {
-	// Test that zerolog can parse level strings correctly
-	tests := []struct {
-		input    string
-		expected zerolog.Level
-		hasError bool
-	}{
-		{"debug", zerolog.DebugLevel, false},
-		{"info", zerolog.InfoLevel, false},
-		{"warn", zerolog.WarnLevel, false},
-		{"error", zerolog.ErrorLevel, false},
-		{"invalid", zerolog.InfoLevel, true}, // should error
-	}
-
-	for _, test := range tests {
-		level, err := zerolog.ParseLevel(test.input)
-		if test.hasError && err == nil {
-			t.Errorf("Expected error for input %s, but got none", test.input)
-		}
-		if !test.hasError && err != nil {
-			t.Errorf("Unexpected error for input %s: %v", test.input, err)
-		}
-		if !test.hasError && level != test.expected {
-			t.Errorf(
-				"For input %s, expected level %v, got %v",
-				test.input,
-				test.expected,
-				level,
-			)
-		}
-	}
-}
-
-func TestMultipleContextFields(t *testing.T) {
-	var buf bytes.Buffer
-	zl := zerolog.New(&buf).With().Timestamp().Logger()
-	Log = Logger{Logger: zl}
-
-	contextLogger := WithComponent("test.component")
-	contextLogger.Logger = contextLogger.With().
-		Str("correlation_id", "test-id").
-		Logger()
-
-	contextLogger.Info().Msg("test message")
-
-	var logEntry map[string]interface{}
-	if err := json.Unmarshal(buf.Bytes(), &logEntry); err != nil {
-		t.Fatalf("Failed to unmarshal log entry: %v", err)
-	}
-
-	if logEntry["component"] != "test.component" {
+	output := buf.String()
+	if !bytes.Contains([]byte(output), []byte("vault")) {
 		t.Errorf(
-			"Expected component 'test.component', got %v",
-			logEntry["component"],
+			"Expected output to contain component 'vault', got: %s",
+			output,
+		)
+	}
+}
+
+// TestWithOperation verifies WithOperation adds operation field to logs.
+func TestWithOperation(t *testing.T) {
+	var buf bytes.Buffer
+	baseLogger := New(&buf, "info")
+
+	// Test WithOperation
+	operationLogger := WithOperation(baseLogger, "loadConfig")
+	operationLogger.Info().Msg("test message")
+
+	output := buf.String()
+	if !bytes.Contains([]byte(output), []byte("loadConfig")) {
+		t.Errorf(
+			"Expected output to contain operation 'loadConfig', got: %s",
+			output,
+		)
+	}
+}
+
+// TestWithCorrelationID verifies WithCorrelationID adds correlation_id field to
+// logs.
+func TestWithCorrelationID(t *testing.T) {
+	var buf bytes.Buffer
+	baseLogger := New(&buf, "info")
+
+	// Test WithCorrelationID
+	corrLogger := WithCorrelationID(baseLogger, "abc-123")
+	corrLogger.Info().Msg("test message")
+
+	output := buf.String()
+	if !bytes.Contains([]byte(output), []byte("abc-123")) {
+		t.Errorf(
+			"Expected output to contain correlation_id 'abc-123', got: %s",
+			output,
+		)
+	}
+}
+
+// TestSensitiveDataFiltering verifies password fields are redacted in logs.
+func TestSensitiveDataFiltering(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New(&buf, "info")
+
+	// Log with sensitive data
+	logger.Info().
+		Str("password", "secret").
+		Str("username", "user").
+		Msg("login attempt")
+
+	output := buf.String()
+	t.Logf("Output: %s", output) // Debug output
+
+	// Password should be redacted
+	if bytes.Contains([]byte(output), []byte("testpassword")) {
+		t.Error(
+			"Password should be redacted, but found 'testpassword' in output",
 		)
 	}
 
-	if logEntry["correlation_id"] != "test-id" {
+	// Should contain [REDACTED]
+	if !bytes.Contains([]byte(output), []byte("[REDACTED]")) {
+		t.Error("Expected [REDACTED] in output for sensitive field")
+	}
+
+	// Non-sensitive data should remain
+	if !bytes.Contains([]byte(output), []byte("user")) {
+		t.Error("Non-sensitive field 'username' should not be redacted")
+	}
+}
+
+// TestMultipleSensitiveFields verifies all sensitive fields are redacted.
+func TestMultipleSensitiveFields(t *testing.T) {
+	var buf bytes.Buffer
+	logger := New(&buf, "info")
+
+	// Log with multiple sensitive fields
+	logger.Info().
+		Str("password", "secret").
+		Str("token", "token123").
+		Str("apiKey", "apikey").
+		Str("username", "user").
+		Msg("auth test")
+
+	output := buf.String()
+
+	// All sensitive fields should be redacted
+	if bytes.Contains([]byte(output), []byte("testpassword")) {
+		t.Error("Password should be redacted")
+	}
+	if bytes.Contains([]byte(output), []byte("testtoken123")) {
+		t.Error("Token should be redacted")
+	}
+	if bytes.Contains([]byte(output), []byte("testapikey")) {
+		t.Error("API key should be redacted")
+	}
+
+	// Should contain [REDACTED] for each sensitive field
+	redactedCount := bytes.Count([]byte(output), []byte("[REDACTED]"))
+	if redactedCount != 3 {
+		t.Errorf("Expected 3 [REDACTED] entries, got %d", redactedCount)
+	}
+
+	// Non-sensitive data should remain
+	if !bytes.Contains([]byte(output), []byte("user")) {
+		t.Error("Non-sensitive field 'username' should not be redacted")
+	}
+}
+
+// TestNewTest verifies NewTest() creates a logger that produces no output.
+func TestNewTest(t *testing.T) {
+	logger := NewTest()
+
+	// Log various messages
+	logger.Info().Msg("info message")
+	logger.Warn().Str("field", "value").Msg("warn message")
+	logger.Error().Msg("error message")
+
+	// NewTest should use ioutil.Discard, so no output should be produced
+	// We can't easily test this directly, but we can verify the logger is
+	// created
+	// and has the expected disabled level
+
+	if logger.GetLevel() != zerolog.Disabled {
 		t.Errorf(
-			"Expected correlation_id 'test-id', got %v",
-			logEntry["correlation_id"],
+			"NewTest() logger level should be Disabled, got %v",
+			logger.GetLevel(),
 		)
 	}
 }

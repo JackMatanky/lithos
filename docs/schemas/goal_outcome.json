@@ -1,0 +1,8 @@
+{
+  "name": "goal_outcome",
+  "properties": {
+    "pillar": {
+      "$ref": "#/properties/pillar"
+    }
+  }
+}

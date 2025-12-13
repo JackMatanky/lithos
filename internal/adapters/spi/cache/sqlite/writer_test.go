@@ -1,0 +1,111 @@
+package sqlite
+
+import (
+	"context"
+	"database/sql"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/rs/zerolog"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestSQLiteWriterAdapter_Persist(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := domain.Config{
+		CacheDir: tmpDir,
+	}
+	log := zerolog.Nop()
+
+	writer, err := NewSQLiteWriterAdapter(config, log, nil)
+	require.NoError(t, err)
+	defer func() { _ = writer.Close() }()
+
+	// Create a test note
+	notePath := "test/note.md"
+	modTime := time.Now().Add(-2 * time.Hour).UTC()
+	size := int64(512)
+	fm := domain.NewFrontmatter(map[string]interface{}{
+		"title":         "Test Note",
+		"fileClass":     "contact",
+		"file_mod_time": modTime,
+		"file_size":     size,
+	})
+	note, err := domain.NewNote(notePath, fm, nil, nil, nil, nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test Persist
+	err = writer.Persist(ctx, note, time.Now())
+	require.NoError(t, err)
+
+	// Verify directly in DB
+	dbPath := filepath.Join(tmpDir, "cold.db")
+	db, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	var path, frontmatter string
+	var storedModTime, idxTime, storedSize int64
+	err = db.QueryRowContext(
+		ctx,
+		"SELECT path, frontmatter, modified_at, indexed_time, size FROM notes WHERE path = ?",
+		"test/note.md",
+	).Scan(&path, &frontmatter, &storedModTime, &idxTime, &storedSize)
+	require.NoError(t, err)
+
+	assert.Equal(t, "test/note.md", path)
+	assert.Contains(t, frontmatter, `"title":"Test Note"`)
+	assert.NotZero(t, idxTime)
+	assert.Equal(t, modTime.Unix(), storedModTime)
+	assert.Equal(t, size, storedSize)
+}
+
+func TestSQLiteWriterAdapter_Delete(t *testing.T) {
+	tmpDir := t.TempDir()
+	config := domain.Config{
+		CacheDir: tmpDir,
+	}
+	log := zerolog.Nop()
+
+	writer, err := NewSQLiteWriterAdapter(config, log, nil)
+	require.NoError(t, err)
+	defer func() { _ = writer.Close() }()
+
+	// Insert a note manually or via Persist
+	notePath := "test/delete.md"
+	fm := domain.NewFrontmatter(map[string]interface{}{
+		"title":         "Delete Me",
+		"file_mod_time": time.Now().Add(-time.Hour).UTC(),
+		"file_size":     int64(128),
+	})
+	note, err := domain.NewNote(notePath, fm, nil, nil, nil, nil)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	err = writer.Persist(ctx, note, time.Now())
+	require.NoError(t, err)
+
+	// Test Delete
+	err = writer.Delete(ctx, notePath)
+	require.NoError(t, err)
+
+	// Verify deletion
+	dbPath := filepath.Join(tmpDir, "cold.db")
+	db, err := sql.Open("sqlite", dbPath)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	var count int
+	err = db.QueryRowContext(
+		ctx,
+		"SELECT count(*) FROM notes WHERE path = ?",
+		"test/delete.md",
+	).Scan(&count)
+	require.NoError(t, err)
+	assert.Equal(t, 0, count)
+}

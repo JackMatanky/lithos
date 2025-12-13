@@ -6,7 +6,7 @@
 sequenceDiagram
     participant User
     participant CLI as Cobra CLI
-    participant CO as CommandOrchestrator
+    participant CO as CLICommander
     participant TE as TemplateEngine
     participant INT as InteractivePort
     participant QS as QueryService
@@ -36,7 +36,7 @@ sequenceDiagram
 sequenceDiagram
     participant User
     participant CLI as Cobra CLI
-    participant CO as CommandOrchestrator
+    participant CO as CLICommander
     participant TE as TemplateEngine
     participant TR as TemplateRepositoryPort
     participant INT as InteractivePort
@@ -70,7 +70,7 @@ sequenceDiagram
 sequenceDiagram
     participant User
     participant CLI as Cobra CLI
-    participant CO as CommandOrchestrator
+    participant CO as CLICommander
     participant VI as VaultIndexer
     participant FS as FileSystemPort
     participant SV as SchemaValidator

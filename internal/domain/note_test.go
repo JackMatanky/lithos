@@ -1,262 +1,424 @@
 package domain
 
 import (
+	"errors"
+	"reflect"
 	"testing"
-	"time"
 )
 
-func TestNewNote(t *testing.T) {
+const (
+	testTitle = "John Doe"
+)
+
+// TestNote_Validate tests the Note.Validate() method with various scenarios.
+func TestNote_Validate(t *testing.T) {
 	tests := []struct {
 		name        string
-		file        File
-		frontmatter Frontmatter
-		expected    Note
+		note        Note
+		expectError bool
+		errorField  string
 	}{
 		{
-			name: "note with complete data",
-			file: File{
-				Path:     "/vault/notes/contact.md",
-				Basename: "contact",
-				Folder:   "/vault/notes",
-				ModTime:  time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-			},
-			frontmatter: Frontmatter{
-				FileClass: "contact",
-				Fields: map[string]interface{}{
-					"fileClass": "contact",
-					"name":      "John Doe",
-					"email":     "john@example.com",
-				},
-			},
-			expected: Note{
-				File: File{
-					Path:     "/vault/notes/contact.md",
-					Basename: "contact",
-					Folder:   "/vault/notes",
-					ModTime:  time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-				},
+			name: "valid note with all required fields",
+			note: Note{
+				Path: "notes/test.md",
 				Frontmatter: Frontmatter{
-					FileClass: "contact",
-					Fields: map[string]interface{}{
-						"fileClass": "contact",
-						"name":      "John Doe",
-						"email":     "john@example.com",
-					},
+					Fields: map[string]interface{}{"title": "Test"},
 				},
+				Links:     []Link{},
+				Headings:  []Heading{},
+				Tags:      []string{},
+				Tasks:     []TaskItem{},
+				Backlinks: []Link{},
 			},
+			expectError: false,
 		},
 		{
-			name: "note without schema",
-			file: File{
-				Path:     "/vault/notes/draft.md",
-				Basename: "draft",
-				Folder:   "/vault/notes",
-				ModTime:  time.Date(2024, 2, 15, 10, 30, 0, 0, time.UTC),
-			},
-			frontmatter: Frontmatter{
-				FileClass: "",
-				Fields: map[string]interface{}{
-					"title":  "My Draft",
-					"author": "Jane Smith",
-				},
-			},
-			expected: Note{
-				File: File{
-					Path:     "/vault/notes/draft.md",
-					Basename: "draft",
-					Folder:   "/vault/notes",
-					ModTime:  time.Date(2024, 2, 15, 10, 30, 0, 0, time.UTC),
-				},
+			name: "invalid note with empty path",
+			note: Note{
+				Path: "",
 				Frontmatter: Frontmatter{
-					FileClass: "",
-					Fields: map[string]interface{}{
-						"title":  "My Draft",
-						"author": "Jane Smith",
-					},
+					Fields: map[string]interface{}{"title": "Test"},
 				},
+				Links:     []Link{},
+				Headings:  []Heading{},
+				Tags:      []string{},
+				Tasks:     []TaskItem{},
+				Backlinks: []Link{},
 			},
+			expectError: true,
+			errorField:  "Path",
 		},
 		{
-			name: "note with empty frontmatter",
-			file: File{
-				Path:     "/vault/simple.md",
-				Basename: "simple",
-				Folder:   "/vault",
-				ModTime:  time.Date(2024, 3, 10, 14, 20, 0, 0, time.UTC),
-			},
-			frontmatter: Frontmatter{
-				FileClass: "",
-				Fields:    map[string]interface{}{},
-			},
-			expected: Note{
-				File: File{
-					Path:     "/vault/simple.md",
-					Basename: "simple",
-					Folder:   "/vault",
-					ModTime:  time.Date(2024, 3, 10, 14, 20, 0, 0, time.UTC),
-				},
+			name: "invalid note with whitespace-only path",
+			note: Note{
+				Path: "   ",
 				Frontmatter: Frontmatter{
-					FileClass: "",
-					Fields:    map[string]interface{}{},
+					Fields: map[string]interface{}{"title": "Test"},
 				},
+				Links:     []Link{},
+				Headings:  []Heading{},
+				Tags:      []string{},
+				Tasks:     []TaskItem{},
+				Backlinks: []Link{},
 			},
+			expectError: true,
+			errorField:  "Path",
+		},
+		{
+			name: "invalid note with nil frontmatter fields",
+			note: Note{
+				Path: "notes/test.md",
+				Frontmatter: Frontmatter{
+					Fields: nil,
+				},
+				Links:     []Link{},
+				Headings:  []Heading{},
+				Tags:      []string{},
+				Tasks:     []TaskItem{},
+				Backlinks: []Link{},
+			},
+			expectError: true,
+			errorField:  "Frontmatter",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := NewNote(tt.file, tt.frontmatter)
-			assertNoteEqual(t, &result, &tt.expected)
+			err := tt.note.Validate()
+
+			switch {
+			case tt.expectError && err == nil:
+				t.Errorf(
+					"Expected validation error for field %s, but got nil",
+					tt.errorField,
+				)
+			case tt.expectError && err != nil:
+				var validationErr NoteValidationError
+				if !errors.As(err, &validationErr) {
+					t.Errorf(
+						"Expected NoteValidationError, got %T: %v",
+						err,
+						err,
+					)
+				} else if validationErr.Field != tt.errorField {
+					t.Errorf(
+						"Expected error field %s, got %s",
+						tt.errorField,
+						validationErr.Field,
+					)
+				}
+			case !tt.expectError && err != nil:
+				t.Errorf("Expected no validation error, but got: %v", err)
+			}
 		})
 	}
 }
 
-func assertNoteEqual(t *testing.T, result, expected *Note) {
-	t.Helper()
+// TestNewNote tests the NewNote constructor function.
+func TestNewNote(t *testing.T) {
+	tests := []struct {
+		name        string
+		path        string
+		frontmatter Frontmatter
+		links       []Link
+		headings    []Heading
+		tags        []string
+		tasks       []TaskItem
+		expectError bool
+	}{
+		{
+			name: "creates valid note with all parameters",
+			path: "notes/test.md",
+			frontmatter: Frontmatter{
+				Fields: map[string]interface{}{"title": "Test Note"},
+			},
+			links:       []Link{{Text: "link1", Destination: "dest1"}},
+			headings:    []Heading{{Level: 1, Text: "Heading 1"}},
+			tags:        []string{"tag1", "tag2"},
+			tasks:       []TaskItem{{Text: "Task 1", IsChecked: false}},
+			expectError: false,
+		},
+		{
+			name: "creates note with empty slices",
+			path: "notes/test.md",
+			frontmatter: Frontmatter{
+				Fields: map[string]interface{}{"title": "Test Note"},
+			},
+			links:       nil,
+			headings:    nil,
+			tags:        nil,
+			tasks:       nil,
+			expectError: false,
+		},
+		{
+			name: "fails with empty path",
+			path: "",
+			frontmatter: Frontmatter{
+				Fields: map[string]interface{}{"title": "Test Note"},
+			},
+			links:       []Link{},
+			headings:    []Heading{},
+			tags:        []string{},
+			tasks:       []TaskItem{},
+			expectError: true,
+		},
+		{
+			name: "fails with nil frontmatter",
+			path: "notes/test.md",
+			frontmatter: Frontmatter{
+				Fields: nil,
+			},
+			links:       []Link{},
+			headings:    []Heading{},
+			tags:        []string{},
+			tasks:       []TaskItem{},
+			expectError: true,
+		},
+	}
 
-	// Compare File fields
-	if result.Path != expected.Path {
-		t.Errorf("File.Path = %q, want %q", result.Path, expected.Path)
-	}
-	if result.Basename != expected.Basename {
-		t.Errorf(
-			"File.Basename = %q, want %q",
-			result.Basename,
-			expected.Basename,
-		)
-	}
-	if result.Folder != expected.Folder {
-		t.Errorf("File.Folder = %q, want %q", result.Folder, expected.Folder)
-	}
-	if !result.ModTime.Equal(expected.ModTime) {
-		t.Errorf("File.ModTime = %v, want %v", result.ModTime, expected.ModTime)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			note, err := NewNote(
+				tt.path,
+				tt.frontmatter,
+				tt.links,
+				tt.headings,
+				tt.tags,
+				tt.tasks,
+			)
 
-	// Compare Frontmatter fields
-	if result.FileClass != expected.FileClass {
-		t.Errorf(
-			"Frontmatter.FileClass = %q, want %q",
-			result.FileClass,
-			expected.FileClass,
-		)
-	}
+			switch {
+			case tt.expectError && err == nil:
+				t.Errorf("Expected error, but got nil")
+			case tt.expectError && note.Path != "":
+				t.Errorf(
+					"Expected empty note on error, but got path: %s",
+					note.Path,
+				)
+			case !tt.expectError && err != nil:
+				t.Errorf("Expected no error, but got: %v", err)
+			case !tt.expectError && note.Path != tt.path:
+				t.Errorf("Expected path %s, got %s", tt.path, note.Path)
+			case !tt.expectError && err == nil:
+				// Verify defensive copying - slices should be non-nil even if
+				// input was nil
+				if note.Links == nil {
+					t.Error("Expected Links slice to be non-nil")
+				}
+				if note.Headings == nil {
+					t.Error("Expected Headings slice to be non-nil")
+				}
+				if note.Tags == nil {
+					t.Error("Expected Tags slice to be non-nil")
+				}
+				if note.Tasks == nil {
+					t.Error("Expected Tasks slice to be non-nil")
+				}
+				if note.Backlinks == nil {
+					t.Error("Expected Backlinks slice to be non-nil")
+				}
 
-	// Compare Fields map
-	if len(result.Fields) != len(expected.Fields) {
-		t.Errorf("Frontmatter.Fields length = %d, want %d",
-			len(result.Fields), len(expected.Fields))
-		return
-	}
+				// Verify Backlinks start empty
+				if len(note.Backlinks) != 0 {
+					t.Errorf(
+						"Expected Backlinks to be empty, got length %d",
+						len(note.Backlinks),
+					)
+				}
 
-	for key, expectedValue := range expected.Fields {
-		if actualValue, exists := result.Fields[key]; !exists {
-			t.Errorf("Frontmatter.Fields[%q] missing", key)
-		} else if actualValue != expectedValue {
-			t.Errorf("Frontmatter.Fields[%q] = %v, want %v", key, actualValue, expectedValue)
-		}
+				// Verify slice contents match input
+				if tt.links != nil && !reflect.DeepEqual(note.Links, tt.links) {
+					t.Errorf("Expected Links %v, got %v", tt.links, note.Links)
+				}
+				if tt.headings != nil &&
+					!reflect.DeepEqual(note.Headings, tt.headings) {
+					t.Errorf(
+						"Expected Headings %v, got %v",
+						tt.headings,
+						note.Headings,
+					)
+				}
+				if tt.tags != nil && !reflect.DeepEqual(note.Tags, tt.tags) {
+					t.Errorf("Expected Tags %v, got %v", tt.tags, note.Tags)
+				}
+				if tt.tasks != nil && !reflect.DeepEqual(note.Tasks, tt.tasks) {
+					t.Errorf("Expected Tasks %v, got %v", tt.tasks, note.Tasks)
+				}
+			}
+		})
 	}
 }
 
-func TestNoteSchemaName(t *testing.T) {
+// TestNote_WithBacklinks tests the WithBacklinks enrichment helper.
+func TestNote_WithBacklinks(t *testing.T) {
+	// Create a base note
+	note, err := NewNote(
+		"notes/test.md",
+		Frontmatter{Fields: map[string]interface{}{"title": "Test"}},
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create test note: %v", err)
+	}
+
+	// Verify Backlinks start empty
+	if len(note.Backlinks) != 0 {
+		t.Errorf(
+			"Expected initial Backlinks to be empty, got %d",
+			len(note.Backlinks),
+		)
+	}
+
+	// Add backlinks
+	backlinks := []Link{
+		{Text: "ref1", Destination: "notes/test.md", IsWikilink: true},
+		{Text: "ref2", Destination: "notes/test.md", IsWikilink: false},
+	}
+	enrichedNote := note.WithBacklinks(backlinks)
+
+	// Verify original note unchanged
+	if len(note.Backlinks) != 0 {
+		t.Error("Original note Backlinks should remain unchanged")
+	}
+
+	// Verify enriched note has backlinks
+	if len(enrichedNote.Backlinks) != 2 {
+		t.Errorf("Expected 2 backlinks, got %d", len(enrichedNote.Backlinks))
+	}
+
+	if !reflect.DeepEqual(enrichedNote.Backlinks, backlinks) {
+		t.Errorf(
+			"Expected backlinks %v, got %v",
+			backlinks,
+			enrichedNote.Backlinks,
+		)
+	}
+
+	// Verify other fields unchanged
+	if enrichedNote.Path != note.Path {
+		t.Error("Path should remain unchanged")
+	}
+	if !reflect.DeepEqual(enrichedNote.Frontmatter, note.Frontmatter) {
+		t.Error("Frontmatter should remain unchanged")
+	}
+}
+
+// TestNote_DelegationHelpers tests the delegation helper methods.
+func TestNote_DelegationHelpers(t *testing.T) {
+	// Create note with test frontmatter
+	fields := map[string]interface{}{
+		"fileClass": "contact",
+		"title":     testTitle,
+		"aliases":   []interface{}{"JD", "Johnny"},
+	}
+	note, err := NewNote(
+		"notes/test.md",
+		Frontmatter{Fields: fields},
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("Failed to create test note: %v", err)
+	}
+
+	// Test FileClass
+	if fileClass := note.FileClass(); fileClass != "contact" {
+		t.Errorf("Expected FileClass 'contact', got '%s'", fileClass)
+	}
+
+	// Test Title
+	if title := note.Title(); title != testTitle {
+		t.Errorf("Expected Title '%s', got '%s'", testTitle, title)
+	}
+
+	// Test Aliases
+	expectedAliases := []string{"JD", "Johnny"}
+	if aliases := note.Aliases(); !reflect.DeepEqual(aliases, expectedAliases) {
+		t.Errorf("Expected Aliases %v, got %v", expectedAliases, aliases)
+	}
+
+	// Test HasFrontmatterField
+	if !note.HasFrontmatterField("title") {
+		t.Error("Expected HasFrontmatterField('title') to be true")
+	}
+	if note.HasFrontmatterField("nonexistent") {
+		t.Error("Expected HasFrontmatterField('nonexistent') to be false")
+	}
+
+	// Test GetFrontmatterString
+	if val, ok := note.GetFrontmatterString("title"); !ok || val != testTitle {
+		t.Errorf(
+			"Expected GetFrontmatterString('title') to return '%s', true; got '%s', %v",
+			testTitle,
+			val,
+			ok,
+		)
+	}
+	if val, ok := note.GetFrontmatterString("nonexistent"); ok || val != "" {
+		t.Errorf(
+			"Expected GetFrontmatterString('nonexistent') to return '', false; got '%s', %v",
+			val,
+			ok,
+		)
+	}
+	if val, ok := note.GetFrontmatterString("aliases"); ok || val != "" {
+		t.Errorf(
+			"Expected GetFrontmatterString('aliases') to return '', false (not a string); got '%s', %v",
+			val,
+			ok,
+		)
+	}
+}
+
+// TestNote_SchemaName tests the SchemaName method (delegates to Frontmatter).
+func TestNote_SchemaName(t *testing.T) {
 	tests := []struct {
 		name     string
-		note     Note
+		fields   map[string]interface{}
 		expected string
 	}{
 		{
-			name: "note with schema",
-			note: Note{
-				File: File{
-					Path:     "/vault/contact.md",
-					Basename: "contact",
-					Folder:   "/vault",
-					ModTime:  time.Now(),
-				},
-				Frontmatter: Frontmatter{
-					FileClass: "contact",
-					Fields: map[string]interface{}{
-						"fileClass": "contact",
-						"name":      "John Doe",
-					},
-				},
+			name: "returns fileClass when present",
+			fields: map[string]interface{}{
+				"fileClass": "contact",
+				"title":     "Test",
 			},
 			expected: "contact",
 		},
 		{
-			name: "note without schema",
-			note: Note{
-				File: File{
-					Path:     "/vault/note.md",
-					Basename: "note",
-					Folder:   "/vault",
-					ModTime:  time.Now(),
-				},
-				Frontmatter: Frontmatter{
-					FileClass: "",
-					Fields: map[string]interface{}{
-						"title": "Simple Note",
-					},
-				},
-			},
+			name:     "returns empty when fileClass missing",
+			fields:   map[string]interface{}{"title": "Test"},
 			expected: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.note.SchemaName()
-			if result != tt.expected {
-				t.Errorf("SchemaName() = %q, want %q", result, tt.expected)
+			note, err := NewNote(
+				"notes/test.md",
+				Frontmatter{Fields: tt.fields},
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+			if err != nil {
+				t.Fatalf("Failed to create test note: %v", err)
+			}
+
+			if result := note.SchemaName(); result != tt.expected {
+				t.Errorf(
+					"Expected SchemaName '%s', got '%s'",
+					tt.expected,
+					result,
+				)
 			}
 		})
-	}
-}
-
-func TestNoteEmbeddedStructAccess(t *testing.T) {
-	// Test that embedded structs are accessible
-	file := File{
-		Path:     "/vault/test.md",
-		Basename: "test",
-		Folder:   "/vault",
-		ModTime:  time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-	}
-
-	frontmatter := Frontmatter{
-		FileClass: "project",
-		Fields: map[string]interface{}{
-			"fileClass": "project",
-			"title":     "Test Project",
-		},
-	}
-
-	note := NewNote(file, frontmatter)
-
-	// Test direct access to embedded File fields
-	if note.Path != "/vault/test.md" {
-		t.Errorf("note.Path = %q, want %q", note.Path, "/vault/test.md")
-	}
-	if note.Basename != "test" {
-		t.Errorf("note.Basename = %q, want %q", note.Basename, "test")
-	}
-	if note.Folder != "/vault" {
-		t.Errorf("note.Folder = %q, want %q", note.Folder, "/vault")
-	}
-	if !note.ModTime.Equal(file.ModTime) {
-		t.Errorf("note.ModTime = %v, want %v", note.ModTime, file.ModTime)
-	}
-
-	// Test direct access to embedded Frontmatter fields
-	if note.FileClass != "project" {
-		t.Errorf("note.FileClass = %q, want %q", note.FileClass, "project")
-	}
-	if len(note.Fields) != 2 {
-		t.Errorf("note.Fields length = %d, want %d", len(note.Fields), 2)
-	}
-	if note.Fields["title"] != "Test Project" {
-		t.Errorf(
-			"note.Fields[title] = %v, want %v",
-			note.Fields["title"],
-			"Test Project",
-		)
 	}
 }

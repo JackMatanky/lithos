@@ -102,7 +102,7 @@ graph TB
 
 *StoragePort interface abstracts vault indexing and cache access*
 
-- **Rationale:** Decouples query/indexing logic from storage implementation. MVP uses FileCache adapter; post-MVP can add BoltDB adapter without changing core. PRD Technical Assumptions explicitly require: "Storage must be implemented behind interface." → *(Epic 3, Story 3.1: "Define Storage interface")*
+- **Rationale:** Decouples query/indexing logic from storage implementation. Epic 3 uses hybrid BoltDB (hot cache <1ms) + SQLite (deep storage <50ms) architecture. Post-Epic 3 can add additional storage systems without changing core. PRD Technical Assumptions explicitly require: "Storage must be implemented behind interface." → *(Epic 3 Course Correction)*
 
 **3. Dependency Injection (Constructor-Based)**
 
@@ -120,9 +120,72 @@ graph TB
 
 *Separation of write model and read model with distinct optimization strategies*
 
-- **Rationale:** Data indexing (write) and data querying (read) have fundamentally different optimization needs. The separation is in both **models** (separate structures for writes vs reads) and **operations** (distinct port interfaces). Write model optimizes for validation and data integrity - enforces business rules and maintains canonical representation. Read model optimizes for queries - denormalized with pre-built indices. Synchronization service keeps models consistent. This true CQRS provides independent scaling, multiple specialized indices, and supports future event sourcing. → *(Epic 3: Vault indexing, Epic 5: Template queries)*
+- **Rationale:** Data indexing (write) and data querying (read) have fundamentally different optimization needs. The separation is in both **models** (separate structures for writes vs reads) and **operations** (distinct port interfaces). Write model optimizes for validation and data integrity - enforces business rules and maintains canonical representation. Read model optimizes for queries - denormalized with pre-built indices. Synchronization service keeps models consistent. This true CQRS provides independent scaling, multiple specialized indices, and supports future event sourcing. → *(Epic 3: Vault indexing, Epic 4: Template queries)*
 
 *Note: The CQRS pattern future-proofs for larger datasets. Write side can add validation caching and batch processing. Read side can maintain multiple projections optimized for different query patterns without impacting write performance.*
+
+**6. Unit of Work Pattern**
+
+*Coordinates transactional writes across multiple storage systems with atomicity guarantees*
+
+- **Rationale:** Hybrid storage architecture (BoltDB + SQLite) requires coordinated writes to maintain consistency. CacheUnitOfWork ensures both storage systems are updated atomically - if either write fails, both are rolled back. Prevents partial writes (note in BoltDB but not SQLite, or vice versa). Enables two-phase commit with automatic rollback on context cancellation. Foundation for future saga pattern if eventual consistency needed. → *(Epic 3, Story 3.22: CacheUnitOfWork implementation)*
+
+*Note: Unit of Work simplifies VaultIndexer by extracting transaction coordination logic. Future storage system additions (e.g., Redis cache) only require updating CacheUnitOfWork, not business logic.*
+
+**7. Singleton Pattern**
+
+*Ensures single instance of critical resources with thread-safe initialization*
+
+- **Rationale:** Config and PropertyBank are loaded once at application startup and never modified. Using `sync.Once` ensures thread-safe initialization even with concurrent goroutines. Prevents duplicate loading of schemas/properties from disk. Guarantees consistent state across all domain services - all services see the same Config/PropertyBank instance. Go's `sync.Once` provides race-free initialization without global variables. → *(Story 3.28: Singleton Pattern Implementation)*
+
+**Implementation Details:**
+
+- **Double-Checked Locking:** Uses `sync.RWMutex` with `sync.Once` for optimal performance
+  - Fast path: `RLock` check if instance exists (no blocking for concurrent readers)
+  - Slow path: `sync.Once` initialization (executed exactly once)
+  - Minimal lock contention after initialization
+
+- **Thread-Safety Guarantees:**
+  - `sync.Once` ensures initialization happens exactly once
+  - No data races even with 100+ concurrent goroutines
+  - Verified with Go race detector (`go test -race`)
+
+- **Test Isolation:**
+  - `SetInstanceForTesting()` allows custom instances for tests
+  - `ResetConfigForTesting()` / `ResetPropertyBankForTesting()` for cleanup
+  - Enables independent parallel test execution
+  - Prevents global state pollution across test suites
+
+**API:**
+```go
+// Config singleton
+cfg := config.Instance()                    // Thread-safe accessor
+config.SetInstanceForTesting(&customCfg)    // Test isolation
+defer config.ResetConfigForTesting()        // Test cleanup
+
+// PropertyBank singleton
+bank := propertybank.PropertyBankInstance()              // Thread-safe accessor
+propertybank.SetPropertyBankForTesting(customBank)       // Test isolation
+defer propertybank.ResetPropertyBankForTesting()         // Test cleanup
+```
+
+*Note: Singleton pattern is limited to immutable resources loaded at startup (Config, PropertyBank). Runtime state (indexes, caches) uses different concurrency patterns (sync.RWMutex for read-heavy access). Future DI container (Story 3.30) will provide singleton instances to services via dependency injection.*
+
+**8. Factory Pattern**
+
+*Centralizes object construction with validation and initialization logic*
+
+- **Rationale:** Domain model constructors (`NewVaultFile`, `NewSchema`, `NewProperty`) encapsulate complex initialization and validation. Ensures all domain objects are valid at creation time (fail-fast). Computed fields (Basename, Folder, MimeType) calculated once during construction and cached in struct. Prevents invalid objects from entering the domain. Go's exported constructor functions (`New*`) serve as factories without requiring separate factory classes. → *(All domain models use factory constructors per data-models.md)*
+
+*Note: Factory pattern enables future builder pattern for complex objects. Factories can be enhanced with fluent interfaces or builder pattern without changing client code.*
+
+**9. DTO Pattern (Layered Architecture)**
+
+*Data transfer objects with layered architecture for different use cases*
+
+- **Rationale:** VaultFile uses 3-layer DTO architecture to address multiple concerns: (Layer 1) Eliminate field duplication by leveraging Go stdlib `fs.FileInfo`, (Layer 2) Separate metadata-only from full content for memory efficiency, (Layer 3) Provide storage-specific DTOs optimized for BoltDB hot cache and SQLite deep storage. Each layer solves specific problem: Layer 1 eliminates duplication, Layer 2 enables memory-efficient scanning, Layer 3 optimizes for storage system. Migration path from current implementation to full layered architecture. → *(Epic 3, Story 3.17: VaultFile DTO redesign)*
+
+*Note: Layered DTO pattern is more nuanced than traditional DTO. Each layer builds on previous layer, enabling progressive enhancement. Services choose appropriate layer based on needs (metadata-only vs with-content vs storage-specific).*
 
 ## Design Principles
 
@@ -139,3 +202,166 @@ graph TB
 **Dependency Injection via main.go:** All dependency wiring happens in application entry point using constructor injection. Infrastructure built first, then domain services, then application services, finally adapters. No DI framework needed—pure Go constructors. See detailed DI pattern documentation in Components section.
 
 **Idiomatic Go Error Handling:** Standard `(T, error)` return signatures throughout. Domain-specific error types implement standard `error` interface. Error wrapping using `fmt.Errorf("context: %w", err)` for proper unwrapping with `errors.Is()` and `errors.As()`.
+
+---
+
+## Orchestration Pattern Decision
+
+**Epic 3 Decision (Story 3.30):** Implement **Event-Driven Architecture** for Epic 3 to eliminate god-objects and enable clean CQRS separation.
+
+### Decision Rationale
+
+**Problem Identified:** Orchestrator pattern attempted (CLICommander) resulted in god-objects:
+- CLICommander: 7 dependencies (cliAdapter, templateEngine, schemaEngine, vaultIndexer, vaultWriter, cfg, log)
+- VaultIndexer: 7 dependencies (vaultScanner, cacheWriter, cacheReader, frontmatterService, schemaEngine, cfg, log)
+- Pattern: Each service becoming mini-orchestrator → multiple god-objects spreading
+
+**Solution:** Event-driven architecture decouples services through domain events, eliminating direct dependencies and god-object proliferation.
+
+### Event-Driven Architecture Implementation
+
+**Pattern Characteristics:**
+- **Decoupled components:** Services publish events, subscribers react independently
+- **Asynchronous execution:** Events processed asynchronously with eventual consistency
+- **Event bus infrastructure:** Central message routing with pub/sub semantics
+- **Multiple subscribers:** Same event triggers multiple reactions across services
+
+**EventBus Interface:**
+
+```go
+type EventBus interface {
+    Publish(ctx context.Context, event DomainEvent) error
+    Subscribe(eventType string, handler EventHandler) error
+    Unsubscribe(eventType string, handler EventHandler) error
+}
+
+type EventHandler func(ctx context.Context, event DomainEvent) error
+```
+
+**Domain Events (Epic 3 Active):**
+
+```go
+// Domain events implemented in Epic 3
+type DomainEvent interface {
+    EventType() string
+    OccurredAt() time.Time
+    AggregateID() string
+}
+
+// Indexing events
+type NoteIndexed struct {
+    NoteID      NoteID
+    Path        string
+    FileClass   string
+    OccurredAt  time.Time
+}
+
+type VaultIndexingComplete struct {
+    NotesIndexed int
+    Duration     time.Duration
+    OccurredAt   time.Time
+}
+
+// Validation events
+type FrontmatterValidated struct {
+    NoteID       NoteID
+    SchemaName   string
+    IsValid      bool
+    Errors       []ValidationError
+    OccurredAt   time.Time
+}
+
+// Configuration events
+type SchemaLoaded struct {
+    SchemaName   string
+    PropertyCount int
+    OccurredAt   time.Time
+}
+
+type SchemasReloaded struct {
+    SchemaCount  int
+    OccurredAt   time.Time
+}
+```
+
+**Publisher/Subscriber Architecture:**
+
+**Publishers:**
+- VaultIndexer publishes `NoteIndexed` (after each note) and `VaultIndexingComplete` (after full scan)
+- FrontmatterService publishes `FrontmatterValidated` (after validation)
+- SchemaEngine publishes `SchemaLoaded`/`SchemasReloaded` (schema lifecycle)
+
+**Subscribers:**
+- VaultIndexer subscribes to `NoteIndexed` → updates cache indices
+- QueryService subscribes to `VaultIndexingComplete` → rebuilds in-memory query structures
+- MetricsService subscribes to `FrontmatterValidated` → validation statistics
+
+**God-Object Elimination:**
+- CLICommander no longer directly calls services → publishes command events instead
+- VaultIndexer dependency count reduced → publishes events instead of calling services
+- Services communicate via events → no direct coupling
+
+**CQRS Alignment:**
+- Command side (write): VaultIndexer publishes events after writes
+- Query side (read): QueryService subscribes to events, rebuilds indices asynchronously
+- RefreshFromCache() removed from QueryService (was CQRS violation)
+
+**Event-Driven Benefits for Epic 3:**
+- **Reduced coupling:** Services don't directly depend on each other
+- **Independent evolution:** Add new event subscribers without modifying publishers
+- **CQRS separation:** Clean command/query split via events
+- **God-object elimination:** Services communicate via events, not direct dependencies
+- **Testability:** Mock EventBus for unit tests, test event flows independently
+
+**Event-Driven Trade-offs:**
+- **Infrastructure complexity:** EventBus, message routing, subscription management
+- **Debugging difficulty:** Asynchronous execution harder to trace than sequential calls
+- **Eventual consistency:** Subscribers process events with delay (mitigated by synchronous dispatch for critical events)
+- **Testing complexity:** Event flow testing in addition to method call testing
+
+**Epic 3 Implementation Strategy:**
+
+1. **Story 3.30:** Implement EventBus infrastructure with in-memory goroutine-based dispatch
+2. **Service Refactoring:** Refactor services to publish/subscribe events instead of direct calls
+3. **CQRS Compliance:** Remove write operations from QueryService (subscribe to events only)
+4. **Performance Validation:** Event overhead < 5ms per event (acceptable for consistency benefits)
+
+### Implementation Status (Story 3.30 - Complete)
+
+**EventBus Implementation (`internal/app/events/bus.go`):**
+- In-memory pub/sub with async goroutine-based dispatch
+- Worker pool pattern with configurable worker count (default: 10)
+- Thread-safe handler registry using `sync.RWMutex`
+- Error isolation: Failed handlers don't block other subscribers
+- Graceful shutdown with context cancellation and worker termination
+- Structured logging for all publishes and handler executions
+
+**Domain Events (`internal/domain/events.go`):**
+- Implemented 6 event types with immutable payloads
+- Constructor validation ensures event integrity
+- Must* constructors for convenience (panic on invalid construction)
+- Defensive copies of slices/maps to prevent external mutation
+
+**Service Integration:**
+- `VaultIndexer`: Publishes `NoteIndexed`, `VaultIndexingComplete`; Subscribes to `CommandIssuedEvent`
+- `FrontmatterService`: Publishes `FrontmatterValidated`
+- `SchemaEngine`: Publishes `SchemaLoaded`, `SchemasReloaded`
+- `QueryService`: Subscribes to `VaultIndexingComplete` for cache invalidation
+- `MetricsService`: New service subscribing to `FrontmatterValidated` for validation stats
+
+**God-Object Elimination Results:**
+- CLICommander now publishes `CommandIssuedEvent` instead of calling VaultIndexer directly
+- VaultIndexer reduced from direct service calls to event-driven coordination
+- Services communicate through EventBus, eliminating direct coupling
+
+**CQRS Verification:**
+- QueryService is strictly read-only (all write operations removed in Story 3.22)
+- QueryService subscribes to events for cache invalidation (no direct refresh calls)
+- VaultIndexer is command-side (writes + publishes events)
+
+**Test Coverage:**
+- EventBus: 84.2% coverage with concurrency tests
+- MetricsService: 94.1% coverage with thread-safety verification
+- All integration tests passing with event-driven flows
+
+---

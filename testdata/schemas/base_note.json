@@ -1,0 +1,16 @@
+{
+  "name": "base-note",
+  "extends": "",
+  "excludes": [],
+  "properties": {
+    "title": {
+      "$ref": "#/properties/standard_title"
+    },
+    "tags": {
+      "$ref": "#/properties/standard_tags"
+    },
+    "created": {
+      "$ref": "#/properties/iso_date"
+    }
+  }
+}

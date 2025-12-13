@@ -1,0 +1,20 @@
+{
+  "name": "pdev_vision",
+  "properties": {
+    "type": {
+      "required": false,
+      "array": false,
+      "type": "string",
+      "enum": [
+        "fifteen_year",
+        "five_year",
+        "one_year",
+        "six_month",
+        "ten_year",
+        "three_month",
+        "three_year"
+      ]
+    }
+  },
+  "extends": "pdev"
+}

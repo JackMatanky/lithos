@@ -1,46 +1,27 @@
 package errors
 
-import "fmt"
-
-// TemplateError captures problems encountered while parsing or executing
-// templates. Only the template identifier, optional line number, and cause are
-// retained to keep the type lean.
+// TemplateError represents template processing failures.
+// It embeds BaseError to provide standard error functionality.
 type TemplateError struct {
 	BaseError
-	template string
-	line     int
+
+	templateID string
 }
 
-// NewTemplateError creates a TemplateError for the provided template name.
+// NewTemplateError creates a new TemplateError with template context.
+// The cause provides additional context about the template processing failure.
 func NewTemplateError(
-	template string,
-	line int,
-	reason string,
+	message string,
+	templateID string,
 	cause error,
-) TemplateError {
-	context := fmt.Sprintf("template '%s'", template)
-	if line > 0 {
-		context = fmt.Sprintf("%s line %d", context, line)
-	}
-
-	message := fmt.Sprintf("%s: %s", context, reason)
-	if cause != nil {
-		message = fmt.Sprintf("%s: %v", message, cause)
-	}
-
-	return TemplateError{
-		BaseError: NewBaseError(message, cause),
-		template:  template,
-		line:      line,
+) *TemplateError {
+	return &TemplateError{
+		BaseError:  NewBaseError(message, cause),
+		templateID: templateID,
 	}
 }
 
-// Template returns the template identifier.
-func (e TemplateError) Template() string {
-	return e.template
-}
-
-// Line returns the 1-based line number when available, or 0 when unspecified.
-func (e TemplateError) Line() int {
-	return e.line
+// TemplateID returns the identifier of the template that failed processing.
+func (e *TemplateError) TemplateID() string {
+	return e.templateID
 }
