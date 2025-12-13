@@ -183,10 +183,10 @@ func TestNewNoteSuccess(t *testing.T) {
 
 	// Setup mock template
 	mockTemplatePort.SetTemplates(map[domain.TemplateID]domain.Template{
-		expectedTemplateID: {
-			ID:      expectedTemplateID,
-			Content: expectedContent,
-		},
+		expectedTemplateID: domain.NewTemplate(
+			expectedTemplateID,
+			expectedContent,
+		),
 	})
 
 	// Create template engine with mock port
@@ -288,10 +288,7 @@ func TestNewNoteFileWriteError(t *testing.T) {
 	expectedTemplateID := domain.TemplateID("test-template")
 
 	mockTemplatePort.SetTemplates(map[domain.TemplateID]domain.Template{
-		expectedTemplateID: {
-			ID:      expectedTemplateID,
-			Content: "content",
-		},
+		expectedTemplateID: domain.NewTemplate(expectedTemplateID, "content"),
 	})
 
 	config := domain.DefaultConfig()

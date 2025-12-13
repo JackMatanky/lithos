@@ -46,11 +46,11 @@ func (m *mockTemplatePort) Load(
 	id domain.TemplateID,
 ) (domain.Template, error) {
 	if m.loadError != nil {
-		return domain.Template{}, m.loadError
+		return nil, m.loadError
 	}
 	tmpl, exists := m.templates[id]
 	if !exists {
-		return domain.Template{}, lithosErr.NewResourceError(
+		return nil, lithosErr.NewResourceError(
 			"template",
 			"load",
 			string(id),

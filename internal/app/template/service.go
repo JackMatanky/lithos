@@ -111,8 +111,8 @@ func (e *TemplateEngine) Render(
 	var buf strings.Builder
 	if executeErr := t.Execute(&buf, nil); executeErr != nil {
 		return "", errors.NewTemplateError(
-			fmt.Sprintf("execute error in template '%s'", tmpl.ID),
-			string(tmpl.ID),
+			fmt.Sprintf("execute error in template '%s'", tmpl.ID()),
+			string(tmpl.ID()),
 			executeErr,
 		)
 	}
@@ -195,28 +195,28 @@ func (e *TemplateEngine) getFuncMap() template.FuncMap {
 func (e *TemplateEngine) getCompiledTemplate(
 	tmpl domain.Template,
 ) (*template.Template, error) {
-	checksum := checksumString(tmpl.Content)
+	checksum := checksumString(tmpl.Content())
 
 	e.mu.RLock()
-	if cached, ok := e.compiled[tmpl.ID]; ok && cached.checksum == checksum {
+	if cached, ok := e.compiled[tmpl.ID()]; ok && cached.checksum == checksum {
 		defer e.mu.RUnlock()
 		return cached.tpl, nil
 	}
 	e.mu.RUnlock()
 
-	parsed, err := template.New(string(tmpl.ID)).
+	parsed, err := template.New(string(tmpl.ID())).
 		Funcs(e.getFuncMap()).
-		Parse(tmpl.Content)
+		Parse(tmpl.Content())
 	if err != nil {
 		return nil, errors.NewTemplateError(
-			fmt.Sprintf("parse error in template '%s'", tmpl.ID),
-			string(tmpl.ID),
+			fmt.Sprintf("parse error in template '%s'", tmpl.ID()),
+			string(tmpl.ID()),
 			err,
 		)
 	}
 
 	e.mu.Lock()
-	e.compiled[tmpl.ID] = cachedTemplate{
+	e.compiled[tmpl.ID()] = cachedTemplate{
 		tpl:      parsed,
 		checksum: checksum,
 	}

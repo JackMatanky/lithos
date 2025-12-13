@@ -2,6 +2,7 @@ package spi
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -12,6 +13,14 @@ const testTemplateID = "test"
 // mockTemplatePort implements TemplatePort for testing.
 type mockTemplatePort struct {
 	templates map[domain.TemplateID]domain.Template
+}
+
+type mockTemplateError struct {
+	id domain.TemplateID
+}
+
+func (e *mockTemplateError) Error() string {
+	return "template not found: " + string(e.id)
 }
 
 // List returns all template IDs from the mock.
@@ -32,7 +41,7 @@ func (m *mockTemplatePort) Load(
 ) (domain.Template, error) {
 	template, exists := m.templates[id]
 	if !exists {
-		return domain.Template{}, nil // Simplified for testing
+		return nil, &mockTemplateError{id: id}
 	}
 	return template, nil
 }
@@ -67,23 +76,30 @@ func TestTemplatePortInterface(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if template.ID != testTemplateID {
-		t.Errorf("Load() returned ID %v, want test", template.ID)
+	if template.ID() != testTemplateID {
+		t.Errorf("Load() returned ID %v, want test", template.ID())
 	}
-	if template.Content != "content" {
+	if template.Content() != "content" {
 		t.Errorf(
 			"Load() returned content %q, want %q",
-			template.Content,
+			template.Content(),
 			"content",
 		)
 	}
 
 	// Test Load method with non-existent template
 	_, err = port.Load(ctx, "nonexistent")
-	if err != nil {
-		t.Fatalf(
-			"Load() with nonexistent template should not error in mock, got %v",
-			err,
+	if err == nil {
+		t.Fatal("Load() with nonexistent template should error in mock")
+	}
+	var mockErr *mockTemplateError
+	if !errors.As(err, &mockErr) {
+		t.Fatalf("Expected mockTemplateError, got %T", err)
+	}
+	if mockErr.id != "nonexistent" {
+		t.Errorf(
+			"Expected error for 'nonexistent', got error for '%s'",
+			mockErr.id,
 		)
 	}
 }

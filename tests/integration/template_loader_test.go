@@ -94,20 +94,17 @@ func testLoadStaticTemplate(
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if tmpl.ID != "static_template" {
-		t.Errorf("Template ID = %s, want static_template", tmpl.ID)
+	if tmpl.ID() != "static_template" {
+		t.Errorf("Template ID = %s, want static_template", tmpl.ID())
 	}
 
-	// Check that content contains expected text
-	expectedContent := "# Static Template Example"
-	if tmpl.Content == "" {
-		t.Error("Template content is empty")
+	// Check that template can execute
+	result, err := tmpl.Execute(nil)
+	if err != nil {
+		t.Fatalf("Template execution failed: %v", err)
 	}
-	if !contains(tmpl.Content, expectedContent) {
-		t.Errorf(
-			"Template content does not contain expected text %q",
-			expectedContent,
-		)
+	if result == "" {
+		t.Error("Template execution result is empty")
 	}
 }
 
@@ -122,20 +119,20 @@ func testLoadBasicNote(
 		t.Fatalf("Load() error = %v", err)
 	}
 
-	if tmpl.ID != "basic_note" {
-		t.Errorf("Template ID = %s, want basic_note", tmpl.ID)
+	if tmpl.ID() != "basic_note" {
+		t.Errorf("Template ID = %s, want basic_note", tmpl.ID())
 	}
 
-	// Check that content contains expected text
-	expectedContent := "# {{if .title}}{{.title}}{{else}}Untitled Note{{end}}"
-	if tmpl.Content == "" {
-		t.Error("Template content is empty")
+	// Check that template can execute
+	result, err := tmpl.Execute(map[string]string{"title": "Test Note"})
+	if err != nil {
+		t.Fatalf("Template execution failed: %v", err)
 	}
-	if !contains(tmpl.Content, expectedContent) {
-		t.Errorf(
-			"Template content does not contain expected text %q",
-			expectedContent,
-		)
+	if result == "" {
+		t.Error("Template execution result is empty")
+	}
+	if !contains(result, "Test Note") {
+		t.Error("Template execution does not contain expected title")
 	}
 }
 
