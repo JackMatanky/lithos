@@ -23,7 +23,7 @@ func TestNote_Validate(t *testing.T) {
 			note: Note{
 				Path: "notes/test.md",
 				Frontmatter: Frontmatter{
-					Fields: map[string]interface{}{"title": "Test"},
+					Fields: map[string]any{"title": "Test"},
 				},
 				Links:     []Link{},
 				Headings:  []Heading{},
@@ -38,7 +38,7 @@ func TestNote_Validate(t *testing.T) {
 			note: Note{
 				Path: "",
 				Frontmatter: Frontmatter{
-					Fields: map[string]interface{}{"title": "Test"},
+					Fields: map[string]any{"title": "Test"},
 				},
 				Links:     []Link{},
 				Headings:  []Heading{},
@@ -54,7 +54,7 @@ func TestNote_Validate(t *testing.T) {
 			note: Note{
 				Path: "   ",
 				Frontmatter: Frontmatter{
-					Fields: map[string]interface{}{"title": "Test"},
+					Fields: map[string]any{"title": "Test"},
 				},
 				Links:     []Link{},
 				Headings:  []Heading{},
@@ -131,7 +131,7 @@ func TestNewNote(t *testing.T) {
 			name: "creates valid note with all parameters",
 			path: "notes/test.md",
 			frontmatter: Frontmatter{
-				Fields: map[string]interface{}{"title": "Test Note"},
+				Fields: map[string]any{"title": "Test Note"},
 			},
 			links:       []Link{{Text: "link1", Destination: "dest1"}},
 			headings:    []Heading{{Level: 1, Text: "Heading 1"}},
@@ -143,7 +143,7 @@ func TestNewNote(t *testing.T) {
 			name: "creates note with empty slices",
 			path: "notes/test.md",
 			frontmatter: Frontmatter{
-				Fields: map[string]interface{}{"title": "Test Note"},
+				Fields: map[string]any{"title": "Test Note"},
 			},
 			links:       nil,
 			headings:    nil,
@@ -155,7 +155,7 @@ func TestNewNote(t *testing.T) {
 			name: "fails with empty path",
 			path: "",
 			frontmatter: Frontmatter{
-				Fields: map[string]interface{}{"title": "Test Note"},
+				Fields: map[string]any{"title": "Test Note"},
 			},
 			links:       []Link{},
 			headings:    []Heading{},
@@ -255,7 +255,7 @@ func TestNote_WithBacklinks(t *testing.T) {
 	// Create a base note
 	note, err := NewNote(
 		"notes/test.md",
-		Frontmatter{Fields: map[string]interface{}{"title": "Test"}},
+		Frontmatter{Fields: map[string]any{"title": "Test"}},
 		nil,
 		nil,
 		nil,
@@ -310,10 +310,10 @@ func TestNote_WithBacklinks(t *testing.T) {
 // TestNote_DelegationHelpers tests the delegation helper methods.
 func TestNote_DelegationHelpers(t *testing.T) {
 	// Create note with test frontmatter
-	fields := map[string]interface{}{
+	fields := map[string]any{
 		"fileClass": "contact",
 		"title":     testTitle,
-		"aliases":   []interface{}{"JD", "Johnny"},
+		"aliases":   []any{"JD", "Johnny"},
 	}
 	note, err := NewNote(
 		"notes/test.md",
@@ -380,12 +380,12 @@ func TestNote_DelegationHelpers(t *testing.T) {
 func TestNote_SchemaName(t *testing.T) {
 	tests := []struct {
 		name     string
-		fields   map[string]interface{}
+		fields   map[string]any
 		expected string
 	}{
 		{
 			name: "returns fileClass when present",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"fileClass": "contact",
 				"title":     "Test",
 			},
@@ -393,7 +393,7 @@ func TestNote_SchemaName(t *testing.T) {
 		},
 		{
 			name:     "returns empty when fileClass missing",
-			fields:   map[string]interface{}{"title": "Test"},
+			fields:   map[string]any{"title": "Test"},
 			expected: "",
 		},
 	}
