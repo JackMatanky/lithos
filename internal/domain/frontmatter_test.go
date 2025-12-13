@@ -11,27 +11,27 @@ import (
 func TestNewFrontmatter_DefensiveCopy(t *testing.T) {
 	tests := []struct {
 		name     string
-		input    map[string]interface{}
+		input    map[string]any
 		expected Frontmatter
 	}{
 		{
 			name:     "nil input creates empty frontmatter",
 			input:    nil,
-			expected: Frontmatter{Fields: map[string]interface{}{}},
+			expected: Frontmatter{Fields: map[string]any{}},
 		},
 		{
 			name:     "empty map creates empty frontmatter",
-			input:    map[string]interface{}{},
-			expected: Frontmatter{Fields: map[string]interface{}{}},
+			input:    map[string]any{},
+			expected: Frontmatter{Fields: map[string]any{}},
 		},
 		{
 			name: "populated map creates frontmatter with fields",
-			input: map[string]interface{}{
+			input: map[string]any{
 				"title": "Test Note",
 				"tags":  []string{"test", "example"},
 			},
 			expected: Frontmatter{
-				Fields: map[string]interface{}{
+				Fields: map[string]any{
 					"title": "Test Note",
 					"tags":  []string{"test", "example"},
 				},
@@ -65,7 +65,7 @@ func TestNewFrontmatter_DefensiveCopy(t *testing.T) {
 
 // TestFrontmatter_Get tests the Get method for safe field access.
 func TestFrontmatter_Get(t *testing.T) {
-	fm := NewFrontmatter(map[string]interface{}{
+	fm := NewFrontmatter(map[string]any{
 		"title":     "Test Note",
 		"tags":      []string{"test", "example"},
 		"published": true,
@@ -75,7 +75,7 @@ func TestFrontmatter_Get(t *testing.T) {
 	tests := []struct {
 		name     string
 		key      string
-		expected interface{}
+		expected any
 		found    bool
 	}{
 		{
@@ -125,7 +125,7 @@ func TestFrontmatter_Get(t *testing.T) {
 
 // TestFrontmatter_Has tests the Has method for field existence checking.
 func TestFrontmatter_Has(t *testing.T) {
-	fm := NewFrontmatter(map[string]interface{}{
+	fm := NewFrontmatter(map[string]any{
 		"title": "Test Note",
 		"tags":  []string{"test"},
 	})
@@ -164,12 +164,12 @@ func TestFrontmatter_Has(t *testing.T) {
 
 // TestFrontmatter_IsString tests the IsString type inspector.
 func TestFrontmatter_IsString(t *testing.T) {
-	fm := NewFrontmatter(map[string]interface{}{
+	fm := NewFrontmatter(map[string]any{
 		"stringField": "hello",
 		"intField":    42,
 		"boolField":   true,
 		"arrayField":  []string{"a", "b"},
-		"mapField":    map[string]interface{}{"key": "value"},
+		"mapField":    map[string]any{"key": "value"},
 	})
 
 	tests := []struct {
@@ -226,13 +226,13 @@ func TestFrontmatter_IsString(t *testing.T) {
 
 // TestFrontmatter_IsArray tests the IsArray type inspector.
 func TestFrontmatter_IsArray(t *testing.T) {
-	fm := NewFrontmatter(map[string]interface{}{
+	fm := NewFrontmatter(map[string]any{
 		"stringArray":    []string{"a", "b"},
-		"interfaceArray": []interface{}{"a", 1},
+		"interfaceArray": []any{"a", 1},
 		"stringField":    "hello",
 		"intField":       42,
 		"boolField":      true,
-		"mapField":       map[string]interface{}{"key": "value"},
+		"mapField":       map[string]any{"key": "value"},
 	})
 
 	tests := []struct {
@@ -294,14 +294,14 @@ func TestFrontmatter_IsArray(t *testing.T) {
 
 // TestFrontmatter_IsInt tests the IsInt type inspector.
 func TestFrontmatter_IsInt(t *testing.T) {
-	fm := NewFrontmatter(map[string]interface{}{
+	fm := NewFrontmatter(map[string]any{
 		"intField":    42,
 		"int64Field":  int64(123),
 		"floatField":  3.14,
 		"stringField": "hello",
 		"boolField":   true,
 		"arrayField":  []string{"a", "b"},
-		"mapField":    map[string]interface{}{"key": "value"},
+		"mapField":    map[string]any{"key": "value"},
 	})
 
 	tests := []struct {
@@ -363,12 +363,12 @@ func TestFrontmatter_IsInt(t *testing.T) {
 
 // TestFrontmatter_IsBool tests the IsBool type inspector.
 func TestFrontmatter_IsBool(t *testing.T) {
-	fm := NewFrontmatter(map[string]interface{}{
+	fm := NewFrontmatter(map[string]any{
 		"boolField":   true,
 		"stringField": "hello",
 		"intField":    42,
 		"arrayField":  []string{"a", "b"},
-		"mapField":    map[string]interface{}{"key": "value"},
+		"mapField":    map[string]any{"key": "value"},
 	})
 
 	tests := []struct {
@@ -425,8 +425,8 @@ func TestFrontmatter_IsBool(t *testing.T) {
 
 // TestFrontmatter_IsMap tests the IsMap type inspector.
 func TestFrontmatter_IsMap(t *testing.T) {
-	fm := NewFrontmatter(map[string]interface{}{
-		"mapField":    map[string]interface{}{"key": "value"},
+	fm := NewFrontmatter(map[string]any{
+		"mapField":    map[string]any{"key": "value"},
 		"stringField": "hello",
 		"intField":    42,
 		"boolField":   true,
@@ -489,26 +489,26 @@ func TestFrontmatter_GetFileClass(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		fields   map[string]interface{}
+		fields   map[string]any
 		expected string
 	}{
 		{
 			name: "file_class field exists and is string",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"file_class": "meeting",
 			},
 			expected: "meeting",
 		},
 		{
 			name: "file_class field missing",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"title": "Test",
 			},
 			expected: "",
 		},
 		{
 			name: "file_class field is not string",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"file_class": 123,
 			},
 			expected: "",
@@ -530,26 +530,26 @@ func TestFrontmatter_GetFileClass(t *testing.T) {
 func TestFrontmatter_Title(t *testing.T) {
 	tests := []struct {
 		name     string
-		fields   map[string]interface{}
+		fields   map[string]any
 		expected string
 	}{
 		{
 			name: "title field exists and is string",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"title": "Test Note",
 			},
 			expected: "Test Note",
 		},
 		{
 			name: "title field missing",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"fileClass": "meeting",
 			},
 			expected: "",
 		},
 		{
 			name: "title field is not string",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"title": 123,
 			},
 			expected: "",
@@ -571,47 +571,47 @@ func TestFrontmatter_Title(t *testing.T) {
 func TestFrontmatter_Aliases(t *testing.T) {
 	tests := []struct {
 		name     string
-		fields   map[string]interface{}
+		fields   map[string]any
 		expected []string
 	}{
 		{
 			name: "aliases as string array",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"aliases": []string{"alias1", "alias2"},
 			},
 			expected: []string{"alias1", "alias2"},
 		},
 		{
 			name: "aliases as interface array with strings",
-			fields: map[string]interface{}{
-				"aliases": []interface{}{"alias1", "alias2"},
+			fields: map[string]any{
+				"aliases": []any{"alias1", "alias2"},
 			},
 			expected: []string{"alias1", "alias2"},
 		},
 		{
 			name: "aliases as single string",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"aliases": "single-alias",
 			},
 			expected: []string{"single-alias"},
 		},
 		{
 			name: "aliases field missing",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"title": "Test",
 			},
 			expected: []string{},
 		},
 		{
 			name: "aliases as interface array with mixed types (strings only)",
-			fields: map[string]interface{}{
-				"aliases": []interface{}{"alias1", 123, "alias2"},
+			fields: map[string]any{
+				"aliases": []any{"alias1", 123, "alias2"},
 			},
 			expected: []string{"alias1", "alias2"},
 		},
 		{
 			name: "aliases as non-array, non-string type",
-			fields: map[string]interface{}{
+			fields: map[string]any{
 				"aliases": 123,
 			},
 			expected: []string{},
@@ -633,7 +633,7 @@ func TestFrontmatter_Aliases(t *testing.T) {
 func TestFrontmatter_Immutability(t *testing.T) {
 	const modifiedValue = "Modified"
 
-	originalFields := map[string]interface{}{
+	originalFields := map[string]any{
 		"title": "Original",
 		"tags":  []string{"original"},
 	}
@@ -669,4 +669,95 @@ func TestFrontmatterService_UsesHelpers(t *testing.T) {
 	// the helpers are implemented.
 
 	t.Skip("Skipping until FrontmatterService is updated to use helpers")
+}
+
+// TestIs_GenericTypeChecker tests the new generic Is[T] function.
+func TestIs_GenericTypeChecker(t *testing.T) {
+	t.Parallel()
+
+	fm := Frontmatter{
+		Fields: map[string]any{
+			"title":     "Test Note",
+			"count":     42,
+			"published": true,
+			"tags":      []string{"test", "example"},
+			"metadata":  map[string]any{"key": "value"},
+		},
+	}
+
+	tests := []struct {
+		name     string
+		checkFn  func() bool
+		expected bool
+	}{
+		{
+			name:     "string field with Is[string]",
+			checkFn:  func() bool { return Is[string](fm, "title") },
+			expected: true,
+		},
+		{
+			name:     "int field with Is[int]",
+			checkFn:  func() bool { return Is[int](fm, "count") },
+			expected: true,
+		},
+		{
+			name:     "bool field with Is[bool]",
+			checkFn:  func() bool { return Is[bool](fm, "published") },
+			expected: true,
+		},
+		{
+			name:     "slice field with Is[[]string]",
+			checkFn:  func() bool { return Is[[]string](fm, "tags") },
+			expected: true,
+		},
+		{
+			name: "map field with Is[map[string]any]",
+			checkFn: func() bool {
+				return Is[map[string]any](fm, "metadata")
+			},
+			expected: true,
+		},
+		{
+			name:     "wrong type returns false",
+			checkFn:  func() bool { return Is[int](fm, "title") },
+			expected: false,
+		},
+		{
+			name:     "non-existing field returns false",
+			checkFn:  func() bool { return Is[string](fm, "nonexistent") },
+			expected: false,
+		},
+		{
+			name: "Is[string] equivalent to IsString",
+			checkFn: func() bool {
+				return Is[string](fm, "title") == fm.IsString("title")
+			},
+			expected: true,
+		},
+		{
+			name: "Is[bool] equivalent to IsBool",
+			checkFn: func() bool {
+				return Is[bool](fm, "published") == fm.IsBool("published")
+			},
+			expected: true,
+		},
+		{
+			name: "Is[map[string]any] equivalent to IsMap",
+			checkFn: func() bool {
+				return Is[map[string]any](fm, "metadata") ==
+					fm.IsMap("metadata")
+			},
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := tt.checkFn()
+			if result != tt.expected {
+				t.Errorf("got %v, want %v", result, tt.expected)
+			}
+		})
+	}
 }

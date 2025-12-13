@@ -73,7 +73,7 @@ type TaskItem struct {
 type Frontmatter struct {
 	// Fields contains the complete parsed YAML frontmatter as a flexible map.
 	// Preserves all user-defined fields without filtering.
-	Fields map[string]interface{}
+	Fields map[string]any
 }
 
 // Error returns the error message for NoteValidationError.
@@ -100,8 +100,8 @@ func (e NoteFieldError) Error() string {
 // mutate Fields. This guarantees that adapter-parsed data remains unchanged
 // during domain operations. See docs/architecture/data-models.md#frontmatter
 // for entity enrichment pattern.
-func NewFrontmatter(fields map[string]interface{}) Frontmatter {
-	fieldsCopy := make(map[string]interface{})
+func NewFrontmatter(fields map[string]any) Frontmatter {
+	fieldsCopy := make(map[string]any)
 	for k, v := range fields {
 		fieldsCopy[k] = v
 	}
@@ -261,7 +261,7 @@ func (n Note) GetFrontmatterString(key string) (string, bool) {
 // Returns the value and true if the field exists, nil and false otherwise.
 // Part of generic field access helpers in
 // docs/architecture/data-models.md#frontmatter.
-func (f Frontmatter) Get(key string) (interface{}, bool) {
+func (f Frontmatter) Get(key string) (any, bool) {
 	val, ok := f.Fields[key]
 	return val, ok
 }
@@ -274,16 +274,33 @@ func (f Frontmatter) Has(key string) bool {
 	return ok
 }
 
-// IsString checks if the field exists and is of string type.
+// Is checks if the field exists and is of the specified type T.
+// This is a generic type checker that replaces individual IsString, IsBool,
+// etc.
 // Enables safe type checking before casting. Part of type inspector helpers
 // in docs/architecture/data-models.md#frontmatter.
-func (f Frontmatter) IsString(key string) bool {
+//
+// Usage:
+//
+//	if f.Is[string]("title") { ... }
+//	if f.Is[bool]("published") { ... }
+//	if f.Is[map[string]any]("metadata") { ... }
+func Is[T any](f Frontmatter, key string) bool {
 	val, ok := f.Fields[key]
 	if !ok {
 		return false
 	}
-	_, ok = val.(string)
+	_, ok = val.(T)
 	return ok
+}
+
+// IsString checks if the field exists and is of string type.
+// Enables safe type checking before casting. Part of type inspector helpers
+// in docs/architecture/data-models.md#frontmatter.
+//
+// Deprecated: Use Is[string](f, key) instead.
+func (f Frontmatter) IsString(key string) bool {
+	return Is[string](f, key)
 }
 
 // IsArray checks if the field exists and is of array/slice type.
@@ -295,7 +312,7 @@ func (f Frontmatter) IsArray(key string) bool {
 		return false
 	}
 	switch val.(type) {
-	case []interface{}, []string:
+	case []any, []string:
 		return true
 	default:
 		return false
@@ -322,25 +339,19 @@ func (f Frontmatter) IsInt(key string) bool {
 // IsBool checks if the field exists and is of boolean type.
 // Enables safe type checking before casting. Part of type inspector helpers
 // in docs/architecture/data-models.md#frontmatter.
+//
+// Deprecated: Use Is[bool](f, key) instead.
 func (f Frontmatter) IsBool(key string) bool {
-	val, ok := f.Fields[key]
-	if !ok {
-		return false
-	}
-	_, ok = val.(bool)
-	return ok
+	return Is[bool](f, key)
 }
 
 // IsMap checks if the field exists and is of map type.
 // Enables safe type checking before casting. Part of type inspector helpers
 // in docs/architecture/data-models.md#frontmatter.
+//
+// Deprecated: Use Is[map[string]any](f, key) instead.
 func (f Frontmatter) IsMap(key string) bool {
-	val, ok := f.Fields[key]
-	if !ok {
-		return false
-	}
-	_, ok = val.(map[string]interface{})
-	return ok
+	return Is[map[string]any](f, key)
 }
 
 // GetFileClass retrieves the fileClass field using the configured key.
@@ -366,9 +377,9 @@ func (f Frontmatter) Title() string {
 
 // stringSliceFrom converts various YAML representations of string lists to
 // []string.
-// Handles []string, []interface{} (with string elements), and single strings.
+// Handles []string, []any (with string elements), and single strings.
 // Used internally by Aliases() method.
-func stringSliceFrom(val interface{}) []string {
+func stringSliceFrom(val any) []string {
 	if val == nil {
 		return []string{}
 	}
@@ -378,8 +389,8 @@ func stringSliceFrom(val interface{}) []string {
 		return strSlice
 	}
 
-	// Handle []interface{} with string elements
-	if anySlice, ok := val.([]interface{}); ok {
+	// Handle []any with string elements
+	if anySlice, ok := val.([]any); ok {
 		result := make([]string, 0, len(anySlice))
 		for _, item := range anySlice {
 			if str, isString := item.(string); isString {
