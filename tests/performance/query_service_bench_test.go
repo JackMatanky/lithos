@@ -122,7 +122,7 @@ func BenchmarkQueryService_EndToEndTemplateRendering(b *testing.B) {
 				b.Fatal(err)
 			}
 			if _, err := bench.qs.IDQuery(
-				ctx, fmt.Sprintf("template-note-%d.md", i%size),
+				ctx, fmt.Sprintf("templates/note-%d.md", i%size),
 			); err != nil {
 				b.Fatal(err)
 			}

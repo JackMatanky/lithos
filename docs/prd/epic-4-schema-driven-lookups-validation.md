@@ -4,19 +4,20 @@ This epic connects TemplateEngine, FrontmatterService, QueryService, and Command
 
 ---
 
-## Story 4.1 TemplateEngine Lookup Helpers
+## Story 4.1 Template Interface Pattern
 
-As a template author,
-I want TemplateEngine helpers for schema-aware lookups,
-so that templates can query indexed notes directly through documented functions.
+As the domain architect,
+I want TemplateEngine consumers to depend on a domain-level `Template` interface,
+so that schema-driven workflows stay hexagonal, mockable, and portable across adapters.
 
-**Prerequisites:** Epic 3 complete.
+**Prerequisites:** Epic 3 TemplateEngine foundation complete.
 
 ### Acceptance Criteria
-1. `internal/app/template/service.go` registers `lookup`, `query`, and `fileClass` helpers exactly as in `docs/architecture/components.md#templateengine`, delegating to QueryService and Config.
-2. Helpers satisfy FR3 and FR9 by supporting wikilink formatting, schema-aware lookups, and appropriate error propagation using `InteractiveError` or standard errors per context.
-3. Implementation ensures helper outputs are immutable copies and do not expose underlying index structures.
-4. Unit tests verify success, empty results, error propagation, and helper behaviour with both slice and map inputs.
+1. `internal/domain/template.go` defines `TemplateID` (string alias) and `Template` interface with `ID()`/`Execute()` methods plus a concrete domain implementation.
+2. `internal/adapters/spi/template/go_template.go` implements the interface by wrapping `*template.Template`, including constructor + shared `FuncMap` wiring.
+3. All domain/application services (TemplateEngine, CLI commander, orchestrators) accept/return the interface only—no direct `*template.Template` imports outside adapters.
+4. TemplateLoader SPI ports return the interface, integration tests prove mocks can replace real templates, and QA docs capture the new seam.
+5. Documentation (`docs/architecture/data-models.md`, this PRD) and performance benchmarks reference the Template interface migration with updated risk/coverage notes.
 
 ---
 
