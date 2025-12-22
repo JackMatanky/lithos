@@ -22,7 +22,7 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 - `Render(ctx context.Context, templateID TemplateID) (string, error)` - Render template to markdown string with goldmark markdown processing
 - `Load(ctx context.Context, templateID TemplateID) (Template, error)` - Load template via TemplateLoader port
 
-**Dependencies:** TemplateLoader (port), InteractivePort, QueryService, FrontmatterService, Config, Logger.
+**Dependencies:** TemplateLoader (port), PromptPort, QueryService, FrontmatterService, Config, Logger.
 
 **Template Abstraction:** TemplateEngine consumes the domain-level `Template` interface defined in `internal/domain/template.go` (see `docs/architecture/data-models.md`). Concrete adapters such as `GoTemplate` implement this interface by wrapping `*template.Template`, and TemplateLoader SPI ports return the abstraction so domain code never imports the stdlib package directly. `TemplateID` travels across CLI commander, TemplateEngine, and QueryService to keep rendering + lookup flows strongly typed.
 
@@ -33,8 +33,8 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 The TemplateEngine provides a function map injected into Go's `text/template` for interactive prompts, vault queries, and file path control:
 
 **User Interaction Functions:**
-- `prompt(name, label, default)` - Text input prompt via InteractivePort
-- `suggester(name, label, options)` - Selection from list via InteractivePort
+- `prompt(name, label, default)` - Text input prompt via PromptPort
+- `suggester(name, label, options)` - Selection from list via PromptPort
 - `now(format)` - Current timestamp with Go time layout format
 
 **Vault Query Functions:**
@@ -328,7 +328,7 @@ func (v *SchemaValidator) ValidateAll(ctx context.Context, schemas []Schema) err
 - `AddNote(ctx context.Context, note domain.Note) error` - Add single note to index (used by CLICommander.NewNote)
 - `RemoveNote(ctx context.Context, path string) error` - Remove note from index by vault-relative path
 
-**Dependencies:** VaultScannerPort (returns Notes), CacheWriterPort (BoltDB), MetadataQueryPort (SQLite writer), CacheUnitOfWork (write coordination), FrontmatterService, Logger, Config.
+**Dependencies:** VaultScannerPort (returns Notes), CacheWriterPort (BoltDB), MetadataQueryPort (SQLite writer), CacheUnitOfWork (write coordination), EventBus (publisher), FrontmatterService, Logger, Config.
 
 **Technology Stack:** Pure Go orchestration, CacheUnitOfWork for transactional dual-write coordination, atomic indexing with rollback on partial failure, zerolog for metrics and progress tracking.
 
@@ -521,7 +521,7 @@ func (s *QueryService) isHotFileClass(fileClass string) bool {
 - `IndexVault(ctx context.Context) (IndexStats, error)` - Rebuild vault index and cache (implements CommandPort)
 - `FindTemplates(ctx context.Context, query string) ([]Template, error)` - List available templates (implements CommandPort)
 
-**Dependencies:** CLIPort (injected API port), TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, Config, Logger.
+**Dependencies:** CLIPort (injected API port), TemplateEngine, VaultIndexer, QueryService, FrontmatterService, SchemaEngine, VaultWriterPort, CacheWriterPort, PromptPort, FinderPort, EventBus (publisher), Config, Logger.
 
 **Technology Stack:** Pure Go orchestration, implements CommandPort interface for CLI callbacks, uses dependency injection from main.go.
 

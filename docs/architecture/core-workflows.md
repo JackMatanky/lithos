@@ -8,7 +8,7 @@ sequenceDiagram
     participant CLI as Cobra CLI
     participant CO as CLICommander
     participant TE as TemplateEngine
-    participant INT as InteractivePort
+    participant PRO as PromptPort
     participant QS as QueryService
     participant SV as SchemaValidator
     participant FS as FileSystemPort
@@ -16,7 +16,7 @@ sequenceDiagram
     User->>CLI: lithos new daily-note
     CLI->>CO: New(ctx,"daily-note")
     CO->>TE: Execute(templateID)
-    TE->>INT: Prompt/Suggester for inputs
+    TE->>PRO: Prompt/Suggester for inputs
     TE->>QS: lookup()/query() for related notes
     QS-->>TE: Note metadata
     TE->>SV: Validate rendered frontmatter
@@ -39,7 +39,7 @@ sequenceDiagram
     participant CO as CLICommander
     participant TE as TemplateEngine
     participant TR as TemplateRepositoryPort
-    participant INT as InteractivePort
+    participant FIN as FinderPort
     participant QS as QueryService
     participant SV as SchemaValidator
     participant FS as FileSystemPort
@@ -49,8 +49,8 @@ sequenceDiagram
     CO->>TE: Launch finder
     TE->>TR: ListTemplates()
     TR-->>TE: Template metadata list
-    TE->>INT: Fuzzy finder (select template)
-    INT-->>TE: Selected template ID
+    TE->>FIN: Fuzzy finder (select template)
+    FIN-->>TE: Selected template ID
     TE->>QS: Optional lookups for preview
     QS-->>TE: Preview data (if requested)
     TE->>SV: Validate rendered result
@@ -74,8 +74,9 @@ sequenceDiagram
     participant VI as VaultIndexer
     participant FS as FileSystemPort
     participant SV as SchemaValidator
-    participant CC as CacheCommandPort
-    participant REG as QueryService (refresh)
+    participant CW as CacheWriterPort
+    participant EB as EventBus
+    participant QS as QueryService
 
     User->>CLI: lithos index
     CLI->>CO: Index(ctx)
@@ -85,9 +86,10 @@ sequenceDiagram
     VI->>FS: Read file contents
     VI->>SV: Validate frontmatter
     SV-->>VI: Validation result
-    VI->>CC: Store(note) via atomic rename
-    CC-->>VI: Write confirmation
-    VI->>REG: Refresh in-memory indices
+    VI->>CW: Store(note) via atomic rename
+    CW-->>VI: Write confirmation
+    VI->>EB: Publish(VaultIndexingComplete)
+    EB-->>QS: handleIndexingComplete (refresh)
     VI-->>CO: IndexStats (count, duration, warnings)
     CO-->>CLI: Summary + follow-up guidance
     CLI-->>User: Display stats & next steps
