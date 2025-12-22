@@ -270,7 +270,7 @@ This will:
 
 **After Sprint 0 Completion:**
 
-1. ✅ Review performance results in `performance-results.txt`
+1. ✅ Review performance results in `tests/artifacts/performance/performance-results.txt`
 2. ✅ Verify coverage meets targets (≥85% `internal/app`, ≥80% overall)
 3. ✅ Proceed to: `/bmad:bmm:workflows:implementation-readiness`
 
