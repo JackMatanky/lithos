@@ -36,11 +36,9 @@ nfr_validation:
     status: PASS
     notes: 'Clean interface design enables easy testing and future extensions'
 
-recommendations:
   immediate: []
   future:
     - action: 'Optimize template parsing performance by caching parsed templates in adapter'
       refs: ['internal/adapters/spi/template/go_template.go']
     - action: 'Complete adapter integration tests for template parsing edge cases'
-      refs: ['internal/adapters/spi/template/go_template_test.go']</content>
-<parameter name="filePath">docs/qa/gates/4.1-template-interface-pattern.yml
+      refs: ['internal/adapters/spi/template/go_template_test.go']

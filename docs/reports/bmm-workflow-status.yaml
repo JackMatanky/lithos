@@ -1,0 +1,122 @@
+# Workflow Status Template
+
+# This tracks progress through BMM methodology Analysis, Planning, and Solutioning phases.
+# Implementation phase is tracked separately in sprint-status.yaml
+
+# STATUS DEFINITIONS:
+# ==================
+# Initial Status (before completion):
+#   - required: Must be completed to progress
+#   - optional: Can be completed but not required
+#   - recommended: Strongly suggested but not required
+#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
+#
+# Completion Status:
+#   - {file-path}: File created/found (e.g., "docs/product-brief.md")
+#   - skipped: Optional/conditional workflow that was skipped
+
+generated: "2025-12-22"
+project: "lithos"
+project_type: "greenfield"
+selected_track: "method"
+field_type: "greenfield"
+workflow_path: "_bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
+
+workflow_status:
+  # Phase 0: Discovery (Optional)
+  - phase: 0
+    name: "Discovery (Optional)"
+    optional: true
+    workflows:
+      - id: "brainstorm-project"
+        status: "skipped"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:brainstorm-project"
+        optional: true
+
+      - id: "research"
+        status: "skipped"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:research"
+        optional: true
+
+      - id: "product-brief"
+        status: "docs/project_brief.md"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:product-brief"
+        optional: true
+        completed: "2025-12-22"
+
+  # Phase 1: Planning
+  - phase: 1
+    name: "Planning"
+    required: true
+    workflows:
+      - id: "prd"
+        status: "docs/prd/"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:prd"
+        required: true
+        completed: "2025-12-22"
+        notes: "13 files including index, epics, requirements, goals, UI design"
+
+      - id: "create-ux-design"
+        status: "skipped"
+        agent: "ux-designer"
+        command: "/bmad:bmm:workflows:create-ux-design"
+        conditional: "if_has_ui"
+        notes: "CLI project - no UI required"
+
+  # Phase 2: Solutioning
+  - phase: 2
+    name: "Solutioning"
+    required: true
+    workflows:
+      - id: "create-architecture"
+        status: "docs/architecture/"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:create-architecture"
+        required: true
+        completed: "2025-12-22"
+        notes: "25 architecture files including tech stack, components, data models"
+
+      - id: "create-epics-and-stories"
+        status: "docs/prd/epic-*.md + docs/stories/"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:create-epics-and-stories"
+        required: true
+        completed: "2025-12-22"
+        notes: "5 epics + 76 implementation stories"
+
+      - id: "test-design"
+        status: "docs/reports/test-design-system.md"
+        agent: "tea"
+        command: "/bmad:bmm:workflows:test-design"
+        recommended: true
+        completed: "2025-12-22"
+        notes: "System-level testability review completed - Sprint 0 in progress"
+
+      - id: "validate-architecture"
+        status: "optional"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:validate-architecture"
+        optional: true
+
+      - id: "implementation-readiness"
+        status: "required"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:implementation-readiness"
+        required: true
+        notes: "Gate check before sprint planning - validates PRD + Architecture + Epics"
+
+  # Phase 3: Implementation
+  - phase: 3
+    name: "Implementation"
+    required: true
+    workflows:
+      - id: "sprint-planning"
+        status: "required"
+        agent: "sm"
+        command: "/bmad:bmm:workflows:sprint-planning"
+        required: true
+        notes: "Creates sprint plan - subsequent work tracked in sprint-status.yaml"

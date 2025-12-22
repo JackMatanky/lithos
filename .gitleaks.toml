@@ -111,6 +111,9 @@ regexes = [
 paths = [
    '''^docs/refs/''',
    '''^testdata/''',
+   '''^_bmad/bmm/testarch/''',
+   '''^_bmad/bmm/workflows/testarch/''',
+   '''^_bmad/_config/files-manifest\.csv''',
    '''\.gitleaks\.toml''',
    '''\.pre-commit-config\.yaml''',
    '''go\.mod''',

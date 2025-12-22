@@ -24,6 +24,8 @@ The following core services implement PRD epics inside the hexagonal domain. Met
 
 **Dependencies:** TemplateLoader (port), InteractivePort, QueryService, FrontmatterService, Config, Logger.
 
+**Template Abstraction:** TemplateEngine consumes the domain-level `Template` interface defined in `internal/domain/template.go` (see `docs/architecture/data-models.md`). Concrete adapters such as `GoTemplate` implement this interface by wrapping `*template.Template`, and TemplateLoader SPI ports return the abstraction so domain code never imports the stdlib package directly. `TemplateID` travels across CLI commander, TemplateEngine, and QueryService to keep rendering + lookup flows strongly typed.
+
 **Technology Stack:** Go `text/template`, `github.com/yuin/goldmark` for markdown rendering in templates, custom function map with user interaction and file control functions, closures wrapping port calls for dependency injection, zerolog for instrumentation.
 
 **Custom Template Functions:**
