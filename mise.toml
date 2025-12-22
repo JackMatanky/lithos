@@ -26,7 +26,8 @@ GOBIN = "{{config_root}}/bin"
 
 # Put that bin on PATH
 PATH = "{{config_root}}/bin:{{env.PATH}}"
-
+# Centralized location for coverage, benchmark, and perf artifacts
+ARTIFACTS_DIR = "{{config_root}}/tests/artifacts"
 
 # ------------------------------------------------------------ #
 #                           Settings                           #
@@ -139,11 +140,14 @@ echo "✅ Coverage analysis complete"
 [tasks.test-artifacts]
 description = "Generate detailed HTML coverage report"
 run = """
+ARTIFACTS_DIR=${ARTIFACTS_DIR:-tests/artifacts}
+COVERAGE_DIR="${ARTIFACTS_DIR}/coverage"
+PROFILE="${COVERAGE_DIR}/coverage.out"
 echo "🚀 Running tests with coverage..."
-mkdir -p coverage
-go test -coverprofile=coverage.out -covermode=atomic ./...
-go tool cover -html=coverage.out -o coverage/coverage.html
-echo "✅ Coverage report generated: coverage/coverage.html"
+mkdir -p "${COVERAGE_DIR}"
+go test -coverprofile="${PROFILE}" -covermode=atomic ./...
+go tool cover -html="${PROFILE}" -o "${COVERAGE_DIR}/coverage.html"
+echo "✅ Coverage report generated: ${COVERAGE_DIR}/coverage.html"
 """
 
 [tasks.test-pkg]
@@ -179,6 +183,8 @@ echo "✅ Performance benchmarks complete"
 [tasks.perf-validate]
 description = "Sprint 0: Validate performance with production vault data"
 run = """
+ARTIFACTS_DIR=${ARTIFACTS_DIR:-tests/artifacts}
+PERF_DIR="${ARTIFACTS_DIR}/performance"
 echo "🚀 Sprint 0: Performance Validation"
 echo ""
 echo "📊 Step 1: Creating large test vault (500+ notes)..."
@@ -196,7 +202,8 @@ else
 fi
 echo ""
 echo "⚡ Step 2: Running performance benchmarks..."
-go test -bench=. -benchmem -benchtime=5s ./tests/performance/... 2>&1 | tee performance-results.txt
+mkdir -p "${PERF_DIR}"
+go test -bench=. -benchmem -benchtime=5s ./tests/performance/... 2>&1 | tee "${PERF_DIR}/performance-results.txt"
 echo ""
 echo "📈 Step 3: Performance targets validation:"
 echo "   ✓ Template rendering: <300ms (PRD requirement)"
@@ -204,7 +211,7 @@ echo "   ✓ BoltDB hot cache: <1ms per lookup"
 echo "   ✓ SQLite deep storage: <50ms per query"
 echo "   ✓ Full vault indexing: <5s for 1000+ notes"
 echo ""
-echo "✅ Performance validation complete - Results saved to performance-results.txt"
+echo "✅ Performance validation complete - Results saved to ${PERF_DIR}/performance-results.txt"
 """
 
 [tasks.perf-index]
@@ -278,6 +285,8 @@ run = """
 echo "🧹 Cleaning build artifacts..."
 rm -rf bin/
 rm -rf dist/
+rm -rf coverage/
+rm -rf tests/artifacts/
 rm -f *.coverprofile coverage.out
 go clean -cache
 echo "✅ Clean complete"
@@ -306,12 +315,12 @@ echo ""
 echo "📋 Phase 4: Documentation Update"
 echo "---------------------------------"
 echo "✓ System-level test design generated: _bmad-output/test-design-system.md"
-echo "✓ Performance results saved: performance-results.txt"
+echo "✓ Performance results saved: tests/artifacts/performance/performance-results.txt"
 echo ""
 echo "✅ Sprint 0 Complete - Ready for Implementation Readiness Gate"
 echo ""
 echo "Next Steps:"
-echo "  1. Review performance results in performance-results.txt"
+echo "  1. Review performance results in tests/artifacts/performance/performance-results.txt"
 echo "  2. Verify coverage meets targets (≥85% internal/app, ≥80% overall)"
 echo "  3. Proceed to: /bmad:bmm:workflows:implementation-readiness"
 """

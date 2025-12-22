@@ -97,6 +97,7 @@ docs/refs/obsidian/
 # Reports
 test-results.txt
 htmlcov/
+tests/artifacts/
 
 # Coverage Data
 /coverage/
