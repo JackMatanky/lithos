@@ -1,0 +1,124 @@
+# generated: 2025-12-23
+# project: lithos
+# project_key: lithos
+# tracking_system: file-system
+# story_location: docs/stories
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+generated: 2025-12-23
+project: lithos
+project_key: lithos
+tracking_system: file-system
+story_location: docs/stories
+
+development_status:
+  # Epic 1: Foundational CLI with Static Template Engine
+  epic-1: done
+  1-1-verify-tooling-and-structure: done
+  1-2-note-domain-models: done
+  1-3-template-domain-models: done
+  1-4-config-domain-model: done
+  1-5-shared-error-package: done
+  1-6-logger-package: done
+  1-7-registry-package: done
+  1-8-config-loading-infrastructure: done
+  1-9-template-loading-infrastructure: done
+  1-10-template-engine-service: review
+  1-11-cli-port-interfaces: done
+  1-12-cobra-cli-adapter: done
+  1-13-command-orchestrator: done
+  1-14-test-filesystem-utilities: done
+  1-15-testdata-normalization: done
+  1-16-dependency-injection-and-e2e-test: done
+  1-17-documentation-update: done
+  epic-1-retrospective: done
+
+  # Epic 2: Configuration & Schema Loading
+  epic-2: done
+  2-1-config-model: done
+  2-2-schema-property-models: done
+  2-3-property-bank-model: done
+  2-4-schema-port-and-loader: done
+  2-5-schema-registry: done
+  2-6-schema-validator: done
+  2-7-schema-resolver: done
+  2-8-schema-engine: done
+  2-9-schema-system-di-and-e2e-test: done
+  2-10-documentation-update: done
+  2-10-schema-system-performance-optimizations: done
+  epic-2-retrospective: done
+
+  # Epic 3: Vault Indexing Engine
+  epic-3: in-progress
+  3-1-cache-port-interfaces: done
+  3-2-json-cache-adapters: done
+  3-3-vault-reader-port-and-adapter: done
+  3-4-vault-writer-port-and-adapter: done
+  3-5-vault-indexer-service: done
+  3-6-query-service: review
+  3-7-frontmatter-service: review
+  3-8-frontmatter-integration: review
+  3-9-cli-index-command: done
+  3-10-fix-note-id-collision-and-path-handling: done
+  3-11-resolve-memory-leak-in-indexing-process: done
+  3-12-fix-cache-management-failures: in-progress
+  3-13-repair-query-layer-breakdown: in-progress
+  3-14-optimize-cache-performance: in-progress
+  3-15-comprehensive-integration-testing-for-fixed-vault-indexing: in-progress
+  3-16-epic-3-completion-quality-assurance: done
+  3-17-vaultfile-dto-redesign: done
+  3-18-markdown-parser-port: in-progress
+  3-19-metadata-query-port: in-progress
+  3-20-boltdb-hot-cache: in-progress
+  3-21-sqlite-deep-storage: in-progress
+  3-22-storage-write-coordination: in-progress
+  3-23-queryservice-hybrid-enhancement: in-progress
+  3-24-frontmatter-service-refactoring: in-progress
+  3-25-enrich-frontmatter-entity: in-progress
+  3-26-enrich-note-entity: in-progress
+  3-27-document-validation-layer-separation: in-progress
+  3-28-singleton-pattern: in-progress
+  3-29-fileclasskey-configuration: in-progress
+  3-30-event-driven-architecture: in-progress
+  3-31-dependency-injection-and-e2e-test: in-progress
+  3-32-documentation-update: in-progress
+  epic-3-retrospective: optional
+
+  # Epic 4: Schema-Driven Lookups & Validation
+  epic-4: backlog
+  4-1-template-interface-pattern: in-progress
+  4-2-template-function-lookup: ready-for-dev
+  4-3-template-function-query: ready-for-dev
+  4-4-template-function-fileclass: ready-for-dev
+  4-5-schema-driven-lookup-integration-test: in-progress
+  4-6-dependency-injection-and-e2e-test: in-progress
+  4-7-documentation-update: in-progress
+  epic-4-retrospective: optional
+
+  # Epic 5: Interactive Input Engine
+  epic-5: backlog
+  5-1-prompt-port-interface: ready-for-dev
+  5-2-promptui-adapter: ready-for-dev
+  5-3-finder-port-and-fuzzyfind-adapter: ready-for-dev
+  5-4-template-engine-interactive-helpers: ready-for-dev
+  5-5-cli-find-command: ready-for-dev
+  5-6-dependency-injection-and-e2e-test: ready-for-dev
+  5-7-documentation-update: ready-for-dev
+  epic-5-retrospective: optional

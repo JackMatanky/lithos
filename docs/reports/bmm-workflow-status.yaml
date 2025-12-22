@@ -118,8 +118,9 @@ workflow_status:
     required: true
     workflows:
       - id: "sprint-planning"
-        status: "required"
+        status: "docs/implementation/sprint-status.yaml"
         agent: "sm"
         command: "/bmad:bmm:workflows:sprint-planning"
         required: true
-        notes: "Creates sprint plan - subsequent work tracked in sprint-status.yaml"
+        completed: "2025-12-23"
+        notes: "Full sprint status generated from epics and existing stories. Ready for execution phase."
