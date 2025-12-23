@@ -1,11 +1,11 @@
-package cache
+package json
 
 import (
 	"context"
 	"encoding/json"
 	"os"
-	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
@@ -119,7 +119,7 @@ func wrapCacheDeleteError(noteID, path, operation string, cause error) error {
 func (a *JSONCacheWriteAdapter) Persist(
 	ctx context.Context,
 	note domain.Note,
-	_ time.Time,
+	_ spi.CacheWriteMetadata,
 ) error {
 	// Check for context cancellation
 	select {
@@ -129,7 +129,7 @@ func (a *JSONCacheWriteAdapter) Persist(
 	}
 
 	// 1. Ensure cache directory exists
-	if err := EnsureCacheDir(a.config.CacheDir); err != nil {
+	if err := cache.EnsureCacheDir(a.config.CacheDir); err != nil {
 		return wrapCacheWriteError(
 			note.Path,
 			a.config.CacheDir,
@@ -143,14 +143,14 @@ func (a *JSONCacheWriteAdapter) Persist(
 	if marshalErr != nil {
 		return wrapCacheWriteError(
 			note.Path,
-			noteFilePath(a.config.CacheDir, note.Path),
+			cache.NoteFilePath(a.config.CacheDir, note.Path),
 			"serialize",
 			marshalErr,
 		)
 	}
 
 	// 3. Atomic write
-	filePath := noteFilePath(a.config.CacheDir, note.Path)
+	filePath := cache.NoteFilePath(a.config.CacheDir, note.Path)
 	if writeErr := a.writeFile(filePath, data, cacheFilePerms); writeErr != nil {
 		return wrapCacheWriteError(
 			note.Path,
@@ -161,7 +161,7 @@ func (a *JSONCacheWriteAdapter) Persist(
 	}
 
 	// 3b. Clean up legacy cache filename if it exists to avoid duplicates
-	legacyPath := legacyNoteFilePath(a.config.CacheDir, note.Path)
+	legacyPath := cache.LegacyNoteFilePath(a.config.CacheDir, note.Path)
 	if legacyPath != filePath {
 		if err := a.removeFile(legacyPath); err == nil {
 			a.log.Debug().
@@ -209,7 +209,7 @@ func (a *JSONCacheWriteAdapter) Delete(
 	}
 
 	// Get file path
-	filePath := noteFilePath(a.config.CacheDir, path)
+	filePath := cache.NoteFilePath(a.config.CacheDir, path)
 
 	// Attempt deletion
 	removeErr := a.removeFile(filePath)
@@ -230,7 +230,7 @@ func (a *JSONCacheWriteAdapter) Delete(
 		)
 	}
 
-	legacyPath := legacyNoteFilePath(a.config.CacheDir, path)
+	legacyPath := cache.LegacyNoteFilePath(a.config.CacheDir, path)
 	legacyErr := a.removeFile(legacyPath)
 	switch {
 	case legacyErr == nil:

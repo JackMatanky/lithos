@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
+	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/json"
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	schemaadapter "github.com/JackMatanky/lithos/internal/adapters/spi/schema"
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
@@ -142,7 +142,6 @@ This is a test note with frontmatter.
 	// Create frontmatter service
 	fmService := frontmatter.NewFrontmatterService(
 		schemaEngine,
-		markdownParser,
 		logger,
 		nil,
 	)
@@ -153,9 +152,9 @@ This is a test note with frontmatter.
 	boltConfig := domain.Config{CacheDir: boltCacheDir}
 	sqliteConfig := domain.Config{CacheDir: sqliteCacheDir}
 
-	boltWriter := cache.NewJSONCacheWriter(boltConfig, logger)
-	sqliteWriter := cache.NewJSONCacheWriter(sqliteConfig, logger)
-	cacheReader := cache.NewJSONCacheReader(boltConfig, logger)
+	boltWriter := json.NewJSONCacheWriter(boltConfig, logger)
+	sqliteWriter := json.NewJSONCacheWriter(sqliteConfig, logger)
+	cacheReader := json.NewJSONCacheReader(boltConfig, logger)
 
 	// Mock vault scanner
 	vaultScanner := &mockVaultScanner{vaultDir: vaultDir}

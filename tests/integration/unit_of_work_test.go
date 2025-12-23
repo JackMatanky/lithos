@@ -10,6 +10,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/sqlite"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/require"
 	"go.etcd.io/bbolt"
@@ -70,9 +71,9 @@ func TestUnitOfWork_Integration(t *testing.T) {
 		)
 		require.NoError(t, noteErr)
 		require.NoError(t, err)
-		indexTime := time.Now()
+		metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
 
-		require.NoError(t, uow.AddWrite(note, indexTime))
+		require.NoError(t, uow.AddWrite(note, metadata))
 		require.NoError(t, uow.Commit(ctx))
 
 		// Verify BoltDB
@@ -106,8 +107,8 @@ func TestUnitOfWork_Integration(t *testing.T) {
 			nil,
 		)
 		require.NoError(t, noteErr)
-		indexTime := time.Now()
-		require.NoError(t, uow.AddWrite(note, indexTime))
+		metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+		require.NoError(t, uow.AddWrite(note, metadata))
 
 		// Rollback
 		require.NoError(t, uow.Rollback(ctx))

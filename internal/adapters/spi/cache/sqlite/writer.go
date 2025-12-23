@@ -50,19 +50,26 @@ func NewSQLiteWriterAdapter(
 func (a *SQLiteWriterAdapter) Persist(
 	ctx context.Context,
 	note domain.Note,
-	indexTime time.Time,
+	metadata spi.CacheWriteMetadata,
 ) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
 	path := note.Path
-	payload, modTime, size, err := a.preparePersistData(note)
+	payload, modTime, size, err := a.preparePersistData(note, metadata)
 	if err != nil {
 		return err
 	}
 
-	return a.executePersist(ctx, path, payload, modTime, indexTime, size)
+	return a.executePersist(
+		ctx,
+		path,
+		payload,
+		modTime,
+		metadata.IndexTime,
+		size,
+	)
 }
 
 func ensureFileClassField(
@@ -115,6 +122,7 @@ func (a *SQLiteWriterAdapter) Close() error {
 
 func (a *SQLiteWriterAdapter) preparePersistData(
 	note domain.Note,
+	metadata spi.CacheWriteMetadata,
 ) (payload string, modTime time.Time, fileSize int64, err error) {
 	fields := ensureFileClassField(
 		note.Frontmatter.Fields,
@@ -132,8 +140,14 @@ func (a *SQLiteWriterAdapter) preparePersistData(
 	}
 
 	payload = string(bytes)
-	modTime = cache.ExtractFileModTime(fields)
-	fileSize = extractFileSize(fields)
+	modTime = metadata.ModifiedAt
+	if modTime.IsZero() {
+		modTime = cache.ExtractFileModTime(fields)
+	}
+	fileSize = metadata.FileSize
+	if fileSize == 0 {
+		fileSize = extractFileSize(fields)
+	}
 	return
 }
 

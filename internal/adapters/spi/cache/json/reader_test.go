@@ -1,4 +1,4 @@
-package cache
+package json
 
 import (
 	"context"
@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
@@ -57,7 +58,7 @@ func TestRead(t *testing.T) {
 			name:     "success - deserializes valid JSON",
 			notePath: "test-note",
 			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
-				path := noteFilePath(cacheDir, notePath)
+				path := cache.NoteFilePath(cacheDir, notePath)
 				jsonData := `{
 					"Path": "test-note",
 					"Frontmatter": {
@@ -99,7 +100,7 @@ func TestRead(t *testing.T) {
 			name:     "success - reads legacy cache filename",
 			notePath: "legacy/path/note.md",
 			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
-				path := legacyNoteFilePath(cacheDir, notePath)
+				path := cache.LegacyNoteFilePath(cacheDir, notePath)
 				writeErr := os.WriteFile(path, []byte(`{
 						"Path": "legacy/path/note.md",
 						"Frontmatter": {
@@ -118,7 +119,7 @@ func TestRead(t *testing.T) {
 			name:     "success - preserves unknown fields (FR6)",
 			notePath: "unknown-fields-note",
 			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
-				path := noteFilePath(cacheDir, notePath)
+				path := cache.NoteFilePath(cacheDir, notePath)
 				jsonData := `{
 					"Path": "unknown-fields-note",
 					"Frontmatter": {
@@ -175,7 +176,7 @@ func TestRead(t *testing.T) {
 			name:     "error - wraps errors correctly for malformed JSON",
 			notePath: "malformed-note",
 			setupFunc: func(t *testing.T, cacheDir string, notePath string) {
-				path := noteFilePath(cacheDir, notePath)
+				path := cache.NoteFilePath(cacheDir, notePath)
 				jsonData := `{"Path": "malformed-note", "Frontmatter": {invalid json}`
 				writeErr := os.WriteFile(path, []byte(jsonData), 0o600)
 				require.NoError(t, writeErr)
@@ -243,7 +244,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, "note1"),
+						cache.NoteFilePath(cacheDir, "note1"),
 						[]byte(note1),
 						0o600,
 					),
@@ -251,7 +252,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, "note2"),
+						cache.NoteFilePath(cacheDir, "note2"),
 						[]byte(note2),
 						0o600,
 					),
@@ -292,7 +293,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, "valid-note"),
+						cache.NoteFilePath(cacheDir, "valid-note"),
 						[]byte(validNote),
 						0o600,
 					),
@@ -302,7 +303,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, "invalid-note"),
+						cache.NoteFilePath(cacheDir, "invalid-note"),
 						[]byte(`{"invalid": json`),
 						0o600,
 					),
@@ -328,7 +329,7 @@ func TestList(t *testing.T) {
 				require.NoError(
 					t,
 					os.WriteFile(
-						noteFilePath(cacheDir, "json-note"),
+						cache.NoteFilePath(cacheDir, "json-note"),
 						[]byte(validNote),
 						0o600,
 					),

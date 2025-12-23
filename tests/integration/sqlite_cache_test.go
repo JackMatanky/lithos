@@ -210,7 +210,14 @@ func TestSQLiteCacheIntegration(t *testing.T) {
 		)
 		require.NoError(t, os.WriteFile(fullPath, []byte(content), 0o644))
 		require.NoError(t, os.Chtimes(fullPath, oldTime, oldTime))
-		require.NoError(t, writer.Persist(ctx, n, time.Now()))
+		require.NoError(
+			t,
+			writer.Persist(
+				ctx,
+				n,
+				spi.CacheWriteMetadata{IndexTime: time.Now()},
+			),
+		)
 	}
 
 	// 5. Initialize Reader and Query
@@ -309,7 +316,10 @@ Some content.`
 	)
 	require.NoError(t, err)
 	indexTime := time.Now()
-	require.NoError(t, writer.Persist(ctx, note, indexTime))
+	require.NoError(
+		t,
+		writer.Persist(ctx, note, spi.CacheWriteMetadata{IndexTime: indexTime}),
+	)
 
 	// Create reader
 	reader, err := sqlite.NewSQLiteReaderAdapter(config, log, nil)
@@ -389,7 +399,14 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, writer.Persist(ctx, note, time.Now()))
+	require.NoError(
+		t,
+		writer.Persist(
+			ctx,
+			note,
+			spi.CacheWriteMetadata{IndexTime: time.Now()},
+		),
+	)
 
 	// 4. Verify initial view works
 	reader, err := sqlite.NewSQLiteReaderAdapter(config, log, nil)
@@ -455,8 +472,22 @@ func TestSQLiteSchemaChangeWorkflow(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	require.NoError(t, writer.Persist(ctx, note, time.Now()))
-	require.NoError(t, writer.Persist(ctx, updatedNote, time.Now()))
+	require.NoError(
+		t,
+		writer.Persist(
+			ctx,
+			note,
+			spi.CacheWriteMetadata{IndexTime: time.Now()},
+		),
+	)
+	require.NoError(
+		t,
+		writer.Persist(
+			ctx,
+			updatedNote,
+			spi.CacheWriteMetadata{IndexTime: time.Now()},
+		),
+	)
 
 	// 8. Verify migrated view works with both old and new data
 	contacts, err = reader.FileClassQuery(ctx, "contact")
@@ -620,7 +651,11 @@ func TestSQLiteMetadataQueryPortWithRealData(t *testing.T) {
 	// Persist all notes
 	indexTime := time.Now()
 	for _, note := range notes {
-		persistErr := writer.Persist(ctx, note, indexTime)
+		persistErr := writer.Persist(
+			ctx,
+			note,
+			spi.CacheWriteMetadata{IndexTime: indexTime},
+		)
 		require.NoError(t, persistErr)
 	}
 
@@ -729,7 +764,11 @@ func testTagQueries(
 	}
 
 	for i := range taggedNotes {
-		err := writer.Persist(ctx, taggedNotes[i], indexTime)
+		err := writer.Persist(
+			ctx,
+			taggedNotes[i],
+			spi.CacheWriteMetadata{IndexTime: indexTime},
+		)
 		require.NoError(t, err)
 	}
 
@@ -918,7 +957,14 @@ func TestSQLitePerformanceWith1000Notes(t *testing.T) {
 	// Persist all notes
 	indexTime := time.Now()
 	for _, note := range notes {
-		require.NoError(t, writer.Persist(ctx, note, indexTime))
+		require.NoError(
+			t,
+			writer.Persist(
+				ctx,
+				note,
+				spi.CacheWriteMetadata{IndexTime: indexTime},
+			),
+		)
 	}
 
 	// 4. Test FileClassQuery with different schemas

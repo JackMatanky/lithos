@@ -306,6 +306,32 @@ func (q *QueryService) AliasQuery(
 	)
 }
 
+// TagQuery retrieves all notes containing a specific tag in their frontmatter.
+// Returns a slice of notes if any match, or empty slice if none found.
+// Thread-safe: uses RLock to allow concurrent reads.
+//
+// Query Semantics:
+// - Searches tags array in frontmatter for exact matches
+// - Returns all notes containing the tag (multiple notes can have same tag)
+// - Empty slice (not nil) when no matches found
+// - Delegates to MetadataQueryPort for index-based lookup performance
+//
+// Example: Notes with frontmatter tags containing "urgent" match tag "urgent".
+func (q *QueryService) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return q.executeMetadataQuery(
+		ctx,
+		newQueryLogger(q.log, "TagQuery"),
+		"tag",
+		tag,
+		func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
+			return port.TagQuery(ctx, param)
+		},
+	)
+}
+
 // PathQuery resolves notes using flexible selectors (full path, basename,
 // folder). MetadataQueryPort handles the fast-path lookups when configured;
 // otherwise we fall back to the in-memory indices maintained by QueryService.

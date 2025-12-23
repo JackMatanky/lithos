@@ -1,4 +1,4 @@
-package cache
+package json
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
@@ -103,7 +104,7 @@ func (a *JSONCacheReadAdapter) Read(
 	}
 
 	// Construct file path
-	filePath := noteFilePath(a.config.CacheDir, path)
+	filePath := cache.NoteFilePath(a.config.CacheDir, path)
 
 	data, readErr := a.readFile(filePath)
 	if readErr == nil {
@@ -119,7 +120,7 @@ func (a *JSONCacheReadAdapter) Read(
 		)
 	}
 
-	legacyPath := legacyNoteFilePath(a.config.CacheDir, path)
+	legacyPath := cache.LegacyNoteFilePath(a.config.CacheDir, path)
 	legacyData, legacyErr := a.readFile(legacyPath)
 	switch {
 	case legacyErr == nil:
@@ -165,7 +166,7 @@ func (a *JSONCacheReadAdapter) List(
 	}
 
 	// Ensure cache directory exists for graceful first access
-	if err := EnsureCacheDir(a.config.CacheDir); err != nil {
+	if err := cache.EnsureCacheDir(a.config.CacheDir); err != nil {
 		return nil, lithosErr.NewCacheReadError(
 			"",
 			a.config.CacheDir,
@@ -231,7 +232,7 @@ func shouldIncludeFile(info os.FileInfo, path string) bool {
 // Removes the .json extension and decodes the filename.
 func extractPathFromCachePath(path string) string {
 	filename := filepath.Base(path)
-	if decodedPath, ok := decodePathFromFilename(filename); ok {
+	if decodedPath, ok := cache.DecodePathFromFilename(filename); ok {
 		return decodedPath
 	}
 	return strings.TrimSuffix(filename, ".json")

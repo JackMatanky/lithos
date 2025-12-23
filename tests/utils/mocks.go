@@ -64,7 +64,7 @@ var _ spi.VaultWriterPort = (*MockVaultWriterPort)(nil)
 type MockCacheWriterPort struct {
 	persistResult error
 	deleteResult  error
-	PersistFunc   func(ctx context.Context, note domain.Note, indexTime time.Time) error
+	PersistFunc   func(ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata) error
 	DeleteFunc    func(ctx context.Context, path string) error
 }
 
@@ -89,10 +89,10 @@ func (m *MockCacheWriterPort) SetDeleteResult(err error) {
 func (m *MockCacheWriterPort) Persist(
 	ctx context.Context,
 	note domain.Note,
-	indexTime time.Time,
+	metadata spi.CacheWriteMetadata,
 ) error {
 	if m.PersistFunc != nil {
-		return m.PersistFunc(ctx, note, indexTime)
+		return m.PersistFunc(ctx, note, metadata)
 	}
 	return m.persistResult
 }

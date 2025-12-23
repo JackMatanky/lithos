@@ -1,7 +1,9 @@
 package frontmatter
 
 import (
+	"context"
 	"fmt"
+	"math"
 	"slices"
 	"strconv"
 	"time"
@@ -89,7 +91,29 @@ func (v *StringValidator) Validate(
 		)
 	}
 
-	// TODO: Add pattern validation when needed
+	// Validate pattern compliance if pattern is specified
+	if stringSpec.Pattern != "" {
+		// Ensure regex is compiled (should be done by spec.Validate() but
+		// extra safety here)
+		if err := stringSpec.Validate(context.Background()); err != nil {
+			return errors.NewFrontmatterError(
+				"invalid pattern regex in schema",
+				fieldName,
+				err,
+			)
+		}
+
+		if stringSpec.Match(stringValue) {
+			return nil
+		}
+
+		return errors.NewFrontmatterError(
+			fmt.Sprintf("value does not match pattern: %s", stringSpec.Pattern),
+			fieldName,
+			nil,
+		)
+	}
+
 	return nil
 }
 
@@ -264,7 +288,32 @@ func (v *NumberValidator) validateNumericConstraints(
 		)
 	}
 
-	// TODO: Add step validation when needed
+	// Validate step compliance
+	if numberSpec.Step != nil {
+		step := *numberSpec.Step
+		base := 0.0
+		if numberSpec.Min != nil {
+			base = *numberSpec.Min
+		}
+
+		// (numValue - base) / step must be an integer
+		// Use epsilon for float precision issues
+		const epsilon = 1e-9
+		remainder := math.Mod(numValue-base, step)
+		if math.Abs(remainder) > epsilon &&
+			math.Abs(remainder-step) > epsilon {
+			return errors.NewFrontmatterError(
+				fmt.Sprintf(
+					"value must be a multiple of %g starting from %g",
+					step,
+					base,
+				),
+				fieldName,
+				nil,
+			)
+		}
+	}
+
 	return nil
 }
 

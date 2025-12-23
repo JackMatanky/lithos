@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -33,8 +32,8 @@ type Operation interface {
 
 // WriteOperation represents a write operation for a note.
 type WriteOperation struct {
-	note      domain.Note
-	indexTime time.Time
+	note     domain.Note
+	metadata spi.CacheWriteMetadata
 }
 
 // DeleteOperation represents a delete operation for a note.
@@ -69,10 +68,13 @@ type CacheUnitOfWork struct {
 }
 
 // NewWriteOperation creates a new write operation.
-func NewWriteOperation(note domain.Note, indexTime time.Time) *WriteOperation {
+func NewWriteOperation(
+	note domain.Note,
+	metadata spi.CacheWriteMetadata,
+) *WriteOperation {
 	return &WriteOperation{
-		note:      note,
-		indexTime: indexTime,
+		note:     note,
+		metadata: metadata,
 	}
 }
 
@@ -81,7 +83,7 @@ func (op *WriteOperation) Execute(
 	ctx context.Context,
 	writer spi.CacheWriterPort,
 ) error {
-	return writer.Persist(ctx, op.note, op.indexTime)
+	return writer.Persist(ctx, op.note, op.metadata)
 }
 
 // Rollback undoes the write operation by deleting the note.
@@ -247,11 +249,11 @@ func (uow *CacheUnitOfWork) Begin() error {
 // AddWrite stages a write operation.
 func (uow *CacheUnitOfWork) AddWrite(
 	note domain.Note,
-	indexTime time.Time,
+	metadata spi.CacheWriteMetadata,
 ) error {
 	uow.mu.Lock()
 	defer uow.mu.Unlock()
-	uow.operations = append(uow.operations, NewWriteOperation(note, indexTime))
+	uow.operations = append(uow.operations, NewWriteOperation(note, metadata))
 	return nil
 }
 

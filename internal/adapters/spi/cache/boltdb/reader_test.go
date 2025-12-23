@@ -425,7 +425,11 @@ func TestBoltDBCacheReadAdapter_IsStale(t *testing.T) {
 	)
 
 	indexTime := modTime.Add(time.Minute)
-	require.NoError(t, writer.Persist(ctx, testNote, indexTime))
+	metadata := spi.CacheWriteMetadata{
+		ModifiedAt: modTime,
+		IndexTime:  indexTime,
+	}
+	require.NoError(t, writer.Persist(ctx, testNote, metadata))
 
 	t.Run("fresh file returns false", func(t *testing.T) {
 		stale, err := reader.IsStale(ctx, filePath)
@@ -531,7 +535,8 @@ func persistNotes(
 	t.Helper()
 	ctx := context.Background()
 	for i := range notes {
-		require.NoError(t, writer.Persist(ctx, notes[i], time.Now()))
+		metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+		require.NoError(t, writer.Persist(ctx, notes[i], metadata))
 	}
 }
 

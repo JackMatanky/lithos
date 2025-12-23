@@ -70,7 +70,7 @@ type Config struct {
 	// Default: "file_class". Supports user preferences like "fileClass",
 	// "type", etc.
 	// Used consistently across all storage adapters and query operations.
-	FileClassKey string `yaml:"file_class_key" mapstructure:"file_class_key"`
+	FileClassKey string `json:"file_class_key" yaml:"file_class_key" mapstructure:"file_class_key"`
 }
 
 // ConfigBuilder provides a fluent API for building Config objects with

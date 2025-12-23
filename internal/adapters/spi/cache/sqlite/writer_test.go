@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -40,7 +41,12 @@ func TestSQLiteWriterAdapter_Persist(t *testing.T) {
 	ctx := context.Background()
 
 	// Test Persist
-	err = writer.Persist(ctx, note, time.Now())
+	metadata := spi.CacheWriteMetadata{
+		ModifiedAt: modTime,
+		FileSize:   size,
+		IndexTime:  time.Now(),
+	}
+	err = writer.Persist(ctx, note, metadata)
 	require.NoError(t, err)
 
 	// Verify directly in DB
@@ -79,15 +85,18 @@ func TestSQLiteWriterAdapter_Delete(t *testing.T) {
 	// Insert a note manually or via Persist
 	notePath := "test/delete.md"
 	fm := domain.NewFrontmatter(map[string]interface{}{
-		"title":         "Delete Me",
-		"file_mod_time": time.Now().Add(-time.Hour).UTC(),
-		"file_size":     int64(128),
+		"title": "Delete Me",
 	})
 	note, err := domain.NewNote(notePath, fm, nil, nil, nil, nil)
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	err = writer.Persist(ctx, note, time.Now())
+	metadata := spi.CacheWriteMetadata{
+		ModifiedAt: time.Now().Add(-time.Hour).UTC(),
+		FileSize:   128,
+		IndexTime:  time.Now(),
+	}
+	err = writer.Persist(ctx, note, metadata)
 	require.NoError(t, err)
 
 	// Test Delete
