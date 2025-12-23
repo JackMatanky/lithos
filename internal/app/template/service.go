@@ -353,7 +353,14 @@ func (e *TemplateEngine) makeFileClassFunc(
 		}
 
 		// Extract fileClass from frontmatter
-		return note.FileClass(), nil
+		fileClass := note.FileClass()
+		if fileClass == "" {
+			return "", fmt.Errorf(
+				"fileClass field missing from note %s",
+				noteID,
+			)
+		}
+		return fileClass, nil
 	}
 }
 
