@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestNoteFilePath tests the noteFilePath function with various inputs.
+// TestNoteFilePath tests the NoteFilePath function with various inputs.
 // TestNoteFilePath tests the function.
 func TestNoteFilePath(t *testing.T) {
 	cacheDir := "/tmp/cache"
@@ -23,7 +23,7 @@ func TestNoteFilePath(t *testing.T) {
 
 	for _, id := range tests {
 		t.Run(id, func(t *testing.T) {
-			result := noteFilePath(cacheDir, id)
+			result := NoteFilePath(cacheDir, id)
 
 			assert.True(
 				t,
@@ -44,7 +44,7 @@ func TestNoteFilePath(t *testing.T) {
 				"filename should end with .json",
 			)
 
-			decoded, ok := decodePathFromFilename(filename)
+			decoded, ok := DecodePathFromFilename(filename)
 			require.True(t, ok, "filename should decode using new scheme")
 			assert.Equal(
 				t,
@@ -55,7 +55,7 @@ func TestNoteFilePath(t *testing.T) {
 	}
 
 	t.Run("empty cache dir produces filename only", func(t *testing.T) {
-		result := noteFilePath("", "note")
+		result := NoteFilePath("", "note")
 		assert.False(
 			t,
 			strings.HasPrefix(result, "/"),

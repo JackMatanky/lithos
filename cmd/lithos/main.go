@@ -148,7 +148,6 @@ func (c *Container) FrontmatterService() (*frontmatter.FrontmatterService, error
 		}
 		c.frontmatterService = frontmatter.NewFrontmatterService(
 			schemaEngine,
-			c.MarkdownParser(),
 			c.logger,
 			c.eventBus,
 		)

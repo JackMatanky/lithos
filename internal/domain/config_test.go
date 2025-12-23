@@ -281,6 +281,22 @@ func TestConfigJSONMarshaling(t *testing.T) {
 	}
 }
 
+// TestConfigJSONUnmarshalFileClassKey ensures snake_case keys populate
+// FileClassKey.
+func TestConfigJSONUnmarshalFileClassKey(t *testing.T) {
+	payload := []byte(`{"file_class_key":"type"}`)
+	var cfg Config
+	if err := json.Unmarshal(payload, &cfg); err != nil {
+		t.Fatalf("failed to unmarshal config: %v", err)
+	}
+	if cfg.FileClassKey != "type" {
+		t.Fatalf(
+			"expected file_class_key to be 'type', got %q",
+			cfg.FileClassKey,
+		)
+	}
+}
+
 // TestConfigImmutability tests that Config is a value object - immutable and
 // equality-based on field values.
 func TestConfigImmutability(t *testing.T) {

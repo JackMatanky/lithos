@@ -8,6 +8,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/boltdb"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 )
 
@@ -41,7 +42,8 @@ func BenchmarkBoltDBCache(b *testing.B) {
 			[]string{},
 			[]domain.TaskItem{},
 		)
-		if persistErr := writer.Persist(ctx, note, time.Now()); persistErr != nil {
+		metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+		if persistErr := writer.Persist(ctx, note, metadata); persistErr != nil {
 			b.Fatal(persistErr)
 		}
 	}
@@ -84,7 +86,8 @@ func BenchmarkBoltDBCache(b *testing.B) {
 
 		b.ResetTimer()
 		for range b.N {
-			if persistErr := writer.Persist(ctx, note, time.Now()); persistErr != nil {
+			metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+			if persistErr := writer.Persist(ctx, note, metadata); persistErr != nil {
 				b.Fatal(persistErr)
 			}
 		}
@@ -114,7 +117,8 @@ func BenchmarkBoltDBCache(b *testing.B) {
 			)
 			b.StartTimer()
 
-			if persistErr := writer.Persist(ctx, n, time.Now()); persistErr != nil {
+			metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+			if persistErr := writer.Persist(ctx, n, metadata); persistErr != nil {
 				b.Fatal(persistErr)
 			}
 		}

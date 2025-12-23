@@ -1,4 +1,4 @@
-package cache
+package json
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosLog "github.com/JackMatanky/lithos/internal/shared/logger"
@@ -121,7 +122,7 @@ func TestPersist(t *testing.T) {
 			}(),
 			setupFunc: func(t *testing.T, cacheDir string) {
 				// Pre-create a file to test overwrite
-				path := noteFilePath(
+				path := cache.NoteFilePath(
 					cacheDir,
 					"overwrite-test",
 				)
@@ -197,7 +198,8 @@ func TestPersist(t *testing.T) {
 				ctx, cancel = context.WithCancel(context.Background())
 				cancel() // Cancel immediately
 			}
-			err := adapter.Persist(ctx, tt.note, time.Now())
+			metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+			err := adapter.Persist(ctx, tt.note, metadata)
 
 			// Assert error expectation
 			if tt.wantErr {
@@ -211,11 +213,11 @@ func TestPersist(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify file was created
-			expectedPath := noteFilePath(cacheDir, tt.note.Path)
+			expectedPath := cache.NoteFilePath(cacheDir, tt.note.Path)
 			assert.FileExists(t, expectedPath)
 
 			// Legacy cache filename should be gone to avoid duplicates
-			legacyPath := legacyNoteFilePath(cacheDir, tt.note.Path)
+			legacyPath := cache.LegacyNoteFilePath(cacheDir, tt.note.Path)
 			assert.False(
 				t,
 				fileExists(legacyPath),
@@ -380,7 +382,7 @@ func TestDelete(t *testing.T) {
 			require.NoError(t, err)
 
 			// Verify file was removed (if it existed)
-			expectedPath := noteFilePath(cacheDir, tt.notePath)
+			expectedPath := cache.NoteFilePath(cacheDir, tt.notePath)
 			assert.NoFileExists(t, expectedPath)
 		})
 	}

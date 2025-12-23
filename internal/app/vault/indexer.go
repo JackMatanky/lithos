@@ -713,7 +713,8 @@ func (v *VaultIndexer) processFile(
 	// Persist to cache via Unit of Work
 	// We generate indexTime here to ensure consistency
 	indexTime := time.Now().UTC()
-	if persistErr := uow.AddWrite(note, indexTime); persistErr != nil {
+	metadata := v.buildCacheWriteMetadata(file, indexTime)
+	if persistErr := uow.AddWrite(note, metadata); persistErr != nil {
 		stats.CacheFailures++
 		v.log.Warn().
 			Err(persistErr).
@@ -725,6 +726,41 @@ func (v *VaultIndexer) processFile(
 		stats.IndexedCount++
 		v.publishNoteIndexedEvent(ctx, note)
 	}
+}
+
+func (v *VaultIndexer) buildCacheWriteMetadata(
+	file *dto.VaultFile,
+	indexTime time.Time,
+) spi.CacheWriteMetadata {
+	if file != nil && file.Info != nil {
+		return spi.CacheWriteMetadata{
+			ModifiedAt: file.Info.ModTime().UTC(),
+			FileSize:   file.Info.Size(),
+			IndexTime:  indexTime,
+		}
+	}
+	if file != nil {
+		return v.metadataFromPath(file.Path, indexTime)
+	}
+	return spi.CacheWriteMetadata{IndexTime: indexTime}
+}
+
+func (v *VaultIndexer) metadataFromPath(
+	path string,
+	indexTime time.Time,
+) spi.CacheWriteMetadata {
+	meta := spi.CacheWriteMetadata{IndexTime: indexTime}
+	if path == "" {
+		return meta
+	}
+	absolute := filepath.Join(v.config.VaultPath, path)
+	info, err := os.Stat(absolute)
+	if err != nil {
+		return meta
+	}
+	meta.ModifiedAt = info.ModTime().UTC()
+	meta.FileSize = info.Size()
+	return meta
 }
 
 // logStats logs the final indexing statistics using structured logging.
@@ -843,7 +879,8 @@ func (v *VaultIndexer) applyNoteEvent(
 		return beginErr
 	}
 	indexTime := time.Now().UTC()
-	if persistErr := uow.AddWrite(note, indexTime); persistErr != nil {
+	metadata := v.metadataFromPath(note.Path, indexTime)
+	if persistErr := uow.AddWrite(note, metadata); persistErr != nil {
 		return persistErr
 	}
 	if commitErr := uow.Commit(ctx); commitErr != nil {

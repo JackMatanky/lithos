@@ -9,7 +9,6 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
-	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
@@ -28,10 +27,15 @@ import (
 //   - MarkdownParserPort: For syntactic frontmatter parsing (YAML structure)
 //   - Logger: For structured logging of validation operations
 type FrontmatterService struct {
-	schemaEngine       *schema.SchemaEngine
-	markdownParserPort spi.MarkdownParserPort
-	logger             zerolog.Logger
-	eventBus           events.EventBus
+	schemaEngine *schema.SchemaEngine
+	logger       zerolog.Logger
+	eventBus     events.EventBus
+
+	// Validators are stateless and can be reused
+	stringValidator *StringValidator
+	numberValidator *NumberValidator
+	dateValidator   *DateValidator
+	boolValidator   *BoolValidator
 }
 
 // NewFrontmatterService creates a new FrontmatterService with required
@@ -40,21 +44,23 @@ type FrontmatterService struct {
 //
 // Parameters:
 //   - schemaEngine: Required for schema loading and resolution
-//   - markdownParserPort: Required for syntactic frontmatter parsing
 //   - logger: Required for observability and error tracking
+//   - eventBus: Required for publishing validation events
 //
 // Returns a configured FrontmatterService ready for use.
 func NewFrontmatterService(
 	schemaEngine *schema.SchemaEngine,
-	markdownParserPort spi.MarkdownParserPort,
 	logger zerolog.Logger,
 	eventBus events.EventBus,
 ) *FrontmatterService {
 	return &FrontmatterService{
-		schemaEngine:       schemaEngine,
-		markdownParserPort: markdownParserPort,
-		logger:             logger,
-		eventBus:           eventBus,
+		schemaEngine:    schemaEngine,
+		logger:          logger,
+		eventBus:        eventBus,
+		stringValidator: &StringValidator{},
+		numberValidator: &NumberValidator{},
+		dateValidator:   &DateValidator{},
+		boolValidator:   &BoolValidator{},
 	}
 }
 
@@ -171,12 +177,6 @@ func (s *FrontmatterService) validateFieldTypes(
 ) error {
 	var validationErrors []error
 
-	// Create validator instances
-	stringValidator := &StringValidator{}
-	numberValidator := &NumberValidator{}
-	dateValidator := &DateValidator{}
-	boolValidator := &BoolValidator{}
-
 	for _, property := range sch.Properties {
 		value, exists := fm.Get(property.Name)
 		if !exists {
@@ -185,10 +185,10 @@ func (s *FrontmatterService) validateFieldTypes(
 
 		validator := s.selectValidator(
 			property.Spec.Type(),
-			stringValidator,
-			numberValidator,
-			dateValidator,
-			boolValidator,
+			s.stringValidator,
+			s.numberValidator,
+			s.dateValidator,
+			s.boolValidator,
 		)
 		if validator == nil {
 			continue

@@ -92,8 +92,11 @@ type PathQueryOptions struct {
 //	writer := cacheWriterAdapter{}
 //	ctx := context.Background()
 //	note := domain.NewNote(domain.NewNoteID("note-123"), frontmatter)
+//	metadata := spi.CacheWriteMetadata{ModifiedAt: modTime, FileSize: size,
 //
-//	if err := writer.Persist(ctx, note); err != nil {
+// IndexTime: time.Now()}
+//
+//	if err := writer.Persist(ctx, note, metadata); err != nil {
 //	    return fmt.Errorf("failed to cache note: %w", err)
 //	}
 type CacheWriterPort interface {
@@ -114,7 +117,11 @@ type CacheWriterPort interface {
 	// Thread-safe: Safe for concurrent calls.
 	// Context: Respects ctx cancellation, returns ctx.Err() if canceled.
 	// Errors: Wrapped with operation context and resource identifiers (FR9).
-	Persist(ctx context.Context, note domain.Note, indexTime time.Time) error
+	Persist(
+		ctx context.Context,
+		note domain.Note,
+		metadata CacheWriteMetadata,
+	) error
 
 	// Delete removes note from cache. Idempotent: returns nil if note doesn't
 	// exist. Returns error wrapped with operation context if deletion fails
@@ -134,6 +141,16 @@ type CacheWriterPort interface {
 	// Context: Respects ctx cancellation, returns ctx.Err() if canceled.
 	// Errors: Wrapped with operation context and resource identifiers (FR9).
 	Delete(ctx context.Context, path string) error
+}
+
+// CacheWriteMetadata carries filesystem-derived attributes for cache writers.
+type CacheWriteMetadata struct {
+	// ModifiedAt is the filesystem mod time for the note's source file.
+	ModifiedAt time.Time
+	// FileSize is the source file size in bytes.
+	FileSize int64
+	// IndexTime records when the note was cached (used for staleness tracking).
+	IndexTime time.Time
 }
 
 // CacheReaderPort defines the CQRS read-side contract for cache retrieval.

@@ -9,6 +9,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/JackMatanky/lithos/tests/utils"
 )
 
@@ -31,10 +32,14 @@ func NewUnitOfWorkFixture() *UnitOfWorkFixture {
 	}
 }
 
+func newTestMetadata() spi.CacheWriteMetadata {
+	return spi.CacheWriteMetadata{IndexTime: time.Now()}
+}
+
 // WithFailingBoltWriter configures the BoltDB writer to fail on persist
 // operations.
 func (f *UnitOfWorkFixture) WithFailingBoltWriter() *UnitOfWorkFixture {
-	f.boltWriter.PersistFunc = func(ctx context.Context, note domain.Note, indexTime time.Time) error {
+	f.boltWriter.PersistFunc = func(ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata) error {
 		return errors.New("bolt persist failure")
 	}
 	return f
@@ -44,7 +49,7 @@ func (f *UnitOfWorkFixture) WithFailingBoltWriter() *UnitOfWorkFixture {
 // operations.
 func (f *UnitOfWorkFixture) WithFailingSQLiteWriter() *UnitOfWorkFixture {
 	f.sqliteWriter.PersistFunc = func(
-		ctx context.Context, note domain.Note, indexTime time.Time,
+		ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata,
 	) error {
 		return errors.New("sqlite persist failure")
 	}
@@ -64,7 +69,7 @@ func (f *UnitOfWorkFixture) WithFailingBoltDelete() *UnitOfWorkFixture {
 func (f *UnitOfWorkFixture) WithTrackingBoltWriter() *UnitOfWorkFixture {
 	callCount := 0
 	f.boltWriter.PersistFunc = func(
-		ctx context.Context, note domain.Note, indexTime time.Time,
+		ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata,
 	) error {
 		callCount++
 		return nil
@@ -76,7 +81,7 @@ func (f *UnitOfWorkFixture) WithTrackingBoltWriter() *UnitOfWorkFixture {
 func (f *UnitOfWorkFixture) WithTrackingSQLiteWriter() *UnitOfWorkFixture {
 	callCount := 0
 	f.sqliteWriter.PersistFunc = func(
-		ctx context.Context, note domain.Note, indexTime time.Time,
+		ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata,
 	) error {
 		callCount++
 		return nil
@@ -125,9 +130,9 @@ func TestCacheUnitOfWork_AddWrite(t *testing.T) {
 		[]string{},
 		[]domain.TaskItem{},
 	)
-	indexTime := time.Now()
+	metadata := newTestMetadata()
 
-	if err := fixture.UnitOfWork().AddWrite(note, indexTime); err != nil {
+	if err := fixture.UnitOfWork().AddWrite(note, metadata); err != nil {
 		t.Errorf("AddWrite() error = %v, want nil", err)
 	}
 	// We can't inspect internal operations slice easily without exposing it or
@@ -162,19 +167,19 @@ func TestCacheUnitOfWork_Commit_Success(t *testing.T) {
 		[]string{},
 		[]domain.TaskItem{},
 	)
-	if err := fixture.UnitOfWork().AddWrite(testNote, time.Now()); err != nil {
+	if err := fixture.UnitOfWork().AddWrite(testNote, newTestMetadata()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 
 	// Set up tracking functions
 	fixture.BoltWriter().PersistFunc = func(
-		ctx context.Context, note domain.Note, indexTime time.Time,
+		ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata,
 	) error {
 		boltCalls++
 		return nil
 	}
 	fixture.SQLiteWriter().PersistFunc = func(
-		ctx context.Context, note domain.Note, indexTime time.Time,
+		ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata,
 	) error {
 		sqliteCalls++
 		return nil
@@ -199,7 +204,7 @@ func TestCacheUnitOfWork_Commit_BoltFail_Rollback(t *testing.T) {
 		WithFailingBoltWriter()
 
 	fixture.SQLiteWriter().PersistFunc = func(
-		ctx context.Context, note domain.Note, indexTime time.Time,
+		ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata,
 	) error {
 		sqliteCalls++
 		return nil
@@ -218,7 +223,7 @@ func TestCacheUnitOfWork_Commit_BoltFail_Rollback(t *testing.T) {
 		[]string{},
 		[]domain.TaskItem{},
 	)
-	if err := fixture.UnitOfWork().AddWrite(testNote, time.Now()); err != nil {
+	if err := fixture.UnitOfWork().AddWrite(testNote, newTestMetadata()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 
@@ -239,7 +244,7 @@ func TestCacheUnitOfWork_Commit_SQLiteFail_Rollback(t *testing.T) {
 		WithFailingBoltDelete()
 
 	fixture.BoltWriter().PersistFunc = func(
-		ctx context.Context, note domain.Note, indexTime time.Time,
+		ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata,
 	) error {
 		return nil // BoltDB write succeeds
 	}
@@ -261,7 +266,7 @@ func TestCacheUnitOfWork_Commit_SQLiteFail_Rollback(t *testing.T) {
 		[]string{},
 		[]domain.TaskItem{},
 	)
-	if err := fixture.UnitOfWork().AddWrite(testNote4, time.Now()); err != nil {
+	if err := fixture.UnitOfWork().AddWrite(testNote4, newTestMetadata()); err != nil {
 		t.Fatalf("AddWrite() error = %v, want nil", err)
 	}
 

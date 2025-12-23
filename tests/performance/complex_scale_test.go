@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
+	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/json"
 	schemaadapter "github.com/JackMatanky/lithos/internal/adapters/spi/schema"
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
@@ -124,10 +124,10 @@ contact:
 	boltConfig := domain.Config{CacheDir: boltCacheDir}
 	sqliteConfig := domain.Config{CacheDir: sqliteCacheDir}
 
-	boltWriter := cache.NewJSONCacheWriter(boltConfig, logger)
-	sqliteWriter := cache.NewJSONCacheWriter(sqliteConfig, logger)
+	boltWriter := json.NewJSONCacheWriter(boltConfig, logger)
+	sqliteWriter := json.NewJSONCacheWriter(sqliteConfig, logger)
 
-	cacheReader := cache.NewJSONCacheReader(boltConfig, logger)
+	cacheReader := json.NewJSONCacheReader(boltConfig, logger)
 
 	schemaLoader := schemaadapter.NewSchemaLoaderAdapter(&config, &logger)
 	schemaRegistry := schemaadapter.NewSchemaRegistryAdapter(logger)
@@ -142,7 +142,6 @@ contact:
 	markdownParser := vaultAdapter.NewMarkdownParserAdapter(logger)
 	frontmatterService := frontmatter.NewFrontmatterService(
 		schemaEngine,
-		markdownParser,
 		logger,
 		nil,
 	)

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
+	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/json"
 	schemaadapter "github.com/JackMatanky/lithos/internal/adapters/spi/schema"
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
@@ -73,11 +73,11 @@ func TestVaultIndexing_Integration(t *testing.T) {
 	boltConfig := domain.Config{CacheDir: boltCacheDir}
 	sqliteConfig := domain.Config{CacheDir: sqliteCacheDir}
 
-	boltWriter := cache.NewJSONCacheWriter(boltConfig, logger)
-	sqliteWriter := cache.NewJSONCacheWriter(sqliteConfig, logger)
+	boltWriter := json.NewJSONCacheWriter(boltConfig, logger)
+	sqliteWriter := json.NewJSONCacheWriter(sqliteConfig, logger)
 
 	// Reader reads from hot cache (bolt)
-	cacheReader := cache.NewJSONCacheReader(boltConfig, logger)
+	cacheReader := json.NewJSONCacheReader(boltConfig, logger)
 
 	// Create schema and frontmatter services
 	schemaLoader := schemaadapter.NewSchemaLoaderAdapter(&config, &logger)
@@ -94,7 +94,6 @@ func TestVaultIndexing_Integration(t *testing.T) {
 
 	frontmatterService := frontmatter.NewFrontmatterService(
 		schemaEngine,
-		markdownParser,
 		logger,
 		nil,
 	)

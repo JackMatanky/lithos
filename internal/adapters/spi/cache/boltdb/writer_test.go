@@ -8,6 +8,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -190,7 +191,8 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
-			persistErr := adapter.Persist(ctx, tt.note, time.Now())
+			metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+			persistErr := adapter.Persist(ctx, tt.note, metadata)
 			if tt.wantErr {
 				require.Error(t, persistErr)
 				return
@@ -236,7 +238,8 @@ func TestBoltDBCacheWriteAdapter_Delete(t *testing.T) {
 	)
 
 	ctx := context.Background()
-	err = adapter.Persist(ctx, note, time.Now())
+	metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+	err = adapter.Persist(ctx, note, metadata)
 	require.NoError(t, err)
 
 	// Corrupt the basename index manually to force a failure during Delete
@@ -302,7 +305,8 @@ func Test_extractCachedNote(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := extractCachedNote(tt.note, tt.fileClassKey, time.Now())
+			metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+			result := extractCachedNote(tt.note, tt.fileClassKey, metadata)
 
 			assert.Equal(t, tt.expected.ID, result.ID)
 			assert.Equal(t, tt.expected.Title, result.Title)

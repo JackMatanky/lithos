@@ -135,7 +135,6 @@ func TestComplexDataIntegration(t *testing.T) {
 	markdownParser := vaultAdapter.NewMarkdownParserAdapter(logger)
 	fmService := frontmatter.NewFrontmatterService(
 		schemaEngine,
-		markdownParser,
 		logger,
 		nil,
 	)

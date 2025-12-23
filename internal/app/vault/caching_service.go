@@ -84,8 +84,12 @@ func (s *CachingService) handleCacheRequested(
 	}
 
 	// Stage the note for caching
-	indexTime := time.Now().UTC()
-	if err := uow.AddWrite(note, indexTime); err != nil {
+	metadata := spi.CacheWriteMetadata{
+		ModifiedAt: time.Time{},
+		FileSize:   0,
+		IndexTime:  time.Now().UTC(),
+	}
+	if err := uow.AddWrite(note, metadata); err != nil {
 		s.log.Error().
 			Err(err).
 			Str("path", note.Path).

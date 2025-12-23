@@ -118,6 +118,25 @@ func (s *StringSpec) Validate(ctx context.Context) error {
 	return nil
 }
 
+// Match checks if the given value matches the Pattern regex.
+// Returns true if no pattern is specified or if value matches.
+// Automatically compiles the regex if not already cached.
+func (s *StringSpec) Match(value string) bool {
+	if s.Pattern == "" {
+		return true
+	}
+	if s.compiledRegex == nil {
+		// Attempt compilation, but if it fails we return false since
+		// structural validation should have caught this earlier.
+		regex, err := regexp.Compile(s.Pattern)
+		if err != nil {
+			return false
+		}
+		s.compiledRegex = regex
+	}
+	return s.compiledRegex.MatchString(value)
+}
+
 // Type returns PropertyTypeNumber.
 func (n NumberSpec) Type() PropertySpecType {
 	return PropertyTypeNumber

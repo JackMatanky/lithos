@@ -8,6 +8,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/sqlite"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 )
 
@@ -36,7 +37,7 @@ func setupBenchmarkData(
 	for i := range 1000 {
 		fileClass := fileClasses[i%len(fileClasses)]
 		note := createBenchmarkNote(i, fileClass)
-		if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
+		if persistErr := writer.Persist(ctx, note, spi.CacheWriteMetadata{IndexTime: indexTime}); persistErr != nil {
 			b.Fatal(persistErr)
 		}
 	}
@@ -112,7 +113,7 @@ func BenchmarkSQLiteCache(b *testing.B) {
 
 		b.ResetTimer()
 		for range b.N {
-			if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
+			if persistErr := writer.Persist(ctx, note, spi.CacheWriteMetadata{IndexTime: indexTime}); persistErr != nil {
 				b.Fatal(persistErr)
 			}
 		}
@@ -139,7 +140,7 @@ func BenchmarkSQLiteCache(b *testing.B) {
 			)
 			b.StartTimer()
 
-			if persistErr := writer.Persist(ctx, n, indexTime); persistErr != nil {
+			if persistErr := writer.Persist(ctx, n, spi.CacheWriteMetadata{IndexTime: indexTime}); persistErr != nil {
 				b.Fatal(persistErr)
 			}
 		}
@@ -244,7 +245,7 @@ func BenchmarkSQLiteQueryComparison(b *testing.B) {
 			[]string{},
 			[]domain.TaskItem{},
 		)
-		if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
+		if persistErr := writer.Persist(ctx, note, spi.CacheWriteMetadata{IndexTime: indexTime}); persistErr != nil {
 			b.Fatal(persistErr)
 		}
 	}
@@ -326,7 +327,7 @@ func BenchmarkSQLitePerformanceTargets(b *testing.B) {
 			[]string{},
 			[]domain.TaskItem{},
 		)
-		if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
+		if persistErr := writer.Persist(ctx, note, spi.CacheWriteMetadata{IndexTime: indexTime}); persistErr != nil {
 			b.Fatal(persistErr)
 		}
 	}
@@ -374,7 +375,7 @@ func BenchmarkSQLitePerformanceTargets(b *testing.B) {
 				[]string{},
 				[]domain.TaskItem{},
 			)
-			if persistErr := writer.Persist(ctx, note, indexTime); persistErr != nil {
+			if persistErr := writer.Persist(ctx, note, spi.CacheWriteMetadata{IndexTime: indexTime}); persistErr != nil {
 				b.Fatal(persistErr)
 			}
 		}

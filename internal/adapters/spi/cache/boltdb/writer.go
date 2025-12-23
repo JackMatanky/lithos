@@ -6,9 +6,7 @@ import (
 	"fmt"
 	pathpkg "path"
 	"strings"
-	"time"
 
-	"github.com/JackMatanky/lithos/internal/adapters/spi/cache"
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -122,17 +120,15 @@ func extractDirectory(path string) string {
 func extractCachedNote(
 	note domain.Note,
 	fileClassKey string,
-	indexTime time.Time,
+	metadata spi.CacheWriteMetadata,
 ) CachedNote {
 	var cached CachedNote
 	cached.Path = note.Path // Use Path as identifier per new domain model
 	cached.ID = note.Path
 
 	// FileDatesDTO
-	fileDates := dto.NewFileDatesDTO(
-		cache.ExtractFileModTime(note.Frontmatter.Fields),
-	)
-	fileDates.IndexedAt = indexTime
+	fileDates := dto.NewFileDatesDTO(metadata.ModifiedAt)
+	fileDates.IndexedAt = metadata.IndexTime
 	cached.FileDates = fileDates
 
 	// Extract title
@@ -161,7 +157,7 @@ func extractCachedNote(
 func (a *BoltDBCacheWriteAdapter) Persist(
 	ctx context.Context,
 	note domain.Note,
-	indexTime time.Time,
+	metadata spi.CacheWriteMetadata,
 ) error {
 	select {
 	case <-ctx.Done():
@@ -169,7 +165,7 @@ func (a *BoltDBCacheWriteAdapter) Persist(
 	default:
 	}
 
-	cached := extractCachedNote(note, a.config.FileClassKey, indexTime)
+	cached := extractCachedNote(note, a.config.FileClassKey, metadata)
 
 	// Serialize metadata
 	data, err := json.Marshal(cached)

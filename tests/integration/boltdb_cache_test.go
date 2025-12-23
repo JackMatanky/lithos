@@ -8,6 +8,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/boltdb"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -60,7 +61,8 @@ func TestBoltDBCacheIntegration(t *testing.T) {
 
 	ctx := context.Background()
 	for _, n := range notes {
-		persistErr := writer.Persist(ctx, n, time.Now())
+		metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+		persistErr := writer.Persist(ctx, n, metadata)
 		require.NoError(t, persistErr)
 	}
 	err = writer.Close()
