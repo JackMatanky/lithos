@@ -40,7 +40,7 @@ development_status:
   1-7-registry-package: done
   1-8-config-loading-infrastructure: done
   1-9-template-loading-infrastructure: done
-  1-10-template-engine-service: review
+  1-10-template-engine-service: done
   1-11-cli-port-interfaces: done
   1-12-cobra-cli-adapter: done
   1-13-command-orchestrator: done
@@ -66,50 +66,50 @@ development_status:
   epic-2-retrospective: done
 
   # Epic 3: Vault Indexing Engine
-  epic-3: in-progress
+  epic-3: done
   3-1-cache-port-interfaces: done
   3-2-json-cache-adapters: done
   3-3-vault-reader-port-and-adapter: done
   3-4-vault-writer-port-and-adapter: done
   3-5-vault-indexer-service: done
-  3-6-query-service: review
-  3-7-frontmatter-service: review
-  3-8-frontmatter-integration: review
+  3-6-query-service: done
+  3-7-frontmatter-service: done
+  3-8-frontmatter-integration: done
   3-9-cli-index-command: done
   3-10-fix-note-id-collision-and-path-handling: done
   3-11-resolve-memory-leak-in-indexing-process: done
-  3-12-fix-cache-management-failures: in-progress
-  3-13-repair-query-layer-breakdown: in-progress
-  3-14-optimize-cache-performance: in-progress
-  3-15-comprehensive-integration-testing-for-fixed-vault-indexing: in-progress
+  3-12-fix-cache-management-failures: done
+  3-13-repair-query-layer-breakdown: done
+  3-14-optimize-cache-performance: done
+  3-15-comprehensive-integration-testing-for-fixed-vault-indexing: done
   3-16-epic-3-completion-quality-assurance: done
   3-17-vaultfile-dto-redesign: done
-  3-18-markdown-parser-port: in-progress
-  3-19-metadata-query-port: in-progress
-  3-20-boltdb-hot-cache: in-progress
-  3-21-sqlite-deep-storage: in-progress
-  3-22-storage-write-coordination: in-progress
-  3-23-queryservice-hybrid-enhancement: in-progress
-  3-24-frontmatter-service-refactoring: in-progress
-  3-25-enrich-frontmatter-entity: in-progress
-  3-26-enrich-note-entity: in-progress
-  3-27-document-validation-layer-separation: in-progress
-  3-28-singleton-pattern: in-progress
-  3-29-fileclasskey-configuration: in-progress
-  3-30-event-driven-architecture: in-progress
-  3-31-dependency-injection-and-e2e-test: in-progress
-  3-32-documentation-update: in-progress
-  epic-3-retrospective: optional
+  3-18-markdown-parser-port: done
+  3-19-metadata-query-port: done
+  3-20-boltdb-hot-cache: done
+  3-21-sqlite-deep-storage: done
+  3-22-storage-write-coordination: done
+  3-23-queryservice-hybrid-enhancement: done
+  3-24-frontmatter-service-refactoring: done
+  3-25-enrich-frontmatter-entity: done
+  3-26-enrich-note-entity: done
+  3-27-document-validation-layer-separation: done
+  3-28-singleton-pattern: done
+  3-29-fileclasskey-configuration: done
+  3-30-event-driven-architecture: done
+  3-31-dependency-injection-and-e2e-test: done
+  3-32-documentation-update: done
+  epic-3-retrospective: done
 
   # Epic 4: Schema-Driven Lookups & Validation
   epic-4: backlog
-  4-1-template-interface-pattern: in-progress
+  4-1-template-interface-pattern: done
   4-2-template-function-lookup: ready-for-dev
   4-3-template-function-query: ready-for-dev
   4-4-template-function-fileclass: ready-for-dev
-  4-5-schema-driven-lookup-integration-test: in-progress
-  4-6-dependency-injection-and-e2e-test: in-progress
-  4-7-documentation-update: in-progress
+  4-5-schema-driven-lookup-integration-test: done
+  4-6-dependency-injection-and-e2e-test: done
+  4-7-documentation-update: done
   epic-4-retrospective: optional
 
   # Epic 5: Interactive Input Engine
