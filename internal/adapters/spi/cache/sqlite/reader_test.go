@@ -48,7 +48,8 @@ func TestSQLiteReaderAdapter_Read(t *testing.T) {
 	note, err := reader.Read(ctx, notePath)
 	require.NoError(t, err)
 	assert.Equal(t, notePath, note.Path)
-	assert.Equal(t, "Read Me", note.Frontmatter.Fields["title"])
+	title, _ := note.Frontmatter.Get("title")
+	assert.Equal(t, "Read Me", title)
 }
 
 func TestSQLiteReaderAdapter_FileClassQuery(t *testing.T) {

@@ -76,12 +76,10 @@ func TestRead(t *testing.T) {
 			validateFunc: func(t *testing.T, note domain.Note, err error) {
 				assert.Equal(t, "test-note", note.Path)
 				assert.Equal(t, "contact", note.FileClass())
-				assert.Equal(t, "Test Note", note.Frontmatter.Fields["title"])
-				assert.Equal(
-					t,
-					"preserved_value",
-					note.Frontmatter.Fields["custom_field"],
-				)
+				title, _ := note.Frontmatter.Get("title")
+				assert.Equal(t, "Test Note", title)
+				customField, _ := note.Frontmatter.Get("custom_field")
+				assert.Equal(t, "preserved_value", customField)
 			},
 		},
 		{
@@ -146,29 +144,17 @@ func TestRead(t *testing.T) {
 				assert.Equal(t, "unknown-fields-note", note.Path)
 				assert.Equal(t, "meeting", note.FileClass())
 				// Verify all unknown fields are preserved
-				assert.Equal(
-					t,
-					"value1",
-					note.Frontmatter.Fields["unknown_field_1"],
-				)
-				assert.InDelta(
-					t,
-					float64(42),
-					note.Frontmatter.Fields["unknown_field_2"],
-					0.001,
-				)
-				assert.Equal(
-					t,
-					true,
-					note.Frontmatter.Fields["unknown_field_3"],
-				)
+				unknown1, _ := note.Frontmatter.Get("unknown_field_1")
+				assert.Equal(t, "value1", unknown1)
+				unknown2, _ := note.Frontmatter.Get("unknown_field_2")
+				assert.InDelta(t, float64(42), unknown2, 0.001)
+				unknown3, _ := note.Frontmatter.Get("unknown_field_3")
+				assert.Equal(t, true, unknown3)
 				// Verify known fields are also present
-				assert.Equal(
-					t,
-					"Team Meeting",
-					note.Frontmatter.Fields["title"],
-				)
-				customMeta := note.Frontmatter.Fields["custom_metadata"].(map[string]interface{})
+				title, _ := note.Frontmatter.Get("title")
+				assert.Equal(t, "Team Meeting", title)
+				customMetaRaw, _ := note.Frontmatter.Get("custom_metadata")
+				customMeta := customMetaRaw.(map[string]interface{})
 				assert.Equal(t, "high", customMeta["priority"])
 			},
 		},
