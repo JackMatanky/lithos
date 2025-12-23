@@ -96,6 +96,7 @@ func TestVaultIndexingCompleteEvent(t *testing.T) {
 	require.Equal(t, "vault", event.AggregateID())
 	require.Equal(t, summary.IndexedCount, event.NotesIndexed())
 	require.Equal(t, summary, event.Summary())
+	require.Equal(t, summary.ScannedCount, event.ScannedCount())
 	require.Equal(t, summary.ParseFailures, event.ParseFailures())
 	require.Equal(t, summary.CacheFailures, event.CacheFailures())
 	require.Equal(t, summary.ValidationSuccesses, event.ValidationSuccesses())
@@ -127,9 +128,12 @@ func TestFrontmatterValidatedEvent(t *testing.T) {
 
 	require.Equal(t, "FrontmatterValidated", event.EventType())
 	require.Equal(t, "note-33", event.AggregateID())
+	require.Equal(t, "note-33", event.NoteID())
 	require.Equal(t, "contact", event.SchemaName())
 	require.False(t, event.IsValid())
 	require.Equal(t, errors, event.Errors())
+	require.Equal(t, errors, event.ValidationErrors())
+	require.Equal(t, "note-33", event.Note().Path)
 }
 
 func TestFrontmatterValidatedValidation(t *testing.T) {

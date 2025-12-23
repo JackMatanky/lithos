@@ -90,10 +90,10 @@ func NewConfigBuilder() *ConfigBuilder {
 	return &ConfigBuilder{
 		config: Config{
 			VaultPath:        ".",
-			TemplatesDir:     "templates/",
-			SchemasDir:       "schemas/",
+			TemplatesDir:     "templates",
+			SchemasDir:       "schemas",
 			PropertyBankFile: "property_bank.json",
-			CacheDir:         ".lithos/cache/",
+			CacheDir:         ".lithos/cache",
 			LogLevel:         "info",
 			FileClassKey:     "file_class",
 		},

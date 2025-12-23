@@ -128,6 +128,20 @@ func TestNewSchemaDefensiveCopyProperties(t *testing.T) {
 	assert.Equal(t, testProp2, schema.Properties[1].Name)
 }
 
+// TestNewSchemaEmptySlices tests that NewSchema handles empty slices correctly.
+func TestNewSchemaEmptySlices(t *testing.T) {
+	name := testSchemaName
+	excludes := []string{}
+	properties := []Property{}
+
+	schema, err := NewSchema(name, testEmptyExtends, excludes, properties)
+	require.NoError(t, err)
+
+	assert.Equal(t, name, schema.Name)
+	assert.Empty(t, schema.Excludes)
+	assert.Empty(t, schema.Properties)
+}
+
 // 2.1-UNIT-016: Modifying constructor args doesn't affect Schema.
 func TestNewSchemaCompleteImmutability(t *testing.T) {
 	name := testSchemaName

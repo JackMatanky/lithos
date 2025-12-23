@@ -2,6 +2,7 @@ package domain
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -234,4 +235,44 @@ func TestMockTemplateImplementation(t *testing.T) {
 	// We should be able to create mock implementations for testing
 
 	t.Skip("Test will be implemented after Template interface exists")
+}
+
+// TestTemplateWithFunctions tests template execution with built-in functions.
+func TestTemplateWithFunctions(t *testing.T) {
+	id := NewTemplateID("function-template")
+	content := `Name: {{.name | toLower}}
+Time: {{now "2006-01-02"}}
+Folder: {{folder "path/to/file"}}
+Basename: {{basename "path/to/file.md"}}
+Extension: {{extension "file.md"}}
+Join: {{join "/" "a" "b"}}`
+
+	template := NewTemplate(id, content)
+
+	data := map[string]string{"name": "John"}
+
+	result, err := template.Execute(data)
+	if err != nil {
+		t.Fatalf("Execute failed: %v", err)
+	}
+
+	// Check that functions are called
+	if !strings.Contains(result, "Name: john") {
+		t.Errorf("Expected lowercase name, got: %s", result)
+	}
+	if !strings.Contains(result, "Time: 2025") { // year
+		t.Errorf("Expected time, got: %s", result)
+	}
+	if !strings.Contains(result, "Folder: path/to") {
+		t.Errorf("Expected folder, got: %s", result)
+	}
+	if !strings.Contains(result, "Basename: file") {
+		t.Errorf("Expected basename, got: %s", result)
+	}
+	if !strings.Contains(result, "Extension: .md") {
+		t.Errorf("Expected extension, got: %s", result)
+	}
+	if !strings.Contains(result, "Join: /a/b") {
+		t.Errorf("Expected join, got: %s", result)
+	}
 }
