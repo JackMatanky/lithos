@@ -32,6 +32,24 @@ func NewWorkspace(t *testing.T) *Workspace {
 	return ws
 }
 
+// NewWorkspaceBench is like NewWorkspace but for benchmarks.
+func NewWorkspaceBench(b *testing.B) *Workspace {
+	b.Helper()
+
+	root := b.TempDir()
+	// Create a minimal testing.T compatible struct for internal use
+	ws := &Workspace{
+		t:    &testing.T{},
+		root: root,
+	}
+
+	b.Cleanup(func() {
+		_ = os.RemoveAll(root)
+	})
+
+	return ws
+}
+
 // Root returns the absolute path to the workspace root.
 func (w *Workspace) Root() string {
 	return w.root
