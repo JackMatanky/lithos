@@ -193,6 +193,7 @@ func TestNewNoteSuccess(t *testing.T) {
 	templateEngine := template.NewTemplateEngine(
 		mockTemplatePort,
 		&config,
+		nil, // QueryService not needed for this test
 		&logger,
 	)
 
@@ -261,6 +262,7 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 	templateEngine := template.NewTemplateEngine(
 		mockTemplatePort,
 		&config,
+		nil, // QueryService not needed for this test
 		&logger,
 	)
 
@@ -297,6 +299,7 @@ func TestNewNoteFileWriteError(t *testing.T) {
 	templateEngine := template.NewTemplateEngine(
 		mockTemplatePort,
 		&config,
+		nil, // QueryService not needed for this test
 		&logger,
 	)
 

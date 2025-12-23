@@ -34,7 +34,7 @@ func TestTemplateEngine_RenderStaticTemplate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create template engine
-	engine := templateService.NewTemplateEngine(loader, &config, &logger)
+	engine := templateService.NewTemplateEngine(loader, &config, nil, &logger)
 
 	// Load and render static template
 	templateID := domain.NewTemplateID("static_template")

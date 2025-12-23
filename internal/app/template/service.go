@@ -13,6 +13,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
@@ -28,12 +29,14 @@ import (
 // TemplateEngine follows hexagonal architecture principles:
 // - Depends on TemplatePort (SPI) for template loading
 // - Accepts Config for vault path access
+// - Uses QueryService for schema-aware lookups
 // - Uses zerolog for structured logging
 // - Returns domain errors (ResourceError, TemplateError) for clean error
 // handling.
 type TemplateEngine struct {
 	templatePort spi.TemplatePort
 	config       *domain.Config
+	queryService *query.QueryService
 	log          *zerolog.Logger
 	mu           sync.RWMutex
 	funcMap      template.FuncMap
@@ -53,17 +56,20 @@ type cachedTemplate struct {
 // Parameters:
 //   - templatePort: SPI adapter for loading templates from storage
 //   - config: Application configuration containing vault path and settings
+//   - queryService: Query service for schema-aware lookups (optional)
 //   - log: Structured logger for operation tracing and debugging
 //
 // Returns a pointer to the initialized TemplateEngine.
 func NewTemplateEngine(
 	templatePort spi.TemplatePort,
 	config *domain.Config,
+	queryService *query.QueryService,
 	log *zerolog.Logger,
 ) *TemplateEngine {
 	return &TemplateEngine{
 		templatePort: templatePort,
 		config:       config,
+		queryService: queryService,
 		log:          log,
 		mu:           sync.RWMutex{},
 		funcMap:      nil,
@@ -168,6 +174,8 @@ func (e *TemplateEngine) buildFuncMap() template.FuncMap {
 	if e.funcMap != nil {
 		return e.funcMap
 	}
+
+	ctx := context.Background()
 	e.funcMap = template.FuncMap{
 		// Basic functions
 		"now":     func(format string) string { return time.Now().Format(format) },
@@ -184,8 +192,169 @@ func (e *TemplateEngine) buildFuncMap() template.FuncMap {
 		"extension": filepath.Ext,
 		"join":      filepath.Join,
 		"vaultPath": func() string { return e.config.VaultPath },
+
+		// Schema-aware lookup functions (requires queryService)
+		"lookup":    e.makeLookupFunc(ctx),
+		"query":     e.makeQueryFunc(ctx),
+		"fileClass": e.makeFileClassFunc(ctx),
 	}
 	return e.funcMap
+}
+
+// makeLookupFunc returns a closure over QueryService for looking up notes by
+// basename.
+// The closure delegates to QueryService.PathQuery with basename scope.
+// Returns a single note or error for not found/ambiguous cases.
+//
+// Error cases:
+//   - "not found" when basename matches no notes
+//
+// - "ambiguous basename X: found N matches" when basename matches multiple
+// notes
+//
+// Thread-safe: Closure captures QueryService pointer which is thread-safe for
+// reads.
+func (e *TemplateEngine) makeLookupFunc(
+	ctx context.Context,
+) func(string) (domain.Note, error) {
+	return func(basename string) (domain.Note, error) {
+		if e.queryService == nil {
+			return domain.Note{}, fmt.Errorf(
+				"lookup failed: query service not available",
+			)
+		}
+
+		// Query by basename
+		notes, err := e.queryService.PathQuery(ctx, spi.PathQueryOptions{
+			Scope: spi.PathQueryScopeBasename,
+			Value: basename,
+		})
+		if err != nil {
+			return domain.Note{}, fmt.Errorf("lookup failed: %w", err)
+		}
+
+		// Handle result cases
+		if len(notes) == 0 {
+			return domain.Note{}, fmt.Errorf("note not found: %s", basename)
+		}
+		if len(notes) > 1 {
+			return domain.Note{}, fmt.Errorf(
+				"ambiguous basename %s: found %d matches",
+				basename,
+				len(notes),
+			)
+		}
+
+		// Return defensive copy of the single matching note
+		return notes[0].Clone(), nil
+	}
+}
+
+// makeQueryFunc returns a closure over QueryService for querying notes by
+// frontmatter fields. The closure delegates to QueryService.FrontmatterQuery
+// with field/value pairs.
+// Returns a slice of notes (empty slice if no matches).
+// Supports type-agnostic comparison (int 2 == float 2.0) and delegates to
+// MetadataQueryPort for indexed lookups.
+//
+// Query Semantics:
+// - Returns empty slice (not error) for non-matching frontmatter (collection
+// lookup)
+// - Type normalization: int/float conversion for numeric comparison
+// - Supports multiple filters with AND logic (all filters must match)
+// - Logs debug message with field and value for troubleshooting
+// - Routes directly to SQLite for complex frontmatter queries (deep path only)
+//
+// Example:
+//
+//	notes := queryService.FrontmatterQuery("author", "John Doe")
+//	notes := queryService.FrontmatterQuery("tags", "project-x")
+//	notes := queryService.FrontmatterQuery("status", "draft")
+//	notes := queryService.FrontmatterQuery("priority", 2) // matches float 2.0
+func (e *TemplateEngine) makeQueryFunc(
+	ctx context.Context,
+) func(map[string]any) ([]domain.Note, error) {
+	return func(filter map[string]any) ([]domain.Note, error) {
+		if e.queryService == nil {
+			return nil, fmt.Errorf("query failed: query service not available")
+		}
+
+		// Process all filters in the map (AND logic - all filters must match)
+		if len(filter) == 0 {
+			return []domain.Note{}, nil
+		}
+
+		// Start with first filter
+		var result []domain.Note
+		first := true
+
+		for field, value := range filter {
+			notes, err := e.queryService.FrontmatterQuery(ctx, field, value)
+			if err != nil {
+				return nil, fmt.Errorf("query failed: %w", err)
+			}
+
+			if first {
+				result = notes
+				first = false
+			} else {
+				// Intersect results (AND logic)
+				result = intersectNotes(result, notes)
+			}
+		}
+
+		// Return defensive copies
+		clonedNotes := make([]domain.Note, len(result))
+		for i := range result {
+			clonedNotes[i] = result[i].Clone()
+		}
+		return clonedNotes, nil
+	}
+}
+
+// intersectNotes returns notes that appear in both slices (intersection).
+func intersectNotes(a, b []domain.Note) []domain.Note {
+	noteMap := make(map[string]domain.Note)
+	for i := range a {
+		noteMap[a[i].Path] = a[i]
+	}
+
+	result := make([]domain.Note, 0)
+	for i := range b {
+		if existing, found := noteMap[b[i].Path]; found {
+			result = append(result, existing)
+		}
+	}
+
+	return result
+}
+
+// makeFileClassFunc returns a closure over QueryService for extracting
+// fileClass from a note.
+// The closure delegates to QueryService.IDQuery then extracts fileClass field.
+// Returns fileClass string or error for missing note/field.
+//
+// Thread-safe: Closure captures QueryService pointer which is thread-safe for
+// reads.
+func (e *TemplateEngine) makeFileClassFunc(
+	ctx context.Context,
+) func(string) (string, error) {
+	return func(noteID string) (string, error) {
+		if e.queryService == nil {
+			return "", fmt.Errorf(
+				"fileClass lookup failed: query service not available",
+			)
+		}
+
+		// Query note by ID (path)
+		note, err := e.queryService.IDQuery(ctx, noteID)
+		if err != nil {
+			return "", fmt.Errorf("fileClass lookup failed: %w", err)
+		}
+
+		// Extract fileClass from frontmatter
+		return note.FileClass(), nil
+	}
 }
 
 func (e *TemplateEngine) getFuncMap() template.FuncMap {

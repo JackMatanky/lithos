@@ -122,9 +122,20 @@ func (c *Container) Storage() (*storageResources, error) {
 // TemplateEngine returns the template engine service with lazy initialization.
 func (c *Container) TemplateEngine() *template.TemplateEngine {
 	if c.templateEngine == nil {
+		querySvc, err := c.QueryService()
+		if err != nil {
+			// Log warning but continue with nil - template functions will
+			// handle gracefully
+			c.logger.Warn().
+				Err(err).
+				Msg("QueryService initialization failed, " +
+					"template functions will be unavailable")
+			querySvc = nil
+		}
 		c.templateEngine = template.NewTemplateEngine(
 			templateAdapter.NewTemplateLoaderAdapter(&c.config, &c.logger),
 			&c.config,
+			querySvc,
 			&c.logger,
 		)
 	}

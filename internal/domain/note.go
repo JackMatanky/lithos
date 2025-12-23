@@ -419,3 +419,45 @@ func (f Frontmatter) Aliases() []string {
 	}
 	return stringSliceFrom(val)
 }
+
+// Clone creates a deep copy of the Note to ensure immutability.
+// Template functions return notes from QueryService's in-memory index.
+// If templates could mutate these notes, they would corrupt the index.
+// All template helpers must return defensive copies via this method.
+//
+// Returns a new Note with copied slices and frontmatter fields.
+func (n Note) Clone() Note {
+	// Deep copy frontmatter fields map
+	fieldsCopy := make(map[string]any, len(n.Frontmatter.Fields))
+	for k, v := range n.Frontmatter.Fields {
+		fieldsCopy[k] = v // Note: assumes field values are immutable (strings, numbers, etc.)
+	}
+
+	// Deep copy slices
+	links := make([]Link, len(n.Links))
+	copy(links, n.Links)
+
+	headings := make([]Heading, len(n.Headings))
+	copy(headings, n.Headings)
+
+	tags := make([]string, len(n.Tags))
+	copy(tags, n.Tags)
+
+	tasks := make([]TaskItem, len(n.Tasks))
+	copy(tasks, n.Tasks)
+
+	backlinks := make([]Link, len(n.Backlinks))
+	copy(backlinks, n.Backlinks)
+
+	return Note{
+		Path: n.Path, // strings are immutable in Go
+		Frontmatter: Frontmatter{
+			Fields: fieldsCopy,
+		},
+		Links:     links,
+		Headings:  headings,
+		Tags:      tags,
+		Tasks:     tasks,
+		Backlinks: backlinks,
+	}
+}

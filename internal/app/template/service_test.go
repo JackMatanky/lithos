@@ -6,9 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
+	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,6 +23,25 @@ var _ spi.TemplatePort = (*mockTemplatePort)(nil)
 type mockTemplatePort struct {
 	templates map[domain.TemplateID]domain.Template
 	loadError error
+}
+
+// createTestQueryService creates a QueryService with test mocks.
+func createTestQueryService() *query.QueryService {
+	// Use the comprehensive mocks from tests/utils
+	boltReader := utils.NewMockMetadataQueryPort()
+	sqliteReader := utils.NewMockMetadataQueryPort()
+
+	config := domain.Config{}
+	logger := zerolog.Nop()
+	eventBus := utils.NewMockEventBus()
+
+	return query.NewQueryService(
+		boltReader,
+		sqliteReader,
+		config,
+		logger,
+		eventBus,
+	)
 }
 
 func newMockTemplatePort() *mockTemplatePort {
@@ -84,7 +105,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, &logger)
+		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
 
 		result, err := engine.Load(ctx, templateID)
 
@@ -99,7 +120,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, &logger)
+		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
 
 		_, err := engine.Load(ctx, templateID)
 
@@ -118,7 +139,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{VaultPath: "/test/vault"}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, &logger)
+		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
 
 		result, err := engine.Render(ctx, templateID)
 
@@ -135,7 +156,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, &logger)
+		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
 
 		result, err := engine.Render(ctx, templateID)
 
@@ -154,7 +175,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, &logger)
+		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
 
 		_, err := engine.Render(ctx, templateID)
 
@@ -183,6 +204,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 			engine := NewTemplateEngine(
 				mockPort,
 				&config,
+				nil,
 				&logger,
 			)
 
@@ -202,7 +224,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, &logger)
+		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
 
 		_, err := engine.Render(ctx, templateID)
 
@@ -217,7 +239,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 func TestTemplateEngine_BuildFuncMap(t *testing.T) {
 	config := domain.Config{VaultPath: "/test/vault"}
 	logger := zerolog.Nop()
-	engine := NewTemplateEngine(nil, &config, &logger)
+	engine := NewTemplateEngine(nil, &config, nil, &logger)
 	funcMap := engine.buildFuncMap()
 
 	t.Run("now function returns formatted timestamp", func(t *testing.T) {
@@ -269,5 +291,219 @@ func TestTemplateEngine_BuildFuncMap(t *testing.T) {
 	t.Run("vaultPath returns config value", func(t *testing.T) {
 		vaultPathFunc := funcMap["vaultPath"].(func() string)
 		assert.Equal(t, "/test/vault", vaultPathFunc())
+	})
+}
+
+// TestTemplateEngine_LookupFunction tests the lookup template function.
+func TestTemplateEngine_LookupFunction(t *testing.T) {
+	config := domain.Config{VaultPath: "/test/vault"}
+	logger := zerolog.Nop()
+
+	t.Run(
+		"lookup function exists and has correct signature",
+		func(t *testing.T) {
+			mockQuery := createTestQueryService()
+			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+
+			funcMap := engine.buildFuncMap()
+			lookupFunc, ok := funcMap["lookup"]
+
+			require.True(t, ok, "lookup function should be registered")
+			fn, ok := lookupFunc.(func(string) (domain.Note, error))
+			require.True(
+				t,
+				ok,
+				"lookup should have signature func(string) (domain.Note, error)",
+			)
+			assert.NotNil(t, fn, "lookup function should not be nil")
+		},
+	)
+
+	t.Run("lookup returns error when note not found", func(t *testing.T) {
+		mockQuery := createTestQueryService()
+		engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+
+		funcMap := engine.buildFuncMap()
+		lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
+
+		_, err := lookupFunc("nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run(
+		"lookup returns error when QueryService unavailable",
+		func(t *testing.T) {
+			engine := NewTemplateEngine(nil, &config, nil, &logger)
+
+			funcMap := engine.buildFuncMap()
+			lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
+
+			_, err := lookupFunc("any")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "query service not available")
+		},
+	)
+}
+
+// TestTemplateEngine_QueryFunction tests the query template function.
+func TestTemplateEngine_QueryFunction(t *testing.T) {
+	config := domain.Config{VaultPath: "/test/vault"}
+	logger := zerolog.Nop()
+
+	t.Run(
+		"query function exists and has correct signature",
+		func(t *testing.T) {
+			mockQuery := createTestQueryService()
+			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+
+			funcMap := engine.buildFuncMap()
+			queryFunc, ok := funcMap["query"]
+
+			require.True(t, ok, "query function should be registered")
+			fn, ok := queryFunc.(func(map[string]any) ([]domain.Note, error))
+			require.True(
+				t,
+				ok,
+				"query should have signature func(map[string]any) ([]domain.Note, error)",
+			)
+			assert.NotNil(t, fn, "query function should not be nil")
+		},
+	)
+
+	t.Run(
+		"query returns error when QueryService unavailable",
+		func(t *testing.T) {
+			engine := NewTemplateEngine(nil, &config, nil, &logger)
+
+			funcMap := engine.buildFuncMap()
+			queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
+
+			_, err := queryFunc(map[string]any{"fileClass": "contact"})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "query service not available")
+		},
+	)
+}
+
+// TestTemplateEngine_FileClassFunction tests the fileClass template function.
+func TestTemplateEngine_FileClassFunction(t *testing.T) {
+	config := domain.Config{VaultPath: "/test/vault"}
+	logger := zerolog.Nop()
+
+	t.Run(
+		"fileClass function exists and has correct signature",
+		func(t *testing.T) {
+			mockQuery := createTestQueryService()
+			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+
+			funcMap := engine.buildFuncMap()
+			fileClassFunc, ok := funcMap["fileClass"]
+
+			require.True(t, ok, "fileClass function should be registered")
+			fn, ok := fileClassFunc.(func(string) (string, error))
+			require.True(
+				t,
+				ok,
+				"fileClass should have signature func(string) (string, error)",
+			)
+			assert.NotNil(t, fn, "fileClass function should not be nil")
+		},
+	)
+
+	t.Run(
+		"fileClass returns error when QueryService unavailable",
+		func(t *testing.T) {
+			engine := NewTemplateEngine(nil, &config, nil, &logger)
+
+			funcMap := engine.buildFuncMap()
+			fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
+
+			_, err := fileClassFunc("test.md")
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "query service not available")
+		},
+	)
+}
+
+// TestNote_Clone tests the Note.Clone method for immutability.
+func TestNote_Clone(t *testing.T) {
+	originalNote := domain.Note{
+		Path: "test.md",
+		Frontmatter: domain.Frontmatter{
+			Fields: map[string]any{
+				"title":     "Test Note",
+				"tags":      []string{"test", "clone"},
+				"fileClass": "note",
+			},
+		},
+		Links: []domain.Link{
+			{Text: "link1", Destination: "dest1"},
+		},
+		Tags: []string{"original"},
+	}
+
+	clonedNote := originalNote.Clone()
+
+	// Verify the clone has the same data
+	assert.Equal(t, originalNote.Path, clonedNote.Path)
+	assert.Equal(
+		t,
+		originalNote.Frontmatter.Fields["title"],
+		clonedNote.Frontmatter.Fields["title"],
+	)
+	assert.Equal(
+		t,
+		originalNote.Frontmatter.Fields["fileClass"],
+		clonedNote.Frontmatter.Fields["fileClass"],
+	)
+
+	// Modify the clone and verify original is unchanged
+	clonedNote.Frontmatter.Fields["title"] = "Modified Title"
+	clonedNote.Tags = append(clonedNote.Tags, "modified")
+
+	// Original should be unchanged
+	assert.Equal(t, "Test Note", originalNote.Frontmatter.Fields["title"])
+	assert.Equal(t, []string{"original"}, originalNote.Tags)
+
+	// Clone should have modifications
+	assert.Equal(t, "Modified Title", clonedNote.Frontmatter.Fields["title"])
+	assert.Contains(t, clonedNote.Tags, "modified")
+}
+
+// TestTemplateEngine_Immutability tests that template functions return
+// defensive copies.
+func TestTemplateEngine_Immutability(t *testing.T) {
+	config := domain.Config{VaultPath: "/test/vault"}
+	logger := zerolog.Nop()
+
+	t.Run("template functions exist in funcMap", func(t *testing.T) {
+		// This test verifies that template functions are registered in the
+		// function map. We use a real QueryService to avoid nil pointer issues
+		// in the closure.
+
+		mockQuery := createTestQueryService()
+		engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+
+		funcMap := engine.buildFuncMap()
+
+		// Verify all three functions exist
+		lookupFunc, hasLookup := funcMap["lookup"]
+		queryFunc, hasQuery := funcMap["query"]
+		fileClassFunc, hasFileClass := funcMap["fileClass"]
+
+		assert.True(t, hasLookup, "lookup function should exist")
+		assert.True(t, hasQuery, "query function should exist")
+		assert.True(t, hasFileClass, "fileClass function should exist")
+
+		// Verify functions have correct signatures
+		_, ok := lookupFunc.(func(string) (domain.Note, error))
+		assert.True(t, ok, "lookup should have correct signature")
+
+		_, ok = queryFunc.(func(map[string]any) ([]domain.Note, error))
+		assert.True(t, ok, "query should have correct signature")
+
+		_, ok = fileClassFunc.(func(string) (string, error))
+		assert.True(t, ok, "fileClass should have correct signature")
 	})
 }
