@@ -108,7 +108,7 @@ func (e *TemplateEngine) Render(
 	}
 
 	// Step 2-3: Create text/template with function map
-	t, err := e.getCompiledTemplate(tmpl)
+	t, err := e.getCompiledTemplate(ctx, tmpl)
 	if err != nil {
 		return "", err
 	}
@@ -160,8 +160,11 @@ func (e *TemplateEngine) Load(
 // domain-specific functionality in templates. Functions are organized into
 // logical categories for maintainability.
 //
+// Parameters:
+//   - ctx: Context for query operations, enabling timeout and cancellation
+//
 // Returns a template.FuncMap ready for use with template.Funcs().
-func (e *TemplateEngine) buildFuncMap() template.FuncMap {
+func (e *TemplateEngine) buildFuncMap(ctx context.Context) template.FuncMap {
 	e.mu.RLock()
 	if e.funcMap != nil {
 		defer e.mu.RUnlock()
@@ -175,7 +178,6 @@ func (e *TemplateEngine) buildFuncMap() template.FuncMap {
 		return e.funcMap
 	}
 
-	ctx := context.Background()
 	e.funcMap = template.FuncMap{
 		// Basic functions
 		"now":     func(format string) string { return time.Now().Format(format) },
@@ -314,12 +316,16 @@ func (e *TemplateEngine) makeQueryFunc(
 
 // intersectNotes returns notes that appear in both slices (intersection).
 func intersectNotes(a, b []domain.Note) []domain.Note {
-	noteMap := make(map[string]domain.Note)
+	noteMap := make(map[string]domain.Note, len(a))
 	for i := range a {
 		noteMap[a[i].Path] = a[i]
 	}
 
-	result := make([]domain.Note, 0)
+	result := make(
+		[]domain.Note,
+		0,
+		len(a),
+	) // Pre-allocate with reasonable capacity
 	for i := range b {
 		if existing, found := noteMap[b[i].Path]; found {
 			result = append(result, existing)
@@ -364,11 +370,12 @@ func (e *TemplateEngine) makeFileClassFunc(
 	}
 }
 
-func (e *TemplateEngine) getFuncMap() template.FuncMap {
-	return e.buildFuncMap()
+func (e *TemplateEngine) getFuncMap(ctx context.Context) template.FuncMap {
+	return e.buildFuncMap(ctx)
 }
 
 func (e *TemplateEngine) getCompiledTemplate(
+	ctx context.Context,
 	tmpl domain.Template,
 ) (*template.Template, error) {
 	checksum := checksumString(tmpl.Content())
@@ -381,7 +388,7 @@ func (e *TemplateEngine) getCompiledTemplate(
 	e.mu.RUnlock()
 
 	parsed, err := template.New(string(tmpl.ID())).
-		Funcs(e.getFuncMap()).
+		Funcs(e.getFuncMap(ctx)).
 		Parse(tmpl.Content())
 	if err != nil {
 		return nil, errors.NewTemplateError(

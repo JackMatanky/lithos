@@ -425,13 +425,11 @@ func (f Frontmatter) Aliases() []string {
 // If templates could mutate these notes, they would corrupt the index.
 // All template helpers must return defensive copies via this method.
 //
-// Returns a new Note with copied slices and frontmatter fields.
+// Returns a new Note with deep-copied slices and frontmatter fields.
+// Handles nested structures in frontmatter fields recursively.
 func (n Note) Clone() Note {
-	// Deep copy frontmatter fields map
-	fieldsCopy := make(map[string]any, len(n.Frontmatter.Fields))
-	for k, v := range n.Frontmatter.Fields {
-		fieldsCopy[k] = v // Note: assumes field values are immutable (strings, numbers, etc.)
-	}
+	// Deep copy frontmatter fields map with recursive copying
+	fieldsCopy := deepCopyFields(n.Frontmatter.Fields)
 
 	// Deep copy slices
 	links := make([]Link, len(n.Links))
@@ -459,5 +457,48 @@ func (n Note) Clone() Note {
 		Tags:      tags,
 		Tasks:     tasks,
 		Backlinks: backlinks,
+	}
+}
+
+// deepCopyFields recursively deep-copies frontmatter fields to prevent
+// template mutations from corrupting the index.
+func deepCopyFields(fields map[string]any) map[string]any {
+	if fields == nil {
+		return nil
+	}
+
+	copied := make(map[string]any, len(fields))
+	for k, v := range fields {
+		copied[k] = deepCopyValue(v)
+	}
+	return copied
+}
+
+// deepCopyValue recursively copies values that might contain mutable
+// references.
+func deepCopyValue(val any) any {
+	if val == nil {
+		return nil
+	}
+
+	switch v := val.(type) {
+	case []any:
+		// Deep copy slices
+		copySlice := make([]any, len(v))
+		for i, item := range v {
+			copySlice[i] = deepCopyValue(item)
+		}
+		return copySlice
+	case []string:
+		// Copy string slices
+		copySlice := make([]string, len(v))
+		copy(copySlice, v)
+		return copySlice
+	case map[string]any:
+		// Deep copy nested maps
+		return deepCopyFields(v)
+	default:
+		// Immutable types (strings, numbers, bools) can be copied directly
+		return v
 	}
 }

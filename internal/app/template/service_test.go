@@ -27,6 +27,12 @@ type testMockMetadataQueryPort struct {
 	readFunc func(ctx context.Context, path string) (domain.Note, error)
 }
 
+// mockTemplatePort provides a mock implementation of TemplatePort for testing.
+type mockTemplatePort struct {
+	templates map[domain.TemplateID]domain.Template
+	loadError error
+}
+
 func (m *testMockMetadataQueryPort) Read(
 	ctx context.Context,
 	path string,
@@ -35,12 +41,6 @@ func (m *testMockMetadataQueryPort) Read(
 		return m.readFunc(ctx, path)
 	}
 	return m.MockMetadataQueryPort.Read(ctx, path)
-}
-
-// mockTemplatePort provides a mock implementation of TemplatePort for testing.
-type mockTemplatePort struct {
-	templates map[domain.TemplateID]domain.Template
-	loadError error
 }
 
 // createTestQueryService creates a QueryService with test mocks.
@@ -258,7 +258,7 @@ func TestTemplateEngine_BuildFuncMap(t *testing.T) {
 	config := domain.Config{VaultPath: "/test/vault"}
 	logger := zerolog.Nop()
 	engine := NewTemplateEngine(nil, &config, nil, &logger)
-	funcMap := engine.buildFuncMap()
+	funcMap := engine.buildFuncMap(context.Background())
 
 	t.Run("now function returns formatted timestamp", func(t *testing.T) {
 		nowFunc := funcMap["now"].(func(string) string)
@@ -323,7 +323,7 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 			mockQuery := createTestQueryService()
 			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
 
-			funcMap := engine.buildFuncMap()
+			funcMap := engine.buildFuncMap(context.Background())
 			lookupFunc, ok := funcMap["lookup"]
 
 			require.True(t, ok, "lookup function should be registered")
@@ -341,7 +341,7 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 		mockQuery := createTestQueryService()
 		engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
 
-		funcMap := engine.buildFuncMap()
+		funcMap := engine.buildFuncMap(context.Background())
 		lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
 
 		_, err := lookupFunc("nonexistent")
@@ -354,7 +354,7 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 		func(t *testing.T) {
 			engine := NewTemplateEngine(nil, &config, nil, &logger)
 
-			funcMap := engine.buildFuncMap()
+			funcMap := engine.buildFuncMap(context.Background())
 			lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
 
 			_, err := lookupFunc("any")
@@ -388,7 +388,7 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 		)
 		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
-		funcMap := engine.buildFuncMap()
+		funcMap := engine.buildFuncMap(context.Background())
 		lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
 
 		result, err := lookupFunc("test")
@@ -418,7 +418,7 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 		)
 		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
-		funcMap := engine.buildFuncMap()
+		funcMap := engine.buildFuncMap(context.Background())
 		lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
 
 		_, err := lookupFunc("test")
@@ -438,7 +438,7 @@ func TestTemplateEngine_QueryFunction(t *testing.T) {
 			mockQuery := createTestQueryService()
 			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
 
-			funcMap := engine.buildFuncMap()
+			funcMap := engine.buildFuncMap(context.Background())
 			queryFunc, ok := funcMap["query"]
 
 			require.True(t, ok, "query function should be registered")
@@ -457,7 +457,7 @@ func TestTemplateEngine_QueryFunction(t *testing.T) {
 		func(t *testing.T) {
 			engine := NewTemplateEngine(nil, &config, nil, &logger)
 
-			funcMap := engine.buildFuncMap()
+			funcMap := engine.buildFuncMap(context.Background())
 			queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
 
 			_, err := queryFunc(map[string]any{"fileClass": "contact"})
@@ -491,7 +491,7 @@ func TestTemplateEngine_QueryFunction(t *testing.T) {
 		)
 		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
-		funcMap := engine.buildFuncMap()
+		funcMap := engine.buildFuncMap(context.Background())
 		queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
 
 		result, err := queryFunc(map[string]any{"fileClass": "contact"})
@@ -519,7 +519,7 @@ func TestTemplateEngine_QueryFunction(t *testing.T) {
 		)
 		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
-		funcMap := engine.buildFuncMap()
+		funcMap := engine.buildFuncMap(context.Background())
 		queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
 
 		result, err := queryFunc(map[string]any{"fileClass": "nonexistent"})
@@ -539,7 +539,7 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 			mockQuery := createTestQueryService()
 			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
 
-			funcMap := engine.buildFuncMap()
+			funcMap := engine.buildFuncMap(context.Background())
 			fileClassFunc, ok := funcMap["fileClass"]
 
 			require.True(t, ok, "fileClass function should be registered")
@@ -558,7 +558,7 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 		func(t *testing.T) {
 			engine := NewTemplateEngine(nil, &config, nil, &logger)
 
-			funcMap := engine.buildFuncMap()
+			funcMap := engine.buildFuncMap(context.Background())
 			fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
 
 			_, err := fileClassFunc("test.md")
@@ -598,7 +598,7 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 			)
 			engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
-			funcMap := engine.buildFuncMap()
+			funcMap := engine.buildFuncMap(context.Background())
 			fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
 
 			result, err := fileClassFunc("contact.md")
@@ -630,7 +630,7 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 		)
 		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
-		funcMap := engine.buildFuncMap()
+		funcMap := engine.buildFuncMap(context.Background())
 		fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
 
 		_, err := fileClassFunc("nonexistent.md")
@@ -669,7 +669,7 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 			)
 			engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
-			funcMap := engine.buildFuncMap()
+			funcMap := engine.buildFuncMap(context.Background())
 			fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
 
 			_, err := fileClassFunc("note.md")
@@ -738,7 +738,7 @@ func TestTemplateEngine_Immutability(t *testing.T) {
 		mockQuery := createTestQueryService()
 		engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
 
-		funcMap := engine.buildFuncMap()
+		funcMap := engine.buildFuncMap(context.Background())
 
 		// Verify all three functions exist
 		lookupFunc, hasLookup := funcMap["lookup"]
