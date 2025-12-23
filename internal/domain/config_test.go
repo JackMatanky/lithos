@@ -2,9 +2,19 @@ package domain
 
 import (
 	"encoding/json"
+	"fmt"
 	"sync"
 	"testing"
 )
+
+// testConfigValidator implements ConfigValidator for testing.
+type testConfigValidator struct {
+	validateFunc func(Config) error
+}
+
+func (v testConfigValidator) Validate(c Config) error {
+	return v.validateFunc(c)
+}
 
 // TestNewConfig tests that NewConfig applies defaults correctly with
 // multiple test cases.
@@ -452,5 +462,148 @@ func TestSetInstanceForTesting_TestIsolation(t *testing.T) {
 		t.Error(
 			"Instance() should return different instance after ResetConfigForTesting()",
 		)
+	}
+}
+
+// TestConfigBuilder tests the fluent ConfigBuilder API.
+func TestConfigBuilder(t *testing.T) {
+	// Test building with all methods
+	config, err := NewConfigBuilder().
+		WithVaultPath("/custom/vault").
+		WithTemplatesDir("custom/templates").
+		WithSchemasDir("custom/schemas").
+		WithPropertyBankFile("custom_bank.json").
+		WithCacheDir("/tmp/cache").
+		WithLogLevel("debug").
+		WithFileClassKey("file_class").
+		Build()
+
+	if err != nil {
+		t.Fatalf("Build() failed: %v", err)
+	}
+
+	if config.VaultPath != "/custom/vault" {
+		t.Errorf("Expected VaultPath '/custom/vault', got %q", config.VaultPath)
+	}
+	if config.TemplatesDir != "/custom/vault/custom/templates" {
+		t.Errorf(
+			"Expected TemplatesDir '/custom/vault/custom/templates', got %q",
+			config.TemplatesDir,
+		)
+	}
+	if config.SchemasDir != "/custom/vault/custom/schemas" {
+		t.Errorf(
+			"Expected SchemasDir '/custom/vault/custom/schemas', got %q",
+			config.SchemasDir,
+		)
+	}
+	if config.PropertyBankFile != "custom_bank.json" {
+		t.Errorf(
+			"Expected PropertyBankFile 'custom_bank.json', got %q",
+			config.PropertyBankFile,
+		)
+	}
+	if config.CacheDir != "/tmp/cache" {
+		t.Errorf("Expected CacheDir '/tmp/cache', got %q", config.CacheDir)
+	}
+	if config.LogLevel != "debug" {
+		t.Errorf("Expected LogLevel 'debug', got %q", config.LogLevel)
+	}
+	if config.FileClassKey != "file_class" {
+		t.Errorf(
+			"Expected FileClassKey 'file_class', got %q",
+			config.FileClassKey,
+		)
+	}
+}
+
+// TestConfigBuilderDefaults tests that ConfigBuilder starts with correct
+// defaults.
+func TestConfigBuilderDefaults(t *testing.T) {
+	builder := NewConfigBuilder()
+	config, err := builder.Build()
+	if err != nil {
+		t.Fatalf("Build() failed: %v", err)
+	}
+
+	if config.VaultPath != "." {
+		t.Errorf("Expected default VaultPath '.', got %q", config.VaultPath)
+	}
+	if config.TemplatesDir != "templates" {
+		t.Errorf(
+			"Expected default TemplatesDir 'templates', got %q",
+			config.TemplatesDir,
+		)
+	}
+	if config.SchemasDir != "schemas" {
+		t.Errorf(
+			"Expected default SchemasDir 'schemas', got %q",
+			config.SchemasDir,
+		)
+	}
+	if config.PropertyBankFile != "property_bank.json" {
+		t.Errorf(
+			"Expected default PropertyBankFile 'property_bank.json', got %q",
+			config.PropertyBankFile,
+		)
+	}
+	if config.CacheDir != ".lithos/cache" {
+		t.Errorf(
+			"Expected default CacheDir '.lithos/cache', got %q",
+			config.CacheDir,
+		)
+	}
+	if config.LogLevel != "info" {
+		t.Errorf("Expected default LogLevel 'info', got %q", config.LogLevel)
+	}
+	if config.FileClassKey != "file_class" {
+		t.Errorf(
+			"Expected default FileClassKey 'file_class', got %q",
+			config.FileClassKey,
+		)
+	}
+}
+
+// TestConfigBuilderWithValidator tests ConfigBuilder with a validator.
+func TestConfigBuilderWithValidator(t *testing.T) {
+	validator := testConfigValidator{
+		validateFunc: func(c Config) error {
+			if c.VaultPath == "" {
+				return fmt.Errorf("vault path required")
+			}
+			return nil
+		},
+	}
+
+	config, err := NewConfigBuilder().
+		WithVaultPath("/test").
+		WithValidator(validator).
+		Build()
+
+	if err != nil {
+		t.Fatalf("Build() failed: %v", err)
+	}
+
+	if config.VaultPath != "/test" {
+		t.Errorf("Expected VaultPath '/test', got %q", config.VaultPath)
+	}
+}
+
+// TestConfigBuilderValidationFailure tests ConfigBuilder with failing
+// validator.
+func TestConfigBuilderValidationFailure(t *testing.T) {
+	validator := testConfigValidator{
+		validateFunc: func(c Config) error {
+			return fmt.Errorf("validation failed")
+		},
+	}
+
+	_, err := NewConfigBuilder().
+		WithVaultPath("/test").
+		WithValidator(validator).
+		Build()
+
+	if err == nil {
+		t.Error("Expected Build() to fail with validator error")
 	}
 }

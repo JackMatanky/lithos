@@ -422,3 +422,87 @@ func TestNote_SchemaName(t *testing.T) {
 		})
 	}
 }
+
+// TestNoteValidationError_Error tests the Error method of NoteValidationError.
+func TestNoteValidationError_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		field    string
+		message  string
+		expected string
+	}{
+		{
+			name:     "standard error message",
+			field:    "Path",
+			message:  "cannot be empty",
+			expected: "note validation failed for field 'Path': cannot be empty",
+		},
+		{
+			name:     "empty field",
+			field:    "",
+			message:  "some message",
+			expected: "note validation failed for field '': some message",
+		},
+		{
+			name:     "empty message",
+			field:    "Title",
+			message:  "",
+			expected: "note validation failed for field 'Title': ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NoteValidationError{
+				Field:   tt.field,
+				Message: tt.message,
+			}
+			result := err.Error()
+			if result != tt.expected {
+				t.Errorf("Error() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}
+
+// TestNoteFieldError_Error tests the Error method of NoteFieldError.
+func TestNoteFieldError_Error(t *testing.T) {
+	tests := []struct {
+		name     string
+		field    string
+		message  string
+		expected string
+	}{
+		{
+			name:     "standard error message",
+			field:    "title",
+			message:  "field not found",
+			expected: "note field access failed for 'title': field not found",
+		},
+		{
+			name:     "empty field",
+			field:    "",
+			message:  "some message",
+			expected: "note field access failed for '': some message",
+		},
+		{
+			name:     "empty message",
+			field:    "Title",
+			message:  "",
+			expected: "note field access failed for 'Title': ",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := NoteFieldError{
+				Field:   tt.field,
+				Message: tt.message,
+			}
+			result := err.Error()
+			if result != tt.expected {
+				t.Errorf("Error() = %q, want %q", result, tt.expected)
+			}
+		})
+	}
+}

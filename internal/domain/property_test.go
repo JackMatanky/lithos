@@ -200,3 +200,33 @@ func BenchmarkPropertyValidateNoCache(b *testing.B) {
 		_ = property.Validate(ctx)
 	}
 }
+
+// TestProperty_InPropertyBank tests the InPropertyBank method.
+func TestProperty_InPropertyBank(t *testing.T) {
+	property := Property{
+		ID: "test-prop-id",
+	}
+
+	bank := PropertyBank{
+		Properties: map[string]Property{
+			"test-prop-id": property,
+		},
+	}
+
+	t.Run("property exists in bank", func(t *testing.T) {
+		result := property.InPropertyBank(bank)
+		assert.True(t, result)
+	})
+
+	t.Run("property does not exist in bank", func(t *testing.T) {
+		otherProperty := Property{ID: "other-id"}
+		result := otherProperty.InPropertyBank(bank)
+		assert.False(t, result)
+	})
+
+	t.Run("empty bank", func(t *testing.T) {
+		emptyBank := PropertyBank{Properties: map[string]Property{}}
+		result := property.InPropertyBank(emptyBank)
+		assert.False(t, result)
+	})
+}

@@ -482,45 +482,76 @@ func TestFrontmatter_IsMap(t *testing.T) {
 
 // TestFrontmatter_GetFileClass tests the GetFileClass delegation helper.
 func TestFrontmatter_GetFileClass(t *testing.T) {
-	// Setup Config singleton for testing
-	config := Config{FileClassKey: "file_class"}
-	SetInstanceForTesting(&config)
-	defer ResetConfigForTesting()
-
-	tests := []struct {
-		name     string
-		fields   map[string]any
-		expected string
+	testConfigs := []struct {
+		configName string
+		config     Config
 	}{
 		{
-			name: "file_class field exists and is string",
-			fields: map[string]any{
-				"file_class": "meeting",
-			},
-			expected: "meeting",
+			configName: "file_class_key",
+			config:     Config{FileClassKey: "file_class"},
 		},
 		{
-			name: "file_class field missing",
-			fields: map[string]any{
-				"title": "Test",
-			},
-			expected: "",
+			configName: "fileClass_key",
+			config:     Config{FileClassKey: "fileClass"},
 		},
 		{
-			name: "file_class field is not string",
-			fields: map[string]any{
-				"file_class": 123,
-			},
-			expected: "",
+			configName: "custom_key",
+			config:     Config{FileClassKey: "custom"},
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fm := NewFrontmatter(tt.fields)
-			result := fm.GetFileClass()
-			if result != tt.expected {
-				t.Errorf("GetFileClass() = %q, want %q", result, tt.expected)
+	for _, tc := range testConfigs {
+		t.Run(tc.configName, func(t *testing.T) {
+			SetInstanceForTesting(&tc.config)
+			defer ResetConfigForTesting()
+
+			tests := []struct {
+				name     string
+				fields   map[string]any
+				expected string
+			}{
+				{
+					name: "primary key field exists",
+					fields: map[string]any{
+						tc.config.FileClassKey: "meeting",
+					},
+					expected: "meeting",
+				},
+				{
+					name: "fallback keys tested",
+					fields: map[string]any{
+						"fileClass": "fallback_meeting",
+					},
+					expected: "fallback_meeting",
+				},
+				{
+					name: "field missing",
+					fields: map[string]any{
+						"title": "Test",
+					},
+					expected: "",
+				},
+				{
+					name: "field is not string",
+					fields: map[string]any{
+						tc.config.FileClassKey: 123,
+					},
+					expected: "",
+				},
+			}
+
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					fm := NewFrontmatter(tt.fields)
+					result := fm.GetFileClass()
+					if result != tt.expected {
+						t.Errorf(
+							"GetFileClass() = %q, want %q",
+							result,
+							tt.expected,
+						)
+					}
+				})
 			}
 		})
 	}
@@ -613,6 +644,13 @@ func TestFrontmatter_Aliases(t *testing.T) {
 			name: "aliases as non-array, non-string type",
 			fields: map[string]any{
 				"aliases": 123,
+			},
+			expected: []string{},
+		},
+		{
+			name: "aliases as interface array with no string elements",
+			fields: map[string]any{
+				"aliases": []any{123, true, 45.6},
 			},
 			expected: []string{},
 		},

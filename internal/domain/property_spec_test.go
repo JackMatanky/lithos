@@ -211,3 +211,31 @@ func TestFileSpecValidate(t *testing.T) {
 		assert.Contains(t, err.Error(), "invalid fileClass pattern")
 	})
 }
+
+// TestStringSpecMatch tests the Match method of StringSpec.
+func TestStringSpecMatch(t *testing.T) {
+	t.Run("no pattern", func(t *testing.T) {
+		spec := StringSpec{}
+		assert.True(t, spec.Match("any value"))
+	})
+
+	t.Run("matching pattern", func(t *testing.T) {
+		spec := StringSpec{Pattern: "^test.*"}
+		assert.True(t, spec.Match("test string"))
+		assert.False(t, spec.Match("other string"))
+	})
+
+	t.Run("invalid pattern", func(t *testing.T) {
+		spec := StringSpec{Pattern: "[invalid"}
+		assert.False(t, spec.Match("any value"))
+	})
+
+	t.Run("cached regex", func(t *testing.T) {
+		spec := StringSpec{Pattern: "test"}
+		// First call compiles
+		assert.True(t, spec.Match("test"))
+		// Second call uses cached
+		assert.True(t, spec.Match("test"))
+		assert.False(t, spec.Match("other"))
+	})
+}
