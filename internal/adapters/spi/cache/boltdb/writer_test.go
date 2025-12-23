@@ -206,8 +206,79 @@ func TestBoltDBCacheWriteAdapter_Persist(t *testing.T) {
 	}
 }
 
-// TestBoltDBCacheWriteAdapter_Delete tests the Delete method.
 func TestBoltDBCacheWriteAdapter_Delete(t *testing.T) {
+	cacheDir := t.TempDir()
+	config := domain.Config{
+		CacheDir:     cacheDir,
+		FileClassKey: "file_class",
+	}
+	log := zerolog.New(zerolog.NewTestWriter(t))
+
+	db, err := Open(config)
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+
+	adapter, err := NewBoltDBCacheWriter(config, log, db)
+	require.NoError(t, err)
+	defer func() { _ = adapter.Close() }()
+
+	// Setup: persist a note first with all metadata for indices
+	note, _ := domain.NewNote(
+		"notes/delete-test.md",
+		domain.NewFrontmatter(map[string]interface{}{
+			"title":      "Delete Test",
+			"aliases":    []interface{}{"del-alias"},
+			"file_class": "test-class",
+		}),
+		[]domain.Link{},
+		[]domain.Heading{},
+		[]string{},
+		[]domain.TaskItem{},
+	)
+
+	ctx := context.Background()
+	metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
+	err = adapter.Persist(ctx, note, metadata)
+	require.NoError(t, err)
+
+	// Execute Delete
+	err = adapter.Delete(ctx, note.Path)
+	require.NoError(t, err)
+
+	// Verify note is deleted from primary and all secondary indices
+	viewErr := adapter.db.View(func(tx *bbolt.Tx) error {
+		// Primary bucket
+		notesBucket := tx.Bucket([]byte(BucketNotes))
+		data := notesBucket.Get([]byte(note.Path))
+		assert.Nil(t, data, "Note should be deleted from primary bucket")
+
+		// Indices
+		indices := tx.Bucket([]byte(BucketIndices))
+		require.NotNil(t, indices)
+
+		// Basename
+		bnBucket := indices.Bucket([]byte(BucketIndexBasenameQuery))
+		bnData := bnBucket.Get([]byte("delete-test"))
+		assert.Nil(t, bnData, "Note should be removed from basename index")
+
+		// Aliases
+		aliasBucket := indices.Bucket([]byte(BucketIndexAliasQuery))
+		aliasData := aliasBucket.Get([]byte("del-alias"))
+		assert.Nil(t, aliasData, "Note should be removed from alias index")
+
+		// FileClass
+		fcBucket := indices.Bucket([]byte(BucketIndexFileClassQuery))
+		fcData := fcBucket.Get([]byte("test-class"))
+		assert.Nil(t, fcData, "Note should be removed from fileclass index")
+
+		return nil
+	})
+	require.NoError(t, viewErr)
+}
+
+// TestBoltDBCacheWriteAdapter_Delete_Rollback tests the Delete method's
+// rollback behavior.
+func TestBoltDBCacheWriteAdapter_Delete_Rollback(t *testing.T) {
 	cacheDir := t.TempDir()
 	config := domain.Config{
 		CacheDir:     cacheDir,
