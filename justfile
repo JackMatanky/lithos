@@ -106,24 +106,7 @@ _clean_dir dir:
 _clean_files pattern:
     @rm -f {{ pattern }}
 
-# --------------------- Tool Validation  --------------------- #
-
-# Check if tool is available (Unix)
-[private]
-[unix]
-_verify_tool tool:
-    @command -v {{ tool }} >/dev/null
-
-# Check if tool is available (Windows)
-[private]
-[windows]
-_verify_tool tool:
-    @@where {{ tool }} >nul 2>&1
-
-# Verify tool exists in go.mod
-[private]
-_check_tool_dependency tool:
-    @grep -q "{{ tool }}" go.mod || (echo "❌ {{ tool }} not found in go.mod" && exit 1)
+# Tool validation removed - mise handles this via [tools] section
 
 # ------------------------------------------------------------ #
 #                             SETUP                            #
@@ -149,7 +132,6 @@ go_version_check:
 # Install pre-commit and setup Git hooks
 [group("Setup")]
 setup-pre-commit:
-    just _verify_tool pre-commit || uv pip install pre-commit
     pre-commit install
 
 # Setup development environment and download dependencies
@@ -340,7 +322,6 @@ _lint_text_report:
 # Format all code with golangci-lint
 [group("Quality")]
 fmt:
-    just _check_tool_dependency {{ GOLANGCI_LINT_GITHUB }}
     just _echo_start "Formatting code"
     @{{ GOLANGCI_LINT }} fmt
     just _echo_complete "Formatting complete"
@@ -348,7 +329,6 @@ fmt:
 # Lint code and auto-fix issues
 [group("Quality")]
 lint:
-    just _check_tool_dependency {{ GOLANGCI_LINT_GITHUB }}
     just _echo_start "Linting code"
     @{{ GOLANGCI_LINT }} run --fix
     just _echo_complete "Linting"
@@ -356,7 +336,6 @@ lint:
 # Generate lint report in SARIF or text format
 [group("Quality")]
 lint-report ext:
-    just _check_tool_dependency {{ GOLANGCI_LINT_GITHUB }}
     just _ensure_dir {{ REPORTS_DIR }}
     {{ if ext == "sarif" { "just _lint_sarif_report" } else if ext == "txt" { "just _lint_text_report" } else { error("Unknown format: " + ext + ". Use 'sarif' or 'txt'") } }}
 
