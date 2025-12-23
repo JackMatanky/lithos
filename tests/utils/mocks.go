@@ -30,6 +30,7 @@ type IndexStats struct {
 
 // Ensure MockMetadataQueryPort implements MetadataQueryPort.
 var _ spi.MetadataQueryPort = (*MockMetadataQueryPort)(nil)
+var _ spi.CacheReaderPort = (*MockMetadataQueryPort)(nil)
 
 // Ensure MockCacheWriterPort implements CacheWriterPort.
 var _ spi.CacheWriterPort = (*MockCacheWriterPort)(nil)
@@ -639,6 +640,25 @@ func (m *MockMetadataQueryPort) FrontmatterQuery(
 	m.LastFrontmatterQueryArgField = field
 	m.LastFrontmatterQueryArgValue = value
 	return m.FrontmatterQueryFunc(ctx, field, value)
+}
+
+// Read implements the CacheReaderPort interface for the mock.
+func (m *MockMetadataQueryPort) Read(
+	ctx context.Context,
+	path string,
+) (domain.Note, error) {
+	// For simplicity, return an error. Tests that need this should implement
+	// a more specific mock.
+	return domain.Note{}, fmt.Errorf("not implemented")
+}
+
+// List implements the CacheReaderPort interface for the mock.
+func (m *MockMetadataQueryPort) List(
+	ctx context.Context,
+) ([]domain.Note, error) {
+	// For simplicity, return an error. Tests that need this should implement
+	// a more specific mock.
+	return nil, fmt.Errorf("not implemented")
 }
 
 // Reset resets all call tracking counters and last arguments.
