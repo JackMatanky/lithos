@@ -104,7 +104,7 @@ development_status:
   # Epic 4: Schema-Driven Lookups & Validation
   epic-4: backlog
   4-1-template-interface-pattern: done
-  4-2-template-function-lookup: ready-for-dev
+  4-2-template-function-lookup: done
   4-3-template-function-query: ready-for-dev
   4-4-template-function-fileclass: ready-for-dev
   4-5-schema-driven-lookup-integration-test: done
