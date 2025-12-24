@@ -144,6 +144,7 @@ This is a test note with frontmatter.
 		schemaEngine,
 		logger,
 		nil,
+		nil,
 	)
 
 	// Create cache adapters

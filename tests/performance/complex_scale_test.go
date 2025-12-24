@@ -144,6 +144,7 @@ contact:
 		schemaEngine,
 		logger,
 		nil,
+		nil,
 	)
 
 	indexer := vaultService.NewVaultIndexer(

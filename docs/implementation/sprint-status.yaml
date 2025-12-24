@@ -101,11 +101,13 @@ development_status:
   epic-4: backlog
   4-1-template-interface-pattern: done
   4-2-template-function-lookup: done
-  4-3-template-function-query: done
-  4-4-template-function-fileclass: ready-for-dev
-  4-5-schema-driven-lookup-integration-test: ready-for-dev
-  4-6-dependency-injection-and-e2e-test: ready-for-dev
-  4-7-documentation-update: ready-for-dev
+  4-3-command-orchestrator-newNote-workflow: done
+  4-4-frontmatter-end-to-end-validation: ready-for-dev
+  4-5-template-function-fileclass: ready-for-dev
+  4-6-event-driven-schema-lookups: ready-for-dev
+  4-7-schema-driven-lookup-integration-test: ready-for-dev
+  4-8-dependency-injection-and-e2e-test: ready-for-dev
+  4-9-documentation-update: ready-for-dev
   epic-4-retrospective: optional
 
   epic-5: backlog
