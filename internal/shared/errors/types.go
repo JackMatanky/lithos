@@ -25,9 +25,10 @@ type BaseError struct {
 type ValidationError struct {
 	BaseError
 
-	property string
-	reason   string
-	value    interface{}
+	property    string
+	reason      string
+	value       interface{}
+	remediation string
 }
 
 // ResourceError represents resource operation failures.
@@ -66,6 +67,22 @@ func (e BaseError) Error() string {
 	return e.message
 }
 
+// Error implements the error interface for ValidationError.
+// Includes field, reason, and value in the error message.
+func (e *ValidationError) Error() string {
+	msg := fmt.Sprintf("validation failed for field %q: %s", e.property, e.reason)
+	if e.value != nil {
+		msg += fmt.Sprintf(" (value: %v)", e.value)
+	}
+	if e.remediation != "" {
+		msg += fmt.Sprintf(". %s", e.remediation)
+	}
+	if e.cause != nil {
+		msg += fmt.Sprintf(": %v", e.cause)
+	}
+	return msg
+}
+
 // Unwrap returns the underlying cause error, or nil if none exists.
 // This enables compatibility with errors.Is() and errors.As().
 func (e BaseError) Unwrap() error {
@@ -94,6 +111,24 @@ func NewValidationError(
 	}
 }
 
+// NewValidationErrorWithRemediation creates a new ValidationError with property validation
+// context and remediation hint. The message is fixed as "validation failed" and the cause provides
+// additional context.
+func NewValidationErrorWithRemediation(
+	property, reason string,
+	value interface{},
+	remediation string,
+	cause error,
+) *ValidationError {
+	return &ValidationError{
+		BaseError:   NewBaseError("validation failed", cause),
+		property:    property,
+		reason:      reason,
+		value:       value,
+		remediation: remediation,
+	}
+}
+
 // Property returns the name of the property that failed validation.
 func (e *ValidationError) Property() string {
 	return e.property
@@ -107,6 +142,11 @@ func (e *ValidationError) Reason() string {
 // Value returns the invalid value that caused the validation failure.
 func (e *ValidationError) Value() interface{} {
 	return e.value
+}
+
+// Remediation returns the suggested fix or hint for the validation failure.
+func (e *ValidationError) Remediation() string {
+	return e.remediation
 }
 
 // NewResourceError creates a new ResourceError with resource operation context.

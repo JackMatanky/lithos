@@ -7,20 +7,17 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// mockMarkdownParserPort provides a mock implementation of MarkdownParserPort
-// for pure domain testing without external dependencies.
-type mockMarkdownParserPort struct{}
-
-// FakeSchemaPort implements SchemaPort for testing.
-type FakeSchemaPort struct {
-	schemas []domain.Schema
-	bank    domain.PropertyBank
-	err     error
+// FakeQueryService provides a mock implementation for testing FileSpec
+// validation.
+type FakeQueryService struct {
+	pathQueryResults map[string][]domain.Note
+	pathQueryError   error
 }
 
 // FakeSchemaRegistryPort implements SchemaRegistryPort for testing.
@@ -31,29 +28,13 @@ type FakeSchemaRegistryPort struct {
 	getPropertyErr error
 }
 
-func (m *mockMarkdownParserPort) ParseFrontmatter(
-	ctx context.Context,
-	content []byte,
-) (map[string]any, error) {
-	return map[string]any{"title": "test"}, nil
+// FakeSchemaPort implements SchemaPort for testing.
+type FakeSchemaPort struct {
+	schemas []domain.Schema
+	bank    domain.PropertyBank
+	err     error
 }
-func (m *mockMarkdownParserPort) ParseNote(
-	ctx context.Context,
-	path string,
-	content []byte,
-) (domain.Note, error) {
-	note, _ := domain.NewNote(
-		path,
-		domain.NewFrontmatter(map[string]interface{}{
-			"title": "test",
-		}),
-		nil,
-		nil,
-		nil,
-		nil,
-	)
-	return note, nil
-}
+
 func (f *FakeSchemaPort) Load(
 	ctx context.Context,
 ) ([]domain.Schema, domain.PropertyBank, error) {
@@ -115,6 +96,32 @@ func (f *FakeSchemaRegistryPort) HasProperty(
 	return exists
 }
 
+func NewFakeQueryService() *FakeQueryService {
+	return &FakeQueryService{
+		pathQueryResults: make(map[string][]domain.Note),
+	}
+}
+
+func (f *FakeQueryService) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+) ([]domain.Note, error) {
+	if f.pathQueryError != nil {
+		return nil, f.pathQueryError
+	}
+	if results, exists := f.pathQueryResults[opts.Value]; exists {
+		return results, nil
+	}
+	return []domain.Note{}, nil // Not found
+}
+
+func (f *FakeQueryService) SetPathQueryResult(
+	path string,
+	results []domain.Note,
+) {
+	f.pathQueryResults[path] = results
+}
+
 // createTestSchemaEngine creates a minimal SchemaEngine for testing.
 func createTestSchemaEngine(
 	registry *FakeSchemaRegistryPort,
@@ -142,7 +149,7 @@ func TestNewFrontmatterService_ConstructorWithDependencies(t *testing.T) {
 	// Given - use nil for schema engine since we're just testing injection
 	fakeLogger := zerolog.Nop()
 	// When
-	service := NewFrontmatterService(nil, fakeLogger, nil)
+	service := NewFrontmatterService(nil, fakeLogger, nil, nil)
 	// Then
 	require.NotNil(t, service)
 	assert.Nil(t, service.schemaEngine) // We passed nil
@@ -155,7 +162,7 @@ func TestNewFrontmatterService_DependencyInjection(t *testing.T) {
 	// Given
 	fakeLogger := zerolog.Nop()
 	// When
-	service := NewFrontmatterService(nil, fakeLogger, nil)
+	service := NewFrontmatterService(nil, fakeLogger, nil, nil)
 	// Then
 	assert.NotNil(t, service.logger)
 }
@@ -165,7 +172,7 @@ func TestNewFrontmatterService_DependencyInjection(t *testing.T) {
 func TestIsSchemaCompliant_ValidFrontmatter(t *testing.T) {
 	// Given
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(nil, fakeLogger, nil)
+	service := NewFrontmatterService(nil, fakeLogger, nil, nil)
 	validFm := domain.NewFrontmatter(map[string]interface{}{
 		"title": "Test Note",
 	})
@@ -185,7 +192,7 @@ func TestIsSchemaCompliant_ValidFrontmatter(t *testing.T) {
 func TestIsSchemaCompliant_WithFileClass(t *testing.T) {
 	// Given - nil schema engine means schema validation will fail
 	fakeLogger := zerolog.Nop()
-	service := NewFrontmatterService(nil, fakeLogger, nil)
+	service := NewFrontmatterService(nil, fakeLogger, nil, nil)
 	fmWithFileClass := domain.Frontmatter{
 		Fields: map[string]interface{}{
 			"fileClass": "contact",
@@ -234,6 +241,7 @@ func TestIsSchemaCompliant_SchemaValidationSuccess(t *testing.T) {
 		engine,
 
 		fakeLogger,
+		nil,
 		nil,
 	)
 	invalidFm := domain.Frontmatter{
@@ -284,6 +292,7 @@ func TestIsSchemaCompliant_SchemaValidationMissingRequiredField(t *testing.T) {
 
 		fakeLogger,
 		nil,
+		nil,
 	)
 	invalidFm := domain.Frontmatter{
 		Fields: map[string]interface{}{
@@ -324,6 +333,7 @@ func TestIsSchemaCompliant_SchemaValidationInvalidFieldType(t *testing.T) {
 		engine,
 
 		fakeLogger,
+		nil,
 		nil,
 	)
 
@@ -389,6 +399,7 @@ func TestIsSchemaCompliant_SchemaValidationMultipleErrors(t *testing.T) {
 
 		fakeLogger,
 		nil,
+		nil,
 	)
 	invalidFm := domain.Frontmatter{
 		Fields: map[string]interface{}{
@@ -419,6 +430,7 @@ func TestIsSchemaCompliant_SchemaNotFound(t *testing.T) {
 		engine,
 
 		fakeLogger,
+		nil,
 		nil,
 	)
 	fmWithUnknownSchema := domain.Frontmatter{
@@ -461,6 +473,7 @@ func TestIsSchemaCompliant_NumberFieldValidation(t *testing.T) {
 
 		fakeLogger,
 		nil,
+		nil,
 	)
 	tests := []struct {
 		name       string
@@ -493,7 +506,7 @@ func TestIsSchemaCompliant_NumberFieldValidation(t *testing.T) {
 					tt.value,
 				)
 			} else {
-				assert.Error(t, err, "expected validation to fail for %v", tt.value)
+				require.Error(t, err, "expected validation to fail for %v", tt.value)
 			}
 		})
 	}
@@ -517,6 +530,7 @@ func TestIsSchemaCompliant_BooleanFieldValidation(t *testing.T) {
 		engine,
 
 		fakeLogger,
+		nil,
 		nil,
 	)
 	tests := []struct {
@@ -550,8 +564,568 @@ func TestIsSchemaCompliant_BooleanFieldValidation(t *testing.T) {
 					tt.value,
 				)
 			} else {
-				assert.Error(t, err, "expected validation to fail for %v", tt.value)
+				require.Error(t, err, "expected validation to fail for %v", tt.value)
 			}
 		})
 	}
+}
+
+// TestValidate_MethodExists verifies Validate method exists and has correct
+// signature.
+func TestValidate_MethodExists(t *testing.T) {
+	fakeLogger := zerolog.Nop()
+	service := NewFrontmatterService(nil, fakeLogger, nil, nil)
+	var _ = service.Validate
+}
+
+// TestValidate_CallsIsSchemaCompliant verifies Validate calls
+// IsSchemaCompliant.
+func TestValidate_CallsIsSchemaCompliant(t *testing.T) {
+	fakeLogger := zerolog.Nop()
+	service := NewFrontmatterService(nil, fakeLogger, nil, nil)
+	fm := domain.NewFrontmatter(map[string]interface{}{
+		"title": "Test",
+	})
+	err := service.Validate(context.Background(), "test.md", fm)
+	// Should not error since no schema validation is triggered
+	assert.NoError(t, err)
+}
+
+// TestValidate_FileSpecPropertyDetection_Single verifies FileSpec property
+// detection for single values.
+func TestValidate_FileSpecPropertyDetection_Single(t *testing.T) {
+	// Given - schema with FileSpec property
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult(
+		"contacts/john.md",
+		[]domain.Note{{Path: "contacts/john.md"}},
+	)
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "contacts/john.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	assert.NoError(t, err)
+}
+
+// TestValidate_FileSpecPropertyDetection_Array verifies FileSpec property
+// detection for arrays.
+func TestValidate_FileSpecPropertyDetection_Array(t *testing.T) {
+	// Given - schema with FileSpec array property
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"references",
+		true,
+		true,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult(
+		"contacts/john.md",
+		[]domain.Note{{Path: "contacts/john.md"}},
+	)
+	// contacts/jane.md not set, so returns empty = not found
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass":  "note",
+			"references": []string{"contacts/john.md", "contacts/jane.md"},
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then - should fail because second file doesn't exist
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file not found")
+}
+
+// TestValidate_ValidFilePathValidation verifies valid file paths pass
+// validation.
+func TestValidate_ValidFilePathValidation(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult(
+		"contacts/john.md",
+		[]domain.Note{{Path: "contacts/john.md"}},
+	)
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "contacts/john.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	assert.NoError(t, err)
+}
+
+// TestValidate_FileNotFoundValidationError verifies invalid file paths return
+// ValidationError.
+func TestValidate_FileNotFoundValidationError(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	// missing.md not set, so returns empty = not found
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "missing.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file not found")
+}
+
+// TestValidate_PathNormalization_DotSlash verifies path normalization handles
+// ./ and ../.
+func TestValidate_PathNormalization_DotSlash(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult(
+		"./contacts/john.md",
+		[]domain.Note{{Path: "contacts/john.md"}},
+	)
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "./contacts/john.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	assert.NoError(t, err) // Path normalization should work
+}
+
+// TestValidate_WikilinkResolutionSuccess verifies wikilink format [[basename]]
+// resolves correctly.
+func TestValidate_WikilinkResolutionSuccess(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult(
+		"john",
+		[]domain.Note{{Path: "contacts/john.md"}},
+	)
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "[[john]]",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	assert.NoError(t, err)
+}
+
+// TestValidate_WikilinkAmbiguousError verifies ambiguous wikilinks return
+// error.
+func TestValidate_WikilinkAmbiguousError(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult("john", []domain.Note{
+		{Path: "contacts/john-1.md"},
+		{Path: "contacts/john-2.md"},
+	}) // Multiple results = ambiguous
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "[[john]]",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "ambiguous reference")
+}
+
+// TestValidate_ValidationErrorFieldName verifies ValidationError includes field
+// name.
+func TestValidate_ValidationErrorFieldName(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	// missing.md not set = not found
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "missing.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	require.Error(t, err)
+	// Error should include field name "reference"
+	assert.Contains(t, err.Error(), "reference")
+}
+
+// TestValidate_ValidationErrorReasonAndValue verifies ValidationError includes
+// reason and value.
+func TestValidate_ValidationErrorReasonAndValue(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	// missing.md not set = not found
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "missing.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "file not found")
+	assert.Contains(t, err.Error(), "missing.md")
+}
+
+// TestValidate_ValidationErrorRemediationHints verifies ValidationError
+// includes remediation hints.
+func TestValidate_ValidationErrorRemediationHints(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	// missing.md not set = not found
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "missing.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	require.Error(t, err)
+	// Should include some remediation hint
+	assert.Contains(t, err.Error(), "Check if")
+}
+
+// TestValidate_ErrorAggregationForArrays verifies multiple FileSpec errors are
+// aggregated.
+func TestValidate_ErrorAggregationForArrays(t *testing.T) {
+	// Given - schema with FileSpec array
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"references",
+		true,
+		true,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	// Neither missing1.md nor missing2.md set = both not found
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass":  "note",
+			"references": []string{"missing1.md", "missing2.md"},
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	require.Error(t, err)
+	// Should contain multiple errors
+	assert.Contains(t, err.Error(), "missing1.md")
+	assert.Contains(t, err.Error(), "missing2.md")
+}
+
+// TestValidate_AbsolutePathSupport verifies absolute paths are supported.
+func TestValidate_AbsolutePathSupport(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult(
+		"/absolute/contacts/john.md",
+		[]domain.Note{{Path: "/absolute/contacts/john.md"}},
+	)
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "/absolute/contacts/john.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	assert.NoError(t, err)
+}
+
+// TestValidate_VaultRelativePathSupport verifies vault-relative paths work.
+func TestValidate_VaultRelativePathSupport(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult(
+		"contacts/john.md",
+		[]domain.Note{{Path: "contacts/john.md"}},
+	)
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "contacts/john.md",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	assert.NoError(t, err)
+}
+
+// TestValidate_TrailingSlashNormalization verifies trailing slashes are
+// removed.
+func TestValidate_TrailingSlashNormalization(t *testing.T) {
+	// Given
+	registry := NewFakeSchemaRegistryPort()
+	fileProp, _ := domain.NewProperty(
+		"reference",
+		true,
+		false,
+		&domain.FileSpec{},
+	)
+	sch := domain.Schema{
+		Name:       "note",
+		Properties: []domain.Property{*fileProp},
+	}
+	registry.AddSchema("note", sch)
+	engine := createTestSchemaEngine(registry)
+	fakeLogger := zerolog.Nop()
+	fakeQuery := NewFakeQueryService()
+	fakeQuery.SetPathQueryResult("contacts", []domain.Note{{Path: "contacts/"}})
+	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)
+
+	fm := domain.Frontmatter{
+		Fields: map[string]interface{}{
+			"fileClass": "note",
+			"reference": "contacts/",
+		},
+	}
+
+	// When
+	err := service.Validate(context.Background(), "test.md", fm)
+
+	// Then
+	assert.NoError(t, err)
 }

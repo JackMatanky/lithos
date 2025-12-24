@@ -3,15 +3,26 @@ package frontmatter
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
+
+// QueryServicePort defines the interface needed for FileSpec validation.
+// This allows for dependency injection of query services in tests.
+type QueryServicePort interface {
+	PathQuery(
+		ctx context.Context,
+		opts spi.PathQueryOptions,
+	) ([]domain.Note, error)
+}
 
 // FrontmatterService validates frontmatter against schema rules with semantic
 // business logic enforcement. Pure domain service focused on schema compliance
@@ -25,11 +36,13 @@ import (
 // Dependencies:
 //   - SchemaEngine: For loading and resolving schemas before validation
 //   - MarkdownParserPort: For syntactic frontmatter parsing (YAML structure)
+//   - QueryService: For validating FileSpec properties against vault index
 //   - Logger: For structured logging of validation operations
 type FrontmatterService struct {
 	schemaEngine *schema.SchemaEngine
 	logger       zerolog.Logger
 	eventBus     events.EventBus
+	queryService QueryServicePort
 
 	// Validators are stateless and can be reused
 	stringValidator *StringValidator
@@ -47,21 +60,79 @@ type FrontmatterService struct {
 //   - logger: Required for observability and error tracking
 //   - eventBus: Required for publishing validation events
 //
+// - queryService: Required for validating FileSpec properties against vault
+// index
+//
 // Returns a configured FrontmatterService ready for use.
 func NewFrontmatterService(
 	schemaEngine *schema.SchemaEngine,
 	logger zerolog.Logger,
 	eventBus events.EventBus,
+	queryService QueryServicePort,
 ) *FrontmatterService {
 	return &FrontmatterService{
 		schemaEngine:    schemaEngine,
 		logger:          logger,
 		eventBus:        eventBus,
+		queryService:    queryService,
 		stringValidator: &StringValidator{},
 		numberValidator: &NumberValidator{},
 		dateValidator:   &DateValidator{},
 		boolValidator:   &BoolValidator{},
 	}
+}
+
+// Validate validates frontmatter against schema rules and FileSpec properties.
+// Performs comprehensive validation including schema compliance and vault index
+// validation for file references.
+//
+// Validation Process:
+//  1. Schema validation (required fields, types, constraints)
+//  2. FileSpec validation (file references exist in vault)
+//  3. Wikilink resolution and ambiguity checking
+//  4. Error aggregation with remediation hints
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout support
+//   - noteID: Identifier for the note being validated
+//   - fm: Pre-parsed frontmatter to validate
+//
+// Returns:
+//   - error: Aggregated ValidationError instances or nil if validation passes
+//
+// Error Handling:
+//   - Returns ValidationError with field, reason, value, and remediation
+//   - Aggregates multiple validation errors
+//   - Supports cancellation via context
+func (s *FrontmatterService) Validate(
+	ctx context.Context,
+	noteID string,
+	fm domain.Frontmatter,
+) error {
+	var validationErrors []error
+
+	// Check for cancellation
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+
+	// Perform schema validation
+	if schemaErr := s.IsSchemaCompliant(ctx, noteID, fm); schemaErr != nil {
+		validationErrors = append(validationErrors, schemaErr)
+	}
+
+	// Perform FileSpec validation if schema available
+	if fm.FileClass() != "" {
+		if fileSpecErr := s.validateFileSpecProperties(ctx, fm); fileSpecErr != nil {
+			validationErrors = append(validationErrors, fileSpecErr)
+		}
+	}
+
+	validationErr := s.aggregateValidationErrors(validationErrors)
+	s.publishValidationEvent(ctx, noteID, fm, validationErr)
+	return validationErr
 }
 
 // IsSchemaCompliant validates frontmatter against schema rules with semantic
@@ -326,6 +397,234 @@ func (s *FrontmatterService) validateAgainstSchema(
 
 	// Aggregate validation errors
 	return s.aggregateValidationErrors(validationErrors)
+}
+
+// validateFileSpecField validates a single FileSpec field, handling both
+// single values and arrays.
+func (s *FrontmatterService) validateFileSpecField(
+	ctx context.Context,
+	fieldName string,
+	fieldValue interface{},
+	isArray bool,
+) []error {
+	var errs []error
+	if isArray {
+		if values, isSlice := coerceToInterfaceSlice(fieldValue); isSlice {
+			for _, value := range values {
+				if strVal, isString := value.(string); isString {
+					if err := s.validateFileReference(ctx, fieldName, strVal); err != nil {
+						errs = append(errs, err)
+					}
+				}
+			}
+		}
+	} else {
+		if strVal, ok := fieldValue.(string); ok {
+			if err := s.validateFileReference(ctx, fieldName, strVal); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errs
+}
+
+// validateFileSpecProperties validates FileSpec properties against the vault
+// index. Checks that file references in frontmatter actually exist in the
+// indexed vault.
+//
+// Parameters:
+//   - ctx: Context for cancellation and timeout handling
+//   - fm: Frontmatter containing FileSpec properties to validate
+//
+// Returns:
+// - error: ValidationError instances for invalid file references or nil if all
+// valid.
+func (s *FrontmatterService) validateFileSpecProperties(
+	ctx context.Context,
+	fm domain.Frontmatter,
+) error {
+	var validationErrors []error
+
+	// Get schema to identify FileSpec properties
+	sch, schemaErr := s.getSchemaForValidation(ctx, fm.FileClass())
+	if schemaErr != nil {
+		return schemaErr
+	}
+
+	// Check each property for FileSpec type
+	for _, property := range sch.Properties {
+		if property.Spec.Type() != domain.PropertyTypeFile {
+			continue
+		}
+
+		fieldName := property.Name
+		fieldValue, exists := fm.Get(fieldName)
+		if !exists {
+			continue
+		}
+
+		// Validate file references
+		fieldErrors := s.validateFileSpecField(
+			ctx,
+			fieldName,
+			fieldValue,
+			property.Array,
+		)
+		validationErrors = append(validationErrors, fieldErrors...)
+	}
+
+	return s.aggregateValidationErrors(validationErrors)
+}
+
+// validateFileReference validates a single file reference string.
+// Supports both direct paths and wikilink format [[basename]].
+//
+// Parameters:
+//   - ctx: Context for cancellation
+//   - fieldName: The frontmatter field name for error reporting
+//   - value: The file reference string to validate
+//
+// Returns:
+//   - error: ValidationError if file not found or ambiguous, nil if valid
+func (s *FrontmatterService) validateFileReference(
+	ctx context.Context,
+	fieldName string,
+	value string,
+) error {
+	if s.queryService == nil {
+		return lithosErr.NewValidationErrorWithRemediation(
+			fieldName,
+			"query service unavailable",
+			value,
+			"Ensure QueryService is properly injected into FrontmatterService",
+			nil,
+		)
+	}
+
+	path, isWikilink := s.resolveWikilink(value)
+	path = s.normalizePath(path)
+
+	opts := spi.PathQueryOptions{
+		Value: path,
+		Scope: spi.PathQueryScopeFull,
+	}
+	if isWikilink {
+		opts.Scope = spi.PathQueryScopeBasename
+	}
+
+	notes, err := s.queryService.PathQuery(ctx, opts)
+	if err != nil {
+		return lithosErr.NewValidationErrorWithRemediation(
+			fieldName,
+			"query failed",
+			value,
+			"Check QueryService configuration and vault indexing status",
+			err,
+		)
+	}
+
+	if len(notes) == 0 {
+		hint := s.generateQueryHint(path, isWikilink)
+		return lithosErr.NewValidationErrorWithRemediation(
+			fieldName,
+			"file not found",
+			value,
+			hint,
+			nil,
+		)
+	}
+
+	if len(notes) > 1 && isWikilink {
+		return s.createAmbiguousError(fieldName, value, path, notes)
+	}
+
+	return nil
+}
+
+// resolveWikilink detects and resolves wikilink format [[basename]].
+// Returns the extracted basename and whether it was a wikilink.
+//
+// Parameters:
+//   - value: The string to check for wikilink format
+//
+// Returns:
+// - string: The resolved path (basename if wikilink, original value otherwise)
+//   - bool: Whether the input was a wikilink
+func (s *FrontmatterService) resolveWikilink(value string) (string, bool) {
+	if strings.HasPrefix(value, "[[") && strings.HasSuffix(value, "]]") &&
+		len(value) > 4 {
+		basename := value[2 : len(value)-2] // Remove [[ and ]]
+		return basename, true
+	}
+	return value, false
+}
+
+// normalizePath normalizes a file path for querying.
+// Removes trailing slashes, resolves relative components.
+//
+// Parameters:
+//   - path: The path to normalize
+//
+// Returns:
+//   - string: The normalized path
+func (s *FrontmatterService) normalizePath(path string) string {
+	// Remove trailing slashes
+	path = strings.TrimSuffix(path, "/")
+
+	// For now, just return the path - more complex normalization can be added
+	// later
+	// In a real implementation, this might resolve ./ and ../ components
+	return path
+}
+
+// createAmbiguousError creates an error for ambiguous wikilink references.
+func (s *FrontmatterService) createAmbiguousError(
+	fieldName, value, path string,
+	notes []domain.Note,
+) error {
+	basenames := make([]string, len(notes))
+	for i := range notes {
+		basenames[i] = notes[i].Path
+	}
+	hint := fmt.Sprintf(
+		"ambiguous wikilink [[%s]]: matches %v",
+		path,
+		basenames,
+	)
+	return lithosErr.NewValidationErrorWithRemediation(
+		fieldName,
+		"ambiguous reference",
+		value,
+		hint,
+		nil,
+	)
+}
+
+// generateQueryHint generates helpful hints for file not found errors.
+// Suggests similar files or case corrections.
+//
+// Parameters:
+//   - path: The path that was not found
+//   - isWikilink: Whether the original reference was a wikilink
+//
+// Returns:
+//   - string: Remediation hint for the user
+func (s *FrontmatterService) generateQueryHint(
+	path string,
+	isWikilink bool,
+) string {
+	// TODO: Implement intelligent hint generation
+	// Could search for similar paths, case variants, etc.
+	if isWikilink {
+		return fmt.Sprintf(
+			"Check if [[%s]] exists in vault or try different basename",
+			path,
+		)
+	}
+	return fmt.Sprintf(
+		"Check if '%s' exists in vault or verify path format",
+		path,
+	)
 }
 
 // aggregateValidationErrors aggregates multiple validation errors into a single

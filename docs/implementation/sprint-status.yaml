@@ -29,7 +29,6 @@ tracking_system: file-system
 story_location: docs/stories
 
 development_status:
-  # Epic 1: Foundational CLI with Static Template Engine
   epic-1: done
   1-1-verify-tooling-and-structure: done
   1-2-note-domain-models: done
@@ -50,7 +49,6 @@ development_status:
   1-17-documentation-update: done
   epic-1-retrospective: done
 
-  # Epic 2: Configuration & Schema Loading
   epic-2: done
   2-1-config-model: done
   2-2-schema-property-models: done
@@ -65,7 +63,6 @@ development_status:
   2-10-schema-system-performance-optimizations: done
   epic-2-retrospective: done
 
-  # Epic 3: Vault Indexing Engine
   epic-3: done
   3-1-cache-port-interfaces: done
   3-2-json-cache-adapters: done
@@ -101,18 +98,16 @@ development_status:
   3-32-documentation-update: done
   epic-3-retrospective: done
 
-  # Epic 4: Schema-Driven Lookups & Validation
   epic-4: backlog
   4-1-template-interface-pattern: done
   4-2-template-function-lookup: done
-  4-3-template-function-query: ready-for-dev
+  4-3-template-function-query: done
   4-4-template-function-fileclass: ready-for-dev
-  4-5-schema-driven-lookup-integration-test: done
-  4-6-dependency-injection-and-e2e-test: done
-  4-7-documentation-update: done
+  4-5-schema-driven-lookup-integration-test: ready-for-dev
+  4-6-dependency-injection-and-e2e-test: ready-for-dev
+  4-7-documentation-update: ready-for-dev
   epic-4-retrospective: optional
 
-  # Epic 5: Interactive Input Engine
   epic-5: backlog
   5-1-prompt-port-interface: ready-for-dev
   5-2-promptui-adapter: ready-for-dev
