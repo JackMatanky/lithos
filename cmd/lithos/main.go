@@ -157,10 +157,15 @@ func (c *Container) FrontmatterService() (*frontmatter.FrontmatterService, error
 		if err != nil {
 			return nil, err
 		}
+		queryService, err := c.QueryService()
+		if err != nil {
+			return nil, err
+		}
 		c.frontmatterService = frontmatter.NewFrontmatterService(
 			schemaEngine,
 			c.logger,
 			c.eventBus,
+			queryService,
 		)
 	}
 	return c.frontmatterService, nil

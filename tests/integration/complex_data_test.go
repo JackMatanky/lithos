@@ -137,6 +137,7 @@ func TestComplexDataIntegration(t *testing.T) {
 		schemaEngine,
 		logger,
 		nil,
+		nil,
 	)
 
 	// 7. Validate Realistic Notes

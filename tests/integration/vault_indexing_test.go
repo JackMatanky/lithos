@@ -96,6 +96,7 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		schemaEngine,
 		logger,
 		nil,
+		nil,
 	)
 
 	// Create indexer with all services

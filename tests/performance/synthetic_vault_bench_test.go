@@ -109,6 +109,7 @@ func benchmarkVaultIndexing(b *testing.B, config utils.SyntheticVaultConfig) {
 		schemaEngine,
 		logger,
 		nil,
+		nil,
 	)
 
 	indexer := vaultService.NewVaultIndexer(
@@ -212,6 +213,7 @@ func TestLargeVaultPerformance(t *testing.T) {
 	frontmatterService := frontmatter.NewFrontmatterService(
 		schemaEngine,
 		logger,
+		nil,
 		nil,
 	)
 
