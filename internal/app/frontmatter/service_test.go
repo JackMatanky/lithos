@@ -767,7 +767,7 @@ func TestValidate_PathNormalization_DotSlash(t *testing.T) {
 	fakeLogger := zerolog.Nop()
 	fakeQuery := NewFakeQueryService()
 	fakeQuery.SetPathQueryResult(
-		"./contacts/john.md",
+		"contacts/john.md",
 		[]domain.Note{{Path: "contacts/john.md"}},
 	)
 	service := NewFrontmatterService(engine, fakeLogger, nil, fakeQuery)

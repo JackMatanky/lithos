@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -408,23 +409,30 @@ func (s *FrontmatterService) validateFileSpecField(
 	isArray bool,
 ) []error {
 	var errs []error
-	if isArray {
-		if values, isSlice := coerceToInterfaceSlice(fieldValue); isSlice {
-			for _, value := range values {
-				if strVal, isString := value.(string); isString {
-					if err := s.validateFileReference(ctx, fieldName, strVal); err != nil {
-						errs = append(errs, err)
-					}
-				}
-			}
-		}
-	} else {
+
+	if !isArray { //nolint:nestif // Early return pattern used to reduce nesting complexity
 		if strVal, ok := fieldValue.(string); ok {
 			if err := s.validateFileReference(ctx, fieldName, strVal); err != nil {
 				errs = append(errs, err)
 			}
 		}
+		return errs
 	}
+
+	// Array case
+	values, ok := coerceToInterfaceSlice(fieldValue)
+	if !ok {
+		return errs
+	}
+
+	for _, value := range values {
+		if strVal, isString := value.(string); isString {
+			if err := s.validateFileReference(ctx, fieldName, strVal); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+
 	return errs
 }
 
@@ -560,7 +568,7 @@ func (s *FrontmatterService) resolveWikilink(value string) (string, bool) {
 }
 
 // normalizePath normalizes a file path for querying.
-// Removes trailing slashes, resolves relative components.
+// Removes trailing slashes, resolves relative components like ./ and ../.
 //
 // Parameters:
 //   - path: The path to normalize
@@ -568,12 +576,10 @@ func (s *FrontmatterService) resolveWikilink(value string) (string, bool) {
 // Returns:
 //   - string: The normalized path
 func (s *FrontmatterService) normalizePath(path string) string {
-	// Remove trailing slashes
+	// Use filepath.Clean to resolve ./ and ../ components
+	path = filepath.Clean(path)
+	// Remove trailing slashes after cleaning
 	path = strings.TrimSuffix(path, "/")
-
-	// For now, just return the path - more complex normalization can be added
-	// later
-	// In a real implementation, this might resolve ./ and ../ components
 	return path
 }
 
@@ -601,7 +607,7 @@ func (s *FrontmatterService) createAmbiguousError(
 }
 
 // generateQueryHint generates helpful hints for file not found errors.
-// Suggests similar files or case corrections.
+// Suggests checking vault or case corrections.
 //
 // Parameters:
 //   - path: The path that was not found
@@ -613,16 +619,14 @@ func (s *FrontmatterService) generateQueryHint(
 	path string,
 	isWikilink bool,
 ) string {
-	// TODO: Implement intelligent hint generation
-	// Could search for similar paths, case variants, etc.
 	if isWikilink {
 		return fmt.Sprintf(
-			"Check if [[%s]] exists in vault or try different basename",
+			"Check if [[%s]] exists in vault. If using case-sensitive search, verify exact basename match.",
 			path,
 		)
 	}
 	return fmt.Sprintf(
-		"Check if '%s' exists in vault or verify path format",
+		"Check if '%s' exists in vault. Verify path is relative to vault root and case-sensitive.",
 		path,
 	)
 }

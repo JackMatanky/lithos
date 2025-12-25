@@ -98,8 +98,19 @@ FrontmatterService.Validate() performs strict validation with in-memory type nor
 3. **Array vs Scalar Check:** Verify array/scalar expectation matches (no auto-coercion)
 4. **Type Normalization (In-Memory Only):** Normalize YAML types for validation logic without modifying files
 5. **Constraint Validation:** Validate normalized value against PropertySpec constraints (pattern, min/max, enum, etc.)
-6. **File Reference Validation:** For FileSpec properties, validate file exists via VaultReaderPort.Read() (avoids circular dependency with QueryService)
+6. **File Reference Validation:** For FileSpec properties, validate file exists via QueryService.PathQuery(). Supports both direct file paths and wikilink format `[[basename]]` with ambiguity checking.
 7. **Error Aggregation:** Return all validation errors with field-level remediation hints
+
+**File Reference Validation (Step 6 Detail):**
+
+For PropertySpec with `Type: "file"`:
+
+- Extract file path from frontmatter field value
+- Support both filepath formats and wikilink format `[[basename]]`
+- Normalize path (resolve relative to vault root, remove trailing slashes, resolve `./`, `../`)
+- Query vault via `QueryService.PathQuery(ctx, normalizedPath)`
+- Return ValidationError if file not found or ambiguous
+- Include query hints in remediation message (similar paths, case corrections)
 
 **YAML Type Handling:**
 
