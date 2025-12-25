@@ -543,27 +543,26 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 			fileClassFunc, ok := funcMap["fileClass"]
 
 			require.True(t, ok, "fileClass function should be registered")
-			fn, ok := fileClassFunc.(func(string) (string, error))
+			fn, ok := fileClassFunc.(func(string) string)
 			require.True(
 				t,
 				ok,
-				"fileClass should have signature func(string) (string, error)",
+				"fileClass should have signature func(string) string",
 			)
 			assert.NotNil(t, fn, "fileClass function should not be nil")
 		},
 	)
 
 	t.Run(
-		"fileClass returns error when QueryService unavailable",
+		"fileClass returns empty string when QueryService unavailable",
 		func(t *testing.T) {
 			engine := NewTemplateEngine(nil, &config, nil, &logger)
 
 			funcMap := engine.buildFuncMap(context.Background())
-			fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
+			fileClassFunc := funcMap["fileClass"].(func(string) string)
 
-			_, err := fileClassFunc("test.md")
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "query service not available")
+			result := fileClassFunc("test.md")
+			assert.Empty(t, result)
 		},
 	)
 
@@ -599,10 +598,9 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 			engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
 			funcMap := engine.buildFuncMap(context.Background())
-			fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
+			fileClassFunc := funcMap["fileClass"].(func(string) string)
 
-			result, err := fileClassFunc("contact.md")
-			require.NoError(t, err)
+			result := fileClassFunc("contact.md")
 			assert.Equal(t, "contact", result)
 		},
 	)
@@ -631,11 +629,10 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
 		funcMap := engine.buildFuncMap(context.Background())
-		fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
+		fileClassFunc := funcMap["fileClass"].(func(string) string)
 
-		_, err := fileClassFunc("nonexistent.md")
-		require.Error(t, err)
-		assert.Contains(t, err.Error(), "not found")
+		result := fileClassFunc("nonexistent.md")
+		assert.Empty(t, result)
 	})
 
 	t.Run(
@@ -670,11 +667,10 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 			engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
 
 			funcMap := engine.buildFuncMap(context.Background())
-			fileClassFunc := funcMap["fileClass"].(func(string) (string, error))
+			fileClassFunc := funcMap["fileClass"].(func(string) string)
 
-			_, err := fileClassFunc("note.md")
-			require.Error(t, err)
-			assert.Contains(t, err.Error(), "missing")
+			result := fileClassFunc("note.md")
+			assert.Empty(t, result)
 		},
 	)
 }
@@ -756,7 +752,7 @@ func TestTemplateEngine_Immutability(t *testing.T) {
 		_, ok = queryFunc.(func(map[string]any) ([]domain.Note, error))
 		assert.True(t, ok, "query should have correct signature")
 
-		_, ok = fileClassFunc.(func(string) (string, error))
+		_, ok = fileClassFunc.(func(string) string)
 		assert.True(t, ok, "fileClass should have correct signature")
 	})
 }
