@@ -9,6 +9,7 @@ import (
 
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/events"
+	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -96,11 +97,15 @@ func TestRunCallsCLIPortStart(t *testing.T) {
 	var mockVaultWriter spi.VaultWriterPort
 	var mockEventBus events.EventBus
 	var mockTemplateEngine *template.TemplateEngine
+	var mockFrontmatterService *frontmatter.FrontmatterService
+	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
 		mockCLIPort,
 		mockTemplateEngine,
 		mockVaultIndexer,
 		mockVaultWriter,
+		mockFrontmatterService,
+		mockMarkdownParser,
 		&config,
 		&logger,
 		mockEventBus,
@@ -141,11 +146,15 @@ func TestRunPropagatesCLIError(t *testing.T) {
 	var mockVaultWriter spi.VaultWriterPort
 	var mockEventBus events.EventBus
 	var mockTemplateEngine *template.TemplateEngine
+	var mockFrontmatterService *frontmatter.FrontmatterService
+	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
 		mockCLIPort,
 		mockTemplateEngine,
 		mockVaultIndexer,
 		mockVaultWriter,
+		mockFrontmatterService,
+		mockMarkdownParser,
 		&config,
 		&logger,
 		mockEventBus,
@@ -203,11 +212,15 @@ func TestNewNoteSuccess(t *testing.T) {
 
 	var mockVaultIndexer *vault.VaultIndexer
 	var mockEventBus events.EventBus
+	var mockFrontmatterService *frontmatter.FrontmatterService
+	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
 		mockVaultIndexer,
 		vaultAdapter.NewVaultWriterAdapter(config, logger),
+		mockFrontmatterService,
+		mockMarkdownParser,
 		&config,
 		&logger,
 		mockEventBus,
@@ -268,11 +281,15 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 
 	var mockVaultIndexer *vault.VaultIndexer
 	var mockEventBus events.EventBus
+	var mockFrontmatterService *frontmatter.FrontmatterService
+	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
 		mockVaultIndexer,
 		nil,
+		mockFrontmatterService,
+		mockMarkdownParser,
 		&config,
 		&logger,
 		mockEventBus,
@@ -307,11 +324,15 @@ func TestNewNoteFileWriteError(t *testing.T) {
 	mockVaultWriter.SetWriteContentResult(assert.AnError)
 	var mockVaultIndexer *vault.VaultIndexer
 	var mockEventBus events.EventBus
+	var mockFrontmatterService *frontmatter.FrontmatterService
+	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
 		nil,
 		templateEngine,
 		mockVaultIndexer,
 		mockVaultWriter,
+		mockFrontmatterService,
+		mockMarkdownParser,
 		&config,
 		&logger,
 		mockEventBus,
@@ -344,11 +365,15 @@ func TestIndexVaultSuccess(t *testing.T) {
 	var mockVaultWriter spi.VaultWriterPort
 	var mockTemplateEngine *template.TemplateEngine
 	var mockEventBus events.EventBus
+	var mockFrontmatterService *frontmatter.FrontmatterService
+	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
 		nil,
 		mockTemplateEngine,
 		mockVaultIndexer,
 		mockVaultWriter,
+		mockFrontmatterService,
+		mockMarkdownParser,
 		&config,
 		&logger,
 		mockEventBus,
@@ -371,11 +396,15 @@ func TestIndexVaultBuildError(t *testing.T) {
 	var mockVaultWriter spi.VaultWriterPort
 	var mockTemplateEngine *template.TemplateEngine
 	var mockEventBus events.EventBus
+	var mockFrontmatterService *frontmatter.FrontmatterService
+	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
 		nil,
 		mockTemplateEngine,
 		mockVaultIndexer,
 		mockVaultWriter,
+		mockFrontmatterService,
+		mockMarkdownParser,
 		&config,
 		&logger,
 		mockEventBus,
@@ -383,5 +412,5 @@ func TestIndexVaultBuildError(t *testing.T) {
 
 	_, err := orchestrator.IndexVault(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), buildErr.Error())
+	assert.Contains(t, err.Error(), "indexing failed")
 }

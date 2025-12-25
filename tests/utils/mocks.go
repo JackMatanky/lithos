@@ -231,6 +231,7 @@ type MockFrontmatterService struct {
 	extractResult           domain.Frontmatter
 	extractError            error
 	isSchemaCompliantResult error
+	validateResult          error
 }
 
 // NewMockFrontmatterService creates a new MockFrontmatterService with default
@@ -256,6 +257,12 @@ func (m *MockFrontmatterService) SetIsSchemaCompliantResult(err error) {
 	m.isSchemaCompliantResult = err
 }
 
+// SetValidateResult configures the mock to return the specified error
+// on Validate calls.
+func (m *MockFrontmatterService) SetValidateResult(err error) {
+	m.validateResult = err
+}
+
 // Extract returns the configured mock result for frontmatter extraction.
 func (m *MockFrontmatterService) Extract(
 	content []byte,
@@ -271,6 +278,15 @@ func (m *MockFrontmatterService) IsSchemaCompliant(
 	fm domain.Frontmatter,
 ) error {
 	return m.isSchemaCompliantResult
+}
+
+// Validate returns the configured mock result for frontmatter validation.
+func (m *MockFrontmatterService) Validate(
+	ctx context.Context,
+	noteID string,
+	fm domain.Frontmatter,
+) error {
+	return m.validateResult
 }
 
 // MockSchemaEngine provides a mock implementation for schema operations.
