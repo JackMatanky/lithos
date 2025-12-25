@@ -605,6 +605,42 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 		},
 	)
 
+	t.Run("fileClass handles various fileClass values", func(t *testing.T) {
+		mockBolt := &testMockMetadataQueryPort{
+			MockMetadataQueryPort: utils.NewMockMetadataQueryPort(),
+		}
+		mockSqlite := utils.NewMockMetadataQueryPort()
+
+		testNote := domain.Note{
+			Path: "test.md",
+			Frontmatter: domain.NewFrontmatter(map[string]any{
+				"fileClass": "custom_schema",
+			}),
+		}
+		mockBolt.readFunc = func(ctx context.Context, path string) (domain.Note, error) {
+			return testNote, nil
+		}
+
+		cfg := domain.Config{}
+		log := zerolog.Nop()
+		eventBus := utils.NewMockEventBus()
+
+		querySvc := query.NewQueryService(
+			mockBolt,
+			mockSqlite,
+			cfg,
+			log,
+			eventBus,
+		)
+		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+
+		funcMap := engine.buildFuncMap(context.Background())
+		fileClassFunc := funcMap["fileClass"].(func(string) string)
+
+		result := fileClassFunc("test.md")
+		assert.Equal(t, "custom_schema", result)
+	})
+
 	t.Run("fileClass returns error for note not found", func(t *testing.T) {
 		mockBolt := &testMockMetadataQueryPort{
 			MockMetadataQueryPort: utils.NewMockMetadataQueryPort(),
