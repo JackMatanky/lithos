@@ -103,7 +103,7 @@ development_status:
   4-2-template-function-lookup: done
   4-3-command-orchestrator-newNote-workflow: done
   4-4-frontmatter-end-to-end-validation: done
-  4-5-template-function-fileclass: in-progress
+  4-5-template-function-fileclass: done
   4-6-event-driven-schema-lookups: ready-for-dev
   4-7-schema-driven-lookup-integration-test: ready-for-dev
   4-8-dependency-injection-and-e2e-test: ready-for-dev
