@@ -219,11 +219,18 @@ func (c *Container) CLIOrchestrator() (*command.CLIComander, error) {
 			return nil, queryErr
 		}
 
+		frontmatterService, err := c.FrontmatterService()
+		if err != nil {
+			return nil, err
+		}
+
 		c.cliOrchestrator = command.NewCLIComander(
 			cli.NewCobraCLIAdapter(c.logger),
 			c.TemplateEngine(),
 			vaultIndexer,
 			vaultAdapter.NewVaultWriterAdapter(c.config, c.logger),
+			frontmatterService,
+			c.MarkdownParser(),
 			&c.config,
 			&c.logger,
 			c.eventBus,

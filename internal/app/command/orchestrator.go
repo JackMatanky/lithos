@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/events"
+	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -37,22 +38,25 @@ import (
 // Dependencies (injected via constructor):
 //   - CLIPort: CLI framework adapter for command parsing and user interaction
 //   - TemplateEngine: Domain service for template loading and rendering
-//   - SchemaEngine: Domain service for schema loading and validation
-//   - VaultIndexer: Domain service for vault scanning, frontmatter processing,
-//     and cache persistence
+//   - VaultIndexer: Domain service for vault indexing operations
+//   - VaultWriter: Vault persistence adapter
+//   - FrontmatterService: Domain service for frontmatter validation
+//   - MarkdownParserPort: SPI port for markdown parsing
 //   - Config: Application configuration (vault path, etc.)
 //   - Logger: Structured logging for workflow operations and debugging
 //
 // Reference: docs/architecture/components.md#domain-services -
 // CLIComander (v0.6.4).
 type CLIComander struct {
-	cliPort        api.CLIPort
-	templateEngine *template.TemplateEngine
-	vaultIndexer   vault.VaultIndexerInterface
-	vaultWriter    spi.VaultWriterPort
-	config         domain.Config
-	log            zerolog.Logger
-	eventBus       events.EventBus
+	cliPort            api.CLIPort
+	templateEngine     *template.TemplateEngine
+	vaultIndexer       vault.VaultIndexerInterface
+	vaultWriter        spi.VaultWriterPort
+	frontmatterService *frontmatter.FrontmatterService
+	markdownParserPort spi.MarkdownParserPort
+	config             domain.Config
+	log                zerolog.Logger
+	eventBus           events.EventBus
 }
 
 // NewCLIComander creates a new CLIComander with injected
@@ -65,6 +69,8 @@ type CLIComander struct {
 //   - templateEngine: Template rendering service for note creation
 //   - vaultIndexer: Vault indexing service for cache rebuild operations
 //   - vaultWriter: Vault writer service for note persistence
+//   - frontmatterService: Frontmatter validation service
+//   - markdownParserPort: Markdown parsing port for frontmatter extraction
 //   - config: Application configuration containing vault paths and settings
 //   - log: Structured logger for workflow operations and debugging
 //   - eventBus: Event bus for domain events
@@ -80,18 +86,22 @@ func NewCLIComander(
 	templateEngine *template.TemplateEngine,
 	vaultIndexer vault.VaultIndexerInterface,
 	vaultWriter spi.VaultWriterPort,
+	frontmatterService *frontmatter.FrontmatterService,
+	markdownParserPort spi.MarkdownParserPort,
 	config *domain.Config,
 	log *zerolog.Logger,
 	eventBus events.EventBus,
 ) *CLIComander {
 	return &CLIComander{
-		cliPort:        cliPort,
-		templateEngine: templateEngine,
-		vaultIndexer:   vaultIndexer,
-		vaultWriter:    vaultWriter,
-		config:         *config,
-		log:            *log,
-		eventBus:       eventBus,
+		cliPort:            cliPort,
+		templateEngine:     templateEngine,
+		vaultIndexer:       vaultIndexer,
+		vaultWriter:        vaultWriter,
+		frontmatterService: frontmatterService,
+		markdownParserPort: markdownParserPort,
+		config:             *config,
+		log:                *log,
+		eventBus:           eventBus,
 	}
 }
 
@@ -118,16 +128,23 @@ func (o *CLIComander) Run(ctx context.Context) error {
 }
 
 // NewNote orchestrates the complete note creation workflow.
-// This method implements the CommandPort interface and will be implemented
-// in Task 3. For now, it returns a placeholder error.
+// This method implements the CommandPort interface and coordinates template
+// rendering, frontmatter validation, and vault persistence.
+//
+// Workflow:
+// 1. Render template content
+// 2. Parse and validate frontmatter against schemas
+// 3. Create note with validated frontmatter
+// 4. Persist note to vault
+// 5. Publish note indexed event
 //
 // Parameters:
 //   - ctx: Context for cancellation and timeout control
 //   - templateID: Identifier of the template to use for note creation
 //
 // Returns:
-//   - domain.Note: The created note (placeholder for now)
-//   - error: Implementation pending error
+//   - domain.Note: The created and validated note
+//   - error: Template rendering, validation, or persistence errors
 //
 // Reference: docs/architecture/components.md#api-port-interfaces -
 // CommandPort.NewNote.
@@ -152,10 +169,19 @@ func (o *CLIComander) NewNote(
 		Str("templateID", string(templateID)).
 		Msg("Template rendered successfully")
 
-	// Step 2-4: Create note from template
-	note, relativePath := o.createNoteFromTemplate(templateID)
+	// Step 2: Parse and validate frontmatter
+	fm, err := o.parseAndValidateFrontmatter(ctx, templateID, content)
+	if err != nil {
+		return domain.Note{}, err
+	}
 
-	// Step 5: Write file to vault
+	// Step 3: Create note from template with validated frontmatter
+	note, relativePath := o.createNoteFromTemplateWithFrontmatter(
+		templateID,
+		fm,
+	)
+
+	// Step 6: Write file to vault
 	absolutePath := filepath.Join(o.config.VaultPath, relativePath)
 	if o.vaultWriter != nil {
 		if writeErr := o.vaultWriter.WriteContent(ctx, relativePath, []byte(content)); writeErr != nil {
@@ -185,9 +211,10 @@ func (o *CLIComander) NewNote(
 	o.log.Info().
 		Str("filePath", absolutePath).
 		Msg("Note file written successfully")
+
 	o.publishNoteIndexedEvent(ctx, note)
 
-	// Step 6: Return Note
+	// Step 7: Return Note
 	return note, nil
 }
 
@@ -213,9 +240,7 @@ func (o *CLIComander) NewNote(
 //
 // Reference: docs/architecture/components.md#commandorchestrator - IndexVault
 // Reference: docs/architecture/components.md#commandorchestrator (legacy
-// anchor)
-// IndexVault implementation. Component renamed to CLIComander; anchor retained
-// for backward compatibility until docs are fully migrated.
+// anchor).
 func (o *CLIComander) IndexVault(
 	ctx context.Context,
 ) (vault.IndexStats, error) {
@@ -244,19 +269,75 @@ func (o *CLIComander) IndexVault(
 	return stats, nil
 }
 
-func (o *CLIComander) createNoteFromTemplate(
+func (o *CLIComander) parseAndValidateFrontmatter(
+	ctx context.Context,
 	templateID domain.TemplateID,
+	content string,
+) (domain.Frontmatter, error) {
+	// Parse frontmatter from rendered content (if parser available)
+	var fm domain.Frontmatter
+	if o.markdownParserPort != nil {
+		fmData, err := o.markdownParserPort.ParseFrontmatter(
+			ctx,
+			[]byte(content),
+		)
+		if err != nil {
+			o.log.Error().
+				Err(err).
+				Str("templateID", string(templateID)).
+				Msg("Frontmatter parsing failed")
+			return domain.Frontmatter{}, lithosErr.WrapWithContext(
+				err,
+				"failed to parse frontmatter from template %s", templateID,
+			)
+		}
+		o.log.Debug().
+			Str("templateID", string(templateID)).
+			Msg("Frontmatter parsed successfully")
+		fm = domain.NewFrontmatter(fmData)
+	} else {
+		// No parser available, use empty frontmatter
+		fm = domain.NewFrontmatter(map[string]interface{}{})
+		o.log.Debug().
+			Str("templateID", string(templateID)).
+			Msg("No frontmatter parser available, using empty frontmatter")
+	}
+
+	// Validate frontmatter against schema
+	if o.frontmatterService != nil {
+		if validationErr := o.frontmatterService.Validate(
+			ctx, string(templateID), fm,
+		); validationErr != nil {
+			o.log.Error().
+				Err(validationErr).
+				Str("templateID", string(templateID)).
+				Msg("Frontmatter validation failed")
+			return domain.Frontmatter{}, lithosErr.WrapWithContext(
+				validationErr,
+				"frontmatter validation failed for template %s", templateID,
+			)
+		}
+		o.log.Debug().
+			Str("templateID", string(templateID)).
+			Msg("Frontmatter validation passed")
+	}
+
+	return fm, nil
+}
+
+func (o *CLIComander) createNoteFromTemplateWithFrontmatter(
+	templateID domain.TemplateID,
+	fm domain.Frontmatter,
 ) (note domain.Note, relativePath string) {
 	basename := filepath.Base(string(templateID))
 	relativePath = basename + ".md"
 	o.log.Debug().Str("relativePath", relativePath).Msg("Note path generated")
 
-	frontmatter := domain.NewFrontmatter(map[string]interface{}{})
-	o.log.Debug().Msg("Empty frontmatter created")
+	o.log.Debug().Msg("Using provided frontmatter")
 
 	note, _ = domain.NewNote(
 		relativePath,
-		frontmatter,
+		fm,
 		[]domain.Link{},
 		[]domain.Heading{},
 		[]string{},

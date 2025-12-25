@@ -241,6 +241,249 @@ func (m *mockVaultScanner) ScanModified(
 	return m.ScanAll(ctx) // For simplicity, return all files
 }
 
+// TestFrontmatterValidationWithRealSchemas tests frontmatter validation using
+// test schema files.
+func TestFrontmatterValidationWithRealSchemas(t *testing.T) {
+	ctx := context.Background()
+
+	// Create temporary directory for test schemas
+	tempSchemasDir := t.TempDir()
+
+	// Create test property bank
+	propertyBankContent := `{
+		"properties": {
+			"title": {
+				"required": false,
+				"array": false,
+				"type": "string"
+			},
+			"context": {
+				"required": false,
+				"array": false,
+				"type": "string",
+				"enum": ["personal", "work", "education"]
+			},
+			"status": {
+				"required": false,
+				"array": false,
+				"type": "string",
+				"enum": ["to_do", "in_progress", "done"]
+			}
+		}
+	}`
+	propertyBankPath := filepath.Join(tempSchemasDir, "property_bank.json")
+	err := os.WriteFile(propertyBankPath, []byte(propertyBankContent), 0o600)
+	require.NoError(t, err)
+
+	// Create test task schema
+	taskSchemaContent := `{
+		"name": "task",
+		"properties": {
+			"fileClass": {
+				"type": "string",
+				"required": true
+			},
+			"title": {
+				"type": "string",
+				"required": true
+			},
+			"status": {
+				"$ref": "#/properties/status"
+			},
+			"context": {
+				"$ref": "#/properties/context"
+			}
+		}
+	}`
+	taskSchemaPath := filepath.Join(tempSchemasDir, "task.json")
+	err = os.WriteFile(taskSchemaPath, []byte(taskSchemaContent), 0o600)
+	require.NoError(t, err)
+
+	// Setup config using temp schema directory
+	config := &domain.Config{
+		SchemasDir:       tempSchemasDir,
+		PropertyBankFile: "property_bank.json",
+		FileClassKey:     "fileClass",
+	}
+
+	// Setup logger
+	logger := zerolog.New(zerolog.NewTestWriter(t)).With().Timestamp().Logger()
+
+	// Initialize real schema engine
+	schemaLoader := schemaadapter.NewSchemaLoaderAdapter(config, &logger)
+	schemaRegistry := schemaadapter.NewSchemaRegistryAdapter(logger)
+	schemaEngine, loadErr := schemaengine.NewSchemaEngine(
+		schemaLoader,
+		schemaRegistry,
+		logger,
+		nil, // No event bus needed for this test
+	)
+	require.NoError(t, loadErr)
+	loadErr = schemaEngine.Load(ctx)
+	require.NoError(t, loadErr)
+
+	// Create mock query service (simplified for testing)
+	cacheReader := json.NewJSONCacheReader(*config, logger)
+	queryService := query.NewQueryService(
+		cacheReader,
+		cacheReader,
+		*config,
+		logger,
+		nil,
+	)
+
+	// Create frontmatter service with real schema engine
+	frontmatterService := frontmatter.NewFrontmatterService(
+		schemaEngine,
+		logger,
+		nil,
+		queryService,
+	)
+
+	// Test validation with task schema
+	t.Run("successful validation with task schema", func(t *testing.T) {
+		validFrontmatter := map[string]any{
+			"fileClass": "task",
+			"title":     "Test Task",
+			"status":    "to_do",
+			"context":   "personal",
+		}
+
+		fm := domain.NewFrontmatter(validFrontmatter)
+		validationErr := frontmatterService.Validate(ctx, "test-task", fm)
+		assert.NoError(
+			t,
+			validationErr,
+			"Valid task frontmatter should pass validation",
+		)
+	})
+
+	t.Run("validation failure - missing required field", func(t *testing.T) {
+		invalidFrontmatter := map[string]any{
+			"fileClass": "task",
+			// Missing required title field
+			"status":  "to_do",
+			"context": "personal",
+		}
+
+		fm := domain.NewFrontmatter(invalidFrontmatter)
+		validationErr := frontmatterService.Validate(ctx, "test-task", fm)
+		require.Error(
+			t,
+			validationErr,
+			"Missing required field should fail validation",
+		)
+		assert.Contains(t, validationErr.Error(), "required field missing",
+			"Error should indicate required field is missing")
+	})
+
+	t.Run("validation failure - invalid enum value", func(t *testing.T) {
+		invalidFrontmatter := map[string]any{
+			"fileClass": "task",
+			"title":     "Test Task",
+			"status":    "invalid_status", // Invalid enum value
+			"context":   "personal",
+		}
+
+		fm := domain.NewFrontmatter(invalidFrontmatter)
+		validationErr := frontmatterService.Validate(ctx, "test-task", fm)
+		require.Error(
+			t,
+			validationErr,
+			"Invalid enum value should fail validation",
+		)
+		assert.Contains(t, validationErr.Error(), "value not in allowed enum",
+			"Error should indicate enum validation failure")
+	})
+
+	// Type validation may not be implemented yet - focus on required fields and
+	// enums
+
+	t.Run("validation with property references", func(t *testing.T) {
+		// Test validation using property bank references ($ref)
+		validFrontmatter := map[string]any{
+			"fileClass": "task",
+			"title":     "Test Task with References",
+			"status":    "to_do",
+			"context":   "personal",   // This uses $ref to property_bank.json
+			"date":      "2024-01-01", // This uses $ref to date_iso_8601
+		}
+
+		fm := domain.NewFrontmatter(validFrontmatter)
+		validationErr := frontmatterService.Validate(ctx, "test-task", fm)
+		assert.NoError(t, validationErr,
+			"Valid frontmatter with property references should pass validation")
+	})
+
+	t.Run("validation failure - missing required field", func(t *testing.T) {
+		invalidFrontmatter := map[string]any{
+			"fileClass": "task",
+			// Missing required title field
+			"status":  "to_do",
+			"context": "personal",
+		}
+
+		fm := domain.NewFrontmatter(invalidFrontmatter)
+		validationErr := frontmatterService.Validate(ctx, "test-task", fm)
+		require.Error(
+			t,
+			validationErr,
+			"Missing required field should fail validation",
+		)
+		assert.Contains(
+			t,
+			validationErr.Error(),
+			"required field missing",
+			"Error should indicate required field is missing",
+		)
+	})
+
+	t.Run("validation failure - invalid enum value", func(t *testing.T) {
+		invalidFrontmatter := map[string]any{
+			"fileClass": "task",
+			"title":     "Test Task",
+			"status":    "invalid_status", // Invalid enum value
+			"context":   "personal",
+		}
+
+		fm := domain.NewFrontmatter(invalidFrontmatter)
+		validationErr := frontmatterService.Validate(ctx, "test-task", fm)
+		require.Error(
+			t,
+			validationErr,
+			"Invalid enum value should fail validation",
+		)
+		assert.Contains(
+			t,
+			validationErr.Error(),
+			"value not in allowed enum",
+			"Error should indicate enum validation failure",
+		)
+	})
+
+	// Type validation may not be implemented yet - focus on required fields and
+	// enums
+
+	t.Run("validation with property references", func(t *testing.T) {
+		// Test validation using property bank references ($ref)
+		validFrontmatter := map[string]any{
+			"fileClass": "task",
+			"title":     "Test Task with References",
+			"status":    "to_do",
+			"context":   "personal",   // This uses $ref to property_bank.json
+			"date":      "2024-01-01", // This uses $ref to date_iso_8601
+		}
+
+		fm := domain.NewFrontmatter(validFrontmatter)
+		validationErr := frontmatterService.Validate(ctx, "test-task", fm)
+		assert.NoError(
+			t,
+			validationErr,
+			"Valid frontmatter with property references should pass validation",
+		)
+	})
+}
+
 // TestFrontmatterWorkflow tests the complete frontmatter processing workflow.
 func TestFrontmatterWorkflow(t *testing.T) {
 	ctx := context.Background()
