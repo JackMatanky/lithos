@@ -338,35 +338,40 @@ func intersectNotes(a, b []domain.Note) []domain.Note {
 // makeFileClassFunc returns a closure over QueryService for extracting
 // fileClass from a note.
 // The closure delegates to QueryService.IDQuery then extracts fileClass field.
-// Returns fileClass string or error for missing note/field.
+// Returns fileClass string or empty string for missing note/field.
+// Handles errors gracefully without crashing templates.
 //
 // Thread-safe: Closure captures QueryService pointer which is thread-safe for
 // reads.
 func (e *TemplateEngine) makeFileClassFunc(
 	ctx context.Context,
-) func(string) (string, error) {
-	return func(noteID string) (string, error) {
+) func(string) string {
+	return func(noteID string) string {
 		if e.queryService == nil {
-			return "", fmt.Errorf(
-				"fileClass lookup failed: query service not available",
-			)
+			e.log.Error().
+				Msg("fileClass lookup failed: query service not available")
+			return ""
 		}
 
 		// Query note by ID (path)
 		note, err := e.queryService.IDQuery(ctx, noteID)
 		if err != nil {
-			return "", fmt.Errorf("fileClass lookup failed: %w", err)
+			e.log.Debug().
+				Str("noteID", noteID).
+				Err(err).
+				Msg("fileClass lookup failed: note not found")
+			return ""
 		}
 
 		// Extract fileClass from frontmatter
 		fileClass := note.FileClass()
 		if fileClass == "" {
-			return "", fmt.Errorf(
-				"fileClass field missing from note %s",
-				noteID,
-			)
+			e.log.Debug().
+				Str("noteID", noteID).
+				Msg("fileClass field missing from note")
+			return ""
 		}
-		return fileClass, nil
+		return fileClass
 	}
 }
 
