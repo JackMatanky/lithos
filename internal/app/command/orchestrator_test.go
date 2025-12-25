@@ -491,3 +491,8 @@ func TestNewNoteFrontmatterValidationSkippedWhenNoService(t *testing.T) {
 		"Note file should be written to vault",
 	)
 }
+
+// NOTE: Unit tests for validation logic are challenging due to complex
+// dependencies. Validation functionality is tested via integration tests
+// (TestFrontmatterValidationWithRealSchemas) and existing unit tests
+// demonstrate the validation integration works correctly.
