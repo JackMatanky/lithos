@@ -21,6 +21,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testTemplateContent = "# Test Note\n\nThis is test content."
+	testTemplatePath    = "test-template.md"
+)
+
 // mockVaultIndexer provides a mock implementation of VaultIndexerInterface for
 // testing.
 type mockVaultIndexer struct {
@@ -183,9 +188,9 @@ func TestRunPropagatesCLIError(t *testing.T) {
 func TestNewNoteSuccess(t *testing.T) {
 	// Setup
 	mockTemplatePort := utils.NewMockTemplatePort()
-	expectedContent := "# Test Note\n\nThis is test content."
+	expectedContent := testTemplateContent
 	expectedTemplateID := domain.TemplateID("test-template")
-	expectedNotePath := "test-template.md" // basename + extension
+	expectedNotePath := testTemplatePath
 
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
@@ -413,4 +418,76 @@ func TestIndexVaultBuildError(t *testing.T) {
 	_, err := orchestrator.IndexVault(context.Background())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "indexing failed")
+}
+
+// TestNewNoteFrontmatterValidationSkippedWhenNoService verifies
+// validation is skipped when service unavailable.
+func TestNewNoteFrontmatterValidationSkippedWhenNoService(t *testing.T) {
+	// Setup
+	mockTemplatePort := utils.NewMockTemplatePort()
+	expectedContent := testTemplateContent
+	expectedTemplateID := domain.TemplateID("test-template")
+	expectedNotePath := testTemplatePath
+
+	config := domain.DefaultConfig()
+	logger := zerolog.Nop()
+
+	// Setup mock template
+	mockTemplatePort.SetTemplates(map[domain.TemplateID]domain.Template{
+		expectedTemplateID: domain.NewTemplate(
+			expectedTemplateID,
+			expectedContent,
+		),
+	})
+
+	// Create template engine with mock port
+	templateEngine := template.NewTemplateEngine(
+		mockTemplatePort,
+		&config,
+		nil, // QueryService not needed for this test
+		&logger,
+	)
+
+	// Create temp dir for vault
+	tempDir := t.TempDir()
+	config.VaultPath = tempDir
+
+	var mockVaultIndexer *vault.VaultIndexer
+	var mockEventBus events.EventBus
+	var mockFrontmatterService *frontmatter.FrontmatterService // nil service
+	var mockMarkdownParser spi.MarkdownParserPort              // nil parser
+
+	// Create orchestrator without validation service
+	orchestrator := NewCLIComander(
+		nil,
+		templateEngine,
+		mockVaultIndexer,
+		vaultAdapter.NewVaultWriterAdapter(config, logger),
+		mockFrontmatterService,
+		mockMarkdownParser,
+		&config,
+		&logger,
+		mockEventBus,
+	)
+
+	// Execute
+	ctx := context.Background()
+	note, err := orchestrator.NewNote(ctx, expectedTemplateID)
+
+	// Verify
+	require.NoError(t, err, "NewNote should succeed without validation service")
+	assert.Equal(
+		t,
+		expectedNotePath,
+		note.Path,
+		"Note path should be generated from templateID basename",
+	)
+
+	// Verify file was written
+	expectedFilePath := filepath.Join(tempDir, expectedNotePath)
+	assert.FileExists(
+		t,
+		expectedFilePath,
+		"Note file should be written to vault",
+	)
 }
