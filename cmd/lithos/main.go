@@ -137,6 +137,7 @@ func (c *Container) TemplateEngine() *template.TemplateEngine {
 			&c.config,
 			querySvc,
 			&c.logger,
+			c.eventBus,
 		)
 	}
 	return c.templateEngine

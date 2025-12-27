@@ -10,6 +10,7 @@ import (
 	templateAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/template"
 	templateService "github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,7 +35,14 @@ func TestTemplateEngine_RenderStaticTemplate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create template engine
-	engine := templateService.NewTemplateEngine(loader, &config, nil, &logger)
+	eventBus := utils.NewMockEventBus()
+	engine := templateService.NewTemplateEngine(
+		loader,
+		&config,
+		nil,
+		&logger,
+		eventBus,
+	)
 
 	// Load and render static template
 	templateID := domain.NewTemplateID("static_template")

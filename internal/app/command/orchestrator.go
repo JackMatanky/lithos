@@ -213,6 +213,7 @@ func (o *CLIComander) NewNote(
 		Msg("Note file written successfully")
 
 	o.publishNoteIndexedEvent(ctx, note)
+	o.publishNoteCreatedEvent(ctx, note, templateID)
 
 	// Step 7: Return Note
 	return note, nil
@@ -367,5 +368,41 @@ func (o *CLIComander) publishNoteIndexedEvent(
 			Err(publishErr).
 			Str("path", note.Path).
 			Msg("failed to publish note indexed event")
+	}
+}
+
+func (o *CLIComander) publishNoteCreatedEvent(
+	ctx context.Context,
+	note domain.Note,
+	templateID domain.TemplateID,
+) {
+	if o.eventBus == nil {
+		return
+	}
+
+	fileClass := note.FileClass()
+	if fileClass == "" {
+		fileClass = "unknown"
+	}
+
+	event, err := domain.NewNoteCreatedEvent(
+		note.Path,
+		fileClass,
+		string(templateID),
+		time.Now(),
+	)
+	if err != nil {
+		o.log.Warn().
+			Err(err).
+			Str("path", note.Path).
+			Msg("failed to create note created event")
+		return
+	}
+
+	if publishErr := o.eventBus.Publish(ctx, event); publishErr != nil {
+		o.log.Warn().
+			Err(publishErr).
+			Str("path", note.Path).
+			Msg("failed to publish note created event")
 	}
 }

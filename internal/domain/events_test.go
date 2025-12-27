@@ -32,6 +32,50 @@ func TestDomainEventImplementations(t *testing.T) {
 			map[string]string{"request_id": "abc"},
 			time.Now(),
 		),
+		domain.MustNewLookupPerformedEvent(
+			"note-123",
+			1,
+			time.Millisecond*100,
+			"basename",
+			time.Now(),
+		),
+		domain.MustNewQueryPerformedEvent(
+			map[string]any{"author": "John"},
+			5,
+			time.Millisecond*50,
+			"frontmatter",
+			time.Now(),
+		),
+		domain.MustNewSchemaLookupEvent(
+			"note-456",
+			"contact",
+			true,
+			time.Millisecond*25,
+			time.Now(),
+		),
+		domain.MustNewValidationPerformedEvent(
+			"note-789",
+			"contact",
+			true,
+			time.Millisecond*75,
+			nil,
+			time.Now(),
+		),
+		domain.MustNewValidationFailedEvent(
+			"note-101",
+			"meeting",
+			[]string{"missing title"},
+			[]string{"Add title field"},
+			time.Millisecond*60,
+			time.Now(),
+		),
+		domain.MustNewNoteCreatedEvent(
+			"note-202",
+			"contact",
+			"contact-template",
+			time.Now(),
+		),
+		domain.MustNewSchemaUpdatedEvent("contact", "updated", time.Now()),
 	}
 
 	for _, evt := range events {

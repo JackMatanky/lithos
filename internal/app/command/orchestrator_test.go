@@ -204,11 +204,13 @@ func TestNewNoteSuccess(t *testing.T) {
 	})
 
 	// Create template engine with mock port
+	var mockEventBus events.EventBus
 	templateEngine := template.NewTemplateEngine(
 		mockTemplatePort,
 		&config,
 		nil, // QueryService not needed for this test
 		&logger,
+		mockEventBus,
 	)
 
 	// Create temp dir for vault
@@ -216,7 +218,6 @@ func TestNewNoteSuccess(t *testing.T) {
 	config.VaultPath = tempDir
 
 	var mockVaultIndexer *vault.VaultIndexer
-	var mockEventBus events.EventBus
 	var mockFrontmatterService *frontmatter.FrontmatterService
 	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
@@ -277,15 +278,16 @@ func TestNewNoteTemplateNotFound(t *testing.T) {
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
 
+	var mockEventBus events.EventBus
 	templateEngine := template.NewTemplateEngine(
 		mockTemplatePort,
 		&config,
 		nil, // QueryService not needed for this test
 		&logger,
+		mockEventBus,
 	)
 
 	var mockVaultIndexer *vault.VaultIndexer
-	var mockEventBus events.EventBus
 	var mockFrontmatterService *frontmatter.FrontmatterService
 	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
@@ -318,17 +320,18 @@ func TestNewNoteFileWriteError(t *testing.T) {
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
 
+	var mockEventBus events.EventBus
 	templateEngine := template.NewTemplateEngine(
 		mockTemplatePort,
 		&config,
 		nil, // QueryService not needed for this test
 		&logger,
+		mockEventBus,
 	)
 
 	mockVaultWriter := utils.NewMockVaultWriterPort()
 	mockVaultWriter.SetWriteContentResult(assert.AnError)
 	var mockVaultIndexer *vault.VaultIndexer
-	var mockEventBus events.EventBus
 	var mockFrontmatterService *frontmatter.FrontmatterService
 	var mockMarkdownParser spi.MarkdownParserPort
 	orchestrator := NewCLIComander(
@@ -441,11 +444,13 @@ func TestNewNoteFrontmatterValidationSkippedWhenNoService(t *testing.T) {
 	})
 
 	// Create template engine with mock port
+	var mockEventBus events.EventBus
 	templateEngine := template.NewTemplateEngine(
 		mockTemplatePort,
 		&config,
 		nil, // QueryService not needed for this test
 		&logger,
+		mockEventBus,
 	)
 
 	// Create temp dir for vault
@@ -453,7 +458,6 @@ func TestNewNoteFrontmatterValidationSkippedWhenNoService(t *testing.T) {
 	config.VaultPath = tempDir
 
 	var mockVaultIndexer *vault.VaultIndexer
-	var mockEventBus events.EventBus
 	var mockFrontmatterService *frontmatter.FrontmatterService // nil service
 	var mockMarkdownParser spi.MarkdownParserPort              // nil parser
 

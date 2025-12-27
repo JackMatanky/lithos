@@ -13,6 +13,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -30,6 +31,7 @@ import (
 // - Depends on TemplatePort (SPI) for template loading
 // - Accepts Config for vault path access
 // - Uses QueryService for schema-aware lookups
+// - Uses EventBus for publishing lookup events
 // - Uses zerolog for structured logging
 // - Returns domain errors (ResourceError, TemplateError) for clean error
 // handling.
@@ -37,6 +39,7 @@ type TemplateEngine struct {
 	templatePort spi.TemplatePort
 	config       *domain.Config
 	queryService *query.QueryService
+	eventBus     events.EventBus
 	log          *zerolog.Logger
 	mu           sync.RWMutex
 	funcMap      template.FuncMap
@@ -58,6 +61,7 @@ type cachedTemplate struct {
 //   - config: Application configuration containing vault path and settings
 //   - queryService: Query service for schema-aware lookups (optional)
 //   - log: Structured logger for operation tracing and debugging
+//   - eventBus: Event bus for publishing lookup events
 //
 // Returns a pointer to the initialized TemplateEngine.
 func NewTemplateEngine(
@@ -65,11 +69,13 @@ func NewTemplateEngine(
 	config *domain.Config,
 	queryService *query.QueryService,
 	log *zerolog.Logger,
+	eventBus events.EventBus,
 ) *TemplateEngine {
 	return &TemplateEngine{
 		templatePort: templatePort,
 		config:       config,
 		queryService: queryService,
+		eventBus:     eventBus,
 		log:          log,
 		mu:           sync.RWMutex{},
 		funcMap:      nil,
@@ -207,6 +213,7 @@ func (e *TemplateEngine) buildFuncMap(ctx context.Context) template.FuncMap {
 // basename.
 // The closure delegates to QueryService.PathQuery with basename scope.
 // Returns a single note or error for not found/ambiguous cases.
+// Publishes LookupPerformedEvent for observability.
 //
 // Error cases:
 //   - "not found" when basename matches no notes
@@ -220,6 +227,8 @@ func (e *TemplateEngine) makeLookupFunc(
 	ctx context.Context,
 ) func(string) (domain.Note, error) {
 	return func(basename string) (domain.Note, error) {
+		start := time.Now()
+
 		if e.queryService == nil {
 			return domain.Note{}, fmt.Errorf(
 				"lookup failed: query service not available",
@@ -232,8 +241,41 @@ func (e *TemplateEngine) makeLookupFunc(
 			Value: basename,
 		})
 		if err != nil {
+			// Publish event for failed lookup
+			duration := time.Since(start)
+			event := domain.MustNewLookupPerformedEvent(
+				basename,
+				0,
+				duration,
+				"basename",
+				time.Now(),
+			)
+			go func() {
+				if pubErr := e.eventBus.Publish(ctx, event); pubErr != nil {
+					e.log.Error().
+						Err(pubErr).
+						Msg("failed to publish LookupPerformedEvent")
+				}
+			}()
 			return domain.Note{}, fmt.Errorf("lookup failed: %w", err)
 		}
+
+		// Publish event for successful lookup
+		duration := time.Since(start)
+		event := domain.MustNewLookupPerformedEvent(
+			basename,
+			len(notes),
+			duration,
+			"basename",
+			time.Now(),
+		)
+		go func() {
+			if pubErr := e.eventBus.Publish(ctx, event); pubErr != nil {
+				e.log.Error().
+					Err(pubErr).
+					Msg("failed to publish LookupPerformedEvent")
+			}
+		}()
 
 		// Handle result cases
 		if len(notes) == 0 {
@@ -256,6 +298,7 @@ func (e *TemplateEngine) makeLookupFunc(
 // frontmatter fields. The closure delegates to QueryService.FrontmatterQuery
 // with field/value pairs.
 // Returns a slice of notes (empty slice if no matches).
+// Publishes QueryPerformedEvent for observability.
 // Supports type-agnostic comparison (int 2 == float 2.0) and delegates to
 // MetadataQueryPort for indexed lookups.
 //
@@ -277,12 +320,46 @@ func (e *TemplateEngine) makeQueryFunc(
 	ctx context.Context,
 ) func(map[string]any) ([]domain.Note, error) {
 	return func(filter map[string]any) ([]domain.Note, error) {
+		start := time.Now()
+
 		if e.queryService == nil {
+			// Publish event for failed query
+			duration := time.Since(start)
+			event := domain.MustNewQueryPerformedEvent(
+				filter,
+				0,
+				duration,
+				"frontmatter",
+				time.Now(),
+			)
+			go func() {
+				if err := e.eventBus.Publish(ctx, event); err != nil {
+					e.log.Error().
+						Err(err).
+						Msg("failed to publish QueryPerformedEvent")
+				}
+			}()
 			return nil, fmt.Errorf("query failed: query service not available")
 		}
 
 		// Process all filters in the map (AND logic - all filters must match)
 		if len(filter) == 0 {
+			// Publish event for empty query
+			duration := time.Since(start)
+			event := domain.MustNewQueryPerformedEvent(
+				filter,
+				0,
+				duration,
+				"frontmatter",
+				time.Now(),
+			)
+			go func() {
+				if err := e.eventBus.Publish(ctx, event); err != nil {
+					e.log.Error().
+						Err(err).
+						Msg("failed to publish QueryPerformedEvent")
+				}
+			}()
 			return []domain.Note{}, nil
 		}
 
@@ -293,6 +370,22 @@ func (e *TemplateEngine) makeQueryFunc(
 		for field, value := range filter {
 			notes, err := e.queryService.FrontmatterQuery(ctx, field, value)
 			if err != nil {
+				// Publish event for failed query
+				duration := time.Since(start)
+				event := domain.MustNewQueryPerformedEvent(
+					filter,
+					len(result),
+					duration,
+					"frontmatter",
+					time.Now(),
+				)
+				go func() {
+					if pubErr := e.eventBus.Publish(ctx, event); pubErr != nil {
+						e.log.Error().
+							Err(pubErr).
+							Msg("failed to publish QueryPerformedEvent")
+					}
+				}()
 				return nil, fmt.Errorf("query failed: %w", err)
 			}
 
@@ -304,6 +397,23 @@ func (e *TemplateEngine) makeQueryFunc(
 				result = intersectNotes(result, notes)
 			}
 		}
+
+		// Publish event for successful query
+		duration := time.Since(start)
+		event := domain.MustNewQueryPerformedEvent(
+			filter,
+			len(result),
+			duration,
+			"frontmatter",
+			time.Now(),
+		)
+		go func() {
+			if err := e.eventBus.Publish(ctx, event); err != nil {
+				e.log.Error().
+					Err(err).
+					Msg("failed to publish QueryPerformedEvent")
+			}
+		}()
 
 		// Return defensive copies
 		clonedNotes := make([]domain.Note, len(result))
@@ -339,6 +449,7 @@ func intersectNotes(a, b []domain.Note) []domain.Note {
 // fileClass from a note.
 // The closure delegates to QueryService.IDQuery then extracts fileClass field.
 // Returns fileClass string or empty string for missing note/field.
+// Publishes SchemaLookupEvent for observability.
 // Handles errors gracefully without crashing templates.
 //
 // Thread-safe: Closure captures QueryService pointer which is thread-safe for
@@ -347,7 +458,25 @@ func (e *TemplateEngine) makeFileClassFunc(
 	ctx context.Context,
 ) func(string) string {
 	return func(noteID string) string {
+		start := time.Now()
+
 		if e.queryService == nil {
+			// Publish event for failed lookup
+			duration := time.Since(start)
+			event := domain.MustNewSchemaLookupEvent(
+				noteID,
+				"",
+				false,
+				duration,
+				time.Now(),
+			)
+			go func() {
+				if err := e.eventBus.Publish(ctx, event); err != nil {
+					e.log.Error().
+						Err(err).
+						Msg("failed to publish SchemaLookupEvent")
+				}
+			}()
 			e.log.Error().
 				Msg("fileClass lookup failed: query service not available")
 			return ""
@@ -356,6 +485,22 @@ func (e *TemplateEngine) makeFileClassFunc(
 		// Query note by ID (path)
 		note, err := e.queryService.IDQuery(ctx, noteID)
 		if err != nil {
+			// Publish event for failed lookup
+			duration := time.Since(start)
+			event := domain.MustNewSchemaLookupEvent(
+				noteID,
+				"",
+				false,
+				duration,
+				time.Now(),
+			)
+			go func() {
+				if pubErr := e.eventBus.Publish(ctx, event); pubErr != nil {
+					e.log.Error().
+						Err(pubErr).
+						Msg("failed to publish SchemaLookupEvent")
+				}
+			}()
 			e.log.Debug().
 				Str("noteID", noteID).
 				Err(err).
@@ -365,7 +510,26 @@ func (e *TemplateEngine) makeFileClassFunc(
 
 		// Extract fileClass from frontmatter
 		fileClass := note.FileClass()
-		if fileClass == "" {
+		found := fileClass != ""
+
+		// Publish event for lookup result
+		duration := time.Since(start)
+		event := domain.MustNewSchemaLookupEvent(
+			noteID,
+			fileClass,
+			found,
+			duration,
+			time.Now(),
+		)
+		go func() {
+			if err := e.eventBus.Publish(ctx, event); err != nil {
+				e.log.Error().
+					Err(err).
+					Msg("failed to publish SchemaLookupEvent")
+			}
+		}()
+
+		if !found {
 			e.log.Debug().
 				Str("noteID", noteID).
 				Msg("fileClass field missing from note")
