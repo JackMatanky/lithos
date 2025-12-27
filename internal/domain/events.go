@@ -705,3 +705,560 @@ func MustNewNoteCacheRequestedEvent(
 func (e *NoteCacheRequestedEvent) Note() Note {
 	return e.note
 }
+
+// LookupPerformedEvent tracks individual lookup operations in template
+// functions.
+type LookupPerformedEvent struct {
+	baseEvent
+
+	noteID      string
+	resultCount int
+	duration    time.Duration
+	lookupType  string // "basename" or "id"
+}
+
+// QueryPerformedEvent tracks query operations with filter criteria.
+type QueryPerformedEvent struct {
+	baseEvent
+
+	filterCriteria map[string]any
+	resultCount    int
+	duration       time.Duration
+	queryType      string // "path" or "frontmatter"
+}
+
+// SchemaLookupEvent tracks schema resolution lookups.
+type SchemaLookupEvent struct {
+	baseEvent
+
+	noteID     string
+	schemaName string
+	found      bool
+	duration   time.Duration
+}
+
+// ValidationPerformedEvent tracks validation outcomes.
+type ValidationPerformedEvent struct {
+	baseEvent
+
+	noteID     string
+	schemaName string
+	valid      bool
+	duration   time.Duration
+	errors     []string
+}
+
+// ValidationFailedEvent tracks validation failures with remediation hints.
+type ValidationFailedEvent struct {
+	baseEvent
+
+	noteID           string
+	schemaName       string
+	errors           []string
+	remediationHints []string
+	duration         time.Duration
+}
+
+// NoteCreatedEvent tracks successful note creation.
+type NoteCreatedEvent struct {
+	baseEvent
+
+	noteID     string
+	fileClass  string
+	templateID string
+}
+
+// SchemaUpdatedEvent triggers reactive cache invalidation.
+type SchemaUpdatedEvent struct {
+	baseEvent
+
+	schemaName string
+	operation  string // "created", "updated", "deleted"
+}
+
+// NewLookupPerformedEvent constructs a lookup event.
+func NewLookupPerformedEvent(
+	noteID string,
+	resultCount int,
+	duration time.Duration,
+	lookupType string,
+	occurredAt time.Time,
+) (*LookupPerformedEvent, error) {
+	if noteID == "" {
+		return nil, fmt.Errorf("note ID is required")
+	}
+	if resultCount < 0 {
+		return nil, fmt.Errorf("result count must be >= 0")
+	}
+	if lookupType == "" {
+		return nil, fmt.Errorf("lookup type is required")
+	}
+	base, err := newBaseEvent("LookupPerformed", noteID, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	return &LookupPerformedEvent{
+		baseEvent:   base,
+		noteID:      noteID,
+		resultCount: resultCount,
+		duration:    duration,
+		lookupType:  lookupType,
+	}, nil
+}
+
+// MustNewLookupPerformedEvent panics when construction fails.
+func MustNewLookupPerformedEvent(
+	noteID string,
+	resultCount int,
+	duration time.Duration,
+	lookupType string,
+	occurredAt time.Time,
+) *LookupPerformedEvent {
+	event, err := NewLookupPerformedEvent(
+		noteID,
+		resultCount,
+		duration,
+		lookupType,
+		occurredAt,
+	)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// NoteID returns the identifier of the looked-up note.
+func (e *LookupPerformedEvent) NoteID() string {
+	return e.noteID
+}
+
+// ResultCount returns the number of results found.
+func (e *LookupPerformedEvent) ResultCount() int {
+	return e.resultCount
+}
+
+// Duration returns the lookup duration.
+func (e *LookupPerformedEvent) Duration() time.Duration {
+	return e.duration
+}
+
+// LookupType returns the type of lookup performed.
+func (e *LookupPerformedEvent) LookupType() string {
+	return e.lookupType
+}
+
+// NewQueryPerformedEvent constructs a query event.
+func NewQueryPerformedEvent(
+	filterCriteria map[string]any,
+	resultCount int,
+	duration time.Duration,
+	queryType string,
+	occurredAt time.Time,
+) (*QueryPerformedEvent, error) {
+	if len(filterCriteria) == 0 {
+		return nil, fmt.Errorf("filter criteria is required")
+	}
+	if resultCount < 0 {
+		return nil, fmt.Errorf("result count must be >= 0")
+	}
+	if queryType == "" {
+		return nil, fmt.Errorf("query type is required")
+	}
+	base, err := newBaseEvent("QueryPerformed", "query", occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	// Defensive copy of filter criteria
+	criteria := make(map[string]any, len(filterCriteria))
+	for k, v := range filterCriteria {
+		criteria[k] = v
+	}
+	return &QueryPerformedEvent{
+		baseEvent:      base,
+		filterCriteria: criteria,
+		resultCount:    resultCount,
+		duration:       duration,
+		queryType:      queryType,
+	}, nil
+}
+
+// MustNewQueryPerformedEvent panics when construction fails.
+func MustNewQueryPerformedEvent(
+	filterCriteria map[string]any,
+	resultCount int,
+	duration time.Duration,
+	queryType string,
+	occurredAt time.Time,
+) *QueryPerformedEvent {
+	event, err := NewQueryPerformedEvent(
+		filterCriteria,
+		resultCount,
+		duration,
+		queryType,
+		occurredAt,
+	)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// FilterCriteria returns a defensive copy of the filter criteria.
+func (e *QueryPerformedEvent) FilterCriteria() map[string]any {
+	criteria := make(map[string]any, len(e.filterCriteria))
+	for k, v := range e.filterCriteria {
+		criteria[k] = v
+	}
+	return criteria
+}
+
+// ResultCount returns the number of results found.
+func (e *QueryPerformedEvent) ResultCount() int {
+	return e.resultCount
+}
+
+// Duration returns the query duration.
+func (e *QueryPerformedEvent) Duration() time.Duration {
+	return e.duration
+}
+
+// QueryType returns the type of query performed.
+func (e *QueryPerformedEvent) QueryType() string {
+	return e.queryType
+}
+
+// NewSchemaLookupEvent constructs a schema lookup event.
+func NewSchemaLookupEvent(
+	noteID string,
+	schemaName string,
+	found bool,
+	duration time.Duration,
+	occurredAt time.Time,
+) (*SchemaLookupEvent, error) {
+	if noteID == "" {
+		return nil, fmt.Errorf("note ID is required")
+	}
+	base, err := newBaseEvent("SchemaLookup", noteID, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	return &SchemaLookupEvent{
+		baseEvent:  base,
+		noteID:     noteID,
+		schemaName: schemaName,
+		found:      found,
+		duration:   duration,
+	}, nil
+}
+
+// MustNewSchemaLookupEvent panics when construction fails.
+func MustNewSchemaLookupEvent(
+	noteID string,
+	schemaName string,
+	found bool,
+	duration time.Duration,
+	occurredAt time.Time,
+) *SchemaLookupEvent {
+	event, err := NewSchemaLookupEvent(
+		noteID,
+		schemaName,
+		found,
+		duration,
+		occurredAt,
+	)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// NoteID returns the identifier of the note.
+func (e *SchemaLookupEvent) NoteID() string {
+	return e.noteID
+}
+
+// SchemaName returns the resolved schema name.
+func (e *SchemaLookupEvent) SchemaName() string {
+	return e.schemaName
+}
+
+// Found indicates if the schema was found.
+func (e *SchemaLookupEvent) Found() bool {
+	return e.found
+}
+
+// Duration returns the lookup duration.
+func (e *SchemaLookupEvent) Duration() time.Duration {
+	return e.duration
+}
+
+// NewValidationPerformedEvent constructs a validation event.
+func NewValidationPerformedEvent(
+	noteID string,
+	schemaName string,
+	valid bool,
+	duration time.Duration,
+	errors []string,
+	occurredAt time.Time,
+) (*ValidationPerformedEvent, error) {
+	if noteID == "" {
+		return nil, fmt.Errorf("note ID is required")
+	}
+	if schemaName == "" {
+		return nil, fmt.Errorf("schema name is required")
+	}
+	base, err := newBaseEvent("ValidationPerformed", noteID, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	// Defensive copy of errors
+	errs := make([]string, len(errors))
+	copy(errs, errors)
+	return &ValidationPerformedEvent{
+		baseEvent:  base,
+		noteID:     noteID,
+		schemaName: schemaName,
+		valid:      valid,
+		duration:   duration,
+		errors:     errs,
+	}, nil
+}
+
+// MustNewValidationPerformedEvent panics when construction fails.
+func MustNewValidationPerformedEvent(
+	noteID string,
+	schemaName string,
+	valid bool,
+	duration time.Duration,
+	errors []string,
+	occurredAt time.Time,
+) *ValidationPerformedEvent {
+	event, err := NewValidationPerformedEvent(
+		noteID,
+		schemaName,
+		valid,
+		duration,
+		errors,
+		occurredAt,
+	)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// NoteID returns the identifier of the validated note.
+func (e *ValidationPerformedEvent) NoteID() string {
+	return e.noteID
+}
+
+// SchemaName returns the schema used for validation.
+func (e *ValidationPerformedEvent) SchemaName() string {
+	return e.schemaName
+}
+
+// IsValid indicates if validation succeeded.
+func (e *ValidationPerformedEvent) IsValid() bool {
+	return e.valid
+}
+
+// Duration returns the validation duration.
+func (e *ValidationPerformedEvent) Duration() time.Duration {
+	return e.duration
+}
+
+// Errors returns a defensive copy of validation errors.
+func (e *ValidationPerformedEvent) Errors() []string {
+	errs := make([]string, len(e.errors))
+	copy(errs, e.errors)
+	return errs
+}
+
+// NewValidationFailedEvent constructs a validation failure event.
+func NewValidationFailedEvent(
+	noteID string,
+	schemaName string,
+	errors []string,
+	remediationHints []string,
+	duration time.Duration,
+	occurredAt time.Time,
+) (*ValidationFailedEvent, error) {
+	if noteID == "" {
+		return nil, fmt.Errorf("note ID is required")
+	}
+	if schemaName == "" {
+		return nil, fmt.Errorf("schema name is required")
+	}
+	if len(errors) == 0 {
+		return nil, fmt.Errorf("errors are required for failure event")
+	}
+	base, err := newBaseEvent("ValidationFailed", noteID, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	// Defensive copies
+	errs := make([]string, len(errors))
+	copy(errs, errors)
+	hints := make([]string, len(remediationHints))
+	copy(hints, remediationHints)
+	return &ValidationFailedEvent{
+		baseEvent:        base,
+		noteID:           noteID,
+		schemaName:       schemaName,
+		errors:           errs,
+		remediationHints: hints,
+		duration:         duration,
+	}, nil
+}
+
+// MustNewValidationFailedEvent panics when construction fails.
+func MustNewValidationFailedEvent(
+	noteID string,
+	schemaName string,
+	errors []string,
+	remediationHints []string,
+	duration time.Duration,
+	occurredAt time.Time,
+) *ValidationFailedEvent {
+	event, err := NewValidationFailedEvent(
+		noteID,
+		schemaName,
+		errors,
+		remediationHints,
+		duration,
+		occurredAt,
+	)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// NoteID returns the identifier of the note that failed validation.
+func (e *ValidationFailedEvent) NoteID() string {
+	return e.noteID
+}
+
+// SchemaName returns the schema used for validation.
+func (e *ValidationFailedEvent) SchemaName() string {
+	return e.schemaName
+}
+
+// Errors returns a defensive copy of validation errors.
+func (e *ValidationFailedEvent) Errors() []string {
+	errs := make([]string, len(e.errors))
+	copy(errs, e.errors)
+	return errs
+}
+
+// RemediationHints returns a defensive copy of remediation hints.
+func (e *ValidationFailedEvent) RemediationHints() []string {
+	hints := make([]string, len(e.remediationHints))
+	copy(hints, e.remediationHints)
+	return hints
+}
+
+// Duration returns the validation duration.
+func (e *ValidationFailedEvent) Duration() time.Duration {
+	return e.duration
+}
+
+// NewNoteCreatedEvent constructs a note creation event.
+func NewNoteCreatedEvent(
+	noteID string,
+	fileClass string,
+	templateID string,
+	occurredAt time.Time,
+) (*NoteCreatedEvent, error) {
+	if noteID == "" {
+		return nil, fmt.Errorf("note ID is required")
+	}
+	if fileClass == "" {
+		return nil, fmt.Errorf("file class is required")
+	}
+	base, err := newBaseEvent("NoteCreated", noteID, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	return &NoteCreatedEvent{
+		baseEvent:  base,
+		noteID:     noteID,
+		fileClass:  fileClass,
+		templateID: templateID,
+	}, nil
+}
+
+// MustNewNoteCreatedEvent panics when construction fails.
+func MustNewNoteCreatedEvent(
+	noteID string,
+	fileClass string,
+	templateID string,
+	occurredAt time.Time,
+) *NoteCreatedEvent {
+	event, err := NewNoteCreatedEvent(noteID, fileClass, templateID, occurredAt)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// NoteID returns the identifier of the created note.
+func (e *NoteCreatedEvent) NoteID() string {
+	return e.noteID
+}
+
+// FileClass returns the file class of the created note.
+func (e *NoteCreatedEvent) FileClass() string {
+	return e.fileClass
+}
+
+// TemplateID returns the template used to create the note.
+func (e *NoteCreatedEvent) TemplateID() string {
+	return e.templateID
+}
+
+// NewSchemaUpdatedEvent constructs a schema update event.
+func NewSchemaUpdatedEvent(
+	schemaName string,
+	operation string,
+	occurredAt time.Time,
+) (*SchemaUpdatedEvent, error) {
+	if schemaName == "" {
+		return nil, fmt.Errorf("schema name is required")
+	}
+	if operation == "" {
+		return nil, fmt.Errorf("operation is required")
+	}
+	base, err := newBaseEvent("SchemaUpdated", schemaName, occurredAt)
+	if err != nil {
+		return nil, err
+	}
+	return &SchemaUpdatedEvent{
+		baseEvent:  base,
+		schemaName: schemaName,
+		operation:  operation,
+	}, nil
+}
+
+// MustNewSchemaUpdatedEvent panics when construction fails.
+func MustNewSchemaUpdatedEvent(
+	schemaName string,
+	operation string,
+	occurredAt time.Time,
+) *SchemaUpdatedEvent {
+	event, err := NewSchemaUpdatedEvent(schemaName, operation, occurredAt)
+	if err != nil {
+		panic(err)
+	}
+	return event
+}
+
+// SchemaName returns the name of the updated schema.
+func (e *SchemaUpdatedEvent) SchemaName() string {
+	return e.schemaName
+}
+
+// Operation returns the type of operation performed.
+func (e *SchemaUpdatedEvent) Operation() string {
+	return e.operation
+}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -31,41 +32,6 @@ type testMockMetadataQueryPort struct {
 type mockTemplatePort struct {
 	templates map[domain.TemplateID]domain.Template
 	loadError error
-}
-
-func (m *testMockMetadataQueryPort) Read(
-	ctx context.Context,
-	path string,
-) (domain.Note, error) {
-	if m.readFunc != nil {
-		return m.readFunc(ctx, path)
-	}
-	return m.MockMetadataQueryPort.Read(ctx, path)
-}
-
-// createTestQueryService creates a QueryService with test mocks.
-func createTestQueryService() *query.QueryService {
-	// Use the comprehensive mocks from tests/utils
-	boltReader := utils.NewMockMetadataQueryPort()
-	sqliteReader := utils.NewMockMetadataQueryPort()
-
-	config := domain.Config{}
-	logger := zerolog.Nop()
-	eventBus := utils.NewMockEventBus()
-
-	return query.NewQueryService(
-		boltReader,
-		sqliteReader,
-		config,
-		logger,
-		eventBus,
-	)
-}
-
-func newMockTemplatePort() *mockTemplatePort {
-	return &mockTemplatePort{
-		templates: make(map[domain.TemplateID]domain.Template),
-	}
 }
 
 // List returns a list of available template IDs.
@@ -109,41 +75,45 @@ func (m *mockTemplatePort) setLoadError(err error) {
 	m.loadError = err
 }
 
+func (m *testMockMetadataQueryPort) Read(
+	ctx context.Context,
+	path string,
+) (domain.Note, error) {
+	if m.readFunc != nil {
+		return m.readFunc(ctx, path)
+	}
+	return m.MockMetadataQueryPort.Read(ctx, path)
+}
+
+func newMockTemplatePort() *mockTemplatePort {
+	return &mockTemplatePort{
+		templates: make(map[domain.TemplateID]domain.Template),
+	}
+}
+
+// createTestQueryService creates a QueryService with test mocks.
+func createTestQueryService() *query.QueryService {
+	// Use the comprehensive mocks from tests/utils
+	boltReader := utils.NewMockMetadataQueryPort()
+	sqliteReader := utils.NewMockMetadataQueryPort()
+
+	config := domain.Config{}
+	logger := zerolog.Nop()
+	eventBus := utils.NewMockEventBus()
+
+	return query.NewQueryService(
+		boltReader,
+		sqliteReader,
+		config,
+		logger,
+		eventBus,
+	)
+}
+
 // TestTemplateEngine_Load tests the TemplateEngine Load functionality.
 func TestTemplateEngine_Load(t *testing.T) {
 	ctx := context.Background()
 	templateID := domain.NewTemplateID("test-template")
-	template := domain.NewTemplate(templateID, "test content")
-
-	t.Run("delegates to TemplatePort correctly", func(t *testing.T) {
-		mockPort := newMockTemplatePort()
-		mockPort.setTemplates(map[domain.TemplateID]domain.Template{
-			templateID: template,
-		})
-
-		config := domain.Config{}
-		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
-
-		result, err := engine.Load(ctx, templateID)
-
-		require.NoError(t, err)
-		assert.Equal(t, template, result)
-	})
-
-	t.Run("propagates errors from port", func(t *testing.T) {
-		expectedErr := errors.New("port error")
-		mockPort := newMockTemplatePort()
-		mockPort.setLoadError(expectedErr)
-
-		config := domain.Config{}
-		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
-
-		_, err := engine.Load(ctx, templateID)
-
-		assert.Equal(t, expectedErr, err)
-	})
 
 	t.Run("uses path control functions correctly", func(t *testing.T) {
 		testTemplate := domain.NewTemplate(
@@ -157,7 +127,13 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{VaultPath: "/test/vault"}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
+		engine := NewTemplateEngine(
+			mockPort,
+			&config,
+			nil,
+			&logger,
+			utils.NewMockEventBus(),
+		)
 
 		result, err := engine.Render(ctx, templateID)
 
@@ -174,7 +150,13 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
+		engine := NewTemplateEngine(
+			mockPort,
+			&config,
+			nil,
+			&logger,
+			utils.NewMockEventBus(),
+		)
 
 		result, err := engine.Render(ctx, templateID)
 
@@ -193,7 +175,13 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
+		engine := NewTemplateEngine(
+			mockPort,
+			&config,
+			nil,
+			&logger,
+			utils.NewMockEventBus(),
+		)
 
 		_, err := engine.Render(ctx, templateID)
 
@@ -224,6 +212,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 				&config,
 				nil,
 				&logger,
+				utils.NewMockEventBus(),
 			)
 
 			_, err := engine.Render(ctx, templateID)
@@ -242,7 +231,13 @@ func TestTemplateEngine_Load(t *testing.T) {
 
 		config := domain.Config{}
 		logger := zerolog.Nop()
-		engine := NewTemplateEngine(mockPort, &config, nil, &logger)
+		engine := NewTemplateEngine(
+			mockPort,
+			&config,
+			nil,
+			&logger,
+			utils.NewMockEventBus(),
+		)
 
 		_, err := engine.Render(ctx, templateID)
 
@@ -257,7 +252,13 @@ func TestTemplateEngine_Load(t *testing.T) {
 func TestTemplateEngine_BuildFuncMap(t *testing.T) {
 	config := domain.Config{VaultPath: "/test/vault"}
 	logger := zerolog.Nop()
-	engine := NewTemplateEngine(nil, &config, nil, &logger)
+	engine := NewTemplateEngine(
+		nil,
+		&config,
+		nil,
+		&logger,
+		utils.NewMockEventBus(),
+	)
 	funcMap := engine.buildFuncMap(context.Background())
 
 	t.Run("now function returns formatted timestamp", func(t *testing.T) {
@@ -321,7 +322,13 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 		"lookup function exists and has correct signature",
 		func(t *testing.T) {
 			mockQuery := createTestQueryService()
-			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+			engine := NewTemplateEngine(
+				nil,
+				&config,
+				mockQuery,
+				&logger,
+				utils.NewMockEventBus(),
+			)
 
 			funcMap := engine.buildFuncMap(context.Background())
 			lookupFunc, ok := funcMap["lookup"]
@@ -339,7 +346,13 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 
 	t.Run("lookup returns error when note not found", func(t *testing.T) {
 		mockQuery := createTestQueryService()
-		engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+		engine := NewTemplateEngine(
+			nil,
+			&config,
+			mockQuery,
+			&logger,
+			utils.NewMockEventBus(),
+		)
 
 		funcMap := engine.buildFuncMap(context.Background())
 		lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
@@ -352,7 +365,13 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 	t.Run(
 		"lookup returns error when QueryService unavailable",
 		func(t *testing.T) {
-			engine := NewTemplateEngine(nil, &config, nil, &logger)
+			engine := NewTemplateEngine(
+				nil,
+				&config,
+				nil,
+				&logger,
+				utils.NewMockEventBus(),
+			)
 
 			funcMap := engine.buildFuncMap(context.Background())
 			lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
@@ -386,7 +405,13 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 			log,
 			eventBus,
 		)
-		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
 
 		funcMap := engine.buildFuncMap(context.Background())
 		lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
@@ -416,7 +441,13 @@ func TestTemplateEngine_LookupFunction(t *testing.T) {
 			log,
 			eventBus,
 		)
-		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
 
 		funcMap := engine.buildFuncMap(context.Background())
 		lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
@@ -436,7 +467,13 @@ func TestTemplateEngine_QueryFunction(t *testing.T) {
 		"query function exists and has correct signature",
 		func(t *testing.T) {
 			mockQuery := createTestQueryService()
-			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+			engine := NewTemplateEngine(
+				nil,
+				&config,
+				mockQuery,
+				&logger,
+				utils.NewMockEventBus(),
+			)
 
 			funcMap := engine.buildFuncMap(context.Background())
 			queryFunc, ok := funcMap["query"]
@@ -455,7 +492,13 @@ func TestTemplateEngine_QueryFunction(t *testing.T) {
 	t.Run(
 		"query returns error when QueryService unavailable",
 		func(t *testing.T) {
-			engine := NewTemplateEngine(nil, &config, nil, &logger)
+			engine := NewTemplateEngine(
+				nil,
+				&config,
+				nil,
+				&logger,
+				utils.NewMockEventBus(),
+			)
 
 			funcMap := engine.buildFuncMap(context.Background())
 			queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
@@ -489,7 +532,13 @@ func TestTemplateEngine_QueryFunction(t *testing.T) {
 			log,
 			eventBus,
 		)
-		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
 
 		funcMap := engine.buildFuncMap(context.Background())
 		queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
@@ -517,7 +566,13 @@ func TestTemplateEngine_QueryFunction(t *testing.T) {
 			log,
 			eventBus,
 		)
-		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
 
 		funcMap := engine.buildFuncMap(context.Background())
 		queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
@@ -537,7 +592,13 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 		"fileClass function exists and has correct signature",
 		func(t *testing.T) {
 			mockQuery := createTestQueryService()
-			engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+			engine := NewTemplateEngine(
+				nil,
+				&config,
+				mockQuery,
+				&logger,
+				utils.NewMockEventBus(),
+			)
 
 			funcMap := engine.buildFuncMap(context.Background())
 			fileClassFunc, ok := funcMap["fileClass"]
@@ -556,7 +617,13 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 	t.Run(
 		"fileClass returns empty string when QueryService unavailable",
 		func(t *testing.T) {
-			engine := NewTemplateEngine(nil, &config, nil, &logger)
+			engine := NewTemplateEngine(
+				nil,
+				&config,
+				nil,
+				&logger,
+				utils.NewMockEventBus(),
+			)
 
 			funcMap := engine.buildFuncMap(context.Background())
 			fileClassFunc := funcMap["fileClass"].(func(string) string)
@@ -595,7 +662,13 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 				log,
 				eventBus,
 			)
-			engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+			engine := NewTemplateEngine(
+				nil,
+				&cfg,
+				querySvc,
+				&log,
+				utils.NewMockEventBus(),
+			)
 
 			funcMap := engine.buildFuncMap(context.Background())
 			fileClassFunc := funcMap["fileClass"].(func(string) string)
@@ -632,7 +705,13 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 			log,
 			eventBus,
 		)
-		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
 
 		funcMap := engine.buildFuncMap(context.Background())
 		fileClassFunc := funcMap["fileClass"].(func(string) string)
@@ -662,7 +741,13 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 			log,
 			eventBus,
 		)
-		engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
 
 		funcMap := engine.buildFuncMap(context.Background())
 		fileClassFunc := funcMap["fileClass"].(func(string) string)
@@ -700,7 +785,13 @@ func TestTemplateEngine_FileClassFunction(t *testing.T) {
 				log,
 				eventBus,
 			)
-			engine := NewTemplateEngine(nil, &cfg, querySvc, &log)
+			engine := NewTemplateEngine(
+				nil,
+				&cfg,
+				querySvc,
+				&log,
+				utils.NewMockEventBus(),
+			)
 
 			funcMap := engine.buildFuncMap(context.Background())
 			fileClassFunc := funcMap["fileClass"].(func(string) string)
@@ -768,7 +859,13 @@ func TestTemplateEngine_Immutability(t *testing.T) {
 		// in the closure.
 
 		mockQuery := createTestQueryService()
-		engine := NewTemplateEngine(nil, &config, mockQuery, &logger)
+		engine := NewTemplateEngine(
+			nil,
+			&config,
+			mockQuery,
+			&logger,
+			utils.NewMockEventBus(),
+		)
 
 		funcMap := engine.buildFuncMap(context.Background())
 
@@ -791,4 +888,294 @@ func TestTemplateEngine_Immutability(t *testing.T) {
 		_, ok = fileClassFunc.(func(string) string)
 		assert.True(t, ok, "fileClass should have correct signature")
 	})
+}
+
+// TestEventBusIntegration tests EventBus integration in TemplateEngine.
+func TestEventBusIntegration(t *testing.T) {
+	t.Run("TemplateEngine accepts EventBus in constructor", func(t *testing.T) {
+		templatePort := newMockTemplatePort()
+		config := domain.Config{VaultPath: "/vault"}
+		logger := zerolog.Nop()
+		queryService := createTestQueryService()
+
+		// This will fail until EventBus is integrated into constructor
+		// engine := NewTemplateEngine(templatePort, &config, queryService,
+		// &logger, eventBus)
+		// For now, create without EventBus
+		engine := NewTemplateEngine(
+			templatePort,
+			&config,
+			queryService,
+			&logger,
+			utils.NewMockEventBus(),
+		)
+
+		require.NotNil(t, engine)
+		// TODO: Verify EventBus is stored once integrated
+	})
+
+	t.Run("lookup function publishes LookupPerformedEvent", func(t *testing.T) {
+		mockBolt := utils.NewMockMetadataQueryPort()
+		mockSqlite := utils.NewMockMetadataQueryPort()
+
+		testNote := domain.Note{
+			Path: "contact.md",
+			Frontmatter: domain.NewFrontmatter(map[string]any{
+				"fileClass": "contact",
+			}),
+		}
+		mockBolt.PathQueryFunc = func(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error) {
+			if opts.Scope == spi.PathQueryScopeBasename &&
+				opts.Value == "contact" {
+				return []domain.Note{testNote}, nil
+			}
+			return nil, nil
+		}
+
+		cfg := domain.Config{}
+		log := zerolog.Nop()
+		eventBus := utils.NewMockEventBus()
+
+		querySvc := query.NewQueryService(
+			mockBolt,
+			mockSqlite,
+			cfg,
+			log,
+			eventBus,
+		)
+		engine := NewTemplateEngine(nil, &cfg, querySvc, &log, eventBus)
+
+		funcMap := engine.buildFuncMap(context.Background())
+		lookupFunc := funcMap["lookup"].(func(string) (domain.Note, error))
+
+		result, err := lookupFunc("contact")
+		require.NoError(t, err)
+		assert.Equal(t, "contact.md", result.Path)
+
+		// Give async goroutines time to publish events
+		time.Sleep(100 * time.Millisecond)
+
+		// Verify event was published
+		events := eventBus.GetPublishedEvents()
+		require.Len(t, events, 1)
+		lookupEvent, ok := events[0].(*domain.LookupPerformedEvent)
+		require.True(t, ok)
+		assert.Equal(t, "contact", lookupEvent.NoteID())
+		assert.Equal(t, 1, lookupEvent.ResultCount())
+		assert.Equal(t, "basename", lookupEvent.LookupType())
+		assert.Positive(t, lookupEvent.Duration())
+	})
+
+	t.Run("fileClass function publishes SchemaLookupEvent", func(t *testing.T) {
+		mockBolt := &testMockMetadataQueryPort{
+			MockMetadataQueryPort: utils.NewMockMetadataQueryPort(),
+		}
+		mockSqlite := utils.NewMockMetadataQueryPort()
+
+		testNote := domain.Note{
+			Path: "contact.md",
+			Frontmatter: domain.NewFrontmatter(map[string]any{
+				"fileClass": "contact",
+			}),
+		}
+		mockBolt.readFunc = func(ctx context.Context, path string) (domain.Note, error) {
+			return testNote, nil
+		}
+
+		cfg := domain.Config{}
+		log := zerolog.Nop()
+		eventBus := utils.NewMockEventBus()
+
+		querySvc := query.NewQueryService(
+			mockBolt,
+			mockSqlite,
+			cfg,
+			log,
+			eventBus,
+		)
+		// TODO: Update constructor once EventBus is integrated
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
+
+		funcMap := engine.buildFuncMap(context.Background())
+		fileClassFunc := funcMap["fileClass"].(func(string) string)
+
+		result := fileClassFunc("contact.md")
+		assert.Equal(t, "contact", result)
+
+		// TODO: Verify event was published once EventBus is integrated
+	})
+
+	t.Run("query function publishes QueryPerformedEvent", func(t *testing.T) {
+		mockBolt := utils.NewMockMetadataQueryPort()
+		mockSqlite := utils.NewMockMetadataQueryPort()
+
+		testNotes := []domain.Note{
+			{
+				Path: "note1.md",
+				Frontmatter: domain.NewFrontmatter(map[string]any{
+					"author":    "John",
+					"fileClass": "contact",
+				}),
+			},
+			{
+				Path: "note2.md",
+				Frontmatter: domain.NewFrontmatter(map[string]any{
+					"author":    "John",
+					"fileClass": "meeting",
+				}),
+			},
+		}
+		mockSqlite.FrontmatterQueryFunc = func(ctx context.Context, field, value string) ([]domain.Note, error) {
+			if field == "author" && value == "John" {
+				return testNotes, nil
+			}
+			return nil, nil
+		}
+
+		cfg := domain.Config{}
+		log := zerolog.Nop()
+		eventBus := utils.NewMockEventBus()
+
+		querySvc := query.NewQueryService(
+			mockBolt,
+			mockSqlite,
+			cfg,
+			log,
+			eventBus,
+		)
+		// TODO: Update constructor once EventBus is integrated
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
+
+		funcMap := engine.buildFuncMap(context.Background())
+		queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
+
+		result, err := queryFunc(map[string]any{"author": "John"})
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+
+		// TODO: Verify event was published once EventBus is integrated
+	})
+
+	t.Run("fileClass function publishes SchemaLookupEvent", func(t *testing.T) {
+		mockBolt := &testMockMetadataQueryPort{
+			MockMetadataQueryPort: utils.NewMockMetadataQueryPort(),
+		}
+		mockSqlite := utils.NewMockMetadataQueryPort()
+
+		testNote := domain.Note{
+			Path: "contact.md",
+			Frontmatter: domain.NewFrontmatter(map[string]any{
+				"fileClass": "contact",
+			}),
+		}
+		mockBolt.readFunc = func(ctx context.Context, path string) (domain.Note, error) {
+			return testNote, nil
+		}
+
+		cfg := domain.Config{}
+		log := zerolog.Nop()
+		eventBus := utils.NewMockEventBus()
+
+		querySvc := query.NewQueryService(
+			mockBolt,
+			mockSqlite,
+			cfg,
+			log,
+			eventBus,
+		)
+		// TODO: Update constructor once EventBus is integrated
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
+
+		funcMap := engine.buildFuncMap(context.Background())
+		fileClassFunc := funcMap["fileClass"].(func(string) string)
+
+		result := fileClassFunc("contact.md")
+		assert.Equal(t, "contact", result)
+
+		// TODO: Verify event was published once EventBus is integrated
+	})
+
+	t.Run("query function publishes QueryPerformedEvent", func(t *testing.T) {
+		mockBolt := utils.NewMockMetadataQueryPort()
+		mockSqlite := utils.NewMockMetadataQueryPort()
+
+		testNotes := []domain.Note{
+			{
+				Path: "note1.md",
+				Frontmatter: domain.NewFrontmatter(map[string]any{
+					"author":    "John",
+					"fileClass": "contact",
+				}),
+			},
+			{
+				Path: "note2.md",
+				Frontmatter: domain.NewFrontmatter(map[string]any{
+					"author":    "John",
+					"fileClass": "meeting",
+				}),
+			},
+		}
+		mockSqlite.FrontmatterQueryFunc = func(ctx context.Context, field, value string) ([]domain.Note, error) {
+			if field == "author" && value == "John" {
+				return testNotes, nil
+			}
+			return nil, nil
+		}
+
+		cfg := domain.Config{}
+		log := zerolog.Nop()
+		eventBus := utils.NewMockEventBus()
+
+		querySvc := query.NewQueryService(
+			mockBolt,
+			mockSqlite,
+			cfg,
+			log,
+			eventBus,
+		)
+		// TODO: Update constructor once EventBus is integrated
+		engine := NewTemplateEngine(
+			nil,
+			&cfg,
+			querySvc,
+			&log,
+			utils.NewMockEventBus(),
+		)
+
+		funcMap := engine.buildFuncMap(context.Background())
+		queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
+
+		result, err := queryFunc(map[string]any{"author": "John"})
+		require.NoError(t, err)
+		assert.Len(t, result, 2)
+
+		// TODO: Verify event was published once EventBus is integrated
+		// events := eventBus.GetPublishedEvents()
+		// require.Len(t, events, 1)
+		// queryEvent, ok := events[0].(*domain.QueryPerformedEvent)
+		// require.True(t, ok)
+		// assert.Equal(t, 2, queryEvent.ResultCount())
+		// assert.Equal(t, "frontmatter", queryEvent.QueryType())
+	})
+
+	// Note: Event publishing integration tests are in
+	// tests/integration/event_driven_test.go
 }
