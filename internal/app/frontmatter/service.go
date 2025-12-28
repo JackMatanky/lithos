@@ -110,6 +110,7 @@ func (s *FrontmatterService) Validate(
 	noteID string,
 	fm domain.Frontmatter,
 ) error {
+	start := time.Now()
 	var validationErrors []error
 
 	// Check for cancellation
@@ -132,7 +133,8 @@ func (s *FrontmatterService) Validate(
 	}
 
 	validationErr := s.aggregateValidationErrors(validationErrors)
-	s.publishValidationEvent(ctx, noteID, fm, validationErr)
+	duration := time.Since(start)
+	s.publishValidationEvent(ctx, noteID, fm, validationErr, duration)
 	return validationErr
 }
 
@@ -168,6 +170,7 @@ func (s *FrontmatterService) IsSchemaCompliant(
 	noteID string,
 	fm domain.Frontmatter,
 ) error {
+	start := time.Now()
 	var validationErrors []error
 
 	// Check for cancellation
@@ -185,7 +188,8 @@ func (s *FrontmatterService) IsSchemaCompliant(
 	}
 
 	validationErr := s.aggregateValidationErrors(validationErrors)
-	s.publishValidationEvent(ctx, noteID, fm, validationErr)
+	duration := time.Since(start)
+	s.publishValidationEvent(ctx, noteID, fm, validationErr, duration)
 	return validationErr
 }
 
@@ -648,6 +652,7 @@ func (s *FrontmatterService) publishValidationEvent(
 	noteID string,
 	fm domain.Frontmatter,
 	validationErr error,
+	duration time.Duration,
 ) {
 	if s.eventBus == nil {
 		return
@@ -656,36 +661,54 @@ func (s *FrontmatterService) publishValidationEvent(
 	if strings.TrimSpace(noteID) == "" {
 		noteID = "frontmatter/" + schemaName
 	}
+	if schemaName == "" {
+		schemaName = "unknown"
+	}
 	messages := flattenErrors(validationErr)
 
-	// Create a minimal Note object for the event
-	minimalNote := domain.Note{
-		Path:        noteID,
-		Frontmatter: fm,
-		Links:       []domain.Link{},
-		Headings:    []domain.Heading{},
-		Tags:        []string{},
-		Tasks:       []domain.TaskItem{},
-		Backlinks:   []domain.Link{},
-	}
-
-	event, err := domain.NewFrontmatterValidatedEvent(
-		minimalNote,
+	// Publish ValidationPerformedEvent (AC 4.6.2)
+	event, err := domain.NewValidationPerformedEvent(
+		noteID,
 		schemaName,
 		validationErr == nil,
+		duration,
 		messages,
 		time.Now(),
 	)
 	if err != nil {
 		s.logger.Error().
 			Err(err).
-			Msg("failed to create frontmatter validated event")
+			Msg("failed to create validation performed event")
 		return
 	}
 	if publishErr := s.eventBus.Publish(ctx, event); publishErr != nil {
 		s.logger.Warn().
 			Err(publishErr).
-			Msg("failed to publish frontmatter validated event")
+			Msg("failed to publish validation performed event")
+	}
+
+	// Publish ValidationFailedEvent with remediation hints (AC 4.6.10-11)
+	if validationErr != nil {
+		remediationHints := s.generateRemediationHints(validationErr)
+		failedEvent, failErr := domain.NewValidationFailedEvent(
+			noteID,
+			schemaName,
+			messages,
+			remediationHints,
+			duration,
+			time.Now(),
+		)
+		if failErr != nil {
+			s.logger.Error().
+				Err(failErr).
+				Msg("failed to create validation failed event")
+			return
+		}
+		if publishErr := s.eventBus.Publish(ctx, failedEvent); publishErr != nil {
+			s.logger.Warn().
+				Err(publishErr).
+				Msg("failed to publish validation failed event")
+		}
 	}
 }
 
@@ -726,4 +749,58 @@ func flattenErrors(err error) []string {
 		return result
 	}
 	return []string{err.Error()}
+}
+
+// generateRemediationHints generates helpful remediation hints for validation
+// errors.
+// This supports AC 4.6.10: ValidationFailedEvent includes remediation hints.
+func (s *FrontmatterService) generateRemediationHints(err error) []string {
+	if err == nil {
+		return nil
+	}
+
+	messages := flattenErrors(err)
+	hints := make([]string, 0, len(messages))
+
+	for _, msg := range messages {
+		switch {
+		case strings.Contains(msg, "required field missing"):
+			hints = append(
+				hints,
+				"Add the missing required field to frontmatter",
+			)
+		case strings.Contains(msg, "file not found"):
+			hints = append(
+				hints,
+				"Verify the file exists in vault or run 'lithos index' to rebuild cache",
+			)
+		case strings.Contains(msg, "ambiguous reference"):
+			hints = append(
+				hints,
+				"Use full path instead of wikilink to resolve ambiguity",
+			)
+		case strings.Contains(msg, "field value is not an array"):
+			hints = append(
+				hints,
+				"Change field to array format using YAML list syntax",
+			)
+		case strings.Contains(msg, "field value must not be an array"):
+			hints = append(
+				hints,
+				"Remove array brackets and use single scalar value",
+			)
+		case strings.Contains(msg, "query service unavailable"):
+			hints = append(
+				hints,
+				"Ensure QueryService is initialized before validation",
+			)
+		default:
+			hints = append(
+				hints,
+				"Review schema definition for field constraints",
+			)
+		}
+	}
+
+	return hints
 }

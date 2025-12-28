@@ -323,97 +323,35 @@ func (e *TemplateEngine) makeQueryFunc(
 		start := time.Now()
 
 		if e.queryService == nil {
-			// Publish event for failed query
-			duration := time.Since(start)
-			event := domain.MustNewQueryPerformedEvent(
-				filter,
-				0,
-				duration,
-				"frontmatter",
-				time.Now(),
-			)
-			go func() {
-				if err := e.eventBus.Publish(ctx, event); err != nil {
-					e.log.Error().
-						Err(err).
-						Msg("failed to publish QueryPerformedEvent")
-				}
-			}()
+			e.publishQueryPerformedEvent(ctx, filter, 0, time.Since(start))
 			return nil, fmt.Errorf("query failed: query service not available")
 		}
 
 		// Process all filters in the map (AND logic - all filters must match)
 		if len(filter) == 0 {
-			// Publish event for empty query
-			duration := time.Since(start)
-			event := domain.MustNewQueryPerformedEvent(
-				filter,
-				0,
-				duration,
-				"frontmatter",
-				time.Now(),
-			)
-			go func() {
-				if err := e.eventBus.Publish(ctx, event); err != nil {
-					e.log.Error().
-						Err(err).
-						Msg("failed to publish QueryPerformedEvent")
-				}
-			}()
+			e.publishQueryPerformedEvent(ctx, filter, 0, time.Since(start))
 			return []domain.Note{}, nil
 		}
 
-		// Start with first filter
-		var result []domain.Note
-		first := true
-
-		for field, value := range filter {
-			notes, err := e.queryService.FrontmatterQuery(ctx, field, value)
-			if err != nil {
-				// Publish event for failed query
-				duration := time.Since(start)
-				event := domain.MustNewQueryPerformedEvent(
-					filter,
-					len(result),
-					duration,
-					"frontmatter",
-					time.Now(),
-				)
-				go func() {
-					if pubErr := e.eventBus.Publish(ctx, event); pubErr != nil {
-						e.log.Error().
-							Err(pubErr).
-							Msg("failed to publish QueryPerformedEvent")
-					}
-				}()
-				return nil, fmt.Errorf("query failed: %w", err)
-			}
-
-			if first {
-				result = notes
-				first = false
-			} else {
-				// Intersect results (AND logic)
-				result = intersectNotes(result, notes)
-			}
+		// Execute query with filters
+		result, err := e.executeFilteredQuery(ctx, filter)
+		if err != nil {
+			e.publishQueryPerformedEvent(
+				ctx,
+				filter,
+				len(result),
+				time.Since(start),
+			)
+			return nil, err
 		}
 
 		// Publish event for successful query
-		duration := time.Since(start)
-		event := domain.MustNewQueryPerformedEvent(
+		e.publishQueryPerformedEvent(
+			ctx,
 			filter,
 			len(result),
-			duration,
-			"frontmatter",
-			time.Now(),
+			time.Since(start),
 		)
-		go func() {
-			if err := e.eventBus.Publish(ctx, event); err != nil {
-				e.log.Error().
-					Err(err).
-					Msg("failed to publish QueryPerformedEvent")
-			}
-		}()
 
 		// Return defensive copies
 		clonedNotes := make([]domain.Note, len(result))
@@ -422,6 +360,34 @@ func (e *TemplateEngine) makeQueryFunc(
 		}
 		return clonedNotes, nil
 	}
+}
+
+// executeFilteredQuery executes frontmatter queries with AND logic for multiple
+// filters.
+// Extracted from makeQueryFunc to reduce cognitive complexity.
+func (e *TemplateEngine) executeFilteredQuery(
+	ctx context.Context,
+	filter map[string]any,
+) ([]domain.Note, error) {
+	var result []domain.Note
+	first := true
+
+	for field, value := range filter {
+		notes, err := e.queryService.FrontmatterQuery(ctx, field, value)
+		if err != nil {
+			return nil, fmt.Errorf("query failed: %w", err)
+		}
+
+		if first {
+			result = notes
+			first = false
+		} else {
+			// Intersect results (AND logic)
+			result = intersectNotes(result, notes)
+		}
+	}
+
+	return result, nil
 }
 
 // intersectNotes returns notes that appear in both slices (intersection).
@@ -461,22 +427,13 @@ func (e *TemplateEngine) makeFileClassFunc(
 		start := time.Now()
 
 		if e.queryService == nil {
-			// Publish event for failed lookup
-			duration := time.Since(start)
-			event := domain.MustNewSchemaLookupEvent(
+			e.publishSchemaLookupEvent(
+				ctx,
 				noteID,
 				"",
 				false,
-				duration,
-				time.Now(),
+				time.Since(start),
 			)
-			go func() {
-				if err := e.eventBus.Publish(ctx, event); err != nil {
-					e.log.Error().
-						Err(err).
-						Msg("failed to publish SchemaLookupEvent")
-				}
-			}()
 			e.log.Error().
 				Msg("fileClass lookup failed: query service not available")
 			return ""
@@ -485,22 +442,13 @@ func (e *TemplateEngine) makeFileClassFunc(
 		// Query note by ID (path)
 		note, err := e.queryService.IDQuery(ctx, noteID)
 		if err != nil {
-			// Publish event for failed lookup
-			duration := time.Since(start)
-			event := domain.MustNewSchemaLookupEvent(
+			e.publishSchemaLookupEvent(
+				ctx,
 				noteID,
 				"",
 				false,
-				duration,
-				time.Now(),
+				time.Since(start),
 			)
-			go func() {
-				if pubErr := e.eventBus.Publish(ctx, event); pubErr != nil {
-					e.log.Error().
-						Err(pubErr).
-						Msg("failed to publish SchemaLookupEvent")
-				}
-			}()
 			e.log.Debug().
 				Str("noteID", noteID).
 				Err(err).
@@ -513,21 +461,13 @@ func (e *TemplateEngine) makeFileClassFunc(
 		found := fileClass != ""
 
 		// Publish event for lookup result
-		duration := time.Since(start)
-		event := domain.MustNewSchemaLookupEvent(
+		e.publishSchemaLookupEvent(
+			ctx,
 			noteID,
 			fileClass,
 			found,
-			duration,
-			time.Now(),
+			time.Since(start),
 		)
-		go func() {
-			if err := e.eventBus.Publish(ctx, event); err != nil {
-				e.log.Error().
-					Err(err).
-					Msg("failed to publish SchemaLookupEvent")
-			}
-		}()
 
 		if !found {
 			e.log.Debug().
@@ -586,4 +526,59 @@ func checksumString(s string) uint64 {
 		panic(fmt.Sprintf("unexpected error writing to fnv hasher: %v", err))
 	}
 	return hasher.Sum64()
+}
+
+// publishSchemaLookupEvent is a helper to publish SchemaLookupEvent
+// asynchronously. Reduces code duplication in makeFileClassFunc.
+func (e *TemplateEngine) publishSchemaLookupEvent(
+	ctx context.Context,
+	noteID string,
+	fileClass string,
+	found bool,
+	duration time.Duration,
+) {
+	if e.eventBus == nil {
+		return
+	}
+	event := domain.MustNewSchemaLookupEvent(
+		noteID,
+		fileClass,
+		found,
+		duration,
+		time.Now(),
+	)
+	go func() {
+		if publishErr := e.eventBus.Publish(ctx, event); publishErr != nil {
+			e.log.Error().
+				Err(publishErr).
+				Msg("failed to publish SchemaLookupEvent")
+		}
+	}()
+}
+
+// publishQueryPerformedEvent is a helper to publish QueryPerformedEvent
+// asynchronously. Reduces code duplication in makeQueryFunc.
+func (e *TemplateEngine) publishQueryPerformedEvent(
+	ctx context.Context,
+	filter map[string]any,
+	resultCount int,
+	duration time.Duration,
+) {
+	if e.eventBus == nil {
+		return
+	}
+	event := domain.MustNewQueryPerformedEvent(
+		filter,
+		resultCount,
+		duration,
+		"frontmatter",
+		time.Now(),
+	)
+	go func() {
+		if publishErr := e.eventBus.Publish(ctx, event); publishErr != nil {
+			e.log.Error().
+				Err(publishErr).
+				Msg("failed to publish QueryPerformedEvent")
+		}
+	}()
 }

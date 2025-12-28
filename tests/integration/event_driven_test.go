@@ -230,13 +230,13 @@ func TestEventDrivenValidationIntegration(t *testing.T) {
 	err := frontmatterSvc.Validate(ctx, "test.md", validFm)
 	require.NoError(t, err)
 
-	// Assert: Verify ValidationPerformedEvent was published
+	// Assert: Verify ValidationPerformedEvent was published (AC 4.6.2)
 	events := eventBus.GetPublishedEvents()
 	require.GreaterOrEqual(t, len(events), 1, "Expected at least one event")
 
-	var validationEvent *domain.FrontmatterValidatedEvent
+	var validationEvent *domain.ValidationPerformedEvent
 	for _, evt := range events {
-		if ve, ok := evt.(*domain.FrontmatterValidatedEvent); ok {
+		if ve, ok := evt.(*domain.ValidationPerformedEvent); ok {
 			validationEvent = ve
 			break
 		}
@@ -245,7 +245,7 @@ func TestEventDrivenValidationIntegration(t *testing.T) {
 	require.NotNil(
 		t,
 		validationEvent,
-		"FrontmatterValidatedEvent should be published",
+		"ValidationPerformedEvent should be published",
 	)
 	assert.Equal(t, "contact", validationEvent.SchemaName())
 	assert.True(t, validationEvent.IsValid())
