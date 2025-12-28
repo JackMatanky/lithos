@@ -258,6 +258,24 @@ func (e *SchemaEngine) emitSchemaEvents(
 				Str("schema", schema.Name).
 				Msg("failed to publish schema loaded event")
 		}
+
+		// AC 4.6.12: Publish SchemaUpdatedEvent for cache invalidation
+		updateEvent, updateErr := domain.NewSchemaUpdatedEvent(
+			schema.Name,
+			"updated",
+			time.Now(),
+		)
+		if updateErr != nil {
+			e.log.Err(updateErr).
+				Str("schema", schema.Name).
+				Msg("failed to create schema updated event")
+			continue
+		}
+		if publishErr := e.eventBus.Publish(ctx, updateEvent); publishErr != nil {
+			e.log.Err(publishErr).
+				Str("schema", schema.Name).
+				Msg("failed to publish schema updated event")
+		}
 	}
 
 	reloadEvent, err := domain.NewSchemasReloadedEvent(len(schemas), time.Now())
