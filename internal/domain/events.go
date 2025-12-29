@@ -122,6 +122,76 @@ type FileDiscoveredEvent struct {
 	content []byte
 }
 
+// LookupPerformedEvent tracks individual lookup operations in template
+// functions.
+type LookupPerformedEvent struct {
+	baseEvent
+
+	noteID      string
+	resultCount int
+	duration    time.Duration
+	lookupType  string // "basename" or "id"
+}
+
+// QueryPerformedEvent tracks query operations with filter criteria.
+type QueryPerformedEvent struct {
+	baseEvent
+
+	filterCriteria map[string]any
+	resultCount    int
+	duration       time.Duration
+	queryType      string // "path" or "frontmatter"
+}
+
+// SchemaLookupEvent tracks schema resolution lookups.
+type SchemaLookupEvent struct {
+	baseEvent
+
+	noteID     string
+	schemaName string
+	found      bool
+	duration   time.Duration
+}
+
+// ValidationPerformedEvent tracks validation outcomes.
+type ValidationPerformedEvent struct {
+	baseEvent
+
+	noteID     string
+	schemaName string
+	valid      bool
+	duration   time.Duration
+	errors     []string
+}
+
+// ValidationFailedEvent tracks validation failures with remediation hints.
+type ValidationFailedEvent struct {
+	baseEvent
+
+	noteID           string
+	schemaName       string
+	errors           []string
+	remediationHints []string
+	duration         time.Duration
+}
+
+// NoteCreatedEvent tracks successful note creation.
+type NoteCreatedEvent struct {
+	baseEvent
+
+	noteID     string
+	fileClass  string
+	templateID string
+}
+
+// SchemaUpdatedEvent triggers reactive cache invalidation.
+type SchemaUpdatedEvent struct {
+	baseEvent
+
+	schemaName string
+	operation  string // "created", "updated", "deleted"
+}
+
 func newBaseEvent(
 	eventType, aggregateID string,
 	occurredAt time.Time,
@@ -704,76 +774,6 @@ func MustNewNoteCacheRequestedEvent(
 // Note returns a copy of the note to cache.
 func (e *NoteCacheRequestedEvent) Note() Note {
 	return e.note
-}
-
-// LookupPerformedEvent tracks individual lookup operations in template
-// functions.
-type LookupPerformedEvent struct {
-	baseEvent
-
-	noteID      string
-	resultCount int
-	duration    time.Duration
-	lookupType  string // "basename" or "id"
-}
-
-// QueryPerformedEvent tracks query operations with filter criteria.
-type QueryPerformedEvent struct {
-	baseEvent
-
-	filterCriteria map[string]any
-	resultCount    int
-	duration       time.Duration
-	queryType      string // "path" or "frontmatter"
-}
-
-// SchemaLookupEvent tracks schema resolution lookups.
-type SchemaLookupEvent struct {
-	baseEvent
-
-	noteID     string
-	schemaName string
-	found      bool
-	duration   time.Duration
-}
-
-// ValidationPerformedEvent tracks validation outcomes.
-type ValidationPerformedEvent struct {
-	baseEvent
-
-	noteID     string
-	schemaName string
-	valid      bool
-	duration   time.Duration
-	errors     []string
-}
-
-// ValidationFailedEvent tracks validation failures with remediation hints.
-type ValidationFailedEvent struct {
-	baseEvent
-
-	noteID           string
-	schemaName       string
-	errors           []string
-	remediationHints []string
-	duration         time.Duration
-}
-
-// NoteCreatedEvent tracks successful note creation.
-type NoteCreatedEvent struct {
-	baseEvent
-
-	noteID     string
-	fileClass  string
-	templateID string
-}
-
-// SchemaUpdatedEvent triggers reactive cache invalidation.
-type SchemaUpdatedEvent struct {
-	baseEvent
-
-	schemaName string
-	operation  string // "created", "updated", "deleted"
 }
 
 // NewLookupPerformedEvent constructs a lookup event.

@@ -7,6 +7,10 @@ import (
 	"testing"
 )
 
+const (
+	testCustomVaultPath = "/custom/vault"
+)
+
 // testConfigValidator implements ConfigValidator for testing.
 type testConfigValidator struct {
 	validateFunc func(Config) error
@@ -419,7 +423,7 @@ func TestSetInstanceForTesting_TestIsolation(t *testing.T) {
 
 	// Create custom config for testing
 	customConfig := NewConfig(
-		"/custom/vault",
+		testCustomVaultPath,
 		"/custom/templates",
 		"/custom/schemas",
 		"custom_bank.json",
@@ -436,7 +440,7 @@ func TestSetInstanceForTesting_TestIsolation(t *testing.T) {
 	if instance == nil {
 		t.Fatal("Instance() returned nil after SetInstanceForTesting()")
 	}
-	if instance.VaultPath != "/custom/vault" {
+	if instance.VaultPath != testCustomVaultPath {
 		t.Errorf(
 			"Expected VaultPath '/custom/vault', got %q",
 			instance.VaultPath,
