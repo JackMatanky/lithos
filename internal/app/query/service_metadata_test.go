@@ -17,10 +17,6 @@ type noopCacheReader struct{}
 type mockReader struct {
 	notes []domain.Note
 }
-type metadataReaderAdapter struct {
-	noopCacheReader
-	spi.MetadataQueryPort
-}
 
 func (noopCacheReader) Read(
 	ctx context.Context,
