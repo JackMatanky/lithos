@@ -742,14 +742,22 @@ func (v *VaultIndexer) buildCacheWriteMetadata(
 	if file != nil {
 		return v.metadataFromPath(file.Path, indexTime)
 	}
-	return spi.CacheWriteMetadata{IndexTime: indexTime}
+	return spi.CacheWriteMetadata{
+		IndexTime:  indexTime,
+		ModifiedAt: time.Time{},
+		FileSize:   0,
+	}
 }
 
 func (v *VaultIndexer) metadataFromPath(
 	path string,
 	indexTime time.Time,
 ) spi.CacheWriteMetadata {
-	meta := spi.CacheWriteMetadata{IndexTime: indexTime}
+	meta := spi.CacheWriteMetadata{
+		IndexTime:  indexTime,
+		ModifiedAt: time.Time{},
+		FileSize:   0,
+	}
 	if path == "" {
 		return meta
 	}

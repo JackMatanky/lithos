@@ -93,13 +93,13 @@ func (e *CacheWriteError) Error() string {
 		e.NoteID,
 		e.Path,
 		e.Operation,
-		e.BaseError.Cause(),
+		e.cause,
 	)
 }
 
 // Cause returns the underlying cause error for CacheWriteError.
 func (e *CacheWriteError) Cause() error {
-	return e.BaseError.Cause()
+	return e.cause
 }
 
 // Error implements the error interface for CacheReadError.
@@ -110,13 +110,13 @@ func (e *CacheReadError) Error() string {
 		e.NoteID,
 		e.Path,
 		e.Operation,
-		e.Cause(),
+		e.cause,
 	)
 }
 
 // Cause returns the underlying cause error for CacheReadError.
 func (e *CacheReadError) Cause() error {
-	return e.BaseError.Cause()
+	return e.cause
 }
 
 // Error implements the error interface for CacheDeleteError.
@@ -127,11 +127,11 @@ func (e *CacheDeleteError) Error() string {
 		e.NoteID,
 		e.Path,
 		e.Operation,
-		e.Cause(),
+		e.cause,
 	)
 }
 
 // Cause returns the underlying cause error for CacheDeleteError.
 func (e *CacheDeleteError) Cause() error {
-	return e.BaseError.Cause()
+	return e.cause
 }

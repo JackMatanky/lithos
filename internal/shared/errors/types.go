@@ -67,10 +67,50 @@ func (e BaseError) Error() string {
 	return e.message
 }
 
+// NewValidationError creates a new ValidationError with property validation
+// context. The message is fixed as "validation failed" and the cause provides
+// additional context.
+func NewValidationError(
+	property, reason string,
+	value interface{},
+	cause error,
+) *ValidationError {
+	return &ValidationError{
+		BaseError:   NewBaseError("validation failed", cause),
+		property:    property,
+		reason:      reason,
+		value:       value,
+		remediation: "",
+	}
+}
+
+// NewValidationErrorWithRemediation creates a new ValidationError with property
+// validation context and remediation hint. The message is fixed as "validation
+// failed" and the cause provides
+// additional context.
+func NewValidationErrorWithRemediation(
+	property, reason string,
+	value interface{},
+	remediation string,
+	cause error,
+) *ValidationError {
+	return &ValidationError{
+		BaseError:   NewBaseError("validation failed", cause),
+		property:    property,
+		reason:      reason,
+		value:       value,
+		remediation: remediation,
+	}
+}
+
 // Error implements the error interface for ValidationError.
 // Includes field, reason, and value in the error message.
 func (e *ValidationError) Error() string {
-	msg := fmt.Sprintf("validation failed for field %q: %s", e.property, e.reason)
+	msg := fmt.Sprintf(
+		"validation failed for field %q: %s",
+		e.property,
+		e.reason,
+	)
 	if e.value != nil {
 		msg += fmt.Sprintf(" (value: %v)", e.value)
 	}
@@ -93,40 +133,6 @@ func (e BaseError) Unwrap() error {
 // This provides direct access to the cause for error formatting.
 func (e BaseError) Cause() error {
 	return e.cause
-}
-
-// NewValidationError creates a new ValidationError with property validation
-// context. The message is fixed as "validation failed" and the cause provides
-// additional context.
-func NewValidationError(
-	property, reason string,
-	value interface{},
-	cause error,
-) *ValidationError {
-	return &ValidationError{
-		BaseError: NewBaseError("validation failed", cause),
-		property:  property,
-		reason:    reason,
-		value:     value,
-	}
-}
-
-// NewValidationErrorWithRemediation creates a new ValidationError with property validation
-// context and remediation hint. The message is fixed as "validation failed" and the cause provides
-// additional context.
-func NewValidationErrorWithRemediation(
-	property, reason string,
-	value interface{},
-	remediation string,
-	cause error,
-) *ValidationError {
-	return &ValidationError{
-		BaseError:   NewBaseError("validation failed", cause),
-		property:    property,
-		reason:      reason,
-		value:       value,
-		remediation: remediation,
-	}
 }
 
 // Property returns the name of the property that failed validation.

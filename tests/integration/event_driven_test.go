@@ -21,6 +21,87 @@ import (
 
 var ErrNotFound = errors.New("not found")
 
+// Mock implementations for testing
+
+type mockTemplatePort struct {
+	templates map[domain.TemplateID]domain.Template
+}
+
+type testMockMetadataQueryPort struct {
+	*utils.MockMetadataQueryPort
+
+	readFunc func(ctx context.Context, path string) (domain.Note, error)
+}
+
+type mockSchemaLoader struct {
+	schemas []domain.Schema
+	bank    domain.PropertyBank
+}
+
+type mockSchemaRegistry struct {
+	schemas    map[string]domain.Schema
+	properties map[string]domain.Property
+}
+
+func (m *mockTemplatePort) List(
+	ctx context.Context,
+) ([]domain.TemplateID, error) {
+	var ids []domain.TemplateID
+	for id := range m.templates {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
+func (m *mockTemplatePort) Load(
+	ctx context.Context,
+	id domain.TemplateID,
+) (domain.Template, error) {
+	tmpl, exists := m.templates[id]
+	if !exists {
+		return nil, ErrNotFound
+	}
+	return tmpl, nil
+}
+
+func (m *testMockMetadataQueryPort) Read(
+	ctx context.Context,
+	path string,
+) (domain.Note, error) {
+	if m.readFunc != nil {
+		return m.readFunc(ctx, path)
+	}
+	return m.MockMetadataQueryPort.Read(ctx, path)
+}
+
+func (m *mockSchemaLoader) Load(
+	ctx context.Context,
+) ([]domain.Schema, domain.PropertyBank, error) {
+	return m.schemas, m.bank, nil
+}
+
+func (m *mockSchemaRegistry) GetSchema(
+	ctx context.Context,
+	name string,
+) (domain.Schema, error) {
+	s, exists := m.schemas[name]
+	if !exists {
+		return domain.Schema{}, ErrNotFound
+	}
+	return s, nil
+}
+
+func (m *mockSchemaRegistry) GetProperty(
+	ctx context.Context,
+	name string,
+) (domain.Property, error) {
+	prop, exists := m.properties[name]
+	if !exists {
+		return domain.Property{}, ErrNotFound
+	}
+	return prop, nil
+}
+
 // TestEventDrivenLookupIntegration tests event publishing in lookup functions.
 func TestEventDrivenLookupIntegration(t *testing.T) {
 	ctx := context.Background()
@@ -70,11 +151,16 @@ func TestEventDrivenLookupIntegration(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Assert: Verify LookupPerformedEvent was published
-	events := eventBus.GetPublishedEvents()
-	require.GreaterOrEqual(t, len(events), 1, "Expected at least one event")
+	publishedEvents := eventBus.GetPublishedEvents()
+	require.GreaterOrEqual(
+		t,
+		len(publishedEvents),
+		1,
+		"Expected at least one event",
+	)
 
 	var lookupEvent *domain.LookupPerformedEvent
-	for _, evt := range events {
+	for _, evt := range publishedEvents {
 		if le, ok := evt.(*domain.LookupPerformedEvent); ok {
 			lookupEvent = le
 			break
@@ -154,11 +240,16 @@ func TestEventDrivenFileClassIntegration(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 
 	// Assert: Verify SchemaLookupEvent was published
-	events := eventBus.GetPublishedEvents()
-	require.GreaterOrEqual(t, len(events), 1, "Expected at least one event")
+	publishedEvents := eventBus.GetPublishedEvents()
+	require.GreaterOrEqual(
+		t,
+		len(publishedEvents),
+		1,
+		"Expected at least one event",
+	)
 
 	var schemaEvent *domain.SchemaLookupEvent
-	for _, evt := range events {
+	for _, evt := range publishedEvents {
 		if se, ok := evt.(*domain.SchemaLookupEvent); ok {
 			schemaEvent = se
 			break
@@ -234,11 +325,16 @@ func TestEventDrivenValidationIntegration(t *testing.T) {
 	require.NoError(t, err)
 
 	// Assert: Verify ValidationPerformedEvent was published (AC 4.6.2)
-	events := eventBus.GetPublishedEvents()
-	require.GreaterOrEqual(t, len(events), 1, "Expected at least one event")
+	publishedEvents := eventBus.GetPublishedEvents()
+	require.GreaterOrEqual(
+		t,
+		len(publishedEvents),
+		1,
+		"Expected at least one event",
+	)
 
 	var validationEvent *domain.ValidationPerformedEvent
-	for _, evt := range events {
+	for _, evt := range publishedEvents {
 		if ve, ok := evt.(*domain.ValidationPerformedEvent); ok {
 			validationEvent = ve
 			break
@@ -301,86 +397,8 @@ func TestEventDrivenCacheInvalidation(t *testing.T) {
 	)
 }
 
-// Mock implementations for testing
-
-type mockTemplatePort struct {
-	templates map[domain.TemplateID]domain.Template
-}
-
-func (m *mockTemplatePort) List(
-	ctx context.Context,
-) ([]domain.TemplateID, error) {
-	var ids []domain.TemplateID
-	for id := range m.templates {
-		ids = append(ids, id)
-	}
-	return ids, nil
-}
-
-func (m *mockTemplatePort) Load(
-	ctx context.Context,
-	id domain.TemplateID,
-) (domain.Template, error) {
-	tmpl, exists := m.templates[id]
-	if !exists {
-		return nil, ErrNotFound
-	}
-	return tmpl, nil
-}
-
-type testMockMetadataQueryPort struct {
-	*utils.MockMetadataQueryPort
-
-	readFunc func(ctx context.Context, path string) (domain.Note, error)
-}
-
-func (m *testMockMetadataQueryPort) Read(
-	ctx context.Context,
-	path string,
-) (domain.Note, error) {
-	if m.readFunc != nil {
-		return m.readFunc(ctx, path)
-	}
-	return m.MockMetadataQueryPort.Read(ctx, path)
-}
-
-type mockSchemaLoader struct {
-	schemas []domain.Schema
-	bank    domain.PropertyBank
-}
-
-func (m *mockSchemaLoader) Load(
-	ctx context.Context,
-) ([]domain.Schema, domain.PropertyBank, error) {
-	return m.schemas, m.bank, nil
-}
-
-type mockSchemaRegistry struct {
-	schemas    map[string]domain.Schema
-	properties map[string]domain.Property
-}
-
-func (m *mockSchemaRegistry) GetSchema(
-	ctx context.Context,
-	name string,
-) (domain.Schema, error) {
-	schema, exists := m.schemas[name]
-	if !exists {
-		return domain.Schema{}, ErrNotFound
-	}
-	return schema, nil
-}
-
-func (m *mockSchemaRegistry) GetProperty(
-	ctx context.Context,
-	name string,
-) (domain.Property, error) {
-	prop, exists := m.properties[name]
-	if !exists {
-		return domain.Property{}, ErrNotFound
-	}
-	return prop, nil
-}
+// Mock implementations for testing - removed duplicate declarations from end of
+// file
 
 func (m *mockSchemaRegistry) HasSchema(ctx context.Context, name string) bool {
 	_, exists := m.schemas[name]
