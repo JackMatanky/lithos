@@ -15,11 +15,11 @@ These standards are **MANDATORY** for Lithos contributors and AI agents. They ar
 - **On Save:** Editors **MUST** run `golangci-lint run` (which invokes formatting/linters per `.golangci.toml`).
 - **On Commit:** `golangci-lint run` and `gitleaks detect` **MUST** pass (enforced via pre-commit).
 - **On Pull Request:** CI **MUST** pass `go test ./...`, `golangci-lint run`, `gitleaks detect`.
-- **Manual:** `just verify` **MAY** be used to execute the full check suite locally.
+- **Manual:** `mise run verify` **MAY** be used to execute the full check suite locally.
 
 ## Core Standards
 
-- Go **1.25+ MUST** be used (CI enforces via toolchain).
+- Go **1.24+ MUST** be used (CI enforces via toolchain).
 - The application core and ports **MUST** use idiomatic Go `(T, error)` signatures. Domain-specific error types **MUST** implement the standard `error` interface and support error unwrapping via `Unwrap() error`.
 - Shared logging (`internal/shared/logger`) **MUST** be the only logging facility; no `fmt.Print*` or `log.*`.
 - Functions performing I/O or long-running work **MUST** accept `context.Context` as the first parameter and abort on cancellation.
@@ -57,7 +57,7 @@ Names **MUST NOT** repeat package context (e.g., avoid `template.TemplateEngine`
 ## Testing
 
 - Unit tests **MUST** live beside the code under test (`*_test.go`) and use table-driven cases for branches.
-- Integration tests **MUST** reside under `tests/integration` when they require full vault fixtures; they **MUST** be callable via `just verify`.
+- Integration tests **MUST** reside under `tests/integration` when they require full vault fixtures; they **MUST** be callable via `mise run test:int` and included in `mise run verify`.
 - Tests **MUST** cover success, validation failure, and cancellation paths for command orchestration.
 - Golden files belong under `testdata/` mirroring vault layout.
 

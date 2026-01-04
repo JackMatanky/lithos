@@ -114,7 +114,7 @@ For PropertySpec with `Type: "file"`:
 
 **YAML Type Handling:**
 
-The `goccy/go-yaml` parser handles YAML syntax and returns Go types. FrontmatterService validates these Go types against schema expectations:
+The `gopkg.in/yaml.v3` parser handles YAML syntax and returns Go types. FrontmatterService validates these Go types against schema expectations:
 
 ```yaml
 # Strings (quoted or unquoted - both valid YAML)
