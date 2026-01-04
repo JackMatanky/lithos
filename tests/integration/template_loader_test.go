@@ -49,13 +49,15 @@ func testList(
 		t.Fatalf("List() error = %v", err)
 	}
 
-	// Should find basic_note.md, project_with_contacts.md, and
-	// static_template.md (ignoring .txt files)
+	// Should find basic_note.md, project_with_contacts.md,
+	// schema_lookup_new_note.md, and static_template.md (ignoring .txt files)
 	expectedTemplates := []domain.TemplateID{
 		"basic_note",
 		"project_with_contacts",
+		"schema_lookup_new_note",
 		"static_template",
 	}
+
 	if len(templates) != len(expectedTemplates) {
 		t.Errorf(
 			"List() returned %d templates, want %d",

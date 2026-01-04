@@ -36,6 +36,7 @@ No team members found.
 - Phone: {{$johnDoe.Frontmatter.Fields.phone}}
 - Organization: {{$johnDoe.Frontmatter.Fields.organization}}
 - FileClass: {{fileClass $johnDoe.Path}}
+Primary Contact FileClass: {{fileClass $johnDoe.Path}}
 {{else}}
 Primary contact not found.
 {{end}}

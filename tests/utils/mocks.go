@@ -8,6 +8,7 @@ package utils
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
@@ -839,7 +840,9 @@ func (m *MockCacheReaderPort) List(ctx context.Context) ([]domain.Note, error) {
 }
 
 // MockEventBus provides a mock implementation of EventBus for testing.
+// Thread-safe: uses sync.Mutex to protect concurrent access to slices.
 type MockEventBus struct {
+	mu                sync.Mutex // Protects publishedEvents and subscribedTypes
 	publishResult     error
 	subscribeResult   error
 	unsubscribeResult error
@@ -850,6 +853,7 @@ type MockEventBus struct {
 
 // NewMockEventBus creates a new MockEventBus with default values.
 func NewMockEventBus() *MockEventBus {
+	//nolint:exhaustruct // mu field uses zero value (correct for sync.Mutex)
 	return &MockEventBus{
 		publishResult:     nil,
 		subscribeResult:   nil,
@@ -885,30 +889,48 @@ func (m *MockEventBus) SetShutdownResult(err error) {
 }
 
 // GetPublishedEvents returns all events that were published.
+// Thread-safe: returns a copy of the events slice.
 func (m *MockEventBus) GetPublishedEvents() []domain.DomainEvent {
-	return m.publishedEvents
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Return a copy to prevent external modification
+	eventsCopy := make([]domain.DomainEvent, len(m.publishedEvents))
+	copy(eventsCopy, m.publishedEvents)
+	return eventsCopy
 }
 
 // GetSubscribedTypes returns all event types that were subscribed to.
+// Thread-safe: returns a copy of the types slice.
 func (m *MockEventBus) GetSubscribedTypes() []string {
-	return m.subscribedTypes
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Return a copy to prevent external modification
+	types := make([]string, len(m.subscribedTypes))
+	copy(types, m.subscribedTypes)
+	return types
 }
 
 // Publish records the event and returns the configured mock result.
+// Thread-safe: uses mutex to protect concurrent appends.
 func (m *MockEventBus) Publish(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
+	m.mu.Lock()
 	m.publishedEvents = append(m.publishedEvents, event)
+	m.mu.Unlock()
 	return m.publishResult
 }
 
 // Subscribe records the subscription and returns the configured mock result.
+// Thread-safe: uses mutex to protect concurrent appends.
 func (m *MockEventBus) Subscribe(
 	eventType string,
 	handler events.EventHandler,
 ) error {
+	m.mu.Lock()
 	m.subscribedTypes = append(m.subscribedTypes, eventType)
+	m.mu.Unlock()
 	return m.subscribeResult
 }
 

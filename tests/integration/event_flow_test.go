@@ -13,6 +13,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	eventTypeNoteIndexed           = "NoteIndexed"
+	eventTypeVaultIndexingComplete = "VaultIndexingComplete"
+	eventTypeFrontmatterValidated  = "FrontmatterValidated"
+)
+
 // TestEventFlow_Integration tests the complete event-driven architecture
 // end-to-end flow. This validates:
 // - Event publishing and subscription
@@ -108,12 +114,12 @@ func TestEventFlow_Integration(t *testing.T) {
 
 	for _, event := range eventsReceived {
 		switch event.EventType() {
-		case "NoteIndexed":
+		case eventTypeNoteIndexed:
 			hasNoteIndexed = true
 			noteEvt := event.(*domain.NoteIndexedEvent)
 			assert.Equal(t, "/test/note.md", noteEvt.Path(),
 				"NoteIndexed should have correct path")
-		case "VaultIndexingComplete":
+		case eventTypeVaultIndexingComplete:
 			hasVaultComplete = true
 			completeEvt := event.(*domain.VaultIndexingCompleteEvent)
 			assert.Equal(
@@ -122,7 +128,7 @@ func TestEventFlow_Integration(t *testing.T) {
 				completeEvt.NotesIndexed(),
 				"Should have indexed one note",
 			)
-		case "FrontmatterValidated":
+		case eventTypeFrontmatterValidated:
 			hasFrontmatterValidated = true
 			validationEvt := event.(*domain.FrontmatterValidatedEvent)
 			assert.Equal(

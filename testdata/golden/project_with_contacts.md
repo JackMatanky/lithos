@@ -1,6 +1,6 @@
 # Project Team Report: Project Alpha
 
-**Generated:** 2026-01-04
+**Generated:** <dynamic>
 
 ## Project Overview
 
@@ -25,6 +25,16 @@ Project Alpha is our flagship product initiative focused on building next-genera
 - Email: john.doe@example.com
 - Phone: +1-555-123-4567
 - Organization: Acme Corp
+- FileClass: contact
+Primary Contact FileClass: contact
+
+## File Classes
+
+Project Alpha FileClass: project
+
+- Jane Smith FileClass: contact
+
+- John Doe FileClass: contact
 
 ## Tags
 

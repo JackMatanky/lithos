@@ -1,0 +1,44 @@
+{
+  "name": "project",
+  "description": "Project summary note describing initiatives and reference contacts",
+  "properties": {
+    "file_class": {
+      "type": "string",
+      "required": true,
+      "default": "project",
+      "description": "Identifies this as a project note"
+    },
+    "title": {
+      "type": "string",
+      "required": true,
+      "description": "Project title"
+    },
+    "description": {
+      "type": "string",
+      "required": false,
+      "description": "Short project summary"
+    },
+    "status": {
+      "type": "string",
+      "required": false,
+      "description": "Project status"
+    },
+    "team_members": {
+      "type": "file",
+      "required": false,
+      "array": true,
+      "description": "List of team member contact notes referenced as [[basename]]"
+    },
+    "primary_contact": {
+      "type": "file",
+      "required": false,
+      "description": "Primary contact note referenced as [[basename]]"
+    },
+    "tags": {
+      "type": "string",
+      "required": false,
+      "array": true,
+      "description": "Tags for categorization"
+    }
+  }
+}

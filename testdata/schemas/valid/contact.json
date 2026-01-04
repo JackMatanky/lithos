@@ -41,7 +41,7 @@
       "description": "Tags for categorization"
     },
     "related": {
-      "type": "fileSpec",
+      "type": "file",
       "required": false,
       "array": true,
       "description": "References to related notes (wikilinks like [[filename]])"
