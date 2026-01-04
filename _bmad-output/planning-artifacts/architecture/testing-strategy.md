@@ -161,7 +161,7 @@ Use this data to validate Epic 3 performance targets:
 - **Location:** `tests/e2e/` directory
 - **Environment:** Local development environment with ability to extend to CI/CD pipelines
 - **Test Data:** Sample templates and expected golden file outputs
-- **Execution Trigger:** Part of `just verify` workflow, extendable for release validation
+- **Execution Trigger:** Part of `mise run verify` workflow, extendable for release validation
 
 **Current Implementation:** Integrated within existing integration tests but designed for expansion to dedicated release validation.
 
@@ -226,13 +226,13 @@ type TestDataPaths struct {
   - Unit tests on every commit via `go test ./...`
   - Integration tests as part of full test suite
   - Quality checks via `golangci-lint run` and other linting tools
-- **Test Commands:** (via `justfile`)
-  - **Unit:** `just test` - Run all unit tests
-  - **Integration:** `just test-integration` - Run integration tests with build tags
-  - **Coverage:** `just test-coverage` - Run tests with inline coverage reporting
-  - **Artifacts:** `just test-artifacts` - Generate detailed HTML coverage report
-  - **All:** `just verify` - Run format, lint, and test in sequence
-  - **Benchmarks:** `just bench` - Run benchmark tests with memory allocation stats
+- **Test Commands:** (via `mise run <task>`)
+  - **Unit:** `mise run test` - Run all unit tests
+  - **Integration:** `mise run test:int` - Run integration tests with build tags
+  - **Coverage:** `mise run test:cov` - Run tests with coverage profile + HTML output
+  - **Artifacts:** `mise run test:artifacts` - Generate detailed HTML coverage report under `tests/artifacts/coverage`
+  - **All:** `mise run verify` - Run format, lint, and test in sequence
+  - **Benchmarks:** `mise run bench` - Run benchmark tests with memory allocation stats
 - **Performance Tests:**
   - **Benchmark tests:** `go test -bench=. -benchmem ./...` for template rendering performance
   - **Load testing:** Not currently implemented, available for future expansion
@@ -246,8 +246,8 @@ type TestDataPaths struct {
   - Test pass rate requirements: 100% pass rate required for merging
   - Performance benchmark limits: Benchmarks recorded for trend analysis
 - **Reporting:**
-  - **Coverage reports:** HTML reports generated in `coverage/coverage.html`
-  - **Test result artifacts:** JUnit XML and coverage profiles available
+  - **Coverage reports:** HTML reports generated in `tests/artifacts/coverage/coverage.html`
+  - **Test result artifacts:** JUnit XML and coverage profiles stored under `tests/artifacts/reports` and `tests/artifacts/coverage`
   - **Failure notifications:** CI pipeline integration for failure alerts
 
 ---
