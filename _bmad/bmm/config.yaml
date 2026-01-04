@@ -7,6 +7,7 @@ project_name: lithos
 user_skill_level: intermediate
 planning_artifacts: "{project-root}/docs/planning"
 implementation_artifacts: "{project-root}/docs/implementation"
+dev_story_location: "{project-root}/docs/stories"
 project_knowledge: "{project-root}/docs"
 
 # Core Configuration Values
