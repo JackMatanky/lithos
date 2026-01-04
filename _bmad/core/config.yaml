@@ -6,4 +6,4 @@
 user_name: Jack
 communication_language: English
 document_output_language: English
-output_folder: "{project-root}/docs/reports"
+output_folder: "{project-root}/docs"
