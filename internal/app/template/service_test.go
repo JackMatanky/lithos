@@ -17,6 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const (
+	testAuthorName  = "John"
+	testAuthorField = "author"
+)
+
 // Ensure mockTemplatePort implements TemplatePort.
 var _ spi.TemplatePort = (*mockTemplatePort)(nil)
 
@@ -69,10 +74,6 @@ func (m *mockTemplatePort) setTemplates(
 	templates map[domain.TemplateID]domain.Template,
 ) {
 	m.templates = templates
-}
-
-func (m *mockTemplatePort) setLoadError(err error) {
-	m.loadError = err
 }
 
 func (m *testMockMetadataQueryPort) Read(
@@ -924,7 +925,10 @@ func TestEventBusIntegration(t *testing.T) {
 				"fileClass": "contact",
 			}),
 		}
-		mockBolt.PathQueryFunc = func(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error) {
+		mockBolt.PathQueryFunc = func(
+			ctx context.Context,
+			opts spi.PathQueryOptions,
+		) ([]domain.Note, error) {
 			if opts.Scope == spi.PathQueryScopeBasename &&
 				opts.Value == "contact" {
 				return []domain.Note{testNote}, nil
@@ -1019,20 +1023,23 @@ func TestEventBusIntegration(t *testing.T) {
 			{
 				Path: "note1.md",
 				Frontmatter: domain.NewFrontmatter(map[string]any{
-					"author":    "John",
-					"fileClass": "contact",
+					testAuthorField: testAuthorName,
+					"fileClass":     "contact",
 				}),
 			},
 			{
 				Path: "note2.md",
 				Frontmatter: domain.NewFrontmatter(map[string]any{
-					"author":    "John",
-					"fileClass": "meeting",
+					testAuthorField: testAuthorName,
+					"fileClass":     "meeting",
 				}),
 			},
 		}
-		mockSqlite.FrontmatterQueryFunc = func(ctx context.Context, field, value string) ([]domain.Note, error) {
-			if field == "author" && value == "John" {
+		mockSqlite.FrontmatterQueryFunc = func(
+			ctx context.Context,
+			field, value string,
+		) ([]domain.Note, error) {
+			if field == testAuthorField && value == testAuthorName {
 				return testNotes, nil
 			}
 			return nil, nil
@@ -1061,7 +1068,9 @@ func TestEventBusIntegration(t *testing.T) {
 		funcMap := engine.buildFuncMap(context.Background())
 		queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
 
-		result, err := queryFunc(map[string]any{"author": "John"})
+		result, err := queryFunc(
+			map[string]any{testAuthorField: testAuthorName},
+		)
 		require.NoError(t, err)
 		assert.Len(t, result, 2)
 
@@ -1121,20 +1130,23 @@ func TestEventBusIntegration(t *testing.T) {
 			{
 				Path: "note1.md",
 				Frontmatter: domain.NewFrontmatter(map[string]any{
-					"author":    "John",
-					"fileClass": "contact",
+					testAuthorField: testAuthorName,
+					"fileClass":     "contact",
 				}),
 			},
 			{
 				Path: "note2.md",
 				Frontmatter: domain.NewFrontmatter(map[string]any{
-					"author":    "John",
-					"fileClass": "meeting",
+					testAuthorField: testAuthorName,
+					"fileClass":     "meeting",
 				}),
 			},
 		}
-		mockSqlite.FrontmatterQueryFunc = func(ctx context.Context, field, value string) ([]domain.Note, error) {
-			if field == "author" && value == "John" {
+		mockSqlite.FrontmatterQueryFunc = func(
+			ctx context.Context,
+			field, value string,
+		) ([]domain.Note, error) {
+			if field == testAuthorField && value == testAuthorName {
 				return testNotes, nil
 			}
 			return nil, nil
@@ -1163,7 +1175,9 @@ func TestEventBusIntegration(t *testing.T) {
 		funcMap := engine.buildFuncMap(context.Background())
 		queryFunc := funcMap["query"].(func(map[string]any) ([]domain.Note, error))
 
-		result, err := queryFunc(map[string]any{"author": "John"})
+		result, err := queryFunc(
+			map[string]any{testAuthorField: testAuthorName},
+		)
 		require.NoError(t, err)
 		assert.Len(t, result, 2)
 

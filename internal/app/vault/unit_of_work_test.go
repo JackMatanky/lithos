@@ -39,7 +39,11 @@ func newTestMetadata() spi.CacheWriteMetadata {
 // WithFailingBoltWriter configures the BoltDB writer to fail on persist
 // operations.
 func (f *UnitOfWorkFixture) WithFailingBoltWriter() *UnitOfWorkFixture {
-	f.boltWriter.PersistFunc = func(ctx context.Context, note domain.Note, metadata spi.CacheWriteMetadata) error {
+	f.boltWriter.PersistFunc = func(
+		ctx context.Context,
+		note domain.Note,
+		metadata spi.CacheWriteMetadata,
+	) error {
 		return errors.New("bolt persist failure")
 	}
 	return f

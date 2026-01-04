@@ -211,32 +211,34 @@ func (c *Container) VaultIndexer() (*vault.VaultIndexer, error) {
 // CLIOrchestrator returns the CLI orchestrator service with lazy
 // initialization.
 func (c *Container) CLIOrchestrator() (*command.CLIComander, error) {
-	if c.cliOrchestrator == nil {
-		vaultIndexer, err := c.VaultIndexer()
-		if err != nil {
-			return nil, err
-		}
-		if _, queryErr := c.QueryService(); queryErr != nil {
-			return nil, queryErr
-		}
-
-		frontmatterService, err := c.FrontmatterService()
-		if err != nil {
-			return nil, err
-		}
-
-		c.cliOrchestrator = command.NewCLIComander(
-			cli.NewCobraCLIAdapter(c.logger),
-			c.TemplateEngine(),
-			vaultIndexer,
-			vaultAdapter.NewVaultWriterAdapter(c.config, c.logger),
-			frontmatterService,
-			c.MarkdownParser(),
-			&c.config,
-			&c.logger,
-			c.eventBus,
-		)
+	if c.cliOrchestrator != nil {
+		return c.cliOrchestrator, nil
 	}
+
+	vaultIndexer, err := c.VaultIndexer()
+	if err != nil {
+		return nil, err
+	}
+	if _, queryErr := c.QueryService(); queryErr != nil {
+		return nil, queryErr
+	}
+
+	frontmatterService, err := c.FrontmatterService()
+	if err != nil {
+		return nil, err
+	}
+
+	c.cliOrchestrator = command.NewCLIComander(
+		cli.NewCobraCLIAdapter(c.logger),
+		c.TemplateEngine(),
+		vaultIndexer,
+		vaultAdapter.NewVaultWriterAdapter(c.config, c.logger),
+		frontmatterService,
+		c.MarkdownParser(),
+		&c.config,
+		&c.logger,
+		c.eventBus,
+	)
 	return c.cliOrchestrator, nil
 }
 

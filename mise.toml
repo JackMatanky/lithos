@@ -83,8 +83,7 @@ go_download_mirror = "https://dl.google.com/go"
 
 # --------------------------- Setup --------------------------- #
 [tasks.setup]
-description = "Setup dev environment (basic)"
-usage = "mise run setup  # Downloads dependencies"
+description = "Setup dev environment (basic). Downloads dependencies"
 run = '''
 echo "🚀 Setting up development environment..."
 go mod download
@@ -475,8 +474,7 @@ fi
 # ----------------------- Code Quality ------------------------ #
 [tasks.format]
 alias = "f"
-description = "Format code"
-usage = "mise run format  # Formats all Go files in project"
+description = "Format code. Formats all Go files in project"
 run = '''
 echo "🚀 Formatting code..."
 golangci-lint fmt ./...
@@ -485,8 +483,7 @@ echo "✅ Formatting complete"
 
 [tasks.lint]
 alias = "l"
-description = "Lint and auto-fix"
-usage = "mise run lint  # Lints and auto-fixes all Go files in project"
+description = "Lint and auto-fix. Lints and auto-fixes all Go files in project"
 run = '''
 echo "🔍 Linting code..."
 golangci-lint run --fix ./...
