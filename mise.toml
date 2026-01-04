@@ -18,6 +18,7 @@ pre-commit = "latest"
 [env]
 GOBIN = "{{config_root}}/bin"
 PATH = "{{config_root}}/bin:{{env.PATH}}"
+CODEX_HOME = "{{config_root}}/.codex"
 
 # ------------------------------------------------------------ #
 #                          Variables                           #
