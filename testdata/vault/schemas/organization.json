@@ -1,0 +1,31 @@
+{
+  "name": "organization",
+  "properties": {
+    "title": {
+      "$ref": "#/properties/title"
+    },
+    "aliases": {
+      "$ref": "#/properties/aliases"
+    },
+    "city": {
+      "$ref": "#/properties/city"
+    },
+    "url": {
+      "$ref": "#/properties/url"
+    },
+    "industry": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    },
+    "uuid": {
+      "$ref": "#/properties/uuid"
+    },
+    "file_class": {
+      "required": true,
+      "array": false,
+      "type": "string",
+      "enum": ["organization"]
+    }
+  }
+}

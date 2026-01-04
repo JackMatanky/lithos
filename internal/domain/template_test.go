@@ -4,6 +4,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -260,8 +261,10 @@ Join: {{join "/" "a" "b"}}`
 	if !strings.Contains(result, "Name: john") {
 		t.Errorf("Expected lowercase name, got: %s", result)
 	}
-	if !strings.Contains(result, "Time: 2025") { // year
-		t.Errorf("Expected time, got: %s", result)
+
+	expectedDate := time.Now().Format("2006-01-02")
+	if !strings.Contains(result, "Time: "+expectedDate) {
+		t.Errorf("Expected time %s, got: %s", expectedDate, result)
 	}
 	if !strings.Contains(result, "Folder: path/to") {
 		t.Errorf("Expected folder, got: %s", result)

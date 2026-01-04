@@ -66,6 +66,9 @@ func TestEventDrivenLookupIntegration(t *testing.T) {
 	_, err := templateEngine.Render(ctx, "test")
 	require.NoError(t, err)
 
+	// Give async event handlers time to publish
+	time.Sleep(100 * time.Millisecond)
+
 	// Assert: Verify LookupPerformedEvent was published
 	events := eventBus.GetPublishedEvents()
 	require.GreaterOrEqual(t, len(events), 1, "Expected at least one event")

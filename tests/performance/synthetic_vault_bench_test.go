@@ -81,7 +81,13 @@ func benchmarkVaultIndexing(b *testing.B, config utils.SyntheticVaultConfig) {
 		CacheDir:         cacheDir,
 		SchemasDir:       schemasDir,
 		PropertyBankFile: "property_bank.json",
+		FileClassKey:     "file_class",
 	}
+
+	cfgInstance := domainConfig
+	domain.SetInstanceForTesting(&cfgInstance)
+	b.Cleanup(domain.ResetConfigForTesting)
+
 	logger := zerolog.Nop() // Silent logger for benchmarks
 
 	vaultReader := vaultAdapter.NewVaultReaderAdapter(domainConfig, logger)
@@ -186,7 +192,12 @@ func TestLargeVaultPerformance(t *testing.T) {
 		CacheDir:         cacheDir,
 		SchemasDir:       schemasDir,
 		PropertyBankFile: "property_bank.json",
+		FileClassKey:     "file_class",
 	}
+	cfgInstance := domainConfig
+	domain.SetInstanceForTesting(&cfgInstance)
+	t.Cleanup(domain.ResetConfigForTesting)
+
 	logger := zerolog.New(zerolog.NewTestWriter(t)).With().Timestamp().Logger()
 
 	vaultReader := vaultAdapter.NewVaultReaderAdapter(domainConfig, logger)

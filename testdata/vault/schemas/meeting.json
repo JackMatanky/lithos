@@ -1,0 +1,32 @@
+{
+  "name": "meeting",
+  "properties": {
+    "title": {
+      "$ref": "#/properties/title"
+    },
+    "date": {
+      "$ref": "#/properties/date_iso_8601"
+    },
+    "time": {
+      "$ref": "#/properties/datetime_local"
+    },
+    "attendees": {
+      "$ref": "#/properties/contact"
+    },
+    "organization": {
+      "$ref": "#/properties/organization"
+    },
+    "project": {
+      "$ref": "#/properties/project"
+    },
+    "uuid": {
+      "$ref": "#/properties/uuid"
+    },
+    "file_class": {
+      "required": true,
+      "array": false,
+      "type": "string",
+      "enum": ["meeting"]
+    }
+  }
+}

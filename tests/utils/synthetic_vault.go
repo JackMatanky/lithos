@@ -99,6 +99,9 @@ func GenerateSyntheticVault(
 		"dir.json",
 		"dir_contact.json",
 		"task.json",
+		"meeting.json",
+		"note.json",
+		"organization.json",
 		"property_bank.json",
 	}
 	for _, f := range schemaFiles {
@@ -169,6 +172,9 @@ func GenerateSyntheticVaultBench(
 		"dir.json",
 		"dir_contact.json",
 		"task.json",
+		"meeting.json",
+		"note.json",
+		"organization.json",
 		"property_bank.json",
 	}
 	for _, f := range schemaFiles {

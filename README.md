@@ -491,7 +491,7 @@ Hint: Check template syntax and ensure all functions are properly closed
 3. **Test interactively:** Use `lithos new --view` to see rendering progress
 4. **Check dependencies:** Ensure required templates and schemas exist
 
-For detailed error handling strategies, see [Error Handling Strategy](docs/architecture/error-handling-strategy.md).
+For detailed error handling strategies, see [Error Handling Strategy](_bmad-output/planning-artifacts/architecture/error-handling-strategy.md).
 
 ## Template Function Reference
 
@@ -674,7 +674,7 @@ Lithos follows hexagonal architecture principles to ensure clean separation of c
 - **Ports**: CLIPort, CommandPort, TemplatePort, ConfigPort, CachePort, QueryPort
 - **Adapters**: CobraCLIAdapter, TemplateLoaderAdapter, ViperAdapter, BoltDBCacheAdapter, SQLiteAdapter
 
-For detailed architecture documentation, see [docs/architecture/](docs/architecture/).
+For detailed architecture documentation, see [_bmad-output/planning-artifacts/architecture/](_bmad-output/planning-artifacts/architecture/).
 
 ## Contributing
 
@@ -730,7 +730,7 @@ Run hooks manually: `pre-commit run --all-files`
 6. Update documentation if needed
 7. Submit a pull request with a clear description
 
-For more details, see the [architecture documentation](docs/architecture/).
+For more details, see the [architecture documentation](_bmad-output/planning-artifacts/architecture/).
 
 ## Project Structure
 

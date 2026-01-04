@@ -1,0 +1,25 @@
+{
+  "name": "note",
+  "properties": {
+    "title": {
+      "$ref": "#/properties/title"
+    },
+    "date": {
+      "$ref": "#/properties/date_iso_8601"
+    },
+    "tags": {
+      "required": false,
+      "array": true,
+      "type": "string"
+    },
+    "uuid": {
+      "$ref": "#/properties/uuid"
+    },
+    "file_class": {
+      "required": true,
+      "array": false,
+      "type": "string",
+      "enum": ["note"]
+    }
+  }
+}
