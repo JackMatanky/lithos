@@ -121,11 +121,11 @@ func (f Frontmatter) FileClass() string {
 	// "file_class" regardless of the configured key.
 	switch primaryKey {
 	case "fileClass":
-		candidateKeys = append(candidateKeys, "file_class")
-	case "file_class":
+		candidateKeys = append(candidateKeys, defaultFileClassKey)
+	case defaultFileClassKey:
 		candidateKeys = append(candidateKeys, "fileClass")
 	default:
-		candidateKeys = append(candidateKeys, "fileClass", "file_class")
+		candidateKeys = append(candidateKeys, "fileClass", defaultFileClassKey)
 	}
 
 	for _, key := range candidateKeys {

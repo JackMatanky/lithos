@@ -513,9 +513,10 @@ func TestConfigBuilder(t *testing.T) {
 	if config.LogLevel != "debug" {
 		t.Errorf("Expected LogLevel 'debug', got %q", config.LogLevel)
 	}
-	if config.FileClassKey != "file_class" {
+	if config.FileClassKey != defaultFileClassKey {
 		t.Errorf(
-			"Expected FileClassKey 'file_class', got %q",
+			"Expected FileClassKey %q, got %q",
+			defaultFileClassKey,
 			config.FileClassKey,
 		)
 	}
