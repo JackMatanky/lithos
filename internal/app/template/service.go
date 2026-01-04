@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"text/template"
@@ -189,6 +190,7 @@ func (e *TemplateEngine) buildFuncMap(ctx context.Context) template.FuncMap {
 		"now":     func(format string) string { return time.Now().Format(format) },
 		"toLower": strings.ToLower,
 		"toUpper": strings.ToUpper,
+		"dict":    buildDict,
 
 		// File path control functions
 		"path":   func() string { return "" }, // Empty for Epic 1
@@ -202,9 +204,10 @@ func (e *TemplateEngine) buildFuncMap(ctx context.Context) template.FuncMap {
 		"vaultPath": func() string { return e.config.VaultPath },
 
 		// Schema-aware lookup functions (requires queryService)
-		"lookup":    e.makeLookupFunc(ctx),
-		"query":     e.makeQueryFunc(ctx),
-		"fileClass": e.makeFileClassFunc(ctx),
+		"lookup":      e.makeLookupFunc(ctx),
+		"query":       e.makeQueryFunc(ctx),
+		"fileClass":   e.makeFileClassFunc(ctx),
+		"sortByTitle": sortNotesByTitle,
 	}
 	return e.funcMap
 }
@@ -409,6 +412,35 @@ func intersectNotes(a, b []domain.Note) []domain.Note {
 	}
 
 	return result
+}
+
+func sortNotesByTitle(notes []domain.Note) []domain.Note {
+	sorted := make([]domain.Note, len(notes))
+	copy(sorted, notes)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		titleI := strings.ToLower(sorted[i].Title())
+		titleJ := strings.ToLower(sorted[j].Title())
+		if titleI == titleJ {
+			return sorted[i].Path < sorted[j].Path
+		}
+		return titleI < titleJ
+	})
+	return sorted
+}
+
+func buildDict(values ...any) (map[string]any, error) {
+	if len(values)%2 != 0 {
+		return nil, fmt.Errorf("dict requires an even number of arguments")
+	}
+	dict := make(map[string]any, len(values)/2)
+	for i := 0; i < len(values); i += 2 {
+		key, ok := values[i].(string)
+		if !ok {
+			return nil, fmt.Errorf("dict keys must be strings (arg %d)", i)
+		}
+		dict[key] = values[i+1]
+	}
+	return dict, nil
 }
 
 // makeFileClassFunc returns a closure over QueryService for extracting

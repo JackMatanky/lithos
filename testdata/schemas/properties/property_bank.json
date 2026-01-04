@@ -1,0 +1,44 @@
+{
+  "properties": {
+    "standard_title": {
+      "type": "string",
+      "required": true,
+      "array": false,
+      "pattern": "^.{1,200}$"
+    },
+    "standard_tags": {
+      "type": "string",
+      "required": false,
+      "array": true
+    },
+    "iso_date": {
+      "type": "date",
+      "required": true,
+      "array": false,
+      "format": "2006-01-02"
+    },
+    "standard_created": {
+      "type": "date",
+      "required": true,
+      "format": "2006-01-02T15:04:05Z07:00"
+    },
+    "author": {
+      "type": "string",
+      "required": true,
+      "pattern": "^[A-Za-z0-9\\s]+$"
+    },
+    "contact_email": {
+      "type": "string",
+      "required": false,
+      "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+    },
+    "contact_phone": {
+      "type": "string",
+      "required": false
+    },
+    "contact_organization": {
+      "type": "string",
+      "required": false
+    }
+  }
+}

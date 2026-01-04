@@ -1,0 +1,55 @@
+{
+  "name": "contact",
+  "description": "Contact information for a person",
+  "properties": {
+    "file_class": {
+      "type": "string",
+      "required": true,
+      "default": "contact",
+      "description": "Identifies this as a contact note"
+    },
+    "title": {
+      "type": "string",
+      "required": true,
+      "description": "Full name of the contact"
+    },
+    "email": {
+      "type": "string",
+      "required": false,
+      "pattern": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
+      "description": "Email address"
+    },
+    "phone": {
+      "type": "string",
+      "required": false,
+      "description": "Phone number"
+    },
+    "organization": {
+      "type": "string",
+      "required": false,
+      "description": "Organization or company"
+    },
+    "role": {
+      "type": "string",
+      "required": false,
+      "description": "Job role or title"
+    },
+    "tags": {
+      "type": "string",
+      "required": false,
+      "array": true,
+      "description": "Tags for categorization"
+    },
+    "related": {
+      "type": "fileSpec",
+      "required": false,
+      "array": true,
+      "description": "References to related notes (wikilinks like [[filename]])"
+    },
+    "notes": {
+      "type": "string",
+      "required": false,
+      "description": "Additional notes about the contact"
+    }
+  }
+}

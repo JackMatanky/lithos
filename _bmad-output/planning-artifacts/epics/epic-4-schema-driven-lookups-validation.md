@@ -120,15 +120,42 @@ so that future changes cannot break the combined workflow.
 
 ---
 
-## Story 4.8 Dependency Injection and E2E Test for Schema-Driven Lookups
+## Story 4.8 Epic 4 Code Refactoring and Modularization
+
+As a developer,
+I want to refactor all files, structs, and functions updated during Epic 4 to ensure they follow SRP, DRY, modularity, and maintainability principles,
+so that god-objects are eliminated, code is clean, and future maintenance is simplified.
+
+**Prerequisites:** Stories 4.1–4.7.
+
+### Acceptance Criteria
+
+1. **Single Responsibility Principle (SRP):** Every struct, function, and package has one clear responsibility
+2. **DRY (Don't Repeat Yourself):** Eliminate code duplication across Epic 4 components
+3. **Modularity:** Components are loosely coupled and highly cohesive
+4. **God-Object Elimination:** Break down any structs with >5 responsibilities into focused components
+5. **Template Engine Functions:** Refactor lookup, query, fileClass functions for clarity and performance
+6. **Schema Resolution:** Ensure schema resolver follows SRP and handles edge cases cleanly
+7. **Query Service:** Modularize query operations and eliminate any monolithic methods
+8. **Validation Logic:** Separate validation concerns from business logic
+9. **Integration Points:** Clean up interfaces between template engine, query service, and schema system
+10. **Test Coverage:** Maintain >80% coverage after refactoring
+11. **Linting:** Zero golangci-lint violations
+12. **Performance:** No regression in integration test execution time
+13. **Backward Compatibility:** All existing functionality preserved
+
+---
+
+## Story 4.9 Dependency Injection and E2E Test for Schema-Driven Lookups
 
 As a developer,
 I want to implement dependency injection for the schema-driven lookup components and add comprehensive e2e tests,
 so that the schema-driven lookup functionality is properly wired and thoroughly tested end-to-end.
 
-**Prerequisites:** Stories 4.1–4.7.
+**Prerequisites:** Stories 4.1–4.8.
 
 ### Acceptance Criteria
+
 1. All schema-driven lookup components are properly registered in the DI container
 2. The main.go file includes the schema-driven lookup dependencies in the application wiring
 3. E2E tests cover the complete schema-driven lookup workflow from template function calls through schema resolution to data retrieval
@@ -137,13 +164,13 @@ so that the schema-driven lookup functionality is properly wired and thoroughly 
 
 ---
 
-## Story 4.9 Documentation Update for Schema-Driven Lookups Release
+## Story 4.10 Documentation Update for Schema-Driven Lookups Release
 
 As a maintainer,
 I want to update all project documentation to reflect the completed schema-driven lookups implementation,
 so that users and developers have accurate, comprehensive documentation for the new schema-driven lookup capabilities.
 
-**Prerequisites:** Stories 4.1–4.8.
+**Prerequisites:** Stories 4.1–4.9.
 
 ### Acceptance Criteria
 1. README.md updated with schema-driven lookup features and template functions
