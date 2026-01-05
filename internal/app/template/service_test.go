@@ -252,7 +252,7 @@ func TestTemplateEngine_Load(t *testing.T) {
 // template functions.
 func TestTemplateEngine_BuildFuncMap(t *testing.T) {
 	mockPort := newMockTemplatePort()
-	config := domain.Config{}
+	config := domain.Config{VaultPath: "/test/vault"}
 	logger := zerolog.Nop()
 	engine := NewTemplateEngine(
 		mockPort,
