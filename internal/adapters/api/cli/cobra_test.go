@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/JackMatanky/lithos/internal/app/vault"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/domain"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
@@ -19,7 +19,7 @@ import (
 type mockCommandPort struct {
 	newNoteResult    domain.Note
 	newNoteError     error
-	indexVaultResult vault.IndexStats
+	indexVaultResult metrics.IndexStats
 	indexVaultError  error
 }
 
@@ -39,7 +39,7 @@ func (m *mockCommandPort) NewNote(
 
 func (m *mockCommandPort) IndexVault(
 	ctx context.Context,
-) (vault.IndexStats, error) {
+) (metrics.IndexStats, error) {
 	return m.indexVaultResult, m.indexVaultError
 }
 
@@ -382,7 +382,7 @@ func TestDisplayIndexStats_FormatsOutputCorrectly(t *testing.T) {
 	logger := zerolog.New(nil)
 	adapter := NewCobraCLIAdapter(logger)
 
-	stats := vault.IndexStats{
+	stats := metrics.IndexStats{
 		ScannedCount:       10,
 		IndexedCount:       8,
 		ValidationFailures: 2,

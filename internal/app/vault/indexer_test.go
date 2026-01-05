@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
@@ -343,7 +344,7 @@ func TestVaultIndexer_Build_EventPublishing(t *testing.T) {
 
 // TestIndexStats tests the statistics structure.
 func TestIndexStats(t *testing.T) {
-	stats := IndexStats{
+	stats := metrics.IndexStats{
 		ScannedCount:        10,
 		IndexedCount:        8,
 		ParseFailures:       1,

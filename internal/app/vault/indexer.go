@@ -12,6 +12,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -28,8 +29,9 @@ const (
 // architecture.
 type VaultIndexerInterface interface {
 	// Build performs a complete vault indexing operation.
-	// Returns IndexStats with operation metrics and any error encountered.
-	Build(ctx context.Context) (IndexStats, error)
+	// Returns metrics.IndexStats with operation metrics and any error
+	// encountered.
+	Build(ctx context.Context) (metrics.IndexStats, error)
 }
 
 // VaultIndexer orchestrates the vault indexing workflow from scan to cache
@@ -140,17 +142,17 @@ func NewVaultIndexer(
 //   - ctx: Context for cancellation and timeout handling
 //
 // Returns:
-//   - IndexStats: Metrics for the indexing operation
+//   - metrics.IndexStats: Metrics for the indexing operation
 //   - error: Schema/scan errors only (validation/cache failures logged but don't
 //     abort)
 //
 // Thread-safe: Safe for concurrent calls (dependencies handle synchronization).
-func (v *VaultIndexer) Build(ctx context.Context) (IndexStats, error) {
+func (v *VaultIndexer) Build(ctx context.Context) (metrics.IndexStats, error) {
 	v.suppressCount.Add(1)
 	defer v.suppressCount.Add(-1)
 
 	startTime := time.Now()
-	stats := IndexStats{
+	stats := metrics.IndexStats{
 		ScannedCount:        0,
 		IndexedCount:        0,
 		ParseFailures:       0,
@@ -251,7 +253,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 	defer v.suppressCount.Add(-1)
 
 	startTime := time.Now()
-	stats := IndexStats{
+	stats := metrics.IndexStats{
 		ScannedCount:        0,
 		IndexedCount:        0,
 		ParseFailures:       0,
@@ -330,7 +332,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 //
 // Parameters:
 //   - ctx: Context for cancellation and timeout handling
-//   - stats: IndexStats to update with deletion failures
+//   - stats: metrics.IndexStats to update with deletion failures
 //
 // Returns:
 //   - error: Critical errors that should abort refresh (e.g., vault scan
@@ -339,7 +341,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 func (v *VaultIndexer) reconcileDeletions(
 	ctx context.Context,
 	uow *CacheUnitOfWork,
-	stats *IndexStats,
+	stats *metrics.IndexStats,
 ) []domain.Note {
 	cachedNotes, listErr := v.cacheReader.List(ctx)
 	if listErr != nil {
@@ -396,13 +398,13 @@ func (v *VaultIndexer) reconcileDeletions(
 //   - ctx: Context for cancellation and timeout handling
 //
 // Returns:
-//   - CacheValidationResult: Detailed results of cache state validation
+//   - metrics.CacheValidationResult: Detailed results of cache state validation
 //   - error: Critical validation errors (e.g., unable to access vault/cache)
 func (v *VaultIndexer) validateCacheState(
 	ctx context.Context,
 	vaultFiles []dto.VaultFile,
 	retainedNotes []domain.Note,
-) (CacheValidationResult, error) {
+) (metrics.CacheValidationResult, error) {
 	snapshot := vaultFiles
 	if len(retainedNotes) > 0 {
 		var buildErr error
@@ -412,7 +414,7 @@ func (v *VaultIndexer) validateCacheState(
 			retainedNotes,
 		)
 		if buildErr != nil {
-			return CacheValidationResult{}, fmt.Errorf(
+			return metrics.CacheValidationResult{}, fmt.Errorf(
 				"failed to build vault snapshot: %w",
 				buildErr,
 			)
@@ -425,7 +427,7 @@ func (v *VaultIndexer) validateCacheState(
 		snapshot,
 	)
 	if vaultErr != nil {
-		return CacheValidationResult{}, fmt.Errorf(
+		return metrics.CacheValidationResult{}, fmt.Errorf(
 			"failed to collect vault state for validation: %w",
 			vaultErr,
 		)
@@ -437,7 +439,7 @@ func (v *VaultIndexer) validateCacheState(
 		retainedNotes,
 	)
 	if cacheErr != nil {
-		return CacheValidationResult{}, fmt.Errorf(
+		return metrics.CacheValidationResult{}, fmt.Errorf(
 			"failed to collect cache state for validation: %w",
 			cacheErr,
 		)
@@ -451,7 +453,7 @@ func (v *VaultIndexer) validateCacheState(
 			cachedNotes,
 		)
 
-	result := CacheValidationResult{
+	result := metrics.CacheValidationResult{
 		TotalVaultFiles:    totalVaultFiles,
 		TotalCacheEntries:  totalCacheEntries,
 		OrphanedCacheFiles: orphanedCount,
@@ -671,12 +673,12 @@ func (v *VaultIndexer) scanModifiedFiles(
 // Parameters:
 //   - ctx: Context for cancellation and timeout handling
 //   - vf: Vault file to process
-//   - stats: IndexStats to update with processing results
+//   - stats: metrics.IndexStats to update with processing results
 func (v *VaultIndexer) processFile(
 	ctx context.Context,
 	file *dto.VaultFile,
 	uow *CacheUnitOfWork,
-	stats *IndexStats,
+	stats *metrics.IndexStats,
 ) {
 	// Filter: only .md files for frontmatter processing
 	if file.Ext() != markdownExt {
@@ -775,8 +777,8 @@ func (v *VaultIndexer) metadataFromPath(
 // Provides metrics for NFR3 performance monitoring.
 //
 // Parameters:
-//   - stats: Final IndexStats to log
-func (v *VaultIndexer) logStats(stats IndexStats) {
+//   - stats: Final metrics.IndexStats to log
+func (v *VaultIndexer) logStats(stats metrics.IndexStats) {
 	v.log.Info().
 		Int("scanned", stats.ScannedCount).
 		Int("indexed", stats.IndexedCount).
@@ -812,7 +814,7 @@ func (v *VaultIndexer) publishNoteIndexedEvent(
 
 func (v *VaultIndexer) publishIndexingCompleteEvent(
 	ctx context.Context,
-	stats IndexStats,
+	stats metrics.IndexStats,
 ) {
 	if v.eventBus == nil {
 		return
@@ -904,10 +906,10 @@ func (v *VaultIndexer) applyNoteEvent(
 // Provides metrics for incremental update performance monitoring.
 //
 // Parameters:
-//   - stats: Refresh IndexStats to log
+//   - stats: Refresh metrics.IndexStats to log
 //   - since: Timestamp used for the incremental scan
 func (v *VaultIndexer) logRefreshStats(
-	stats IndexStats,
+	stats metrics.IndexStats,
 	since time.Time,
 ) {
 	v.log.Info().
@@ -926,8 +928,10 @@ func (v *VaultIndexer) logRefreshStats(
 // monitoring.
 //
 // Parameters:
-//   - result: CacheValidationResult to log
-func (v *VaultIndexer) logCacheValidationResult(result CacheValidationResult) {
+//   - result: metrics.CacheValidationResult to log
+func (v *VaultIndexer) logCacheValidationResult(
+	result metrics.CacheValidationResult,
+) {
 	if result.IsConsistent {
 		v.log.Info().
 			Int("vault_files", result.TotalVaultFiles).

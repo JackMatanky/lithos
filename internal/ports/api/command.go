@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 
-	"github.com/JackMatanky/lithos/internal/app/vault"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/domain"
 )
 
@@ -64,12 +64,12 @@ type CommandPort interface {
 	//   - Long-running indexing operations must observe ctx.Done()
 	//
 	// Returns:
-	// - vault.IndexStats: Statistics from the indexing operation (scanned,
+	// - metrics.IndexStats: Statistics from the indexing operation (scanned,
 	// indexed, failures, duration) - error: Wrapped error if indexing fails
 	// (schema load, vault scan, or critical failures)
 	IndexVault(
 		ctx context.Context,
-	) (vault.IndexStats, error)
+	) (metrics.IndexStats, error)
 
 	// Additional methods to be added in later stories:
 	// - FindTemplates(ctx context.Context, query string) ([]Template, error)

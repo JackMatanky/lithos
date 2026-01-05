@@ -12,6 +12,7 @@ import (
 	schemaadapter "github.com/JackMatanky/lithos/internal/adapters/spi/schema"
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	vaultService "github.com/JackMatanky/lithos/internal/app/vault"
@@ -501,7 +502,7 @@ func testQueryLayerComprehensive(
 func testPerformanceBenchmarks(
 	t *testing.T,
 	duration time.Duration,
-	stats vaultService.IndexStats,
+	stats metrics.IndexStats,
 ) {
 	// Performance requirements for realistic vault sizes
 	maxDuration := 30 * time.Second // Should complete within 30 seconds

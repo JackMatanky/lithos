@@ -10,6 +10,7 @@ import (
 	vaultAdapter "github.com/JackMatanky/lithos/internal/adapters/spi/vault"
 	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -29,7 +30,7 @@ const (
 // mockVaultIndexer provides a mock implementation of VaultIndexerInterface for
 // testing.
 type mockVaultIndexer struct {
-	buildResult vault.IndexStats
+	buildResult metrics.IndexStats
 	buildError  error
 }
 
@@ -42,11 +43,11 @@ type mockCLIPort struct {
 
 func (m *mockVaultIndexer) Build(
 	ctx context.Context,
-) (vault.IndexStats, error) {
+) (metrics.IndexStats, error) {
 	return m.buildResult, m.buildError
 }
 
-func (m *mockVaultIndexer) SetBuildResult(stats vault.IndexStats, err error) {
+func (m *mockVaultIndexer) SetBuildResult(stats metrics.IndexStats, err error) {
 	m.buildResult = stats
 	m.buildError = err
 }
@@ -358,7 +359,7 @@ func TestIndexVaultSuccess(t *testing.T) {
 	config := domain.DefaultConfig()
 	logger := zerolog.Nop()
 
-	expectedStats := vault.IndexStats{
+	expectedStats := metrics.IndexStats{
 		ScannedCount:        10,
 		IndexedCount:        8,
 		CacheFailures:       1,
@@ -399,7 +400,7 @@ func TestIndexVaultBuildError(t *testing.T) {
 
 	buildErr := assert.AnError
 	mockVaultIndexer := &mockVaultIndexer{}
-	mockVaultIndexer.SetBuildResult(vault.IndexStats{}, buildErr)
+	mockVaultIndexer.SetBuildResult(metrics.IndexStats{}, buildErr)
 
 	var mockVaultWriter spi.VaultWriterPort
 	var mockTemplateEngine *template.TemplateEngine

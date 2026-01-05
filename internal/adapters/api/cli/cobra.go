@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/JackMatanky/lithos/internal/app/vault"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/api"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
@@ -187,7 +187,7 @@ func (a *CobraCLIAdapter) displayNoteCreated(
 // This method follows SRP by focusing solely on output formatting.
 func (a *CobraCLIAdapter) displayIndexStats(
 	cmd *cobra.Command,
-	stats vault.IndexStats,
+	stats metrics.IndexStats,
 ) error {
 	cmd.Printf("✓ Vault indexed successfully\n\n")
 	cmd.Printf("Statistics:\n")

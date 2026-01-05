@@ -12,6 +12,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/app/vault"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -234,21 +235,23 @@ func (o *CLIComander) NewNote(
 //   - ctx: Context for cancellation and timeout control during indexing
 //
 // Returns:
-//   - vault.IndexStats: Statistics from the indexing operation (scanned, indexed,
-//     failures, duration)
-//   - error: Wrapped error if indexing fails (schema load, vault scan, or
-//     critical failures)
+// - metrics.IndexStats: Statistics from the indexing operation (scanned,
+// indexed,
+//
+//	  failures, duration)
+//	- error: Wrapped error if indexing fails (schema load, vault scan, or
+//	  critical failures)
 //
 // Reference: docs/architecture/components.md#commandorchestrator - IndexVault
 // Reference: docs/architecture/components.md#commandorchestrator (legacy
 // anchor).
 func (o *CLIComander) IndexVault(
 	ctx context.Context,
-) (vault.IndexStats, error) {
+) (metrics.IndexStats, error) {
 	o.log.Info().Msg("starting vault indexing")
 
 	if o.vaultIndexer == nil {
-		return vault.IndexStats{}, fmt.Errorf(
+		return metrics.IndexStats{}, fmt.Errorf(
 			"vault indexer not configured for IndexVault",
 		)
 	}
@@ -256,7 +259,7 @@ func (o *CLIComander) IndexVault(
 	stats, err := o.vaultIndexer.Build(ctx)
 	if err != nil {
 		o.log.Error().Err(err).Msg("vault indexing failed")
-		return vault.IndexStats{}, fmt.Errorf("indexing failed: %w", err)
+		return metrics.IndexStats{}, fmt.Errorf("indexing failed: %w", err)
 	}
 
 	o.log.Info().

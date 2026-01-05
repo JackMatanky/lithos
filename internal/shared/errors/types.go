@@ -129,6 +129,17 @@ func (e BaseError) Unwrap() error {
 	return e.cause
 }
 
+// Is implements error comparison for BaseError.
+// This enables proper error matching with errors.Is().
+// Two BaseErrors are considered equal if they have the same message.
+func (e BaseError) Is(target error) bool {
+	t, ok := target.(BaseError)
+	if !ok {
+		return false
+	}
+	return e.message == t.message
+}
+
 // Cause returns the underlying cause error, or nil if none exists.
 // This provides direct access to the cause for error formatting.
 func (e BaseError) Cause() error {
@@ -186,6 +197,31 @@ func (e *ResourceError) Operation() string {
 // connection string).
 func (e *ResourceError) Target() string {
 	return e.target
+}
+
+// Is implements error comparison for ResourceError.
+// Checks if the cause in the error chain matches the target.
+// This enables matching ErrNotFound wrapped in ResourceError.
+func (e *ResourceError) Is(target error) bool {
+	// Check if our BaseError matches
+	if e.BaseError.Is(target) {
+		return true
+	}
+
+	// Check if the cause matches the target
+	if e.cause == nil {
+		return false
+	}
+
+	// For BaseError targets, use Is() method for proper comparison
+	if baseTarget, ok := target.(BaseError); ok {
+		if baseCause, causeIsBase := e.cause.(BaseError); causeIsBase {
+			return baseCause.Is(baseTarget)
+		}
+	}
+
+	// For other errors, use direct comparison
+	return e.cause == target
 }
 
 // NewFileSystemError creates a new FileSystemError with filesystem operation

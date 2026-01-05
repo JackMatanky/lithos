@@ -1,4 +1,4 @@
-package events_test
+package performance
 
 import (
 	"context"
@@ -34,7 +34,7 @@ func BenchmarkEventDispatchOverhead(b *testing.B) {
 	)
 
 	// Create a test event
-	note := createBenchmarkNote()
+	note := createEventBusTestNote()
 	event := domain.MustNewNoteIndexedEvent(note, time.Now())
 
 	b.ResetTimer()
@@ -75,7 +75,7 @@ func BenchmarkConcurrentEventDispatch(b *testing.B) {
 		)
 	}
 
-	note := createBenchmarkNote()
+	note := createEventBusTestNote()
 	event := domain.MustNewNoteIndexedEvent(note, time.Now())
 
 	b.ResetTimer()
@@ -89,8 +89,8 @@ func BenchmarkConcurrentEventDispatch(b *testing.B) {
 	}
 }
 
-// createBenchmarkNote creates a minimal note for benchmarking.
-func createBenchmarkNote() domain.Note {
+// createEventBusTestNote creates a minimal note for event bus benchmarking.
+func createEventBusTestNote() domain.Note {
 	frontmatter := domain.NewFrontmatter(map[string]interface{}{
 		"file_class": "benchmark",
 	})
