@@ -132,6 +132,7 @@ func (c *Container) TemplateEngine() *template.TemplateEngine {
 					"template functions will be unavailable")
 			querySvc = nil
 		}
+
 		c.templateEngine = template.NewTemplateEngine(
 			templateAdapter.NewTemplateLoaderAdapter(&c.config, &c.logger),
 			&c.config,

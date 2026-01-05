@@ -185,9 +185,9 @@ func (e *TemplateEngine) buildFuncMap(ctx context.Context) template.FuncMap {
 		return e.funcMap
 	}
 
-	e.funcMap = template.FuncMap{
-		// Basic functions
-		"now":     func(format string) string { return time.Now().Format(format) },
+	funcMap := template.FuncMap{
+		// String manipulation functions
+		"title":   strings.Title, //nolint:staticcheck // TODO: migrate to golang.org/x/text/cases
 		"toLower": strings.ToLower,
 		"toUpper": strings.ToUpper,
 		"dict":    buildDict,
@@ -209,6 +209,8 @@ func (e *TemplateEngine) buildFuncMap(ctx context.Context) template.FuncMap {
 		"fileClass":   e.makeFileClassFunc(ctx),
 		"sortByTitle": sortNotesByTitle,
 	}
+
+	e.funcMap = funcMap
 	return e.funcMap
 }
 

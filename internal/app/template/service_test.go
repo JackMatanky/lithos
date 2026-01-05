@@ -251,10 +251,11 @@ func TestTemplateEngine_Load(t *testing.T) {
 // TestTemplateEngine_BuildFuncMap tests the buildFuncMap method and all custom
 // template functions.
 func TestTemplateEngine_BuildFuncMap(t *testing.T) {
-	config := domain.Config{VaultPath: "/test/vault"}
+	mockPort := newMockTemplatePort()
+	config := domain.Config{}
 	logger := zerolog.Nop()
 	engine := NewTemplateEngine(
-		nil,
+		mockPort,
 		&config,
 		nil,
 		&logger,
