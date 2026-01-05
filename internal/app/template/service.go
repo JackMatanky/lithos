@@ -192,6 +192,11 @@ func (e *TemplateEngine) buildFuncMap(ctx context.Context) template.FuncMap {
 		"toUpper": strings.ToUpper,
 		"dict":    buildDict,
 
+		// Date/time functions
+		"now": func(format string) string {
+			return time.Now().Format(format)
+		},
+
 		// File path control functions
 		"path":   func() string { return "" }, // Empty for Epic 1
 		"folder": filepath.Dir,
