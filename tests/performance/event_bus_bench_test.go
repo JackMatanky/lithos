@@ -49,6 +49,36 @@ func BenchmarkEventDispatchOverhead(b *testing.B) {
 	}
 }
 
+// BenchmarkPublishHelpers measures the overhead of the new helper functions.
+func BenchmarkPublishHelpers(b *testing.B) {
+	log := sharedlogger.NewZerologAdapter(sharedlogger.NewTest())
+	eventBus := events.NewInMemoryEventBus(log)
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		_ = eventBus.Shutdown(ctx)
+	}()
+
+	ctx := context.Background()
+	zlog := sharedlogger.NewTest()
+	note := createEventBusTestNote()
+	event := domain.MustNewNoteIndexedEvent(note, time.Now())
+
+	b.Run("PublishSync", func(b *testing.B) {
+		b.ResetTimer()
+		for b.Loop() {
+			_ = events.PublishSync(ctx, eventBus, event)
+		}
+	})
+
+	b.Run("PublishAsync", func(b *testing.B) {
+		b.ResetTimer()
+		for b.Loop() {
+			events.PublishAsync(ctx, eventBus, zlog, event)
+		}
+	})
+}
+
 // BenchmarkConcurrentEventDispatch measures performance with multiple
 // concurrent subscribers.
 func BenchmarkConcurrentEventDispatch(b *testing.B) {
