@@ -5,30 +5,16 @@ import (
 	"fmt"
 	"math"
 	"slices"
-	"strconv"
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/shared/converters"
 	"github.com/JackMatanky/lithos/internal/shared/errors"
 )
 
 // FieldValidator defines the interface for polymorphic field validation.
-// Each property type implements this interface to provide type-specific
-// validation logic for frontmatter values against PropertySpec constraints.
-//
-// Design: Polymorphic validation pattern enables clean separation of
-// validation logic by type while maintaining consistency across validators.
 type FieldValidator interface {
 	// Validate validates a frontmatter field value against a PropertySpec.
-	// Returns FrontmatterError for validation failures, nil for success.
-	//
-	// Parameters:
-	//   - fieldName: Name of the field being validated (for error context)
-	//   - value: The actual frontmatter field value to validate
-	//   - spec: PropertySpec containing validation constraints
-	//
-	// Returns:
-	//   - error: FrontmatterError with field context, nil for valid values
 	Validate(
 		fieldName string,
 		value any,
@@ -36,32 +22,68 @@ type FieldValidator interface {
 	) error
 }
 
-// StringValidator validates string fields against StringSpec constraints.
-// Handles enum validation and regex pattern matching.
+// Validator defines a generic interface for type-safe property validation.
+type Validator[T any] interface {
+	Validate(fieldName string, value any, spec T) error
+}
+
+// ValidatorRegistry provides a central registry for property validators.
+type ValidatorRegistry struct {
+	validators map[domain.PropertySpecType]FieldValidator
+}
+
+// StringValidator validates string fields.
 type StringValidator struct{}
 
-// NumberValidator validates numeric fields against NumberSpec constraints.
-// Handles min/max range validation and step increment validation.
+// NumberValidator validates numeric fields.
 type NumberValidator struct{}
 
-// DateValidator validates date fields against DateSpec constraints.
-// Handles date format validation and parsing.
+// DateValidator validates date fields.
 type DateValidator struct{}
 
-// BoolValidator validates boolean fields against BoolSpec constraints.
-// Handles boolean type validation (no additional constraints).
+// BoolValidator validates boolean fields.
 type BoolValidator struct{}
 
+// NewValidatorRegistry creates a new empty registry.
+func NewValidatorRegistry() *ValidatorRegistry {
+	return &ValidatorRegistry{
+		validators: make(map[domain.PropertySpecType]FieldValidator),
+	}
+}
+
+// Register registers a validator for a specific property type.
+func (r *ValidatorRegistry) Register(
+	propType domain.PropertySpecType,
+	v FieldValidator,
+) {
+	r.validators[propType] = v
+}
+
+// Get retrieves a validator for a specific property type.
+func (r *ValidatorRegistry) Get(
+	propType domain.PropertySpecType,
+) (FieldValidator, bool) {
+	v, ok := r.validators[propType]
+	return v, ok
+}
+
+// DefaultValidatorRegistry creates a registry with all standard validators.
+func DefaultValidatorRegistry() *ValidatorRegistry {
+	r := NewValidatorRegistry()
+	r.Register(domain.PropertyTypeString, &StringValidator{})
+	r.Register(domain.PropertyTypeNumber, &NumberValidator{})
+	r.Register(domain.PropertyTypeDate, &DateValidator{})
+	r.Register(domain.PropertyTypeBool, &BoolValidator{})
+	return r
+}
+
 // Validate validates string values against StringSpec constraints.
-// Checks enum membership and regex pattern compliance.
 func (v *StringValidator) Validate(
 	fieldName string,
 	value any,
 	spec domain.PropertySpec,
 ) error {
-	// Coerce numeric and boolean scalars to strings so YAML numbers without
-	// quotes can still satisfy string specs (common user shorthand).
-	stringValue, ok := coerceToStringValue(value)
+	stringValue, ok := converters.ToString(value)
 	if !ok {
 		return errors.NewFrontmatterError(
 			"field value is not a string",
@@ -70,8 +92,8 @@ func (v *StringValidator) Validate(
 		)
 	}
 
-	stringSpec, ok := spec.(*domain.StringSpec)
-	if !ok {
+	stringSpec, ok2 := spec.(*domain.StringSpec)
+	if !ok2 {
 		return errors.NewFrontmatterError(
 			"property spec is not StringSpec",
 			fieldName,
@@ -79,229 +101,101 @@ func (v *StringValidator) Validate(
 		)
 	}
 
-	// Validate enum membership if enum is specified
-	if len(stringSpec.Enum) > 0 {
-		if slices.Contains(stringSpec.Enum, stringValue) {
-			return nil // Valid enum value
-		}
-		return errors.NewFrontmatterError(
-			"value not in allowed enum",
-			fieldName,
-			nil,
-		)
+	if err := v.validateEnum(fieldName, stringValue, stringSpec); err != nil {
+		return err
 	}
 
-	// Validate pattern compliance if pattern is specified
-	if stringSpec.Pattern != "" {
-		// Ensure regex is compiled (should be done by spec.Validate() but
-		// extra safety here)
-		if err := stringSpec.Validate(context.Background()); err != nil {
+	return v.validatePattern(fieldName, stringValue, stringSpec)
+}
+
+func (v *StringValidator) validateEnum(
+	fieldName, value string,
+	spec *domain.StringSpec,
+) error {
+	if len(spec.Enum) > 0 {
+		if !slices.Contains(spec.Enum, value) {
+			return errors.NewFrontmatterError(
+				"value not in allowed enum",
+				fieldName,
+				nil,
+			)
+		}
+	}
+	return nil
+}
+
+func (v *StringValidator) validatePattern(
+	fieldName, value string,
+	spec *domain.StringSpec,
+) error {
+	if spec.Pattern != "" {
+		if err := spec.Validate(context.Background()); err != nil {
 			return errors.NewFrontmatterError(
 				"invalid pattern regex in schema",
 				fieldName,
 				err,
 			)
 		}
-
-		if stringSpec.Match(stringValue) {
-			return nil
+		if !spec.Match(value) {
+			return errors.NewFrontmatterError(
+				fmt.Sprintf("value does not match pattern: %s", spec.Pattern),
+				fieldName,
+				nil,
+			)
 		}
-
-		return errors.NewFrontmatterError(
-			fmt.Sprintf("value does not match pattern: %s", stringSpec.Pattern),
-			fieldName,
-			nil,
-		)
 	}
-
 	return nil
 }
 
 // Validate validates numeric values against NumberSpec constraints.
-// Checks min/max bounds and step increment compliance.
 func (v *NumberValidator) Validate(
 	fieldName string,
 	value any,
 	spec domain.PropertySpec,
 ) error {
-	// Extract numeric value from interface with type checking
-	numValue, err := v.extractNumericValue(value)
-	if err != nil {
+	numValue, ok := converters.ToFloat64(value)
+	if !ok {
 		return errors.NewFrontmatterError(
 			"field value is not numeric",
 			fieldName,
-			err,
+			nil,
 		)
 	}
 
-	// Type assertion to ensure we have a NumberSpec
-	numberSpec, ok := spec.(*domain.NumberSpec)
-	if !ok {
-		if valueSpec, isValue := spec.(domain.NumberSpec); isValue {
-			numberSpec = &valueSpec
-		} else {
-			return errors.NewFrontmatterError(
-				"property spec is not NumberSpec",
-				fieldName,
-				nil,
-			)
-		}
-	}
-
-	// Validate constraints
-	return v.validateNumericConstraints(fieldName, numValue, numberSpec)
-}
-
-// Validate validates date values against DateSpec constraints.
-// Checks date format compliance and parsing validity.
-func (v *DateValidator) Validate(
-	fieldName string,
-	value any,
-	spec domain.PropertySpec,
-) error {
-	// Type assertion to handle string or time.Time values
-	// YAML parsers often decode dates into time.Time when unquoted
-	dateSpec, ok := spec.(*domain.DateSpec)
-	if !ok {
-		if valueSpec, isValue := spec.(domain.DateSpec); isValue {
-			dateSpec = &valueSpec
-		} else {
-			return errors.NewFrontmatterError(
-				"property spec is not DateSpec",
-				fieldName,
-				nil,
-			)
-		}
-	}
-
-	format := dateSpec.Format
-	if format == "" {
-		format = "2006-01-02T15:04:05Z07:00" // RFC3339
-	}
-
-	var dateValue string
-	switch v := value.(type) {
-	case string:
-		dateValue = v
-	case time.Time:
-		dateValue = v.Format(format)
+	var numberSpec *domain.NumberSpec
+	switch s := spec.(type) {
+	case *domain.NumberSpec:
+		numberSpec = s
+	case domain.NumberSpec:
+		numberSpec = &s
 	default:
-		return errors.NewFrontmatterError(
-			"field value is not a string",
-			fieldName,
-			nil,
-		)
+		return errors.NewFrontmatterError("property spec is not NumberSpec", fieldName, nil)
 	}
 
-	// Try to parse the date with the specified format
-	_, err := time.Parse(format, dateValue)
-	if err != nil {
-		return errors.NewFrontmatterError(
-			"invalid date format",
-			fieldName,
-			err,
-		)
+	if numberSpec.Min != nil && numValue < *numberSpec.Min {
+		return errors.NewFrontmatterError("value below minimum", fieldName, nil)
+	}
+	if numberSpec.Max != nil && numValue > *numberSpec.Max {
+		return errors.NewFrontmatterError("value above maximum", fieldName, nil)
 	}
 
-	return nil
+	return v.validateStep(fieldName, numValue, numberSpec)
 }
 
-// Validate validates boolean values against BoolSpec constraints.
-// Ensures value is a valid boolean type.
-func (v *BoolValidator) Validate(
-	fieldName string,
-	value any,
-	spec domain.PropertySpec,
-) error {
-	// Type assertion to ensure we have a boolean value
-	_, ok := value.(bool)
-	if !ok {
-		return errors.NewFrontmatterError(
-			"field value is not a boolean",
-			fieldName,
-			nil,
-		)
-	}
-
-	// Type assertion to ensure we have a BoolSpec
-	if _, isPtr := spec.(*domain.BoolSpec); isPtr {
-		return nil
-	}
-	if _, isValue := spec.(domain.BoolSpec); isValue {
-		return nil
-	}
-
-	return errors.NewFrontmatterError(
-		"property spec is not BoolSpec",
-		fieldName,
-		nil,
-	)
-}
-
-// extractNumericValue extracts a float64 value from an any with
-// type checking.
-// Helper method for NumberValidator to reduce cyclomatic complexity.
-func (v *NumberValidator) extractNumericValue(
-	value any,
-) (float64, error) {
-	switch val := value.(type) {
-	case int:
-		return float64(val), nil
-	case int64:
-		return float64(val), nil
-	case float64:
-		return val, nil
-	case float32:
-		return float64(val), nil
-	default:
-		return 0, errors.NewFrontmatterError(
-			"unsupported numeric type",
-			"",
-			nil,
-		)
-	}
-}
-
-// validateNumericConstraints validates numeric value against NumberSpec
-// constraints.
-// Helper method for NumberValidator to reduce cyclomatic complexity.
-func (v *NumberValidator) validateNumericConstraints(
+func (v *NumberValidator) validateStep(
 	fieldName string,
 	numValue float64,
-	numberSpec *domain.NumberSpec,
+	spec *domain.NumberSpec,
 ) error {
-	// Validate minimum value
-	if numberSpec.Min != nil && numValue < *numberSpec.Min {
-		return errors.NewFrontmatterError(
-			"value below minimum",
-			fieldName,
-			nil,
-		)
-	}
-
-	// Validate maximum value
-	if numberSpec.Max != nil && numValue > *numberSpec.Max {
-		return errors.NewFrontmatterError(
-			"value above maximum",
-			fieldName,
-			nil,
-		)
-	}
-
-	// Validate step compliance
-	if numberSpec.Step != nil {
-		step := *numberSpec.Step
+	if spec.Step != nil {
+		step := *spec.Step
 		base := 0.0
-		if numberSpec.Min != nil {
-			base = *numberSpec.Min
+		if spec.Min != nil {
+			base = *spec.Min
 		}
-
-		// (numValue - base) / step must be an integer
-		// Use epsilon for float precision issues
 		const epsilon = 1e-9
-		remainder := math.Mod(numValue-base, step)
-		if math.Abs(remainder) > epsilon &&
-			math.Abs(remainder-step) > epsilon {
+		remainder := math.Abs(math.Mod(numValue-base, step))
+		if remainder > epsilon && math.Abs(remainder-step) > epsilon {
 			return errors.NewFrontmatterError(
 				fmt.Sprintf(
 					"value must be a multiple of %g starting from %g",
@@ -313,27 +207,63 @@ func (v *NumberValidator) validateNumericConstraints(
 			)
 		}
 	}
-
 	return nil
 }
 
-func coerceToStringValue(value any) (string, bool) {
-	switch v := value.(type) {
-	case string:
-		return v, true
-	case fmt.Stringer:
-		return v.String(), true
-	case int:
-		return strconv.Itoa(v), true
-	case int64:
-		return strconv.FormatInt(v, 10), true
-	case float64:
-		return strconv.FormatFloat(v, 'f', -1, 64), true
-	case float32:
-		return strconv.FormatFloat(float64(v), 'f', -1, 32), true
-	case bool:
-		return strconv.FormatBool(v), true
+// Validate validates date values against DateSpec constraints.
+func (v *DateValidator) Validate(
+	fieldName string,
+	value any,
+	spec domain.PropertySpec,
+) error {
+	var dateSpec *domain.DateSpec
+	switch s := spec.(type) {
+	case *domain.DateSpec:
+		dateSpec = s
+	case domain.DateSpec:
+		dateSpec = &s
 	default:
-		return "", false
+		return errors.NewFrontmatterError("property spec is not DateSpec", fieldName, nil)
+	}
+
+	format := dateSpec.Format
+	if format == "" {
+		format = "2006-01-02T15:04:05Z07:00"
+	}
+
+	var dateValue string
+	switch val := value.(type) {
+	case string:
+		dateValue = val
+	case time.Time:
+		dateValue = val.Format(format)
+	default:
+		return errors.NewFrontmatterError("field value is not a string", fieldName, nil)
+	}
+
+	if _, err := time.Parse(format, dateValue); err != nil {
+		return errors.NewFrontmatterError("invalid date format", fieldName, err)
+	}
+	return nil
+}
+
+// Validate validates boolean values against BoolSpec constraints.
+func (v *BoolValidator) Validate(
+	fieldName string,
+	value any,
+	spec domain.PropertySpec,
+) error {
+	if _, ok := value.(bool); !ok {
+		return errors.NewFrontmatterError(
+			"field value is not a boolean",
+			fieldName,
+			nil,
+		)
+	}
+	switch spec.(type) {
+	case *domain.BoolSpec, domain.BoolSpec:
+		return nil
+	default:
+		return errors.NewFrontmatterError("property spec is not BoolSpec", fieldName, nil)
 	}
 }

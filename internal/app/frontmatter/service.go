@@ -12,197 +12,91 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
+	"github.com/JackMatanky/lithos/internal/shared/converters"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
-// QueryServicePort defines the interface needed for FileSpec validation.
-// This allows for dependency injection of query services in tests.
-type QueryServicePort interface {
-	PathQuery(
-		ctx context.Context,
-		opts spi.PathQueryOptions,
-	) ([]domain.Note, error)
-}
-
-// FrontmatterService validates frontmatter against schema rules with semantic
-// business logic enforcement. Pure domain service focused on schema compliance
-// validation. Delegates markdown parsing to MarkdownParserPort (adapter layer)
-// to maintain clean hexagonal architecture separation.
-//
-// Architecture: Domain service orchestrates semantic validation using
-// MarkdownParserPort for syntactic parsing and schema validation for business
-// rules.
-//
-// Dependencies:
-//   - SchemaEngine: For loading and resolving schemas before validation
-//   - MarkdownParserPort: For syntactic frontmatter parsing (YAML structure)
-//   - QueryService: For validating FileSpec properties against vault index
-//   - Logger: For structured logging of validation operations
+// FrontmatterService validates frontmatter against schema rules.
 type FrontmatterService struct {
-	schemaEngine *schema.SchemaEngine
-	logger       zerolog.Logger
-	eventBus     events.EventBus
-	queryService QueryServicePort
-
-	// Validators are stateless and can be reused
-	stringValidator *StringValidator
-	numberValidator *NumberValidator
-	dateValidator   *DateValidator
-	boolValidator   *BoolValidator
+	schemaEngine  *schema.SchemaEngine
+	validators    *ValidatorRegistry
+	metadataQuery spi.MetadataQueryPort
+	eventBus      events.EventBus
+	logger        zerolog.Logger
 }
 
-// NewFrontmatterService creates a new FrontmatterService with required
-// dependencies. It initializes the service for frontmatter validation
-// operations.
-//
-// Parameters:
-//   - schemaEngine: Required for schema loading and resolution
-//   - logger: Required for observability and error tracking
-//   - eventBus: Required for publishing validation events
-//
-// - queryService: Required for validating FileSpec properties against vault
-// index
-//
-// Returns a configured FrontmatterService ready for use.
+// NewFrontmatterService creates a new FrontmatterService with standard
+// validators.
 func NewFrontmatterService(
 	schemaEngine *schema.SchemaEngine,
 	logger zerolog.Logger,
 	eventBus events.EventBus,
-	queryService QueryServicePort,
+	metadataQuery spi.MetadataQueryPort,
 ) *FrontmatterService {
 	return &FrontmatterService{
-		schemaEngine:    schemaEngine,
-		logger:          logger,
-		eventBus:        eventBus,
-		queryService:    queryService,
-		stringValidator: &StringValidator{},
-		numberValidator: &NumberValidator{},
-		dateValidator:   &DateValidator{},
-		boolValidator:   &BoolValidator{},
+		schemaEngine:  schemaEngine,
+		validators:    DefaultValidatorRegistry(),
+		metadataQuery: metadataQuery,
+		eventBus:      eventBus,
+		logger:        logger,
 	}
 }
 
 // Validate validates frontmatter against schema rules and FileSpec properties.
-// Performs comprehensive validation including schema compliance and vault index
-// validation for file references.
-//
-// Validation Process:
-//  1. Schema validation (required fields, types, constraints)
-//  2. FileSpec validation (file references exist in vault)
-//  3. Wikilink resolution and ambiguity checking
-//  4. Error aggregation with remediation hints
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeout support
-//   - noteID: Identifier for the note being validated
-//   - fm: Pre-parsed frontmatter to validate
-//
-// Returns:
-//   - error: Aggregated ValidationError instances or nil if validation passes
-//
-// Error Handling:
-//   - Returns ValidationError with field, reason, value, and remediation
-//   - Aggregates multiple validation errors
-//   - Supports cancellation via context
 func (s *FrontmatterService) Validate(
 	ctx context.Context,
 	noteID string,
 	fm domain.Frontmatter,
 ) error {
 	start := time.Now()
-	var validationErrors []error
+	var errs []error
 
-	// Check for cancellation
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	// Perform schema validation
-	if schemaErr := s.IsSchemaCompliant(ctx, noteID, fm); schemaErr != nil {
-		validationErrors = append(validationErrors, schemaErr)
+	if err := s.IsSchemaCompliant(ctx, noteID, fm); err != nil {
+		errs = append(errs, err)
 	}
 
-	// Perform FileSpec validation if schema available
 	if fm.FileClass() != "" {
-		if fileSpecErr := s.validateFileSpecProperties(ctx, fm); fileSpecErr != nil {
-			validationErrors = append(validationErrors, fileSpecErr)
+		if err := s.validateFileSpecProperties(ctx, fm); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
-	validationErr := s.aggregateValidationErrors(validationErrors)
+	aggErr := s.aggregateValidationErrors(errs)
 	duration := time.Since(start)
-	s.publishValidationEvent(ctx, noteID, fm, validationErr, duration)
-	return validationErr
+	publishValidation(ctx, s.eventBus, s.logger, noteID, fm, aggErr, duration)
+	return aggErr
 }
 
-// IsSchemaCompliant validates frontmatter against schema rules with semantic
-// business logic enforcement. Pure domain service focused on schema compliance
-// validation. Frontmatter must be pre-parsed using MarkdownParserPort.
-//
-// Validation Layer: Domain Layer (Semantic)
-// - Performs business rule validation (schema compliance, required fields)
-// - Uses pre-parsed frontmatter (syntactic validation done in adapter layer)
-// - Does NOT perform parsing or structural validation
-//
-// Validation Process:
-//  1. Validates all required fields are present
-//  2. Validates field types using appropriate field validators
-//  3. Preserves unknown fields (FR6 compliance)
-//  4. Enforces array vs scalar expectations without auto-coercion
-//  5. Aggregates all validation errors
-//
-// Parameters:
-//   - ctx: Context for cancellation support
-//   - fm: Pre-parsed frontmatter to validate (from MarkdownParserPort)
-//
-// Returns:
-//   - error: Aggregated validation errors or nil if validation passes
-//
-// Error Handling:
-//   - Returns structured FrontmatterError with field context
-//   - Aggregates multiple validation errors using errors.Join
-//   - Supports cancellation via context
+// IsSchemaCompliant validates frontmatter against schema rules.
 func (s *FrontmatterService) IsSchemaCompliant(
 	ctx context.Context,
 	noteID string,
 	fm domain.Frontmatter,
 ) error {
 	start := time.Now()
-	var validationErrors []error
+	var errs []error
 
-	// Check for cancellation
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
+	if err := ctx.Err(); err != nil {
+		return err
 	}
 
-	// Validate against schema if fileClass is present
 	if fm.FileClass() != "" {
-		if schemaErr := s.validateAgainstSchema(ctx, fm); schemaErr != nil {
-			validationErrors = append(validationErrors, schemaErr)
+		if err := s.validateAgainstSchema(ctx, fm); err != nil {
+			errs = append(errs, err)
 		}
 	}
 
-	validationErr := s.aggregateValidationErrors(validationErrors)
+	aggErr := s.aggregateValidationErrors(errs)
 	duration := time.Since(start)
-	s.publishValidationEvent(ctx, noteID, fm, validationErr, duration)
-	return validationErr
+	publishValidation(ctx, s.eventBus, s.logger, noteID, fm, aggErr, duration)
+	return aggErr
 }
 
-// getSchemaForValidation retrieves a schema for frontmatter validation.
-// Helper method that wraps schema engine access with error handling.
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeout handling
-//   - fileClass: The schema name to retrieve
-//
-// Returns:
-//   - domain.Schema: The resolved schema for validation
-//   - error: Schema retrieval error if schema not found or engine unavailable
 func (s *FrontmatterService) getSchemaForValidation(
 	ctx context.Context,
 	fileClass string,
@@ -210,597 +104,267 @@ func (s *FrontmatterService) getSchemaForValidation(
 	if s.schemaEngine == nil {
 		return domain.Schema{}, errors.New("schema engine not available")
 	}
-	// Use generic Get function from schema package
 	return schema.Get[domain.Schema](s.schemaEngine, ctx, fileClass)
 }
 
-// validateRequiredFields validates that all required fields are present in
-// frontmatter. Helper method for FrontmatterService.Validate to check required
-// field constraints.
 func (s *FrontmatterService) validateRequiredFields(
 	fm domain.Frontmatter,
 	sch domain.Schema,
 ) error {
-	var validationErrors []error
-
-	for _, property := range sch.Properties {
-		if property.Required {
-			if !fm.Has(property.Name) {
-				validationErrors = append(
-					validationErrors,
-					lithosErr.NewFrontmatterError(
-						"required field missing",
-						property.Name,
-						nil,
-					),
-				)
-			}
+	var errs []error
+	for i := range sch.Properties {
+		prop := sch.Properties[i]
+		if prop.Required && !fm.Has(prop.Name) {
+			missingErr := lithosErr.NewFrontmatterError(
+				"required field missing",
+				prop.Name,
+				nil,
+			)
+			errs = append(errs, missingErr)
 		}
 	}
-
-	if len(validationErrors) > 0 {
-		return errors.Join(validationErrors...)
-	}
-	return nil
+	return s.aggregateValidationErrors(errs)
 }
 
-// validateFieldTypes validates frontmatter field types using polymorphic
-// validators. Helper method for FrontmatterService.Validate to perform
-// type-specific validation.
 func (s *FrontmatterService) validateFieldTypes(
 	fm domain.Frontmatter,
 	sch domain.Schema,
 ) error {
-	var validationErrors []error
-
-	for _, property := range sch.Properties {
-		value, exists := fm.Get(property.Name)
+	var errs []error
+	for i := range sch.Properties {
+		prop := sch.Properties[i]
+		val, exists := fm.Get(prop.Name)
 		if !exists {
 			continue
 		}
 
-		validator := s.selectValidator(
-			property.Spec.Type(),
-			s.stringValidator,
-			s.numberValidator,
-			s.dateValidator,
-			s.boolValidator,
-		)
-		if validator == nil {
+		v, ok := s.validators.Get(prop.Spec.Type())
+		if !ok {
 			continue
 		}
 
-		if err := s.validatePropertyValue(property, value, validator); err != nil {
-			validationErrors = append(validationErrors, err)
+		if err := s.validatePropertyValue(prop, val, v); err != nil {
+			errs = append(errs, err)
 		}
 	}
-
-	if len(validationErrors) > 0 {
-		return errors.Join(validationErrors...)
-	}
-	return nil
+	return s.aggregateValidationErrors(errs)
 }
 
-// selectValidator returns the appropriate validator for a property type.
-func (s *FrontmatterService) selectValidator(
-	propType domain.PropertySpecType,
-	stringVal, numberVal, dateVal, boolVal FieldValidator,
-) FieldValidator {
-	switch propType {
-	case domain.PropertyTypeString:
-		return stringVal
-	case domain.PropertyTypeNumber:
-		return numberVal
-	case domain.PropertyTypeDate:
-		return dateVal
-	case domain.PropertyTypeBool:
-		return boolVal
-	default:
-		return nil
-	}
-}
-
-// validatePropertyValue validates a single property value (scalar or array).
 func (s *FrontmatterService) validatePropertyValue(
-	property domain.Property,
-	value any,
-	validator FieldValidator,
+	prop domain.Property,
+	val any,
+	v FieldValidator,
 ) error {
-	if property.Array {
-		return s.validateArrayProperty(
-			property.Name,
-			value,
-			property.Spec,
-			validator,
-		)
+	if prop.Array {
+		return s.validateArrayProperty(prop.Name, val, prop.Spec, v)
 	}
-	return s.validateScalarProperty(
-		property.Name,
-		value,
-		property.Spec,
-		validator,
-	)
+	return s.validateScalarProperty(prop.Name, val, prop.Spec, v)
 }
 
-// validateArrayProperty validates array property values.
 func (s *FrontmatterService) validateArrayProperty(
-	fieldName string,
-	value any,
+	name string,
+	val any,
 	spec domain.PropertySpec,
-	validator FieldValidator,
+	v FieldValidator,
 ) error {
-	sliceValues, ok := coerceToInterfaceSlice(value)
+	vals, ok := converters.ToSlice(val)
 	if !ok {
 		return lithosErr.NewFrontmatterError(
 			"field value is not an array",
-			fieldName,
+			name,
 			nil,
 		)
 	}
 
-	var validationErrors []error
-	for _, element := range sliceValues {
-		if err := validator.Validate(fieldName, element, spec); err != nil {
-			validationErrors = append(validationErrors, err)
+	var errs []error
+	for i := range vals {
+		if err := v.Validate(name, vals[i], spec); err != nil {
+			errs = append(errs, err)
 		}
 	}
-
-	if len(validationErrors) > 0 {
-		return errors.Join(validationErrors...)
-	}
-	return nil
+	return s.aggregateValidationErrors(errs)
 }
 
-// validateScalarProperty validates scalar property values.
 func (s *FrontmatterService) validateScalarProperty(
-	fieldName string,
-	value any,
+	name string,
+	val any,
 	spec domain.PropertySpec,
-	validator FieldValidator,
+	v FieldValidator,
 ) error {
-	if isSliceValue(value) {
+	if converters.IsSlice(val) {
 		return lithosErr.NewFrontmatterError(
 			"field value must not be an array",
-			fieldName,
+			name,
 			nil,
 		)
 	}
-	return validator.Validate(fieldName, value, spec)
+	return v.Validate(name, val, spec)
 }
 
-// validateAgainstSchema performs comprehensive schema validation for
-// frontmatter.
-// Validates required fields and field types against the schema specification.
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeout handling
-//   - fm: Frontmatter to validate against schema
-//
-// Returns:
-//   - error: Validation errors or nil if validation passes
 func (s *FrontmatterService) validateAgainstSchema(
 	ctx context.Context,
 	fm domain.Frontmatter,
 ) error {
-	var validationErrors []error
-
-	// Get schema for validation
+	var errs []error
 	sch, schemaErr := s.getSchemaForValidation(ctx, fm.FileClass())
 	if schemaErr != nil {
 		return schemaErr
 	}
 
-	// Validate required fields
-	if reqErr := s.validateRequiredFields(fm, sch); reqErr != nil {
-		validationErrors = append(validationErrors, reqErr)
+	if err := s.validateRequiredFields(fm, sch); err != nil {
+		errs = append(errs, err)
 	}
-
-	// Validate field types
-	if typeErr := s.validateFieldTypes(fm, sch); typeErr != nil {
-		validationErrors = append(validationErrors, typeErr)
+	if err := s.validateFieldTypes(fm, sch); err != nil {
+		errs = append(errs, err)
 	}
-
-	// Aggregate validation errors
-	return s.aggregateValidationErrors(validationErrors)
+	return s.aggregateValidationErrors(errs)
 }
 
-// validateFileSpecField validates a single FileSpec field, handling both
-// single values and arrays.
 func (s *FrontmatterService) validateFileSpecField(
 	ctx context.Context,
-	fieldName string,
-	fieldValue interface{},
+	name string,
+	val any,
 	isArray bool,
 ) []error {
+	if isArray {
+		return s.validateFileSpecArray(ctx, name, val)
+	}
 	var errs []error
-
-	if !isArray { //nolint:nestif // Early return pattern used to reduce nesting complexity
-		if strVal, ok := fieldValue.(string); ok {
-			if err := s.validateFileReference(ctx, fieldName, strVal); err != nil {
-				errs = append(errs, err)
-			}
-		}
-		return errs
-	}
-
-	// Array case
-	values, ok := coerceToInterfaceSlice(fieldValue)
-	if !ok {
-		return errs
-	}
-
-	for _, value := range values {
-		if strVal, isString := value.(string); isString {
-			if err := s.validateFileReference(ctx, fieldName, strVal); err != nil {
-				errs = append(errs, err)
-			}
+	if str, ok := val.(string); ok {
+		if err := s.validateFileReference(ctx, name, str); err != nil {
+			errs = append(errs, err)
 		}
 	}
-
 	return errs
 }
 
-// validateFileSpecProperties validates FileSpec properties against the vault
-// index. Checks that file references in frontmatter actually exist in the
-// indexed vault.
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeout handling
-//   - fm: Frontmatter containing FileSpec properties to validate
-//
-// Returns:
-// - error: ValidationError instances for invalid file references or nil if all
-// valid.
+func (s *FrontmatterService) validateFileSpecArray(
+	ctx context.Context,
+	name string,
+	val any,
+) []error {
+	var errs []error
+	vals, ok := converters.ToSlice(val)
+	if !ok {
+		return errs
+	}
+	for i := range vals {
+		if str, ok2 := vals[i].(string); ok2 {
+			if err := s.validateFileReference(ctx, name, str); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	return errs
+}
+
 func (s *FrontmatterService) validateFileSpecProperties(
 	ctx context.Context,
 	fm domain.Frontmatter,
 ) error {
-	var validationErrors []error
-
-	// Get schema to identify FileSpec properties
-	sch, schemaErr := s.getSchemaForValidation(ctx, fm.FileClass())
-	if schemaErr != nil {
-		return schemaErr
+	var errs []error
+	sch, err := s.getSchemaForValidation(ctx, fm.FileClass())
+	if err != nil {
+		return err
 	}
 
-	// Check each property for FileSpec type
-	for _, property := range sch.Properties {
-		if property.Spec.Type() != domain.PropertyTypeFile {
+	for i := range sch.Properties {
+		prop := sch.Properties[i]
+		if prop.Spec.Type() != domain.PropertyTypeFile {
 			continue
 		}
 
-		fieldName := property.Name
-		fieldValue, exists := fm.Get(fieldName)
+		val, exists := fm.Get(prop.Name)
 		if !exists {
 			continue
 		}
 
-		// Validate file references
-		fieldErrors := s.validateFileSpecField(
-			ctx,
-			fieldName,
-			fieldValue,
-			property.Array,
-		)
-		validationErrors = append(validationErrors, fieldErrors...)
+		fErrs := s.validateFileSpecField(ctx, prop.Name, val, prop.Array)
+		errs = append(errs, fErrs...)
 	}
-
-	return s.aggregateValidationErrors(validationErrors)
+	return s.aggregateValidationErrors(errs)
 }
 
-// validateFileReference validates a single file reference string.
-// Supports both direct paths and wikilink format [[basename]].
-//
-// Parameters:
-//   - ctx: Context for cancellation
-//   - fieldName: The frontmatter field name for error reporting
-//   - value: The file reference string to validate
-//
-// Returns:
-//   - error: ValidationError if file not found or ambiguous, nil if valid
 func (s *FrontmatterService) validateFileReference(
 	ctx context.Context,
-	fieldName string,
-	value string,
+	name, val string,
 ) error {
-	if s.queryService == nil {
+	if s.metadataQuery == nil {
 		return lithosErr.NewValidationErrorWithRemediation(
-			fieldName,
-			"query service unavailable",
-			value,
-			"Ensure QueryService is properly injected into FrontmatterService",
-			nil,
-		)
+			name, "query service unavailable", val,
+			"Ensure QueryService is properly injected", nil)
 	}
 
-	path, isWikilink := s.resolveWikilink(value)
+	path, isWikilink := s.resolveWikilink(val)
 	path = s.normalizePath(path)
 
-	opts := spi.PathQueryOptions{
-		Value: path,
-		Scope: spi.PathQueryScopeFull,
-	}
+	opts := spi.PathQueryOptions{Value: path, Scope: spi.PathQueryScopeFull}
 	if isWikilink {
 		opts.Scope = spi.PathQueryScopeBasename
 	}
 
-	notes, err := s.queryService.PathQuery(ctx, opts)
+	notes, err := s.metadataQuery.PathQuery(ctx, opts)
 	if err != nil {
 		return lithosErr.NewValidationErrorWithRemediation(
-			fieldName,
-			"query failed",
-			value,
-			"Check QueryService configuration and vault indexing status",
-			err,
-		)
+			name, "query failed", val,
+			"Check QueryService configuration", err)
 	}
 
 	if len(notes) == 0 {
 		hint := s.generateQueryHint(path, isWikilink)
 		return lithosErr.NewValidationErrorWithRemediation(
-			fieldName,
-			"file not found",
-			value,
-			hint,
-			nil,
-		)
+			name, "file not found", val, hint, nil)
 	}
 
 	if len(notes) > 1 && isWikilink {
-		return s.createAmbiguousError(fieldName, value, path, notes)
+		return s.createAmbiguousError(name, val, path, notes)
 	}
-
 	return nil
 }
 
-// resolveWikilink detects and resolves wikilink format [[basename]].
-// Returns the extracted basename and whether it was a wikilink.
-//
-// Parameters:
-//   - value: The string to check for wikilink format
-//
-// Returns:
-// - string: The resolved path (basename if wikilink, original value otherwise)
-//   - bool: Whether the input was a wikilink
-func (s *FrontmatterService) resolveWikilink(value string) (string, bool) {
-	if strings.HasPrefix(value, "[[") && strings.HasSuffix(value, "]]") &&
-		len(value) > 4 {
-		basename := value[2 : len(value)-2] // Remove [[ and ]]
-		return basename, true
+func (s *FrontmatterService) resolveWikilink(val string) (string, bool) {
+	if strings.HasPrefix(val, "[[") && strings.HasSuffix(val, "]]") &&
+		len(val) > 4 {
+		return val[2 : len(val)-2], true
 	}
-	return value, false
+	return val, false
 }
 
-// normalizePath normalizes a file path for querying.
-// Removes trailing slashes, resolves relative components like ./ and ../.
-//
-// Parameters:
-//   - path: The path to normalize
-//
-// Returns:
-//   - string: The normalized path
 func (s *FrontmatterService) normalizePath(path string) string {
-	// Use filepath.Clean to resolve ./ and ../ components
-	path = filepath.Clean(path)
-	// Remove trailing slashes after cleaning
-	path = strings.TrimSuffix(path, "/")
-	return path
+	return strings.TrimSuffix(filepath.Clean(path), "/")
 }
 
-// createAmbiguousError creates an error for ambiguous wikilink references.
 func (s *FrontmatterService) createAmbiguousError(
-	fieldName, value, path string,
+	name, val, path string,
 	notes []domain.Note,
 ) error {
-	basenames := make([]string, len(notes))
+	paths := make([]string, len(notes))
 	for i := range notes {
-		basenames[i] = notes[i].Path
+		paths[i] = notes[i].Path
 	}
-	hint := fmt.Sprintf(
-		"ambiguous wikilink [[%s]]: matches %v",
-		path,
-		basenames,
-	)
+	hint := fmt.Sprintf("ambiguous wikilink [[%s]]: matches %v", path, paths)
 	return lithosErr.NewValidationErrorWithRemediation(
-		fieldName,
+		name,
 		"ambiguous reference",
-		value,
+		val,
 		hint,
 		nil,
 	)
 }
 
-// generateQueryHint generates helpful hints for file not found errors.
-// Suggests checking vault or case corrections.
-//
-// Parameters:
-//   - path: The path that was not found
-//   - isWikilink: Whether the original reference was a wikilink
-//
-// Returns:
-//   - string: Remediation hint for the user
 func (s *FrontmatterService) generateQueryHint(
 	path string,
 	isWikilink bool,
 ) string {
 	if isWikilink {
-		return fmt.Sprintf(
-			"Check if [[%s]] exists in vault. If using case-sensitive search, verify exact basename match.",
-			path,
-		)
+		return fmt.Sprintf("Check if [[%s]] exists in vault.", path)
 	}
-	return fmt.Sprintf(
-		"Check if '%s' exists in vault. Verify path is relative to vault root and case-sensitive.",
-		path,
-	)
+	return fmt.Sprintf("Check if '%s' exists in vault.", path)
 }
 
-// aggregateValidationErrors aggregates multiple validation errors into a single
-// error.
-// Helper method for FrontmatterService.Validate to combine validation results.
-func (s *FrontmatterService) aggregateValidationErrors(
-	validationErrors []error,
-) error {
-	if len(validationErrors) == 0 {
+func (s *FrontmatterService) aggregateValidationErrors(errs []error) error {
+	if len(errs) == 0 {
 		return nil
 	}
-	return errors.Join(validationErrors...)
-}
-
-func (s *FrontmatterService) publishValidationEvent(
-	ctx context.Context,
-	noteID string,
-	fm domain.Frontmatter,
-	validationErr error,
-	duration time.Duration,
-) {
-	if s.eventBus == nil {
-		return
-	}
-	schemaName := fm.FileClass()
-	if strings.TrimSpace(noteID) == "" {
-		noteID = "frontmatter/" + schemaName
-	}
-	if schemaName == "" {
-		schemaName = "unknown"
-	}
-	messages := flattenErrors(validationErr)
-
-	// Publish ValidationPerformedEvent (AC 4.6.2)
-	event, err := domain.NewValidationPerformedEvent(
-		noteID,
-		schemaName,
-		validationErr == nil,
-		duration,
-		messages,
-		time.Now(),
-	)
-	if err != nil {
-		s.logger.Error().
-			Err(err).
-			Msg("failed to create validation performed event")
-		return
-	}
-	if publishErr := s.eventBus.Publish(ctx, event); publishErr != nil {
-		s.logger.Warn().
-			Err(publishErr).
-			Msg("failed to publish validation performed event")
-	}
-
-	// Publish ValidationFailedEvent with remediation hints (AC 4.6.10-11)
-	if validationErr != nil {
-		remediationHints := s.generateRemediationHints(validationErr)
-		failedEvent, failErr := domain.NewValidationFailedEvent(
-			noteID,
-			schemaName,
-			messages,
-			remediationHints,
-			duration,
-			time.Now(),
-		)
-		if failErr != nil {
-			s.logger.Error().
-				Err(failErr).
-				Msg("failed to create validation failed event")
-			return
-		}
-		if publishErr := s.eventBus.Publish(ctx, failedEvent); publishErr != nil {
-			s.logger.Warn().
-				Err(publishErr).
-				Msg("failed to publish validation failed event")
-		}
-	}
-}
-
-func coerceToInterfaceSlice(value any) ([]any, bool) {
-	switch v := value.(type) {
-	case []any:
-		return v, true
-	case []string:
-		result := make([]any, len(v))
-		for i, item := range v {
-			result[i] = item
-		}
-		return result, true
-	default:
-		return nil, false
-	}
-}
-
-func isSliceValue(value any) bool {
-	switch value.(type) {
-	case []any, []string:
-		return true
-	default:
-		return false
-	}
-}
-
-func flattenErrors(err error) []string {
-	if err == nil {
-		return nil
-	}
-	type unwrapper interface{ Unwrap() []error }
-	if u, ok := err.(unwrapper); ok {
-		var result []string
-		for _, inner := range u.Unwrap() {
-			result = append(result, flattenErrors(inner)...)
-		}
-		return result
-	}
-	return []string{err.Error()}
-}
-
-// generateRemediationHints generates helpful remediation hints for validation
-// errors.
-// This supports AC 4.6.10: ValidationFailedEvent includes remediation hints.
-func (s *FrontmatterService) generateRemediationHints(err error) []string {
-	if err == nil {
-		return nil
-	}
-
-	messages := flattenErrors(err)
-	hints := make([]string, 0, len(messages))
-
-	for _, msg := range messages {
-		switch {
-		case strings.Contains(msg, "required field missing"):
-			hints = append(
-				hints,
-				"Add the missing required field to frontmatter",
-			)
-		case strings.Contains(msg, "file not found"):
-			hints = append(
-				hints,
-				"Verify the file exists in vault or run 'lithos index' to rebuild cache",
-			)
-		case strings.Contains(msg, "ambiguous reference"):
-			hints = append(
-				hints,
-				"Use full path instead of wikilink to resolve ambiguity",
-			)
-		case strings.Contains(msg, "field value is not an array"):
-			hints = append(
-				hints,
-				"Change field to array format using YAML list syntax",
-			)
-		case strings.Contains(msg, "field value must not be an array"):
-			hints = append(
-				hints,
-				"Remove array brackets and use single scalar value",
-			)
-		case strings.Contains(msg, "query service unavailable"):
-			hints = append(
-				hints,
-				"Ensure QueryService is initialized before validation",
-			)
-		default:
-			hints = append(
-				hints,
-				"Review schema definition for field constraints",
-			)
-		}
-	}
-
-	return hints
+	return errors.Join(errs...)
 }

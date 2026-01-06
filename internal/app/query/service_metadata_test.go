@@ -29,6 +29,48 @@ func (noopCacheReader) List(ctx context.Context) ([]domain.Note, error) {
 	return nil, nil
 }
 
+func (noopCacheReader) FileClassQuery(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (noopCacheReader) BasenameQuery(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (noopCacheReader) AliasQuery(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (noopCacheReader) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+) ([]domain.Note, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
+func (noopCacheReader) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (noopCacheReader) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
 func (m *mockReader) Read(
 	ctx context.Context,
 	path string,
@@ -45,17 +87,59 @@ func (m *mockReader) List(ctx context.Context) ([]domain.Note, error) {
 	return m.notes, nil
 }
 
+func (m *mockReader) FileClassQuery(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (m *mockReader) BasenameQuery(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (m *mockReader) AliasQuery(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (m *mockReader) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (m *mockReader) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (m *mockReader) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
 func newTestQueryService(
 	t *testing.T,
-	boltReader spi.CacheReaderPort,
-	sqliteReader spi.CacheReaderPort,
+	boltReader QueryBackend,
+	sqliteReader QueryBackend,
 ) *QueryService {
 	t.Helper()
 	logger := zerolog.New(zerolog.NewTestWriter(t))
+	router := NewStorageRouter(boltReader, sqliteReader)
 
 	return NewQueryService(
-		boltReader,
-		sqliteReader,
+		router,
 		domain.DefaultConfig(),
 		logger,
 		nil,
@@ -69,10 +153,10 @@ func TestQueryService_FileClassQueryFallbackWithoutMetadata(t *testing.T) {
 		domain.NewFrontmatter(map[string]interface{}{
 			"file_class": "meeting",
 		}),
-		[]domain.Link{},
-		[]domain.Heading{},
-		[]string{},
-		[]domain.TaskItem{},
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	reader := &mockReader{notes: []domain.Note{meetingNote}}
 	qs := newTestQueryService(t, reader, reader)
@@ -89,10 +173,10 @@ func TestQueryService_AliasQueryFallbackWithoutMetadata(t *testing.T) {
 		domain.NewFrontmatter(map[string]interface{}{
 			"aliases": []interface{}{"project-alpha", "alpha"},
 		}),
-		[]domain.Link{},
-		[]domain.Heading{},
-		[]string{},
-		[]domain.TaskItem{},
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	reader := &mockReader{notes: []domain.Note{note}}
 	qs := newTestQueryService(t, reader, reader)
@@ -107,10 +191,10 @@ func TestQueryService_BasenameQueryFallsBackToPathQuery(t *testing.T) {
 	note, _ := domain.NewNote(
 		"notes/project.md",
 		domain.NewFrontmatter(map[string]interface{}{}),
-		[]domain.Link{},
-		[]domain.Heading{},
-		[]string{},
-		[]domain.TaskItem{},
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 	reader := &mockReader{notes: []domain.Note{note}}
 	qs := newTestQueryService(t, reader, reader)
@@ -127,10 +211,10 @@ func TestQueryService_PathQueryFolderFallback(t *testing.T) {
 			n, _ := domain.NewNote(
 				"projects/alpha/note.md",
 				domain.NewFrontmatter(map[string]interface{}{}),
-				[]domain.Link{},
-				[]domain.Heading{},
-				[]string{},
-				[]domain.TaskItem{},
+				nil,
+				nil,
+				nil,
+				nil,
 			)
 			return n
 		}(),
@@ -138,10 +222,10 @@ func TestQueryService_PathQueryFolderFallback(t *testing.T) {
 			n, _ := domain.NewNote(
 				"projects/beta/note.md",
 				domain.NewFrontmatter(map[string]interface{}{}),
-				[]domain.Link{},
-				[]domain.Heading{},
-				[]string{},
-				[]domain.TaskItem{},
+				nil,
+				nil,
+				nil,
+				nil,
 			)
 			return n
 		}(),
@@ -159,55 +243,68 @@ func TestQueryService_PathQueryFolderFallback(t *testing.T) {
 
 func TestQueryService_FrontmatterQuery_TypeNormalization(t *testing.T) {
 	ctx := context.Background()
-	mock := utils.NewMockMetadataQueryPort()
+	mockPort := utils.NewMockMetadataQueryPort()
 	expected := []domain.Note{func() domain.Note {
 		n, _ := domain.NewNote(
 			"foo.md",
 			domain.NewFrontmatter(map[string]interface{}{"priority": 2}),
-			[]domain.Link{},
-			[]domain.Heading{},
-			[]string{},
-			[]domain.TaskItem{},
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		return n
 	}()}
-	mock.SetFrontmatterQueryResult(expected, nil)
+	mockPort.SetFrontmatterQueryResult(expected, nil)
 
-	qs := newTestQueryService(t, noopCacheReader{}, mock) // bolt, sqlite
+	// Combine mockPort with noop reader to satisfy QueryBackend
+	type composite struct {
+		spi.CacheReaderPort
+		spi.MetadataQueryPort
+	}
+	sqlite := composite{noopCacheReader{}, mockPort}
+
+	qs := newTestQueryService(t, noopCacheReader{}, sqlite)
 
 	// Test with int
-	results, err := qs.FrontmatterQuery(ctx, "priority", 2)
+	results, err := qs.FrontmatterQuery(ctx, "priority", "2")
 	require.NoError(t, err)
 	assert.Equal(t, expected, results)
-	assert.Equal(t, 1, mock.FrontmatterQueryCallCount)
+	assert.Equal(t, 1, mockPort.FrontmatterQueryCallCount)
 
-	mock.Reset()
-	mock.SetFrontmatterQueryResult(expected, nil)
+	mockPort.Reset()
+	mockPort.SetFrontmatterQueryResult(expected, nil)
 
 	// Test with float
-	results, err = qs.FrontmatterQuery(ctx, "priority", 2.0)
+	results, err = qs.FrontmatterQuery(ctx, "priority", "2.0")
 	require.NoError(t, err)
 	assert.Equal(t, expected, results)
-	assert.Equal(t, 1, mock.FrontmatterQueryCallCount)
+	assert.Equal(t, 1, mockPort.FrontmatterQueryCallCount)
 }
 
 func TestQueryService_UsesMetadataPortWhenConfigured(t *testing.T) {
 	ctx := context.Background()
-	mock := utils.NewMockMetadataQueryPort()
+	mockPort := utils.NewMockMetadataQueryPort()
 	expected := []domain.Note{func() domain.Note {
 		n, _ := domain.NewNote(
 			"foo.md",
 			domain.NewFrontmatter(map[string]interface{}{}),
-			[]domain.Link{},
-			[]domain.Heading{},
-			[]string{},
-			[]domain.TaskItem{},
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		return n
 	}()}
-	mock.SetPathQueryResult(expected, nil)
+	mockPort.SetPathQueryResult(expected, nil)
 
-	qs := newTestQueryService(t, mock, noopCacheReader{})
+	type composite struct {
+		spi.CacheReaderPort
+		spi.MetadataQueryPort
+	}
+	bolt := composite{noopCacheReader{}, mockPort}
+
+	qs := newTestQueryService(t, bolt, noopCacheReader{})
 
 	results, err := qs.PathQuery(ctx, spi.PathQueryOptions{
 		Scope: spi.PathQueryScopeFull,
@@ -215,5 +312,5 @@ func TestQueryService_UsesMetadataPortWhenConfigured(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, expected, results)
-	assert.Equal(t, 1, mock.PathQueryCallCount)
+	assert.Equal(t, 1, mockPort.GetPathQueryCallCount())
 }

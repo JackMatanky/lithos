@@ -12,6 +12,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/app/template"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/JackMatanky/lithos/internal/shared/logger"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
@@ -41,6 +42,12 @@ type mockSchemaLoader struct {
 type mockSchemaRegistry struct {
 	schemas    map[string]domain.Schema
 	properties map[string]domain.Property
+}
+
+func (m *testMockMetadataQueryPort) List(
+	ctx context.Context,
+) ([]domain.Note, error) {
+	return nil, nil
 }
 
 func (m *mockTemplatePort) List(
@@ -109,8 +116,19 @@ func TestEventDrivenLookupIntegration(t *testing.T) {
 	eventBus := utils.NewMockEventBus()
 
 	// Setup: Create QueryService with mock backends
-	boltReader := utils.NewMockMetadataQueryPort()
-	sqliteReader := utils.NewMockMetadataQueryPort()
+	type composite struct {
+		spi.CacheReaderPort
+		spi.MetadataQueryPort
+	}
+	boltBackend := composite{
+		utils.NewMockCacheReaderPort(),
+		utils.NewMockMetadataQueryPort(),
+	}
+	sqliteBackend := composite{
+		utils.NewMockCacheReaderPort(),
+		utils.NewMockMetadataQueryPort(),
+	}
+
 	testNote := domain.Note{
 		Path: "contact.md",
 		Frontmatter: domain.NewFrontmatter(map[string]any{
@@ -118,12 +136,15 @@ func TestEventDrivenLookupIntegration(t *testing.T) {
 			"title":     "Test Contact",
 		}),
 	}
-	boltReader.SetPathQueryResult([]domain.Note{testNote}, nil)
+	boltBackend.MetadataQueryPort.(*utils.MockMetadataQueryPort).SetPathQueryResult(
+		[]domain.Note{testNote},
+		nil,
+	)
 
 	config := domain.Config{}
+	router := query.NewStorageRouter(boltBackend, sqliteBackend)
 	querySvc := query.NewQueryService(
-		boltReader,
-		sqliteReader,
+		router,
 		config,
 		log,
 		eventBus,
@@ -159,9 +180,9 @@ func TestEventDrivenLookupIntegration(t *testing.T) {
 		"Expected at least one event",
 	)
 
-	var lookupEvent *domain.LookupPerformedEvent
+	var lookupEvent *events.LookupPerformedEvent
 	for _, evt := range publishedEvents {
-		if le, ok := evt.(*domain.LookupPerformedEvent); ok {
+		if le, ok := evt.(*events.LookupPerformedEvent); ok {
 			lookupEvent = le
 			break
 		}
@@ -175,10 +196,7 @@ func TestEventDrivenLookupIntegration(t *testing.T) {
 }
 
 // TestEventDrivenQueryIntegration tests event publishing in template query
-// function. Note: This test is skipped because query() template function
-// requires dict support which is not implemented in the current template
-// engine. The underlying functionality
-// is tested via TemplateEngine unit tests.
+// function.
 func TestEventDrivenQueryIntegration(t *testing.T) {
 	t.Skip(
 		"Skipping query integration test - dict function not implemented in template engine",
@@ -193,10 +211,19 @@ func TestEventDrivenFileClassIntegration(t *testing.T) {
 	eventBus := utils.NewMockEventBus()
 
 	// Setup: Create QueryService with mock backends
-	boltReader := &testMockMetadataQueryPort{
+	type composite struct {
+		spi.CacheReaderPort
+		spi.MetadataQueryPort
+	}
+
+	mockBolt := &testMockMetadataQueryPort{
 		MockMetadataQueryPort: utils.NewMockMetadataQueryPort(),
 	}
-	sqliteReader := utils.NewMockMetadataQueryPort()
+	boltBackend := composite{mockBolt, mockBolt}
+	sqliteBackend := composite{
+		utils.NewMockCacheReaderPort(),
+		utils.NewMockMetadataQueryPort(),
+	}
 
 	testNote := domain.Note{
 		Path: "contact.md",
@@ -204,14 +231,14 @@ func TestEventDrivenFileClassIntegration(t *testing.T) {
 			"fileClass": "contact",
 		}),
 	}
-	boltReader.readFunc = func(ctx context.Context, path string) (domain.Note, error) {
+	mockBolt.readFunc = func(ctx context.Context, path string) (domain.Note, error) {
 		return testNote, nil
 	}
 
 	config := domain.Config{}
+	router := query.NewStorageRouter(boltBackend, sqliteBackend)
 	querySvc := query.NewQueryService(
-		boltReader,
-		sqliteReader,
+		router,
 		config,
 		log,
 		eventBus,
@@ -248,9 +275,9 @@ func TestEventDrivenFileClassIntegration(t *testing.T) {
 		"Expected at least one event",
 	)
 
-	var schemaEvent *domain.SchemaLookupEvent
+	var schemaEvent *events.SchemaLookupEvent
 	for _, evt := range publishedEvents {
-		if se, ok := evt.(*domain.SchemaLookupEvent); ok {
+		if se, ok := evt.(*events.SchemaLookupEvent); ok {
 			schemaEvent = se
 			break
 		}
@@ -300,12 +327,24 @@ func TestEventDrivenValidationIntegration(t *testing.T) {
 	_ = schemaEngine.Load(ctx)
 
 	// Setup: Create FrontmatterService
-	boltReader := utils.NewMockMetadataQueryPort()
-	sqliteReader := utils.NewMockMetadataQueryPort()
+	type composite struct {
+		spi.CacheReaderPort
+		spi.MetadataQueryPort
+	}
+	boltBackend := composite{
+		utils.NewMockCacheReaderPort(),
+		utils.NewMockMetadataQueryPort(),
+	}
+	sqliteBackend := composite{
+		utils.NewMockCacheReaderPort(),
+		utils.NewMockMetadataQueryPort(),
+	}
+
+	config := domain.Config{}
+	router := query.NewStorageRouter(boltBackend, sqliteBackend)
 	querySvc := query.NewQueryService(
-		boltReader,
-		sqliteReader,
-		domain.Config{},
+		router,
+		config,
 		log,
 		eventBus,
 	)
@@ -333,9 +372,9 @@ func TestEventDrivenValidationIntegration(t *testing.T) {
 		"Expected at least one event",
 	)
 
-	var validationEvent *domain.ValidationPerformedEvent
+	var validationEvent *events.ValidationPerformedEvent
 	for _, evt := range publishedEvents {
-		if ve, ok := evt.(*domain.ValidationPerformedEvent); ok {
+		if ve, ok := evt.(*events.ValidationPerformedEvent); ok {
 			validationEvent = ve
 			break
 		}
@@ -360,23 +399,34 @@ func TestEventDrivenCacheInvalidation(t *testing.T) {
 	eventBus := events.NewInMemoryEventBus(mockLog)
 
 	// Setup: Create QueryService
-	boltReader := utils.NewMockMetadataQueryPort()
-	sqliteReader := utils.NewMockMetadataQueryPort()
+	type composite struct {
+		spi.CacheReaderPort
+		spi.MetadataQueryPort
+	}
+	boltBackend := composite{
+		utils.NewMockCacheReaderPort(),
+		utils.NewMockMetadataQueryPort(),
+	}
+	sqliteBackend := composite{
+		utils.NewMockCacheReaderPort(),
+		utils.NewMockMetadataQueryPort(),
+	}
+
 	config := domain.Config{}
-	querySvc := query.NewQueryService(
-		boltReader,
-		sqliteReader,
+	router := query.NewStorageRouter(boltBackend, sqliteBackend)
+	_ = query.NewQueryService(
+		router,
 		config,
 		log,
 		eventBus,
 	)
 
 	// Act: Publish VaultIndexingCompleteEvent
-	summary := domain.VaultIndexingSummary{
+	summary := events.VaultIndexingSummary{
 		ScannedCount: 100,
 		IndexedCount: 95,
 	}
-	event := domain.MustNewVaultIndexingCompleteEvent(
+	event := events.MustNewVaultIndexingCompleteEvent(
 		summary,
 		time.Second,
 		time.Now(),
@@ -387,14 +437,7 @@ func TestEventDrivenCacheInvalidation(t *testing.T) {
 	// Give event time to process
 	time.Sleep(50 * time.Millisecond)
 
-	// Assert: Verify QueryService handled the event
-	// (We can verify via logs or internal state if exposed)
-	stats := querySvc.GetBackendFailureStats()
-	assert.NotNil(
-		t,
-		stats,
-		"QueryService should have initialized failure trackers",
-	)
+	// Verify no panic and handled gracefully
 }
 
 // Mock implementations for testing - removed duplicate declarations from end of

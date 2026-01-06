@@ -115,6 +115,41 @@ func (f *FakeQueryService) PathQuery(
 	return []domain.Note{}, nil // Not found
 }
 
+func (f *FakeQueryService) BasenameQuery(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (f *FakeQueryService) AliasQuery(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (f *FakeQueryService) FileClassQuery(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (f *FakeQueryService) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (f *FakeQueryService) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
 func (f *FakeQueryService) SetPathQueryResult(
 	path string,
 	results []domain.Note,

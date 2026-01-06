@@ -156,8 +156,9 @@ func TestPropertyBank_Lookup_ReturnsCopy(t *testing.T) {
 		t.Fatal("Lookup should find existing property")
 	}
 
-	// Modify the returned property
-	found.Name = "modified" //nolint:govet // intentional for immutability test
+	// Modify the returned property (copy)
+	found.Name = "modified"
+	require.Equal(t, "modified", found.Name)
 
 	// Check that internal state wasn't affected
 	original, _ := pb.Lookup("title")

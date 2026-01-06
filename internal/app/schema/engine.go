@@ -221,12 +221,12 @@ func cloneSchema(src domain.Schema) domain.Schema {
 		dst.Properties = make([]domain.Property, len(src.Properties))
 		copy(dst.Properties, src.Properties)
 	}
-	if len(src.ResolvedProperties) > 0 {
-		dst.ResolvedProperties = make(
+	if len(src.Resolved) > 0 {
+		dst.Resolved = make(
 			[]domain.Property,
-			len(src.ResolvedProperties),
+			len(src.Resolved),
 		)
-		copy(dst.ResolvedProperties, src.ResolvedProperties)
+		copy(dst.Resolved, src.Resolved)
 	}
 	if len(src.Excludes) > 0 {
 		dst.Excludes = slices.Clone(src.Excludes)
@@ -253,7 +253,7 @@ func (e *SchemaEngine) emitSchemaEvents(
 				Msg("failed to create schema loaded event")
 			continue
 		}
-		if publishErr := e.eventBus.Publish(ctx, event); publishErr != nil {
+		if publishErr := events.PublishSync(ctx, e.eventBus, event); publishErr != nil {
 			e.log.Err(publishErr).
 				Str("schema", schema.Name).
 				Msg("failed to publish schema loaded event")
@@ -271,7 +271,7 @@ func (e *SchemaEngine) emitSchemaEvents(
 				Msg("failed to create schema updated event")
 			continue
 		}
-		if publishErr := e.eventBus.Publish(ctx, updateEvent); publishErr != nil {
+		if publishErr := events.PublishSync(ctx, e.eventBus, updateEvent); publishErr != nil {
 			e.log.Err(publishErr).
 				Str("schema", schema.Name).
 				Msg("failed to publish schema updated event")
@@ -283,7 +283,7 @@ func (e *SchemaEngine) emitSchemaEvents(
 		e.log.Err(err).Msg("failed to create schemas reloaded event")
 		return
 	}
-	if publishErr := e.eventBus.Publish(ctx, reloadEvent); publishErr != nil {
+	if publishErr := events.PublishSync(ctx, e.eventBus, reloadEvent); publishErr != nil {
 		e.log.Err(publishErr).Msg("failed to publish schemas reloaded event")
 	}
 }

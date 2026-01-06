@@ -3,6 +3,7 @@ package query_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/domain"
@@ -112,8 +113,9 @@ func TestQueryService_Constructor_DualReaders(t *testing.T) {
 	sqliteReader := &MockHybridReader{}
 	logger := zerolog.New(nil)
 	config := domain.Config{}
+	router := query.NewStorageRouter(boltReader, sqliteReader)
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
+	qs := query.NewQueryService(router, config, logger, nil)
 	require.NotNil(t, qs)
 }
 
@@ -127,10 +129,10 @@ func TestQueryService_Routing_HotPath_PathQuery(t *testing.T) {
 	note, _ := domain.NewNote(
 		path,
 		domain.NewFrontmatter(map[string]interface{}{}),
-		[]domain.Link{},
-		[]domain.Heading{},
-		[]string{},
-		[]domain.TaskItem{},
+		nil,
+		nil,
+		nil,
+		nil,
 	)
 
 	// Expectation: PathQuery calls boltReader.Read
@@ -147,7 +149,8 @@ func TestQueryService_Routing_HotPath_PathQuery(t *testing.T) {
 		return domain.Note{}, nil
 	}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
+	router := query.NewStorageRouter(boltReader, sqliteReader)
+	qs := query.NewQueryService(router, config, logger, nil)
 	result, err := qs.PathQuerySingle(context.Background(), path)
 
 	require.NoError(t, err)
@@ -166,10 +169,10 @@ func TestQueryService_Routing_HotPath_BasenameQuery(t *testing.T) {
 		n, _ := domain.NewNote(
 			"notes/test.md",
 			domain.NewFrontmatter(map[string]interface{}{}),
-			[]domain.Link{},
-			[]domain.Heading{},
-			[]string{},
-			[]domain.TaskItem{},
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		return n
 	}()}
@@ -187,7 +190,8 @@ func TestQueryService_Routing_HotPath_BasenameQuery(t *testing.T) {
 		return nil, nil
 	}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
+	router := query.NewStorageRouter(boltReader, sqliteReader)
+	qs := query.NewQueryService(router, config, logger, nil)
 	result, err := qs.BasenameQuery(context.Background(), basename)
 
 	require.NoError(t, err)
@@ -206,10 +210,10 @@ func TestQueryService_Routing_HotPath_AliasQuery(t *testing.T) {
 		n, _ := domain.NewNote(
 			"notes/alias.md",
 			domain.NewFrontmatter(map[string]interface{}{}),
-			[]domain.Link{},
-			[]domain.Heading{},
-			[]string{},
-			[]domain.TaskItem{},
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		return n
 	}()}
@@ -221,7 +225,8 @@ func TestQueryService_Routing_HotPath_AliasQuery(t *testing.T) {
 		return notes, nil
 	}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
+	router := query.NewStorageRouter(boltReader, sqliteReader)
+	qs := query.NewQueryService(router, config, logger, nil)
 	result, err := qs.AliasQuery(context.Background(), alias)
 
 	require.NoError(t, err)
@@ -241,10 +246,10 @@ func TestQueryService_Routing_DeepPath_FrontmatterQuery(t *testing.T) {
 		n, _ := domain.NewNote(
 			"notes/active.md",
 			domain.NewFrontmatter(map[string]interface{}{}),
-			[]domain.Link{},
-			[]domain.Heading{},
-			[]string{},
-			[]domain.TaskItem{},
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		return n
 	}()}
@@ -263,7 +268,8 @@ func TestQueryService_Routing_DeepPath_FrontmatterQuery(t *testing.T) {
 		return nil, nil
 	}
 
-	qs := query.NewQueryService(boltReader, sqliteReader, config, logger, nil)
+	router := query.NewStorageRouter(boltReader, sqliteReader)
+	qs := query.NewQueryService(router, config, logger, nil)
 	result, err := qs.FrontmatterQuery(context.Background(), field, value)
 
 	require.NoError(t, err)
@@ -275,6 +281,83 @@ func TestQueryService_Consistency_Validation(t *testing.T) {
 	// Placeholder for consistency validation tests
 }
 
-func TestQueryService_Staleness_Check(t *testing.T) {
-	// Placeholder for staleness check tests
+func TestQueryService_PathQuery_Concurrent(t *testing.T) {
+	ctx := context.Background()
+	boltReader := &MockHybridReader{}
+	sqliteReader := &MockHybridReader{}
+	logger := zerolog.New(nil)
+	config := domain.DefaultConfig()
+
+	testNote := domain.Note{Path: "test.md"}
+
+	// Bolt is slow
+	boltReader.PathQueryFunc = func(
+		ctx context.Context,
+		opts spi.PathQueryOptions,
+	) ([]domain.Note, error) {
+		time.Sleep(50 * time.Millisecond)
+		return []domain.Note{testNote}, nil
+	}
+
+	// SQLite is fast
+	sqliteReader.PathQueryFunc = func(
+		ctx context.Context,
+		opts spi.PathQueryOptions,
+	) ([]domain.Note, error) {
+		return []domain.Note{testNote}, nil
+	}
+
+	router := query.NewStorageRouter(boltReader, sqliteReader)
+	qs := query.NewQueryService(router, config, logger, nil)
+
+	start := time.Now()
+	results, err := qs.PathQuery(ctx, spi.PathQueryOptions{
+		Scope: spi.PathQueryScopeFull,
+		Value: "test.md",
+	})
+	duration := time.Since(start)
+
+	require.NoError(t, err)
+	assert.Equal(t, []domain.Note{testNote}, results)
+	// Should have finished faster than Bolt's 50ms
+	assert.Less(t, duration, 40*time.Millisecond)
+}
+
+func TestQueryService_PathQuery_Cancellation(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	boltReader := &MockHybridReader{}
+	sqliteReader := &MockHybridReader{}
+	logger := zerolog.New(nil)
+	config := domain.DefaultConfig()
+
+	boltReader.PathQueryFunc = func(
+		ctx context.Context,
+		opts spi.PathQueryOptions,
+	) ([]domain.Note, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	sqliteReader.PathQueryFunc = func(
+		ctx context.Context,
+		opts spi.PathQueryOptions,
+	) ([]domain.Note, error) {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+
+	router := query.NewStorageRouter(boltReader, sqliteReader)
+	qs := query.NewQueryService(router, config, logger, nil)
+
+	go func() {
+		time.Sleep(10 * time.Millisecond)
+		cancel()
+	}()
+
+	_, err := qs.PathQuery(ctx, spi.PathQueryOptions{
+		Scope: spi.PathQueryScopeFull,
+		Value: "test.md",
+	})
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, context.Canceled)
 }

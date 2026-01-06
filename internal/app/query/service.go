@@ -1,6 +1,4 @@
-// Package query provides fast in-memory lookups for indexed notes.
-// It implements thread-safe concurrent reads using sync.RWMutex and supports
-// the FR9 query capabilities: lookup by ID, path, basename, and schema.
+// Package query provides fast lookups for indexed notes with smart routing.
 package query
 
 import (
@@ -17,44 +15,23 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// QueryService provides smart routing for indexed notes using hybrid storage.
+// QueryService provides smart routing for indexed notes using storage routing.
 // It implements thread-safe concurrent reads using sync.RWMutex and supports
-// the FR9 query capabilities with optimized routing to BoltDB and SQLite
-// backends.
-//
-// Hybrid Storage Architecture:
-// - BoltDB: Hot cache for fast lookups (paths, basenames, aliases, file
-// classes)
-// - SQLite: Deep storage for complex queries and full content
-// - Smart Routing: Automatic query optimization based on operation type
-//
-// Thread-Safe Design:
-// - Multiple readers can query simultaneously via RLock
-// - No data races during concurrent access patterns
-//
-// Query Routing:
-// - Hot Queries (BoltDB): PathQuery, BasenameQuery, AliasQuery, directory
-// filtering
-// - Complex Queries (SQLite): FrontmatterQuery, FileClassQuery with property
-// filtering
-// - Hybrid Queries: Coordinate between stores for optimal performance.
+// the FR9 query capabilities with optimized routing to storage backends.
 type QueryService struct {
 	mu sync.RWMutex
 
 	// Dependencies
-	boltReader   spi.CacheReaderPort  // Hot cache for fast lookups
-	sqliteReader spi.CacheReaderPort  // Deep storage for complex queries
-	router       *HybridStorageRouter // Handles smart query routing
-	config       domain.Config        // For file_class_key configuration
-	log          zerolog.Logger
-	eventBus     events.EventBus
+	router   *StorageRouter // Handles smart query routing
+	config   domain.Config  // For file_class_key configuration
+	log      zerolog.Logger
+	eventBus events.EventBus
+}
 
-	// Observability
-	observer *StalenessObserver // Records cache staleness events
-
-	// Resilience
-	boltFailures   *BackendFailureTracker // Tracks BoltDB failures
-	sqliteFailures *BackendFailureTracker // Tracks SQLite failures
+type queryResult struct {
+	notes   []domain.Note
+	err     error
+	backend string
 }
 
 // queryLogger provides consistent performance logging for query operations.
@@ -63,125 +40,25 @@ type queryLogger struct {
 	method string
 }
 
-// canonicalizeFrontmatterValue normalizes frontmatter values for type-agnostic
-// comparison.
-// Handles numeric type conversions (int 2 == float 2.0) and safe comparison
-// for complex types.
-// Returns the normalized value and whether normalization was successful.
-func canonicalizeFrontmatterValue(value interface{}) (interface{}, bool) {
-	switch v := value.(type) {
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32:
-		return toFloat64(v), true
-	case float64:
-		return v, true
-	case string, bool:
-		// Strings and booleans are already comparable
-		return v, true
-	default:
-		// Complex types (arrays, maps) are not safely comparable
-		return nil, false
-	}
-}
-
-// toFloat64 converts various numeric types to float64 for consistent
-// comparison.
-//
-//nolint:cyclop // Type conversion requires exhaustive numeric type checking
-func toFloat64(value interface{}) float64 {
-	switch v := value.(type) {
-	case int:
-		return float64(v)
-	case int8:
-		return float64(v)
-	case int16:
-		return float64(v)
-	case int32:
-		return float64(v)
-	case int64:
-		return float64(v)
-	case uint:
-		return float64(v)
-	case uint8:
-		return float64(v)
-	case uint16:
-		return float64(v)
-	case uint32:
-		return float64(v)
-	case uint64:
-		return float64(v)
-	case float32:
-		return float64(v)
-	default:
-		return 0
-	}
-}
-
-// NewQueryService creates a new QueryService with hybrid storage routing.
-// It initializes all index maps and injects required dependencies for smart
-// query routing.
-// The service routes queries to optimal storage backends based on query type.
-//
-// Hybrid Architecture:
-// - BoltDB reader for hot data (paths, basenames, aliases, file classes)
-// - SQLite reader for deep storage (complex queries, full content)
-// - Smart routing for optimal performance
-//
-// Thread-Safe Design:
-// - RWMutex enables multiple concurrent reads, exclusive writes
-// - Dependencies are injected (no globals) for testability
-//
-// Usage:
-//
-//	qs := NewQueryService(boltReader, sqliteReader, config, logger)
-//	note, err := qs.IDQuery(ctx, id)   // Query safely with smart routing
+// NewQueryService creates a new QueryService with the provided router.
 func NewQueryService(
-	boltReader spi.CacheReaderPort,
-	sqliteReader spi.CacheReaderPort,
+	router *StorageRouter,
 	config domain.Config,
 	log zerolog.Logger,
 	eventBus events.EventBus,
 ) *QueryService {
-	// Extract query ports from readers
-	var boltQuery, sqliteQuery spi.MetadataQueryPort
-	if mq, ok := boltReader.(spi.MetadataQueryPort); ok {
-		boltQuery = mq
-	}
-	if mq, ok := sqliteReader.(spi.MetadataQueryPort); ok {
-		sqliteQuery = mq
-	}
-
 	service := &QueryService{
-		boltReader:     boltReader,
-		sqliteReader:   sqliteReader,
-		router:         NewHybridStorageRouter(boltQuery, sqliteQuery),
-		config:         config,
-		log:            log,
-		eventBus:       eventBus,
-		observer:       NewStalenessObserver(log),
-		boltFailures:   NewBackendFailureTracker("boltdb", log),
-		sqliteFailures: NewBackendFailureTracker("sqlite", log),
-		// mu is initialized to zero value (unlocked state)
-		mu: sync.RWMutex{},
+		router:   router,
+		config:   config,
+		log:      log,
+		eventBus: eventBus,
+		mu:       sync.RWMutex{},
 	}
 	service.registerSubscribers()
 	return service
 }
 
 // IDQuery retrieves a note by its path (formerly NoteID).
-// IDQuery retrieves a note by its path (formerly NoteID).
-//
-// Parameters:
-//   - ctx: Request context for cancellation and logging
-//   - path: Vault-relative path to the note (e.g., "notes/meeting.md")
-//
-// Returns:
-//   - Note: The requested note with all metadata
-//   - error: ResourceError if not found, or implementation error
-//
-// Behavior:
-//   - Delegates to PathQuerySingle for consistent behavior
-//   - Logs debug message with path for troubleshooting
-//   - O(1) lookup performance via map access.
 func (q *QueryService) IDQuery(
 	ctx context.Context,
 	path string,
@@ -190,13 +67,6 @@ func (q *QueryService) IDQuery(
 }
 
 // PathQuerySingle retrieves a note by its file path.
-// Returns the note if found, or ResourceError if not found.
-// Thread-safe: uses RLock to allow concurrent reads.
-//
-// Query Semantics:
-// - Returns ResourceError for missing notes (single result lookup)
-// - Logs debug message with path for troubleshooting
-// - O(1) lookup performance via map access.
 func (q *QueryService) PathQuerySingle(
 	ctx context.Context,
 	path string,
@@ -207,32 +77,28 @@ func (q *QueryService) PathQuerySingle(
 		logger.logSingleResult(start, "path", path)
 	}()
 
-	// Hot path: use BoltDB for fast lookups
-	if q.boltReader != nil {
-		return q.boltReader.Read(ctx, path)
+	// Use router for single-note lookups
+	note, err := q.router.Read(ctx, path)
+	duration := time.Since(start)
+
+	if err != nil {
+		q.publishLookupPerformed(ctx, path, 0, duration, "id")
+		if errors.Is(err, lithosErr.ErrNotFound) {
+			return domain.Note{}, lithosErr.NewResourceError(
+				"note",
+				"get",
+				path,
+				lithosErr.ErrNotFound,
+			)
+		}
+		return domain.Note{}, err
 	}
 
-	if q.sqliteReader != nil {
-		return q.sqliteReader.Read(ctx, path)
-	}
-
-	return domain.Note{}, lithosErr.NewResourceError(
-		"note",
-		"get",
-		path,
-		errors.New("not found"),
-	)
+	q.publishLookupPerformed(ctx, path, 1, duration, "id")
+	return note, nil
 }
 
 // FileClassQuery retrieves all notes matching a schema name (fileClass).
-// Returns a slice of notes if any match, or empty slice if none found.
-// Thread-safe: uses RLock to allow concurrent reads.
-//
-// Query Semantics:
-// - Returns empty slice (not error) for non-matching schemas (collection
-// lookup)
-// - Logs debug message with fileClass and result count
-// - O(log n) lookup performance via map access.
 func (q *QueryService) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
@@ -248,20 +114,7 @@ func (q *QueryService) FileClassQuery(
 	)
 }
 
-// BasenameQuery retrieves all notes matching a filename basename (without
-// extension).
-// Returns a slice of notes if any match, or empty slice if none found.
-// Thread-safe: uses RLock to allow concurrent reads.
-//
-// Query Semantics:
-// - Returns empty slice (not error) for non-matching basenames (collection
-// lookup)
-// - Basename is extracted from NoteID (full path) by removing directory path
-// and file extension
-// - Logs debug message with basename and result count
-// - Delegates to MetadataQueryPort for index-based lookup performance
-//
-// Example: NoteID "projects/notes/meeting.md" matches basename "meeting".
+// BasenameQuery retrieves all notes matching a filename basename.
 func (q *QueryService) BasenameQuery(
 	ctx context.Context,
 	basename string,
@@ -278,19 +131,6 @@ func (q *QueryService) BasenameQuery(
 }
 
 // AliasQuery retrieves all notes containing an alias in their frontmatter.
-// Returns a slice of notes if any match, or empty slice if none found.
-// Thread-safe: uses RLock to allow concurrent reads.
-//
-// Query Semantics:
-// - Returns empty slice (not error) for non-matching aliases (collection
-// lookup)
-// - Searches aliases array in frontmatter for exact matches
-// - Multiple notes can contain the same alias
-// - Logs debug message with alias and result count
-// - Delegates to MetadataQueryPort for index-based lookup performance
-//
-// Example: Notes with frontmatter aliases containing "project-alpha" match
-// alias "project-alpha".
 func (q *QueryService) AliasQuery(
 	ctx context.Context,
 	alias string,
@@ -307,16 +147,6 @@ func (q *QueryService) AliasQuery(
 }
 
 // TagQuery retrieves all notes containing a specific tag in their frontmatter.
-// Returns a slice of notes if any match, or empty slice if none found.
-// Thread-safe: uses RLock to allow concurrent reads.
-//
-// Query Semantics:
-// - Searches tags array in frontmatter for exact matches
-// - Returns all notes containing the tag (multiple notes can have same tag)
-// - Empty slice (not nil) when no matches found
-// - Delegates to MetadataQueryPort for index-based lookup performance
-//
-// Example: Notes with frontmatter tags containing "urgent" match tag "urgent".
 func (q *QueryService) TagQuery(
 	ctx context.Context,
 	tag string,
@@ -333,13 +163,11 @@ func (q *QueryService) TagQuery(
 }
 
 // PathQuery resolves notes using flexible selectors (full path, basename,
-// folder). MetadataQueryPort handles the fast-path lookups when configured;
-// otherwise we fall back to the in-memory indices maintained by QueryService.
+// folder).
 func (q *QueryService) PathQuery(
 	ctx context.Context,
 	opts spi.PathQueryOptions,
 ) ([]domain.Note, error) {
-	logger := newQueryLogger(q.log, "PathQuery")
 	start := time.Now()
 
 	validatedOpts, err := opts.Validate()
@@ -347,53 +175,24 @@ func (q *QueryService) PathQuery(
 		return nil, err
 	}
 
-	// Use router for path queries
-	notes, err := q.router.RouteMetadataQuery(
-		ctx,
-		func(port spi.MetadataQueryPort, ctx context.Context, _ string) ([]domain.Note, error) {
-			return port.PathQuery(ctx, validatedOpts)
-		},
-		validatedOpts.Value,
-	)
+	resultChan := make(chan queryResult, 2)
+	queryCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
-	// Log performance after query execution
-	logger.logPerformance(start, "query", validatedOpts.Value, len(notes))
+	go q.queryHotPath(queryCtx, validatedOpts, resultChan)
+	go q.queryDeepPath(queryCtx, validatedOpts, resultChan)
 
-	return notes, err
+	return q.collectPathQueryResults(ctx, resultChan, start, validatedOpts)
 }
 
 // FrontmatterQuery finds notes where a specific frontmatter field matches a
 // value.
-// Supports type-agnostic comparison (int 2 == float 2.0) and delegates to
-// MetadataQueryPort for indexed lookups.
-//
-// Query Semantics:
-// - Returns empty slice (not error) for non-matching frontmatter (collection
-// lookup)
-// - Type normalization: int/float conversion for numeric comparison
-// - Logs debug message with field and value for troubleshooting
-// - Routes directly to SQLite for complex frontmatter queries (deep path only)
-//
-// Example:
-//
-//	notes := queryService.FrontmatterQuery("author", "John Doe")
-//	notes := queryService.FrontmatterQuery("tags", "project-x")
-//	notes := queryService.FrontmatterQuery("status", "draft")
-//	notes := queryService.FrontmatterQuery("priority", 2) // matches float 2.0
 func (q *QueryService) FrontmatterQuery(
 	ctx context.Context,
-	field string,
-	value interface{},
+	field, value string,
 ) ([]domain.Note, error) {
 	logger := newQueryLogger(q.log, "FrontmatterQuery")
 	start := time.Now()
-
-	canonicalValue, ok := canonicalizeFrontmatterValue(value)
-	if !ok {
-		// Cannot canonicalize value, return empty results
-		logger.logPerformance(start, "field", field, 0)
-		return nil, nil
-	}
 
 	// Frontmatter queries are deep-path only - use SQLite directly
 	var notes []domain.Note
@@ -402,14 +201,191 @@ func (q *QueryService) FrontmatterQuery(
 		notes, err = sqliteQuery.FrontmatterQuery(
 			ctx,
 			field,
-			fmt.Sprintf("%v", canonicalValue),
+			value,
 		)
 	}
 
+	duration := time.Since(start)
 	// Log performance after query execution
 	logger.logPerformance(start, "field", field, len(notes))
 
+	// Publish telemetry
+	q.publishQueryPerformed(
+		ctx,
+		map[string]any{"field": field, "value": value},
+		len(notes),
+		duration,
+		"frontmatter",
+	)
+
 	return notes, err
+}
+
+func (q *QueryService) collectPathQueryResults(
+	ctx context.Context,
+	resultChan <-chan queryResult,
+	start time.Time,
+	opts spi.PathQueryOptions,
+) ([]domain.Note, error) {
+	var hotRes, deepRes *queryResult
+
+	// Collect up to 2 results from the channel
+	for range 2 {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case res := <-resultChan:
+			if res.backend == "bolt" {
+				hotRes = &res
+			} else {
+				deepRes = &res
+			}
+
+			// Optimization: return immediately if we have results
+			if res.err == nil && len(res.notes) > 0 {
+				q.finishQuery(ctx, start, opts, res)
+				return res.notes, nil
+			}
+		}
+	}
+
+	return q.resolvePathQueryFinalResult(ctx, start, opts, hotRes, deepRes)
+}
+
+func (q *QueryService) resolvePathQueryFinalResult(
+	ctx context.Context,
+	start time.Time,
+	opts spi.PathQueryOptions,
+	hotRes, deepRes *queryResult,
+) ([]domain.Note, error) {
+	// Select the best successful result
+	selectedRes := q.selectSuccessfulResult(hotRes, deepRes)
+	if selectedRes != nil {
+		q.finishQuery(ctx, start, opts, *selectedRes)
+		return selectedRes.notes, nil
+	}
+
+	// All failed - get the last error and report
+	lastErr := q.getLastError(deepRes, hotRes)
+	duration := time.Since(start)
+	q.publishQueryPerformed(
+		ctx,
+		map[string]any{"path": opts.Value, "error": lastErr.Error()},
+		0,
+		duration,
+		"path",
+	)
+	return nil, lastErr
+}
+
+// selectSuccessfulResult returns the best successful result prioritizing
+// results with data.
+func (q *QueryService) selectSuccessfulResult(
+	hotRes, deepRes *queryResult,
+) *queryResult {
+	// First check for results with data
+	if res := q.findResultWithData(hotRes, deepRes); res != nil {
+		return res
+	}
+
+	// Then check for any successful result (prefer deep)
+	if res := q.findAnySuccessResult(deepRes, hotRes); res != nil {
+		return res
+	}
+
+	return nil
+}
+
+// findResultWithData returns the first result that is successful and contains
+// data.
+func (q *QueryService) findResultWithData(
+	results ...*queryResult,
+) *queryResult {
+	for _, res := range results {
+		if q.isSuccessWithData(res) {
+			return res
+		}
+	}
+	return nil
+}
+
+// isSuccessWithData checks if a result is successful and contains notes.
+func (q *QueryService) isSuccessWithData(res *queryResult) bool {
+	return res != nil && res.err == nil && len(res.notes) > 0
+}
+
+// findAnySuccessResult returns the first successful result.
+func (q *QueryService) findAnySuccessResult(
+	results ...*queryResult,
+) *queryResult {
+	for _, res := range results {
+		if res != nil && res.err == nil {
+			return res
+		}
+	}
+	return nil
+}
+
+// getLastError returns the last error from the query results.
+func (q *QueryService) getLastError(deepRes, hotRes *queryResult) error {
+	switch {
+	case deepRes != nil:
+		return deepRes.err
+	case hotRes != nil:
+		return hotRes.err
+	default:
+		return errors.New("query failed: no backends responded")
+	}
+}
+
+func (q *QueryService) finishQuery(
+	ctx context.Context,
+	start time.Time,
+	opts spi.PathQueryOptions,
+	res queryResult,
+) {
+	duration := time.Since(start)
+	newQueryLogger(q.log, "PathQuery").logPerformance(
+		start,
+		"query",
+		opts.Value,
+		len(res.notes),
+	)
+	q.publishQueryPerformed(ctx, map[string]any{
+		"path":    opts.Value,
+		"scope":   string(opts.Scope),
+		"backend": res.backend,
+	}, len(res.notes), duration, "path")
+}
+
+func (q *QueryService) queryHotPath(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+	ch chan<- queryResult,
+) {
+	bolt := q.router.GetBoltQuery()
+	if bolt == nil {
+		ch <- queryResult{err: fmt.Errorf("hot path unavailable"), backend: "bolt", notes: nil}
+		return
+	}
+
+	notes, err := bolt.PathQuery(ctx, opts)
+	ch <- queryResult{notes: notes, err: err, backend: "bolt"}
+}
+
+func (q *QueryService) queryDeepPath(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+	ch chan<- queryResult,
+) {
+	sqlite := q.router.GetSQLiteQuery()
+	if sqlite == nil {
+		ch <- queryResult{err: fmt.Errorf("deep path unavailable"), backend: "sqlite", notes: nil}
+		return
+	}
+
+	notes, err := sqlite.PathQuery(ctx, opts)
+	ch <- queryResult{notes: notes, err: err, backend: "sqlite"}
 }
 
 // newQueryLogger creates a new queryLogger with the specified method name.
@@ -448,20 +424,44 @@ func (ql *queryLogger) logPerformance(
 		Msg("query completed")
 }
 
-// GetBackendFailureStats returns failure statistics for both backends.
-// This enables monitoring of backend health and resilience patterns.
-func (q *QueryService) GetBackendFailureStats() map[string]int {
-	return map[string]int{
-		"boltdb": q.boltFailures.GetFailureCount(),
-		"sqlite": q.sqliteFailures.GetFailureCount(),
+func (q *QueryService) publishLookupPerformed(
+	ctx context.Context,
+	noteID string,
+	resultCount int,
+	duration time.Duration,
+	lookupType string,
+) {
+	if q.eventBus == nil {
+		return
 	}
+	event := events.MustNewLookupPerformedEvent(
+		noteID,
+		resultCount,
+		duration,
+		lookupType,
+		time.Now(),
+	)
+	events.PublishAsync(ctx, q.eventBus, q.log, event)
 }
 
-// ResetBackendFailures resets failure counters for both backends.
-// Useful for manual recovery or testing.
-func (q *QueryService) ResetBackendFailures() {
-	q.boltFailures = NewBackendFailureTracker("boltdb", q.log)
-	q.sqliteFailures = NewBackendFailureTracker("sqlite", q.log)
+func (q *QueryService) publishQueryPerformed(
+	ctx context.Context,
+	filter map[string]any,
+	resultCount int,
+	duration time.Duration,
+	queryType string,
+) {
+	if q.eventBus == nil {
+		return
+	}
+	event := events.MustNewQueryPerformedEvent(
+		filter,
+		resultCount,
+		duration,
+		queryType,
+		time.Now(),
+	)
+	events.PublishAsync(ctx, q.eventBus, q.log, event)
 }
 
 func (q *QueryService) registerSubscribers() {
@@ -472,7 +472,6 @@ func (q *QueryService) registerSubscribers() {
 		"VaultIndexingComplete",
 		q.handleVaultIndexingComplete,
 	)
-	// AC 4.6.3: Subscribe to SchemaUpdatedEvent for cache invalidation
 	_ = q.eventBus.Subscribe(
 		"SchemaUpdated",
 		q.handleSchemaUpdated,
@@ -483,24 +482,9 @@ func (q *QueryService) handleVaultIndexingComplete(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
-	completeEvent, ok := event.(*domain.VaultIndexingCompleteEvent)
+	completeEvent, ok := event.(*events.VaultIndexingCompleteEvent)
 	if !ok {
 		return nil
-	}
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	if q.boltFailures != nil {
-		q.boltFailures.RecordSuccess()
-	}
-	if q.sqliteFailures != nil {
-		q.sqliteFailures.RecordSuccess()
-	}
-	if q.observer != nil {
-		q.observer.RecordIndexingComplete(
-			completeEvent.NotesIndexed(),
-			completeEvent.Duration(),
-		)
 	}
 
 	q.log.Info().
@@ -513,10 +497,7 @@ func (q *QueryService) handleVaultIndexingComplete(
 }
 
 // handleSchemaUpdated handles SchemaUpdatedEvent for reactive cache
-// invalidation
-// (AC 4.6.3).
-// When schemas are updated, the query service should invalidate relevant caches
-// to ensure query results reflect the new schema definitions.
+// invalidation.
 func (q *QueryService) handleSchemaUpdated(
 	ctx context.Context,
 	event domain.DomainEvent,
@@ -526,28 +507,17 @@ func (q *QueryService) handleSchemaUpdated(
 		return nil
 	}
 
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
 	// Log schema update for observability
 	q.log.Info().
 		Str("schema", schemaEvent.SchemaName()).
 		Str("operation", schemaEvent.Operation()).
 		Msg("query service observed schema update - cache invalidation triggered")
 
-	// Note: Current implementation uses external cache backends (BoltDB/SQLite)
-	// which are rebuilt during vault indexing. Schema-specific cache
-	// invalidation
-	// would require tracking which notes use which schemas, which is not
-	// implemented in this story. This handler provides the event subscription
-	// infrastructure for future cache invalidation logic.
-
 	return nil
 }
 
 // executeMetadataQuery executes a metadata query with smart routing and
-// performance logging. It routes to BoltDB first (hot path) then SQLite (deep
-// path) with timing instrumentation.
+// performance logging.
 func (q *QueryService) executeMetadataQuery(
 	ctx context.Context,
 	logger *queryLogger,
@@ -559,9 +529,19 @@ func (q *QueryService) executeMetadataQuery(
 
 	// Use router for smart query routing
 	notes, err := q.router.RouteMetadataQuery(ctx, queryFn, paramValue)
+	duration := time.Since(start)
 
 	// Log performance after query execution
 	logger.logPerformance(start, paramName, paramValue, len(notes))
+
+	// Publish telemetry
+	q.publishQueryPerformed(
+		ctx,
+		map[string]any{paramName: paramValue},
+		len(notes),
+		duration,
+		"metadata",
+	)
 
 	return notes, err
 }

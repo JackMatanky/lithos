@@ -114,9 +114,9 @@ func TestVaultIndexing_Integration(t *testing.T) {
 		nil,
 	)
 	// Pass nil for metadataQuery to use internal fallback logic
+	router := query.NewStorageRouter(cacheReader, cacheReader)
 	queryService := query.NewQueryService(
-		cacheReader,
-		cacheReader,
+		router,
 		config,
 		logger,
 		nil,

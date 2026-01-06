@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
@@ -29,7 +29,7 @@ func TestMarkdownProcessingService_HandleFileParseRequested(t *testing.T) {
 	)
 
 	// Create a parse request event
-	event, err := domain.NewFileParseRequestedEvent(
+	event, err := events.NewFileParseRequestedEvent(
 		"/tmp/test/note.md",
 		[]byte("---\nfileClass: note\ntitle: Test Note\n---\n\nContent"),
 		time.Now(),
@@ -71,7 +71,7 @@ func TestMarkdownProcessingService_HandleFileParseRequested_ParseError(
 	)
 
 	// Create a parse request event
-	event, err := domain.NewFileParseRequestedEvent(
+	event, err := events.NewFileParseRequestedEvent(
 		"/tmp/test/note.md",
 		[]byte("invalid content"),
 		time.Now(),
@@ -98,7 +98,7 @@ func TestMarkdownProcessingService_HandleFileParseRequested_NonMarkdownFile(
 	)
 
 	// Create a parse request event for non-markdown file
-	event, err := domain.NewFileParseRequestedEvent(
+	event, err := events.NewFileParseRequestedEvent(
 		"/tmp/test/note.txt",
 		[]byte("some content"),
 		time.Now(),

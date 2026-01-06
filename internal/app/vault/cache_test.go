@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
@@ -33,7 +34,7 @@ func TestCachingService_HandleCacheRequested(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create a cache request event
-	event, err := domain.NewNoteCacheRequestedEvent(note, time.Now())
+	event, err := events.NewNoteCacheRequestedEvent(note, time.Now())
 	require.NoError(t, err)
 
 	ctx := context.Background()

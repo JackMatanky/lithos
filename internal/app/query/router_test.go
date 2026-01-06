@@ -7,19 +7,23 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-// mockMetadataQueryPort implements spi.MetadataQueryPort for testing.
-type mockMetadataQueryPort struct {
+// mockQueryBackend implements QueryBackend for testing.
+type mockQueryBackend struct {
 	fileClassQueryFn   func(ctx context.Context, fileClass string) ([]domain.Note, error)
 	basenameQueryFn    func(ctx context.Context, basename string) ([]domain.Note, error)
 	aliasQueryFn       func(ctx context.Context, alias string) ([]domain.Note, error)
 	pathQueryFn        func(ctx context.Context, opts spi.PathQueryOptions) ([]domain.Note, error)
 	frontmatterQueryFn func(ctx context.Context, field, value string) ([]domain.Note, error)
 	tagQueryFn         func(ctx context.Context, tag string) ([]domain.Note, error)
+	readFn             func(ctx context.Context, path string) (domain.Note, error)
+	listFn             func(ctx context.Context) ([]domain.Note, error)
 }
 
-func (m *mockMetadataQueryPort) FileClassQuery(
+func (m *mockQueryBackend) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
@@ -29,7 +33,7 @@ func (m *mockMetadataQueryPort) FileClassQuery(
 	return nil, nil
 }
 
-func (m *mockMetadataQueryPort) BasenameQuery(
+func (m *mockQueryBackend) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
@@ -39,7 +43,7 @@ func (m *mockMetadataQueryPort) BasenameQuery(
 	return nil, nil
 }
 
-func (m *mockMetadataQueryPort) AliasQuery(
+func (m *mockQueryBackend) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
@@ -49,7 +53,7 @@ func (m *mockMetadataQueryPort) AliasQuery(
 	return nil, nil
 }
 
-func (m *mockMetadataQueryPort) PathQuery(
+func (m *mockQueryBackend) PathQuery(
 	ctx context.Context,
 	opts spi.PathQueryOptions,
 ) ([]domain.Note, error) {
@@ -59,7 +63,7 @@ func (m *mockMetadataQueryPort) PathQuery(
 	return nil, nil
 }
 
-func (m *mockMetadataQueryPort) FrontmatterQuery(
+func (m *mockQueryBackend) FrontmatterQuery(
 	ctx context.Context,
 	field, value string,
 ) ([]domain.Note, error) {
@@ -69,7 +73,7 @@ func (m *mockMetadataQueryPort) FrontmatterQuery(
 	return nil, nil
 }
 
-func (m *mockMetadataQueryPort) TagQuery(
+func (m *mockQueryBackend) TagQuery(
 	ctx context.Context,
 	tag string,
 ) ([]domain.Note, error) {
@@ -79,28 +83,39 @@ func (m *mockMetadataQueryPort) TagQuery(
 	return nil, nil
 }
 
-// TestHybridStorageRouter_NewHybridStorageRouter verifies router construction.
-func TestHybridStorageRouter_NewHybridStorageRouter(t *testing.T) {
-	t.Parallel()
-
-	boltPort := &mockMetadataQueryPort{}
-	sqlitePort := &mockMetadataQueryPort{}
-
-	router := NewHybridStorageRouter(boltPort, sqlitePort)
-
-	if router == nil {
-		t.Fatal("Expected router to be created")
+func (m *mockQueryBackend) Read(
+	ctx context.Context,
+	path string,
+) (domain.Note, error) {
+	if m.readFn != nil {
+		return m.readFn(ctx, path)
 	}
-	if router.boltQuery != boltPort {
-		t.Error("Expected boltQuery to be set")
-	}
-	if router.sqliteQuery != sqlitePort {
-		t.Error("Expected sqliteQuery to be set")
-	}
+	return domain.Note{}, nil
 }
 
-// TestHybridStorageRouter_RouteMetadataQuery_HotPath verifies hot path routing.
-func TestHybridStorageRouter_RouteMetadataQuery_HotPath(t *testing.T) {
+func (m *mockQueryBackend) List(ctx context.Context) ([]domain.Note, error) {
+	if m.listFn != nil {
+		return m.listFn(ctx)
+	}
+	return nil, nil
+}
+
+// TestStorageRouter_NewStorageRouter verifies router construction.
+func TestStorageRouter_NewStorageRouter(t *testing.T) {
+	t.Parallel()
+
+	boltPort := &mockQueryBackend{}
+	sqlitePort := &mockQueryBackend{}
+
+	router := NewStorageRouter(boltPort, sqlitePort)
+
+	require.NotNil(t, router)
+	assert.Equal(t, boltPort, router.bolt)
+	assert.Equal(t, sqlitePort, router.sqlite)
+}
+
+// TestStorageRouter_RouteMetadataQuery_HotPath verifies hot path routing.
+func TestStorageRouter_RouteMetadataQuery_HotPath(t *testing.T) {
 	t.Parallel()
 
 	expectedNote := domain.Note{
@@ -110,19 +125,19 @@ func TestHybridStorageRouter_RouteMetadataQuery_HotPath(t *testing.T) {
 		},
 	}
 
-	boltPort := &mockMetadataQueryPort{
+	boltPort := &mockQueryBackend{
 		basenameQueryFn: func(_ context.Context, _ string) ([]domain.Note, error) {
 			return []domain.Note{expectedNote}, nil
 		},
 	}
-	sqlitePort := &mockMetadataQueryPort{
+	sqlitePort := &mockQueryBackend{
 		basenameQueryFn: func(_ context.Context, _ string) ([]domain.Note, error) {
 			t.Error("SQLite should not be called when BoltDB succeeds")
 			return nil, nil
 		},
 	}
 
-	router := NewHybridStorageRouter(boltPort, sqlitePort)
+	router := NewStorageRouter(boltPort, sqlitePort)
 
 	notes, err := router.RouteMetadataQuery(
 		context.Background(),
@@ -132,24 +147,14 @@ func TestHybridStorageRouter_RouteMetadataQuery_HotPath(t *testing.T) {
 		"test",
 	)
 
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-	if len(notes) != 1 {
-		t.Fatalf("Expected 1 note, got %d", len(notes))
-	}
-	if notes[0].Path != expectedNote.Path {
-		t.Errorf(
-			"Expected note ID %s, got %s",
-			expectedNote.Path,
-			notes[0].Path,
-		)
-	}
+	require.NoError(t, err)
+	require.Len(t, notes, 1)
+	assert.Equal(t, expectedNote.Path, notes[0].Path)
 }
 
-// TestHybridStorageRouter_RouteMetadataQuery_DeepPathFallback verifies fallback
+// TestStorageRouter_RouteMetadataQuery_DeepPathFallback verifies fallback
 // to SQLite.
-func TestHybridStorageRouter_RouteMetadataQuery_DeepPathFallback(t *testing.T) {
+func TestStorageRouter_RouteMetadataQuery_DeepPathFallback(t *testing.T) {
 	t.Parallel()
 
 	expectedNote := domain.Note{
@@ -159,18 +164,18 @@ func TestHybridStorageRouter_RouteMetadataQuery_DeepPathFallback(t *testing.T) {
 		},
 	}
 
-	boltPort := &mockMetadataQueryPort{
+	boltPort := &mockQueryBackend{
 		basenameQueryFn: func(_ context.Context, _ string) ([]domain.Note, error) {
 			return nil, errors.New("bolt error")
 		},
 	}
-	sqlitePort := &mockMetadataQueryPort{
+	sqlitePort := &mockQueryBackend{
 		basenameQueryFn: func(_ context.Context, _ string) ([]domain.Note, error) {
 			return []domain.Note{expectedNote}, nil
 		},
 	}
 
-	router := NewHybridStorageRouter(boltPort, sqlitePort)
+	router := NewStorageRouter(boltPort, sqlitePort)
 
 	notes, err := router.RouteMetadataQuery(
 		context.Background(),
@@ -180,27 +185,17 @@ func TestHybridStorageRouter_RouteMetadataQuery_DeepPathFallback(t *testing.T) {
 		"test",
 	)
 
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-	if len(notes) != 1 {
-		t.Fatalf("Expected 1 note, got %d", len(notes))
-	}
-	if notes[0].Path != expectedNote.Path {
-		t.Errorf(
-			"Expected note ID %s, got %s",
-			expectedNote.Path,
-			notes[0].Path,
-		)
-	}
+	require.NoError(t, err)
+	require.Len(t, notes, 1)
+	assert.Equal(t, expectedNote.Path, notes[0].Path)
 }
 
-// TestHybridStorageRouter_RouteMetadataQuery_NoBackends verifies behavior with
+// TestStorageRouter_RouteMetadataQuery_NoBackends verifies behavior with
 // no backends.
-func TestHybridStorageRouter_RouteMetadataQuery_NoBackends(t *testing.T) {
+func TestStorageRouter_RouteMetadataQuery_NoBackends(t *testing.T) {
 	t.Parallel()
 
-	router := NewHybridStorageRouter(nil, nil)
+	router := NewStorageRouter(nil, nil)
 
 	notes, err := router.RouteMetadataQuery(
 		context.Background(),
@@ -210,17 +205,13 @@ func TestHybridStorageRouter_RouteMetadataQuery_NoBackends(t *testing.T) {
 		"test",
 	)
 
-	if err != nil {
-		t.Errorf("Expected no error, got: %v", err)
-	}
-	if notes != nil {
-		t.Errorf("Expected nil notes, got %v", notes)
-	}
+	require.NoError(t, err)
+	assert.Nil(t, notes)
 }
 
-// TestHybridStorageRouter_RouteMetadataQuery_OnlyBolt verifies routing with
+// TestStorageRouter_RouteMetadataQuery_OnlyBolt verifies routing with
 // only BoltDB.
-func TestHybridStorageRouter_RouteMetadataQuery_OnlyBolt(t *testing.T) {
+func TestStorageRouter_RouteMetadataQuery_OnlyBolt(t *testing.T) {
 	t.Parallel()
 
 	expectedNote := domain.Note{
@@ -230,13 +221,13 @@ func TestHybridStorageRouter_RouteMetadataQuery_OnlyBolt(t *testing.T) {
 		},
 	}
 
-	boltPort := &mockMetadataQueryPort{
+	boltPort := &mockQueryBackend{
 		basenameQueryFn: func(_ context.Context, _ string) ([]domain.Note, error) {
 			return []domain.Note{expectedNote}, nil
 		},
 	}
 
-	router := NewHybridStorageRouter(boltPort, nil)
+	router := NewStorageRouter(boltPort, nil)
 
 	notes, err := router.RouteMetadataQuery(
 		context.Background(),
@@ -246,24 +237,14 @@ func TestHybridStorageRouter_RouteMetadataQuery_OnlyBolt(t *testing.T) {
 		"test",
 	)
 
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-	if len(notes) != 1 {
-		t.Fatalf("Expected 1 note, got %d", len(notes))
-	}
-	if notes[0].Path != expectedNote.Path {
-		t.Errorf(
-			"Expected note ID %s, got %s",
-			expectedNote.Path,
-			notes[0].Path,
-		)
-	}
+	require.NoError(t, err)
+	require.Len(t, notes, 1)
+	assert.Equal(t, expectedNote.Path, notes[0].Path)
 }
 
-// TestHybridStorageRouter_RouteMetadataQuery_OnlySQLite verifies routing with
+// TestStorageRouter_RouteMetadataQuery_OnlySQLite verifies routing with
 // only SQLite.
-func TestHybridStorageRouter_RouteMetadataQuery_OnlySQLite(t *testing.T) {
+func TestStorageRouter_RouteMetadataQuery_OnlySQLite(t *testing.T) {
 	t.Parallel()
 
 	expectedNote := domain.Note{
@@ -273,13 +254,13 @@ func TestHybridStorageRouter_RouteMetadataQuery_OnlySQLite(t *testing.T) {
 		},
 	}
 
-	sqlitePort := &mockMetadataQueryPort{
+	sqlitePort := &mockQueryBackend{
 		basenameQueryFn: func(_ context.Context, _ string) ([]domain.Note, error) {
 			return []domain.Note{expectedNote}, nil
 		},
 	}
 
-	router := NewHybridStorageRouter(nil, sqlitePort)
+	router := NewStorageRouter(nil, sqlitePort)
 
 	notes, err := router.RouteMetadataQuery(
 		context.Background(),
@@ -289,61 +270,83 @@ func TestHybridStorageRouter_RouteMetadataQuery_OnlySQLite(t *testing.T) {
 		"test",
 	)
 
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-	if len(notes) != 1 {
-		t.Fatalf("Expected 1 note, got %d", len(notes))
-	}
-	if notes[0].Path != expectedNote.Path {
-		t.Errorf(
-			"Expected note ID %s, got %s",
-			expectedNote.Path,
-			notes[0].Path,
-		)
-	}
+	require.NoError(t, err)
+	require.Len(t, notes, 1)
+	assert.Equal(t, expectedNote.Path, notes[0].Path)
 }
 
-// TestHybridStorageRouter_GetSQLiteQuery verifies SQLite query port getter.
-func TestHybridStorageRouter_GetSQLiteQuery(t *testing.T) {
+// TestStorageRouter_Read verifies single-note read with fallback.
+func TestStorageRouter_Read(t *testing.T) {
 	t.Parallel()
 
-	sqlitePort := &mockMetadataQueryPort{}
-	router := NewHybridStorageRouter(nil, sqlitePort)
+	expectedNote := domain.Note{Path: "test.md"}
+
+	t.Run("HotPathSuccess", func(t *testing.T) {
+		bolt := &mockQueryBackend{
+			readFn: func(_ context.Context, _ string) (domain.Note, error) {
+				return expectedNote, nil
+			},
+		}
+		router := NewStorageRouter(bolt, nil)
+		note, err := router.Read(context.Background(), "test.md")
+		require.NoError(t, err)
+		assert.Equal(t, expectedNote.Path, note.Path)
+	})
+
+	t.Run("DeepPathFallback", func(t *testing.T) {
+		bolt := &mockQueryBackend{
+			readFn: func(_ context.Context, _ string) (domain.Note, error) {
+				return domain.Note{}, errors.New("bolt error")
+			},
+		}
+		sqlite := &mockQueryBackend{
+			readFn: func(_ context.Context, _ string) (domain.Note, error) {
+				return expectedNote, nil
+			},
+		}
+		router := NewStorageRouter(bolt, sqlite)
+		note, err := router.Read(context.Background(), "test.md")
+		require.NoError(t, err)
+		assert.Equal(t, expectedNote.Path, note.Path)
+	})
+}
+
+// TestStorageRouter_GetSQLiteQuery verifies SQLite query port getter.
+func TestStorageRouter_GetSQLiteQuery(t *testing.T) {
+	t.Parallel()
+
+	sqlitePort := &mockQueryBackend{}
+	router := NewStorageRouter(nil, sqlitePort)
 
 	result := router.GetSQLiteQuery()
 
-	if result != sqlitePort {
-		t.Error("Expected GetSQLiteQuery to return sqlitePort")
-	}
+	assert.Equal(t, sqlitePort, result)
 }
 
-// TestHybridStorageRouter_GetBoltQuery verifies BoltDB query port getter.
-func TestHybridStorageRouter_GetBoltQuery(t *testing.T) {
+// TestStorageRouter_GetBoltQuery verifies BoltDB query port getter.
+func TestStorageRouter_GetBoltQuery(t *testing.T) {
 	t.Parallel()
 
-	boltPort := &mockMetadataQueryPort{}
-	router := NewHybridStorageRouter(boltPort, nil)
+	boltPort := &mockQueryBackend{}
+	router := NewStorageRouter(boltPort, nil)
 
 	result := router.GetBoltQuery()
 
-	if result != boltPort {
-		t.Error("Expected GetBoltQuery to return boltPort")
-	}
+	assert.Equal(t, boltPort, result)
 }
 
-// TestHybridStorageRouter_HasHotPath verifies hot path availability check.
-func TestHybridStorageRouter_HasHotPath(t *testing.T) {
+// TestStorageRouter_HasHotPath verifies hot path availability check.
+func TestStorageRouter_HasHotPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
-		boltPort spi.MetadataQueryPort
+		boltPort QueryBackend
 		want     bool
 	}{
 		{
 			name:     "with bolt port",
-			boltPort: &mockMetadataQueryPort{},
+			boltPort: &mockQueryBackend{},
 			want:     true,
 		},
 		{
@@ -355,27 +358,24 @@ func TestHybridStorageRouter_HasHotPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			router := NewHybridStorageRouter(tt.boltPort, nil)
-			if got := router.HasHotPath(); got != tt.want {
-				t.Errorf("HasHotPath() = %v, want %v", got, tt.want)
-			}
+			router := NewStorageRouter(tt.boltPort, nil)
+			assert.Equal(t, tt.want, router.HasHotPath())
 		})
 	}
 }
 
-// TestHybridStorageRouter_HasDeepPath verifies deep path availability check.
-func TestHybridStorageRouter_HasDeepPath(t *testing.T) {
+// TestStorageRouter_HasDeepPath verifies deep path availability check.
+func TestStorageRouter_HasDeepPath(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name       string
-		sqlitePort spi.MetadataQueryPort
+		sqlitePort QueryBackend
 		want       bool
 	}{
 		{
 			name:       "with sqlite port",
-			sqlitePort: &mockMetadataQueryPort{},
+			sqlitePort: &mockQueryBackend{},
 			want:       true,
 		},
 		{
@@ -387,11 +387,8 @@ func TestHybridStorageRouter_HasDeepPath(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			router := NewHybridStorageRouter(nil, tt.sqlitePort)
-			if got := router.HasDeepPath(); got != tt.want {
-				t.Errorf("HasDeepPath() = %v, want %v", got, tt.want)
-			}
+			router := NewStorageRouter(nil, tt.sqlitePort)
+			assert.Equal(t, tt.want, router.HasDeepPath())
 		})
 	}
 }

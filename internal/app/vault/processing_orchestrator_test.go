@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
+	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/tests/utils"
 	"github.com/rs/zerolog"
@@ -49,7 +50,7 @@ func TestDataProcessingOrchestrator_HandleFileDiscovered(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	event, err := domain.NewFileDiscoveredEvent(
+	event, err := events.NewFileDiscoveredEvent(
 		testFile.Path,
 		len(testFile.Content),
 		testFile.Content,
@@ -91,7 +92,7 @@ func TestDataProcessingOrchestrator_HandleNoteParsed(t *testing.T) {
 	}), nil, nil, nil, nil)
 	require.NoError(t, err)
 
-	event, err := domain.NewNoteParsedEvent(note, time.Now())
+	event, err := events.NewNoteParsedEvent(note, time.Now())
 	require.NoError(t, err)
 
 	// Handle the event

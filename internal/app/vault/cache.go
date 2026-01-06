@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/events"
+	"github.com/JackMatanky/lithos/internal/app/persistence"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
@@ -63,7 +64,7 @@ func (s *CachingService) handleCacheRequested(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
-	cacheEvent, ok := event.(*domain.NoteCacheRequestedEvent)
+	cacheEvent, ok := event.(*events.NoteCacheRequestedEvent)
 	if !ok {
 		return nil
 	}
@@ -73,15 +74,13 @@ func (s *CachingService) handleCacheRequested(
 		Str("path", note.Path).
 		Msg("caching validated note to dual storage")
 
-	// Create unit of work for transactional dual-write
-	uow := NewCacheUnitOfWork(s.boltWriter, s.sqliteWriter)
-	if err := uow.Begin(); err != nil {
-		s.log.Error().
-			Err(err).
-			Str("path", note.Path).
-			Msg("failed to begin cache transaction")
-		return err
-	}
+	// Create transaction for atomic writes
+	strategy := &persistence.ParallelWriteStrategy{}
+	tx := persistence.NewCacheTransaction(
+		strategy,
+		s.boltWriter,
+		s.sqliteWriter,
+	)
 
 	// Stage the note for caching
 	metadata := spi.CacheWriteMetadata{
@@ -89,22 +88,10 @@ func (s *CachingService) handleCacheRequested(
 		FileSize:   0,
 		IndexTime:  time.Now().UTC(),
 	}
-	if err := uow.AddWrite(note, metadata); err != nil {
-		s.log.Error().
-			Err(err).
-			Str("path", note.Path).
-			Msg("failed to stage note for caching")
-		if rollbackErr := uow.Rollback(ctx); rollbackErr != nil {
-			s.log.Warn().
-				Err(rollbackErr).
-				Str("path", note.Path).
-				Msg("failed to rollback transaction")
-		}
-		return err
-	}
+	tx.AddWrite(note, metadata)
 
 	// Commit the transaction
-	if err := uow.Commit(ctx); err != nil {
+	if err := tx.Commit(ctx); err != nil {
 		s.log.Error().
 			Err(err).
 			Str("path", note.Path).

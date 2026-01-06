@@ -175,9 +175,9 @@ This is a test note with frontmatter.
 	)
 
 	// Create QueryService
+	router := query.NewStorageRouter(cacheReader, cacheReader)
 	queryService := query.NewQueryService(
-		cacheReader,
-		cacheReader,
+		router,
 		*config,
 		logger,
 		nil,
@@ -324,9 +324,9 @@ func TestFrontmatterValidationWithRealSchemas(t *testing.T) {
 
 	// Create mock query service (simplified for testing)
 	cacheReader := json.NewJSONCacheReader(*config, logger)
+	router := query.NewStorageRouter(cacheReader, cacheReader)
 	queryService := query.NewQueryService(
-		cacheReader,
-		cacheReader,
+		router,
 		*config,
 		logger,
 		nil,

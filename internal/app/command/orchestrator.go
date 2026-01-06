@@ -366,7 +366,7 @@ func (o *CLIComander) publishNoteIndexedEvent(
 			Msg("failed to create note indexed event")
 		return
 	}
-	if publishErr := o.eventBus.Publish(ctx, event); publishErr != nil {
+	if publishErr := events.PublishSync(ctx, o.eventBus, event); publishErr != nil {
 		o.log.Warn().
 			Err(publishErr).
 			Str("path", note.Path).
@@ -402,7 +402,7 @@ func (o *CLIComander) publishNoteCreatedEvent(
 		return
 	}
 
-	if publishErr := o.eventBus.Publish(ctx, event); publishErr != nil {
+	if publishErr := events.PublishSync(ctx, o.eventBus, event); publishErr != nil {
 		o.log.Warn().
 			Err(publishErr).
 			Str("path", note.Path).

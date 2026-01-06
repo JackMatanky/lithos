@@ -61,7 +61,7 @@ func (o *DataProcessingOrchestrator) handleFileDiscovered(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
-	fileEvent, ok := event.(*domain.FileDiscoveredEvent)
+	fileEvent, ok := event.(*events.FileDiscoveredEvent)
 	if !ok {
 		return nil
 	}
@@ -73,13 +73,13 @@ func (o *DataProcessingOrchestrator) handleFileDiscovered(
 
 	// Emit event to trigger parsing (will be handled by format-specific
 	// services)
-	parseEvent := domain.MustNewFileParseRequestedEvent(
+	parseEvent := events.MustNewFileParseRequestedEvent(
 		fileEvent.Path(),
 		fileEvent.Content(),
 		event.OccurredAt(),
 	)
 
-	return o.eventBus.Publish(ctx, parseEvent)
+	return events.PublishSync(ctx, o.eventBus, parseEvent)
 }
 
 // handleNoteParsed routes successfully parsed notes to validation.
@@ -87,7 +87,7 @@ func (o *DataProcessingOrchestrator) handleNoteParsed(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
-	parsedEvent, ok := event.(*domain.NoteParsedEvent)
+	parsedEvent, ok := event.(*events.NoteParsedEvent)
 	if !ok {
 		return nil
 	}
@@ -97,12 +97,12 @@ func (o *DataProcessingOrchestrator) handleNoteParsed(
 		Msg("routing parsed note for validation")
 
 	// Emit event to trigger validation
-	validationEvent := domain.MustNewFrontmatterValidationRequestedEvent(
+	validationEvent := events.MustNewFrontmatterValidationRequestedEvent(
 		parsedEvent.Note(),
 		event.OccurredAt(),
 	)
 
-	return o.eventBus.Publish(ctx, validationEvent)
+	return events.PublishSync(ctx, o.eventBus, validationEvent)
 }
 
 // handleFrontmatterValidated routes validation results to caching or error
@@ -122,12 +122,12 @@ func (o *DataProcessingOrchestrator) handleFrontmatterValidated(
 			Msg("routing validated note for caching")
 
 		// Emit event to trigger caching
-		cacheEvent := domain.MustNewNoteCacheRequestedEvent(
+		cacheEvent := events.MustNewNoteCacheRequestedEvent(
 			validationEvent.Note(),
 			event.OccurredAt(),
 		)
 
-		return o.eventBus.Publish(ctx, cacheEvent)
+		return events.PublishSync(ctx, o.eventBus, cacheEvent)
 	} else {
 		o.log.Warn().
 			Str("path", validationEvent.NoteID()).

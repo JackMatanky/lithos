@@ -13,6 +13,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/metrics"
+	"github.com/JackMatanky/lithos/internal/app/persistence"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -176,11 +177,13 @@ func (v *VaultIndexer) Build(ctx context.Context) (metrics.IndexStats, error) {
 	}
 	stats.ScannedCount = len(vaultFiles)
 
-	// Create Unit of Work for transactional writes
-	uow := NewCacheUnitOfWork(v.boltWriter, v.sqliteWriter)
-	if beginErr := uow.Begin(); beginErr != nil {
-		return stats, fmt.Errorf("failed to begin transaction: %w", beginErr)
-	}
+	// Create transaction for atomic writes
+	strategy := &persistence.ParallelWriteStrategy{}
+	tx := persistence.NewCacheTransaction(
+		strategy,
+		v.boltWriter,
+		v.sqliteWriter,
+	)
 
 	// Step 3: Process each file
 	for i := range vaultFiles {
@@ -188,11 +191,11 @@ func (v *VaultIndexer) Build(ctx context.Context) (metrics.IndexStats, error) {
 			stats.Duration = time.Since(startTime)
 			return stats, cancelErr
 		}
-		v.processFile(ctx, &vaultFiles[i], uow, &stats)
+		v.processFile(ctx, &vaultFiles[i], tx, &stats)
 	}
 
 	// Commit transaction
-	if commitErr := uow.Commit(ctx); commitErr != nil {
+	if commitErr := tx.Commit(ctx); commitErr != nil {
 		stats.CacheFailures++ // Log as generic failure if commit fails
 		v.log.Error().Err(commitErr).Msg("transaction commit failed")
 		// If rollback is handled in Commit (it is), we assume data is
@@ -270,14 +273,16 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 		}
 	}
 
-	// Create Unit of Work
-	uow := NewCacheUnitOfWork(v.boltWriter, v.sqliteWriter)
-	if beginErr := uow.Begin(); beginErr != nil {
-		return fmt.Errorf("failed to begin transaction: %w", beginErr)
-	}
+	// Create transaction
+	strategy := &persistence.ParallelWriteStrategy{}
+	tx := persistence.NewCacheTransaction(
+		strategy,
+		v.boltWriter,
+		v.sqliteWriter,
+	)
 
 	// Step 2: Perform deletion reconciliation
-	retainedNotes := v.reconcileDeletions(ctx, uow, &stats)
+	retainedNotes := v.reconcileDeletions(ctx, tx)
 
 	// Step 2: Scan modified files
 	vaultFiles, err := v.scanModifiedFiles(ctx, since)
@@ -291,11 +296,11 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 		if cancelErr := ctx.Err(); cancelErr != nil {
 			return cancelErr
 		}
-		v.processFile(ctx, &vaultFiles[i], uow, &stats)
+		v.processFile(ctx, &vaultFiles[i], tx, &stats)
 	}
 
 	// Commit transaction
-	if commitErr := uow.Commit(ctx); commitErr != nil {
+	if commitErr := tx.Commit(ctx); commitErr != nil {
 		v.log.Error().Err(commitErr).Msg("refresh transaction commit failed")
 		// Should we return error? The original code returned nil for cache
 		// failures.
@@ -340,8 +345,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 // failure).
 func (v *VaultIndexer) reconcileDeletions(
 	ctx context.Context,
-	uow *CacheUnitOfWork,
-	stats *metrics.IndexStats,
+	tx *persistence.CacheTransaction,
 ) []domain.Note {
 	cachedNotes, listErr := v.cacheReader.List(ctx)
 	if listErr != nil {
@@ -363,18 +367,11 @@ func (v *VaultIndexer) reconcileDeletions(
 		}
 
 		if os.IsNotExist(statErr) {
-			if deleteErr := uow.AddDelete(note.Path); deleteErr != nil {
-				stats.CacheFailures++
-				v.log.Warn().
-					Err(deleteErr).
-					Str("notePath", note.Path).
-					Msg("failed to stage delete for orphaned cache entry")
-			} else {
-				v.log.Debug().
-					Str("notePath", note.Path).
-					Str("path", absolutePath).
-					Msg("staged delete for orphaned cache entry")
-			}
+			tx.AddDelete(note.Path)
+			v.log.Debug().
+				Str("notePath", note.Path).
+				Str("path", absolutePath).
+				Msg("staged delete for orphaned cache entry")
 			continue
 		}
 
@@ -677,7 +674,7 @@ func (v *VaultIndexer) scanModifiedFiles(
 func (v *VaultIndexer) processFile(
 	ctx context.Context,
 	file *dto.VaultFile,
-	uow *CacheUnitOfWork,
+	tx *persistence.CacheTransaction,
 	stats *metrics.IndexStats,
 ) {
 	// Filter: only .md files for frontmatter processing
@@ -712,22 +709,13 @@ func (v *VaultIndexer) processFile(
 		stats.ValidationSuccesses++
 	}
 
-	// Persist to cache via Unit of Work
+	// Persist to cache via transaction
 	// We generate indexTime here to ensure consistency
 	indexTime := time.Now().UTC()
 	metadata := v.buildCacheWriteMetadata(file, indexTime)
-	if persistErr := uow.AddWrite(note, metadata); persistErr != nil {
-		stats.CacheFailures++
-		v.log.Warn().
-			Err(persistErr).
-			Str("notePath", note.Path).
-			Msg("cache write staging failed")
-
-		// Continue - don't abort indexing
-	} else {
-		stats.IndexedCount++
-		v.publishNoteIndexedEvent(ctx, note)
-	}
+	tx.AddWrite(note, metadata)
+	stats.IndexedCount++
+	v.publishNoteIndexedEvent(ctx, note)
 }
 
 func (v *VaultIndexer) buildCacheWriteMetadata(
@@ -804,7 +792,7 @@ func (v *VaultIndexer) publishNoteIndexedEvent(
 			Msg("failed to create note indexed event")
 		return
 	}
-	if publishErr := v.eventBus.Publish(ctx, event); publishErr != nil {
+	if publishErr := events.PublishSync(ctx, v.eventBus, event); publishErr != nil {
 		v.log.Warn().
 			Err(publishErr).
 			Str("path", note.Path).
@@ -819,7 +807,7 @@ func (v *VaultIndexer) publishIndexingCompleteEvent(
 	if v.eventBus == nil {
 		return
 	}
-	summary := domain.VaultIndexingSummary{
+	summary := events.VaultIndexingSummary{
 		ScannedCount:        stats.ScannedCount,
 		IndexedCount:        stats.IndexedCount,
 		ParseFailures:       stats.ParseFailures,
@@ -827,7 +815,7 @@ func (v *VaultIndexer) publishIndexingCompleteEvent(
 		ValidationSuccesses: stats.ValidationSuccesses,
 		ValidationFailures:  stats.ValidationFailures,
 	}
-	event, err := domain.NewVaultIndexingCompleteEvent(
+	event, err := events.NewVaultIndexingCompleteEvent(
 		summary,
 		stats.Duration,
 		time.Now(),
@@ -838,7 +826,7 @@ func (v *VaultIndexer) publishIndexingCompleteEvent(
 			Msg("failed to create vault indexing complete event")
 		return
 	}
-	if publishErr := v.eventBus.Publish(ctx, event); publishErr != nil {
+	if publishErr := events.PublishSync(ctx, v.eventBus, event); publishErr != nil {
 		v.log.Warn().
 			Err(publishErr).
 			Msg("failed to publish vault indexing complete event")
@@ -849,7 +837,7 @@ func (v *VaultIndexer) handleCommandIssuedEvent(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
-	commandEvent, ok := event.(*domain.CommandIssuedEvent)
+	commandEvent, ok := event.(*events.CommandIssuedEvent)
 	if !ok {
 		return nil
 	}
@@ -884,16 +872,16 @@ func (v *VaultIndexer) applyNoteEvent(
 			return err
 		}
 	}
-	uow := NewCacheUnitOfWork(v.boltWriter, v.sqliteWriter)
-	if beginErr := uow.Begin(); beginErr != nil {
-		return beginErr
-	}
+	strategy := &persistence.ParallelWriteStrategy{}
+	tx := persistence.NewCacheTransaction(
+		strategy,
+		v.boltWriter,
+		v.sqliteWriter,
+	)
 	indexTime := time.Now().UTC()
 	metadata := v.metadataFromPath(note.Path, indexTime)
-	if persistErr := uow.AddWrite(note, metadata); persistErr != nil {
-		return persistErr
-	}
-	if commitErr := uow.Commit(ctx); commitErr != nil {
+	tx.AddWrite(note, metadata)
+	if commitErr := tx.Commit(ctx); commitErr != nil {
 		return commitErr
 	}
 	v.log.Debug().

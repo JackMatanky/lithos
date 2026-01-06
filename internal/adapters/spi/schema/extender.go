@@ -40,7 +40,7 @@ func NewSchemaExtender() *SchemaExtender {
 //  3. Topological sort (parents resolve before children)
 //  4. Resolve each schema in order (inheritance + excludes + overrides)
 //
-// Returns new schema copies with ResolvedProperties populated.
+// Returns new schema copies with Resolved populated.
 // Original schemas are never mutated.
 //
 // Context is used for cancellation during potentially long-running resolution.
@@ -210,7 +210,7 @@ func (e *SchemaExtender) resolveSchemaInheritance(
 	var parentProps []domain.Property
 	if schema.Extends != "" {
 		if parent, exists := resolvedMap[schema.Extends]; exists {
-			parentProps = parent.ResolvedProperties
+			parentProps = parent.Resolved
 		}
 		// If parent doesn't exist in resolvedMap, it means no parent properties
 		// (this should not happen if topological sort worked correctly)
@@ -221,11 +221,11 @@ func (e *SchemaExtender) resolveSchemaInheritance(
 
 	// Create resolved schema copy (preserve original fields)
 	resolved := domain.Schema{
-		Name:               schema.Name,
-		Extends:            schema.Extends,
-		Excludes:           schema.Excludes,
-		Properties:         schema.Properties,
-		ResolvedProperties: finalProps,
+		Name:       schema.Name,
+		Extends:    schema.Extends,
+		Excludes:   schema.Excludes,
+		Properties: schema.Properties,
+		Resolved:   finalProps,
 	}
 
 	return resolved

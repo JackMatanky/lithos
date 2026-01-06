@@ -105,20 +105,20 @@ func (a *SchemaRegistryAdapter) RegisterAll(
 	a.properties = make(map[string]domain.Property)
 
 	// Register schemas (defensive copy - deep copy Properties and
-	// ResolvedProperties slices)
+	// Resolved slices)
 	for _, schema := range schemas {
 		// Deep copy the Properties slice to prevent external mutation
 		propertiesCopy := make([]domain.Property, len(schema.Properties))
 		copy(propertiesCopy, schema.Properties)
-		// Deep copy the ResolvedProperties slice to prevent external mutation
+		// Deep copy the Resolved slice to prevent external mutation
 		resolvedPropertiesCopy := make(
 			[]domain.Property,
-			len(schema.ResolvedProperties),
+			len(schema.Resolved),
 		)
-		copy(resolvedPropertiesCopy, schema.ResolvedProperties)
+		copy(resolvedPropertiesCopy, schema.Resolved)
 		schemaCopy := schema
 		schemaCopy.Properties = propertiesCopy
-		schemaCopy.ResolvedProperties = resolvedPropertiesCopy
+		schemaCopy.Resolved = resolvedPropertiesCopy
 		a.schemas[schema.Name] = schemaCopy
 	}
 
@@ -173,12 +173,12 @@ func (a *SchemaRegistryAdapter) GetSchema(
 	copy(propertiesCopy, schema.Properties)
 	resolvedPropertiesCopy := make(
 		[]domain.Property,
-		len(schema.ResolvedProperties),
+		len(schema.Resolved),
 	)
-	copy(resolvedPropertiesCopy, schema.ResolvedProperties)
+	copy(resolvedPropertiesCopy, schema.Resolved)
 	schemaCopy := schema
 	schemaCopy.Properties = propertiesCopy
-	schemaCopy.ResolvedProperties = resolvedPropertiesCopy
+	schemaCopy.Resolved = resolvedPropertiesCopy
 
 	return schemaCopy, nil
 }
@@ -280,7 +280,7 @@ func registrySignature(
 			"schema:%s:%d:%d",
 			schema.Name,
 			len(schema.Properties),
-			len(schema.ResolvedProperties),
+			len(schema.Resolved),
 		))
 	}
 	for id := range bank.Properties {

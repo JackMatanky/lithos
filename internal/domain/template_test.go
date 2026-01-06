@@ -146,7 +146,7 @@ func TestTemplate_NoFilePathField(t *testing.T) {
 	}
 	typ := v.Type()
 
-	for i := 0; i < typ.NumField(); i++ { //nolint:intrange // reflection requires index-based access
+	for i := range typ.NumField() {
 		field := typ.Field(i)
 		if field.Name == "FilePath" {
 			t.Errorf(
@@ -169,7 +169,7 @@ func TestTemplate_NoParsedField(t *testing.T) {
 	}
 	typ := v.Type()
 
-	for i := 0; i < typ.NumField(); i++ { //nolint:intrange // reflection requires index-based access
+	for i := range typ.NumField() {
 		field := typ.Field(i)
 		if field.Name == "Parsed" {
 			t.Errorf(

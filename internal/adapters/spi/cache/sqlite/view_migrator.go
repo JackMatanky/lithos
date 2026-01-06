@@ -238,7 +238,7 @@ func setBusyTimeout(ctx context.Context, db *sql.DB) error {
 }
 
 func schemaSignature(schema domain.Schema) (string, error) {
-	props := schema.ResolvedProperties
+	props := schema.Resolved
 	if len(props) == 0 {
 		props = schema.Properties
 	}
@@ -384,12 +384,12 @@ func cloneDomainSchema(src domain.Schema) domain.Schema {
 		dst.Properties = make([]domain.Property, len(src.Properties))
 		copy(dst.Properties, src.Properties)
 	}
-	if len(src.ResolvedProperties) > 0 {
-		dst.ResolvedProperties = make(
+	if len(src.Resolved) > 0 {
+		dst.Resolved = make(
 			[]domain.Property,
-			len(src.ResolvedProperties),
+			len(src.Resolved),
 		)
-		copy(dst.ResolvedProperties, src.ResolvedProperties)
+		copy(dst.Resolved, src.Resolved)
 	}
 	if len(src.Excludes) > 0 {
 		dst.Excludes = append([]string(nil), src.Excludes...)

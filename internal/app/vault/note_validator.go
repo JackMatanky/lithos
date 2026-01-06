@@ -57,7 +57,7 @@ func (s *NoteValidationService) handleValidationRequested(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
-	validationEvent, ok := event.(*domain.FrontmatterValidationRequestedEvent)
+	validationEvent, ok := event.(*events.FrontmatterValidationRequestedEvent)
 	if !ok {
 		return nil
 	}
@@ -89,5 +89,5 @@ func (s *NoteValidationService) handleValidationRequested(
 		event.OccurredAt(),
 	)
 
-	return s.eventBus.Publish(ctx, resultEvent)
+	return events.PublishSync(ctx, s.eventBus, resultEvent)
 }

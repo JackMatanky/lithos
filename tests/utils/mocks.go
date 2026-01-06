@@ -461,6 +461,8 @@ func (m *MockVaultIndexer) Build(
 // testing. It allows configuring mock responses for each query method and
 // tracks call counts for assertion purposes.
 type MockMetadataQueryPort struct {
+	mu sync.Mutex
+
 	// Function fields for method delegation
 	BasenameQueryFunc    func(ctx context.Context, basename string) ([]domain.Note, error)
 	AliasQueryFunc       func(ctx context.Context, alias string) ([]domain.Note, error)
@@ -492,6 +494,7 @@ type MockMetadataQueryPort struct {
 // Configure specific behavior using the Set*Result methods.
 func NewMockMetadataQueryPort() *MockMetadataQueryPort {
 	return &MockMetadataQueryPort{
+		mu: sync.Mutex{},
 		BasenameQueryFunc: func(ctx context.Context, basename string) ([]domain.Note, error) {
 			return []domain.Note{}, nil
 		},
@@ -601,8 +604,10 @@ func (m *MockMetadataQueryPort) BasenameQuery(
 	ctx context.Context,
 	basename string,
 ) ([]domain.Note, error) {
+	m.mu.Lock()
 	m.BasenameQueryCallCount++
 	m.LastBasenameQueryArg = basename
+	m.mu.Unlock()
 	return m.BasenameQueryFunc(ctx, basename)
 }
 
@@ -611,8 +616,10 @@ func (m *MockMetadataQueryPort) AliasQuery(
 	ctx context.Context,
 	alias string,
 ) ([]domain.Note, error) {
+	m.mu.Lock()
 	m.AliasQueryCallCount++
 	m.LastAliasQueryArg = alias
+	m.mu.Unlock()
 	return m.AliasQueryFunc(ctx, alias)
 }
 
@@ -622,8 +629,10 @@ func (m *MockMetadataQueryPort) FileClassQuery(
 	ctx context.Context,
 	fileClass string,
 ) ([]domain.Note, error) {
+	m.mu.Lock()
 	m.FileClassQueryCallCount++
 	m.LastFileClassQueryArg = fileClass
+	m.mu.Unlock()
 	return m.FileClassQueryFunc(ctx, fileClass)
 }
 
@@ -632,8 +641,10 @@ func (m *MockMetadataQueryPort) PathQuery(
 	ctx context.Context,
 	opts spi.PathQueryOptions,
 ) ([]domain.Note, error) {
+	m.mu.Lock()
 	m.PathQueryCallCount++
 	m.LastPathQueryOpts = opts
+	m.mu.Unlock()
 	return m.PathQueryFunc(ctx, opts)
 }
 
@@ -642,8 +653,10 @@ func (m *MockMetadataQueryPort) TagQuery(
 	ctx context.Context,
 	tag string,
 ) ([]domain.Note, error) {
+	m.mu.Lock()
 	m.TagQueryCallCount++
 	m.LastTagQueryArg = tag
+	m.mu.Unlock()
 	return m.TagQueryFunc(ctx, tag)
 }
 
@@ -653,9 +666,11 @@ func (m *MockMetadataQueryPort) FrontmatterQuery(
 	ctx context.Context,
 	field, value string,
 ) ([]domain.Note, error) {
+	m.mu.Lock()
 	m.FrontmatterQueryCallCount++
 	m.LastFrontmatterQueryArgField = field
 	m.LastFrontmatterQueryArgValue = value
+	m.mu.Unlock()
 	return m.FrontmatterQueryFunc(ctx, field, value)
 }
 
@@ -678,9 +693,18 @@ func (m *MockMetadataQueryPort) List(
 	return nil, fmt.Errorf("not implemented")
 }
 
-// Reset resets all call tracking counters and last arguments.
+// GetPathQueryCallCount returns the number of times PathQuery was called.
+func (m *MockMetadataQueryPort) GetPathQueryCallCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.PathQueryCallCount
+}
+
+// Reset clears all call tracking counters and last arguments.
 // Useful for testing multiple scenarios in the same test.
 func (m *MockMetadataQueryPort) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.BasenameQueryCallCount = 0
 	m.AliasQueryCallCount = 0
 	m.FileClassQueryCallCount = 0

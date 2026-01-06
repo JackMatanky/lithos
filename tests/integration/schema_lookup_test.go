@@ -205,9 +205,9 @@ func (env *schemaLookupTestEnv) initQueryService() {
 		domain.Config{CacheDir: env.ws.Path("cache")},
 		env.logger,
 	)
+	router := queryService.NewStorageRouter(reader, reader)
 	env.queryService = queryService.NewQueryService(
-		reader,
-		reader,
+		router,
 		*env.config,
 		env.logger,
 		env.eventBus,

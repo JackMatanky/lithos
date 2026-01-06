@@ -114,7 +114,7 @@ func TestComplexDataIntegration(t *testing.T) {
 		// Should have 'uuid' (from property bank)
 		hasUUID := false
 
-		for _, p := range contactSchema.ResolvedProperties {
+		for _, p := range contactSchema.Resolved {
 			if p.Name == "name_first" {
 				hasNameFirst = true
 			}

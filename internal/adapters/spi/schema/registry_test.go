@@ -297,20 +297,20 @@ func TestSchemaRegistryAdapter_DefensiveCopying(t *testing.T) {
 	assert.Equal(t, "prop1", internalProperty.Name)
 }
 
-// TestSchemaRegistryAdapter_DefensiveCopyingResolvedProperties tests that
-// ResolvedProperties are defensively copied to prevent external mutation.
-func TestSchemaRegistryAdapter_DefensiveCopyingResolvedProperties(
+// TestSchemaRegistryAdapter_DefensiveCopyingResolved tests that
+// Resolved are defensively copied to prevent external mutation.
+func TestSchemaRegistryAdapter_DefensiveCopyingResolved(
 	t *testing.T,
 ) {
 	registry := NewSchemaRegistryAdapter(logger.NewTest())
 
-	// Create schema with ResolvedProperties
+	// Create schema with Resolved
 	originalSchema := domain.Schema{
 		Name: "test-resolved",
 		Properties: []domain.Property{
 			{Name: "field1", Spec: &domain.StringSpec{}},
 		},
-		ResolvedProperties: []domain.Property{
+		Resolved: []domain.Property{
 			{Name: "resolved1", Spec: &domain.StringSpec{}},
 			{Name: "resolved2", Spec: &domain.StringSpec{}},
 		},
@@ -327,17 +327,17 @@ func TestSchemaRegistryAdapter_DefensiveCopyingResolvedProperties(
 	)
 	require.NoError(t, err)
 
-	// Get schema and mutate returned copy's ResolvedProperties
+	// Get schema and mutate returned copy's Resolved
 	retrievedSchema, err := registry.GetSchema(
 		context.Background(),
 		"test-resolved",
 	)
 	require.NoError(t, err)
 
-	// Mutate the ResolvedProperties slice
-	retrievedSchema.ResolvedProperties[0].Name = "mutated-resolved"
-	retrievedSchema.ResolvedProperties = append(
-		retrievedSchema.ResolvedProperties,
+	// Mutate the Resolved slice
+	retrievedSchema.Resolved[0].Name = "mutated-resolved"
+	retrievedSchema.Resolved = append(
+		retrievedSchema.Resolved,
 		domain.Property{Name: "added"},
 	)
 	_ = retrievedSchema // intentionally mutated to test defensive copying
@@ -348,10 +348,10 @@ func TestSchemaRegistryAdapter_DefensiveCopyingResolvedProperties(
 		"test-resolved",
 	)
 	require.NoError(t, err)
-	assert.Equal(t, "resolved1", internalSchema.ResolvedProperties[0].Name)
+	assert.Equal(t, "resolved1", internalSchema.Resolved[0].Name)
 	assert.Len(
 		t,
-		internalSchema.ResolvedProperties,
+		internalSchema.Resolved,
 		2,
 	) // Should still be 2, not 3
 }

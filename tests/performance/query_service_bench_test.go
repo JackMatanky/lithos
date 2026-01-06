@@ -8,6 +8,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/app/query"
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/JackMatanky/lithos/internal/ports/spi"
 	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
@@ -30,6 +31,136 @@ type benchQueryReader struct {
 	frontmatterIndex map[string]map[interface{}][]domain.Note
 }
 
+func (r *benchCacheReader) Read(
+	ctx context.Context,
+	path string,
+) (domain.Note, error) {
+	time.Sleep(time.Millisecond) // Simulate I/O
+	for i := range r.notes {
+		if r.notes[i].Path == path {
+			return r.notes[i], nil
+		}
+	}
+	return domain.Note{}, lithosErr.ErrNotFound
+}
+
+func (r *benchCacheReader) List(ctx context.Context) ([]domain.Note, error) {
+	return append([]domain.Note(nil), r.notes...), nil
+}
+
+func (r *benchCacheReader) BasenameQuery(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (r *benchCacheReader) AliasQuery(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (r *benchCacheReader) FileClassQuery(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (r *benchCacheReader) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+) ([]domain.Note, error) {
+	time.Sleep(10 * time.Millisecond) // Simulate I/O
+	return nil, nil
+}
+
+func (r *benchCacheReader) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (r *benchCacheReader) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (r *benchQueryReader) Read(
+	ctx context.Context,
+	path string,
+) (domain.Note, error) {
+	note, ok := r.pathIndex[path]
+	if !ok {
+		return domain.Note{}, lithosErr.ErrNotFound
+	}
+	return note, nil
+}
+
+func (r *benchQueryReader) List(ctx context.Context) ([]domain.Note, error) {
+	return append([]domain.Note(nil), r.notes...), nil
+}
+
+func (r *benchQueryReader) BasenameQuery(
+	ctx context.Context,
+	basename string,
+) ([]domain.Note, error) {
+	return append(
+		[]domain.Note(nil),
+		r.fileClassIndex[basename]...), nil // Mock implementation
+}
+
+func (r *benchQueryReader) AliasQuery(
+	ctx context.Context,
+	alias string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (r *benchQueryReader) FileClassQuery(
+	ctx context.Context,
+	fileClass string,
+) ([]domain.Note, error) {
+	return append([]domain.Note(nil), r.fileClassIndex[fileClass]...), nil
+}
+
+func (r *benchQueryReader) PathQuery(
+	ctx context.Context,
+	opts spi.PathQueryOptions,
+) ([]domain.Note, error) {
+	time.Sleep(10 * time.Millisecond) // Simulate I/O
+	if opts.Scope == spi.PathQueryScopeFull {
+		n, err := r.Read(ctx, opts.Value)
+		if err != nil {
+			return nil, err
+		}
+		return []domain.Note{n}, nil
+	}
+	return nil, nil
+}
+
+func (r *benchQueryReader) TagQuery(
+	ctx context.Context,
+	tag string,
+) ([]domain.Note, error) {
+	return nil, nil
+}
+
+func (r *benchQueryReader) FrontmatterQuery(
+	ctx context.Context,
+	field, value string,
+) ([]domain.Note, error) {
+	if m, ok := r.frontmatterIndex[field]; ok {
+		return append([]domain.Note(nil), m[value]...), nil
+	}
+	return nil, nil
+}
+
 // BenchmarkQueryService_Performance exercises mixed workloads (hot / deep /
 // ID).
 func BenchmarkQueryService_Performance(b *testing.B) {
@@ -37,7 +168,7 @@ func BenchmarkQueryService_Performance(b *testing.B) {
 		100,
 		[]string{"contact", "meeting", "project", "task", "idea"},
 	)
-	bench := newQueryServiceBench(b, notes) // complexity reduced via helpers
+	bench := newQueryServiceBench(b, notes)
 	ctx := context.Background()
 	b.Run(
 		"BoltDB_HotPath_FileClassQuery",
@@ -56,7 +187,7 @@ func BenchmarkQueryService_Performance(b *testing.B) {
 // BenchmarkQueryService_BoltDBPerformance isolates hot path cache lookups.
 func BenchmarkQueryService_BoltDBPerformance(b *testing.B) {
 	notes := generateNotes(1000, nil)
-	bench := newQueryServiceBench(b, notes) // isolates BoltDB hot path queries
+	bench := newQueryServiceBench(b, notes)
 	ctx := context.Background()
 	b.Run("PathQuery", func(b *testing.B) {
 		b.ResetTimer()
@@ -84,7 +215,7 @@ func BenchmarkQueryService_BoltDBPerformance(b *testing.B) {
 // BenchmarkQueryService_SQLitePerformance isolates frontmatter filtering path.
 func BenchmarkQueryService_SQLitePerformance(b *testing.B) {
 	notes := generateAuthorNotes(1000)
-	bench := newQueryServiceBench(b, notes) // isolates deep frontmatter queries
+	bench := newQueryServiceBench(b, notes)
 	ctx := context.Background()
 	b.Run("FrontmatterQuery", func(b *testing.B) {
 		b.ResetTimer()
@@ -102,7 +233,7 @@ func BenchmarkQueryService_SQLitePerformance(b *testing.B) {
 // template workflow.
 func BenchmarkQueryService_EndToEndTemplateRendering(b *testing.B) {
 	notes := generateTemplateNotes(500)
-	bench := newQueryServiceBench(b, notes) // benchmarks a template workflow
+	bench := newQueryServiceBench(b, notes)
 	ctx := context.Background()
 	size := len(notes)
 	b.Run("TemplateWorkflow", func(b *testing.B) {
@@ -146,76 +277,6 @@ func runBoltHotPath(
 	assertDuration(b, time.Millisecond)
 }
 
-// Read returns a note by path from the cache reader.
-func (r *benchCacheReader) Read(
-	ctx context.Context,
-	path string,
-) (domain.Note, error) {
-	for i := range r.notes {
-		if r.notes[i].Path == path {
-			return r.notes[i], nil
-		}
-	}
-	return domain.Note{}, lithosErr.NewResourceError(
-		"note",
-		"read",
-		path,
-		fmt.Errorf("not found"),
-	)
-}
-
-// List returns all notes from the cache reader.
-func (r *benchCacheReader) List(ctx context.Context) ([]domain.Note, error) {
-	return append([]domain.Note(nil), r.notes...), nil
-}
-
-// Read looks up a note by path using the path index.
-func (r *benchQueryReader) Read(
-	ctx context.Context,
-	path string,
-) (domain.Note, error) {
-	return r.getPathQueryString(path)
-}
-
-// List returns all notes known to the query reader.
-func (r *benchQueryReader) List(ctx context.Context) ([]domain.Note, error) {
-	return append([]domain.Note(nil), r.notes...), nil
-}
-
-// PathQuerySingle returns a note by vault-relative path.
-func (r *benchQueryReader) PathQuerySingle(
-	ctx context.Context,
-	path string,
-) (domain.Note, error) {
-	return r.getPathQueryString(path)
-}
-
-// GetFileClassQuery returns notes belonging to a file class.
-func (r *benchQueryReader) GetFileClassQuery(
-	ctx context.Context,
-	fileClass string,
-	config domain.Config,
-) ([]domain.Note, error) {
-	return append([]domain.Note(nil), r.fileClassIndex[fileClass]...), nil
-}
-
-// FrontmatterQuery returns notes matching a frontmatter key/value pair.
-func (r *benchQueryReader) FrontmatterQuery(ctx context.Context, key string,
-	value interface{}) ([]domain.Note, error) {
-	return append([]domain.Note(nil), r.frontmatterIndex[key][value]...), nil
-}
-
-// getPathQueryString performs a path lookup in the in-memory index.
-func (r *benchQueryReader) getPathQueryString(
-	path string,
-) (domain.Note, error) {
-	note, ok := r.pathIndex[path]
-	if !ok {
-		return domain.Note{}, lithosErr.ErrNotFound
-	}
-	return note, nil
-}
-
 // assertDuration validates average iteration duration against a max threshold.
 func assertDuration(b *testing.B, maxDur time.Duration) {
 	avg := b.Elapsed() / time.Duration(b.N)
@@ -232,7 +293,7 @@ func runSQLiteFrontmatter(
 ) {
 	b.ResetTimer()
 	for range b.N {
-		if _, err := bench.qs.FrontmatterQuery(ctx, "priority", 2); err != nil {
+		if _, err := bench.qs.FrontmatterQuery(ctx, "priority", "2"); err != nil {
 			b.Fatal(err)
 		}
 	}
@@ -252,7 +313,7 @@ func runMixedWorkload(
 		if _, err := bench.qs.FileClassQuery(ctx, "project"); err != nil {
 			b.Fatal(err)
 		}
-		if _, err := bench.qs.FrontmatterQuery(ctx, "priority", i%5); err != nil {
+		if _, err := bench.qs.FrontmatterQuery(ctx, "priority", fmt.Sprintf("%d", i%5)); err != nil {
 			b.Fatal(err)
 		}
 		if _, err := bench.qs.IDQuery(ctx, fmt.Sprintf("note-%d.md", i%size)); err != nil {
@@ -262,6 +323,64 @@ func runMixedWorkload(
 	assertDuration(b, 100*time.Millisecond)
 }
 
+// BenchmarkQueryService_ConcurrentFallback simulates a scenario where hot cache
+// is slow or has partial data, forcing fallback to deep cache.
+func BenchmarkQueryService_ConcurrentFallback(b *testing.B) {
+	notes := generateNotes(100, nil)
+	config := domain.DefaultConfig()
+	logger := zerolog.Nop()
+
+	// Hot cache is slow and returns nothing
+	slowHot := &benchQueryReader{
+		pathIndex: make(map[string]domain.Note),
+		// Add artificial delay
+	}
+	// Deep cache is fast and has data
+	fastDeep := &benchCacheReader{notes: notes}
+
+	router := query.NewStorageRouter(slowHot, fastDeep)
+	qs := query.NewQueryService(router, config, logger, nil)
+
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := range b.N {
+		path := fmt.Sprintf("note-%d.md", i%100)
+		_, _ = qs.PathQuery(ctx, spi.PathQueryOptions{
+			Scope: spi.PathQueryScopeFull,
+			Value: path,
+		})
+	}
+}
+
+// BenchmarkQueryService_SequentialFallback simulates the old sequential
+// behavior.
+func BenchmarkQueryService_SequentialFallback(b *testing.B) {
+	notes := generateNotes(100, nil)
+
+	// Use router directly which is still sequential
+	slowHot := &benchQueryReader{
+		pathIndex: make(map[string]domain.Note),
+	}
+	fastDeep := &benchCacheReader{notes: notes}
+	router := query.NewStorageRouter(slowHot, fastDeep)
+
+	ctx := context.Background()
+	b.ResetTimer()
+	for i := range b.N {
+		path := fmt.Sprintf("note-%d.md", i%100)
+		_, _ = router.RouteMetadataQuery(
+			ctx,
+			func(port spi.MetadataQueryPort, ctx context.Context, param string) ([]domain.Note, error) {
+				return port.PathQuery(ctx, spi.PathQueryOptions{
+					Scope: spi.PathQueryScopeFull,
+					Value: param,
+				})
+			},
+			path,
+		)
+	}
+}
+
 // newQueryServiceBench constructs a benchmark harness with in-memory adapters.
 func newQueryServiceBench(b *testing.B, notes []domain.Note) queryServiceBench {
 	b.Helper()
@@ -269,14 +388,13 @@ func newQueryServiceBench(b *testing.B, notes []domain.Note) queryServiceBench {
 	sqliteReader := &benchCacheReader{notes: notes}
 	boltReader := newBenchQueryReader(notes, config)
 	logger := zerolog.New(zerolog.NewTestWriter(b))
+	router := query.NewStorageRouter(boltReader, sqliteReader)
 	qs := query.NewQueryService(
-		boltReader,
-		sqliteReader,
+		router,
 		config,
 		logger,
 		nil,
 	)
-	// RefreshFromCache removed
 	return queryServiceBench{qs: qs}
 }
 
@@ -293,10 +411,10 @@ func generateNotes(count int, classes []string) []domain.Note {
 			domain.NewFrontmatter(
 				map[string]any{"file_class": class, "priority": i % 5},
 			),
-			[]domain.Link{},
-			[]domain.Heading{},
-			[]string{},
-			[]domain.TaskItem{},
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		notes = append(notes, note)
 	}
@@ -314,10 +432,10 @@ func generateAuthorNotes(count int) []domain.Note {
 				"priority":   i % 5,
 				"file_class": fmt.Sprintf("class-%d", i%10),
 			}),
-			[]domain.Link{},
-			[]domain.Heading{},
-			[]string{},
-			[]domain.TaskItem{},
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		notes = append(notes, note)
 	}
@@ -337,10 +455,10 @@ func generateTemplateNotes(count int) []domain.Note {
 				"author":     fmt.Sprintf("author-%d", i%25),
 				"priority":   i % 3,
 			}),
-			[]domain.Link{},
-			[]domain.Heading{},
-			[]string{},
-			[]domain.TaskItem{},
+			nil,
+			nil,
+			nil,
+			nil,
 		)
 		notes = append(notes, note)
 	}

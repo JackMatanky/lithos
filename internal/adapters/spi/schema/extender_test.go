@@ -41,7 +41,7 @@ func TestSchemaExtender_ExtendSchemas_SingleRootSchema(t *testing.T) {
 
 	schema := resolved[0]
 	assert.Equal(t, "note", schema.Name)
-	assert.Len(t, schema.ResolvedProperties, 2)
+	assert.Len(t, schema.Resolved, 2)
 	assert.True(t, hasResolvedProperty(schema, "title"))
 	assert.True(t, hasResolvedProperty(schema, "tags"))
 
@@ -99,7 +99,7 @@ func TestSchemaExtender_ExtendSchemas_TwoLevelInheritance(t *testing.T) {
 
 	// Should have all 3 properties: title, tags (from parent), attendees (from
 	// child)
-	assert.Len(t, child.ResolvedProperties, 3)
+	assert.Len(t, child.Resolved, 3)
 	assert.True(t, hasResolvedProperty(child, "title"))
 	assert.True(t, hasResolvedProperty(child, "tags"))
 	assert.True(t, hasResolvedProperty(child, "attendees"))
@@ -160,7 +160,7 @@ func TestSchemaExtender_ExtendSchemas_MultiLevelInheritance(t *testing.T) {
 	// Verify resolved properties
 	assert.Len(
 		t,
-		resolvedChild.ResolvedProperties,
+		resolvedChild.Resolved,
 		3,
 	) // title, created, attendees
 	// tags excluded
@@ -251,7 +251,7 @@ func TestSchemaExtender_ExtendSchemas_PropertyOverride(t *testing.T) {
 
 	assert.Len(
 		t,
-		derived.ResolvedProperties,
+		derived.Resolved,
 		3,
 	) // title (overridden), status, extra
 
@@ -310,7 +310,7 @@ func TestSchemaExtender_ExtendSchemas_ExcludesProperty(t *testing.T) {
 
 	assert.Len(
 		t,
-		publicNote.ResolvedProperties,
+		publicNote.Resolved,
 		3,
 	) // title, tags, author (internal_id excluded)
 	assert.True(t, hasResolvedProperty(publicNote, "title"))
@@ -346,7 +346,7 @@ func TestSchemaExtender_ExtendSchemas_ContextCancellation(t *testing.T) {
 // Helper functions
 
 func hasResolvedProperty(schema domain.Schema, name string) bool {
-	for _, prop := range schema.ResolvedProperties {
+	for _, prop := range schema.Resolved {
 		if prop.Name == name {
 			return true
 		}
@@ -355,7 +355,7 @@ func hasResolvedProperty(schema domain.Schema, name string) bool {
 }
 
 func getResolvedProperty(schema domain.Schema, name string) domain.Property {
-	for _, prop := range schema.ResolvedProperties {
+	for _, prop := range schema.Resolved {
 		if prop.Name == name {
 			return prop
 		}

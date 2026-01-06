@@ -116,8 +116,8 @@ func createTestEvents(t *testing.T) []domain.DomainEvent {
 	now := time.Now()
 
 	noteEvent := domain.MustNewNoteIndexedEvent(note, now)
-	completeEvent := domain.MustNewVaultIndexingCompleteEvent(
-		domain.VaultIndexingSummary{
+	completeEvent := events.MustNewVaultIndexingCompleteEvent(
+		events.VaultIndexingSummary{
 			ScannedCount:        1,
 			IndexedCount:        1,
 			ParseFailures:       0,
@@ -219,7 +219,7 @@ func verifyEventContent(t *testing.T, eventsReceived []domain.DomainEvent) {
 				"NoteIndexed should have correct path",
 			)
 		case eventTypeVaultIndexingComplete:
-			completeEvt := event.(*domain.VaultIndexingCompleteEvent)
+			completeEvt := event.(*events.VaultIndexingCompleteEvent)
 			assert.Equal(
 				t,
 				1,

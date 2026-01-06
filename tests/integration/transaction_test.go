@@ -8,7 +8,7 @@ import (
 
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/boltdb"
 	"github.com/JackMatanky/lithos/internal/adapters/spi/cache/sqlite"
-	"github.com/JackMatanky/lithos/internal/app/vault"
+	"github.com/JackMatanky/lithos/internal/app/persistence"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
@@ -16,7 +16,7 @@ import (
 	"go.etcd.io/bbolt"
 )
 
-func TestUnitOfWork_Integration(t *testing.T) {
+func TestCacheTransaction_Integration(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -51,12 +51,16 @@ func TestUnitOfWork_Integration(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = sqliteReader.Close() }()
 
+	strategy := &persistence.ParallelWriteStrategy{}
+
 	// 2. Test Successful Commit
 	t.Run("success - commit writes to both", func(t *testing.T) {
-		uow := vault.NewCacheUnitOfWork(boltWriter, sqliteWriter)
+		tx := persistence.NewCacheTransaction(
+			strategy,
+			boltWriter,
+			sqliteWriter,
+		)
 		ctx := context.Background()
-
-		require.NoError(t, uow.Begin())
 
 		note, noteErr := domain.NewNote(
 			"integration/test1.md",
@@ -70,11 +74,10 @@ func TestUnitOfWork_Integration(t *testing.T) {
 			nil,
 		)
 		require.NoError(t, noteErr)
-		require.NoError(t, err)
 		metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
 
-		require.NoError(t, uow.AddWrite(note, metadata))
-		require.NoError(t, uow.Commit(ctx))
+		tx.AddWrite(note, metadata)
+		require.NoError(t, tx.Commit(ctx))
 
 		// Verify BoltDB
 		bNote, readErr := boltReader.Read(ctx, note.Path)
@@ -87,16 +90,13 @@ func TestUnitOfWork_Integration(t *testing.T) {
 		require.Equal(t, "Integration Test", sNote.Frontmatter.Fields["title"])
 	})
 
-	// 3. Test Rollback (Simulated via failure injection? Hard with real
-	// adapters unless we close DB or similar) Since we can't easily force real
-	// adapters to fail mid-transaction without mocking or corrupting,
-	// we rely on unit tests with mocks for failure paths.
-	// But we can test manual Rollback.
-	t.Run("success - manual rollback discards changes", func(t *testing.T) {
-		uow := vault.NewCacheUnitOfWork(boltWriter, sqliteWriter)
+	t.Run("success - rollback discards changes", func(t *testing.T) {
+		tx := persistence.NewCacheTransaction(
+			strategy,
+			boltWriter,
+			sqliteWriter,
+		)
 		ctx := context.Background()
-
-		require.NoError(t, uow.Begin())
 
 		note, noteErr := domain.NewNote(
 			"integration/rollback.md",
@@ -108,13 +108,13 @@ func TestUnitOfWork_Integration(t *testing.T) {
 		)
 		require.NoError(t, noteErr)
 		metadata := spi.CacheWriteMetadata{IndexTime: time.Now()}
-		require.NoError(t, uow.AddWrite(note, metadata))
+		tx.AddWrite(note, metadata)
 
 		// Rollback
-		require.NoError(t, uow.Rollback(ctx))
+		tx.Rollback()
 
 		// Commit empty operations (should be no-op)
-		require.NoError(t, uow.Commit(ctx))
+		require.NoError(t, tx.Commit(ctx))
 
 		// Verify NOT present
 		_, readErr := boltReader.Read(ctx, note.Path)

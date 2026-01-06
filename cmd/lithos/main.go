@@ -270,9 +270,9 @@ func (c *Container) QueryService() (*query.QueryService, error) {
 	if storage.cacheReader == nil || storage.sqliteReader == nil {
 		return nil, fmt.Errorf("cache readers are not initialized")
 	}
+	router := query.NewStorageRouter(storage.cacheReader, storage.sqliteReader)
 	c.queryService = query.NewQueryService(
-		storage.cacheReader,
-		storage.sqliteReader,
+		router,
 		c.config,
 		c.logger,
 		c.eventBus,

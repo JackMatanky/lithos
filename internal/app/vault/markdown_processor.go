@@ -57,7 +57,7 @@ func (s *MarkdownProcessingService) handleFileParseRequested(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
-	parseEvent, ok := event.(*domain.FileParseRequestedEvent)
+	parseEvent, ok := event.(*events.FileParseRequestedEvent)
 	if !ok {
 		return nil
 	}
@@ -86,6 +86,6 @@ func (s *MarkdownProcessingService) handleFileParseRequested(
 	}
 
 	// Emit successful parse event
-	parsedEvent := domain.MustNewNoteParsedEvent(note, event.OccurredAt())
-	return s.eventBus.Publish(ctx, parsedEvent)
+	parsedEvent := events.MustNewNoteParsedEvent(note, event.OccurredAt())
+	return events.PublishSync(ctx, s.eventBus, parsedEvent)
 }

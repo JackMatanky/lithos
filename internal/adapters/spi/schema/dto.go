@@ -136,10 +136,10 @@ func (dto schemaDTO) toDomain(
 	}
 
 	return domain.Schema{
-		Name:               dto.Name,
-		Extends:            dto.Extends,
-		Excludes:           dto.Excludes,
-		Properties:         resolvedProperties, // Original properties (resolved)
-		ResolvedProperties: resolvedProperties, // Same as Properties for now
+		Name:       dto.Name,
+		Extends:    dto.Extends,
+		Excludes:   dto.Excludes,
+		Properties: resolvedProperties, // Original properties (resolved)
+		Resolved:   resolvedProperties, // Same as Properties for now
 	}, nil
 }

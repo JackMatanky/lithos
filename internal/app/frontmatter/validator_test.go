@@ -4,8 +4,58 @@ import (
 	"testing"
 
 	"github.com/JackMatanky/lithos/internal/domain"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+type mockFieldValidator struct {
+	mock.Mock
+}
+
+func (m *mockFieldValidator) Validate(
+	fieldName string,
+	value any,
+	spec domain.PropertySpec,
+) error {
+	args := m.Called(fieldName, value, spec)
+	return args.Error(0)
+}
+
+func TestValidatorRegistry(t *testing.T) {
+	t.Run("DefaultRegistryContainsStandardValidators", func(t *testing.T) {
+		r := DefaultValidatorRegistry()
+		types := []domain.PropertySpecType{
+			domain.PropertyTypeString,
+			domain.PropertyTypeNumber,
+			domain.PropertyTypeDate,
+			domain.PropertyTypeBool,
+		}
+		for _, tt := range types {
+			v, ok := r.Get(tt)
+			assert.True(t, ok, "Should have validator for type %s", tt)
+			assert.NotNil(t, v)
+		}
+	})
+
+	t.Run("RegisterAndGet", func(t *testing.T) {
+		r := NewValidatorRegistry()
+		v := new(mockFieldValidator)
+		const customType domain.PropertySpecType = "custom"
+
+		r.Register(customType, v)
+		got, ok := r.Get(customType)
+		assert.True(t, ok)
+		assert.Equal(t, v, got)
+	})
+
+	t.Run("GetNonExistent", func(t *testing.T) {
+		r := NewValidatorRegistry()
+		got, ok := r.Get("non-existent")
+		assert.False(t, ok)
+		assert.Nil(t, got)
+	})
+}
 
 // TestFieldValidator_InterfaceExists verifies FieldValidator interface exists.
 func TestFieldValidator_InterfaceExists(t *testing.T) {
