@@ -32,9 +32,9 @@ func TestVaultIndexer_Build_NoFiles(t *testing.T) {
 	// Create indexer (nil for services not being tested)
 	indexer := NewVaultIndexer(
 		vaultScanner,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		nil, // frontmatterService
 		nil, // schemaEngine
@@ -90,9 +90,9 @@ func TestVaultIndexer_Build_WithFiles(t *testing.T) {
 	// Create indexer
 	indexer := NewVaultIndexer(
 		vaultScanner,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		nil, // frontmatterService
 		nil, // schemaEngine
@@ -139,9 +139,9 @@ func TestVaultIndexer_Build_ScanFailure(t *testing.T) {
 	// Create indexer
 	indexer := NewVaultIndexer(
 		vaultScanner,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		nil, // frontmatterService
 		nil, // schemaEngine
@@ -189,9 +189,9 @@ func TestVaultIndexer_Build_ParseFailure(t *testing.T) {
 	// Create indexer
 	indexer := NewVaultIndexer(
 		vaultScanner,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		nil, // frontmatterService
 		nil, // schemaEngine
@@ -247,9 +247,9 @@ func TestVaultIndexer_Build_CacheFailure(t *testing.T) {
 	// Create indexer
 	indexer := NewVaultIndexer(
 		vaultScanner,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		nil, // frontmatterService
 		nil, // schemaEngine
@@ -303,9 +303,9 @@ func TestVaultIndexer_Build_EventPublishing(t *testing.T) {
 	// Create indexer
 	indexer := NewVaultIndexer(
 		vaultScanner,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		nil, // frontmatterService
 		nil, // schemaEngine

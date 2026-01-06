@@ -107,7 +107,7 @@ development_status:
   4-6-event-driven-schema-lookups: done
   4-7-schema-driven-lookup-integration-test: done
   4-8-architecture-refactor: done
-  4-9-vault-indexer-refactor: review
+  4-9-vault-indexer-refactor: done
   4-10-dependency-injection-and-e2e-test: ready-for-dev
   4-11-documentation-update: ready-for-dev
   epic-4-retrospective: optional

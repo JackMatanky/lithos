@@ -163,9 +163,9 @@ This is a test note with frontmatter.
 	// Create VaultIndexer
 	indexer := vault.NewVaultIndexer(
 		vaultScanner,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		fmService,
 		schemaEngine,

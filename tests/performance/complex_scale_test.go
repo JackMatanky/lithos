@@ -149,9 +149,9 @@ contact:
 
 	indexer := vaultService.NewVaultIndexer(
 		vaultReader,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		frontmatterService,
 		schemaEngine,

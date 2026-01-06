@@ -78,23 +78,26 @@ func (p *MarkdownProcessor) ProcessFile(
 		return domain.Note{}, err
 	}
 
-	// Validate frontmatter
-	validationErr := p.validator.IsSchemaCompliant(
-		ctx,
-		note.Path,
-		note.Frontmatter,
-	)
-	if validationErr != nil {
-		p.log.Warn().
-			Err(validationErr).
-			Str("path", note.Path).
-			Msg("frontmatter validation failed")
-		return note, validationErr
+	// Validate frontmatter (skip if validator not available)
+	if p.validator != nil {
+		validationErr := p.validator.IsSchemaCompliant(
+			ctx,
+			note.Path,
+			note.Frontmatter,
+		)
+		if validationErr != nil {
+			p.log.Warn().
+				Err(validationErr).
+				Str("path", note.Path).
+				Msg("frontmatter validation failed")
+			return note, validationErr
+		}
 	}
 
 	return note, nil
-	// handleFileParseRequested processes parse requests for markdown files.
 }
+
+// handleFileParseRequested processes parse requests for markdown files.
 func (p *MarkdownProcessor) handleFileParseRequested(
 	ctx context.Context,
 	event domain.DomainEvent,
@@ -172,10 +175,3 @@ func (p *MarkdownProcessor) handleValidationRequested(
 	)
 	return nil
 }
-
-// ProcessFile processes a single file through complete pipeline:
-// parsing and validation.
-// This is a convenience method for direct (non-event-driven) processing.
-
-// ProcessFile processes a single file through complete pipeline:
-// parsing and validation.

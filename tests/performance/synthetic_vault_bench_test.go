@@ -120,9 +120,9 @@ func benchmarkVaultIndexing(b *testing.B, config utils.SyntheticVaultConfig) {
 
 	indexer := vaultService.NewVaultIndexer(
 		vaultReader,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		frontmatterService,
 		schemaEngine,
@@ -230,9 +230,9 @@ func TestLargeVaultPerformance(t *testing.T) {
 
 	indexer := vaultService.NewVaultIndexer(
 		vaultReader,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		frontmatterService,
 		schemaEngine,

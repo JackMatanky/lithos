@@ -196,9 +196,9 @@ func (c *Container) VaultIndexer() (*vault.VaultIndexer, error) {
 
 	c.vaultIndexer = vault.NewVaultIndexer(
 		vaultAdapter.NewVaultReaderAdapter(c.config, c.logger),
+		storage.cacheReader,
 		storage.boltWriter,
 		storage.sqliteWriter,
-		storage.cacheReader,
 		c.MarkdownParser(),
 		frontmatterSvc,
 		schemaEngine,

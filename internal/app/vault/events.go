@@ -60,3 +60,31 @@ func publishFrontmatterValidated(
 			Msg("failed to publish frontmatter validated event")
 	}
 }
+
+// publishNoteIndexed publishes NoteIndexed events synchronously.
+// This event is emitted after successfully indexing a note to cache.
+func publishNoteIndexed(
+	ctx context.Context,
+	bus events.EventBus,
+	log zerolog.Logger,
+	note domain.Note,
+	occurredAt time.Time,
+) {
+	if bus == nil {
+		return
+	}
+	event, err := domain.NewNoteIndexedEvent(note, occurredAt)
+	if err != nil {
+		log.Warn().
+			Err(err).
+			Str("path", note.Path).
+			Msg("failed to create note indexed event")
+		return
+	}
+	if publishErr := events.PublishSync(ctx, bus, event); publishErr != nil {
+		log.Warn().
+			Err(publishErr).
+			Str("path", note.Path).
+			Msg("failed to publish note indexed event")
+	}
+}

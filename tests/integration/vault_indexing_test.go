@@ -103,9 +103,9 @@ func TestVaultIndexing_Integration(t *testing.T) {
 	// Create indexer with all services
 	indexer := vaultService.NewVaultIndexer(
 		vaultReader,
+		cacheReader,
 		boltWriter,
 		sqliteWriter,
-		cacheReader,
 		markdownParser,
 		frontmatterService,
 		schemaEngine,

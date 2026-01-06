@@ -2,6 +2,7 @@ package vault
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,10 +14,10 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/metrics"
-	"github.com/JackMatanky/lithos/internal/app/persistence"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -37,80 +38,91 @@ type VaultIndexerInterface interface {
 
 // VaultIndexer orchestrates the vault indexing workflow from scan to cache
 // persistence. It implements the CQRS write-side pattern for indexing
-// operations, coordinating vault scanning, frontmatter parsing/validation,
-// note creation, and cache persistence.
+// operations, coordinating vault scanning, note processing, and cache
+// persistence.
 //
 // The indexer focuses solely on orchestration - it delegates scanning to
-// VaultScannerPort, frontmatter parsing to MarkdownParserPort, validation
-// to FrontmatterService, schema operations to SchemaEngine, and caching to
-// CacheWriterPort and CacheReaderPort.
+// VaultScannerPort, markdown processing to MarkdownProcessor, caching to
+// CacheWriter, and schema operations to SchemaEngine.
 //
 // Key Design Principles:
-//   - Focused Service: Orchestrates workflow only, does not implement
-//     scanning/caching/frontmatter processing
-//   - Resilient Error Handling: Frontmatter validation errors logged but don't
-//     abort entire indexing; cache failures logged as warnings, indexing
-//     continues
-//   - Integrated Workflow: MarkdownParserPort + FrontmatterService enables
-//     validated frontmatter in indexed Notes
+//   - Focused Orchestration: Coordinates workflow, delegates implementation
+//   - Simplified Dependencies: Uses helper components instead of raw ports
+//
+// - Resilient Error Handling: Parse/validation errors logged, indexing
+// continues - Batch Performance: Uses ParallelWriter via CacheWriter for
+// optimal throughput
 //
 // Reference: docs/architecture/components.md#vaultindexer.
 type VaultIndexer struct {
-	vaultScanner       spi.VaultScannerPort
-	boltWriter         spi.CacheWriterPort
-	sqliteWriter       spi.CacheWriterPort
-	cacheReader        spi.CacheReaderPort
-	markdownParserPort spi.MarkdownParserPort
-	frontmatterService *frontmatter.FrontmatterService
-	schemaEngine       *schema.SchemaEngine
-	config             domain.Config
-	log                zerolog.Logger
-	eventBus           events.EventBus
-	suppressCount      atomic.Int32
+	vaultScanner  spi.VaultScannerPort
+	cacheReader   spi.CacheReaderPort
+	processor     *MarkdownProcessor
+	cacheWriter   *CacheWriter
+	schemaEngine  *schema.SchemaEngine
+	config        domain.Config
+	log           zerolog.Logger
+	eventBus      events.EventBus
+	suppressCount atomic.Int32
 }
 
 // NewVaultIndexer creates a new VaultIndexer with injected dependencies.
-// Constructor follows dependency injection pattern for testability and
-// flexibility.
+// Constructor follows dependency injection pattern and creates helper
+// components (MarkdownProcessor, CacheWriter) internally.
 //
 // Parameters:
 //   - vaultScanner: Port for scanning vault files
-//   - boltWriter: Port for persisting notes to BoltDB (hot cache)
-//   - sqliteWriter: Port for persisting notes to SQLite (deep storage)
 //   - cacheReader: Port for reading cached notes
-//   - markdownParserPort: Port for parsing markdown frontmatter
-//   - frontmatterService: Service for frontmatter validation
+//   - boltWriter: Port for BoltDB cache (used by CacheWriter)
+//   - sqliteWriter: Port for SQLite cache (used by CacheWriter)
+//   - markdownParser: Port for markdown parsing (used by MarkdownProcessor)
+//   - frontmatterService: Service for validation (used by MarkdownProcessor)
 //   - schemaEngine: Engine for schema loading and resolution
 //   - config: Application configuration
 //   - log: Structured logger for operation tracking
+//   - eventBus: Event bus for publishing/subscribing to events
 //
 // Returns:
 //   - *VaultIndexer: Configured indexer ready for vault operations
 func NewVaultIndexer(
 	vaultScanner spi.VaultScannerPort,
+	cacheReader spi.CacheReaderPort,
 	boltWriter spi.CacheWriterPort,
 	sqliteWriter spi.CacheWriterPort,
-	cacheReader spi.CacheReaderPort,
-	markdownParserPort spi.MarkdownParserPort,
+	markdownParser spi.MarkdownParserPort,
 	frontmatterService *frontmatter.FrontmatterService,
 	schemaEngine *schema.SchemaEngine,
 	config domain.Config,
 	log zerolog.Logger,
 	eventBus events.EventBus,
 ) *VaultIndexer {
+	// Create helper components
+	processor := NewMarkdownProcessor(
+		markdownParser,
+		frontmatterService,
+		eventBus,
+		log.With().Str("component", "MarkdownProcessor").Logger(),
+	)
+	cacheWriter := NewCacheWriter(
+		boltWriter,
+		sqliteWriter,
+		eventBus,
+		log.With().Str("component", "CacheWriter").Logger(),
+	)
+
 	indexer := &VaultIndexer{
-		vaultScanner:       vaultScanner,
-		boltWriter:         boltWriter,
-		sqliteWriter:       sqliteWriter,
-		cacheReader:        cacheReader,
-		markdownParserPort: markdownParserPort,
-		frontmatterService: frontmatterService,
-		schemaEngine:       schemaEngine,
-		config:             config,
-		log:                log,
-		eventBus:           eventBus,
-		suppressCount:      atomic.Int32{},
+		vaultScanner:  vaultScanner,
+		cacheReader:   cacheReader,
+		processor:     processor,
+		cacheWriter:   cacheWriter,
+		schemaEngine:  schemaEngine,
+		config:        config,
+		log:           log,
+		eventBus:      eventBus,
+		suppressCount: atomic.Int32{},
 	}
+
+	// Subscribe to vault-level events
 	if eventBus != nil {
 		_ = eventBus.Subscribe(
 			"CommandIssued",
@@ -118,6 +130,7 @@ func NewVaultIndexer(
 		)
 		_ = eventBus.Subscribe("NoteIndexed", indexer.handleNoteIndexedEvent)
 	}
+
 	return indexer
 }
 
@@ -177,29 +190,33 @@ func (v *VaultIndexer) Build(ctx context.Context) (metrics.IndexStats, error) {
 	}
 	stats.ScannedCount = len(vaultFiles)
 
-	// Create transaction for atomic writes
-	strategy := &persistence.ParallelWriter{}
-	tx := persistence.NewCacheTransaction(
-		strategy,
-		v.boltWriter,
-		v.sqliteWriter,
-	)
+	// Step 3: Process files into notes and metadata
+	notes := make([]domain.Note, 0, len(vaultFiles))
+	metadataMap := make(map[string]spi.CacheWriteMetadata, len(vaultFiles))
 
-	// Step 3: Process each file
 	for i := range vaultFiles {
 		if cancelErr := ctx.Err(); cancelErr != nil {
 			stats.Duration = time.Since(startTime)
 			return stats, cancelErr
 		}
-		v.processFile(ctx, &vaultFiles[i], tx, &stats)
+
+		note, metadata, processed := v.processFile(ctx, &vaultFiles[i], &stats)
+		if processed {
+			notes = append(notes, note)
+			metadataMap[note.Path] = metadata
+		}
 	}
 
-	// Commit transaction
-	if commitErr := tx.Commit(ctx); commitErr != nil {
-		stats.CacheFailures++ // Log as generic failure if commit fails
-		v.log.Error().Err(commitErr).Msg("transaction commit failed")
-		// If rollback is handled in Commit (it is), we assume data is
-		// consistent (rolled back)
+	// Step 4: Batch write all notes to cache using CacheWriter
+	stats.IndexedCount = len(notes)
+	if len(notes) > 0 {
+		if commitErr := v.cacheWriter.WriteBatch(ctx, notes, metadataMap); commitErr != nil {
+			stats.CacheFailures++
+			v.log.Error().
+				Err(commitErr).
+				Int("notes", len(notes)).
+				Msg("batch cache write failed")
+		}
 	}
 
 	stats.Duration = time.Since(startTime)
@@ -273,40 +290,42 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 		}
 	}
 
-	// Create transaction
-	strategy := &persistence.ParallelWriter{}
-	tx := persistence.NewCacheTransaction(
-		strategy,
-		v.boltWriter,
-		v.sqliteWriter,
-	)
-
 	// Step 2: Perform deletion reconciliation
-	retainedNotes := v.reconcileDeletions(ctx, tx)
+	retainedNotes := v.reconcileDeletions(ctx)
 
-	// Step 2: Scan modified files
+	// Step 3: Scan modified files
 	vaultFiles, err := v.scanModifiedFiles(ctx, since)
 	if err != nil {
 		return err
 	}
 	stats.ScannedCount = len(vaultFiles)
 
-	// Step 3: Process each modified file
+	// Step 4: Process modified files into notes and metadata
+	notes := make([]domain.Note, 0, len(vaultFiles))
+	metadataMap := make(map[string]spi.CacheWriteMetadata, len(vaultFiles))
+
 	for i := range vaultFiles {
 		if cancelErr := ctx.Err(); cancelErr != nil {
 			return cancelErr
 		}
-		v.processFile(ctx, &vaultFiles[i], tx, &stats)
+
+		note, metadata, processed := v.processFile(ctx, &vaultFiles[i], &stats)
+		if processed {
+			notes = append(notes, note)
+			metadataMap[note.Path] = metadata
+		}
 	}
 
-	// Commit transaction
-	if commitErr := tx.Commit(ctx); commitErr != nil {
-		v.log.Error().Err(commitErr).Msg("refresh transaction commit failed")
-		// Should we return error? The original code returned nil for cache
-		// failures.
-		// But UoW failure means nothing was written.
-		// We'll log and return nil to match existing contract (schema/scan
-		// errors only abort).
+	// Step 5: Batch write all modified notes to cache
+	stats.IndexedCount = len(notes)
+	if len(notes) > 0 {
+		if commitErr := v.cacheWriter.WriteBatch(ctx, notes, metadataMap); commitErr != nil {
+			stats.CacheFailures++
+			v.log.Error().
+				Err(commitErr).
+				Int("notes", len(notes)).
+				Msg("refresh batch cache write failed")
+		}
 	}
 
 	stats.Duration = time.Since(startTime)
@@ -337,25 +356,21 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 //
 // Parameters:
 //   - ctx: Context for cancellation and timeout handling
-//   - stats: metrics.IndexStats to update with deletion failures
 //
 // Returns:
-//   - error: Critical errors that should abort refresh (e.g., vault scan
-//
-// failure).
-func (v *VaultIndexer) reconcileDeletions(
-	ctx context.Context,
-	tx *persistence.CacheTransaction,
-) []domain.Note {
+//   - []domain.Note: Notes that still exist in vault (retained)
+func (v *VaultIndexer) reconcileDeletions(ctx context.Context) []domain.Note {
 	cachedNotes, listErr := v.cacheReader.List(ctx)
 	if listErr != nil {
 		v.log.Warn().
 			Err(listErr).
 			Msg("failed to list cached notes for reconciliation, skipping deletion reconciliation")
-		return nil // Don't abort refresh for cache read failures
+		return nil
 	}
 
 	var retained []domain.Note
+	var orphanedPaths []string
+
 	for i := range cachedNotes {
 		note := cachedNotes[i]
 		absolutePath := filepath.Join(v.config.VaultPath, note.Path)
@@ -367,11 +382,11 @@ func (v *VaultIndexer) reconcileDeletions(
 		}
 
 		if os.IsNotExist(statErr) {
-			tx.AddDelete(note.Path)
+			orphanedPaths = append(orphanedPaths, note.Path)
 			v.log.Debug().
 				Str("notePath", note.Path).
 				Str("path", absolutePath).
-				Msg("staged delete for orphaned cache entry")
+				Msg("detected orphaned cache entry")
 			continue
 		}
 
@@ -381,6 +396,20 @@ func (v *VaultIndexer) reconcileDeletions(
 			Str("path", absolutePath).
 			Msg("failed to stat note path during reconciliation")
 		retained = append(retained, note)
+	}
+
+	// Batch delete orphaned entries from cache
+	if len(orphanedPaths) > 0 {
+		if deleteErr := v.cacheWriter.DeleteBatch(ctx, orphanedPaths); deleteErr != nil {
+			v.log.Warn().
+				Err(deleteErr).
+				Int("orphanedCount", len(orphanedPaths)).
+				Msg("failed to delete orphaned cache entries")
+		} else {
+			v.log.Info().
+				Int("deletedCount", len(orphanedPaths)).
+				Msg("deleted orphaned cache entries")
+		}
 	}
 
 	return retained
@@ -674,48 +703,39 @@ func (v *VaultIndexer) scanModifiedFiles(
 func (v *VaultIndexer) processFile(
 	ctx context.Context,
 	file *dto.VaultFile,
-	tx *persistence.CacheTransaction,
 	stats *metrics.IndexStats,
-) {
+) (domain.Note, spi.CacheWriteMetadata, bool) {
 	// Filter: only .md files for frontmatter processing
 	if file.Ext() != markdownExt {
-		return
+		return domain.Note{}, spi.CacheWriteMetadata{}, false
 	}
 
-	// Parse note using markdown parser
-	note, err := v.markdownParserPort.ParseNote(ctx, file.Path, file.Content)
+	// Use processor to parse and validate
+	note, err := v.processor.ProcessFile(ctx, file.Path, file.Content)
 	if err != nil {
-		stats.ParseFailures++
-		v.log.Error().
-			Err(err).
-			Str("path", file.Path).
-			Msg("failed to parse note")
-		return
+		// Check if this is a validation error vs parse error
+		var frontmatterErr *lithosErr.FrontmatterError
+		if errors.As(err, &frontmatterErr) {
+			stats.ValidationFailures++
+		} else {
+			stats.ParseFailures++
+		}
+		return domain.Note{}, spi.CacheWriteMetadata{}, false
 	}
 
-	// If frontmatterService is available, validate the parsed frontmatter
-	if v.frontmatterService != nil {
-		if validationErr := v.frontmatterService.IsSchemaCompliant(
-			ctx, note.Path,
-			note.Frontmatter,
-		); validationErr != nil {
-			stats.ValidationFailures++
-			v.log.Warn().
-				Err(validationErr).
-				Str("path", file.Path).
-				Msg("frontmatter validation failed")
-			return
-		}
+	// Success - validation passed (only count if validator exists)
+	if v.processor.validator != nil {
 		stats.ValidationSuccesses++
 	}
 
-	// Persist to cache via transaction
-	// We generate indexTime here to ensure consistency
+	// Build metadata for caching
 	indexTime := time.Now().UTC()
 	metadata := v.buildCacheWriteMetadata(file, indexTime)
-	tx.AddWrite(note, metadata)
-	stats.IndexedCount++
+
+	// Publish note indexed event
 	v.publishNoteIndexedEvent(ctx, note)
+
+	return note, metadata, true
 }
 
 func (v *VaultIndexer) buildCacheWriteMetadata(
@@ -781,23 +801,7 @@ func (v *VaultIndexer) publishNoteIndexedEvent(
 	ctx context.Context,
 	note domain.Note,
 ) {
-	if v.eventBus == nil {
-		return
-	}
-	event, err := domain.NewNoteIndexedEvent(note, time.Now())
-	if err != nil {
-		v.log.Warn().
-			Err(err).
-			Str("path", note.Path).
-			Msg("failed to create note indexed event")
-		return
-	}
-	if publishErr := events.PublishSync(ctx, v.eventBus, event); publishErr != nil {
-		v.log.Warn().
-			Err(publishErr).
-			Str("path", note.Path).
-			Msg("failed to publish note indexed event")
-	}
+	publishNoteIndexed(ctx, v.eventBus, v.log, note, time.Now())
 }
 
 func (v *VaultIndexer) publishIndexingCompleteEvent(
@@ -867,23 +871,21 @@ func (v *VaultIndexer) applyNoteEvent(
 	ctx context.Context,
 	note domain.Note,
 ) error {
-	if v.frontmatterService != nil {
-		if err := v.frontmatterService.IsSchemaCompliant(ctx, note.Path, note.Frontmatter); err != nil {
-			return err
-		}
-	}
-	strategy := &persistence.ParallelWriter{}
-	tx := persistence.NewCacheTransaction(
-		strategy,
-		v.boltWriter,
-		v.sqliteWriter,
-	)
+	// Use CacheWriter to persist single note
 	indexTime := time.Now().UTC()
 	metadata := v.metadataFromPath(note.Path, indexTime)
-	tx.AddWrite(note, metadata)
-	if commitErr := tx.Commit(ctx); commitErr != nil {
-		return commitErr
+	metadataMap := map[string]spi.CacheWriteMetadata{
+		note.Path: metadata,
 	}
+
+	if err := v.cacheWriter.WriteBatch(ctx, []domain.Note{note}, metadataMap); err != nil {
+		v.log.Error().
+			Err(err).
+			Str("path", note.Path).
+			Msg("failed to apply note indexed event to caches")
+		return err
+	}
+
 	v.log.Debug().
 		Str("path", note.Path).
 		Msg("applied note indexed event to caches")
