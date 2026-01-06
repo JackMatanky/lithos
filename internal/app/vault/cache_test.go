@@ -13,13 +13,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestCachingService_HandleCacheRequested tests successful note caching.
-func TestCachingService_HandleCacheRequested(t *testing.T) {
+// TestCacheWriter_HandleCacheRequested tests successful note caching.
+func TestCacheWriter_HandleCacheRequested(t *testing.T) {
 	boltWriter := utils.NewMockCacheWriterPort()
 	sqliteWriter := utils.NewMockCacheWriterPort()
 	eventBus := utils.NewMockEventBus()
 
-	service := NewCachingService(
+	writer := NewCacheWriter(
 		boltWriter,
 		sqliteWriter,
 		eventBus,
@@ -38,23 +38,23 @@ func TestCachingService_HandleCacheRequested(t *testing.T) {
 	require.NoError(t, err)
 
 	ctx := context.Background()
-	err = service.handleCacheRequested(ctx, event)
+	err = writer.handleCacheRequested(ctx, event)
 
 	require.NoError(t, err)
 }
 
-// TestCachingService_Creation tests that the service can be created.
-func TestCachingService_Creation(t *testing.T) {
+// TestCacheWriter_Creation tests that the writer can be created.
+func TestCacheWriter_Creation(t *testing.T) {
 	boltWriter := utils.NewMockCacheWriterPort()
 	sqliteWriter := utils.NewMockCacheWriterPort()
 	eventBus := utils.NewMockEventBus()
 	logger := zerolog.Nop()
 
-	service := NewCachingService(boltWriter, sqliteWriter, eventBus, logger)
+	writer := NewCacheWriter(boltWriter, sqliteWriter, eventBus, logger)
 
-	assert.NotNil(t, service)
-	assert.Equal(t, boltWriter, service.boltWriter)
-	assert.Equal(t, sqliteWriter, service.sqliteWriter)
-	assert.Equal(t, eventBus, service.eventBus)
-	assert.Equal(t, logger, service.log)
+	assert.NotNil(t, writer)
+	assert.Equal(t, boltWriter, writer.boltWriter)
+	assert.Equal(t, sqliteWriter, writer.sqliteWriter)
+	assert.Equal(t, eventBus, writer.eventBus)
+	assert.Equal(t, logger, writer.log)
 }

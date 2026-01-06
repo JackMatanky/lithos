@@ -11,8 +11,8 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// CachingService handles persistence of validated data to multiple storage
-// backends. This service manages the dual-write operations to BoltDB (hot
+// CacheWriter handles persistence of validated data to multiple storage
+// backends. This component manages the dual-write operations to BoltDB (hot
 // cache) and SQLite
 // (cold storage), ensuring data consistency and transactional integrity.
 //
@@ -27,21 +27,21 @@ import (
 //   - Uses Unit of Work pattern for transactional writes
 //   - Supports BoltDB + SQLite dual-write strategy
 //   - Generic enough to work with any data type requiring persistence
-type CachingService struct {
+type CacheWriter struct {
 	boltWriter   spi.CacheWriterPort
 	sqliteWriter spi.CacheWriterPort
 	eventBus     events.EventBus
 	log          zerolog.Logger
 }
 
-// NewCachingService creates a new caching service.
-func NewCachingService(
+// NewCacheWriter creates a new cache writer.
+func NewCacheWriter(
 	boltWriter spi.CacheWriterPort,
 	sqliteWriter spi.CacheWriterPort,
 	eventBus events.EventBus,
 	log zerolog.Logger,
-) *CachingService {
-	service := &CachingService{
+) *CacheWriter {
+	writer := &CacheWriter{
 		boltWriter:   boltWriter,
 		sqliteWriter: sqliteWriter,
 		eventBus:     eventBus,
@@ -52,15 +52,15 @@ func NewCachingService(
 	if eventBus != nil {
 		_ = eventBus.Subscribe(
 			"NoteCacheRequested",
-			service.handleCacheRequested,
+			writer.handleCacheRequested,
 		)
 	}
 
-	return service
+	return writer
 }
 
 // handleCacheRequested processes cache requests for validated notes.
-func (s *CachingService) handleCacheRequested(
+func (c *CacheWriter) handleCacheRequested(
 	ctx context.Context,
 	event domain.DomainEvent,
 ) error {
@@ -70,7 +70,7 @@ func (s *CachingService) handleCacheRequested(
 	}
 
 	note := cacheEvent.Note()
-	s.log.Debug().
+	c.log.Debug().
 		Str("path", note.Path).
 		Msg("caching validated note to dual storage")
 
@@ -78,8 +78,8 @@ func (s *CachingService) handleCacheRequested(
 	strategy := &persistence.ParallelWriter{}
 	tx := persistence.NewCacheTransaction(
 		strategy,
-		s.boltWriter,
-		s.sqliteWriter,
+		c.boltWriter,
+		c.sqliteWriter,
 	)
 
 	// Stage the note for caching
@@ -92,14 +92,14 @@ func (s *CachingService) handleCacheRequested(
 
 	// Commit the transaction
 	if err := tx.Commit(ctx); err != nil {
-		s.log.Error().
+		c.log.Error().
 			Err(err).
 			Str("path", note.Path).
 			Msg("failed to commit cache transaction")
 		return err
 	}
 
-	s.log.Debug().
+	c.log.Debug().
 		Str("path", note.Path).
 		Msg("note cached successfully to dual storage")
 
