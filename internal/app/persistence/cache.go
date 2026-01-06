@@ -1,11 +1,10 @@
-package vault
+package persistence
 
 import (
 	"context"
 	"time"
 
 	"github.com/JackMatanky/lithos/internal/app/events"
-	"github.com/JackMatanky/lithos/internal/app/persistence"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 	"github.com/rs/zerolog"
@@ -76,8 +75,8 @@ func (c *CacheWriter) WriteBatch(
 		Msg("batch caching notes to dual storage")
 
 	// Create transaction for atomic writes
-	strategy := &persistence.ParallelWriter{}
-	tx := persistence.NewCacheTransaction(
+	strategy := &ParallelWriter{}
+	tx := NewCacheTransaction(
 		strategy,
 		c.boltWriter,
 		c.sqliteWriter,
@@ -118,8 +117,8 @@ func (c *CacheWriter) DeleteBatch(ctx context.Context, paths []string) error {
 		Msg("batch deleting notes from dual storage")
 
 	// Create transaction for atomic deletes
-	strategy := &persistence.ParallelWriter{}
-	tx := persistence.NewCacheTransaction(
+	strategy := &ParallelWriter{}
+	tx := NewCacheTransaction(
 		strategy,
 		c.boltWriter,
 		c.sqliteWriter,

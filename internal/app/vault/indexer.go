@@ -14,6 +14,7 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/events"
 	"github.com/JackMatanky/lithos/internal/app/frontmatter"
 	"github.com/JackMatanky/lithos/internal/app/metrics"
+	"github.com/JackMatanky/lithos/internal/app/persistence"
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
@@ -58,7 +59,7 @@ type VaultIndexer struct {
 	vaultScanner  spi.VaultScannerPort
 	cacheReader   spi.CacheReaderPort
 	processor     *MarkdownProcessor
-	cacheWriter   *CacheWriter
+	cacheWriter   *persistence.CacheWriter
 	schemaEngine  *schema.SchemaEngine
 	config        domain.Config
 	log           zerolog.Logger
@@ -103,7 +104,7 @@ func NewVaultIndexer(
 		eventBus,
 		log.With().Str("component", "MarkdownProcessor").Logger(),
 	)
-	cacheWriter := NewCacheWriter(
+	cacheWriter := persistence.NewCacheWriter(
 		boltWriter,
 		sqliteWriter,
 		eventBus,
