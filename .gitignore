@@ -81,6 +81,7 @@ wheels/
 *.dylib
 *.so
 lithos-test
+lithos
 
 # Go workspace
 go.work

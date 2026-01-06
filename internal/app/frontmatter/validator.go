@@ -13,6 +13,8 @@ import (
 )
 
 // FieldValidator defines the interface for polymorphic field validation.
+// Each validator implementation is type-safe for its specific PropertySpec type
+// (StringSpec, NumberSpec, DateSpec, BoolSpec).
 type FieldValidator interface {
 	// Validate validates a frontmatter field value against a PropertySpec.
 	Validate(
@@ -20,11 +22,6 @@ type FieldValidator interface {
 		value any,
 		spec domain.PropertySpec,
 	) error
-}
-
-// Validator defines a generic interface for type-safe property validation.
-type Validator[T any] interface {
-	Validate(fieldName string, value any, spec T) error
 }
 
 // ValidatorRegistry provides a central registry for property validators.

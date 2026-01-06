@@ -457,6 +457,8 @@ func calculateChecksum(content string) uint64 {
 	hasher := fnv.New64a()
 	_, err := hasher.Write([]byte(content))
 	if err != nil {
+		// Per Go spec, hash.Hash.Write() never returns an error.
+		// This panic is defensive programming for the impossible case.
 		panic(fmt.Sprintf("unexpected error writing to fnv hasher: %v", err))
 	}
 	return hasher.Sum64()
