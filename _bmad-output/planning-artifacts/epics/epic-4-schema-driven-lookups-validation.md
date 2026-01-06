@@ -145,13 +145,31 @@ so that god-objects are eliminated, code is clean, and future maintenance is sim
 13. **Backward Compatibility:** All existing functionality preserved
 
 ---
+
+## Story 4.9 Vault Package Idiomatic Go Simplification
+
+As a developer,
+I want to simplify the vault package using idiomatic Go patterns by consolidating the 5 separate services into a clean VaultIndexer with focused helpers, while preserving all current capabilities and integrating Story 4.8 improvements,
+so that the code follows Go conventions, reduces complexity from ~2100 lines to ~1200 lines, and maintains all functionality with better maintainability.
+
+**Prerequisites:** Story 4.8.
+
+### Acceptance Criteria
+
+1. **All Current Capabilities Preserved:** VaultIndexer.Build(), Refresh(), file processing pipeline, event-driven processing, cache operations, schema integration, statistics & monitoring, event handling, error handling all work identically
+2. **Idiomatic Go Structure Achieved:** File structure simplified (indexer.go, cache.go, processor.go, events.go), naming conventions follow Go idioms (CacheWriter not CachingService), simple helper structs, no unnecessary abstractions
+3. **Story 4.8 Integration:** VaultIndexer uses ParallelWriter for concurrent cache writes with ≥2x performance improvement, events.go created following template/events.go pattern, concurrent patterns implemented
+4. **Code Simplification Achieved:** Total lines ~2100 → ≤1200 (≥43% reduction), files 5 → 4, dependencies reduced with cleaner structure, unnecessary orchestrators eliminated
+
+---
+
 ## Story 4.10 Dependency Injection and E2E Test for Schema-Driven Lookups
 
 As a developer,
 I want to implement dependency injection for the schema-driven lookup components and add comprehensive e2e tests,
 so that the schema-driven lookup functionality is properly wired and thoroughly tested end-to-end.
 
-**Prerequisites:** Stories 4.1–4.9.
+**Prerequisites:** Stories 4.1–4.8 (Story 4.9 is independent).
 
 ### Acceptance Criteria
 

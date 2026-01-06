@@ -1,4 +1,4 @@
-# generated: 2025-12-23
+# generated: 2026-01-06
 # project: lithos
 # project_key: lithos
 # tracking_system: file-system
@@ -22,7 +22,7 @@
 #   - optional: Can be completed but not required
 #   - done: Retrospective has been completed
 
-generated: 2025-12-23
+generated: 2026-01-06
 project: lithos
 project_key: lithos
 tracking_system: file-system
@@ -106,9 +106,10 @@ development_status:
   4-5-template-function-fileclass: done
   4-6-event-driven-schema-lookups: done
   4-7-schema-driven-lookup-integration-test: done
-  4-8-epic-4-refactor: done
-  4-9-dependency-injection-and-e2e-test: ready-for-dev
-  4-10-documentation-update: ready-for-dev
+  4-8-architecture-refactor: done
+  4-9-vault-indexer-refactor: ready-for-dev
+  4-10-dependency-injection-and-e2e-test: ready-for-dev
+  4-11-documentation-update: ready-for-dev
   epic-4-retrospective: optional
 
   epic-5: backlog
