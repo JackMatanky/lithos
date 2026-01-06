@@ -145,14 +145,13 @@ so that god-objects are eliminated, code is clean, and future maintenance is sim
 13. **Backward Compatibility:** All existing functionality preserved
 
 ---
-
-## Story 4.9 Dependency Injection and E2E Test for Schema-Driven Lookups
+## Story 4.10 Dependency Injection and E2E Test for Schema-Driven Lookups
 
 As a developer,
 I want to implement dependency injection for the schema-driven lookup components and add comprehensive e2e tests,
 so that the schema-driven lookup functionality is properly wired and thoroughly tested end-to-end.
 
-**Prerequisites:** Stories 4.1–4.8.
+**Prerequisites:** Stories 4.1–4.9.
 
 ### Acceptance Criteria
 
@@ -164,13 +163,13 @@ so that the schema-driven lookup functionality is properly wired and thoroughly 
 
 ---
 
-## Story 4.10 Documentation Update for Schema-Driven Lookups Release
+## Story 4.11 Documentation Update for Schema-Driven Lookups Release
 
 As a maintainer,
 I want to update all project documentation to reflect the completed schema-driven lookups implementation,
 so that users and developers have accurate, comprehensive documentation for the new schema-driven lookup capabilities.
 
-**Prerequisites:** Stories 4.1–4.9.
+**Prerequisites:** Stories 4.1–4.10.
 
 ### Acceptance Criteria
 1. README.md updated with schema-driven lookup features and template functions

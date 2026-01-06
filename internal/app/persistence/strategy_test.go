@@ -12,8 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSequentialWriteStrategy(t *testing.T) {
-	strategy := &SequentialWriteStrategy{}
+func TestSequentialWriter(t *testing.T) {
+	strategy := &SequentialWriter{}
 	writer1 := new(mockCacheWriter)
 	writer2 := new(mockCacheWriter)
 	writers := []spi.CacheWriterPort{writer1, writer2}
@@ -42,8 +42,8 @@ func TestSequentialWriteStrategy(t *testing.T) {
 	})
 }
 
-func TestParallelWriteStrategy(t *testing.T) {
-	strategy := &ParallelWriteStrategy{}
+func TestParallelWriter(t *testing.T) {
+	strategy := &ParallelWriter{}
 	writer1 := new(mockCacheWriter)
 	writer2 := new(mockCacheWriter)
 	writers := []spi.CacheWriterPort{writer1, writer2}

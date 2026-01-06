@@ -51,7 +51,7 @@ func TestCacheTransaction_Integration(t *testing.T) {
 	require.NoError(t, err)
 	defer func() { _ = sqliteReader.Close() }()
 
-	strategy := &persistence.ParallelWriteStrategy{}
+	strategy := &persistence.ParallelWriter{}
 
 	// 2. Test Successful Commit
 	t.Run("success - commit writes to both", func(t *testing.T) {

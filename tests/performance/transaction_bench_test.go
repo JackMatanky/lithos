@@ -47,7 +47,7 @@ func BenchmarkCacheTransaction_Strategies(b *testing.B) {
 	ctx := context.Background()
 
 	b.Run("Sequential", func(b *testing.B) {
-		strategy := &persistence.SequentialWriteStrategy{}
+		strategy := &persistence.SequentialWriter{}
 		tx := persistence.NewCacheTransaction(strategy, writers...)
 		b.ResetTimer()
 		for range b.N {
@@ -61,7 +61,7 @@ func BenchmarkCacheTransaction_Strategies(b *testing.B) {
 	})
 
 	b.Run("Parallel", func(b *testing.B) {
-		strategy := &persistence.ParallelWriteStrategy{}
+		strategy := &persistence.ParallelWriter{}
 		tx := persistence.NewCacheTransaction(strategy, writers...)
 		b.ResetTimer()
 		for range b.N {

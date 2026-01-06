@@ -75,7 +75,7 @@ func (s *CachingService) handleCacheRequested(
 		Msg("caching validated note to dual storage")
 
 	// Create transaction for atomic writes
-	strategy := &persistence.ParallelWriteStrategy{}
+	strategy := &persistence.ParallelWriter{}
 	tx := persistence.NewCacheTransaction(
 		strategy,
 		s.boltWriter,

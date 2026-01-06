@@ -4,10 +4,10 @@
 
 The following critical files are essential and **MUST** be reviewed before starting:
 
-- Coding Standards: docs/architecture/coding-standards.md
-- Data Models: docs/architecture/data-models.md
-- Components: docs/architecture/components.md
-- Tech Stack: docs/architecture/tech-stack.md
+- Coding Standards: _bmad-output/planning-artifacts/architecture/coding-standards.md
+- Data Models: _bmad-output/planning-artifacts/architecture/data-models.md
+- Components: _bmad-output/planning-artifacts/architecture/components.md
+- Tech Stack: _bmad-output/planning-artifacts/architecture/tech-stack.md
 
 ## Agents
 

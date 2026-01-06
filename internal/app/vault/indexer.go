@@ -178,7 +178,7 @@ func (v *VaultIndexer) Build(ctx context.Context) (metrics.IndexStats, error) {
 	stats.ScannedCount = len(vaultFiles)
 
 	// Create transaction for atomic writes
-	strategy := &persistence.ParallelWriteStrategy{}
+	strategy := &persistence.ParallelWriter{}
 	tx := persistence.NewCacheTransaction(
 		strategy,
 		v.boltWriter,
@@ -274,7 +274,7 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 	}
 
 	// Create transaction
-	strategy := &persistence.ParallelWriteStrategy{}
+	strategy := &persistence.ParallelWriter{}
 	tx := persistence.NewCacheTransaction(
 		strategy,
 		v.boltWriter,
@@ -872,7 +872,7 @@ func (v *VaultIndexer) applyNoteEvent(
 			return err
 		}
 	}
-	strategy := &persistence.ParallelWriteStrategy{}
+	strategy := &persistence.ParallelWriter{}
 	tx := persistence.NewCacheTransaction(
 		strategy,
 		v.boltWriter,

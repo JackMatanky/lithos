@@ -8,11 +8,11 @@ import (
 	"github.com/JackMatanky/lithos/internal/ports/spi"
 )
 
-// SequentialWriteStrategy executes operations sequentially across all writers.
-type SequentialWriteStrategy struct{}
+// SequentialWriter executes operations sequentially across all writers.
+type SequentialWriter struct{}
 
-// ParallelWriteStrategy executes operations concurrently across writers.
-type ParallelWriteStrategy struct{}
+// ParallelWriter executes operations concurrently across writers.
+type ParallelWriter struct{}
 
 type writerResult struct {
 	writer    spi.CacheWriterPort
@@ -21,15 +21,15 @@ type writerResult struct {
 }
 
 // Name returns the strategy name.
-func (s *SequentialWriteStrategy) Name() string { return "Sequential" }
+func (s *SequentialWriter) Name() string { return "Sequential" }
 
 // Describe returns a description of the strategy.
-func (s *SequentialWriteStrategy) Describe() string {
+func (s *SequentialWriter) Describe() string {
 	return "Executes operations sequentially across all writers"
 }
 
 // Execute performs the operations sequentially on each writer.
-func (s *SequentialWriteStrategy) Execute(
+func (s *SequentialWriter) Execute(
 	ctx context.Context,
 	ops []PersistenceOperation,
 	writers []spi.CacheWriterPort,
@@ -48,15 +48,15 @@ func (s *SequentialWriteStrategy) Execute(
 }
 
 // Name returns the strategy name.
-func (s *ParallelWriteStrategy) Name() string { return "Parallel" }
+func (s *ParallelWriter) Name() string { return "Parallel" }
 
 // Describe returns a description of the strategy.
-func (s *ParallelWriteStrategy) Describe() string {
+func (s *ParallelWriter) Describe() string {
 	return "Executes operations concurrently across writers with coordinated rollback"
 }
 
 // Execute performs the operations in parallel on each writer.
-func (s *ParallelWriteStrategy) Execute(
+func (s *ParallelWriter) Execute(
 	ctx context.Context,
 	ops []PersistenceOperation,
 	writers []spi.CacheWriterPort,
@@ -108,7 +108,7 @@ func (s *ParallelWriteStrategy) Execute(
 	return combinedErr
 }
 
-func (s *ParallelWriteStrategy) rollback(
+func (s *ParallelWriter) rollback(
 	ctx context.Context,
 	ops []PersistenceOperation,
 	writer spi.CacheWriterPort,
