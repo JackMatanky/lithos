@@ -2,7 +2,6 @@ package vault
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,7 +17,6 @@ import (
 	"github.com/JackMatanky/lithos/internal/app/schema"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
-	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
@@ -58,7 +56,7 @@ type VaultIndexerInterface interface {
 type VaultIndexer struct {
 	vaultScanner  spi.VaultScannerPort
 	cacheReader   spi.CacheReaderPort
-	processor     *MarkdownProcessor
+	processor     *VaultProcessor
 	cacheWriter   *persistence.CacheWriter
 	schemaEngine  *schema.SchemaEngine
 	config        domain.Config
@@ -98,11 +96,17 @@ func NewVaultIndexer(
 	eventBus events.EventBus,
 ) *VaultIndexer {
 	// Create helper components
-	processor := NewMarkdownProcessor(
+	markdownProcessor := NewMarkdownProcessor(
 		markdownParser,
 		frontmatterService,
 		eventBus,
 		log.With().Str("component", "MarkdownProcessor").Logger(),
+	)
+	processor := NewVaultProcessor(
+		markdownProcessor,
+		config,
+		eventBus,
+		log.With().Str("component", "VaultProcessor").Logger(),
 	)
 	cacheWriter := persistence.NewCacheWriter(
 		boltWriter,
@@ -201,7 +205,11 @@ func (v *VaultIndexer) Build(ctx context.Context) (metrics.IndexStats, error) {
 			return stats, cancelErr
 		}
 
-		note, metadata, processed := v.processFile(ctx, &vaultFiles[i], &stats)
+		note, metadata, processed := v.processor.ProcessFile(
+			ctx,
+			&vaultFiles[i],
+			&stats,
+		)
 		if processed {
 			notes = append(notes, note)
 			metadataMap[note.Path] = metadata
@@ -310,7 +318,11 @@ func (v *VaultIndexer) Refresh(ctx context.Context, since time.Time) error {
 			return cancelErr
 		}
 
-		note, metadata, processed := v.processFile(ctx, &vaultFiles[i], &stats)
+		note, metadata, processed := v.processor.ProcessFile(
+			ctx,
+			&vaultFiles[i],
+			&stats,
+		)
 		if processed {
 			notes = append(notes, note)
 			metadataMap[note.Path] = metadata
@@ -692,96 +704,6 @@ func (v *VaultIndexer) scanModifiedFiles(
 	return v.vaultScanner.ScanModified(ctx, since)
 }
 
-// processFile handles single file processing: filtering, frontmatter
-// extraction/validation,
-// note creation, and persistence.
-// Updates stats for tracking and logging.
-//
-// Parameters:
-//   - ctx: Context for cancellation and timeout handling
-//   - vf: Vault file to process
-//   - stats: metrics.IndexStats to update with processing results
-func (v *VaultIndexer) processFile(
-	ctx context.Context,
-	file *dto.VaultFile,
-	stats *metrics.IndexStats,
-) (domain.Note, spi.CacheWriteMetadata, bool) {
-	// Filter: only .md files for frontmatter processing
-	if file.Ext() != markdownExt {
-		return domain.Note{}, spi.CacheWriteMetadata{}, false
-	}
-
-	// Use processor to parse and validate
-	note, err := v.processor.ProcessFile(ctx, file.Path, file.Content)
-	if err != nil {
-		// Check if this is a validation error vs parse error
-		var frontmatterErr *lithosErr.FrontmatterError
-		if errors.As(err, &frontmatterErr) {
-			stats.ValidationFailures++
-		} else {
-			stats.ParseFailures++
-		}
-		return domain.Note{}, spi.CacheWriteMetadata{}, false
-	}
-
-	// Success - validation passed (only count if validator exists)
-	if v.processor.validator != nil {
-		stats.ValidationSuccesses++
-	}
-
-	// Build metadata for caching
-	indexTime := time.Now().UTC()
-	metadata := v.buildCacheWriteMetadata(file, indexTime)
-
-	// Publish note indexed event
-	v.publishNoteIndexedEvent(ctx, note)
-
-	return note, metadata, true
-}
-
-func (v *VaultIndexer) buildCacheWriteMetadata(
-	file *dto.VaultFile,
-	indexTime time.Time,
-) spi.CacheWriteMetadata {
-	if file != nil && file.Info != nil {
-		return spi.CacheWriteMetadata{
-			ModifiedAt: file.Info.ModTime().UTC(),
-			FileSize:   file.Info.Size(),
-			IndexTime:  indexTime,
-		}
-	}
-	if file != nil {
-		return v.metadataFromPath(file.Path, indexTime)
-	}
-	return spi.CacheWriteMetadata{
-		IndexTime:  indexTime,
-		ModifiedAt: time.Time{},
-		FileSize:   0,
-	}
-}
-
-func (v *VaultIndexer) metadataFromPath(
-	path string,
-	indexTime time.Time,
-) spi.CacheWriteMetadata {
-	meta := spi.CacheWriteMetadata{
-		IndexTime:  indexTime,
-		ModifiedAt: time.Time{},
-		FileSize:   0,
-	}
-	if path == "" {
-		return meta
-	}
-	absolute := filepath.Join(v.config.VaultPath, path)
-	info, err := os.Stat(absolute)
-	if err != nil {
-		return meta
-	}
-	meta.ModifiedAt = info.ModTime().UTC()
-	meta.FileSize = info.Size()
-	return meta
-}
-
 // logStats logs the final indexing statistics using structured logging.
 // Provides metrics for NFR3 performance monitoring.
 //
@@ -796,13 +718,6 @@ func (v *VaultIndexer) logStats(stats metrics.IndexStats) {
 		Int("validation_failures", stats.ValidationFailures).
 		Dur("duration", stats.Duration).
 		Msg("vault indexing complete")
-}
-
-func (v *VaultIndexer) publishNoteIndexedEvent(
-	ctx context.Context,
-	note domain.Note,
-) {
-	publishNoteIndexed(ctx, v.eventBus, v.log, note, time.Now())
 }
 
 func (v *VaultIndexer) publishIndexingCompleteEvent(
@@ -874,7 +789,19 @@ func (v *VaultIndexer) applyNoteEvent(
 ) error {
 	// Use CacheWriter to persist single note
 	indexTime := time.Now().UTC()
-	metadata := v.metadataFromPath(note.Path, indexTime)
+	metadata := spi.CacheWriteMetadata{
+		IndexTime:  indexTime,
+		ModifiedAt: time.Time{},
+		FileSize:   0,
+	}
+	if note.Path != "" {
+		absolute := filepath.Join(v.config.VaultPath, note.Path)
+		info, err := os.Stat(absolute)
+		if err == nil {
+			metadata.ModifiedAt = info.ModTime().UTC()
+			metadata.FileSize = info.Size()
+		}
+	}
 	metadataMap := map[string]spi.CacheWriteMetadata{
 		note.Path: metadata,
 	}

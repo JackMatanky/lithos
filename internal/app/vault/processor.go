@@ -2,176 +2,159 @@ package vault
 
 import (
 	"context"
-	"strings"
+	"errors"
+	"os"
+	"path/filepath"
+	"time"
 
+	"github.com/JackMatanky/lithos/internal/adapters/spi/dto"
 	"github.com/JackMatanky/lithos/internal/app/events"
-	"github.com/JackMatanky/lithos/internal/app/frontmatter"
+	"github.com/JackMatanky/lithos/internal/app/metrics"
 	"github.com/JackMatanky/lithos/internal/domain"
 	"github.com/JackMatanky/lithos/internal/ports/spi"
+	lithosErr "github.com/JackMatanky/lithos/internal/shared/errors"
 	"github.com/rs/zerolog"
 )
 
-// MarkdownProcessor handles complete processing pipeline for markdown files:
-// parsing markdown content into Note entities and validating frontmatter
-// against schemas.
+// VaultProcessor handles vault-specific file processing orchestration.
+// This component coordinates the complete pipeline from file discovery to
+// cache-ready notes, including stats tracking, metadata building, and event
+// publishing.
 //
 // Responsibilities:
-//   - Parse markdown files into structured Note entities
-//   - Validate note frontmatter against schema definitions
-//   - Publish events for successful parsing and validation
-//   - Handle parsing and validation errors gracefully
+//   - File type filtering (only .md files)
+//   - Markdown processing + validation coordination
+//   - Stats tracking (parse/validation success/failure)
+//   - Metadata building for cache persistence
+//   - Event publishing for processed notes
 //
 // Architecture:
-// - Subscribes to FileParseRequested and FrontmatterValidationRequested events
-//   - Publishes NoteParsed and FrontmatterValidated events
-//   - Consolidates markdown processing and validation into a single component
-type MarkdownProcessor struct {
-	markdownParser spi.MarkdownParserPort
-	validator      *frontmatter.FrontmatterService
-	eventBus       events.EventBus
-	log            zerolog.Logger
+//   - Uses MarkdownProcessor for core processing
+//   - Focuses on vault-specific orchestration logic
+//   - Provides clean interface for VaultIndexer
+type VaultProcessor struct {
+	processor *MarkdownProcessor
+	config    domain.Config
+	eventBus  events.EventBus
+	log       zerolog.Logger
 }
 
-// NewMarkdownProcessor creates a new processor for markdown files.
-func NewMarkdownProcessor(
-	markdownParser spi.MarkdownParserPort,
-	validator *frontmatter.FrontmatterService,
+// NewVaultProcessor creates a new vault processor with the provided
+// dependencies.
+func NewVaultProcessor(
+	processor *MarkdownProcessor,
+	config domain.Config,
 	eventBus events.EventBus,
 	log zerolog.Logger,
-) *MarkdownProcessor {
-	processor := &MarkdownProcessor{
-		markdownParser: markdownParser,
-		validator:      validator,
-		eventBus:       eventBus,
-		log:            log,
+) *VaultProcessor {
+	return &VaultProcessor{
+		processor: processor,
+		config:    config,
+		eventBus:  eventBus,
+		log:       log,
 	}
-
-	// Subscribe to processing events
-	if eventBus != nil {
-		_ = eventBus.Subscribe(
-			"FileParseRequested",
-			processor.handleFileParseRequested,
-		)
-		_ = eventBus.Subscribe(
-			"FrontmatterValidationRequested",
-			processor.handleValidationRequested,
-		)
-	}
-
-	return processor
 }
 
-// ProcessFile processes a single file through complete pipeline:
-// This is a convenience method for direct (non-event-driven) processing.
-func (p *MarkdownProcessor) ProcessFile(
+// ProcessFile handles complete vault file processing: filtering, parsing,
+// validation,
+// stats tracking, metadata building, and event publishing.
+//
+// Returns:
+//   - domain.Note: Successfully processed note
+//   - spi.CacheWriteMetadata: Cache metadata for persistence
+//   - bool: true if processing succeeded, false otherwise
+//
+// This method orchestrates the vault-specific aspects of file processing,
+// delegating core markdown operations to MarkdownProcessor.
+func (p *VaultProcessor) ProcessFile(
 	ctx context.Context,
-	path string,
-	content []byte,
-) (domain.Note, error) {
-	// Parse markdown content
-	note, err := p.markdownParser.ParseNote(ctx, path, content)
-	if err != nil {
-		p.log.Warn().
-			Err(err).
-			Str("path", path).
-			Msg("failed to parse markdown")
-		return domain.Note{}, err
+	file *dto.VaultFile,
+	stats *metrics.IndexStats,
+) (domain.Note, spi.CacheWriteMetadata, bool) {
+	// Filter: only .md files for frontmatter processing
+	if file.Ext() != markdownExt {
+		return domain.Note{}, spi.CacheWriteMetadata{}, false
 	}
 
-	// Validate frontmatter (skip if validator not available)
-	if p.validator != nil {
-		validationErr := p.validator.IsSchemaCompliant(
-			ctx,
-			note.Path,
-			note.Frontmatter,
-		)
-		if validationErr != nil {
-			p.log.Warn().
-				Err(validationErr).
-				Str("path", note.Path).
-				Msg("frontmatter validation failed")
-			return note, validationErr
+	// Use processor to parse and validate
+	note, err := p.processor.ProcessFile(ctx, file.Path, file.Content)
+	if err != nil {
+		// Check if this is a validation error vs parse error
+		var frontmatterErr *lithosErr.FrontmatterError
+		if errors.As(err, &frontmatterErr) {
+			stats.ValidationFailures++
+		} else {
+			stats.ParseFailures++
+		}
+		return domain.Note{}, spi.CacheWriteMetadata{}, false
+	}
+
+	// Success - validation passed (only count if validator exists)
+	if p.processor.validator != nil {
+		stats.ValidationSuccesses++
+	}
+
+	// Build metadata for caching
+	indexTime := time.Now().UTC()
+	metadata := p.buildCacheWriteMetadata(file, indexTime)
+
+	// Publish note indexed event
+	p.publishNoteIndexedEvent(ctx, note)
+
+	return note, metadata, true
+}
+
+// buildCacheWriteMetadata builds cache write metadata for a vault file.
+// This includes file modification time, size, and indexing timestamp.
+func (p *VaultProcessor) buildCacheWriteMetadata(
+	file *dto.VaultFile,
+	indexTime time.Time,
+) spi.CacheWriteMetadata {
+	if file != nil && file.Info != nil {
+		return spi.CacheWriteMetadata{
+			ModifiedAt: file.Info.ModTime().UTC(),
+			FileSize:   file.Info.Size(),
+			IndexTime:  indexTime,
 		}
 	}
-
-	return note, nil
+	if file != nil {
+		return p.metadataFromPath(file.Path, indexTime)
+	}
+	return spi.CacheWriteMetadata{
+		IndexTime:  indexTime,
+		ModifiedAt: time.Time{},
+		FileSize:   0,
+	}
 }
 
-// handleFileParseRequested processes parse requests for markdown files.
-func (p *MarkdownProcessor) handleFileParseRequested(
-	ctx context.Context,
-	event domain.DomainEvent,
-) error {
-	parseEvent, ok := event.(*events.FileParseRequestedEvent)
-	if !ok {
-		return nil
+// metadataFromPath builds cache write metadata from a file path.
+// Used when file info is not available in the VaultFile.
+func (p *VaultProcessor) metadataFromPath(
+	path string,
+	indexTime time.Time,
+) spi.CacheWriteMetadata {
+	meta := spi.CacheWriteMetadata{
+		IndexTime:  indexTime,
+		ModifiedAt: time.Time{},
+		FileSize:   0,
 	}
-
-	// Only handle markdown files
-	if !strings.HasSuffix(parseEvent.AggregateID(), ".md") {
-		return nil // Skip non-markdown files
+	if path == "" {
+		return meta
 	}
-
-	p.log.Debug().
-		Str("path", parseEvent.AggregateID()).
-		Msg("parsing markdown file")
-
-	// Parse markdown content into a Note
-	note, err := p.markdownParser.ParseNote(
-		ctx,
-		parseEvent.AggregateID(),
-		parseEvent.Content(),
-	)
+	absolute := filepath.Join(p.config.VaultPath, path)
+	info, err := os.Stat(absolute)
 	if err != nil {
-		p.log.Warn().
-			Err(err).
-			Str("path", parseEvent.AggregateID()).
-			Msg("failed to parse markdown")
-		return err
+		return meta
 	}
-
-	// Emit successful parse event
-	publishNoteParsed(ctx, p.eventBus, p.log, note, event.OccurredAt())
-	return nil
+	meta.ModifiedAt = info.ModTime().UTC()
+	meta.FileSize = info.Size()
+	return meta
 }
 
-// handleValidationRequested processes validation requests for complete notes.
-func (p *MarkdownProcessor) handleValidationRequested(
+// publishNoteIndexedEvent publishes a note indexed event to the event bus.
+func (p *VaultProcessor) publishNoteIndexedEvent(
 	ctx context.Context,
-	event domain.DomainEvent,
-) error {
-	validationEvent, ok := event.(*events.FrontmatterValidationRequestedEvent)
-	if !ok {
-		return nil
-	}
-
-	note := validationEvent.Note()
-	p.log.Debug().
-		Str("path", note.Path).
-		Msg("validating complete note entity")
-
-	// Perform comprehensive note validation
-	err := p.validator.IsSchemaCompliant(
-		ctx,
-		note.Path,
-		note.Frontmatter,
-	)
-
-	var validationErrors []string
-	isValid := err == nil
-	if err != nil {
-		validationErrors = []string{err.Error()}
-	}
-
-	// Emit validation result event with complete note
-	publishFrontmatterValidated(
-		ctx,
-		p.eventBus,
-		p.log,
-		note,
-		isValid,
-		validationErrors,
-		event.OccurredAt(),
-	)
-	return nil
+	note domain.Note,
+) {
+	publishNoteIndexed(ctx, p.eventBus, p.log, note, time.Now())
 }
