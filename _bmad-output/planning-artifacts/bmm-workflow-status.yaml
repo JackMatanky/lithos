@@ -1,3 +1,20 @@
+# Workflow Status Template
+
+# This tracks progress through BMM methodology Analysis, Planning, and Solutioning phases.
+# Implementation phase is tracked separately in sprint-status.yaml
+
+# STATUS DEFINITIONS:
+# ==================
+# Initial Status (before completion):
+#   - required: Must be completed to progress
+#   - optional: Can be completed but not required
+#   - recommended: Strongly suggested but not required
+#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
+#
+# Completion Status:
+#   - {file-path}: File created/found (e.g., "docs/product-brief.md")
+#   - skipped: Optional/conditional workflow that was skipped
+
 generated: "2026-01-08"
 project: "lithos"
 project_type: "greenfield"
@@ -6,11 +23,23 @@ field_type: "greenfield"
 workflow_path: "_bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
 
 workflow_status:
-  # Phase 0: Discovery
+  # Phase 0: Discovery (Optional)
   - phase: 0
     name: "Discovery (Optional)"
     optional: true
     workflows:
+      - id: "brainstorm-project"
+        status: "skipped"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:brainstorm-project"
+        optional: true
+
+      - id: "research"
+        status: "skipped"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:research"
+        optional: true
+
       - id: "product-brief"
         status: "_bmad-output/planning-artifacts/discovery/project_brief.md"
         agent: "analyst"
@@ -51,10 +80,16 @@ workflow_status:
         notes: "Rust implementation architecture focusing on zero-copy Redb/rkyv storage and hexagonal boundaries."
 
       - id: "create-epics-and-stories"
-        status: "pending"
+        status: "required"
         agent: "pm"
         command: "/bmad:bmm:workflows:create-epics-and-stories"
         required: true
+
+      - id: "test-design"
+        status: "recommended"
+        agent: "tea"
+        command: "/bmad:bmm:workflows:test-design"
+        recommended: true
 
       - id: "validate-architecture"
         status: "completed"
@@ -63,3 +98,20 @@ workflow_status:
         optional: true
         completed: "2026-01-08"
         notes: "Coherence, coverage (100% of 50 FRs), and implementation readiness validated."
+
+      - id: "implementation-readiness"
+        status: "required"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:implementation-readiness"
+        required: true
+
+  # Phase 3: Implementation
+  - phase: 3
+    name: "Implementation"
+    required: true
+    workflows:
+      - id: "sprint-planning"
+        status: "required"
+        agent: "sm"
+        command: "/bmad:bmm:workflows:sprint-planning"
+        required: true
