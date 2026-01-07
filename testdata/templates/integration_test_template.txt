@@ -1,5 +1,0 @@
-# {{toLower "DAILY NOTE"}}
-
-Created on: {{now "2006-01-02"}}
-
-Hello, {{toUpper "world"}}!
