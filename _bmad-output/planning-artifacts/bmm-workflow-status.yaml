@@ -1,0 +1,65 @@
+generated: "2026-01-08"
+project: "lithos"
+project_type: "greenfield"
+selected_track: "method"
+field_type: "greenfield"
+workflow_path: "_bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
+
+workflow_status:
+  # Phase 0: Discovery
+  - phase: 0
+    name: "Discovery (Optional)"
+    optional: true
+    workflows:
+      - id: "product-brief"
+        status: "_bmad-output/planning-artifacts/discovery/project_brief.md"
+        agent: "analyst"
+        command: "/bmad:bmm:workflows:product-brief"
+        optional: true
+        completed: "2026-01-08"
+
+  # Phase 1: Planning
+  - phase: 1
+    name: "Planning"
+    required: true
+    workflows:
+      - id: "prd"
+        status: "_bmad-output/planning-artifacts/prd.md"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:prd"
+        required: true
+        completed: "2026-01-08"
+
+      - id: "create-ux-design"
+        status: "_bmad-output/planning-artifacts/ux-design-specification.md"
+        agent: "ux-designer"
+        command: "/bmad:bmm:workflows:create-ux-design"
+        conditional: "if_has_ui"
+        completed: "2026-01-08"
+
+  # Phase 2: Solutioning
+  - phase: 2
+    name: "Solutioning"
+    required: true
+    workflows:
+      - id: "create-architecture"
+        status: "_bmad-output/planning-artifacts/architecture.md"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:create-architecture"
+        required: true
+        completed: "2026-01-08"
+        notes: "Rust implementation architecture focusing on zero-copy Redb/rkyv storage and hexagonal boundaries."
+
+      - id: "create-epics-and-stories"
+        status: "pending"
+        agent: "pm"
+        command: "/bmad:bmm:workflows:create-epics-and-stories"
+        required: true
+
+      - id: "validate-architecture"
+        status: "completed"
+        agent: "architect"
+        command: "/bmad:bmm:workflows:validate-architecture"
+        optional: true
+        completed: "2026-01-08"
+        notes: "Coherence, coverage (100% of 50 FRs), and implementation readiness validated."
