@@ -313,6 +313,37 @@ lithos/
 - Configuration hierarchy supports enterprise deployment
 - Testing patterns scale with team growth
 
+## Core Architectural Decisions
+
+### Decision Priority Analysis
+
+**Critical Decisions (Block Implementation):**
+- **Storage Engine:** Redb + rkyv (Zero-copy structured KV). [ADR 001](adr/001-storage-redb-rkyv.md)
+- **Templating:** MiniJinja (Dynamic Jinja2). [ADR 002](adr/002-template-engine.md)
+- **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 003](adr/003-markdown-parsing.md)
+- **Configuration:** Figment (Provider-based hierarchy). [ADR 004](adr/004-configuration-management.md)
+- **Error Handling:** miette + thiserror (Structured diagnostics). [ADR 005](adr/005-error-handling-diagnostics.md)
+
+**Important Decisions (Shape Architecture):**
+- **Workspace:** Cargo Workspaces for Hexagonal boundaries.
+- **Identity:** UUID v7 (Standardized sortable identifiers).
+- **Concurrency:** Tokio-based async runtime.
+
+**Deferred Decisions (Post-MVP):**
+- **LSP Implementation details.**
+- **Plugin architecture specifications.**
+
+### Data Architecture
+- **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization for high-frequency LSP lookups.
+- **Identity:** UUID v7. Decouples identity from physical path to avoid the "directory trap."
+- **ADR Reference:** [ADR 001: Storage - Redb + rkyv](adr/001-storage-redb-rkyv.md)
+
+### Technical Preferences (Step 4 Refinement)
+- **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 002](adr/002-template-engine.md)
+- **Markdown:** **pulldown-cmark**. Enables high-speed link extraction via event streaming without building expensive ASTs. [ADR 003](adr/003-markdown-parsing.md)
+- **Configuration:** **Figment**. Uses the Provider pattern to elegantly handle the 6-layer priority hierarchy. [ADR 004](adr/004-configuration-management.md)
+- **Errors/Diagnostics:** **miette**. Provides high-fidelity terminal snippets and 1:1 mapping to LSP Diagnostic objects. [ADR 005](adr/005-error-handling-diagnostics.md)
+
 ## Implementation Patterns & Consistency Rules
 
 ### Pattern Categories Defined
