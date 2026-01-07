@@ -1,5 +1,5 @@
 ---
-stepsCompleted: [1, 2, 3, 4, 5]
+stepsCompleted: [1, 2, 3, 4, 5, 6]
 inputDocuments:
   - label: PRD
     path: docs/rust/prd.md
@@ -355,6 +355,175 @@ lithos/
 - **Markdown:** **pulldown-cmark**. Enables high-speed link extraction via event streaming without building expensive ASTs. [ADR 003](adr/003-markdown-parsing.md)
 - **Configuration:** **Figment**. Uses the Provider pattern to elegantly handle the 6-layer priority hierarchy. [ADR 004](adr/004-configuration-management.md)
 - **Errors/Diagnostics:** **miette**. Provides high-fidelity terminal snippets and 1:1 mapping to LSP Diagnostic objects. [ADR 005](adr/005-error-handling-diagnostics.md)
+
+## Project Structure & Boundaries
+
+### Complete Project Directory Structure
+
+```text
+lithos/
+├── .gitattributes                # LF enforcement
+├── .gitignore                    # standard Rust ignores
+├── .mise/                        # TASK ORCHESTRATION (mise-first)
+│   └── scripts/
+│       ├── dev-setup.sh          # Env bootstrap
+│       ├── run-benchmarks.sh     # Performance validation (Criterion)
+│       └── install-hooks.sh      # Git hook setup
+├── .pre-commit-config.yaml       # Quality gates (miette, clippy, rustfmt)
+├── Cargo.toml                    # Workspace configuration (Rust 1.92+)
+├── Cargo.lock                    # Dependency lock file
+├── mise.toml                     # Task definitions & tool versions
+├── deny.toml                     # Dependency license & security policy
+├── rustfmt.toml                  # Formatting (import sorting)
+├── clippy.toml                   # Complexity limits (cognitive < 15)
+├── README.md                     # Project overview
+├── docs/                         # Documentation
+│   ├── rust/
+│   │   ├── architecture.md       # This document
+│   │   ├── adr/                  # Architectural Decision Records (001-006)
+│   │   └── prd.md                # Product requirements
+├── crates/
+│   ├── domain/                   # THE INVIOLATE CORE (Logic only)
+│   │   ├── src/
+│   │   │   ├── lib.rs            # Prelude & Common Types
+│   │   │   ├── models/           # Identity & Unified Aggregates
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── identity.rs   # UUID v7 (Time-ordered keys)
+│   │   │   │   ├── note.rs       # Note Root + Link, Heading, Task, Tag, Position
+│   │   │   │   ├── schema.rs     # Schema + PropertyBank + PropertySpec
+│   │   │   │   └── template.rs   # Template Syntax & Design models
+│   │   │   ├── ports/            # HEXAGONAL INTERFACES (API/SPI)
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── api/          # DRIVING PORTS
+│   │   │   │   │   ├── mod.rs
+│   │   │   │   │   ├── command.rs # Use case entry Port
+│   │   │   │   │   └── ui.rs      # Prompt/Interaction Port
+│   │   │   │   └── spi/          # DRIVEN PORTS
+│   │   │   │       ├── mod.rs
+│   │   │   │       ├── repository.rs # Storage/Graph persistence
+│   │   │   │       ├── template.rs   # Rendering engine Port
+│   │   │   │       ├── markdown.rs   # Content parsing Port
+│   │   │   │       ├── bus.rs        # Event bus Port
+│   │   │   │       └── config.rs     # Config loading Port
+│   │   │   ├── events.rs         # Domain Event Enums
+│   │   │   └── errors.rs         # miette + thiserror definitions
+│   ├── app/                      # THE BRAIN (Orchestration)
+│   │   ├── src/
+│   │   │   ├── lib.rs
+│   │   │   ├── commands/         # WRITE USE-CASES
+│   │   │   ├── queries/          # READ USE-CASES
+│   │   │   ├── compliance/       # Note-Schema Compliance (Referee)
+│   │   │   │   ├── mod.rs
+│   │   │   │   └── engine.rs     # Compliance logic (Note vs Schema)
+│   │   │   ├── template/         # Template Generation (FR9)
+│   │   │   │   ├── mod.rs
+│   │   │   │   └── composer.rs   # Schema-driven generation & prompts
+│   │   │   ├── metrics/          # Vault-wide statistics & analysis
+│   │   │   │   ├── mod.rs
+│   │   │   │   └── calculator.rs # Aggregation logic
+│   │   │   └── indexer/          # Indexer Actor (MPSC Mailbox)
+│   ├── adapters/                 # INFRASTRUCTURE (API/SPI Split)
+│   │   ├── src/
+│   │   │   ├── lib.rs
+│   │   │   ├── api/              # DRIVER ADAPTERS (External -> App)
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── cli/          # Clap + miette Visual Reports
+│   │   │   │   └── lsp/          # State synchronization
+│   │   │   ├── spi/              # DRIVEN ADAPTERS (App -> External)
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── storage/      # Redb Decomposed Tables impl
+│   │   │   │   ├── schema/       # Schema SPI (Rigor from Go)
+│   │   │   │   │   ├── mod.rs
+│   │   │   │   │   ├── loader.rs   # Discovery
+│   │   │   │   │   ├── resolver.rs # $ref & inheritance
+│   │   │   │   │   └── validator.rs # Syntactic structure check
+│   │   │   │   ├── markdown/     # Extraction & pulldown-cmark impl
+│   │   │   │   │   ├── mod.rs
+│   │   │   │   │   └── extractor.rs # Metadata extraction (from files)
+│   │   │   │   ├── template/     # MiniJinja Env & functions
+│   │   │   │   ├── config/       # Figment hierarchical loader
+│   │   │   │   ├── events/       # Hybrid EventBus impl
+│   │   │   │   └── fs/           # OS Atomic operations
+│   │   │   └── dto/              # Transport Objects
+│   └── lithos/                   # BINARY ENTRY POINT
+│       └── src/
+│           └── main.rs           # DI Root & Runtime Init
+├── tests/                        # Integration & E2E
+└── benches/                      # Performance Benchmarks
+```
+
+### Architectural Boundaries
+
+**API Boundaries:**
+- **CLI (`adapters/api/cli`):** The primary driver. Maps terminal commands to `app/commands`. Renders **miette** graphical diagnostics for both syntactic (parsing) and semantic (compliance) errors.
+- **LSP (`adapters/api/lsp`):** A reactive driver. Pulls Redb snapshots via the `watch` state plane to provide sub-50ms link completion and jumps.
+
+**Component Boundaries:**
+- **Indexer Actor (`app/indexer`):** The exclusive writer for Redb. It ensures knowledge graph consistency across concurrent file updates.
+- **Compliance Engine (`app/compliance`):** Acts as the "Referee." It checks if Note metadata satisfies Schema rules. This is separated from domain models to keep them focused on data structure.
+
+**Service Boundaries:**
+- **Template Composer (FR9):** Orchestrates **Schema-Driven Design**. It inspects the template's linked schema to dynamically drive the **UI Port** prompts, ensuring templates are "design-correct" before they are rendered.
+- **Metrics Calculator (`app/metrics`):** Aggregates graph data (Backlinks, Tag frequency, Schema usage) for observability.
+
+**Data Boundaries:**
+- **Identity (UUID v7):** We use UUID v7 (Time-ordered) instead of numeric `st_uid` or paths.
+    - **Rationale:** `st_uid` identifies the OS user owning the file. UUID v7 identifies the **logical entity**. Because it is time-ordered, Redb (B-Tree) can append new notes with O(1) performance and zero fragmentation.
+- **Zero-Copy Paths:** **rkyv** buffers are generated in SPI adapters and passed as `Arc<[u8]>`, allowing the `app` and `api` layers to cast them to models without copying.
+
+### Requirements to Structure Mapping
+
+**Feature/Epic Mapping:**
+- **Knowledge Graph (FR20-FR25)** → `app/queries/`, `adapters/spi/storage/`, `domain/models/note.rs` (Link metadata).
+- **Schema Compliance (FR8-FR14)** → `domain/models/schema.rs`, `app/compliance/`, `adapters/spi/schema/`.
+- **Template Design (FR1-FR7, FR9)** → `domain/models/template.rs`, `app/template/composer.rs`.
+- **CLI Interaction (FR41-FR47)** → `adapters/api/cli/`, `domain/ports/api/ui.rs`.
+
+**Cross-Cutting Concerns:**
+- **Metadata Extraction:** Handled in `adapters/spi/markdown/extractor.rs` (Adapter Layer).
+- **Validation Layers:**
+    - **Syntactic:** SPI Adapters (Config/Markdown/Schema).
+    - **Semantic:** `app/compliance/engine.rs`.
+- **Task Management:** Centralized in `.mise/scripts/`.
+
+### Integration Points
+
+**Internal Communication:**
+- **Hybrid Bus (ADR 006):** Tiered channels (`mpsc`, `broadcast`, `watch`) prevent UI lag from blocking the indexing pipeline.
+- **DI Container:** The `lithos` crate wires concrete SPI implementations (e.g., `RedbWriter`) to Application services via constructor injection.
+
+**External Integrations:**
+- **Obsidian Vault:** Interfaced via `adapters/spi/fs` and parsed via `adapters/spi/markdown`.
+- **Hierarchical Config:** Managed by `figment` in `adapters/spi/config`.
+
+**Data Flow:**
+- **Write Path:** CLI -> App Command -> Indexer Actor -> Redb SPI -> EventBus.
+- **Read Path:** CLI -> App Query -> Redb SPI (Zero-copy) -> CLI Render.
+
+### File Organization Patterns
+
+**Configuration Files:**
+- **Centralized Root:** `Cargo.toml`, `clippy.toml`, `rustfmt.toml` ensure project-wide consistency for AI agents.
+
+**Source Organization:**
+- **Consolidated Models:** `note.rs` and `schema.rs` act as cohesive aggregates. They contain all sub-entities (Links, Properties) to maintain local reasoning until size requires split.
+- **API/SPI Distinction:** `adapters/api` for drivers (Clap/LSP), `adapters/spi` for driven infra (Redb/FS).
+
+**Test Organization:**
+- **Unit:** `#[cfg(test)]` modules.
+- **Integration:** `tests/integration/` (Crate boundaries).
+- **E2E:** `tests/e2e/` (Binary behavior).
+
+### Development Workflow Integration
+
+**Development Server Structure:**
+- `mise run dev`: Wraps `cargo-watch` for hot-reloading development and re-indexing.
+
+**Build Process Structure:**
+- `mise run build`: Handles static linking and stripping for a zero-dependency final binary.
+
+**Deployment Structure:**
+- Statically linked, single-binary distribution. Identity (UUID v7) ensures vaults remain portable across machines.
 
 ## Implementation Patterns & Consistency Rules
 
