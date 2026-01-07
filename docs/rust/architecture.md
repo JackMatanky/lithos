@@ -708,7 +708,6 @@ lithos/
 │   ├── e2e/                      # CLI-driven workflow tests
 │   └── arch/                     # Dependency & Boundary enforcement
 └── benches/                      # Performance Benchmarks (Criterion)
-```
 
 ### Architectural Boundaries
 
@@ -986,7 +985,7 @@ Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to es
 This architecture document is your complete guide for implementing Lithos Rust. Follow all decisions, patterns, and structures exactly as documented.
 
 **First Implementation Priority:**
-Initialize the Cargo workspace and establish the `.mise/scripts/dev-setup.sh` bootstrap.
+Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to establish the Data Plane.
 
 **Development Sequence:**
 
