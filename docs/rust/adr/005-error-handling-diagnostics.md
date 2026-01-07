@@ -19,8 +19,8 @@ The project requires a solution that minimizes "error erasure" (losing type info
 The project will adopt **miette** as the primary diagnostic framework, layered over **thiserror** for defining structured error enums.
 
 ### Tiered Error Model
-- **thiserror:** Used to define the underlying error types and derive `std::error::Error` and `Display`. This ensures the domain layer remains pure and its errors are programmatically matchable.
-- **miette:** Used to add diagnostic metadata via `#[derive(Diagnostic)]`. This includes error codes (e.g., `L001`), help text, documentation URLs, and `SourceSpan` labels.
+- **thiserror (v2.0):** Used to define the underlying error types and derive `std::error::Error` and `Display`. This ensures the domain layer remains pure and its errors are programmatically matchable.
+- **miette (v7.6):** Used to add diagnostic metadata via `#[derive(Diagnostic)]`. This includes error codes (e.g., `L001`), help text, documentation URLs, and `SourceSpan` labels.
 - **anyhow:** Explicitly avoided in the core library crates to maintain strict type safety and structured diagnostics. It may be used sparingly in the `main` CLI entry point for catching unexpected global panics.
 
 ## Rationale
