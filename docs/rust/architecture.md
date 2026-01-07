@@ -323,6 +323,7 @@ lithos/
 - **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 003](adr/003-markdown-parsing.md)
 - **Configuration:** Figment (Provider-based hierarchy). [ADR 004](adr/004-configuration-management.md)
 - **Error Handling:** miette + thiserror (Structured diagnostics). [ADR 005](adr/005-error-handling-diagnostics.md)
+- **Event Orchestration:** Hybrid MPSC/Broadcast/Watch. [ADR 006](adr/006-event-orchestration.md)
 
 **Important Decisions (Shape Architecture):**
 - **Workspace:** Cargo Workspaces for Hexagonal boundaries.
@@ -337,6 +338,13 @@ lithos/
 - **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization for high-frequency LSP lookups.
 - **Identity:** UUID v7. Decouples identity from physical path to avoid the "directory trap."
 - **ADR Reference:** [ADR 001: Storage - Redb + rkyv](adr/001-storage-redb-rkyv.md)
+
+### Internal Communication
+- **Strategy:** **Hybrid Event Orchestration**. Uses a Tiered model:
+    - **Data Plane (MPSC):** Reliable indexing via Actor pattern.
+    - **Control Plane (Broadcast):** Global status and notifications.
+    - **State Plane (Watch):** Zero-latency LSP state synchronization.
+- **ADR Reference:** [ADR 006: Event Orchestration](adr/006-event-orchestration.md)
 
 ### Technical Preferences (Step 4 Refinement)
 - **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 002](adr/002-template-engine.md)
