@@ -79,7 +79,7 @@ Performance requirements are stringent - template operations under 500ms, vault 
 
 ### Technical Constraints & Dependencies
 
-**Core Language:** Rust 1.70+ for memory safety and performance, enabling zero-cost abstractions and compile-time guarantees that prevent GC pauses during complex template composition.
+**Core Language:** Rust 1.92+ for memory safety and performance, enabling zero-cost abstractions and compile-time guarantees that prevent GC pauses during complex template composition.
 
 **Platform Support:** macOS and Linux as primary targets, with future Windows support. Single binary distribution with no external runtime dependencies.
 
@@ -91,7 +91,7 @@ Performance requirements are stringent - template operations under 500ms, vault 
 
 **CLI Complexity:** Rich interactive experiences with fuzzy finding, suggesters, multi-selection, progressive help, and single-word commands requiring sophisticated terminal interaction patterns. The CLI-first approach is viable with intelligent interfaces where schemas drive UX - enums become select lists, dates get formatters, with progressive complexity for different user expertise levels.
 
-**Storage & Persistence:** CQRS pattern with sled/rocksdb for embedded persistence, separating write concerns (vault indexing, template execution, schema validation) from read concerns (queries, searches, metadata lookups) to avoid confusion between directory-like vault structures and query-optimized representations.
+**Storage & Persistence:** CQRS pattern with **Redb + rkyv** for embedded persistence, separating write concerns (vault indexing, template execution, schema validation) from read concerns (queries, searches, metadata lookups) to avoid confusion between directory-like vault structures and query-optimized representations. This enables zero-copy deserialization essential for LSP performance.
 
 **Async Runtime:** Embrace Rust's async capabilities throughout the architecture using tokio to support interactive CLI responsiveness and concurrent vault operations.
 
@@ -171,14 +171,18 @@ resolver = "2"
 
 [workspace.dependencies]
 clap = { version = "4.5", features = ["derive"] }
-tokio = { version = "1.47", features = ["full"] }
+tokio = { version = "1.49", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
-sled = "0.34"
+redb = "3.1"
+rkyv = "0.8"
 anyhow = "1.0"
 thiserror = "2.0"
+miette = { version = "7.6", features = ["fancy"] }
 tracing = "0.1"
-handlebars = "6.0"
-skim = "0.15"
+minijinja = "2.14"
+pulldown-cmark = "0.13"
+figment = { version = "0.10", features = ["toml", "env"] }
+uuid = { version = "1.19", features = ["v7", "serde"] }
 ```
 
 **Crate Structure (Following Rust Hexagonal Best Practices):**
@@ -234,11 +238,11 @@ lithos/
 ### Data Architecture
 
 **Already Decided by Workspace Setup:**
-- **Database Choice:** Sled 0.34 for embedded key-value storage with ACID transactions (chosen for Rust-native performance over cross-language alternatives, enabling concurrent access without blocking operations that support ecosystem expansion)
-- **Data Modeling:** Domain entities in domain crate, transport DTOs in adapters crate following Rust's ownership patterns for data integrity
-- **Data Validation:** Schema-driven validation through domain services with typed errors
-- **Migration:** Schema versioning in TOML configurations with startup validation
-- **Caching:** Event-driven invalidation between write/read models using async channels
+- **Database Choice:** **Redb 3.1** for embedded key-value storage with ACID transactions and MVCC, paired with **rkyv 0.8** for zero-copy deserialization.
+- **Data Modeling:** Domain entities in domain crate, transport DTOs in adapters crate following Rust's ownership patterns for data integrity.
+- **Data Validation:** Three-phase pipeline (Syntactic -> Orchestration -> Semantic) with typed errors.
+- **Migration:** Schema versioning in the Redb tables with startup validation.
+- **Caching:** Event-driven invalidation using the state watch plane (ADR 006).
 
 **Path as Identity Decision:** Use vault-relative string paths directly as Note identifiers (no NoteID wrapper) to maintain simplicity and direct filesystem correspondence. Immutable Note entities with embedded Frontmatter following Rust's ownership patterns for data integrity. This approach avoids abstraction complexity while maintaining data consistency and supports the 75% faster template performance target.
 
@@ -364,7 +368,7 @@ lithos/
 - **Modules & Files:** `snake_case` (e.g., `vault_indexer.rs`, `frontmatter_service.rs`)
 - **Functions & Variables:** `snake_case` (e.g., `execute_template`, `vault_path`)
 - **Structs & Enums:** `PascalCase` (e.g., `Note`, `DomainError`, `TemplateEngine`)
-- **Traits:** `PascalCase` ending with trait name (e.g., `CacheWriter`, `VaultReader`)
+- **Traits:** `PascalCase` ending with trait name (e.g., `CacheWriter`, `VaultReader`) or `Port` (e.g., `StoragePort`)
 - **Constants:** `SCREAMING_SNAKE_CASE` (e.g., `MAX_VAULT_SIZE`, `DEFAULT_TIMEOUT`)
 - **Crate Names:** `snake_case` matching directory (e.g., `lithos-domain`, `lithos-app`)
 - **Test Functions:** `snake_case` with `test_` prefix (e.g., `test_execute_template`)
@@ -453,7 +457,7 @@ lithos/
 - **Linting:** Clippy with all pedantic and nursery lints enabled; deny complexity violations
 - **Formatting:** Rustfmt with standard configuration and import sorting
 - **CI/CD:** GitHub Actions with cross-platform testing, coverage reporting, and security auditing
-- **Development Tools:** `cargo-watch` for auto-rebuild, `cargo-expand` for macro debugging, mise for tool version management
+- **Development Tools:** `cargo-watch` for auto-rebuild, `cargo-expand` for macro debugging, **mise 2026.1.0** for tool version management and task execution via `.mise/scripts/`
 - **Pre-commit Hooks:** Use pre-commit framework to run clippy, rustfmt, and tests before commits for maximum visibility and clean git history
 
 **Clippy Complexity Limits:**
