@@ -1053,6 +1053,15 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **Then** test code follows same quality standards as production code
 
 ### Epic 5: Configuration Management System
+Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
+**FRs covered:** FR26, FR27, FR28
+**Implementation Notes:**
+- Figment-based hierarchical config per ADR 004 using Epic 4 loading foundation
+- ConfigPort and mocks created in this epic
+- Sample config files based on JSON schema (lithos-specific)
+- User documentation for configuration
+
+### Story 5.1: Create Config Domain Interface and Port
 
 As a developer implementing configuration management,
 I want a clean domain interface for configuration loading,
@@ -1205,7 +1214,7 @@ Users can define metadata schemas with field types, inheritance, and validation 
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14
 **Implementation Notes:**
 - SchemaPort and mocks created in this epic
-- Sample schema files from docs/refs/obsidian/ converted as test fixtures
+- Sample schema files created as lithos-specific examples using Epic 4 loading foundation
 - Schema validation (syntactic in adapter, semantic in domain)
 - User documentation for schema creation
 
