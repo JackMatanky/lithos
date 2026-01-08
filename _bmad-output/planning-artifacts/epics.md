@@ -2210,7 +2210,27 @@ So that queries follow hexagonal architecture principles.
 **When** I validate the design
 **Then** it follows hexagonal principles with clear separation between domain and infrastructure
 
-### Story 10.2: Implement Basic Query Operations
+### Story 10.2: Integrate Query Service with Storage Layer
+
+As a developer coordinating queries with persistence,
+I want query service integrated with storage layer,
+So that queries retrieve data from the persisted index efficiently.
+
+**Acceptance Criteria:**
+
+**Given** I need storage integration
+**When** I connect with Epic 8 storage
+**Then** queries use storage ports for data retrieval
+
+**Given** storage integration works
+**When** I handle large datasets
+**Then** queries maintain performance through storage optimization
+
+**Given** integration is complete
+**When** I validate data consistency
+**Then** queries return data matching the indexed state
+
+### Story 10.3: Implement Basic Query Operations
 
 As a user needing to find notes,
 I want basic lookup operations by filename and path,
@@ -2230,7 +2250,7 @@ So that I can quickly locate specific notes in the vault.
 **When** I validate performance
 **Then** basic queries complete within acceptable time limits
 
-### Story 10.3: Add Wiki-Link and Alias Resolution
+### Story 10.4: Add Wiki-Link and Alias Resolution
 
 As a user working with interconnected notes,
 I want wiki-links and aliases resolved to actual note paths,
@@ -2250,7 +2270,7 @@ So that links work correctly across the knowledge graph.
 **When** I validate completeness
 **Then** all wiki-link and alias patterns are properly resolved
 
-### Story 10.4: Implement Schema-Based Query Filtering
+### Story 10.5: Implement Schema-Based Query Filtering
 
 As a user organizing notes by schema,
 I want to filter queries by schema keys and metadata,
@@ -2270,7 +2290,7 @@ So that I can find notes with specific properties or schemas.
 **When** I validate edge cases
 **Then** queries handle missing metadata gracefully
 
-### Story 10.5: Implement File Class Query Operations
+### Story 10.6: Implement File Class Query Operations
 
 As a user categorizing notes by type,
 I want to query notes by fileClass for schema-based organization,
@@ -2289,26 +2309,6 @@ So that I can find all "contact" notes or "project" notes efficiently.
 **Given** fileClass operations are implemented
 **When** I validate performance
 **Then** fileClass queries are optimized for large result sets
-
-### Story 10.6: Integrate Query Service with Storage Layer
-
-As a developer coordinating queries with persistence,
-I want query service integrated with storage layer,
-So that queries retrieve data from the persisted index efficiently.
-
-**Acceptance Criteria:**
-
-**Given** I need storage integration
-**When** I connect with Epic 8 storage
-**Then** queries use storage ports for data retrieval
-
-**Given** storage integration works
-**When** I handle large datasets
-**Then** queries maintain performance through storage optimization
-
-**Given** integration is complete
-**When** I validate data consistency
-**Then** queries return data matching the indexed state
 
 ### Story 10.7: Implement Query Cache Invalidation via Events
 
