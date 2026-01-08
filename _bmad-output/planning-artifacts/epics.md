@@ -1643,6 +1643,26 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
+### Story 7.12: Document Event Bus Integration for Developers
+
+As a developer integrating with the event system,
+I want comprehensive developer documentation for event bus usage,
+So that other epics can properly publish and subscribe to events.
+
+**Acceptance Criteria:**
+
+**Given** event system is implemented
+**When** I create developer documentation
+**Then** it includes event publishing/subscription patterns and integration contracts
+
+**Given** documentation exists
+**When** developers read it
+**Then** they understand how to integrate with the event bus in their epics
+
+**Given** integration docs are complete
+**When** other epics implement event integration
+**Then** they follow consistent patterns without architectural review
+
 ### Epic 8: Storage Layer & Persistence
 System has zero-copy persistent storage with ACID transactions using Redb + rkyv that supports high-performance queries and maintains data consistency.
 **FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 001)
@@ -1859,6 +1879,26 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
+
+### Story 8.11: Document Storage System for Developers
+
+As a developer working with data persistence,
+I want comprehensive developer documentation for storage operations,
+So that storage can be properly used and maintained across the application.
+
+**Acceptance Criteria:**
+
+**Given** storage system is implemented
+**When** I create developer documentation
+**Then** it includes storage operations, migration procedures, and performance characteristics
+
+**Given** documentation exists
+**When** developers read it
+**Then** they understand storage operations and maintenance procedures
+
+**Given** storage docs are complete
+**When** other epics need storage integration
+**Then** they can implement proper storage usage without architectural review
 
 ### Epic 9: Vault File System Integration & Indexing Engine
 Users can index large vaults (1000+ files) in <2 seconds with incremental updates, reliable crash-free operation, and persistent storage.
