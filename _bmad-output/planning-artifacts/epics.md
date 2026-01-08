@@ -2135,27 +2135,7 @@ So that vault interactions can be tested in isolation without filesystem access.
 **When** I use mocks
 **Then** they simulate realistic vault behavior for comprehensive testing
 
-### Story 9.12: Document Vault Indexing System for Developers
-
-As a developer working with vault operations,
-I want comprehensive developer documentation for indexing,
-So that vault indexing can be properly understood and maintained.
-
-**Acceptance Criteria:**
-
-**Given** indexing system is implemented
-**When** I create developer documentation
-**Then** it includes indexing algorithms, performance characteristics, and maintenance procedures
-
-**Given** documentation exists
-**When** developers read it
-**Then** they understand indexing operations and troubleshooting procedures
-
-**Given** indexing docs are complete
-**When** other components integrate
-**Then** they can work with indexed data effectively
-
-### Story 9.13: Review Epic 9 Test Suite
+### Story 9.12: Review Epic 9 Test Suite
 
 As a developer maintaining the vault indexing system,
 I want an efficient test suite for Epic 9 components,
@@ -2178,6 +2158,26 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
+
+### Story 9.13: Document Vault Indexing System for Developers
+
+As a developer working with vault operations,
+I want comprehensive developer documentation for indexing,
+So that vault indexing can be properly understood and maintained.
+
+**Acceptance Criteria:**
+
+**Given** indexing system is implemented
+**When** I create developer documentation
+**Then** it includes indexing algorithms, performance characteristics, and maintenance procedures
+
+**Given** documentation exists
+**When** developers read it
+**Then** they understand indexing operations and troubleshooting procedures
+
+**Given** indexing docs are complete
+**When** other components integrate
+**Then** they can work with indexed data effectively
 
 ### Epic 10: Query Service & Knowledge Graph
 Users can perform fast lookups by filename, path, or schema keys, resolve wiki-links and aliases, and query metadata from other notes for template use.
