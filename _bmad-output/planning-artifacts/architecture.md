@@ -460,7 +460,7 @@ lithos/
 - **Linting:** Clippy with all pedantic and nursery lints enabled; deny complexity violations
 - **Formatting:** Rustfmt with standard configuration and import sorting
 - **CI/CD:** GitHub Actions with cross-platform testing, coverage reporting, and security auditing
-- **Development Tools:** `cargo-watch` for auto-rebuild, `cargo-expand` for macro debugging, **mise 2026.1.0** for tool version management and task execution via `.mise/scripts/`
+- **Development Tools:** `cargo-watch` for auto-rebuild, `cargo-expand` for macro debugging, **mise 2026.1.0** for tool version management and task execution via `.mise/tasks/`
 - **Pre-commit Hooks:** Use pre-commit framework to run clippy, rustfmt, and tests before commits for maximum visibility and clean git history
 
 **Clippy Complexity Limits:**
@@ -623,7 +623,7 @@ lithos/
 ├── .gitattributes                # LF enforcement
 ├── .gitignore                    # standard Rust ignores
 ├── .mise/                        # TASK ORCHESTRATION (mise-first)
-│   └── scripts/
+│   └── tasks/
 │       ├── dev-setup.sh          # Env bootstrap (mise run setup)
 │       ├── run-benchmarks.sh     # Performance validation (mise run bench)
 │       └── install-hooks.sh      # Git hook setup
@@ -636,12 +636,12 @@ lithos/
 ├── clippy.toml                   # Complexity limits (cognitive < 15)
 ├── README.md                     # Project overview
 ├── _bmad-output/
-│   └── planning-artifacts/
-│       ├── discovery/            # Project brief and corresponding elicitation summary
-│       ├── adr/                  # Architectural Decision Records (001-007)
-│       ├── architecture.md       # This document
-│       ├── prd.md                # Product requirements (PRD)
-│       └── ux-design-specification.md  # UX Design Specification
+│   ├── planning-artifacts/
+│   │   ├── discovery/            # Project brief and corresponding elicitation summary
+│   │   ├── adr/                  # Architectural Decision Records (001-007)
+│   │   ├── architecture.md       # This document
+│   │   ├── prd.md                # Product requirements (PRD)
+│   │   └── ux-design-specification.md  # UX Design Specification
 │   └── implementation-artifacts/
 │       ├── course_corrections/   # Course corrections and implementation notes
 │       ├── retros/               # Retrospectives and lessons learned
@@ -769,7 +769,7 @@ lithos/
   - **Syntactic (Adapter):** Structural validity of YAML/TOML/Schema JSON.
   - **Semantic/Compliance (App):** Contract check between a Note and its Schema.
 - **Performance:** Monitored via `benches/`, optimized via `rkyv` byte-layouts.
-- **Task Management:** Centralized in `.mise/scripts/` and orchestrated via `mise.toml`.
+- **Task Management:** Centralized in `.mise/tasks/` and orchestrated via `mise.toml`.
 
 ### Integration Points
 
@@ -809,7 +809,7 @@ lithos/
 **Asset Organization:**
 
 - **Docs:** Centralized in `docs/` using `mdBook` layout.
-- **Scripts:** All shell logic encapsulated in `.mise/scripts/`.
+- **Scripts:** All shell logic encapsulated in `.mise/tasks/`.
 
 ### Development Workflow Integration
 
