@@ -1081,7 +1081,7 @@ So that configuration can be loaded through a well-defined contract following he
 **When** I validate the design
 **Then** it follows hexagonal principles with clear separation between domain and infrastructure
 
-### Story 4.2: Implement Hierarchical Configuration Loading
+### Story 5.2: Implement Hierarchical Configuration Loading
 
 As a user configuring lithos,
 I want hierarchical configuration that respects precedence rules,
@@ -1101,7 +1101,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **When** I validate TOML parsing
 **Then** complex nested structures are properly deserialized
 
-### Story 4.3: Add Configuration Validation and Error Handling
+### Story 5.3: Add Configuration Validation and Error Handling
 
 As a user providing configuration,
 I want clear validation and helpful error messages,
@@ -1121,7 +1121,7 @@ So that I can identify and fix configuration issues quickly.
 **When** I test error handling
 **Then** partial invalid configs provide clear guidance on what needs to be fixed
 
-### Story 4.4: Implement Configuration Versioning and Migration
+### Story 5.4: Implement Configuration Versioning and Migration
 
 As a developer maintaining lithos,
 I want configuration versioning and migration support,
@@ -1141,7 +1141,7 @@ So that configuration files can evolve safely across versions without breaking u
 **When** users upgrade
 **Then** clear error messages guide them through manual migration steps
 
-### Story 4.5: Create Sample Configuration Files
+### Story 5.5: Create Sample Configuration Files
 
 As a user getting started with lithos,
 I want sample configuration files based on a complete JSON schema,
@@ -1165,31 +1165,31 @@ So that I can understand configuration options and get started quickly with vali
 **When** they start lithos
 **Then** configurations load successfully and demonstrate expected behavior
 
-### Story 4.6: Review Epic 4 Test Suite
+### Story 5.6: Review Epic 5 Test Suite
 
 As a developer maintaining the configuration system,
-I want an efficient test suite for Epic 4 components,
+I want an efficient test suite for Epic 5 components,
 So that tests provide good coverage without redundancy or excessive execution time.
 
 **Acceptance Criteria:**
 
-**Given** all Epic 4 components are implemented with tests
+**Given** all Epic 5 components are implemented with tests
 **When** I review the test suite
 **Then** it achieves 90%+ coverage for configuration components
 
 **Given** the test suite is implemented
 **When** I check for redundancy
-**Then** no duplicate test cases exist across config components
+**Then** no duplicate test cases exist across configuration components
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 4 suite
+**Then** test execution completes in <30 seconds for the full Epic 5 suite
 
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Story 4.7: Document Configuration System for Users
+### Story 5.7: Document Configuration System for Users
 
 As a user configuring lithos,
 I want comprehensive documentation for configuration options,
