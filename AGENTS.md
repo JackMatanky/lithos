@@ -4,10 +4,10 @@
 
 The following critical files are essential and **MUST** be reviewed before starting:
 
-- Coding Standards: _bmad-output/planning-artifacts/architecture/coding-standards.md
-- Data Models: _bmad-output/planning-artifacts/architecture/data-models.md
-- Components: _bmad-output/planning-artifacts/architecture/components.md
-- Tech Stack: _bmad-output/planning-artifacts/architecture/tech-stack.md
+- Project Context: _bmad-output/project-context.md
+- Workflow Status: _bmad-output/planning-artifacts/bmm-workflow-status.yaml
+- Architecture: _bmad-output/planning-artifacts/architecture.md
+- Product Requirements: _bmad-output/planning-artifacts/prd.md
 
 ## Agents
 
