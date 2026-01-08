@@ -211,7 +211,7 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - **Port Coupling**: Go had unnecessary complexity with separate SchemaLoaderPort and SchemaRegistryPort
 - **Rust Approach**: Simplify to single SchemaPort; automatic registration on load
 
-**Template System (Group 6 - Epic 5 Dependency):**
+**Template System (Group 6 - Epic 6 Dependency):**
 - **Template Struct Name Conflict**: Go had naming collision with text/template package
 - **Rust Approach**: Carefully namespace template domain models; leverage MiniJinja without conflicts
 
@@ -223,56 +223,37 @@ This document provides the complete epic and story breakdown for lithos, decompo
 
 ### FR Coverage Map
 
-- FR1 → Epic 10 (Modular templates with reusable sections)
-- FR2 → Epic 10 (Interactive template execution with prompts/suggesters)
-- FR3 → Epic 11 (Complex template composition with error prevention)
-- FR4 → Epic 11 (Date formatting and manipulation functions)
-- FR5 → Post-MVP Phase 1.5 (Dynamic commands and whitespace control)
-- FR6 → Post-MVP Phase 1.5 (Custom user functions)
-- FR7 → Post-MVP Phase 2a (Advanced template operations with hooks)
-- FR8 → Epic 5 (Define metadata schemas with field types)
-- FR9 → Epic 5 (Schema-driven templates with input parameters)
-- FR10 → Epic 5 (Validate notes against schemas)
-- FR11 → Epic 5 (Schema enums populate suggester options)
-- FR12 → Epic 5 (File filtering via schema directory constraints)
-- FR13 → Epic 5 (Date formatting via schema format strings)
-- FR14 → Epic 5 (Schema inheritance and extension)
-- FR15 → Epic 10 (Free-text input through prompts)
-- FR16 → Epic 10 (Single-choice suggesters)
-- FR17 → Epic 11 (Multi-selection suggesters)
+- FR1 → Epic 11 (Modular templates with reusable sections)
+- FR2 → Epic 11 (Interactive template execution with prompts/suggesters)
+- FR3 → Epic 12 (Complex template composition with error prevention)
+- FR4 → Epic 12 (Date formatting and manipulation functions)
+- FR15 → Epic 11 (Free-text input through prompts)
+- FR16 → Epic 11 (Single-choice suggesters)
+- FR17 → Epic 12 (Multi-selection suggesters)
 - FR18 → Post-MVP Phase 1.5 (Contextual help and guidance)
 - FR19 → Post-MVP Phase 1.5 (Progressive complexity modes)
-- FR20 → Epic 8 (Index and search notes across vaults)
-- FR21 → Epic 9 (Lookups by filename, path, schema keys)
-- FR22 → Epic 9 (Resolve wiki-links and aliases)
-- FR23 → Epic 9 (Query metadata from other notes)
-- FR24 → Epic 8 (Maintain vault consistency)
-- FR25 → Epic 8 (Handle large vaults without degradation)
-- FR26 → Epic 4 (Configure template packs via TOML)
-- FR27 → Epic 4 (Manage schema definitions via config)
-- FR28 → Epic 4 (Set application preferences via config)
+- FR20 → Epic 9 (Index and search notes across vaults)
+- FR21 → Epic 10 (Lookups by filename, path, schema keys)
+- FR22 → Epic 10 (Resolve wiki-links and aliases)
+- FR23 → Epic 10 (Query metadata from other notes)
+- FR24 → Epic 9 (Maintain vault consistency)
+- FR25 → Epic 9 (Handle large vaults without degradation)
+- FR26 → Epic 5 (Configure template packs via TOML)
+- FR27 → Epic 5 (Manage schema definitions via config)
+- FR28 → Epic 5 (Set application preferences via config)
 - FR29 → Post-MVP Phase 2c (Custom validation/linting rules)
-- FR30 → Epic 12 (Cross-platform execution consistency)
-- FR31 → Epic 12 (Access through terminal interfaces)
-- FR32 → Post-MVP Phase 3a (External editor/IDE integration)
-- FR33 → Post-MVP Phase 3a (Automated scripts/CI-CD support)
-- FR34 → Post-MVP Phase 3b (Share template packs via Git)
-- FR35 → Post-MVP Phase 3b (Discover community template packs)
-- FR36 → Post-MVP Phase 3b (Validate third-party templates)
-- FR37 → Post-MVP Phase 3b (Community contribution workflows)
-- FR38 → Post-MVP Phase 4 (Access control for vault data)
-- FR39 → Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 4
-- FR40 → Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 12
-- FR41 → Epic 12 (Execute commands with subcommands)
-- FR42 → Epic 12 (Comprehensive help and documentation)
-- FR43 → Epic 12 (View status and configuration)
-- FR44 → Epic 12 (Manage vault operations from CLI)
-- FR45 → Epic 12 (Run templates with output formats)
-- FR46 → Epic 12 (Configure CLI behavior)
-- FR47 → Epic 12 (Single-word command shortcuts)
-- FR48 → Epic 12 (Clear, actionable error messages)
-- FR49 → Epic 12 (Recover from failed executions with rollback)
-- FR50 → Epic 12 (Diagnose and troubleshoot issues)
+- FR30 → Epic 13 (Cross-platform execution consistency)
+- FR31 → Epic 13 (Access through terminal interfaces)
+- FR41 → Epic 13 (Execute commands with subcommands)
+- FR42 → Epic 13 (Comprehensive help and documentation)
+- FR43 → Epic 13 (View status and configuration)
+- FR44 → Epic 13 (Manage vault operations from CLI)
+- FR45 → Epic 13 (Run templates with output formats)
+- FR46 → Epic 13 (Configure CLI behavior)
+- FR47 → Epic 13 (Single-word command shortcuts)
+- FR48 → Epic 13 (Clear, actionable error messages)
+- FR49 → Epic 13 (Recover from failed executions with rollback)
+- FR50 → Epic 13 (Diagnose and troubleshoot issues)
 
 ## Epic 1: Development Environment & Tooling
 
@@ -939,16 +920,120 @@ So that developers understand the domain language and can work effectively with 
 **When** a developer reads it
 **Then** they understand domain evolution rules and inter-entity contracts without needing user-facing knowledge
 
-### Epic 4: Configuration Management System
-Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
-**FRs covered:** FR26, FR27, FR28
+### Epic 4: File Loading Strategy Foundation
+System has unified file loading strategies for different configuration formats that enable consistent parsing and validation across the application.
+**FRs covered:** Architecture requirements (file loading infrastructure)
 **Implementation Notes:**
-- Figment-based hierarchical config per ADR 004
-- ConfigPort and mocks created in this epic
-- Sample config files from docs/refs/obsidian/ converted as test fixtures
-- User documentation for configuration
+- Unified loading strategy for TOML, JSON, YAML files
+- File format detection and parsing
+- Basic validation infrastructure
+- Enables both configuration (Epic 5) and schema (Epic 6) loading
 
-### Story 4.1: Create Config Domain Interface and Port
+### Story 4.1: Create Unified File Loading Interface
+
+As a developer implementing file loading across the application,
+I want a unified interface for loading different file formats,
+So that TOML, JSON, and YAML files can be loaded consistently with proper error handling.
+
+**Acceptance Criteria:**
+
+**Given** I need to load different configuration file formats
+**When** I create a unified loading interface
+**Then** it supports TOML, JSON, and YAML with automatic format detection
+
+**Given** the unified interface exists
+**When** I load files
+**Then** format detection works by file extension or content analysis
+
+**Given** file loading fails
+**When** I check error handling
+**Then** clear error messages indicate format issues and file locations
+
+### Story 4.2: Implement Format Detection and Parsing
+
+As a developer parsing configuration files,
+I want reliable format detection and parsing,
+So that files are correctly interpreted regardless of their format.
+
+**Acceptance Criteria:**
+
+**Given** I have files in different formats
+**When** I implement parsing
+**Then** TOML files are parsed with toml crate, JSON with serde_json, YAML with serde_yaml
+
+**Given** parsing is implemented
+**When** I test format detection
+**Then** it correctly identifies file types by extension (.toml, .json, .yaml, .yml)
+
+**Given** files have parsing errors
+**When** I handle them
+**Then** errors include specific line numbers and syntax error details
+
+### Story 4.3: Add Basic File Loading Validation
+
+As a developer loading configuration files,
+I want basic validation of loaded data,
+So that obviously malformed files are caught early with helpful error messages.
+
+**Acceptance Criteria:**
+
+**Given** files are loaded
+**When** I validate basic structure
+**Then** checks for required top-level structure and basic type consistency
+
+**Given** validation fails
+**When** I provide error messages
+**Then** they include file path, line numbers, and suggested fixes
+
+**Given** basic validation passes
+**When** I proceed with application-specific validation
+**Then** the data is ready for domain-specific processing
+
+### Story 4.4: Create Loading Strategy Mocks for Testing
+
+As a developer testing file loading functionality,
+I want mocks for the loading strategy,
+So that I can test file loading in isolation without actual file system operations.
+
+**Acceptance Criteria:**
+
+**Given** I need to test loading strategies
+**When** I create mocks
+**Then** mock implementations allow testing different file formats and error conditions
+
+**Given** mocks are available
+**When** I write unit tests
+**Then** tests can verify loading logic without file system dependencies
+
+**Given** integration tests are needed
+**When** I use mocks
+**Then** they simulate real file loading behavior for comprehensive testing
+
+### Story 4.5: Review Epic 4 Test Suite
+
+As a developer maintaining the file loading foundation,
+I want an efficient test suite for Epic 4 components,
+So that tests provide good coverage without redundancy or excessive execution time.
+
+**Acceptance Criteria:**
+
+**Given** all Epic 4 components are implemented with tests
+**When** I review the test suite
+**Then** it achieves 90%+ coverage for loading strategy components
+
+**Given** the test suite is implemented
+**When** I check for redundancy
+**Then** no duplicate test cases exist across loading components
+
+**Given** tests are executed
+**When** I measure performance
+**Then** test execution completes in <30 seconds for the full Epic 4 suite
+
+**Given** test suite is reviewed
+**When** I check maintainability
+**Then** test code follows same quality standards as production code
+
+### Epic 5: Configuration Management System
 
 As a developer implementing configuration management,
 I want a clean domain interface for configuration loading,
@@ -1096,7 +1181,7 @@ So that I can understand and customize lithos behavior effectively.
 **When** they configure lithos
 **Then** they can successfully customize behavior without developer assistance
 
-### Epic 5: Schema System & Validation
+### Epic 6: Schema System & Validation
 Users can define metadata schemas with field types, inheritance, and validation that provide input parameters for templates and enforce vault consistency.
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14
 **Implementation Notes:**
@@ -1105,7 +1190,7 @@ Users can define metadata schemas with field types, inheritance, and validation 
 - Schema validation (syntactic in adapter, semantic in domain)
 - User documentation for schema creation
 
-### Epic 6: Event Bus & Orchestration Infrastructure
+### Epic 7: Event Bus & Orchestration Infrastructure
 System has a robust event-driven architecture enabling loose coupling between services and supporting concurrent operations without god-objects.
 **FRs covered:** Architecture requirements (event-driven, CQRS foundation)
 **Implementation Notes:**
@@ -1115,17 +1200,17 @@ System has a robust event-driven architecture enabling loose coupling between se
 - Prevents god-object orchestrators (Go lesson learned)
 - May create ADR for event patterns if architectural decisions made
 
-### Epic 7: Storage Layer & Persistence
+### Epic 8: Storage Layer & Persistence
 System has zero-copy persistent storage with ACID transactions using Redb + rkyv that supports high-performance queries and maintains data consistency.
 **FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 001)
 **Implementation Notes:**
 - Redb + rkyv per ADR 001 (no SQLite - decision already made)
-- Storage schema design review against Epic 8-9 query requirements
+- Storage schema design review against Epic 9-10 query requirements
 - Unit of Work pattern for transactional consistency
 - Storage port mocks for testing
 - May create ADR for storage schema patterns if needed
 
-### Epic 8: Vault File System Integration & Indexing Engine
+### Epic 9: Vault File System Integration & Indexing Engine
 Users can index large vaults (1000+ files) in <2 seconds with incremental updates, reliable crash-free operation, and persistent storage.
 **FRs covered:** FR20, FR24, FR25
 **Implementation Notes:**
@@ -1135,16 +1220,16 @@ Users can index large vaults (1000+ files) in <2 seconds with incremental update
 - Performance benchmarking stories for NFR2 validation (<2s for 1000+ files)
 - Observability/metrics for indexing performance
 
-### Epic 9: Query Service & Knowledge Graph
+### Epic 10: Query Service & Knowledge Graph
 Users can perform fast lookups by filename, path, or schema keys, resolve wiki-links and aliases, and query metadata from other notes for template use.
 **FRs covered:** FR21, FR22, FR23
 **Implementation Notes:**
 - QueryPort and mocks created in this epic
-- CQRS read side (Epic 8 is write side)
+- CQRS read side (Epic 9 is write side)
 - Performance benchmarking stories for NFR1 validation (<500ms queries)
 - Observability/metrics for query performance
 
-### Epic 10: Basic Interactive Template System
+### Epic 11: Basic Interactive Template System
 Users can create and execute modular templates with schema-driven interactive prompts that generate validated notes with essential template functions.
 **FRs covered:** FR1, FR2, FR9, FR15, FR16
 **Implementation Notes:**
@@ -1156,7 +1241,7 @@ Users can create and execute modular templates with schema-driven interactive pr
 - Performance benchmarking for NFR1 validation (<500ms execution)
 - May create ADR for interactive UI patterns
 
-### Epic 11: Advanced Template Features
+### Epic 12: Advanced Template Features
 Users can compose complex templates with date functions, multi-suggesters, and error prevention for production-ready template workflows.
 **FRs covered:** FR3, FR4, FR17
 **Implementation Notes:**
@@ -1166,7 +1251,7 @@ Users can compose complex templates with date functions, multi-suggesters, and e
 - User documentation for advanced template features
 - Performance validation for complex templates
 
-### Epic 12: CLI Interface & Error Handling
+### Epic 13: CLI Interface & Error Handling
 Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
 **FRs covered:** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR30, FR31
 **Implementation Notes:**
@@ -1177,7 +1262,7 @@ Users can execute lithos commands with intuitive CLI, comprehensive help, single
 - Observability/audit logging for FR40 (basic version)
 - User CLI documentation
 
-### Epic 13: Test Suite Review & Optimization
+### Epic 14: Test Suite Review & Optimization
 Development team has a validated, efficient test suite with no redundancy, full coverage of critical paths, and effective system validation.
 **FRs covered:** NFR16 (comprehensive test coverage), NFR25 (zero crashes)
 **Implementation Notes:**
@@ -1188,7 +1273,7 @@ Development team has a validated, efficient test suite with no redundancy, full 
 - Architectural boundary validation (hexagonal, CQRS, event-driven)
 - Note: Each epic 4-12 has its own test validation story; this is final optimization
 
-### Epic 14: User Documentation & Onboarding
+### Epic 15: User Documentation & Onboarding
 Users have comprehensive documentation, starter templates, sample schemas, and migration guides that enable successful adoption.
 **FRs covered:** NFR13 (clear help), NFR20 (migration paths), NFR28 (installation success)
 **Implementation Notes:**
