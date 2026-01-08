@@ -635,11 +635,21 @@ lithos/
 ├── rustfmt.toml                  # Formatting (import sorting)
 ├── clippy.toml                   # Complexity limits (cognitive < 15)
 ├── README.md                     # Project overview
+├── _bmad-output/
+│   └── planning-artifacts/
+│       ├── discovery/            # Project brief and corresponding elicitation summary
+│       ├── adr/                  # Architectural Decision Records (001-007)
+│       ├── architecture.md       # This document
+│       ├── prd.md                # Product requirements (PRD)
+│       └── ux-design-specification.md  # UX Design Specification
+│   └── implementation-artifacts/
+│       ├── course_corrections/   # Course corrections and implementation notes
+│       ├── retros/               # Retrospectives and lessons learned
+│       ├── stories/              # User stories and acceptance criteria
+│       └── sprint-status.yaml    # Sprint status report
 ├── docs/                         # Documentation
-│   ├── rust/
-│   │   ├── architecture.md       # This document
-│   │   ├── adr/                  # Architectural Decision Records (001-007)
-│   │   └── prd.md                # Product requirements (PRD)
+│   └── refs/
+│       └── obsidian/             # Sample Obsidian vault for reference
 ├── crates/
 │   ├── domain/                   # THE INVIOLATE CORE (Logic only, No I/O)
 │   │   ├── src/
@@ -647,7 +657,8 @@ lithos/
 │   │   │   ├── models/           # Unified Aggregate Models
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── identity.rs   # UUID v7 (Time-ordered keys)
-│   │   │   │   ├── note.rs       # Note Aggregate + Links, Embeds, Tags, Headings, Tasks, Sections
+│   │   │   │   ├── config.rs     # Configuration management
+│   │   │   │   ├── note.rs       # Note Aggregate + Frontmatter, Links, Embeds, Tags, Headings, Tasks, Sections
 │   │   │   │   ├── schema.rs     # Schema + PropertyBank + PropertySpec Aggregate
 │   │   │   │   └── template.rs   # Template Syntax & Design models
 │   │   │   ├── ports/            # HEXAGONAL INTERFACES (API/SPI)
