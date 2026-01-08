@@ -1089,17 +1089,17 @@ So that I can override settings at different levels (global, user, project, vaul
 
 **Acceptance Criteria:**
 
-**Given** I need hierarchical config loading
-**When** I implement with Figment per ADR 004
+**Given** Epic 4 provides unified file loading for TOML, JSON, YAML
+**When** I implement hierarchical config using Figment per ADR 004
 **Then** configuration loads with proper precedence: CLI > Environment > Config files > Defaults
 
 **Given** hierarchical loading is implemented
 **When** I test precedence
 **Then** vault-level config overrides project-level, project overrides user-level, etc.
 
-**Given** configuration files are loaded
+**Given** configuration files are loaded using Epic 4 infrastructure
 **When** I validate TOML parsing
-**Then** complex nested structures are properly deserialized
+**Then** complex nested structures are properly deserialized through Epic 4's format detection
 
 ### Story 5.3: Add Configuration Validation and Error Handling
 
@@ -1162,7 +1162,7 @@ So that I can understand configuration options and get started quickly with vali
 **Then** all samples pass validation and demonstrate all major configuration features
 
 **Given** users have sample configs
-**When** they start lithos
+**When** they start lithos using Epic 4's file loading
 **Then** configurations load successfully and demonstrate expected behavior
 
 ### Story 5.6: Review Epic 5 Test Suite
