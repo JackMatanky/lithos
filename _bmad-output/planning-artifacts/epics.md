@@ -2744,6 +2744,126 @@ Users can execute lithos commands with intuitive CLI, comprehensive help, single
 - Observability/audit logging for FR40 (basic version)
 - User CLI documentation
 
+#### Story 13.1: [Adapters/API] Clap-based CLI Command Structure
+As a user, I want a well-structured CLI with subcommands for all major lithos operations, so that I can navigate and execute commands intuitively.
+**Acceptance Criteria:**
+- **Given** the clap crate for CLI parsing
+- **When** I define the CLI structure
+- **Then** it includes subcommands for `template`, `schema`, `vault`, and `config`.
+- **And** each subcommand has appropriate sub-subcommands (e.g., `template new`, `template list`).
+- **And** global options like `--help`, `--version`, and `--verbose` are supported.
+**References:** FR41, FR42
+
+#### Story 13.2: [Adapters/API] Template Execution CLI Commands
+As a user, I want CLI commands to execute templates with various output options, so that I can create notes from the command line.
+**Acceptance Criteria:**
+- **Given** the `lithos template` subcommand
+- **When** I run `lithos template new <template-name>`
+- **Then** it launches the interactive template execution for the specified template.
+- **And** `lithos template list` shows available templates.
+- **And** output options like `--output <file>` and `--format <markdown|json>` are supported.
+**References:** FR45, FR47
+
+#### Story 13.3: [Adapters/API] Vault Management CLI Commands
+As a user, I want CLI commands to manage vault operations like indexing and searching, so that I can perform vault maintenance from the command line.
+**Acceptance Criteria:**
+- **Given** the `lithos vault` subcommand
+- **When** I run `lithos vault index`
+- **Then** it indexes the current vault and updates the search index.
+- **And** `lithos vault search <query>` performs searches across indexed notes.
+- **And** `lithos vault validate` checks schema compliance across the vault.
+**References:** FR44
+
+#### Story 13.4: [Adapters/API] Schema Management CLI Commands
+As a user, I want CLI commands to manage schemas and validate notes, so that I can maintain schema definitions from the command line.
+**Acceptance Criteria:**
+- **Given** the `lithos schema` subcommand
+- **When** I run `lithos schema list`
+- **Then** it shows all available schema definitions.
+- **And** `lithos schema validate <file>` validates a specific note against its schema.
+- **And** `lithos schema create <name>` launches the schema creation workflow.
+**References:** FR43
+
+#### Story 13.5: [Adapters/API] Configuration CLI Commands
+As a user, I want CLI commands to manage application configuration, so that I can set preferences and view current settings.
+**Acceptance Criteria:**
+- **Given** the `lithos config` subcommand
+- **When** I run `lithos config show`
+- **Then** it displays the current configuration hierarchy (global → user → project → vault).
+- **And** `lithos config set <key> <value>` allows setting configuration values.
+- **And** `lithos config reset` restores default configuration.
+**References:** FR46
+
+#### Story 13.6: [Adapters/API] Miette-based Error Diagnostics
+As a user, I want clear, actionable error messages when operations fail, so that I can understand and resolve issues quickly.
+**Acceptance Criteria:**
+- **Given** the miette crate for diagnostics
+- **When** a command fails
+- **Then** it displays structured error messages with context and suggestions.
+- **And** file path errors include clickable links in supported terminals.
+- **And** validation errors highlight specific fields and provide correction hints.
+**References:** FR48
+
+#### Story 13.7: [Adapters/API] Comprehensive Help System
+As a user, I want comprehensive help and documentation accessible from the CLI, so that I can learn how to use lithos without leaving the terminal.
+**Acceptance Criteria:**
+- **Given** any lithos command
+- **When** I add `--help` or `-h`
+- **Then** it shows detailed usage information with examples.
+- **And** `lithos help <topic>` provides in-depth documentation for specific features.
+- **And** help text includes command-line examples and common use cases.
+**References:** FR42
+
+#### Story 13.8: [Adapters/API] Cross-Platform Terminal Support
+As a user, I want lithos to work consistently across operating systems, so that I can use it on macOS, Linux, and potentially Windows.
+**Acceptance Criteria:**
+- **Given** the terminal environment
+- **When** lithos runs on different platforms
+- **Then** it detects and adapts to terminal capabilities (colors, Unicode, etc.).
+- **And** file paths are handled correctly for each platform's conventions.
+- **And** CLI behavior is consistent across supported platforms (macOS primary, Linux).
+**References:** FR30, FR31
+
+#### Story 13.9: [Adapters/SPI] Basic Audit Logging Infrastructure
+As an administrator, I want basic audit logging for template execution and critical operations, so that I can track system usage and troubleshoot issues.
+**Acceptance Criteria:**
+- **Given** template execution or vault operations
+- **When** they complete
+- **Then** key events are logged with timestamps and user context.
+- **And** logs are written to a configurable location with rotation.
+- **And** log levels can be configured (error, warn, info, debug).
+**References:** FR40
+
+#### Story 13.10: [Adapters/API] Single-Word Command Shortcuts
+As a power user, I want single-word shortcuts for common operations, so that I can execute frequent commands quickly.
+**Acceptance Criteria:**
+- **Given** common lithos operations
+- **When** I use shortcuts like `lithos new`
+- **Then** it launches the template picker for creating new notes.
+- **And** `lithos search <query>` performs a vault search.
+- **And** shortcuts are documented in the help system.
+**References:** FR47
+
+#### Story 13.11: [Test] Epic 13 Test Suite Review & Optimization
+As a developer, I want a comprehensive test suite for the CLI and error handling features, so that I can maintain the command-line interface with confidence.
+**Acceptance Criteria:**
+- **Given** the implementation of Epic 13
+- **When** I run the test suite
+- **Then** it achieves 90%+ coverage for CLI parsing, error formatting, and platform detection.
+- **And** integration tests verify end-to-end CLI workflows.
+- **And** the suite validates that all commands produce consistent help output.
+**References:** NFR16
+
+#### Story 13.12: [Docs] Epic 13 CLI Documentation
+As a user, I want comprehensive CLI documentation with examples and tutorials, so that I can master the command-line interface.
+**Acceptance Criteria:**
+- **Given** a completed Epic 13
+- **When** I review the CLI documentation
+- **Then** it includes a command reference for all subcommands and options.
+- **And** it provides usage examples for common workflows.
+- **And** it documents error message interpretation and troubleshooting.
+**References:** NFR13
+
 ### Epic 14: Test Suite Review & Optimization
 Development team has a validated, efficient test suite with no redundancy, full coverage of critical paths, and effective system validation.
 **FRs covered:** NFR16 (comprehensive test coverage), NFR25 (zero crashes)
