@@ -80,10 +80,11 @@ workflow_status:
         notes: "Rust implementation architecture focusing on zero-copy Redb/rkyv storage and hexagonal boundaries."
 
       - id: "create-epics-and-stories"
-        status: "required"
+        status: "_bmad-output/planning-artifacts/epics.md"
         agent: "pm"
         command: "/bmad:bmm:workflows:create-epics-and-stories"
         required: true
+        completed: "2026-01-10"
 
       - id: "test-design"
         status: "recommended"

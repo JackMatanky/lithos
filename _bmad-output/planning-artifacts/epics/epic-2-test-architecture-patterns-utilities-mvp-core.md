@@ -1,4 +1,4 @@
-## Epic 2: Test Architecture, Patterns & Utilities **[MVP CORE]**
+# Epic 2: Test Architecture, Patterns & Utilities **[MVP CORE]**
 
 Developers have comprehensive testing patterns for async code, event-driven systems, and CQRS, plus centralized test utilities for artifacts, temporary directories, and mise task orchestration that ensure 80%+ coverage and catch integration issues early.
 **FRs covered:** NFR16 (test coverage), Architecture requirements (testing strategy)
@@ -8,7 +8,7 @@ Developers have comprehensive testing patterns for async code, event-driven syst
 - mise.toml test tasks: test, test:unit, test:integration, test:coverage, test:watch, test:benchmark
 - ADR creation guidelines for epics making architectural decisions
 
-### Story 2.1: Establish Async Testing Patterns and Infrastructure
+## Story 2.1: Establish Async Testing Patterns and Infrastructure
 
 As a developer testing async code,
 I want standardized patterns for testing tokio-based async operations,
@@ -43,7 +43,7 @@ So that async tests are reliable, race-condition free, and properly isolated.
 - `tokio::time::timeout` for preventing hanging tests
 - Proper test runtime configuration
 
-### Story 2.2: Create Event-Driven Testing Patterns
+## Story 2.2: Create Event-Driven Testing Patterns
 
 As a developer testing event-driven systems,
 I want patterns for testing domain events and event bus interactions,
@@ -83,7 +83,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 - Domain event contract testing
 - Integration testing for event flows
 
-### Story 2.3: Establish CQRS Testing Patterns
+## Story 2.3: Establish CQRS Testing Patterns
 
 As a developer testing CQRS command and query separation,
 I want patterns for testing write operations and read models separately,
@@ -123,7 +123,7 @@ So that command side and query side code are tested in isolation with proper ver
 - Verifying command/query separation
 - Testing cross-aggregate consistency
 
-### Story 2.4: Create Centralized Test Utilities and Infrastructure
+## Story 2.4: Create Centralized Test Utilities and Infrastructure
 
 As a developer writing tests across the codebase,
 I want centralized test utilities for common testing needs,
@@ -163,7 +163,7 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
 - Database/transaction isolation for integration tests
 - Process isolation for system tests
 
-### Story 2.5: Configure Mise Test Task Orchestration
+## Story 2.5: Configure Mise Test Task Orchestration
 
 As a developer running tests during development,
 I want comprehensive mise tasks for different testing scenarios,

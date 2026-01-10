@@ -1,5 +1,4 @@
-## Epic 15: User Documentation & Onboarding
-
+# Epic 15: User Documentation & Onboarding
 Users have comprehensive documentation, starter templates, sample schemas, and migration guides that enable successful adoption.
 **FRs covered:** NFR13 (clear help), NFR20 (migration paths), NFR28 (installation success)
 **Implementation Notes:**
@@ -11,7 +10,6 @@ Users have comprehensive documentation, starter templates, sample schemas, and m
 - Note: Documentation created at story-level in epics; this consolidates and polishes
 
 ### Story 15.1: [Docs] Installation and Setup Guide
-
 As a new user, I want clear installation instructions and setup guidance, so that I can get lithos running quickly on my system.
 **Acceptance Criteria:**
 - **Given** the completed system
@@ -22,7 +20,6 @@ As a new user, I want clear installation instructions and setup guidance, so tha
 **References:** NFR28
 
 ### Story 15.2: [Docs] Quick Start Tutorial
-
 As a new user, I want a hands-on tutorial to create my first note with lithos, so that I can experience the core functionality immediately.
 **Acceptance Criteria:**
 - **Given** the completed system
@@ -33,7 +30,6 @@ As a new user, I want a hands-on tutorial to create my first note with lithos, s
 **References:** NFR13
 
 ### Story 15.3: [Docs] Starter Template and Schema Library
-
 As a new user, I want ready-to-use templates and schemas for common use cases, so that I can start productive work immediately.
 **Acceptance Criteria:**
 - **Given** the converted Obsidian templates
@@ -44,7 +40,6 @@ As a new user, I want ready-to-use templates and schemas for common use cases, s
 **References:** NFR20
 
 ### Story 15.4: [Docs] Migration Guide from Obsidian
-
 As an existing Obsidian user, I want guidance on migrating my workflow to lithos, so that I can transition smoothly with minimal disruption.
 **Acceptance Criteria:**
 - **Given** the template conversion examples
@@ -55,7 +50,6 @@ As an existing Obsidian user, I want guidance on migrating my workflow to lithos
 **References:** NFR20
 
 ### Story 15.5: [Docs] User Manual and Feature Reference
-
 As a power user, I want comprehensive documentation of all features and configuration options, so that I can master advanced functionality.
 **Acceptance Criteria:**
 - **Given** all epic-level documentation
@@ -66,7 +60,6 @@ As a power user, I want comprehensive documentation of all features and configur
 **References:** NFR13
 
 ### Story 15.6: [Docs] API Documentation for Developers
-
 As a developer extending lithos, I want API documentation for the plugin system and extension points, so that I can build custom integrations.
 **Acceptance Criteria:**
 - **Given** the system architecture
@@ -77,7 +70,6 @@ As a developer extending lithos, I want API documentation for the plugin system 
 **References:** NFR13
 
 ### Story 15.7: [Docs] Progressive Complexity Documentation Structure
-
 As a user at any skill level, I want documentation organized by complexity, so that I can learn at my own pace without being overwhelmed.
 **Acceptance Criteria:**
 - **Given** all documentation content
@@ -88,7 +80,6 @@ As a user at any skill level, I want documentation organized by complexity, so t
 **References:** NFR15
 
 ### Story 15.8: [Test] Epic 15 Documentation Validation
-
 As a documentation maintainer, I want validation that all documentation is accurate and complete, so that users receive reliable information.
 **Acceptance Criteria:**
 - **Given** the completed documentation
