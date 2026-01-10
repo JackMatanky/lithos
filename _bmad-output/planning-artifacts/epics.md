@@ -2218,6 +2218,16 @@ As a system administrator, I want continuous monitoring of vault operations, so 
 **And** they trigger automatic recovery procedures
 **And** they log detailed diagnostic information
 
+### Story 9.14: Redb Storage Performance Regression Testing
+As a performance engineer, I want automated regression tests for Redb storage operations, so that the architectural choice of Redb + rkyv remains optimal and performance degradation is caught immediately.
+**Acceptance Criteria:**
+**Given** Redb storage implementation
+**When** performance regression tests run
+**Then** read/write benchmarks are compared against established baselines
+**And** memory usage is validated against winning olympics metrics
+**And** query performance regressions trigger alerts and investigation
+**And** storage benchmarks run in CI/CD pipeline for every change
+
 ### Story 9.14: Document Vault Indexing System for Developers
 
 As a developer working with vault operations,
@@ -2727,6 +2737,16 @@ As a user experiencing template failures, I want automatic fallback mechanisms, 
 **And** manual data entry remains possible
 **And** template completion is still achievable
 
+### Story 11.18: MiniJinja Template Performance Regression Testing
+As a performance engineer, I want automated regression tests for MiniJinja template operations, so that the architectural choice of MiniJinja remains optimal and template execution stays under 500ms NFR1.
+**Acceptance Criteria:**
+**Given** MiniJinja template implementation
+**When** performance regression tests run
+**Then** template rendering benchmarks are compared against 450μs baseline
+**And** complex template execution is validated under 500ms limit
+**And** template compilation performance regressions trigger alerts
+**And** template benchmarks run in CI/CD for every template-related change
+
 #### Story 11.18: [Docs] Epic 11 User & Developer Documentation
 As a user, I want clear instructions on how to create and use interactive templates with schema support, so that I can leverage the full power of the system.
 **Acceptance Criteria:**
@@ -2978,6 +2998,16 @@ As a performance engineer, I want CLI command performance benchmarks, so that NF
 **Then** performance benchmarks are part of CI/CD pipeline
 **And** startup time remains fast across all supported platforms
 
+### Story 13.13: Clap CLI Performance Regression Testing
+As a performance engineer, I want automated regression tests for Clap CLI operations, so that the architectural choice of Clap remains optimal and CLI parsing stays under 50μs baseline.
+**Acceptance Criteria:**
+**Given** Clap CLI implementation
+**When** performance regression tests run
+**Then** command parsing benchmarks are compared against 50μs baseline
+**And** help generation performance is validated under 100ms
+**And** complex command structures maintain fast parsing
+**And** CLI benchmarks run in CI/CD for every CLI-related change
+
 #### Story 13.12: [Test] Epic 13 Test Suite Review & Optimization
 As a developer, I want a comprehensive test suite for the CLI and error handling features, so that I can maintain the command-line interface with confidence.
 **Acceptance Criteria:**
@@ -2988,7 +3018,7 @@ As a developer, I want a comprehensive test suite for the CLI and error handling
 - **And** the suite validates that all commands produce consistent help output.
 **References:** NFR16
 
-#### Story 13.14: [Docs] Epic 13 CLI Documentation
+#### Story 13.15: [Docs] Epic 13 CLI Documentation
 As a user, I want comprehensive CLI documentation with examples and tutorials, so that I can master the command-line interface.
 **Acceptance Criteria:**
 - **Given** a completed Epic 13
@@ -2997,6 +3027,7 @@ As a user, I want comprehensive CLI documentation with examples and tutorials, s
 - **And** it provides usage examples for common workflows.
 - **And** it documents error message interpretation and troubleshooting.
 - **And** it includes error recovery procedures and system coordination guidelines.
+- **And** it documents Clap architectural choice rationale and performance baselines.
 **References:** NFR13
 
 ### Epic 14: Test Suite Review & Optimization
@@ -3171,7 +3202,55 @@ As a product manager, I want a framework for tracking success metrics throughout
 **And** metrics inform prioritization decisions
 **And** successful metrics justify continued investment in subsequent phases
 
-#### Story 14.14: [Docs] Epic 14 Test Documentation
+#### Story 14.14: Architectural Decision Documentation Enhancement
+As a developer, I want comprehensive documentation of the architectural olympics results and decision rationale, so that future contributors understand why specific technologies and patterns were chosen over alternatives.
+**Acceptance Criteria:**
+**Given** the algorithm olympics results for each major component
+**When** I enhance architectural documentation
+**Then** each major technology choice includes benchmark data and trade-off analysis
+**And** migration guides exist for reasonable alternative approaches
+**And** decision rationale connects to specific NFRs and user requirements
+**And** performance regression tests are established for winning choices
+
+**Given** architectural decision documentation
+**When** future technology evaluations occur
+**Then** the documented benchmarks provide comparison baselines
+**And** decision frameworks guide evaluation of new alternatives
+**And** performance envelopes are established for architectural validation
+
+#### Story 14.15: Performance Regression Benchmarking Infrastructure
+As a performance engineer, I want automated benchmarking infrastructure for all winning architectural choices, so that performance regressions are caught early and architectural decisions remain optimal.
+**Acceptance Criteria:**
+**Given** the winning architectural components (MiniJinja, Redb, Clap, etc.)
+**When** I establish performance regression testing
+**Then** automated benchmarks run on each component in CI/CD
+**And** performance baselines are established from current benchmarks
+**And** alerts trigger when performance degrades beyond acceptable thresholds
+**And** benchmark results feed into architectural decision reviews
+
+**Given** performance regression infrastructure
+**When** code changes are made
+**Then** performance impact is automatically measured and reported
+**And** architectural decisions are re-evaluated if performance contracts are violated
+**And** performance trends are tracked over time for optimization opportunities
+
+#### Story 14.16: Technology Alternative Migration Guides
+As a developer evaluating technology changes, I want migration guides for reasonable alternative approaches, so that future architectural pivots can be evaluated and executed efficiently if needed.
+**Acceptance Criteria:**
+**Given** the algorithm olympics runners-up (Tera, SQLite, StructOpt, etc.)
+**When** I create migration guides
+**Then** each alternative includes implementation approach, migration steps, and risk assessment
+**And** performance comparison data is included for decision-making
+**And** rollback procedures are documented for safe evaluation
+**And** integration points are identified for minimal disruption
+
+**Given** migration guides exist
+**When** technology evaluation occurs
+**Then** implementation effort can be estimated accurately
+**And** risk mitigation strategies are available
+**And** business case for migration can be built with data
+
+#### Story 14.17: [Docs] Epic 14 Test Documentation
 As a developer, I want comprehensive documentation of the complete testing strategy including integration and e2e tests, so that future contributors understand how to maintain and extend the test suite.
 **Acceptance Criteria:**
 - **Given** the completed Epic 14
@@ -3182,6 +3261,7 @@ As a developer, I want comprehensive documentation of the complete testing strat
 - **And** it includes risk mitigation strategies and MVP scope reduction guidelines.
 - **And** it documents emergency recovery procedures and continuous risk assessment.
 - **And** it includes implementation sequence validation and success metric tracking.
+- **And** it documents architectural decision rationale and performance regression testing.
 **References:** NFR13
 
 ### Epic 15: User Documentation & Onboarding
