@@ -2203,7 +2203,22 @@ As a performance engineer, I want comprehensive benchmarks for vault indexing op
 **And** performance regressions are detected
 **And** scaling characteristics are documented
 
-### Story 9.13: Document Vault Indexing System for Developers
+### Story 9.13: Vault Operation Monitoring and Health Checks
+As a system administrator, I want continuous monitoring of vault operations, so that performance issues and failures are detected before they impact users.
+**Acceptance Criteria:**
+**Given** vault indexing is running
+**When** I monitor system health
+**Then** indexing performance metrics are collected continuously
+**And** memory usage is tracked against NFR9 limits
+**And** alerts trigger when performance degrades beyond thresholds
+
+**Given** vault operations encounter issues
+**When** health checks run
+**Then** they detect corrupted indexes or inconsistent state
+**And** they trigger automatic recovery procedures
+**And** they log detailed diagnostic information
+
+### Story 9.14: Document Vault Indexing System for Developers
 
 As a developer working with vault operations,
 I want comprehensive developer documentation for indexing,
@@ -2903,7 +2918,22 @@ As a power user, I want single-word shortcuts for common operations, so that I c
 - **And** shortcuts are documented in the help system.
 **References:** FR47
 
-#### Story 13.11: [Test] CLI Performance Benchmarking (NFR4 Validation)
+#### Story 13.11: [Recovery] System-Wide Error Recovery Coordination
+As a user experiencing system-wide issues, I want coordinated error recovery across all components, so that complex operations can be safely rolled back and system state remains consistent.
+**Acceptance Criteria:**
+**Given** multi-epic operations fail
+**When** the CLI detects cascading failures
+**Then** it coordinates rollback across storage, indexing, and templates
+**And** it provides clear status on what operations were reverted
+**And** it offers recovery options (retry, partial recovery, full reset)
+
+**Given** system corruption is detected
+**When** recovery operations run
+**Then** the CLI provides progress indicators and estimated completion times
+**And** it validates system integrity after recovery
+**And** it logs detailed recovery actions for troubleshooting
+
+#### Story 13.12: [Test] CLI Performance Benchmarking (NFR4 Validation)
 As a performance engineer, I want CLI command performance benchmarks, so that NFR4 (instant feedback and help) is validated and maintained.
 **Acceptance Criteria:**
 **Given** CLI commands are implemented
@@ -2927,9 +2957,7 @@ As a developer, I want a comprehensive test suite for the CLI and error handling
 - **And** the suite validates that all commands produce consistent help output.
 **References:** NFR16
 
-#### Story 13.13: [Docs] Epic 13 CLI Documentation
-
-#### Story 13.12: [Docs] Epic 13 CLI Documentation
+#### Story 13.14: [Docs] Epic 13 CLI Documentation
 As a user, I want comprehensive CLI documentation with examples and tutorials, so that I can master the command-line interface.
 **Acceptance Criteria:**
 - **Given** a completed Epic 13
@@ -2937,6 +2965,7 @@ As a user, I want comprehensive CLI documentation with examples and tutorials, s
 - **Then** it includes a command reference for all subcommands and options.
 - **And** it provides usage examples for common workflows.
 - **And** it documents error message interpretation and troubleshooting.
+- **And** it includes error recovery procedures and system coordination guidelines.
 **References:** NFR13
 
 ### Epic 14: Test Suite Review & Optimization
@@ -3010,7 +3039,47 @@ As a development team, I want end-to-end tests that simulate real user scenarios
 - **And** they validate performance meets NFR requirements across the full workflow.
 **References:** NFR16, NFR25
 
-#### Story 14.7: [Docs] Epic 14 Test Documentation
+#### Story 14.7: [Risk] Epic Dependency Mapping and Risk Assessment
+As a project manager, I want a clear map of epic dependencies and risk assessments, so that we can prioritize implementation order and mitigate high-risk architectural decisions.
+**Acceptance Criteria:**
+**Given** all 15 epics are defined
+**When** I create the dependency map
+**Then** it identifies critical path epics (1, 2, 4, 6, 8, 9, 10, 11)
+**And** it flags high-risk epics requiring early validation (hexagonal architecture, CQRS implementation)
+**And** it provides risk mitigation strategies for each high-risk epic
+
+**Given** the risk assessment is complete
+**When** I prioritize implementation
+**Then** foundation epics are implemented first (1, 2, 4)
+**And** high-risk integrations are validated early
+**And** MVP scope is clearly separated from post-MVP features
+
+#### Story 14.8: [Risk] MVP Scope Reduction Recommendations
+As a product manager, I want clear recommendations for reducing MVP scope if development pressure builds, so that we can deliver a viable product even if not all features are complete.
+**Acceptance Criteria:**
+**Given** the full epic scope
+**When** I analyze MVP essentials
+**Then** core MVP includes Epics 1-4, 6, 8, 9, 11, 13 (basic functionality)
+**And** Phase 1.5 includes Epics 5, 7, 10, 12 (enhanced features)
+**And** Phase 2+ includes Epics 14, 15 and advanced features
+**And** each phase delivers independently valuable increments
+
+**Given** MVP scope recommendations exist
+**When** development constraints arise
+**Then** the team can reduce scope systematically without losing product coherence
+**And** each reduced scope still delivers working software
+
+#### Story 14.9: [Monitor] Enhanced Observability and Monitoring Infrastructure
+As a DevOps engineer, I want comprehensive observability across all epics, so that we can detect issues early and maintain system health.
+**Acceptance Criteria:**
+**Given** all epics are implemented
+**When** I add observability
+**Then** performance metrics are collected for all NFR validations
+**And** error rates and recovery success are monitored
+**And** system health dashboards provide real-time visibility
+**And** alerting triggers on performance regressions or error spikes
+
+#### Story 14.10: [Docs] Epic 14 Test Documentation
 As a developer, I want comprehensive documentation of the complete testing strategy including integration and e2e tests, so that future contributors understand how to maintain and extend the test suite.
 **Acceptance Criteria:**
 - **Given** the completed Epic 14
@@ -3018,6 +3087,7 @@ As a developer, I want comprehensive documentation of the complete testing strat
 - **Then** it includes coverage targets, integration testing patterns, and e2e workflow examples.
 - **And** it documents architectural validation approaches and cross-epic testing strategies.
 - **And** it provides guidance for maintaining test suite efficiency and adding new tests.
+- **And** it includes risk mitigation strategies and MVP scope reduction guidelines.
 **References:** NFR13
 
 ### Epic 15: User Documentation & Onboarding
