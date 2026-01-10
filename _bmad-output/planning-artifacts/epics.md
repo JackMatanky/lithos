@@ -1189,6 +1189,20 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
+### Story 5.6: Configuration Error Recovery and Rollback
+As a user who has made configuration mistakes, I want the system to provide clear error messages and recovery options, so that I can fix configuration issues without losing my work.
+**Acceptance Criteria:**
+**Given** configuration validation fails
+**When** I attempt to load invalid configuration
+**Then** clear error messages identify the specific problems and suggest fixes
+**And** the system falls back to default values for invalid settings
+**And** previous valid configuration is preserved
+
+**Given** configuration changes cause system instability
+**When** I need to rollback
+**Then** the system can restore previous known-good configuration
+**And** configuration history is maintained for recovery
+
 ### Story 5.7: Document Configuration System for Users
 
 As a user configuring lithos,
@@ -1856,7 +1870,22 @@ So that storage interactions can be tested in isolation without database setup.
 **When** I use mocks
 **Then** they simulate realistic storage behavior for comprehensive testing
 
-### Story 8.10: Review Epic 8 Test Suite
+### Story 8.10: Storage Error Recovery and Data Integrity
+As a user experiencing storage issues, I want the system to handle corruption, crashes, and recovery gracefully, so that my vault data remains safe and recoverable.
+**Acceptance Criteria:**
+**Given** storage corruption is detected
+**When** the system attempts to read corrupted data
+**Then** it provides clear error messages and recovery suggestions
+**And** it can restore from backup or recreate corrupted indexes
+**And** data integrity checks prevent silent corruption
+
+**Given** storage operations fail mid-transaction
+**When** the system recovers
+**Then** it maintains ACID properties and data consistency
+**And** failed operations are properly rolled back
+**And** system state remains valid after recovery
+
+### Story 8.11: Review Epic 8 Test Suite
 
 As a developer maintaining the storage system,
 I want an efficient test suite for Epic 8 components,
@@ -1880,7 +1909,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Story 8.11: Document Storage System for Developers
+### Story 8.12: Document Storage System for Developers
 
 As a developer working with data persistence,
 I want comprehensive developer documentation for storage operations,
@@ -2158,6 +2187,21 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
+
+### Story 9.12: Performance Benchmarking for Vault Indexing (NFR2 Validation)
+As a performance engineer, I want comprehensive benchmarks for vault indexing operations, so that NFR2 (<2s for 1000+ files) is validated and monitored.
+**Acceptance Criteria:**
+**Given** vault indexing system is implemented
+**When** I run performance benchmarks
+**Then** indexing 1000+ files completes in <2 seconds
+**And** incremental updates are measured and validated
+**And** memory usage stays within NFR9 bounds (<500MB)
+
+**Given** performance benchmarks are established
+**When** I monitor indexing performance
+**Then** metrics are collected for optimization
+**And** performance regressions are detected
+**And** scaling characteristics are documented
 
 ### Story 9.13: Document Vault Indexing System for Developers
 
@@ -2441,6 +2485,21 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
+
+### Story 10.12: Performance Benchmarking for Query Operations
+As a performance engineer, I want benchmarks for query operations to ensure fast lookups and efficient caching, so that query performance supports template execution requirements.
+**Acceptance Criteria:**
+**Given** query service is implemented
+**When** I run query performance benchmarks
+**Then** basic lookups (filename, path) complete in <100ms
+**And** complex queries with metadata filtering complete in <500ms
+**And** cache hit rates exceed 90% for repeated queries
+
+**Given** performance benchmarks are established
+**When** I monitor query performance
+**Then** metrics are collected for optimization
+**And** query performance regressions are detected
+**And** memory usage for query caches stays within NFR9 bounds
 
 ### Story 10.13: Document Query Service for Developers
 
@@ -2844,7 +2903,21 @@ As a power user, I want single-word shortcuts for common operations, so that I c
 - **And** shortcuts are documented in the help system.
 **References:** FR47
 
-#### Story 13.11: [Test] Epic 13 Test Suite Review & Optimization
+#### Story 13.11: [Test] CLI Performance Benchmarking (NFR4 Validation)
+As a performance engineer, I want CLI command performance benchmarks, so that NFR4 (instant feedback and help) is validated and maintained.
+**Acceptance Criteria:**
+**Given** CLI commands are implemented
+**When** I benchmark CLI performance
+**Then** help commands (--help, -h) display instantly (<100ms)
+**And** basic commands complete with feedback in <500ms
+**And** complex operations provide progress indicators
+
+**Given** CLI performance is monitored
+**When** I detect regressions
+**Then** performance benchmarks are part of CI/CD pipeline
+**And** startup time remains fast across all supported platforms
+
+#### Story 13.12: [Test] Epic 13 Test Suite Review & Optimization
 As a developer, I want a comprehensive test suite for the CLI and error handling features, so that I can maintain the command-line interface with confidence.
 **Acceptance Criteria:**
 - **Given** the implementation of Epic 13
@@ -2853,6 +2926,8 @@ As a developer, I want a comprehensive test suite for the CLI and error handling
 - **And** integration tests verify end-to-end CLI workflows.
 - **And** the suite validates that all commands produce consistent help output.
 **References:** NFR16
+
+#### Story 13.13: [Docs] Epic 13 CLI Documentation
 
 #### Story 13.12: [Docs] Epic 13 CLI Documentation
 As a user, I want comprehensive CLI documentation with examples and tutorials, so that I can master the command-line interface.
@@ -2915,14 +2990,34 @@ As a development team, I want comprehensive integration tests that validate end-
 - **And** they verify cross-epic integration (storage ↔ queries ↔ templates).
 **References:** NFR25
 
-#### Story 14.5: [Docs] Epic 14 Test Documentation
-As a developer, I want documentation of the final test suite and validation approach, so that future contributors understand the testing strategy.
+#### Story 14.5: [Test] Cross-Epic Integration Testing
+As a development team, I want comprehensive integration tests that validate end-to-end workflows and data consistency across epics, so that the system works reliably as a cohesive whole.
+**Acceptance Criteria:**
+- **Given** all epics are implemented
+- **When** I run integration tests
+- **Then** they validate complete user workflows (template creation → vault indexing → schema validation → CLI execution).
+- **And** they verify data consistency between storage, indexing, and query systems.
+- **And** they test cross-epic error propagation and recovery.
+**References:** NFR16, NFR25
+
+#### Story 14.6: [Test] End-to-End Workflow Validation
+As a development team, I want end-to-end tests that simulate real user scenarios from start to finish, so that critical user journeys are thoroughly validated.
+**Acceptance Criteria:**
+- **Given** the complete system
+- **When** I run end-to-end tests
+- **Then** they simulate full user workflows: "Create vault → Index content → Create schema → Create template → Execute template → Verify output".
+- **And** they test both success and failure scenarios with proper error handling.
+- **And** they validate performance meets NFR requirements across the full workflow.
+**References:** NFR16, NFR25
+
+#### Story 14.7: [Docs] Epic 14 Test Documentation
+As a developer, I want comprehensive documentation of the complete testing strategy including integration and e2e tests, so that future contributors understand how to maintain and extend the test suite.
 **Acceptance Criteria:**
 - **Given** the completed Epic 14
 - **When** I review the test documentation
-- **Then** it includes coverage targets and measurement methodology.
-- **And** it documents the architectural validation approach.
-- **And** it provides guidance for maintaining test suite efficiency.
+- **Then** it includes coverage targets, integration testing patterns, and e2e workflow examples.
+- **And** it documents architectural validation approaches and cross-epic testing strategies.
+- **And** it provides guidance for maintaining test suite efficiency and adding new tests.
 **References:** NFR13
 
 ### Epic 15: User Documentation & Onboarding
