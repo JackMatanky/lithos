@@ -2697,7 +2697,37 @@ As a developer, I want a comprehensive and efficient test suite for the interact
 - **And** the suite validates architectural boundaries (e.g. Domain has zero I/O).
 **References:** NFR16
 
-#### Story 11.16: [Docs] Epic 11 User & Developer Documentation
+#### Story 11.16: Template System Resource Limits and Timeouts
+As a system administrator, I want template execution to be bounded by resource limits and timeouts, so that runaway templates cannot exhaust system resources or hang indefinitely.
+**Acceptance Criteria:**
+**Given** template execution starts
+**When** resource limits are exceeded
+**Then** execution is terminated gracefully with clear error messages
+**And** partial outputs are cleaned up automatically
+**And** system resources are protected from exhaustion
+
+**Given** template operations run
+**When** timeouts are exceeded
+**Then** operations are cancelled with rollback to clean state
+**And** users receive actionable timeout messages
+**And** long-running operations provide progress indicators
+
+#### Story 11.17: Template System Fallback Strategies
+As a user experiencing template failures, I want automatic fallback mechanisms, so that template operations degrade gracefully rather than failing completely.
+**Acceptance Criteria:**
+**Given** advanced template features fail
+**When** fallback mechanisms activate
+**Then** operations continue with basic functionality
+**And** users are informed of degraded operation mode
+**And** full functionality is restored when issues are resolved
+
+**Given** schema-driven features are unavailable
+**When** templates require user input
+**Then** they fall back to basic prompt() functions
+**And** manual data entry remains possible
+**And** template completion is still achievable
+
+#### Story 11.18: [Docs] Epic 11 User & Developer Documentation
 As a user, I want clear instructions on how to create and use interactive templates with schema support, so that I can leverage the full power of the system.
 **Acceptance Criteria:**
 - **Given** a completed Epic 11
@@ -2706,6 +2736,7 @@ As a user, I want clear instructions on how to create and use interactive templa
 - **And** it provides examples for using the `suggest()` helper for ad-hoc terminal prompts.
 - **And** it explains the "Clean Slate" policy and how to recover from errors.
 - **And** it lists all available standard library functions with usage examples.
+- **And** it documents resource limits, timeouts, and fallback behaviors.
 **References:** NFR13
 **Acceptance Criteria:**
 - **Given** a completed Epic 11
@@ -3079,7 +3110,37 @@ As a DevOps engineer, I want comprehensive observability across all epics, so th
 **And** system health dashboards provide real-time visibility
 **And** alerting triggers on performance regressions or error spikes
 
-#### Story 14.10: [Docs] Epic 14 Test Documentation
+#### Story 14.10: [Recovery] System-Wide Emergency Recovery Procedures
+As a system administrator facing catastrophic failures, I want emergency recovery procedures, so that the system can be restored to a working state even after major failures.
+**Acceptance Criteria:**
+**Given** system-wide corruption is detected
+**When** emergency recovery is initiated
+**Then** the system can be reset to a clean state with minimal data loss
+**And** critical configuration is preserved where possible
+**And** recovery procedures are automated and well-documented
+
+**Given** multiple component failures occur simultaneously
+**When** emergency protocols activate
+**Then** the system isolates failed components automatically
+**And** provides degraded operation mode for essential functions
+**And** guides administrators through step-by-step recovery
+
+#### Story 14.11: [Risk] Continuous Risk Assessment and Mitigation
+As a project manager, I want ongoing risk assessment throughout development, so that new risks are identified and mitigated before they become critical issues.
+**Acceptance Criteria:**
+**Given** development progresses through epics
+**When** risk assessments are performed regularly
+**Then** new risks from implementation discoveries are identified
+**And** mitigation strategies are developed proactively
+**And** risk status is tracked and reported in project updates
+
+**Given** high-risk epics are being implemented
+**When** early validation occurs
+**Then** architectural assumptions are tested before full implementation
+**And** alternative approaches are evaluated for high-risk decisions
+**And** risk mitigation plans are updated based on findings
+
+#### Story 14.12: [Docs] Epic 14 Test Documentation
 As a developer, I want comprehensive documentation of the complete testing strategy including integration and e2e tests, so that future contributors understand how to maintain and extend the test suite.
 **Acceptance Criteria:**
 - **Given** the completed Epic 14
@@ -3088,6 +3149,7 @@ As a developer, I want comprehensive documentation of the complete testing strat
 - **And** it documents architectural validation approaches and cross-epic testing strategies.
 - **And** it provides guidance for maintaining test suite efficiency and adding new tests.
 - **And** it includes risk mitigation strategies and MVP scope reduction guidelines.
+- **And** it documents emergency recovery procedures and continuous risk assessment.
 **References:** NFR13
 
 ### Epic 15: User Documentation & Onboarding
