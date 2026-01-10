@@ -2254,12 +2254,12 @@ So that I can quickly locate specific notes in the vault.
 
 As a user organizing notes by schema,
 I want to filter queries by schema keys and metadata,
-So that I can find notes with specific properties or schemas.
+So that I can find notes with specific properties or schemas (when schemas are used).
 
 **Acceptance Criteria:**
 
-**Given** I need schema-based filtering
-**When** I implement schema key queries
+**Given** schemas are available
+**When** I implement schema-based filtering
 **Then** queries can filter by schema-defined metadata fields
 
 **Given** schema filtering works
@@ -2268,7 +2268,11 @@ So that I can find notes with specific properties or schemas.
 
 **Given** filtering is implemented
 **When** I validate edge cases
-**Then** queries handle missing metadata gracefully
+**Then** queries handle missing metadata gracefully and work without schemas
+
+**Given** users don't use schemas
+**When** they run queries
+**Then** filtering works through direct frontmatter field queries
 
 ### Story 10.5: Implement File Class Query Operations
 
