@@ -1,5 +1,5 @@
 ---
-stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-02-advanced-elicitation-complete']
+stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-02-advanced-elicitation-complete', 'step-03-create-stories-complete']
 inputDocuments:
   - label: PRD
     path: _bmad-output/planning-artifacts/prd.md
