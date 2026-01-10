@@ -1,0 +1,205 @@
+## Epic 2: Test Architecture, Patterns & Utilities **[MVP CORE]**
+
+Developers have comprehensive testing patterns for async code, event-driven systems, and CQRS, plus centralized test utilities for artifacts, temporary directories, and mise task orchestration that ensure 80%+ coverage and catch integration issues early.
+**FRs covered:** NFR16 (test coverage), Architecture requirements (testing strategy)
+**Implementation Notes:**
+- Test patterns: async (tokio::test), event-driven, CQRS command/query separation
+- Centralized test utilities: artifact output locations, tmp directory management, test helper functions
+- mise.toml test tasks: test, test:unit, test:integration, test:coverage, test:watch, test:benchmark
+- ADR creation guidelines for epics making architectural decisions
+
+### Story 2.1: Establish Async Testing Patterns and Infrastructure
+
+As a developer testing async code,
+I want standardized patterns for testing tokio-based async operations,
+So that async tests are reliable, race-condition free, and properly isolated.
+
+**Acceptance Criteria:**
+
+**Given** I have researched async testing best practices in Rust
+**When** I review the async testing infrastructure
+**Then** standardized patterns are established for:
+- `#[tokio::test]` macro usage with proper runtime setup
+- `spawn_blocking` for CPU-intensive operations in tests
+- `CancellationToken` for graceful test shutdown
+- Race condition detection and prevention
+
+**Given** async testing patterns are established
+**When** I write an async unit test
+**Then** the test follows the established patterns:
+- Proper `#[tokio::test]` attribute usage
+- No blocking operations without `spawn_blocking`
+- Proper error handling for async operations
+- Test isolation without shared state
+
+**Given** async tests are running
+**When** I check for race conditions
+**Then** tests use proper synchronization primitives and avoid flaky behavior
+
+**Given** I have researched tokio testing ecosystem
+**When** I check test dependencies
+**Then** optimal crates are selected:
+- `tokio::test` for basic async testing
+- `tokio::time::timeout` for preventing hanging tests
+- Proper test runtime configuration
+
+### Story 2.2: Create Event-Driven Testing Patterns
+
+As a developer testing event-driven systems,
+I want patterns for testing domain events and event bus interactions,
+So that event-driven code is thoroughly tested with proper isolation and verification.
+
+**Acceptance Criteria:**
+
+**Given** I have researched event-driven testing patterns
+**When** I review the event testing infrastructure
+**Then** patterns are established for:
+- Event publishing and subscription testing
+- Event payload verification
+- Event ordering and timing verification
+- Mock event bus implementations for unit tests
+
+**Given** event-driven testing patterns are established
+**When** I test an event publisher
+**Then** the test verifies:
+- Correct events are published
+- Event payloads contain expected data
+- Events are published at the correct time
+- Error handling for failed event publishing
+
+**Given** event-driven testing patterns are established
+**When** I test an event subscriber
+**Then** the test verifies:
+- Subscriber receives expected events
+- Event handling logic executes correctly
+- Subscriber handles malformed events gracefully
+- Subscription lifecycle management
+
+**Given** I have researched event testing in domain-driven design
+**When** I check the patterns
+**Then** they follow DDD testing best practices:
+- Event sourcing verification patterns
+- Event storming validation
+- Domain event contract testing
+- Integration testing for event flows
+
+### Story 2.3: Establish CQRS Testing Patterns
+
+As a developer testing CQRS command and query separation,
+I want patterns for testing write operations and read models separately,
+So that command side and query side code are tested in isolation with proper verification.
+
+**Acceptance Criteria:**
+
+**Given** I have researched CQRS testing patterns
+**When** I review the CQRS testing infrastructure
+**Then** patterns are established for:
+- Command handler testing (write side)
+- Query handler testing (read side)
+- Command/query separation verification
+- Eventual consistency testing between write and read models
+
+**Given** CQRS testing patterns are established
+**When** I test a command handler
+**Then** the test verifies:
+- Command validation logic
+- State changes are applied correctly
+- Domain events are published
+- Error cases are handled appropriately
+
+**Given** CQRS testing patterns are established
+**When** I test a query handler
+**Then** the test verifies:
+- Query execution returns correct data
+- Query performance meets requirements
+- Query isolation from write operations
+- Caching behavior if applicable
+
+**Given** I have researched CQRS testing in Rust ecosystems
+**When** I check the implementation
+**Then** it addresses common CQRS testing challenges:
+- Testing eventual consistency
+- Mocking read model updates
+- Verifying command/query separation
+- Testing cross-aggregate consistency
+
+### Story 2.4: Create Centralized Test Utilities and Infrastructure
+
+As a developer writing tests across the codebase,
+I want centralized test utilities for common testing needs,
+So that tests are consistent, maintainable, and don't duplicate utility code.
+
+**Acceptance Criteria:**
+
+**Given** I have researched test utility patterns in large Rust projects
+**When** I review the centralized test utilities
+**Then** utilities are provided for:
+- Temporary directory creation and cleanup
+- Test artifact output management
+- Test data fixtures and factories
+- Common assertion helpers
+
+**Given** centralized test utilities exist
+**When** I write a test needing temporary files
+**Then** I can use standardized temporary directory utilities:
+- Automatic cleanup after test completion
+- Cross-platform path handling
+- Unique directory names to avoid conflicts
+- Proper error handling for directory operations
+
+**Given** centralized test utilities exist
+**When** I write a test needing test data
+**Then** I can use standardized fixture utilities:
+- Domain object factories with valid defaults
+- Sample data generation for various scenarios
+- Serialization helpers for complex objects
+- Reusable test data across multiple tests
+
+**Given** I have researched test isolation best practices
+**When** I check the utilities
+**Then** they ensure proper test isolation:
+- No shared state between tests
+- Proper cleanup of resources
+- Database/transaction isolation for integration tests
+- Process isolation for system tests
+
+### Story 2.5: Configure Mise Test Task Orchestration
+
+As a developer running tests during development,
+I want comprehensive mise tasks for different testing scenarios,
+So that I can efficiently run tests, check coverage, and maintain code quality during development.
+
+**Acceptance Criteria:**
+
+**Given** I have researched mise task orchestration for Rust projects
+**When** I review the mise.toml test tasks
+**Then** comprehensive test tasks are configured:
+- `mise run test` - Run all tests with optimal parallelization
+- `mise run test:unit` - Domain layer unit tests only
+- `mise run test:integration` - Cross-crate integration tests
+- `mise run test:coverage` - Generate coverage report (tarpaulin)
+- `mise run test:watch` - Watch mode for TDD workflow
+
+**Given** mise test tasks are configured
+**When** I run `mise run test`
+**Then** tests execute with:
+- Optimal parallelization for speed
+- Proper output formatting
+- Clear success/failure indication
+- Timing information for slow tests
+
+**Given** mise test tasks are configured
+**When** I run `mise run test:coverage`
+**Then** coverage report is generated:
+- HTML report for browser viewing
+- Coverage percentage calculation
+- File-by-file coverage breakdown
+- Integration with CI/CD pipelines
+
+**Given** I have researched continuous testing workflows
+**When** I check the mise configuration
+**Then** tasks support modern development workflows:
+- Watch mode for automatic test re-running
+- Fast feedback for TDD cycles
+- Integration with IDEs and editors
+- Remote development environment support
