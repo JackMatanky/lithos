@@ -274,7 +274,7 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR49 → Epic 13 (Recover from failed executions with rollback)
 - FR50 → Epic 13 (Diagnose and troubleshoot issues)
 
-## Epic 1: Development Environment & Tooling
+## Epic 1: Development Environment & Tooling **[MVP CORE]**
 
 Developers have a fully configured development environment with quality gates, testing infrastructure, and task orchestration that enforces architectural standards.
 **FRs covered:** Architecture requirements (tooling, quality gates)
@@ -554,8 +554,8 @@ So that I can quickly understand what lithos is and how to get started.
 **Given** README.md exists
 **When** a developer wants to contribute
 **Then** setup instructions are clear and comprehensive
+## Epic 2: Test Architecture, Patterns & Utilities **[MVP CORE]**
 
-## Epic 2: Test Architecture, Patterns & Utilities
 Developers have comprehensive testing patterns for async code, event-driven systems, and CQRS, plus centralized test utilities for artifacts, temporary directories, and mise task orchestration that ensure 80%+ coverage and catch integration issues early.
 **FRs covered:** NFR16 (test coverage), Architecture requirements (testing strategy)
 **Implementation Notes:**
@@ -759,8 +759,8 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 - Fast feedback for TDD cycles
 - Integration with IDEs and editors
 - Remote development environment support
+### Epic 3: Core Domain Models & Value Objects **[PHASE 1.5]**
 
-### Epic 3: Core Domain Models & Value Objects
 Developers have a clear, shared domain language with rich domain models that embody business rules and validation logic, informed by Obsidian patterns and Go implementation lessons learned.
 **FRs covered:** Architecture requirements (DDD domain models)
 **Implementation Notes:**
@@ -938,8 +938,8 @@ So that developers understand the domain language and can work effectively with 
 **Given** documentation exists
 **When** a developer reads it
 **Then** they understand domain evolution rules and inter-entity contracts without needing user-facing knowledge
+### Epic 4: File Loading Strategy Foundation **[MVP CORE]**
 
-### Epic 4: File Loading Strategy Foundation
 System has unified file loading strategies for different configuration formats that enable consistent parsing and validation across the application.
 **FRs covered:** Architecture requirements (file loading infrastructure)
 **Implementation Notes:**
@@ -1052,7 +1052,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Epic 5: Configuration Management System
+### Epic 5: Configuration Management System **[PHASE 1.5]**
 Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
@@ -1222,8 +1222,8 @@ So that I can understand and customize lithos behavior effectively.
 **Given** users read the documentation
 **When** they configure lithos
 **Then** they can successfully customize behavior without developer assistance
+### Epic 6: Schema System & Validation **[MVP CORE]**
 
-### Epic 6: Schema System & Validation
 Users can define metadata schemas with field types, inheritance, and validation that provide input parameters for templates and enforce vault consistency.
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14
 **Implementation Notes:**
@@ -1421,7 +1421,7 @@ So that I can effectively define and use schemas in lithos.
 **When** they create schemas
 **Then** they can define valid schemas without developer assistance
 
-### Epic 7: Event Bus & Orchestration Infrastructure
+### Epic 7: Event Bus & Orchestration Infrastructure **[PHASE 1.5]**
 System has a robust event-driven architecture enabling loose coupling between services and supporting concurrent operations without god-objects.
 **FRs covered:** Architecture requirements (event-driven, CQRS foundation)
 **Implementation Notes:**
@@ -1677,7 +1677,7 @@ So that other epics can properly publish and subscribe to events.
 **When** other epics implement event integration
 **Then** they follow consistent patterns without architectural review
 
-### Epic 8: Storage Layer & Persistence
+### Epic 8: Storage Layer & Persistence **[MVP CORE]**
 System has zero-copy persistent storage with ACID transactions using Redb + rkyv that supports high-performance queries and maintains data consistency.
 **FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 001)
 **Implementation Notes:**
@@ -1929,7 +1929,7 @@ So that storage can be properly used and maintained across the application.
 **When** other epics need storage integration
 **Then** they can implement proper storage usage without architectural review
 
-### Epic 9: Vault File System Integration & Indexing Engine
+### Epic 9: Vault File System Integration & Indexing Engine **[MVP CORE]**
 Users can index large vaults (1000+ files) in <2 seconds with incremental updates, reliable crash-free operation, and persistent storage.
 **FRs covered:** FR20, FR24, FR25
 **Implementation Notes:**
@@ -2238,7 +2238,7 @@ So that vault indexing can be properly understood and maintained.
 **When** other components integrate
 **Then** they can work with indexed data effectively
 
-### Epic 10: Query Service & Knowledge Graph
+### Epic 10: Query Service & Knowledge Graph **[MVP CORE]**
 Users can perform fast lookups by filename, path, or schema keys, resolve wiki-links and aliases, and query metadata from other notes for template use.
 **FRs covered:** FR21, FR22, FR23
 **Implementation Notes:**
@@ -2536,7 +2536,7 @@ So that query functionality can be properly understood and used.
 **When** other components integrate
 **Then** they can use query service effectively and efficiently
 
-### Epic 11: Basic Interactive Template System
+### Epic 11: Basic Interactive Template System **[MVP CORE]**
 Users can create and execute modular templates with schema-driven interactive prompts that generate validated notes with essential template functions.
 **FRs covered:** FR1, FR2, FR9, FR15, FR16
 **Implementation Notes:**
@@ -2747,7 +2747,7 @@ As a user, I want clear instructions on how to create and use interactive templa
 - **And** it lists all available standard library functions with usage examples.
 **References:** NFR13
 
-### Epic 12: Advanced Template Features
+### Epic 12: Advanced Template Features **[PHASE 1.5]**
 Users can compose complex templates with date functions, multi-suggesters, and error prevention for production-ready template workflows.
 **FRs covered:** FR3, FR4, FR17
 **Implementation Notes:**
@@ -3140,7 +3140,38 @@ As a project manager, I want ongoing risk assessment throughout development, so 
 **And** alternative approaches are evaluated for high-risk decisions
 **And** risk mitigation plans are updated based on findings
 
-#### Story 14.12: [Docs] Epic 14 Test Documentation
+#### Story 14.12: Implementation Sequence Validation
+As a project manager, I want validation that the epic implementation sequence actually delivers user value at each phase, so that we can adjust priorities based on real user needs rather than technical dependencies alone.
+**Acceptance Criteria:**
+**Given** the epic implementation sequence
+**When** I validate against user journey mapping
+**Then** MVP phase delivers independently valuable core functionality
+**And** each phase builds on previous user value rather than just technical foundations
+**And** user workflows are validated end-to-end through each implementation phase
+**And** success metrics are defined for each phase to measure user value delivery
+
+**Given** user journey validation
+**When** I assess implementation sequence
+**Then** high-impact user workflows are prioritized over technical completeness
+**And** user feedback loops are built into each phase
+**And** phase boundaries align with user adoption milestones
+
+#### Story 14.13: Success Metric Tracking Framework
+As a product manager, I want a framework for tracking success metrics throughout development, so that we can validate that each epic delivers the intended user value and business impact.
+**Acceptance Criteria:**
+**Given** the epic structure and user requirements
+**When** I define success metrics
+**Then** each epic has measurable success criteria tied to user outcomes
+**And** metrics track both quantitative measures (performance, reliability) and qualitative measures (user satisfaction, adoption)
+**And** metrics are tracked from MVP through Phase 1.5 and beyond
+
+**Given** success metrics framework
+**When** development progresses
+**Then** regular metric reviews validate epic value delivery
+**And** metrics inform prioritization decisions
+**And** successful metrics justify continued investment in subsequent phases
+
+#### Story 14.14: [Docs] Epic 14 Test Documentation
 As a developer, I want comprehensive documentation of the complete testing strategy including integration and e2e tests, so that future contributors understand how to maintain and extend the test suite.
 **Acceptance Criteria:**
 - **Given** the completed Epic 14
@@ -3150,6 +3181,7 @@ As a developer, I want comprehensive documentation of the complete testing strat
 - **And** it provides guidance for maintaining test suite efficiency and adding new tests.
 - **And** it includes risk mitigation strategies and MVP scope reduction guidelines.
 - **And** it documents emergency recovery procedures and continuous risk assessment.
+- **And** it includes implementation sequence validation and success metric tracking.
 **References:** NFR13
 
 ### Epic 15: User Documentation & Onboarding
