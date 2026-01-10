@@ -1,4 +1,4 @@
-## Epic 3: Core Domain Models & Value Objects **[PHASE 1.5]**
+# Epic 3: Core Domain Models & Value Objects **[PHASE 1.5]**
 
 Developers have a clear, shared domain language with rich domain models that embody business rules and validation logic, informed by Obsidian patterns and Go implementation lessons learned.
 **FRs covered:** Architecture requirements (DDD domain models)
@@ -8,7 +8,7 @@ Developers have a clear, shared domain language with rich domain models that emb
 - Flexibility for Rust-specific refinements and supplementary models in later epics
 - Mocks for domain interfaces created as needed (not upfront)
 
-### Story 3.1: Create Note Bounded Context
+## Story 3.1: Create Note Bounded Context
 
 As a developer working with note data,
 I want a comprehensive Note aggregate with all subentities,
@@ -40,7 +40,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 **When** I check the Note entity design
 **Then** it supports vault-relative paths and wiki-link resolution
 
-### Story 3.2: Create Schema Bounded Context
+## Story 3.2: Create Schema Bounded Context
 
 As a developer defining metadata schemas,
 I want a complete schema domain with PropertyBank, Property, and PropertySpec variants,
@@ -81,7 +81,7 @@ So that schemas can define reusable property definitions with rich validation co
 **When** I create Schema instances
 **Then** internal consistency validation occurs for all entities
 
-### Story 3.3: Create Config Bounded Context
+## Story 3.3: Create Config Bounded Context
 
 As a developer managing application configuration,
 I want a Config domain model with validation,
@@ -101,7 +101,7 @@ So that configuration changes are validated and the domain enforces configuratio
 **When** I validate the design
 **Then** Config supports encrypted sensitive fields and validation rules
 
-### Story 3.4: Create Template Bounded Context
+## Story 3.4: Create Template Bounded Context
 
 As a developer working with template definitions,
 I want a Template domain model with validation,
@@ -121,7 +121,7 @@ So that template structure and syntax are properly validated at the domain level
 **When** I validate the design
 **Then** Template supports modular composition and variable definitions
 
-### Story 3.5: Review Epic 3 Test Suite for Efficiency
+## Story 3.5: Review Epic 3 Test Suite for Efficiency
 
 As a developer maintaining the codebase,
 I want an efficient test suite for Epic 3 domain models,
@@ -149,7 +149,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I update tests
 **Then** test maintenance cost is <20% of development time
 
-### Story 3.6: Create Epic 3 Documentation
+## Story 3.6: Create Epic 3 Documentation
 
 As a developer working with the domain models,
 I want comprehensive documentation of the domain entities, their relationships, and evolution guidelines,

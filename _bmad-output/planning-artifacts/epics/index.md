@@ -1,275 +1,86 @@
----
-stepsCompleted: ['step-01-validate-prerequisites', 'step-02-design-epics', 'step-02-advanced-elicitation-complete', 'step-03-create-stories-complete']
-inputDocuments:
-  - label: PRD
-    path: _bmad-output/planning-artifacts/prd.md
-    category: planning
-  - label: Architecture
-    path: _bmad-output/planning-artifacts/architecture.md
-    category: planning
-  - label: UX Design Specification
-    path: _bmad-output/planning-artifacts/ux-design-specification.md
-    category: planning
-  - label: Project Context
-    path: _bmad-output/project-context.md
-    category: technical
-  - label: Elicitation Summary
-    path: _bmad-output/planning-artifacts/discovery/elicitation_summary.md
-    category: research
----
-
 # lithos - Epic Breakdown
 
-## Overview
+## Table of Contents
 
-This document provides the complete epic and story breakdown for lithos, decomposing the requirements from the PRD, UX Design, Architecture, and Go implementation lessons learned into implementable stories.
-
-## Requirements Inventory
-
-### Functional Requirements
-
-#### Template Management (FR1-FR7)
-- FR1: Users can create modular templates composed of reusable sections with variables
-- FR2: Users can execute templates interactively with prompts, suggesters, and multi-suggesters
-- FR3: Users can compose complex templates from multiple sections with error prevention
-- FR4: Users can apply date formatting and manipulation functions to template content
-- FR5: Users can include dynamic commands and whitespace control in templates
-- FR6: Users can define and use custom user functions within templates
-- FR7: Users can execute advanced template operations with hooks and complex commands
-
-#### Schema Management (FR8-FR14)
-- FR8: Users can define metadata schemas with field types (string, number, date, file, boolean)
-- FR9: Users can create schema-driven templates where field properties provide input parameters
-- FR10: Users can validate notes against schemas with clear error feedback
-- FR11: Users can use schema enums to populate suggester options in templates
-- FR12: Users can filter file selections using schema-defined directory constraints
-- FR13: Users can format dates using schema-defined format strings
-- FR14: Users can inherit and extend schema definitions between related types
-
-#### Interactive Input (FR15-FR19)
-- FR15: Users can provide free-text input through template prompts
-- FR16: Users can select from single-choice lists using suggesters
-- FR17: Users can select multiple items from lists using multi-suggesters
-- FR18: Users can receive contextual help and guidance during input
-- FR19: Users can access progressive complexity modes for different expertise levels
-
-#### Vault Operations (FR20-FR25)
-- FR20: Users can index and search notes across entire vaults
-- FR21: Users can perform lookups by filename, path, or schema-defined keys
-- FR22: Users can resolve wiki-style links and aliases throughout vaults
-- FR23: Users can query metadata fields from other notes for template use
-- FR24: Users can maintain vault consistency across template operations
-- FR25: Users can handle large vaults (1000+ files) without performance degradation
-
-#### Configuration Management (FR26-FR29)
-- FR26: Users can configure template packs using TOML files
-- FR27: Users can manage schema definitions through configuration files
-- FR28: Users can set application preferences via configuration
-- FR29: Users can define custom validation rules and linting settings
-
-#### Cross-Environment Compatibility (FR30-FR33)
-- FR30: Users can execute templates consistently across operating systems
-- FR31: Users can access templates through terminal interfaces
-- FR32: Users can integrate with external editors and IDEs
-- FR33: Users can run templates in automated scripts and CI/CD pipelines
-
-#### Community Features (FR34-FR37)
-- FR34: Users can share and distribute template packs via Git repositories
-- FR35: Users can discover and adopt community-created template packs
-- FR36: Users can validate third-party templates against schemas
-- FR37: Users can contribute improvements to shared template ecosystems
-
-#### Security & Privacy (FR38-FR40)
-- FR38: Users can control access to sensitive vault data and templates
-- FR39: Users can encrypt sensitive configuration and schema files
-- FR40: Users can audit template execution and data access patterns
-
-#### Command Line Interface (FR41-FR47)
-- FR41: Users can execute lithos commands with subcommands for templates, schemas, and vaults
-- FR42: Users can access comprehensive help and documentation from the CLI
-- FR43: Users can view status and configuration of templates and schemas
-- FR44: Users can manage vault operations (index, search, validate) from command line
-- FR45: Users can run templates with various output formats and destinations
-- FR46: Users can configure CLI behavior and preferences
-- FR47: Users can execute most important commands with single words (e.g., `lithos new` opens fuzzy picker for template selection)
-
-#### Error Handling & Recovery (FR48-FR50)
-- FR48: Users can receive clear, actionable error messages when operations fail
-- FR49: Users can recover from failed template executions with rollback capabilities
-- FR50: Users can diagnose and troubleshoot configuration and schema issues
-
-### NonFunctional Requirements
-
-#### Performance (NFR1-NFR4)
-- NFR1: Template execution completes in under 500ms for individual operations
-- NFR2: Vault indexing completes in under 2 seconds for 1000+ files
-- NFR3: File I/O operations maintain efficient read/write performance for large vault scalability
-- NFR4: CLI commands provide instant feedback and help
-
-#### Security (NFR5-NFR7)
-- NFR5: Sensitive configuration and schema files are encrypted at rest
-- NFR6: Users control access permissions for vault data and templates
-- NFR7: Template execution and data access are logged for auditing
-
-#### Scalability (NFR8-NFR10)
-- NFR8: System handles vaults with thousands of files without performance degradation
-- NFR9: Memory usage remains bounded under 500MB for typical operations
-- NFR10: Multiple template executions run concurrently without interference
-
-#### Integration (NFR11-NFR12)
-- NFR11: MVP supports macOS, with Linux added if implementation complexity is minimal
-- NFR12: CLI integrates reliably with terminal environments
-
-#### Usability (NFR13-NFR15)
-- NFR13: CLI provides clear help, auto-completion, and command discoverability
-- NFR14: Error messages are actionable and help users troubleshoot issues
-- NFR15: Progressive complexity modes accommodate different user expertise levels
-
-#### Maintainability (NFR16-NFR18)
-- NFR16: Code maintains comprehensive test coverage (80%+) and contributor documentation
-- NFR17: Binary distribution provides self-contained executables without external dependencies
-- NFR18: Safe rollback and version management support system updates
-
-#### Compatibility (NFR19-NFR20)
-- NFR19: System gracefully handles Obsidian vault structure changes
-- NFR20: Migration paths support transition from existing template workflows
-
-#### Observability (NFR21-NFR23)
-- NFR21: Comprehensive logging enables debugging of template execution and vault operations
-- NFR22: Performance metrics track system behavior for optimization
-- NFR23: Diagnostic tools help users identify and resolve issues
-
-#### Reliability (NFR24-NFR26)
-- NFR24: System achieves 99.9% uptime for CLI operations
-- NFR25: Zero crashes during normal vault operations
-- NFR26: Failed operations provide clear recovery paths and state preservation
-
-#### Deployment (NFR27-NFR29)
-- NFR27: Binary updates complete successfully in under 30 seconds with automatic rollback on failure
-- NFR28: Installation process succeeds for 95% of users without manual intervention
-- NFR29: Version compatibility maintained across patch releases
-
-### Additional Requirements
-
-**Architectural Foundation:**
-- **Workspace-Based Hexagonal Architecture**: Cargo Workspaces with strict hexagonal boundaries (domain → app → adapters → cli)
-- **CQRS Pattern**: Separate Command (Write) and Query (Read) models with hybrid event bus
-- **Unit of Work (Transactional Context)**: Atomic commands with TransactionContext and deferred domain event dispatch
-- **Dependency Injection**: Constructor injection with `Arc<dyn Trait>` for Port implementations
-
-**Technology Stack:**
-- **Core Runtime**: Rust 1.92+ with Tokio 1.49 async runtime ('full' features enabled)
-- **Storage Engine**: Redb 3.1 + rkyv 0.8 (Zero-copy deserialization, ACID KV storage)
-- **Identity**: UUID v7 (Time-ordered, sortable unique identifiers)
-- **Template Engine**: MiniJinja 2.14 (VM-based template engine for user-defined Markdown templates)
-- **Markdown Parser**: pulldown-cmark 0.13 (Event-streaming parser for high-speed link extraction)
-- **Configuration**: Figment 0.10 (Hierarchical configuration: Global → User → Project → Vault)
-- **Error Handling**: miette 7.6 (High-fidelity terminal diagnostics) + thiserror 2.0 (Structured errors) + anyhow 1.0 (Context chaining)
-- **Tooling**: mise 2026.1.0 (Primary task orchestration and tool version management)
-- **Quality Gates**: pre-commit hooks (clippy, rustfmt, complexity checks mandatory before commits)
-
-**Code Quality Standards:**
-- **Cognitive Complexity**: Hard limit of 15 (warn) / 25 (deny) enforced via clippy
-- **Test Coverage**: Target 80%+ coverage via tarpaulin, with nextest for concurrent test execution
-- **No-Panic Policy**: Never use `unwrap()`, `expect()`, `todo()`, or `unimplemented()` in production code
-- **Async Safety**: Never block async threads >10ms; use `spawn_blocking` for std::fs and heavy CPU tasks
-- **Lock Discipline**: Never hold `std::sync::MutexGuard` across `.await` points
-
-**Critical Rust Implementation Rules:**
-- **Hexagonal Boundary Enforcement**: `crates/domain` must have NO external dependencies and NO I/O; all Ports defined as `#[async_trait]` traits
-- **Validation Layers**: Syntactic validation (structure/format) in Adapter layer; Semantic validation (business rules) in Domain layer
-- **Path Protocol**: Use `PathBuf` (owned) or `&Path` (borrowed) for all file paths; NEVER use `String` for paths
-- **Persistence Strategy**: rkyv usage isolated to `adapters/spi/storage` layer; domain entities remain ergonomically usable
-- **Error Standards**: Layered errors (thiserror in domain, anyhow + .context() in app/adapters, miette in CLI)
-
-**Go Implementation Lessons Learned (Critical Architectural Insights):**
-
-**Validation Architecture (Group 1 - FOUNDATIONAL):**
-- **Anemic Domain Model Anti-Pattern**: Go implementation had entities as "data bags" with all logic in services, violating DDD rich model principles
-- **Rust Approach**: Domain entities MUST own logic pertaining to their own data; use builder patterns and validation methods on entities
-- **IO in Domain Layer Violation**: Go FrontmatterService.Extract() performed file parsing (goldmark) in domain layer
-- **Rust Approach**: Extract frontmatter in adapter layer; domain receives pre-parsed data
-
-**Storage Architecture (Group 2 - FOUNDATIONAL):**
-- **CQRS Confusion**: Go implementation separated ports (CacheWriterPort/CacheReaderPort) but not models
-- **Rust Approach**: Consider separate read/write models (NoteProjection vs Note) if query optimization requires it
-- **Storage Write Coordination**: Go implementation had no coordination pattern for dual-write to BoltDB + SQLite
-- **Rust Approach**: Implement Unit of Work pattern from day one; use TransactionContext for atomic operations
-- **DTO Architecture**: Go DTOs (FileMetadata, VaultFile) were too generic; didn't leverage stdlib patterns (fs.FileInfo)
-- **Rust Approach**: Create storage-specific DTOs; leverage Rust's Path/PathBuf and filesystem abstractions
-
-**Event-Driven Architecture (Group 3 - CRITICAL):**
-- **God-Object Orchestrators**: Go implementation used god-object services mixing concerns
-- **Rust Approach**: Implement event-driven architecture from day one; use Hybrid Event Bus (MPSC for indexing, broadcast for signals, watch for LSP state)
-- **Domain Events**: NoteIndexed, VaultIndexingCompleted, TemplateExecuted, SchemaLoaded for loose coupling
-
-**Configuration Management (Group 4):**
-- **Singleton Anti-Pattern**: Go implementation had improper singleton for Config and PropertyBank
-- **Rust Approach**: Use `OnceCell` for lazy initialization with thread-safe access; Arc<Config> for shared immutable configuration
-
-**Schema Domain System (Group 5):**
-- **Port Coupling**: Go had unnecessary complexity with separate SchemaLoaderPort and SchemaRegistryPort
-- **Rust Approach**: Simplify to single SchemaPort; automatic registration on load
-
-**Template System (Group 6 - Epic 6 Dependency):**
-- **Template Struct Name Conflict**: Go had naming collision with text/template package
-- **Rust Approach**: Carefully namespace template domain models; leverage MiniJinja without conflicts
-
-**Critical Success Factors:**
-- **Hexagonal Architecture**: Strictly enforce boundaries from day one; domain layer pure logic with zero I/O
-- **Test Architecture**: Mirror hexagonal structure (pure domain tests, adapter integration tests, E2E CLI tests)
-- **Async Discipline**: Use tokio::test for integration tests; surface race conditions early
-- **Performance Benchmarking**: Use criterion for NFR-critical paths; 10k-note vault benchmarks mandatory
-
-### FR Coverage Map
-
-- FR1 → Epic 11 (Modular templates with reusable sections)
-- FR2 → Epic 11 (Interactive template execution with prompts/suggesters)
-- FR3 → Epic 12 (Complex template composition with error prevention)
-- FR4 → Epic 12 (Date formatting and manipulation functions)
-- FR5 → Post-MVP Phase 1.5 (Dynamic commands and whitespace control)
-- FR6 → Post-MVP Phase 1.5 (Custom user functions)
-- FR7 → Post-MVP Phase 2a (Advanced template operations with hooks)
-- FR8 → Epic 6 (Define metadata schemas with field types)
-- FR9 → Epic 6 (Schema-driven templates with input parameters)
-- FR10 → Epic 6 (Validate notes against schemas)
-- FR11 → Epic 6 (Schema enums populate suggester options)
-- FR12 → Epic 6 (File filtering via schema directory constraints)
-- FR13 → Epic 6 (Date formatting via schema format strings)
-- FR14 → Epic 6 (Schema inheritance and extension)
-- FR15 → Epic 11 (Free-text input through prompts)
-- FR16 → Epic 11 (Single-choice suggesters)
-- FR17 → Epic 12 (Multi-selection suggesters)
-- FR18 → Post-MVP Phase 1.5 (Contextual help and guidance)
-- FR19 → Post-MVP Phase 1.5 (Progressive complexity modes)
-- FR20 → Epic 9 (Index and search notes across vaults)
-- FR21 → Epic 10 (Lookups by filename, path, schema keys)
-- FR22 → Epic 10 (Resolve wiki-links and aliases)
-- FR23 → Epic 10 (Query metadata from other notes)
-- FR24 → Epic 9 (Maintain vault consistency)
-- FR25 → Epic 9 (Handle large vaults without degradation)
-- FR26 → Epic 5 (Configure template packs via TOML)
-- FR27 → Epic 5 (Manage schema definitions via config)
-- FR28 → Epic 5 (Set application preferences via config)
-- FR29 → Post-MVP Phase 2c (Custom validation/linting rules)
-- FR30 → Epic 13 (Cross-platform execution consistency)
-- FR31 → Epic 13 (Access through terminal interfaces)
-- FR32 → Post-MVP Phase 3a (External editor/IDE integration)
-- FR33 → Post-MVP Phase 3a (Automated scripts/CI-CD support)
-- FR34 → Post-MVP Phase 3b (Share template packs via Git)
-- FR35 → Post-MVP Phase 3b (Discover community template packs)
-- FR36 → Post-MVP Phase 3b (Validate third-party templates)
-- FR37 → Post-MVP Phase 3b (Community contribution workflows)
-- FR38 → Post-MVP Phase 4 (Access control for vault data)
-- FR39 → Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 5
-- FR40 → Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 13
-- FR41 → Epic 13 (Execute commands with subcommands)
-- FR42 → Epic 13 (Comprehensive help and documentation)
-- FR43 → Epic 13 (View status and configuration)
-- FR44 → Epic 13 (Manage vault operations from CLI)
-- FR45 → Epic 13 (Run templates with output formats)
-- FR46 → Epic 13 (Configure CLI behavior)
-- FR47 → Epic 13 (Single-word command shortcuts)
-- FR48 → Epic 13 (Clear, actionable error messages)
-- FR49 → Epic 13 (Recover from failed executions with rollback)
-- FR50 → Epic 13 (Diagnose and troubleshoot issues)
+- [lithos - Epic Breakdown](#table-of-contents)
+  - [Overview](./overview.md)
+  - [Requirements Inventory](./requirements-inventory.md)
+    - [Functional Requirements](./requirements-inventory.md#functional-requirements)
+      - [Template Management (FR1-FR7)](./requirements-inventory.md#template-management-fr1-fr7)
+      - [Schema Management (FR8-FR14)](./requirements-inventory.md#schema-management-fr8-fr14)
+      - [Interactive Input (FR15-FR19)](./requirements-inventory.md#interactive-input-fr15-fr19)
+      - [Vault Operations (FR20-FR25)](./requirements-inventory.md#vault-operations-fr20-fr25)
+      - [Configuration Management (FR26-FR29)](./requirements-inventory.md#configuration-management-fr26-fr29)
+      - [Cross-Environment Compatibility (FR30-FR33)](./requirements-inventory.md#cross-environment-compatibility-fr30-fr33)
+      - [Community Features (FR34-FR37)](./requirements-inventory.md#community-features-fr34-fr37)
+      - [Security & Privacy (FR38-FR40)](./requirements-inventory.md#security-privacy-fr38-fr40)
+      - [Command Line Interface (FR41-FR47)](./requirements-inventory.md#command-line-interface-fr41-fr47)
+      - [Error Handling & Recovery (FR48-FR50)](./requirements-inventory.md#error-handling-recovery-fr48-fr50)
+    - [NonFunctional Requirements](./requirements-inventory.md#nonfunctional-requirements)
+      - [Performance (NFR1-NFR4)](./requirements-inventory.md#performance-nfr1-nfr4)
+      - [Security (NFR5-NFR7)](./requirements-inventory.md#security-nfr5-nfr7)
+      - [Scalability (NFR8-NFR10)](./requirements-inventory.md#scalability-nfr8-nfr10)
+      - [Integration (NFR11-NFR12)](./requirements-inventory.md#integration-nfr11-nfr12)
+      - [Usability (NFR13-NFR15)](./requirements-inventory.md#usability-nfr13-nfr15)
+      - [Maintainability (NFR16-NFR18)](./requirements-inventory.md#maintainability-nfr16-nfr18)
+      - [Compatibility (NFR19-NFR20)](./requirements-inventory.md#compatibility-nfr19-nfr20)
+      - [Observability (NFR21-NFR23)](./requirements-inventory.md#observability-nfr21-nfr23)
+      - [Reliability (NFR24-NFR26)](./requirements-inventory.md#reliability-nfr24-nfr26)
+      - [Deployment (NFR27-NFR29)](./requirements-inventory.md#deployment-nfr27-nfr29)
+    - [Additional Requirements](./requirements-inventory.md#additional-requirements)
+  - [FR Coverage Map](./fr-coverage-map.md)
+  - [Epic 1: Development Environment & Tooling [MVP CORE]](#epic-1-development-environment-tooling-mvp-core)
+  - [Epic 2: Test Architecture, Patterns & Utilities [MVP CORE]](#epic-2-test-architecture-patterns-utilities-mvp-core)
+  - [Epic 3: Core Domain Models & Value Objects [PHASE 1.5]](#epic-3-core-domain-models-value-objects-phase-15)
+  - [Epic 4: File Loading Strategy Foundation [MVP CORE]](#epic-4-file-loading-strategy-foundation-mvp-core)
+  - [Epic 5: Configuration Management System [PHASE 1.5]](#epic-5-configuration-management-system-phase-15)
+  - [Epic 6: Schema System & Validation [MVP CORE]](#epic-6-schema-system-validation-mvp-core)
+  - [Epic 7: Event Bus & Orchestration Infrastructure [PHASE 1.5]](#epic-7-event-bus-orchestration-infrastructure-phase-15)
+  - [Epic 8: Storage Layer & Persistence [MVP CORE]](#epic-8-storage-layer-persistence-mvp-core)
+  - [Epic 9: Vault File System Integration & Indexing Engine [MVP CORE]](#epic-9-vault-file-system-integration-indexing-engine-mvp-core)
+  - [Epic 10: Query Service & Knowledge Graph [MVP CORE]](#epic-10-query-service-knowledge-graph-mvp-core)
+  - [Epic 11: Basic Interactive Template System [MVP CORE]](#epic-11-basic-interactive-template-system-mvp-core)
+  - [Epic 12: Advanced Template Features [PHASE 1.5]](#epic-12-advanced-template-features-phase-15)
+  - [Epic 13: CLI Interface & Error Handling](./epic-13-cli-interface-error-handling.md)
+      - [Story 13.1: [Adapters/API] Clap-based CLI Command Structure](./epic-13-cli-interface-error-handling.md#story-131-adaptersapi-clap-based-cli-command-structure)
+      - [Story 13.2: [Adapters/API] Template Execution CLI Commands](./epic-13-cli-interface-error-handling.md#story-132-adaptersapi-template-execution-cli-commands)
+      - [Story 13.3: [Adapters/API] Vault Management CLI Commands](./epic-13-cli-interface-error-handling.md#story-133-adaptersapi-vault-management-cli-commands)
+      - [Story 13.4: [Adapters/API] Schema Management CLI Commands](./epic-13-cli-interface-error-handling.md#story-134-adaptersapi-schema-management-cli-commands)
+      - [Story 13.5: [Adapters/API] Configuration CLI Commands](./epic-13-cli-interface-error-handling.md#story-135-adaptersapi-configuration-cli-commands)
+      - [Story 13.6: [Adapters/API] Miette-based Error Diagnostics](./epic-13-cli-interface-error-handling.md#story-136-adaptersapi-miette-based-error-diagnostics)
+      - [Story 13.7: [Adapters/API] Comprehensive Help System](./epic-13-cli-interface-error-handling.md#story-137-adaptersapi-comprehensive-help-system)
+      - [Story 13.8: [Adapters/API] Cross-Platform Terminal Support](./epic-13-cli-interface-error-handling.md#story-138-adaptersapi-cross-platform-terminal-support)
+      - [Story 13.9: [Adapters/SPI] Basic Audit Logging Infrastructure](./epic-13-cli-interface-error-handling.md#story-139-adaptersspi-basic-audit-logging-infrastructure)
+      - [Story 13.10: [Adapters/API] Single-Word Command Shortcuts](./epic-13-cli-interface-error-handling.md#story-1310-adaptersapi-single-word-command-shortcuts)
+      - [Story 13.11: [Recovery] System-Wide Error Recovery Coordination](./epic-13-cli-interface-error-handling.md#story-1311-recovery-system-wide-error-recovery-coordination)
+      - [Story 13.12: [Test] CLI Performance Benchmarking (NFR4 Validation)](./epic-13-cli-interface-error-handling.md#story-1312-test-cli-performance-benchmarking-nfr4-validation)
+    - [Story 13.13: Clap CLI Performance Regression Testing](./epic-13-cli-interface-error-handling.md#story-1313-clap-cli-performance-regression-testing)
+      - [Story 13.12: [Test] Epic 13 Test Suite Review & Optimization](./epic-13-cli-interface-error-handling.md#story-1312-test-epic-13-test-suite-review-optimization)
+      - [Story 13.15: [Docs] Epic 13 CLI Documentation](./epic-13-cli-interface-error-handling.md#story-1315-docs-epic-13-cli-documentation)
+  - [Epic 14: Test Suite Review & Optimization](./epic-14-test-suite-review-optimization.md)
+      - [Story 14.1: [Test] Comprehensive Test Coverage Analysis](./epic-14-test-suite-review-optimization.md#story-141-test-comprehensive-test-coverage-analysis)
+      - [Story 14.2: [Test] Test Suite Efficiency Optimization](./epic-14-test-suite-review-optimization.md#story-142-test-test-suite-efficiency-optimization)
+      - [Story 14.3: [Test] Architectural Boundary Validation](./epic-14-test-suite-review-optimization.md#story-143-test-architectural-boundary-validation)
+      - [Story 14.4: [Test] Integration Test Suite Validation](./epic-14-test-suite-review-optimization.md#story-144-test-integration-test-suite-validation)
+      - [Story 14.5: [Test] Cross-Epic Integration Testing](./epic-14-test-suite-review-optimization.md#story-145-test-cross-epic-integration-testing)
+      - [Story 14.6: [Test] End-to-End Workflow Validation](./epic-14-test-suite-review-optimization.md#story-146-test-end-to-end-workflow-validation)
+      - [Story 14.7: [Risk] Epic Dependency Mapping and Risk Assessment](./epic-14-test-suite-review-optimization.md#story-147-risk-epic-dependency-mapping-and-risk-assessment)
+      - [Story 14.8: [Risk] MVP Scope Reduction Recommendations](./epic-14-test-suite-review-optimization.md#story-148-risk-mvp-scope-reduction-recommendations)
+      - [Story 14.9: [Monitor] Enhanced Observability and Monitoring Infrastructure](./epic-14-test-suite-review-optimization.md#story-149-monitor-enhanced-observability-and-monitoring-infrastructure)
+      - [Story 14.10: [Recovery] System-Wide Emergency Recovery Procedures](./epic-14-test-suite-review-optimization.md#story-1410-recovery-system-wide-emergency-recovery-procedures)
+      - [Story 14.11: [Risk] Continuous Risk Assessment and Mitigation](./epic-14-test-suite-review-optimization.md#story-1411-risk-continuous-risk-assessment-and-mitigation)
+      - [Story 14.12: Implementation Sequence Validation](./epic-14-test-suite-review-optimization.md#story-1412-implementation-sequence-validation)
+      - [Story 14.13: Success Metric Tracking Framework](./epic-14-test-suite-review-optimization.md#story-1413-success-metric-tracking-framework)
+      - [Story 14.14: Architectural Decision Documentation Enhancement](./epic-14-test-suite-review-optimization.md#story-1414-architectural-decision-documentation-enhancement)
+      - [Story 14.15: Performance Regression Benchmarking Infrastructure](./epic-14-test-suite-review-optimization.md#story-1415-performance-regression-benchmarking-infrastructure)
+      - [Story 14.16: Technology Alternative Migration Guides](./epic-14-test-suite-review-optimization.md#story-1416-technology-alternative-migration-guides)
+      - [Story 14.17: [Docs] Epic 14 Test Documentation](./epic-14-test-suite-review-optimization.md#story-1417-docs-epic-14-test-documentation)
+  - [Epic 15: User Documentation & Onboarding](./epic-15-user-documentation-onboarding.md)
+      - [Story 15.1: [Docs] Installation and Setup Guide](./epic-15-user-documentation-onboarding.md#story-151-docs-installation-and-setup-guide)
+      - [Story 15.2: [Docs] Quick Start Tutorial](./epic-15-user-documentation-onboarding.md#story-152-docs-quick-start-tutorial)
+      - [Story 15.3: [Docs] Starter Template and Schema Library](./epic-15-user-documentation-onboarding.md#story-153-docs-starter-template-and-schema-library)
+      - [Story 15.4: [Docs] Migration Guide from Obsidian](./epic-15-user-documentation-onboarding.md#story-154-docs-migration-guide-from-obsidian)
+      - [Story 15.5: [Docs] User Manual and Feature Reference](./epic-15-user-documentation-onboarding.md#story-155-docs-user-manual-and-feature-reference)
+      - [Story 15.6: [Docs] API Documentation for Developers](./epic-15-user-documentation-onboarding.md#story-156-docs-api-documentation-for-developers)
+      - [Story 15.7: [Docs] Progressive Complexity Documentation Structure](./epic-15-user-documentation-onboarding.md#story-157-docs-progressive-complexity-documentation-structure)
+      - [Story 15.8: [Test] Epic 15 Documentation Validation](./epic-15-user-documentation-onboarding.md#story-158-test-epic-15-documentation-validation)

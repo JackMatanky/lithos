@@ -221,7 +221,7 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - **Async Discipline**: Use tokio::test for integration tests; surface race conditions early
 - **Performance Benchmarking**: Use criterion for NFR-critical paths; 10k-note vault benchmarks mandatory
 
-### FR Coverage Map
+## FR Coverage Map
 
 - FR1 → Epic 11 (Modular templates with reusable sections)
 - FR2 → Epic 11 (Interactive template execution with prompts/suggesters)
@@ -759,7 +759,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 - Fast feedback for TDD cycles
 - Integration with IDEs and editors
 - Remote development environment support
-### Epic 3: Core Domain Models & Value Objects **[PHASE 1.5]**
+## Epic 3: Core Domain Models & Value Objects **[PHASE 1.5]**
 
 Developers have a clear, shared domain language with rich domain models that embody business rules and validation logic, informed by Obsidian patterns and Go implementation lessons learned.
 **FRs covered:** Architecture requirements (DDD domain models)
@@ -938,7 +938,7 @@ So that developers understand the domain language and can work effectively with 
 **Given** documentation exists
 **When** a developer reads it
 **Then** they understand domain evolution rules and inter-entity contracts without needing user-facing knowledge
-### Epic 4: File Loading Strategy Foundation **[MVP CORE]**
+## Epic 4: File Loading Strategy Foundation **[MVP CORE]**
 
 System has unified file loading strategies for different configuration formats that enable consistent parsing and validation across the application.
 **FRs covered:** Architecture requirements (file loading infrastructure)
@@ -1052,7 +1052,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Epic 5: Configuration Management System **[PHASE 1.5]**
+## Epic 5: Configuration Management System **[PHASE 1.5]**
 Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
@@ -1222,7 +1222,7 @@ So that I can understand and customize lithos behavior effectively.
 **Given** users read the documentation
 **When** they configure lithos
 **Then** they can successfully customize behavior without developer assistance
-### Epic 6: Schema System & Validation **[MVP CORE]**
+## Epic 6: Schema System & Validation **[MVP CORE]**
 
 Users can define metadata schemas with field types, inheritance, and validation that provide input parameters for templates and enforce vault consistency.
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14
@@ -1421,7 +1421,7 @@ So that I can effectively define and use schemas in lithos.
 **When** they create schemas
 **Then** they can define valid schemas without developer assistance
 
-### Epic 7: Event Bus & Orchestration Infrastructure **[PHASE 1.5]**
+## Epic 7: Event Bus & Orchestration Infrastructure **[PHASE 1.5]**
 System has a robust event-driven architecture enabling loose coupling between services and supporting concurrent operations without god-objects.
 **FRs covered:** Architecture requirements (event-driven, CQRS foundation)
 **Implementation Notes:**
@@ -1677,7 +1677,7 @@ So that other epics can properly publish and subscribe to events.
 **When** other epics implement event integration
 **Then** they follow consistent patterns without architectural review
 
-### Epic 8: Storage Layer & Persistence **[MVP CORE]**
+## Epic 8: Storage Layer & Persistence **[MVP CORE]**
 System has zero-copy persistent storage with ACID transactions using Redb + rkyv that supports high-performance queries and maintains data consistency.
 **FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 001)
 **Implementation Notes:**
@@ -1929,7 +1929,7 @@ So that storage can be properly used and maintained across the application.
 **When** other epics need storage integration
 **Then** they can implement proper storage usage without architectural review
 
-### Epic 9: Vault File System Integration & Indexing Engine **[MVP CORE]**
+## Epic 9: Vault File System Integration & Indexing Engine **[MVP CORE]**
 Users can index large vaults (1000+ files) in <2 seconds with incremental updates, reliable crash-free operation, and persistent storage.
 **FRs covered:** FR20, FR24, FR25
 **Implementation Notes:**
@@ -2248,7 +2248,7 @@ So that vault indexing can be properly understood and maintained.
 **When** other components integrate
 **Then** they can work with indexed data effectively
 
-### Epic 10: Query Service & Knowledge Graph **[MVP CORE]**
+## Epic 10: Query Service & Knowledge Graph **[MVP CORE]**
 Users can perform fast lookups by filename, path, or schema keys, resolve wiki-links and aliases, and query metadata from other notes for template use.
 **FRs covered:** FR21, FR22, FR23
 **Implementation Notes:**
@@ -2546,7 +2546,7 @@ So that query functionality can be properly understood and used.
 **When** other components integrate
 **Then** they can use query service effectively and efficiently
 
-### Epic 11: Basic Interactive Template System **[MVP CORE]**
+## Epic 11: Basic Interactive Template System **[MVP CORE]**
 Users can create and execute modular templates with schema-driven interactive prompts that generate validated notes with essential template functions.
 **FRs covered:** FR1, FR2, FR9, FR15, FR16
 **Implementation Notes:**
@@ -2767,7 +2767,7 @@ As a user, I want clear instructions on how to create and use interactive templa
 - **And** it lists all available standard library functions with usage examples.
 **References:** NFR13
 
-### Epic 12: Advanced Template Features **[PHASE 1.5]**
+## Epic 12: Advanced Template Features **[PHASE 1.5]**
 Users can compose complex templates with date functions, multi-suggesters, and error prevention for production-ready template workflows.
 **FRs covered:** FR3, FR4, FR17
 **Implementation Notes:**
@@ -2858,7 +2858,7 @@ As a user, I want clear instructions on how to use advanced template features li
 - **And** it documents the dry-run validation process.
 **References:** NFR13
 
-### Epic 13: CLI Interface & Error Handling
+## Epic 13: CLI Interface & Error Handling
 Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
 **FRs covered:** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR30, FR31
 **Implementation Notes:**
@@ -3030,7 +3030,7 @@ As a user, I want comprehensive CLI documentation with examples and tutorials, s
 - **And** it documents Clap architectural choice rationale and performance baselines.
 **References:** NFR13
 
-### Epic 14: Test Suite Review & Optimization
+## Epic 14: Test Suite Review & Optimization
 Development team has a validated, efficient test suite with no redundancy, full coverage of critical paths, and effective system validation.
 **FRs covered:** NFR16 (comprehensive test coverage), NFR25 (zero crashes)
 **Implementation Notes:**
@@ -3264,7 +3264,7 @@ As a developer, I want comprehensive documentation of the complete testing strat
 - **And** it documents architectural decision rationale and performance regression testing.
 **References:** NFR13
 
-### Epic 15: User Documentation & Onboarding
+## Epic 15: User Documentation & Onboarding
 Users have comprehensive documentation, starter templates, sample schemas, and migration guides that enable successful adoption.
 **FRs covered:** NFR13 (clear help), NFR20 (migration paths), NFR28 (installation success)
 **Implementation Notes:**

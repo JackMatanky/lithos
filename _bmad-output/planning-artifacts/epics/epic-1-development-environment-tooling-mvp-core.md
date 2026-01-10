@@ -1,4 +1,4 @@
-## Epic 1: Development Environment & Tooling **[MVP CORE]**
+# Epic 1: Development Environment & Tooling **[MVP CORE]**
 
 Developers have a fully configured development environment with quality gates, testing infrastructure, and task orchestration that enforces architectural standards.
 **FRs covered:** Architecture requirements (tooling, quality gates)
@@ -13,7 +13,7 @@ Developers have a fully configured development environment with quality gates, t
 - README.md with project overview and setup instructions
 - Foundation for all subsequent epics
 
-### Story 1.1: Initialize Cargo Workspace Structure
+## Story 1.1: Initialize Cargo Workspace Structure
 
 As a developer setting up the project foundation,
 I want to create the Cargo workspace with 4 hexagonal architecture crates,
@@ -47,7 +47,7 @@ lithos/
 **When** I run `cargo check`
 **Then** all crates compile without errors
 
-### Story 1.2: Configure mise.toml for Task Orchestration
+## Story 1.2: Configure mise.toml for Task Orchestration
 
 As a developer working on the project,
 I want comprehensive mise tasks for development workflows,
@@ -80,7 +80,7 @@ So that I can efficiently run tests, benchmarks, formatting, and other developme
 **When** I run `mise run verify`
 **Then** the full quality pipeline executes successfully
 
-### Story 1.3: Set Up Stringent Pre-Commit Hooks
+## Story 1.3: Set Up Stringent Pre-Commit Hooks
 
 As a developer committing code,
 I want automatic quality checks before every commit,
@@ -112,7 +112,7 @@ So that code quality standards are enforced and poor code is caught early.
 **When** I commit properly formatted, tested code
 **Then** the commit succeeds without delays
 
-### Story 1.4: Configure clippy.toml with Cognitive Complexity Limits
+## Story 1.4: Configure clippy.toml with Cognitive Complexity Limits
 
 As a developer writing code,
 I want clippy to enforce cognitive complexity limits as a quality safeguard,
@@ -144,7 +144,7 @@ So that functions remain maintainable and complex logic is broken down appropria
 **When** I run clippy
 **Then** specific line numbers and suggestions are provided for refactoring
 
-### Story 1.5: Configure rustfmt.toml with Import Sorting
+## Story 1.5: Configure rustfmt.toml with Import Sorting
 
 As a developer formatting code,
 I want consistent import sorting and formatting standards,
@@ -175,7 +175,7 @@ So that code style is uniform and readable across the codebase.
 - Comment formatting
 - Macro formatting
 
-### Story 1.6: Set Up deny.toml for Dependency Security Auditing
+## Story 1.6: Set Up deny.toml for Dependency Security Auditing
 
 As a developer managing dependencies,
 I want automatic security and license auditing of dependencies,
@@ -206,7 +206,7 @@ So that vulnerabilities and incompatible licenses are caught before they become 
 - GPL licenses excluded for compatibility
 - Copyleft licenses flagged for review
 
-### Story 1.7: Establish ADR Review Process and Validate Existing ADRs
+## Story 1.7: Establish ADR Review Process and Validate Existing ADRs
 
 As a developer making architectural decisions,
 I want a clear process for documenting and reviewing ADRs,
@@ -243,7 +243,7 @@ So that architectural decisions are well-reasoned, documented, and validated.
 - Stakeholder involvement in decisions
 - Regular review and update process
 
-### Story 1.8: Create Comprehensive README.md
+## Story 1.8: Create Comprehensive README.md
 
 As a developer or user discovering the project,
 I want a clear overview of the project with setup instructions,
