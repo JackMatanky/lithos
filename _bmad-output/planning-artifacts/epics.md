@@ -2712,6 +2712,27 @@ As a user, I want to select multiple items from a list using a fuzzy-searchable 
 - **And** it returns a collection of the internal `values` for the selected items.
 **References:** FR17
 
+#### Story 12.7: [Test] Epic 12 Test Suite Review & Optimization
+As a developer, I want a comprehensive and efficient test suite for the advanced template features, so that I can maintain the code with confidence.
+**Acceptance Criteria:**
+- **Given** the implementation of Epic 12
+- **When** I run the test suite
+- **Then** it achieves 90%+ coverage for the `TemplateGraph`, `TemplateDate`, and composition services.
+- **And** property-based tests verify that circular dependency detection works for complex template hierarchies.
+- **And** the suite validates that date operations handle edge cases (leap years, timezone boundaries).
+**References:** NFR16
+
+#### Story 12.8: [Docs] Epic 12 User & Developer Documentation
+As a user, I want clear instructions on how to use advanced template features like composition and date functions, so that I can create sophisticated template workflows.
+**Acceptance Criteria:**
+- **Given** a completed Epic 12
+- **When** I review the documentation
+- **Then** it includes examples of template composition with includes and cycles.
+- **And** it provides natural language date parsing examples.
+- **And** it explains multi-select suggester usage for array fields.
+- **And** it documents the dry-run validation process.
+**References:** NFR13
+
 ### Epic 13: CLI Interface & Error Handling
 Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
 **FRs covered:** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR30, FR31
