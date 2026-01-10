@@ -2875,6 +2875,56 @@ Development team has a validated, efficient test suite with no redundancy, full 
 - Architectural boundary validation (hexagonal, CQRS, event-driven)
 - Note: Each epic 4-12 has its own test validation story; this is final optimization
 
+#### Story 14.1: [Test] Comprehensive Test Coverage Analysis
+As a development team, I want a complete analysis of test coverage across all epics, so that I can identify gaps and ensure comprehensive validation.
+**Acceptance Criteria:**
+- **Given** all epic-level test suites are implemented
+- **When** I run coverage analysis across the entire codebase
+- **Then** it identifies any modules or functions with <80% coverage.
+- **And** it generates a coverage report highlighting critical paths that need additional tests.
+- **And** it validates that domain layer has 100% coverage for business logic.
+**References:** NFR16
+
+#### Story 14.2: [Test] Test Suite Efficiency Optimization
+As a development team, I want an optimized test suite that runs efficiently, so that CI/CD pipelines remain fast and developer productivity is maintained.
+**Acceptance Criteria:**
+- **Given** all test suites are implemented
+- **When** I measure test execution time
+- **Then** the full test suite completes in <5 minutes on standard CI hardware.
+- **And** parallel test execution is maximized without flaky tests.
+- **And** redundant tests across epics are identified and consolidated.
+**References:** NFR16
+
+#### Story 14.3: [Test] Architectural Boundary Validation
+As a development team, I want validation that architectural boundaries are maintained, so that the hexagonal architecture remains clean and testable.
+**Acceptance Criteria:**
+- **Given** the implemented system
+- **When** I run boundary validation tests
+- **Then** domain layer contains zero I/O operations or external dependencies.
+- **And** CQRS command/query separation is maintained throughout the application layer.
+- **And** event-driven patterns follow the established hybrid bus architecture.
+**References:** NFR16, NFR25
+
+#### Story 14.4: [Test] Integration Test Suite Validation
+As a development team, I want comprehensive integration tests that validate end-to-end workflows, so that system reliability is assured.
+**Acceptance Criteria:**
+- **Given** all epics are implemented
+- **When** I run integration tests
+- **Then** they validate complete user workflows (template creation → execution → file output).
+- **And** they test error recovery paths and edge cases.
+- **And** they verify cross-epic integration (storage ↔ queries ↔ templates).
+**References:** NFR25
+
+#### Story 14.5: [Docs] Epic 14 Test Documentation
+As a developer, I want documentation of the final test suite and validation approach, so that future contributors understand the testing strategy.
+**Acceptance Criteria:**
+- **Given** the completed Epic 14
+- **When** I review the test documentation
+- **Then** it includes coverage targets and measurement methodology.
+- **And** it documents the architectural validation approach.
+- **And** it provides guidance for maintaining test suite efficiency.
+**References:** NFR13
+
 ### Epic 15: User Documentation & Onboarding
 Users have comprehensive documentation, starter templates, sample schemas, and migration guides that enable successful adoption.
 **FRs covered:** NFR13 (clear help), NFR20 (migration paths), NFR28 (installation success)
@@ -2885,3 +2935,83 @@ Users have comprehensive documentation, starter templates, sample schemas, and m
 - API documentation for power users
 - Progressive complexity documentation (basic → advanced)
 - Note: Documentation created at story-level in epics; this consolidates and polishes
+
+#### Story 15.1: [Docs] Installation and Setup Guide
+As a new user, I want clear installation instructions and setup guidance, so that I can get lithos running quickly on my system.
+**Acceptance Criteria:**
+- **Given** the completed system
+- **When** I create the installation guide
+- **Then** it includes step-by-step instructions for macOS and Linux.
+- **And** it covers prerequisites, binary installation, and initial configuration.
+- **And** it achieves 95% successful installations based on user feedback.
+**References:** NFR28
+
+#### Story 15.2: [Docs] Quick Start Tutorial
+As a new user, I want a hands-on tutorial to create my first note with lithos, so that I can experience the core functionality immediately.
+**Acceptance Criteria:**
+- **Given** the completed system
+- **When** I create the quick start guide
+- **Then** it walks through creating a simple note template and executing it.
+- **And** it introduces basic concepts (vaults, schemas, templates) through examples.
+- **And** it takes <15 minutes to complete for first-time users.
+**References:** NFR13
+
+#### Story 15.3: [Docs] Starter Template and Schema Library
+As a new user, I want ready-to-use templates and schemas for common use cases, so that I can start productive work immediately.
+**Acceptance Criteria:**
+- **Given** the converted Obsidian templates
+- **When** I create the starter kit
+- **Then** it includes sanitized templates for daily notes, projects, contacts, and knowledge notes.
+- **And** it provides sample schemas for common metadata patterns.
+- **And** all starter content is documented with usage examples.
+**References:** NFR20
+
+#### Story 15.4: [Docs] Migration Guide from Obsidian
+As an existing Obsidian user, I want guidance on migrating my workflow to lithos, so that I can transition smoothly with minimal disruption.
+**Acceptance Criteria:**
+- **Given** the template conversion examples
+- **When** I create the migration guide
+- **Then** it maps Obsidian concepts to lithos equivalents (Templater → lithos templates).
+- **And** it provides conversion examples for common template patterns.
+- **And** it addresses compatibility considerations and limitations.
+**References:** NFR20
+
+#### Story 15.5: [Docs] User Manual and Feature Reference
+As a power user, I want comprehensive documentation of all features and configuration options, so that I can master advanced functionality.
+**Acceptance Criteria:**
+- **Given** all epic-level documentation
+- **When** I consolidate the user manual
+- **Then** it includes detailed sections for templates, schemas, vaults, and CLI.
+- **And** it documents all configuration options and environment variables.
+- **And** it provides troubleshooting guides for common issues.
+**References:** NFR13
+
+#### Story 15.6: [Docs] API Documentation for Developers
+As a developer extending lithos, I want API documentation for the plugin system and extension points, so that I can build custom integrations.
+**Acceptance Criteria:**
+- **Given** the system architecture
+- **When** I create the API documentation
+- **Then** it documents the hexagonal architecture ports and adapters.
+- **And** it provides examples for creating custom template functions and suggesters.
+- **And** it includes the Rust API reference for power users.
+**References:** NFR13
+
+#### Story 15.7: [Docs] Progressive Complexity Documentation Structure
+As a user at any skill level, I want documentation organized by complexity, so that I can learn at my own pace without being overwhelmed.
+**Acceptance Criteria:**
+- **Given** all documentation content
+- **When** I organize it by complexity levels
+- **Then** it provides clear learning paths: Beginner → Intermediate → Advanced.
+- **And** each level builds on the previous without redundant explanations.
+- **And** cross-references guide users to more detailed information when needed.
+**References:** NFR15
+
+#### Story 15.8: [Test] Epic 15 Documentation Validation
+As a documentation maintainer, I want validation that all documentation is accurate and complete, so that users receive reliable information.
+**Acceptance Criteria:**
+- **Given** the completed documentation
+- **When** I validate it against the implementation
+- **Then** all code examples are tested and functional.
+- **And** all CLI commands in documentation work as described.
+- **And** all configuration options are accurately documented.
+**References:** NFR13
