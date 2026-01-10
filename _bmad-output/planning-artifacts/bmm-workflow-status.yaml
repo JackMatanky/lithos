@@ -87,10 +87,11 @@ workflow_status:
         completed: "2026-01-10"
 
       - id: "test-design"
-        status: "recommended"
+        status: "_bmad-output/test-design-system.md"
         agent: "tea"
         command: "/bmad:bmm:workflows:test-design"
         recommended: true
+        completed: "2026-01-11"
 
       - id: "validate-architecture"
         status: "completed"
@@ -101,10 +102,11 @@ workflow_status:
         notes: "Coherence, coverage (100% of 50 FRs), and implementation readiness validated."
 
       - id: "implementation-readiness"
-        status: "required"
+        status: "_bmad-output/planning-artifacts/implementation-readiness-report-2026-01-11.md"
         agent: "architect"
         command: "/bmad:bmm:workflows:implementation-readiness"
         required: true
+        completed: "2026-01-11"
 
   # Phase 3: Implementation
   - phase: 3
