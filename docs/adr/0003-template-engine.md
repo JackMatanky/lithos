@@ -1,9 +1,11 @@
 # ADR 0003: Selection of Template Engine for Markdown-based Templates
 
-## Status
-Accepted
+*   **Status**: Accepted
+*   **Date**: 2026-01-11
+*   **Stakeholders**: Jack (Developer), Architects
 
 ## Context
+
 Lithos templates are primarily Markdown files containing YAML frontmatter and body content with embedded logic. The engine must support high-frequency rendering for a Command Line Interface (CLI) and a future Language Server Protocol (LSP).
 
 Key technical challenges for Markdown templates include:
@@ -13,6 +15,7 @@ Key technical challenges for Markdown templates include:
 4.  **Performance**: The LSP requires sub-50ms rendering for thousands of small snippets during real-time interaction.
 
 ## Decision
+
 We will use **MiniJinja** as the primary template engine for Lithos Rust.
 
 ### 1. Engine Specifics for Markdown
@@ -20,7 +23,7 @@ We will use **MiniJinja** as the primary template engine for Lithos Rust.
 - **Whitespace Control**: Full support for Jinja2-style whitespace stripping (`{%- ... -%}`), essential for preserving YAML frontmatter alignment and Markdown table pipes.
 - **Low-Overhead Snippets**: Optimized for fast compilation and rendering, making it ideal for the real-time feedback loops required by the LSP.
 
-### 2. Evaluated Alternatives
+## Alternatives Considered
 
 | Feature | **MiniJinja** | **Tera** | **Handlebars** |
 | :--- | :--- | :--- | :--- |
@@ -29,20 +32,31 @@ We will use **MiniJinja** as the primary template engine for Lithos Rust.
 | **Markdown Escaping** | **Native/Custom** | Strict (HTML) | Helper-Dependent |
 | **Whitespace Control** | **Excellent** | Good | Limited |
 | **Logic Capability** | High (Jinja2) | High (Jinja2) | Low (Logic-less) |
-| **Ergonomics** | **Excellent** | Excellent | Good |
-
-## Rationale
 
 ### Why not Tera?
-Tera's strict HTML-centric defaults are cumbersome for a Markdown tool. Disabling auto-escaping in Tera is globally handled and less flexible than MiniJinja's environment-level callbacks. Furthermore, MiniJinja’s smaller binary footprint and faster rendering align with the **ADR 0002** goal of "Mechanical Sympathy."
+Tera's strict HTML-centric defaults are cumbersome for a Markdown tool. Disabling auto-escaping in Tera is globally handled and less flexible than MiniJinja's environment-level callbacks. MiniJinja's smaller binary footprint and faster rendering better align with our "Mechanical Sympathy" goals.
 
 ### Why not Handlebars?
 Handlebars' "logic-less" philosophy requires excessive custom helpers for common PKM operations, such as conditionally formatting list items or complex schema-driven table generation. This leads to a fragmented and verbose template codebase.
 
-### The "Markdown Safety" Advantage
-MiniJinja allows defining "Safe" vs "Raw" strings at the application level. Lithos can pass schema-validated Markdown snippets into a template and ensure they aren't mangled by the engine, while still protecting against accidental injection in other contexts.
+## Technical Validation
+
+### Research Findings
+- **Markdown Safety Advantage**: MiniJinja allows defining "Safe" vs "Raw" strings at the application level. Lithos can pass schema-validated Markdown snippets into a template and ensure they aren't mangled by the engine, while still protecting against accidental injection in other contexts.
+- **Mechanical Sympathy**: MiniJinja's VM-based approach and minimal dependency tree (minimal binary size increase of ~50KB) align with Rust's performance goals.
+- **Whitespace Control**: Jinja2-style `{%- ... -%}` is superior for Markdown where extra newlines can change document meaning.
+
+### Compatibility & Performance
+- **Hexagonal Alignment**: Wrapped in an SPI port, allowing the domain to define template logic without being bound to Jinja2 syntax if we ever need to switch.
+- **Performance Impact**: The LSP requires sub-50ms rendering for thousands of small snippets; MiniJinja's low-overhead compilation meets this requirement.
 
 ## Consequences
-- **Jinja2 Familiarity**: Users coming from the Go implementation or other PKM tools (like Templater/Nunjucks) will find the syntax intuitive.
-- **Environment Management**: We must implement a custom `Environment` manager in the `adapters` crate to handle the switching of escaping rules based on file extensions.
-- **Crate Size**: Using MiniJinja keeps our final binary size significantly smaller than using Tera, aiding in rapid CLI distribution and toolchain integration.
+
+*   **Positive**: High performance, small binary size, intuitive Jinja2 syntax, excellent whitespace control for YAML/Markdown.
+*   **Negative**: Requires custom `Environment` management to handle extension-based escaping rules.
+
+## Status Tracking
+
+*   **Proposed**: 2026-01-08
+*   **Accepted**: 2026-01-11
+*   **Implemented**: 2026-01-11

@@ -14,28 +14,27 @@ for adr in "$ADR_DIR"/[0-9][0-9][0-9][0-9]-*.md; do
     filename=$(basename "$adr")
     echo "  📄 Checking $filename..."
 
-    # Check for required sections
-    for section in "Status" "Context" "Decision" "Consequences"; do
-        if ! grep -q "^#*.*$section" "$adr"; then
-            echo "    ❌ Missing section: $section"
+    # Check for required metadata
+    for meta in "Status" "Date" "Stakeholders"; do
+        if ! grep -q "\*   \*\*$meta\*\*:" "$adr"; then
+            echo "    ❌ Missing metadata: $meta"
             EXIT_CODE=1
         fi
     done
 
-    # Check for Status value (Proposed, Accepted, Superseded, Deprecated, Rejected)
-    if ! grep -qiE "Status: (Proposed|Accepted|Superseded|Deprecated|Rejected)" "$adr"; then
-        # Check if it's in a header instead
-        if ! grep -qiE "^#+ Status" "$adr" || ! grep -qiE "(Proposed|Accepted|Superseded|Deprecated|Rejected)" "$adr"; then
-            echo "    ⚠️ Status might be missing or invalid"
-            # Not a hard failure yet but recommended
+    # Check for required sections (must be ## headers)
+    for section in "Context" "Decision" "Alternatives Considered" "Technical Validation" "Consequences" "Status Tracking"; do
+        if ! grep -q "^## $section" "$adr"; then
+            echo "    ❌ Missing section: ## $section"
+            EXIT_CODE=1
         fi
-    fi
+    done
 done
 
 # Also check for files that don't match the naming convention
 for f in "$ADR_DIR"/*.md; do
     filename=$(basename "$f")
-    if [[ "$filename" == "adr-process.md" || "$filename" == "template.md" || "$filename" == "index.md" ]]; then
+    if [[ "$filename" == "adr-process.md" || "$filename" == "template.md" || "$filename" == "index.md" || "$filename" == "README.md" ]]; then
         continue
     fi
     if [[ ! "$filename" =~ ^[0-9]{4}-.*\.md$ ]]; then

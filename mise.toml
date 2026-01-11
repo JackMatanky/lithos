@@ -45,3 +45,11 @@ depends = ["fmt", "lint", "test", "deny"]
 [tasks.deny]
 description = "Check dependencies for security vulnerabilities and license compliance"
 run = "cargo deny check"
+
+[tasks.validate-adrs]
+description = "Validate ADRs for template compliance"
+run = "scripts/validate-adrs.sh"
+
+[tasks.adr-metrics]
+description = "Show ADR quality and completeness metrics"
+run = "scripts/adr-metrics.sh"
