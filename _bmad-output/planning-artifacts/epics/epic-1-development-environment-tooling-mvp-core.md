@@ -278,3 +278,46 @@ So that I can quickly understand what lithos is and how to get started.
 **Given** README.md exists
 **When** a developer wants to contribute
 **Then** setup instructions are clear and comprehensive
+
+## Story 1.9: Establish Project Roadmap in Milestones
+
+As a project manager and stakeholder,
+I want a comprehensive project roadmap with milestones,
+So that project progress, timelines, and dependencies are clearly communicated.
+
+**Acceptance Criteria:**
+
+**Given** I have analyzed the complete project scope from all epics
+**When** I review the roadmap structure
+**Then** the roadmap includes:
+- Epic-level milestones with completion criteria
+- Story dependencies and critical path identification
+- Timeline estimates with realistic delivery dates
+- Risk assessment for major milestones
+- Success metrics for measuring progress
+
+**Given** the roadmap is established
+**When** stakeholders review project progress
+**Then** they can clearly see:
+- What has been completed (baseline from Epics 1-8)
+- What is currently in progress
+- What remains to be done (Epics 9-15)
+- Critical dependencies between workstreams
+- Go/no-go decision points
+
+**Given** milestones are defined
+**When** I check milestone criteria
+**Then** each milestone has:
+- SMART objectives (Specific, Measurable, Achievable, Relevant, Time-bound)
+- Clear deliverables and acceptance criteria
+- Resource requirements identified
+- Risk mitigation strategies
+- Success measurement criteria
+
+**Given** the roadmap is maintained
+**When** project changes occur
+**Then** the roadmap includes:
+- Change control process for scope adjustments
+- Regular review cycles (monthly) for timeline updates
+- Communication protocols for stakeholder updates
+- Contingency planning for identified risks

@@ -20,6 +20,7 @@ pre-commit = "latest"
 #                           SETTINGS                            #
 # ------------------------------------------------------------- #
 [settings]
+experimental = true
 # Automate tool installation and management
 auto_install = true
 not_found_auto_install = true

@@ -4,11 +4,14 @@
 # Description: Format all Rust files in the workspace using rustfmt.
 # -----------------------------------------------------------------------------
 #MISE description="Format all Rust files in the workspace"
-#MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml"]
+#MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["target/fmt.stamp"]
 #USAGE flag "-c --check" help="Check formatting without making changes"
 
 set -euo pipefail
+
+# Ensure we are in the project root
+cd "$(git rev-parse --show-toplevel)"
 
 #######################################
 # Build arguments for rustfmt.
@@ -34,8 +37,10 @@ build_fmt_args() {
 #   Writes formatting progress to stdout
 #######################################
 run_rustfmt() {
-    echo "🚀 Formatting codebase (nightly)..."
-    cargo +nightly fmt --all "$@" -- --unstable-features
+    echo "🚀 Formatting codebase (using nightly via rust-toolchain.toml)..."
+    # Using 'cargo fmt' directly as rust-toolchain.toml handles the channel
+    # Passing --unstable-features to the underlying rustfmt call
+    cargo fmt --all "$@" -- --unstable-features
 }
 
 #######################################

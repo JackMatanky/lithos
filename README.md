@@ -14,7 +14,7 @@ Lithos is a high-performance CLI tool for managing and processing Obsidian vault
 
 ### Prerequisites
 
-- **Rust 1.85+**
+- **Rust 1.92+**
 - **mise** (recommended for task orchestration)
 
 ### Build from Source
@@ -30,6 +30,7 @@ cargo build --release
 We use `mise` for common tasks:
 
 - `mise run verify`: Run all quality gates (fmt, lint, test).
+- `mise run fmt`: Format the codebase.
 - `mise run test`: Run the full test suite.
 - `mise run lint`: Run stringent clippy checks.
 
