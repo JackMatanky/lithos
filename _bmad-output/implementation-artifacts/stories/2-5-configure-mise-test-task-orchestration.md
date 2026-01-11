@@ -103,10 +103,47 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 ### File Structure Requirements
 
 - mise.toml in project root with comprehensive task definitions
-- Task documentation in docs/development/tasks.md with examples and usage
+- Task documentation in docs/mise-task-orchestration.md with examples and usage
 - CI/CD configuration in .github/workflows/ with mise task integration
 - Environment configuration files for different test scenarios
 - Performance benchmark results in target/criterion/ for tracking
+
+### Mise.toml Configuration Examples
+
+**Final mise.toml structure after implementation:**
+
+```toml
+# Test task orchestration (added to existing mise.toml)
+[tasks.test]
+description = "Run all tests (unit and integration)"
+depends = ["test:unit", "test:integration"]
+
+[tasks.test:unit]
+description = "Run domain layer unit tests"
+run = ".mise/tasks/test/unit.sh"
+
+[tasks.test:integration]
+description = "Run cross-crate integration tests"
+run = ".mise/tasks/test/integration.sh"
+
+[tasks.test:coverage]
+description = "Generate coverage reports"
+run = ".mise/tasks/test/coverage.sh"
+
+[tasks.test:watch]
+description = "TDD workflow with auto-restart"
+run = ".mise/tasks/test/watch.sh"
+
+# Enhanced quality gates
+[tasks.verify]
+description = "Full quality gate orchestration"
+depends = ["fmt", "lint", "test", "deny"]
+
+# CI/CD simulation
+[tasks.ci]
+description = "Simulate CI/CD pipeline"
+depends = ["verify", "test:integration"]
+```
 
 ### Testing Requirements
 
