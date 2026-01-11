@@ -49,45 +49,48 @@ So that code quality is guaranteed and regressions are caught early in the devel
 
 ## Tasks / Subtasks
 
-- [ ] Research comprehensive CI/CD best practices for Rust projects **[Effort: 4-5 hours | Complexity: Medium]**
-  - [ ] Analyze multi-stage pipeline architectures for quality assurance
-  - [ ] Study GitHub Actions optimization for Rust monorepos and mise integration
-  - [ ] Review security scanning, compliance automation, and branch protection
-  - [ ] Examine artifact management, monitoring, and stakeholder communication
-  - [ ] Research performance optimization techniques and cost management
-- [ ] Design multi-stage pipeline architecture **[Effort: 3-4 hours | Complexity: Medium]**
-  - [ ] Define pipeline stages: quality gates, testing, security, performance, deployment
-  - [ ] Configure job dependencies and parallel execution strategies
-  - [ ] Set up matrix builds for Rust versions, OS platforms, and feature combinations
-  - [ ] Design artifact flow and retention policies
-  - [ ] Plan monitoring and alerting integration
-- [ ] Implement comprehensive quality assurance jobs **[Effort: 4-5 hours | Complexity: High]**
-  - [ ] Configure quality gates job with formatting, linting, and ADR validation
-  - [ ] Set up testing job with unit, integration, and coverage analysis
-  - [ ] Implement security scanning job with cargo-deny and license compliance
-  - [ ] Create performance job with benchmark regression detection
-  - [ ] Configure artifact upload for all job outputs
-- [ ] Optimize performance and cost efficiency **[Effort: 3-4 hours | Complexity: Medium]**
-  - [ ] Implement comprehensive caching for Cargo registry, target directories, and mise
-  - [ ] Configure conditional execution based on file changes and PR labels
-  - [ ] Set up parallel execution with proper resource allocation
-  - [ ] Implement timeout configurations and failure handling
-  - [ ] Optimize job runtimes through incremental builds and smart dependencies
-- [ ] Configure branch protection and automation **[Effort: 2-3 hours | Complexity: Low]**
-  - [ ] Set up required status checks for branch protection rules
-  - [ ] Configure auto-merge policies and manual workflow dispatch
-  - [ ] Implement proper permissions for workflow execution
-  - [ ] Set up workflow cancellation for outdated runs
-- [ ] Implement monitoring, alerting, and reporting **[Effort: 2-3 hours | Complexity: Low]**
-  - [ ] Configure test coverage trend reporting and performance metrics
-  - [ ] Set up notifications for build failures and security issues
-  - [ ] Implement artifact retention and cleanup policies
-  - [ ] Create dashboard integration for CI/CD observability
-- [ ] Document CI/CD setup and establish maintenance procedures **[Effort: 2-3 hours | Complexity: Low]**
-  - [ ] Create comprehensive CI/CD documentation with setup instructions
-  - [ ] Document troubleshooting procedures for common pipeline issues
-  - [ ] Establish performance monitoring and optimization guidelines
-  - [ ] Set up maintenance schedules for dependency updates and security patches
+- [ ] Implement multi-stage pipeline architecture **[Effort: 4-5 hours | Complexity: High]**
+   - [ ] Create quality-gates job: mise quality (fmt, clippy, adr-validate) with early failure detection
+   - [ ] Create test job: mise test with matrix (rust: stable/beta/nightly, os: ubuntu/windows/macos) using dtolnay/rust-toolchain
+   - [ ] Create security job: EmbarkStudios/cargo-deny-action with check advisories licenses sources, SARIF output to GitHub Security
+   - [ ] Create performance job: boa-dev/criterion-compare-action with cargo bench, regression detection, PR comments
+   - [ ] Configure job dependencies: quality-gates → test → security/performance (parallel) → deployment-readiness
+- [ ] Configure matrix builds and cross-platform testing **[Effort: 3-4 hours | Complexity: Medium]**
+   - [ ] Set up matrix strategy: rust-version: [stable, beta, nightly], os: [ubuntu-latest, windows-latest, macos-latest]
+   - [ ] Configure target architectures: x86_64, aarch64, wasm32 for wasm-pack integration
+   - [ ] Implement conditional builds: skip nightly on feature branches, include on main
+   - [ ] Set up cross-compilation using houseabsolute/build-rust-projects-with-cross for additional targets
+   - [ ] Configure feature flag testing with --features combinations
+- [ ] Implement comprehensive caching strategy **[Effort: 2-3 hours | Complexity: Medium]**
+   - [ ] Use Swatinem/rust-cache action for smart Cargo registry and target directory caching
+   - [ ] Configure mise cache with jdx/mise-action for tool version persistence
+   - [ ] Set cache keys based on Cargo.lock and mise.toml hashes
+   - [ ] Implement incremental caching with conditional restoration on dependency changes
+   - [ ] Configure cache sharing across matrix jobs using shared key prefixes
+- [ ] Configure artifact management and reporting **[Effort: 2-3 hours | Complexity: Low]**
+   - [ ] Upload test results: JUnit XML with actions/upload-artifact, retention 30 days
+   - [ ] Upload coverage reports: LCOV and Cobertura formats with actions/upload-artifact
+   - [ ] Upload benchmark results: JSON/HTML outputs with trend analysis
+   - [ ] Upload security scans: SARIF format for GitHub Security tab integration
+   - [ ] Configure artifact cleanup: automatic deletion after retention period
+- [ ] Set up branch protection and workflow automation **[Effort: 2-3 hours | Complexity: Low]**
+   - [ ] Configure required status checks: quality-gates, test-matrix, security-scan, performance-check
+   - [ ] Set up auto-merge for Dependabot with status check validation
+   - [ ] Configure manual workflow dispatch with proper permissions (maintain role required)
+   - [ ] Implement workflow cancellation for outdated runs on new commits
+   - [ ] Set up branch protection rules with required reviews and status checks
+- [ ] Implement monitoring, alerting, and notifications **[Effort: 2-3 hours | Complexity: Low]**
+   - [ ] Configure Slack/Discord notifications for build failures using actions/github-script
+   - [ ] Set up performance regression alerts with threshold-based notifications
+   - [ ] Implement security issue notifications for high-severity vulnerabilities
+   - [ ] Configure PR comments for test coverage changes and benchmark regressions
+   - [ ] Set up dashboard integration with GitHub repository insights
+- [ ] Document CI/CD configuration and maintenance **[Effort: 2-3 hours | Complexity: Low]**
+   - [ ] Create CI/CD setup guide with workflow configuration details
+   - [ ] Document troubleshooting procedures for common issues (cache invalidation, matrix failures)
+   - [ ] Establish maintenance procedures for dependency updates and tool version bumps
+   - [ ] Create performance monitoring guidelines with optimization recommendations
+   - [ ] Document security scanning configuration and compliance requirements
 
 ## Dev Notes
 
@@ -165,12 +168,56 @@ So that code quality is guaranteed and regressions are caught early in the devel
 - [GitHub Actions for Rust](https://docs.github.com/actions/tutorials/build-and-test-code/building-and-testing-rust) - Official GitHub Actions Rust guide
 - [Rust CI Optimization](https://www.shuttle.dev/blog/2025/01/23/setup-rust-ci-cd) - Rust CI/CD best practices
 
+### Previous Story Intelligence
+
+**Critical Learnings from Epic 1 Stories (1.1-1.9):**
+
+- **Story 1.1 (Cargo Workspace)**: Established hexagonal architecture with workspace-level lint configuration in root Cargo.toml. CI must validate workspace compilation and enforce hexagonal dependency boundaries.
+
+- **Story 1.2 (Pre-commit Hooks)**: Implemented comprehensive quality gates using doublerebel/pre-commit-rust (fmt, clippy, test) and Google Shell Style. CI must complement, not duplicate, these gates to avoid redundant checks.
+
+- **Story 1.3 (Mise Orchestration)**: Created pure script-based tasks in `.mise/tasks/` with Google Shell Style, workspace-wide operations, and integration with pre-commit hooks. CI must leverage existing mise tasks (verify, test, deny) rather than reimplementing logic.
+
+- **Story 1.6 (Dependency Security)**: Configured cargo-deny with advisories, licenses, bans, sources checks integrated into mise and pre-commit. CI must use cargo-deny action for comprehensive security scanning with SARIF reporting.
+
+- **Story 1.7 (ADR Process)**: Established ADR validation integrated into mise tasks and CI. CI must include ADR validation to ensure architectural compliance.
+
+**Architectural Constraints:**
+- Must maintain hexagonal workspace structure validation
+- Must integrate with existing mise task orchestration
+- Must respect pre-commit quality gates (no duplication)
+- Must enforce Google Shell Style for any CI scripts
+- Must validate ADR compliance in CI pipeline
+
+**Development Patterns Established:**
+- Workspace-wide operations using `--workspace` flags
+- Pure script-based mise tasks with error handling
+- Integration between local development and CI environments
+- Security-first approach with automated vulnerability scanning
+
+### Git History Analysis
+
+**Recent CI/CD-Related Commits:**
+- Mise task orchestration established workspace-wide quality gates
+- Pre-commit hooks integrated with doublerebel/pre-commit-rust for fmt/clippy/test
+- Cargo-deny security scanning integrated into development workflow
+- ADR validation added to quality pipeline
+- Workspace structure finalized with hexagonal architecture boundaries
+
+**Key Insights:**
+- Existing mise tasks provide foundation for CI jobs (verify, test, deny, validate-adrs)
+- Pre-commit hooks establish baseline quality that CI must complement
+- Security scanning already integrated at development level
+- ADR validation ensures architectural consistency
+
 ### Latest Tech Information
 
-- GitHub Actions caching: Registry and target directory caching for 50-70% build time reduction
-- Mise CI integration: jdx/mise-action for consistent tool versions between local and CI
-- Matrix builds: Parallel testing across stable/nightly Rust versions
-- Artifact management: Test results and coverage reports for PR feedback
+- GitHub Actions caching: Swatinem/rust-cache provides 50-70% build time reduction with intelligent dependency tracking
+- Mise CI integration: jdx/mise-action@v2 enables consistent tool versions between local and CI environments
+- Matrix builds: Parallel testing across stable/beta/nightly Rust with smart OS exclusions for efficiency
+- Security scanning: EmbarkStudios/cargo-deny-action with SARIF output integrates with GitHub Security tab
+- Performance monitoring: boa-dev/criterion-compare-action detects regressions and comments on PRs
+- Artifact management: actions/upload-artifact with retention policies and multiple format support (JUnit, LCOV, Cobertura, JSON, HTML)
 
 ### Project Context Reference
 
