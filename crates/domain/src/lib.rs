@@ -5,6 +5,7 @@
 
 /// Placeholder domain error for initialization verification
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum DomainError {
     /// Initial placeholder error
     #[error("Initialization error")]
@@ -15,6 +16,6 @@ pub enum DomainError {
 mod tests {
     #[test]
     fn it_works() {
-        assert_eq!(2 + 2, 4);
+        assert_eq!(2i32 + 2i32, 4i32);
     }
 }

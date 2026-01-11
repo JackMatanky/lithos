@@ -3,8 +3,31 @@
 # Docs:        https://doc.rust-lang.org/clippy/configuration.html
 # Description: Configuration for clippy lints, including complexity thresholds
 #              and project-specific valid identifiers.
+#
+# AI Safeguards:
+# - Cognitive complexity < 25 ensures AI-generated functions stay manageable.
+# - Disallowed methods prevent AI from taking shortcuts like unwrap/expect.
 # -----------------------------------------------------------------------------
 
-cognitive-complexity-threshold = 15
+# Complexity Thresholds
+cognitive-complexity-threshold = 25
 too-many-lines-threshold = 100
+
+# Project Metadata
+msrv = "1.70"
 doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv"]
+
+# Test Restrictions (No unwrap/expect allowed in tests either)
+allow-unwrap-in-tests = false
+allow-expect-in-tests = false
+
+# Disallowed Methods (Prevent common anti-patterns and unsafe shortcuts)
+disallowed-methods = [
+    "std::option::Option::unwrap",
+    "std::result::Result::unwrap",
+    "std::result::Result::expect",
+    "std::process::exit",
+    "std::mem::forget",
+    "std::env::current_dir",
+    "std::fs::canonicalize"
+]

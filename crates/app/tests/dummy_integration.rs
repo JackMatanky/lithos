@@ -1,8 +1,10 @@
-//! Dummy integration test
-//!
-//! This is a placeholder.
+#![allow(missing_docs)]
+//! Dummy integration test for the Lithos App crate.
 
-#[test]
-fn integration_works() {
-    assert_eq!(2 + 2, 4);
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn integration_works() {
+        assert_eq!(2i32 + 2i32, 4i32);
+    }
 }
