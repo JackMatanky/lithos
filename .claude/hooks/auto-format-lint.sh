@@ -148,6 +148,7 @@ main() {
     # Extract fields (keep tool_name even if unused).
     tool_name="$(echo "$input" |
         jq -r '.tool_name')"
+    : "$tool_name" # Silence shellcheck SC2034 unused variable
     file_path="$(echo "$input" |
         jq -r '.tool_input.file_path // .tool_input.path // ""')"
 
