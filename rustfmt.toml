@@ -7,6 +7,7 @@
 
 edition = "2021"
 newline_style = "Unix"
-imports_granularity = "Crate"
-group_imports = "StdExternalCrate"
+# The following options require nightly and will be ignored/warned on stable:
+# imports_granularity = "Crate"
+# group_imports = "StdExternalCrate"
 max_width = 100

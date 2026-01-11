@@ -15,7 +15,7 @@ too-many-lines-threshold = 100
 
 # Project Metadata
 msrv = "1.70"
-doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv"]
+doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv", "CLI", "JSON", "TOML", "YAML"]
 
 # Test Restrictions (No unwrap/expect allowed in tests either)
 allow-unwrap-in-tests = false
@@ -29,5 +29,7 @@ disallowed-methods = [
     "std::process::exit",
     "std::mem::forget",
     "std::env::current_dir",
-    "std::fs::canonicalize"
+    "std::fs::canonicalize",
+    "std::thread::sleep",
+    "std::panic::catch_unwind"
 ]

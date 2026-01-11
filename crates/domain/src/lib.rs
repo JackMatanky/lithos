@@ -14,8 +14,11 @@ pub enum DomainError {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2i32 + 2i32, 4i32);
+    fn domain_error_is_send_and_sync() {
+        fn is_send_sync<T: Send + Sync>() {}
+        is_send_sync::<DomainError>();
     }
 }
