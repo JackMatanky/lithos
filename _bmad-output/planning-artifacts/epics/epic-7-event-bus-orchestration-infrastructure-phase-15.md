@@ -2,7 +2,7 @@
 System has a robust event-driven architecture enabling loose coupling between services and supporting concurrent operations without god-objects.
 **FRs covered:** Architecture requirements (event-driven, CQRS foundation)
 **Implementation Notes:**
-- Hybrid Event Bus (MPSC/Broadcast/Watch per ADR 006)
+- Hybrid Event Bus (MPSC/Broadcast/Watch per ADR 0007)
 - Event payload schema design and validation
 - Event persistence for debugging and recovery
 - EventBusPort mocks for testing
@@ -59,7 +59,7 @@ So that events are delivered reliably without loss in the indexing pipeline.
 **Acceptance Criteria:**
 
 **Given** I need reliable event delivery
-**When** I implement MPSC data plane per ADR 006
+**When** I implement MPSC data plane per ADR 0007
 **Then** actor-based mailbox pattern handles indexing events
 
 **Given** MPSC data plane is implemented
@@ -79,7 +79,7 @@ So that shutdown and global notifications work across all components.
 **Acceptance Criteria:**
 
 **Given** I need global signaling
-**When** I implement broadcast control plane per ADR 006
+**When** I implement broadcast control plane per ADR 0007
 **Then** shutdown and system-wide notifications are supported
 
 **Given** broadcast control plane is implemented
@@ -99,7 +99,7 @@ So that real-time state changes are communicated to IDE integrations.
 **Acceptance Criteria:**
 
 **Given** I need state synchronization
-**When** I implement watch state plane per ADR 006
+**When** I implement watch state plane per ADR 0007
 **Then** LSP clients receive real-time vault state updates
 
 **Given** watch state plane is implemented

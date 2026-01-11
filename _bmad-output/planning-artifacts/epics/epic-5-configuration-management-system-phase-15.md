@@ -2,7 +2,7 @@
 Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
-- Figment-based hierarchical config per ADR 004 using Epic 4 loading foundation
+- Figment-based hierarchical config per ADR 0005 using Epic 4 loading foundation
 - ConfigPort and mocks created in this epic
 - Sample config files based on JSON schema (lithos-specific)
 - User documentation for configuration
@@ -36,7 +36,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **Acceptance Criteria:**
 
 **Given** Epic 4 provides unified file loading for TOML, JSON, YAML
-**When** I implement hierarchical config using Figment per ADR 004
+**When** I implement hierarchical config using Figment per ADR 0005
 **Then** configuration loads with proper precedence: CLI > Environment > Config files > Defaults
 
 **Given** hierarchical loading is implemented

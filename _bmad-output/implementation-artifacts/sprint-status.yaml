@@ -33,6 +33,7 @@ development_status:
    1-7-establish-adr-review-process-and-validate-existing-adrs: done
    1-8-create-comprehensive-readmemd: done
    1-9-establish-project-roadmap-in-milestones: done
+   1-10-configure-ci-yml-for-mise-and-rust-best-practices: backlog
    epic-1-retrospective: optional
 
    epic-2: in-progress

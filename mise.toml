@@ -65,3 +65,7 @@ run = "scripts/validate-adrs.sh"
 [tasks.adr-metrics]
 description = "Show ADR quality and completeness metrics"
 run = "scripts/adr-metrics.sh"
+
+[tasks.bench]
+description = "Run performance benchmarks"
+run = ".mise/tasks/bench.sh"

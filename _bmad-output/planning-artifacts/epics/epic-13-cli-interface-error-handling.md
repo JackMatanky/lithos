@@ -2,7 +2,7 @@
 Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
 **FRs covered:** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR30, FR31
 **Implementation Notes:**
-- Clap for CLI, miette for diagnostics per ADR 005
+- Clap for CLI, miette for diagnostics per ADR 0006
 - CommandPort, AuditPort created if needed
 - Dependency injection wiring for all ports
 - Cross-platform support (macOS primary, Linux)

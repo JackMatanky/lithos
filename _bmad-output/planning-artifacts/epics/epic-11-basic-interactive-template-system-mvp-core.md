@@ -3,7 +3,7 @@ Users can create and execute modular templates with schema-driven interactive pr
 **FRs covered:** FR1, FR2, FR9, FR15, FR16
 **Implementation Notes:**
 - TemplatePort, UIPort and mocks created in this epic
-- MiniJinja integration per ADR 002
+- MiniJinja integration per ADR 0003
 - Sample templates from docs/refs/obsidian/ converted as test fixtures
 - Schema-driven inputs (enums → suggesters)
 - User documentation for basic template creation
@@ -97,7 +97,7 @@ As a template author, I want access to date/time functions using the existing ch
 - **Then** templates can use `date_now()`, `date_format()`, and `date_add()` functions.
 - **And** functions follow chrono API patterns (not moment.js).
 - **And** all functions are documented with examples in the standard library reference.
-**References:** FR4, ADR 002
+**References:** FR4, ADR 0003
 
 ### Story 11.10: [Adapters/SPI] Convert Case String Function Integration
 As a template author, I want string case conversion functions using the convert_case crate, so that I can generate proper identifiers and titles without custom implementations.

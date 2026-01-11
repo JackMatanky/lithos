@@ -3,7 +3,7 @@ Users can index large vaults (1000+ files) in <2 seconds with incremental update
 **FRs covered:** FR20, FR24, FR25
 **Implementation Notes:**
 - VaultReaderPort, VaultWriterPort, VaultScannerPort, MarkdownPort and mocks created
-- pulldown-cmark for markdown parsing (adapter layer per ADR 003)
+- pulldown-cmark for markdown parsing (adapter layer per ADR 0004)
 - Sample vault notes from docs/refs/obsidian/ as test fixtures
 - Performance benchmarking stories for NFR2 validation (<2s for 1000+ files)
 - Observability/metrics for indexing performance

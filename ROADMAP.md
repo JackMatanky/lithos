@@ -1,6 +1,6 @@
 # Project Roadmap - lithos
 
-This roadmap outlines the phased development of Lithos, from its core Rust foundation to a comprehensive developer tooling platform. It is based on the [Product Requirements Document (PRD)](_bmad-output/planning-artifacts/prd.md) and [Architectural Decision Records (ADRs)](_bmad-output/planning-artifacts/adr/index.md).
+This roadmap outlines the phased development of Lithos, from its core Rust foundation to a comprehensive developer tooling platform. It is based on the [Product Requirements Document (PRD)](_bmad-output/planning-artifacts/prd.md) and [Architectural Decision Records (ADRs)](docs/adr/README.md).
 
 ## 🚀 Phase 1: MVP Core (Milestones 1-4)
 **Goal:** Deliver a stable, high-performance CLI tool for interactive, schema-validated templating in large vaults.
@@ -127,21 +127,6 @@ The project's critical path is driven by the **Vault Indexing Engine (Epic 9)**,
 ---
 
 ## Risk Assessment & Mitigation
-
-| Risk | Severity | Impact Area | Mitigation Strategy |
-| --- | --- | --- | --- |
-| **Redb/rkyv complexity** | High | Persistence | Early technical spikes in Epic 8; use integration tests to verify zero-copy boundaries. |
-| **Large vault performance** | High | Indexing | Continuous benchmarking (NFR1-4) in Milestone 3; use Criterion for regression tracking. |
-| **LSP Implementation** | Medium | Intelligence | Leverage Tree-sitter for robust parsing; follow LSP specification strictly. |
-| **Async/Concurrency bugs** | Medium | Event Bus | Implement ADR 0007 (tiered planes) early; use `tokio-test` and tracing. |
-
----
-
-## Success Criteria Summary (from PRD)
-1. **Efficiency**: 75% reduction in template creation time.
-2. **Reliability**: Zero crashes during large vault indexing.
-3. **Accuracy**: 98%+ automated schema compliance.
-4. **Onboarding**: < 5 minute setup for non-technical users.
 
 | Risk | Severity | Impact Area | Mitigation Strategy |
 | --- | --- | --- | --- |
