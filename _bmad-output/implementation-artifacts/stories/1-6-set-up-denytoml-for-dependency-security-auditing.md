@@ -52,19 +52,23 @@ So that insecure dependencies are caught before deployment.
    - [ ] Study yanked versions and sources checking
    - [ ] Examine CI/CD integration patterns for cargo deny
 - [ ] Create deny.toml with all security auditing best practices
-   - [ ] Configure [advisories] section with RustSec database and severity thresholds
-   - [ ] Set up [bans] for problematic crates with skip-tree for build dependencies
-   - [ ] Configure [licenses] to allow OSI-approved licenses and deny copyleft
-   - [ ] Enable [yanked] checking to prevent yanked crate usage
-   - [ ] Set up [sources] to allow only trusted registries
+   - [ ] Configure [advisories] with db-urls = ["https://github.com/rustsec/advisory-db"] and severity-threshold = "low"
+   - [ ] Set up [bans] with skip-tree for build/dev dependencies (e.g., cargo-deny, wasm-pack)
+   - [ ] Configure [licenses] with allow = ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC"] and deny = ["GPL-3.0", "LGPL-2.1"]
+   - [ ] Enable [yanked] with enabled = true to prevent yanked crate usage
+   - [ ] Set up [sources] with unknown-registry = "deny" and allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 - [ ] Test deny.toml configuration against existing dependencies
-   - [ ] Run cargo deny check all to verify no violations
-   - [ ] Address any license or security issues in current dependencies
-   - [ ] Ensure configuration doesn't block legitimate dependencies
+   - [ ] Run cargo deny check advisories to verify no security vulnerabilities
+   - [ ] Run cargo deny check licenses to verify license compliance
+   - [ ] Run cargo deny check bans to verify no banned crates
+   - [ ] Run cargo deny check sources to verify registry compliance
+   - [ ] Address any violations in current dependencies or adjust configuration
+   - [ ] Ensure configuration doesn't block legitimate project dependencies
 - [ ] Integrate cargo deny checks into development workflow
-   - [ ] Update mise tasks to include cargo deny checks
+   - [ ] Update .mise.toml tasks to include cargo deny check all
+   - [ ] Update .pre-commit-config.yaml to run cargo deny check
    - [ ] Verify pre-commit hooks run deny checks successfully
-   - [ ] Test integration with existing quality pipeline
+   - [ ] Test full quality pipeline integration (fmt + lint + test + deny)
 - [ ] Document dependency security standards and commit changes
    - [ ] Update README.md with dependency security policies
    - [ ] Add comments to deny.toml explaining each section
@@ -74,7 +78,7 @@ So that insecure dependencies are caught before deployment.
 
 - Relevant architecture patterns and constraints
 - Source tree components to touch
-- Testing standards summary
+- Testing standards summary: Cargo deny checks run in pre-commit and CI, failing builds with any security vulnerabilities, license violations, or banned dependencies to maintain supply chain integrity. Keep RustSec advisory database updated regularly using `cargo deny fetch` to ensure latest vulnerability information.
 
 ### Project Structure Notes
 
