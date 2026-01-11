@@ -19,11 +19,12 @@ Whether you're an Alex Chen power user needing scriptable note creation or a Sar
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
-- [Roadmap](#roadmap)
 - [API Documentation](#api-documentation)
 - [Development](#development)
 - [Testing](#testing)
 - [Contributing](#contributing)
+- [Roadmap](#roadmap)
+- [License](#license)
 - [License](#license)
 - [Changelog](#changelog)
 - [Acknowledgments](#acknowledgments)
@@ -90,25 +91,8 @@ For more details, see the [Architecture Documentation](_bmad-output/planning-art
 
 ---
 
-## Roadmap
-
-Lithos development is organized into four major phases, starting with a high-performance CLI core and evolving into a full editor ecosystem.
-
-**Current Status: [Milestone 1 (Foundation)](ROADMAP.md#milestone-1-foundation--domain-modeling)**
-- [x] Environment & Tooling (Epic 1)
-- [x] Test Architecture (Epic 2)
-- [ ] Core Domain Models (In-Progress)
-
-### Upcoming Milestones:
-1. **Persistence & Schema**: Redb storage and validation engine.
-2. **Vault Intelligence**: Incremental indexing and metadata queries.
-3. **Interactive Templates**: The core scriptable templating experience.
-
-For the comprehensive roadmap, including future phases (LSP, Neovim, Enterprise), see [ROADMAP.md](ROADMAP.md).
-
----
-
 ## API Documentation
+
 
 Detailed API documentation for each crate is available via `docs.rs`:
 
@@ -208,3 +192,60 @@ See [CHANGELOG.md](CHANGELOG.md) for a history of changes.
 - **Standard-Readme** community for best practices.
 - The **Rust Ecosystem** for provide the tools (Tokio, Serde, Redb, etc.) that make Lithos possible.
 - **Obsidian** for inspiring a new wave of personal knowledge management.
+
+---
+
+## Roadmap
+
+Lithos development is organized into four major phases, following the [Product Requirements Document](_bmad-output/planning-artifacts/prd.md) and [Architectural Decisions](_bmad-output/planning-artifacts/architecture.md).
+
+### Phase 1: MVP Core
+**Goal:** High-performance CLI tool for interactive, schema-validated templating.
+- **Milestone 1: Foundation (In-Progress)** - Workspace, quality gates, and domain models.
+- **Milestone 2: Persistence** - Redb + rkyv storage and hierarchical configuration.
+- **Milestone 3: Intelligence** - Incremental indexing and metadata query service.
+- **Milestone 4: Interactive Templates** - Core MiniJinja engine with schema-driven prompts.
+
+### Phase 1.5: Core Templater Parity & Basic UX
+- Essential Templater functions (file, frontmatter, date functions).
+- Dynamic commands and whitespace control.
+- Beginner mode with guided template creation.
+
+### Phase 2: Advanced Intelligence & Ecosystem
+- **Phase 2a: Advanced Templater** - Full module system (app, config, web) and complex hooks.
+- **Phase 2b: LSP Foundation** - Tree-sitter grammar and LSP implementation (Go-to-definition, backlinks).
+- **Phase 2c: Linter & Formatter** - Built-in Markdown linting and automatic formatting.
+
+### Phase 3: Editor Integration
+- **Phase 3a: Neovim Plugin** - Native Neovim experience leveraging the Lithos LSP.
+- **Phase 3b: VS Code & Zed** - Broadening the ecosystem support.
+
+### Phase 4: Enterprise & Scale
+- Multi-vault support and cross-vault linking.
+- Encrypted configuration and secret management.
+- Advanced audit logging and access control.
+
+### Timeline Visualization
+
+```mermaid
+gantt
+    title Lithos Development Timeline
+    dateFormat  YYYY-MM-DD
+    section Phase 1: MVP
+    Foundation (M1)       :done,    m1, 2026-01-01, 30d
+    Persistence (M2)      :active,  m2, 2026-02-01, 28d
+    Indexing (M3)         :         m3, 2026-03-01, 31d
+    Templating (M4)       :         m4, 2026-04-01, 30d
+    section Phase 1.5 & 2
+    Templater Parity      :         m5, 2026-05-01, 60d
+    LSP Foundation        :         m6, 2026-07-01, 60d
+    Linter/Formatter      :         m7, 2026-09-01, 30d
+    section Phase 3 & 4
+    Editor Plugins        :         m8, 2026-10-01, 60d
+    Enterprise            :         m9, 2026-12-01, 30d
+```
+
+### Critical Path & Risks
+The project's critical path is driven by the **Vault Indexing Engine (Epic 9)**, which depends on the **Storage Foundation (Epic 8)**. Technical risks regarding Redb/rkyv complexity and async performance are mitigated through early technical spikes and continuous benchmarking.
+
+For the detailed roadmap including full success metrics and risk assessments, see [ROADMAP.md](ROADMAP.md).
