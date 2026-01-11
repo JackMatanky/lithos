@@ -1,0 +1,248 @@
+# generated: 2026-01-11
+# project: lithos
+# project_key: lithos
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: 2026-01-11
+project: lithos
+project_key: lithos
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  epic-1: in-progress
+  1-1-initialize-cargo-workspace-structure: ready-for-dev
+  1-2-configure-misetoml-for-task-orchestration: backlog
+  1-3-set-up-stringent-pre-commit-hooks: backlog
+  1-4-configure-clippytoml-with-cognitive-complexity-limits: backlog
+  1-5-configure-rustfmttoml-with-import-sorting: backlog
+  1-6-set-up-denytoml-for-dependency-security-auditing: backlog
+  1-7-establish-adr-review-process-and-validate-existing-adrs: backlog
+  1-8-create-comprehensive-readmemd: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-establish-async-testing-patterns-and-infrastructure: backlog
+  2-2-create-event-driven-testing-patterns: backlog
+  2-3-establish-cqrs-testing-patterns: backlog
+  2-4-create-centralized-test-utilities-and-infrastructure: backlog
+  2-5-configure-mise-test-task-orchestration: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-create-note-bounded-context: backlog
+  3-2-create-schema-bounded-context: backlog
+  3-3-create-config-bounded-context: backlog
+  3-4-create-template-bounded-context: backlog
+  3-5-review-epic-3-test-suite-for-efficiency: backlog
+  3-6-create-epic-3-documentation: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-create-unified-file-loading-interface: backlog
+  4-2-implement-format-detection-and-parsing: backlog
+  4-3-add-basic-file-loading-validation: backlog
+  4-4-create-loading-strategy-mocks-for-testing: backlog
+  4-5-review-epic-4-test-suite: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-create-config-domain-interface-and-port: backlog
+  5-2-implement-hierarchical-configuration-loading: backlog
+  5-3-add-configuration-validation-and-error-handling: backlog
+  5-4-implement-configuration-versioning-and-migration: backlog
+  5-5-create-sample-configuration-files: backlog
+  5-6-review-epic-5-test-suite: backlog
+  5-6-configuration-error-recovery-and-rollback: backlog
+  5-7-document-configuration-system-for-users: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-create-schema-domain-interface-and-port: backlog
+  6-2-create-schema-property-system: backlog
+  6-3-implement-schema-loading-with-ref-resolution: backlog
+  6-4-implement-schema-inheritance-resolution: backlog
+  6-5-add-schema-validation-and-error-handling: backlog
+  6-6-create-sample-schema-files: backlog
+  6-7-define-schema-template-integration-contracts: backlog
+  6-8-review-epic-6-test-suite: backlog
+  6-9-document-schema-system-for-users: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-create-event-bus-domain-interface-and-port: backlog
+  7-2-define-complete-domain-event-types: backlog
+  7-3-implement-mpsc-data-plane: backlog
+  7-4-implement-broadcast-control-plane: backlog
+  7-5-implement-watch-state-plane: backlog
+  7-6-implement-event-publishing-and-subscription: backlog
+  7-7-add-event-payload-validation-and-error-handling: backlog
+  7-8-implement-event-persistence-for-debugging: backlog
+  7-9-define-event-bus-integration-contracts: backlog
+  7-10-create-event-bus-mocks-for-testing: backlog
+  7-11-review-epic-7-test-suite: backlog
+  7-12-document-event-bus-integration-for-developers: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-create-storage-domain-interface-and-ports: backlog
+  8-2-implement-redb-rkyv-storage-foundation: backlog
+  8-3-add-unit-of-work-pattern-for-transactions: backlog
+  8-4-implement-storage-schema-design-with-query-requirements: backlog
+  8-5-add-storage-validation-and-error-handling: backlog
+  8-6-implement-storage-backup-and-corruption-recovery: backlog
+  8-7-implement-storage-schema-migration-and-evolution: backlog
+  8-8-implement-storage-performance-benchmarking: backlog
+  8-9-create-storage-mocks-for-testing: backlog
+  8-10-storage-error-recovery-and-data-integrity: backlog
+  8-11-review-epic-8-test-suite: backlog
+  8-12-document-storage-system-for-developers: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  9-1-create-vault-domain-interfaces-and-ports: backlog
+  9-2-implement-vault-file-system-scanner: backlog
+  9-3-implement-markdown-parser-for-frontmatter-extraction: backlog
+  9-4-create-vault-indexing-engine-with-incremental-updates: backlog
+  9-5-add-indexing-performance-optimization-and-monitoring: backlog
+  9-6-implement-indexing-error-recovery-and-crash-prevention: backlog
+  9-7-integrate-indexing-with-storage-persistence: backlog
+  9-8-implement-indexing-event-publishing: backlog
+  9-9-implement-indexing-state-persistence: backlog
+  9-10-create-sample-vault-test-data: backlog
+  9-11-create-vault-operation-mocks-for-testing: backlog
+  9-12-review-epic-9-test-suite: backlog
+  9-12-performance-benchmarking-for-vault-indexing-nfr2-validation: backlog
+  9-13-vault-operation-monitoring-and-health-checks: backlog
+  9-14-redb-storage-performance-regression-testing: backlog
+  9-14-document-vault-indexing-system-for-developers: backlog
+  epic-9-retrospective: optional
+
+  epic-10: backlog
+  10-1-create-query-domain-interface-and-port: backlog
+  10-2-integrate-query-service-with-storage-layer: backlog
+  10-3-implement-basic-query-operations: backlog
+  10-4-implement-schema-based-query-filtering: backlog
+  10-5-implement-file-class-query-operations: backlog
+  10-6-add-wiki-link-and-alias-resolution: backlog
+  10-7-implement-query-cache-invalidation-via-events: backlog
+  10-8-add-query-performance-optimization-and-caching: backlog
+  10-9-implement-query-result-formatting: backlog
+  10-10-implement-advanced-query-composition: backlog
+  10-11-create-query-operation-mocks-for-testing: backlog
+  10-12-review-epic-10-test-suite: backlog
+  10-12-performance-benchmarking-for-query-operations: backlog
+  10-13-document-query-service-for-developers: backlog
+  epic-10-retrospective: optional
+
+  epic-11: backlog
+  11-1-domain-unified-prompt-suggestion-and-source-models: backlog
+  11-2-adapterspapi-basic-suggesters-with-list-and-mapping-support: backlog
+  11-3-app-schema-driven-query-automation-binding: backlog
+  11-4-app-dynamic-context-resolution-service: backlog
+  11-5-app-interactive-loop-orchestrator-atomic-workflow: backlog
+  11-6-adapterspspi-minijinja-variable-inspector-extensions: backlog
+  11-7-adapterspapi-fuzzy-picker-with-key-value-support: backlog
+  11-8-test-obsidian-templater-template-conversion-fixtures: backlog
+  11-9-adapterspspi-chrono-datetime-function-integration: backlog
+  11-10-adapterspspi-convert-case-string-function-integration: backlog
+  11-11-adapterspspi-slug-generation-function-integration: backlog
+  11-12-adapterspspi-base64-encoding-function-integration: backlog
+  11-13-adapterspspi-random-value-generation-integration: backlog
+  11-14-adapterspspi-uuid-generation-function-integration: backlog
+  11-15-test-epic-11-test-suite-review-optimization: backlog
+  11-16-template-system-resource-limits-and-timeouts: backlog
+  11-17-template-system-fallback-strategies: backlog
+  11-18-minijinja-template-performance-regression-testing: backlog
+  11-18-docs-epic-11-user-developer-documentation: backlog
+  epic-11-retrospective: optional
+
+  epic-12: backlog
+  12-1-domain-template-dependency-recursion-models: backlog
+  12-2-domain-templatedate-value-object: backlog
+  12-3-app-template-composition-dry-run-orchestrator: backlog
+  12-4-app-context-aware-format-sensing-service: backlog
+  12-5-adapterspspi-chrono-based-natural-language-date-adapter: backlog
+  12-6-adapterspapi-multi-select-terminal-ui: backlog
+  12-7-test-epic-12-test-suite-review-optimization: backlog
+  12-8-docs-epic-12-user-developer-documentation: backlog
+  epic-12-retrospective: optional
+
+  epic-13: backlog
+  13-1-adapterspapi-clap-based-cli-command-structure: backlog
+  13-2-adapterspapi-template-execution-cli-commands: backlog
+  13-3-adapterspapi-vault-management-cli-commands: backlog
+  13-4-adapterspapi-schema-management-cli-commands: backlog
+  13-5-adapterspapi-configuration-cli-commands: backlog
+  13-6-adapterspapi-miette-based-error-diagnostics: backlog
+  13-7-adapterspapi-comprehensive-help-system: backlog
+  13-8-adapterspapi-cross-platform-terminal-support: backlog
+  13-9-adapterspspi-basic-audit-logging-infrastructure: backlog
+  13-10-adapterspapi-single-word-command-shortcuts: backlog
+  13-11-recovery-system-wide-error-recovery-coordination: backlog
+  13-12-test-cli-performance-benchmarking-nfr4-validation: backlog
+  13-13-clap-cli-performance-regression-testing: backlog
+  13-12-test-epic-13-test-suite-review-optimization: backlog
+  13-15-docs-epic-13-cli-documentation: backlog
+  epic-13-retrospective: optional
+
+  epic-14: backlog
+  14-1-test-comprehensive-test-coverage-analysis: backlog
+  14-2-test-test-suite-efficiency-optimization: backlog
+  14-3-test-architectural-boundary-validation: backlog
+  14-4-test-integration-test-suite-validation: backlog
+  14-5-test-cross-epic-integration-testing: backlog
+  14-6-test-end-to-end-workflow-validation: backlog
+  14-7-risk-epic-dependency-mapping-and-risk-assessment: backlog
+  14-8-risk-mvp-scope-reduction-recommendations: backlog
+  14-9-monitor-enhanced-observability-and-monitoring-infrastructure: backlog
+  14-10-recovery-system-wide-emergency-recovery-procedures: backlog
+  14-11-risk-continuous-risk-assessment-and-mitigation: backlog
+  14-12-implementation-sequence-validation: backlog
+  14-13-success-metric-tracking-framework: backlog
+  14-14-architectural-decision-documentation-enhancement: backlog
+  14-15-performance-regression-benchmarking-infrastructure: backlog
+  14-16-technology-alternative-migration-guides: backlog
+  14-17-docs-epic-14-test-documentation: backlog
+  epic-14-retrospective: optional
+
+  epic-15: backlog
+  15-1-docs-installation-and-setup-guide: backlog
+  15-2-docs-quick-start-tutorial: backlog
+  15-3-docs-starter-template-and-schema-library: backlog
+  15-4-docs-migration-guide-from-obsidian: backlog
+  15-5-docs-user-manual-and-feature-reference: backlog
+  15-6-docs-api-documentation-for-developers: backlog
+  15-7-docs-progressive-complexity-documentation-structure: backlog
+  15-8-test-epic-15-documentation-validation: backlog
+  epic-15-retrospective: optional
