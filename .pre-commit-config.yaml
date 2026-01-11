@@ -91,6 +91,12 @@ repos:
         language: system
         types: [rust]
         pass_filenames: false
+      - id: adr-validation
+        name: "Quality: ADR Validation (mise run validate-adrs)"
+        entry: mise run validate-adrs
+        language: system
+        files: ^docs/adr/.*\.md$
+        pass_filenames: false
 
   - repo: https://github.com/EmbarkStudios/cargo-deny
     rev: 0.19.0

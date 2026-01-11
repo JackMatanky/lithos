@@ -219,7 +219,7 @@ lithos/
 - **Data Modeling:** Domain entities in domain crate, transport DTOs in adapters crate following Rust's ownership patterns for data integrity.
 - **Data Validation:** Three-phase pipeline (Syntactic -> Orchestration -> Semantic) with typed errors.
 - **Migration:** Schema versioning in the Redb tables with startup validation.
-- **Caching:** Event-driven invalidation using the state watch plane (ADR 006).
+- **Caching:** Event-driven invalidation using the state watch plane (ADR 0007).
 
 **Path as Identity Decision:** Use vault-relative string paths directly as Note identifiers (no NoteID wrapper) to maintain simplicity and direct filesystem correspondence. Immutable Note entities with embedded Frontmatter following Rust's ownership patterns for data integrity. This approach avoids abstraction complexity while maintaining data consistency and supports the 75% faster template performance target.
 
@@ -308,12 +308,12 @@ lithos/
 
 **Critical Decisions (Block Implementation):**
 
-- **Storage Engine:** Redb + rkyv (Zero-copy structured KV). [ADR 001](adr/001-storage-redb-rkyv.md)
-- **Templating:** MiniJinja (Dynamic Jinja2). [ADR 002](adr/002-template-engine.md)
-- **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 003](adr/003-markdown-parsing.md)
-- **Configuration:** Figment (Provider-based hierarchy). [ADR 004](adr/004-configuration-management.md)
-- **Error Handling:** miette + thiserror (Structured diagnostics). [ADR 005](adr/005-error-handling-diagnostics.md)
-- **Event Orchestration:** Hybrid MPSC/Broadcast/Watch. [ADR 006](adr/006-event-orchestration.md)
+- **Storage Engine:** Redb + rkyv (Zero-copy structured KV). [ADR 0002](adr/0002-storage-redb-rkyv.md)
+- **Templating:** MiniJinja (Dynamic Jinja2). [ADR 0003](adr/0003-template-engine.md)
+- **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 0004](adr/0004-markdown-parsing.md)
+- **Configuration:** Figment (Provider-based hierarchy). [ADR 0005](adr/0005-configuration-management.md)
+- **Error Handling:** miette + thiserror (Structured diagnostics). [ADR 0006](adr/0006-error-handling-diagnostics.md)
+- **Event Orchestration:** Hybrid MPSC/Broadcast/Watch. [ADR 0007](adr/0007-event-orchestration.md)
 
 **Important Decisions (Shape Architecture):**
 
@@ -330,7 +330,7 @@ lithos/
 
 - **Engine:** Redb (Pure-Rust, ACID KV) with **rkyv** zero-copy serialization for high-frequency LSP lookups.
 - **Identity:** UUID v7. Decouples identity from physical path to avoid the "directory trap."
-- **ADR Reference:** [ADR 001: Storage - Redb + rkyv](adr/001-storage-redb-rkyv.md)
+- **ADR Reference:** [ADR 0002: Storage - Redb + rkyv](adr/0002-storage-redb-rkyv.md)
 
 ### Internal Communication
 
@@ -338,14 +338,14 @@ lithos/
   - **Data Plane (MPSC):** Reliable indexing via Actor pattern.
   - **Control Plane (Broadcast):** Global status and notifications.
   - **State Plane (Watch):** Zero-latency LSP state synchronization.
-- **ADR Reference:** [ADR 006: Event Orchestration](adr/006-event-orchestration.md)
+- **ADR Reference:** [ADR 0007: Event Orchestration](adr/0007-event-orchestration.md)
 
 ### Technical Preferences (Step 4 Refinement)
 
-- **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 002](adr/002-template-engine.md)
-- **Markdown:** **pulldown-cmark**. Enables high-speed link extraction via event streaming without building expensive ASTs. [ADR 003](adr/003-markdown-parsing.md)
-- **Configuration:** **Figment**. Uses the Provider pattern to elegantly handle the 6-layer priority hierarchy. [ADR 004](adr/004-configuration-management.md)
-- **Errors/Diagnostics:** **miette**. Provides high-fidelity terminal snippets and 1:1 mapping to LSP Diagnostic objects. [ADR 005](adr/005-error-handling-diagnostics.md)
+- **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 0003](adr/0003-template-engine.md)
+- **Markdown:** **pulldown-cmark**. Enables high-speed link extraction via event streaming without building expensive ASTs. [ADR 0004](adr/0004-markdown-parsing.md)
+- **Configuration:** **Figment**. Uses the Provider pattern to elegantly handle the 6-layer priority hierarchy. [ADR 0005](adr/0005-configuration-management.md)
+- **Errors/Diagnostics:** **miette**. Provides high-fidelity terminal snippets and 1:1 mapping to LSP Diagnostic objects. [ADR 0006](adr/0006-error-handling-diagnostics.md)
 
 ## Implementation Patterns & Consistency Rules
 
@@ -638,7 +638,7 @@ lithos/
 ├── _bmad-output/
 │   ├── planning-artifacts/
 │   │   ├── discovery/            # Project brief and corresponding elicitation summary
-│   │   ├── adr/                  # Architectural Decision Records (001-007)
+│   │   ├── adr/                  # Architectural Decision Records (0001-0007)
 │   │   ├── architecture.md       # This document
 │   │   ├── prd.md                # Product requirements (PRD)
 │   │   └── ux-design-specification.md  # UX Design Specification
@@ -676,7 +676,7 @@ lithos/
 │   │   │   │       ├── config.rs     # Config loading Port
 │   │   │   │       ├── audit.rs      # Audit logging Port (FR40)
 │   │   │   │       └── crypto.rs     # Secret management Port (FR39)
-│   │   │   ├── events/           # ADR 006: Tiered Event Planes
+│   │   │   ├── events/           # ADR 0007: Tiered Event Planes
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── data.rs       # Reliable (Indexing)
 │   │   │   │   ├── control.rs    # Signals (Shutdown)
@@ -775,7 +775,7 @@ lithos/
 
 **Internal Communication:**
 
-- **Hybrid Bus (ADR 006):** Tiered channels (`mpsc`, `broadcast`, `watch`) prevent UI lag from blocking the indexing pipeline.
+- **Hybrid Bus (ADR 0007):** Tiered channels (`mpsc`, `broadcast`, `watch`) prevent UI lag from blocking the indexing pipeline.
 - **DI Container:** The `lithos` crate wires concrete SPI implementations (e.g., `RedbWriter`) to Application services via Constructor Injection.
 
 **External Integrations:**
@@ -833,7 +833,7 @@ lithos/
 The stack is highly synergistic. `Redb` and `rkyv` provide the zero-copy foundation, `pulldown-cmark` provides the streaming event data, and `miette` consumes the resulting byte-offsets for high-fidelity diagnostics. All versions are verified for Jan 2026 compatibility.
 
 **Pattern Consistency:**
-The Hexagonal API/SPI split is strictly applied. The **Hybrid Bus** (ADR 006) resolves the conflict between reliable indexing and reactive LSP performance.
+The Hexagonal API/SPI split is strictly applied. The **Hybrid Bus** (ADR 0007) resolves the conflict between reliable indexing and reactive LSP performance.
 
 **Structure Alignment:**
 The 4-crate workspace enforces physical boundaries that prevent architectural drift.
@@ -852,7 +852,7 @@ Performance targets (<500ms for individual ops, <2s for indexing) are architectu
 ### Implementation Readiness Validation ✅
 
 **Decision Completeness:**
-Critical decisions are documented in ADRs 001-007. The project tree is specific, avoiding generic placeholders and using short, parent-agnostic filenames.
+Critical decisions are documented in ADRs 0001-0007. The project tree is specific, avoiding generic placeholders and using short, parent-agnostic filenames.
 
 **Structure Completeness:**
 The project structure is complete and specific, with all files and directories defined.
@@ -881,7 +881,7 @@ Added explicit `AuditSubscriber` and `EncryptionPort` to ensure FR39 and FR40 ar
 
 **✅ Architectural Decisions**
 
-- [x] Critical decisions documented with versions (ADRs 001-007)
+- [x] Critical decisions documented with versions (ADRs 0001-0007)
 - [x] Technology stack fully specified (Rust 1.92+)
 - [x] Integration patterns defined (Hybrid Bus)
 - [x] Performance considerations addressed (Zero-copy)
@@ -919,7 +919,7 @@ Detailed plugin architecture and LSP-specific suggestion algorithms are prioriti
 
 **AI Agent Guidelines:**
 
-- Follow all architectural decisions exactly as documented in ADRs 001-007
+- Follow all architectural decisions exactly as documented in ADRs 0001-0007
 - Use implementation patterns consistently across all components
 - Respect project structure and boundaries (API/SPI split)
 - **PRIORITIZE** running all tasks and commands through **`mise`**

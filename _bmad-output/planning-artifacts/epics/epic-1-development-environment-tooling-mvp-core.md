@@ -9,7 +9,7 @@ Developers have a fully configured development environment with quality gates, t
 - clippy.toml with cognitive complexity < 15 (warn) / 25 (deny) and all anti-pattern denies
 - rustfmt.toml with import sorting and formatting standards
 - deny.toml for dependency security auditing
-- ADR review process and validation of existing ADRs (001-006)
+- ADR review process and validation of existing ADRs (0001-0007)
 - README.md with project overview and setup instructions
 - Foundation for all subsequent epics
 
@@ -214,7 +214,7 @@ So that architectural decisions are well-reasoned, documented, and validated.
 
 **Acceptance Criteria:**
 
-**Given** the ADR directory exists with documents 001-006
+**Given** the ADR directory exists with documents 0001-0007
 **When** I review the ADR review process
 **Then** a clear process is documented for:
 - When to create an ADR (architectural decisions affecting multiple epics)
@@ -222,7 +222,7 @@ So that architectural decisions are well-reasoned, documented, and validated.
 - Review and approval process
 - How ADRs relate to implementation
 
-**Given** ADRs 001-006 exist
+**Given** ADRs 0001-0007 exist
 **When** I validate them against the established template
 **Then** all ADRs follow the proper format:
 - Status (Accepted/Rejected/Pending)
