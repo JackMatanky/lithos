@@ -32,6 +32,10 @@ build_test_args() {
     if [[ -n "${usage_filter:-}" ]]; then
         ref_args+=("${usage_filter}")
     fi
+
+    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
+        ref_args+=("--reporter" "junit" "--junit-path" "target/nextest-integration.xml")
+    fi
 }
 
 #######################################

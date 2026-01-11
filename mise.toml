@@ -15,6 +15,7 @@ pre-commit = "latest"
 "cargo:cargo-watch" = "latest"
 "cargo:cargo-deny" = "latest"
 "cargo:cargo-nextest" = "latest"
+"cargo:wasm-pack" = "latest"
 
 # ------------------------------------------------------------- #
 #                           SETTINGS                            #
@@ -45,6 +46,10 @@ run = ".mise/tasks/lint.sh"
 [tasks.dev-setup]
 description = "Bootstraps the development environment"
 run = ".mise/tasks/dev-setup.sh"
+
+[tasks.quality]
+description = "Run all quality gates (fmt, lint, validate-adrs)"
+depends = ["fmt", "lint", "validate-adrs"]
 
 [tasks.test]
 description = "Run all tests (unit and integration)"
