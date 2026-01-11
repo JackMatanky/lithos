@@ -92,6 +92,7 @@ panic = "deny"
 unreachable = "deny"
 indexing_slicing = "deny"
 arithmetic_side_effects = "deny"
+static_mut_refs = "deny"
 disallowed_methods = "deny"
 
 [profile.release]
