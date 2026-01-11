@@ -40,23 +40,3 @@ depends = ["test:unit", "test:integration"]
 [tasks.verify]
 description = "Full quality gate orchestration"
 depends = ["fmt", "lint", "test"]
-
-[tasks.fmt]
-description = "Check code formatting"
-run = "cargo +nightly fmt -- --check --unstable-features"
-
-[tasks."fmt:fix"]
-description = "Apply code formatting"
-run = "cargo +nightly fmt -- --unstable-features"
-
-[tasks.lint]
-description = "Run clippy lints"
-run = "cargo clippy -- -D warnings"
-
-[tasks."test:unit"]
-description = "Run unit tests"
-run = "cargo nextest run --lib"
-
-[tasks."test:integration"]
-description = "Run integration tests"
-run = "cargo nextest run --test '*'"

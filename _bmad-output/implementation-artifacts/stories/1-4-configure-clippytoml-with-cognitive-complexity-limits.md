@@ -144,7 +144,7 @@ Claude 3.5 Sonnet
 
 - Stringent clippy linting implemented.
 - Cognitive complexity threshold set to 25.
-- AI safeguards documented in docs/standards/clippy-standards.md.
+  - AI safeguards documented in docs/standards/clippy.md.
 - Fixed audit trail violations in CLI and Test crates.
 - Replaced println! with tracing in CLI entry point.
 - Updated mise lint task to enforce deny-level warnings.
@@ -157,7 +157,7 @@ Claude 3.5 Sonnet
 - crates/domain/src/lib.rs
 - crates/cli/src/main.rs
 - crates/app/tests/dummy_integration.rs
-- docs/standards/clippy-standards.md
+- docs/standards/clippy.md
 - README.md
 
 ## Change Log

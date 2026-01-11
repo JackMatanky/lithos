@@ -44,17 +44,6 @@ Lithos enforces strict quality standards to ensure that both human and AI-genera
 - **Zero-Copy Performance**: Mandatory use of `rkyv` for persistence layers.
 - **Hexagonal Integrity**: Strict boundary enforcement between domain, app, and adapters.
 
-### Formatting Standards
-
-We use `rustfmt` with nightly features to enforce consistent import sorting and code layout:
-
-- **Import Sorting**: Grouped by `std`, then external crates, then internal modules.
-- **Granularity**: Imports from the same crate are grouped into a single `use` statement.
-- **Line Width**: Max 80 characters for both code and comments to ensure readability.
-- **Layout**: Forced multi-line for functions, structs, and arrays to keep git diffs clean.
-
-Run `mise run fmt:fix` to automatically apply these standards.
-
 ### AI Linting Policy
 
 All code must pass the stringent clippy configuration defined in `clippy.toml` and `Cargo.toml`. Disabling lints is allowed only as a last resort and requires an audit trail:
@@ -66,7 +55,7 @@ All code must pass the stringent clippy configuration defined in `clippy.toml` a
 #[allow(clippy::lint_name)]
 ```
 
-For more details, see [Clippy Standards](docs/standards/clippy-standards.md).
+For more details, see [Clippy Standards](docs/standards/clippy.md).
 
 ## Project Structure
 
