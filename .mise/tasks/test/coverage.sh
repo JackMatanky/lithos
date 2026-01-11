@@ -39,7 +39,8 @@ open_file() {
 #######################################
 run_tarpaulin() {
     echo "📊 Generating code coverage report..."
-    cargo tarpaulin --ignore-tests --out Html
+    mkdir -p target/tarpaulin
+    cargo tarpaulin --ignore-tests --out Html --output-dir target/tarpaulin
 }
 
 #######################################
@@ -54,7 +55,7 @@ run_tarpaulin() {
 open_report() {
     if [[ "${usage_open:-}" == "1" ]]; then
         echo "🌐 Opening coverage report..."
-        open_file "tarpaulin-report.html"
+        open_file "target/tarpaulin/tarpaulin-report.html"
     fi
 }
 
