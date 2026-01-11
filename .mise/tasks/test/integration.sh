@@ -1,42 +1,65 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# Filename: .mise/tasks/test/integration.sh
-# Docs: https://mise.jdx.dev/tasks/
+# Filename:    .mise/tasks/test/integration.sh
 # Description: Execute all integration tests across the workspace using nextest.
 # -----------------------------------------------------------------------------
 #MISE description="Run all integration tests"
 #MISE sources=["**/*.rs", "Cargo.toml"]
+#MISE outputs=["target/nextest/default"]
 #USAGE flag "-v --verbose" help="Verbose output"
-#USAGE arg "<filter>" help="Filter tests by name" optional=true
+#USAGE arg "[filter]" help="Filter tests by name"
 
 set -euo pipefail
 
 #######################################
-# Execute integration tests using nextest.
+# Build arguments for nextest integration tests.
 # Globals:
 #   usage_verbose
 #   usage_filter
 # Arguments:
+#   Reference to an array for arguments
+# Outputs:
 #   None
+#######################################
+build_test_args() {
+    local -n ref_args=$1
+    ref_args+=("--workspace" "--test" "*")
+
+    if [[ "${usage_verbose:-}" == "1" ]]; then
+        ref_args+=("--verbose")
+    fi
+
+    if [[ -n "${usage_filter:-}" ]]; then
+        ref_args+=("${usage_filter}")
+    fi
+}
+
+#######################################
+# Execute integration tests using nextest.
+# Arguments:
+#   Arguments for cargo nextest run
 # Outputs:
 #   Writes test results to stdout
 #######################################
-run_integration_tests() {
-    local args=("--test" "*")
-    if [[ "${usage_verbose:-false}" == "true" ]]; then
-        args+=("--verbose")
-    fi
-    if [[ -n "${usage_filter:-}" ]]; then
-        args+=("${usage_filter}")
-    fi
-
+run_nextest() {
     echo "🧪 Running integration tests..."
-    cargo nextest run "${args[@]}"
-    echo "✅ Integration tests complete"
+    cargo nextest run "$@"
 }
 
+#######################################
+# Main entry point.
+# Globals:
+#   None
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
 main() {
-    run_integration_tests
+    local args=()
+    build_test_args args
+    run_nextest "${args[@]}"
+    echo "✅ Integration tests complete"
 }
 
 main "$@"

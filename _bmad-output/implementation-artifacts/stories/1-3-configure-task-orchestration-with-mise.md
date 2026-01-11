@@ -1,6 +1,6 @@
 # Story 1.3: Configure Task Orchestration with Mise
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -25,6 +25,8 @@ so that I can efficiently run tests, benchmarks, formatting, and other developme
     - `fmt` (rustfmt)
     - `lint` (clippy)
     - `doc` (generate and open crate docs)
+    - `build` (cargo build with package shorthand)
+    - `clean` (cargo clean and stamp removal)
 
 ### 2. Best Practices Implementation
 - **Given** I am writing task scripts
@@ -48,13 +50,18 @@ so that I can efficiently run tests, benchmarks, formatting, and other developme
   - [x] Pin `cargo-tarpaulin`, `cargo-watch`, and `cargo-deny`
 - [x] Implement core development tasks as **Pure Script-Based Tasks** in `.mise/tasks/`
   - [x] Implement `test` hierarchy (unit, integration, coverage) using directory grouping
-  - [x] Implement quality tasks (`fmt`, `lint`, `doc`)
-  - [x] Implement orchestration task (`verify`) using `#MISE depends`
+- [x] Implement quality tasks (`fmt`, `lint`, `doc`)
+- [x] Implement utility tasks (`build`, `clean`)
+- [x] Implement orchestration task (`verify`) using `#MISE depends`
+
 - [x] Ensure all scripts pass `shellcheck` and `shfmt` (via hooks from 1.2)
 - [x] Validate full pipeline with `mise run verify`
-- [ ] Stage and commit changes
-  - [ ] Use conventional commit message: `feat(env): implement high-performance task orchestration with mise`
-  - [ ] **MANDATORY**: Ensure all pre-commit hooks pass; NEVER use `--no-verify`.
+- [x] Fix test isolation between unit and integration tasks
+- [x] Implement task caching using `sources` and `outputs` (stamp files)
+- [x] Ensure cross-platform compatibility for report opening
+- [x] Stage and commit changes
+  - [x] Use conventional commit message: `feat(env): implement high-performance task orchestration with mise`
+  - [x] **MANDATORY**: Ensure all pre-commit hooks pass; NEVER use `--no-verify`.
 
 ## Dev Notes
 
@@ -142,6 +149,8 @@ Google Gemini 2.0 Flash (as Scrum Master)
 - `.mise/tasks/fmt.sh`
 - `.mise/tasks/lint.sh`
 - `.mise/tasks/doc.sh`
+- `.mise/tasks/build.sh`
+- `.mise/tasks/clean.sh`
 - `.mise/tasks/test/bench.sh`
 - `.mise/tasks/test/unit.sh`
 - `.mise/tasks/test/integration.sh`

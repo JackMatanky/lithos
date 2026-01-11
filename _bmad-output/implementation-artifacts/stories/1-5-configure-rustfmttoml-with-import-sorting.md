@@ -90,7 +90,10 @@ So that code style is uniform and readable across the codebase.
 
 ### References
 
-- Cite all technical details with source paths and sections, e.g. [Source: docs/<file>.md#Section]
+- [Source: _bmad-output/planning-artifacts/architecture.md#Implementation Patterns & Consistency Rules]
+- [Source: _bmad-output/planning-artifacts/epics/epic-1-development-environment-tooling-mvp-core.md#Story 1.5]
+- [Source: Rustfmt Documentation (https://rust-lang.github.io/rustfmt/)]
+- [Source: Rust 2024 Edition Guide - Version Sorting (https://doc.rust-lang.org/edition-guide/rust-2024/rustfmt-version-sorting.html)]
 
 ## Dev Agent Record
 

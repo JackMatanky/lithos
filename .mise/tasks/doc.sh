@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# Filename: .mise/tasks/doc.sh
-# Docs: https://mise.jdx.dev/tasks/
+# Filename:    .mise/tasks/doc.sh
 # Description: Generate and open crate documentation for all workspace crates.
 # -----------------------------------------------------------------------------
 #MISE description="Generate and open documentation for all crates"
@@ -11,27 +10,48 @@
 set -euo pipefail
 
 #######################################
-# Generate crate documentation.
+# Build arguments for cargo doc.
 # Globals:
 #   usage_open
 # Arguments:
+#   Reference to an array for arguments
+# Outputs:
 #   None
+#######################################
+build_doc_args() {
+    local -n ref_args=$1
+    ref_args+=("--no-deps" "--all-features")
+    if [[ "${usage_open:-}" == "1" ]]; then
+        ref_args+=("--open")
+    fi
+}
+
+#######################################
+# Generate crate documentation.
+# Arguments:
+#   Arguments for cargo doc
 # Outputs:
 #   Writes doc generation progress to stdout
 #######################################
-generate_docs() {
-    local args=("--no-deps" "--all-features")
-    if [[ "${usage_open:-false}" == "true" ]]; then
-        args+=("--open")
-    fi
-
+run_cargo_doc() {
     echo "📚 Generating documentation..."
-    cargo doc "${args[@]}"
-    echo "✅ Documentation generated"
+    cargo doc "$@"
 }
 
+#######################################
+# Main entry point.
+# Globals:
+#   None
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
 main() {
-    generate_docs
+    local args=()
+    build_doc_args args
+    run_cargo_doc "${args[@]}"
+    echo "✅ Documentation generated"
 }
 
 main "$@"

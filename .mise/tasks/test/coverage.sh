@@ -1,38 +1,76 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# Filename: .mise/tasks/test/coverage.sh
-# Docs: https://mise.jdx.dev/tasks/
+# Filename:    .mise/tasks/test/coverage.sh
 # Description: Generate code coverage reports using tarpaulin.
 # -----------------------------------------------------------------------------
 #MISE description="Generate code coverage report"
 #MISE sources=["**/*.rs", "Cargo.toml"]
+#MISE outputs=["tarpaulin-report.html"]
 #USAGE flag "-o --open" help="Open coverage report in browser"
 
 set -euo pipefail
 
 #######################################
+# Open file cross-platform.
+# Arguments:
+#   path: File path to open
+# Outputs:
+#   None
+#######################################
+open_file() {
+    local path="$1"
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        open "${path}"
+    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+        if command -v xdg-open >/dev/null; then
+            xdg-open "${path}"
+        else
+            echo "⚠️ Could not find xdg-open to open ${path}"
+        fi
+    fi
+}
+
+#######################################
 # Generate code coverage report using tarpaulin.
-# Globals:
-#   usage_open
 # Arguments:
 #   None
 # Outputs:
 #   Writes coverage report to stdout
 #######################################
-generate_coverage() {
+run_tarpaulin() {
     echo "📊 Generating code coverage report..."
     cargo tarpaulin --ignore-tests --out Html
-
-    if [[ "${usage_open:-false}" == "true" ]]; then
-        echo "🌐 Opening coverage report..."
-        open tarpaulin-report.html
-    fi
-
-    echo "✅ Coverage report generated"
 }
 
+#######################################
+# Handle opening the report if requested.
+# Globals:
+#   usage_open
+# Arguments:
+#   None
+# Outputs:
+#   None
+#######################################
+open_report() {
+    if [[ "${usage_open:-}" == "1" ]]; then
+        echo "🌐 Opening coverage report..."
+        open_file "tarpaulin-report.html"
+    fi
+}
+
+#######################################
+# Main entry point.
+# Globals:
+#   None
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
 main() {
-    generate_coverage
+    run_tarpaulin
+    open_report
+    echo "✅ Coverage report generated"
 }
 
 main "$@"
