@@ -7,7 +7,7 @@ on:
     branches: [main, dev]
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-latest
 
     steps:
@@ -16,25 +16,11 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24"
-          cache: false
+      - name: Install mise
+        uses: jdx/mise-action@v2
 
-      - name: Build
-        run: go build ./...
+      - name: Run quality gates (mise run verify)
+        run: mise run verify
 
-      - name: Test
-        run: go test ./...
-
-      - name: Test with coverage
-        run: go test -cover ./...
-
-      - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v8
-        with:
-          version: latest
-
-      - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+      - name: Run ADR validation
+        run: mise run validate-adrs
