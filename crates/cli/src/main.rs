@@ -1,4 +1,4 @@
-//! Lithos CLI Binary
+//! Lithos CLI Binary.
 //!
 //! The entry point for the Lithos command-line interface.
 
