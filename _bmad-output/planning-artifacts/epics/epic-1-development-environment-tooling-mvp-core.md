@@ -47,7 +47,39 @@ lithos/
 **When** I run `cargo check`
 **Then** all crates compile without errors
 
-## Story 1.2: Configure mise.toml for Task Orchestration
+## Story 1.2: Set Up Stringent Pre-Commit Hooks
+
+As a developer committing code,
+I want automatic quality checks before every commit,
+So that code quality standards are enforced and poor code is caught early.
+
+**Acceptance Criteria:**
+
+**Given** pre-commit framework is configured
+**When** I check .pre-commit-config.yaml
+**Then** the hooks include these stringent quality gates:
+- `clippy` with all configured lints
+- `rustfmt` with import sorting verification
+- `cargo test` for unit tests
+- `cargo deny check` for dependency security
+
+**Given** I have researched pre-commit best practices for Rust projects
+**When** I review the configuration
+**Then** the hooks follow these best practices:
+- Hooks run in parallel where possible for speed
+- Hooks fail fast on critical issues
+- Hooks include clear error messages for failures
+- Hooks respect .gitignore patterns
+
+**Given** pre-commit hooks are installed
+**When** I attempt to commit code that violates quality standards
+**Then** the commit is blocked with clear error messages
+
+**Given** pre-commit hooks are installed
+**When** I commit properly formatted, tested code
+**Then** the commit succeeds without delays
+
+## Story 1.3: Configure mise.toml for Task Orchestration
 
 As a developer working on the project,
 I want comprehensive mise tasks for development workflows,
@@ -79,38 +111,6 @@ So that I can efficiently run tests, benchmarks, formatting, and other developme
 **Given** mise tasks are configured
 **When** I run `mise run verify`
 **Then** the full quality pipeline executes successfully
-
-## Story 1.3: Set Up Stringent Pre-Commit Hooks
-
-As a developer committing code,
-I want automatic quality checks before every commit,
-So that code quality standards are enforced and poor code is caught early.
-
-**Acceptance Criteria:**
-
-**Given** pre-commit framework is configured
-**When** I check .pre-commit-config.yaml
-**Then** the hooks include these stringent quality gates:
-- `clippy` with all configured lints
-- `rustfmt` with import sorting verification
-- `cargo test` for unit tests
-- `cargo deny check` for dependency security
-
-**Given** I have researched pre-commit best practices for Rust projects
-**When** I review the configuration
-**Then** the hooks follow these best practices:
-- Hooks run in parallel where possible for speed
-- Hooks fail fast on critical issues
-- Hooks include clear error messages for failures
-- Hooks respect .gitignore patterns
-
-**Given** pre-commit hooks are installed
-**When** I attempt to commit code that violates quality standards
-**Then** the commit is blocked with clear error messages
-
-**Given** pre-commit hooks are installed
-**When** I commit properly formatted, tested code
-**Then** the commit succeeds without delays
 
 ## Story 1.4: Configure clippy.toml with Cognitive Complexity Limits
 
