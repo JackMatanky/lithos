@@ -1,0 +1,20 @@
+[package]
+name = "lithos"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
+
+[dependencies]
+lithos-app.workspace = true
+lithos-adapters.workspace = true
+tokio.workspace = true
+clap.workspace = true
+miette.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+
+[lints]
+workspace = true

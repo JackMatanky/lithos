@@ -1,0 +1,71 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Jack"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jack/lithos-rust"
+description = "A CLI-first templating and schema system for Obsidian vaults"
+
+[workspace.dependencies]
+# Core Runtime
+tokio = { version = "1.49", features = ["full"] }
+async-trait = "0.1"
+
+# API & CLI
+clap = { version = "4.5", features = ["derive", "env"] }
+miette = { version = "7.6", features = ["fancy"] }
+
+# Data & Persistence
+serde = { version = "1.0", features = ["derive"] }
+redb = "3.1"
+rkyv = "0.8"
+uuid = { version = "1.19", features = ["v7", "serde"] }
+
+# Application Logic
+minijinja = "2.14"
+pulldown-cmark = "0.13"
+figment = { version = "0.10", features = ["toml", "env"] }
+anyhow = "1.0"
+thiserror = "2.0"
+tracing = "0.1"
+
+# Utilities
+chrono = { version = "0.4", features = ["serde"] }
+convert_case = "0.10"
+slug = "0.1"
+base64 = "0.22"
+rand = "0.10"
+
+# Internal Workspace Crates
+lithos-domain = { path = "crates/domain" }
+lithos-app = { path = "crates/app" }
+lithos-adapters = { path = "crates/adapters" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+rust_2018_idioms = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+cognitive_complexity = "warn"
+unwrap_used = "deny"
+expect_used = "deny"
+todo = "deny"
+panic = "deny"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true
