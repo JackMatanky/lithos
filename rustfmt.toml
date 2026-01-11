@@ -6,8 +6,28 @@
 # -----------------------------------------------------------------------------
 
 edition = "2024"
+style_edition = "2024"
 newline_style = "Unix"
-# The following options require nightly and will be ignored/warned on stable:
-# imports_granularity = "Crate"
-# group_imports = "StdExternalCrate"
-max_width = 100
+
+# Enable unstable features
+unstable_features = true
+
+# Import Sorting
+# Combine imports from the same crate into a single 'use' statement
+imports_granularity = "Crate"
+# Group imports as: std, external, internal
+group_imports = "StdExternalCrate"
+
+# Readability & Maintainability
+# Limit line length to 80 chars for optimal readability
+max_width = 80
+# Consistent 4-space indentation
+tab_spaces = 4
+# Place braces on the same line as 'where' clauses
+brace_style = "SameLineWhere"
+# Limit comment length to 80 chars
+comment_width = 80
+# Force multi-line for functions, struct literals, and small heuristics
+fn_single_line = false
+struct_lit_single_line = false
+use_small_heuristics = "Off"

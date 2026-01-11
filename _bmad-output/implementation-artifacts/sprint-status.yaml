@@ -28,6 +28,6 @@ development_status:
   1-2-set-up-base-pre-commit-and-shell-quality: done
   1-3-configure-task-orchestration-with-mise: done
   1-4-configure-clippytoml-with-cognitive-complexity-limits: done
-  1-5-configure-rustfmttoml-with-import-sorting: ready-for-dev
+  1-5-configure-rustfmttoml-with-import-sorting: review
   1-6-set-up-denytoml-for-dependency-security-auditing: ready-for-dev
   1-7-establish-adr-review-process-and-validate-existing-adrs: backlog

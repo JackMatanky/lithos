@@ -1,6 +1,6 @@
 # Story 1.5: configure-rustfmttoml-with-import-sorting
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -53,56 +53,59 @@ So that code style is uniform and readable across the codebase.
 
 ## Tasks / Subtasks
 
-- [ ] Research comprehensive rustfmt best practices and import sorting standards from Rust community
-   - [ ] Analyze imports_granularity and group_imports options for optimal grouping
-   - [ ] Review version_sorting and max_width settings for readability
-   - [ ] Study additional formatting options for maintainable code (brace style, indentation, comments)
-   - [ ] Examine enterprise Rust projects' rustfmt configurations
-- [ ] Create rustfmt.toml with all best practice settings for readable and maintainable code
-   - [ ] Set imports_granularity = "Crate" and group_imports = "StdExternalCrate"
-   - [ ] Enable version_sorting = true for improved import ordering
-   - [ ] Configure max_width = 80 and other readability settings
-   - [ ] Add settings for consistent brace style, indentation, and comment formatting
-- [ ] Test rustfmt configuration against existing codebase
-   - [ ] Run cargo fmt to apply formatting
-   - [ ] Verify import sorting follows the configured groups
-   - [ ] Check for any formatting conflicts or issues
-   - [ ] Ensure formatted code remains readable and maintainable
-- [ ] Integrate rustfmt checks into development workflow
-   - [ ] Update mise tasks to include rustfmt with check mode
-   - [ ] Verify pre-commit hooks run rustfmt successfully
-   - [ ] Test integration with clippy and other quality tools
-- [ ] Document rustfmt standards and commit changes
-   - [ ] Update README.md with formatting standards
-   - [ ] Add comments to rustfmt.toml explaining each setting's purpose
-   - [ ] Stage and commit with conventional message: "feat(env): implement rustfmt import sorting and formatting standards"
+- [x] Research comprehensive rustfmt best practices and import sorting standards from Rust community
+   - [x] Analyze imports_granularity and group_imports options for optimal grouping
+   - [x] Review version_sorting and max_width settings for readability
+   - [x] Study additional formatting options for maintainable code (brace style, indentation, comments)
+   - [x] Examine enterprise Rust projects' rustfmt configurations
+- [x] Create rustfmt.toml with all best practice settings for readable and maintainable code
+   - [x] Set imports_granularity = "Crate" and group_imports = "StdExternalCrate"
+   - [x] Enable version_sorting = true for improved import ordering
+   - [x] Configure max_width = 80 and other readability settings
+   - [x] Add settings for consistent brace style, indentation, and comment formatting
+- [x] Test rustfmt configuration against existing codebase
+   - [x] Run cargo fmt to apply formatting
+   - [x] Verify import sorting follows the configured groups
+   - [x] Check for any formatting conflicts or issues
+   - [x] Ensure formatted code remains readable and maintainable
+- [x] Integrate rustfmt checks into development workflow
+   - [x] Update mise tasks to include rustfmt with check mode
+   - [x] Verify pre-commit hooks run rustfmt successfully
+   - [x] Test integration with clippy and other quality tools
+- [x] Document rustfmt standards and commit changes
+   - [x] Update README.md with formatting standards
+   - [x] Add comments to rustfmt.toml explaining each setting's purpose
+   - [x] Stage and commit with conventional message: "feat(env): implement rustfmt import sorting and formatting standards"
 
 ## Dev Notes
 
-- Relevant architecture patterns and constraints
-- Source tree components to touch
-- Testing standards summary
-
-### Project Structure Notes
-
-- Alignment with unified project structure (paths, modules, naming)
-- Detected conflicts or variances (with rationale)
-
-### References
-
-- [Source: _bmad-output/planning-artifacts/architecture.md#Implementation Patterns & Consistency Rules]
-- [Source: _bmad-output/planning-artifacts/epics/epic-1-development-environment-tooling-mvp-core.md#Story 1.5]
-- [Source: Rustfmt Documentation (https://rust-lang.github.io/rustfmt/)]
-- [Source: Rust 2024 Edition Guide - Version Sorting (https://doc.rust-lang.org/edition-guide/rust-2024/rustfmt-version-sorting.html)]
+- Used Nightly Rust for advanced formatting features.
+- Configured `unstable_features = true` in `rustfmt.toml`.
+- Updated `mise.toml` to include `rust:nightly` and dedicated `fmt` tasks.
+- Integrated `cargo +nightly fmt` into `pre-commit` hooks.
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude 3.5 Sonnet
 
 ### Debug Log References
 
+- Verified import sorting by adding unsorted imports to `crates/domain/src/lib.rs` and running `mise run fmt:fix`.
+
 ### Completion Notes List
 
+- Implemented comprehensive `rustfmt.toml` with `imports_granularity`, `group_imports`, and `max_width = 80`.
+- Enabled `nightly` toolchain via `mise`.
+- Updated `README.md` with formatting standards.
+- All pre-commit hooks pass.
+
 ### File List
+
+- `rustfmt.toml`
+- `mise.toml`
+- `.pre-commit-config.yaml`
+- `README.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `_bmad-output/implementation-artifacts/stories/1-5-configure-rustfmttoml-with-import-sorting.md`

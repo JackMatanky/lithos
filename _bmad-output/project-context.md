@@ -1,10 +1,10 @@
 ---
 project_name: 'lithos'
 user_name: 'Jack'
-date: '2026-01-08'
-sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
+date: '2026-01-11'
+sections_completed: ['technology_stack', 'architectural_integrity', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
 status: 'complete'
-rule_count: 50
+rule_count: 58
 optimized_for_llm: true
 ---
 
@@ -19,9 +19,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Core Runtime
 - **Rust 1.92+**: Mandatory for memory safety patterns and zero-cost abstractions.
 - **Tokio 1.49**: Async runtime with **'full' features** enabled for concurrent vault operations and CLI responsiveness.
+    - *Safety Invariant*: NEVER perform blocking I/O or heavy CPU tasks (e.g., Redb transactions) inside an async fn without `tokio::task::spawn_blocking`.
 
 ### Data & Persistence
-- **Redb 3.1 & rkyv 0.8**: Embedded ACID KV storage with **zero-copy deserialization** for high-frequency lookups. Note: Use `bytecheck` feature for rkyv 0.8 validation.
+- **Redb 3.1 & rkyv 0.8**: Embedded ACID KV storage with **zero-copy deserialization** for high-frequency lookups.
+    - *Safety Invariant*: All storage types MUST use `rkyv` validation (`bytecheck`) before access to prevent memory corruption from malformed vault data.
 - **UUID 1.19 (v7)**: Time-ordered, sortable unique identifiers for note identity.
 
 ### Application Engine
@@ -31,11 +33,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **thiserror 2.0 & anyhow 1.0**: Structured error definition and ergonomic context chaining.
 
 ### Tooling & Orchestration
-- **mise 2026.1.0**: **Primary and authorized entry point** for all tasks and tool version management (via `mise.toml`).
-- **pre-commit**: Mandatory quality gate for linting, formatting, and complexity checks before every commit.
+- **mise**: **Primary and authorized entry point** for all tasks and tool version management (via `mise.toml`).
+    - *Safety Invariant*: All commands MUST be executed via `mise run <task>` to ensure toolchain parity across environments.
+- **pre-commit**: Mandatory quality gate for linting, formatting, and complexity checks before every commit. Bypassing hooks is strictly prohibited.
 
 ### Code Quality & Standards
-- **clippy**: Enforces **cognitive complexity < 15** and custom quality lints (via `clippy.toml`).
+- **clippy**: Enforces **cognitive complexity < 25** and custom quality lints (via `clippy.toml`).
 - **rustfmt**: Enforces project-wide formatting and import sorting (via `rustfmt.toml`).
 - **nextest**: Optimized test runner for high-performance concurrent execution.
 - **tarpaulin**: Code coverage analysis tool targeting **80%+ coverage**.
@@ -70,7 +73,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Exhaustive Matching:** Use `match` for Enums with `#[non_exhaustive]` on domain types. Prohibit `_ => {}` catch-alls for domain logic to ensure new variants are handled.
 
 #### AI Pitfall Protections
-- **Path Protocol:** Use `PathBuf` (owned) or `&Path` (borrowed) for all file paths. NEVER use `String` for paths.
+- **Path Protocol**: Use `PathBuf` (owned) or `&Path` (borrowed) for all file paths. NEVER use `String` for paths. Prohibit `std::env::current_dir` and `std::fs::canonicalize` in favor of Figment-managed absolute paths.
 - **Async Resource Safety:**
     - In `async` contexts, ONLY use `tokio::fs`. Use `spawn_blocking` for `std::fs` or heavy CPU tasks.
     - **Concurrency Throttling:** Use `tokio::sync::Semaphore` to limit concurrent I/O (e.g., when indexing 10k+ files).
@@ -110,7 +113,6 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Strict Undefineds:** Use `UndefinedBehavior::Strict`. Agents must ensure all variables required by a template are either provided or have a defined default.
 
 ### Testing Rules
-
 - **Hexagonal Testing Hierarchy:**
     - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, math, and conversions.
     - **Integration Tests:** Use `nextest` to run concurrent tests. Mock all `SPI` ports (Storage, Filesystem) to test the `app` layer in isolation.
@@ -140,36 +142,32 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Error Transparency:** Every `Result`-returning function must have an `# Errors` section detailing the `thiserror` variants.
 
 #### Structural Quality (Boundary Protection)
-- **Strict Module Visibility:** Use `pub(crate)` by default. Only promote to `pub` at the crate root (`lib.rs`) to explicitly define the public API surface.
-- **Import Grouping:** Strictly enforce `rustfmt`'s `group_imports = "StdExternalCrate"` to maintain a clear dependency hierarchy.
-- **Clippy as Guardrail:**
-    - **Cognitive Complexity:** Hard limit of 15 (warn) / 25 (deny).
-    - **Anti-Pattern Deny:** Prohibit `clippy::unwrap_used`, `clippy::todo`, and `clippy::dbg_macro` in production code.
+- **Strict Module Visibility**: Use `pub(crate)` by default. Only promote to `pub` at the crate root (`lib.rs`) to explicitly define the public API surface.
+- **No Unsafe**: Strictly prohibit `unsafe` code. `Cargo.toml` enforces `unsafe_code = "forbid"`.
+- **Import Grouping**: Strictly enforce `rustfmt`'s `group_imports = "StdExternalCrate"` to maintain a clear dependency hierarchy.
+
+#### Clippy as Guardrail
+- **Cognitive Complexity:** Hard limit of **25 (deny)**. Max function length of **100 lines (deny)**.
+- **Anti-Pattern Deny:** Prohibit `clippy::unwrap_used`, `clippy::expect_used`, `clippy::todo`, `clippy::panic`, `clippy::unimplemented`, and `clippy::dbg_macro` in production code.
+- **Audit Trail Mandate**: Disabling a lint requires: `// # LINT_DISABLE_REASON: [Reason] | Options tried: [List] | Justification: [Why]`.
 
 #### Process & Orchestration
 - **Mise-First Formatting:** Formatting and linting MUST be run through `mise run verify` to ensure the exact toolchain versions from `mise.toml` are used.
 - **Pre-commit Integrity:** The `pre-commit` hook is the final authority. Agents must fix the code to pass the hook, never bypass it.
-
-### Other Core Rules
-- **Mise-First Mandate:** ALWAYS run tasks via `mise` (e.g., `mise run setup`, `mise run build`).
-- **Complexity Limits:** Max cognitive complexity is 15 (warn) / 25 (deny) via Clippy.
 
 ---
 
 ## Usage Guidelines
 
 **For AI Agents:**
-
-- Read this file before implementing any code
-- Follow ALL rules exactly as documented
-- When in doubt, prefer the more restrictive option
-- Update this file if new patterns emerge
+- Read this file before implementing any code.
+- Follow ALL rules exactly as documented.
+- When in doubt, prefer the more restrictive option.
+- Update this file if new patterns emerge.
 
 **For Humans:**
+- Keep this file lean and focused on agent needs.
+- Update when technology stack changes.
+- Review quarterly for outdated rules.
 
-- Keep this file lean and focused on agent needs
-- Update when technology stack changes
-- Review quarterly for outdated rules
-- Remove rules that become obvious over time
-
-Last Updated: 2026-01-08
+Last Updated: 2026-01-11
