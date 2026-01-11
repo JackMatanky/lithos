@@ -40,4 +40,8 @@ depends = ["test:unit", "test:integration"]
 
 [tasks.verify]
 description = "Full quality gate orchestration"
-depends = ["fmt", "lint", "test"]
+depends = ["fmt", "lint", "test", "deny"]
+
+[tasks.deny]
+description = "Check dependencies for security vulnerabilities and license compliance"
+run = "cargo deny check"

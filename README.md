@@ -29,10 +29,11 @@ cargo build --release
 
 We use `mise` for common tasks:
 
-- `mise run verify`: Run all quality gates (fmt, lint, test).
+- `mise run verify`: Run all quality gates (fmt, lint, test, deny).
 - `mise run fmt`: Format the codebase.
 - `mise run test`: Run the full test suite.
 - `mise run lint`: Run stringent clippy checks.
+- `mise run deny`: Audit dependencies for security and license compliance.
 
 ## Code Quality & AI Safeguards
 
@@ -44,6 +45,7 @@ Lithos enforces strict quality standards to ensure that both human and AI-genera
 - **No shortcuts**: Prohibits `unwrap()`, `expect()`, `todo!`, and `panic!` in production code.
 - **Zero-Copy Performance**: Mandatory use of `rkyv` for persistence layers.
 - **Hexagonal Integrity**: Strict boundary enforcement between domain, app, and adapters.
+- **Dependency Security**: Automated auditing via `cargo-deny` for vulnerabilities, yanked crates, and license compliance.
 
 ### AI Linting Policy
 
