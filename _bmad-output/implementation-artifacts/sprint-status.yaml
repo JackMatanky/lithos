@@ -29,8 +29,8 @@ development_status:
    1-3-configure-task-orchestration-with-mise: done
    1-4-configure-clippytoml-with-cognitive-complexity-limits: done
    1-5-configure-rustfmttoml-with-import-sorting: done
-   1-6-set-up-denytoml-for-dependency-security-auditing: in-progress
-   1-7-establish-adr-review-process-and-validate-existing-adrs: backlog
+   1-6-set-up-denytoml-for-dependency-security-auditing: done
+   1-7-establish-adr-review-process-and-validate-existing-adrs: ready-for-dev
    1-8-create-comprehensive-readmemd: ready-for-dev
    1-9-establish-project-roadmap-in-milestones: ready-for-dev
    epic-1-retrospective: optional
