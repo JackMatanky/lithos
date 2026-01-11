@@ -1,6 +1,6 @@
 # Story 1.4: configure-clippytoml-with-cognitive-complexity-limits
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -145,6 +145,9 @@ Claude 3.5 Sonnet
 - Stringent clippy linting implemented.
 - Cognitive complexity threshold set to 25.
 - AI safeguards documented in docs/standards/clippy-standards.md.
+- Fixed audit trail violations in CLI and Test crates.
+- Replaced println! with tracing in CLI entry point.
+- Updated mise lint task to enforce deny-level warnings.
 
 ### File List
 

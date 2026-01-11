@@ -43,8 +43,8 @@ build_clippy_args() {
 #   Writes lint results to stdout/stderr
 #######################################
 run_clippy() {
-    echo "🔍 Running clippy lints..."
-    cargo clippy "$@"
+    echo "🔍 Running clippy lints (deny-level warnings)..."
+    cargo clippy "$@" -- -D warnings
 }
 
 #######################################
