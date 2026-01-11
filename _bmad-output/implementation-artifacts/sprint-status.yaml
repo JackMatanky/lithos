@@ -26,8 +26,8 @@ development_status:
   epic-1: in-progress
   1-1-initialize-cargo-workspace-structure: done
   1-2-set-up-base-pre-commit-and-shell-quality: done
-  1-3-configure-task-orchestration-with-mise: review
+  1-3-configure-task-orchestration-with-mise: done
   1-4-configure-clippytoml-with-cognitive-complexity-limits: ready-for-dev
-  1-5-configure-rustfmttoml-with-import-sorting: backlog
+  1-5-configure-rustfmttoml-with-import-sorting: ready-for-dev
   1-6-set-up-denytoml-for-dependency-security-auditing: backlog
   1-7-establish-adr-review-process-and-validate-existing-adrs: backlog

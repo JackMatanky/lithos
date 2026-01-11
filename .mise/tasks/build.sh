@@ -1,16 +1,15 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/test/unit.sh
-# Description: Execute all unit tests across the workspace using nextest.
+# Filename:    .mise/tasks/build.sh
+# Description: Build all crates in the workspace.
 # -----------------------------------------------------------------------------
-#MISE description="Run all unit tests"
+#MISE description="Build the workspace"
 #MISE sources=["**/*.rs", "Cargo.toml"]
-#MISE outputs=["target/nextest/default"]
-#USAGE flag "-v --verbose" help="Verbose output"
-#USAGE flag "-p --package <package>" help="Run tests for a specific package" {
+#MISE outputs=["target/debug/lithos", "target/release/lithos"]
+#USAGE flag "-r --release" help="Build in release mode"
+#USAGE flag "-p --package <package>" help="Build a specific package" {
 #USAGE   choices "domain" "app" "adapters" "cli"
 #USAGE }
-#USAGE arg "[filter]" help="Filter tests by name"
 
 set -euo pipefail
 
@@ -38,24 +37,21 @@ map_package_name() {
 }
 
 #######################################
-# Build arguments for nextest unit tests.
+# Build arguments for cargo build.
 # Globals:
-#   usage_verbose
-#   usage_filter
+#   usage_release
 # Arguments:
 #   Reference to an array for arguments
 #   The resolved package name
 # Outputs:
 #   None
 #######################################
-build_test_args() {
+build_cargo_args() {
     local -n ref_args=$1
     local package_name=$2
 
-    ref_args+=("--lib" "--bins")
-
-    if [[ "${usage_verbose:-}" == "1" ]]; then
-        ref_args+=("--verbose")
+    if [[ "${usage_release:-}" == "1" ]]; then
+        ref_args+=("--release")
     fi
 
     if [[ -n "${package_name}" ]]; then
@@ -63,22 +59,18 @@ build_test_args() {
     else
         ref_args+=("--workspace")
     fi
-
-    if [[ -n "${usage_filter:-}" ]]; then
-        ref_args+=("${usage_filter}")
-    fi
 }
 
 #######################################
-# Execute unit tests using nextest.
+# Run cargo build.
 # Arguments:
-#   Arguments for cargo nextest run
+#   Arguments for cargo build
 # Outputs:
-#   Writes test results to stdout
+#   Writes build results to stdout
 #######################################
-run_nextest() {
-    echo "🧪 Running unit tests..."
-    cargo nextest run "$@"
+run_cargo_build() {
+    echo "🏗️  Building codebase..."
+    cargo build "$@"
 }
 
 #######################################
@@ -95,10 +87,10 @@ main() {
     resolved_package=$(map_package_name)
 
     local args=()
-    build_test_args args "${resolved_package}"
+    build_cargo_args args "${resolved_package}"
 
-    run_nextest "${args[@]}"
-    echo "✅ Unit tests complete"
+    run_cargo_build "${args[@]}"
+    echo "✅ Build complete"
 }
 
 main "$@"

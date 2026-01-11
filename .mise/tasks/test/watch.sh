@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# Filename: .mise/tasks/test/watch.sh
-# Docs: https://mise.jdx.dev/tasks/
+# Filename:    .mise/tasks/test/watch.sh
 # Description: Watch for file changes and automatically run tests.
 # -----------------------------------------------------------------------------
 #MISE description="Watch for changes and run tests"
@@ -11,26 +10,48 @@
 set -euo pipefail
 
 #######################################
-# Watch for changes and run tests using cargo-watch.
+# Build the command string for cargo-watch.
 # Globals:
 #   usage_args
 # Arguments:
 #   None
 # Outputs:
+#   Echoes the watch command
+#######################################
+build_watch_command() {
+    if [[ -n "${usage_args:-}" ]]; then
+        echo "test -- ${usage_args}"
+    else
+        echo "test"
+    fi
+}
+
+#######################################
+# Watch for changes and run tests using cargo-watch.
+# Arguments:
+#   The watch command string
+# Outputs:
 #   Writes test results to stdout on every change
 #######################################
-watch_tests() {
-    local watch_cmd="test"
-    if [[ -n "${usage_args:-}" ]]; then
-        watch_cmd="test -- ${usage_args}"
-    fi
-
+run_cargo_watch() {
+    local watch_cmd=$1
     echo "👀 Watching for changes..."
     cargo watch -x "${watch_cmd}"
 }
 
+#######################################
+# Main entry point.
+# Globals:
+#   None
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
 main() {
-    watch_tests
+    local watch_cmd
+    watch_cmd=$(build_watch_command)
+    run_cargo_watch "${watch_cmd}"
 }
 
 main "$@"

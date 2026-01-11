@@ -1,37 +1,56 @@
 #!/usr/bin/env bash
 # -----------------------------------------------------------------------------
-# Filename: .mise/tasks/test/bench.sh
-# Docs: https://mise.jdx.dev/tasks/
+# Filename:    .mise/tasks/test/bench.sh
 # Description: Run performance benchmarks for all workspace crates.
 # -----------------------------------------------------------------------------
 #MISE description="Run benchmarks using criterion"
 #MISE sources=["**/*.rs", "Cargo.toml"]
-#USAGE arg "<filter>" help="Filter benchmarks by name" optional=true
+#USAGE arg "[filter]" help="Filter benchmarks by name"
 
 set -euo pipefail
 
 #######################################
-# Run benchmarks for all crates.
+# Build arguments for cargo bench.
 # Globals:
 #   usage_filter
 # Arguments:
+#   Reference to an array for arguments
+# Outputs:
 #   None
+#######################################
+build_bench_args() {
+    local -n ref_args=$1
+    if [[ -n "${usage_filter:-}" ]]; then
+        ref_args+=("${usage_filter}")
+    fi
+}
+
+#######################################
+# Run benchmarks for all crates.
+# Arguments:
+#   Arguments for cargo bench
 # Outputs:
 #   Writes benchmark results to stdout
 #######################################
-run_benchmarks() {
-    local args=()
-    if [[ -n "${usage_filter:-}" ]]; then
-        args+=("${usage_filter}")
-    fi
-
+run_cargo_bench() {
     echo "🧪 Running benchmarks..."
-    cargo bench "${args[@]}"
-    echo "✅ Benchmarking complete"
+    cargo bench "$@"
 }
 
+#######################################
+# Main entry point.
+# Globals:
+#   None
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
 main() {
-    run_benchmarks
+    local args=()
+    build_bench_args args
+    run_cargo_bench "${args[@]}"
+    echo "✅ Benchmarking complete"
 }
 
 main "$@"
