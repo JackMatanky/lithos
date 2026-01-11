@@ -5,7 +5,7 @@
 #              as edition, line endings, and import grouping.
 # -----------------------------------------------------------------------------
 
-edition = "2021"
+edition = "2024"
 newline_style = "Unix"
 # The following options require nightly and will be ignored/warned on stable:
 # imports_granularity = "Crate"
