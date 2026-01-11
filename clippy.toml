@@ -14,7 +14,7 @@ cognitive-complexity-threshold = 25
 too-many-lines-threshold = 100
 
 # Project Metadata
-msrv = "1.70"
+msrv = "1.85"
 doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv", "CLI", "JSON", "TOML", "YAML"]
 
 # Test Restrictions (No unwrap/expect allowed in tests either)

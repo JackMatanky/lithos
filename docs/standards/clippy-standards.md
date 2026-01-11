@@ -10,7 +10,7 @@ We use a highly restrictive clippy configuration to prevent common Rust anti-pat
 
 - **Cognitive Complexity**: Hard limit of **25** (deny). Functions exceeding this must be refactored.
 - **Function Length**: Hard limit of **100 lines** (deny).
-- **MSRV**: Minimum Supported Rust Version is **1.70**.
+- **MSRV**: Minimum Supported Rust Version is **1.85**.
 
 ## Mandatory Deny Lints
 

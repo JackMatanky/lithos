@@ -14,7 +14,7 @@ Lithos is a high-performance CLI tool for managing and processing Obsidian vault
 
 ### Prerequisites
 
-- **Rust 1.92+**
+- **Rust 1.85+**
 - **mise** (recommended for task orchestration)
 
 ### Build from Source
