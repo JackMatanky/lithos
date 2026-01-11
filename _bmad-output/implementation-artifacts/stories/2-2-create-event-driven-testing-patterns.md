@@ -57,7 +57,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 
 ## Dev Notes
 
-- Relevant architecture patterns and constraints: Event-driven architecture with hybrid event bus (ADR 006), domain events for CQRS separation
+- Relevant architecture patterns and constraints: Event-driven architecture with hybrid event bus (ADR 0007), domain events for CQRS separation
 - Source tree components to touch: Event testing utilities in test-utils crate, domain event definitions, event bus ports
 - Testing standards summary: Event-driven tests ensure proper event flow, payload verification, and async handling with mock isolation
 
@@ -70,7 +70,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 
 - [ADR 0008: Event-Driven Testing Patterns](docs/adr/0008-event-driven-testing-patterns.md) - Comprehensive analysis and decisions for optimal testing patterns
 - [Source: epics/epic-2-test-architecture-patterns-utilities-mvp-core.md#Story 2.2]
-- [ADR 0006: Hybrid Event Orchestration](docs/adr/0006-event-orchestration.md) - Event bus architecture requiring specific testing patterns
+- [ADR 0007: Hybrid Event Orchestration](docs/adr/0007-event-orchestration.md) - Event bus architecture requiring specific testing patterns
 - [Research: CQRS Event Sourcing Testing - https://doc.rust-cqrs.org/add_first_test.html]
 - [Research: Domain Event Testing Patterns - https://verraes.net/2023/05/eventsourcing-testing-patterns/]
 - [Research: Event Sourcing with Aggregates - https://medium.com/capital-one-tech/event-sourcing-with-aggregates-in-rust-4022af41cf67]
@@ -89,7 +89,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 
 ## Dev Notes
 
-- **ADR 0008 Analysis Integration**: Follow validated testing patterns for optimal efficiency and complete coverage of Lithos' hybrid event bus architecture (ADR 006).
+- **ADR 0008 Analysis Integration**: Follow validated testing patterns for optimal efficiency and complete coverage of Lithos' hybrid event bus architecture (ADR 0007).
 
 - **Architecture Compliance**: Builds on CQRS patterns with comprehensive event verification across all three event bus planes.
 
@@ -109,7 +109,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 
 **Priority 1 (Foundation):** Implement CQRS Event Sourcing Testing Framework with Given-When-Then patterns for aggregate testing (ADR 0008 Decision 1)
 
-**Priority 2 (Infrastructure):** Create trait-based mock event bus using Arc<dyn EventBusPort> supporting all three ADR 006 event bus planes:
+**Priority 2 (Infrastructure):** Create trait-based mock event bus using Arc<dyn EventBusPort> supporting all three ADR 0007 event bus planes:
 - Data Plane (MPSC): Reliable indexer actor event testing
 - Control Plane (Broadcast): System status event testing
 - State Plane (Watch): LSP state synchronization testing
@@ -124,7 +124,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 
 **Priority 5 (Advanced):** Build event ordering and timing verification using generation counters and timestamps (ADR 0008 Decision 5)
 
-**Priority 6 (Integration):** Implement performance testing patterns for event throughput (10,000+ events/sec target from ADR 006) and cross-aggregate event flows
+**Priority 6 (Integration):** Implement performance testing patterns for event throughput (10,000+ events/sec target from ADR 0007) and cross-aggregate event flows
 
 ### File Structure Requirements
 
@@ -160,7 +160,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 
 ### Project Context Reference
 
-- Lithos uses hybrid event bus (ADR 006) for domain events and CQRS
+- Lithos uses hybrid event bus (ADR 0007) for domain events and CQRS
 - Event-driven architecture requires comprehensive testing for reliability
 - Domain layer events drive cross-aggregate consistency and UI updates
 

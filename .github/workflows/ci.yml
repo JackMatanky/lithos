@@ -5,9 +5,16 @@ on:
     branches: [main, dev]
   pull_request:
     branches: [main, dev]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  MISE_EXPERIMENTAL: true
 
 jobs:
-  verify:
+  # Fast quality checks (formatting, linting, unit tests)
+  quality:
+    name: Quality Gates
     runs-on: ubuntu-latest
 
     steps:
@@ -19,8 +26,142 @@ jobs:
       - name: Install mise
         uses: jdx/mise-action@v2
 
-      - name: Run quality gates (mise run verify)
+      - name: Cache mise installs
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/mise
+          key: mise-${{ runner.os }}-${{ hashFiles('mise.toml') }}
+          restore-keys: |
+            mise-${{ runner.os }}-
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-registry-${{ runner.os }}-
+
+      - name: Cache Cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            cargo-target-${{ runner.os }}-
+
+      - name: Run quality gates
         run: mise run verify
 
       - name: Run ADR validation
         run: mise run validate-adrs
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-quality
+          path: target/debug/deps/*.xml
+
+  # Comprehensive testing across Rust versions
+  test:
+    name: Test (${{ matrix.toolchain }})
+    runs-on: ubuntu-latest
+    needs: quality
+    strategy:
+      matrix:
+        toolchain: [stable, nightly]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Override Rust toolchain
+        if: matrix.toolchain != 'stable'
+        run: |
+          echo "rust = \"${{ matrix.toolchain }}\"" >> mise.local.toml
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-registry-${{ runner.os }}-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache Cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-${{ runner.os }}-${{ matrix.toolchain }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Run full test suite
+        run: mise run test
+
+      - name: Run benchmarks (stable only)
+        if: matrix.toolchain == 'stable'
+        run: mise run bench
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.toolchain }}
+          path: target/debug/deps/*.xml
+
+  # Coverage analysis
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Cache Cargo target
+        uses: actions/cache@v4
+        with:
+          path: target
+          key: cargo-target-${{ runner.os }}-coverage-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Generate coverage report
+        run: mise run test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: target/tarpaulin/
+
+  # Security and dependency checks
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: quality
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install mise
+        uses: jdx/mise-action@v2
+
+      - name: Run security checks
+        run: mise run deny
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: |
+            *.log
+            deny.toml

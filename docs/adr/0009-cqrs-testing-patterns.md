@@ -33,7 +33,7 @@ Research revealed several established CQRS testing approaches:
 - Cross-aggregate interactions
 - Eventual consistency timing verification
 
-The project needs testing patterns that support hexagonal architecture, async operations, and the hybrid event bus from ADR 006.
+The project needs testing patterns that support hexagonal architecture, async operations, and the hybrid event bus from ADR 0007.
 
 ## Decision
 
@@ -250,7 +250,7 @@ fn account_deposit_increases_balance() {
 ### Lithos-Specific Validation
 - **Hexagonal Architecture**: Mock ports enable 95% unit test coverage
 - **Async Operations**: Tokio integration provides reliable concurrent testing
-- **Hybrid Event Bus**: Testing patterns support all three ADR 006 planes
+- **Hybrid Event Bus**: Testing patterns support all three ADR 0007 planes
 - **Performance Requirements**: Testing framework enables sub-50ms validation cycles
 
 This expanded ADR provides comprehensive guidance for implementing world-class CQRS testing patterns that will scale with Lithos' growth and ensure system reliability.
@@ -269,7 +269,7 @@ The selected patterns align with CQRS testing best practices:
 The patterns perfectly support Lithos' design:
 - Hexagonal architecture enables clean mocking of ports
 - Async-first design requires tokio-compatible testing
-- Hybrid event bus (ADR 006) supports event flow testing
+- Hybrid event bus (ADR 0007) supports event flow testing
 - CQRS separation demands isolated command/query testing
 
 ### Performance Considerations

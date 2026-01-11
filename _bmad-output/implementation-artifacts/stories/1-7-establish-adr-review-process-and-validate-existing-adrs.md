@@ -115,7 +115,7 @@ So that we maintain architectural integrity and document important decisions.
 - Created ADR process guide and training material in `docs/adr/README.md`.
 - Integrated validation and metrics into `mise` tasks and `pre-commit` hooks.
 - Updated CI pipeline (`.github/workflows/ci.yml`) to include ADR validation.
-- Migrated and renumbered all ADRs (0001-0008) to meet the new quality standards.
+- Migrated and renumbered all ADRs (0001-0010) to meet the new quality standards.
 
 ### File List
 
@@ -127,6 +127,10 @@ So that we maintain architectural integrity and document important decisions.
 - docs/adr/0004-markdown-parsing.md
 - docs/adr/0005-configuration-management.md
 - docs/adr/0006-error-handling-diagnostics.md
+- docs/adr/0007-event-orchestration.md
+- docs/adr/0008-event-driven-testing-patterns.md
+- docs/adr/0009-cqrs-testing-patterns.md
+- docs/adr/0010-centralized-test-utilities.md
 - docs/adr/0007-event-orchestration.md
 - docs/adr/0008-event-driven-testing-patterns.md
 - scripts/validate-adrs.sh

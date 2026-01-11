@@ -87,7 +87,7 @@ So that command side and query side code are tested in isolation with proper ver
 
 - **ADR 0008 Analysis Integration**: Follow validated CQRS testing patterns for optimal command/query separation testing and eventual consistency verification.
 
-- **Architecture Compliance**: Builds on CQRS architecture (ADR 001, ADR 006) with comprehensive testing for write/read model separation.
+- **Architecture Compliance**: Builds on CQRS architecture (ADR 0002, ADR 0007) with comprehensive testing for write/read model separation.
 
 - **Implementation Priority**: Start with TestFramework infrastructure (Priority 1), then mock implementations (Priority 2), finally advanced patterns (Priority 3-4).
 
@@ -105,10 +105,10 @@ So that command side and query side code are tested in isolation with proper ver
 
 - [ADR 0008: Event-Driven Testing Patterns](docs/adr/0008-event-driven-testing-patterns.md) - CQRS testing patterns and validation
 - [Source: epics/epic-2-test-architecture-patterns-utilities-mvp-core.md#Story 2.3]
-- [ADR 0001: Storage - Redb + rkyv](docs/adr/0001-storage-redb-rkyv.md) - CQRS foundation
+- [ADR 0002: Storage - Redb + rkyv](docs/adr/0002-storage-redb-rkyv.md) - CQRS foundation
 - [ADR 0009: CQRS Testing Patterns](docs/adr/0009-cqrs-testing-patterns.md) - Comprehensive CQRS testing framework and detailed implementation patterns
 - [ADR 0008: Event-Driven Testing Patterns](docs/adr/0008-event-driven-testing-patterns.md) - Event testing foundation for CQRS validation
-- [ADR 0006: Hybrid Event Orchestration](docs/adr/0006-event-orchestration.md) - Event bus architecture for CQRS operations
+- [ADR 0007: Hybrid Event Orchestration](docs/adr/0007-event-orchestration.md) - Event bus architecture for CQRS operations
 - [Research: CQRS Testing Best Practices - https://reintech.io/blog/testing-strategies-cqrs-applications]
 - [Research: Mocks for Commands, Stubs for Queries - https://blog.ploeh.dk/2013/10/23/mocks-for-commands-stubs-for-queries/]
 
@@ -128,7 +128,7 @@ So that command side and query side code are tested in isolation with proper ver
 
 - **ADR 0009 Analysis Integration**: Follow the comprehensive CQRS testing framework from ADR 0009 for optimal command/query separation testing, including security, observability, and CI/CD integration.
 
-- **Architecture Compliance**: Implements all ADR 0009 testing patterns supporting hexagonal architecture, async operations, and hybrid event bus (ADR 006) with full CQRS separation validation.
+- **Architecture Compliance**: Implements all ADR 0009 testing patterns supporting hexagonal architecture, async operations, and hybrid event bus (ADR 0007) with full CQRS separation validation.
 
 - **Implementation Priority**: Start with core TestFramework infrastructure (Priority 1), then command/query patterns (Priority 2-3), followed by advanced features (Priority 4-6).
 
@@ -277,7 +277,7 @@ async fn order_saga_updates_inventory_and_payment() {
 ### Project Context Reference
 
 - Lithos implements CQRS with event sourcing for optimal read/write separation and scalability
-- Commands publish domain events that asynchronously update read models through the hybrid event bus (ADR 006)
+- Commands publish domain events that asynchronously update read models through the hybrid event bus (ADR 0007)
 - Testing requires complete isolation of command side (mocks) from query side (stubs) operations
 - Domain aggregates must be tested with event sourcing patterns for state reconstruction and business rule validation
 - Eventual consistency between write and read models needs precise timing control and race condition prevention
@@ -317,7 +317,7 @@ async fn order_saga_updates_inventory_and_payment() {
 - Status: ready-for-dev
 - All acceptance criteria defined with comprehensive CQRS testing requirements including security and observability
 - Technical requirements complete with all ADR 0009 patterns: command/query testing, event sourcing, eventual consistency, integration, security, and CI/CD
-- Integration points identified with event testing (ADR 0008), async infrastructure (Story 2.1), and hybrid event bus (ADR 006)
+- Integration points identified with event testing (ADR 0008), async infrastructure (Story 2.1), and hybrid event bus (ADR 0007)
 - Migration path provided for teams with existing CQRS tests to transition smoothly
 - Risk assessment: Low risk, follows validated ADR 0009 patterns with extensive research and real-world case studies
 - Execution Optimization: Follow ADR 0009 comprehensive framework for maximum efficiency, security, and production readiness

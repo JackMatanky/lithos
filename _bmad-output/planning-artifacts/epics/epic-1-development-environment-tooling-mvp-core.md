@@ -321,3 +321,54 @@ So that project progress, timelines, and dependencies are clearly communicated.
 - Regular review cycles (monthly) for timeline updates
 - Communication protocols for stakeholder updates
 - Contingency planning for identified risks
+
+## Story 1.10: Configure CI.yml for Mise and Rust Best Practices
+
+As a developer contributing to the project,
+I want CI/CD pipelines that leverage the mise setup and follow Rust project best practices,
+So that builds are fast, reliable, and consistent with local development workflows.
+
+**Acceptance Criteria:**
+
+**Given** I have researched CI/CD best practices for Rust projects with mise
+**When** I review the .github/workflows/ci.yml configuration
+**Then** the CI pipeline includes:
+- mise integration for consistent tool versions across local and CI environments
+- Rust toolchain caching for faster builds
+- Parallel job execution for test and quality gate separation
+- Comprehensive test coverage with unit, integration, and benchmark reporting
+- Security scanning integration with cargo-deny
+- Performance regression detection
+
+**Given** CI.yml is configured with mise integration
+**When** I check the workflow steps
+**Then** mise handles all tool installations:
+- Rust toolchain setup via mise (not actions-rust-lang/setup-rust-lang)
+- Pre-commit hooks validation via mise
+- Test execution via mise tasks (not direct cargo commands)
+- Code quality checks via mise orchestration
+
+**Given** I have researched Rust CI optimization techniques
+**When** I review the CI configuration
+**Then** optimizations include:
+- Cargo registry caching for dependency downloads
+- Target directory caching for incremental builds
+- Workspace optimization for monorepo builds
+- Conditional execution based on file changes
+
+**Given** CI pipeline includes comprehensive quality gates
+**When** PRs are submitted
+**Then** all checks pass:
+- mise run verify (fmt + lint + test)
+- ADR validation
+- Security scanning
+- Performance benchmarks (no regression)
+
+**Given** CI.yml follows GitHub Actions best practices
+**When** I check the workflow structure
+**Then** it includes:
+- Matrix builds for multiple Rust versions (stable, nightly)
+- Proper artifact upload for test results and coverage
+- Status badges integration
+- Workflow dispatch for manual triggers
+- Branch protection rule compatibility
