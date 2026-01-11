@@ -71,18 +71,20 @@ repos:
         args: ["--strict", "--verbose"]
 
   # ----------------------- Rust Quality --------------------- #
-  - repo: https://github.com/doublify/pre-commit-rust
-    rev: v1.0
-    hooks:
-      - id: fmt
-        name: "Quality: Rust Format (cargo fmt)"
-        args: ["--all", "--", "--check"]
-      - id: clippy
-        name: "Quality: Rust Clippy (cargo clippy)"
-        args: ["--all-targets", "--all-features", "--", "-D", "warnings"]
-
   - repo: local
     hooks:
+      - id: rust-fmt
+        name: "Quality: Rust Format (cargo +nightly fmt)"
+        entry: cargo +nightly fmt --all -- --check --unstable-features
+        language: system
+        types: [rust]
+        pass_filenames: false
+      - id: rust-clippy
+        name: "Quality: Rust Clippy (cargo clippy)"
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        types: [rust]
+        pass_filenames: false
       - id: cargo-test
         name: "Quality: Rust Tests (cargo test)"
         entry: cargo test --workspace
