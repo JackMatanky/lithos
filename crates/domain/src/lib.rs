@@ -1,14 +1,12 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Lithos Domain Crate
+//!
+//! This crate contains the pure business logic, domain entities, and port definitions
+//! for the Lithos system. It has no dependencies on external I/O or frameworks.
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+/// Placeholder domain error for initialization verification
+#[derive(Debug, thiserror::Error)]
+pub enum DomainError {
+    /// Initial placeholder error
+    #[error("Initialization error")]
+    Initialize,
 }
