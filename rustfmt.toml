@@ -1,5 +1,5 @@
 # -----------------------------------------------------------------------------
-# Filename:    lithos/rustfmt.toml
+# Filename:    rustfmt.toml
 # Docs:        https://rust-lang.github.io/rustfmt/
 # Description: Configuration for rustfmt, defining code style standards such
 #              as edition, line endings, and import grouping.

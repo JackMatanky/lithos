@@ -1,6 +1,6 @@
 # Story 1.5: configure-rustfmttoml-with-import-sorting
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -81,9 +81,11 @@ So that code style is uniform and readable across the codebase.
 
 - Used Nightly Rust for advanced formatting features.
 - Configured `unstable_features = true` in `rustfmt.toml`.
-- Updated existing scripts in `.mise/tasks/fmt.sh` to use nightly and unstable features.
+- Created `rust-toolchain.toml` to pin the nightly channel and ensure deterministic builds.
+- Hardened `.mise/tasks/fmt.sh` to work reliably across environments and bypass rustup shim issues.
 - Created `docs/standards/rustfmt.md` for detailed formatting documentation.
-- Integrated `cargo +nightly fmt` into `pre-commit` hooks via local system hooks.
+- Integrated `mise run fmt --check` into `pre-commit` hooks.
+- Enabled `experimental = true` in `mise.toml` to support the nightly rust backend.
 
 ## Dev Agent Record
 
@@ -98,14 +100,19 @@ Claude 3.5 Sonnet
 ### Completion Notes List
 
 - Implemented comprehensive `rustfmt.toml` with `imports_granularity`, `group_imports`, and `max_width = 80`.
-- Enabled `nightly` toolchain via `mise`.
+- Enabled `nightly` toolchain via `mise` and `rust-toolchain.toml`.
 - Documented standards in `docs/standards/rustfmt.md`.
-- Updated `.mise/tasks/fmt.sh` to use nightly features.
+- Hardened `.mise/tasks/fmt.sh` with robust path handling and toolchain parity.
+- [AI Review Fix] Corrected `Cargo.toml` MSRV to 1.92 to align with project context.
+- [AI Review Fix] Added missing `imports_granularity` and `group_imports` (Crate/StdExternalCrate) to `rustfmt.toml`.
+- [AI Review Fix] Refactored pre-commit to use `mise run fmt` entry point.
+- [AI Review Fix] Created `rust-toolchain.toml` to eliminate manual toolchain switching.
 - All pre-commit hooks pass.
 
 ### File List
 
 - `rustfmt.toml`
+- `rust-toolchain.toml`
 - `mise.toml`
 - `.pre-commit-config.yaml`
 - `README.md`

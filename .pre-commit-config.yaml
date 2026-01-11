@@ -74,8 +74,8 @@ repos:
   - repo: local
     hooks:
       - id: rust-fmt
-        name: "Quality: Rust Format (cargo +nightly fmt)"
-        entry: cargo +nightly fmt --all -- --check --unstable-features
+        name: "Quality: Rust Format (mise run fmt)"
+        entry: mise run fmt --check
         language: system
         types: [rust]
         pass_filenames: false

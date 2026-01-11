@@ -11,8 +11,6 @@ The project uses a custom `rustfmt.toml` with the following key rules:
   - All imports from the same crate are combined into a single `use` statement.
 - **Grouping**: `group_imports = "StdExternalCrate"`
   - Imports are grouped as: standard library (`std`), followed by external crates, and finally internal modules.
-- **Sorting**: `reorder_imports = true`
-  - Imports are automatically sorted alphabetically within their groups.
 
 ### Code Layout
 - **Line Width**: `max_width = 80`
@@ -26,6 +24,7 @@ The project uses a custom `rustfmt.toml` with the following key rules:
 To keep git diffs clean and improve readability, several structures are forced to multi-line:
 - **Functions**: `fn_single_line = false`
 - **Struct Literals**: `struct_lit_single_line = false`
+- **Array Literals**: `array_lit_single_line = false`
 - **Small Heuristics**: `use_small_heuristics = "Off"`
 
 ## Applying Formatting
