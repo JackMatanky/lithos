@@ -1,40 +1,49 @@
 # ADR 0006: Error Handling and Diagnostics Framework
 
-## Status
-Accepted
+*   **Status**: Accepted
+*   **Date**: 2026-01-11
+*   **Stakeholders**: Jack (Developer), Architects
 
 ## Context
-Lithos Rust must provide exceptional feedback to users across two primary interfaces:
-1.  **CLI:** Human-readable, colorized output with code snippets highlighting the exact location of schema or syntax violations in Markdown and YAML files.
-2.  **LSP:** Structured diagnostic objects compatible with the Language Server Protocol's `Diagnostic` type (range, severity, message, and related information).
 
-We need to categorize failures into three distinct classes:
-*   **Domain Errors:** Internal logical failures (e.g., `SchemaNotFound`, `CircularInheritance`).
-*   **Infrastructure Errors:** System-level failures (e.g., `DiskFull`, `PermissionDenied`).
-*   **User Diagnostics:** Actionable feedback on user-provided content (e.g., `InvalidFrontmatter`, `MissingRequiredField`, `BrokenLink`).
-
-The project requires a solution that minimizes "error erasure" (losing type information) while maximizing "visual fidelity" for the user.
+Lithos Rust must provide exceptional feedback across CLI and LSP interfaces. We need to categorize failures (Domain, Infrastructure, User Diagnostics) while maximizing visual fidelity (code snippets, colors) and minimizing error erasure.
 
 ## Decision
+
 The project will adopt **miette** as the primary diagnostic framework, layered over **thiserror** for defining structured error enums.
 
 ### Tiered Error Model
-- **thiserror (v2.0):** Used to define the underlying error types and derive `std::error::Error` and `Display`. This ensures the domain layer remains pure and its errors are programmatically matchable.
-- **miette (v7.6):** Used to add diagnostic metadata via `#[derive(Diagnostic)]`. This includes error codes (e.g., `L001`), help text, documentation URLs, and `SourceSpan` labels.
-- **anyhow:** Explicitly avoided in the core library crates to maintain strict type safety and structured diagnostics. It may be used sparingly in the `main` CLI entry point for catching unexpected global panics.
+- **thiserror (v2.0):** Used to define the underlying error types (Domain, Infrastructure) and ensure they are programmatically matchable.
+- **miette (v7.6):** Adds diagnostic metadata (codes, help, `SourceSpan` labels) for User Diagnostics.
+- **anyhow:** Explicitly avoided in core library to maintain type safety; used sparingly in the CLI main loop for global panic catching.
 
-## Rationale
+## Alternatives Considered
 
-### 1. High-Fidelity Diagnostics (The "Golden Standard")
-`miette` is the industry leader for "fancy" terminal diagnostics. It allows us to define `SourceSpan`s that point to exact byte offsets in a file. `miette` handles the rendering of these snippets—complete with red underlines and descriptive labels—automatically. This is essential for a tool that validates user-written Markdown.
+### anyhow for everything
+- **Pros**: Easy to use, ergonomic context chaining.
+- **Cons**: Erases type information, making it impossible for the LSP to categorize errors; lacks the high-fidelity snippet rendering of miette.
 
-### 2. LSP Synergy
-The `miette::Diagnostic` trait exposes fields like `severity()`, `code()`, `labels()`, and `help()`. These map 1:1 to the requirements of the Language Server Protocol's `Diagnostic` object. By implementing `miette`, we ensure our CLI and LSP provide identical, high-quality feedback without redundant mapping logic.
+### color-eyre
+- **Pros**: Beautiful terminal output.
+- **Cons**: Less suitable for the LSP interface; miette's structured `Diagnostic` trait maps more cleanly to LSP requirements.
 
-### 3. Actionable Remediation
-`miette` encourages adding a `help` field to errors. We will use this to provide clear "How to fix" instructions (e.g., "Add 'type: contact' to your frontmatter to resolve this"), which is a key usability requirement for Lithos.
+## Technical Validation
+
+### Research Findings
+- **LSP Synergy**: `miette::Diagnostic` exposes fields (severity, code, labels, help) that map 1:1 to the Language Server Protocol's `Diagnostic` object, ensuring CLI/LSP consistency.
+- **Visual Fidelity**: Research into `miette`'s `SourceSpan` confirmed it can render red underlines and descriptive labels automatically, which is the "golden standard" for validating user content.
+
+### Compatibility & Performance
+- **Hexagonal Alignment**: `thiserror` keeps the domain clean; `miette` metadata is applied where the diagnostic is finally rendered.
+- **Actionable Remediation**: Using the `help` field allows providing clear "How to fix" instructions directly in the terminal.
 
 ## Consequences
-- **Developer Responsibility:** Developers must track `SourceSpan` offsets during parsing (e.g., using `pulldown-cmark`'s byte-offsets) to provide high-quality snippets.
-- **Dependency Profile:** `miette` and `thiserror` are standard Rust crates with good performance profiles, aligning with our "Mechanical Sympathy" goals.
-- **Consistency:** Error feedback will be consistent across all subcommands and the LSP, as they will all share the same structured diagnostic types.
+
+*   **Positive**: High-fidelity terminal output, seamless LSP integration, consistent error feedback, actionable help for users.
+*   **Negative**: Requires developers to track `SourceSpan` offsets during parsing (e.g., using `pulldown-cmark` byte-offsets).
+
+## Status Tracking
+
+*   **Proposed**: 2026-01-08
+*   **Accepted**: 2026-01-11
+*   **Implemented**: 2026-01-11

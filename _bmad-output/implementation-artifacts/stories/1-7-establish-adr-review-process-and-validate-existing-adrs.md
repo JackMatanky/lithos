@@ -1,6 +1,6 @@
 # Story 1.7: establish-adr-review-process-and-validate-existing-adrs
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -86,7 +86,7 @@ So that we maintain architectural integrity and document important decisions.
     - [x] Update ADRs to meet new standards where appropriate
     - [x] Establish metrics for ADR quality and completeness
 
-## Status: review
+## Status: done
 - All acceptance criteria defined with specific, testable requirements
 - Technical requirements complete with implementation details
 - Testing requirements focused on validation tooling quality
@@ -110,15 +110,17 @@ So that we maintain architectural integrity and document important decisions.
 ### Completion Notes List
 
 - Established ADR review process recorded in `docs/adr/0001-adr-process.md`.
-- Created ADR template in `docs/adr/template.md`.
-- Developed automated validation script `scripts/validate-adrs.sh`.
-- Integrated validation into `mise` tasks and `pre-commit` hooks.
+- Created ADR template in `docs/adr/template.md` with enhanced `Technical Validation` section.
+- Developed automated validation script `scripts/validate-adrs.sh` and metrics script `scripts/adr-metrics.sh`.
+- Created ADR process guide and training material in `docs/adr/README.md`.
+- Integrated validation and metrics into `mise` tasks and `pre-commit` hooks.
 - Updated CI pipeline (`.github/workflows/ci.yml`) to include ADR validation.
-- Migrated and renumbered all ADRs to follow the `0001-adr-process.md` foundation.
+- Migrated and renumbered all ADRs (0001-0008) to meet the new quality standards.
 
 ### File List
 
 - docs/adr/template.md
+- docs/adr/README.md
 - docs/adr/0001-adr-process.md
 - docs/adr/0002-storage-redb-rkyv.md
 - docs/adr/0003-template-engine.md
@@ -128,6 +130,7 @@ So that we maintain architectural integrity and document important decisions.
 - docs/adr/0007-event-orchestration.md
 - docs/adr/0008-event-driven-testing-patterns.md
 - scripts/validate-adrs.sh
+- scripts/adr-metrics.sh
 - .mise/tasks/validate-adrs.sh
 - mise.toml
 - .pre-commit-config.yaml
