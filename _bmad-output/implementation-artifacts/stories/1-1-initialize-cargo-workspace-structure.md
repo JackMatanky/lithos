@@ -1,6 +1,6 @@
 # Story 1.1: Initialize Cargo Workspace Structure
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -43,20 +43,20 @@ so that the project has clear separation between domain, application, infrastruc
 
 ## Tasks / Subtasks
 
-- [ ] Initialize workspace Cargo.toml at root (AC: 1)
-- [ ] Create Tiered Configuration Files (Elite Best Practice)
-  - [ ] `rustfmt.toml` (Visual Identity & Import Sorting)
-  - [ ] `clippy.toml` (Technical Thresholds - Cognitive Complexity)
-- [ ] Create core crates (AC: 1)
-  - [ ] `crates/domain` (lib)
-  - [ ] `crates/app` (lib)
-  - [ ] `crates/adapters` (lib)
-  - [ ] `crates/cli` (bin)
-- [ ] Configure crate-level Cargo.toml dependencies (AC: 2)
-  - [ ] Set up hexagonal dependency graph
-  - [ ] Add workspace-level dependency inheritance
-- [ ] Implement initial lib.rs/main.rs boilerplate (AC: 3)
-- [ ] Verify setup with workspace-wide `cargo check` (AC: 3)
+- [x] Initialize workspace Cargo.toml at root (AC: 1)
+- [x] Create Tiered Configuration Files (Elite Best Practice)
+  - [x] `rustfmt.toml` (Visual Identity & Import Sorting)
+  - [x] `clippy.toml` (Technical Thresholds - Cognitive Complexity)
+- [x] Create core crates (AC: 1)
+  - [x] `crates/domain` (lib)
+  - [x] `crates/app` (lib)
+  - [x] `crates/adapters` (lib)
+  - [x] `crates/cli` (bin)
+- [x] Configure crate-level Cargo.toml dependencies (AC: 2)
+  - [x] Set up hexagonal dependency graph
+  - [x] Add workspace-level dependency inheritance
+- [x] Implement initial lib.rs/main.rs boilerplate (AC: 3)
+- [x] Verify setup with workspace-wide `cargo check` (AC: 3)
 
 ## Dev Notes
 
@@ -176,14 +176,38 @@ max_width = 100
 - [Source: _bmad-output/planning-artifacts/epics/epic-1-development-environment-tooling-mvp-core.md#Story 1.1]
 - [Source: _bmad-output/project-context.md#Architectural Integrity]
 
+## Change Log
+
+- 2026-01-11: Initialized workspace structure, crates, and configuration files.
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude 3.5 Sonnet (via BMAD Dev Agent)
 
 ### Debug Log References
 
+- Initial `cargo check` failed due to `rkyv 0.8` feature mismatch (`bytecheck_std`).
+- Fixed by removing `bytecheck_std` and using `rkyv = "0.8"`.
+
 ### Completion Notes List
 
+- Successfully initialized Cargo workspace with 4 hexagonal crates.
+- Configured root `Cargo.toml` with centralized dependencies and strict lints.
+- Created `clippy.toml` and `rustfmt.toml` for quality enforcement.
+- Verified compilation with `cargo check`.
+
 ### File List
+
+- `Cargo.toml`
+- `clippy.toml`
+- `rustfmt.toml`
+- `crates/domain/Cargo.toml`
+- `crates/domain/src/lib.rs`
+- `crates/app/Cargo.toml`
+- `crates/app/src/lib.rs`
+- `crates/adapters/Cargo.toml`
+- `crates/adapters/src/lib.rs`
+- `crates/cli/Cargo.toml`
+- `crates/cli/src/main.rs`
