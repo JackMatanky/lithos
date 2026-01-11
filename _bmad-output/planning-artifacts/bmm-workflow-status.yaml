@@ -1,120 +1,34 @@
-# Workflow Status Template
-
-# This tracks progress through BMM methodology Analysis, Planning, and Solutioning phases.
-# Implementation phase is tracked separately in sprint-status.yaml
+# -----------------------------------------------------------------------------
+# Filename: _bmad-output/planning-artifacts/bmm-workflow-status.yaml
+# Description: Tracks progress through BMM methodology Analysis, Planning,
+#              and Solutioning phases.
+# -----------------------------------------------------------------------------
 
 # STATUS DEFINITIONS:
 # ==================
 # Initial Status (before completion):
 #   - required: Must be completed to progress
 #   - optional: Can be completed but not required
-#   - recommended: Strongly suggested but not required
-#   - conditional: Required only if certain conditions met (e.g., if_has_ui)
-#
-# Completion Status:
-#   - {file-path}: File created/found (e.g., "docs/product-brief.md")
-#   - skipped: Optional/conditional workflow that was skipped
+#   - completed: Already finished or documented
 
-generated: "2026-01-08"
-project: "lithos"
-project_type: "greenfield"
-selected_track: "method"
-field_type: "greenfield"
-workflow_path: "_bmad/bmm/workflows/workflow-status/paths/method-greenfield.yaml"
+# Phase 1: Analysis
+# =================
+analysis:
+  # Initial discovery and product definition
+  product-brief: completed
+  research: optional
 
-workflow_status:
-  # Phase 0: Discovery (Optional)
-  - phase: 0
-    name: "Discovery (Optional)"
-    optional: true
-    workflows:
-      - id: "brainstorm-project"
-        status: "skipped"
-        agent: "analyst"
-        command: "/bmad:bmm:workflows:brainstorm-project"
-        optional: true
+# Phase 2: Planning
+# =================
+planning:
+  # Requirements and UX design
+  prd: completed
+  ux-design: completed
 
-      - id: "research"
-        status: "skipped"
-        agent: "analyst"
-        command: "/bmad:bmm:workflows:research"
-        optional: true
-
-      - id: "product-brief"
-        status: "_bmad-output/planning-artifacts/discovery/project_brief.md"
-        agent: "analyst"
-        command: "/bmad:bmm:workflows:product-brief"
-        optional: true
-        completed: "2026-01-08"
-
-  # Phase 1: Planning
-  - phase: 1
-    name: "Planning"
-    required: true
-    workflows:
-      - id: "prd"
-        status: "_bmad-output/planning-artifacts/prd.md"
-        agent: "pm"
-        command: "/bmad:bmm:workflows:prd"
-        required: true
-        completed: "2026-01-06"
-
-      - id: "create-ux-design"
-        status: "_bmad-output/planning-artifacts/ux-design-specification.md"
-        agent: "ux-designer"
-        command: "/bmad:bmm:workflows:create-ux-design"
-        conditional: "if_has_ui"
-        completed: "2026-01-07"
-
-  # Phase 2: Solutioning
-  - phase: 2
-    name: "Solutioning"
-    required: true
-    workflows:
-      - id: "create-architecture"
-        status: "_bmad-output/planning-artifacts/architecture.md"
-        agent: "architect"
-        command: "/bmad:bmm:workflows:create-architecture"
-        required: true
-        completed: "2026-01-08"
-        notes: "Rust implementation architecture focusing on zero-copy Redb/rkyv storage and hexagonal boundaries."
-
-      - id: "create-epics-and-stories"
-        status: "_bmad-output/planning-artifacts/epics.md"
-        agent: "pm"
-        command: "/bmad:bmm:workflows:create-epics-and-stories"
-        required: true
-        completed: "2026-01-10"
-
-      - id: "test-design"
-        status: "_bmad-output/test-design-system.md"
-        agent: "tea"
-        command: "/bmad:bmm:workflows:test-design"
-        recommended: true
-        completed: "2026-01-11"
-
-      - id: "validate-architecture"
-        status: "completed"
-        agent: "architect"
-        command: "/bmad:bmm:workflows:validate-architecture"
-        optional: true
-        completed: "2026-01-08"
-        notes: "Coherence, coverage (100% of 50 FRs), and implementation readiness validated."
-
-      - id: "implementation-readiness"
-        status: "_bmad-output/planning-artifacts/implementation-readiness-report-2026-01-11.md"
-        agent: "architect"
-        command: "/bmad:bmm:workflows:implementation-readiness"
-        required: true
-        completed: "2026-01-11"
-
-  # Phase 3: Implementation
-  - phase: 3
-    name: "Implementation"
-    required: true
-    workflows:
-      - id: "sprint-planning"
-        status: "required"
-        agent: "sm"
-        command: "/bmad:bmm:workflows:sprint-planning"
-        required: true
+# Phase 3: Solutioning
+# ===================
+solutioning:
+  # Technical design and architecture
+  architecture: completed
+  epics-and-stories: completed
+  implementation-readiness: completed

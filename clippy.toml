@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------------
+# Filename:    lithos/clippy.toml
+# Docs:        https://doc.rust-lang.org/clippy/configuration.html
+# Description: Configuration for clippy lints, including complexity thresholds
+#              and project-specific valid identifiers.
+# -----------------------------------------------------------------------------
+
 cognitive-complexity-threshold = 15
 too-many-lines-threshold = 100
 doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv"]

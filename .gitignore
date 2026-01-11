@@ -109,6 +109,7 @@ coverage.html
 coverage.out
 coverage.txt
 coverage.xml
+tarpaulin-report.html
 
 # Python
 .pytest_cache/
