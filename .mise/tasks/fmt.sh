@@ -34,8 +34,8 @@ build_fmt_args() {
 #   Writes formatting progress to stdout
 #######################################
 run_rustfmt() {
-    echo "🚀 Formatting codebase..."
-    cargo fmt --all "$@"
+    echo "🚀 Formatting codebase (nightly)..."
+    cargo +nightly fmt --all "$@" -- --unstable-features
 }
 
 #######################################

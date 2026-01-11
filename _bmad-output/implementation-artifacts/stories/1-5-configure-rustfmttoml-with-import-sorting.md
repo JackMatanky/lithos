@@ -81,8 +81,9 @@ So that code style is uniform and readable across the codebase.
 
 - Used Nightly Rust for advanced formatting features.
 - Configured `unstable_features = true` in `rustfmt.toml`.
-- Updated `mise.toml` to include `rust:nightly` and dedicated `fmt` tasks.
-- Integrated `cargo +nightly fmt` into `pre-commit` hooks.
+- Updated existing scripts in `.mise/tasks/fmt.sh` to use nightly and unstable features.
+- Created `docs/standards/rustfmt.md` for detailed formatting documentation.
+- Integrated `cargo +nightly fmt` into `pre-commit` hooks via local system hooks.
 
 ## Dev Agent Record
 
@@ -92,13 +93,14 @@ Claude 3.5 Sonnet
 
 ### Debug Log References
 
-- Verified import sorting by adding unsorted imports to `crates/domain/src/lib.rs` and running `mise run fmt:fix`.
+- Verified import sorting by adding unsorted imports to `crates/domain/src/lib.rs` and running `mise run fmt`.
 
 ### Completion Notes List
 
 - Implemented comprehensive `rustfmt.toml` with `imports_granularity`, `group_imports`, and `max_width = 80`.
 - Enabled `nightly` toolchain via `mise`.
-- Updated `README.md` with formatting standards.
+- Documented standards in `docs/standards/rustfmt.md`.
+- Updated `.mise/tasks/fmt.sh` to use nightly features.
 - All pre-commit hooks pass.
 
 ### File List
@@ -107,5 +109,7 @@ Claude 3.5 Sonnet
 - `mise.toml`
 - `.pre-commit-config.yaml`
 - `README.md`
+- `.mise/tasks/fmt.sh`
+- `docs/standards/rustfmt.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/stories/1-5-configure-rustfmttoml-with-import-sorting.md`
