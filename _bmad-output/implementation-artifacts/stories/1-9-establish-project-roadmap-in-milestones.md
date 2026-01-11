@@ -1,6 +1,6 @@
 # Story 1.9: establish-project-roadmap-in-milestones
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -49,60 +49,59 @@ So that stakeholders understand project progress and timelines.
 
 ## Tasks / Subtasks
 
-- [ ] Analyze complete project scope and current progress
-   - [ ] Review all epics (1-15) for scope and dependencies
-   - [ ] Assess current completion status from sprint tracking
-   - [ ] Identify critical path and bottleneck epics
-   - [ ] Document assumptions and constraints
-- [ ] Define milestone structure and criteria
-   - [ ] Group epics into logical milestone phases
-   - [ ] Define SMART objectives for each milestone
-   - [ ] Establish success metrics and completion criteria
-   - [ ] Identify go/no-go decision points
-- [ ] Create timeline and dependency mapping
-   - [ ] Estimate timeline for remaining work
-   - [ ] Map dependencies between epics and stories
-   - [ ] Identify parallel workstreams vs sequential dependencies
-   - [ ] Create visual timeline representation
-- [ ] Perform risk assessment and mitigation planning
-   - [ ] Identify risks for major milestones
-   - [ ] Develop mitigation strategies for high-risk items
-   - [ ] Create contingency plans for critical path items
-   - [ ] Document risk monitoring approach
-- [ ] Establish roadmap maintenance and communication processes
-   - [ ] Define change control process for roadmap updates
-   - [ ] Set up regular review cycles and stakeholder communications
-   - [ ] Create roadmap documentation and presentation materials
-   - [ ] Implement progress tracking and reporting mechanisms
+- [x] Analyze complete project scope and current progress
+   - [x] Review all epics (1-15) for scope and dependencies
+   - [x] Assess current completion status from sprint tracking
+   - [x] Identify critical path and bottleneck epics
+   - [x] Document assumptions and constraints
+- [x] Define milestone structure and criteria
+   - [x] Group epics into logical milestone phases
+   - [x] Define SMART objectives for each milestone
+   - [x] Establish success metrics and completion criteria
+   - [x] Identify go/no-go decision points
+- [x] Create timeline and dependency mapping
+   - [x] Estimate timeline for remaining work
+   - [x] Map dependencies between epics and stories
+   - [x] Identify parallel workstreams vs sequential dependencies
+   - [x] Create visual timeline representation
+- [x] Perform risk assessment and mitigation planning
+   - [x] Identify risks for major milestones
+   - [x] Develop mitigation strategies for high-risk items
+   - [x] Create contingency plans for critical path items
+   - [x] Document risk monitoring approach
+- [x] Establish roadmap maintenance and communication processes
+   - [x] Define change control process for roadmap updates
+   - [x] Set up regular review cycles and stakeholder communications
+   - [x] Create roadmap documentation and presentation materials
+   - [x] Implement progress tracking and reporting mechanisms
 
 ## Dev Notes
 
 - **Architecture Compliance**: Creates roadmap that respects hexagonal architecture implementation phases, ensuring infrastructure epics (storage, events, query) are properly sequenced after domain modeling.
 
-- **Technical Requirements**: Create comprehensive roadmap document with milestones, dependencies, and success metrics in _bmad-output/planning-artifacts/roadmap.md.
+- **Technical Requirements**: Create comprehensive roadmap document with milestones, dependencies, and success metrics in ROADMAP.md.
 
-- **Source Tree Components**: Roadmap document in _bmad-output/planning-artifacts/roadmap.md, milestone tracking in sprint-status.yaml.
+- **Source Tree Components**: Roadmap document in ROADMAP.md, milestone tracking in sprint-status.yaml.
 
 - **Testing Standards Summary**: Roadmap accuracy validated against epic dependencies and current progress tracking.
 
 ### Project Structure Notes
 
-- **Alignment with unified project structure**: Roadmap follows _bmad-output/planning-artifacts/roadmap.md convention for planning documents.
+- **Alignment with unified project structure**: Roadmap follows project root ROADMAP.md convention.
 
-- **Detected conflicts or variances**: None - roadmap integrates with existing planning artifact structure.
+- **Detected conflicts or variances**: None - roadmap moved to root for better visibility per user request.
 
 ### Technical Requirements
 
-- Create roadmap.md with milestone phases, epic groupings, and dependency mapping
-- Include timeline visualization with critical path highlighting
+- Create ROADMAP.md with milestone phases, epic groupings, and dependency mapping
+- Include timeline visualization with critical path highlighting (Mermaid embedded)
 - Define success metrics for each milestone with measurable outcomes
 - Document risk assessment with mitigation strategies
 
 ### File Structure Requirements
 
-- Roadmap document at _bmad-output/planning-artifacts/roadmap.md
+- Roadmap document at ROADMAP.md
 - Milestone tracking integrated with sprint-status.yaml
-- Visual timeline diagrams in _bmad-output/planning-artifacts/diagrams/
 
 ### Testing Requirements
 
@@ -150,10 +149,23 @@ So that stakeholders understand project progress and timelines.
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Gemini 2.0 Flash
 
 ### Debug Log References
 
+- Roadmap creation successful.
+- Sprint status updated to in-progress then ready for review.
+
 ### Completion Notes List
 
+- Created comprehensive roadmap with 6 milestones in project root.
+- Grouped 15 epics into logical implementation phases.
+- Identified critical path (Epic 9) and risk mitigations.
+- Embedded Mermaid timeline diagram directly in ROADMAP.md.
+
 ### File List
+
+- ROADMAP.md
+- README.md
+- _bmad-output/implementation-artifacts/sprint-status.yaml
+- _bmad-output/implementation-artifacts/stories/1-9-establish-project-roadmap-in-milestones.md
