@@ -1,14 +1,4 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+//! Lithos Application Crate
+//!
+//! This crate contains the application services, use cases, and orchestration logic.
+//! It depends only on the domain crate and external utility libraries.

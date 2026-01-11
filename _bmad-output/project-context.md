@@ -21,7 +21,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Tokio 1.49**: Async runtime with **'full' features** enabled for concurrent vault operations and CLI responsiveness.
 
 ### Data & Persistence
-- **Redb 3.1 & rkyv 0.8**: Embedded ACID KV storage with **zero-copy deserialization** for high-frequency lookups.
+- **Redb 3.1 & rkyv 0.8**: Embedded ACID KV storage with **zero-copy deserialization** for high-frequency lookups. Note: Use `bytecheck` feature for rkyv 0.8 validation.
 - **UUID 1.19 (v7)**: Time-ordered, sortable unique identifiers for note identity.
 
 ### Application Engine
