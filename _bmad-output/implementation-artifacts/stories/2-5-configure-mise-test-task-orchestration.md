@@ -40,38 +40,40 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
   - [ ] Review existing .mise/tasks/ scripts and their purposes
   - [ ] Identify integration points with ADR 0010 test utilities
 - [ ] Configure core test task orchestration **[Effort: 4-5 hours | Complexity: Medium]**
-  - [ ] Set up `test` meta-task combining unit and integration tests
-  - [ ] Configure `test:unit` to execute existing .mise/tasks/test/unit.sh
-  - [ ] Configure `test:integration` to execute existing .mise/tasks/test/integration.sh
-  - [ ] Set up `test:coverage` to run existing .mise/tasks/test/coverage.sh
-  - [ ] Implement `test:watch` for TDD using existing .mise/tasks/test/watch.sh
+  - [ ] Set up `test` meta-task with unit and integration dependencies (no script creation)
+  - [ ] Configure `test:unit` to reference existing .mise/tasks/test/unit.sh (orchestration only)
+  - [ ] Configure `test:integration` to reference existing .mise/tasks/test/integration.sh (orchestration only)
+  - [ ] Set up `test:coverage` to reference existing .mise/tasks/test/coverage.sh (orchestration only)
+  - [ ] Implement `test:watch` to reference existing .mise/tasks/test/watch.sh (orchestration only)
 - [ ] Optimize quality gate orchestration **[Effort: 3-4 hours | Complexity: Medium]**
-  - [ ] Configure `verify` meta-task for comprehensive quality gates
-  - [ ] Ensure parallel execution of fmt, lint, and test tasks
-  - [ ] Set up proper dependency ordering for quality checks
-  - [ ] Add performance monitoring to task execution
+  - [ ] Configure `verify` meta-task for comprehensive quality gates (enhance existing)
+  - [ ] Ensure parallel execution of existing fmt, lint, and test tasks
+  - [ ] Set up proper dependency ordering for existing quality checks
+  - [ ] Add performance monitoring to existing task execution
 - [ ] Enhance development workflow tasks **[Effort: 3-4 hours | Complexity: Medium]**
-  - [ ] Improve `lint` and `fmt` tasks with better error handling
-  - [ ] Configure task aliases for developer convenience
-  - [ ] Set up task hiding for internal scripts
-  - [ ] Enhance `ci` task for comprehensive CI/CD simulation
+  - [ ] Improve existing `lint` and `fmt` tasks with better error handling (orchestration layer)
+  - [ ] Configure task aliases for developer convenience (mise.toml only)
+  - [ ] Set up task hiding for internal scripts (mise.toml configuration)
+  - [ ] Enhance `ci` task for comprehensive CI/CD simulation (orchestration improvements)
 - [ ] Integrate with test utilities and validate **[Effort: 2-3 hours | Complexity: Low]**
-  - [ ] Configure environment variables for ADR 0010 utility integration
-  - [ ] Update tasks to leverage centralized test utilities
-  - [ ] Test parallel execution and dependency management
-  - [ ] Validate task orchestration across different environments
+  - [ ] Configure environment variables for ADR 0010 utility integration (mise.toml settings)
+  - [ ] Update task orchestration to leverage centralized test utilities (no script changes)
+  - [ ] Test parallel execution and dependency management (validate orchestration)
+  - [ ] Validate task orchestration across different environments (orchestration testing)
 
 ## Dev Notes
 
 - **Guide-Based Implementation**: Follow the Mise Task Orchestration Guide for optimal configuration patterns, leveraging existing .mise/tasks/test/ infrastructure.
 
+- **No Script Duplication**: mise.toml tasks orchestrate existing scripts - do NOT duplicate script logic in mise.toml. Tasks should only reference scripts via `run = ".mise/tasks/test/xxx.sh"`.
+
 - **Architecture Compliance**: Orchestration supports hexagonal architecture with parallel testing, consistent environments, and proper dependency management.
 
 - **Implementation Priority**: Review guide (Priority 1), configure core tasks (Priority 2), optimize quality gates (Priority 3), enhance workflows (Priority 4), integrate utilities (Priority 5).
 
-- **Source Tree Components**: mise.toml configuration, .mise/tasks/ scripts, Mise Task Orchestration Guide documentation.
+- **Source Tree Components**: mise.toml configuration (orchestration only), .mise/tasks/ scripts (implementation), Mise Task Orchestration Guide documentation.
 
-- **Quality Assurance**: Validate orchestration with parallel execution testing, dependency verification, and CI/CD simulation.
+- **Quality Assurance**: Validate orchestration references correct scripts, parallel execution works, dependency verification passes, and CI/CD simulation functions.
 
 ### Project Structure Notes
 
@@ -81,12 +83,12 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 
 ### Technical Requirements
 
-**Core Test Orchestration (Following Guide Best Practices):**
-- test: Meta-task with unit and integration dependencies for parallel execution
-- test:unit: Execute existing .mise/tasks/test/unit.sh with proper isolation
-- test:integration: Execute existing .mise/tasks/test/integration.sh for cross-crate testing
-- test:coverage: Run existing .mise/tasks/test/coverage.sh with HTML reporting
-- test:watch: Execute existing .mise/tasks/test/watch.sh for efficient TDD workflows
+**Core Test Orchestration (Following Guide Best Practices - Orchestration Only):**
+- test: Meta-task with unit and integration dependencies for parallel execution (mise.toml only)
+- test:unit: Reference existing .mise/tasks/test/unit.sh with proper isolation (orchestration)
+- test:integration: Reference existing .mise/tasks/test/integration.sh for cross-crate testing (orchestration)
+- test:coverage: Reference existing .mise/tasks/test/coverage.sh with HTML reporting (orchestration)
+- test:watch: Reference existing .mise/tasks/test/watch.sh for efficient TDD workflows (orchestration)
 
 **Quality Gate Orchestration:**
 - verify: Meta-task combining fmt, lint, test, deny with optimized parallelization
@@ -195,4 +197,4 @@ depends = ["verify", "test:integration"]
 - Technical requirements complete with specific cargo commands and mise configuration patterns
 - Integration points identified with ADR 0010 test utilities and existing test infrastructure
 - Risk assessment: Low risk, follows established mise patterns with comprehensive validation
-- Execution Optimization: Follow Mise Task Orchestration Guide for optimal parallelization, dependency management, and existing script integration
+- Execution Optimization: Follow Mise Task Orchestration Guide for optimal parallelization and dependency management while preserving existing script implementations
