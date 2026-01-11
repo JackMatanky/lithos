@@ -33,14 +33,14 @@ development_status:
    1-7-establish-adr-review-process-and-validate-existing-adrs: done
    1-8-create-comprehensive-readmemd: done
 
-   1-9-establish-project-roadmap-in-milestones: ready-for-dev
+   1-9-establish-project-roadmap-in-milestones: review
    epic-1-retrospective: optional
 
    epic-2: in-progress
    2-1-establish-async-testing-patterns-and-infrastructure: ready-for-dev
    2-2-create-event-driven-testing-patterns: ready-for-dev
    2-3-establish-cqrs-testing-patterns: ready-for-dev
-   2-4-create-centralized-test-utilities-and-infrastructure: backlog
+   2-4-create-centralized-test-utilities-and-infrastructure: ready-for-dev
    2-5-configure-mise-test-task-orchestration: backlog
    epic-2-retrospective: optional
 

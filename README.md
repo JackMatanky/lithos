@@ -19,6 +19,7 @@ Whether you're an Alex Chen power user needing scriptable note creation or a Sar
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
+- [Roadmap](#roadmap)
 - [API Documentation](#api-documentation)
 - [Development](#development)
 - [Testing](#testing)
@@ -86,6 +87,24 @@ Lithos follows a **Hexagonal Architecture** (Ports and Adapters) combined with *
   - `crates/lithos`: Binary CLI entry point.
 
 For more details, see the [Architecture Documentation](_bmad-output/planning-artifacts/architecture.md) and the [System Data Flow Diagram](_bmad-output/planning-artifacts/architecture.md#architectural-integrity).
+
+---
+
+## Roadmap
+
+Lithos development is organized into four major phases, starting with a high-performance CLI core and evolving into a full editor ecosystem.
+
+**Current Status: [Milestone 1 (Foundation)](ROADMAP.md#milestone-1-foundation--domain-modeling)**
+- [x] Environment & Tooling (Epic 1)
+- [x] Test Architecture (Epic 2)
+- [ ] Core Domain Models (In-Progress)
+
+### Upcoming Milestones:
+1. **Persistence & Schema**: Redb storage and validation engine.
+2. **Vault Intelligence**: Incremental indexing and metadata queries.
+3. **Interactive Templates**: The core scriptable templating experience.
+
+For the comprehensive roadmap, including future phases (LSP, Neovim, Enterprise), see [ROADMAP.md](ROADMAP.md).
 
 ---
 
