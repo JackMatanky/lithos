@@ -1,6 +1,6 @@
 # Story 1.2: Set Up Base Pre-Commit and Shell Quality
 
-Status: review
+Status: done
 
 ## Story
 
@@ -84,11 +84,11 @@ so that the development environment is consistent and verified from the first co
 - [Source: pre-commit Documentation (https://pre-commit.com/)]
 - [Source: Google Shell Style Guide]
 
-## Dev Agent Record
+### Dev Agent Record
 
 ### Agent Model Used
 
-Gemini 2.0 Flash Thinking 01-21
+Gemini 2.0 Flash Thinking 01-21 (Implementation) / Adversarial Reviewer (Refinement)
 
 ### Debug Log References
 
@@ -97,13 +97,18 @@ Gemini 2.0 Flash Thinking 01-21
 - Established comprehensive pre-commit quality gates for Rust, Shell, and Project Hygiene.
 - Configured hooks: `check-added-large-files`, `check-case-conflict`, `check-executables-have-shebangs`, `check-merge-conflict`, `check-symlinks`, `end-of-file-fixer`, `trailing-whitespace`, `mixed-line-ending`, `gitleaks`, `shellcheck`, `shfmt`.
 - Implemented Rust quality gates via local hooks: `cargo fmt`, `cargo clippy`, `cargo test` (workspace-wide).
-- Resolved existing ShellCheck warnings and Rust Clippy lint priority issues to pass initial verification.
-- Verified hooks correctly catch violations (shebang, formatting).
+- **Refinement (Adversarial Review)**:
+    - Set `pedantic`, `nursery`, and `missing_docs` lints to `deny` in `Cargo.toml` for true "stringent" quality enforcement.
+    - Added `conventional-pre-commit` hook to enforce Conventional Commits mandatory requirement (AC 5).
+    - Switched to `scop/pre-commit-shfmt` for managed shell formatting (Task 1.2).
+    - Purged legacy Go-specific allowlist rules and "FlowForge" branding from `.gitleaks.toml`.
+    - Resolved `clippy::lint_groups_priority` errors in `Cargo.toml`.
+    - Verified all hooks pass at `deny` level across the workspace.
 
 ### File List
 
 - `.pre-commit-config.yaml`
 - `Cargo.toml` (workspace root)
-- `.claude/hooks/auto-format-lint.sh`
+- `.gitleaks.toml`
 - `_bmad-output/implementation-artifacts/stories/1-2-set-up-base-pre-commit-and-shell-quality.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`

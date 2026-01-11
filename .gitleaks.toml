@@ -1,6 +1,6 @@
 # -----------------------------------------------------------------------------
-# Filename: lithos/.gitleaks.toml
-# Description: Gitleaks configuration for FlowForge secret scanning
+# Filename:      lithos/.gitleaks.toml
+# Description:   Gitleaks configuration for lithos secret scanning
 # Documentation: https://github.com/gitleaks/gitleaks?tab=readme-ov-file#configuration
 # -----------------------------------------------------------------------------
 
@@ -89,9 +89,6 @@ files = [
   '''\.sample$''',
   '''^docs/''',
   '''^examples/''',
-  '''_test\.go$''',
-  '''test_.*\.go$''',
-  '''.*_test_.*\.go$''',
 ]
 
 # Allow specific patterns that are commonly used in documentation or test files
@@ -116,7 +113,5 @@ paths = [
    '''^_bmad/_config/files-manifest\.csv''',
    '''\.gitleaks\.toml''',
    '''\.pre-commit-config\.yaml''',
-   '''go\.mod''',
-   '''go\.sum''',
    '''README\.md''',
 ]

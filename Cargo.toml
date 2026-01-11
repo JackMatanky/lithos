@@ -1,3 +1,10 @@
+# -----------------------------------------------------------------------------
+# Filename:    lithos/Cargo.toml
+# Docs:        https://doc.rust-lang.org/cargo/reference/manifest.html
+# Description: Workspace manifest for the Lithos Rust project, defining
+#              package metadata, dependencies, and workspace-wide lints.
+# -----------------------------------------------------------------------------
+
 [workspace]
 members = ["crates/*"]
 resolver = "2"
@@ -47,12 +54,11 @@ lithos-adapters = { path = "crates/adapters" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
-missing_docs = "warn"
-rust_2018_idioms = { level = "warn", priority = -1 }
+missing_docs = "deny"
 
 [workspace.lints.clippy]
-pedantic = { level = "warn", priority = -1 }
-nursery = { level = "warn", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+nursery = { level = "deny", priority = -1 }
 cognitive_complexity = "warn"
 unwrap_used = "deny"
 expect_used = "deny"
