@@ -199,7 +199,83 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 **Given** I have researched continuous testing workflows
 **When** I check the mise configuration
 **Then** tasks support modern development workflows:
-- Watch mode for automatic test re-running
-- Fast feedback for TDD cycles
-- Integration with IDEs and editors
-- Remote development environment support
+    - Watch mode for automatic test re-running
+    - Fast feedback for TDD cycles
+    - Integration with IDEs and editors
+    - Remote development environment support
+
+## Story 2.6: Establish Integration Testing Patterns and Infrastructure
+
+As a developer testing cross-module interactions,
+I want patterns for integration testing,
+So that integration issues are caught early with proper isolation and mocking.
+
+**Acceptance Criteria:**
+
+**Given** I have researched integration testing patterns in large Rust projects
+**When** I review the integration testing infrastructure
+**Then** patterns are established for:
+- Cross-module API contract testing
+- Database state management in integration tests
+- External service mocking for isolated testing
+- Integration test data fixtures and setup
+
+**Given** integration testing patterns are established
+**When** I test interactions between bounded contexts
+**Then** the test verifies:
+- API contracts between modules are maintained
+- Data flows correctly across boundaries
+- Error handling works end-to-end
+- Performance meets integration requirements
+
+**Given** integration tests are running
+**When** I check for data consistency
+**Then** tests use proper transaction management and rollback
+
+**Given** I have researched integration testing best practices
+**When** I check the test setup
+**Then** integration tests:
+- Run in isolated environments (test containers if needed)
+- Use realistic test data without production dependencies
+- Execute in parallel where possible
+- Provide clear failure diagnostics
+
+## Story 2.7: Create Benchmarking Infrastructure and Performance Testing Patterns
+
+As a developer measuring and preventing performance regressions,
+I want benchmarking patterns and infrastructure,
+So that performance is monitored and regressions are caught early.
+
+**Acceptance Criteria:**
+
+**Given** I have researched benchmarking in Rust ecosystems
+**When** I review the benchmarking infrastructure
+**Then** patterns are established for:
+- criterion.rs integration for micro-benchmarks
+- Performance regression detection
+- Benchmark result storage and comparison
+- CI/CD integration for performance gates
+
+**Given** benchmarking patterns are established
+**When** I create a performance benchmark
+**Then** the benchmark:
+- Uses criterion for statistical accuracy
+- Measures relevant performance metrics
+- Includes baseline comparisons
+- Runs in CI/CD pipeline
+
+**Given** performance tests are running
+**When** I check for regressions
+**Then** the system:
+- Compares against historical baselines
+- Alerts on significant performance drops
+- Provides detailed performance reports
+- Supports multiple benchmark categories
+
+**Given** I have researched performance testing best practices
+**When** I check the implementation
+**Then** it addresses common performance testing challenges:
+- Warm-up periods for JIT optimization
+- Statistical significance in measurements
+- Environment consistency across runs
+- Memory usage tracking alongside timing
