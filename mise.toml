@@ -34,6 +34,18 @@ lockfile = true
 #                             Tasks                             #
 # ------------------------------------------------------------- #
 
+[tasks.fmt]
+description = "Format all code"
+run = ".mise/tasks/fmt.sh"
+
+[tasks.lint]
+description = "Run clippy linting"
+run = ".mise/tasks/lint.sh"
+
+[tasks.dev-setup]
+description = "Bootstraps the development environment"
+run = ".mise/tasks/dev-setup.sh"
+
 [tasks.test]
 description = "Run all tests (unit and integration)"
 depends = ["test:unit", "test:integration"]
