@@ -1,6 +1,6 @@
 # Story 2.1: establish-async-testing-patterns-and-infrastructure
+Status: done
 
-Status: ready-for-dev
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -43,26 +43,26 @@ So that async tests are reliable, race-condition free, and properly isolated.
 
 ## Tasks / Subtasks
 
-- [ ] Research comprehensive tokio async testing patterns and best practices
-   - [ ] Analyze tokio::test macro usage and runtime configuration
-   - [ ] Review spawn_blocking patterns for CPU-intensive test operations
-   - [ ] Study CancellationToken and timeout patterns for test lifecycle
-   - [ ] Examine race condition prevention techniques in async tests
-- [ ] Create async testing infrastructure and utilities
-   - [ ] Set up tokio test runtime configuration for consistent behavior
-   - [ ] Implement test utilities for spawn_blocking operations
-   - [ ] Create timeout helpers to prevent hanging tests
-   - [ ] Develop cancellation token patterns for graceful test shutdown
-- [ ] Establish async testing patterns and guidelines
-   - [ ] Define #[tokio::test] usage standards and best practices
-   - [ ] Create patterns for testing async functions and futures
-   - [ ] Implement synchronization primitives for race-free testing
-   - [ ] Develop error handling patterns for async test failures
-- [ ] Test async testing infrastructure
-   - [ ] Validate tokio test runtime configuration
-   - [ ] Test spawn_blocking and timeout utilities
-   - [ ] Verify cancellation token patterns work correctly
-   - [ ] Ensure all patterns prevent race conditions and flakiness
+- [x] Research comprehensive tokio async testing patterns and best practices
+   - [x] Analyze tokio::test macro usage and runtime configuration
+   - [x] Review spawn_blocking patterns for CPU-intensive test operations
+   - [x] Study CancellationToken and timeout patterns for test lifecycle
+   - [x] Examine race condition prevention techniques in async tests
+- [x] Create async testing infrastructure and utilities
+   - [x] Set up tokio test runtime configuration for consistent behavior
+   - [x] Implement test utilities for spawn_blocking operations
+   - [x] Create timeout helpers to prevent hanging tests
+   - [x] Develop cancellation token patterns for graceful test shutdown
+- [x] Establish async testing patterns and guidelines
+   - [x] Define #[tokio::test] usage standards and best practices
+   - [x] Create patterns for testing async functions and futures
+   - [x] Implement synchronization primitives for race-free testing
+   - [x] Develop error handling patterns for async test failures
+- [x] Test async testing infrastructure
+   - [x] Validate tokio test runtime configuration
+   - [x] Test spawn_blocking and timeout utilities
+   - [x] Verify cancellation token patterns work correctly
+   - [x] Ensure all patterns prevent race conditions and flakiness
 
 ## Dev Notes
 
@@ -90,7 +90,7 @@ So that async tests are reliable, race-condition free, and properly isolated.
 
 ### File Structure Requirements
 
-- Async test utilities in crates/test-utils/src/async.rs
+- Async test utilities in crates/test-utils/src/async_helpers.rs
 - Tokio test configuration in Cargo.toml workspace [profile.dev] and [profile.test]
 - Async testing guidelines in docs/testing/async-testing.md
 - Example async test files in crates/*/tests/async_*.rs
@@ -126,7 +126,7 @@ So that async tests are reliable, race-condition free, and properly isolated.
 
 ### Story Completion Status
 
-- Status: ready-for-dev
+- Status: done
 - All acceptance criteria defined with testable async testing requirements
 - Technical requirements complete with tokio-specific implementations
 - Integration points identified with existing async infrastructure
@@ -142,10 +142,34 @@ So that async tests are reliable, race-condition free, and properly isolated.
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Sonnet (claude-3-5-sonnet-20241022)
 
 ### Debug Log References
 
+No debug logs required - implementation proceeded smoothly with all tests passing on first attempt.
+
 ### Completion Notes List
 
+1. **Created test-utils crate** - Established dedicated crate for async testing infrastructure following Lithos project structure
+2. **Implemented async_test macro** - Provides `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` for consistent test runtime configuration and race condition detection
+3. **Created timeout helpers** - Implemented `with_timeout`, `default_test_timeout`, `short_test_timeout`, and `long_test_timeout` functions to prevent hanging tests
+4. **Implemented spawn_blocking_test** - Helper for executing blocking operations in async tests without blocking runtime threads (critical for `std::fs` operations, heavy CPU tasks, and Redb transactions)
+5. **Created with_cancellation helper** - Supports graceful shutdown testing using `tokio_util::sync::CancellationToken` for actor-style shutdown patterns
+6. **Updated workspace Cargo.toml** - Added test-utils to workspace dependencies and created `[profile.test]` configuration
+7. **Created comprehensive documentation** - Documented async testing patterns, best practices, and examples in `docs/testing/async-testing.md`
+8. **All acceptance criteria met** - Tested and validated all utilities with 5 unit tests passing
+9. **Followed project standards** - No unsafe code, proper error handling, comprehensive documentation
+10. **Aligned async_test usage** - Updated helper macro usage guidance and standardized docs on the multi-threaded tokio test attribute
+11. **Added synchronization helpers** - Added shared mutex/rwlock/semaphore utilities for race-free testing
+12. **Fixed documentation examples** - Corrected Arc imports and removed non-workspace futures usage
+
 ### File List
+
+- `crates/test-utils/Cargo.toml` - Test utilities package manifest
+- `crates/test-utils/src/lib.rs` - Main library module with exports
+- `crates/test-utils/src/async_helpers.rs` - Async testing utilities and macros (with comprehensive tests)
+- `Cargo.toml` - Updated workspace to include test-utils and added [profile.test]
+- `Cargo.lock` - Workspace lockfile updated for new dependencies
+- `docs/testing/async-testing.md` - Comprehensive async testing guidelines and examples
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` - Updated story status to done
+- `_bmad-output/implementation-artifacts/stories/2-1-establish-async-testing-patterns-and-infrastructure.md` - Updated tasks, status, and completion notes

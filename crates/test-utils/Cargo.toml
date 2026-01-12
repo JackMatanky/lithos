@@ -1,0 +1,25 @@
+# -----------------------------------------------------------------------------
+# Filename:    test-utils/Cargo.toml
+# Docs:        https://doc.rust-lang.org/cargo/reference/manifest.html
+# Description: Test utilities crate for Lithos, providing async testing
+#              patterns and infrastructure for all test suites.
+# -----------------------------------------------------------------------------
+
+[package]
+name = "lithos-test-utils"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Testing utilities and patterns for Lithos async operations"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true, features = ["test-util", "time", "sync", "rt"] }
+tokio-util = { version = "0.7", features = ["full"] }
+tokio-test = "0.4"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

@@ -55,6 +55,7 @@ criterion = { version = "0.5", features = ["html_reports"] }
 lithos-domain = { path = "crates/domain" }
 lithos-app = { path = "crates/app" }
 lithos-adapters = { path = "crates/adapters" }
+lithos-test-utils = { path = "crates/test-utils" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
@@ -107,3 +108,8 @@ strip = true
 [profile.dev]
 opt-level = 0
 debug = true
+
+[profile.test]
+opt-level = 0
+debug = true
+inherits = "dev"

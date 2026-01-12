@@ -220,7 +220,7 @@ impl PropertyBank {
 - Deterministic IDs enable property reuse and deduplication in PropertyBank
 
 **Domain Purity Requirements - CRITICAL:**
-- Domain crate has ZERO external dependencies beyond hashing (std lib + optional serde + blake3)
+- Domain crate has ZERO external dependencies (std lib + optional serde + blake3 for business rule hashing)
 - NO I/O operations in domain layer
 - NO `rkyv` in domain dependencies - persistence derives belong in storage adapter DTOs
 - Use `pub(crate)` by default; `pub` only for crate's public interface
@@ -677,7 +677,7 @@ let url_property = Property::new(
 ### Architecture Compliance - MANDATORY READING
 
 **Hexagonal Boundary Enforcement:**
-- Domain crate in `crates/domain/src/` with minimal external dependencies
+- Domain crate in `crates/domain/src/` with ZERO external dependencies (blake3 justified for deterministic ID generation)
 - Only allow: std lib, serde (optional), blake3 (for deterministic IDs), uuid
 - All ports (traits) in `domain/src/ports/` using `#[async_trait]` for async methods
 - NO direct references to adapters, app, or infrastructure concerns
