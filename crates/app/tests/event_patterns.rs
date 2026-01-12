@@ -18,14 +18,24 @@
     reason = "Test assertions use Result helpers without unwrap/expect"
 )]
 mod tests {
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicU64, Ordering},
+        },
+        time::Duration,
+    };
+
+    use chrono::{DateTime, Utc};
     use lithos_test_utils::{
         EventBusPort as _, EventRecord, EventTestFramework, MockEventBus,
-        PayloadAssertion, SequenceAssertion,
+        PayloadAssertion, SequenceAssertion, TimingAssertion, with_timeout,
     };
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
+    use serde_json::{Value, json};
     use tokio::sync::mpsc::Receiver;
 
-    #[derive(Debug, Clone, PartialEq, Serialize)]
+    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     struct AccountEvent {
         account_id: String,
         version: u64,
@@ -168,7 +178,7 @@ mod tests {
         /// Confirms control-plane broadcasts reach subscribed listeners.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn broadcasts_control_events_to_subscribers() {
-            let bus = MockEventBus::new(4, 4);
+            let bus = MockEventBus::new_with_clock(4, 4, fixed_clock());
             let mut receiver = bus.subscribe_control();
             let event = account_event("acct-3", 1);
             let publish_result = bus
@@ -187,6 +197,111 @@ mod tests {
         }
     }
 
+    mod subscriber_handling {
+        use super::*;
+
+        fn parse_event(value: Value) -> Result<AccountEvent, String> {
+            serde_json::from_value(value)
+                .map_err(|error| format!("malformed event payload: {error}"))
+        }
+
+        /// Ensures malformed events are handled without panics.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn reports_malformed_event_payloads() {
+            let malformed = json!({"account_id": 10i64, "version": "oops"});
+            let result = parse_event(malformed);
+
+            assert!(result.is_err(), "expected malformed event error");
+        }
+
+        /// Ensures subscriber lifecycle allows only one data-plane receiver.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn enforces_single_data_plane_subscription() {
+            let bus: MockEventBus<AccountEvent> =
+                MockEventBus::new_with_clock(2, 2, fixed_clock());
+            let first = bus.subscribe_data().await;
+            assert!(first.is_ok(), "first subscription failed: {first:?}");
+
+            let second = bus.subscribe_data().await;
+            assert!(
+                second.is_err(),
+                "expected subscription rejection, got: {second:?}"
+            );
+        }
+    }
+
+    mod event_flow {
+        use super::*;
+
+        /// Validates end-to-end event flow across planes.
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        async fn relays_events_from_data_to_control_plane() -> Result<(), String>
+        {
+            let bus =
+                Arc::new(MockEventBus::new_with_clock(4, 4, fixed_clock()));
+            let mut data_receiver = bus
+                .subscribe_data()
+                .await
+                .map_err(|error| error.to_string())?;
+            let mut control_receiver = bus.subscribe_control();
+            let bus_for_task = Arc::clone(&bus);
+            let relay_task = tokio::spawn(async move {
+                match data_receiver.recv().await {
+                    Some(event) => bus_for_task
+                        .publish_control(event)
+                        .await
+                        .map_err(|error| error.to_string()),
+                    None => Err("data plane closed".to_owned()),
+                }
+            });
+
+            let event = account_event("acct-flow", 1);
+            bus.publish_data(event.clone())
+                .await
+                .map_err(|error| error.to_string())?;
+
+            let delivered = with_timeout(Duration::from_secs(1), async {
+                control_receiver.recv().await.map_err(|err| err.to_string())
+            })
+            .await
+            .map_err(|error| error.to_string())??;
+
+            let relay_result =
+                relay_task.await.map_err(|error| error.to_string())?;
+            if let Err(error) = relay_result {
+                return Err(format!("relay failed: {error}"));
+            }
+            if delivered != event {
+                return Err(format!(
+                    "control plane payload mismatch: {delivered:?}"
+                ));
+            }
+
+            let records = bus.captured_data();
+            let guard = records.lock().await;
+            TimingAssertion::verify_non_decreasing(&guard).map_err(
+                |error| format!("timing verification failed: {error}"),
+            )?;
+
+            Ok(())
+        }
+    }
+
+    fn fixed_clock() -> Arc<dyn Fn() -> DateTime<Utc> + Send + Sync> {
+        let counter = Arc::new(AtomicU64::new(0));
+        let counter_ref = Arc::clone(&counter);
+        Arc::new(move || {
+            let offset =
+                i64::try_from(counter_ref.fetch_add(1, Ordering::SeqCst))
+                    .unwrap_or_default();
+            let base_timestamp = 1_700_000_000i64;
+            let timestamp =
+                base_timestamp.checked_add(offset).unwrap_or(base_timestamp);
+            DateTime::<Utc>::from_timestamp(timestamp, 0)
+                .unwrap_or_else(Utc::now)
+        })
+    }
+
     fn account_event(account_id: &str, version: u64) -> AccountEvent {
         AccountEvent {
             account_id: account_id.into(),
@@ -200,7 +315,8 @@ mod tests {
         (MockEventBus<AccountEvent>, Receiver<AccountEvent>, AccountEvent),
         String,
     > {
-        let bus = MockEventBus::new(capacity, capacity);
+        let bus =
+            MockEventBus::new_with_clock(capacity, capacity, fixed_clock());
         let receiver = bus
             .subscribe_data()
             .await

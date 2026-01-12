@@ -47,6 +47,53 @@ assert!(result.is_ok());
 
 Use `EventRecord` and `SequenceAssertion` to validate ordering. For timing-sensitive checks, prefer deterministic counters over wall-clock assertions.
 
+`TimingAssertion` provides helpers to assert monotonic timestamps and bounded spans when ordering by time matters.
+
+```rust,ignore
+use lithos_test_utils::{EventRecord, TimingAssertion};
+use chrono::Duration;
+
+let records = vec![
+    EventRecord::with_timestamp(1, fixed_timestamp(0), event_a),
+    EventRecord::with_timestamp(2, fixed_timestamp(1), event_b),
+];
+
+TimingAssertion::verify_non_decreasing(&records)?;
+TimingAssertion::verify_max_span(&records, Duration::seconds(5))?;
+```
+
+## DDD Compliance Checklist
+
+When validating domain-driven design event workflows:
+
+- Capture event-storming outcomes as a checklist for expected domain events.
+- Add contract tests that serialize and compare event payloads.
+- Include integration tests that verify event flows across multiple planes.
+
+## Integration Event Flow Testing
+
+Use the mock bus to validate that events traverse between planes as expected:
+
+```rust,ignore
+let bus = MockEventBus::new_with_clock(4, 4, fixed_clock());
+let mut receiver = bus.subscribe_control();
+
+bus.publish_data(event.clone()).await?;
+// Relay logic should publish to control plane.
+let delivered = receiver.recv().await?;
+assert_eq!(delivered, event);
+```
+
+## Malformed Event Handling
+
+Subscriber tests should explicitly handle malformed payloads without panicking:
+
+```rust,ignore
+let malformed = serde_json::json!({"account_id": 10, "version": "oops"});
+let result: Result<AccountEvent, _> = serde_json::from_value(malformed);
+assert!(result.is_err());
+```
+
 ## Async Event Testing Guidance
 
 - Use `#[tokio::test(flavor = "multi_thread")]` or `async_test!` to surface race conditions.
