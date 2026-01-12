@@ -1328,104 +1328,14 @@ fn detect_circular_inheritance(
 - **PropertyBank → Property**: One-to-many (bank contains many properties)
 - **Schema → Schema**: Inheritance relationships between schemas
 
-### Performance Considerations
-
-**Architecture Performance Targets:**
-- Property ID generation: <1μs (blake3 fast hashing)
-- PropertyBank lookup: O(1) HashMap access
-- Schema inheritance resolution: <10μs per schema
-- Memory per schema: ~1KB
-- Memory per property: ~100 bytes
-
-**Benchmarking Requirements:**
-```rust
-// Add to benches/schema_benchmarks.rs
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-fn bench_property_id_generation(c: &mut Criterion) {
-    c.bench_function("property_id_gen", |b| {
-        b.iter(|| {
-            Property::compute_id(
-                black_box("title"),
-                black_box(&PropertySpec::String(StringSpec::default())),
-            )
-        });
-    });
-    // Target: <1μs
-}
-
-fn bench_schema_inheritance_resolution(c: &mut Criterion) {
-    let parent = example_schema();
-    c.bench_function("inheritance_resolution", |b| {
-        b.iter(|| {
-            Schema::new(
-                "child-schema".to_string(),
-                Some("parent-schema".to_string()),
-                HashSet::new(),
-                vec![],
-                Some(&parent),
-            )
-        });
-    });
-    // Target: <10μs
-}
-
-fn bench_property_bank_lookup(c: &mut Criterion) {
-    let mut bank = PropertyBank::new();
-    let prop = example_property();
-    bank.register(prop).unwrap();
-
-    c.bench_function("property_bank_lookup", |b| {
-        b.iter(|| {
-            black_box(bank.lookup("test-property-id"));
-        });
-    });
-    // Target: O(1) HashMap performance
-}
-```
-
-**Inheritance Resolution:**
-- Resolve inheritance once at schema creation time
-- Store `resolved_properties` for O(1) access
-- Avoid re-resolving on every query
-
-**Memory Usage:**
-- PropertyBank stores unique properties only (deduplication saves memory)
-- Schema stores references to properties (not copies)
-- Expect ~1KB per schema, ~100 bytes per property
-
-**Performance Testing:**
-```rust
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-
-fn bench_property_id_generation(c: &mut Criterion) {
-    c.bench_function("property_id_gen", |b| {
-        b.iter(|| {
-            Property::compute_id(
-                black_box("title"),
-                black_box(&PropertySpec::String(StringSpec::default())),
-            )
-        });
-    });
-}
-
-fn bench_schema_inheritance_resolution(c: &mut Criterion) {
-    let parent = example_schema();
-    c.bench_function("inheritance_resolution", |b| {
-        b.iter(|| {
-            Schema::new(
-                "child-schema".to_string(),
-                Some("parent-schema".to_string()),
-                HashSet::new(),
-                vec![],
-                Some(&parent),
-            )
-        });
-    });
-}
-
-// Target: <1μs for ID generation, <10μs for inheritance resolution
-```
+### Epic 2 Test Infrastructure Integration
+**Planned Integration with Epic 2 Test Utils:**
+This story will leverage the test utilities being developed in Epic 2:
+- **Story 2-4**: Centralized test utilities and infrastructure (artifact management, isolation)
+- **Story 2-6**: Integration testing patterns and infrastructure (cross-crate testing, external service mocking)
+- **Story 2-7**: Benchmarking infrastructure and performance testing patterns (criterion integration, regression detection)
+- **Dependency**: Epic 2 completion required before implementing comprehensive testing in this story
+- **Integration Points**: Use shared test fixtures for schema entities, mock property banks, and performance benchmarking utilities
 
 ### References
 
