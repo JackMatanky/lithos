@@ -27,22 +27,22 @@ So that template structure and syntax are properly validated at the domain level
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Template Domain Tests First (RED Phase - AC: All)
-- [ ] Write failing unit tests for Template entity (structure validation, syntax parsing)
+- [ ] Write failing unit tests for Template entity (structure validation, variable definitions)
 - [ ] Write failing unit tests for VariableDefinition (type safety, default values, constraints)
 - [ ] Write failing unit tests for TemplateComposition (modular assembly, dependency resolution)
-- [ ] Write failing unit tests for template syntax validation (MiniJinja compatibility, variable references)
-- [ ] Write failing property-based tests for edge cases (malformed syntax, circular dependencies)
-- [ ] Write failing integration tests for template rendering with variables
+- [ ] Write failing unit tests for domain business rules (variable naming, composition cycles)
+- [ ] Write failing property-based tests for edge cases (invalid variable names, composition cycles)
+- [ ] Write failing integration tests for template composition and variable resolution
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement Template Core Entities (GREEN Phase - AC: 1-3)
-- [ ] Implement Template struct with UUID v7 identity and content validation
+- [ ] Implement Template struct with UUID v7 identity and content storage
 - [ ] Implement VariableDefinition enum with type-safe value constraints (String, Number, Boolean, Date, File)
 - [ ] Implement TemplateComposition for modular template assembly
-- [ ] Add template syntax validation compatible with MiniJinja engine
-- [ ] Implement semantic validation for variable references and type consistency
-- [ ] Create Template::new() constructor with comprehensive validation pipeline
-- [ ] **TDD REQUIREMENT:** Make all Template tests pass (GREEN phase complete when all tests pass)
+- [ ] Add domain business rule validation (variable naming, composition cycles)
+- [ ] Implement semantic validation for variable type consistency
+- [ ] Create Template::new() constructor with domain validation (no syntax validation)
+- [ ] **TDD REQUIREMENT:** Make all Template domain tests pass (GREEN phase complete when all tests pass)
 
 ### Task 3: Implement Template Validation Logic (GREEN Phase - AC: All)
 - [ ] Implement syntax validation for MiniJinja template expressions ({{variable}}, {% if %}, {% for %})
@@ -100,12 +100,18 @@ So that template structure and syntax are properly validated at the domain level
 ### Domain Model Foundation
 
 **Core Entity Structure:**
-- **Template Entity**: Main aggregate root with UUID v7 identity and content validation
+- **Template Entity**: Main aggregate root with UUID v7 identity and content storage
 - **VariableDefinition Enum**: Type-safe variable definitions with constraints and defaults
 - **TemplateComposition Struct**: Modular template assembly with dependency management
 - **Immutability**: All template entities MUST be immutable following Rust ownership patterns
-- **Validation**: Syntax and semantic validation compatible with MiniJinja engine
-- **Error Handling**: Use `thiserror::Error` for typed template validation errors
+- **Validation**: Domain business rules only (no syntax validation - that's adapter layer)
+- **Error Handling**: Use `thiserror::Error` for typed domain validation errors
+
+**CRITICAL ARCHITECTURAL PRINCIPLE:**
+- **DOMAIN LAYER**: Business rules, variable definitions, composition logic, semantic validation
+- **ADAPTER LAYER**: MiniJinja syntax validation, template rendering, file I/O, external format parsing
+- **NO SYNTAX VALIDATION IN DOMAIN**: Domain stores template content as opaque strings
+- **NO IO CONCERNS IN DOMAIN**: All file operations happen in adapters
 
 **Template Entity Specification:**
 ```rust
@@ -233,33 +239,32 @@ pub enum InsertionPosition {
 
 ### MiniJinja Compatibility Requirements
 
-**Syntax Validation - CRITICAL:**
-- **Variable References**: `{{variable_name}}`, `{{variable_name | filter}}`
-- **Control Structures**: `{% if condition %}...{% endif %}`, `{% for item in items %}...{% endfor %}`
-- **Comments**: `{# This is a comment #}`
-- **Expressions**: Basic arithmetic, string operations, boolean logic
-- **Filters**: Common filters like `|upper`, `|lower`, `|length`, `|default`
+**DOMAIN LAYER RESPONSIBILITIES:**
+- **Variable Definitions**: Type-safe variable specifications with constraints
+- **Composition Logic**: Modular template assembly and dependency resolution
+- **Business Rules**: Variable naming, composition cycles, semantic consistency
+- **Content Storage**: Template content stored as opaque strings (no parsing)
 
-**Template Structure Validation:**
-- **Balanced Blocks**: All `{% if %}`, `{% for %}`, `{% block %}` must have matching `{% endif %}`, `{% endfor %}`, `{% endblock %}`
-- **Variable Scoping**: Variables accessible in their defined scopes
-- **Expression Validity**: All expressions must be syntactically correct
-- **Filter Compatibility**: Only supported MiniJinja filters allowed
+**ADAPTER LAYER RESPONSIBILITIES:**
+- **Syntax Validation**: MiniJinja-compatible syntax checking (variable references, control structures, expressions)
+- **Template Rendering**: Actual MiniJinja engine integration for content generation
+- **Structure Validation**: Balanced blocks, variable scoping, expression validity
+- **Filter Compatibility**: Supported MiniJinja filters and custom filter validation
 
-**Semantic Validation:**
-- **Variable References**: All `{{variable}}` must be defined in template variables
-- **Type Consistency**: Variable usage matches defined types where possible
-- **Dependency Resolution**: Template includes and extends must reference valid templates
-- **Circular Dependencies**: Template composition cannot create cycles
+**Semantic Validation Distribution:**
+- **DOMAIN**: Variable references match defined variables, type consistency, composition cycles
+- **ADAPTER**: Template syntax is valid MiniJinja, expressions parse correctly, filters are supported
+- **INTEGRATION**: Combined validation ensures templates are both semantically correct and syntactically valid
 
 ### Architecture Compliance - MANDATORY READING
 
 **Hexagonal Boundary Enforcement:**
-- Domain crate in `crates/domain/src/` with Template entities and validation
-- Template syntax validation happens in domain layer (compatible with MiniJinja)
-- Template rendering happens in adapter layer (actual MiniJinja usage)
-- NO direct MiniJinja dependencies in domain (only syntax validation)
-- Ports in `domain/src/ports/` using `#[async_trait]` for async operations
+- **DOMAIN LAYER**: Template entities, variable definitions, composition business rules, domain validation only
+- **ADAPTER LAYER**: MiniJinja syntax validation, template rendering, file I/O, external format parsing
+- **PORTS**: Clean interfaces between domain and adapters for template operations
+- **ZERO IO CONCERNS**: Domain never touches files, network, or external systems
+- **PURE BUSINESS LOGIC**: Domain focuses on template structure and composition rules
+- **ADAPTER ISOLATION**: MiniJinja dependencies and syntax validation isolated in adapter layer
 
 **Standard Traits - REQUIRED:**
 ```rust
@@ -318,11 +323,17 @@ match var_def {
 - Variable value size: MAX 10KB per variable
 - Include depth: MAX 5 levels (prevent infinite recursion)
 
-**MiniJinja Syntax Validation:**
-- **Variable Syntax**: `{{[a-zA-Z_][a-zA-Z0-9_]*(\|[a-zA-Z_][a-zA-Z0-9_]*)*}}`
-- **Block Syntax**: Proper nesting and balancing of control structures
-- **Expression Syntax**: Valid MiniJinja expressions with proper operator precedence
-- **Filter Syntax**: Supported filters with correct argument types
+**Domain Validation Rules (Business Logic):**
+- **Variable Naming**: `^[a-zA-Z_][a-zA-Z0-9_]*$` regex, no reserved words
+- **Composition Cycles**: Prevent circular template dependencies
+- **Type Consistency**: Variable definitions match usage patterns
+- **Size Limits**: Reasonable bounds on template complexity
+
+**Adapter Validation Rules (Technical Implementation):**
+- **MiniJinja Syntax**: Variable references `{{variable}}`, control structures, expressions
+- **Block Balancing**: Proper nesting of `{% if %}`, `{% for %}`, etc.
+- **Expression Parsing**: Valid MiniJinja expressions with correct precedence
+- **Filter Support**: Compatible filters with proper argument types
 
 ### Subentity Examples
 
@@ -640,26 +651,54 @@ Use **subfolder organization** for Template bounded context due to complexity of
 
 ### Implementation Strategy
 
-**TDD Template Validation:**
+**TDD Domain Validation (Business Rules Only):**
 ```rust
 impl Template {
-    /// Validate template syntax (MiniJinja compatible)
-    pub fn validate_syntax(content: &str) -> Result<(), TemplateError> {
-        // 1. Parse template structure
-        // 2. Check balanced blocks
-        // 3. Validate variable references
-        // 4. Check expression syntax
-        // 5. Return detailed errors
+    /// Validate domain business rules (no syntax validation)
+    pub fn validate_domain_rules(&self) -> Result<(), TemplateError> {
+        // 1. Validate variable names follow naming conventions
+        // 2. Check for composition cycles
+        // 3. Validate variable type consistency
+        // 4. Check size limits and complexity constraints
+        // 5. Return domain validation errors
         unimplemented!("TDD implementation required")
     }
+}
 
-    /// Validate template semantics
-    pub fn validate_semantics(&self) -> Result<(), TemplateError> {
-        // 1. Check all variable references are defined
-        // 2. Validate variable types match usage
-        // 3. Check composition dependencies
-        // 4. Return semantic errors
+impl TemplateComposition {
+    /// Validate composition business rules
+    pub fn validate_composition(&self, available_templates: &HashSet<String>) -> Result<(), TemplateError> {
+        // 1. Check all referenced templates exist
+        // 2. Validate composition cycles
+        // 3. Check variable override compatibility
+        // 4. Return composition validation errors
         unimplemented!("TDD implementation required")
+    }
+}
+```
+
+**TDD Adapter Validation (MiniJinja Integration):**
+```rust
+// In adapter layer (crates/adapters/src/)
+pub struct TemplateAdapter;
+
+impl TemplateAdapter {
+    /// Validate MiniJinja syntax (adapter responsibility)
+    pub fn validate_syntax(content: &str) -> Result<(), TemplateAdapterError> {
+        // 1. Parse with MiniJinja engine
+        // 2. Check for syntax errors
+        // 3. Validate supported features
+        // 4. Return syntax validation errors
+        unimplemented!("Adapter implementation required")
+    }
+
+    /// Render template with MiniJinja (adapter responsibility)
+    pub async fn render_template(&self, template: &Template, variables: &HashMap<String, serde_json::Value>) -> Result<String, TemplateAdapterError> {
+        // 1. Create MiniJinja environment
+        // 2. Compile template
+        // 3. Render with provided variables
+        // 4. Return rendered content
+        unimplemented!("Adapter implementation required")
     }
 }
 ```
