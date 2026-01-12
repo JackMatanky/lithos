@@ -10,6 +10,7 @@ use std::{
 };
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use tokio::sync::{Mutex, broadcast, mpsc, watch};
 
 use crate::events::{EventRecord, SequenceAssertion};
@@ -90,7 +91,6 @@ where
 }
 
 /// Mock implementation of a hybrid event bus for testing.
-#[derive(Debug)]
 pub struct MockEventBus<T>
 where
     T: Clone + Send + Sync + 'static,
@@ -99,12 +99,22 @@ where
     data_receiver: Mutex<Option<mpsc::Receiver<T>>>,
     control_sender: broadcast::Sender<T>,
     state_sender: watch::Sender<Option<T>>,
+    timestamp_provider: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
     data_events: Arc<Mutex<Vec<EventRecord<T>>>>,
     control_events: Arc<Mutex<Vec<EventRecord<T>>>>,
     state_events: Arc<Mutex<Vec<EventRecord<T>>>>,
     data_sequence: AtomicU64,
     control_sequence: AtomicU64,
     state_sequence: AtomicU64,
+}
+
+impl<T> fmt::Debug for MockEventBus<T>
+where
+    T: Clone + Send + Sync + 'static,
+{
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("MockEventBus").finish_non_exhaustive()
+    }
 }
 
 impl<T> MockEventBus<T>
@@ -114,6 +124,20 @@ where
     /// Create a new mock event bus with capacity settings.
     #[must_use]
     pub fn new(data_capacity: usize, control_capacity: usize) -> Self {
+        Self::new_with_clock(
+            data_capacity,
+            control_capacity,
+            Arc::new(Utc::now),
+        )
+    }
+
+    /// Create a mock event bus with a deterministic timestamp provider.
+    #[must_use]
+    pub fn new_with_clock(
+        data_capacity: usize,
+        control_capacity: usize,
+        timestamp_provider: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
+    ) -> Self {
         let (data_sender, data_receiver) = mpsc::channel(data_capacity);
         let (control_sender, _control_receiver) =
             broadcast::channel(control_capacity);
@@ -124,6 +148,7 @@ where
             data_receiver: Mutex::new(Some(data_receiver)),
             control_sender,
             state_sender,
+            timestamp_provider,
             data_events: Arc::new(Mutex::new(Vec::new())),
             control_events: Arc::new(Mutex::new(Vec::new())),
             state_events: Arc::new(Mutex::new(Vec::new())),
@@ -134,12 +159,15 @@ where
     }
 
     async fn record_event(
+        &self,
         events: &Arc<Mutex<Vec<EventRecord<T>>>>,
         sequence: &AtomicU64,
         event: T,
     ) -> EventRecord<T> {
         let next_sequence = sequence.fetch_add(1, Ordering::SeqCst);
-        let record = EventRecord::new(next_sequence, event);
+        let timestamp = (self.timestamp_provider)();
+        let record =
+            EventRecord::with_timestamp(next_sequence, timestamp, event);
         let mut guard = events.lock().await;
         guard.push(record.clone());
         record
@@ -152,28 +180,30 @@ where
     T: Clone + Send + Sync + 'static,
 {
     async fn publish_data(&self, event: T) -> Result<(), EventBusError> {
-        let _ = Self::record_event(
-            &self.data_events,
-            &self.data_sequence,
-            event.clone(),
-        )
-        .await;
+        let _ = self
+            .record_event(&self.data_events, &self.data_sequence, event.clone())
+            .await;
         self.data_sender
             .send(event)
             .await
             .map_err(|_| EventBusError::data_plane_closed())?;
         let records = self.data_events.lock().await;
-        let _ = SequenceAssertion::verify_increasing(&records);
+        SequenceAssertion::verify_increasing(&records).map_err(|error| {
+            EventBusError::new(format!(
+                "Data plane sequence verification failed: {error}"
+            ))
+        })?;
         Ok(())
     }
 
     async fn publish_control(&self, event: T) -> Result<(), EventBusError> {
-        let _ = Self::record_event(
-            &self.control_events,
-            &self.control_sequence,
-            event.clone(),
-        )
-        .await;
+        let _ = self
+            .record_event(
+                &self.control_events,
+                &self.control_sequence,
+                event.clone(),
+            )
+            .await;
         self.control_sender
             .send(event)
             .map(|_| ())
@@ -181,12 +211,13 @@ where
     }
 
     async fn publish_state(&self, event: T) -> Result<(), EventBusError> {
-        let _ = Self::record_event(
-            &self.state_events,
-            &self.state_sequence,
-            event.clone(),
-        )
-        .await;
+        let _ = self
+            .record_event(
+                &self.state_events,
+                &self.state_sequence,
+                event.clone(),
+            )
+            .await;
         self.state_sender
             .send(Some(event))
             .map_err(|_| EventBusError::state_plane_closed())
@@ -235,11 +266,22 @@ mod tests {
         id: u64,
     }
 
+    fn fixed_clock() -> Arc<dyn Fn() -> DateTime<Utc> + Send + Sync> {
+        let counter = Arc::new(AtomicU64::new(0));
+        let counter_ref = Arc::clone(&counter);
+        Arc::new(move || {
+            let offset = counter_ref.fetch_add(1, Ordering::SeqCst) as i64;
+            DateTime::<Utc>::from_timestamp(1_700_000_000 + offset, 0)
+                .unwrap_or_else(Utc::now)
+        })
+    }
+
     async fn data_plane_fixture(
         capacity: usize,
     ) -> Result<(MockEventBus<TestEvent>, Receiver<TestEvent>, TestEvent), String>
     {
-        let bus = MockEventBus::new(capacity, capacity);
+        let bus =
+            MockEventBus::new_with_clock(capacity, capacity, fixed_clock());
         let receiver =
             bus.subscribe_data().await.map_err(|error| error.to_string())?;
         let event = TestEvent {
@@ -375,7 +417,8 @@ mod tests {
 
     async_test!(
         async fn data_plane_reports_closed_channel_without_receiver() {
-            let bus = MockEventBus::<TestEvent>::new(1, 1);
+            let bus =
+                MockEventBus::<TestEvent>::new_with_clock(1, 1, fixed_clock());
             let receiver_result = bus.subscribe_data().await;
             assert!(
                 receiver_result.is_ok(),
@@ -402,7 +445,8 @@ mod tests {
 
     async_test!(
         async fn data_plane_rejects_second_subscription() {
-            let bus = MockEventBus::<TestEvent>::new(1, 1);
+            let bus =
+                MockEventBus::<TestEvent>::new_with_clock(1, 1, fixed_clock());
             let first_result = bus.subscribe_data().await;
             assert!(first_result.is_ok(), "subscribe error: {first_result:?}");
             drop(first_result);
@@ -422,7 +466,7 @@ mod tests {
 
     async_test!(
         async fn control_plane_broadcasts_events_to_subscribers() {
-            let bus = MockEventBus::new(2, 4);
+            let bus = MockEventBus::new_with_clock(2, 4, fixed_clock());
             let mut control_receiver = bus.subscribe_control();
             let event = TestEvent {
                 id: 7,
@@ -447,7 +491,8 @@ mod tests {
 
     async_test!(
         async fn control_plane_reports_closed_channel_without_receiver() {
-            let bus = MockEventBus::<TestEvent>::new(1, 1);
+            let bus =
+                MockEventBus::<TestEvent>::new_with_clock(1, 1, fixed_clock());
             let publish_result = bus
                 .publish_control(TestEvent {
                     id: 2,
@@ -467,7 +512,8 @@ mod tests {
 
     async_test!(
         async fn control_plane_captures_recorded_events() {
-            let bus = MockEventBus::<TestEvent>::new(1, 1);
+            let bus =
+                MockEventBus::<TestEvent>::new_with_clock(1, 1, fixed_clock());
             let _receiver = bus.subscribe_control();
             let event = TestEvent {
                 id: 11,
@@ -499,7 +545,7 @@ mod tests {
 
     async_test!(
         async fn state_plane_updates_receivers_with_latest_event() {
-            let bus = MockEventBus::new(2, 2);
+            let bus = MockEventBus::new_with_clock(2, 2, fixed_clock());
             let state_receiver = bus.subscribe_state();
             let event = TestEvent {
                 id: 9,
@@ -520,7 +566,8 @@ mod tests {
 
     async_test!(
         async fn state_plane_reports_closed_channel_without_receiver() {
-            let bus = MockEventBus::<TestEvent>::new(1, 1);
+            let bus =
+                MockEventBus::<TestEvent>::new_with_clock(1, 1, fixed_clock());
             let publish_result = bus
                 .publish_state(TestEvent {
                     id: 3,
@@ -540,7 +587,8 @@ mod tests {
 
     async_test!(
         async fn state_plane_captures_recorded_events() {
-            let bus = MockEventBus::<TestEvent>::new(1, 1);
+            let bus =
+                MockEventBus::<TestEvent>::new_with_clock(1, 1, fixed_clock());
             let _receiver = bus.subscribe_state();
             let event = TestEvent {
                 id: 12,

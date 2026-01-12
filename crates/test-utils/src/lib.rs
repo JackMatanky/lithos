@@ -26,18 +26,18 @@
 //! });
 //! ```
 
-pub mod async_helpers;
+pub mod async_utils;
 pub mod events;
 pub mod mocks;
 
-pub use async_helpers::{
+pub use async_utils::{
     default_test_timeout, long_test_timeout, shared_mutex, shared_rwlock,
     shared_semaphore, short_test_timeout, spawn_blocking_test,
     with_cancellation, with_timeout,
 };
 pub use events::{
     EventRecord, EventTestError, EventTestFramework, EventTestResult,
-    EventTestScenario, PayloadAssertion, SequenceAssertion,
+    EventTestScenario, PayloadAssertion, SequenceAssertion, TimingAssertion,
 };
 pub use mocks::{EventBusError, EventBusPort, EventPlane, MockEventBus};
 /// Re-export commonly used tokio testing types
@@ -46,5 +46,5 @@ pub use tokio_test::{
 };
 
 // The async_test macro is automatically exported at crate root via #[macro_export]
-// in the async_helpers module. Use it as:
+// in the async_utils module. Use it as:
 // use lithos_test_utils::async_test;
