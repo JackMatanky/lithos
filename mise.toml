@@ -102,6 +102,16 @@ description = "Run all tests (unit and integration)"
 alias = "t"
 depends = ["test:unit", "test:integration"]
 
+[tasks."test:unit"]
+description = "Run unit tests with nextest"
+run = "cargo nextest run {{env.CARGO_TEST_ARGS}} --workspace --partition hash:1/1 --junit {{vars.junit_unit}}"
+env = { RUST_BACKTRACE = "1" }
+
+[tasks."test:integration"]
+description = "Run integration tests with parallelism and container management"
+run = "cargo nextest run --test-threads {{env.TEST_THREADS}} --workspace --partition hash:1/1 --junit {{vars.junit_integration}}"
+env = { RUST_BACKTRACE = "1" }
+
 # Specific crate unit tests for developer convenience
 [tasks."test:unit:domain"]
 description = "Run domain crate unit tests"

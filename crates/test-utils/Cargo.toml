@@ -33,3 +33,4 @@ rmp-serde = "1.3"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
+mockall = "0.13"
