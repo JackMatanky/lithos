@@ -78,6 +78,12 @@ so that I can apply the approved patterns consistently and avoid ambiguity.
   - [ ] Update `docs/index.md` to include "Testing Guide" link under documentation section
   - [ ] Update any existing TOC or testing overview to reference the new guide
 
+- [ ] Update ROADMAP.md and CHANGELOG.md (MANDATORY PRE-COMMIT TASK)
+  - [ ] Mark Epic 2 as complete in ROADMAP.md Milestone 1
+  - [ ] Add developer testing guide to Milestone 1 achievements in ROADMAP.md
+  - [ ] Add Epic 2 section to CHANGELOG.md under Unreleased, documenting all testing infrastructure additions
+  - [ ] Update any progress indicators or status fields in ROADMAP.md
+
 - [ ] Push committed changes and verify CI pipeline (MANDATORY FINAL TASK)
   - [ ] Push all committed changes to the remote branch: `git push origin rust-conversion`
   - [ ] Monitor the GitHub Actions CI workflow run triggered by the push
