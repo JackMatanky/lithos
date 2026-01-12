@@ -82,6 +82,22 @@ run = ".mise/tasks/test/unit.sh -p adapters"
 description = "Run CLI crate unit tests"
 run = ".mise/tasks/test/unit.sh -p cli"
 
+[tasks."test:unit"]
+description = "Run all unit tests"
+run = ".mise/tasks/test/unit.sh"
+
+[tasks."test:integration"]
+description = "Run all integration tests"
+run = ".mise/tasks/test/integration.sh"
+
+[tasks."test:coverage"]
+description = "Generate code coverage report"
+run = ".mise/tasks/test/coverage.sh"
+
+[tasks."test:watch"]
+description = "Watch for changes and run tests"
+run = ".mise/tasks/test/watch.sh"
+
 # CI/CD simulation
 [tasks.ci]
 description = "Simulate CI/CD pipeline"
