@@ -48,6 +48,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [ ] Write failing unit tests for Task entity (test status enum, markdown parsing)
 - [ ] Write failing unit tests for Section entity (test range calculation, heading association)
 - [ ] Write failing integration tests for Note aggregate (test composition, validation pipeline)
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 - [ ] Write failing property-based tests for edge cases (empty strings, boundary values, invalid formats)
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 

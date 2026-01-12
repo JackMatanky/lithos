@@ -75,12 +75,35 @@ So that obviously malformed files are caught early with helpful error messages.
 - [ ] Verify compatibility with future domain-specific validation layers
 - [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
-### Task 8: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+### Task 9: Integrate Security Validations with Basic Validation (GREEN Phase - AC: 4)
+- [ ] Extend validation to include size limit enforcement
+- [ ] Add content type validation (reject non-text files, detect binary content)
+- [ ] Implement security validation results in error messages
+- [ ] Ensure security checks integrate with existing validation pipeline
+- [ ] **TDD REQUIREMENT:** Make all security validation tests pass
+
+### Task 10: Optimize Validation for Async Pipeline (GREEN Phase - AC: 5)
+- [ ] Ensure validation integrates with async file loading without blocking
+- [ ] Add validation timeout handling for large file checks
+- [ ] Optimize validation performance for async contexts
+- [ ] Verify validation doesn't interfere with async error propagation
+- [ ] **TDD REQUIREMENT:** Make all async validation tests pass
+
+### Task 11: Comprehensive Security and Performance Testing (RED-GREEN-REFACTOR - AC: All)
+- [ ] Achieve 90%+ test coverage for security validations and async integration
+- [ ] Create test fixtures for security edge cases in validation (large files, binary content, malformed structure)
+- [ ] Implement property-based testing for validation security robustness
+- [ ] Add performance benchmarks for secure validation operations (<50μs target)
+- [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all security tests pass
+
+### Task 12: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
 - [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
 - [ ] **TDD VALIDATION:** Verify property-based tests catch validation edge cases appropriately
 - [ ] **TDD VALIDATION:** Ensure validation performance meets <50μs targets
 - [ ] **TDD VALIDATION:** Confirm comprehensive error messages with file locations and suggestions
 - [ ] **TDD VALIDATION:** Verify validation doesn't break existing file loading functionality
+- [ ] **TDD VALIDATION:** Confirm security validations prevent identified attack vectors
+- [ ] **TDD VALIDATION:** Verify async integration maintains performance and safety
 - [ ] Run `mise run fmt` to format all code according to project standards
 - [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
 - [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
@@ -92,7 +115,7 @@ So that obviously malformed files are caught early with helpful error messages.
 - [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [ ] **MANDATORY:** Verify validation integrates properly with existing FileLoaderError hierarchy
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: implement basic file loading validation with comprehensive error handling`
+- [ ] Commit with conventional commit message: `feat: implement basic file loading validation with security checks and async integration`
 
 ## Dev Notes
 

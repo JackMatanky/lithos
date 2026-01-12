@@ -18,6 +18,10 @@ So that I can test file loading in isolation without actual file system operatio
 
 3. Given integration tests are needed When I use mocks Then they simulate real file loading behavior for comprehensive testing
 
+4. Given security testing requirements When I create mocks Then mocks simulate security validations and attack scenarios
+
+5. Given async testing needs When I implement mocks Then mocks support async trait methods and proper isolation
+
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Mock Tests First (RED Phase - AC: All)
@@ -70,12 +74,35 @@ So that I can test file loading in isolation without actual file system operatio
 - [ ] Verify integration points with Story 4.3 validation testing
 - [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
-### Task 8: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+### Task 9: Add Security Scenario Mocks (GREEN Phase - AC: 4)
+- [ ] Implement mock scenarios for security validations (path traversal, large files, binary content)
+- [ ] Create mock fixtures for attack simulation (directory traversal attempts, oversized files)
+- [ ] Add security error simulation in mock implementations
+- [ ] Ensure security mocks accurately reflect real adapter behavior
+- [ ] **TDD REQUIREMENT:** Make all security mock tests pass
+
+### Task 10: Implement Async Mock Support (GREEN Phase - AC: 5)
+- [ ] Update mock implementations to support async trait methods
+- [ ] Implement proper async isolation for mock testing
+- [ ] Add mock timeout simulation for async operations
+- [ ] Ensure mocks are thread-safe for parallel test execution
+- [ ] **TDD REQUIREMENT:** Make all async mock tests pass
+
+### Task 11: Comprehensive Security and Async Testing (RED-GREEN-REFACTOR - AC: All)
+- [ ] Achieve 90%+ test coverage for security mocks and async support
+- [ ] Create test fixtures for security and async edge cases in mocking
+- [ ] Implement property-based testing for mock robustness
+- [ ] Add performance benchmarks for secure mock operations (<1ms target)
+- [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all security/async tests pass
+
+### Task 12: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
 - [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
 - [ ] **TDD VALIDATION:** Verify property-based tests catch edge cases appropriately
 - [ ] **TDD VALIDATION:** Ensure mock performance meets targets (<1ms per operation)
 - [ ] **TDD VALIDATION:** Confirm comprehensive mock coverage for all adapter scenarios
 - [ ] **TDD VALIDATION:** Verify mock isolation and thread-safety for parallel testing
+- [ ] **TDD VALIDATION:** Confirm security mocks prevent testing blindspots
+- [ ] **TDD VALIDATION:** Verify async mocks support proper testing isolation
 - [ ] Run `mise run fmt` to format all code according to project standards
 - [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
 - [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
@@ -87,7 +114,7 @@ So that I can test file loading in isolation without actual file system operatio
 - [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [ ] **MANDATORY:** Verify mock implementations maintain hexagonal boundaries
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: implement loading strategy mocks for comprehensive file loading testing`
+- [ ] Commit with conventional commit message: `feat: implement loading strategy mocks with security scenarios and async support`
 
 ## Dev Notes
 

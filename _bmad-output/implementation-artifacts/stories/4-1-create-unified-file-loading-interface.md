@@ -32,6 +32,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Write failing integration tests for FileLoaderAdapter port implementation
 - [ ] Write failing property-based tests for edge cases (empty files, malformed extensions, binary content)
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 2: Implement Domain Entities and Ports (GREEN Phase - AC: 1-3)
 - [ ] Implement FileFormat enum with TOML, JSON, YAML variants and validation
@@ -41,6 +42,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Implement FileLoaderError enum with thiserror::Error and descriptive messages
 - [ ] Implement basic port validation (file existence, permissions, format support)
 - [ ] **TDD REQUIREMENT:** Make all previously failing tests pass (GREEN phase complete when all tests pass)
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 3: Implement Adapter Layer Parsing (GREEN Phase - AC: 1,3)
 - [ ] Implement TOML parsing in adapter using toml crate with serde integration
@@ -50,15 +52,17 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Implement async file I/O using tokio::fs in spawn_blocking to avoid blocking threads
 - [ ] Implement comprehensive error handling with file paths, line numbers, and context
 - [ ] **TDD REQUIREMENT:** All parsing tests must pass with proper error propagation
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 4: Create File Loading Adapter Implementation (GREEN Phase - AC: 1,2,3)
-- [ ] Implement FileLoaderAdapter struct implementing FileLoaderPort
+- [ ] Implement FileLoaderAdapter struct implementing FileLoaderAdapter trait
 - [ ] Implement format detection dispatch logic in adapter
 - [ ] Implement parsing dispatch to appropriate format handlers
 - [ ] Implement security validation (no binary files, size limits, path traversal protection)
 - [ ] Implement caching for format detection results (optional performance optimization)
 - [ ] Implement adapter-level validation (format consistency, data integrity)
 - [ ] **TDD REQUIREMENT:** All adapter integration tests must pass
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 5: Refactor for Quality (REFACTOR Phase - AC: All)
 - [ ] Extract common parsing logic into reusable functions (<25 cognitive complexity)
@@ -68,6 +72,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Implement performance optimizations (buffer reuse, efficient parsing strategies)
 - [ ] Verify hexagonal architecture compliance (adapter depends on domain, domain pure)
 - [ ] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 6: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
 - [ ] Achieve 90%+ test coverage for file loading components and error handling
@@ -76,6 +81,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Add integration tests for end-to-end file loading with various formats and error scenarios
 - [ ] Add performance benchmarks (<500ms target validation)
 - [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all property-based tests pass
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 7: Documentation and Integration (REFACTOR Phase - AC: All)
 - [ ] Update adapters crate lib.rs with proper public API surface and re-exports
@@ -84,6 +90,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Verify integration points with future bounded contexts (config loading, schema loading)
 - [ ] Update Cargo.toml with required dependencies (toml, serde_json, serde_yaml)
 - [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 9: Implement Security Validations (GREEN Phase - AC: 4)
 - [ ] Implement path sanitization (reject absolute paths, path traversal attempts, symlinks)
@@ -91,6 +98,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Implement configurable size limits (default 10MB, configurable via adapter settings)
 - [ ] Add security validation to FileLoaderPort contract
 - [ ] **TDD REQUIREMENT:** Make all security validation tests pass
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 10: Add Async I/O Support (GREEN Phase - AC: 5)
 - [ ] Update FileLoaderPort to use async trait methods
@@ -98,6 +106,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Add async timeout handling for file operations
 - [ ] Ensure async error propagation maintains context
 - [ ] **TDD REQUIREMENT:** Make all async I/O tests pass
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 11: Comprehensive Security and Performance Testing (RED-GREEN-REFACTOR - AC: All)
 - [ ] Achieve 90%+ test coverage for security validations and async operations
@@ -105,6 +114,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Implement property-based testing for security validation robustness
 - [ ] Add performance benchmarks for async file loading (<500ms target)
 - [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all security tests pass
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 12: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
 - [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
