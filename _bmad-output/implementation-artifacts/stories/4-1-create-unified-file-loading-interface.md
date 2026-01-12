@@ -171,11 +171,9 @@ crates/domain/src/
 └── lib.rs                         # Public API re-exports
 
 crates/adapters/src/
-├── spi/loader.rs            # FileLoaderAdapter implementation
+├── spi/loader.rs            # FileLoaderAdapter implementation with inline #[cfg(test)] unit tests
 ├── dto/loader.rs            # Data transfer objects (if needed)
-├── spi/file_loading/
-│   └── tests.rs                   # Unit tests for adapter logic
-└── lib.rs                         # Adapter crate re-exports
+└── lib.rs                   # Adapter crate re-exports
 
 crates/domain/tests/
 └── file_loader_integration.rs    # Cross-crate integration tests
@@ -289,8 +287,7 @@ Reviewed Epic 3 story files (3-1, 3-5) to adopt proven TDD patterns:
 Expected files to be created:
 - crates/domain/src/ports/loader.rs (FileLoaderPort trait, FileFormat enum, FileLoaderError)
 - crates/domain/src/errors.rs (updated with FileLoaderError variants)
-- crates/adapters/src/spi/loader.rs (FileLoaderAdapter implementation with TOML/JSON/YAML parsing)
+- crates/adapters/src/spi/loader.rs (FileLoaderAdapter implementation with inline #[cfg(test)] unit tests)
 - crates/adapters/src/dto/loader.rs (DTOs for adapter layer if needed)
--
 - benches/file_loader.rs (performance benchmarks for <500ms target)
 - crates/domain/tests/file_loader_integration.rs (integration tests)
