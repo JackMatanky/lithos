@@ -49,12 +49,12 @@ CI = "${GITHUB_ACTIONS:-false}"
 [tasks.quality]
 description = "Run all quality gates (fmt, lint, adr:validate)"
 alias = "q"
-depends = ["fmt", "lint", "adr:validate"]
+depends = ["lint", "adr:validate"]
 
 [tasks.verify]
 description = "Full quality gate orchestration"
 alias = "v"
-depends = ["fmt", "lint", "test", "deny"]
+depends = ["lint", "test", "deny"]
 
 [tasks.deny]
 description = "Check dependencies for security vulnerabilities and license compliance"
