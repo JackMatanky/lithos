@@ -1,6 +1,6 @@
 # ADR 0011: Integration Testing Patterns and Infrastructure
 
-*   **Status**: Proposed
+*   **Status**: Accepted
 *   **Date**: 2026-01-12
 *   **Stakeholders**: Development Team, QA, Product Manager
 
@@ -103,5 +103,5 @@ Implement integration testing patterns using Rust's standard `tests/` directory 
 ## Status Tracking
 
 *   **Proposed**: 2026-01-12
-*   **Accepted/Rejected**:
-*   **Implemented**:
+*   **Accepted**: 2026-01-12
+*   **Implemented**: 2026-01-12 (Phase 1: Infrastructure and patterns established. Testcontainers deferred due to RUSTSEC-2025-0134)
