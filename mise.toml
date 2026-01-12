@@ -35,39 +35,40 @@ lockfile = true
 # ------------------------------------------------------------- #
 [env]
 # Test configuration for ADR 0010 test utilities integration
-TEST_THREADS = "4"
+TEST_THREADS = "{{vars.test_threads}}"
 CARGO_TEST_ARGS = "--lib --bins"
-TEST_OUTPUT_DIR = "{{vars.test_output_dir}}"
-CI = "${GITHUB_ACTIONS:-false}"
+TEST_OUTPUT_DIR = "{{config_root}}/test-output"
+CI = "${GITHUB_ACTIONS:-false}}"
 
-# Project paths
+# Project paths (available for tasks)
 PROJECT_ROOT = "{{config_root}}"
-SRC_DIR = "{{vars.src_dir}}"
-TEST_DIR = "{{vars.test_dir}}"
+DOMAIN_CRATE = "{{vars.domain_crate}}"
+APP_CRATE = "{{vars.app_crate}}"
+ADAPTERS_CRATE = "{{vars.adapters_crate}}"
+CLI_CRATE = "{{vars.cli_crate}}"
 DOCS_DIR = "{{vars.docs_dir}}"
 ADR_DIR = "{{vars.adr_dir}}"
-TARGET_DIR = "{{vars.target_dir}}"
 
 # ------------------------------------------------------------- #
 #                        VARIABLES                              #
 # ------------------------------------------------------------- #
 [vars]
-# Project structure paths
-project_root = "{{config_root}}"
-src_dir = "crates"
-test_dir = "crates"
+# Specific crate paths
+domain_crate = "crates/domain"
+app_crate = "crates/app"
+adapters_crate = "crates/adapters"
+cli_crate = "crates/cli"
+test_utils_crate = "crates/test-utils"
+
+# Directory paths
 docs_dir = "docs"
 adr_dir = "docs/adr"
-target_dir = "{{config_root}}/target"
+scripts_dir = "scripts"
 
 # Tool configurations
 rust_toolchain = "nightly-2026-01-11"
+test_threads = "4"
 cargo_profile = "dev"
-
-# Output directories
-test_output_dir = "{{config_root}}/test-output"
-coverage_dir = "{{vars.target_dir}}/tarpaulin"
-doc_dir = "{{vars.target_dir}}/doc"
 
 # ------------------------------------------------------------- #
 #                             Tasks                             #
