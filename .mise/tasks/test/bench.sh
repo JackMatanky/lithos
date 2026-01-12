@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/test/bench.sh
-# Description: Run performance benchmarks for all workspace crates.
-# -----------------------------------------------------------------------------
-#MISE description="Run benchmarks using criterion"
+#MISE description="Run performance benchmarks for all workspace crates, using criterion"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #USAGE arg "[filter]" help="Filter benchmarks by name"
 

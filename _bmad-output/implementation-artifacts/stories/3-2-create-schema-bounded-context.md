@@ -1328,6 +1328,26 @@ fn detect_circular_inheritance(
 - **PropertyBank → Property**: One-to-many (bank contains many properties)
 - **Schema → Schema**: Inheritance relationships between schemas
 
+### Performance Considerations
+**Critical Performance Targets:**
+- **Property ID Generation**: <1μs for deterministic hash generation (blake3)
+- **Inheritance Resolution**: <10μs for complex inheritance chains (up to 10 levels)
+- **PropertyBank Lookups**: O(1) hash map lookups for registered properties
+- **Schema Validation**: <100μs for typical schemas with 20-50 properties
+- **Memory Usage**: Minimal overhead for PropertyBank deduplication
+
+**Performance Optimizations:**
+- Deterministic IDs enable property reuse and reduce memory duplication
+- Inheritance resolution computed once at schema load time
+- PropertyBank singleton minimizes lookup overhead
+- Efficient string handling with owned types where appropriate
+
+**Benchmarking Requirements:**
+- Criterion.rs integration for regression detection
+- Performance tests for ID generation, inheritance, and lookups
+- Memory usage profiling for large property banks
+- Scalability testing with 1000+ schemas and properties
+
 ### Epic 2 Test Infrastructure Integration
 **Planned Integration with Epic 2 Test Utils:**
 This story will leverage the test utilities being developed in Epic 2:

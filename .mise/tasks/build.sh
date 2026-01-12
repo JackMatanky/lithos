@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/build.sh
-# Description: Build all crates in the workspace.
-# -----------------------------------------------------------------------------
-#MISE description="Build the workspace"
+#MISE description="Build all workspace crates"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE outputs=["target/debug/lithos", "target/release/lithos"]
 #USAGE flag "-r --release" help="Build in release mode"

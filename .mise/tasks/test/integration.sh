@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/test/integration.sh
-# Description: Execute all integration tests across the workspace using nextest.
-# -----------------------------------------------------------------------------
-#MISE description="Run all integration tests"
+#MISE description="Run all integration tests across the workspace using nextest"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE outputs=["target/nextest/default"]
 #USAGE flag "-v --verbose" help="Verbose output"

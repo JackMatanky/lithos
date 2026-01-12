@@ -29,7 +29,7 @@ Every ADR must be evaluated against:
 - **Feasibility**: Practical to implement within constraints.
 
 ### 3. Tooling and Integration
-- **Validation**: A `scripts/validate-adrs.sh` script checks for format and required sections.
+- **Validation**: The `validate-adrs` mise task checks for format and required sections.
 - **Mise**: Integrated as `mise run validate-adrs`.
 - **Pre-commit**: Added as a quality gate for all commits.
 - **CI/CD**: Enforced in the GitHub Actions pipeline.

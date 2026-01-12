@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+#MISE description="Validate ADRs for template compliance"
+
+set -euo pipefail
+
+#######################################
+# Validate ADR metadata.
+# Globals:
+#   ADR_DIR
+#   EXIT_CODE
+# Arguments:
+#   None
+# Outputs:
+#   Writes validation results to stdout
+#   Modifies EXIT_CODE
+#######################################
+validate_adr_metadata() {
+    for adr in "$ADR_DIR"/[0-9][0-9][0-9][0-9]-*.md; do
+        [ -e "$adr" ] || continue
+
+        filename=$(basename "$adr")
+        echo "  📄 Checking metadata in $filename..."
+
+        # Check for required metadata
+        for meta in "Status" "Date" "Stakeholders"; do
+            if ! grep -q "\*   \*\*$meta\*\*:" "$adr"; then
+                echo "    ❌ Missing metadata: $meta"
+                EXIT_CODE=1
+            fi
+        done
+    done
+}
+
+#######################################
+# Validate ADR sections.
+# Globals:
+#   ADR_DIR
+#   EXIT_CODE
+# Arguments:
+#   None
+# Outputs:
+#   Writes validation results to stdout
+#   Modifies EXIT_CODE
+#######################################
+validate_adr_sections() {
+    for adr in "$ADR_DIR"/[0-9][0-9][0-9][0-9]-*.md; do
+        [ -e "$adr" ] || continue
+
+        filename=$(basename "$adr")
+        echo "  📄 Checking sections in $filename..."
+
+        # Check for required sections (must be ## headers)
+        for section in "Context" "Decision" "Alternatives Considered" "Technical Validation" "Consequences" "Status Tracking"; do
+            if ! grep -q "^## $section" "$adr"; then
+                echo "    ❌ Missing section: ## $section"
+                EXIT_CODE=1
+            fi
+        done
+    done
+}
+
+#######################################
+# Validate ADR filename conventions.
+# Globals:
+#   ADR_DIR
+#   EXIT_CODE
+# Arguments:
+#   None
+# Outputs:
+#   Writes validation results to stdout
+#   Modifies EXIT_CODE
+#######################################
+validate_adr_naming() {
+    for f in "$ADR_DIR"/*.md; do
+        filename=$(basename "$f")
+        if [[ "$filename" == "adr-process.md" || "$filename" == "template.md" || "$filename" == "index.md" || "$filename" == "README.md" ]]; then
+            continue
+        fi
+        if [[ ! "$filename" =~ ^[0-9]{4}-.*\.md$ ]]; then
+            echo "    ❌ Invalid filename: $filename (Expected NNNN-name.md)"
+            EXIT_CODE=1
+        fi
+    done
+}
+
+#######################################
+# Report validation results.
+# Globals:
+#   EXIT_CODE
+# Arguments:
+#   None
+# Outputs:
+#   Writes summary to stdout
+#######################################
+report_validation_results() {
+    if [ $EXIT_CODE -eq 0 ]; then
+        echo "✅ All ADRs passed validation."
+    else
+        echo "❌ Some ADRs failed validation."
+    fi
+}
+
+#######################################
+# Main entry point.
+# Globals:
+#   None
+# Arguments:
+#   $@
+# Outputs:
+#   Writes validation results to stdout
+#   Exits with 0 on success, 1 on validation failure
+#######################################
+main() {
+    ADR_DIR="docs/adr"
+    EXIT_CODE=0
+
+    echo "🔍 Validating ADRs in $ADR_DIR..."
+    validate_adr_metadata
+    validate_adr_sections
+    validate_adr_naming
+    report_validation_results
+
+    return $EXIT_CODE
+}
+
+main "$@"

@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/doc.sh
-# Description: Generate and open crate documentation for all workspace crates.
-# -----------------------------------------------------------------------------
-#MISE description="Generate and open documentation for all crates"
+#MISE description="Generate and open documentation for all workspace crates"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #USAGE flag "-o --open" help="Open documentation in browser"
 

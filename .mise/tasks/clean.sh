@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/clean.sh
-# Description: Clean the workspace by removing build artifacts and cache files.
-# -----------------------------------------------------------------------------
-#MISE description="Clean the workspace"
+#MISE description="Clean the workspace by removing build artifacts and cache files"
 
 set -euo pipefail
 

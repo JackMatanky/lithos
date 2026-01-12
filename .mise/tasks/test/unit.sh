@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/test/unit.sh
-# Description: Execute all unit tests across the workspace using nextest.
-# -----------------------------------------------------------------------------
-#MISE description="Run all unit tests"
+#MISE description="Run all unit tests across the workspace using nextest"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE outputs=["target/nextest/default"]
 #USAGE flag "-v --verbose" help="Verbose output"
