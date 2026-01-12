@@ -41,7 +41,7 @@ development_status:
     2-2-create-event-driven-testing-patterns: done
     2-3-establish-cqrs-testing-patterns: done
     2-4-create-centralized-test-utilities-and-infrastructure: done
-    2-5-configure-mise-test-task-orchestration: review
+    2-5-configure-mise-test-task-orchestration: done
     2-6-establish-integration-testing-patterns-and-infrastructure: ready-for-dev
     2-7-create-benchmarking-infrastructure-and-performance-testing-patterns: ready-for-dev
     2-8-test-suite-review-for-efficiency-and-best-practices: ready-for-dev
