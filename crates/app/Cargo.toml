@@ -20,6 +20,12 @@ lithos-test-utils.workspace = true
 serde.workspace = true
 chrono.workspace = true
 serde_json.workspace = true
+criterion.workspace = true
+dhat.workspace = true
 
 [lints]
 workspace = true
+
+[[bench]]
+name = "core_ops"
+harness = false
