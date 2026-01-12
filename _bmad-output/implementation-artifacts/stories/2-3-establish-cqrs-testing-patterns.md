@@ -81,7 +81,21 @@ So that command side and query side code are tested in isolation with proper ver
   - [ ] Write comprehensive CQRS testing guidelines with examples and anti-patterns
   - [ ] Implement CI/CD integration with automated test execution and quality gates
   - [ ] Create performance benchmarking for CQRS operations under load
-  - [ ] Establish test data management with factories and fixtures for maintainability
+   - [ ] Establish test data management with factories and fixtures for maintainability
+
+### Quality Assurance and Commit (MANDATORY FINAL TASK)
+- [ ] Run `mise run fmt` to format all code according to project standards
+- [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests)
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
+- [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
+- [ ] **MANDATORY:** Verify 90%+ test coverage is maintained
+- [ ] **MANDATORY:** Confirm all code passes clippy cognitive complexity limits (<25)
+- [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
+- [ ] Stage all files created or modified during story development
+- [ ] Commit with conventional commit message: `feat: establish CQRS testing patterns with command/query separation and eventual consistency`
 
 ## Dev Notes
 

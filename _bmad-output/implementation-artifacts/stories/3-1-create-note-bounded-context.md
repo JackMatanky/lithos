@@ -36,6 +36,61 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 **When** I check the Note entity design
 **Then** it supports vault-relative paths and wiki-link resolution
 
+## Tasks / Subtasks
+
+### Task 1: Implement Subentity Structures (AC: 1-5)
+- [ ] Create Frontmatter entity with HashMap<String, FrontmatterValue> and validation
+- [ ] Implement FrontmatterValue enum (String, Number, Boolean, Date, Array, Object)
+- [ ] Create Link entity with source/target references, aliases, and position tracking
+- [ ] Create Embed entity with file type classification and position tracking
+- [ ] Implement Tag entity with hierarchical path parsing and validation
+- [ ] Create Heading entity with level validation (1-6) and position tracking
+- [ ] Implement Task entity with status enum and position tracking
+- [ ] Create Section entity with content range and optional heading reference
+
+### Task 2: Implement Note Aggregate Root (AC: 1-5)
+- [ ] Create Note struct with UUID v7 identity generation
+- [ ] Implement vault-relative path validation and storage
+- [ ] Add all subentity collections (links, embeds, tags, headings, tasks, sections)
+- [ ] Create Note::new() constructor with validation pipeline
+- [ ] Implement semantic validation for internal consistency
+- [ ] Add comprehensive unit tests for Note construction and validation
+
+### Task 3: Implement Domain Error Types (AC: All)
+- [ ] Create comprehensive DomainError enum with all validation variants
+- [ ] Implement thiserror::Error derives with descriptive messages
+- [ ] Add error variants for path validation, entity validation, and business rules
+- [ ] Create error conversion traits (From/Into) for domain boundaries
+- [ ] Add unit tests for error message clarity and accuracy
+
+### Task 4: Comprehensive Testing and Validation (AC: All)
+- [ ] Achieve 90%+ test coverage for domain entities and validation logic
+- [ ] Create test fixtures module with example instances for all entities
+- [ ] Add property-based testing for edge cases and validation boundaries
+- [ ] Implement integration tests for Note aggregate with all subentities
+- [ ] Add performance benchmarks for Note construction (<100μs target)
+
+### Task 5: Documentation and Integration (AC: All)
+- [ ] Update domain crate lib.rs with public re-exports
+- [ ] Add comprehensive doc comments with invariants and examples
+- [ ] Ensure hexagonal architecture compliance (no external dependencies)
+- [ ] Verify integration points with future storage and application layers
+- [ ] Update Cargo.toml with required dependencies (uuid, thiserror, optional serde)
+
+### Task 6: Quality Assurance and Commit (MANDATORY FINAL TASK)
+- [ ] Run `mise run fmt` to format all code according to project standards
+- [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests)
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
+- [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
+- [ ] **MANDATORY:** Verify 90%+ test coverage is maintained
+- [ ] **MANDATORY:** Confirm all domain entities pass clippy cognitive complexity limits (<25)
+- [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
+- [ ] Stage all files created or modified during story development
+- [ ] Commit with conventional commit message: `feat: implement note bounded context with comprehensive subentities and validation`
+
 ## Technical Requirements
 
 ### Domain Model Foundation
@@ -242,37 +297,37 @@ use thiserror::Error;
 pub enum DomainError {
     #[error("Invalid note path: {0}")]
     InvalidPath(String),
-    
+
     #[error("Path cannot be empty")]
     EmptyPath,
-    
+
     #[error("Invalid frontmatter field type: expected {expected}, got {actual}")]
     InvalidFrontmatterType { expected: String, actual: String },
-    
+
     #[error("Invalid tag format: {0}")]
     InvalidTag(String),
-    
+
     #[error("Tag segment cannot be empty")]
     EmptyTagSegment,
-    
+
     #[error("Invalid heading level: {0} (must be 1-6)")]
     InvalidHeadingLevel(u8),
-    
+
     #[error("Invalid task status: {0}")]
     InvalidTaskStatus(String),
-    
+
     #[error("Invalid date format: {0}")]
     InvalidDateFormat(String),
-    
+
     #[error("Link target path cannot be empty")]
     EmptyLinkTarget,
-    
+
     #[error("Embed target path cannot be empty")]
     EmptyEmbedTarget,
-    
+
     #[error("Invalid UUID: {0}")]
     InvalidUuid(String),
-    
+
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
 }
@@ -416,7 +471,7 @@ let section = Section {
 ```
 Raw Markdown (adapter)
   → Extract YAML between --- delimiters (adapter)
-    → Parse YAML to serde_yaml::Value (adapter) 
+    → Parse YAML to serde_yaml::Value (adapter)
       → Convert to HashMap<String, FrontmatterValue> (adapter)
         → Validate and construct Frontmatter (domain)
 ```
@@ -461,23 +516,23 @@ mod tests {
 pub mod fixtures {
     use super::*;
     use uuid::Uuid;
-    
+
     /// Fixed UUID for deterministic tests (valid UUID v7 format)
     /// Uses timestamp 2024-01-01 00:00:00 UTC for consistency
     pub const TEST_NOTE_ID: Uuid = Uuid::from_u128(0x0184_0000_0000_0000_0000_0000_0000_0001);
     pub const TEST_NOTE_ID_2: Uuid = Uuid::from_u128(0x0184_0000_0000_0000_0000_0000_0000_0002);
-    
+
     pub fn example_frontmatter() -> Frontmatter {
         let mut fields = HashMap::new();
         fields.insert("title".to_string(), FrontmatterValue::String("Test Note".to_string()));
         fields.insert("created".to_string(), FrontmatterValue::Date("2024-01-15".to_string()));
         Frontmatter::new(fields).expect("Valid frontmatter")
     }
-    
+
     pub fn example_tag() -> Tag {
         Tag::parse("#work/project").expect("Valid tag")
     }
-    
+
     pub fn example_note() -> Note {
         Note {
             id: TEST_NOTE_ID,
@@ -752,7 +807,7 @@ pub trait NoteRepositoryPort: Send + Sync {
     /// # Errors
     /// Returns `DomainError` if persistence fails.
     async fn save(&self, note: &Note) -> Result<(), DomainError>;
-    
+
     /// Retrieve a note by ID.
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, DomainError>;
 }

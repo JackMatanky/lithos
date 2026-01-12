@@ -73,7 +73,21 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
   - [ ] Add property-based testing with QuickCheck integration
   - [ ] Implement chaos engineering for failure injection testing
   - [ ] Create contract testing utilities for API validation
-  - [ ] Build performance profiling for test execution bottleneck identification
+   - [ ] Build performance profiling for test execution bottleneck identification
+
+### Quality Assurance and Commit (MANDATORY FINAL TASK)
+- [ ] Run `mise run fmt` to format all code according to project standards
+- [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests)
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
+- [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
+- [ ] **MANDATORY:** Verify 90%+ test coverage is maintained
+- [ ] **MANDATORY:** Confirm all code passes clippy cognitive complexity limits (<25)
+- [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
+- [ ] Stage all files created or modified during story development
+- [ ] Commit with conventional commit message: `feat: create centralized test utilities and infrastructure with artifact management and isolation`
 
 ## Dev Notes
 
