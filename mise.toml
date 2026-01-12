@@ -63,13 +63,11 @@ test_utils_crate = "crates/test-utils"
 # Directory paths
 docs_dir = "docs"
 adr_dir = "docs/adr"
-scripts_dir = "scripts"
 
 # Build and test outputs
 target_dir = "target"
-doc_dir = "target/doc"
+target_doc_dir = "target/doc"
 nextest_dir = "target/nextest"
-junit_dir = "target"
 
 # Report files
 coverage_report = "tarpaulin-report.html"

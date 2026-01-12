@@ -6,7 +6,7 @@
 #MISE outputs=["{{vars.nextest_dir}}/default"]
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-p --package <package>" help="Run tests for a specific package" {
-#USAGE   choices "domain" "app" "adapters" "cli"
+#USAGE   choices "domain" "app" "adapters" "cli" "test-utils"
 #USAGE }
 #USAGE arg "[filter]" help="Filter tests by name"
 
@@ -25,6 +25,9 @@ map_package_name() {
     case "${usage_package:-}" in
     domain | app | adapters)
         echo "lithos-${usage_package}"
+        ;;
+    test-utils)
+        echo "lithos-test-utils"
         ;;
     cli)
         echo "lithos"
@@ -68,7 +71,7 @@ build_test_args() {
 
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
         # shellcheck disable=SC1083
-        ref_args+=("--reporter" "junit" "--junit-path" "{{vars.junit_dir}}/{{vars.junit_unit}}")
+        ref_args+=("--reporter" "junit" "--junit-path" "{{vars.target_dir}}/{{vars.junit_unit}}")
     fi
 }
 
