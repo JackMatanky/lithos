@@ -33,7 +33,7 @@ build_test_args() {
 
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
         # shellcheck disable=SC1083
-        ref_args+=("--reporter" "junit" "--junit-path" "{{vars.junit_dir}}/{{vars.junit_integration}}")
+        ref_args+=("--reporter" "junit" "--junit-path" "{{vars.target_dir}}/{{vars.junit_integration}}")
     fi
 }
 
