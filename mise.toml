@@ -37,15 +37,43 @@ lockfile = true
 # Test configuration for ADR 0010 test utilities integration
 TEST_THREADS = "4"
 CARGO_TEST_ARGS = "--lib --bins"
-TEST_OUTPUT_DIR = "{{config_root}}/test-output"
+TEST_OUTPUT_DIR = "{{vars.test_output_dir}}"
 CI = "${GITHUB_ACTIONS:-false}"
+
+# Project paths
+PROJECT_ROOT = "{{config_root}}"
+SRC_DIR = "{{vars.src_dir}}"
+TEST_DIR = "{{vars.test_dir}}"
+DOCS_DIR = "{{vars.docs_dir}}"
+ADR_DIR = "{{vars.adr_dir}}"
+TARGET_DIR = "{{vars.target_dir}}"
+
+# ------------------------------------------------------------- #
+#                        VARIABLES                              #
+# ------------------------------------------------------------- #
+[vars]
+# Project structure paths
+project_root = "{{config_root}}"
+src_dir = "crates"
+test_dir = "crates"
+docs_dir = "docs"
+adr_dir = "docs/adr"
+target_dir = "{{config_root}}/target"
+
+# Tool configurations
+rust_toolchain = "nightly-2026-01-11"
+cargo_profile = "dev"
+
+# Output directories
+test_output_dir = "{{config_root}}/test-output"
+coverage_dir = "{{vars.target_dir}}/tarpaulin"
+doc_dir = "{{vars.target_dir}}/doc"
 
 # ------------------------------------------------------------- #
 #                             Tasks                             #
 # ------------------------------------------------------------- #
 
 # ----------------------- Quality Gates ----------------------- #
-
 [tasks.quality]
 description = "Run all quality gates (fmt, lint, adr:validate)"
 alias = "q"
@@ -61,7 +89,6 @@ description = "Check dependencies for security vulnerabilities and license compl
 run = "cargo deny check"
 
 # -------------------------- Testing -------------------------- #
-
 [tasks.test]
 description = "Run all tests (unit and integration)"
 alias = "t"
@@ -72,24 +99,31 @@ depends = ["test:unit", "test:integration"]
 description = "Run domain crate unit tests"
 alias = "tud"
 run = "mise run test:unit -- -p domain"
+env = { RUST_BACKTRACE = "1" }
+quiet = false
 
 [tasks."test:unit:app"]
 description = "Run app crate unit tests"
 alias = "tuap"
 run = "mise run test:unit -- -p app"
+env = { RUST_BACKTRACE = "1" }
+quiet = false
 
 [tasks."test:unit:adapters"]
 description = "Run adapters crate unit tests"
 alias = "tuad"
 run = "mise run test:unit -- -p adapters"
+env = { RUST_BACKTRACE = "1" }
+quiet = false
 
 [tasks."test:unit:cli"]
 description = "Run CLI crate unit tests"
 alias = "tuc"
 run = "mise run test:unit -- -p cli"
+env = { RUST_BACKTRACE = "1" }
+quiet = false
 
 # --------------------- CI/CD Simulation ---------------------- #
-
 [tasks.ci]
 description = "Simulate CI/CD pipeline"
 depends = ["verify", "test:integration"]
@@ -97,3 +131,15 @@ depends = ["verify", "test:integration"]
 [tasks.timing]
 description = "Run verify with detailed timing information"
 run = "mise run --timing verify"
+shell = "bash"
+
+# Hidden internal tasks (not shown in mise tasks)
+[tasks._setup]
+description = "Internal setup task"
+run = "echo 'Setup complete'"
+hide = true
+
+[tasks._cleanup]
+description = "Internal cleanup task"
+run = "echo 'Cleanup complete'"
+hide = true
