@@ -44,54 +44,11 @@ CI = "${GITHUB_ACTIONS:-false}"
 #                             Tasks                             #
 # ------------------------------------------------------------- #
 
-
+# ----------------------- Quality Gates ----------------------- #
 
 [tasks.quality]
 description = "Run all quality gates (fmt, lint, adr:validate)"
 depends = ["fmt", "lint", "adr:validate"]
-
-[tasks.test]
-description = "Run all tests (unit and integration)"
-alias = "t"
-depends = ["test:unit", "test:integration"]
-
-# Specific crate unit tests for developer convenience
-[tasks."test:unit:domain"]
-description = "Run domain crate unit tests"
-run = ".mise/tasks/test/unit -p domain"
-
-[tasks."test:unit:app"]
-description = "Run app crate unit tests"
-run = ".mise/tasks/test/unit -p app"
-
-[tasks."test:unit:adapters"]
-description = "Run adapters crate unit tests"
-run = ".mise/tasks/test/unit -p adapters"
-
-[tasks."test:unit:cli"]
-description = "Run CLI crate unit tests"
-run = ".mise/tasks/test/unit -p cli"
-
-[tasks."test:unit"]
-description = "Run all unit tests"
-run = ".mise/tasks/test/unit"
-
-[tasks."test:integration"]
-description = "Run all integration tests"
-run = ".mise/tasks/test/integration"
-
-[tasks."test:coverage"]
-description = "Generate code coverage report"
-run = ".mise/tasks/test/coverage"
-
-[tasks."test:watch"]
-description = "Watch for changes and run tests"
-run = ".mise/tasks/test/watch"
-
-# CI/CD simulation
-[tasks.ci]
-description = "Simulate CI/CD pipeline"
-depends = ["verify", "test:integration"]
 
 [tasks.verify]
 description = "Full quality gate orchestration"
@@ -102,8 +59,32 @@ depends = ["fmt", "lint", "test", "deny"]
 description = "Check dependencies for security vulnerabilities and license compliance"
 run = "cargo deny check"
 
+# -------------------------- Testing -------------------------- #
 
+[tasks.test]
+description = "Run all tests (unit and integration)"
+alias = "t"
+depends = ["test:unit", "test:integration"]
 
-[tasks.bench]
-description = "Run performance benchmarks"
-run = ".mise/tasks/test/bench"
+# Specific crate unit tests for developer convenience
+[tasks."test:unit:domain"]
+description = "Run domain crate unit tests"
+run = "mise run test:unit -- -p domain"
+
+[tasks."test:unit:app"]
+description = "Run app crate unit tests"
+run = "mise run test:unit -- -p app"
+
+[tasks."test:unit:adapters"]
+description = "Run adapters crate unit tests"
+run = "mise run test:unit -- -p adapters"
+
+[tasks."test:unit:cli"]
+description = "Run CLI crate unit tests"
+run = "mise run test:unit -- -p cli"
+
+# --------------------- CI/CD Simulation ---------------------- #
+
+[tasks.ci]
+description = "Simulate CI/CD pipeline"
+depends = ["verify", "test:integration"]
