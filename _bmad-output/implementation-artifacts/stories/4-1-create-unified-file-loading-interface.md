@@ -166,14 +166,19 @@ Use versions from Cargo.toml workspace dependencies.
 **Hexagonal Architecture Layout:**
 ```
 crates/domain/src/
-├── ports/loader.rs          # FileLoaderPort trait + FileFormat enum + FileLoaderError
-├── errors.rs                      # Updated with FileLoaderError variants
-└── lib.rs                         # Public API re-exports
+├── ports/
+│   └── spi/
+│       └── loader.rs             # FileLoaderPort trait + FileFormat enum + FileLoaderError
+├── errors.rs                     # Updated with FileLoaderError variants
+└── lib.rs                        # Public API re-exports
 
 crates/adapters/src/
-├── spi/loader.rs            # FileLoaderAdapter implementation with inline #[cfg(test)] unit tests
-├── dto/loader.rs            # Data transfer objects (if needed)
-└── lib.rs                   # Adapter crate re-exports
+├── spi/
+│   └── fs/
+│       └── loader.rs             # FileLoaderAdapter implementation with inline #[cfg(test)] unit tests
+├── dto/
+│   └── loader.rs                 # Data transfer objects (if needed)
+└── lib.rs                        # Adapter crate re-exports
 
 crates/domain/tests/
 └── file_loader_integration.rs    # Cross-crate integration tests
@@ -285,9 +290,9 @@ Reviewed Epic 3 story files (3-1, 3-5) to adopt proven TDD patterns:
 ### File List
 
 Expected files to be created:
-- crates/domain/src/ports/loader.rs (FileLoaderPort trait, FileFormat enum, FileLoaderError)
+- crates/domain/src/ports/spi/loader.rs (FileLoaderPort trait, FileFormat enum, FileLoaderError)
 - crates/domain/src/errors.rs (updated with FileLoaderError variants)
-- crates/adapters/src/spi/loader.rs (FileLoaderAdapter implementation with inline #[cfg(test)] unit tests)
+- crates/adapters/src/spi/fs/loader.rs (FileLoaderAdapter implementation with inline #[cfg(test)] unit tests)
 - crates/adapters/src/dto/loader.rs (DTOs for adapter layer if needed)
 - benches/file_loader.rs (performance benchmarks for <500ms target)
 - crates/domain/tests/file_loader_integration.rs (integration tests)
