@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Generate ADR quality metrics and summary"
-#MISE sources=["docs/adr/*.md"]
+#MISE sources=["{{vars.adr_dir}}/*.md"]
 #MISE outputs=["target/adr-metrics.stamp"]
 
 set -euo pipefail
@@ -85,7 +85,7 @@ report_metrics() {
 #   Writes ADR metrics to stdout
 #######################################
 main() {
-    ADR_DIR="docs/adr"
+    ADR_DIR="${ADR_DIR:-docs/adr}"
     TOTAL_ADRS=0
     ACCEPTED=0
     PROPOSED=0
@@ -98,11 +98,14 @@ main() {
     echo "-----------------------------------"
     generate_adr_metrics
     report_metrics
+    echo "Reported metrics" >&2
     echo "-----------------------------------"
 
     # Create stamp file for caching
     mkdir -p target
     touch target/adr-metrics.stamp
+
+    exit 0
 }
 
 main "$@"
