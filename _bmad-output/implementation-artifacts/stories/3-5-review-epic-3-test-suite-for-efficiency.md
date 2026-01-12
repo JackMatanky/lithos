@@ -1,0 +1,477 @@
+# Story 3.5: Review Epic 3 Test Suite for Efficiency
+
+Status: ready-for-dev
+
+<!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
+
+## Story
+
+As a developer maintaining the codebase,
+I want an efficient test suite for Epic 3 domain models,
+So that tests provide good coverage without redundancy or excessive execution time.
+
+## Acceptance Criteria
+
+1. **Given** all Epic 3 domain models are implemented with tests
+   **When** I review the test suite
+   **Then** it achieves 90%+ coverage for domain entities and validation logic
+
+2. **Given** the test suite is implemented
+   **When** I check for redundancy
+   **Then** no duplicate test cases exist across domain models
+
+3. **Given** tests are executed
+   **When** I measure performance
+   **Then** test execution completes in <30 seconds for the full Epic 3 suite
+
+4. **Given** test suite is reviewed
+   **When** I check maintainability
+   **Then** test code follows same quality standards as production code
+
+5. **Given** domain models evolve
+   **When** I update tests
+   **Then** test maintenance cost is <20% of development time
+
+## Tasks / Subtasks
+
+### Task 1: Establish Epic 2 Test Infrastructure Context
+- [ ] Analyze Epic 2 stories 2.2-2.7 (ready-for-dev) to understand available test utilities
+- [ ] Document centralized test utilities from Story 2.4 (temporary directories, fixtures, assertions)
+- [ ] Review mise test orchestration from Story 2.5 (test, test:unit, test:integration, test:coverage)
+- [ ] Assess integration testing patterns from Story 2.6 for cross-module testing
+- [ ] Evaluate benchmarking infrastructure from Story 2.7 for performance validation
+
+### Task 2: Analyze Current Epic 3 Test Implementation
+- [ ] Run `mise run test:coverage` to generate detailed coverage report for Epic 3 crates
+- [ ] Execute `mise run test` to establish baseline execution time (<30 seconds target)
+- [ ] Analyze coverage by bounded context: Note, Schema, Config, Template domain entities
+- [ ] **HEXAGONAL COMPLIANCE CHECK**: Verify domain tests are pure (no external dependencies)
+- [ ] **HEXAGONAL COMPLIANCE CHECK**: Identify if adapter/integration tests are properly separated
+- [ ] Review test file organization and coverage distribution across modules
+- [ ] Identify coverage gaps in critical areas: validation logic, error paths, edge cases
+- [ ] Assess coverage quality: meaningful tests vs coverage metrics (avoid vanity coverage)
+- [ ] **COVERAGE TARGET ANALYSIS**: Justify 90%+ target vs architecture baseline of 80%+
+- [ ] Document current coverage gaps, weak areas, and quality concerns
+
+### Task 3: Identify Redundancies and Inefficiencies
+- [ ] Review test fixtures for duplication across bounded contexts
+- [ ] Analyze property-based test patterns for consolidation opportunities
+- [ ] Check for overlapping test scenarios between domain models
+- [ ] Identify slow-running tests that impact the <30 second target
+- [ ] Document redundancy elimination opportunities
+
+### Task 4: Optimize Test Performance and Coverage
+- [ ] Implement shared test utilities leveraging Epic 2 infrastructure
+- [ ] Consolidate duplicate fixtures into reusable modules
+- [ ] Optimize slow tests using parallel execution and Epic 2 patterns
+- [ ] **COVERAGE ASSURANCE:** Add targeted tests for uncovered domain entities and validation logic
+- [ ] **COVERAGE ASSURANCE:** Implement property-based tests for edge cases and error paths
+- [ ] **COVERAGE ASSURANCE:** Add integration tests for cross-entity validation scenarios
+- [ ] **COVERAGE ASSURANCE:** Ensure coverage quality (meaningful assertions, not just line coverage)
+- [ ] Configure nextest for optimal Epic 3 test execution
+- [ ] Verify 90%+ coverage target achieved with `mise run test:coverage`
+
+### Task 5: Establish Test Maintenance Guidelines
+- [ ] Create test evolution tracking for maintenance cost monitoring (<20% target)
+- [ ] Document test update patterns for future domain model changes
+- [ ] Establish test quality standards aligned with production code
+- [ ] Implement automated test metrics collection (coverage, execution time)
+- [ ] Create maintenance cost monitoring and alerting
+
+### Task 6: Validate Optimized Test Suite
+- [ ] **COVERAGE VALIDATION:** Confirm 90%+ coverage achieved for domain entities and validation logic
+- [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful behavior, not just lines
+- [ ] **COVERAGE VALIDATION:** Ensure branch coverage for critical conditional logic
+- [ ] **COVERAGE VALIDATION:** Validate edge case and error path coverage
+- [ ] Verify <30 second execution time for complete Epic 3 test suite
+- [ ] Ensure zero duplicate test cases across bounded contexts
+- [ ] Validate test maintainability standards are met
+- [ ] Document test suite efficiency improvements, coverage gains, and ROI
+
+### Task 7: Quality Assurance and Commit (MANDATORY FINAL TASK)
+- [ ] **HEXAGONAL VALIDATION:** Confirm test suite properly mirrors hexagonal architecture (domain pure, adapters integrated)
+- [ ] **COVERAGE VALIDATION:** Confirm 90%+ coverage achieved and documented in coverage report
+- [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful domain behavior
+- [ ] **COVERAGE VALIDATION:** Ensure critical validation logic and error paths are covered
+- [ ] **VALIDATION:** Confirm Epic 3 test suite analysis is comprehensive and actionable
+- [ ] **VALIDATION:** Verify Epic 2 test infrastructure integration is properly documented
+- [ ] **VALIDATION:** Ensure optimization recommendations leverage available test utilities
+- [ ] **VALIDATION:** Confirm maintenance cost tracking mechanisms are implemented
+- [ ] Run `mise run fmt` to format all code according to project standards
+- [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
+- [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
+- [ ] **MANDATORY:** Confirm all analysis artifacts pass quality gates and coverage targets are met
+- [ ] Stage all files created or modified during story development
+- [ ] Commit with conventional commit message: `refactor: optimize epic 3 test suite for efficiency with comprehensive analysis and actionable recommendations`
+
+## Dev Notes
+
+### Epic 3 Test Context
+- **Test Targets**: Note, Schema, Config, Template bounded contexts
+- **Coverage Goal**: 90%+ for domain entities and validation logic (architecture baseline: 80%+)
+- **Performance Target**: <30 seconds for full Epic 3 test suite execution
+- **Quality Standards**: Same clippy, fmt, cognitive complexity rules as production code
+- **Maintenance Target**: <20% of development time for test updates
+
+### Previous Story Intelligence
+**Story 3-4 Critical Architectural Fix:**
+- **MAJOR CORRECTION**: MiniJinja syntax validation moved from domain to adapter layer
+- **Impact**: Domain layer must remain pure with ZERO external dependencies
+- **Test Implication**: Domain tests must validate business rules only, no syntax validation
+- **Lesson**: Hexagonal boundary violations must be caught and corrected immediately
+- **Testing Pattern**: Separate domain business rule tests from adapter integration tests
+
+### Epic 2 Test Infrastructure Context (Available Utilities)
+**Story 2.4: Centralized Test Utilities**
+- Temporary directory creation and cleanup utilities
+- Test artifact output management helpers
+- Test data fixtures and factory patterns
+- Common assertion helpers for domain testing
+
+**Story 2.5: Mise Test Orchestration**
+- `mise run test` - All tests with optimal parallelization
+- `mise run test:unit` - Domain layer unit tests only
+- `mise run test:integration` - Cross-crate integration tests
+- `mise run test:coverage` - Tarpaulin coverage reports
+- `mise run test:watch` - Watch mode for continuous testing
+
+**Story 2.6: Integration Testing Patterns**
+- Cross-module API contract testing infrastructure
+- Database/transaction isolation for integration tests
+- External service mocking utilities
+- Integration test data fixtures and setup patterns
+
+**Story 2.7: Benchmarking Infrastructure**
+- criterion.rs integration for micro-benchmarks
+- Performance regression detection
+- Benchmark result storage and comparison
+- CI/CD integration for performance gates
+
+### Previous Story Intelligence
+**Story 3-4 Architectural Corrections:**
+- CRITICAL FIX: Moved MiniJinja syntax validation from domain to adapter layer
+- Impact: Template domain now has ZERO external dependencies (justified exception: serde for persistence)
+- Lesson: Hexagonal architecture violations must be caught and fixed immediately
+- Pattern: Domain entities store content as opaque strings, validation happens in adapters
+
+**Story 3-3 Implementation Patterns:**
+- Config domain with hierarchical validation (Global → User → Project → Vault)
+- Semantic validation integrated with domain business rules
+- Error handling using thiserror::Error with proper error chaining
+
+**Story 3-2 Schema Complexity:**
+- PropertyBank singleton registry pattern
+- PropertySpec trait with multiple variants (String, Number, Bool, Date, File)
+- Inheritance resolution with Extends/Excludes patterns
+- Deterministic ID generation from content hash
+
+**Story 3-1 Note Foundations:**
+- Rich aggregate with subentities (Frontmatter, Links, Embeds, Tags, Headings, Tasks, Sections)
+- Wiki-link resolution and vault-relative paths
+- Semantic validation for internal consistency
+
+### Git Intelligence Summary
+**Recent Commit Patterns:**
+- Architectural violation fixes (domain purity enforcement)
+- Comprehensive story file creation with TDD frameworks
+- Quality assurance task additions
+- Epic completion and preparation workflows
+
+**Code Patterns Established:**
+- Hexagonal boundary enforcement (domain zero dependencies except justified cases)
+- TDD Red-Green-Refactor implementation cycles
+- Quality gates with mandatory pre-commit hook compliance
+- Conventional commit messages with proper scope and type
+
+### Latest Tech Information
+**Rust Testing Ecosystem (2026):**
+- **nextest**: Primary test runner for parallel execution and optimized performance
+- **tarpaulin**: Code coverage analysis with 80%+ target enforcement
+- **criterion**: Micro-benchmarking for performance regression detection
+- **proptest**: Property-based testing for edge case discovery
+- **mockall**: Mock generation for adapter layer testing
+
+**Performance Testing Standards:**
+- <100μs for individual domain operations
+- <500ms for template operations (Story 3-4)
+- <2 seconds for vault indexing (NFR2)
+- Statistical analysis with criterion for reliable benchmarks
+
+## Technical Requirements
+
+### Domain Model Test Coverage Requirements
+
+**Coverage Targets by Bounded Context:**
+
+**Note Bounded Context (Story 3-1):**
+- Note aggregate: 90%+ coverage (entity creation, validation, relationships)
+- Subentities: Frontmatter, Links, Embeds, Tags, Headings, Tasks, Sections (all 90%+)
+- Business rules: Wiki-link resolution, vault path validation, semantic consistency
+- Error cases: Invalid relationships, malformed content, constraint violations
+
+**Schema Bounded Context (Story 3-2):**
+- Schema entity: 90%+ coverage (creation, inheritance, validation)
+- PropertyBank: 90%+ coverage (registry operations, lookup methods)
+- Property entity: 90%+ coverage (ID generation, constraint validation)
+- PropertySpec variants: 90%+ coverage (String, Number, Bool, Date, File specs)
+- Inheritance resolution: 90%+ coverage (Extends, Excludes, property merging)
+
+**Config Bounded Context (Story 3-3):**
+- Config entity: 90%+ coverage (hierarchical structure, validation)
+- Configuration layers: 90%+ coverage (Global, User, Project, Vault merging)
+- Business rules: 90%+ coverage (configuration integrity, type safety)
+- Error handling: 90%+ coverage (validation failures, merge conflicts)
+
+**Template Bounded Context (Story 3-4):**
+- Template entity: 90%+ coverage (structure validation, composition)
+- VariableDefinition enum: 90%+ coverage (type safety, constraints, defaults)
+- TemplateComposition: 90%+ coverage (modular assembly, dependency resolution)
+- Business rules: 90%+ coverage (variable naming, composition cycles, semantic validation)
+
+### Test Efficiency Standards
+
+**Performance Requirements:**
+- **Execution Time**: <30 seconds for complete Epic 3 test suite
+- **Individual Tests**: <100ms per test (parallel execution encouraged)
+- **Setup Time**: <5 seconds for test fixtures and data preparation
+- **Coverage Analysis**: <10 seconds for tarpaulin report generation
+
+**Redundancy Elimination:**
+- **Shared Fixtures**: Common test data in `domain::test_utils` module
+- **Test Factories**: Reusable entity creation patterns
+- **Property Test Sharing**: Common property test utilities across bounded contexts
+- **Validation Test Patterns**: Standardized validation error testing
+
+**Maintenance Cost Control:**
+- **Test-to-Code Ratio**: Maintain <3:1 test lines per production line
+- **Update Frequency**: <20% of development time spent on test maintenance
+- **Change Detection**: Automated detection of test maintenance cost increases
+- **Evolution Tracking**: Metrics collection for test suite health monitoring
+
+### Architecture Compliance - MANDATORY READING
+
+**Hexagonal Testing Architecture:**
+- **Domain Layer Tests**: Pure unit tests with ZERO external dependencies
+- **Adapter Layer Tests**: Integration tests with real implementations and mocks
+- **Cross-Crate Tests**: Integration tests spanning domain/app/adapters boundaries
+- **E2E Tests**: CLI-driven workflow tests (separate from domain testing)
+
+**Test Organization Standards:**
+```rust
+// Domain crate structure
+crates/domain/
+├── src/
+│   ├── entities/          // Domain entities
+│   ├── value_objects/     // Value objects
+│   ├── services/          // Domain services
+│   └── lib.rs
+├── tests/                 // Integration tests
+│   └── integration_tests.rs
+└── benches/              // Performance benchmarks
+    └── domain_benchmarks.rs
+
+// Test placement rules
+#[cfg(test)]              // Unit tests in same file as implementation
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_entity_creation() { /* ... */ }
+}
+
+// Integration tests in tests/ directory
+#[cfg(test)]
+mod integration_tests {
+    use domain::*;
+
+    #[tokio::test]
+    async fn test_cross_entity_validation() { /* ... */ }
+}
+```
+
+**Test Quality Standards:**
+- **Naming**: `snake_case` with `test_` prefix (e.g., `test_validate_schema_inheritance`)
+- **Documentation**: Comprehensive doc comments explaining test purpose and scenarios
+- **Isolation**: Each test independent, no shared state between tests
+- **Deterministic**: Fixed seeds for property-based tests, no flaky behavior
+- **Performance**: Sub-100ms execution time per test
+
+**Coverage Analysis Tools:**
+- **tarpaulin**: Primary coverage tool with branch coverage analysis
+- **Minimum Thresholds**: 90%+ line coverage, 85%+ branch coverage for Epic 3
+- **Exclusion Rules**: Generated code, test utilities excluded from coverage
+- **Reporting**: HTML reports for detailed analysis, CI integration for enforcement
+
+### Library Framework Requirements
+
+**Core Testing Dependencies:**
+```toml
+# Cargo.toml test dependencies
+[dev-dependencies]
+tokio = { version = "1.49", features = ["full", "test-util"] }
+nextest = "0.9"           # Primary test runner
+tarpaulin = "0.27"        # Code coverage analysis
+criterion = "0.5"         # Performance benchmarking
+proptest = "1.5"          # Property-based testing
+mockall = "0.12"          # Mock generation for adapters
+```
+
+**Test Framework Configuration:**
+```toml
+# nextest.toml
+[profile.default]
+retries = 1
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+[profile.ci]
+retries = 3
+slow-timeout = { period = "120s", terminate-after = 3 }
+```
+
+### File Structure Requirements
+
+**Test File Organization:**
+```
+crates/
+├── domain/
+│   ├── src/
+│   │   ├── note.rs           # #[cfg(test)] mod tests {}
+│   │   ├── schema.rs         # #[cfg(test)] mod tests {}
+│   │   ├── config.rs         # #[cfg(test)] mod tests {}
+│   │   ├── template.rs       # #[cfg(test)] mod tests {}
+│   │   └── lib.rs
+│   ├── tests/
+│   │   ├── integration_tests.rs    # Cross-entity integration
+│   │   └── property_tests.rs       # Property-based tests
+│   └── benches/
+│       └── domain_benchmarks.rs    # Performance tests
+```
+
+**Test Utility Modules:**
+- `test_utils.rs`: Shared fixtures, factories, and helper functions
+- `fixtures/`: Predefined test data files
+- `property_tests.rs`: Common property test utilities
+- `performance_tests.rs`: Benchmark configuration and helpers
+
+### Testing Infrastructure Integration
+
+**Hexagonal Testing Architecture (MANDATORY - Architecture Requirement):**
+- **Domain Layer Tests**: Pure unit tests with ZERO external dependencies (`#[cfg(test)]` modules)
+- **Adapter Layer Tests**: Integration tests with real implementations and mocking
+- **Cross-Crate Tests**: Integration tests spanning domain/app/adapters boundaries
+- **E2E Tests**: CLI-driven workflow tests (separate from domain testing)
+- **CQRS Test Separation**: Prepare for future write model vs read model test suites
+
+**Leveraging Epic 2 Test Utilities (Stories 2.4-2.7):**
+
+**Centralized Test Utilities (Story 2.4):**
+- **Temporary Directory Management**: Cross-platform temp dir creation/cleanup for isolated testing
+- **Test Artifact Helpers**: Standardized output location management for test artifacts
+- **Fixture Factories**: Reusable domain object creation with valid defaults and edge cases
+- **Assertion Helpers**: Common test assertions for domain validation patterns
+
+**Mise Test Orchestration (Story 2.5):**
+- **Parallel Execution**: `nextest` integration for optimal test parallelization
+- **Coverage Analysis**: `tarpaulin` integration for detailed coverage reporting (80%+ baseline, 90%+ target)
+- **Watch Mode**: Continuous testing during development workflow
+- **Test Categorization**: Separate unit, integration, and performance test execution
+
+**Integration Testing Patterns (Story 2.6):**
+- **Cross-Module Testing**: Established patterns for testing bounded context interactions
+- **Transaction Isolation**: Proper database/transaction management for integration tests
+- **Mock Infrastructure**: External service mocking utilities for isolated testing
+- **Contract Testing**: API contract verification between modules
+
+**Benchmarking Infrastructure (Story 2.7):**
+- **Performance Baselines**: criterion.rs benchmarks for establishing performance expectations
+- **Regression Detection**: Automated performance regression alerts
+- **Statistical Analysis**: Confidence intervals and statistical significance testing
+- **CI/CD Integration**: Performance gates in automated pipelines
+
+### Test Coverage Assurance Framework
+
+**Coverage Measurement and Analysis:**
+
+**Tools Integration (Epic 2.5):**
+- **Primary Tool**: `tarpaulin` via `mise run test:coverage` for detailed HTML reports
+- **Baseline Reports**: Generate coverage reports before and after optimizations
+- **File-by-File Analysis**: Identify specific modules and functions needing coverage
+- **Branch Coverage**: Ensure conditional logic and error paths are tested
+- **Exclusion Rules**: Properly exclude generated code, test utilities, and boilerplate
+- **Coverage Trends**: Track coverage improvements over time with baseline comparisons
+
+**Coverage Quality vs Quantity:**
+- **Meaningful Coverage**: Focus on testing business logic, validation rules, and error conditions
+- **Avoid Vanity Metrics**: Don't write tests just to increase percentages - quality over quantity
+- **Risk-Based Testing**: Prioritize coverage for critical domain operations and edge cases
+- **Hexagonal Coverage Structure**: Domain (90%+), Adapters (integration), E2E (critical paths)
+- **Quality Gates**: 90%+ line coverage, 85%+ branch coverage for Epic 3 domain entities (vs 80%+ architecture baseline)
+- **Coverage Assurance**: Regular reviews to ensure tests validate behavior, not just execution paths
+
+**Coverage Assurance Techniques:**
+
+**Domain Entity Coverage:**
+- **Constructor Validation**: Test all entity creation paths and validation rules
+- **Business Rule Testing**: Cover all domain invariants and constraints
+- **Error Path Coverage**: Test validation failures and error conditions
+- **Property-Based Testing**: Use proptest for mathematical properties and edge cases
+
+**Validation Logic Coverage:**
+- **Semantic Validation**: Test domain business rules and consistency checks
+- **Type Safety**: Verify enum variants, option handling, and type constraints
+- **Boundary Conditions**: Test limits, ranges, and constraint enforcement
+- **Integration Points**: Test interactions between related domain entities
+
+**Test Coverage Implementation Strategy:**
+
+**Gap Analysis Process:**
+1. **Run Coverage Report**: `mise run test:coverage` to identify uncovered lines
+2. **Categorize Gaps**: Business logic vs boilerplate vs error handling
+3. **Priority Assessment**: Critical validation logic > edge cases > happy paths
+4. **Test Planning**: Design specific tests to close identified gaps
+
+**Targeted Test Addition:**
+- **Unit Tests**: Pure domain logic with no external dependencies
+- **Property Tests**: Edge cases and mathematical properties using proptest
+- **Integration Tests**: Cross-entity validation scenarios
+- **Error Path Tests**: Exception conditions and failure modes
+
+**Coverage Quality Assurance:**
+- **Test Intent Clarity**: Each test should have clear purpose and assertions
+- **Assertion Quality**: Verify meaningful behavior, not just execution
+- **Test Isolation**: Independent tests with proper setup/teardown
+- **Maintenance Cost**: Tests should be as maintainable as production code
+
+**Performance Optimization Strategy:**
+- **Baseline Measurement**: Establish current execution time using `mise run test`
+- **Bottleneck Analysis**: Identify slow-running tests and optimization opportunities
+- **Parallel Execution**: Leverage nextest for optimal test parallelization
+- **Caching Strategies**: Implement fixture reuse and test result caching where appropriate
+
+**Redundancy Elimination Process:**
+- **Pattern Recognition**: Automated detection of duplicate test scenarios
+- **Consolidation Planning**: Create shared utilities for common test patterns
+- **Refactoring Roadmap**: Systematic elimination of redundant test code
+- **Maintenance Tracking**: Monitor impact on test maintenance costs
+
+**Maintenance Cost Management:**
+- **Evolution Tracking**: Automated monitoring of test-to-code ratios
+- **Change Impact Analysis**: Predict maintenance cost for domain model changes
+- **Optimization Metrics**: Track time spent on test maintenance vs feature development
+- **Continuous Improvement**: Regular review and optimization of test maintenance processes
+
+## Dev Agent Record
+
+### Agent Model Used
+
+{{agent_model_name_version}}
+
+### Debug Log References
+
+### Completion Notes List
+
+### File List
