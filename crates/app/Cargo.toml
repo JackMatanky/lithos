@@ -18,6 +18,8 @@ async-trait.workspace = true
 [dev-dependencies]
 lithos-test-utils.workspace = true
 serde.workspace = true
+chrono.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
