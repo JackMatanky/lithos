@@ -210,13 +210,13 @@ So that developers understand the domain language and can work effectively with 
 **Splitting Strategy (If Needed):**
 ```
 docs/
-├── domain-models/
-│   └── overview.md                # Essential information about all bounded contexts
+├── domain-models.md               # Single comprehensive file (primary approach)
 ├── domain/
-│   ├── note.md                    # Note bounded context in-depth details
-│   ├── schema.md                  # Schema bounded context in-depth details
-│   ├── config.md                  # Config bounded context in-depth details
-│   └── template.md                # Template bounded context in-depth details
+│   ├── overview.md                # Essential information about all bounded contexts
+│   ├── note.md                    # Note bounded context in-depth technical details
+│   ├── schema.md                  # Schema bounded context in-depth technical details
+│   ├── config.md                  # Config bounded context in-depth technical details
+│   └── template.md                # Template bounded context in-depth technical details
 └── architecture/
     ├── hexagonal-boundaries.md    # Domain/adapter separation rules
     └── evolution-guidelines.md    # Domain model evolution patterns
