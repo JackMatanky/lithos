@@ -7,7 +7,10 @@ use criterion::Criterion;
 
 /// Standardized benchmarking configuration for Lithos.
 pub fn standard_criterion() -> Criterion {
-    Criterion::default().configure_from_args().sample_size(100)
+    Criterion::default()
+        .configure_from_args()
+        .sample_size(100)
+        .noise_threshold(performance_gates::WARNING_THRESHOLD)
 }
 
 /// Helper to create a multi-threaded Tokio runtime for benchmarking.

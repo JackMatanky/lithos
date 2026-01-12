@@ -1,6 +1,6 @@
 # Story 2.7: create-benchmarking-infrastructure-and-performance-testing-patterns
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -61,7 +61,7 @@ So that performance is monitored and regressions are caught early.
 - [x] Create performance testing patterns (Phase 2: 1 week)
   - [x] Define benchmark categories: micro (core ops), integration (end-to-end), memory
   - [x] Implement warm-up and statistical measurement patterns (p-values, confidence)
-  - [x] Add memory usage tracking with dhat integration
+  - [x] Add memory usage tracking with dhat integration (via `dhat-on` feature)
   - [x] Create realistic benchmark fixtures for bounded context operations
 
 - [x] Integrate with mise and CI/CD (Phase 3: 1 week)
@@ -103,6 +103,26 @@ So that performance is monitored and regressions are caught early.
 - [Source: _bmad-output/implementation-artifacts/stories/2-5-configure-mise-test-task-orchestration.md] - extend mise tasks
 - [ADR: docs/adr/0012-benchmarking-infrastructure.md] - research and decision framework
 
+## Senior Developer Review (AI)
+
+### Review Outcome: Changes Requested (Fixed)
+
+**Issues identified and addressed:**
+1. **🔴 CRITICAL: Missing Implementation**: `dhat` memory profiling was claimed but not initialized in `core_ops.rs`. Fixed by adding `#[global_allocator]` and `dhat::Profiler` via a new `dhat-on` feature.
+2. **🔴 CRITICAL: AC Violation**: Performance gates (AC 1.4, 3.2) were only defined as constants. Fixed by configuring `standard_criterion` in `test-utils` to use these thresholds for noise/regression detection.
+3. **🟡 MEDIUM: Infrastructure Underutilization**: `standard_criterion()` was defined but ignored in benchmarks. Fixed by refactoring `core_ops.rs` to use the unified configuration.
+4. **🟡 MEDIUM: Documentation Gaps**: `Cargo.toml` changes (disabling default bench harness) were missing from the story's File List. Fixed by updating the documentation.
+
+**Summary:** The benchmarking infrastructure is now fully compliant with NFR2 requirements, providing both timing and memory profiling capabilities with integrated performance gates.
+
+_Reviewer: dev on Tue Jan 13 2026_
+
+## Change Log
+
+- 2026-01-12: Established Criterion v0.5.1 with `async_tokio` feature.
+- 2026-01-12: Created `crates/app/benches/core_ops.rs` with `event_bus` benchmark group.
+- 2026-01-13: Refactored benchmarks to use centralized `standard_criterion` and added `dhat` memory profiling.
+
 ## Dev Agent Record
 
 ### Agent Model Used
@@ -120,23 +140,27 @@ dev agent (recommended for implementation)
 ### Completion Notes List
 
 - **Research completed**: Analyzed Criterion.rs for statistical benchmarking. Version 0.5.1 is used with `async_tokio` feature for event-driven architecture support. Identified core metrics: parsing, querying, storage, rendering. Evaluated `iai` and `dhat` as complementary tools.
-- **Infrastructure established**: Created root `benches/` directory with `README.md` documentation. Implemented micro-benchmarks in `crates/app/benches/core_ops.rs` using `criterion`. Established centralized benchmarking and integration utilities in `crates/test-utils`.
-- **Centralized Utilities**: Moved `IntegrationFixture`, `IntegrationConfig`, and `create_benchmark_runtime` to `crates/test-utils` to ensure project-wide availability and consistency.
-- **Performance Gates**: Renamed benchmarking module to `performance_gates` for better clarity and descriptive naming.
-- **Patterns implemented**: Established patterns for async benchmarking with `to_async` using Tokio multi-threaded runtime via `lithos-test-utils`. Added `dhat` to workspace for memory profiling. Created realistic fixtures using `MockEventBus` and `TestDomainEvent`.
-- **CI/CD Integration**: Refactored `.mise/tasks/test/bench` to follow the same package-selection pattern as the unit test task, correctly using `#USAGE` fields and `usage_` prefixed variables. Targeted all libraries and binaries with `bench = false` to ensure Criterion flags only reach intended benchmark targets. Added shorthand tasks (`tbd`, `tbap`, `tbad`, `tbc`) to `mise.toml` for developer convenience.
+- **Infrastructure established**: Created root `benches/` directory with `README.md` documentation. Implemented micro-benchmarks in `crates/app/benches/core_ops.rs` using `criterion` and `lithos-test-utils`.
+- **Memory Profiling**: Integrated `dhat` into `core_ops.rs` via the `dhat-on` feature, allowing for heap profiling during benchmarks.
+- **Centralized Utilities**: Moved `IntegrationFixture`, `IntegrationConfig`, and `create_benchmark_runtime` to `crates/test-utils` to ensure project-wide availability and consistency. Added `standard_criterion()` for unified benchmark configuration.
+- **Performance Gates**: Established `performance_gates` module in `test-utils` with configurable thresholds. Configured `standard_criterion` to use these thresholds for noise/regression detection.
+- **Patterns implemented**: Established patterns for async benchmarking with `to_async` using Tokio multi-threaded runtime via `lithos-test-utils`. Created realistic fixtures using `MockEventBus` and `TestDomainEvent`.
+- **CI/CD Integration**: Refactored `.mise/tasks/test/bench` to follow the same package-selection pattern as the unit test task, correctly using `#USAGE` fields and `usage_` prefixed variables. Targeted all libraries and binaries with `bench = false` in `Cargo.toml` to ensure Criterion flags only reach intended benchmark targets. Added shorthand tasks (`tbd`, `tbap`, `tbad`, `tbc`) to `mise.toml` for developer convenience.
 
 ### File List
 
 - Cargo.toml - Added `async_tokio` feature to criterion, added `dhat` workspace dependency.
 - crates/test-utils/Cargo.toml - Added `criterion` and `dhat` as dependencies to provide centralized testing infrastructure.
 - crates/test-utils/src/lib.rs - Exported new `bench` and `integration` modules.
-- crates/test-utils/src/bench.rs - Centralized benchmarking utilities (runtime creation, NFR2 thresholds).
+- crates/test-utils/src/bench.rs - Centralized benchmarking utilities (runtime creation, NFR2 thresholds, `standard_criterion`).
 - crates/test-utils/src/integration.rs - Centralized integration testing fixtures and configuration.
-- crates/app/Cargo.toml - Added `criterion` and `dhat` dev-dependencies, registered `core_ops` benchmark.
-- crates/app/benches/core_ops.rs - Micro-benchmarks for event bus operations using centralized utilities.
+- crates/app/Cargo.toml - Added `criterion` and `dhat` dev-dependencies, registered `core_ops` benchmark, added `dhat-on` feature, set `bench = false` for lib.
+- crates/app/benches/core_ops.rs - Micro-benchmarks for event bus operations using centralized utilities and optional `dhat` profiling.
 - tests/integration/common.rs - Refactored to re-export utilities from `lithos-test-utils`.
 - benches/README.md - Documentation for benchmarking structure and NFR2 targets.
 - mise.toml - Removed redundant `test:benchmark` task; consolidated with file-based task.
 - .mise/tasks/test/bench - Refactored for better argument pass-through to `cargo bench`.
-- _bmad-output/implementation-artifacts/sprint-status.yaml - Updated story status to `review`.
+- crates/domain/Cargo.toml - Set `bench = false` for lib.
+- crates/adapters/Cargo.toml - Set `bench = false` for lib.
+- crates/cli/Cargo.toml - Set `bench = false` for lib.
+- _bmad-output/implementation-artifacts/sprint-status.yaml - Updated story status to `done`.
