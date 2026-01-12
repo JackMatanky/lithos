@@ -31,6 +31,16 @@ trusted_config_paths = ["{{config_root}}"]
 lockfile = true
 
 # ------------------------------------------------------------- #
+#                       ENVIRONMENT                             #
+# ------------------------------------------------------------- #
+[env]
+# Test configuration for ADR 0010 test utilities integration
+TEST_THREADS = "4"
+CARGO_TEST_ARGS = "--lib --bins"
+TEST_OUTPUT_DIR = "{{config_root}}/test-output"
+CI = "${GITHUB_ACTIONS:-false}"
+
+# ------------------------------------------------------------- #
 #                             Tasks                             #
 # ------------------------------------------------------------- #
 
@@ -52,10 +62,34 @@ depends = ["fmt", "lint", "validate-adrs"]
 
 [tasks.test]
 description = "Run all tests (unit and integration)"
+alias = "t"
 depends = ["test:unit", "test:integration"]
+
+# Specific crate unit tests for developer convenience
+[tasks."test:unit:domain"]
+description = "Run domain crate unit tests"
+run = ".mise/tasks/test/unit.sh -p domain"
+
+[tasks."test:unit:app"]
+description = "Run app crate unit tests"
+run = ".mise/tasks/test/unit.sh -p app"
+
+[tasks."test:unit:adapters"]
+description = "Run adapters crate unit tests"
+run = ".mise/tasks/test/unit.sh -p adapters"
+
+[tasks."test:unit:cli"]
+description = "Run CLI crate unit tests"
+run = ".mise/tasks/test/unit.sh -p cli"
+
+# CI/CD simulation
+[tasks.ci]
+description = "Simulate CI/CD pipeline"
+depends = ["verify", "test:integration"]
 
 [tasks.verify]
 description = "Full quality gate orchestration"
+alias = "v"
 depends = ["fmt", "lint", "test", "deny"]
 
 [tasks.deny]
@@ -72,4 +106,4 @@ run = "scripts/adr-metrics.sh"
 
 [tasks.bench]
 description = "Run performance benchmarks"
-run = ".mise/tasks/bench.sh"
+run = ".mise/tasks/test/bench.sh"
