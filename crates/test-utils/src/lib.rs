@@ -29,19 +29,14 @@
 pub mod async_helpers;
 
 pub use async_helpers::{
-    default_test_timeout,
-    long_test_timeout,
-    shared_mutex,
-    shared_rwlock,
-    shared_semaphore,
-    short_test_timeout,
-    spawn_blocking_test,
-    with_cancellation,
-    with_timeout,
+    default_test_timeout, long_test_timeout, shared_mutex, shared_rwlock,
+    shared_semaphore, short_test_timeout, spawn_blocking_test,
+    with_cancellation, with_timeout,
 };
-
 /// Re-export commonly used tokio testing types
-pub use tokio_test::{assert_pending, assert_ready, assert_ready_err, assert_ready_ok};
+pub use tokio_test::{
+    assert_pending, assert_ready, assert_ready_err, assert_ready_ok,
+};
 
 // The async_test macro is automatically exported at crate root via #[macro_export]
 // in the async_helpers module. Use it as:

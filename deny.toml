@@ -38,6 +38,10 @@ version = "0.1.14"
 name = "windows-sys"
 version = "0.60.2"
 
+[[bans.skip]]
+name = "hashbrown"
+version = "0.15.5"
+
 [sources]
 unknown-registry = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
