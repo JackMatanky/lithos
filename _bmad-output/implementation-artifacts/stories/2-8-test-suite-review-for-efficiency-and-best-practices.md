@@ -1,6 +1,6 @@
 # Story 2.8: test-suite-review-for-efficiency-and-best-practices
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
