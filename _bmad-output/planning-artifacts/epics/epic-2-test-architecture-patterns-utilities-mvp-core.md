@@ -279,3 +279,49 @@ So that performance is monitored and regressions are caught early.
 - Statistical significance in measurements
 - Environment consistency across runs
 - Memory usage tracking alongside timing
+
+## Story 2.8: Test Suite Review for Efficiency and Best Practices
+
+As a developer responsible for test quality,
+I want a structured test suite review aligned to Rust testing best practices,
+So that tests remain efficient, meaningful, and avoid vanity metrics.
+
+**Acceptance Criteria:**
+
+**Given** the test suite review is initiated
+**When** I audit unit, integration, doc, and benchmark tests
+**Then** the review verifies clarity and intent using test descriptions as a quality gate:
+- Each test name reads like a sentence describing behavior and setup
+- Each test or module includes a brief intent comment when non-obvious
+- Issue numbers are secondary metadata, not the test name
+- Any platform ignores or conditionals include a concise rationale
+
+**Given** I review test structure and organization
+**When** I inspect module layout
+**Then** tests follow Rust conventions for scope and intent:
+- Unit tests colocated with code and focused on implementation details
+- Integration tests live under `tests/` and validate public API behavior
+- Doc tests are used for public API examples and kept minimal
+- Benchmarks are isolated from functional tests
+
+**Given** I assess test efficiency and signal quality
+**When** I evaluate assertions and coverage
+**Then** tests avoid vanity metrics and maximize signal:
+- One behavior per test, with minimal assertions
+- Coverage requirements tied to defect prevention or risk areas
+- Tests demonstrate real invariants, not just line coverage
+- Redundant or overlapping tests are flagged for consolidation
+
+**Given** I check for flakiness and determinism
+**When** I review async and integration tests
+**Then** tests are reproducible and stable:
+- Async tests use timeouts and avoid blocking in async contexts
+- Randomness, UUIDs, and timestamps are fixed or redacted
+- Any flaky tests are tagged and scheduled for refactor/removal
+
+**Given** snapshot testing is used
+**When** I review snapshot tests
+**Then** snapshots are small, named, and meaningful:
+- Large blobs avoided; targeted snapshots only
+- Simple scalar assertions use `assert_eq!` instead of snapshots
+- Unstable fields are redacted for consistency
