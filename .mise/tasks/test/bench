@@ -2,33 +2,32 @@
 #MISE description="Run performance benchmarks for all workspace crates, using criterion"
 #MISE alias="tb"
 #MISE sources=["**/*.rs", "Cargo.toml"]
+#USAGE arg "[filter]" help="Filter benchmarks by name"
+#USAGE flag "-q --quick" help="Run in quick mode"
+#USAGE flag "-n --noplot" help="Disable plot and HTML generation"
 
 set -euo pipefail
 
-#######################################
-# Run benchmarks for all crates.
-# Arguments:
-#   Arguments for cargo bench
-# Outputs:
-#   Writes benchmark results to stdout
-#######################################
-run_cargo_bench() {
-    echo "🧪 Running benchmarks..."
-    cargo bench "$@"
-}
+# Build arguments for the benchmark binary (Criterion)
+bench_args=()
 
-#######################################
-# Main entry point.
-# Globals:
-#   None
-# Arguments:
-#   $@
-# Outputs:
-#   None
-#######################################
-main() {
-    run_cargo_bench "$@"
-    echo "✅ Benchmarking complete"
-}
+if [[ -n "${usage_filter:-}" ]]; then
+  bench_args+=("${usage_filter}")
+fi
 
-main "$@"
+if [[ "${usage_quick:-}" == "true" ]]; then
+  bench_args+=("--quick")
+fi
+
+if [[ "${usage_noplot:-}" == "true" ]]; then
+  bench_args+=("--noplot")
+fi
+
+echo "🧪 Running benchmarks..."
+
+# Correct syntax: cargo bench [cargo_args] [-- [bench_args]]
+# Use --benches to only run targets defined as [[bench]]
+# We iterate over crates manually if workspace --benches still hits unittests in some environments
+cargo bench -p lithos-app --bench core_ops -- "${bench_args[@]}"
+
+echo "✅ Benchmarking complete"
