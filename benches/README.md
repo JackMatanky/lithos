@@ -16,15 +16,18 @@ Benchmarks are orchestrated via `mise`:
 
 ```bash
 # Run all benchmarks
-mise run test:benchmark
+mise run test:bench
 
-# Run a specific benchmark group
-mise run test:benchmark event_bus
+# Run a specific package (e.g., app)
+mise run tbap
+
+# Run a specific benchmark group with Criterion flags
+mise run test:bench core_ops --quick --noplot
 ```
 
-## Performance Gates (NFR2)
+## Performance Gates
 
 - **Regression Detection**: Criterion compares current runs against stored baselines in `target/criterion/`.
-- **Thresholds**:
-    - > 5% regression: Warning/Alert
-    - > 10% regression: Block release
+- **Thresholds**: Defined in `lithos-test-utils::performance_gates`.
+    - > 5% regression: Warning/Alert (`WARNING_THRESHOLD`)
+    - > 10% regression: Block release (`BLOCKING_THRESHOLD`)
