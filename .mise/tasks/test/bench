@@ -8,26 +8,65 @@
 
 set -euo pipefail
 
-# Build arguments for the benchmark binary (Criterion)
-bench_args=()
+#######################################
+# Build arguments for Criterion benchmarks.
+# Globals:
+#   usage_filter
+#   usage_quick
+#   usage_noplot
+# Arguments:
+#   Reference to an array for benchmark arguments
+# Outputs:
+#   None
+#######################################
+build_bench_args() {
+  local -n ref_bench_args=$1
 
-if [[ -n "${usage_filter:-}" ]]; then
-  bench_args+=("${usage_filter}")
-fi
+  if [[ -n "${usage_filter:-}" ]]; then
+    ref_bench_args+=("${usage_filter}")
+  fi
 
-if [[ "${usage_quick:-}" == "true" ]]; then
-  bench_args+=("--quick")
-fi
+  if [[ "${usage_quick:-}" == "true" ]]; then
+    ref_bench_args+=("--quick")
+  fi
 
-if [[ "${usage_noplot:-}" == "true" ]]; then
-  bench_args+=("--noplot")
-fi
+  if [[ "${usage_noplot:-}" == "true" ]]; then
+    ref_bench_args+=("--noplot")
+  fi
+}
 
-echo "🧪 Running benchmarks..."
+#######################################
+# Run performance benchmarks using cargo bench.
+# Arguments:
+#   Arguments for the benchmark binary
+# Outputs:
+#   Writes benchmark progress to stdout
+#######################################
+run_benchmarks() {
+  echo "🧪 Running benchmarks..."
 
-# Correct syntax: cargo bench [cargo_args] [-- [bench_args]]
-# Use --benches to only run targets defined as [[bench]]
-# We iterate over crates manually if workspace --benches still hits unittests in some environments
-cargo bench -p lithos-app --bench core_ops -- "${bench_args[@]}"
+  # Note: When running benches, cargo bench may attempt to run unit tests first.
+  # We explicitly target the known benchmark suites to ensure reliable execution
+  # and prevent Criterion-specific flags from being passed to unit test runners.
+  cargo bench -p lithos-app --bench core_ops -- "$@"
+}
 
-echo "✅ Benchmarking complete"
+#######################################
+# Main entry point for the benchmark task.
+# Globals:
+#   None
+# Arguments:
+#   None
+# Outputs:
+#   None
+#######################################
+main() {
+  local bench_args=()
+  build_bench_args bench_args
+
+  run_benchmarks "${bench_args[@]}"
+
+  echo "✅ Benchmarking complete"
+}
+
+main "$@"
