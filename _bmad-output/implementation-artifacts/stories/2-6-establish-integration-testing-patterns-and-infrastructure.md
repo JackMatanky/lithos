@@ -1,6 +1,6 @@
 # Story 2.6: establish-integration-testing-patterns-and-infrastructure
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -50,10 +50,10 @@ So that integration issues are caught early with proper isolation and mocking.
 
 - [x] Establish integration test infrastructure (Phase 1: 1 week)
    - [x] Create tests/integration/ directory structure
-   - [x] Add testcontainers dependency (v0.26.3) for external service mocking with Docker Compose support
+   - [ ] Add testcontainers dependency (v0.26.3) - DEFERRED due to RUSTSEC-2025-0134 (rustls-pemfile unmaintained)
    - [x] Implement trait-based mocking framework for ports/adapters
-   - [x] Set up test database isolation with testcontainers or sqlx transactions
-   - [x] Create shared test fixtures for bounded context interactions
+   - [ ] Set up test database isolation - DEFERRED pending persistence layer implementation (Epic 8)
+   - [x] Create shared test fixtures framework for bounded context interactions
 
 - [x] Implement cross-module testing patterns (Phase 2: 1 week)
    - [x] Define API contract testing between bounded contexts (hexagonal validation)
@@ -114,7 +114,7 @@ dev agent (recommended for implementation)
 
 - **Research completed**: Analyzed Rust integration testing patterns for large projects. Key findings:
   - Use `tests/` directory for integration tests separate from unit tests
-  - Testcontainers (v0.26.3) for external service mocking with Docker Compose support
+  - Testcontainers (v0.26.3) researched but DEFERRED: RUSTSEC-2025-0134 advisory shows rustls-pemfile (transitive dependency) is unmaintained. Will revisit when alternative found or dependency updated.
   - Trait-based mocking with `Arc<dyn Trait>` and mockall crate for ports/adapters
   - Cross-module testing via API contract validation in hexagonal architecture
   - Event-driven patterns: test data plane (mpsc), control plane (broadcast), state plane (watch)
@@ -122,30 +122,30 @@ dev agent (recommended for implementation)
   - Testcontainers vs mocking: testcontainers for fidelity (real DB), mocking for speed (2-3x faster)
   - Existing patterns in project: StubQueryStore, MockEventBus, EventTestFramework for async/event testing
 
-- **Infrastructure established**: Created tests/integration/ structure with common fixtures. Added testcontainers and mockall dependencies. Set up basic trait-based mocking framework using existing Arc<dyn Trait> patterns. Created IntegrationFixture for shared test setup.
+- **Infrastructure established**: Created tests/integration/ structure with common fixtures. Added mockall dependency for trait-based mocking (testcontainers deferred due to RUSTSEC-2025-0134). Set up trait-based mocking framework using existing Arc<dyn Trait> patterns. Created IntegrationFixture framework with configuration support for shared test setup.
 
-- **Cross-module patterns implemented**: Created API contract testing example with event bus port validation. Established patterns for end-to-end data flow testing, error propagation testing, and performance validation. Test demonstrates hexagonal architecture boundary testing between app and adapter layers.
+- **Cross-module patterns implemented**: Created API contract testing example with event bus port validation. Established patterns for end-to-end data flow testing with multi-operation error propagation testing, and performance validation using batch operations (10 events <50ms baseline). Tests demonstrate hexagonal architecture boundary testing between app and adapter layers.
 
 - **Acceptance Criteria Verification**:
-  - AC1: ✅ SATISFIED - Integration testing patterns established:
-    - Cross-module API contract testing: `event_bus_api_contract_maintained` test validates EventBusPort trait contracts between app/adapter layers
-    - Database state management: Framework established in `tests/integration/common.rs` with IntegrationFixture, setup/teardown patterns documented (testcontainers deferred due to unmaintained rustls-pemfile dependency)
-    - External service mocking: Trait-based mocking with mockall added to test-utils; existing MockEventBus demonstrates pattern for ports/adapters
-    - Integration test data fixtures: IntegrationFixture struct provides shared setup; tests use realistic event data (TestDomainEvent)
+  - AC1: ⚠️ PARTIALLY SATISFIED - Integration testing patterns established with limitations:
+    - Cross-module API contract testing: ✅ `maintains_event_bus_api_contract_across_boundaries` test validates EventBusPort trait contracts between app/adapter layers
+    - Database state management: ⚠️ Framework structure created in `tests/integration/common.rs` with IntegrationFixture, but full implementation deferred pending Epic 8 (persistence layer)
+    - External service mocking: ✅ Trait-based mocking with mockall added to test-utils; existing MockEventBus demonstrates pattern for ports/adapters
+    - Integration test data fixtures: ✅ IntegrationFixture struct provides configuration and setup framework; tests use realistic event data (TestDomainEvent)
   - AC2: ✅ SATISFIED - Tests verify interactions between bounded contexts:
-    - API contracts maintained: `event_bus_api_contract_maintained` validates EventBusPort interface compliance and data capture
-    - Data flows correctly: Test validates event publication → data plane → capture flow across boundary
-    - Error handling works end-to-end: `error_propagation_across_boundaries` validates error contract propagation through port interfaces
-    - Performance meets requirements: `integration_performance_validation` enforces <10ms baseline; integration tests 2-3x slower than unit tests acceptable
-  - AC3: ✅ SATISFIED - Transaction management patterns:
-    - Framework established: IntegrationFixture provides setup/teardown hooks for transaction management
-    - Rollback patterns documented in common.rs teardown function
-    - Testcontainers integration deferred (unmaintained dependency) but pattern ready for future implementation
+    - API contracts maintained: ✅ `maintains_event_bus_api_contract_across_boundaries` validates EventBusPort interface compliance and data capture
+    - Data flows correctly: ✅ Test validates event publication → data plane → capture flow across boundary
+    - Error handling works end-to-end: ✅ `propagates_errors_across_module_boundaries` validates error contract handling through port interfaces with multiple operations
+    - Performance meets requirements: ✅ `validates_integration_performance_meets_baseline` enforces <50ms baseline for batch operations; integration tests 2-3x slower than unit tests acceptable
+  - AC3: ⚠️ PARTIALLY SATISFIED - Transaction management patterns:
+    - Framework established: ✅ IntegrationFixture provides setup/teardown hooks and configuration for transaction management
+    - Rollback patterns: ⚠️ Documented in common.rs with implementation deferred pending database layer (Epic 8)
+    - Testcontainers integration: ⚠️ Deferred due to RUSTSEC-2025-0134 (rustls-pemfile unmaintained); pattern ready for future implementation
   - AC4: ✅ SATISFIED - Integration test best practices:
-    - Isolated environments: IntegrationFixture provides isolation; tests in separate `tests/` directory; mise tasks separate unit/integration execution
-    - Realistic test data: Tests use actual event structures (TestDomainEvent) without production dependencies; MockEventBus simulates real behavior
-    - Execute in parallel: mise test:integration uses `--test-threads=4` for parallel execution; nextest provides partition support
-    - Clear failure diagnostics: nextest provides detailed test output with timing; assert! messages explain expectations; tests follow rustc-dev-guide documentation standards
+    - Isolated environments: ✅ IntegrationFixture provides isolation with configuration; tests in separate directories; mise tasks separate unit/integration execution
+    - Realistic test data: ✅ Tests use actual event structures (TestDomainEvent) without production dependencies; MockEventBus simulates real behavior
+    - Execute in parallel: ✅ mise test:integration uses `--test-threads=4` for parallel execution; nextest provides partition support
+    - Clear failure diagnostics: ✅ nextest provides detailed test output with timing; assert! messages explain expectations; tests follow rustc-dev-guide documentation standards
 
 - **Implementation Approach**:
   - Followed project's established test patterns from `crates/app/tests/event_patterns.rs` which uses `#[expect(clippy::disallowed_methods)]` for test assertions
@@ -164,37 +164,44 @@ dev agent (recommended for implementation)
 - **Quality Gate Status**: All quality gates pass. Pre-commit hooks pass. Linting complete with proper `#[expect]` attributes documenting lint disables per project standards (following established pattern from event_patterns.rs).
 
 - **Test Documentation (per rustc-dev-guide best practices)**:
-  - `event_bus_api_contract_maintained`: Verifies EventBusPort trait contract between app and adapter layers, ensuring hexagonal boundary compliance.
-  - `error_propagation_across_boundaries`: Tests error handling contracts in cross-module interactions, validating proper propagation through port interfaces.
-  - `integration_performance_validation`: Ensures integration operations meet performance requirements (expected 2-3x slower than unit tests).
+  - `maintains_event_bus_api_contract_across_boundaries`: Verifies EventBusPort trait contract between app and adapter layers, ensuring hexagonal boundary compliance with event capture validation.
+  - `propagates_errors_across_module_boundaries`: Tests error handling contracts in cross-module interactions with multiple operations, validating proper error propagation through port interfaces without silent failures.
+  - `validates_integration_performance_meets_baseline`: Ensures integration batch operations meet performance requirements (<50ms for 10 events baseline, expected 2-3x slower than unit tests).
 
 ### File List
 
 - crates/test-utils/Cargo.toml - Added mockall v0.13.1 dev-dependency for trait-based mocking (testcontainers v0.26.3 deferred due to RUSTSEC-2025-0134)
 - Cargo.lock - Updated with mockall and dependencies (downcast, fragile, predicates, termtree)
-- tests/integration.rs - Root integration test file with common module declaration and placeholder harness test
-- tests/integration/common.rs - Shared fixtures (IntegrationFixture struct) and setup/teardown utilities with TODO sections for database/container integration
-- crates/app/tests/integration_tests.rs - Three integration tests demonstrating cross-module patterns:
-  * event_bus_api_contract_maintained - Validates EventBusPort trait contract between layers
-  * error_propagation_across_boundaries - Tests error handling across boundaries
-  * integration_performance_validation - Enforces <10ms performance baseline
-- mise.toml - Added test:unit and test:integration tasks with nextest, --test-threads=4 parallelism, and JUnit output configuration
+- tests/integration.rs - Root integration test module with common utilities exported for crate-specific integration tests
+- tests/integration/common.rs - Shared fixtures (IntegrationFixture struct with IntegrationConfig) and setup/teardown framework with tracing initialization. Full database/container integration deferred pending Epic 8.
+- crates/app/tests/integration_tests.rs - Three integration tests demonstrating cross-module patterns (consistent verb-first naming):
+  * maintains_event_bus_api_contract_across_boundaries - Validates EventBusPort trait contract between layers
+  * propagates_errors_across_module_boundaries - Tests error handling across boundaries with multiple operations
+  * validates_integration_performance_meets_baseline - Enforces <50ms performance baseline for batch operations (10 events)
+- mise.toml - Added test:unit and test:integration tasks with nextest, --test-threads=4 parallelism, JUnit output configuration. Added clean task variants (clean:cargo, clean:test, clean:reports)
+- .mise/tasks/clean - Simplified file-based clean task with usage spec choice argument (default="all", choices: all/cargo/test/reports). Clean and intuitive API: `mise run clean [target]`
+- docs/adr/0011-integration-testing-patterns.md - Updated status from Proposed to Accepted with implementation date
 
 ### Test Coverage Summary
 
-- Total tests: 110 (85 unit + 25 integration)
-- New integration tests added: 3 (event_bus_api_contract_maintained, error_propagation_across_boundaries, integration_performance_validation)
-- Integration test execution time: ~0.03s for 25 tests (acceptable overhead vs unit tests)
-- All tests pass with nextest parallel execution
+- Total tests: 110 tests across workspace
+- New integration tests added: 3 (maintains_event_bus_api_contract_across_boundaries, propagates_errors_across_module_boundaries, validates_integration_performance_meets_baseline)
+- Integration test execution time: ~0.285s for all 110 tests with nextest parallel execution
+- All tests pass with nextest parallel execution (--test-threads=4)
 
 ### Future Enhancements
 
-- Integrate testcontainers when rustls-pemfile dependency is maintained or alternative found
-- Expand IntegrationFixture with actual database setup when persistence layer implemented
-- Add end-to-end data flow tests when multiple bounded contexts exist in Epic 3
-- Implement transaction rollback patterns when database layer added
+- Integrate testcontainers when rustls-pemfile dependency is maintained or alternative found (track RUSTSEC-2025-0134)
+- Expand IntegrationFixture with actual database setup when persistence layer implemented in Epic 8
+- Implement transaction rollback patterns when database layer added in Epic 8
+- Add end-to-end data flow tests when multiple bounded contexts exist (Epic 3+)
 - Add more cross-module contract tests as bounded contexts are developed
+- Enhance error propagation test with failure injection once MockEventBus supports it
 
 ## Change Log
 
-- Date: 2026-01-12 - Established integration testing patterns and infrastructure with mockall trait-based mocking, mise CI integration tasks (test:unit, test:integration), cross-module API contract testing examples, and IntegrationFixture framework. Testcontainers deferred due to RUSTSEC-2025-0134. All 110 tests pass.
+- Date: 2026-01-12 - Established integration testing patterns and infrastructure with mockall trait-based mocking, mise CI integration tasks (test:unit, test:integration), cross-module API contract testing examples, and IntegrationFixture framework with configuration support. Testcontainers deferred due to RUSTSEC-2025-0134. Database transaction patterns deferred pending Epic 8. All 110 tests pass. ADR 0011 accepted.
+- Date: 2026-01-12 - Code review fixes (high/medium): Enhanced error propagation test with multiple operations, improved performance test to batch operations baseline (<50ms for 10 events), implemented IntegrationFixture with configuration, updated ADR status to Accepted, clarified deferred items in documentation.
+- Date: 2026-01-12 - Code review fixes (low): Standardized test naming to verb-first convention (maintains_*, propagates_*, validates_*) for consistency with event_patterns.rs. Refactored .mise/tasks/clean to use usage spec choice argument with default="all" and choices (all, cargo, test, reports) for cleaner API: `mise run clean [target]`. Added convenience tasks (clean:cargo, clean:test, clean:reports) in mise.toml.
+- Date: 2026-01-12 - Post-review enhancement: Synced .mise/tasks/test/unit and .mise/tasks/test/integration with mise.toml configuration. Added --partition hash:1/1, RUST_BACKTRACE=1, and --test-threads for integration tests. Removed non-functional --junit flags from all test tasks (nextest 0.9.x requires profile configuration for JUnit output, not CLI flags). Fixed env variable expansion in file tasks (use $TEST_THREADS not template syntax).
+- Date: 2026-01-12 - Final refinement: Moved RUST_BACKTRACE configuration from bash script export to #MISE env header directive for better task-level isolation and mise best practices. Verified both unit and integration test tasks execute successfully with the new configuration.

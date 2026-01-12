@@ -1,30 +1,42 @@
 #!/usr/bin/env bash
 #MISE description="Clean the workspace by removing build artifacts and cache files"
 #MISE alias="c"
+#USAGE arg "[target]" help="What to clean" default="all" {
+#USAGE   choices "all" "cargo" "test" "reports"
+#USAGE }
 
 set -euo pipefail
 
 #######################################
-# Remove cargo build artifacts.
-# Arguments:
-#   None
+# Clean cargo build artifacts.
 # Outputs:
 #   Writes progress to stdout
 #######################################
-run_cargo_clean() {
+clean_cargo() {
     echo "🧹 Cleaning cargo build artifacts..."
     cargo clean
 }
 
 #######################################
-# Remove custom task stamp files and reports.
-# Arguments:
-#   None
+# Remove test output artifacts.
 # Outputs:
 #   Writes progress to stdout
 #######################################
-remove_custom_artifacts() {
-    echo "🧹 Removing custom task artifacts and stamps..."
+clean_test() {
+    echo "🧹 Cleaning test output artifacts..."
+    # shellcheck disable=SC1083
+    rm -rf {{env.TEST_OUTPUT_DIR}}
+    # shellcheck disable=SC1083
+    rm -f {{vars.junit_unit}} {{vars.junit_integration}}
+}
+
+#######################################
+# Remove reports and stamp files.
+# Outputs:
+#   Writes progress to stdout
+#######################################
+clean_reports() {
+    echo "🧹 Cleaning report artifacts and stamps..."
     # shellcheck disable=SC1083
     rm -f {{vars.target_dir}}/*.stamp
     # shellcheck disable=SC1083
@@ -34,15 +46,34 @@ remove_custom_artifacts() {
 #######################################
 # Main entry point.
 # Globals:
-#   None
+#   usage_target - Set by usage spec (default: "all")
 # Arguments:
 #   $@
 # Outputs:
 #   None
 #######################################
 main() {
-    run_cargo_clean
-    remove_custom_artifacts
+    case "${usage_target:-all}" in
+        all)
+            clean_cargo
+            clean_test
+            clean_reports
+            ;;
+        cargo)
+            clean_cargo
+            ;;
+        test)
+            clean_test
+            ;;
+        reports)
+            clean_reports
+            ;;
+        *)
+            echo "Error: Unknown target '${usage_target}'" >&2
+            exit 1
+            ;;
+    esac
+
     echo "✅ Cleanup complete"
 }
 

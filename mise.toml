@@ -102,44 +102,46 @@ description = "Run all tests (unit and integration)"
 alias = "t"
 depends = ["test:unit", "test:integration"]
 
-[tasks."test:unit"]
-description = "Run unit tests with nextest"
-run = "cargo nextest run {{env.CARGO_TEST_ARGS}} --workspace --partition hash:1/1 --junit {{vars.junit_unit}}"
-env = { RUST_BACKTRACE = "1" }
-
-[tasks."test:integration"]
-description = "Run integration tests with parallelism and container management"
-run = "cargo nextest run --test-threads {{env.TEST_THREADS}} --workspace --partition hash:1/1 --junit {{vars.junit_integration}}"
-env = { RUST_BACKTRACE = "1" }
-
 # Specific crate unit tests for developer convenience
 [tasks."test:unit:domain"]
 description = "Run domain crate unit tests"
 alias = "tud"
 run = "mise run test:unit -- -p domain"
-env = { RUST_BACKTRACE = "1" }
 quiet = false
 
 [tasks."test:unit:app"]
 description = "Run app crate unit tests"
 alias = "tuap"
 run = "mise run test:unit -- -p app"
-env = { RUST_BACKTRACE = "1" }
 quiet = false
 
 [tasks."test:unit:adapters"]
 description = "Run adapters crate unit tests"
 alias = "tuad"
 run = "mise run test:unit -- -p adapters"
-env = { RUST_BACKTRACE = "1" }
 quiet = false
 
 [tasks."test:unit:cli"]
 description = "Run CLI crate unit tests"
 alias = "tuc"
 run = "mise run test:unit -- -p cli"
-env = { RUST_BACKTRACE = "1" }
 quiet = false
+
+# ------------------------- Cleanup --------------------------- #
+# Note: Main clean task is defined in .mise/tasks/clean (file-based task)
+# These are convenient aliases that call the main task with specific targets
+
+[tasks."clean:cargo"]
+description = "Clean only cargo build artifacts"
+run = "mise run clean cargo"
+
+[tasks."clean:test"]
+description = "Clean only test output artifacts"
+run = "mise run clean test"
+
+[tasks."clean:reports"]
+description = "Clean only coverage and JUnit reports"
+run = "mise run clean reports"
 
 # --------------------- CI/CD Simulation ---------------------- #
 [tasks.ci]

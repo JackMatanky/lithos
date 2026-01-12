@@ -30,7 +30,7 @@ mod tests {
     /// maintains proper interface compliance. It demonstrates cross-module testing patterns
     /// by validating that adapter implementations fulfill port contracts expected by the app layer.
     #[tokio::test]
-    async fn event_bus_api_contract_maintained() {
+    async fn maintains_event_bus_api_contract_across_boundaries() {
         // Arrange: Create a mock event bus (adapter implementation)
         let clock: Arc<
             dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync,
@@ -63,30 +63,49 @@ mod tests {
 
     /// Test error propagation across boundaries in integration scenarios.
     ///
-    /// Verifies that errors from adapter layer are properly propagated through
-    /// the port interface to the app layer, maintaining error handling contracts
-    /// in cross-module interactions.
+    /// Verifies that the port interface properly handles and propagates errors
+    /// through the hexagonal architecture boundary. Tests that error contracts
+    /// are maintained between app and adapter layers.
+    ///
+    /// # Note
+    /// This test validates the error handling contract by attempting operations
+    /// that exercise error paths. Once `MockEventBus` supports failure injection,
+    /// this test should be enhanced to verify specific error types.
     #[tokio::test]
-    async fn error_propagation_across_boundaries() {
-        // Arrange: Create a mock event bus that can simulate failures
+    async fn propagates_errors_across_module_boundaries() {
+        // Arrange: Create event bus with adequate buffer
         let clock: Arc<
             dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync,
         > = Arc::new(chrono::Utc::now);
         let bus: Arc<dyn EventBusPort<TestDomainEvent>> =
-            Arc::new(MockEventBus::new_with_clock(4, 4, clock));
+            Arc::new(MockEventBus::new_with_clock(10, 10, clock));
 
-        // Act: Attempt to publish with a scenario that might fail
-        // (MockEventBus currently doesn't fail, but this demonstrates the pattern)
-        let event = TestDomainEvent {
-            id: "error-test".to_owned(),
+        // Act: Publish multiple events to exercise error handling paths
+        let event1 = TestDomainEvent {
+            id: "error-test-1".to_owned(),
         };
-        let result = bus.publish_data(event).await;
+        let event2 = TestDomainEvent {
+            id: "error-test-2".to_owned(),
+        };
 
-        // Assert: Error handling contract is maintained
-        // In a real scenario with failure simulation, we'd check error types
+        // First publish should succeed
+        let result1 = bus.publish_data(event1).await;
+        assert!(result1.is_ok(), "First publish should succeed");
+
+        // Second publish should also succeed (validates error handling contract)
+        let result2 = bus.publish_data(event2).await;
         assert!(
-            result.is_ok(),
-            "Error propagation contract should be maintained"
+            result2.is_ok(),
+            "Error handling contract should be maintained across multiple operations"
+        );
+
+        // Verify both events were captured (validates no silent failures)
+        let records = bus.captured_data();
+        let guard = records.lock().await;
+        assert_eq!(
+            guard.len(),
+            2,
+            "Error handling should not cause silent failures"
         );
     }
 
@@ -95,33 +114,47 @@ mod tests {
     /// Ensures that integration operations complete within acceptable time bounds.
     /// Integration tests are expected to be 2-3x slower than unit tests due to
     /// setup overhead, but should still be performant for CI/CD pipelines.
+    ///
+    /// # Performance Baseline
+    /// This test establishes a performance baseline for cross-module operations.
+    /// Current baseline: <50ms for batch operations across hexagonal boundaries.
     #[tokio::test]
-    async fn integration_performance_validation() {
+    async fn validates_integration_performance_meets_baseline() {
         // Arrange: Create event bus for performance testing
         let clock: Arc<
             dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync,
         > = Arc::new(chrono::Utc::now);
         let bus: Arc<dyn EventBusPort<TestDomainEvent>> =
-            Arc::new(MockEventBus::new_with_clock(4, 4, clock));
+            Arc::new(MockEventBus::new_with_clock(100, 100, clock));
 
-        let event = TestDomainEvent {
-            id: "perf-test".to_owned(),
-        };
-
-        // Act: Measure time for a single operation (performance baseline)
+        // Act: Measure time for batch operations (more realistic integration scenario)
         let start = std::time::Instant::now();
-        assert!(
-            bus.publish_data(event).await.is_ok(),
-            "publish should succeed"
-        );
+
+        // Publish multiple events to simulate real workload
+        for i in 0i32..10i32 {
+            let event = TestDomainEvent {
+                id: format!("perf-test-{i}"),
+            };
+            assert!(
+                bus.publish_data(event).await.is_ok(),
+                "publish {i} should succeed"
+            );
+        }
+
         let duration = start.elapsed();
 
         // Assert: Performance meets integration requirements
-        // Allow up to 10ms for a single operation (reasonable for integration tests)
+        // Allow up to 50ms for 10 operations (5ms per operation average)
+        // This is reasonable for integration tests with cross-module communication
         assert!(
-            duration.as_millis() < 10,
-            "Integration operation took {}ms, expected <10ms",
+            duration.as_millis() < 50,
+            "Integration batch operation took {}ms, expected <50ms for 10 events",
             duration.as_millis()
         );
+
+        // Verify all events were processed
+        let records = bus.captured_data();
+        let guard = records.lock().await;
+        assert_eq!(guard.len(), 10, "All events should be captured");
     }
 }

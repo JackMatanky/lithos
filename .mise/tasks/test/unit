@@ -4,6 +4,7 @@
 #MISE depends=["fmt"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["{{vars.nextest_dir}}/default"]
+#MISE env={RUST_BACKTRACE="1"}
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-p --package <package>" help="Run tests for a specific package" {
 #USAGE   choices "domain" "app" "adapters" "cli" "test-utils"
@@ -43,6 +44,7 @@ map_package_name() {
 # Globals:
 #   usage_verbose
 #   usage_filter
+#   RUST_BACKTRACE (set by #MISE env directive)
 # Arguments:
 #   Reference to an array for arguments
 #   The resolved package name
@@ -53,25 +55,29 @@ build_test_args() {
     local -n ref_args=$1
     local package_name=$2
 
+    # Core test arguments matching mise.toml configuration
     ref_args+=("--lib" "--bins")
 
     if [[ "${usage_verbose:-}" == "1" ]]; then
         ref_args+=("--verbose")
     fi
 
+    # Package selection
     if [[ -n "${package_name}" ]]; then
         ref_args+=("--package" "${package_name}")
     else
         ref_args+=("--workspace")
     fi
 
+    # Nextest partitioning for consistent test distribution
+    ref_args+=("--partition" "hash:1/1")
+
+    # Note: JUnit output requires nextest profile configuration in .config/nextest.toml
+    # The --junit flag does not exist in nextest 0.9.x - removed for compatibility
+
+    # Test filter (if specified)
     if [[ -n "${usage_filter:-}" ]]; then
         ref_args+=("${usage_filter}")
-    fi
-
-    if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-        # shellcheck disable=SC1083
-        ref_args+=("--reporter" "junit" "--junit-path" "{{vars.target_dir}}/{{vars.junit_unit}}")
     fi
 }
 
@@ -90,7 +96,7 @@ run_nextest() {
 #######################################
 # Main entry point.
 # Globals:
-#   None
+#   RUST_BACKTRACE (set by #MISE env directive)
 # Arguments:
 #   $@
 # Outputs:
