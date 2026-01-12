@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Validate ADRs for template compliance"
-#MISE sources=["docs/adr/*.md"]
+#MISE sources=["{{vars.adr_dir}}/*.md"]
 #MISE outputs=["target/adr-validate.stamp"]
 
 set -euo pipefail
@@ -113,7 +113,7 @@ report_validation_results() {
 #   Exits with 0 on success, 1 on validation failure
 #######################################
 main() {
-    ADR_DIR="docs/adr"
+    ADR_DIR="${ADR_DIR:-docs/adr}"
     EXIT_CODE=0
 
     echo "🔍 Validating ADRs in $ADR_DIR..."
