@@ -26,8 +26,8 @@ pub fn create_benchmark_runtime() -> tokio::runtime::Runtime {
         .expect("Failed to create Tokio runtime for benchmarking")
 }
 
-/// NFR2 Performance Regression Detection Constants
-pub mod nfr2 {
+/// Performance regression gates and thresholds.
+pub mod performance_gates {
     /// Regression threshold that triggers a warning/alert (5%).
     pub const WARNING_THRESHOLD: f64 = 0.05;
     /// Regression threshold that blocks a release (10%).

@@ -42,7 +42,9 @@ pub use async_utils::{
     shared_semaphore, short_test_timeout, spawn_blocking_test,
     with_cancellation, with_timeout,
 };
-pub use bench::{create_benchmark_runtime, nfr2, standard_criterion};
+pub use bench::{
+    create_benchmark_runtime, performance_gates, standard_criterion,
+};
 pub use cqrs::{
     CqrsTestError, CqrsTestResult, Entity, ErrorConfig, EventVerifier,
     EventualConsistencyTester, MockRepository, QueryCriteria, QueryStorePort,

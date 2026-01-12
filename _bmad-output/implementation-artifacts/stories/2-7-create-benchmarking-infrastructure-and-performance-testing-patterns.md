@@ -122,8 +122,9 @@ dev agent (recommended for implementation)
 - **Research completed**: Analyzed Criterion.rs for statistical benchmarking. Version 0.5.1 is used with `async_tokio` feature for event-driven architecture support. Identified core metrics: parsing, querying, storage, rendering. Evaluated `iai` and `dhat` as complementary tools.
 - **Infrastructure established**: Created root `benches/` directory with `README.md` documentation. Implemented micro-benchmarks in `crates/app/benches/core_ops.rs` using `criterion`. Established centralized benchmarking and integration utilities in `crates/test-utils`.
 - **Centralized Utilities**: Moved `IntegrationFixture`, `IntegrationConfig`, and `create_benchmark_runtime` to `crates/test-utils` to ensure project-wide availability and consistency.
+- **Performance Gates**: Renamed benchmarking module to `performance_gates` for better clarity and descriptive naming.
 - **Patterns implemented**: Established patterns for async benchmarking with `to_async` using Tokio multi-threaded runtime via `lithos-test-utils`. Added `dhat` to workspace for memory profiling. Created realistic fixtures using `MockEventBus` and `TestDomainEvent`.
-- **CI/CD Integration**: Consolidated mise tasks by removing redundant `test:benchmark` from `mise.toml` in favor of a flexible file-based task in `.mise/tasks/test/bench`. CI pipeline (`ci.yml`) already includes `boa-dev/criterion-compare-action` for regression detection on PRs.
+- **CI/CD Integration**: Consolidated mise tasks by refactoring `.mise/tasks/test/bench` to use `#USAGE` correctly with the `usage_` prefix for variables, supporting Criterion flags like `--quick` and `--noplot`.
 
 ### File List
 
