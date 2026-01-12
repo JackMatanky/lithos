@@ -93,3 +93,7 @@ run = "mise run test:unit -- -p cli"
 [tasks.ci]
 description = "Simulate CI/CD pipeline"
 depends = ["verify", "test:integration"]
+
+[tasks.timing]
+description = "Run verify with detailed timing information"
+run = "mise run --timing verify"
