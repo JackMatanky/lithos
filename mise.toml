@@ -48,6 +48,7 @@ CI = "${GITHUB_ACTIONS:-false}"
 
 [tasks.quality]
 description = "Run all quality gates (fmt, lint, adr:validate)"
+alias = "q"
 depends = ["fmt", "lint", "adr:validate"]
 
 [tasks.verify]
@@ -69,18 +70,22 @@ depends = ["test:unit", "test:integration"]
 # Specific crate unit tests for developer convenience
 [tasks."test:unit:domain"]
 description = "Run domain crate unit tests"
+alias = "tud"
 run = "mise run test:unit -- -p domain"
 
 [tasks."test:unit:app"]
 description = "Run app crate unit tests"
+alias = "tuap"
 run = "mise run test:unit -- -p app"
 
 [tasks."test:unit:adapters"]
 description = "Run adapters crate unit tests"
+alias = "tuad"
 run = "mise run test:unit -- -p adapters"
 
 [tasks."test:unit:cli"]
 description = "Run CLI crate unit tests"
+alias = "tuc"
 run = "mise run test:unit -- -p cli"
 
 # --------------------- CI/CD Simulation ---------------------- #

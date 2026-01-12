@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Generate code coverage reports using tarpaulin"
+#MISE alias="tc"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE outputs=["tarpaulin-report.html"]
 #USAGE flag "-o --open" help="Open coverage report in browser"

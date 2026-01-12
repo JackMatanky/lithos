@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run clippy lints on all workspace crates"
+#MISE alias="l"
 #MISE sources=["**/*.rs", "Cargo.toml", "clippy.toml"]
 #MISE outputs=["target/lint.stamp"]
 #USAGE flag "-v --verbose" help="Verbose output"

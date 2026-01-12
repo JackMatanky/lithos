@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Bootstraps the development environment"
+#MISE alias="setup"
 
 set -euo pipefail
 

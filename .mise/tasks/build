@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Build all workspace crates"
+#MISE alias="b"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE outputs=["target/debug/lithos", "target/release/lithos"]
 #USAGE flag "-r --release" help="Build in release mode"
