@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Format all Rust files in the workspace using rustfmt"
+#MISE alias="f"
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["target/fmt.stamp"]
 #USAGE flag "-c --check" help="Check formatting without making changes"

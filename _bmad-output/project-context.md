@@ -1,7 +1,7 @@
 ---
 project_name: 'lithos'
 user_name: 'Jack'
-date: '2026-01-11'
+date: '2026-01-12'
 sections_completed: ['technology_stack', 'architectural_integrity', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
 status: 'complete'
 rule_count: 58
@@ -35,6 +35,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Tooling & Orchestration
 - **mise**: **Primary and authorized entry point** for all tasks and tool version management (via `mise.toml`).
     - *Safety Invariant*: All commands MUST be executed via `mise run <task>` to ensure toolchain parity across environments.
+    - **Available Tasks Reference:**
+        - **Quality Gates:** `quality` (fmt+lint+validate), `verify` (full gates + tests), `fmt`, `lint`, `deny`
+        - **Testing:** `test` (unit+integration, alias: `t`), `test:unit`, `test:integration`, `test:coverage`, `test:watch`, `test:unit:*` (crate-specific)
+        - **CI/CD:** `ci` (pipeline simulation), `verify` (alias: `v`)
+        - **Development:** `build`, `clean`, `doc`, `dev-setup`, `bench`
+        - **ADR Management:** `adr:validate`, `adr:metrics`
 - **pre-commit**: Mandatory quality gate for linting, formatting, and complexity checks before every commit. Bypassing hooks is strictly prohibited.
 
 ### Code Quality & Standards
@@ -170,4 +176,4 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Update when technology stack changes.
 - Review quarterly for outdated rules.
 
-Last Updated: 2026-01-11
+Last Updated: 2026-01-12

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Watch for changes and automatically run tests"
+#MISE alias="tw"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #USAGE arg "[args]..." help="Arguments to pass to cargo test"
 

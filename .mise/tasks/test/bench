@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #MISE description="Run performance benchmarks for all workspace crates, using criterion"
+#MISE alias="tb"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #USAGE arg "[filter]" help="Filter benchmarks by name"
 
