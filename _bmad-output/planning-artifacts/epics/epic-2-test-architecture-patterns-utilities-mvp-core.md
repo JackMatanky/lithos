@@ -325,3 +325,34 @@ So that tests remain efficient, meaningful, and avoid vanity metrics.
 - Large blobs avoided; targeted snapshots only
 - Simple scalar assertions use `assert_eq!` instead of snapshots
 - Unstable fields are redacted for consistency
+
+## Story 2.9: Create Developer Testing Documentation Guide
+
+As a developer onboarding to Lithos testing patterns,
+I want a consolidated testing documentation guide that references project rules and ADRs,
+So that I can apply the approved patterns consistently and avoid ambiguity.
+
+**Acceptance Criteria:**
+
+**Given** I need to understand Lithos testing standards
+**When** I open the developer testing guide
+**Then** it documents:
+- Hexagonal testing hierarchy (domain, integration, E2E)
+- Async test requirements and timeouts
+- Event-driven and CQRS testing patterns
+- Integration testing rules and isolation requirements
+
+**Given** I need to run tests locally or in CI
+**When** I follow the guide
+**Then** it provides:
+- `mise run` commands for unit, integration, coverage, and benchmarks
+- `nextest` usage and doc test requirements
+- Coverage expectations and tarpaulin usage
+
+**Given** I am authoring new tests
+**When** I follow the guidance
+**Then** the guide includes:
+- Naming and description conventions (clarity checks)
+- Deterministic fixture rules (fixed UUIDs/timestamps)
+- Snapshot testing rules and redaction guidance
+- Checklist for test isolation and anti-patterns

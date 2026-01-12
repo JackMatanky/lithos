@@ -45,6 +45,7 @@ development_status:
   2-6-establish-integration-testing-patterns-and-infrastructure: ready-for-dev
   2-7-create-benchmarking-infrastructure-and-performance-testing-patterns: ready-for-dev
   2-8-test-suite-review-for-efficiency-and-best-practices: ready-for-dev
+  2-9-create-developer-testing-documentation-guide: ready-for-dev
   epic-2-retrospective: optional
 
   epic-3: in-progress

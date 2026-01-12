@@ -5,7 +5,7 @@
 
 use std::{error::Error, fmt};
 
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -24,9 +24,19 @@ impl<T> EventRecord<T> {
     /// Create a new event record with the current timestamp.
     #[must_use]
     pub fn new(sequence: u64, payload: T) -> Self {
+        Self::with_timestamp(sequence, Utc::now(), payload)
+    }
+
+    /// Create a new event record with a provided timestamp.
+    #[must_use]
+    pub fn with_timestamp(
+        sequence: u64,
+        timestamp: DateTime<Utc>,
+        payload: T,
+    ) -> Self {
         Self {
             sequence,
-            timestamp: Utc::now(),
+            timestamp,
             payload,
         }
     }
@@ -120,6 +130,52 @@ impl SequenceAssertion {
     }
 }
 
+/// Timing assertion helpers for event timestamps.
+pub struct TimingAssertion;
+
+impl TimingAssertion {
+    /// Ensure timestamps never move backwards.
+    pub fn verify_non_decreasing<T>(
+        records: &[EventRecord<T>],
+    ) -> Result<(), EventTestError> {
+        let mut previous: Option<DateTime<Utc>> = None;
+        for record in records {
+            if let Some(previous_timestamp) = previous
+                && record.timestamp < previous_timestamp
+            {
+                return Err(EventTestError::new(format!(
+                    "Timestamp {current:?} must not be earlier than {previous_timestamp:?}",
+                    current = record.timestamp
+                )));
+            }
+            previous = Some(record.timestamp);
+        }
+        Ok(())
+    }
+
+    /// Ensure the total span between first and last events is within a limit.
+    pub fn verify_max_span<T>(
+        records: &[EventRecord<T>],
+        max_span: Duration,
+    ) -> Result<(), EventTestError> {
+        let Some(first) = records.first() else {
+            return Ok(());
+        };
+        let Some(last) = records.last() else {
+            return Ok(());
+        };
+
+        let span = last.timestamp - first.timestamp;
+        if span <= max_span {
+            Ok(())
+        } else {
+            Err(EventTestError::new(format!(
+                "Timestamp span {span:?} exceeds {max_span:?}"
+            )))
+        }
+    }
+}
+
 /// Given-When-Then test framework for CQRS event sourcing.
 pub struct EventTestFramework;
 
@@ -196,6 +252,13 @@ mod tests {
         id: u32,
     }
 
+    fn fixed_timestamp(offset_seconds: i64) -> DateTime<Utc> {
+        DateTime::<Utc>::from_timestamp(1_700_000_000 + offset_seconds, 0)
+            .unwrap_or_else(|| {
+                DateTime::<Utc>::from_timestamp(0, 0).unwrap_or_else(Utc::now)
+            })
+    }
+
     #[test]
     fn given_when_then_matches_expected_events() {
         let expected = vec![TestEvent {
@@ -248,14 +311,16 @@ mod tests {
     #[test]
     fn sequence_assertion_detects_out_of_order() {
         let records = vec![
-            EventRecord::new(
+            EventRecord::with_timestamp(
                 1,
+                fixed_timestamp(0),
                 TestEvent {
                     id: 1,
                 },
             ),
-            EventRecord::new(
+            EventRecord::with_timestamp(
                 1,
+                fixed_timestamp(1),
                 TestEvent {
                     id: 2,
                 },
@@ -269,14 +334,16 @@ mod tests {
     #[test]
     fn sequence_assertion_accepts_increasing_sequences() {
         let records = vec![
-            EventRecord::new(
+            EventRecord::with_timestamp(
                 1,
+                fixed_timestamp(0),
                 TestEvent {
                     id: 1,
                 },
             ),
-            EventRecord::new(
+            EventRecord::with_timestamp(
                 2,
+                fixed_timestamp(1),
                 TestEvent {
                     id: 2,
                 },
@@ -285,6 +352,53 @@ mod tests {
         let result = SequenceAssertion::verify_increasing(&records);
 
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn timing_assertion_rejects_backwards_timestamps() {
+        let records = vec![
+            EventRecord::with_timestamp(
+                1,
+                fixed_timestamp(10),
+                TestEvent {
+                    id: 1,
+                },
+            ),
+            EventRecord::with_timestamp(
+                2,
+                fixed_timestamp(5),
+                TestEvent {
+                    id: 2,
+                },
+            ),
+        ];
+        let result = TimingAssertion::verify_non_decreasing(&records);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn timing_assertion_enforces_max_span() {
+        let records = vec![
+            EventRecord::with_timestamp(
+                1,
+                fixed_timestamp(0),
+                TestEvent {
+                    id: 1,
+                },
+            ),
+            EventRecord::with_timestamp(
+                2,
+                fixed_timestamp(120),
+                TestEvent {
+                    id: 2,
+                },
+            ),
+        ];
+        let result =
+            TimingAssertion::verify_max_span(&records, Duration::seconds(30));
+
+        assert!(result.is_err());
     }
 
     #[test]
