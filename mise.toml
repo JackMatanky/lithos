@@ -44,17 +44,7 @@ CI = "${GITHUB_ACTIONS:-false}"
 #                             Tasks                             #
 # ------------------------------------------------------------- #
 
-[tasks.fmt]
-description = "Format all code"
-run = ".mise/tasks/fmt"
 
-[tasks.lint]
-description = "Run clippy linting"
-run = ".mise/tasks/lint"
-
-[tasks.dev-setup]
-description = "Bootstraps the development environment"
-run = ".mise/tasks/dev-setup"
 
 [tasks.quality]
 description = "Run all quality gates (fmt, lint, adr:validate)"
