@@ -44,11 +44,19 @@ so that tests remain efficient, meaningful, and avoid vanity metrics.
    - Any flaky tests are tagged and scheduled for refactor/removal
 
 5. **Given** snapshot testing is used
-   **When** I review snapshot tests
-   **Then** snapshots are small, named, and meaningful:
-   - Large blobs avoided; targeted snapshots only
-   - Simple scalar assertions use `assert_eq!` instead of snapshots
-   - Unstable fields are redacted for consistency
+    **When** I review snapshot tests
+    **Then** snapshots are small, named, and meaningful:
+    - Large blobs avoided; targeted snapshots only
+    - Simple scalar assertions use `assert_eq!` instead of snapshots
+    - Unstable fields are redacted for consistency
+
+6. **Given** test utilities were implemented
+    **When** I review their placement and usefulness
+    **Then** they are properly located in `crates/test-utils/` and provide genuine value without unnecessary complexity:
+    - All test suite code is in `crates/test-utils/`, not scattered elsewhere
+    - Each utility addresses a real testing pain point with measurable benefits
+    - No redundant abstractions that increase complexity without ROI
+    - Utilities are reusable across epics and maintain hexagonal boundaries
 
 ## Tasks / Subtasks
 
@@ -91,16 +99,34 @@ so that tests remain efficient, meaningful, and avoid vanity metrics.
   - [ ] Validate determinism compliance for each test and update inventory status
   - [ ] Validate snapshot compliance for each applicable test and update inventory status
 
-- [ ] Populate the Remediation Plan section in this story (AC: 1-5)
+- [ ] Populate the Remediation Plan section in this story (AC: 1-6)
   - [ ] List required renames with old/new names and rationale
   - [ ] List tests to split with new test targets and behaviors
   - [ ] List determinism fixes (fixed data, time control, redaction)
   - [ ] List tooling adjustments (doc test commands, nextest alignment)
+  - [ ] List utilities to remove or simplify if they add complexity without benefit
+  - [ ] List relocation tasks if test code is misplaced outside `crates/test-utils/`
 
-- [ ] Populate the Review Report section in this story (AC: 1-5)
+- [ ] Populate the Review Report section in this story (AC: 1-6)
   - [ ] Summarize checklist compliance by test category
   - [ ] Summarize highest-risk gaps and recommended fixes
   - [ ] Add remediation items to the sprint backlog if required
+
+- [ ] Verify test utilities placement and critique usefulness (AC: 6)
+  - [ ] Confirm all test suite code is located in `crates/test-utils/` and not elsewhere (e.g., not in domain crates)
+  - [ ] Review each utility module for genuine usefulness and complexity assessment:
+    - [ ] assertions.rs: Verify it provides meaningful assertions beyond standard library capabilities
+    - [ ] async_utils.rs: Ensure it simplifies async testing patterns without unnecessary overhead
+    - [ ] fixtures.rs: Confirm it delivers deterministic fixtures without over-abstraction
+    - [ ] mocks/event_bus.rs: Validate it provides real value for event bus testing beyond basic mocking
+    - [ ] cqrs/observability.rs & security.rs: Assess if they are essential for CQRS testing or add unwarranted complexity
+    - [ ] integration.rs: Check if it aids integration testing without duplicating tokio-test utilities
+    - [ ] temp.rs: Verify temp directory handling is superior to std::temp and justifies abstraction
+    - [ ] bench.rs: Ensure benchmarking utilities provide value over direct criterion usage
+    - [ ] events.rs: Confirm event testing utilities are specific to project needs and not generic
+    - [ ] cqrs.rs: Validate CQRS testing patterns are genuinely useful and not redundant
+  - [ ] Document any utilities that add complexity without sufficient testing benefits
+  - [ ] Document any placement issues and provide relocation recommendations
 
 ### Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [ ] Run `mise run fmt` to format all code according to project standards
@@ -113,7 +139,7 @@ so that tests remain efficient, meaningful, and avoid vanity metrics.
 - [ ] **MANDATORY:** Confirm all code passes clippy cognitive complexity limits (<25)
 - [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: review test suite for efficiency and best-practice compliance`
+- [ ] Commit with conventional commit message: `feat: review test suite for efficiency, best-practice compliance, and utilities placement/usefulness`
 
 ## Dev Notes
 

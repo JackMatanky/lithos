@@ -18,6 +18,10 @@ So that files are correctly interpreted regardless of their format.
 
 3. Given files have parsing errors When I handle them Then errors include specific line numbers and syntax error details
 
+4. Given security requirements When I validate parsing Then size limits are enforced and binary content is rejected before parsing
+
+5. Given async architecture When I implement parsing Then CPU-bound parsing is properly handled without blocking threads
+
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Domain Tests First (RED Phase - AC: All)
@@ -69,12 +73,35 @@ So that files are correctly interpreted regardless of their format.
 - [ ] Update Cargo.toml with any additional parsing dependencies if needed
 - [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
-### Task 7: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+### Task 8: Integrate Security Validations with Parsing (GREEN Phase - AC: 4)
+- [ ] Extend FileLoaderAdapter to enforce size limits before parsing
+- [ ] Implement binary content detection before parsing attempts
+- [ ] Add security validation results to parsing error context
+- [ ] Ensure security checks don't impact performance targets
+- [ ] **TDD REQUIREMENT:** Make all security integration tests pass
+
+### Task 9: Optimize Parsing for Async Architecture (GREEN Phase - AC: 5)
+- [ ] Implement CPU-bound parsing without blocking async threads
+- [ ] Add configurable parsing timeouts for large files
+- [ ] Optimize memory usage for parsing operations
+- [ ] Ensure parsing integrates properly with async file loading
+- [ ] **TDD REQUIREMENT:** Make all async parsing tests pass
+
+### Task 10: Comprehensive Security and Performance Testing (RED-GREEN-REFACTOR - AC: All)
+- [ ] Achieve 90%+ test coverage for security validations and async parsing
+- [ ] Create test fixtures for security edge cases in parsing (large files, binary content)
+- [ ] Implement property-based testing for parsing security robustness
+- [ ] Add performance benchmarks for secure parsing operations (<100μs target)
+- [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all security tests pass
+
+### Task 11: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
 - [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
 - [ ] **TDD VALIDATION:** Verify property-based tests catch edge cases appropriately
 - [ ] **TDD VALIDATION:** Ensure performance benchmarks meet <100μs targets
 - [ ] **TDD VALIDATION:** Confirm comprehensive error handling covers all parsing failure modes
 - [ ] **TDD VALIDATION:** Verify format detection accuracy for all supported formats and edge cases
+- [ ] **TDD VALIDATION:** Confirm security validations prevent parsing of dangerous content
+- [ ] **TDD VALIDATION:** Verify async parsing is thread-safe and performant
 - [ ] Run `mise run fmt` to format all code according to project standards
 - [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
 - [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
@@ -86,7 +113,7 @@ So that files are correctly interpreted regardless of their format.
 - [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [ ] **MANDATORY:** Verify hexagonal architecture boundaries maintained (parsing in adapters)
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: implement format detection and parsing with TDD validation`
+- [ ] Commit with conventional commit message: `feat: implement format detection and parsing with security validations and async optimization`
 
 ## Dev Notes
 

@@ -18,6 +18,10 @@ So that obviously malformed files are caught early with helpful error messages.
 
 3. Given basic validation passes When I proceed with application-specific validation Then the data is ready for domain-specific processing
 
+4. Given security requirements When I validate files Then size limits and content type checks prevent DoS and injection attacks
+
+5. Given async architecture When I validate Then validation integrates properly with async loading pipeline
+
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Domain Tests First (RED Phase - AC: All)
