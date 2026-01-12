@@ -35,10 +35,10 @@ lockfile = true
 # ------------------------------------------------------------- #
 [env]
 # Test configuration for ADR 0010 test utilities integration
-TEST_THREADS = "{{vars.test_threads}}"
+TEST_THREADS = "4"
 CARGO_TEST_ARGS = "--lib --bins"
 TEST_OUTPUT_DIR = "{{config_root}}/test-output"
-CI = "${GITHUB_ACTIONS:-false}}"
+CI = "${GITHUB_ACTIONS:-false}"
 
 # Project paths (available for tasks)
 PROJECT_ROOT = "{{config_root}}"
@@ -64,11 +64,6 @@ test_utils_crate = "crates/test-utils"
 docs_dir = "docs"
 adr_dir = "docs/adr"
 scripts_dir = "scripts"
-
-# Tool configurations
-rust_toolchain = "nightly-2026-01-11"
-test_threads = "4"
-cargo_profile = "dev"
 
 # ------------------------------------------------------------- #
 #                             Tasks                             #
