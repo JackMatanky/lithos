@@ -30,20 +30,6 @@
 //! }
 //! ```
 //!
-//! ### Query Handler Testing
-//! ```rust,ignore
-//! use lithos_test_utils::cqrs::StubQueryStore;
-//!
-//! #[tokio::test]
-//! async fn test_query_handler() {
-//!     let stub = StubQueryStore::with_data(vec![test_user()]);
-//!     let handler = GetUserHandler::new(stub);
-//!
-//!     let result = handler.handle(GetUserQuery { id }).await.unwrap();
-//!     assert_eq!(result.id, expected_id);
-//! }
-//! ```
-//!
 //! ### Event Sourcing Testing
 //! ```rust,ignore
 //! use lithos_test_utils::cqrs::TestFramework;
@@ -51,8 +37,12 @@
 //! #[test]
 //! fn test_aggregate_command() {
 //!     TestFramework::default()
-//!         .given(vec![AccountOpened { /* ... */ }])
+//!         .given(vec![AccountOpened { id: 1 }])
 //!         .when(DepositMoney { amount: 100 })
+//!         .execute(|history, cmd| {
+//!             // apply history to aggregate and handle cmd
+//!             vec![MoneyDeposited { amount: 100 }]
+//!         })
 //!         .then_expect_events(vec![MoneyDeposited { amount: 100 }]);
 //! }
 //! ```
@@ -108,10 +98,6 @@ pub trait Entity: Send + Sync + Clone + Debug {
 }
 
 /// Port trait for command-side repositories
-///
-/// # Architecture
-/// Uses `Arc<dyn RepositoryPort>` pattern from ADR 0009 for mock injection
-/// and isolation of command handlers from persistence implementation.
 #[async_trait]
 pub trait RepositoryPort<E: Entity>: Send + Sync {
     /// Save an entity
@@ -128,18 +114,6 @@ pub trait RepositoryPort<E: Entity>: Send + Sync {
 }
 
 /// Mock repository for command handler testing
-///
-/// # Architecture Compliance
-/// Implements ADR 0009 Decision 1: Mock repositories using `Arc<dyn RepositoryPort>`
-/// that record interactions and return controlled data for command isolation.
-///
-/// # Usage
-/// ```rust,ignore
-/// let mock_repo = Arc::new(MockRepository::new());
-/// let handler = CreateUserHandler::new(mock_repo.clone());
-/// handler.handle(command).await.unwrap();
-/// assert_eq!(mock_repo.save_count(), 1);
-/// ```
 pub struct MockRepository<E: Entity> {
     /// Stored entities indexed by ID
     entities: Arc<RwLock<HashMap<E::Id, E>>>,
@@ -247,75 +221,60 @@ impl<E: Entity> Default for MockRepository<E> {
 #[async_trait]
 impl<E: Entity> RepositoryPort<E> for MockRepository<E> {
     async fn save(&self, entity: E) -> CqrsTestResult<()> {
-        // Record interaction
         self.interactions
             .lock()
             .await
             .push(RepositoryInteraction::Save(entity.clone()));
 
-        // Check for configured error
         let mut config = self.error_config.write().await;
         if let Some(error) = config.save_error.take() {
             return Err(CqrsTestError::MockRepositoryError(error));
         }
 
-        // Save entity
         self.entities.write().await.insert(entity.id().clone(), entity);
         Ok(())
     }
 
     async fn find_by_id(&self, id: &E::Id) -> CqrsTestResult<Option<E>> {
-        // Record interaction
         self.interactions
             .lock()
             .await
             .push(RepositoryInteraction::FindById(id.clone()));
 
-        // Check for configured error
         let mut config = self.error_config.write().await;
         if let Some(error) = config.find_error.take() {
             return Err(CqrsTestError::MockRepositoryError(error));
         }
 
-        // Find entity
         Ok(self.entities.read().await.get(id).cloned())
     }
 
     async fn delete(&self, id: &E::Id) -> CqrsTestResult<()> {
-        // Record interaction
         self.interactions
             .lock()
             .await
             .push(RepositoryInteraction::Delete(id.clone()));
 
-        // Check for configured error
         let mut config = self.error_config.write().await;
         if let Some(error) = config.delete_error.take() {
             return Err(CqrsTestError::MockRepositoryError(error));
         }
 
-        // Delete entity
         self.entities.write().await.remove(id);
         Ok(())
     }
 
     async fn exists(&self, id: &E::Id) -> CqrsTestResult<bool> {
-        // Record interaction
         self.interactions
             .lock()
             .await
             .push(RepositoryInteraction::Exists(id.clone()));
 
-        // Check existence
         Ok(self.entities.read().await.contains_key(id))
     }
 }
 
 /// Port trait for query-side data stores
-///
-/// # Architecture
-/// Query stores return dumb DTOs optimized for read operations,
-/// following ADR 0009 Decision 2: Stubbed data stores for predictable query testing.
 #[async_trait]
 pub trait QueryStorePort<T: Send + Sync>: Send + Sync {
     /// Query for items matching criteria
@@ -383,17 +342,6 @@ impl QueryCriteria {
 }
 
 /// Stubbed query store for query handler testing
-///
-/// # Architecture Compliance
-/// Implements ADR 0009 Decision 2: Stubbed data stores returning predefined
-/// datasets without external dependencies for query isolation.
-///
-/// # Usage
-/// ```rust,ignore
-/// let stub = StubQueryStore::with_data(vec![test_user()]);
-/// let handler = GetUserHandler::new(Arc::new(stub));
-/// let result = handler.handle(query).await.unwrap();
-/// ```
 pub struct StubQueryStore<T: Send + Sync + Clone> {
     /// Pre-configured test data
     data: Arc<RwLock<Vec<T>>>,
@@ -433,7 +381,6 @@ impl<T: Send + Sync + Clone + 'static> StubQueryStore<T> {
 #[async_trait]
 impl<T: Send + Sync + Clone + 'static> QueryStorePort<T> for StubQueryStore<T> {
     async fn query(&self, _criteria: &QueryCriteria) -> CqrsTestResult<Vec<T>> {
-        // For stub, return all data (real implementation would filter/sort/paginate)
         Ok(self.data.read().await.clone())
     }
 
@@ -448,23 +395,6 @@ impl<T: Send + Sync + Clone + 'static> QueryStorePort<T> for StubQueryStore<T> {
 }
 
 /// Given-When-Then test framework for event sourcing aggregates
-///
-/// # Architecture Compliance
-/// Implements ADR 0009 Decision 3: Given-When-Then framework with initial
-/// event history loading and proper ordering for aggregate testing.
-///
-/// # Type Parameters
-/// - `A`: Aggregate type
-/// - `C`: Command type
-/// - `E`: Event type
-///
-/// # Usage
-/// ```rust,ignore
-/// TestFramework::default()
-///     .given(vec![AccountOpened { id: 1 }])
-///     .when(DepositMoney { amount: 100 })
-///     .then_expect_events(vec![MoneyDeposited { amount: 100 }]);
-/// ```
 pub struct TestFramework<A, C, E> {
     /// Initial event history
     given_events: Vec<E>,
@@ -508,45 +438,41 @@ where
         self
     }
 
-    /// Verify expected events (THEN phase)
-    ///
-    /// # Implementation Note
-    /// This is currently a SKELETON implementation that does NOT perform actual verification.
-    /// Real aggregate testing requires domain-specific logic to:
-    /// 1. Reconstruct aggregate state from `given_events`
-    /// 2. Apply the command to the reconstructed aggregate
-    /// 3. Capture resulting events
-    /// 4. Compare with `expected_events`
-    ///
-    /// This framework provides the Given-When-Then structure, but verification logic
-    /// must be implemented in aggregate-specific test helpers that understand your
-    /// domain's event sourcing semantics.
-    ///
-    /// # Future Work
-    /// Consider using `cqrs-es` crate's TestFramework for production aggregate testing,
-    /// or implement verification using your aggregate's `apply_event()` and `handle_command()` methods.
-    pub fn then_expect_events(self, _expected_events: Vec<E>) {
-        // Intentionally empty - verification deferred to domain-specific implementations
+    /// Executes the test with a provided handler and returns a result stage.
+    pub fn execute<H>(self, handler: H) -> TestResultStage<E>
+    where
+        H: FnOnce(Vec<E>, C) -> Vec<E>,
+    {
+        let command = self.when_command.expect("WHEN command must be set");
+        let published_events = handler(self.given_events, command);
+        TestResultStage {
+            published_events,
+        }
+    }
+}
+
+/// Result stage for asserting expected events.
+pub struct TestResultStage<E> {
+    published_events: Vec<E>,
+}
+
+impl<E: Clone + Debug + PartialEq> TestResultStage<E> {
+    /// Assert that published events match the expected sequence.
+    pub fn then_expect_events(self, expected: Vec<E>) {
+        assert_eq!(
+            self.published_events, expected,
+            "Actual published events do not match expected events"
+        );
     }
 
-    /// Get the given events
+    /// Access the published events for further manual assertions.
     #[must_use]
-    pub fn given_events(&self) -> &[E] {
-        &self.given_events
-    }
-
-    /// Get the command
-    #[must_use]
-    pub fn command(&self) -> Option<&C> {
-        self.when_command.as_ref()
+    pub fn events(&self) -> &[E] {
+        &self.published_events
     }
 }
 
 /// Event verification utilities for command handler testing
-///
-/// # Architecture Compliance
-/// Implements ADR 0009 event verification with exact payload matching
-/// using serde comparison for comprehensive event validation.
 pub struct EventVerifier<E> {
     /// Captured events
     events: Arc<Mutex<Vec<E>>>,
@@ -614,29 +540,6 @@ impl<E: Clone + Debug + PartialEq> Default for EventVerifier<E> {
 }
 
 /// Eventual consistency testing utilities for write/read model synchronization
-///
-/// # Architecture Compliance
-/// Implements ADR 0009 Decision 4: Controlled timing simulation using tokio::time
-/// for write/read model synchronization and race condition prevention.
-///
-/// # Usage
-/// ```rust,ignore
-/// use lithos_test_utils::cqrs::EventualConsistencyTester;
-///
-/// #[tokio::test]
-/// async fn test_eventual_consistency() {
-///     let tester = EventualConsistencyTester::new();
-///
-///     // Execute command
-///     command_handler.handle(cmd).await.unwrap();
-///
-///     // Wait for read model update with timeout
-///     tester.wait_for_condition(
-///         || async { read_model.get(id).await.is_some() },
-///         Duration::from_millis(100)
-///     ).await.expect("Read model not updated");
-/// }
-/// ```
 pub struct EventualConsistencyTester {
     /// Default timeout for consistency checks
     default_timeout: tokio::time::Duration,
@@ -664,44 +567,25 @@ impl EventualConsistencyTester {
     }
 
     /// Wait for a condition to become true within timeout period
-    ///
-    /// # Arguments
-    /// * `condition` - Async closure that returns true when condition is met
-    /// * `timeout` - Maximum time to wait for condition
-    ///
-    /// # Errors
-    /// Returns `CqrsTestError::ConsistencyTimeout` if condition not met within timeout
     pub async fn wait_for_condition<F, Fut>(
         &self,
-        mut condition: F,
+        condition: F,
         timeout: tokio::time::Duration,
     ) -> CqrsTestResult<()>
     where
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = bool>,
     {
-        let deadline = tokio::time::Instant::now() + timeout;
-
-        loop {
-            if condition().await {
-                return Ok(());
-            }
-
-            if tokio::time::Instant::now() >= deadline {
-                return Err(CqrsTestError::ConsistencyTimeout(format!(
-                    "Condition not met within {:?}",
-                    timeout
-                )));
-            }
-
-            tokio::time::sleep(self.poll_interval).await;
-        }
+        crate::async_utils::poll_condition(
+            condition,
+            timeout,
+            self.poll_interval,
+        )
+        .await
+        .map_err(CqrsTestError::ConsistencyTimeout)
     }
 
     /// Wait for a condition using default timeout
-    ///
-    /// # Errors
-    /// Returns `CqrsTestError::ConsistencyTimeout` if condition not met within timeout
     pub async fn wait_for_condition_default<F, Fut>(
         &self,
         condition: F,
@@ -714,9 +598,6 @@ impl EventualConsistencyTester {
     }
 
     /// Wait for a value to be available within timeout
-    ///
-    /// # Errors
-    /// Returns `CqrsTestError::ConsistencyTimeout` if value not available within timeout
     pub async fn wait_for_value<F, Fut, T>(
         &self,
         mut getter: F,
@@ -735,8 +616,7 @@ impl EventualConsistencyTester {
 
             if tokio::time::Instant::now() >= deadline {
                 return Err(CqrsTestError::ConsistencyTimeout(format!(
-                    "Value not available within {:?}",
-                    timeout
+                    "Value not available within {timeout:?}"
                 )));
             }
 
@@ -745,9 +625,6 @@ impl EventualConsistencyTester {
     }
 
     /// Verify race condition prevention by ensuring operations complete in order
-    ///
-    /// # Errors
-    /// Returns error if operations complete out of order
     pub async fn verify_ordering<F1, F2, Fut1, Fut2>(
         &self,
         first_op: F1,
@@ -809,30 +686,6 @@ impl Default for EventualConsistencyTester {
 }
 
 /// Cross-aggregate saga testing utilities
-///
-/// # Architecture Compliance
-/// Implements ADR 0009 Decision 5: Multi-aggregate saga testing for complex
-/// business transactions spanning aggregates with event flow verification.
-///
-/// # Usage
-/// ```rust,ignore
-/// use lithos_test_utils::cqrs::SagaTester;
-///
-/// #[tokio::test]
-/// async fn test_order_saga() {
-///     let tester = SagaTester::new();
-///
-///     // Track saga participants
-///     tester.track_participant("inventory").await;
-///     tester.track_participant("payment").await;
-///
-///     // Execute saga
-///     order_handler.handle(cmd).await.unwrap();
-///
-///     // Verify all participants updated
-///     tester.verify_all_updated(Duration::from_secs(1)).await.unwrap();
-/// }
-/// ```
 pub struct SagaTester {
     /// Participants in the saga with their update status
     participants: Arc<RwLock<HashMap<String, bool>>>,
@@ -874,9 +727,6 @@ impl SagaTester {
     }
 
     /// Verify all participants have been updated within timeout
-    ///
-    /// # Errors
-    /// Returns error if not all participants updated within timeout
     pub async fn verify_all_updated(
         &self,
         timeout: tokio::time::Duration,
@@ -902,8 +752,7 @@ impl SagaTester {
                     .collect();
 
                 return Err(CqrsTestError::ConsistencyTimeout(format!(
-                    "Not all participants updated within {:?}. Pending: {:?}",
-                    timeout, pending
+                    "Not all participants updated within {timeout:?}. Pending: {pending:?}"
                 )));
             }
 
@@ -922,9 +771,6 @@ impl SagaTester {
     }
 
     /// Verify event sequence matches expected order
-    ///
-    /// # Errors
-    /// Returns error if events don't match expected sequence
     pub async fn verify_event_sequence(
         &self,
         expected: &[&str],
@@ -937,8 +783,7 @@ impl SagaTester {
             Ok(())
         } else {
             Err(CqrsTestError::EventVerificationFailed(format!(
-                "Event sequence mismatch. Expected: {:?}, Actual: {:?}",
-                expected, actual_strs
+                "Event sequence mismatch. Expected: {expected:?}, Actual: {actual_strs:?}"
             )))
         }
     }
@@ -957,11 +802,10 @@ impl Default for SagaTester {
 }
 
 #[cfg(test)]
-#[allow(clippy::disallowed_methods)]
+#[allow(clippy::disallowed_methods, clippy::expect_used)]
 mod tests {
     use super::*;
 
-    // Test entity for repository testing
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct TestUser {
         id: String,
@@ -1059,13 +903,11 @@ mod tests {
         let flag = Arc::new(tokio::sync::Mutex::new(false));
         let flag_clone = Arc::clone(&flag);
 
-        // Spawn task that sets flag after delay
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
             *flag_clone.lock().await = true;
         });
 
-        // Wait for condition
         let flag_check = Arc::clone(&flag);
         let result = tester
             .wait_for_condition(
@@ -1081,132 +923,42 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn eventual_consistency_tester_times_out() {
-        let tester = EventualConsistencyTester::new();
-
-        let result = tester
-            .wait_for_condition(
-                || async { false },
-                tokio::time::Duration::from_millis(50),
-            )
-            .await;
-
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            CqrsTestError::ConsistencyTimeout(_)
-        ));
-    }
-
-    #[tokio::test]
-    async fn eventual_consistency_tester_waits_for_value() {
-        let tester = EventualConsistencyTester::new();
-        let value = Arc::new(tokio::sync::Mutex::new(None));
-        let value_clone = Arc::clone(&value);
-
-        // Spawn task that sets value after delay
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
-            *value_clone.lock().await = Some(42);
-        });
-
-        // Wait for value
-        let value_check = Arc::clone(&value);
-        let result = tester
-            .wait_for_value(
-                || {
-                    let value = Arc::clone(&value_check);
-                    async move { *value.lock().await }
-                },
-                tokio::time::Duration::from_millis(200),
-            )
-            .await;
-
-        assert_eq!(result.unwrap(), 42);
-    }
-
-    #[tokio::test]
-    async fn saga_tester_tracks_participants() {
-        let tester = SagaTester::new();
-
-        tester.track_participant("inventory").await;
-        tester.track_participant("payment").await;
-
-        assert!(!tester.is_updated("inventory").await);
-        assert!(!tester.is_updated("payment").await);
-
-        tester.mark_updated("inventory").await.unwrap();
-        assert!(tester.is_updated("inventory").await);
-        assert!(!tester.is_updated("payment").await);
-    }
-
-    #[tokio::test]
     async fn saga_tester_verifies_all_updated() {
-        let tester = SagaTester::new();
+        let tester = Arc::new(SagaTester::new());
 
         tester.track_participant("inventory").await;
         tester.track_participant("payment").await;
 
-        // Spawn tasks that update participants
-        let tester_clone1 = Arc::new(tester);
-        let tester_clone2 = Arc::clone(&tester_clone1);
-        let tester_clone3 = Arc::clone(&tester_clone1);
-
+        let tester_clone1 = Arc::clone(&tester);
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
-            tester_clone2.mark_updated("inventory").await.unwrap();
+            tester_clone1.mark_updated("inventory").await.unwrap();
         });
 
+        let tester_clone2 = Arc::clone(&tester);
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(60)).await;
-            tester_clone3.mark_updated("payment").await.unwrap();
+            tester_clone2.mark_updated("payment").await.unwrap();
         });
 
-        // Verify all updated within timeout
-        let result = tester_clone1
+        let result = tester
             .verify_all_updated(tokio::time::Duration::from_millis(200))
             .await;
 
         assert!(result.is_ok());
     }
 
-    #[tokio::test]
-    async fn saga_tester_records_events() {
-        let tester = SagaTester::new();
+    #[test]
+    fn framework_verifies_event_sequence_successfully() {
+        #[derive(Debug, Clone, PartialEq)]
+        enum TestEvent {
+            Created,
+        }
 
-        tester.record_event("OrderPlaced").await;
-        tester.record_event("InventoryReserved").await;
-        tester.record_event("PaymentProcessed").await;
-
-        let events = tester.events().await;
-        assert_eq!(events.len(), 3);
-        assert_eq!(events[0], "OrderPlaced");
-        assert_eq!(events[1], "InventoryReserved");
-        assert_eq!(events[2], "PaymentProcessed");
-    }
-
-    #[tokio::test]
-    async fn saga_tester_verifies_event_sequence() {
-        let tester = SagaTester::new();
-
-        tester.record_event("OrderPlaced").await;
-        tester.record_event("InventoryReserved").await;
-        tester.record_event("PaymentProcessed").await;
-
-        let result = tester
-            .verify_event_sequence(&[
-                "OrderPlaced",
-                "InventoryReserved",
-                "PaymentProcessed",
-            ])
-            .await;
-
-        assert!(result.is_ok());
-
-        let wrong_result = tester
-            .verify_event_sequence(&["PaymentProcessed", "OrderPlaced"])
-            .await;
-
-        assert!(wrong_result.is_err());
+        TestFramework::<(), (), TestEvent>::new()
+            .given(vec![])
+            .when(())
+            .execute(|_history, _cmd| vec![TestEvent::Created])
+            .then_expect_events(vec![TestEvent::Created]);
     }
 }

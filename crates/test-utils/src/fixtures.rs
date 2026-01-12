@@ -1,64 +1,77 @@
 //! Test fixtures and factory framework for generating test data.
 //!
-//! This module provides standardized test fixtures using rstest, builder patterns for
+//! This module provides standardized test fixtures using rstest, type-safe builder patterns for
 //! complex object construction, fake data generation, and serialization helpers.
 //!
 //! # Features
 //!
-//! - **rstest Integration**: Parameterized testing with fixture injection
-//! - **Builder Patterns**: Fluent APIs for constructing complex domain objects
+//! - **Type-safe Builders**: Macro-based builders for robust object construction
 //! - **Fake Data Generation**: Realistic test data with configurable scenarios
 //! - **Serialization Helpers**: JSON/binary persistence testing utilities
 
-use std::{collections::HashMap, fmt, marker::PhantomData};
+use std::{collections::HashMap, fmt};
 
 use fake::{Fake, Faker};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 
-/// Generic builder pattern for constructing test objects.
+/// Macro to generate a type-safe test builder for a struct.
 ///
-/// Provides a fluent API for building complex objects with optional fields
-/// and validation. Implements the builder pattern with method chaining.
+/// This replaces the brittle generic Builder with a robust, type-safe implementation
+/// that provides fluent API and sensible defaults.
+///
+/// # Example
+///
+/// ```rust
+/// use lithos_test_utils::test_builder;
+///
+/// struct User { id: u32, name: String }
+///
+/// test_builder!(UserBuilder, User, {
+///     id: u32 = 1,
+///     name: String = "Anonymous".to_string(),
+/// });
+///
+/// let user = UserBuilder::new().id(42).build();
 /// ```
-pub struct Builder<T, F> {
-    constructor: F,
-    defaults: Vec<Option<Box<dyn std::any::Any>>>,
-    _phantom: PhantomData<T>,
-}
-
-impl<T, F> Builder<T, F>
-where
-    F: Fn(&[Box<dyn std::any::Any>]) -> T,
-{
-    /// Creates a new builder with the given constructor function.
-    pub fn new(constructor: F) -> Self {
-        Self {
-            constructor,
-            defaults: Vec::new(),
-            _phantom: PhantomData,
+#[macro_export]
+macro_rules! test_builder {
+    ($name:ident, $target:ident, { $($field:ident: $type:ty = $default:expr),* $(,)? }) => {
+        #[derive(Debug, Clone)]
+        #[allow(clippy::missing_docs_in_private_items)]
+        pub struct $name {
+            $($field: $type),*
         }
-    }
-
-    /// Adds a default value for the next parameter.
-    pub fn with_default<A: 'static>(mut self, default: A) -> Self {
-        self.defaults.push(Some(Box::new(default)));
-        self
-    }
-
-    /// Overrides the value for the current parameter position.
-    pub fn with<A: 'static>(mut self, value: A) -> Self {
-        let idx = self.defaults.len() - 1;
-        self.defaults[idx] = Some(Box::new(value));
-        self
-    }
-
-    /// Builds the object using the configured values.
-    #[allow(clippy::disallowed_methods)]
-    pub fn build(self) -> T {
-        let params: Vec<Box<dyn std::any::Any>> =
-            self.defaults.into_iter().map(|opt| opt.unwrap()).collect();
-        (self.constructor)(&params)
+        impl Default for $name {
+            fn default() -> Self {
+                Self {
+                    $($field: $default),*
+                }
+            }
+        }
+        impl $name {
+            /// Creates a new builder with default values.
+            #[must_use]
+            pub fn new() -> Self {
+                Self::default()
+            }
+            $(
+                /// Sets the value for the field.
+                #[must_use]
+                pub fn $field(mut self, value: $type) -> Self {
+                    self.$field = value;
+                    self
+                }
+            )*
+            /// Builds the target object.
+            #[must_use]
+            #[allow(private_interfaces)]
+            pub fn build(self) -> $target {
+                $target {
+                    $($field: self.$field),*
+                }
+            }
+        }
     }
 }
 
@@ -66,16 +79,6 @@ where
 ///
 /// Provides configurable fake data generation using the `fake` crate,
 /// with support for different scenarios and locales.
-///
-/// # Example
-///
-/// ```rust
-/// use lithos_test_utils::fixtures::{FakeData, Scenario};
-///
-/// let fake = FakeData::new(Scenario::Realistic);
-/// let name = fake.name();
-/// let email = fake.email();
-/// ```
 #[derive(Debug, Clone, Copy)]
 pub enum Scenario {
     /// Realistic data that looks like production data
@@ -94,6 +97,7 @@ pub struct FakeData {
 
 impl FakeData {
     /// Creates a new fake data generator with the specified scenario.
+    #[must_use]
     pub fn new(scenario: Scenario) -> Self {
         Self {
             scenario,
@@ -102,12 +106,14 @@ impl FakeData {
     }
 
     /// Sets the locale for fake data generation.
+    #[must_use]
     pub fn with_locale(mut self, locale: &str) -> Self {
         self.locale = Some(locale.to_string());
         self
     }
 
     /// Generates a fake name.
+    #[must_use]
     pub fn name(&self) -> String {
         match self.scenario {
             Scenario::Realistic => Faker.fake::<String>(),
@@ -117,6 +123,7 @@ impl FakeData {
     }
 
     /// Generates a fake email address.
+    #[must_use]
     pub fn email(&self) -> String {
         match self.scenario {
             Scenario::Realistic => Faker.fake::<String>(),
@@ -126,6 +133,7 @@ impl FakeData {
     }
 
     /// Generates a fake UUID.
+    #[must_use]
     pub fn uuid(&self) -> String {
         match self.scenario {
             Scenario::Realistic => Faker.fake::<String>(),
@@ -137,9 +145,13 @@ impl FakeData {
     }
 
     /// Generates a fake integer within a range.
+    #[must_use]
     pub fn integer(&self, min: i32, max: i32) -> i32 {
         match self.scenario {
-            Scenario::Realistic => rand::thread_rng().gen_range(min..=max),
+            Scenario::Realistic => {
+                let mut rng = rand::thread_rng();
+                rng.gen_range(min..=max)
+            }
             Scenario::EdgeCase => min, // Minimum value
             Scenario::Invalid => min - 1, // Below minimum
         }
@@ -147,31 +159,10 @@ impl FakeData {
 }
 
 /// Serialization helpers for JSON/binary persistence testing.
-///
-/// Provides utilities for testing serialization and deserialization
-/// of domain objects in API and persistence contexts.
-///
-/// # Example
-///
-/// ```rust
-/// use lithos_test_utils::fixtures::SerializationHelper;
-/// use serde::{Serialize, Deserialize};
-///
-/// #[derive(Serialize, Deserialize)]
-/// struct TestData { value: String }
-///
-/// let data = TestData { value: "test".to_string() };
-/// let json = SerializationHelper::to_json(&data).unwrap();
-/// let deserialized: TestData = SerializationHelper::from_json(&json).unwrap();
-/// ```
 pub struct SerializationHelper;
 
 impl SerializationHelper {
     /// Serializes an object to JSON string.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if serialization fails.
     pub fn to_json<T: Serialize>(
         value: &T,
     ) -> Result<String, serde_json::Error> {
@@ -179,10 +170,6 @@ impl SerializationHelper {
     }
 
     /// Deserializes an object from JSON string.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if deserialization fails.
     pub fn from_json<T: for<'de> Deserialize<'de>>(
         json: &str,
     ) -> Result<T, serde_json::Error> {
@@ -190,10 +177,6 @@ impl SerializationHelper {
     }
 
     /// Serializes an object to binary format using MessagePack.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if serialization fails.
     pub fn to_binary<T: Serialize>(
         value: &T,
     ) -> Result<Vec<u8>, rmp_serde::encode::Error> {
@@ -201,10 +184,6 @@ impl SerializationHelper {
     }
 
     /// Deserializes an object from binary format using MessagePack.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if deserialization fails.
     pub fn from_binary<T: for<'de> Deserialize<'de>>(
         data: &[u8],
     ) -> Result<T, rmp_serde::decode::Error> {
@@ -212,11 +191,6 @@ impl SerializationHelper {
     }
 
     /// Validates that an object can be round-tripped through serialization.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if serialization or deserialization fails, or if the
-    /// round-tripped object doesn't match the original.
     pub fn validate_round_trip<
         T: Serialize + for<'de> Deserialize<'de> + PartialEq + fmt::Debug,
     >(
@@ -224,25 +198,23 @@ impl SerializationHelper {
     ) -> Result<(), String> {
         // JSON round-trip
         let json = Self::to_json(original)
-            .map_err(|e| format!("JSON serialization failed: {}", e))?;
+            .map_err(|e| format!("JSON serialization failed: {e}"))?;
         let from_json: T = Self::from_json(&json)
-            .map_err(|e| format!("JSON deserialization failed: {}", e))?;
+            .map_err(|e| format!("JSON deserialization failed: {e}"))?;
         if &from_json != original {
             return Err(format!(
-                "JSON round-trip failed: expected {:?}, got {:?}",
-                original, from_json
+                "JSON round-trip failed: expected {original:?}, got {from_json:?}"
             ));
         }
 
         // Binary round-trip
         let binary = Self::to_binary(original)
-            .map_err(|e| format!("Binary serialization failed: {}", e))?;
+            .map_err(|e| format!("Binary serialization failed: {e}"))?;
         let from_binary: T = Self::from_binary(&binary)
-            .map_err(|e| format!("Binary deserialization failed: {}", e))?;
+            .map_err(|e| format!("Binary deserialization failed: {e}"))?;
         if &from_binary != original {
             return Err(format!(
-                "Binary round-trip failed: expected {:?}, got {:?}",
-                original, from_binary
+                "Binary round-trip failed: expected {original:?}, got {from_binary:?}"
             ));
         }
 
@@ -251,19 +223,6 @@ impl SerializationHelper {
 }
 
 /// Fixture composition utilities for combining test data.
-///
-/// Provides combinators for creating complex test scenarios by combining
-/// multiple fixtures and applying transformations.
-///
-/// # Example
-///
-/// ```rust
-/// use lithos_test_utils::fixtures::{Fixture, combine};
-///
-/// let fixture1 = Fixture::new("user").with("name", "Alice");
-/// let fixture2 = Fixture::new("profile").with("age", 30);
-/// let combined = combine(vec![fixture1, fixture2]);
-/// ```
 #[derive(Debug, Clone)]
 pub struct Fixture {
     #[allow(dead_code)]
@@ -273,6 +232,7 @@ pub struct Fixture {
 
 impl Fixture {
     /// Creates a new fixture with the given name.
+    #[must_use]
     pub fn new(name: &str) -> Self {
         Self {
             name: name.to_string(),
@@ -281,6 +241,7 @@ impl Fixture {
     }
 
     /// Adds a key-value pair to the fixture.
+    #[must_use]
     pub fn with<T: Serialize>(mut self, key: &str, value: T) -> Self {
         self.data.insert(
             key.to_string(),
@@ -290,11 +251,13 @@ impl Fixture {
     }
 
     /// Gets a value from the fixture.
+    #[must_use]
     pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
         self.data.get(key)
     }
 
     /// Merges another fixture into this one.
+    #[must_use]
     pub fn merge(mut self, other: Fixture) -> Self {
         for (key, value) in other.data {
             self.data.insert(key, value);
@@ -304,6 +267,7 @@ impl Fixture {
 }
 
 /// Combines multiple fixtures into a single fixture.
+#[must_use]
 pub fn combine(fixtures: Vec<Fixture>) -> Fixture {
     let mut combined = Fixture::new("combined");
     for fixture in fixtures {
@@ -313,21 +277,7 @@ pub fn combine(fixtures: Vec<Fixture>) -> Fixture {
 }
 
 /// rstest fixture functions for common test data.
-///
-/// These functions can be used with rstest's #[fixture] attribute
-/// to provide test data injection.
-///
-/// # Example
-///
-/// ```rust
-/// use lithos_test_utils::fixtures::{test_user, test_config};
-/// use rstest::rstest;
-///
-/// #[rstest]
-/// fn test_something(#[fixture] test_user: TestUser, #[fixture] test_config: Config) {
-///     // Test code here
-/// }
-/// ```
+#[must_use]
 pub fn test_user() -> HashMap<String, String> {
     let mut user = HashMap::new();
     user.insert("name".to_string(), FakeData::new(Scenario::Realistic).name());
@@ -338,6 +288,7 @@ pub fn test_user() -> HashMap<String, String> {
     user
 }
 
+#[must_use]
 pub fn test_config() -> HashMap<String, String> {
     let mut config = HashMap::new();
     config.insert("database_url".to_string(), "sqlite::memory:".to_string());
@@ -348,7 +299,6 @@ pub fn test_config() -> HashMap<String, String> {
 #[cfg(test)]
 #[allow(clippy::disallowed_methods)]
 mod tests {
-
     use super::*;
 
     #[derive(Debug, Clone, PartialEq)]
@@ -358,35 +308,18 @@ mod tests {
         email: Option<String>,
     }
 
-    impl TestUser {
-        fn builder() -> Builder<Self, impl Fn(&[Box<dyn std::any::Any>]) -> Self>
-        {
-            Builder::new(|args: &[Box<dyn std::any::Any>]| {
-                let id = args[0].downcast_ref::<u32>().copied().unwrap_or(1);
-                let name = args[1]
-                    .downcast_ref::<String>()
-                    .cloned()
-                    .unwrap_or_else(|| "Anonymous".to_string());
-                let email =
-                    args[2].downcast_ref::<Option<String>>().cloned().flatten();
-                Self {
-                    id,
-                    name,
-                    email,
-                }
-            })
-        }
-    }
+    test_builder!(TestUserBuilder, TestUser, {
+        id: u32 = 1,
+        name: String = "Anonymous".to_string(),
+        email: Option<String> = None,
+    });
 
     #[test]
     fn test_builder_pattern() {
-        let user = TestUser::builder()
-            .with_default(1) // id default
-            .with(42u32) // override id
-            .with_default("Anonymous".to_string()) // name default
-            .with("Alice".to_string()) // override name
-            .with_default(None as Option<String>) // email default
-            .with(Some("alice@example.com".to_string())) // override email
+        let user = TestUserBuilder::new()
+            .id(42)
+            .name("Alice".to_string())
+            .email(Some("alice@example.com".to_string()))
             .build();
 
         assert_eq!(user.id, 42);
@@ -401,7 +334,7 @@ mod tests {
         assert!(!name.is_empty());
 
         let email = fake.email();
-        assert!(!email.is_empty()); // Email should not be empty
+        assert!(!email.is_empty());
 
         let edge_fake = FakeData::new(Scenario::EdgeCase);
         let edge_name = edge_fake.name();

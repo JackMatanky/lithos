@@ -229,6 +229,37 @@ pub fn shared_semaphore(permits: usize) -> Arc<Semaphore> {
     Arc::new(Semaphore::new(permits))
 }
 
+/// Polls a condition until it becomes true or the timeout expires.
+///
+/// # Errors
+///
+/// Returns an error if the condition does not become true within the timeout.
+pub async fn poll_condition<F, Fut>(
+    mut condition: F,
+    timeout_duration: Duration,
+    interval: Duration,
+) -> Result<(), String>
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    let deadline = tokio::time::Instant::now() + timeout_duration;
+
+    loop {
+        if condition().await {
+            return Ok(());
+        }
+
+        if tokio::time::Instant::now() >= deadline {
+            return Err(format!(
+                "Condition not met within {timeout_duration:?}"
+            ));
+        }
+
+        tokio::time::sleep(interval).await;
+    }
+}
+
 /// Macro for async tests with proper runtime configuration.
 ///
 /// This macro wraps tests with `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]`

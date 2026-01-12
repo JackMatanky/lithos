@@ -23,17 +23,17 @@
 ## crates/test-utils/src/assertions.rs
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
-| `test_async_operation` |  | Yes | Pass |
-| `test_eventual_condition` |  | Yes | Pass |
-| `test_assert_eq_detailed_success` | N/A | Yes | Pass |
-| `test_assert_eq_detailed_failure` | N/A | Yes | Pass |
-| `test_assert_async_completed_success` | N/A | Yes | Pass |
-| `test_assert_async_completed_timeout` | N/A | Yes | Pass |
-| `test_structural_compare_success` | N/A | Yes | Pass |
-| `test_structural_compare_failure` | N/A | Yes | Pass |
-| `test_domain_assert_contains_same_items` | N/A | Yes | Pass |
-| `test_domain_assert_in_range` | N/A | Yes | Pass |
-| `test_domain_assert_in_range_failure` | N/A | Yes | Pass |
+| `async_assertion_succeeds_when_operation_completes_within_timeout` |  | Yes | Pass |
+| `eventual_assertion_waits_for_condition_to_become_true` |  | Yes | Pass |
+| `detailed_equality_assertion_succeeds_for_equal_values` | N/A | Yes | Pass |
+| `detailed_equality_assertion_panics_for_unequal_values` | N/A | Yes | Pass |
+| `async_assertion_succeeds_when_operation_completes_within_timeout` | N/A | Yes | Pass |
+| `async_assertion_panics_when_operation_times_out` | N/A | Yes | Pass |
+| `structural_comparison_succeeds_for_identical_data` | N/A | Yes | Pass |
+| `structural_comparison_fails_for_different_data` | N/A | Yes | Pass |
+| `domain_assertion_detects_same_items_regardless_of_order` | N/A | Yes | Pass |
+| `range_assertion_succeeds_for_value_within_bounds` | N/A | Yes | Pass |
+| `range_assertion_fails_for_value_outside_bounds` | N/A | Yes | Pass |
 
 ## crates/test-utils/src/events.rs
 | Test Name | Behavior | Deterministic | Status |
@@ -56,22 +56,15 @@
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
 | `test_command_handler` | N/A | Yes | Pass |
-| `test_query_handler` | N/A | Yes | Pass |
 | `test_aggregate_command` | N/A | Yes | Pass |
-| `test_eventual_consistency` |  | Yes | Pass |
-| `test_order_saga` |  | Yes | Pass |
 | `mock_repository_saves_entity` | N/A | Yes | Pass |
 | `mock_repository_records_interactions` | N/A | Yes | Pass |
 | `mock_repository_fails_on_configured_error` | N/A | Yes | Pass |
 | `stub_query_store_returns_data` | N/A | Yes | Pass |
 | `event_verifier_records_events` | N/A | Yes | Pass |
 | `eventual_consistency_tester_waits_for_condition` | N/A | Yes | Pass |
-| `eventual_consistency_tester_times_out` | N/A | Yes | Pass |
-| `eventual_consistency_tester_waits_for_value` | N/A | Yes | Pass |
-| `saga_tester_tracks_participants` | N/A | Yes | Pass |
 | `saga_tester_verifies_all_updated` | N/A | Yes | Pass |
-| `saga_tester_records_events` | N/A | Yes | Pass |
-| `saga_tester_verifies_event_sequence` | N/A | Yes | Pass |
+| `framework_verifies_event_sequence_successfully` | N/A | Yes | Pass |
 
 ## crates/test-utils/src/async_utils.rs
 | Test Name | Behavior | Deterministic | Status |
@@ -96,12 +89,12 @@
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
 | `test_with_temp_dir` |  | Yes | Pass |
-| `test_temp_dir_creation` | N/A | Yes | Pass |
-| `test_temp_dir_cleanup` | N/A | Yes | Pass |
-| `test_unique_name_generation` | N/A | Yes | Pass |
-| `test_path_utils_join` | N/A | Yes | Pass |
-| `test_test_output_creation` | N/A | Yes | Pass |
-| `test_test_output_file_path` | N/A | Yes | Pass |
+| `temp_dir_helper_provides_isolated_workspace` | N/A | Yes | Pass |
+| `temp_dir_cleanup_removes_directory_after_drop` | N/A | Yes | Pass |
+| `unique_name_generation_produces_distinct_values` | N/A | Yes | Pass |
+| `path_joining_utility_assembles_components_correctly` | N/A | Yes | Pass |
+| `test_output_manager_creates_accessible_directory` | N/A | Yes | Pass |
+| `test_output_file_path_generation_stays_within_base_dir` | N/A | Yes | Pass |
 
 ## crates/test-utils/src/mocks/event_bus.rs
 | Test Name | Behavior | Deterministic | Status |

@@ -880,6 +880,7 @@ dependencies = [
  "criterion",
  "dhat",
  "fake",
+ "figment",
  "mockall",
  "rand",
  "rmp-serde",

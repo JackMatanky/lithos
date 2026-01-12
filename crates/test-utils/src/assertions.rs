@@ -91,7 +91,7 @@ macro_rules! assert_eq_detailed {
 /// }
 ///
 /// #[tokio::test]
-/// async fn test_async_operation() {
+/// async fn async_assertion_succeeds_when_operation_completes_within_timeout() {
 ///     let result = assert_async_completed!(slow_operation(), Duration::from_secs(1));
 ///     assert_eq!(result, 42);
 /// }
@@ -126,7 +126,7 @@ macro_rules! assert_async_completed {
 /// use std::sync::Arc;
 ///
 /// #[tokio::test]
-/// async fn test_eventual_condition() {
+/// async fn eventual_assertion_waits_for_condition_to_become_true() {
 ///     let flag = Arc::new(AtomicBool::new(false));
 ///     let flag_clone = Arc::clone(&flag);
 ///
@@ -148,14 +148,16 @@ macro_rules! assert_eventually {
         )
     };
     ($condition:expr, $timeout:expr, $message:expr) => {{
-        let start = std::time::Instant::now();
-        while start.elapsed() < $timeout {
-            if $condition() {
-                return;
-            }
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        match $crate::async_utils::poll_condition(
+            || async { $condition() },
+            $timeout,
+            tokio::time::Duration::from_millis(10),
+        )
+        .await
+        {
+            Ok(_) => {}
+            Err(_) => panic!("{}", $message),
         }
-        panic!("{}", $message);
     }};
 }
 
@@ -283,18 +285,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_assert_eq_detailed_success() {
+    fn detailed_equality_assertion_succeeds_for_equal_values() {
         assert_eq_detailed!(42, 42);
     }
 
     #[test]
     #[should_panic]
-    fn test_assert_eq_detailed_failure() {
+    fn detailed_equality_assertion_panics_for_unequal_values() {
         assert_eq_detailed!(42, 43);
     }
 
     #[tokio::test]
-    async fn test_assert_async_completed_success() {
+    async fn async_assertion_succeeds_when_operation_completes_within_timeout()
+    {
         let future = async { 42 };
         let result = assert_async_completed!(future, Duration::from_secs(1));
         assert_eq!(result, 42);
@@ -302,7 +305,7 @@ mod tests {
 
     #[tokio::test]
     #[should_panic]
-    async fn test_assert_async_completed_timeout() {
+    async fn async_assertion_panics_when_operation_times_out() {
         let future = async {
             tokio::time::sleep(Duration::from_secs(2)).await;
             42
@@ -311,14 +314,14 @@ mod tests {
     }
 
     #[test]
-    fn test_structural_compare_success() {
+    fn structural_comparison_succeeds_for_identical_data() {
         let expected = vec![1, 2, 3];
         let actual = vec![1, 2, 3];
         structural::compare_structural(&expected, &actual).unwrap();
     }
 
     #[test]
-    fn test_structural_compare_failure() {
+    fn structural_comparison_fails_for_different_data() {
         let expected = vec![1, 2, 3];
         let actual = vec![1, 3, 4];
         let result = structural::compare_structural(&expected, &actual);
@@ -326,19 +329,19 @@ mod tests {
     }
 
     #[test]
-    fn test_domain_assert_contains_same_items() {
+    fn domain_assertion_detects_same_items_regardless_of_order() {
         let expected = vec![1, 2, 3];
         let actual = vec![3, 1, 2];
         domain::assert_contains_same_items(&expected, &actual).unwrap();
     }
 
     #[test]
-    fn test_domain_assert_in_range() {
+    fn range_assertion_succeeds_for_value_within_bounds() {
         domain::assert_in_range(5, 0..10).unwrap();
     }
 
     #[test]
-    fn test_domain_assert_in_range_failure() {
+    fn range_assertion_fails_for_value_outside_bounds() {
         let result = domain::assert_in_range(15, 0..10);
         assert!(result.is_err());
     }
