@@ -128,14 +128,6 @@ pub mod path_utils {
     use std::path::{Path, PathBuf};
 
     /// Joins multiple path components with proper normalization.
-    ///
-    /// # Example
-    ///
-    /// ```rust
-    /// use lithos_test_utils::temp::path_utils::join;
-    ///
-    /// let path = join(&["base", "subdir", "file.txt"]);
-    /// ```
     pub fn join(components: &[&str]) -> PathBuf {
         let mut path = PathBuf::new();
         for component in components {
@@ -150,7 +142,9 @@ pub mod path_utils {
     ///
     /// Returns an error if the current directory cannot be determined.
     #[allow(clippy::disallowed_methods)]
-    pub fn ensure_absolute<P: AsRef<Path>>(path: P) -> std::io::Result<PathBuf> {
+    pub fn ensure_absolute<P: AsRef<Path>>(
+        path: P,
+    ) -> std::io::Result<PathBuf> {
         let path = path.as_ref();
         if path.is_absolute() {
             Ok(path.to_path_buf())
@@ -158,7 +152,6 @@ pub mod path_utils {
             let current_dir = std::env::current_dir()?;
             Ok(current_dir.join(path))
         }
-    }
     }
 
     /// Normalizes path separators for cross-platform compatibility.
@@ -266,6 +259,7 @@ impl Drop for TestOutput {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 
