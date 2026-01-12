@@ -15,8 +15,20 @@ use std::{
 };
 
 use chrono::Utc;
+use figment::{Figment, providers::Env};
 use rand::{Rng, thread_rng};
 use tempfile::{Builder, TempDir as TempfileTempDir, tempdir};
+
+/// Returns the project root directory managed by Figment.
+///
+/// According to project Rule 82, all absolute paths should be managed via Figment.
+/// This helper provides a centralized way to determine the base path for test operations.
+pub fn project_root() -> PathBuf {
+    Figment::new()
+        .merge(Env::prefixed("LITHOS_"))
+        .extract_inner::<PathBuf>("root")
+        .unwrap_or_else(|_| PathBuf::from("."))
+}
 
 /// RAII-managed temporary directory with automatic cleanup.
 ///
@@ -136,12 +148,13 @@ pub mod path_utils {
         path
     }
 
-    /// Ensures a path is absolute, resolving relative paths against the current directory.
+    /// Ensures a path is absolute, resolving relative paths against the project root.
+    ///
+    /// According to Rule 82, absolute paths should be managed via Figment.
     ///
     /// # Errors
     ///
-    /// Returns an error if the current directory cannot be determined.
-    #[allow(clippy::disallowed_methods)]
+    /// Returns an error if the path cannot be resolved.
     pub fn ensure_absolute<P: AsRef<Path>>(
         path: P,
     ) -> std::io::Result<PathBuf> {
@@ -149,8 +162,7 @@ pub mod path_utils {
         if path.is_absolute() {
             Ok(path.to_path_buf())
         } else {
-            let current_dir = std::env::current_dir()?;
-            Ok(current_dir.join(path))
+            Ok(super::project_root().join(path))
         }
     }
 
@@ -264,14 +276,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_temp_dir_creation() {
+    fn temp_dir_helper_provides_isolated_workspace() {
         let temp_dir = TempDir::new().unwrap();
         assert!(temp_dir.path().exists());
         assert!(temp_dir.path().is_absolute());
     }
 
     #[test]
-    fn test_temp_dir_cleanup() {
+    fn temp_dir_cleanup_removes_directory_after_drop() {
         let temp_path;
         {
             let temp_dir = TempDir::new().unwrap();
@@ -283,7 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn test_unique_name_generation() {
+    fn unique_name_generation_produces_distinct_values() {
         let name1 = generate_unique_name("test");
         let name2 = generate_unique_name("test");
 
@@ -293,21 +305,21 @@ mod tests {
     }
 
     #[test]
-    fn test_path_utils_join() {
+    fn path_joining_utility_assembles_components_correctly() {
         let path = path_utils::join(&["base", "subdir", "file.txt"]);
         assert_eq!(path, PathBuf::from("base/subdir/file.txt"));
     }
 
     #[test]
-    fn test_test_output_creation() {
-        let test_output = TestOutput::new("test_output_creation").unwrap();
+    fn test_output_manager_creates_accessible_directory() {
+        let test_output = TestOutput::new("output_creation").unwrap();
         assert!(test_output.path().exists());
         assert!(test_output.path().is_absolute());
     }
 
     #[test]
-    fn test_test_output_file_path() {
-        let test_output = TestOutput::new("test_file_path").unwrap();
+    fn test_output_file_path_generation_stays_within_base_dir() {
+        let test_output = TestOutput::new("file_path").unwrap();
         let file_path = test_output.file_path("test.txt");
         assert!(file_path.starts_with(test_output.path()));
         assert!(file_path.ends_with("test.txt"));

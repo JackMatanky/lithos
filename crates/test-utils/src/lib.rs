@@ -63,8 +63,8 @@ pub use events::{
     EventTestScenario, PayloadAssertion, SequenceAssertion, TimingAssertion,
 };
 pub use fixtures::{
-    Builder, FakeData, Fixture, Scenario, SerializationHelper, combine,
-    test_config, test_user,
+    FakeData, Fixture, Scenario, SerializationHelper, combine, test_config,
+    test_user,
 };
 pub use integration::{IntegrationConfig, IntegrationFixture};
 pub use mocks::{EventBusError, EventBusPort, EventPlane, MockEventBus};
