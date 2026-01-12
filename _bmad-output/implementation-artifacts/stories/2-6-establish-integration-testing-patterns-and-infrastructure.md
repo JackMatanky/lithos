@@ -1,6 +1,6 @@
 # Story 2.6: establish-integration-testing-patterns-and-infrastructure
 
-Status: in-progress
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -79,7 +79,7 @@ So that integration issues are caught early with proper isolation and mocking.
 - [x] **MANDATORY:** Confirm all code passes clippy cognitive complexity limits (<25)
 - [x] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [x] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: establish integration testing patterns and infrastructure with container management and CI integration`
+- [x] Commit with conventional commit message: `feat: establish integration testing patterns and infrastructure with container management and CI integration`
 
 ## Dev Notes
 
