@@ -2,7 +2,7 @@
 #MISE description="Generate code coverage reports using tarpaulin"
 #MISE alias="tc"
 #MISE sources=["**/*.rs", "Cargo.toml"]
-#MISE outputs=["tarpaulin-report.html"]
+#MISE outputs=["{{vars.coverage_report}}"]
 #USAGE flag "-o --open" help="Open coverage report in browser"
 
 set -euo pipefail
