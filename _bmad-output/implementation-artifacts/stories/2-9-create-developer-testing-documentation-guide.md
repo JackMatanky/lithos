@@ -78,6 +78,13 @@ so that I can apply the approved patterns consistently and avoid ambiguity.
   - [ ] Update `docs/index.md` to include "Testing Guide" link under documentation section
   - [ ] Update any existing TOC or testing overview to reference the new guide
 
+- [ ] Push committed changes and verify CI pipeline (MANDATORY FINAL TASK)
+  - [ ] Push all committed changes to the remote branch: `git push origin rust-conversion`
+  - [ ] Monitor the GitHub Actions CI workflow run triggered by the push
+  - [ ] Verify all CI checks pass: format, lint, test, coverage (80%+), security scans
+  - [ ] Review CI logs for any failures and address issues if needed
+  - [ ] Confirm the branch is ready for merge or further development
+
 ### Documentation Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [ ] Verify all links and references are valid and point to correct locations
 - [ ] Ensure consistent formatting and terminology across all updated documents
