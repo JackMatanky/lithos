@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="Run clippy lints on all workspace crates"
 #MISE alias="l"
-#MISE sources=["**/*.rs", "Cargo.toml", "clippy.toml"]
+#MISE depends=["fmt"]
+#MISE sources=["**/*.rs", "Cargo.toml", "clippy.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["target/lint.stamp"]
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-n --no-fix" help="Do not automatically apply lint fixes"

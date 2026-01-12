@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="Run all unit tests across the workspace using nextest"
 #MISE alias="tu"
-#MISE sources=["**/*.rs", "Cargo.toml"]
+#MISE depends=["fmt"]
+#MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["target/nextest/default"]
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-p --package <package>" help="Run tests for a specific package" {

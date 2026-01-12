@@ -65,8 +65,8 @@ development_status:
     4-5-review-epic-4-test-suite: backlog
     epic-4-retrospective: optional
 
-    epic-5: backlog
-    5-1-create-config-domain-interface-and-port: backlog
+    epic-5: in-progress
+    5-1-create-config-domain-interface-and-port: ready-for-dev
     5-2-implement-hierarchical-configuration-loading: backlog
     5-3-add-configuration-validation-and-error-handling: backlog
     5-4-implement-configuration-versioning-and-migration: backlog
