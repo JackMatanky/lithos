@@ -864,6 +864,15 @@ pub trait NoteRepositoryPort: Send + Sync {
 - Epic 8: Storage Layer (persists Note entities with rkyv)
 - Epic 9: Vault Indexing (indexes Note aggregates)
 
+### Epic 2 Test Infrastructure Integration
+**Planned Integration with Epic 2 Test Utils:**
+This story will leverage the test utilities being developed in Epic 2:
+- **Story 2-4**: Centralized test utilities and infrastructure (artifact management, isolation)
+- **Story 2-6**: Integration testing patterns and infrastructure (cross-crate testing, external service mocking)
+- **Story 2-7**: Benchmarking infrastructure and performance testing patterns (criterion integration, regression detection)
+- **Dependency**: Epic 2 completion required before implementing comprehensive testing in this story
+- **Integration Points**: Use shared test fixtures for domain entities, mock repositories, and performance benchmarking utilities
+
 ### References
 
 **Architecture Documents:**

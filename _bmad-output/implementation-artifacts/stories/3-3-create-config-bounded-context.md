@@ -585,6 +585,15 @@ impl ConfigAdapter {
 - **Template System (Epic 11)**: Configuration provides template pack locations and settings
 - **CLI (Epic 13)**: Configuration drives CLI behavior, help text, and command options
 
+### Epic 2 Test Infrastructure Integration
+**Planned Integration with Epic 2 Test Utils:**
+This story will leverage the test utilities being developed in Epic 2:
+- **Story 2-4**: Centralized test utilities and infrastructure (artifact management, isolation)
+- **Story 2-6**: Integration testing patterns and infrastructure (cross-crate testing, external service mocking)
+- **Story 2-7**: Benchmarking infrastructure and performance testing patterns (criterion integration, regression detection)
+- **Dependency**: Epic 2 completion required before implementing comprehensive testing in this story
+- **Integration Points**: Use shared test fixtures for configuration entities, mock file loaders, and performance benchmarking utilities
+
 ### References
 
 **Architecture Documents:**
