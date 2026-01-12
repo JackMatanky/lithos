@@ -36,43 +36,207 @@ So that developers understand the domain language and can work effectively with 
 ## Tasks / Subtasks
 
 ### Task 1: Analyze Epic 3 Domain Models for Documentation Scope
-- [ ] Review all Epic 3 bounded contexts: Note, Schema, Config, Template
-- [ ] Extract entity definitions, validation rules, and business logic from each context
-- [ ] Identify inter-entity relationships and contracts between bounded contexts
-- [ ] Document evolution patterns and guidelines for domain model changes
-- [ ] Create inventory of all domain entities requiring documentation
+- [ ] Read all files in `crates/domain/src/models/note/` directory to understand Note bounded context: Note aggregate, Frontmatter, Link, Embed, Tag, Heading, Task, Section entities and their validation rules, business logic
+- [ ] Read all files in `crates/domain/src/models/schema/` directory to understand Schema bounded context: Schema aggregate, Property, PropertyBank, PropertySpec trait and implementations (StringSpec, NumberSpec, etc.), inheritance resolution, trait-based generic design
+- [ ] Read all files in `crates/domain/src/models/config/` directory to understand Config bounded context: Config entity with phantom types, ConfigValue, ConfigPath, ValidationRule, hierarchical merging, encryption boundary
+- [ ] Read all files in `crates/domain/src/models/template/` directory to understand Template bounded context: Template aggregate, VariableDefinition, TemplateComposition, MiniJinja compatibility, domain purity (no syntax validation)
+- [ ] Analyze inter-entity relationships: Note ↔ Config (defaults), Note ↔ Schema (validation), Template ↔ Schema (variable constraints), Template ↔ Config (execution settings)
+- [ ] Document evolution patterns: adding fields/subentities, modifying validation rules, trait evolution, phantom type changes, backward compatibility requirements
+- [ ] Create inventory document `_bmad-output/documentation-inventory/epic3-domain-entities.md` listing all entities with file locations, purposes, key methods, validation requirements
 
 ### Task 2: Create Domain Entity Documentation Structure
-- [ ] Set up single comprehensive `docs/domain-models.md` file (primary approach)
-- [ ] Create overview section explaining Epic 3 domain model architecture
-- [ ] Establish documentation hierarchy: bounded contexts → entities → relationships
-- [ ] Define documentation standards for consistency across all entities
-- [ ] Create template for entity documentation with required sections
-- [ ] Monitor file size and readability - split only if exceeds 2000 lines or becomes hard to maintain
+- [ ] Create file `docs/domain-models.md` with title `# Epic 3 Domain Models`, 2-3 paragraph overview of all 4 bounded contexts, and table of contents
+- [ ] In `docs/domain-models.md`, establish documentation hierarchy with sections for each bounded context using the template: Overview, Structure, Rust-Specific Patterns Used, Validation Rules, Business Logic, Relationships, Evolution Guidelines
+- [ ] Add Documentation Standards section in `docs/domain-models.md` with naming conventions, documentation template description, and code example requirements
+- [ ] Create file `docs/domain-entity-template.md` containing the complete documentation template with fill-in-the-blank sections for all required information and example filled-out template
+- [ ] Add Splitting Criteria section in `docs/domain-models.md` with decision matrix: if total lines > 2000, bounded context section > 500 lines, readability affected, or specific context needs frequent updates, split to separate files
+- [ ] Monitor line count during documentation writing and decide on splitting if criteria are met
 
 ### Task 3: Document Note Bounded Context
-- [ ] Document Note aggregate structure and subentities (Frontmatter, Links, Embeds, Tags, Headings, Tasks, Sections)
-- [ ] Detail semantic validation rules and business logic for each subentity
-- [ ] Document relationships between Note and other bounded contexts (Config, Schema usage)
-- [ ] Include evolution guidelines for Note entity modifications
-- [ ] Create architecture diagrams showing Note aggregate relationships
-- [ ] If splitting occurs, create `docs/domain/note.md` for in-depth details
+- [ ] Add `## Note Bounded Context` section to `docs/domain-models.md` with 2-3 paragraph overview explaining Note as main domain entity representing Obsidian notes
+- [ ] Write Structure subsection listing complete Note aggregate structure: Note entity fields (id, path, frontmatter, links, embeds, tags, headings, tasks, sections), all subentity structures with their fields and validation requirements
+- [ ] Write Rust-Specific Patterns Used subsection: UUID v7 identity, memory strategy (Box<str>, Arc<str>), immutability, type safety with enums, error handling with thiserror
+- [ ] Write Validation Rules subsection: path validation (non-empty, relative, .md extension), tag validation (regex, no empty segments), heading level validation (1-6), frontmatter date validation (ISO 8601), link/embed target validation
+- [ ] Write Business Logic subsection: semantic validation during construction, internal consistency checks, relationship invariants, vault context requirements
+- [ ] Write Relationships subsection: Note ↔ Config contract (defaults), Note ↔ Schema contract (validation), internal composition relationships
+- [ ] Write Evolution Guidelines subsection: adding new fields/subentities with defaults, modifying existing fields with migration paths, removing fields with deprecation periods
+- [ ] Add ASCII architecture diagram showing Note aggregate and all subentities with relationships
+- [ ] Cross-reference with `_bmad-output/documentation-inventory/epic3-domain-entities.md` to ensure all entities and validation rules are documented
 
 ### Task 4: Document Schema Bounded Context
-- [ ] Document Schema entity with inheritance (Extends, Excludes) and property validation
-- [ ] Detail PropertyBank singleton registry and Property entity structures
-- [ ] Document PropertySpec variants (String, Number, Bool, Date, File) with validation rules
-- [ ] Include schema resolution algorithms and inheritance processing
-- [ ] Document Schema relationships with Template bounded context (schema-driven template variables)
-- [ ] If splitting occurs, create `docs/domain/schema.md` for in-depth details
+- [ ] Add `## Schema Bounded Context` section to `docs/domain-models.md` with 2-3 paragraph overview explaining Schema for defining metadata structure and validation rules
+- [ ] Write Structure subsection listing complete Schema structure: Schema aggregate (name, extends, excludes, properties), Property entity (id, name, required, array, spec), PropertyBank singleton, PropertySpec trait and implementations (StringSpec<MAX_LEN>, NumberSpec<MIN,MAX>, BoolSpec, DateSpec, FileSpec)
+- [ ] Write Rust-Specific Patterns Used subsection: trait-based polymorphism with associated types, const generics for compile-time validation, trait objects for runtime flexibility, deterministic ID generation, zero-cost abstraction
+- [ ] Write Validation Rules subsection: schema name validation, property name validation, PropertySpec validation (string length/bounds/patterns, number ranges/step, bool/date/file constraints), inheritance cycle detection, excludes validation
+- [ ] Write Business Logic subsection: inheritance resolution algorithm, Property Bank lookup, override semantics, excludes processing, deterministic resolution, cycle detection with DFS
+- [ ] Write Relationships subsection: Schema ↔ PropertyBank (reusable properties), Schema ↔ Schema (inheritance), PropertyBank ↔ PropertySpec (validation implementations), Template ↔ Schema (variable constraints)
+- [ ] Write Evolution Guidelines subsection: adding PropertySpec variants, modifying constraints, inheritance changes, trait evolution, const generic changes
+- [ ] Add ASCII architecture diagram showing Schema, PropertyBank, and PropertySpec hierarchy with relationships
+- [ ] Cross-reference with `_bmad-output/documentation-inventory/epic3-domain-entities.md` to ensure all entities and validation rules are documented
 
 ### Task 5: Document Config Bounded Context
-- [ ] Document Config hierarchical structure (Global → User → Project → Vault)
-- [ ] Detail configuration validation and type safety requirements
-- [ ] Document config relationships with Note bounded context (metadata configuration)
-- [ ] Include configuration loading and merging algorithms
-- [ ] Document evolution guidelines for configuration schema changes
-- [ ] If splitting occurs, create `docs/domain/config.md` for in-depth details
+- [ ] **Write Config Bounded Context section in `docs/domain-models.md`**:
+  - Add `## Config Bounded Context` header
+  - Write **Overview** section explaining Config's purpose for hierarchical application configuration with type safety
+  - Write **Structure** section with complete entity list:
+    ```
+    ### Structure
+
+    **Config Entity with Phantom Types** (`crates/domain/src/models/config/config.rs`)
+    - `values: HashMap<ConfigPath<Level>, HashMap<String, ConfigValue>>` - Hierarchical configuration by level
+    - `validation_rules: HashMap<String, ValidationRule>` - Validation constraints
+    - `encrypted_fields: HashSet<String>` - Tracking of encrypted sensitive fields
+    - Phantom type parameter: `<Level = Global>` - Compile-time context safety
+    - Type-safe aliases: `GlobalConfig`, `UserConfig`, `ProjectConfig`, `VaultConfig`
+
+    **ConfigPath Enum with Phantom Types** (`crates/domain/src/models/config/path.rs`)
+    - `Global(PhantomData<Global>)`, `User(PhantomData<User>)`, `Project(PhantomData<Project>)`, `Vault(PhantomData<Vault>)`
+    - Precedence order: Global → User → Project → Vault (Vault highest precedence)
+    - Type-safe aliases: `GlobalPath`, `UserPath`, `ProjectPath`, `VaultPath`
+
+    **Phantom Type Markers** (`crates/domain/src/models/config/types.rs`)
+    - `pub struct Global`, `pub struct User`, `pub struct Project`, `pub struct Vault`
+    - Zero-cost type markers (no runtime overhead)
+    - Purpose: Compile-time prevention of mixing config contexts
+
+    **ConfigValue Enum** (`crates/domain/src/models/config/value.rs`)
+    - `String(String)`, `Number(f64)`, `Boolean(bool)`, `Encrypted(Vec<u8>)`, `Array(Vec<ConfigValue>)`, `Object(HashMap<String, ConfigValue>)`
+    - Type-safe representation for all configuration value types
+    - Encrypted variant: Domain stores encrypted blob, encryption/decryption in adapter
+
+    **ValidationRule Enum** (`crates/domain/src/models/config/validation.rs`)
+    - `Required` - Field must be present in final merged configuration
+    - `Enum(Vec<String>)` - Field value must match one of these string values
+    - `Range { min: Option<f64>, max: Option<f64> }` - Numeric field must be within range
+    - `Pattern(String)` - String field must match regex pattern
+    - `DependsOn(String)` - Field depends on another field being present/set
+    ```
+  - Write **Rust-Specific Patterns Used** section:
+    ```
+    ### Rust-Specific Patterns Used
+
+    - **Phantom Types**: Compile-time context safety prevents mixing Global/User/Project/Vault configs
+    - **Type-Safe Aliases**: `GlobalConfig = Config<Global>` enables compile-time guarantees
+    - **Associated Types in Ports**: Repository ports use associated types for type-safe operations
+    - **Zero-Cost Abstraction**: PhantomData has no runtime overhead, compile-time only
+    - **Generic Algorithms**: Hierarchical merging works across all Config<Level> types
+    - **Encryption Boundary**: Domain stores encrypted blobs, encryption/decryption isolated to adapter layer
+    - **Compile-Time Precedence**: ConfigPath enum enforces hierarchical override order at type level
+    ```
+  - Write **Validation Rules** section:
+    ```
+    ### Validation Rules
+
+    **Hierarchical Merging Validation**
+    - Type compatibility: ConfigValue types must match across override levels
+    - Override precedence: Vault > Project > User > Global (compile-time enforced)
+    - Merge conflicts: Detected and surfaced as ConfigError::MergeConflict
+
+    **ConfigValue Validation**
+    - **String**: Non-empty if required, matches pattern if specified, within length constraints
+    - **Number**: Within Range if specified, not NaN, finite value
+    - **Boolean**: Always valid type (no constraints)
+    - **Encrypted**: Non-empty if required (validation happens on decrypted value)
+    - **Array**: Non-empty if required, all elements pass individual validation
+    - **Object**: Non-empty if required, all keys present, values pass validation
+
+    **Phantom Type Safety**
+    - Compile-time: Can't pass UserConfig to function expecting GlobalConfig
+    - Runtime: ConfigPath enum prevents invalid mixing
+    - Type-safe APIs: Functions accept specific Config<Level> types, preventing context confusion
+    ```
+  - Write **Business Logic** section:
+    ```
+    ### Business Logic
+
+    - **Hierarchical Merging Algorithm**:
+      1. Start with empty HashMap
+      2. Merge Global level (all key-value pairs)
+      3. Merge User level (override same keys)
+      4. Merge Project level (override same keys)
+      5. Merge Vault level (override same keys, highest precedence)
+      6. Apply validation rules to merged HashMap
+      7. Return final merged configuration
+    - **Encrypted Field Handling**: Domain tracks which fields are encrypted via HashSet, adapter handles encryption/decryption
+    - **Validation Rule Application**: After merging, apply all ValidationRules from validation_rules HashMap
+    - **Type Safety Guarantees**: Phantom types ensure config levels can't be mixed incorrectly at compile time
+    - **Fallback Behavior**: get() method automatically tries Vault, then Project, then User, then Global levels
+    ```
+  - Write **Relationships** section:
+    ```
+    ### Relationships
+
+    **Config Hierarchy** (Internal)
+    - Global → User → Project → Vault (precedence order)
+    - Each level can override keys from previous levels
+    - Vault level has highest precedence for all keys
+
+    **Config ↔ Note Contract**
+    - Config provides default values for Note frontmatter fields
+    - Config provides metadata display preferences (tag formatting, heading display)
+    - Relationship: Note reads from Config, no bidirectional dependency
+
+    **Config ↔ Schema Contract**
+    - Config specifies schema file locations and validation rules
+    - Config drives schema loading and validation behavior
+    - Relationship: Config references Schema, Schema has no knowledge of Config
+
+    **Config ↔ Template Contract**
+    - Config provides template execution parameters and settings
+    - Config provides template pack locations and rendering preferences
+    - Relationship: Template reads from Config, no bidirectional dependency
+    ```
+  - Write **Evolution Guidelines** section:
+    ```
+    ### Evolution Guidelines
+
+    **Adding New Config Levels**
+    - Add new phantom type marker (e.g., pub struct Team)
+    - Add ConfigPath variant (e.g., Team(PhantomData<Team>))
+    - Add precedence order (update get() to check new level)
+    - Create type alias: `pub type TeamConfig = Config<Team>`
+    - Example: Adding "Team" config level requires phantom marker, ConfigPath variant, precedence update
+
+    **Modifying Phantom Types**
+    - Adding phantom type parameters is breaking change
+    - Example: Config<Level, Context> requires updating all type aliases
+    - Consider carefully if additional compile-time context safety is needed
+
+    **Adding New ConfigValue Variants**
+    - Add variant to ConfigValue enum
+    - Implement validation logic for new variant
+    - Update serialization/deserialization if needed
+    - Example: Adding `Binary(Vec<u8>)` variant for binary config values
+
+    **Validation Rule Evolution**
+    - Adding new ValidationRule variants requires updating validation logic
+    - Ensure backward compatibility (existing configs with old rules still validate)
+    - Example: Adding `RegexMatch(String)` rule requires new validation code path
+    ```
+  - Add ASCII architecture diagram showing Config hierarchy and phantom types:
+    ```
+    ## Config Architecture Diagram
+
+                        Config<Level> (Phantom Type Parameter)
+                          |
+            +-----------+-----------+-----------+-----------+
+            |           |           |           |           |
+      Global     User       Project     Vault
+    (Level=Global) (Level=User) (Level=Project) (Level=Vault)
+            |           |           |           |           |
+          ConfigPath enum variants with phantom types
+            |
+      HashMap<ConfigPath<Level>, HashMap<String, ConfigValue>>
+                          |
+                 ConfigValue enum variants
+    String  Number  Boolean  Encrypted  Array  Object
+    ```
+- [ ] **Review against inventory**: Cross-reference with `_bmad-output/documentation-inventory/epic3-domain-entities.md`
+  - Ensure all entities from inventory are documented
+  - Ensure all phantom type markers are explained
+  - Ensure hierarchical merging algorithm is documented
+  - Ensure encryption boundary separation is clear
+  - Add any missing information before proceeding to next bounded context
 
 ### Task 6: Document Template Bounded Context
 - [ ] Document Template entity with modular composition and variable definitions
@@ -83,18 +247,18 @@ So that developers understand the domain language and can work effectively with 
 - [ ] If splitting occurs, create `docs/domain/template.md` for in-depth details
 
 ### Task 7: Create Bounded Context Interaction Contracts
-- [ ] Document inter-bounded-context contracts and communication patterns
-- [ ] Detail how Note uses Config for metadata and Schema for validation
-- [ ] Document how Template integrates with Schema for variable validation
-- [ ] Create sequence diagrams for cross-context operations
-- [ ] Define evolution rules for maintaining contracts during changes
+- [ ] Create Bounded Context Contracts section in `docs/domain-models.md`
+- [ ] Document Note ↔ Config Contract with sequence diagram
+- [ ] Document Note ↔ Schema Contract with sequence diagram
+- [ ] Document Template ↔ Schema Contract with sequence diagram
+- [ ] Document Template ↔ Config Contract with sequence diagram
+- [ ] Add contract evolution rules section
 
 ### Task 8: Create Evolution Guidelines and Architecture Diagrams
-- [ ] Document domain model evolution principles (when to add vs modify entities)
-- [ ] Create guidelines for maintaining backward compatibility in domain contracts
-- [ ] Generate architecture diagrams showing all Epic 3 bounded contexts and relationships
-- [ ] Include examples of proper domain model evolution patterns
-- [ ] Create `docs/domain/evolution-guidelines.md` with domain-specific evolution rules
+- [ ] Create Epic 3 Architecture Diagrams section in `docs/domain-models.md`
+- [ ] Create Domain Model Evolution Guidelines section
+- [ ] Create dedicated evolution guidelines document if needed
+- [ ] Review all diagrams and guidelines for completeness
 
 ### Task 9: Validate Documentation Completeness and Quality
 - [ ] Cross-reference documentation against actual domain model implementations
@@ -248,6 +412,12 @@ docs/
 ## Structure
 [Fields, types, relationships]
 
+## Rust-Specific Patterns Used
+- **Const Generics**: [If used for compile-time validation]
+- **Phantom Types**: [If used for context safety]
+- **Associated Types**: [If used in ports/interfaces]
+- **Memory Optimization**: [Box<str>, Arc<str> usage]
+
 ## Validation Rules
 [Semantic validation requirements]
 
@@ -260,6 +430,12 @@ docs/
 ## Evolution Guidelines
 [When/how to modify this entity]
 ```
+
+**Advanced Rust Patterns Documentation:**
+- **Const Generics**: Used in PropertySpec for compile-time constraint validation (e.g., StringSpec<200>)
+- **Phantom Types**: Employed in Config hierarchies to prevent context mixing at compile-time
+- **Associated Types**: Used in repository ports for type-safe query results and error handling
+- **Memory Optimization**: Arc<str> for shared strings, Box<str> for heap-efficient storage
 
 ### Domain Entity Coverage Requirements
 

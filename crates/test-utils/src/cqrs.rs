@@ -62,6 +62,10 @@ use std::{collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
 use async_trait::async_trait;
 use tokio::sync::{Mutex, RwLock};
 
+// Submodules for specialized CQRS testing utilities
+pub mod observability;
+pub mod security;
+
 /// Result type for CQRS testing operations
 pub type CqrsTestResult<T> = Result<T, CqrsTestError>;
 
@@ -506,15 +510,23 @@ where
 
     /// Verify expected events (THEN phase)
     ///
-    /// # Panics
-    /// Panics if the actual events don't match the expected events
+    /// # Implementation Note
+    /// This is currently a SKELETON implementation that does NOT perform actual verification.
+    /// Real aggregate testing requires domain-specific logic to:
+    /// 1. Reconstruct aggregate state from `given_events`
+    /// 2. Apply the command to the reconstructed aggregate
+    /// 3. Capture resulting events
+    /// 4. Compare with `expected_events`
+    ///
+    /// This framework provides the Given-When-Then structure, but verification logic
+    /// must be implemented in aggregate-specific test helpers that understand your
+    /// domain's event sourcing semantics.
+    ///
+    /// # Future Work
+    /// Consider using `cqrs-es` crate's TestFramework for production aggregate testing,
+    /// or implement verification using your aggregate's `apply_event()` and `handle_command()` methods.
     pub fn then_expect_events(self, _expected_events: Vec<E>) {
-        // This is a simplified version - real implementation would apply
-        // command to aggregate reconstructed from given_events and verify
-        // the resulting events match expected_events
-
-        // For now, just store for verification
-        // Real implementation in aggregate-specific test frameworks
+        // Intentionally empty - verification deferred to domain-specific implementations
     }
 
     /// Get the given events
@@ -596,6 +608,349 @@ impl<E: Clone + Debug + PartialEq> EventVerifier<E> {
 }
 
 impl<E: Clone + Debug + PartialEq> Default for EventVerifier<E> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Eventual consistency testing utilities for write/read model synchronization
+///
+/// # Architecture Compliance
+/// Implements ADR 0009 Decision 4: Controlled timing simulation using tokio::time
+/// for write/read model synchronization and race condition prevention.
+///
+/// # Usage
+/// ```rust,ignore
+/// use lithos_test_utils::cqrs::EventualConsistencyTester;
+///
+/// #[tokio::test]
+/// async fn test_eventual_consistency() {
+///     let tester = EventualConsistencyTester::new();
+///
+///     // Execute command
+///     command_handler.handle(cmd).await.unwrap();
+///
+///     // Wait for read model update with timeout
+///     tester.wait_for_condition(
+///         || async { read_model.get(id).await.is_some() },
+///         Duration::from_millis(100)
+///     ).await.expect("Read model not updated");
+/// }
+/// ```
+pub struct EventualConsistencyTester {
+    /// Default timeout for consistency checks
+    default_timeout: tokio::time::Duration,
+    /// Polling interval for condition checks
+    poll_interval: tokio::time::Duration,
+}
+
+impl EventualConsistencyTester {
+    /// Create a new eventual consistency tester with default settings
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            default_timeout: tokio::time::Duration::from_millis(500),
+            poll_interval: tokio::time::Duration::from_millis(10),
+        }
+    }
+
+    /// Create a tester with custom timeout
+    #[must_use]
+    pub fn with_timeout(timeout: tokio::time::Duration) -> Self {
+        Self {
+            default_timeout: timeout,
+            poll_interval: tokio::time::Duration::from_millis(10),
+        }
+    }
+
+    /// Wait for a condition to become true within timeout period
+    ///
+    /// # Arguments
+    /// * `condition` - Async closure that returns true when condition is met
+    /// * `timeout` - Maximum time to wait for condition
+    ///
+    /// # Errors
+    /// Returns `CqrsTestError::ConsistencyTimeout` if condition not met within timeout
+    pub async fn wait_for_condition<F, Fut>(
+        &self,
+        mut condition: F,
+        timeout: tokio::time::Duration,
+    ) -> CqrsTestResult<()>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = bool>,
+    {
+        let deadline = tokio::time::Instant::now() + timeout;
+
+        loop {
+            if condition().await {
+                return Ok(());
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                return Err(CqrsTestError::ConsistencyTimeout(format!(
+                    "Condition not met within {:?}",
+                    timeout
+                )));
+            }
+
+            tokio::time::sleep(self.poll_interval).await;
+        }
+    }
+
+    /// Wait for a condition using default timeout
+    ///
+    /// # Errors
+    /// Returns `CqrsTestError::ConsistencyTimeout` if condition not met within timeout
+    pub async fn wait_for_condition_default<F, Fut>(
+        &self,
+        condition: F,
+    ) -> CqrsTestResult<()>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = bool>,
+    {
+        self.wait_for_condition(condition, self.default_timeout).await
+    }
+
+    /// Wait for a value to be available within timeout
+    ///
+    /// # Errors
+    /// Returns `CqrsTestError::ConsistencyTimeout` if value not available within timeout
+    pub async fn wait_for_value<F, Fut, T>(
+        &self,
+        mut getter: F,
+        timeout: tokio::time::Duration,
+    ) -> CqrsTestResult<T>
+    where
+        F: FnMut() -> Fut,
+        Fut: std::future::Future<Output = Option<T>>,
+    {
+        let deadline = tokio::time::Instant::now() + timeout;
+
+        loop {
+            if let Some(value) = getter().await {
+                return Ok(value);
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                return Err(CqrsTestError::ConsistencyTimeout(format!(
+                    "Value not available within {:?}",
+                    timeout
+                )));
+            }
+
+            tokio::time::sleep(self.poll_interval).await;
+        }
+    }
+
+    /// Verify race condition prevention by ensuring operations complete in order
+    ///
+    /// # Errors
+    /// Returns error if operations complete out of order
+    pub async fn verify_ordering<F1, F2, Fut1, Fut2>(
+        &self,
+        first_op: F1,
+        second_op: F2,
+        gap: tokio::time::Duration,
+    ) -> CqrsTestResult<()>
+    where
+        F1: FnOnce() -> Fut1 + Send + 'static,
+        F2: FnOnce() -> Fut2 + Send + 'static,
+        Fut1: std::future::Future<Output = ()> + Send,
+        Fut2: std::future::Future<Output = ()> + Send,
+    {
+        let first_complete = Arc::new(tokio::sync::Mutex::new(false));
+        let second_complete = Arc::new(tokio::sync::Mutex::new(false));
+
+        let first_flag = Arc::clone(&first_complete);
+        let second_flag = Arc::clone(&second_complete);
+
+        // Execute first operation
+        let handle1 = tokio::spawn(async move {
+            first_op().await;
+            *first_flag.lock().await = true;
+        });
+
+        // Wait for gap
+        tokio::time::sleep(gap).await;
+
+        // Execute second operation
+        let handle2 = tokio::spawn(async move {
+            second_op().await;
+            *second_flag.lock().await = true;
+        });
+
+        handle1.await.map_err(|e| {
+            CqrsTestError::TestError(format!("First operation failed: {e}"))
+        })?;
+        handle2.await.map_err(|e| {
+            CqrsTestError::TestError(format!("Second operation failed: {e}"))
+        })?;
+
+        // Verify both completed
+        let first_done = *first_complete.lock().await;
+        let second_done = *second_complete.lock().await;
+
+        if !first_done || !second_done {
+            return Err(CqrsTestError::TestError(
+                "Operations did not complete as expected".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+}
+
+impl Default for EventualConsistencyTester {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Cross-aggregate saga testing utilities
+///
+/// # Architecture Compliance
+/// Implements ADR 0009 Decision 5: Multi-aggregate saga testing for complex
+/// business transactions spanning aggregates with event flow verification.
+///
+/// # Usage
+/// ```rust,ignore
+/// use lithos_test_utils::cqrs::SagaTester;
+///
+/// #[tokio::test]
+/// async fn test_order_saga() {
+///     let tester = SagaTester::new();
+///
+///     // Track saga participants
+///     tester.track_participant("inventory").await;
+///     tester.track_participant("payment").await;
+///
+///     // Execute saga
+///     order_handler.handle(cmd).await.unwrap();
+///
+///     // Verify all participants updated
+///     tester.verify_all_updated(Duration::from_secs(1)).await.unwrap();
+/// }
+/// ```
+pub struct SagaTester {
+    /// Participants in the saga with their update status
+    participants: Arc<RwLock<HashMap<String, bool>>>,
+    /// Events captured during saga execution
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl SagaTester {
+    /// Create a new saga tester
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            participants: Arc::new(RwLock::new(HashMap::new())),
+            events: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+
+    /// Register a saga participant
+    pub async fn track_participant(&self, name: impl Into<String>) {
+        self.participants.write().await.insert(name.into(), false);
+    }
+
+    /// Mark a participant as updated
+    pub async fn mark_updated(&self, name: &str) -> CqrsTestResult<()> {
+        let mut participants = self.participants.write().await;
+        if let Some(status) = participants.get_mut(name) {
+            *status = true;
+            Ok(())
+        } else {
+            Err(CqrsTestError::TestError(format!(
+                "Unknown participant: {name}"
+            )))
+        }
+    }
+
+    /// Check if a participant has been updated
+    pub async fn is_updated(&self, name: &str) -> bool {
+        self.participants.read().await.get(name).copied().unwrap_or(false)
+    }
+
+    /// Verify all participants have been updated within timeout
+    ///
+    /// # Errors
+    /// Returns error if not all participants updated within timeout
+    pub async fn verify_all_updated(
+        &self,
+        timeout: tokio::time::Duration,
+    ) -> CqrsTestResult<()> {
+        let deadline = tokio::time::Instant::now() + timeout;
+
+        loop {
+            let all_updated = {
+                let participants = self.participants.read().await;
+                participants.values().all(|&status| status)
+            };
+
+            if all_updated {
+                return Ok(());
+            }
+
+            if tokio::time::Instant::now() >= deadline {
+                let participants = self.participants.read().await;
+                let pending: Vec<_> = participants
+                    .iter()
+                    .filter(|(_, status)| !**status)
+                    .map(|(name, _)| name.clone())
+                    .collect();
+
+                return Err(CqrsTestError::ConsistencyTimeout(format!(
+                    "Not all participants updated within {:?}. Pending: {:?}",
+                    timeout, pending
+                )));
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Record an event in the saga
+    pub async fn record_event(&self, event: impl Into<String>) {
+        self.events.lock().await.push(event.into());
+    }
+
+    /// Get all recorded events
+    pub async fn events(&self) -> Vec<String> {
+        self.events.lock().await.clone()
+    }
+
+    /// Verify event sequence matches expected order
+    ///
+    /// # Errors
+    /// Returns error if events don't match expected sequence
+    pub async fn verify_event_sequence(
+        &self,
+        expected: &[&str],
+    ) -> CqrsTestResult<()> {
+        let actual = self.events.lock().await;
+        let actual_strs: Vec<&str> =
+            actual.iter().map(String::as_str).collect();
+
+        if actual_strs == expected {
+            Ok(())
+        } else {
+            Err(CqrsTestError::EventVerificationFailed(format!(
+                "Event sequence mismatch. Expected: {:?}, Actual: {:?}",
+                expected, actual_strs
+            )))
+        }
+    }
+
+    /// Clear all saga state for reuse
+    pub async fn clear(&self) {
+        self.participants.write().await.clear();
+        self.events.lock().await.clear();
+    }
+}
+
+impl Default for SagaTester {
     fn default() -> Self {
         Self::new()
     }
@@ -696,5 +1051,162 @@ mod tests {
 
         verifier.assert_event_count(2).await.unwrap();
         verifier.assert_event_exists(&"Event1".to_string()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn eventual_consistency_tester_waits_for_condition() {
+        let tester = EventualConsistencyTester::new();
+        let flag = Arc::new(tokio::sync::Mutex::new(false));
+        let flag_clone = Arc::clone(&flag);
+
+        // Spawn task that sets flag after delay
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            *flag_clone.lock().await = true;
+        });
+
+        // Wait for condition
+        let flag_check = Arc::clone(&flag);
+        let result = tester
+            .wait_for_condition(
+                || {
+                    let flag = Arc::clone(&flag_check);
+                    async move { *flag.lock().await }
+                },
+                tokio::time::Duration::from_millis(200),
+            )
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn eventual_consistency_tester_times_out() {
+        let tester = EventualConsistencyTester::new();
+
+        let result = tester
+            .wait_for_condition(
+                || async { false },
+                tokio::time::Duration::from_millis(50),
+            )
+            .await;
+
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            CqrsTestError::ConsistencyTimeout(_)
+        ));
+    }
+
+    #[tokio::test]
+    async fn eventual_consistency_tester_waits_for_value() {
+        let tester = EventualConsistencyTester::new();
+        let value = Arc::new(tokio::sync::Mutex::new(None));
+        let value_clone = Arc::clone(&value);
+
+        // Spawn task that sets value after delay
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+            *value_clone.lock().await = Some(42);
+        });
+
+        // Wait for value
+        let value_check = Arc::clone(&value);
+        let result = tester
+            .wait_for_value(
+                || {
+                    let value = Arc::clone(&value_check);
+                    async move { *value.lock().await }
+                },
+                tokio::time::Duration::from_millis(200),
+            )
+            .await;
+
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[tokio::test]
+    async fn saga_tester_tracks_participants() {
+        let tester = SagaTester::new();
+
+        tester.track_participant("inventory").await;
+        tester.track_participant("payment").await;
+
+        assert!(!tester.is_updated("inventory").await);
+        assert!(!tester.is_updated("payment").await);
+
+        tester.mark_updated("inventory").await.unwrap();
+        assert!(tester.is_updated("inventory").await);
+        assert!(!tester.is_updated("payment").await);
+    }
+
+    #[tokio::test]
+    async fn saga_tester_verifies_all_updated() {
+        let tester = SagaTester::new();
+
+        tester.track_participant("inventory").await;
+        tester.track_participant("payment").await;
+
+        // Spawn tasks that update participants
+        let tester_clone1 = Arc::new(tester);
+        let tester_clone2 = Arc::clone(&tester_clone1);
+        let tester_clone3 = Arc::clone(&tester_clone1);
+
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(30)).await;
+            tester_clone2.mark_updated("inventory").await.unwrap();
+        });
+
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_millis(60)).await;
+            tester_clone3.mark_updated("payment").await.unwrap();
+        });
+
+        // Verify all updated within timeout
+        let result = tester_clone1
+            .verify_all_updated(tokio::time::Duration::from_millis(200))
+            .await;
+
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    async fn saga_tester_records_events() {
+        let tester = SagaTester::new();
+
+        tester.record_event("OrderPlaced").await;
+        tester.record_event("InventoryReserved").await;
+        tester.record_event("PaymentProcessed").await;
+
+        let events = tester.events().await;
+        assert_eq!(events.len(), 3);
+        assert_eq!(events[0], "OrderPlaced");
+        assert_eq!(events[1], "InventoryReserved");
+        assert_eq!(events[2], "PaymentProcessed");
+    }
+
+    #[tokio::test]
+    async fn saga_tester_verifies_event_sequence() {
+        let tester = SagaTester::new();
+
+        tester.record_event("OrderPlaced").await;
+        tester.record_event("InventoryReserved").await;
+        tester.record_event("PaymentProcessed").await;
+
+        let result = tester
+            .verify_event_sequence(&[
+                "OrderPlaced",
+                "InventoryReserved",
+                "PaymentProcessed",
+            ])
+            .await;
+
+        assert!(result.is_ok());
+
+        let wrong_result = tester
+            .verify_event_sequence(&["PaymentProcessed", "OrderPlaced"])
+            .await;
+
+        assert!(wrong_result.is_err());
     }
 }

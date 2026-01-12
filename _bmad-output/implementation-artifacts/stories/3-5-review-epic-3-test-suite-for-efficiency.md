@@ -35,22 +35,23 @@ So that tests provide good coverage without redundancy or excessive execution ti
 ## Tasks / Subtasks
 
 ### Task 1: Establish Epic 2 Test Infrastructure Context
-- [ ] Analyze Epic 2 stories 2.2-2.7 (ready-for-dev) to understand available test utilities
-- [ ] Document centralized test utilities from Story 2.4 (temporary directories, fixtures, assertions)
-- [ ] Review mise test orchestration from Story 2.5 (test, test:unit, test:integration, test:coverage)
-- [ ] Assess integration testing patterns from Story 2.6 for cross-module testing
-- [ ] Evaluate benchmarking infrastructure from Story 2.7 for performance validation
+- [ ] Read the full text of Story 2.4 from `_bmad-output/implementation-artifacts/stories/2-4-create-centralized-test-utilities-and-infrastructure.md` to understand available test utilities like temporary directories, fixture factories, assertion helpers
+- [ ] Read the full text of Story 2.5 from `_bmad-output/implementation-artifacts/stories/2-5-configure-mise-test-task-orchestration.md` to understand mise commands: `mise run test` (all tests), `mise run test:unit` (domain only), `mise run test:integration` (cross-crate), `mise run test:coverage` (tarpaulin), `mise run test:watch` (continuous)
+- [ ] Read the full text of Story 2.6 from `_bmad-output/implementation-artifacts/stories/2-6-establish-integration-testing-patterns-and-infrastructure.md` to understand integration testing patterns for cross-module testing, isolation strategies, external service mocking
+- [ ] Read the full text of Story 2.7 from `_bmad-output/implementation-artifacts/stories/2-7-create-benchmarking-infrastructure-and-performance-testing-patterns.md` to understand criterion.rs integration, performance regression detection, benchmark result storage
+- [ ] Create document `_bmad-output/test-utilities-reference.md` listing all available Epic 2 utilities with usage examples for Epic 3 testing, including code snippets showing how to use each utility
+- [ ] Run `mise run test:unit` and verify it executes successfully, confirming Epic 2 test utilities are available and functional
 
 ### Task 2: Analyze Current Epic 3 Test Implementation
-- [ ] Run `mise run test:coverage` to generate detailed coverage report for Epic 3 crates
-- [ ] Execute `mise run test` to establish baseline execution time (<30 seconds target)
-- [ ] Analyze coverage by bounded context: Note, Schema, Config, Template domain entities
-- [ ] **HEXAGONAL COMPLIANCE CHECK**: Verify domain tests are pure (no external dependencies)
-- [ ] **HEXAGONAL COMPLIANCE CHECK**: Identify if adapter/integration tests are properly separated
-- [ ] Review test file organization and coverage distribution across modules
-- [ ] Identify coverage gaps in critical areas: validation logic, error paths, edge cases
-- [ ] Assess coverage quality: meaningful tests vs coverage metrics (avoid vanity coverage)
-- [ ] **COVERAGE TARGET ANALYSIS**: Justify 90%+ target vs architecture baseline of 80%+
+- [ ] Run `mise run test:coverage` to generate detailed tarpaulin HTML report in `_bmad-output/coverage-reports/` directory
+- [ ] Run `mise run test` with `time mise run test` to measure total execution time and record individual test category times (unit, integration, property tests)
+- [ ] Open the generated HTML coverage report and analyze coverage percentage for each bounded context: Note domain entities, Schema domain entities, Config domain entities, Template domain entities
+- [ ] Perform hexagonal compliance check for domain tests: verify `crates/domain/src/models/*/tests.rs` modules have ZERO external dependencies (no tokio, no adapters, no app layer imports) and use `#[cfg(test)]` attribute
+- [ ] Perform hexagonal compliance check for adapter/integration tests: verify adapter layer tests are in `tests/` directory or `adapters/*/tests/` modules and properly mock external dependencies
+- [ ] Review test file organization: check that domain entities have inline `#[cfg(test)] mod tests` modules and integration tests are in `crates/domain/tests/` directory
+- [ ] Identify specific coverage gaps in critical areas: list uncovered lines in validation logic, error paths, edge cases, boundary conditions for each bounded context
+- [ ] Assess coverage quality vs metrics: review test code to identify vanity coverage (tests that only exercise code without meaningful assertions) vs meaningful tests
+- [ ] Create document `_bmad-output/coverage-analysis/coverage-target-justification.md` explaining why 90%+ target is appropriate for Epic 3 domain models vs 80%+ architecture baseline, citing business criticality of validation logic, type safety, error handling
 - [ ] Document current coverage gaps, weak areas, and quality concerns
 
 ### Task 3: Identify Redundancies and Inefficiencies
@@ -403,6 +404,11 @@ crates/
 - **Branch Coverage**: Ensure conditional logic and error paths are tested
 - **Exclusion Rules**: Properly exclude generated code, test utilities, and boilerplate
 - **Coverage Trends**: Track coverage improvements over time with baseline comparisons
+
+**Advanced Testing Patterns:**
+- **Property-Based Testing**: Leverage `proptest` with custom strategies for const generic types
+- **Phantom Type Testing**: Ensure compile-time safety is validated through type-level tests
+- **Associated Type Testing**: Test repository port implementations with concrete associated types
 
 **Coverage Quality vs Quantity:**
 - **Meaningful Coverage**: Focus on testing business logic, validation rules, and error conditions

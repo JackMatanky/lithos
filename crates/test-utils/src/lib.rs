@@ -38,8 +38,16 @@ pub use async_utils::{
 };
 pub use cqrs::{
     CqrsTestError, CqrsTestResult, Entity, ErrorConfig, EventVerifier,
-    MockRepository, QueryCriteria, QueryStorePort, RepositoryInteraction,
-    RepositoryPort, StubQueryStore, TestFramework,
+    EventualConsistencyTester, MockRepository, QueryCriteria, QueryStorePort,
+    RepositoryInteraction, RepositoryPort, SagaTester, StubQueryStore,
+    TestFramework,
+    observability::{
+        MockMetricsCollector, MockTraceCollector, OperationStats, TraceEntry,
+    },
+    security::{
+        AuthorizationAuditEntry, AuthorizationResult, InputSanitizer,
+        MockAuthorizationService,
+    },
 };
 pub use events::{
     EventRecord, EventTestError, EventTestFramework, EventTestResult,

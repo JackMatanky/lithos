@@ -36,12 +36,22 @@ So that configuration changes are validated and the domain enforces configuratio
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement Config Domain Entities (GREEN Phase - AC: 1-3)
-- [ ] Implement ConfigValue enum with String, Number, Boolean, Encrypted variants
-- [ ] Implement ConfigPath enum for Global/User/Project/Vault hierarchy levels
-- [ ] Implement Config struct with hierarchical merging and validation logic
-- [ ] Add semantic validation methods for type safety and constraint checking
-- [ ] Implement encryption support for sensitive configuration fields
-- [ ] Add hierarchical override resolution (Vault > Project > User > Global)
+- [ ] Create file `crates/domain/src/models/config/types.rs` and define phantom type markers `#[derive(Debug)] pub struct Global; #[derive(Debug)] pub struct User; #[derive(Debug)] pub struct Project; #[derive(Debug)] pub struct Vault;`
+- [ ] Create file `crates/domain/src/models/config/value.rs` and define ConfigValue enum with `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ConfigValue { String(String), Number(f64), Boolean(bool), Encrypted(Vec<u8>), Array(Vec<ConfigValue>), Object(HashMap<String, ConfigValue>) }`
+- [ ] In `crates/domain/src/models/config/value.rs`, implement From traits for ConfigValue: `impl From<String> for ConfigValue`, `impl From<f64> for ConfigValue`, `impl From<bool> for ConfigValue`
+- [ ] Create file `crates/domain/src/models/config/path.rs` and define ConfigPath enum with `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ConfigPath<Level = Global> { Global(PhantomData<Global>), User(PhantomData<User>), Project(PhantomData<Project>), Vault(PhantomData<Vault>) }`
+- [ ] In `crates/domain/src/models/config/path.rs`, define type-safe aliases `pub type GlobalPath = ConfigPath<Global>; pub type UserPath = ConfigPath<User>; pub type ProjectPath = ConfigPath<Project>; pub type VaultPath = ConfigPath<Vault>;`
+- [ ] In `crates/domain/src/models/config/path.rs`, implement helper methods `precedence_order() -> Vec<ConfigPath>` returning [Global, User, Project, Vault], `is_higher_precedence(&self, other: &ConfigPath<Level>) -> bool` comparing precedence order
+- [ ] Create file `crates/domain/src/models/config/validation.rs` and define ValidationRule enum with `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ValidationRule { Required, Enum(Vec<String>), Range { min: Option<f64>, max: Option<f64> }, Pattern(String), DependsOn(String) }`
+- [ ] Create file `crates/domain/src/models/config/config.rs` and define Config struct with `#[derive(Debug, Clone, PartialEq)] pub struct Config<Level = Global> { pub values: HashMap<ConfigPath<Level>, HashMap<String, ConfigValue>>, pub validation_rules: HashMap<String, ValidationRule>, pub encrypted_fields: HashSet<String>, _marker: PhantomData<Level> }`
+- [ ] In `crates/domain/src/models/config/config.rs`, define type-safe aliases `pub type GlobalConfig = Config<Global>; pub type UserConfig = Config<User>; pub type ProjectConfig = Config<Project>; pub type VaultConfig = Config<Vault>;`
+- [ ] In `crates/domain/src/models/config/config.rs`, implement `new()` constructor that validates all inputs and returns `Result<Self, ConfigError>`
+- [ ] In `crates/domain/src/models/config/config.rs`, implement `merge_hierarchical()` method that merges configs with Vault > Project > User > Global precedence, returns `Result<HashMap<String, ConfigValue>, ConfigError>`
+- [ ] In `crates/domain/src/models/config/config.rs`, implement `validate()` method that applies all ValidationRule constraints to merged config, returns `Result<(), ConfigError>`
+- [ ] In `crates/domain/src/models/config/config.rs`, implement `get()` method with automatic hierarchical fallback (Vault -> Project -> User -> Global), returns `Option<&ConfigValue>`
+- [ ] In `crates/domain/src/models/config/config.rs`, implement `decrypt_field()` method that returns error if field not encrypted, actual decryption in adapter layer
+- [ ] Create file `crates/domain/src/models/config/encryption.rs` and define EncryptedField struct with `#[derive(Debug, Clone, PartialEq)] pub struct EncryptedField { pub encrypted_data: Vec<u8>, pub key_id: String }`
+- [ ] Update `crates/domain/src/models/config/mod.rs` to add module declarations `pub mod types; pub mod value; pub mod path; pub mod validation; pub mod config; pub mod encryption;` and re-export all entities
 - [ ] **TDD REQUIREMENT:** Make all Config tests pass (GREEN phase complete when all tests pass)
 
 ### Task 3: Implement Domain Error Types (GREEN Phase - AC: All)
@@ -128,38 +138,64 @@ pub enum ConfigValue {
 }
 
 /// Hierarchical configuration levels with override precedence
+/// Enhanced with phantom types for compile-time context safety
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub enum ConfigPath {
+pub enum ConfigPath<Level = Global> {
     /// System-wide global configuration
-    Global,
+    Global(PhantomData<Global>),
     /// User-specific configuration
-    User,
+    User(PhantomData<User>),
     /// Project-specific configuration
-    Project,
+    Project(PhantomData<Project>),
     /// Vault-specific configuration (highest precedence)
-    Vault,
+    Vault(PhantomData<Vault>),
 }
 
+// Phantom type markers for context safety
+pub struct Global;
+pub struct User;
+pub struct Project;
+pub struct Vault;
+
+// Type-safe config path aliases
+pub type GlobalPath = ConfigPath<Global>;
+pub type UserPath = ConfigPath<User>;
+pub type ProjectPath = ConfigPath<Project>;
+pub type VaultPath = ConfigPath<Vault>;
+
 /// Main configuration entity with hierarchical support
+/// Uses phantom types to prevent mixing incompatible config contexts
 #[derive(Debug, Clone, PartialEq)]
-pub struct Config {
-    /// Configuration values by hierarchical level
-    values: HashMap<ConfigPath, HashMap<String, ConfigValue>>,
+pub struct Config<Level = Global> {
+    /// Configuration values by hierarchical level (type-safe)
+    values: HashMap<ConfigPath<Level>, HashMap<String, ConfigValue>>,
     /// Validation rules and constraints
     validation_rules: HashMap<String, ValidationRule>,
     /// Encrypted field metadata
     encrypted_fields: HashSet<String>,
+    _marker: PhantomData<Level>,
 }
+
+// Type-safe config aliases
+pub type GlobalConfig = Config<Global>;
+pub type UserConfig = Config<User>;
+pub type ProjectConfig = Config<Project>;
+pub type VaultConfig = Config<Vault>;
 ```
 
 **Hierarchical Merging Algorithm:**
 1. Start with Global level configuration
-2. Override with User level (same keys)
-3. Override with Project level (same keys)
-4. Override with Vault level (highest precedence)
+2. Override with User level (same keys) - compile-time guaranteed type compatibility
+3. Override with Project level (same keys) - phantom types prevent mixing
+4. Override with Vault level (highest precedence) - type-safe precedence
 5. Apply validation rules to merged configuration
 6. Decrypt encrypted fields on access
+
+**Phantom Type Benefits:**
+- Compile-time prevention of mixing config contexts (e.g., can't merge Global with User directly)
+- Type-safe APIs: functions can accept specific config types
+- Zero-cost abstraction: phantom types have no runtime overhead
 
 ### Encryption Support
 
@@ -218,6 +254,10 @@ pub enum ValidationRule {
 #[derive(Debug, Clone, PartialEq)]
 // Add Serialize/Deserialize for config persistence
 // Use custom implementations for complex validation
+
+// Advanced Rust Patterns:
+// - Use phantom types for compile-time context safety
+// - Leverage associated types in port traits for type-safe operations
 ```
 
 **Conversion Traits - MANDATORY:**

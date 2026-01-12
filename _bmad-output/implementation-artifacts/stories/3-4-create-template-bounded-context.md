@@ -36,12 +36,22 @@ So that template structure and business rules are properly validated at the doma
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement Template Core Entities (GREEN Phase - AC: 1-3)
-- [ ] Implement Template struct with UUID v7 identity and content storage
-- [ ] Implement VariableDefinition enum with type-safe value constraints (String, Number, Boolean, Date, File)
-- [ ] Implement TemplateComposition for modular template assembly
-- [ ] Add domain business rule validation (variable naming, composition cycles)
-- [ ] Implement semantic validation for variable type consistency
-- [ ] Create Template::new() constructor with domain validation (no syntax validation)
+- [ ] Create file `crates/domain/src/models/template/template.rs` and define Template struct with `#[derive(Debug, Clone, PartialEq)] pub struct Template` and fields `pub id: Uuid`, `pub name: String`, `pub content: String`, `pub variables: HashMap<String, VariableDefinition>`, `pub extends: Option<String>`, `pub metadata: TemplateMetadata`
+- [ ] In `crates/domain/src/models/template/template.rs`, implement `new()` constructor that validates name format (regex `^[a-zA-Z0-9_-]+$`), variable name conflicts, composition cycles, returns `Result<Self, TemplateError>`
+- [ ] In `crates/domain/src/models/template/template.rs`, implement `validate_business_rules()` method checking variable definitions match HashMap, no circular references in extends, returns `Result<(), TemplateError>`
+- [ ] Create file `crates/domain/src/models/template/metadata.rs` and define TemplateMetadata struct with `#[derive(Debug, Clone, PartialEq)] pub struct TemplateMetadata` and fields `pub description: Option<String>`, `pub version: Option<String>`, `pub tags: Vec<String>`, `pub created_at: DateTime<Utc>`, `pub updated_at: DateTime<Utc>`
+- [ ] In `crates/domain/src/models/template/metadata.rs`, implement `Default` trait with sensible defaults for timestamps
+- [ ] Create file `crates/domain/src/models/template/variable.rs` and define VariableDefinition enum with `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum VariableDefinition { String { default: Option<String>, min_length: Option<usize>, max_length: Option<usize>, pattern: Option<String> }, Number { default: Option<f64>, min: Option<f64>, max: Option<f64> }, Boolean { default: Option<bool> }, Date { default: Option<String>, format: Option<String> }, File { default: Option<String>, file_types: Option<Vec<String>> } }`
+- [ ] In `crates/domain/src/models/template/variable.rs`, implement `validate_value()` method for VariableDefinition that performs type-safe validation based on variant, returns `Result<(), TemplateError>`
+- [ ] In `crates/domain/src/models/template/variable.rs`, implement `has_default()` and `get_default_value()` helper methods
+- [ ] Create file `crates/domain/src/models/template/position.rs` and define InsertionPosition enum with `#[derive(Debug, Clone, PartialEq)] pub enum InsertionPosition { BeforeVariable(String), AfterVariable(String), Beginning, End }`
+- [ ] In `crates/domain/src/models/template/position.rs`, implement validation for variable names in BeforeVariable/AfterVariable variants
+- [ ] Create file `crates/domain/src/models/template/section.rs` and define TemplateSection struct with `#[derive(Debug, Clone, PartialEq)] pub struct TemplateSection` and fields `pub name: String`, `pub content: String`, `pub position: InsertionPosition`
+- [ ] In `crates/domain/src/models/template/section.rs`, implement validation for non-empty name and reasonable content length
+- [ ] Create file `crates/domain/src/models/template/composition.rs` and define TemplateComposition struct with `#[derive(Debug, Clone, PartialEq)] pub struct TemplateComposition` and fields `pub base_template: String`, `pub variable_overrides: HashMap<String, serde_json::Value>`, `pub additional_sections: Vec<TemplateSection>`, `pub includes: Vec<String>`
+- [ ] In `crates/domain/src/models/template/composition.rs`, implement `validate()` method that checks base_template exists in available_templates, no circular includes, variable_override types compatible, returns `Result<(), TemplateError>`
+- [ ] In `crates/domain/src/models/template/composition.rs`, implement `detect_cycles()` method using depth-first search to detect circular references, max depth 5, returns `Result<(), TemplateError>`
+- [ ] Update `crates/domain/src/models/template/mod.rs` to add module declarations and re-export all entities `pub use template::Template; pub use metadata::TemplateMetadata; pub use variable::VariableDefinition; pub use position::InsertionPosition; pub use section::TemplateSection; pub use composition::TemplateComposition;`
 - [ ] **TDD REQUIREMENT:** Make all Template domain tests pass (GREEN phase complete when all tests pass)
 
 ### Task 3: Implement Template Validation Logic (GREEN Phase - AC: All)
@@ -272,6 +282,10 @@ pub enum InsertionPosition {
 #[derive(Debug, Clone, PartialEq)]
 // Add Serialize/Deserialize for template persistence
 // Use custom implementations for complex validation
+
+// Advanced Rust Patterns:
+// - Use associated types in repository ports for type-safe APIs
+// - Consider GATs for async iterators in future template streaming
 ```
 
 **Conversion Traits - MANDATORY:**
