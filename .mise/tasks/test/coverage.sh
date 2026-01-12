@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/test/coverage.sh
-# Description: Generate code coverage reports using tarpaulin.
-# -----------------------------------------------------------------------------
-#MISE description="Generate code coverage report"
+#MISE description="Generate code coverage reports using tarpaulin"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE outputs=["tarpaulin-report.html"]
 #USAGE flag "-o --open" help="Open coverage report in browser"

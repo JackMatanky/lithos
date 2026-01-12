@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/test/watch.sh
-# Description: Watch for file changes and automatically run tests.
-# -----------------------------------------------------------------------------
-#MISE description="Watch for changes and run tests"
+#MISE description="Watch for changes and automatically run tests"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #USAGE arg "[args]..." help="Arguments to pass to cargo test"
 

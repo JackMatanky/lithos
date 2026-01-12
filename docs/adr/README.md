@@ -27,7 +27,7 @@ Create an ADR for any decision that:
 ## Validation Tooling
 
 - **Validate Format**: Run `mise run validate-adrs` to ensure template compliance.
-- **Check Metrics**: Run `./scripts/adr-metrics.sh` to see the current state of the architecture library.
+- **Check Metrics**: Run `mise run adr-metrics` to see the current state of the architecture library.
 
 ## Template Standards
 

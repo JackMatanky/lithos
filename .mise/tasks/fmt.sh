@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/fmt.sh
-# Description: Format all Rust files in the workspace using rustfmt.
-# -----------------------------------------------------------------------------
-#MISE description="Format all Rust files in the workspace"
+#MISE description="Format all Rust files in the workspace using rustfmt"
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["target/fmt.stamp"]
 #USAGE flag "-c --check" help="Check formatting without making changes"

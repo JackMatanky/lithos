@@ -111,7 +111,7 @@ So that we maintain architectural integrity and document important decisions.
 
 - Established ADR review process recorded in `docs/adr/0001-adr-process.md`.
 - Created ADR template in `docs/adr/template.md` with enhanced `Technical Validation` section.
-- Developed automated validation script `scripts/validate-adrs.sh` and metrics script `scripts/adr-metrics.sh`.
+- Developed automated validation script `.mise/tasks/adr/validate.sh` and metrics script `.mise/tasks/adr/metrics.sh`.
 - Created ADR process guide and training material in `docs/adr/README.md`.
 - Integrated validation and metrics into `mise` tasks and `pre-commit` hooks.
 - Updated CI pipeline (`.github/workflows/ci.yml`) to include ADR validation.
@@ -133,9 +133,8 @@ So that we maintain architectural integrity and document important decisions.
 - docs/adr/0010-centralized-test-utilities.md
 - docs/adr/0007-event-orchestration.md
 - docs/adr/0008-event-driven-testing-patterns.md
-- scripts/validate-adrs.sh
-- scripts/adr-metrics.sh
-- .mise/tasks/validate-adrs.sh
+- .mise/tasks/adr/validate.sh
+- .mise/tasks/adr/metrics.sh
 - mise.toml
 - .pre-commit-config.yaml
 - .github/workflows/ci.yml

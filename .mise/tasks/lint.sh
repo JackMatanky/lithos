@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
-# -----------------------------------------------------------------------------
-# Filename:    .mise/tasks/lint.sh
-# Description: Run clippy lints on all crates in the workspace.
-# -----------------------------------------------------------------------------
-#MISE description="Run clippy lints on all crates"
+#MISE description="Run clippy lints on all workspace crates"
 #MISE sources=["**/*.rs", "Cargo.toml", "clippy.toml"]
 #MISE outputs=["target/lint.stamp"]
 #USAGE flag "-v --verbose" help="Verbose output"

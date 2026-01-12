@@ -114,11 +114,11 @@ run = "cargo deny check"
 
 [tasks.validate-adrs]
 description = "Validate ADRs for template compliance"
-run = "scripts/validate-adrs.sh"
+run = ".mise/tasks/adr/validate.sh"
 
 [tasks.adr-metrics]
 description = "Show ADR quality and completeness metrics"
-run = "scripts/adr-metrics.sh"
+run = ".mise/tasks/adr/metrics.sh"
 
 [tasks.bench]
 description = "Run performance benchmarks"
