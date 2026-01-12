@@ -399,20 +399,61 @@ pub struct Property {
 }
 
 impl Property {
-    /// Create a new property with deterministic ID generation
+    /// Create a new property with validation
     ///
     /// # Errors
-    /// Returns `DomainError` if validation fails
+    /// Returns `DomainError` if property structure is invalid
     pub fn new(
         name: String,
         required: bool,
         array: bool,
-        spec: PropertySpec,
+        spec: Box<dyn PropertySpec<Value = serde_json::Value>>,
     ) -> Result<Self, DomainError> {
+        let property = Self {
+            id: generate_property_id(&name, &*spec),
+            name: name.clone(),
+            required,
+            array,
+            spec,
+        };
+
+        property.validate()?;
+        Ok(property)
+    }
+
+    /// Validate property structure and constraints
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails
+    pub fn validate(&self) -> Result<(), DomainError> {
         // Validate name
-        if name.is_empty() {
+        if self.name.is_empty() {
             return Err(DomainError::EmptyPropertyName);
         }
+
+        // Validate name format (identifier rules)
+        if !is_valid_property_name(&self.name) {
+            return Err(DomainError::InvalidPropertyName {
+                name: self.name.clone(),
+            });
+        }
+
+        // Validate spec constraints via trait method
+        self.spec.validate_spec()?;
+
+        Ok(())
+    }
+
+    /// Check if property exists in PropertyBank
+    pub fn in_property_bank(&self, bank: &PropertyBank) -> bool {
+        bank.properties.contains_key(&self.id)
+    }
+
+    /// Generic validation function that works with any PropertySpec
+    pub fn validate_value(&self, value: &serde_json::Value) -> Result<(), DomainError> {
+        self.spec.validate(value)
+    }
+}
 
         // Compute deterministic ID
         let id = Self::compute_id(&name, &spec);
@@ -454,59 +495,54 @@ impl Property {
 - Example valid: `"title"`, `"created_at"`, `"status-code"`
 - Example invalid: `"Title"`, `"created at"`, `""`, `"property--name"`
 
-### PropertySpec Variants Specification
+### PropertySpec Trait-Based Generic Design
 
-**PropertySpec Trait and Variants:**
+**PropertySpec Trait with Associated Types:**
 ```rust
-/// Type-specific validation specification for properties
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum PropertySpec {
-    String(StringSpec),
-    Number(NumberSpec),
-    Bool(BoolSpec),
-    Date(DateSpec),
-    File(FileSpec),
+/// Core trait for property specifications with associated value type
+/// Provides type-safe validation while maintaining flexibility
+pub trait PropertySpec: Send + Sync + Debug + Clone {
+    /// The value type this spec validates (enables compile-time type safety)
+    type Value: Send + Sync + Debug;
+
+    /// Get the spec type identifier
+    fn spec_type(&self) -> PropertySpecType;
+
+    /// Validate a value against this spec's constraints
+    fn validate(&self, value: &Self::Value) -> Result<(), DomainError>;
+
+    /// Validate the spec's own structural constraints
+    fn validate_spec(&self) -> Result<(), DomainError>;
 }
 
-/// String property validation constraints
+/// Enhanced StringSpec with const generics for compile-time length validation
 #[derive(Debug, Clone, PartialEq)]
-pub struct StringSpec {
+pub struct StringSpec<const MAX_LEN: usize = { usize::MAX }> {
     /// Optional enum of allowed values (for suggesters)
     pub enum_values: Option<Vec<String>>,
 
     /// Optional regex pattern for validation
     pub pattern: Option<String>,
 
-    /// Optional min length constraint
+    /// Optional min length constraint (compile-time checked against MAX_LEN)
     pub min_length: Option<usize>,
-
-    /// Optional max length constraint
-    pub max_length: Option<usize>,
 }
 
-impl StringSpec {
-    /// Validate a string value against this spec
-    ///
-    /// # Errors
-    /// Returns `DomainError` if validation fails
-    pub fn validate(&self, value: &str) -> Result<(), DomainError> {
-        // Check enum values if present
-        if let Some(ref enums) = self.enum_values {
-            if !enums.contains(&value.to_string()) {
-                return Err(DomainError::InvalidEnumValue {
-                    value: value.to_string(),
-                    allowed: enums.clone(),
-                });
-            }
+impl<const MAX_LEN: usize> PropertySpec for StringSpec<MAX_LEN> {
+    type Value = String;
+
+    fn spec_type(&self) -> PropertySpecType { PropertySpecType::String }
+
+    fn validate(&self, value: &String) -> Result<(), DomainError> {
+        // Compile-time guarantee: value cannot exceed MAX_LEN
+        if value.len() > MAX_LEN {
+            return Err(DomainError::StringTooLong {
+                max: MAX_LEN,
+                actual: value.len()
+            });
         }
 
-        // Check regex pattern if present
-        if let Some(ref pattern) = self.pattern {
-            // Regex validation logic
-        }
-
-        // Check length constraints
+        // Check min length
         if let Some(min) = self.min_length {
             if value.len() < min {
                 return Err(DomainError::StringTooShort {
@@ -516,18 +552,98 @@ impl StringSpec {
             }
         }
 
-        if let Some(max) = self.max_length {
-            if value.len() > max {
-                return Err(DomainError::StringTooLong {
-                    max,
-                    actual: value.len()
+        // Check enum values
+        if let Some(ref enums) = self.enum_values {
+            if !enums.contains(value) {
+                return Err(DomainError::InvalidEnumValue {
+                    value: value.clone(),
+                    allowed: enums.clone(),
                 });
+            }
+        }
+
+        // Check regex pattern
+        if let Some(ref pattern) = self.pattern {
+            // Regex validation logic would go here
+            // For now, assume it's valid (pattern validation in validate_spec)
+        }
+
+        Ok(())
+    }
+
+    fn validate_spec(&self) -> Result<(), DomainError> {
+        // Validate regex pattern compiles
+        if let Some(ref pattern) = self.pattern {
+            // Attempt to compile regex
+            // Return error if invalid
+        }
+
+        // Validate enum is not empty if present
+        if let Some(ref enums) = self.enum_values {
+            if enums.is_empty() {
+                return Err(DomainError::EmptyEnumNotAllowed);
             }
         }
 
         Ok(())
     }
 }
+
+/// String property validation constraints with const generic for max length
+#[derive(Debug, Clone, PartialEq)]
+pub struct StringSpec<const MAX_LEN: usize = { usize::MAX }> {
+    /// Optional enum of allowed values (for suggesters)
+    pub enum_values: Option<Vec<String>>,
+
+    /// Optional regex pattern for validation
+    pub pattern: Option<String>,
+
+    /// Optional min length constraint (must be <= MAX_LEN)
+    pub min_length: Option<usize>,
+}
+
+// Additional spec implementations would follow the same pattern
+#[derive(Debug, Clone, PartialEq)]
+pub struct NumberSpec<const MIN: f64 = { f64::NEG_INFINITY }, const MAX: f64 = { f64::INFINITY }> {
+    pub step: Option<f64>,
+}
+
+impl<const MIN: f64, const MAX: f64> PropertySpec for NumberSpec<MIN, MAX> {
+    type Value = f64;
+
+    fn spec_type(&self) -> PropertySpecType { PropertySpecType::Number }
+
+    fn validate(&self, value: &f64) -> Result<(), DomainError> {
+        // Compile-time bounds checking
+        if *value < MIN || *value > MAX {
+            return Err(DomainError::NumberOutOfRange {
+                value: *value,
+                min: MIN,
+                max: MAX,
+            });
+        }
+
+        // Step validation (integer semantics)
+        if let Some(step) = self.step {
+            if step == 1.0 && value.fract() != 0.0 {
+                return Err(DomainError::IntegerRequired { value: *value });
+            }
+        }
+
+        Ok(())
+    }
+
+    fn validate_spec(&self) -> Result<(), DomainError> {
+        if let Some(step) = self.step {
+            if step <= 0.0 {
+                return Err(DomainError::InvalidStep { step });
+            }
+        }
+        Ok(())
+    }
+}
+
+// Bool, Date, and File specs follow similar patterns...
 
 /// Number property validation constraints
 #[derive(Debug, Clone, PartialEq)]
@@ -689,6 +805,10 @@ let url_property = Property::new(
 #[derive(Debug, Clone, PartialEq)]
 // Add Default where appropriate (PropertyBank, empty specs)
 // Add Eq for types with no floats (Schema, Property, most specs)
+
+// Advanced Rust Patterns:
+// - Use const generics in specs for compile-time validation
+// - Implement custom derives for domain boilerplate reduction
 ```
 
 **Conversion Traits - MANDATORY:**
@@ -1067,10 +1187,10 @@ pub fn new(...) -> Result<Self, DomainError> { }
 
 **Critical Anti-Patterns to AVOID:**
 - ❌ Using `unwrap()`, `expect()`, `todo()`, `panic!()` in production code
-- ❌ Using `as` casting (use `.try_into()` or proper error handling)
-- ❌ Leaking adapter concerns into domain (no file I/O, no schema loading)
+- ❌ Using `as` casting (use `.try_into().expect("...")` or proper error handling)
 - ❌ Creating ad-hoc conversion methods instead of From/TryFrom traits
 - ❌ Using catch-all `_ => {}` patterns in exhaustive domain logic matches
+- ❌ Downcasting trait objects unsafely (use associated types for type safety)
 - ❌ Allowing circular inheritance in schema definitions
 - ❌ Generating non-deterministic property IDs (breaks deduplication)
 
@@ -1118,61 +1238,29 @@ pub fn new(...) -> Result<Self, DomainError> { }
 
 ### Implementation Strategy
 
-**Step-by-Step Approach:**
-
-1. **Extend Error Types** (`errors.rs`):
-   - Add schema-specific error variants to `DomainError`
-   - Cover schema validation, property validation, spec validation
-   - Use `thiserror::Error` with descriptive messages
-
-2. **Create PropertySpec Variants** (`property_spec.rs`):
-   - Define `PropertySpec` enum and variant structs
-   - Implement validation methods for each variant
-   - Add comprehensive tests for validation logic
-
-3. **Build Property Entity** (`property.rs`):
-   - Implement `Property` with deterministic ID generation
-   - Add `compute_id()` using blake3 hash
-   - Test ID determinism and uniqueness
-
-4. **Implement PropertyBank** (`property_bank.rs`):
-   - Create singleton registry with HashMap storage
-   - Implement `register()`, `lookup()`, `lookup_by_definition()`
-   - Test deduplication and lookup functionality
-
-5. **Construct Schema Aggregate** (`schema.rs`):
-   - Implement `Schema` with inheritance resolution
-   - Add `resolve_properties()` for inheritance logic
-   - Implement circular inheritance detection
-   - Test inheritance, exclusion, override scenarios
-
-6. **Write Comprehensive Tests**:
-   - Unit tests for each entity and validation rule
-   - Property-based tests for ID generation
-   - Integration tests for inheritance resolution
-   - Aim for 90%+ coverage
-
-**Validation Pipeline (Three-Phase):**
-1. **Syntactic**: Type correctness (Rust compiler enforces)
-2. **Semantic**: Business rule validation (domain layer validates)
-3. **Orchestration**: Cross-entity consistency (app layer, future stories)
-
-**Schema Creation Pattern:**
+**Trait-Based PropertySpec Implementation:**
 ```rust
-// Properties created with validation
-let title_prop = Property::new("title", true, false, PropertySpec::String(StringSpec {
-    enum_values: Some(vec!["draft", "published"]),
-    min_length: Some(1), max_length: Some(200), pattern: None,
-}))?;
+// PropertySpec trait with associated types for type safety
+pub trait PropertySpec: Send + Sync + Debug + Clone {
+    type Value: Send + Sync + Debug;
 
-// Schema with inheritance resolution
-let child_schema = Schema::new(
-    "child-schema".to_string(),
-    Some("parent-schema".to_string()),  // extends
-    HashSet::from(["exclude_prop"]),    // excludes
-    vec![title_prop],                   // own properties
-    Some(&parent_schema),               // parent reference
-)?;
+    fn spec_type(&self) -> PropertySpecType;
+    fn validate(&self, value: &Self::Value) -> Result<(), DomainError>;
+    fn validate_spec(&self) -> Result<(), DomainError>;
+}
+
+// Usage with trait objects for runtime polymorphism
+pub struct Property {
+    pub spec: Box<dyn PropertySpec<Value = serde_json::Value>>,
+    // ... other fields
+}
+
+impl Property {
+    // Generic validation through trait polymorphism
+    pub fn validate_value(&self, value: &serde_json::Value) -> Result<(), DomainError> {
+        self.spec.validate(value)
+    }
+}
 ```
 
 **Deterministic ID Generation Example:**

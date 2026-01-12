@@ -142,6 +142,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - Domain entities remain pure and dependency-free
 - Storage adapters (`adapters/spi/storage`) create separate DTOs with `rkyv` derives
 - Use `From/Into` traits to convert between domain entities and storage DTOs
+- Consider `Arc<str>` for shared immutable strings (paths, tags) to reduce memory usage in large vaults
 - This preserves hexagonal architecture while enabling zero-copy deserialization
 
 ### Subentity Specifications
@@ -282,6 +283,10 @@ pub struct Note {
 #[derive(Debug, Clone, PartialEq)]
 // Add Default where appropriate
 // Use custom implementations for complex logic
+
+// Advanced Rust Patterns:
+// - Consider Arc<str> for shared immutable strings in large aggregates
+// - Use associated types in port traits for repository operations
 ```
 
 **Conversion Traits - MANDATORY:**
@@ -371,6 +376,7 @@ pub struct Note {
 
 **Memory Strategy:**
 - Use `Box<str>` for small immutable strings (paths, identifiers) to save heap allocation overhead
+- Use `Arc<str>` for shared immutable strings (common tags, paths) across notes to reduce memory duplication
 - Use `String` for all mutable or frequently modified text content
 - Avoid `Cow<'a, str>` in pure domain models (adds lifetime complexity without clear benefit)
 - Reserve advanced memory optimization for storage adapter layer if profiling shows need
@@ -826,14 +832,17 @@ use async_trait::async_trait;
 
 #[async_trait]
 pub trait NoteRepositoryPort: Send + Sync {
+    type NoteId; // Associated type for note identity
+    type Error: std::error::Error; // Associated error type
+
     /// Persist a note to storage.
     ///
     /// # Errors
-    /// Returns `DomainError` if persistence fails.
-    async fn save(&self, note: &Note) -> Result<(), DomainError>;
+    /// Returns associated error type if persistence fails.
+    async fn save(&self, note: &Note) -> Result<Self::NoteId, Self::Error>;
 
     /// Retrieve a note by ID.
-    async fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, DomainError>;
+    async fn find_by_id(&self, id: &Self::NoteId) -> Result<Option<Note>, Self::Error>;
 }
 
 // Import pattern:
