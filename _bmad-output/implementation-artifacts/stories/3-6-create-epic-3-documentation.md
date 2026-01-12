@@ -93,8 +93,8 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document domain model evolution principles (when to add vs modify entities)
 - [ ] Create guidelines for maintaining backward compatibility in domain contracts
 - [ ] Generate architecture diagrams showing all Epic 3 bounded contexts and relationships
-- [ ] Document hexagonal architecture compliance rules for domain models
 - [ ] Include examples of proper domain model evolution patterns
+- [ ] Create `docs/domain/evolution-guidelines.md` with domain-specific evolution rules
 
 ### Task 9: Validate Documentation Completeness and Quality
 - [ ] Cross-reference documentation against actual domain model implementations
@@ -178,8 +178,9 @@ So that developers understand the domain language and can work effectively with 
 **Documentation Structure (Single File Primary):**
 - **Primary Approach**: Single comprehensive `docs/domain-models.md` file
 - **Splitting Criteria**: Only split if file exceeds 2000 lines OR becomes hard to maintain/read
-- **Split Structure**: If split occurs, overview in `docs/domain-models/overview.md` with essential information
+- **Split Structure**: If split occurs, overview in `docs/domain/overview.md` with essential information
 - **Specific Files**: In-depth technical details in `docs/domain/` directory with clear cross-references
+- **Leverage Existing**: Use existing `architecture.md` for hexagonal boundaries (no separate file needed)
 
 **Single File Organization:**
 ```markdown
@@ -216,9 +217,22 @@ docs/
 │   ├── note.md                    # Note bounded context in-depth technical details
 │   ├── schema.md                  # Schema bounded context in-depth technical details
 │   ├── config.md                  # Config bounded context in-depth technical details
+│   ├── template.md                # Template bounded context in-depth technical details
+│   └── evolution-guidelines.md    # Domain model evolution patterns
+└── _bmad-output/planning-artifacts/architecture.md  # [UPDATED] Hexagonal boundaries documentation
+```
+
+**Splitting Strategy (If Needed):**
+```
+docs/
+├── domain-models.md               # Single comprehensive file (primary approach)
+├── domain/
+│   ├── overview.md                # Essential information about all bounded contexts
+│   ├── note.md                    # Note bounded context in-depth technical details
+│   ├── schema.md                  # Schema bounded context in-depth technical details
+│   ├── config.md                  # Config bounded context in-depth technical details
 │   └── template.md                # Template bounded context in-depth technical details
-└── architecture/
-    ├── hexagonal-boundaries.md    # Domain/adapter separation rules
+└── domain/
     └── evolution-guidelines.md    # Domain model evolution patterns
 ```
 
