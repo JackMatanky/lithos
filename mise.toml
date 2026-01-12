@@ -127,6 +127,31 @@ alias = "tuc"
 run = "mise run test:unit -- -p cli"
 quiet = false
 
+# Specific crate benchmarks for developer convenience
+[tasks."test:bench:domain"]
+description = "Run domain crate benchmarks"
+alias = "tbd"
+run = "mise run test:bench -- -p domain"
+quiet = false
+
+[tasks."test:bench:app"]
+description = "Run app crate benchmarks"
+alias = "tbap"
+run = "mise run test:bench -- -p app"
+quiet = false
+
+[tasks."test:bench:adapters"]
+description = "Run adapters crate benchmarks"
+alias = "tbad"
+run = "mise run test:bench -- -p adapters"
+quiet = false
+
+[tasks."test:bench:cli"]
+description = "Run CLI crate benchmarks"
+alias = "tbc"
+run = "mise run test:bench -- -p cli"
+quiet = false
+
 # ------------------------- Cleanup --------------------------- #
 # Note: Main clean task is defined in .mise/tasks/clean (file-based task)
 # These are convenient aliases that call the main task with specific targets

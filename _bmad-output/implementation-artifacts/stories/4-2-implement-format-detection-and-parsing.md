@@ -32,6 +32,7 @@ So that files are correctly interpreted regardless of their format.
 - [ ] Write failing unit tests for YAML parsing error handling with line numbers
 - [ ] Write failing property-based tests for edge cases in format detection
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 2: Implement Format Detection Logic (GREEN Phase - AC: 2)
 - [ ] Implement extension-based format detection mapping
