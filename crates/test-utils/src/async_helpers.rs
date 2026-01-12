@@ -3,11 +3,12 @@
 //! This module provides standardized utilities for testing async code in Lithos,
 //! following best practices for Tokio-based async operations.
 
-use std::future::Future;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::sync::{Mutex, RwLock, Semaphore};
-use tokio::time::timeout;
+use std::{future::Future, sync::Arc, time::Duration};
+
+use tokio::{
+    sync::{Mutex, RwLock, Semaphore},
+    time::timeout,
+};
 
 /// Helper to wrap a future with a timeout, preventing hanging tests.
 ///
@@ -47,7 +48,10 @@ use tokio::time::timeout;
 ///
 /// Timeouts prevent individual tests from blocking the entire test suite and provide
 /// clear error messages about which test timed out.
-pub async fn with_timeout<F, T>(duration: Duration, future: F) -> Result<T, tokio::time::error::Elapsed>
+pub async fn with_timeout<F, T>(
+    duration: Duration,
+    future: F,
+) -> Result<T, tokio::time::error::Elapsed>
 where
     F: Future<Output = T>,
 {
@@ -97,7 +101,9 @@ where
 /// - Heavy CPU computations
 /// - `Redb` write transactions (which can block for extended periods)
 /// - Synchronous HTTP requests
-pub async fn spawn_blocking_test<F, R>(f: F) -> Result<R, tokio::task::JoinError>
+pub async fn spawn_blocking_test<F, R>(
+    f: F,
+) -> Result<R, tokio::task::JoinError>
 where
     F: FnOnce() -> R + Send + 'static,
     R: Send + 'static,
@@ -254,13 +260,18 @@ macro_rules! async_test {
 }
 
 #[cfg(test)]
+// # LINT_DISABLE_REASON: Test-only assertions require Result comparisons without unwrap/expect.
+// # LINT_DISABLE_REASON: Options tried: matches!/unwrap_or/if-let assertions.
+// # LINT_DISABLE_REASON: Justification: clippy flags these assertions as disallowed methods.
+#[allow(clippy::disallowed_methods, clippy::bool_assert_comparison)]
 mod tests {
     use super::*;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_with_timeout_success() {
-        let result = with_timeout(Duration::from_millis(100), async { 42 }).await;
-        assert_eq!(result.unwrap(), 42);
+        let result =
+            with_timeout(Duration::from_millis(100), async { 42 }).await;
+        assert_eq!(result.unwrap_or(-1), 42);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -271,18 +282,21 @@ mod tests {
         })
         .await;
 
-        assert!(result.is_err());
+        assert_eq!(result.is_err(), true);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn test_spawn_blocking_test() {
         let result = spawn_blocking_test(|| {
-            std::thread::sleep(Duration::from_millis(10));
-            42
+            let mut sum = 0;
+            for i in 0..1_000 {
+                sum += i;
+            }
+            sum
         })
         .await;
 
-        assert_eq!(result.unwrap(), 42);
+        assert_eq!(result.unwrap_or(-1), 499_500);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -297,7 +311,7 @@ mod tests {
         })
         .await;
 
-        assert_eq!(result.unwrap(), 42);
+        assert_eq!(result.unwrap_or(-1), 42);
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -316,6 +330,7 @@ mod tests {
         *rwlock.write().await += 1;
 
         let semaphore = shared_semaphore(2);
-        let _permit = semaphore.acquire().await.unwrap();
+        let permit = semaphore.acquire().await;
+        assert_eq!(permit.is_ok(), true);
     }
 }
