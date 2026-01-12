@@ -48,6 +48,9 @@ slug = "0.1"
 base64 = "0.22"
 rand = "0.10"
 
+# Testing & Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
 # Internal Workspace Crates
 lithos-domain = { path = "crates/domain" }
 lithos-app = { path = "crates/app" }
