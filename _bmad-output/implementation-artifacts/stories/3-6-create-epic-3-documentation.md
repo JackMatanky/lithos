@@ -56,7 +56,7 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document relationships between Note and other bounded contexts (Config, Schema usage)
 - [ ] Include evolution guidelines for Note entity modifications
 - [ ] Create architecture diagrams showing Note aggregate relationships
-- [ ] If splitting occurs, create `docs/domain-models/note-bounded-context.md` for in-depth details
+- [ ] If splitting occurs, create `docs/domain/note.md` for in-depth details
 
 ### Task 4: Document Schema Bounded Context
 - [ ] Document Schema entity with inheritance (Extends, Excludes) and property validation
@@ -64,7 +64,7 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document PropertySpec variants (String, Number, Bool, Date, File) with validation rules
 - [ ] Include schema resolution algorithms and inheritance processing
 - [ ] Document Schema relationships with Template bounded context (schema-driven template variables)
-- [ ] If splitting occurs, create `docs/domain-models/schema-bounded-context.md` for in-depth details
+- [ ] If splitting occurs, create `docs/domain/schema.md` for in-depth details
 
 ### Task 5: Document Config Bounded Context
 - [ ] Document Config hierarchical structure (Global → User → Project → Vault)
@@ -72,7 +72,7 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document config relationships with Note bounded context (metadata configuration)
 - [ ] Include configuration loading and merging algorithms
 - [ ] Document evolution guidelines for configuration schema changes
-- [ ] If splitting occurs, create `docs/domain-models/config-bounded-context.md` for in-depth details
+- [ ] If splitting occurs, create `docs/domain/config.md` for in-depth details
 
 ### Task 6: Document Template Bounded Context
 - [ ] Document Template entity with modular composition and variable definitions
@@ -80,7 +80,7 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document TemplateComposition for inheritance and modular assembly
 - [ ] Include MiniJinja compatibility requirements and domain layer boundaries
 - [ ] Document Template relationships with Schema bounded context (variable validation)
-- [ ] If splitting occurs, create `docs/domain-models/template-bounded-context.md` for in-depth details
+- [ ] If splitting occurs, create `docs/domain/template.md` for in-depth details
 
 ### Task 7: Create Bounded Context Interaction Contracts
 - [ ] Document inter-bounded-context contracts and communication patterns
@@ -178,8 +178,8 @@ So that developers understand the domain language and can work effectively with 
 **Documentation Structure (Single File Primary):**
 - **Primary Approach**: Single comprehensive `docs/domain-models.md` file
 - **Splitting Criteria**: Only split if file exceeds 2000 lines OR becomes hard to maintain/read
-- **Split Structure**: If split occurs, maintain overview in main file with essential information
-- **Specific Files**: In-depth technical details in separate files with clear cross-references
+- **Split Structure**: If split occurs, overview in `docs/domain-models/overview.md` with essential information
+- **Specific Files**: In-depth technical details in `docs/domain/` directory with clear cross-references
 
 **Single File Organization:**
 ```markdown
@@ -210,15 +210,16 @@ So that developers understand the domain language and can work effectively with 
 **Splitting Strategy (If Needed):**
 ```
 docs/
-├── domain-models.md              # Overview + essential information (primary file)
 ├── domain-models/
-│   ├── note-bounded-context.md   # Note in-depth technical details
-│   ├── schema-bounded-context.md # Schema in-depth technical details
-│   ├── config-bounded-context.md # Config in-depth technical details
-│   └── template-bounded-context.md # Template in-depth technical details
+│   └── overview.md                # Essential information about all bounded contexts
+├── domain/
+│   ├── note.md                    # Note bounded context in-depth details
+│   ├── schema.md                  # Schema bounded context in-depth details
+│   ├── config.md                  # Config bounded context in-depth details
+│   └── template.md                # Template bounded context in-depth details
 └── architecture/
-    ├── hexagonal-boundaries.md   # Domain/adapter separation rules
-    └── evolution-guidelines.md   # Domain model evolution patterns
+    ├── hexagonal-boundaries.md    # Domain/adapter separation rules
+    └── evolution-guidelines.md    # Domain model evolution patterns
 ```
 
 **Entity Documentation Template:**
