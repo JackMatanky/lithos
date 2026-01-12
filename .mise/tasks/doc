@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Generate and open documentation for all workspace crates"
 #MISE sources=["**/*.rs", "Cargo.toml"]
-#MISE outputs=["target/doc"]
+#MISE outputs=["{{vars.doc_dir}}"]
 #USAGE flag "-o --open" help="Open documentation in browser"
 
 set -euo pipefail

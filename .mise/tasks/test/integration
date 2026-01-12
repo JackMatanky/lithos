@@ -3,7 +3,7 @@
 #MISE alias="ti"
 #MISE depends=["fmt"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
-#MISE outputs=["target/nextest/default"]
+#MISE outputs=["{{vars.nextest_dir}}/default"]
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE arg "[filter]" help="Filter tests by name"
 
@@ -32,7 +32,8 @@ build_test_args() {
     fi
 
     if [[ -n "${GITHUB_ACTIONS:-}" ]]; then
-        ref_args+=("--reporter" "junit" "--junit-path" "target/nextest-integration.xml")
+        # shellcheck disable=SC1083
+        ref_args+=("--reporter" "junit" "--junit-path" "{{vars.junit_dir}}/{{vars.junit_integration}}")
     fi
 }
 

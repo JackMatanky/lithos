@@ -65,6 +65,20 @@ docs_dir = "docs"
 adr_dir = "docs/adr"
 scripts_dir = "scripts"
 
+# Build and test outputs
+target_dir = "target"
+doc_dir = "target/doc"
+nextest_dir = "target/nextest"
+junit_dir = "target"
+
+# Report files
+coverage_report = "tarpaulin-report.html"
+junit_unit = "nextest-unit.xml"
+junit_integration = "nextest-integration.xml"
+
+# Build artifacts
+binary_name = "lithos"
+
 # ------------------------------------------------------------- #
 #                             Tasks                             #
 # ------------------------------------------------------------- #
