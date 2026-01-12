@@ -28,9 +28,11 @@
 
 pub mod assertions;
 pub mod async_utils;
+pub mod bench;
 pub mod cqrs;
 pub mod events;
 pub mod fixtures;
+pub mod integration;
 pub mod mocks;
 pub mod temp;
 
@@ -40,6 +42,7 @@ pub use async_utils::{
     shared_semaphore, short_test_timeout, spawn_blocking_test,
     with_cancellation, with_timeout,
 };
+pub use bench::{create_benchmark_runtime, nfr2, standard_criterion};
 pub use cqrs::{
     CqrsTestError, CqrsTestResult, Entity, ErrorConfig, EventVerifier,
     EventualConsistencyTester, MockRepository, QueryCriteria, QueryStorePort,
@@ -61,6 +64,7 @@ pub use fixtures::{
     Builder, FakeData, Fixture, Scenario, SerializationHelper, combine,
     test_config, test_user,
 };
+pub use integration::{IntegrationConfig, IntegrationFixture};
 pub use mocks::{EventBusError, EventBusPort, EventPlane, MockEventBus};
 pub use temp::{TempDir, TestOutput, generate_unique_name, path_utils};
 /// Re-export commonly used tokio testing types

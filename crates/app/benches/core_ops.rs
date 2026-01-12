@@ -21,7 +21,10 @@
 use std::sync::Arc;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use lithos_test_utils::{EventBusPort, MockEventBus};
+use lithos_test_utils::{
+    create_benchmark_runtime,
+    mocks::{EventBusPort, MockEventBus},
+};
 
 /// Placeholder domain event for benchmarking.
 #[derive(Debug, Clone, PartialEq)]
@@ -47,18 +50,7 @@ async fn bench_publish_event(
 
 /// Criterion benchmark suite for event bus operations.
 fn event_bus_benchmarks(c: &mut Criterion) {
-    // # LINT_DISABLE_REASON: Benchmarks use expect() for runtime initialization.
-    // # LINT_DISABLE_REASON: Options tried: propagating errors (not possible in criterion_group).
-    // # LINT_DISABLE_REASON: Justification: If runtime fails, benchmark cannot proceed; panic is acceptable here.
-    #[expect(
-        clippy::expect_used,
-        clippy::disallowed_methods,
-        reason = "Benchmark runtime initialization requires expect()"
-    )]
-    let rt = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .expect("Failed to create Tokio runtime");
+    let rt = create_benchmark_runtime();
 
     let clock: Arc<dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync> =
         Arc::new(chrono::Utc::now);

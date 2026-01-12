@@ -113,24 +113,29 @@ dev agent (recommended for implementation)
 
 - [2026-01-12] - Established Criterion v0.5.1 with `async_tokio` feature.
 - [2026-01-12] - Created `crates/app/benches/core_ops.rs` with `event_bus` benchmark group.
-- [2026-01-12] - Added `test:benchmark` task to `mise.toml`.
-- [2026-01-12] - Configured `dhat` for memory profiling patterns.
-- [2026-01-12] - Verified benchmark execution via `cargo bench` and `cargo test --benches`.
+- [2026-01-12] - Centralized benchmarking and integration infrastructure in `crates/test-utils`.
+- [2026-01-12] - Consolidated mise tasks; refactored `.mise/tasks/test/bench` for flexibility.
+- [2026-01-12] - Verified benchmark execution and quality gates.
 
 ### Completion Notes List
 
 - **Research completed**: Analyzed Criterion.rs for statistical benchmarking. Version 0.5.1 is used with `async_tokio` feature for event-driven architecture support. Identified core metrics: parsing, querying, storage, rendering. Evaluated `iai` and `dhat` as complementary tools.
-- **Infrastructure established**: Created root `benches/` directory with `README.md` documentation. Implemented micro-benchmarks in `crates/app/benches/core_ops.rs` using `criterion`. Configured baseline storage and HTML report generation.
-- **Patterns implemented**: Established patterns for async benchmarking with `to_async` using Tokio multi-threaded runtime. Added `dhat` to workspace for memory profiling. Created realistic fixtures using `MockEventBus` and `TestDomainEvent`.
-- **CI/CD Integration**: Added `test:benchmark` task to `mise.toml`. CI pipeline (`ci.yml`) already includes `boa-dev/criterion-compare-action` for regression detection on PRs. NFR2 thresholds (5% alert, 10% block) are documented for future CI customization.
-- **Quality Gates**: All pre-commit hooks and clippy lints pass. Added `#[expect]` attributes to benchmarks where necessary (e.g., for `expect()` in runtime setup) with proper justifications.
+- **Infrastructure established**: Created root `benches/` directory with `README.md` documentation. Implemented micro-benchmarks in `crates/app/benches/core_ops.rs` using `criterion`. Established centralized benchmarking and integration utilities in `crates/test-utils`.
+- **Centralized Utilities**: Moved `IntegrationFixture`, `IntegrationConfig`, and `create_benchmark_runtime` to `crates/test-utils` to ensure project-wide availability and consistency.
+- **Patterns implemented**: Established patterns for async benchmarking with `to_async` using Tokio multi-threaded runtime via `lithos-test-utils`. Added `dhat` to workspace for memory profiling. Created realistic fixtures using `MockEventBus` and `TestDomainEvent`.
+- **CI/CD Integration**: Consolidated mise tasks by removing redundant `test:benchmark` from `mise.toml` in favor of a flexible file-based task in `.mise/tasks/test/bench`. CI pipeline (`ci.yml`) already includes `boa-dev/criterion-compare-action` for regression detection on PRs.
 
 ### File List
 
 - Cargo.toml - Added `async_tokio` feature to criterion, added `dhat` workspace dependency.
+- crates/test-utils/Cargo.toml - Added `criterion` and `dhat` as dependencies to provide centralized testing infrastructure.
+- crates/test-utils/src/lib.rs - Exported new `bench` and `integration` modules.
+- crates/test-utils/src/bench.rs - Centralized benchmarking utilities (runtime creation, NFR2 thresholds).
+- crates/test-utils/src/integration.rs - Centralized integration testing fixtures and configuration.
 - crates/app/Cargo.toml - Added `criterion` and `dhat` dev-dependencies, registered `core_ops` benchmark.
-- crates/app/benches/core_ops.rs - Micro-benchmarks for event bus operations with async support.
+- crates/app/benches/core_ops.rs - Micro-benchmarks for event bus operations using centralized utilities.
+- tests/integration/common.rs - Refactored to re-export utilities from `lithos-test-utils`.
 - benches/README.md - Documentation for benchmarking structure and NFR2 targets.
-- mise.toml - Added `test:benchmark` task (alias `tb`).
+- mise.toml - Removed redundant `test:benchmark` task; consolidated with file-based task.
+- .mise/tasks/test/bench - Refactored for better argument pass-through to `cargo bench`.
 - _bmad-output/implementation-artifacts/sprint-status.yaml - Updated story status to `review`.
-- docs/adr/0012-benchmarking-infrastructure.md - Status remains Proposed but reflects implementation progress.

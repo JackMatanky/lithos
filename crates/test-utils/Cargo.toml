@@ -17,7 +17,7 @@ description = "Testing utilities and patterns for Lithos async operations"
 
 [dependencies]
 # Workspace dependencies
-tokio = { workspace = true, features = ["test-util", "time", "sync", "rt"] }
+tokio = { workspace = true, features = ["test-util", "time", "sync", "rt", "rt-multi-thread"] }
 tokio-util = { version = "0.7", features = ["full"] }
 tokio-test = "0.4"
 async-trait = { workspace = true }
@@ -30,6 +30,8 @@ rand = "0.8"
 rstest = "0.23"
 fake = { version = "2.9", features = ["derive"] }
 rmp-serde = "1.3"
+criterion = { workspace = true }
+dhat = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full"] }
