@@ -168,7 +168,13 @@ where
 {
     let token = tokio_util::sync::CancellationToken::new();
 
-    with_timeout(duration, test_fn(token.clone())).await?
+    match with_timeout(duration, test_fn(token.clone())).await {
+        Ok(result) => result,
+        Err(err) => {
+            token.cancel();
+            Err(err.into())
+        }
+    }
 }
 
 /// Helper to create a timeout for tests with sensible defaults.
@@ -260,10 +266,10 @@ macro_rules! async_test {
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Test-only assertions require Result comparisons without unwrap/expect.
-// # LINT_DISABLE_REASON: Options tried: matches!/unwrap_or/if-let assertions.
-// # LINT_DISABLE_REASON: Justification: clippy flags these assertions as disallowed methods.
-#[allow(clippy::disallowed_methods, clippy::bool_assert_comparison)]
+// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method linting.
+// # LINT_DISABLE_REASON: Options tried: explicit matches/guarded Result handling.
+// # LINT_DISABLE_REASON: Justification: keep tests readable without unwrap/expect.
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 
@@ -271,7 +277,7 @@ mod tests {
     async fn test_with_timeout_success() {
         let result =
             with_timeout(Duration::from_millis(100), async { 42 }).await;
-        assert_eq!(result.unwrap_or(-1), 42);
+        assert!(matches!(result, Ok(42)));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -282,7 +288,7 @@ mod tests {
         })
         .await;
 
-        assert_eq!(result.is_err(), true);
+        assert!(result.is_err());
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -296,7 +302,7 @@ mod tests {
         })
         .await;
 
-        assert_eq!(result.unwrap_or(-1), 499_500);
+        assert!(matches!(result, Ok(499_500)));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -311,7 +317,7 @@ mod tests {
         })
         .await;
 
-        assert_eq!(result.unwrap_or(-1), 42);
+        assert!(matches!(result, Ok(42)));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -331,6 +337,6 @@ mod tests {
 
         let semaphore = shared_semaphore(2);
         let permit = semaphore.acquire().await;
-        assert_eq!(permit.is_ok(), true);
+        assert!(permit.is_ok());
     }
 }
