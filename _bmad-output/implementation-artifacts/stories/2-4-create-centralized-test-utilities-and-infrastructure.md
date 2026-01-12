@@ -1,6 +1,6 @@
 # Story 2.4: create-centralized-test-utilities-and-infrastructure
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -367,7 +367,7 @@ fn test_with_artifact_output() {
 
 ### Story Completion Status
 
-- Status: in-progress
+- Status: done
 - All acceptance criteria defined with comprehensive test utility requirements covering temp dirs, fixtures, assertions, and isolation
 - Technical requirements complete with detailed implementation specifications for each utility category
 - Integration points identified with existing test infrastructure and CQRS testing patterns
