@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Generate ADR quality metrics and summary"
+#MISE sources=["docs/adr/*.md"]
+#MISE outputs=["target/adr-metrics.stamp"]
 
 set -euo pipefail
 
@@ -97,6 +99,10 @@ main() {
     generate_adr_metrics
     report_metrics
     echo "-----------------------------------"
+
+    # Create stamp file for caching
+    mkdir -p target
+    touch target/adr-metrics.stamp
 }
 
 main "$@"

@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Validate ADRs for template compliance"
+#MISE sources=["docs/adr/*.md"]
+#MISE outputs=["target/adr-validate.stamp"]
 
 set -euo pipefail
 
@@ -119,6 +121,12 @@ main() {
     validate_adr_sections
     validate_adr_naming
     report_validation_results
+
+    # Create stamp file for caching if validation passed
+    if [ $EXIT_CODE -eq 0 ]; then
+        mkdir -p target
+        touch target/adr-validate.stamp
+    fi
 
     return $EXIT_CODE
 }
