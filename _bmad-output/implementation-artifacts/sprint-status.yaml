@@ -60,13 +60,13 @@ development_status:
     epic-4: in-progress
     4-1-create-unified-file-loading-interface: ready-for-dev
     4-2-implement-format-detection-and-parsing: ready-for-dev
-    4-3-add-basic-file-loading-validation: backlog
+    4-3-add-basic-file-loading-validation: ready-for-dev
     4-4-create-loading-strategy-mocks-for-testing: backlog
     4-5-review-epic-4-test-suite: backlog
     epic-4-retrospective: optional
 
-    epic-5: in-progress
-    5-1-create-config-domain-interface-and-port: ready-for-dev
+    epic-5: backlog
+    5-1-create-config-domain-interface-and-port: backlog
     5-2-implement-hierarchical-configuration-loading: backlog
     5-3-add-configuration-validation-and-error-handling: backlog
     5-4-implement-configuration-versioning-and-migration: backlog
