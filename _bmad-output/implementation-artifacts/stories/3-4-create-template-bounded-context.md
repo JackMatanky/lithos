@@ -8,17 +8,17 @@ Status: ready-for-dev
 
 As a developer working with template definitions,
 I want a Template domain model with validation,
-So that template structure and syntax are properly validated at the domain level.
+So that template structure and business rules are properly validated at the domain level.
 
 ## Acceptance Criteria
 
 **Given** I have researched template engine patterns
 **When** I review the Template bounded context
-**Then** Template entity includes structure and syntax validation
+**Then** Template entity includes structure validation and business rules
 
 **Given** Template entity is defined
 **When** I check semantic validation
-**Then** template syntax and structure validation occurs internally
+**Then** template business rules and composition logic are validated internally
 
 **Given** template patterns are established
 **When** I validate the design
@@ -45,7 +45,7 @@ So that template structure and syntax are properly validated at the domain level
 - [ ] **TDD REQUIREMENT:** Make all Template domain tests pass (GREEN phase complete when all tests pass)
 
 ### Task 3: Implement Template Validation Logic (GREEN Phase - AC: All)
-- [ ] Implement syntax validation for MiniJinja template expressions ({{variable}}, {% if %}, {% for %})
+- [ ] Implement syntax validation for MiniJinja template expressions in adapter layer ({{variable}}, {% if %}, {% for %})
 - [ ] Add variable reference validation (undefined variables, type mismatches)
 - [ ] Implement modular composition validation (dependency cycles, missing templates)
 - [ ] Add template structure validation (proper nesting, balanced blocks)
@@ -433,17 +433,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_template_syntax_validation() {
-        let invalid_content = "{{unclosed_variable";
+    fn test_template_business_rules() {
         let template = Template::new(
             "test".to_string(),
-            invalid_content.to_string(),
+            "{{valid_syntax}}".to_string(),
             HashMap::new(),
             TemplateMetadata::default(),
         );
 
-        // Should fail syntax validation
-        assert!(template.is_err());
+        // Domain validation should pass (syntax validation happens in adapter)
+        assert!(template.is_ok());
+
+        // Test business rule violations
+        let invalid_name_template = Template::new(
+            "invalid name with spaces".to_string(),
+            "{{variable}}".to_string(),
+            HashMap::new(),
+            TemplateMetadata::default(),
+        );
+
+        // Should fail domain business rule validation
+        assert!(invalid_name_template.is_err());
     }
 
     #[test]
@@ -534,15 +544,28 @@ pub mod fixtures {
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn bench_template_validation(c: &mut Criterion) {
-    let template_content = include_str!("../fixtures/large_template.md");
+    let template = fixtures::sample_template();
 
-    c.bench_function("template_syntax_validation", |b| {
+    c.bench_function("template_business_rules_validation", |b| {
         b.iter(|| {
-            let result = Template::validate_syntax(black_box(template_content));
+            let result = template.validate_business_rules();
             black_box(result);
         });
     });
-    // Target: <500ms for typical template validation
+    // Target: <100ms for typical domain validation
+}
+
+fn bench_template_rendering(c: &mut Criterion) {
+    let template_content = include_str!("../fixtures/large_template.md");
+    let adapter = TemplateRendererAdapter::new();
+
+    c.bench_function("template_syntax_validation_adapter", |b| {
+        b.iter(|| {
+            let result = adapter.validate_minijinja_syntax(black_box(template_content));
+            black_box(result);
+        });
+    });
+    // Target: <500ms for typical template syntax validation (adapter layer)
 }
 
 fn bench_template_composition(c: &mut Criterion) {
@@ -572,7 +595,7 @@ crates/domain/src/
 │   │   ├── template.rs      # Template aggregate root
 │   │   ├── variable.rs      # VariableDefinition enum and validation
 │   │   ├── composition.rs   # TemplateComposition for modular assembly
-│   │   └── validation.rs    # Template syntax and semantic validation
+│   │   └── validation.rs    # Domain business rule validation
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
 │   └── template.rs          # TemplatePort trait (future use)
@@ -629,7 +652,7 @@ Use **subfolder organization** for Template bounded context due to complexity of
 **Critical Anti-Patterns to AVOID:**
 - ❌ Using `unwrap()`, `expect()`, `todo()`, `panic!()` in production code
 - ❌ Using `as` casting (use `.try_into().expect("...")` or proper error handling)
-- ❌ Leaking MiniJinja logic into domain (only syntax validation, no rendering)
+- ❌ Leaking MiniJinja logic into domain (no syntax validation or rendering in domain)
 - ❌ Creating ad-hoc conversion methods instead of From/TryFrom traits
 - ❌ Using catch-all `_ => {}` patterns in exhaustive domain logic matches
 
@@ -742,7 +765,7 @@ impl Template {
 
 **Architecture Documents:**
 - [Source: _bmad-output/planning-artifacts/architecture.md#Template Engine]
-  - MiniJinja integration with domain syntax validation
+  - MiniJinja integration with adapter layer syntax validation
   - Performance targets (<500ms operations, <2s for complex rendering)
   - Hexagonal architecture with template ports and adapters
 - [Source: _bmad-output/planning-artifacts/architecture.md#Domain Layer]
@@ -753,7 +776,7 @@ impl Template {
 **Epic Context:**
 - [Source: _bmad-output/planning-artifacts/epics/epic-3-core-domain-models-value-objects-phase-15.md#Story 3.4]
   - Complete acceptance criteria for Template bounded context
-  - Template entity with structure and syntax validation requirements
+  - Template entity with structure validation and business rule requirements
   - Semantic validation for template syntax and variable references
   - Modular composition and variable definition support
 
@@ -802,7 +825,7 @@ Expected files to be created (7 TDD tasks for 3-4):
 - crates/domain/src/models/template/template.rs (Template aggregate root with validation)
 - crates/domain/src/models/template/variable.rs (VariableDefinition enum with type constraints)
 - crates/domain/src/models/template/composition.rs (TemplateComposition for modular assembly)
-- crates/domain/src/models/template/validation.rs (MiniJinja syntax and semantic validation)
+- crates/domain/src/models/template/validation.rs (Domain business rule validation)
 - crates/domain/src/ports/template.rs (TemplatePort trait - future adapter integration)
 - crates/domain/src/lib.rs (UPDATED with public template re-exports)
 - crates/domain/Cargo.toml (UPDATED with serde, chrono dependencies)
