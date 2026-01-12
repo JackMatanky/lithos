@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 #MISE description="Run all integration tests across the workspace using nextest"
 #MISE alias="ti"
-#MISE sources=["**/*.rs", "Cargo.toml"]
+#MISE depends=["fmt"]
+#MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["target/nextest/default"]
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE arg "[filter]" help="Filter tests by name"
