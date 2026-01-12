@@ -102,11 +102,6 @@ description = "Run all tests (unit and integration)"
 alias = "t"
 depends = ["test:unit", "test:integration"]
 
-[tasks."test:benchmark"]
-description = "Run performance benchmarks using criterion"
-alias = "tb"
-run = "cargo bench"
-
 # Specific crate unit tests for developer convenience
 [tasks."test:unit:domain"]
 description = "Run domain crate unit tests"

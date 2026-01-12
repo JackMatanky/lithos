@@ -2,25 +2,8 @@
 #MISE description="Run performance benchmarks for all workspace crates, using criterion"
 #MISE alias="tb"
 #MISE sources=["**/*.rs", "Cargo.toml"]
-#USAGE arg "[filter]" help="Filter benchmarks by name"
 
 set -euo pipefail
-
-#######################################
-# Build arguments for cargo bench.
-# Globals:
-#   usage_filter
-# Arguments:
-#   Reference to an array for arguments
-# Outputs:
-#   None
-#######################################
-build_bench_args() {
-    local -n ref_args=$1
-    if [[ -n "${usage_filter:-}" ]]; then
-        ref_args+=("${usage_filter}")
-    fi
-}
 
 #######################################
 # Run benchmarks for all crates.
@@ -44,9 +27,7 @@ run_cargo_bench() {
 #   None
 #######################################
 main() {
-    local args=()
-    build_bench_args args
-    run_cargo_bench "${args[@]}"
+    run_cargo_bench "$@"
     echo "✅ Benchmarking complete"
 }
 
