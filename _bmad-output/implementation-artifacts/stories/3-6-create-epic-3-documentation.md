@@ -212,14 +212,16 @@ So that developers understand the domain language and can work effectively with 
 ```
 docs/
 ├── domain-models.md               # Single comprehensive file (primary approach)
-├── domain/
-│   ├── overview.md                # Essential information about all bounded contexts
-│   ├── note.md                    # Note bounded context in-depth technical details
-│   ├── schema.md                  # Schema bounded context in-depth technical details
-│   ├── config.md                  # Config bounded context in-depth technical details
-│   ├── template.md                # Template bounded context in-depth technical details
-│   └── evolution-guidelines.md    # Domain model evolution patterns
-└── _bmad-output/planning-artifacts/architecture.md  # [UPDATED] Hexagonal boundaries documentation
+└── domain/
+    ├── overview.md                # Essential information about all bounded contexts
+    ├── note.md                    # Note bounded context in-depth technical details
+    ├── schema.md                  # Schema bounded context in-depth technical details
+    ├── config.md                  # Config bounded context in-depth technical details
+    ├── template.md                # Template bounded context in-depth technical details
+    └── evolution-guidelines.md    # Domain model evolution patterns
+
+# Existing file (minimal update):
+_bmad-output/planning-artifacts/architecture.md  # [MINIMAL UPDATE] Hexagonal boundaries documentation
 ```
 
 **Splitting Strategy (If Needed):**
