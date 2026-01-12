@@ -15,5 +15,9 @@ thiserror.workspace = true
 tracing.workspace = true
 async-trait.workspace = true
 
+[dev-dependencies]
+lithos-test-utils.workspace = true
+serde.workspace = true
+
 [lints]
 workspace = true

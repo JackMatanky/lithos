@@ -274,25 +274,26 @@ mod tests {
     use super::*;
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_with_timeout_success() {
+    async fn with_timeout_returns_value_before_deadline() {
         let result =
             with_timeout(Duration::from_millis(100), async { 42 }).await;
-        assert!(matches!(result, Ok(42)));
+
+        assert!(matches!(result, Ok(42)), "expected Ok(42), got {result:?}");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_with_timeout_failure() {
+    async fn with_timeout_errors_after_deadline() {
         let result = with_timeout(Duration::from_millis(10), async {
             tokio::time::sleep(Duration::from_millis(100)).await;
             42
         })
         .await;
 
-        assert!(result.is_err());
+        assert!(result.is_err(), "expected timeout error, got {result:?}");
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_spawn_blocking_test() {
+    async fn spawn_blocking_returns_result() {
         let result = spawn_blocking_test(|| {
             let mut sum = 0;
             for i in 0..1_000 {
@@ -302,11 +303,14 @@ mod tests {
         })
         .await;
 
-        assert!(matches!(result, Ok(499_500)));
+        assert!(
+            matches!(result, Ok(499_500)),
+            "unexpected spawn result: {result:?}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_with_cancellation_success() {
+    async fn with_cancellation_returns_value_before_cancel() {
         let result = with_cancellation(Duration::from_millis(100), |cancel| async move {
             tokio::select! {
                 _ = cancel.cancelled() => {
@@ -317,26 +321,68 @@ mod tests {
         })
         .await;
 
-        assert!(matches!(result, Ok(42)));
+        assert!(
+            matches!(result, Ok(42)),
+            "unexpected cancellation result: {result:?}"
+        );
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_timeout_helpers() {
-        assert_eq!(default_test_timeout(), Duration::from_secs(5));
-        assert_eq!(short_test_timeout(), Duration::from_secs(1));
-        assert_eq!(long_test_timeout(), Duration::from_secs(30));
+    async fn with_cancellation_times_out() {
+        let result = with_cancellation(
+            Duration::from_millis(10),
+            |_cancel| async move {
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                Ok::<_, Box<dyn std::error::Error>>(42)
+            },
+        )
+        .await;
+
+        assert!(result.is_err(), "expected timeout error, got {result:?}");
+    }
+
+    #[test]
+    fn default_test_timeout_is_five_seconds() {
+        let timeout = default_test_timeout();
+
+        assert_eq!(timeout, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn short_test_timeout_is_one_second() {
+        let timeout = short_test_timeout();
+
+        assert_eq!(timeout, Duration::from_secs(1));
+    }
+
+    #[test]
+    fn long_test_timeout_is_thirty_seconds() {
+        let timeout = long_test_timeout();
+
+        assert_eq!(timeout, Duration::from_secs(30));
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn test_shared_helpers() {
+    async fn shared_mutex_allows_mutation() {
         let mutex = shared_mutex(0);
         *mutex.lock().await += 1;
 
+        assert_eq!(*mutex.lock().await, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shared_rwlock_allows_write_access() {
         let rwlock = shared_rwlock(0);
         *rwlock.write().await += 1;
 
+        assert_eq!(*rwlock.read().await, 1);
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn shared_semaphore_allows_acquire() {
         let semaphore = shared_semaphore(2);
         let permit = semaphore.acquire().await;
-        assert!(permit.is_ok());
+
+        assert!(permit.is_ok(), "expected semaphore permit, got {permit:?}");
     }
 }

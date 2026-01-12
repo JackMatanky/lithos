@@ -38,7 +38,7 @@ development_status:
 
   epic-2: in-progress
   2-1-establish-async-testing-patterns-and-infrastructure: done
-  2-2-create-event-driven-testing-patterns: ready-for-dev
+  2-2-create-event-driven-testing-patterns: done
   2-3-establish-cqrs-testing-patterns: ready-for-dev
   2-4-create-centralized-test-utilities-and-infrastructure: ready-for-dev
   2-5-configure-mise-test-task-orchestration: ready-for-dev
