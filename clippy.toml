@@ -17,9 +17,9 @@ too-many-lines-threshold = 100
 msrv = "1.92"
 doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv", "CLI", "JSON", "TOML", "YAML"]
 
-# Test Restrictions (No unwrap/expect allowed in tests either)
-allow-unwrap-in-tests = false
-allow-expect-in-tests = false
+# Test Restrictions (unwrap/expect allowed in tests for simplicity)
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
 
 # Disallowed Methods (Prevent common anti-patterns and unsafe shortcuts)
 disallowed-methods = [

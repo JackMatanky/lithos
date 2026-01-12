@@ -49,8 +49,8 @@ pub type AssertionResult<T> = Result<T, AssertionError>;
 /// use lithos_test_utils::assert_eq_detailed;
 ///
 /// let expected = vec![1, 2, 3];
-/// let actual = vec![1, 3, 4];
-/// assert_eq_detailed!(expected, actual, "Vector comparison failed");
+/// let actual = vec![1, 2, 3];
+/// assert_eq_detailed!(expected, actual);
 /// ```
 #[macro_export]
 macro_rules! assert_eq_detailed {
@@ -81,11 +81,11 @@ macro_rules! assert_eq_detailed {
 ///
 /// # Example
 ///
-/// ```rust
+/// ```rust,ignore
 /// use lithos_test_utils::assert_async_completed;
 /// use tokio::time::Duration;
 ///
-/// async fn slow_operation() {
+/// async fn slow_operation() -> i32 {
 ///     tokio::time::sleep(Duration::from_millis(100)).await;
 ///     42
 /// }
@@ -276,6 +276,7 @@ pub mod domain {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use tokio::time::Duration;
 

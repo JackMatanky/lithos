@@ -26,11 +26,15 @@
 //! });
 //! ```
 
+pub mod assertions;
 pub mod async_utils;
 pub mod cqrs;
 pub mod events;
+pub mod fixtures;
 pub mod mocks;
+pub mod temp;
 
+pub use assertions::domain;
 pub use async_utils::{
     default_test_timeout, long_test_timeout, shared_mutex, shared_rwlock,
     shared_semaphore, short_test_timeout, spawn_blocking_test,
@@ -53,7 +57,12 @@ pub use events::{
     EventRecord, EventTestError, EventTestFramework, EventTestResult,
     EventTestScenario, PayloadAssertion, SequenceAssertion, TimingAssertion,
 };
+pub use fixtures::{
+    Builder, FakeData, Fixture, Scenario, SerializationHelper, combine,
+    test_config, test_user,
+};
 pub use mocks::{EventBusError, EventBusPort, EventPlane, MockEventBus};
+pub use temp::{TempDir, TestOutput, generate_unique_name, path_utils};
 /// Re-export commonly used tokio testing types
 pub use tokio_test::{
     assert_pending, assert_ready, assert_ready_err, assert_ready_ok,

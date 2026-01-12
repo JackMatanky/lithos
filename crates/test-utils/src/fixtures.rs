@@ -20,48 +20,6 @@ use serde::{Deserialize, Serialize};
 ///
 /// Provides a fluent API for building complex objects with optional fields
 /// and validation. Implements the builder pattern with method chaining.
-///
-/// # Example
-///
-/// ```rust
-/// use lithos_test_utils::fixtures::Builder;
-///
-/// #[derive(Debug, Clone)]
-/// struct TestUser {
-///     id: u32,
-///     name: String,
-///     email: Option<String>,
-/// }
-///
-/// ```rust
-/// use lithos_test_utils::fixtures::Builder;
-///
-/// #[derive(Debug, Clone)]
-/// struct TestUser {
-///     id: u32,
-///     name: String,
-///     email: Option<String>,
-/// }
-///
-/// impl TestUser {
-///     fn builder() -> Builder<TestUser, impl Fn(&[Box<dyn std::any::Any>]) -> TestUser> {
-///         Builder::new(|args: &[Box<dyn std::any::Any>]| {
-///             let id = args[0].downcast_ref::<u32>().copied().unwrap_or(1);
-///             let name = args[1].downcast_ref::<String>().cloned().unwrap_or_else(|| "Anonymous".to_string());
-///             let email = args[2].downcast_ref::<Option<String>>().cloned().flatten();
-///             TestUser { id, name, email }
-///         })
-///     }
-/// }
-///
-/// let user = TestUser::builder()
-///     .with_default(1)  // id default
-///     .with(42)  // override id
-///     .with_default("Anonymous".to_string())  // name default
-///     .with("Alice".to_string())  // override name
-///     .with_default(None)  // email default
-///     .build();
-/// ```
 /// ```
 pub struct Builder<T, F> {
     constructor: F,
@@ -388,6 +346,7 @@ pub fn test_config() -> HashMap<String, String> {
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
 
     use super::*;

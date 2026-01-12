@@ -40,7 +40,7 @@ development_status:
   2-1-establish-async-testing-patterns-and-infrastructure: done
   2-2-create-event-driven-testing-patterns: done
   2-3-establish-cqrs-testing-patterns: done
-  2-4-create-centralized-test-utilities-and-infrastructure: ready-for-dev
+  2-4-create-centralized-test-utilities-and-infrastructure: review
   2-5-configure-mise-test-task-orchestration: ready-for-dev
   2-6-establish-integration-testing-patterns-and-infrastructure: ready-for-dev
   2-7-create-benchmarking-infrastructure-and-performance-testing-patterns: ready-for-dev
