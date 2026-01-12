@@ -178,10 +178,10 @@ crates/adapters/src/
 └── lib.rs                         # Adapter crate re-exports
 
 crates/domain/tests/
-└── loader_integration_test.rs    # Cross-crate integration tests
+└── file_loader_integration.rs    # Cross-crate integration tests
 
 benches/
-└── file_loading.rs                # Criterion performance benchmarks
+└── file_loader.rs                # Criterion performance benchmarks
 ```
 
 **File Organization Principles:**
@@ -292,5 +292,5 @@ Expected files to be created:
 - crates/adapters/src/spi/loader.rs (FileLoaderAdapter implementation with TOML/JSON/YAML parsing)
 - crates/adapters/src/dto/loader.rs (DTOs for adapter layer if needed)
 -
-- benches/loader_bench.rs (performance benchmarks for <500ms target)
-- crates/domain/tests/loader_integration_test.rs (integration tests)
+- benches/file_loader.rs (performance benchmarks for <500ms target)
+- crates/domain/tests/file_loader_integration.rs (integration tests)
