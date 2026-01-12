@@ -86,7 +86,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 
 - **Guide-Based Implementation**: Follow the Mise Task Orchestration Guide for optimal configuration patterns, leveraging existing .mise/tasks/test/ infrastructure.
 
-- **No Script Duplication**: mise.toml tasks orchestrate existing scripts - do NOT duplicate script logic in mise.toml. Tasks should only reference scripts via `run = ".mise/tasks/test/xxx.sh"`.
+- **No Script Duplication**: mise.toml tasks orchestrate existing scripts - do NOT duplicate script logic in mise.toml. File tasks use embedded #MISE metadata without explicit TOML definitions.
 
 - **Architecture Compliance**: Orchestration supports hexagonal architecture with parallel testing, consistent environments, and proper dependency management.
 
@@ -99,10 +99,10 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 ## File List
 
 - mise.toml: Added explicit test task orchestration with DAG dependencies, parallel execution, crate-specific tasks, aliases, and CI/CD simulation
-- .mise/tasks/test/unit.sh: Embedded mise task configuration for unit tests
-- .mise/tasks/test/integration.sh: Embedded mise task configuration for integration tests
-- .mise/tasks/test/coverage.sh: Embedded mise task configuration for coverage reports
-- .mise/tasks/test/watch.sh: Embedded mise task configuration for TDD watch mode
+- .mise/tasks/test/unit: Embedded mise task configuration for unit tests
+- .mise/tasks/test/integration: Embedded mise task configuration for integration tests
+- .mise/tasks/test/coverage: Embedded mise task configuration for coverage reports
+- .mise/tasks/test/watch: Embedded mise task configuration for TDD watch mode
 - .mise/tasks/test/bench.sh: Embedded mise task configuration for performance benchmarks
 
 ## Change Log
@@ -118,12 +118,12 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 
 ### Technical Requirements
 
-**Core Test Orchestration (Following Guide Best Practices - Orchestration Only):**
+**Core Test Orchestration (Following Guide Best Practices - File Tasks):**
 - test: Meta-task with unit and integration dependencies for parallel execution (mise.toml only)
-- test:unit: Reference existing .mise/tasks/test/unit.sh with proper isolation (orchestration)
-- test:integration: Reference existing .mise/tasks/test/integration.sh for cross-crate testing (orchestration)
-- test:coverage: Reference existing .mise/tasks/test/coverage.sh with HTML reporting (orchestration)
-- test:watch: Reference existing .mise/tasks/test/watch.sh for efficient TDD workflows (orchestration)
+- test:unit: File task from .mise/tasks/test/unit with embedded #MISE metadata
+- test:integration: File task from .mise/tasks/test/integration with embedded #MISE metadata
+- test:coverage: File task from .mise/tasks/test/coverage with embedded #MISE metadata
+- test:watch: File task from .mise/tasks/test/watch with embedded #MISE metadata
 
 **Quality Gate Orchestration:**
 - verify: Meta-task combining fmt, lint, test, deny with optimized parallelization
@@ -155,21 +155,11 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 description = "Run all tests (unit and integration)"
 depends = ["test:unit", "test:integration"]
 
-[tasks.test:unit]
-description = "Run domain layer unit tests"
-run = ".mise/tasks/test/unit.sh"
-
-[tasks.test:integration]
-description = "Run cross-crate integration tests"
-run = ".mise/tasks/test/integration.sh"
-
-[tasks.test:coverage]
-description = "Generate coverage reports"
-run = ".mise/tasks/test/coverage.sh"
-
-[tasks.test:watch]
-description = "TDD workflow with auto-restart"
-run = ".mise/tasks/test/watch.sh"
+# File tasks automatically available from .mise/tasks/test/*
+# - test:unit: .mise/tasks/test/unit (embedded #MISE metadata)
+# - test:integration: .mise/tasks/test/integration (embedded #MISE metadata)
+# - test:coverage: .mise/tasks/test/coverage (embedded #MISE metadata)
+# - test:watch: .mise/tasks/test/watch (embedded #MISE metadata)
 
 # Enhanced quality gates
 [tasks.verify]
@@ -196,7 +186,7 @@ depends = ["verify", "test:integration"]
 - Story 2.3 established CQRS testing patterns - configure tasks that support ADR 0009 command/query separation testing
 - Story 2.2 established event testing infrastructure - include ADR 0008 event flow testing in orchestration
 - Story 2.1 established async testing infrastructure - configure tasks with tokio compatibility and ADR 0009 patterns
-- Existing .mise/tasks/ infrastructure - build orchestration layer on top of established scripts
+- Existing .mise/tasks/ file task infrastructure - leverage embedded metadata for automatic task registration
 
 ### Git Intelligence Summary
 
@@ -214,7 +204,7 @@ depends = ["verify", "test:integration"]
 
 - Mise v2025.9.16: DAG-based task dependency resolution with automatic parallelization
 - Task orchestration: Mix scripts with task references, dependency chains, and watch capabilities
-- Existing scripts: Leverage .mise/tasks/test/ infrastructure (unit.sh, integration.sh, coverage.sh, watch.sh)
+- Existing scripts: Leverage .mise/tasks/test/ file tasks (unit, integration, coverage, watch)
 - Orchestration optimization: Parallel execution of independent tasks with proper ordering
 
 ### Project Context Reference
@@ -256,8 +246,8 @@ depends = ["verify", "test:integration"]
 
 **Core Test Task Configuration:**
 
-- Leveraged existing file tasks in `.mise/tasks/test/` with embedded `#MISE` configurations for optimal task discovery
-- Removed redundant TOML definitions to eliminate duplicates in `mise tasks` output
+- Implemented file tasks in `.mise/tasks/test/` with embedded `#MISE` metadata for automatic task discovery
+- Renamed scripts to remove .sh extension for proper mise file task recognition (unit, integration, coverage, watch)
 - Meta-task `[tasks.test]` configured with `depends = ["test:unit", "test:integration"]` for parallel execution
 - Verified orchestration works correctly with parallel test execution and proper dependency management
 
