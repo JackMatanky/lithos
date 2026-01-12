@@ -1,12 +1,66 @@
 #!/usr/bin/env bash
-#MISE description="Run performance benchmarks for all workspace crates, using criterion"
+#MISE description="Run performance benchmarks for workspace crates using criterion"
 #MISE alias="tb"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #USAGE arg "[filter]" help="Filter benchmarks by name"
+#USAGE flag "-p --package <package>" help="Run benchmarks for a specific package" {
+#USAGE   choices "domain" "app" "adapters" "cli" "test-utils"
+#USAGE }
 #USAGE flag "-q --quick" help="Run in quick mode"
 #USAGE flag "-n --noplot" help="Disable plot and HTML generation"
 
 set -euo pipefail
+
+#######################################
+# Map shorthand package names to full cargo package names.
+# Globals:
+#   usage_package
+# Arguments:
+#   None
+# Outputs:
+#   Echoes the full package name
+#######################################
+map_package_name() {
+  case "${usage_package:-}" in
+  domain | app | adapters)
+    echo "lithos-${usage_package}"
+    ;;
+  test-utils)
+    echo "lithos-test-utils"
+    ;;
+  cli)
+    echo "lithos"
+    ;;
+  *)
+    echo ""
+    ;;
+  esac
+}
+
+#######################################
+# Build arguments for cargo bench.
+# Globals:
+#   usage_package
+# Arguments:
+#   Reference to an array for cargo arguments
+#   The resolved package name
+# Outputs:
+#   None
+#######################################
+build_cargo_args() {
+  local -n ref_cargo_args=$1
+  local package_name=$2
+
+  # We use --benches to target only explicit [[bench]] targets.
+  # This prevents Criterion-specific flags from being passed to unit test runners.
+  ref_cargo_args+=("--benches")
+
+  if [[ -n "${package_name}" ]]; then
+    ref_cargo_args+=("--package" "${package_name}")
+  else
+    ref_cargo_args+=("--workspace")
+  fi
+}
 
 #######################################
 # Build arguments for Criterion benchmarks.
@@ -38,17 +92,24 @@ build_bench_args() {
 #######################################
 # Run performance benchmarks using cargo bench.
 # Arguments:
-#   Arguments for the benchmark binary
+#   Cargo arguments array (reference)
+#   Benchmark arguments array (reference)
 # Outputs:
 #   Writes benchmark progress to stdout
 #######################################
 run_benchmarks() {
+  local -n cargo_args_ref=$1
+  local -n bench_args_ref=$2
+
   echo "🧪 Running benchmarks..."
 
-  # Note: When running benches, cargo bench may attempt to run unit tests first.
-  # We explicitly target the known benchmark suites to ensure reliable execution
-  # and prevent Criterion-specific flags from being passed to unit test runners.
-  cargo bench -p lithos-app --bench core_ops -- "$@"
+  # Correct syntax: cargo bench [cargo_args] [-- [bench_args]]
+  # We use the double dash to separate cargo arguments from Criterion/bench arguments.
+  if [[ ${#bench_args_ref[@]} -gt 0 ]]; then
+    cargo bench "${cargo_args_ref[@]}" -- "${bench_args_ref[@]}"
+  else
+    cargo bench "${cargo_args_ref[@]}"
+  fi
 }
 
 #######################################
@@ -61,10 +122,19 @@ run_benchmarks() {
 #   None
 #######################################
 main() {
+  local resolved_package
+  resolved_package=$(map_package_name)
+
+  # Shellcheck SC2034: Variables are used via nameref in build/run functions
+  # shellcheck disable=SC2034
+  local cargo_args=()
+  build_cargo_args cargo_args "${resolved_package}"
+
+  # shellcheck disable=SC2034
   local bench_args=()
   build_bench_args bench_args
 
-  run_benchmarks "${bench_args[@]}"
+  run_benchmarks cargo_args bench_args
 
   echo "✅ Benchmarking complete"
 }

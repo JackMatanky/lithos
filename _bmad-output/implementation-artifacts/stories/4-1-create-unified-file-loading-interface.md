@@ -18,6 +18,10 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 
 3. Given file loading fails When I check error handling Then clear error messages indicate format issues and file locations
 
+4. Given security requirements When I validate file loading Then path traversal is prevented, binary files are rejected, and size limits are enforced
+
+5. Given async architecture When I implement loading Then all I/O operations use tokio::fs in spawn_blocking for thread safety
+
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Domain Tests First (RED Phase - AC: All)
@@ -81,12 +85,35 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] Update Cargo.toml with required dependencies (toml, serde_json, serde_yaml)
 - [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
-### Task 8: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+### Task 9: Implement Security Validations (GREEN Phase - AC: 4)
+- [ ] Implement path sanitization (reject absolute paths, path traversal attempts, symlinks)
+- [ ] Add binary file detection and rejection (check for null bytes, non-UTF-8 content)
+- [ ] Implement configurable size limits (default 10MB, configurable via adapter settings)
+- [ ] Add security validation to FileLoaderPort contract
+- [ ] **TDD REQUIREMENT:** Make all security validation tests pass
+
+### Task 10: Add Async I/O Support (GREEN Phase - AC: 5)
+- [ ] Update FileLoaderPort to use async trait methods
+- [ ] Implement tokio::fs operations in spawn_blocking for thread safety
+- [ ] Add async timeout handling for file operations
+- [ ] Ensure async error propagation maintains context
+- [ ] **TDD REQUIREMENT:** Make all async I/O tests pass
+
+### Task 11: Comprehensive Security and Performance Testing (RED-GREEN-REFACTOR - AC: All)
+- [ ] Achieve 90%+ test coverage for security validations and async operations
+- [ ] Create test fixtures for security edge cases (path traversal, binary files, large files)
+- [ ] Implement property-based testing for security validation robustness
+- [ ] Add performance benchmarks for async file loading (<500ms target)
+- [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all security tests pass
+
+### Task 12: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
 - [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
 - [ ] **TDD VALIDATION:** Verify property-based tests catch edge cases appropriately
 - [ ] **TDD VALIDATION:** Ensure performance benchmarks meet <500ms targets
 - [ ] **TDD VALIDATION:** Confirm comprehensive error handling covers all failure modes
 - [ ] **TDD VALIDATION:** Verify format detection accuracy for all supported formats
+- [ ] **TDD VALIDATION:** Confirm security validations prevent all identified attack vectors
+- [ ] **TDD VALIDATION:** Verify async operations are thread-safe and properly isolated
 - [ ] Run `mise run fmt` to format all code according to project standards
 - [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
 - [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
@@ -98,7 +125,7 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 - [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [ ] **MANDATORY:** Verify hexagonal architecture boundaries maintained (adapter depends on domain)
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: implement unified file loading interface with TDD validation`
+- [ ] Commit with conventional commit message: `feat: implement unified file loading interface with security validations and async I/O`
 
 ## Dev Notes
 

@@ -124,7 +124,7 @@ dev agent (recommended for implementation)
 - **Centralized Utilities**: Moved `IntegrationFixture`, `IntegrationConfig`, and `create_benchmark_runtime` to `crates/test-utils` to ensure project-wide availability and consistency.
 - **Performance Gates**: Renamed benchmarking module to `performance_gates` for better clarity and descriptive naming.
 - **Patterns implemented**: Established patterns for async benchmarking with `to_async` using Tokio multi-threaded runtime via `lithos-test-utils`. Added `dhat` to workspace for memory profiling. Created realistic fixtures using `MockEventBus` and `TestDomainEvent`.
-- **CI/CD Integration**: Consolidated mise tasks by refactoring `.mise/tasks/test/bench` to follow Google Shell Style and SRP principles. The task correctly uses `#USAGE` fields with the `usage_` prefix and separates argument building from execution logic.
+- **CI/CD Integration**: Refactored `.mise/tasks/test/bench` to follow the same package-selection pattern as the unit test task, correctly using `#USAGE` fields and `usage_` prefixed variables. Targeted all libraries and binaries with `bench = false` to ensure Criterion flags only reach intended benchmark targets.
 
 ### File List
 

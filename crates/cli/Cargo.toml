@@ -7,6 +7,11 @@ license.workspace = true
 repository.workspace = true
 description.workspace = true
 
+[[bin]]
+name = "lithos"
+path = "src/main.rs"
+bench = false
+
 [dependencies]
 lithos-app.workspace = true
 lithos-adapters.workspace = true
