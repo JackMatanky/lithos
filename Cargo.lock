@@ -539,6 +539,7 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+ "thiserror",
  "tokio",
  "tokio-test",
  "tokio-util",
