@@ -53,7 +53,21 @@ So that event-driven code is thoroughly tested with proper isolation and verific
   - [ ] Validate mock event bus captures events correctly with proper async handling
   - [ ] Test event payload verification handles serde serialization/deserialization
   - [ ] Verify event ordering patterns work with concurrent event publishing
-  - [ ] Ensure async event patterns integrate with tokio runtime without race conditions
+   - [ ] Ensure async event patterns integrate with tokio runtime without race conditions
+
+### Quality Assurance and Commit (MANDATORY FINAL TASK)
+- [ ] Run `mise run fmt` to format all code according to project standards
+- [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests)
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
+- [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
+- [ ] **MANDATORY:** Verify 90%+ test coverage is maintained
+- [ ] **MANDATORY:** Confirm all code passes clippy cognitive complexity limits (<25)
+- [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
+- [ ] Stage all files created or modified during story development
+- [ ] Commit with conventional commit message: `feat: establish event-driven testing patterns with mock bus and async verification`
 
 ## Dev Notes
 

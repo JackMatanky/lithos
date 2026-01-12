@@ -1,0 +1,1408 @@
+# Story 3.2: Create Schema Bounded Context
+
+Status: ready-for-dev
+
+<!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
+
+## Story
+
+As a developer defining metadata schemas,
+I want a complete schema domain with PropertyBank, Property, and PropertySpec variants,
+So that schemas can define reusable property definitions with rich validation constraints.
+
+## Acceptance Criteria
+
+**Given** I have researched schema domain patterns for metadata validation systems
+**When** I review the Schema bounded context
+**Then** it includes these domain models:
+- Schema entity (Name, Extends, Excludes, Properties[], ResolvedProperties[])
+- PropertyBank entity (singleton registry of reusable Property definitions)
+- Property entity (ID, Name, Required, Array, Spec)
+- PropertySpec trait with variants: StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec
+
+**Given** the Schema entity is defined
+**When** I check inheritance capabilities
+**Then** Schema supports Extends (parent schema) and Excludes (properties to remove)
+
+**Given** PropertyBank is defined
+**When** I validate its design
+**Then** it provides singleton registry with Lookup method and reference support
+
+**Given** Property entity is defined
+**When** I check identity generation
+**Then** ID is deterministically generated from hash of Name + Spec content
+
+**Given** PropertySpec variants are defined
+**When** I review type-specific constraints
+**Then** each variant supports appropriate validation:
+- StringSpec: enum values and regex patterns
+- NumberSpec: min/max/step constraints
+- BoolSpec: marker type (no constraints)
+- DateSpec: format strings
+- FileSpec: fileClass and directory restrictions
+
+**Given** semantic validation is integrated
+**When** I create Schema instances
+**Then** internal consistency validation occurs for all entities
+
+## Tasks / Subtasks
+
+### Task 1: Implement PropertySpec Variants (AC: 3-5)
+- [ ] Create StringSpec with enum values, regex patterns, length constraints
+- [ ] Create NumberSpec with min/max/step constraints
+- [ ] Create BoolSpec marker type (no constraints)
+- [ ] Create DateSpec with format strings
+- [ ] Create FileSpec with file class and directory restrictions
+- [ ] Implement validation methods for each spec type
+- [ ] Add comprehensive unit tests for validation logic
+
+### Task 2: Implement Property Entity (AC: 1-2)
+- [ ] Create Property struct with ID, name, required, array, spec fields
+- [ ] Implement deterministic ID generation using blake3 hash
+- [ ] Add property name validation (regex, length constraints)
+- [ ] Create Property::new() constructor with validation
+- [ ] Add unit tests for ID determinism and validation
+
+### Task 3: Implement PropertyBank Singleton (AC: 2-4)
+- [ ] Create PropertyBank struct with HashMap storage
+- [ ] Implement register() method with deduplication logic
+- [ ] Implement lookup() and lookup_by_definition() methods
+- [ ] Add $ref resolution support for schema loading integration
+- [ ] Create unit tests for deduplication and lookup functionality
+
+### Task 4: Implement Schema Aggregate (AC: 1, 2)
+- [ ] Create Schema struct with inheritance fields (extends, excludes)
+- [ ] Implement resolve_properties() for inheritance logic
+- [ ] Add schema name validation (regex, length, uniqueness)
+- [ ] Create Schema::new() with inheritance resolution
+- [ ] Implement circular inheritance detection
+- [ ] Add comprehensive unit tests for inheritance scenarios
+
+### Task 5: Implement Domain Events (AC: All)
+- [ ] Define DomainEvent enum (SchemaLoaded, SchemaValidationFailed, PropertyRegistered)
+- [ ] Add event publishing integration points
+- [ ] Ensure events align with Hybrid Event Bus architecture
+- [ ] Add event publishing tests
+
+### Task 6: Comprehensive Testing (AC: All)
+- [ ] Achieve 90%+ test coverage for domain entities
+- [ ] Create test fixtures for all entities (fixtures.rs)
+- [ ] Add property-based tests for ID generation
+- [ ] Add integration tests for inheritance resolution
+- [ ] Add performance benchmarks (<1μs ID gen, <10μs inheritance)
+
+### Task 7: Predefined Regex Patterns (Enhancement)
+- [ ] Define common regex patterns: email, url, wikilink, uuid, slug
+- [ ] Create pattern constants or enum for easy reference
+- [ ] Add validation examples using predefined patterns
+- [ ] Document pattern usage in schema examples
+
+### Task 8: Documentation and Integration
+- [ ] Update domain crate lib.rs with public re-exports
+- [ ] Add comprehensive doc comments with examples
+- [ ] Ensure JSON schema format compliance
+- [ ] Verify cross-story integration points (Epic 6 $ref support)
+
+### Task 9: Quality Assurance and Commit (MANDATORY FINAL TASK)
+- [ ] Run `mise run fmt` to format all code according to project standards
+- [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests)
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
+- [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
+- [ ] **MANDATORY:** Verify 90%+ test coverage is maintained
+- [ ] **MANDATORY:** Confirm all domain entities pass clippy cognitive complexity limits (<25)
+- [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
+- [ ] Stage all files created or modified during story development
+- [ ] Commit with conventional commit message: `feat: implement schema bounded context with PropertyBank, Property, and PropertySpec variants`
+
+## Technical Requirements
+
+### JSON Schema Format Compliance - CRITICAL
+
+**MANDATORY: Domain models MUST align with existing JSON schema format at `docs/schemas/property_bank.json`**
+
+**PropertyBank Structure:**
+```json
+{
+  "properties": {
+    "title": {
+      "name": "title",
+      "required": true,
+      "array": false,
+      "spec": {
+        "type": "string",
+        "enum": ["draft", "published", "archived"],
+        "pattern": "^.{1,200}$",
+        "min_length": 1,
+        "max_length": 200
+      }
+    },
+    "created": {
+      "name": "created",
+      "required": false,
+      "array": false,
+      "spec": {
+        "type": "date",
+        "format": "YYYY-MM-DDTHH:MM:SSZ"
+      }
+    }
+  }
+}
+```
+
+**$ref Resolution System - CRITICAL:**
+- Schemas use `$ref` pointers: `"$ref": "#/properties/title"`
+- PropertyBank resolves references to actual Property definitions
+- Domain models must support this reference system
+- Story 6.3 implements $ref resolution using PropertyBank lookup
+
+**PropertyBank $ref Integration:**
+```rust
+impl PropertyBank {
+    /// Resolve $ref pointer to Property
+    /// Used by schema loading (Story 6.3) for $ref resolution
+    pub fn resolve_ref(&self, ref_path: &str) -> Result<&Property, DomainError> {
+        // Parse "#/properties/title" → "title"
+        // Lookup by property name (not ID)
+        // Return &Property for schema composition
+        unimplemented!("Implemented in Story 6.3")
+    }
+}
+```
+
+**Schema Loading Flow (Cross-Story Dependency):**
+1. JSON schema loaded (Epic 4 file loading)
+2. $ref pointers resolved via PropertyBank.resolve_ref() (Story 6.3)
+3. Resolved properties used to construct Schema domain model (This story)
+4. Schema validated and events published
+
+**File Class Constraints - CRITICAL:**
+- FileSpec.file_class must support: `"image"`, `"pdf"`, `"note"`, `"audio"`, `"video"`
+- Architecture specifies these exact file class restrictions
+- File filtering depends on these exact values
+
+### Domain Model Foundation
+
+**Core Entity Structure:**
+- **Schema Entity**: Defines metadata validation rules with inheritance capabilities
+- **PropertyBank Entity**: Singleton registry providing centralized property definition management
+- **Property Entity**: Reusable property definitions with type-specific validation specs
+- **PropertySpec Variants**: Type-specific validation constraints (String, Number, Bool, Date, File)
+- **Immutability**: All domain entities MUST be immutable following Rust ownership patterns
+- **Validation**: Three-phase validation pipeline (Syntactic → Orchestration → Semantic)
+- **Error Handling**: Use `thiserror::Error` for typed domain errors
+
+**Identity Pattern - CRITICAL:**
+- Property ID is **deterministically generated** from hash of `Name + Spec content`
+- This ensures identical property definitions get same ID across schema files
+- Use `blake3` or `sha256` for fast, collision-resistant hashing
+- Schema ID uses UUID v7 (time-ordered, sortable) like Note entities
+- Deterministic IDs enable property reuse and deduplication in PropertyBank
+
+**Domain Purity Requirements - CRITICAL:**
+- Domain crate has ZERO external dependencies beyond hashing (std lib + optional serde + blake3)
+- NO I/O operations in domain layer
+- NO `rkyv` in domain dependencies - persistence derives belong in storage adapter DTOs
+- Use `pub(crate)` by default; `pub` only for crate's public interface
+- All traits defined in `domain/src/ports/` directory
+- NO direct schema file loading - that's adapter layer responsibility
+
+**Persistence Strategy:**
+- Domain entities remain pure and dependency-free
+- Storage adapters (`adapters/spi/storage`) create separate DTOs with `rkyv` derives
+- Use `From/Into` traits to convert between domain entities and storage DTOs
+- This preserves hexagonal architecture while enabling zero-copy deserialization
+
+### Schema Entity Specification
+
+**Schema Aggregate Root:**
+```rust
+use uuid::Uuid;
+use std::collections::{HashMap, HashSet};
+
+/// Schema defines metadata validation rules for notes with inheritance support
+#[derive(Debug, Clone, PartialEq)]
+pub struct Schema {
+    /// UUID v7 identity for schema
+    pub id: Uuid,
+
+    /// Unique schema name (e.g., "project-note", "literature-review")
+    pub name: String,
+
+    /// Optional parent schema name for inheritance
+    pub extends: Option<String>,
+
+    /// Property names to exclude from parent schema
+    pub excludes: HashSet<String>,
+
+    /// Properties directly defined in this schema (before inheritance resolution)
+    pub properties: Vec<Property>,
+
+    /// Fully resolved properties after inheritance (computed field)
+    /// This includes inherited properties minus excluded ones
+    pub resolved_properties: Vec<Property>,
+}
+
+impl Schema {
+    /// Create a new schema with inheritance resolution
+    ///
+    /// # Arguments
+    /// * `name` - Unique schema name
+    /// * `extends` - Optional parent schema name
+    /// * `excludes` - Property names to exclude from parent
+    /// * `properties` - Properties defined in this schema
+    /// * `parent_schema` - Optional parent schema for inheritance resolution
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails or inheritance resolution fails
+    pub fn new(
+        name: String,
+        extends: Option<String>,
+        excludes: HashSet<String>,
+        properties: Vec<Property>,
+        parent_schema: Option<&Schema>,
+    ) -> Result<Self, DomainError> {
+        // Validation and inheritance resolution logic
+        // Returns Schema with resolved_properties computed
+    }
+
+    /// Resolve property inheritance from parent schema
+    fn resolve_properties(
+        own_properties: &[Property],
+        parent_schema: Option<&Schema>,
+        excludes: &HashSet<String>,
+    ) -> Result<Vec<Property>, DomainError> {
+        // Inheritance resolution:
+        // 1. Start with parent's resolved_properties (if parent exists)
+        // 2. Remove any properties in excludes set
+        // 3. Add/override with own_properties
+        // 4. Return combined, deduplicated list
+    }
+}
+```
+
+**Schema Validation Rules:**
+- Name MUST be non-empty, lowercase-with-hyphens (e.g., "project-note", "meeting-notes")
+- Name MUST match regex: `^[a-z0-9]+(-[a-z0-9]+)*$`
+- Name MAX length: 64 characters
+- If `extends` is provided, it MUST reference a valid schema name
+- Property names within a schema MUST be unique (after inheritance resolution)
+- Circular inheritance is PROHIBITED (e.g., A extends B extends A)
+- Example valid: `"project-note"`, `"literature-review"`, `"daily-note"`
+- Example invalid: `"ProjectNote"`, `"project_note"`, `""`, `"project--note"`
+
+### PropertyBank Entity Specification
+
+**PropertyBank Singleton:**
+```rust
+use std::collections::HashMap;
+
+/// Singleton registry of reusable Property definitions
+/// Provides centralized management and lookup of properties across schemas
+#[derive(Debug, Clone, PartialEq)]
+pub struct PropertyBank {
+    /// Map of property ID -> Property
+    /// ID is deterministic hash of property name + spec
+    properties: HashMap<String, Property>,
+}
+
+impl PropertyBank {
+    /// Create a new empty PropertyBank
+    pub fn new() -> Self {
+        Self {
+            properties: HashMap::new(),
+        }
+    }
+
+    /// Register a property in the bank
+    /// If property with same ID exists, returns existing property
+    ///
+    /// # Errors
+    /// Returns `DomainError` if property validation fails
+    pub fn register(&mut self, property: Property) -> Result<&Property, DomainError> {
+        let id = property.id.clone();
+        self.properties.entry(id.clone()).or_insert(property);
+        Ok(self.properties.get(&id).unwrap())
+    }
+
+    /// Lookup a property by ID
+    pub fn lookup(&self, id: &str) -> Option<&Property> {
+        self.properties.get(id)
+    }
+
+    /// Lookup a property by name and spec (computes ID internally)
+    pub fn lookup_by_definition(&self, name: &str, spec: &PropertySpec) -> Option<&Property> {
+        let computed_id = Property::compute_id(name, spec);
+        self.lookup(&computed_id)
+    }
+
+    /// Get all properties in the bank
+    pub fn all(&self) -> impl Iterator<Item = &Property> {
+        self.properties.values()
+    }
+}
+
+impl Default for PropertyBank {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+```
+
+**PropertyBank Design Rationale:**
+- Singleton pattern enables reuse of common properties (e.g., "title", "created", "tags")
+- Deterministic IDs ensure same property definition gets same ID across schemas
+- Deduplication reduces memory usage and ensures consistency
+- Central registry enables property reference validation
+
+### Property Entity Specification
+
+**Property Aggregate:**
+```rust
+/// Reusable property definition with type-specific validation
+#[derive(Debug, Clone, PartialEq)]
+pub struct Property {
+    /// Deterministic ID: hash(name + spec content)
+    pub id: String,
+
+    /// Property name (e.g., "title", "created", "status")
+    pub name: String,
+
+    /// Whether property is required in notes using this schema
+    pub required: bool,
+
+    /// Whether property accepts array of values
+    pub array: bool,
+
+    /// Type-specific validation specification
+    pub spec: PropertySpec,
+}
+
+impl Property {
+    /// Create a new property with deterministic ID generation
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails
+    pub fn new(
+        name: String,
+        required: bool,
+        array: bool,
+        spec: PropertySpec,
+    ) -> Result<Self, DomainError> {
+        // Validate name
+        if name.is_empty() {
+            return Err(DomainError::EmptyPropertyName);
+        }
+
+        // Compute deterministic ID
+        let id = Self::compute_id(&name, &spec);
+
+        Ok(Self {
+            id,
+            name,
+            required,
+            array,
+            spec,
+        })
+    }
+
+    /// Compute deterministic ID from name and spec
+    /// Uses blake3 hash for fast, collision-resistant IDs
+    pub fn compute_id(name: &str, spec: &PropertySpec) -> String {
+        use blake3::Hasher;
+
+        let mut hasher = Hasher::new();
+        hasher.update(name.as_bytes());
+
+        // Include spec content in hash for uniqueness
+        let spec_repr = format!("{:?}", spec);  // Use Debug representation
+        hasher.update(spec_repr.as_bytes());
+
+        // Return hex-encoded hash (first 16 chars for readability)
+        let hash = hasher.finalize();
+        hash.to_hex()[..16].to_string()
+    }
+}
+```
+
+**Property Validation Rules:**
+- Name MUST be non-empty, lowercase-with-underscores or hyphens (e.g., "created_at", "title")
+- Name MUST match regex: `^[a-z0-9_-]+$`
+- Name MAX length: 64 characters
+- `required` and `array` are boolean flags (no validation needed)
+- `spec` MUST be valid PropertySpec variant
+- Example valid: `"title"`, `"created_at"`, `"status-code"`
+- Example invalid: `"Title"`, `"created at"`, `""`, `"property--name"`
+
+### PropertySpec Variants Specification
+
+**PropertySpec Trait and Variants:**
+```rust
+/// Type-specific validation specification for properties
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum PropertySpec {
+    String(StringSpec),
+    Number(NumberSpec),
+    Bool(BoolSpec),
+    Date(DateSpec),
+    File(FileSpec),
+}
+
+/// String property validation constraints
+#[derive(Debug, Clone, PartialEq)]
+pub struct StringSpec {
+    /// Optional enum of allowed values (for suggesters)
+    pub enum_values: Option<Vec<String>>,
+
+    /// Optional regex pattern for validation
+    pub pattern: Option<String>,
+
+    /// Optional min length constraint
+    pub min_length: Option<usize>,
+
+    /// Optional max length constraint
+    pub max_length: Option<usize>,
+}
+
+impl StringSpec {
+    /// Validate a string value against this spec
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails
+    pub fn validate(&self, value: &str) -> Result<(), DomainError> {
+        // Check enum values if present
+        if let Some(ref enums) = self.enum_values {
+            if !enums.contains(&value.to_string()) {
+                return Err(DomainError::InvalidEnumValue {
+                    value: value.to_string(),
+                    allowed: enums.clone(),
+                });
+            }
+        }
+
+        // Check regex pattern if present
+        if let Some(ref pattern) = self.pattern {
+            // Regex validation logic
+        }
+
+        // Check length constraints
+        if let Some(min) = self.min_length {
+            if value.len() < min {
+                return Err(DomainError::StringTooShort {
+                    min,
+                    actual: value.len()
+                });
+            }
+        }
+
+        if let Some(max) = self.max_length {
+            if value.len() > max {
+                return Err(DomainError::StringTooLong {
+                    max,
+                    actual: value.len()
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// Number property validation constraints
+#[derive(Debug, Clone, PartialEq)]
+pub struct NumberSpec {
+    /// Optional minimum value (inclusive)
+    pub min: Option<f64>,
+
+    /// Optional maximum value (inclusive)
+    pub max: Option<f64>,
+
+    /// Optional step/increment value
+    pub step: Option<f64>,
+}
+
+impl NumberSpec {
+    /// Validate a number value against this spec
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails
+    pub fn validate(&self, value: f64) -> Result<(), DomainError> {
+        // Min/max/step validation logic
+        Ok(())
+    }
+}
+
+/// Boolean property (marker type, no constraints)
+#[derive(Debug, Clone, PartialEq)]
+pub struct BoolSpec;
+
+impl BoolSpec {
+    /// Validate a boolean value (always succeeds)
+    pub fn validate(&self, _value: bool) -> Result<(), DomainError> {
+        Ok(())
+    }
+}
+
+/// Date property validation constraints
+#[derive(Debug, Clone, PartialEq)]
+pub struct DateSpec {
+    /// Date format string (e.g., "YYYY-MM-DD", "YYYY-MM-DDTHH:MM:SSZ")
+    pub format: String,
+}
+
+impl DateSpec {
+    /// Validate a date string against this spec
+    ///
+    /// # Errors
+    /// Returns `DomainError` if date doesn't match format
+    pub fn validate(&self, value: &str) -> Result<(), DomainError> {
+        // Format string validation logic
+        // Note: Actual chrono parsing happens in adapter layer
+        // Domain only validates string format
+        Ok(())
+    }
+}
+
+/// File property validation constraints
+#[derive(Debug, Clone, PartialEq)]
+pub struct FileSpec {
+    /// Optional file class restriction - MUST be one of: "image", "pdf", "note", "audio", "video"
+    pub file_class: Option<String>,
+
+    /// Optional directory restriction (vault-relative path)
+    pub directory: Option<String>,
+}
+
+impl FileSpec {
+    /// Validate a file path against this spec
+    ///
+    /// # Errors
+    /// Returns `DomainError` if file doesn't meet constraints
+    pub fn validate(&self, path: &str) -> Result<(), DomainError> {
+        // File class and directory validation logic
+        Ok(())
+    }
+}
+```
+
+**PropertySpec Validation Rules:**
+
+**StringSpec:**
+- `enum_values`: If present, MUST be non-empty array
+- `pattern`: If present, MUST be valid regex string or predefined pattern identifier
+- `min_length`: If present, MUST be >= 0
+- `max_length`: If present, MUST be > min_length
+- Value validation: Check enum, regex, length constraints in order
+
+**Predefined Regex Patterns (PRD Enhancement):**
+```rust
+/// Common regex patterns for schema validation
+pub mod patterns {
+    pub const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";
+    pub const URL: &str = r"^https?://[^\s/$.?#].[^\s]*$";
+    pub const WIKILINK: &str = r"^\[\[([^\]|]+)(\|[^\]]+)?\]\]$";
+    pub const UUID_V4: &str = r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+    pub const SLUG: &str = r"^[a-z0-9]+(-[a-z0-9]+)*$";
+    pub const PHONE_US: &str = r"^\+?1?[-.\s]?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})$";
+    pub const ZIP_CODE: &str = r"^\d{5}(-\d{4})?$";
+}
+
+/// Pattern usage examples:
+let email_property = Property::new(
+    "contact_email".to_string(),
+    false,
+    false,
+    PropertySpec::String(StringSpec {
+        enum_values: None,
+        pattern: Some(patterns::EMAIL.to_string()),
+        min_length: Some(5),
+        max_length: Some(254),
+    }),
+)?;
+
+let url_property = Property::new(
+    "website".to_string(),
+    false,
+    false,
+    PropertySpec::String(StringSpec {
+        enum_values: None,
+        pattern: Some(patterns::URL.to_string()),
+        min_length: None,
+        max_length: None,
+    }),
+)?;
+```
+
+**NumberSpec:**
+- `min`: If present, no constraint
+- `max`: If present, MUST be > min
+- `step`: If present, MUST be > 0
+- Value validation: Check min, max, step (value - min must be multiple of step)
+
+**BoolSpec:**
+- No constraints (marker type)
+- All boolean values are valid
+
+**DateSpec:**
+- `format`: MUST be non-empty ISO 8601 format string
+- Common formats: `"YYYY-MM-DD"`, `"YYYY-MM-DDTHH:MM:SSZ"`
+- Value validation: String MUST match format pattern
+
+**FileSpec:**
+- `file_class`: If present, MUST be one of: `"image"`, `"pdf"`, `"note"`, `"audio"`, `"video"`
+- `directory`: If present, MUST be valid vault-relative path (no leading `/`)
+- Value validation: Check file extension matches class, path starts with directory
+
+### Architecture Compliance - MANDATORY READING
+
+**Hexagonal Boundary Enforcement:**
+- Domain crate in `crates/domain/src/` with minimal external dependencies
+- Only allow: std lib, serde (optional), blake3 (for deterministic IDs), uuid
+- All ports (traits) in `domain/src/ports/` using `#[async_trait]` for async methods
+- NO direct references to adapters, app, or infrastructure concerns
+- Use `pub(crate)` for internal types, `pub` only for public API surface
+
+**Standard Traits - REQUIRED:**
+```rust
+// ALWAYS derive these for domain entities:
+#[derive(Debug, Clone, PartialEq)]
+// Add Default where appropriate (PropertyBank, empty specs)
+// Add Eq for types with no floats (Schema, Property, most specs)
+```
+
+**Conversion Traits - MANDATORY:**
+- Use `From/Into` for infallible conversions
+- Use `TryFrom/TryInto` for fallible conversions (especially for validation)
+- NEVER create ad-hoc `to_x()` methods
+
+**Exhaustive Matching:**
+```rust
+// Use #[non_exhaustive] on domain enums
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum PropertySpec {
+    String(StringSpec),
+    Number(NumberSpec),
+    Bool(BoolSpec),
+    Date(DateSpec),
+    File(FileSpec),
+}
+
+// PROHIBIT catch-all patterns in domain logic:
+match spec {
+    PropertySpec::String(s) => { /* handle */ },
+    PropertySpec::Number(n) => { /* handle */ },
+    // NO: _ => {} catch-alls!
+}
+```
+
+### Domain Events - CRITICAL
+
+**Schema Domain Events (Architecture ADR 0007):**
+```rust
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum DomainEvent {
+    /// Fired when a schema is loaded and validated
+    SchemaLoaded {
+        schema_id: Uuid,
+        schema_name: String,
+        property_count: usize,
+    },
+
+    /// Fired when schema validation fails
+    SchemaValidationFailed {
+        schema_name: String,
+        errors: Vec<String>,
+    },
+
+    /// Fired when a property is registered in PropertyBank
+    PropertyRegistered {
+        property_id: String,
+        property_name: String,
+        schema_name: Option<String>,
+    },
+}
+```
+
+**Event Publishing Requirements:**
+- SchemaLoaded event fired after successful schema creation/validation
+- Events published to Hybrid Event Bus (MPSC for data plane, broadcast for control)
+- Enables event-driven cache invalidation and cross-service coordination
+
+**Required Error Variants:**
+```rust
+use thiserror::Error;
+
+#[derive(Debug, Error, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum DomainError {
+    // Schema errors
+    #[error("Invalid schema name: {0}")]
+    InvalidSchemaName(String),
+
+    #[error("Schema name cannot be empty")]
+    EmptySchemaName,
+
+    #[error("Schema name too long: {0} (max 64)")]
+    SchemaNameTooLong(usize),
+
+    #[error("Circular schema inheritance detected: {0}")]
+    CircularInheritance(String),
+
+    #[error("Parent schema not found: {0}")]
+    ParentSchemaNotFound(String),
+
+    #[error("Duplicate property name: {0}")]
+    DuplicatePropertyName(String),
+
+    // Property errors
+    #[error("Invalid property name: {0}")]
+    InvalidPropertyName(String),
+
+    #[error("Property name cannot be empty")]
+    EmptyPropertyName,
+
+    #[error("Property name too long: {0} (max 64)")]
+    PropertyNameTooLong(usize),
+
+    // PropertySpec validation errors
+    #[error("Invalid enum value: {value} (allowed: {allowed:?})")]
+    InvalidEnumValue { value: String, allowed: Vec<String> },
+
+    #[error("String too short: {actual} (min: {min})")]
+    StringTooShort { min: usize, actual: usize },
+
+    #[error("String too long: {actual} (max: {max})")]
+    StringTooLong { max: usize, actual: usize },
+
+    #[error("Invalid regex pattern: {0}")]
+    InvalidRegexPattern(String),
+
+    #[error("Number out of range: {value} (min: {min:?}, max: {max:?})")]
+    NumberOutOfRange { value: f64, min: Option<f64>, max: Option<f64> },
+
+    #[error("Invalid step value: {value} (step: {step})")]
+    InvalidStepValue { value: f64, step: f64 },
+
+    #[error("Invalid date format: {0}")]
+    InvalidDateFormat(String),
+
+    #[error("Invalid file class: {0}")]
+    InvalidFileClass(String),
+
+    #[error("Invalid directory path: {0}")]
+    InvalidDirectoryPath(String),
+
+    #[error("Validation failed: {0}")]
+    ValidationFailed(String),
+}
+```
+
+**Serde Serialization (Optional but Recommended):**
+```rust
+// Schema entities SHOULD derive serde for JSON/TOML serialization
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Schema {
+    // fields
+}
+```
+
+### Validation Rules Summary
+
+**Schema Validation:**
+- Name: lowercase-with-hyphens, 1-64 chars, regex `^[a-z0-9]+(-[a-z0-9]+)*$`
+- Extends: Optional, must reference valid parent schema
+- Excludes: Optional set of property names to exclude from parent
+- Properties: Must have unique names after inheritance resolution
+- NO circular inheritance chains
+
+**Property Validation:**
+- Name: lowercase-with-underscores-or-hyphens, 1-64 chars, regex `^[a-z0-9_-]+$`
+- ID: Deterministically generated from hash(name + spec)
+- Required/Array: Boolean flags (always valid)
+- Spec: Must be valid PropertySpec variant
+
+**PropertySpec Validation:**
+- Each spec type has specific constraints (see individual specs above)
+- Validation happens at value assignment time (in app/adapter layers)
+- Domain provides validation methods, adapters call them
+
+### Testing Requirements
+
+**Domain Tests (Pure Unit Tests):**
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_schema_creation_with_valid_data() {
+        let schema = Schema::new(
+            "project-note".to_string(),
+            None,
+            HashSet::new(),
+            vec![],
+            None,
+        );
+        assert!(schema.is_ok());
+    }
+
+    #[test]
+    fn test_property_id_is_deterministic() {
+        let prop1 = Property::new(
+            "title".to_string(),
+            true,
+            false,
+            PropertySpec::String(StringSpec { /* ... */ }),
+        ).unwrap();
+
+        let prop2 = Property::new(
+            "title".to_string(),
+            true,
+            false,
+            PropertySpec::String(StringSpec { /* same spec */ }),
+        ).unwrap();
+
+        assert_eq!(prop1.id, prop2.id);
+    }
+
+    #[test]
+    fn test_schema_inheritance_resolution() {
+        // Test parent schema property inheritance
+        // Test exclude functionality
+        // Test property override
+    }
+
+    #[test]
+    fn test_property_bank_deduplication() {
+        let mut bank = PropertyBank::new();
+        let prop = Property::new(/* ... */).unwrap();
+
+        bank.register(prop.clone()).unwrap();
+        bank.register(prop.clone()).unwrap();  // Should not duplicate
+
+        assert_eq!(bank.all().count(), 1);
+    }
+}
+```
+
+**Test Coverage Target:**
+- **90%+ coverage** for domain entities and validation logic (per Epic 3 AC)
+- Test both success and error cases for all validation rules
+- Property-based testing with `proptest` for edge cases (especially ID generation)
+- Deterministic testing with fixed UUIDs
+
+**Test Fixtures Strategy:**
+```rust
+#[cfg(test)]
+pub mod fixtures {
+    use super::*;
+    use uuid::Uuid;
+
+    pub const TEST_SCHEMA_ID: Uuid = Uuid::from_u128(0x0184_0000_0000_0000_0000_0000_0000_0003);
+
+    pub fn example_string_spec() -> StringSpec {
+        StringSpec {
+            enum_values: Some(vec!["draft".to_string(), "published".to_string()]),
+            pattern: None,
+            min_length: Some(1),
+            max_length: Some(100),
+        }
+    }
+
+    pub fn example_property() -> Property {
+        Property::new(
+            "status".to_string(),
+            true,
+            false,
+            PropertySpec::String(example_string_spec()),
+        ).expect("Valid property")
+    }
+
+    pub fn example_schema() -> Schema {
+        Schema::new(
+            "project-note".to_string(),
+            None,
+            HashSet::new(),
+            vec![example_property()],
+            None,
+        ).expect("Valid schema")
+    }
+}
+```
+
+### File Structure Requirements
+
+**Directory Layout (Recommended):**
+```
+crates/domain/src/
+├── lib.rs                    # Public API surface, re-exports
+├── models/
+│   ├── mod.rs               # Module declarations (updated with schema module)
+│   ├── note/                # From Story 3.1
+│   │   └── ...
+│   └── schema/              # NEW - Schema bounded context
+│       ├── mod.rs           # Re-exports Schema, PropertyBank, Property, PropertySpec
+│       ├── schema.rs        # Schema aggregate root
+│       ├── property_bank.rs # PropertyBank singleton
+│       ├── property.rs      # Property entity
+│       └── property_spec.rs # PropertySpec variants and validation
+├── ports/
+│   ├── mod.rs
+│   └── repository.rs        # Future SchemaRepositoryPort (not this story)
+└── errors.rs                # Domain errors (UPDATE with schema errors)
+```
+
+**Alternative Single-File Layout:**
+```
+crates/domain/src/
+├── lib.rs
+├── models/
+│   ├── mod.rs
+│   ├── note/
+│   │   └── ...
+│   └── schema.rs            # All schema entities in one file
+├── ports/
+│   └── ...
+└── errors.rs
+```
+
+**Implementation Decision:**
+Use **subfolder layout** for Schema bounded context due to complexity of PropertySpec variants and inheritance logic.
+
+### Code Quality Standards
+
+**Clippy Complexity Limits - ENFORCED:**
+- Cognitive complexity: **max 25 (deny)**
+- Function length: **max 100 lines (deny)**
+- Keep inheritance resolution logic composable
+
+**MANDATORY Quality Gates (Task 9):**
+- **NO EXCEPTIONS:** All clippy warnings MUST be fixed (no bypassing)
+- **NO EXCEPTIONS:** All pre-commit hooks MUST pass (no bypassing)
+- **MANDATORY:** Run `mise run verify` for comprehensive quality assurance
+- **MANDATORY:** Commit blocked until all quality gates pass
+- **MANDATORY:** Conventional commit message required for final commit
+
+**Formatting:**
+- Run `mise run verify` before committing
+- Pre-commit hooks enforce formatting
+- Import grouping: `StdExternalCrate`
+
+**Documentation Standards:**
+```rust
+/// Schema aggregate defining metadata validation rules.
+///
+/// # Invariants
+/// - Schema name must be unique across vault
+/// - Circular inheritance is prohibited
+/// - Property names must be unique after inheritance resolution
+///
+/// # Examples
+/// ```
+/// let schema = Schema::new(
+///     "project-note".to_string(),
+///     None,
+///     HashSet::new(),
+///     vec![],
+///     None,
+/// )?;
+/// ```
+///
+/// # Errors
+/// Returns `DomainError::InvalidSchemaName` if name is invalid.
+pub fn new(...) -> Result<Self, DomainError> { }
+```
+
+## Dev Notes
+
+### Project Context Integration
+
+**Current Codebase State:**
+- Workspace structure exists with domain/app/adapters/cli crates
+- **Story 3.1 completed**: Note bounded context implemented with all subentities
+- Domain crate has `DomainError` enum (needs extension for schema errors)
+- `models/note/` subfolder pattern established in Story 3.1
+- Epic 2 (test patterns) ready for domain testing
+- Epic 3 in progress: Note done, Schema next, then Config and Template
+
+**Technology Stack (from project-context.md):**
+- **Rust 1.92+**: Memory safety, zero-cost abstractions
+- **UUID 1.19 (v7)**: Time-ordered identifiers for Schema identity
+- **blake3 2.1**: Fast, cryptographic hashing for deterministic property IDs
+- **thiserror 2.0**: Structured domain error definitions
+- **serde 1.0**: Optional JSON/TOML serialization for schemas
+
+**Pattern Consistency from Story 3.1:**
+- Subfolder organization for bounded contexts (`models/note/`, now `models/schema/`)
+- Immutable domain entities with semantic validation
+- `pub(crate)` visibility by default
+- Comprehensive error types with `thiserror`
+- Test fixtures in `#[cfg(test)] mod fixtures`
+- 90%+ test coverage target
+
+**Critical Anti-Patterns to AVOID:**
+- ❌ Using `unwrap()`, `expect()`, `todo()`, `panic!()` in production code
+- ❌ Using `as` casting (use `.try_into()` or proper error handling)
+- ❌ Leaking adapter concerns into domain (no file I/O, no schema loading)
+- ❌ Creating ad-hoc conversion methods instead of From/TryFrom traits
+- ❌ Using catch-all `_ => {}` patterns in exhaustive domain logic matches
+- ❌ Allowing circular inheritance in schema definitions
+- ❌ Generating non-deterministic property IDs (breaks deduplication)
+
+### Schema System Research
+
+**From PRD and Architecture Analysis:**
+
+**Schema Purpose (FR8-FR14):**
+- Define metadata validation rules for note frontmatter
+- Support inheritance (extends parent schema) and exclusion (remove inherited properties)
+- Provide input parameters for template functions (enums → suggesters, dirs → file filters)
+- Enable 95%+ schema compliance automation (Success Criteria)
+- Support rich property types: string, number, boolean, date, file
+
+**PropertyBank Rationale:**
+- Central registry prevents property duplication across schemas
+- Deterministic IDs enable property reuse and consistency
+- Singleton pattern matches real-world usage (one bank per vault)
+- Lookup by ID or definition supports flexible queries
+
+**Property ID Generation - CRITICAL:**
+- MUST be deterministic: same name + spec → same ID
+- Use fast, collision-resistant hash (blake3 recommended)
+- IDs enable deduplication in PropertyBank
+- IDs stable across schema file reloads
+
+**Inheritance Resolution Algorithm:**
+1. Start with parent's `resolved_properties` (if parent exists)
+2. Filter out properties in `excludes` set (by name)
+3. Add own `properties`, overriding parent properties with same name
+4. Return combined, deduplicated list
+5. Store in `resolved_properties` field for fast access
+
+**PropertySpec Design Decisions:**
+- **StringSpec**: Supports enums (for suggesters), regex (validation), length constraints
+- **NumberSpec**: Supports min/max/step (for numeric inputs)
+- **BoolSpec**: Marker type (no constraints, all booleans valid)
+- **DateSpec**: Format string for validation (actual parsing in adapter layer)
+- **FileSpec**: File class and directory restrictions (for file pickers)
+
+**Schema Validation Strategies:**
+- **Syntactic**: Type correctness (handled by Rust type system)
+- **Semantic**: Business rules (name format, no circular inheritance, unique property names)
+- **Orchestration**: Cross-schema validation (handled in app layer, not domain)
+
+### Implementation Strategy
+
+**Step-by-Step Approach:**
+
+1. **Extend Error Types** (`errors.rs`):
+   - Add schema-specific error variants to `DomainError`
+   - Cover schema validation, property validation, spec validation
+   - Use `thiserror::Error` with descriptive messages
+
+2. **Create PropertySpec Variants** (`property_spec.rs`):
+   - Define `PropertySpec` enum and variant structs
+   - Implement validation methods for each variant
+   - Add comprehensive tests for validation logic
+
+3. **Build Property Entity** (`property.rs`):
+   - Implement `Property` with deterministic ID generation
+   - Add `compute_id()` using blake3 hash
+   - Test ID determinism and uniqueness
+
+4. **Implement PropertyBank** (`property_bank.rs`):
+   - Create singleton registry with HashMap storage
+   - Implement `register()`, `lookup()`, `lookup_by_definition()`
+   - Test deduplication and lookup functionality
+
+5. **Construct Schema Aggregate** (`schema.rs`):
+   - Implement `Schema` with inheritance resolution
+   - Add `resolve_properties()` for inheritance logic
+   - Implement circular inheritance detection
+   - Test inheritance, exclusion, override scenarios
+
+6. **Write Comprehensive Tests**:
+   - Unit tests for each entity and validation rule
+   - Property-based tests for ID generation
+   - Integration tests for inheritance resolution
+   - Aim for 90%+ coverage
+
+**Validation Pipeline (Three-Phase):**
+1. **Syntactic**: Type correctness (Rust compiler enforces)
+2. **Semantic**: Business rule validation (domain layer validates)
+3. **Orchestration**: Cross-entity consistency (app layer, future stories)
+
+**Schema Creation Pattern:**
+```rust
+// Properties created with validation
+let title_prop = Property::new("title", true, false, PropertySpec::String(StringSpec {
+    enum_values: Some(vec!["draft", "published"]),
+    min_length: Some(1), max_length: Some(200), pattern: None,
+}))?;
+
+// Schema with inheritance resolution
+let child_schema = Schema::new(
+    "child-schema".to_string(),
+    Some("parent-schema".to_string()),  // extends
+    HashSet::from(["exclude_prop"]),    // excludes
+    vec![title_prop],                   // own properties
+    Some(&parent_schema),               // parent reference
+)?;
+```
+
+**Deterministic ID Generation Example:**
+```rust
+use blake3::Hasher;
+
+let mut hasher = Hasher::new();
+hasher.update("title".as_bytes());  // Property name
+
+// Spec content (use Debug representation for consistency)
+let spec = PropertySpec::String(StringSpec { /* ... */ });
+let spec_repr = format!("{:?}", spec);
+hasher.update(spec_repr.as_bytes());
+
+let hash = hasher.finalize();
+let id = hash.to_hex()[..16].to_string();  // First 16 hex chars
+
+// Same name + spec → same ID (deterministic)
+// Different spec → different ID (uniqueness)
+```
+
+**Circular Inheritance Detection:**
+```rust
+fn detect_circular_inheritance(
+    schema_name: &str,
+    parent_name: &str,
+    visited: &mut HashSet<String>,
+) -> Result<(), DomainError> {
+    if visited.contains(parent_name) {
+        return Err(DomainError::CircularInheritance(
+            format!("{} → {}", schema_name, parent_name)
+        ));
+    }
+
+    visited.insert(parent_name.to_string());
+
+    // Recursively check parent's parent
+    // (requires access to schema registry - handle in app layer)
+
+    Ok(())
+}
+```
+
+### Cross-Story Dependencies
+
+**Prerequisites:**
+- ✅ Story 3.1 completed (Note bounded context pattern established)
+- ✅ Epic 1 completed (workspace, tooling, quality gates)
+- ✅ Epic 2 ready (test patterns for domain testing)
+- ✅ Architecture established (hexagonal boundaries, ADRs)
+
+**Enables Future Stories:**
+- Story 3.3: Config Bounded Context (configuration for schema loading)
+- Story 3.4: Template Bounded Context (templates reference schemas)
+- Epic 5: Configuration Management (load schemas from files)
+- Epic 6: Schema System (implements schema loading and resolution adapters)
+- Epic 9: Vault Indexing (validates notes against schemas)
+- Epic 10: Query Service (queries by schema-defined fields)
+- Epic 11: Template System (uses schemas for input parameters)
+
+**Inter-Bounded-Context Relationships:**
+- **Schema → Note**: Schemas validate Note frontmatter fields
+- **Schema → Template**: Templates use schema properties for input parameters
+- **Schema → Config**: Schemas loaded from config files
+- **PropertyBank → Property**: One-to-many (bank contains many properties)
+- **Schema → Schema**: Inheritance relationships between schemas
+
+### Performance Considerations
+
+**Architecture Performance Targets:**
+- Property ID generation: <1μs (blake3 fast hashing)
+- PropertyBank lookup: O(1) HashMap access
+- Schema inheritance resolution: <10μs per schema
+- Memory per schema: ~1KB
+- Memory per property: ~100 bytes
+
+**Benchmarking Requirements:**
+```rust
+// Add to benches/schema_benchmarks.rs
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+fn bench_property_id_generation(c: &mut Criterion) {
+    c.bench_function("property_id_gen", |b| {
+        b.iter(|| {
+            Property::compute_id(
+                black_box("title"),
+                black_box(&PropertySpec::String(StringSpec::default())),
+            )
+        });
+    });
+    // Target: <1μs
+}
+
+fn bench_schema_inheritance_resolution(c: &mut Criterion) {
+    let parent = example_schema();
+    c.bench_function("inheritance_resolution", |b| {
+        b.iter(|| {
+            Schema::new(
+                "child-schema".to_string(),
+                Some("parent-schema".to_string()),
+                HashSet::new(),
+                vec![],
+                Some(&parent),
+            )
+        });
+    });
+    // Target: <10μs
+}
+
+fn bench_property_bank_lookup(c: &mut Criterion) {
+    let mut bank = PropertyBank::new();
+    let prop = example_property();
+    bank.register(prop).unwrap();
+
+    c.bench_function("property_bank_lookup", |b| {
+        b.iter(|| {
+            black_box(bank.lookup("test-property-id"));
+        });
+    });
+    // Target: O(1) HashMap performance
+}
+```
+
+**Inheritance Resolution:**
+- Resolve inheritance once at schema creation time
+- Store `resolved_properties` for O(1) access
+- Avoid re-resolving on every query
+
+**Memory Usage:**
+- PropertyBank stores unique properties only (deduplication saves memory)
+- Schema stores references to properties (not copies)
+- Expect ~1KB per schema, ~100 bytes per property
+
+**Performance Testing:**
+```rust
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+
+fn bench_property_id_generation(c: &mut Criterion) {
+    c.bench_function("property_id_gen", |b| {
+        b.iter(|| {
+            Property::compute_id(
+                black_box("title"),
+                black_box(&PropertySpec::String(StringSpec::default())),
+            )
+        });
+    });
+}
+
+fn bench_schema_inheritance_resolution(c: &mut Criterion) {
+    let parent = example_schema();
+    c.bench_function("inheritance_resolution", |b| {
+        b.iter(|| {
+            Schema::new(
+                "child-schema".to_string(),
+                Some("parent-schema".to_string()),
+                HashSet::new(),
+                vec![],
+                Some(&parent),
+            )
+        });
+    });
+}
+
+// Target: <1μs for ID generation, <10μs for inheritance resolution
+```
+
+### References
+
+**Architecture Documents:**
+- [Source: _bmad-output/planning-artifacts/architecture.md#Data Architecture]
+  - UUID v7 identity for schemas
+  - Hexagonal boundary enforcement
+  - Domain purity requirements
+
+- [Source: _bmad-output/planning-artifacts/architecture.md#Implementation Patterns]
+  - Naming conventions (lowercase-with-hyphens for schemas)
+  - Structure patterns (subfolder organization)
+  - Error handling standards (thiserror)
+
+- [Source: _bmad-output/project-context.md#Critical Implementation Rules]
+  - Architectural integrity requirements
+  - Language-specific Rust patterns
+  - AI pitfall protections (no unwrap, no as casting)
+
+**Epic Context:**
+- [Source: _bmad-output/planning-artifacts/epics/epic-3-core-domain-models-value-objects-phase-15.md#Story 3.2]
+  - Complete acceptance criteria
+  - Schema entity specification
+  - PropertyBank and Property requirements
+  - PropertySpec variant details
+
+**PRD Requirements:**
+- [Source: _bmad-output/planning-artifacts/prd.md#Schema Management FR8-FR14]
+  - Schema definition and validation
+  - Schema inheritance and extension
+  - Property types and constraints
+  - Template integration requirements
+
+**JSON Schema Specifications:**
+- [Source: docs/schemas/property_bank.json] - PropertyBank JSON format (MANDATORY alignment)
+- [Source: docs/schemas/] - Complete schema examples with $ref usage
+- [Source: docs/schemas/pkm.json] - Complex schema with inheritance examples
+
+**Previous Story Learnings:**
+- [Source: _bmad-output/implementation-artifacts/stories/3-1-create-note-bounded-context.md]
+  - Subfolder organization pattern
+  - Comprehensive error types
+  - Test fixtures strategy
+  - Documentation standards
+  - Validation pipeline approach
+
+**Epic 6 Dependencies:**
+- [Source: _bmad-output/planning-artifacts/epics/epic-6-schema-system-validation-mvp-core.md#Story 6.2]
+  - PropertyBank $ref support requirement
+  - JSON schema format compliance
+- [Source: _bmad-output/planning-artifacts/epics/epic-6-schema-system-validation-mvp-core.md#Story 6.3]
+  - $ref resolution system requirements
+
+## Dev Agent Record
+
+### Agent Model Used
+
+<!-- Dev agent will fill this in during implementation -->
+
+### Debug Log References
+
+<!-- Dev agent will add references to logs if debugging is needed -->
+
+### Completion Notes List
+
+<!-- Dev agent will document completion status and any deviations -->
+
+### File List
+
+<!-- Dev agent will list all files created/modified during implementation -->
+```
+Expected files to be created (9 main implementation tasks for 3-2, 6 for 3-1):
+- crates/domain/src/errors.rs (UPDATED with schema error variants)
+- crates/domain/src/models/mod.rs (UPDATED with schema module declaration)
+- crates/domain/src/models/schema/mod.rs (re-exports all schema entities)
+- crates/domain/src/models/schema/schema.rs (Schema aggregate root - Task 4)
+- crates/domain/src/models/schema/property_bank.rs (PropertyBank singleton - Task 3)
+- crates/domain/src/models/schema/property.rs (Property entity - Task 2)
+- crates/domain/src/models/schema/property_spec.rs (PropertySpec variants - Task 1)
+- crates/domain/src/models/schema/patterns.rs (Predefined regex patterns - Task 7)
+- crates/domain/src/lib.rs (UPDATED with public re-exports)
+- crates/domain/Cargo.toml (UPDATED with blake3 dependency)
+- benches/schema_benchmarks.rs (performance benchmarks - Task 6)
+
+Comprehensive tests in each file with #[cfg(test)] modules (90%+ coverage target)
+```

@@ -65,7 +65,21 @@ So that integration issues are caught early with proper isolation and mocking.
   - [ ] Add mise run test:integration task with --test-threads for parallelism
   - [ ] Configure test container management and cleanup
   - [ ] Integrate with existing test suite (separate execution from unit tests)
-  - [ ] Establish performance baselines for integration test execution
+   - [ ] Establish performance baselines for integration test execution
+
+### Quality Assurance and Commit (MANDATORY FINAL TASK)
+- [ ] Run `mise run fmt` to format all code according to project standards
+- [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests)
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
+- [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
+- [ ] **MANDATORY:** Verify 90%+ test coverage is maintained
+- [ ] **MANDATORY:** Confirm all code passes clippy cognitive complexity limits (<25)
+- [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
+- [ ] Stage all files created or modified during story development
+- [ ] Commit with conventional commit message: `feat: establish integration testing patterns and infrastructure with container management and CI integration`
 
 ## Dev Notes
 
