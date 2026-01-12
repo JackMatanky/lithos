@@ -27,6 +27,7 @@
 //! ```
 
 pub mod async_utils;
+pub mod cqrs;
 pub mod events;
 pub mod mocks;
 
@@ -34,6 +35,11 @@ pub use async_utils::{
     default_test_timeout, long_test_timeout, shared_mutex, shared_rwlock,
     shared_semaphore, short_test_timeout, spawn_blocking_test,
     with_cancellation, with_timeout,
+};
+pub use cqrs::{
+    CqrsTestError, CqrsTestResult, Entity, ErrorConfig, EventVerifier,
+    MockRepository, QueryCriteria, QueryStorePort, RepositoryInteraction,
+    RepositoryPort, StubQueryStore, TestFramework,
 };
 pub use events::{
     EventRecord, EventTestError, EventTestFramework, EventTestResult,
