@@ -46,19 +46,19 @@ CI = "${GITHUB_ACTIONS:-false}"
 
 [tasks.fmt]
 description = "Format all code"
-run = ".mise/tasks/fmt.sh"
+run = ".mise/tasks/fmt"
 
 [tasks.lint]
 description = "Run clippy linting"
-run = ".mise/tasks/lint.sh"
+run = ".mise/tasks/lint"
 
 [tasks.dev-setup]
 description = "Bootstraps the development environment"
-run = ".mise/tasks/dev-setup.sh"
+run = ".mise/tasks/dev-setup"
 
 [tasks.quality]
-description = "Run all quality gates (fmt, lint, validate-adrs)"
-depends = ["fmt", "lint", "validate-adrs"]
+description = "Run all quality gates (fmt, lint, adr:validate)"
+depends = ["fmt", "lint", "adr:validate"]
 
 [tasks.test]
 description = "Run all tests (unit and integration)"
@@ -68,35 +68,35 @@ depends = ["test:unit", "test:integration"]
 # Specific crate unit tests for developer convenience
 [tasks."test:unit:domain"]
 description = "Run domain crate unit tests"
-run = ".mise/tasks/test/unit.sh -p domain"
+run = ".mise/tasks/test/unit -p domain"
 
 [tasks."test:unit:app"]
 description = "Run app crate unit tests"
-run = ".mise/tasks/test/unit.sh -p app"
+run = ".mise/tasks/test/unit -p app"
 
 [tasks."test:unit:adapters"]
 description = "Run adapters crate unit tests"
-run = ".mise/tasks/test/unit.sh -p adapters"
+run = ".mise/tasks/test/unit -p adapters"
 
 [tasks."test:unit:cli"]
 description = "Run CLI crate unit tests"
-run = ".mise/tasks/test/unit.sh -p cli"
+run = ".mise/tasks/test/unit -p cli"
 
 [tasks."test:unit"]
 description = "Run all unit tests"
-run = ".mise/tasks/test/unit.sh"
+run = ".mise/tasks/test/unit"
 
 [tasks."test:integration"]
 description = "Run all integration tests"
-run = ".mise/tasks/test/integration.sh"
+run = ".mise/tasks/test/integration"
 
 [tasks."test:coverage"]
 description = "Generate code coverage report"
-run = ".mise/tasks/test/coverage.sh"
+run = ".mise/tasks/test/coverage"
 
 [tasks."test:watch"]
 description = "Watch for changes and run tests"
-run = ".mise/tasks/test/watch.sh"
+run = ".mise/tasks/test/watch"
 
 # CI/CD simulation
 [tasks.ci]
@@ -112,13 +112,7 @@ depends = ["fmt", "lint", "test", "deny"]
 description = "Check dependencies for security vulnerabilities and license compliance"
 run = "cargo deny check"
 
-[tasks.validate-adrs]
-description = "Validate ADRs for template compliance"
-run = "scripts/validate-adrs.sh"
 
-[tasks.adr-metrics]
-description = "Show ADR quality and completeness metrics"
-run = "scripts/adr-metrics.sh"
 
 [tasks.bench]
 description = "Run performance benchmarks"
