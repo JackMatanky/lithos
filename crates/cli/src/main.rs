@@ -15,3 +15,18 @@ async fn main() -> miette::Result<()> {
     tracing::info!("Hello, Lithos!");
     Ok(())
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::assertions_on_result_states,
+    reason = "Result assertions in tests avoid unwrap/expect while keeping intent clear."
+)]
+mod tests {
+    use super::main;
+
+    #[test]
+    fn main_runs_successfully() {
+        let result = main();
+        assert!(result.is_ok());
+    }
+}

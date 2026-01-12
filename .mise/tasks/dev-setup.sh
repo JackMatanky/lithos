@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# mise description="Bootstraps the development environment"
+#MISE description="Bootstraps the development environment"
 
 set -e
 

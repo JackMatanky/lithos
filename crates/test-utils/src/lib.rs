@@ -27,12 +27,19 @@
 //! ```
 
 pub mod async_helpers;
+pub mod events;
+pub mod mocks;
 
 pub use async_helpers::{
     default_test_timeout, long_test_timeout, shared_mutex, shared_rwlock,
     shared_semaphore, short_test_timeout, spawn_blocking_test,
     with_cancellation, with_timeout,
 };
+pub use events::{
+    EventRecord, EventTestError, EventTestFramework, EventTestResult,
+    EventTestScenario, PayloadAssertion, SequenceAssertion,
+};
+pub use mocks::{EventBusError, EventBusPort, EventPlane, MockEventBus};
 /// Re-export commonly used tokio testing types
 pub use tokio_test::{
     assert_pending, assert_ready, assert_ready_err, assert_ready_ok,

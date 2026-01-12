@@ -10,9 +10,9 @@
 
 #[cfg(test)]
 mod tests {
+    /// Ensures the integration test harness is operational.
     #[test]
     fn app_integration_environment_ready() {
-        // Basic check to ensure the test harness is running correctly
         let status = "ready";
         assert_eq!(status, "ready");
     }
