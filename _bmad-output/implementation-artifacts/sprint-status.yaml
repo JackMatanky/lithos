@@ -16,14 +16,14 @@
 #   - review: Coding complete, awaiting review
 #   - done: Merged and verified
 
-generated: 2026-01-11
+generated: 2026-01-12
 project: lithos
 project_key: lithos
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts/stories
 
 development_status:
-  epic-1: in-progress
+  epic-1: done
   1-1-initialize-cargo-workspace-structure: done
   1-2-set-up-base-pre-commit-and-shell-quality: done
   1-3-configure-task-orchestration-with-mise: done
@@ -34,7 +34,7 @@ development_status:
   1-8-create-comprehensive-readmemd: done
   1-9-establish-project-roadmap-in-milestones: done
   1-10-configure-ci-cd-for-comprehensive-quality-assurance: done
-  epic-1-retrospective: optional
+  epic-1-retrospective: done
 
   epic-2: in-progress
   2-1-establish-async-testing-patterns-and-infrastructure: ready-for-dev
@@ -46,8 +46,8 @@ development_status:
   2-7-create-benchmarking-infrastructure-and-performance-testing-patterns: ready-for-dev
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-create-note-bounded-context: backlog
+  epic-3: in-progress
+  3-1-create-note-bounded-context: ready-for-dev
   3-2-create-schema-bounded-context: backlog
   3-3-create-config-bounded-context: backlog
   3-4-create-template-bounded-context: backlog
