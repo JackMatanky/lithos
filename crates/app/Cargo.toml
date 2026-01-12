@@ -29,6 +29,9 @@ dhat.workspace = true
 [lints]
 workspace = true
 
+[features]
+dhat-on = []
+
 [[bench]]
 name = "core_ops"
 harness = false

@@ -31,3 +31,14 @@ mise run test:bench core_ops --quick --noplot
 - **Thresholds**: Defined in `lithos-test-utils::performance_gates`.
     - > 5% regression: Warning/Alert (`WARNING_THRESHOLD`)
     - > 10% regression: Block release (`BLOCKING_THRESHOLD`)
+
+## Memory Profiling
+
+Memory profiling is integrated via `dhat`. To run benchmarks with heap profiling:
+
+```bash
+# Run with dhat enabled (requires --features dhat-on)
+cargo bench -p lithos-app --bench core_ops --features dhat-on
+```
+
+After running, `dhat-heap.json` will be generated in the root directory. You can view it using the [DHAT Viewer](https://valgrind.org/docs/manual/dh-manual.html).

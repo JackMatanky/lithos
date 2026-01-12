@@ -22,9 +22,16 @@ use std::sync::Arc;
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use lithos_test_utils::{
+    bench::standard_criterion,
     create_benchmark_runtime,
     mocks::{EventBusPort, MockEventBus},
 };
+
+// # LINT_DISABLE_REASON: Global allocator for memory profiling.
+// # LINT_DISABLE_REASON: Justification: Required for dhat heap profiling.
+#[cfg(feature = "dhat-on")]
+#[global_allocator]
+static ALLOC: dhat::Alloc = dhat::Alloc;
 
 /// Placeholder domain event for benchmarking.
 #[derive(Debug, Clone, PartialEq)]
@@ -50,6 +57,9 @@ async fn bench_publish_event(
 
 /// Criterion benchmark suite for event bus operations.
 fn event_bus_benchmarks(c: &mut Criterion) {
+    #[cfg(feature = "dhat-on")]
+    let _profiler = dhat::Profiler::new_heap();
+
     let rt = create_benchmark_runtime();
 
     let clock: Arc<dyn Fn() -> chrono::DateTime<chrono::Utc> + Send + Sync> =
@@ -72,5 +82,13 @@ fn event_bus_benchmarks(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, event_bus_benchmarks);
+fn custom_criterion() -> Criterion {
+    standard_criterion()
+}
+
+criterion_group! {
+    name = benches;
+    config = custom_criterion();
+    targets = event_bus_benchmarks
+}
 criterion_main!(benches);
