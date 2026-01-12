@@ -103,7 +103,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 - .mise/tasks/test/integration: Embedded mise task configuration for integration tests
 - .mise/tasks/test/coverage: Embedded mise task configuration for coverage reports
 - .mise/tasks/test/watch: Embedded mise task configuration for TDD watch mode
-- .mise/tasks/test/bench.sh: Embedded mise task configuration for performance benchmarks
+- .mise/tasks/test/bench: Embedded mise task configuration for performance benchmarks
 
 ## Change Log
 

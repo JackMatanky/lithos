@@ -122,4 +122,4 @@ run = "scripts/adr-metrics.sh"
 
 [tasks.bench]
 description = "Run performance benchmarks"
-run = ".mise/tasks/test/bench.sh"
+run = ".mise/tasks/test/bench"
