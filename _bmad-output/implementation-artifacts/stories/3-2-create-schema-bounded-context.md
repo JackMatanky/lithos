@@ -45,77 +45,95 @@ So that schemas can define reusable property definitions with rich validation co
 **When** I create Schema instances
 **Then** internal consistency validation occurs for all entities
 
-## Tasks / Subtasks
+## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
-### Task 1: Implement PropertySpec Variants (AC: 3-5)
-- [ ] Create StringSpec with enum values, regex patterns, length constraints
-- [ ] Create NumberSpec with min/max/step constraints
-- [ ] Create BoolSpec marker type (no constraints)
-- [ ] Create DateSpec with format strings
-- [ ] Create FileSpec with file class and directory restrictions
-- [ ] Implement validation methods for each spec type
-- [ ] Add comprehensive unit tests for validation logic
+### Task 1: Define Schema Domain Tests First (RED Phase - AC: All)
+- [ ] Write failing unit tests for PropertySpec variants (StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec)
+- [ ] Write failing unit tests for Property entity (ID generation determinism, validation, edge cases)
+- [ ] Write failing unit tests for PropertyBank singleton (registration, deduplication, lookup methods)
+- [ ] Write failing unit tests for Schema aggregate (inheritance resolution, validation, circular detection)
+- [ ] Write failing integration tests for $ref resolution system (PropertyBank.resolve_ref integration)
+- [ ] Write failing property-based tests for ID generation collisions and validation boundaries
+- [ ] Write failing domain event tests (SchemaLoaded, SchemaValidationFailed, PropertyRegistered)
+- [ ] Write failing performance tests (<1μs ID gen, <10μs inheritance resolution)
+- [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
-### Task 2: Implement Property Entity (AC: 1-2)
-- [ ] Create Property struct with ID, name, required, array, spec fields
-- [ ] Implement deterministic ID generation using blake3 hash
-- [ ] Add property name validation (regex, length constraints)
-- [ ] Create Property::new() constructor with validation
-- [ ] Add unit tests for ID determinism and validation
+### Task 2: Implement PropertySpec Variants (GREEN Phase - AC: 3-5)
+- [ ] Implement StringSpec with enum values, regex patterns, predefined patterns, length constraints
+- [ ] Implement NumberSpec with min/max/step validation constraints
+- [ ] Implement BoolSpec marker type (no constraints, all booleans valid)
+- [ ] Implement DateSpec with format string validation (ISO 8601 patterns)
+- [ ] Implement FileSpec with file class restrictions ("image", "pdf", "note", "audio", "video") and directory constraints
+- [ ] Add validation methods to each spec variant with proper error handling
+- [ ] **TDD REQUIREMENT:** Make all PropertySpec tests pass (GREEN phase complete when spec tests pass)
 
-### Task 3: Implement PropertyBank Singleton (AC: 2-4)
-- [ ] Create PropertyBank struct with HashMap storage
-- [ ] Implement register() method with deduplication logic
-- [ ] Implement lookup() and lookup_by_definition() methods
-- [ ] Add $ref resolution support for schema loading integration
-- [ ] Create unit tests for deduplication and lookup functionality
+### Task 3: Implement Property Entity (GREEN Phase - AC: 1-2)
+- [ ] Implement Property struct with deterministic ID generation using blake3 hash
+- [ ] Add property name validation (regex ^[a-z0-9_-]+, length 1-64 chars)
+- [ ] Implement Property::new() constructor with validation pipeline
+- [ ] Implement Property::compute_id() with name + spec content hashing
+- [ ] Add required/array boolean flags with proper defaults
+- [ ] **TDD REQUIREMENT:** Make all Property entity tests pass (ID determinism, validation, edge cases)
 
-### Task 4: Implement Schema Aggregate (AC: 1, 2)
-- [ ] Create Schema struct with inheritance fields (extends, excludes)
-- [ ] Implement resolve_properties() for inheritance logic
-- [ ] Add schema name validation (regex, length, uniqueness)
-- [ ] Create Schema::new() with inheritance resolution
-- [ ] Implement circular inheritance detection
-- [ ] Add comprehensive unit tests for inheritance scenarios
+### Task 4: Implement PropertyBank Singleton (GREEN Phase - AC: 2-4)
+- [ ] Implement PropertyBank with HashMap<String, Property> storage
+- [ ] Add register() method with deduplication (same ID returns existing property)
+- [ ] Implement lookup() by ID and lookup_by_definition() by name+spec
+- [ ] Add resolve_ref() method for $ref resolution (Epic 6 integration point)
+- [ ] Implement Default trait for easy instantiation
+- [ ] **TDD REQUIREMENT:** Make all PropertyBank tests pass (registration, deduplication, lookups)
 
-### Task 5: Implement Domain Events (AC: All)
-- [ ] Define DomainEvent enum (SchemaLoaded, SchemaValidationFailed, PropertyRegistered)
-- [ ] Add event publishing integration points
-- [ ] Ensure events align with Hybrid Event Bus architecture
-- [ ] Add event publishing tests
+### Task 5: Implement Schema Aggregate (GREEN Phase - AC: 1, 2)
+- [ ] Implement Schema struct with UUID v7 identity and inheritance fields (extends, excludes)
+- [ ] Add schema name validation (regex ^[a-z0-9]+(-[a-z0-9]+)*, length 1-64 chars)
+- [ ] Implement resolve_properties() for inheritance resolution algorithm
+- [ ] Add circular inheritance detection with proper error handling
+- [ ] Create Schema::new() constructor with validation and inheritance resolution
+- [ ] Store resolved_properties for O(1) access after inheritance computation
+- [ ] **TDD REQUIREMENT:** Make all Schema aggregate tests pass (inheritance, validation, circular detection)
 
-### Task 6: Comprehensive Testing (AC: All)
-- [ ] Achieve 90%+ test coverage for domain entities
-- [ ] Create test fixtures for all entities (fixtures.rs)
-- [ ] Add property-based tests for ID generation
-- [ ] Add integration tests for inheritance resolution
-- [ ] Add performance benchmarks (<1μs ID gen, <10μs inheritance)
+### Task 6: Implement Domain Events (GREEN Phase - AC: All)
+- [ ] Define DomainEvent enum with SchemaLoaded, SchemaValidationFailed, PropertyRegistered variants
+- [ ] Implement event publishing integration points for schema lifecycle
+- [ ] Ensure events align with Hybrid Event Bus architecture (MPSC + broadcast)
+- [ ] Add event payload validation and proper error handling
+- [ ] **TDD REQUIREMENT:** Make all domain event tests pass
 
-### Task 7: Predefined Regex Patterns (Enhancement)
-- [ ] Define common regex patterns: email, url, wikilink, uuid, slug
-- [ ] Create pattern constants or enum for easy reference
-- [ ] Add validation examples using predefined patterns
-- [ ] Document pattern usage in schema examples
+### Task 7: Refactor for Quality (REFACTOR Phase - AC: All)
+- [ ] Optimize Property ID generation performance (<1μs target with blake3)
+- [ ] Implement efficient inheritance resolution (<10μs target)
+- [ ] Add comprehensive error handling with thiserror throughout domain
+- [ ] Ensure proper memory usage patterns (deduplication in PropertyBank, efficient string handling)
+- [ ] Add predefined regex patterns module for common validations (email, url, wikilink, uuid, slug, phone, zip)
+- [ ] Verify hexagonal architecture compliance (domain purity, no external dependencies)
+- [ ] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
 
-### Task 8: Documentation and Integration
-- [ ] Update domain crate lib.rs with public re-exports
-- [ ] Add comprehensive doc comments with examples
-- [ ] Ensure JSON schema format compliance
-- [ ] Verify cross-story integration points (Epic 6 $ref support)
+### Task 8: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
+- [ ] Achieve 90%+ test coverage for all schema domain entities
+- [ ] Create test fixtures module with deterministic examples (fixed UUIDs, predictable schemas)
+- [ ] Implement property-based testing with proptest for edge cases (ID collisions, circular inheritance, validation boundaries)
+- [ ] Add integration tests for inheritance chains and $ref resolution
+- [ ] Add performance benchmarks meeting all targets (<1μs ID gen, <10μs inheritance, O(1) lookups)
+- [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all property-based tests pass
 
-### Task 9: Quality Assurance and Commit (MANDATORY FINAL TASK)
+### Task 9: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+- [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
+- [ ] **TDD VALIDATION:** Verify property-based tests catch edge cases (ID collisions, circular inheritance)
+- [ ] **TDD VALIDATION:** Ensure performance benchmarks meet targets (<1μs ID gen, <10μs inheritance)
+- [ ] **TDD VALIDATION:** Verify $ref resolution system works with PropertyBank integration
 - [ ] Run `mise run fmt` to format all code according to project standards
 - [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
-- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests)
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
 - [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
-- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING (TDD requires clean code)
 - [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
 - [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
-- [ ] **MANDATORY:** Verify 90%+ test coverage is maintained
 - [ ] **MANDATORY:** Confirm all domain entities pass clippy cognitive complexity limits (<25)
 - [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
+- [ ] **MANDATORY:** Verify JSON schema format compliance (docs/schemas/property_bank.json alignment)
+- [ ] **MANDATORY:** Verify hexagonal architecture boundaries maintained (domain purity, blake3 only external dep)
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: implement schema bounded context with PropertyBank, Property, and PropertySpec variants`
+- [ ] Commit with conventional commit message: `feat: implement schema bounded context with PropertyBank, Property, PropertySpec variants, and TDD validation`
 
 ## Technical Requirements
 
@@ -1391,7 +1409,7 @@ fn bench_schema_inheritance_resolution(c: &mut Criterion) {
 
 <!-- Dev agent will list all files created/modified during implementation -->
 ```
-Expected files to be created (9 main implementation tasks for 3-2, 6 for 3-1):
+Expected files to be created (9 TDD tasks for 3-2, 7 TDD tasks for 3-1):
 - crates/domain/src/errors.rs (UPDATED with schema error variants)
 - crates/domain/src/models/mod.rs (UPDATED with schema module declaration)
 - crates/domain/src/models/schema/mod.rs (re-exports all schema entities)

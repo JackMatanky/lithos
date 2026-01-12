@@ -36,60 +36,84 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 **When** I check the Note entity design
 **Then** it supports vault-relative paths and wiki-link resolution
 
-## Tasks / Subtasks
+## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
-### Task 1: Implement Subentity Structures (AC: 1-5)
-- [ ] Create Frontmatter entity with HashMap<String, FrontmatterValue> and validation
-- [ ] Implement FrontmatterValue enum (String, Number, Boolean, Date, Array, Object)
-- [ ] Create Link entity with source/target references, aliases, and position tracking
-- [ ] Create Embed entity with file type classification and position tracking
-- [ ] Implement Tag entity with hierarchical path parsing and validation
-- [ ] Create Heading entity with level validation (1-6) and position tracking
-- [ ] Implement Task entity with status enum and position tracking
-- [ ] Create Section entity with content range and optional heading reference
+### Task 1: Define Domain Tests First (RED Phase - AC: All)
+- [ ] Write failing unit tests for Frontmatter entity (test validation, construction, invariants)
+- [ ] Write failing unit tests for FrontmatterValue enum (test type conversions, edge cases)
+- [ ] Write failing unit tests for Link entity (test wiki-link parsing, position tracking)
+- [ ] Write failing unit tests for Embed entity (test file type classification, validation)
+- [ ] Write failing unit tests for Tag entity (test hierarchical parsing, regex validation)
+- [ ] Write failing unit tests for Heading entity (test level validation 1-6, position tracking)
+- [ ] Write failing unit tests for Task entity (test status enum, markdown parsing)
+- [ ] Write failing unit tests for Section entity (test range calculation, heading association)
+- [ ] Write failing integration tests for Note aggregate (test composition, validation pipeline)
+- [ ] Write failing property-based tests for edge cases (empty strings, boundary values, invalid formats)
+- [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
-### Task 2: Implement Note Aggregate Root (AC: 1-5)
-- [ ] Create Note struct with UUID v7 identity generation
-- [ ] Implement vault-relative path validation and storage
-- [ ] Add all subentity collections (links, embeds, tags, headings, tasks, sections)
-- [ ] Create Note::new() constructor with validation pipeline
-- [ ] Implement semantic validation for internal consistency
-- [ ] Add comprehensive unit tests for Note construction and validation
+### Task 2: Implement Domain Entities (GREEN Phase - AC: 1-5)
+- [ ] Implement Frontmatter entity with HashMap<String, FrontmatterValue> and validation logic
+- [ ] Implement FrontmatterValue enum with proper type conversions and validation
+- [ ] Implement Link entity with source/target references, alias handling, position tracking
+- [ ] Implement Embed entity with file type classification and validation constraints
+- [ ] Implement Tag entity with hierarchical path parsing and regex validation (^[a-zA-Z0-9_-]+)
+- [ ] Implement Heading entity with level validation (1-6) and position tracking
+- [ ] Implement Task entity with status enum (Incomplete, Complete, Cancelled) and position tracking
+- [ ] Implement Section entity with content range calculation and optional heading reference
+- [ ] Implement Note aggregate root with UUID v7 identity generation and vault-relative path validation
+- [ ] Implement semantic validation pipeline (Syntactic → Orchestration → Semantic)
+- [ ] **TDD REQUIREMENT:** Make all previously failing tests pass (GREEN phase complete when all tests pass)
 
-### Task 3: Implement Domain Error Types (AC: All)
-- [ ] Create comprehensive DomainError enum with all validation variants
-- [ ] Implement thiserror::Error derives with descriptive messages
-- [ ] Add error variants for path validation, entity validation, and business rules
-- [ ] Create error conversion traits (From/Into) for domain boundaries
-- [ ] Add unit tests for error message clarity and accuracy
+### Task 3: Implement Domain Error Types (GREEN Phase - AC: All)
+- [ ] Implement comprehensive DomainError enum with thiserror::Error derives
+- [ ] Add error variants for path validation (InvalidPath, EmptyPath, non-relative paths, missing .md extension)
+- [ ] Add error variants for entity validation (InvalidTag, InvalidHeadingLevel, EmptyLinkTarget, etc.)
+- [ ] Add error variants for business rules (ValidationFailed, semantic consistency errors)
+- [ ] Implement error conversion traits (From/Into) for domain boundaries
+- [ ] Write unit tests for error message clarity, accuracy, and proper error chaining
+- [ ] **TDD REQUIREMENT:** All error-related tests must pass
 
-### Task 4: Comprehensive Testing and Validation (AC: All)
-- [ ] Achieve 90%+ test coverage for domain entities and validation logic
-- [ ] Create test fixtures module with example instances for all entities
-- [ ] Add property-based testing for edge cases and validation boundaries
-- [ ] Implement integration tests for Note aggregate with all subentities
-- [ ] Add performance benchmarks for Note construction (<100μs target)
+### Task 4: Refactor for Quality (REFACTOR Phase - AC: All)
+- [ ] Extract common validation logic into reusable functions (<25 cognitive complexity)
+- [ ] Optimize memory usage (Box<str> for immutable strings, avoid unnecessary allocations)
+- [ ] Ensure proper ownership patterns (immutable entities, no internal mutation)
+- [ ] Add comprehensive documentation with invariants, examples, and error conditions
+- [ ] Implement performance optimizations (pre-allocated collections, efficient string handling)
+- [ ] Verify hexagonal architecture compliance (no external dependencies, proper boundary separation)
+- [ ] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
 
-### Task 5: Documentation and Integration (AC: All)
-- [ ] Update domain crate lib.rs with public re-exports
-- [ ] Add comprehensive doc comments with invariants and examples
-- [ ] Ensure hexagonal architecture compliance (no external dependencies)
-- [ ] Verify integration points with future storage and application layers
-- [ ] Update Cargo.toml with required dependencies (uuid, thiserror, optional serde)
+### Task 5: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
+- [ ] Achieve 90%+ test coverage for all domain entities and validation logic
+- [ ] Create test fixtures module with deterministic examples (fixed UUIDs, predictable data)
+- [ ] Implement property-based testing with proptest for edge cases and boundary conditions
+- [ ] Add integration tests for Note aggregate with realistic subentity combinations
+- [ ] Add performance benchmarks (<100μs Note construction, <10μs validation)
+- [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all property-based tests pass
 
-### Task 6: Quality Assurance and Commit (MANDATORY FINAL TASK)
+### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
+- [ ] Update domain crate lib.rs with proper public API surface and re-exports
+- [ ] Add comprehensive doc comments following project standards (invariants, examples, errors)
+- [ ] Ensure all entities derive required traits (Debug, Clone, PartialEq, serde optional)
+- [ ] Verify integration points with future bounded contexts (storage adapters, application layer)
+- [ ] Update Cargo.toml with required dependencies (uuid, thiserror, blake3, optional serde)
+- [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
+
+### Task 7: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+- [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
+- [ ] **TDD VALIDATION:** Verify property-based tests catch edge cases appropriately
+- [ ] **TDD VALIDATION:** Ensure performance benchmarks meet targets (<100μs Note construction)
 - [ ] Run `mise run fmt` to format all code according to project standards
 - [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
-- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests)
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
 - [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
-- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING (TDD requires clean code)
 - [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
 - [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
-- [ ] **MANDATORY:** Verify 90%+ test coverage is maintained
 - [ ] **MANDATORY:** Confirm all domain entities pass clippy cognitive complexity limits (<25)
 - [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
+- [ ] **MANDATORY:** Verify hexagonal architecture boundaries maintained (no external dependencies)
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: implement note bounded context with comprehensive subentities and validation`
+- [ ] Commit with conventional commit message: `feat: implement note bounded context with comprehensive subentities and TDD validation`
 
 ## Technical Requirements
 
@@ -901,5 +925,5 @@ OR (Option 2 - Single File):
 - crates/domain/src/lib.rs (updated with public re-exports)
 - benches/domain_models.rs (performance benchmarks - optional)
 
-Note: Option 1 recommended given the number of subentities (8) and validation logic
+Note: Option 1 recommended given the number of subentities (8) and validation logic. TDD approach ensures comprehensive test coverage before implementation.
 ```
