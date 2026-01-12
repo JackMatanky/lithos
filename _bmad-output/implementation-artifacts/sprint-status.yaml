@@ -57,9 +57,9 @@ development_status:
     3-6-create-epic-3-documentation: ready-for-dev
     epic-3-retrospective: optional
 
-    epic-4: backlog
+    epic-4: in-progress
     4-1-create-unified-file-loading-interface: ready-for-dev
-    4-2-implement-format-detection-and-parsing: backlog
+    4-2-implement-format-detection-and-parsing: ready-for-dev
     4-3-add-basic-file-loading-validation: backlog
     4-4-create-loading-strategy-mocks-for-testing: backlog
     4-5-review-epic-4-test-suite: backlog

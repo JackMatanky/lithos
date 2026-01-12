@@ -211,6 +211,15 @@ Recent commits show focus on testing infrastructure and CQRS patterns:
 - Async testing with tokio::test
 This story should follow established testing patterns: unit tests in domain, integration tests with mocks, async tests for I/O operations.
 
+### Epic 2 Test Infrastructure Integration
+**Planned Integration with Epic 2 Test Utils:**
+This story will leverage the test utilities being developed in Epic 2:
+- **Story 2-4**: Centralized test utilities and infrastructure (artifact management, isolation)
+- **Story 2-6**: Integration testing patterns and infrastructure (cross-crate testing, external service mocking)
+- **Story 2-7**: Benchmarking infrastructure and performance testing patterns (criterion integration, regression detection)
+- **Dependency**: Epic 2 completion required before implementing comprehensive testing in this story
+- **Integration Points**: Use shared test fixtures, mock repositories, and performance benchmarking utilities
+
 ### Story Quality Improvements from Epic 3 Review
 Reviewed Epic 3 story files (3-1, 3-5) to adopt proven TDD patterns:
 - **Task Structure**: RED (Define Tests First) → GREEN (Implement) → REFACTOR → Testing Coverage → Documentation → Quality Assurance
