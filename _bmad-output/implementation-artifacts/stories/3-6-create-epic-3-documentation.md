@@ -43,11 +43,12 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Create inventory of all domain entities requiring documentation
 
 ### Task 2: Create Domain Entity Documentation Structure
-- [ ] Set up documentation structure following project conventions (mdBook format)
+- [ ] Set up single comprehensive `docs/domain-models.md` file (primary approach)
 - [ ] Create overview section explaining Epic 3 domain model architecture
 - [ ] Establish documentation hierarchy: bounded contexts → entities → relationships
 - [ ] Define documentation standards for consistency across all entities
 - [ ] Create template for entity documentation with required sections
+- [ ] Monitor file size and readability - split only if exceeds 2000 lines or becomes hard to maintain
 
 ### Task 3: Document Note Bounded Context
 - [ ] Document Note aggregate structure and subentities (Frontmatter, Links, Embeds, Tags, Headings, Tasks, Sections)
@@ -55,6 +56,7 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document relationships between Note and other bounded contexts (Config, Schema usage)
 - [ ] Include evolution guidelines for Note entity modifications
 - [ ] Create architecture diagrams showing Note aggregate relationships
+- [ ] If splitting occurs, create `docs/domain-models/note-bounded-context.md` for in-depth details
 
 ### Task 4: Document Schema Bounded Context
 - [ ] Document Schema entity with inheritance (Extends, Excludes) and property validation
@@ -62,6 +64,7 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document PropertySpec variants (String, Number, Bool, Date, File) with validation rules
 - [ ] Include schema resolution algorithms and inheritance processing
 - [ ] Document Schema relationships with Template bounded context (schema-driven template variables)
+- [ ] If splitting occurs, create `docs/domain-models/schema-bounded-context.md` for in-depth details
 
 ### Task 5: Document Config Bounded Context
 - [ ] Document Config hierarchical structure (Global → User → Project → Vault)
@@ -69,6 +72,7 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document config relationships with Note bounded context (metadata configuration)
 - [ ] Include configuration loading and merging algorithms
 - [ ] Document evolution guidelines for configuration schema changes
+- [ ] If splitting occurs, create `docs/domain-models/config-bounded-context.md` for in-depth details
 
 ### Task 6: Document Template Bounded Context
 - [ ] Document Template entity with modular composition and variable definitions
@@ -76,6 +80,7 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Document TemplateComposition for inheritance and modular assembly
 - [ ] Include MiniJinja compatibility requirements and domain layer boundaries
 - [ ] Document Template relationships with Schema bounded context (variable validation)
+- [ ] If splitting occurs, create `docs/domain-models/template-bounded-context.md` for in-depth details
 
 ### Task 7: Create Bounded Context Interaction Contracts
 - [ ] Document inter-bounded-context contracts and communication patterns
@@ -170,20 +175,50 @@ So that developers understand the domain language and can work effectively with 
 
 ### Documentation Structure and Standards
 
-**mdBook Documentation Hierarchy:**
+**Documentation Structure (Single File Primary):**
+- **Primary Approach**: Single comprehensive `docs/domain-models.md` file
+- **Splitting Criteria**: Only split if file exceeds 2000 lines OR becomes hard to maintain/read
+- **Split Structure**: If split occurs, maintain overview in main file with essential information
+- **Specific Files**: In-depth technical details in separate files with clear cross-references
+
+**Single File Organization:**
+```markdown
+# Epic 3 Domain Models
+
+## Overview
+[Essential information about all 4 bounded contexts]
+
+## Note Bounded Context
+[Complete Note documentation with all entities and relationships]
+
+## Schema Bounded Context
+[Complete Schema documentation with inheritance and validation]
+
+## Config Bounded Context
+[Complete Config documentation with hierarchy and contracts]
+
+## Template Bounded Context
+[Complete Template documentation with composition and MiniJinja integration]
+
+## Bounded Context Contracts
+[All inter-context interaction contracts and evolution guidelines]
+
+## Architecture Diagrams
+[Visual representations of relationships and boundaries]
+```
+
+**Splitting Strategy (If Needed):**
 ```
 docs/
+├── domain-models.md              # Overview + essential information (primary file)
 ├── domain-models/
-│   ├── index.md                    # Epic 3 Domain Models Overview
-│   ├── note-aggregate.md          # Note bounded context documentation
-│   ├── schema-domain.md           # Schema bounded context documentation
-│   ├── config-hierarchy.md        # Config bounded context documentation
-│   ├── template-composition.md    # Template bounded context documentation
-│   └── contracts.md               # Inter-context interaction contracts
-├── architecture/
-│   ├── hexagonal-boundaries.md    # Domain/adapter separation rules
-│   ├── evolution-guidelines.md    # Domain model evolution patterns
-│   └── diagrams/                  # Architecture diagrams
+│   ├── note-bounded-context.md   # Note in-depth technical details
+│   ├── schema-bounded-context.md # Schema in-depth technical details
+│   ├── config-bounded-context.md # Config in-depth technical details
+│   └── template-bounded-context.md # Template in-depth technical details
+└── architecture/
+    ├── hexagonal-boundaries.md   # Domain/adapter separation rules
+    └── evolution-guidelines.md   # Domain model evolution patterns
 ```
 
 **Entity Documentation Template:**
