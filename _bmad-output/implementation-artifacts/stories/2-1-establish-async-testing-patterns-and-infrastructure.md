@@ -161,7 +161,8 @@ No debug logs required - implementation proceeded smoothly with all tests passin
 9. **Followed project standards** - No unsafe code, proper error handling, comprehensive documentation
 10. **Aligned async_test usage** - Updated helper macro usage guidance and standardized docs on the multi-threaded tokio test attribute
 11. **Added synchronization helpers** - Added shared mutex/rwlock/semaphore utilities for race-free testing
-12. **Fixed documentation examples** - Corrected Arc imports and removed non-workspace futures usage
+12. **Documented lint exception** - Noted `#[allow(clippy::disallowed_methods)]` in async_helpers tests to avoid false positives from assertion macros
+13. **Fixed documentation examples** - Corrected Arc imports and removed non-workspace futures usage
 
 ### File List
 
