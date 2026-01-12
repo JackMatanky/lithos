@@ -30,10 +30,9 @@ This document establishes version management standards for the Lithos project to
 **Current Configuration:**
 ```toml
 [toolchain]
-channel = "nightly-2024-12-01"
+channel = "nightly-2026-01-11"
 components = ["rustfmt", "clippy"]
-targets = ["wasm32-unknown-unknown"]
-profile = "default"
+profile = "minimal"
 ```
 
 **Why Nightly:**

@@ -6,8 +6,7 @@
 
 [tools]
 # Core Runtime
-rust = { version = "1.92", profile = "default" }
-"rust:nightly" = "latest"
+rust = { version = "nightly-2026-01-11", profile = "default" }
 pre-commit = "latest"
 
 # Development Utilities
