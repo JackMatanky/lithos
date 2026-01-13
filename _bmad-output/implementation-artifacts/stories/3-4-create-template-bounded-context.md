@@ -628,7 +628,7 @@ crates/domain/src/
 │   ├── mod.rs               # Module declarations
 │   ├── template/            # NEW - Template bounded context
 │   │   ├── mod.rs           # Re-exports Template, VariableDefinition, TemplateComposition
-│   │   ├── template.rs      # Template aggregate root
+│   │   ├── aggregate.rs     # Template aggregate root
 │   │   ├── variable.rs      # VariableDefinition enum and validation
 │   │   ├── composition.rs   # TemplateComposition for modular assembly
 │   │   └── validation.rs    # Domain business rule validation
