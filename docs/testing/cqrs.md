@@ -118,22 +118,44 @@ async fn create_user_command_handles_repository_failure() {
 
 ### Interaction Verification
 
-Verify the sequence and content of repository interactions:
+Verify the sequence and content of repository interactions using `mockall` expectations:
 
 ```rust
 #[tokio::test]
 async fn command_handler_interaction_sequence() {
     // Arrange
-    let mock_repo = Arc::new(MockRepository::new());
-    let handler = CreateUserHandler::new(mock_repo.clone(), /* ... */);
+    let mut mock_repo = MockUserRepository::new();
+    mock_repo.expect_save()
+        .times(1)
+        .returning(|_| Ok(()));
+
+    let handler = CreateUserHandler::new(Arc::new(mock_repo), /* ... */);
 
     // Act
     handler.handle(CreateUserCommand { /* ... */ }).await.unwrap();
 
-    // Assert
-    let interactions = mock_repo.interactions().await;
-    assert_eq!(interactions.len(), 1);
-    assert!(matches!(interactions[0], RepositoryInteraction::Save(_)));
+    // Assert (handled by mockall drop check)
+}
+```
+
+---
+
+## Saga and Process Manager Testing
+
+Use `SagaTester` to verify long-running processes that span multiple aggregates:
+
+```rust
+use lithos_test_utils::cqrs::SagaTester;
+
+#[tokio::test]
+async fn order_saga_completes_successfully() {
+    let mut tester = SagaTester::new();
+
+    tester.given(vec![OrderCreated { id: 1 }])
+        .when(PaymentConfirmed { order_id: 1 })
+        .then_expect_events(vec![OrderReadiedForShipment { id: 1 }]);
+
+    tester.assert_all_participants_updated().await;
 }
 ```
 

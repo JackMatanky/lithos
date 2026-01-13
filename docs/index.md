@@ -94,6 +94,22 @@ The definitive technology stack for the Lithos project.
 
 The strategy for unit, integration, and end-to-end testing.
 
+## Testing
+
+Developer-focused guides and patterns for testing in Lithos.
+
+### [Developer Testing Guide](./testing/developer-guide.md)
+
+Comprehensive reference for testing standards, patterns, and tools.
+
+### [Async Testing Guidelines](./testing/async.md)
+
+Patterns and best practices for testing asynchronous code with Tokio.
+
+### [Event-Driven Testing Patterns](./testing/event.md)
+
+Testing patterns for the hybrid event bus and CQRS.
+
 ## PRD
 
 Product Requirements Document for the Lithos project.

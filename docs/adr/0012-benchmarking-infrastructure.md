@@ -97,7 +97,7 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
    - Establish baseline measurements and storage mechanism
 
 3. **Phase 3: CI Integration & Monitoring (1 week)**
-   - Integrate benchmarks into mise `test:benchmark` task
+   - Integrate benchmarks into mise `test:bench` task
    - Implement performance gates in CI pipeline
    - Set up alerting for regression thresholds (>5% degradation)
 

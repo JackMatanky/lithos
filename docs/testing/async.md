@@ -123,7 +123,7 @@ async fn test_blocking_file_read() {
 
 ### Using `spawn_blocking_test`
 
-Use the helper from `lithos-test-utils`:
+Use the helper from `lithos-test-utils` for operations that cannot be made async:
 
 ```rust
 use lithos_test_utils::spawn_blocking_test;
@@ -138,6 +138,28 @@ async fn test_non_blocking_file_read() {
     assert!(!content.is_empty());
 }
 ```
+
+## Deterministic Time Testing
+
+When testing time-sensitive logic (e.g., timeouts, debouncing), use the `time_test!` macro to control the virtual clock:
+
+```rust
+use lithos_test_utils::time_test;
+use tokio::time::{advance, Duration};
+
+time_test!(async fn test_timeout_logic() {
+    // Virtual time is paused here
+    let mut receiver = subscribe_to_events();
+
+    // Advance time by 5 seconds
+    advance(Duration::from_secs(5)).await;
+
+    // Check if timeout event was triggered
+    assert!(receiver.try_recv().is_err());
+});
+```
+
+`time_test!` uses `tokio::time::pause()` internally, allowing you to `advance` time deterministically without waiting for real-world time to pass.
 
 ### When to Use `spawn_blocking`
 
@@ -156,9 +178,68 @@ async fn test_non_blocking_file_read() {
 ### Safety Invariant
 
 According to Lithos project rules:
-- NEVER block an async thread for >10ms
+- NEVER block an async thread for >10ms (Rule 103)
 - Use `tokio::task::spawn_blocking` for all blocking operations
 - This prevents runtime thread starvation and maintains responsiveness
+
+## Resource Throttling
+
+When testing operations that consume significant resources (e.g., indexing thousands of files), use a `tokio::sync::Semaphore` to prevent exceeding OS limits or starving the executor:
+
+```rust
+use tokio::sync::Semaphore;
+use std::sync::Arc;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_throttled_io() {
+    let semaphore = Arc::new(Semaphore::new(10)); // Limit to 10 concurrent operations
+    let mut join_set = tokio::task::JoinSet::new();
+
+    for i in 0..100 {
+        let permit = semaphore.clone().acquire_owned().await.unwrap();
+        join_set.spawn(async move {
+            let _permit = permit; // Permit held until end of task
+            my_io_operation(i).await
+        });
+    }
+
+    while let Some(res) = join_set.join_next().await {
+        res.unwrap().unwrap();
+    }
+}
+```
+
+## Shutdown and Cancellation
+
+All actors and long-running services should respect a global shutdown signal. Use `tokio::select!` in tests to verify graceful exit:
+
+```rust
+use tokio::sync::broadcast;
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_graceful_shutdown() {
+    let (shutdown_tx, mut shutdown_rx) = broadcast::channel(1);
+
+    // Spawn actor
+    let handle = tokio::spawn(async move {
+        tokio::select! {
+            _ = shutdown_rx.recv() => {
+                // Perform cleanup
+                Ok::<_, anyhow::Error>("shutdown")
+            }
+            _ = tokio::time::sleep(tokio::time::Duration::from_secs(10)) => {
+                Err(anyhow::anyhow!("Timed out waiting for shutdown"))
+            }
+        }
+    });
+
+    // Send shutdown signal
+    shutdown_tx.send(()).unwrap();
+
+    let result = handle.await.unwrap().unwrap();
+    assert_eq!(result, "shutdown");
+}
+```
 
 ## Timeouts and Cancellation
 
