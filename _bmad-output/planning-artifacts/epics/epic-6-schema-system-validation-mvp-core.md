@@ -9,7 +9,31 @@ Users can define metadata schemas with field types, inheritance, and validation 
 - Schema-template integration contracts defined
 - User documentation for schema creation
 
-## Story 6.1: Create Schema Domain Interface and Port
+## Story 6.1: Implement Schema CQRS Ports from Epic 3
+
+As a developer completing the schema bounded context,
+I want to implement the SchemaCommand and SchemaQuery ports defined in Epic 3,
+So that schema operations follow CQRS separation with proper command/query handling.
+
+**Acceptance Criteria:**
+
+**Given** Epic 3 defined SchemaCommand and SchemaQuery trait interfaces
+**When** I implement the concrete ports
+**Then** SchemaCommand handles schema creation, updates, and $ref resolution
+
+**Given** SchemaCommand is implemented
+**When** I validate command operations
+**Then** it supports loading JSON schemas, resolving inheritance, and storing validated schemas
+
+**Given** SchemaQuery is implemented
+**When** I validate query operations
+**Then** it supports retrieving schemas by name and validating notes against schemas
+
+**Given** both ports are implemented
+**When** I test integration
+**Then** commands and queries work together for complete schema management
+
+## Story 6.2: Create Schema Domain Interface and Port
 
 As a developer implementing schema management,
 I want a clean domain interface for schema operations,
@@ -29,7 +53,7 @@ So that schemas can be loaded and validated through a well-defined contract foll
 **When** I validate the design
 **Then** it follows hexagonal principles with clear separation between domain and infrastructure
 
-## Story 6.2: Create Schema Property System
+## Story 6.3: Create Schema Property System
 
 As a developer defining schema properties,
 I want a complete property system with PropertyBank, Property, and PropertySpec variants,
@@ -53,7 +77,7 @@ So that schemas can define reusable property definitions with rich validation co
 **When** I validate against docs/schemas/ examples
 **Then** all property types from the JSON schemas are supported
 
-## Story 6.3: Implement Schema Loading with $ref Resolution
+## Story 6.4: Implement Schema Loading with $ref Resolution
 
 As a developer loading schema files,
 I want schema loading with proper $ref resolution,
@@ -73,7 +97,7 @@ So that schemas can reference shared properties from the PropertyBank.
 **When** I load complex schemas like docs/schemas/pkm.json
 **Then** all $ref resolutions work correctly and schemas are fully expanded
 
-## Story 6.4: Implement Schema Inheritance Resolution
+## Story 6.5: Implement Schema Inheritance Resolution
 
 As a developer working with schema hierarchies,
 I want inheritance resolution for schema chains,
@@ -93,7 +117,7 @@ So that child schemas can extend and modify parent schemas.
 **When** I resolve docs/schemas/ inheritance examples
 **Then** multi-level inheritance works (e.g., task_child extends task extends base)
 
-## Story 6.5: Add Schema Validation and Error Handling
+## Story 6.6: Add Schema Validation and Error Handling
 
 As a developer validating schemas,
 I want comprehensive schema validation with clear error messages,
@@ -113,7 +137,7 @@ So that invalid schemas are caught early with actionable feedback.
 **When** I provide error messages
 **Then** errors include schema file path, line numbers, and suggested fixes
 
-## Story 6.6: Create Sample Schema Files
+## Story 6.7: Create Sample Schema Files
 
 As a user creating schemas,
 I want comprehensive sample schemas demonstrating all features,
@@ -133,7 +157,7 @@ So that I can understand schema capabilities and use them as templates.
 **When** I validate them
 **Then** all samples pass validation and demonstrate schema capabilities
 
-## Story 6.7: Define Schema-Template Integration Contracts
+## Story 6.8: Define Schema-Template Integration Contracts
 
 As a developer integrating schemas with templates,
 I want clear contracts for how schemas provide inputs to templates,
@@ -153,7 +177,7 @@ So that templates can safely access schema-defined properties.
 **When** I validate against Epic 11 template requirements
 **Then** all template input needs are satisfied by schema contracts
 
-## Story 6.8: Review Epic 6 Test Suite
+## Story 6.9: Review Epic 6 Test Suite
 
 As a developer maintaining the schema system,
 I want an efficient test suite for Epic 6 components,
@@ -177,7 +201,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-## Story 6.9: Document Schema System for Users
+## Story 6.10: Document Schema System for Users
 
 As a user creating schemas,
 I want comprehensive documentation for schema creation and usage,
