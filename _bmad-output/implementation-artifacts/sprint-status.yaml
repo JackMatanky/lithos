@@ -36,7 +36,7 @@ development_status:
     1-10-configure-ci-cd-for-comprehensive-quality-assurance: done
     epic-1-retrospective: done
 
-    epic-2: in-progress
+    epic-2: done
     2-1-establish-async-testing-patterns-and-infrastructure: done
     2-2-create-event-driven-testing-patterns: done
     2-3-establish-cqrs-testing-patterns: done
@@ -46,7 +46,7 @@ development_status:
     2-7-create-benchmarking-infrastructure-and-performance-testing-patterns: done
     2-8-test-suite-review-for-efficiency-and-best-practices: done
     2-9-create-developer-testing-documentation-guide: done
-    epic-2-retrospective: optional
+    epic-2-retrospective: done
 
     epic-3: in-progress
     3-1-create-note-bounded-context: ready-for-dev
