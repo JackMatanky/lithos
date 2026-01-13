@@ -16,5 +16,9 @@ thiserror.workspace = true
 uuid.workspace = true
 async-trait.workspace = true
 
+[dev-dependencies]
+lithos-test-utils = { path = "../test-utils" }
+tokio = { workspace = true, features = ["full"] }
+
 [lints]
 workspace = true

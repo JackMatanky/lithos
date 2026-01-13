@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use lithos_test_utils::cqrs::{
-    CqrsTestResult, QueryCriteria, QueryStorePort, StubQueryStore,
+    CqrsTestResult, MockQueryStorePort, QueryCriteria, QueryStorePort,
 };
 
 // ============================================================================
@@ -111,11 +111,14 @@ fn create_test_users() -> Vec<UserReadModel> {
 async fn query_handler_returns_user_by_id() {
     // Arrange
     let test_users = create_test_users();
-    let stub_store =
-        Arc::new(StubQueryStore::with_data(test_users, |u: &UserReadModel| {
-            u.id.clone()
-        }));
-    let handler = GetUserHandler::new(stub_store);
+    let mut mock_store = MockQueryStorePort::<UserReadModel>::new();
+    let user_1 = test_users[0].clone();
+    mock_store
+        .expect_get_by_id()
+        .with(mockall::predicate::eq("user-1"))
+        .returning(move |_| Ok(Some(user_1.clone())));
+
+    let handler = GetUserHandler::new(Arc::new(mock_store));
 
     // Act
     let query = GetUserQuery {
@@ -134,12 +137,9 @@ async fn query_handler_returns_user_by_id() {
 #[tokio::test]
 async fn query_handler_returns_none_for_nonexistent_user() {
     // Arrange
-    let test_users = create_test_users();
-    let stub_store =
-        Arc::new(StubQueryStore::with_data(test_users, |u: &UserReadModel| {
-            u.id.clone()
-        }));
-    let handler = GetUserHandler::new(stub_store);
+    let mut mock_store = MockQueryStorePort::<UserReadModel>::new();
+    mock_store.expect_get_by_id().returning(|_| Ok(None));
+    let handler = GetUserHandler::new(Arc::new(mock_store));
 
     // Act
     let query = GetUserQuery {
@@ -156,11 +156,10 @@ async fn list_query_handler_returns_all_users() {
     // Arrange
     let test_users = create_test_users();
     let expected_count = test_users.len();
-    let stub_store =
-        Arc::new(StubQueryStore::with_data(test_users, |u: &UserReadModel| {
-            u.id.clone()
-        }));
-    let handler = ListUsersHandler::new(stub_store);
+    let mut mock_store = MockQueryStorePort::<UserReadModel>::new();
+    mock_store.expect_query().returning(move |_| Ok(test_users.clone()));
+
+    let handler = ListUsersHandler::new(Arc::new(mock_store));
 
     // Act
     let query = ListUsersQuery {
@@ -173,48 +172,12 @@ async fn list_query_handler_returns_all_users() {
 }
 
 #[tokio::test]
-async fn stub_store_can_be_dynamically_updated() {
-    // Arrange
-    let initial_users = vec![create_test_users()[0].clone()];
-    let stub_store =
-        StubQueryStore::with_data(initial_users, |u: &UserReadModel| {
-            u.id.clone()
-        });
-
-    // Act - add more users
-    stub_store.add(create_test_users()[1].clone()).await;
-    stub_store.add(create_test_users()[2].clone()).await;
-
-    // Assert
-    let all_data = stub_store.all_data().await;
-    assert_eq!(all_data.len(), 3);
-}
-
-#[tokio::test]
-async fn stub_store_supports_count_operations() {
-    // Arrange
-    let test_users = create_test_users();
-    let expected_count = test_users.len();
-    let stub_store =
-        StubQueryStore::with_data(test_users, |u: &UserReadModel| u.id.clone());
-
-    // Act
-    let criteria = QueryCriteria::new();
-    let count = stub_store.count(&criteria).await.unwrap();
-
-    // Assert
-    assert_eq!(count, expected_count);
-}
-
-#[tokio::test]
 async fn query_handler_performs_within_time_bounds() {
     // Arrange
-    let test_users = create_test_users();
-    let stub_store =
-        Arc::new(StubQueryStore::with_data(test_users, |u: &UserReadModel| {
-            u.id.clone()
-        }));
-    let handler = GetUserHandler::new(stub_store);
+    let _test_users = create_test_users();
+    let mut mock_store = MockQueryStorePort::<UserReadModel>::new();
+    mock_store.expect_get_by_id().returning(move |_| Ok(None));
+    let handler = GetUserHandler::new(Arc::new(mock_store));
 
     // Act
     let start = std::time::Instant::now();
@@ -224,24 +187,9 @@ async fn query_handler_performs_within_time_bounds() {
     handler.handle(query).await.unwrap();
     let duration = start.elapsed();
 
-    // Assert - query should be fast (<10ms for stub)
+    // Assert - query should be fast (<10ms for mock)
     assert!(
         duration.as_millis() < 10,
         "Query took {duration:?}, expected <10ms"
     );
-}
-
-#[tokio::test]
-async fn stub_store_can_be_cleared_for_test_isolation() {
-    // Arrange
-    let test_users = create_test_users();
-    let stub_store =
-        StubQueryStore::with_data(test_users, |u: &UserReadModel| u.id.clone());
-
-    // Act
-    stub_store.clear().await;
-
-    // Assert
-    let all_data = stub_store.all_data().await;
-    assert_eq!(all_data.len(), 0);
 }

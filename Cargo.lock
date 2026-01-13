@@ -807,6 +807,7 @@ dependencies = [
  "once_cell",
  "pest",
  "pest_derive",
+ "regex",
  "serde",
  "similar",
  "tempfile",
@@ -935,8 +936,10 @@ name = "lithos-domain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "lithos-test-utils",
  "serde",
  "thiserror",
+ "tokio",
  "uuid",
 ]
 

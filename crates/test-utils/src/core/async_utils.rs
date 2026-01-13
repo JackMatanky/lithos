@@ -3,12 +3,75 @@
 //! This module provides standardized utilities for testing async code in Lithos,
 //! following best practices for Tokio-based async operations.
 
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{future::Future, path::PathBuf, sync::Arc, time::Duration};
 
 use tokio::{
     sync::{Mutex, RwLock, Semaphore},
     time::timeout,
 };
+
+use crate::fs::temp::TempDir;
+
+/// Isolated test context providing unique resources for parallel testing.
+pub struct IsolatedTestContext {
+    /// Unique temporary directory for this test
+    pub temp_dir: TempDir,
+    /// Unique database name for this test
+    pub db_name: String,
+    /// Name of the test
+    pub test_name: String,
+}
+
+impl IsolatedTestContext {
+    /// Creates a new isolated test context.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the temporary directory cannot be created.
+    // # LINT_DISABLE_REASON: Test context initialization uses expect for simplicity.
+    // # LINT_DISABLE_REASON: Options tried: manual Result propagation.
+    // # LINT_DISABLE_REASON: Justification: fatal initialization error in tests should panic.
+    #[allow(clippy::expect_used, clippy::disallowed_methods)]
+    pub fn new(test_name: &str) -> Self {
+        let temp_dir = TempDir::with_prefix(test_name)
+            .expect("Failed to create isolated temp dir");
+        let db_name = format!("{}.redb", test_name);
+        Self {
+            temp_dir,
+            db_name,
+            test_name: test_name.to_string(),
+        }
+    }
+
+    /// Returns the absolute path to the database file within the isolated context.
+    #[must_use]
+    pub fn db_path(&self) -> PathBuf {
+        self.temp_dir.path().join(&self.db_name)
+    }
+}
+
+/// Factory for creating isolated test contexts.
+pub struct TestContextFactory {
+    base_name: String,
+}
+
+impl TestContextFactory {
+    /// Creates a new test context factory.
+    #[must_use]
+    pub fn new(base_name: &str) -> Self {
+        Self {
+            base_name: base_name.to_string(),
+        }
+    }
+
+    /// Generates a new unique isolated test context.
+    #[must_use]
+    pub fn create_context(&self) -> IsolatedTestContext {
+        let unique_name =
+            crate::fs::temp::generate_unique_name(&self.base_name);
+        IsolatedTestContext::new(&unique_name)
+    }
+}
 
 /// Helper to wrap a future with a timeout, preventing hanging tests.
 ///
@@ -23,20 +86,20 @@ use tokio::{
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```rust
 /// use lithos_test_utils::with_timeout;
 /// use tokio::time::Duration;
 ///
-/// #[tokio::test]
-/// async fn test_with_timeout() {
-///     let result = with_timeout(Duration::from_secs(5), async {
-///         // Some async operation
-///         tokio::time::sleep(Duration::from_millis(100)).await;
-///         42
-///     }).await;
+/// # #[tokio::main]
+/// # async fn main() {
+/// let result = with_timeout(Duration::from_secs(5), async {
+///     // Some async operation
+///     tokio::time::sleep(Duration::from_millis(100)).await;
+///     42
+/// }).await;
 ///
-///     assert_eq!(result.unwrap(), 42);
-/// }
+/// assert_eq!(result.unwrap(), 42);
+/// # }
 /// ```
 ///
 /// # Why Timeouts?
@@ -73,19 +136,19 @@ where
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```rust
 /// use lithos_test_utils::spawn_blocking_test;
 ///
-/// #[tokio::test]
-/// async fn test_blocking_operation() {
-///     let result = spawn_blocking_test(|| {
-///         // Blocking operation here (e.g., heavy computation, std::fs operations)
-///         std::thread::sleep(std::time::Duration::from_millis(100));
-///         42
-///     }).await;
+/// # #[tokio::main]
+/// # async fn main() {
+/// let result = spawn_blocking_test(|| {
+///     // Blocking operation here (e.g., heavy computation, std::fs operations)
+///     std::thread::sleep(std::time::Duration::from_millis(100));
+///     42
+/// }).await;
 ///
-///     assert_eq!(result.unwrap(), 42);
-/// }
+/// assert_eq!(result.unwrap(), 42);
+/// # }
 /// ```
 ///
 /// # Safety Invariant
@@ -128,26 +191,26 @@ where
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```rust
 /// use lithos_test_utils::with_cancellation;
 /// use tokio::time::Duration;
 ///
-/// #[tokio::test]
-/// async fn test_with_cancellation() {
-///     let result = with_cancellation(Duration::from_secs(5), |cancel| async move {
-///         // Test code that respects cancellation
-///         tokio::select! {
-///             _ = cancel.cancelled() => {
-///                 return Ok("Cancelled");
-///             }
-///             result = some_async_operation() => {
-///                 Ok(result)
-///             }
+/// # #[tokio::main]
+/// # async fn main() {
+/// let result = with_cancellation(Duration::from_secs(5), |cancel| async move {
+///     // Test code that respects cancellation
+///     tokio::select! {
+///         _ = cancel.cancelled() => {
+///             Ok("Cancelled")
 ///         }
-///     }).await;
+///         result = async { Ok("Done") } => {
+///             result
+///         }
+///     }
+/// }).await;
 ///
-///     assert!(result.is_ok());
-/// }
+/// assert!(result.is_ok());
+/// # }
 /// ```
 ///
 /// # Why Cancellation Testing?
@@ -184,7 +247,7 @@ where
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```rust
 /// use lithos_test_utils::default_test_timeout;
 ///
 /// let timeout = default_test_timeout(); // Duration::from_secs(5)
@@ -267,7 +330,7 @@ where
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```rust
 /// use lithos_test_utils::async_test;
 ///
 /// async_test!(async fn my_async_function_test() {
@@ -304,9 +367,9 @@ macro_rules! async_test {
 ///
 /// # Usage
 ///
-/// ```rust,ignore
+/// ```rust
 /// use lithos_test_utils::time_test;
-/// use tokio::time::{Duration, advance};
+/// use tokio::time::Duration;
 ///
 /// time_test!(async fn test_with_delay() {
 ///     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
@@ -316,7 +379,7 @@ macro_rules! async_test {
 ///         tx.send(42).await.unwrap();
 ///     });
 ///
-///     advance(Duration::from_secs(11)).await;
+///     tokio::time::advance(Duration::from_secs(11)).await;
 ///     assert_eq!(rx.recv().await.unwrap(), 42);
 /// });
 /// ```
@@ -451,5 +514,25 @@ mod tests {
         let permit = semaphore.acquire().await;
 
         assert!(permit.is_ok(), "expected semaphore permit, got {permit:?}");
+    }
+
+    #[test]
+    fn isolated_test_context_provides_unique_paths() {
+        let ctx1 = IsolatedTestContext::new("test1");
+        let ctx2 = IsolatedTestContext::new("test2");
+
+        assert_ne!(ctx1.temp_dir.path(), ctx2.temp_dir.path());
+        assert_ne!(ctx1.db_path(), ctx2.db_path());
+        assert!(ctx1.db_path().ends_with("test1.redb"));
+    }
+
+    #[test]
+    fn test_context_factory_generates_unique_contexts() {
+        let factory = TestContextFactory::new("my_test");
+        let ctx1 = factory.create_context();
+        let ctx2 = factory.create_context();
+
+        assert_ne!(ctx1.temp_dir.path(), ctx2.temp_dir.path());
+        assert!(ctx1.test_name.contains("my_test"));
     }
 }

@@ -20,19 +20,19 @@ use crate::cqrs::{CqrsTestError, CqrsTestResult};
 /// Tracks command/query execution metrics for testing observability patterns.
 ///
 /// # Usage
-/// ```rust,ignore
-/// use lithos_test_utils::cqrs::observability::MockMetricsCollector;
+/// ```rust
+/// # use lithos_test_utils::MockMetricsCollector;
+/// # use std::time::Duration;
+/// # #[tokio::main]
+/// # async fn main() {
+/// let metrics = MockMetricsCollector::new();
 ///
-/// #[tokio::test]
-/// async fn test_command_metrics() {
-///     let metrics = MockMetricsCollector::new();
+/// metrics.record_command("CreateOrder", Duration::from_millis(50), true).await;
 ///
-///     metrics.record_command("CreateOrder", Duration::from_millis(50), true).await;
-///
-///     let stats = metrics.command_stats("CreateOrder").await;
-///     assert_eq!(stats.total_calls, 1);
-///     assert_eq!(stats.success_count, 1);
-/// }
+/// let stats = metrics.command_stats("CreateOrder").await;
+/// assert_eq!(stats.total_calls, 1);
+/// assert_eq!(stats.success_count, 1);
+/// # }
 /// ```
 pub struct MockMetricsCollector {
     /// Command metrics: command name -> statistics

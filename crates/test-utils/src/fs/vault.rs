@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::temp::TempDir;
+use crate::fs::temp::TempDir;
 
 /// A Lithos vault initialized for testing.
 #[derive(Debug)]
