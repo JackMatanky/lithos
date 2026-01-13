@@ -78,11 +78,11 @@
 ## tests/utils/src/data/fixtures.rs
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
-| `test_builder_pattern` | N/A | Yes | Pass |
-| `test_fake_data_generation` | N/A | Yes | Pass |
-| `test_serialization_helper` | N/A | Yes | Pass |
-| `test_fixture_composition` | N/A | Yes | Pass |
-| `test_fixture_functions` | N/A | Yes | Pass |
+| `builder_pattern_generates_type_safe_builders` | N/A | Yes | Pass |
+| `fake_data_generator_produces_realistic_values` | N/A | Yes | Pass |
+| `serialization_helper_round_trips_data_correctly` | N/A | Yes | Pass |
+| `fixture_composition_merges_multiple_sources` | N/A | Yes | Pass |
+| `fixture_functions_provide_sensible_defaults` | N/A | Yes | Pass |
 
 ## tests/utils/src/fs/temp.rs
 | Test Name | Behavior | Deterministic | Status |
@@ -97,8 +97,8 @@
 ## tests/utils/src/fs/vault.rs
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
-| `test_vault_initializes_standard_structure` | N/A | Yes | Pass |
-| `test_vault_can_add_notes_and_files` | N/A | Yes | Pass |
+| `vault_initializes_standard_structure_on_new` | N/A | Yes | Pass |
+| `vault_allows_adding_notes_and_raw_files` | N/A | Yes | Pass |
 
 ## tests/utils/src/mocks/event_bus.rs
 | Test Name | Behavior | Deterministic | Status |
@@ -113,7 +113,7 @@
 | `control_plane_captures_recorded_events` | N/A | Yes | Pass |
 | `control_plane_reports_closed_channel_without_receiver` | N/A | Yes | Pass |
 | `state_plane_updates_receivers_with_latest_event` | N/A | Yes | Pass |
-| `state_plane_captures_recorded_events` | N/A | Yes | Pass |
+| `state_plane_captures_recorded_events" | N/A | Yes | Pass |
 | `state_plane_reports_closed_channel_without_receiver` | N/A | Yes | Pass |
 | `event_plane_variants_match_expected_values` | N/A | Yes | Pass |
 
@@ -146,12 +146,12 @@
 ## tests/utils/src/core/arch.rs
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
-| `test_domain_purity_self_check` | N/A | Yes | Pass |
+| `architecture_check_detects_prohibited_dependencies` | N/A | Yes | Pass |
 
 ## tests/utils/src/data/snapshots.rs
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
-| `test_redactions` | N/A | Yes | Pass |
+| `snapshot_redactions_mask_uuids_and_timestamps` | N/A | Yes | Pass |
 
 ## tests/suite/integration/dummy_integration.rs
 | Test Name | Behavior | Deterministic | Status |

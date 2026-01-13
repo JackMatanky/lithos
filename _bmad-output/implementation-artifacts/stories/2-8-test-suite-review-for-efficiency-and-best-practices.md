@@ -137,12 +137,12 @@ During the implementation of Story 2.8, a comprehensive "no-bounds" critique of 
 ### Required Renames
 | File | Old Name | New Name | Rationale |
 |------|----------|----------|-----------|
-| `crates/test-utils/src/assertions.rs` | `test_assert_eq_detailed_success` | `detailed_equality_assertion_succeeds_for_equal_values` | Verb-first, behavioral name. |
-| `crates/test-utils/src/assertions.rs` | `test_assert_eq_detailed_failure` | `detailed_equality_assertion_panics_for_unequal_values` | Verb-first, behavioral name. |
-| `crates/test-utils/src/assertions.rs` | `test_async_operation` | `async_assertion_succeeds_when_operation_completes_within_timeout` | Behavioral description. |
-| `crates/test-utils/src/assertions.rs` | `test_eventual_condition` | `eventual_assertion_waits_for_condition_to_become_true` | Behavioral description. |
-| `crates/test-utils/src/cqrs.rs` | `test_command_handler` | `command_handler_executes_successfully` | Placeholder cleanup. |
-| `crates/test-utils/src/temp.rs` | `test_with_temp_dir` | `temp_dir_helper_provides_isolated_workspace` | Behavioral description. |
+| `tests/utils/src/assertions.rs` | `test_assert_eq_detailed_success` | `detailed_equality_assertion_succeeds_for_equal_values` | Verb-first, behavioral name. |
+| `tests/utils/src/assertions.rs` | `test_assert_eq_detailed_failure` | `detailed_equality_assertion_panics_for_unequal_values` | Verb-first, behavioral name. |
+| `tests/utils/src/assertions.rs` | `test_async_operation` | `async_assertion_succeeds_when_operation_completes_within_timeout` | Behavioral description. |
+| `tests/utils/src/assertions.rs` | `test_eventual_condition` | `eventual_assertion_waits_for_condition_to_become_true` | Behavioral description. |
+| `tests/utils/src/cqrs.rs` | `test_command_handler` | `command_handler_executes_successfully` | Placeholder cleanup. |
+| `tests/utils/src/temp.rs` | `test_with_temp_dir` | `temp_dir_helper_provides_isolated_workspace` | Behavioral description. |
 
 ### Technical Debt / Refactoring (COMPLETED)
 - **`fixtures.rs`**: The `Builder` pattern using `Box<dyn Any>` and positional `Vec` was brittle and non-idiomatic. **Action**: Replaced with a type-safe `test_builder!` macro.
@@ -198,12 +198,12 @@ dev agent (recommended for implementation)
 
 - _bmad-output/implementation-artifacts/reports/test-suite-review-checklist.md
 - docs/testing/inventory.md
-- crates/test-utils/Cargo.toml
-- crates/test-utils/src/lib.rs
-- crates/test-utils/src/temp.rs
-- crates/test-utils/src/fixtures.rs
-- crates/test-utils/src/cqrs.rs
-- crates/test-utils/src/async_utils.rs
-- crates/test-utils/src/assertions.rs
+- tests/utils/Cargo.toml
+- tests/utils/src/lib.rs
+- tests/utils/src/temp.rs
+- tests/utils/src/fixtures.rs
+- tests/utils/src/cqrs.rs
+- tests/utils/src/async_utils.rs
+- tests/utils/src/assertions.rs
 - _bmad-output/implementation-artifacts/stories/2-8-test-suite-review-for-efficiency-and-best-practices.md
 - _bmad-output/implementation-artifacts/sprint-status.yaml
