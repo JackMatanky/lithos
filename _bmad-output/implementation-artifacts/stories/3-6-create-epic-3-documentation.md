@@ -417,6 +417,9 @@ docs/
 - **Phantom Types**: [If used for context safety]
 - **Associated Types**: [If used in ports/interfaces]
 - **Memory Optimization**: [Box<str>, Arc<str> usage]
+- **Virtual Clock**: [Use of time_test! for deterministic time logic]
+- **Domain Purity**: [Enforcement via Domain Purity Guardian]
+- **Factory Macros**: [Use of test_builder! for domain fixtures]
 
 ## Validation Rules
 [Semantic validation requirements]

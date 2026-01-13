@@ -27,6 +27,7 @@ So that configuration changes are validated and the domain enforces configuratio
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Config Domain Tests First (RED Phase - AC: All)
+- [ ] **STRICT NAMING:** Mandate verb-first behavioral naming for complex merge-precedence and hierarchical tests
 - [ ] Write failing unit tests for Config entity (hierarchical structure, validation, encryption)
 - [ ] Write failing unit tests for ConfigValue enum (string, number, boolean, encrypted fields)
 - [ ] Write failing unit tests for ConfigPath handling (Global/User/Project/Vault hierarchy)
@@ -118,6 +119,7 @@ So that configuration changes are validated and the domain enforces configuratio
 - **Error Handling**: Use `thiserror::Error` for typed configuration errors
 
 **Hierarchical Structure - CRITICAL:**
+- **RULE 82 COMPLIANCE:** All paths MUST be managed via Figment/project-root. **PROHIBITED:** `std::env::current_dir` usage.
 ```rust
 /// Configuration value types supporting hierarchical merging
 #[derive(Debug, Clone, PartialEq)]

@@ -74,6 +74,7 @@ So that template structure and business rules are properly validated at the doma
 
 ### Task 5: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
 - [ ] Achieve 90%+ test coverage for all Template domain entities
+- [ ] **FACTORY MACROS:** Use `test_builder!` for modular template assembly and composition tests to maintain fixture readability
 - [ ] Create test fixtures module with sample templates, variables, and compositions
 - [ ] Implement property-based testing for template syntax variations and edge cases
 - [ ] Add integration tests for template composition and variable resolution workflows
@@ -122,6 +123,7 @@ So that template structure and business rules are properly validated at the doma
 - **ADAPTER LAYER**: MiniJinja syntax validation, template rendering, file I/O, external format parsing
 - **NO SYNTAX VALIDATION IN DOMAIN**: Domain stores template content as opaque strings
 - **NO IO CONCERNS IN DOMAIN**: All file operations happen in adapters
+- **PURITY GUARDIAN:** Domain purity is enforced by the `Domain Purity Guardian` automated test suite
 
 **Template Entity Specification:**
 ```rust

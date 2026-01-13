@@ -48,6 +48,8 @@ So that schemas can define reusable property definitions with rich validation co
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Schema Domain Tests First (RED Phase - AC: All)
+- [ ] **MOCKALL:** Use `mockall` for defining any port trait mocks; avoid handwritten maintenance traps
+- [ ] **STRICT NAMING:** All tests MUST use verb-first behavioral naming
 - [ ] Write failing unit tests for PropertySpec variants (StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec)
 - [ ] Write failing unit tests for Property entity (ID generation determinism, validation, edge cases)
 - [ ] Write failing unit tests for PropertyBank singleton (registration, deduplication, lookup methods)
@@ -68,7 +70,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [ ] **TDD REQUIREMENT:** Make all PropertySpec tests pass (GREEN phase complete when spec tests pass)
 
 ### Task 3: Implement Property Entity (GREEN Phase - AC: 1-2)
-- [ ] Implement Property struct with deterministic ID generation using blake3 hash
+- [ ] **DETERMINISTIC IDs:** Implement Property struct with deterministic ID generation using blake3 hash (Lesson Learned: Mandatory for cross-schema deduplication)
 - [ ] Add property name validation (regex ^[a-z0-9_-]+, length 1-64 chars)
 - [ ] Implement Property::new() constructor with validation pipeline
 - [ ] Implement Property::compute_id() with name + spec content hashing
