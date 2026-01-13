@@ -43,6 +43,7 @@ So that configuration changes are validated and the domain enforces configuratio
 - [ ] Write failing property-based tests for hierarchical merging and override logic
 - [ ] Write failing integration tests for encrypted field handling and validation
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
+- [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 2: Implement Config Domain Entities (GREEN Phase - AC: 1-3)
 - [ ] Create file `crates/domain/src/models/config/types.rs` and define phantom type markers `#[derive(Debug)] pub struct Global; #[derive(Debug)] pub struct User; #[derive(Debug)] pub struct Project; #[derive(Debug)] pub struct Vault;`
@@ -448,7 +449,7 @@ crates/domain/src/
 │   ├── mod.rs               # Module declarations
 │   ├── config/              # NEW - Config bounded context
 │   │   ├── mod.rs           # Re-exports Config, ConfigValue, ConfigPath
-│   │   ├── config.rs        # Config entity with hierarchical logic
+│   │   ├── entity.rs        # Config entity with hierarchical logic
 │   │   ├── value.rs         # ConfigValue enum and conversions
 │   │   └── path.rs          # ConfigPath enum and hierarchy logic
 ├── ports/

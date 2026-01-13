@@ -651,7 +651,7 @@ crates/domain/src/
 │   ├── mod.rs               # Module declarations
 │   └── note/                # Note bounded context subfolder
 │       ├── mod.rs           # Re-exports Note aggregate and subentities
-│       ├── note.rs          # Note aggregate root
+│       ├── aggregate.rs     # Note aggregate root
 │       ├── frontmatter.rs   # Frontmatter subentity
 │       ├── link.rs          # Links subentity
 │       ├── tag.rs           # Tags subentity

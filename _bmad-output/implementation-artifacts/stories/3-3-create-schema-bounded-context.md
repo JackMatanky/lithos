@@ -1109,7 +1109,7 @@ crates/domain/src/
 │   │   └── ...
 │   └── schema/              # NEW - Schema bounded context
 │       ├── mod.rs           # Re-exports Schema, PropertyBank, Property, PropertySpec
-│       ├── schema.rs        # Schema aggregate root
+│       ├── aggregate.rs     # Schema aggregate root
 │       ├── property_bank.rs # PropertyBank singleton
 │       ├── property.rs      # Property entity
 │       └── property_spec.rs # PropertySpec variants and validation
