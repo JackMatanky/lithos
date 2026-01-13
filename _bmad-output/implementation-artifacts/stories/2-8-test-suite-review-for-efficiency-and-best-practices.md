@@ -68,6 +68,9 @@ so that tests remain efficient, meaningful, and avoid vanity metrics.
 - [x] Populate the Remediation Plan section in this story (AC: 1-6)
 - [x] Populate the Review Report section in this story (AC: 1-6)
 - [x] Verify test utilities placement and critique usefulness (AC: 6)
+- [x] Fix hallucinated tests in inventory and align naming (AI-Review)
+- [x] Add mandatory LINT_DISABLE_REASON headers to test modules (AI-Review)
+- [x] Refactor default test output path to use Figment per Rule 82 (AI-Review)
 
 ### Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [x] Run `mise run fmt` to format all code according to project standards

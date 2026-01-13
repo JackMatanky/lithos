@@ -278,6 +278,9 @@ pub mod domain {
 }
 
 #[cfg(test)]
+// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method linting.
+// # LINT_DISABLE_REASON: Options tried: explicit matches/guarded Result handling.
+// # LINT_DISABLE_REASON: Justification: keep tests readable without unwrap/expect.
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use tokio::time::Duration;

@@ -228,9 +228,14 @@ impl TestOutput {
 
     /// Returns the default base directory for test outputs.
     ///
-    /// Uses a `test-outputs` directory in the system's temp directory.
+    /// According to Rule 82, this is managed via Figment.
     pub fn default_base_dir() -> PathBuf {
-        std::env::temp_dir().join("lithos-test-outputs")
+        Figment::new()
+            .merge(Env::prefixed("LITHOS_"))
+            .extract_inner::<PathBuf>("test_output_dir")
+            .unwrap_or_else(|_| {
+                std::env::temp_dir().join("lithos-test-outputs")
+            })
     }
 
     /// Returns the path to the test's output directory.
