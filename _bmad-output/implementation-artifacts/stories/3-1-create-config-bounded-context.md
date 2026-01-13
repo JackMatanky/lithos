@@ -441,22 +441,20 @@ fn bench_config_merge(c: &mut Criterion) {
 
 ### File Structure Requirements
 
-**Directory Layout:**
+**File Structure (Single File per Context - Split at 1000+ Lines):**
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
 ├── models/
 │   ├── mod.rs               # Module declarations
-│   ├── config/              # NEW - Config bounded context
-│   │   ├── mod.rs           # Re-exports Config, ConfigValue, ConfigPath
-│   │   ├── entity.rs        # Config entity with hierarchical logic
-│   │   ├── value.rs         # ConfigValue enum and conversions
-│   │   └── path.rs          # ConfigPath enum and hierarchy logic
+│   └── config.rs            # All Config entities, validation, and logic
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
-│   └── config.rs            # ConfigPort trait (future use)
+│   └── config.rs            # ConfigCommand/ConfigQuery traits (shells)
 └── errors.rs                # Domain errors (EXTENDED with config errors)
 ```
+
+**Splitting Guideline:** Keep single file until >1000 lines. Then split logically (e.g., config_types.rs, config_validation.rs).
 
 **Implementation Decision:**
 Use **subfolder organization** for Config bounded context due to complexity of hierarchical merging, validation rules, and encryption support.
