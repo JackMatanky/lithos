@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 
 [workspace]
-members = ["crates/*", "tests", "benches"]
+members = ["crates/*", "tests/*", "benches"]
 resolver = "2"
 
 [workspace.package]
@@ -57,7 +57,7 @@ dhat = "0.3"
 lithos-domain = { path = "crates/domain" }
 lithos-app = { path = "crates/app" }
 lithos-adapters = { path = "crates/adapters" }
-lithos-test-utils = { path = "crates/test-utils" }
+lithos-test-utils = { path = "tests/utils" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

@@ -10,7 +10,7 @@ dhat-on = []
 
 [dependencies]
 lithos-app = { path = "../crates/app" }
-lithos-test-utils = { path = "../crates/test-utils" }
+lithos-test-utils = { path = "../tests/utils" }
 criterion = { workspace = true }
 tokio = { workspace = true }
 chrono = { workspace = true }
