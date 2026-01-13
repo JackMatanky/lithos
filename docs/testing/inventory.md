@@ -55,8 +55,6 @@
 ## crates/test-utils/src/cqrs.rs
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
-| `test_command_handler` | N/A | Yes | Pass |
-| `test_aggregate_command` | N/A | Yes | Pass |
 | `mock_repository_saves_entity` | N/A | Yes | Pass |
 | `mock_repository_records_interactions` | N/A | Yes | Pass |
 | `mock_repository_fails_on_configured_error` | N/A | Yes | Pass |
@@ -69,12 +67,17 @@
 ## crates/test-utils/src/async_utils.rs
 | Test Name | Behavior | Deterministic | Status |
 |-----------|----------|---------------|--------|
-| `test_with_timeout` |  | Yes | Pass |
-| `test_blocking_operation` |  | Yes | Pass |
-| `test_with_cancellation` |  | Yes | Pass |
+| `with_timeout_returns_value_before_deadline` |  | Yes | Pass |
+| `with_timeout_errors_after_deadline` |  | Yes | Pass |
+| `spawn_blocking_returns_result` |  | Yes | Pass |
+| `with_cancellation_returns_value_before_cancel` |  | Yes | Pass |
+| `with_cancellation_times_out` |  | Yes | Pass |
 | `default_test_timeout_is_five_seconds` | N/A | Yes | Pass |
 | `short_test_timeout_is_one_second` | N/A | Yes | Pass |
 | `long_test_timeout_is_thirty_seconds` | N/A | Yes | Pass |
+| `shared_mutex_allows_mutation` | N/A | Yes | Pass |
+| `shared_rwlock_allows_write_access` | N/A | Yes | Pass |
+| `shared_semaphore_allows_acquire` | N/A | Yes | Pass |
 
 ## crates/test-utils/src/fixtures.rs
 | Test Name | Behavior | Deterministic | Status |
