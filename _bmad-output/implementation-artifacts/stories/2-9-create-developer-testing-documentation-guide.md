@@ -1,6 +1,6 @@
 # Story 2.9: create-developer-testing-documentation-guide
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -139,7 +139,9 @@ dev agent (recommended for implementation)
 
 - docs/testing/async.md
 - docs/testing/event.md
+- docs/testing/cqrs.md
 - docs/adr/0011-integration-testing-patterns.md
+- docs/adr/0012-benchmarking-infrastructure.md
 - docs/testing/developer-guide.md
 - docs/index.md
 - ROADMAP.md
