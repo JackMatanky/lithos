@@ -61,6 +61,7 @@ The following `mise` tasks are available for test execution and quality assuranc
 - **tarpaulin:** Used for coverage analysis (Target: 80%+).
 - **insta:** Preferred for snapshot testing of complex structures (e.g., Markdown AST).
 - **criterion:** Mandatory for NFR-critical paths (Indexing, Rendering).
+- **doc tests:** Mandatory for all public domain models and utility functions. Use as "living documentation" with minimal, illustrative examples.
 
 ## 5. Test Authoring Standards
 
@@ -166,57 +167,6 @@ operation().await;
 subscriber.assert_span_emitted("note_indexed");
 ```
 
-
-### Data Factories
-Avoid manual struct initialization and keep tests resilient to schema changes.
-- **`test_builder!`**: Generates type-safe builders for domain entities.
-- **`TestFactory`**: Proc-macro for generating randomized yet deterministic test data.
-
-```rust
-let note = NoteBuilder::default()
-    .with_title("Streamlining Guide")
-    .build();
-```
-
-### Filesystem & Vaults
-Quickly spin up realistic environments for file-based operations.
-- **`TestVault`**: A fluent API to create complex Obsidian-style vault structures in a temporary directory.
-- **`IsolatedTestContext`**: Provides a unique, isolated workspace per test, including temp paths and database namespaces.
-
-```rust
-let vault = TestVault::new()
-    .with_note("Work/Project.md", "# Project\nStatus: Active")
-    .with_config("lithos.toml", "[vault]\nstrict = true")
-    .build();
-```
-
-### CQRS & Event Verification
-Declarative verification of complex business flows and eventual consistency.
-- **`EventTestFramework`**: Given-When-Then pattern for aggregate command handling.
-- **`SagaTester`**: Coordinates and verifies interactions across multiple aggregates and read models.
-- **`EventualConsistencyTester`**: Polling utility that waits for read-models to sync with a configurable timeout.
-
-```rust
-tester.given(initial_events)
-    .when(command)
-    .then_expect_events(expected_events);
-```
-
-### Mocks & Ports
-Standardized mocks for hexagonal boundaries.
-- **`MockEventBus`**: Full implementation of the three-plane event bus (Data, Control, State) for subscriber testing.
-- **`MockRepositoryPort`**: Pre-configured `mockall` traits for common persistence operations.
-
-### Observability
-Test your instrumentation as a first-class citizen.
-- **`TestTracingSubscriber`**: Installs a local subscriber to verify that specific spans or log events were emitted by the code under test.
-
-```rust
-let subscriber = TestTracingSubscriber::install();
-operation().await;
-subscriber.assert_span_emitted("note_indexed");
-```
-
 ## 7. Common Pitfalls
 
 - **Thread Starvation:** Blocking the Tokio executor with `std::fs` or `sleep`. Use `spawn_blocking` and `tokio::time::sleep`.
@@ -224,8 +174,10 @@ subscriber.assert_span_emitted("note_indexed");
 - **Flakiness:** Relying on wall-clock time. Use `tokio::time::pause()` for deterministic time-based tests.
 - **Shared State:** Using static variables or shared files between tests. Always use fresh fixtures.
 
-## 7. Resources
+## 8. Resources
 - [Async Testing](./async.md)
 - [Event-Driven Testing](./event.md)
+- [CQRS Testing](./cqrs.md)
 - [ADR 0010: Test Utilities](../adr/0010-centralized-test-utilities.md)
 - [ADR 0011: Integration Testing](../adr/0011-integration-testing-patterns.md)
+- [ADR 0012: Benchmarking](../adr/0012-benchmarking-infrastructure.md)

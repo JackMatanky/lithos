@@ -35,11 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Documentation:**
 - Created comprehensive `docs/testing/developer-guide.md` as a single source of truth for testing standards.
-- Authored detailed `docs/testing/async.md` and `docs/testing/event.md` guidelines.
+- Authored detailed `docs/testing/async.md`, `docs/testing/event.md`, and `docs/testing/cqrs.md` guidelines.
 - Published ADRs 0008-0012 covering testing, CQRS, and benchmarking infrastructure.
 - Produced gap analysis report for continuous documentation improvement.
-
-**Documentation:**
 - Created comprehensive `README.md` with installation, architecture overview, and roadmap.
 - Established sprint tracking system in `sprint-status.yaml`.
 - Documented system data flow and architectural integrity standards.
