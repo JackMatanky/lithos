@@ -620,23 +620,20 @@ fn bench_template_composition(c: &mut Criterion) {
 
 ### File Structure Requirements
 
-**Directory Layout:**
+**Single File Structure (Split at 1000+ Lines):**
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
 ├── models/
 │   ├── mod.rs               # Module declarations
-│   ├── template/            # NEW - Template bounded context
-│   │   ├── mod.rs           # Re-exports Template, VariableDefinition, TemplateComposition
-│   │   ├── aggregate.rs     # Template aggregate root
-│   │   ├── variable.rs      # VariableDefinition enum and validation
-│   │   ├── composition.rs   # TemplateComposition for modular assembly
-│   │   └── validation.rs    # Domain business rule validation
+│   └── template.rs          # All Template entities, variables, composition logic
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
-│   └── template.rs          # TemplatePort trait (future use)
+│   └── template.rs          # TemplateCommand/TemplateQuery traits (shells)
 └── errors.rs                # Domain errors (EXTENDED with template errors)
 ```
+
+**Splitting Guideline:** Start with single file. Split when >1000 lines into template_core.rs, template_variables.rs, template_composition.rs.
 
 **Implementation Decision:**
 Use **subfolder organization** for Template bounded context due to complexity of validation logic, composition system, and MiniJinja compatibility requirements.

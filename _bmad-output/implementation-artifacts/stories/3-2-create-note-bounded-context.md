@@ -643,21 +643,20 @@ fn bench_note_creation(c: &mut Criterion) {
 
 **Directory Layout Options:**
 
-**Option 1: Subfolder Organization (Recommended for Large Bounded Contexts):**
+**Single File Structure (Split at 1000+ Lines):**
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
 ├── models/
 │   ├── mod.rs               # Module declarations
-│   └── note/                # Note bounded context subfolder
-│       ├── mod.rs           # Re-exports Note aggregate and subentities
-│       ├── aggregate.rs     # Note aggregate root
-│       ├── frontmatter.rs   # Frontmatter subentity
-│       ├── link.rs          # Links subentity
-│       ├── tag.rs           # Tags subentity
-│       ├── heading.rs       # Headings subentity
-│       ├── task.rs          # Tasks subentity
-│       └── section.rs       # Sections subentity
+│   └── note.rs              # All Note entities, subentities, and validation
+├── ports/
+│   ├── mod.rs               # Port trait declarations
+│   └── note.rs              # NoteCommand/NoteQuery traits (shells)
+└── errors.rs                # Domain errors (EXTENDED with note errors)
+```
+
+**Splitting Guideline:** Start with single file. Split when >1000 lines into logical modules (e.g., note_frontmatter.rs, note_links.rs).
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
 │   └── repository.rs        # Future NoteRepositoryPort trait (not in this story)

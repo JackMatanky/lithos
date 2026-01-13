@@ -1099,25 +1099,20 @@ pub mod fixtures {
 
 ### File Structure Requirements
 
-**Directory Layout (Recommended):**
+**Single File Structure (Split at 1000+ Lines):**
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
 ├── models/
-│   ├── mod.rs               # Module declarations (updated with schema module)
-│   ├── note/                # From Story 3.1
-│   │   └── ...
-│   └── schema/              # NEW - Schema bounded context
-│       ├── mod.rs           # Re-exports Schema, PropertyBank, Property, PropertySpec
-│       ├── aggregate.rs     # Schema aggregate root
-│       ├── property_bank.rs # PropertyBank singleton
-│       ├── property.rs      # Property entity
-│       └── property_spec.rs # PropertySpec variants and validation
+│   ├── mod.rs               # Module declarations
+│   └── schema.rs            # All Schema entities, PropertyBank, Property, PropertySpec
 ├── ports/
 │   ├── mod.rs
-│   └── repository.rs        # Future SchemaRepositoryPort (not this story)
+│   └── schema.rs            # SchemaCommand/SchemaQuery traits (shells)
 └── errors.rs                # Domain errors (UPDATE with schema errors)
 ```
+
+**Splitting Guideline:** Start with single file containing all schema-related domain models. Split when >1000 lines into schema_core.rs, schema_properties.rs, etc.
 
 **Alternative Single-File Layout:**
 ```
