@@ -39,6 +39,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Domain Tests First (RED Phase - AC: All)
+- [ ] **STRICT NAMING:** All tests MUST use verb-first behavioral naming (e.g., `returns_error_when_path_is_empty` NOT `test_empty_path`)
 - [ ] Write failing unit tests for Frontmatter entity (test validation, construction, invariants)
 - [ ] Write failing unit tests for FrontmatterValue enum (test type conversions, edge cases)
 - [ ] Write failing unit tests for Link entity (test wiki-link parsing, position tracking)
@@ -48,6 +49,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [ ] Write failing unit tests for Task entity (test status enum, markdown parsing)
 - [ ] Write failing unit tests for Section entity (test range calculation, heading association)
 - [ ] Write failing integration tests for Note aggregate (test composition, validation pipeline)
+- [ ] **VIRTUAL TIME:** Use `time_test!` macro for validating Note `created_at`/`updated_at` timestamps
 - [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 - [ ] Write failing property-based tests for edge cases (empty strings, boundary values, invalid formats)
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
@@ -62,6 +64,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [ ] Implement Task entity with status enum (Incomplete, Complete, Cancelled) and position tracking
 - [ ] Implement Section entity with content range calculation and optional heading reference
 - [ ] Implement Note aggregate root with UUID v7 identity generation and vault-relative path validation
+- [ ] **VIRTUAL CLOCK:** Integrate with virtual clock infrastructure for deterministic timestamp generation
 - [ ] Implement semantic validation pipeline (Syntactic → Orchestration → Semantic)
 - [ ] **TDD REQUIREMENT:** Make all previously failing tests pass (GREEN phase complete when all tests pass)
 
@@ -85,6 +88,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 
 ### Task 5: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
 - [ ] Achieve 90%+ test coverage for all domain entities and validation logic
+- [ ] **FACTORY MACROS:** Use `test_builder!` macro for constructing Note aggregate examples in fixtures
 - [ ] Create test fixtures module with deterministic examples (fixed UUIDs, predictable data)
 - [ ] Implement property-based testing with proptest for edge cases and boundary conditions
 - [ ] Add integration tests for Note aggregate with realistic subentity combinations
@@ -134,6 +138,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 
 **Domain Purity Requirements - CRITICAL:**
 - Domain crate has ZERO external dependencies (only std lib + optional serde for serialization)
+- **PURITY GUARDIAN:** Compliance is enforced by the `Domain Purity Guardian` automated test
 - NO I/O operations in domain layer
 - NO `rkyv` in domain dependencies - persistence derives belong in storage adapter DTOs
 - Use `pub(crate)` by default; `pub` only for crate's public interface

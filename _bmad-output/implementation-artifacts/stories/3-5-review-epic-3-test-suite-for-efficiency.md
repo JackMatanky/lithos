@@ -109,6 +109,13 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Stage all files created or modified during story development
 - [ ] Commit with conventional commit message: `refactor: optimize epic 3 test suite for efficiency with comprehensive analysis and actionable recommendations`
 
+### Task 8: Enforce Epic 2 Quality Standards
+- [ ] **STRICT NAMING:** Verify 100% compliance with verb-first behavioral naming across all Epic 3 tests
+- [ ] **TEST PLACEMENT:** Ensure no test code exists outside `tests/utils` and `tests/macros` (except for inline unit tests)
+- [ ] **LINT HEADERS:** Verify every test module includes a `LINT_DISABLE_REASON` header if lints are suppressed
+- [ ] **VIRTUAL TIME:** Confirm all time-sensitive domain logic uses the `time_test!` virtual clock infrastructure
+- [ ] **PURITY GUARDIAN:** Run the Domain Purity Guardian and confirm 100% compliance for all Epic 3 domain models
+
 ## Dev Notes
 
 ### Epic 3 Test Context
