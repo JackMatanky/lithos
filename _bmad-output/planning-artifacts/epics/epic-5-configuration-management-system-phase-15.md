@@ -7,7 +7,31 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - Sample config files based on JSON schema (lithos-specific)
 - User documentation for configuration
 
-## Story 5.1: Create Config Domain Interface and Port
+## Story 5.1: Implement Config CQRS Ports from Epic 3
+
+As a developer completing the configuration bounded context,
+I want to implement the ConfigCommand and ConfigQuery ports defined in Epic 3,
+So that configuration operations follow CQRS separation with proper command/query handling.
+
+**Acceptance Criteria:**
+
+**Given** Epic 3 defined ConfigCommand and ConfigQuery trait interfaces
+**When** I implement the concrete ports
+**Then** ConfigCommand handles configuration updates and persistence
+
+**Given** ConfigCommand is implemented
+**When** I validate command operations
+**Then** it supports loading, validating, and storing configuration changes
+
+**Given** ConfigQuery is implemented
+**When** I validate query operations
+**Then** it supports retrieving configuration values with hierarchical fallback
+
+**Given** both ports are implemented
+**When** I test integration
+**Then** commands and queries work together for complete configuration management
+
+## Story 5.2: Create Config Domain Interface and Port
 
 As a developer implementing configuration management,
 I want a clean domain interface for configuration loading,
@@ -27,7 +51,7 @@ So that configuration can be loaded through a well-defined contract following he
 **When** I validate the design
 **Then** it follows hexagonal principles with clear separation between domain and infrastructure
 
-## Story 5.2: Implement Hierarchical Configuration Loading
+## Story 5.3: Implement Hierarchical Configuration Loading
 
 As a user configuring lithos,
 I want hierarchical configuration that respects precedence rules,
@@ -47,7 +71,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **When** I validate TOML parsing
 **Then** complex nested structures are properly deserialized through Epic 4's format detection
 
-## Story 5.3: Add Configuration Validation and Error Handling
+## Story 5.4: Add Configuration Validation and Error Handling
 
 As a user providing configuration,
 I want clear validation and helpful error messages,
@@ -67,7 +91,7 @@ So that I can identify and fix configuration issues quickly.
 **When** I test error handling
 **Then** partial invalid configs provide clear guidance on what needs to be fixed
 
-## Story 5.4: Implement Configuration Versioning and Migration
+## Story 5.5: Implement Configuration Versioning and Migration
 
 As a developer maintaining lithos,
 I want configuration versioning and migration support,
@@ -87,7 +111,7 @@ So that configuration files can evolve safely across versions without breaking u
 **When** users upgrade
 **Then** clear error messages guide them through manual migration steps
 
-## Story 5.5: Create Sample Configuration Files
+## Story 5.6: Create Sample Configuration Files
 
 As a user getting started with lithos,
 I want sample configuration files based on a complete JSON schema,
@@ -111,7 +135,7 @@ So that I can understand configuration options and get started quickly with vali
 **When** they start lithos using Epic 4's file loading
 **Then** configurations load successfully and demonstrate expected behavior
 
-## Story 5.6: Review Epic 5 Test Suite
+## Story 5.7: Review Epic 5 Test Suite
 
 As a developer maintaining the configuration system,
 I want an efficient test suite for Epic 5 components,
@@ -135,7 +159,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-## Story 5.6: Configuration Error Recovery and Rollback
+## Story 5.8: Configuration Error Recovery and Rollback
 As a user who has made configuration mistakes, I want the system to provide clear error messages and recovery options, so that I can fix configuration issues without losing my work.
 **Acceptance Criteria:**
 **Given** configuration validation fails
@@ -149,7 +173,7 @@ As a user who has made configuration mistakes, I want the system to provide clea
 **Then** the system can restore previous known-good configuration
 **And** configuration history is maintained for recovery
 
-## Story 5.7: Document Configuration System for Users
+## Story 5.9: Document Configuration System for Users
 
 As a user configuring lithos,
 I want comprehensive documentation for configuration options,
