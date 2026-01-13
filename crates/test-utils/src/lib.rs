@@ -32,9 +32,14 @@ pub mod bench;
 pub mod cqrs;
 pub mod events;
 pub mod fixtures;
+pub mod insta_utils;
 pub mod integration;
 pub mod mocks;
+pub mod properties;
 pub mod temp;
+
+pub mod tracing_sub;
+pub mod vault;
 
 pub use assertions::domain;
 pub use async_utils::{
@@ -67,6 +72,7 @@ pub use fixtures::{
     test_user,
 };
 pub use integration::{IntegrationConfig, IntegrationFixture};
+pub use lithos_test_macros::TestFactory;
 pub use mocks::{EventBusError, EventBusPort, EventPlane, MockEventBus};
 pub use temp::{TempDir, TestOutput, generate_unique_name, path_utils};
 /// Re-export commonly used tokio testing types

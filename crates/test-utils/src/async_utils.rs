@@ -296,6 +296,42 @@ macro_rules! async_test {
     };
 }
 
+/// Macro for async tests with a paused virtual clock.
+///
+/// This macro wraps tests with `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]`
+/// and automatically pauses the virtual clock, allowing deterministic testing of timeouts
+/// and delays using `tokio::time::advance`.
+///
+/// # Usage
+///
+/// ```rust,ignore
+/// use lithos_test_utils::time_test;
+/// use tokio::time::{Duration, advance};
+///
+/// time_test!(async fn test_with_delay() {
+///     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
+///
+///     tokio::spawn(async move {
+///         tokio::time::sleep(Duration::from_secs(10)).await;
+///         tx.send(42).await.unwrap();
+///     });
+///
+///     advance(Duration::from_secs(11)).await;
+///     assert_eq!(rx.recv().await.unwrap(), 42);
+/// });
+/// ```
+#[macro_export]
+macro_rules! time_test {
+    ($(#[$meta:meta])* $vis:vis async fn $name:ident() $body:block) => {
+        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        $(#[$meta])*
+        $vis async fn $name() {
+            tokio::time::pause();
+            $body
+        }
+    };
+}
+
 #[cfg(test)]
 // # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method linting.
 // # LINT_DISABLE_REASON: Options tried: explicit matches/guarded Result handling.

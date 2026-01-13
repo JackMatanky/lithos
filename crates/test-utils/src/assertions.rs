@@ -251,6 +251,40 @@ pub mod domain {
         }
     }
 
+    /// Assert that a result is an error of a specific kind.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// use lithos_test_utils::assert_err_kind;
+    ///
+    /// let result: Result<(), MyError> = Err(MyError::NotFound);
+    /// assert_err_kind!(result, MyError::NotFound);
+    /// ```
+    #[macro_export]
+    macro_rules! assert_err_kind {
+        ($result:expr, $kind:pat) => {
+            match $result {
+                Err(e) => {
+                    if !matches!(e, $kind) {
+                        panic!(
+                            "Expected error kind {}, but got {:?}",
+                            stringify!($kind),
+                            e
+                        );
+                    }
+                }
+                Ok(v) => {
+                    panic!(
+                        "Expected error kind {}, but got Ok({:?})",
+                        stringify!($kind),
+                        v
+                    );
+                }
+            }
+        };
+    }
+
     /// Assert that a value is within an acceptable range.
     ///
     /// # Example
