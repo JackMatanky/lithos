@@ -1,0 +1,15 @@
+[package]
+name = "lithos-test-macros"
+version = "0.1.0"
+edition = "2024"
+authors = ["Jack"]
+license = "MIT OR Apache-2.0"
+description = "Proc-macros for Lithos testing patterns"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+syn = { version = "2.0", features = ["full"] }
+quote = "1.0"
+proc-macro2 = "1.0"

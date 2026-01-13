@@ -71,6 +71,44 @@ so that tests remain efficient, meaningful, and avoid vanity metrics.
 - [x] Fix hallucinated tests in inventory and align naming (AI-Review)
 - [x] Add mandatory LINT_DISABLE_REASON headers to test modules (AI-Review)
 - [x] Refactor default test output path to use Figment per Rule 82 (AI-Review)
+- [x] Implement TestTracingSubscriber for actual observability testing (Remediation)
+- [x] Implement TestVault utility for standardized FS tests (Remediation)
+- [x] Implement Insta redaction helpers for snapshot stability (Remediation)
+- [x] Implement time_test! macro for deterministic async clock control (Remediation)
+- [x] Implement Proptest integration for mathematical edge case testing (Remediation)
+- [x] Implement lithos-test-macros proc-macro for Factory patterns (Remediation)
+- [x] Adopt mockall and standardize port mocking patterns (Remediation)
+- [x] Standardize error assertions with assert_err_kind! (Remediation)
+
+## Architectural Critique & Remediation (Adversarial Review)
+
+During the implementation of Story 2.8, a comprehensive "no-bounds" critique of the `lithos-test-utils` crate and the broader testing strategy was performed. While functional, the current architecture contains several bottlenecks that will impede project velocity if not addressed.
+
+### 1. Key Critiques
+
+| Category | Finding | Impact |
+| :--- | :--- | :--- |
+| **Observability** | `MockTraceCollector` uses manual state instead of hooking into the `tracing` subscriber. | We are testing the mock, not the production instrumentation. |
+| **Mocking** | Handwritten repositories and stores create massive maintenance debt as domain complexity grows. | 30% of development time will be lost to mock maintenance. |
+| **Async Time** | Lack of `tokio::time::pause` integration in `async_test!` macro. | Time-based tests (timeouts/delays) are non-deterministic and slow. |
+| **Data Factories** | `test_builder!` cannot express mandatory fields and lacks random data integration. | Brittle fixtures with "fake" defaults that mask data integrity issues. |
+| **Vault Testing** | No centralized `TestVault` utility; tests manually manage FS state via `temp.rs`. | Inconsistent and fragile integration tests for vault-wide logic. |
+| **Error Testing** | High reliance on `.is_err()` instead of specific error type/variant assertions. | Regression risk where the "wrong" error satisfies the test. |
+| **Doc-Test Decay** | Most documentation examples are marked `ignore`. | Documentation will drift and break as the API evolves. |
+| **Parallelism** | Reliance on `shared_mutex` encourages state sharing rather than isolation. | Slower test suite and increased risk of test inter-dependency. |
+| **Macro Hygiene** | `test_builder!` (macro_rules) bloats compilation and lacks type-safe validation. | Increased compile times and poor error messages for developers. |
+| **Edge Cases** | Reliance on `Fake` data misses the mathematical edge cases of FS/Path logic. | Undetected bugs in path normalization and config merging. |
+
+### 2. Proposed Solutions (Remediation Roadmap)
+
+1.  **TestTracingSubscriber**: Implement a custom subscriber that allows `assert_span_emitted!` and `assert_event_logged!` against actual production `tracing` calls.
+2.  **Mockall Adoption**: Shift from handwritten mocks to `mockall` pre-configurations in `test-utils`.
+3.  **Deterministic Clock**: Enhance `async_test!` to support `time_test!` which automatically controls the Tokio virtual clock.
+4.  **Factory Pattern & Macros**: Replace simple builder macros with a `lithos-test-macros` proc-macro crate that integrates `fake` data and validates mandatory fields.
+5.  **TestVault Utility**: Provide a high-level `TestVault` struct that handles complex filesystem setups (e.g., `.lithos` dir, config files) with a fluent API.
+6.  **Insta Redaction Helpers**: Add standard scrubbers for UUIDs, Paths, and Timestamps to ensure snapshot stability.
+7.  **Error Assertions**: Add `assert_err_kind!` macros to standardize the validation of custom error variants.
+8.  **Proptest Integration**: Provide standard `proptest` strategies for domain types (Paths, Configs) to catch mathematical edge cases.
 
 ### Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [x] Run `mise run fmt` to format all code according to project standards

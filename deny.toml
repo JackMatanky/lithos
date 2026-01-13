@@ -36,8 +36,70 @@ name = "unicode-width"
 version = "0.1.14"
 
 [[bans.skip]]
+name = "unicode-width"
+version = "0.2.2"
+
+[[bans.skip]]
+name = "rand"
+version = "0.8.5"
+
+[[bans.skip]]
+name = "rand_chacha"
+version = "0.3.1"
+
+[[bans.skip]]
+name = "rand_core"
+version = "0.6.4"
+
+[[bans.skip]]
+name = "windows-targets"
+version = "0.52.6"
+
+
+[[bans.skip]]
+name = "windows_aarch64_gnullvm"
+version = "0.52.6"
+
+[[bans.skip]]
+name = "windows_aarch64_msvc"
+version = "0.52.6"
+
+[[bans.skip]]
+name = "windows_i686_gnu"
+version = "0.52.6"
+
+[[bans.skip]]
+name = "windows_i686_gnullvm"
+version = "0.52.6"
+
+[[bans.skip]]
+name = "windows_i686_msvc"
+version = "0.52.6"
+
+[[bans.skip]]
+name = "windows_x86_64_gnu"
+version = "0.52.6"
+
+[[bans.skip]]
+name = "windows_x86_64_gnullvm"
+version = "0.52.6"
+
+[[bans.skip]]
+name = "windows_x86_64_msvc"
+version = "0.52.6"
+
+[[bans.skip]]
+name = "windows-sys"
+
+version = "0.59.0"
+
+[[bans.skip]]
 name = "windows-sys"
 version = "0.60.2"
+
+[[bans.skip]]
+name = "windows-sys"
+version = "0.61.2"
 
 [[bans.skip]]
 name = "hashbrown"
