@@ -1,6 +1,6 @@
 # Story 2.8: test-suite-review-for-efficiency-and-best-practices
 
-Status: review
+Status: done
 
 ## Story
 
