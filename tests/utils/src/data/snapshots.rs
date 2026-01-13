@@ -65,7 +65,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_redactions() {
+    fn snapshot_redactions_mask_uuids_and_timestamps() {
         #[derive(Serialize)]
         struct Nested {
             _uuid: String,

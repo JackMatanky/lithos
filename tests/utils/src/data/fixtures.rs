@@ -315,7 +315,7 @@ mod tests {
     });
 
     #[test]
-    fn test_builder_pattern() {
+    fn builder_pattern_generates_type_safe_builders() {
         let user = TestUserBuilder::new()
             .id(42)
             .name("Alice".to_string())
@@ -328,7 +328,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fake_data_generation() {
+    fn fake_data_generator_produces_realistic_values() {
         let fake = FakeData::new(Scenario::Realistic);
         let name = fake.name();
         assert!(!name.is_empty());
@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn test_serialization_helper() {
+    fn serialization_helper_round_trips_data_correctly() {
         #[derive(Serialize, Deserialize, PartialEq, Debug)]
         struct TestData {
             value: String,
@@ -363,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fixture_composition() {
+    fn fixture_composition_merges_multiple_sources() {
         let user_fixture =
             Fixture::new("user").with("name", "Alice").with("age", 30);
 
@@ -377,7 +377,7 @@ mod tests {
     }
 
     #[test]
-    fn test_fixture_functions() {
+    fn fixture_functions_provide_sensible_defaults() {
         let user = test_user();
         assert!(user.contains_key("name"));
         assert!(user.contains_key("email"));

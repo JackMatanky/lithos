@@ -96,7 +96,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_vault_initializes_standard_structure() {
+    fn vault_initializes_standard_structure_on_new() {
         let vault = TestVault::new().unwrap();
         assert!(vault.path().exists());
         assert!(vault.path().join("lithos.toml").exists());
@@ -105,7 +105,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vault_can_add_notes_and_files() {
+    fn vault_allows_adding_notes_and_raw_files() {
         let vault = TestVault::new().unwrap();
         let note_path = vault.add_note("work/meeting.md", "# Meeting").unwrap();
         assert!(note_path.exists());
