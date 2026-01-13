@@ -7,12 +7,13 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 
 ### Milestone 1: Foundation & Domain Modeling
 **Goal:** Core development environment and fundamental entities.
-**Status:** In-Progress (Stories 1.1-1.9 complete)
+**Status:** Completed
 - [x] Workspace structure and quality gates (Clippy, Rustfmt, Pre-commit).
-- [x] ADR process established (ADRs 0001-0007).
+- [x] ADR process established (ADRs 0001-0012).
 - [x] Project Roadmap and Milestone definition (Story 1.9).
+- [x] Establish async testing patterns and infrastructure (Epic 2).
+- [x] Create comprehensive Developer Testing Guide.
 - [ ] Implement fundamental domain models (Note, Frontmatter, Schema) - Epic 3.
-- [ ] Establish async testing patterns and infrastructure - Epic 2.
 **Success Metrics:** Hexagonal boundaries enforced at compile-time; 80%+ test coverage.
 
 ### Milestone 2: Persistence & Configuration

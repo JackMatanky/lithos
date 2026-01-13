@@ -104,4 +104,4 @@ Implement integration testing patterns using Rust's standard `tests/` directory 
 
 *   **Proposed**: 2026-01-12
 *   **Accepted**: 2026-01-12
-*   **Implemented**: 2026-01-12 (Phase 1: Infrastructure and patterns established. Testcontainers deferred due to RUSTSEC-2025-0134)
+*   **Implemented**: 2026-01-12 (Phase 1: Infrastructure and patterns established. **CRITICAL: Testcontainers usage is currently deferred due to RUSTSEC-2025-0134. Use `mockall` for trait-based mocking until dependencies are updated.**)

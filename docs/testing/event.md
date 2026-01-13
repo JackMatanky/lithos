@@ -4,7 +4,7 @@ Lithos uses a hybrid event bus (ADR 0007) and CQRS-style domain events. This gui
 
 ## Given-When-Then Framework (CQRS/Event Sourcing)
 
-Use the `EventTestFramework` from `lithos-test-utils` to verify aggregate command handling:
+Use the `EventTestFramework` from `lithos-test-utils` to verify aggregate command handling (ADR 0009):
 
 ```rust,ignore
 use lithos_test_utils::EventTestFramework;
@@ -17,19 +17,88 @@ let result = EventTestFramework::given(vec![AccountCreated { id: "acct-1".into()
 assert!(result.is_ok());
 ```
 
+## Query Handler Testing (Stubs)
+
+Query handlers should be tested against predictable read-model stubs (ADR 0009):
+
+```rust,ignore
+#[tokio::test]
+async fn test_get_user_query() {
+    // Arrange
+    let stub_store = Arc::new(StubUserStore::with_users(vec![
+        User::new("user-1", "Alice")
+    ]));
+    let handler = GetUserQueryHandler::new(stub_store);
+
+    // Act
+    let query = GetUserQuery { id: "user-1".into() };
+    let result = handler.handle(query).await.unwrap();
+
+    // Assert
+    assert_eq!(result.name, "Alice");
+}
+```
+
+## Eventual Consistency and Timing
+
+When testing write-to-read model propagation, control time or use retry logic for consistency windows (ADR 0009):
+
+```rust,ignore
+#[tokio::test(flavor = "multi_thread")]
+async fn test_eventual_consistency() {
+    // 1. Execute Command
+    service.execute_command(CreateNote { id: "note-1" }).await?;
+
+    // 2. Wait for propagation (or use a helper that retries until success/timeout)
+    tokio::time::sleep(Duration::from_millis(50)).await;
+
+    // 3. Verify Read Model
+    let note = query_service.get_note("note-1").await?;
+    assert!(note.is_some());
+}
+```
+
+## Observability and Tracing
+
+Use `TestTracingSubscriber` to verify that production code is emitting the expected spans and events:
+
+```rust,ignore
+use lithos_test_utils::obs::TestTracingSubscriber;
+
+#[tokio::test]
+async fn test_observability() {
+    let subscriber = TestTracingSubscriber::install();
+
+    // Perform operation
+    perform_complex_operation().await;
+
+    // Verify span was emitted
+    subscriber.assert_span_emitted("operation_started");
+    subscriber.assert_event_emitted("operation_completed_successfully");
+}
+```
+
 ## Mock Event Bus Patterns
 
-Use `MockEventBus` to isolate publisher and subscriber behavior:
+Use `MockEventBus` to isolate publisher and subscriber behavior across the three planes defined in ADR 0007:
 
-- **Data Plane (MPSC)**: verify reliable delivery and ordering for indexer events.
-- **Control Plane (Broadcast)**: verify signal distribution (e.g., shutdown).
-- **State Plane (Watch)**: verify latest-state notifications for LSP/UI state.
+- **Data Plane (MPSC)**: For reliable indexing and persistence events.
+- **Control Plane (Broadcast)**: For signals like shutdown or configuration changes.
+- **State Plane (Watch)**: For latest-state snapshots (e.g., UI state, LSP status).
 
 ```rust,ignore
 use lithos_test_utils::MockEventBus;
 
 let bus = MockEventBus::new(16, 16);
-let mut receiver = bus.subscribe_control();
+
+// Subscribe to specific planes
+let mut data_rx = bus.subscribe_data();
+let mut control_rx = bus.subscribe_control();
+let state_rx = bus.subscribe_state();
+
+// Publish and verify
+bus.publish_data(my_event).await.unwrap();
+assert_eq!(bus.recorded_data_events().await.len(), 1);
 ```
 
 ## Payload Verification
