@@ -15,36 +15,42 @@
 //! ## Usage Examples
 //!
 //! ### Command Handler Testing
-//! ```rust,ignore
-//! use lithos_test_utils::cqrs::MockRepository;
+//! ```rust
+//! # use std::sync::Arc;
+//! # use async_trait::async_trait;
+//! # use lithos_test_utils::{MockRepositoryPort, RepositoryPort, Entity, CqrsTestResult};
+//! # #[derive(Debug, Clone, PartialEq, Eq)]
+//! # struct User { id: String }
+//! # impl Entity for User { type Id = String; fn id(&self) -> &Self::Id { &self.id } }
+//! # struct CreateUserHandler { repo: Arc<dyn RepositoryPort<User>> }
+//! # impl CreateUserHandler { fn new(repo: Arc<dyn RepositoryPort<User>>) -> Self { Self { repo } } }
 //!
-//! #[tokio::test]
-//! async fn test_command_handler() {
-//!     let mock_repo = Arc::new(MockRepository::new());
-//!     let handler = CreateUserHandler::new(mock_repo.clone());
+//! #[tokio::main]
+//! async fn main() {
+//!     let mut mock_repo = MockRepositoryPort::<User>::new();
+//!     mock_repo.expect_save().returning(|_| Ok(()));
+//!     let handler = CreateUserHandler::new(Arc::new(mock_repo));
 //!
-//!     let command = CreateUserCommand { /* ... */ };
-//!     handler.handle(command).await.unwrap();
-//!
-//!     assert_eq!(mock_repo.save_count(), 1);
+//!     // ...
 //! }
 //! ```
 //!
 //! ### Event Sourcing Testing
-//! ```rust,ignore
-//! use lithos_test_utils::cqrs::TestFramework;
+//! ```rust
+//! # use lithos_test_utils::TestFramework;
+//! # #[derive(Debug, Clone, PartialEq)] struct AccountOpened { id: i32 }
+//! # #[derive(Debug, Clone, PartialEq)] struct MoneyDeposited { amount: i32 }
+//! # #[derive(Debug, Clone, PartialEq)] struct DepositMoney { amount: i32 }
 //!
-//! #[test]
-//! fn test_aggregate_command() {
-//!     TestFramework::default()
-//!         .given(vec![AccountOpened { id: 1 }])
-//!         .when(DepositMoney { amount: 100 })
-//!         .execute(|history, cmd| {
-//!             // apply history to aggregate and handle cmd
-//!             vec![MoneyDeposited { amount: 100 }]
-//!         })
-//!         .then_expect_events(vec![MoneyDeposited { amount: 100 }]);
-//! }
+//! let framework: TestFramework<(), DepositMoney, MoneyDeposited> = TestFramework::default();
+//! framework
+//!     .given(vec![])
+//!     .when(DepositMoney { amount: 100 })
+//!     .execute(|_history, cmd| {
+//!         // apply history to aggregate and handle cmd
+//!         vec![MoneyDeposited { amount: cmd.amount }]
+//!     })
+//!     .then_expect_events(vec![MoneyDeposited { amount: 100 }]);
 //! ```
 
 use std::{collections::HashMap, fmt::Debug, marker::PhantomData, sync::Arc};
@@ -53,6 +59,7 @@ use async_trait::async_trait;
 use tokio::sync::{Mutex, RwLock};
 
 // Submodules for specialized CQRS testing utilities
+pub mod events;
 pub mod observability;
 pub mod security;
 
@@ -98,8 +105,13 @@ pub trait Entity: Send + Sync + Clone + Debug {
 }
 
 /// Port trait for command-side repositories
+// # LINT_DISABLE_REASON: Mockall generated code uses unwrap/expect internally.
+// # LINT_DISABLE_REASON: Options tried: manual mocks.
+// # LINT_DISABLE_REASON: Justification: standard mocking library used in test-only code.
+#[allow(clippy::disallowed_methods)]
+#[mockall::automock]
 #[async_trait]
-pub trait RepositoryPort<E: Entity>: Send + Sync {
+pub trait RepositoryPort<E: Entity + 'static>: Send + Sync {
     /// Save an entity
     async fn save(&self, entity: E) -> CqrsTestResult<()>;
 
@@ -113,170 +125,14 @@ pub trait RepositoryPort<E: Entity>: Send + Sync {
     async fn exists(&self, id: &E::Id) -> CqrsTestResult<bool>;
 }
 
-/// Mock repository for command handler testing
-pub struct MockRepository<E: Entity> {
-    /// Stored entities indexed by ID
-    entities: Arc<RwLock<HashMap<E::Id, E>>>,
-    /// Interaction history
-    interactions: Arc<Mutex<Vec<RepositoryInteraction<E>>>>,
-    /// Configured error responses
-    error_config: Arc<RwLock<ErrorConfig>>,
-}
-
-/// Record of repository interaction for verification
-#[derive(Debug, Clone)]
-pub enum RepositoryInteraction<E: Entity> {
-    /// Save operation
-    Save(E),
-    /// Find by ID operation
-    FindById(E::Id),
-    /// Delete operation
-    Delete(E::Id),
-    /// Exists check operation
-    Exists(E::Id),
-}
-
-/// Configuration for simulating repository errors
-#[derive(Debug, Clone, Default)]
-pub struct ErrorConfig {
-    /// Error to return on next save
-    pub save_error: Option<String>,
-    /// Error to return on next find
-    pub find_error: Option<String>,
-    /// Error to return on next delete
-    pub delete_error: Option<String>,
-}
-
-impl<E: Entity> MockRepository<E> {
-    /// Create a new mock repository
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            entities: Arc::new(RwLock::new(HashMap::new())),
-            interactions: Arc::new(Mutex::new(Vec::new())),
-            error_config: Arc::new(RwLock::new(ErrorConfig::default())),
-        }
-    }
-
-    /// Create a mock repository with pre-populated entities
-    #[must_use]
-    pub fn with_entities(entities: Vec<E>) -> Self {
-        let mut map = HashMap::new();
-        for entity in entities {
-            map.insert(entity.id().clone(), entity);
-        }
-        Self {
-            entities: Arc::new(RwLock::new(map)),
-            interactions: Arc::new(Mutex::new(Vec::new())),
-            error_config: Arc::new(RwLock::new(ErrorConfig::default())),
-        }
-    }
-
-    /// Get the number of save operations performed
-    pub async fn save_count(&self) -> usize {
-        let interactions = self.interactions.lock().await;
-        interactions
-            .iter()
-            .filter(|i| matches!(i, RepositoryInteraction::Save(_)))
-            .count()
-    }
-
-    /// Get the number of find operations performed
-    pub async fn find_count(&self) -> usize {
-        let interactions = self.interactions.lock().await;
-        interactions
-            .iter()
-            .filter(|i| matches!(i, RepositoryInteraction::FindById(_)))
-            .count()
-    }
-
-    /// Get all interactions for verification
-    pub async fn interactions(&self) -> Vec<RepositoryInteraction<E>> {
-        self.interactions.lock().await.clone()
-    }
-
-    /// Configure save operation to fail with error
-    pub async fn fail_next_save(&self, error: impl Into<String>) {
-        let mut config = self.error_config.write().await;
-        config.save_error = Some(error.into());
-    }
-
-    /// Clear all recorded interactions
-    pub async fn clear_interactions(&self) {
-        self.interactions.lock().await.clear();
-    }
-
-    /// Get all stored entities
-    pub async fn all_entities(&self) -> Vec<E> {
-        self.entities.read().await.values().cloned().collect()
-    }
-}
-
-impl<E: Entity> Default for MockRepository<E> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-#[async_trait]
-impl<E: Entity> RepositoryPort<E> for MockRepository<E> {
-    async fn save(&self, entity: E) -> CqrsTestResult<()> {
-        self.interactions
-            .lock()
-            .await
-            .push(RepositoryInteraction::Save(entity.clone()));
-
-        let mut config = self.error_config.write().await;
-        if let Some(error) = config.save_error.take() {
-            return Err(CqrsTestError::MockRepositoryError(error));
-        }
-
-        self.entities.write().await.insert(entity.id().clone(), entity);
-        Ok(())
-    }
-
-    async fn find_by_id(&self, id: &E::Id) -> CqrsTestResult<Option<E>> {
-        self.interactions
-            .lock()
-            .await
-            .push(RepositoryInteraction::FindById(id.clone()));
-
-        let mut config = self.error_config.write().await;
-        if let Some(error) = config.find_error.take() {
-            return Err(CqrsTestError::MockRepositoryError(error));
-        }
-
-        Ok(self.entities.read().await.get(id).cloned())
-    }
-
-    async fn delete(&self, id: &E::Id) -> CqrsTestResult<()> {
-        self.interactions
-            .lock()
-            .await
-            .push(RepositoryInteraction::Delete(id.clone()));
-
-        let mut config = self.error_config.write().await;
-        if let Some(error) = config.delete_error.take() {
-            return Err(CqrsTestError::MockRepositoryError(error));
-        }
-
-        self.entities.write().await.remove(id);
-        Ok(())
-    }
-
-    async fn exists(&self, id: &E::Id) -> CqrsTestResult<bool> {
-        self.interactions
-            .lock()
-            .await
-            .push(RepositoryInteraction::Exists(id.clone()));
-
-        Ok(self.entities.read().await.contains_key(id))
-    }
-}
-
 /// Port trait for query-side data stores
+// # LINT_DISABLE_REASON: Mockall generated code uses unwrap/expect internally.
+// # LINT_DISABLE_REASON: Options tried: manual mocks.
+// # LINT_DISABLE_REASON: Justification: standard mocking library used in test-only code.
+#[allow(clippy::disallowed_methods)]
+#[mockall::automock]
 #[async_trait]
-pub trait QueryStorePort<T: Send + Sync>: Send + Sync {
+pub trait QueryStorePort<T: Send + Sync + 'static>: Send + Sync {
     /// Query for items matching criteria
     async fn query(&self, criteria: &QueryCriteria) -> CqrsTestResult<Vec<T>>;
 
@@ -341,56 +197,30 @@ impl QueryCriteria {
     }
 }
 
-/// Stubbed query store for query handler testing
-pub struct StubQueryStore<T: Send + Sync + Clone> {
-    /// Pre-configured test data
-    data: Arc<RwLock<Vec<T>>>,
-    /// ID extractor function
-    id_extractor: Arc<dyn Fn(&T) -> String + Send + Sync>,
+/// A standard adapter for CQRS testing that provides access to mocks.
+pub struct CqrsTestAdapter<E: Entity + 'static, T: Send + Sync + 'static> {
+    /// The mock repository
+    pub repository: MockRepositoryPort<E>,
+    /// The mock query store
+    pub query_store: MockQueryStorePort<T>,
 }
 
-impl<T: Send + Sync + Clone + 'static> StubQueryStore<T> {
-    /// Create a new stub query store with data
+impl<E: Entity + 'static, T: Send + Sync + 'static> CqrsTestAdapter<E, T> {
+    /// Create a new CQRS test adapter with fresh mocks
     #[must_use]
-    pub fn with_data(
-        data: Vec<T>,
-        id_extractor: impl Fn(&T) -> String + Send + Sync + 'static,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
-            data: Arc::new(RwLock::new(data)),
-            id_extractor: Arc::new(id_extractor),
+            repository: MockRepositoryPort::new(),
+            query_store: MockQueryStorePort::new(),
         }
     }
-
-    /// Add data to the stub store
-    pub async fn add(&self, item: T) {
-        self.data.write().await.push(item);
-    }
-
-    /// Clear all data
-    pub async fn clear(&self) {
-        self.data.write().await.clear();
-    }
-
-    /// Get all data
-    pub async fn all_data(&self) -> Vec<T> {
-        self.data.read().await.clone()
-    }
 }
 
-#[async_trait]
-impl<T: Send + Sync + Clone + 'static> QueryStorePort<T> for StubQueryStore<T> {
-    async fn query(&self, _criteria: &QueryCriteria) -> CqrsTestResult<Vec<T>> {
-        Ok(self.data.read().await.clone())
-    }
-
-    async fn get_by_id(&self, id: &str) -> CqrsTestResult<Option<T>> {
-        let data = self.data.read().await;
-        Ok(data.iter().find(|item| (self.id_extractor)(item) == id).cloned())
-    }
-
-    async fn count(&self, _criteria: &QueryCriteria) -> CqrsTestResult<usize> {
-        Ok(self.data.read().await.len())
+impl<E: Entity + 'static, T: Send + Sync + 'static> Default
+    for CqrsTestAdapter<E, T>
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -576,7 +406,7 @@ impl EventualConsistencyTester {
         F: FnMut() -> Fut,
         Fut: std::future::Future<Output = bool>,
     {
-        crate::async_utils::poll_condition(
+        crate::core::async_utils::poll_condition(
             condition,
             timeout,
             self.poll_interval,
@@ -825,37 +655,29 @@ mod tests {
 
     #[tokio::test]
     async fn mock_repository_saves_entity() {
-        let repo = MockRepository::new();
+        let mut repo = MockRepositoryPort::new();
         let user = TestUser {
             id: "1".to_string(),
             name: "Alice".to_string(),
         };
 
-        repo.save(user.clone()).await.unwrap();
+        let user_clone = user.clone();
+        repo.expect_save()
+            .with(mockall::predicate::eq(user_clone))
+            .times(1)
+            .returning(|_| Ok(()));
 
-        let found = repo.find_by_id(&"1".to_string()).await.unwrap();
-        assert_eq!(found, Some(user));
-    }
-
-    #[tokio::test]
-    async fn mock_repository_records_interactions() {
-        let repo = MockRepository::new();
-        let user = TestUser {
-            id: "1".to_string(),
-            name: "Bob".to_string(),
-        };
-
-        repo.save(user.clone()).await.unwrap();
-        repo.find_by_id(&"1".to_string()).await.unwrap();
-
-        assert_eq!(repo.save_count().await, 1);
-        assert_eq!(repo.find_count().await, 1);
+        repo.save(user).await.unwrap();
     }
 
     #[tokio::test]
     async fn mock_repository_fails_on_configured_error() {
-        let repo = MockRepository::<TestUser>::new();
-        repo.fail_next_save("Simulated error").await;
+        let mut repo = MockRepositoryPort::<TestUser>::new();
+        repo.expect_save().returning(|_| {
+            Err(CqrsTestError::MockRepositoryError(
+                "Simulated error".to_string(),
+            ))
+        });
 
         let user = TestUser {
             id: "1".to_string(),
@@ -879,9 +701,9 @@ mod tests {
             },
         ];
 
-        let store = StubQueryStore::with_data(users.clone(), |u: &TestUser| {
-            u.id.clone()
-        });
+        let mut store = MockQueryStorePort::<TestUser>::new();
+        let users_clone = users.clone();
+        store.expect_query().returning(move |_| Ok(users_clone.clone()));
 
         let criteria = QueryCriteria::new();
         let result = store.query(&criteria).await.unwrap();

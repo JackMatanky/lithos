@@ -31,17 +31,16 @@ pub enum AuthorizationResult {
 /// Allows testing authorization failures and audit trail generation.
 ///
 /// # Usage
-/// ```rust,ignore
-/// use lithos_test_utils::cqrs::security::MockAuthorizationService;
+/// ```rust
+/// # use lithos_test_utils::MockAuthorizationService;
+/// # #[tokio::main]
+/// # async fn main() {
+/// let auth = MockAuthorizationService::new();
+/// auth.grant_permission("user1", "CreateOrder").await;
 ///
-/// #[tokio::test]
-/// async fn test_command_authorization() {
-///     let auth = MockAuthorizationService::new();
-///     auth.grant_permission("user1", "CreateOrder").await;
-///
-///     assert!(auth.check_command("user1", "CreateOrder").await.is_ok());
-///     assert!(auth.check_command("user1", "DeleteOrder").await.is_err());
-/// }
+/// assert!(auth.check_command("user1", "CreateOrder").await.is_ok());
+/// assert!(auth.check_command("user1", "DeleteOrder").await.is_err());
+/// # }
 /// ```
 pub struct MockAuthorizationService {
     /// User permissions: (user_id, operation) -> allowed

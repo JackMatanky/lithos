@@ -38,7 +38,7 @@ pub fn project_root() -> PathBuf {
 /// # Example
 ///
 /// ```rust
-/// use lithos_test_utils::temp::TempDir;
+/// use lithos_test_utils::TempDir;
 ///
 /// # #[test]
 /// fn test_with_temp_dir() {

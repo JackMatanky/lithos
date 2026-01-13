@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use tokio::sync::{Mutex, broadcast, mpsc, watch};
 
-use crate::events::{EventRecord, SequenceAssertion};
+use crate::cqrs::events::{EventRecord, SequenceAssertion};
 
 /// Event bus planes defined by ADR 0007.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -259,7 +259,7 @@ mod tests {
     use tokio::sync::mpsc::Receiver;
 
     use super::*;
-    use crate::{async_test, events::PayloadAssertion};
+    use crate::{async_test, cqrs::events::PayloadAssertion};
 
     #[derive(Debug, Clone, PartialEq, Serialize)]
     struct TestEvent {

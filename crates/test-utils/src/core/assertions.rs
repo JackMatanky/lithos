@@ -61,7 +61,7 @@ macro_rules! assert_eq_detailed {
         match (&$expected, &$actual) {
             (expected_val, actual_val) => {
                 if expected_val != actual_val {
-                    let error = $crate::assertions::AssertionError {
+                    let error = $crate::core::assertions::AssertionError {
                         message: $message.to_string(),
                         expected: format!("{:?}", expected_val),
                         actual: format!("{:?}", actual_val),
@@ -81,20 +81,20 @@ macro_rules! assert_eq_detailed {
 ///
 /// # Example
 ///
-/// ```rust,ignore
+/// ```rust
 /// use lithos_test_utils::assert_async_completed;
 /// use tokio::time::Duration;
 ///
+/// # #[tokio::main]
+/// # async fn main() {
 /// async fn slow_operation() -> i32 {
-///     tokio::time::sleep(Duration::from_millis(100)).await;
+///     tokio::time::sleep(Duration::from_millis(10)).await;
 ///     42
 /// }
 ///
-/// #[tokio::test]
-/// async fn async_assertion_succeeds_when_operation_completes_within_timeout() {
-///     let result = assert_async_completed!(slow_operation(), Duration::from_secs(1));
-///     assert_eq!(result, 42);
-/// }
+/// let result = assert_async_completed!(slow_operation(), Duration::from_millis(100));
+/// assert_eq!(result, 42);
+/// # }
 /// ```
 #[macro_export]
 macro_rules! assert_async_completed {
@@ -148,7 +148,7 @@ macro_rules! assert_eventually {
         )
     };
     ($condition:expr, $timeout:expr, $message:expr) => {{
-        match $crate::async_utils::poll_condition(
+        match $crate::core::async_utils::poll_condition(
             || async { $condition() },
             $timeout,
             tokio::time::Duration::from_millis(10),
@@ -176,7 +176,7 @@ pub mod structural {
     /// # Example
     ///
     /// ```rust
-    /// use lithos_test_utils::assertions::structural::compare_structural;
+    /// use lithos_test_utils::core::assertions::structural::compare_structural;
     ///
     /// #[derive(Debug, PartialEq)]
     /// struct Person {
@@ -221,7 +221,7 @@ pub mod domain {
     /// # Example
     ///
     /// ```rust
-    /// use lithos_test_utils::assertions::domain::assert_contains_same_items;
+    /// use lithos_test_utils::domain::assert_contains_same_items;
     ///
     /// let expected = vec![1, 2, 3];
     /// let actual = vec![3, 1, 2];
@@ -255,9 +255,11 @@ pub mod domain {
     ///
     /// # Example
     ///
-    /// ```rust,ignore
+    /// ```rust
     /// use lithos_test_utils::assert_err_kind;
     ///
+    /// #[derive(Debug)]
+    /// enum MyError { NotFound, Invalid }
     /// let result: Result<(), MyError> = Err(MyError::NotFound);
     /// assert_err_kind!(result, MyError::NotFound);
     /// ```
@@ -290,7 +292,7 @@ pub mod domain {
     /// # Example
     ///
     /// ```rust
-    /// use lithos_test_utils::assertions::domain::assert_in_range;
+    /// use lithos_test_utils::domain::assert_in_range;
     ///
     /// assert_in_range(5, 0..10).unwrap();
     /// ```
