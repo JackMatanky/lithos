@@ -932,6 +932,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "lithos-benchmarks"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "criterion",
+ "dhat",
+ "lithos-app",
+ "lithos-test-utils",
+ "tokio",
+]
+
+[[package]]
 name = "lithos-domain"
 version = "0.1.0"
 dependencies = [
@@ -941,6 +953,23 @@ dependencies = [
  "thiserror",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "lithos-integration-tests"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "lithos-adapters",
+ "lithos-app",
+ "lithos-domain",
+ "lithos-test-utils",
+ "miette",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

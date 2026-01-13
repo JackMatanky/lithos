@@ -1,0 +1,22 @@
+[package]
+name = "lithos-benchmarks"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[features]
+dhat-on = []
+
+[dependencies]
+lithos-app = { path = "../crates/app" }
+lithos-test-utils = { path = "../crates/test-utils" }
+criterion = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+dhat = { workspace = true }
+
+[[bench]]
+name = "core_ops"
+harness = false
+path = "core_ops.rs"

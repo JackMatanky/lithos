@@ -35,13 +35,6 @@ pub use crate::cqrs::{
         EventTestScenario, PayloadAssertion, SequenceAssertion,
         TimingAssertion,
     },
-    observability::{
-        MockMetricsCollector, MockTraceCollector, OperationStats, TraceEntry,
-    },
-    security::{
-        AuthorizationAuditEntry, AuthorizationResult, InputSanitizer,
-        MockAuthorizationService,
-    },
 };
 // Data generation and snapshot testing
 pub use crate::data::{
@@ -57,7 +50,16 @@ pub use crate::fs::{
     vault::TestVault,
 };
 // Mocks and External Systems
-pub use crate::mocks::{EventBusError, EventBusPort, EventPlane, MockEventBus};
+pub use crate::mocks::{
+    auth::{
+        AuthorizationAuditEntry, AuthorizationResult, InputSanitizer,
+        MockAuthorizationService,
+    },
+    event_bus::{EventBusError, EventBusPort, EventPlane, MockEventBus},
+    obs::{
+        MockMetricsCollector, MockTraceCollector, OperationStats, TraceEntry,
+    },
+};
 
 // The async_test macro is automatically exported at crate root via #[macro_export]
 // in the async_utils module.
