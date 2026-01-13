@@ -24,6 +24,14 @@ So that template structure and business rules are properly validated at the doma
 **When** I validate the design
 **Then** Template supports modular composition and variable definitions
 
+**Given** the Template bounded context is defined
+**When** I check domain events
+**Then** TemplateCreated event is emitted for template lifecycle
+
+**Given** CQRS separation is needed
+**When** I define ports
+**Then** TemplateCommand and TemplateQuery trait interfaces are provided for future implementation
+
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Template Domain Tests First (RED Phase - AC: All)
@@ -88,7 +96,19 @@ So that template structure and business rules are properly validated at the doma
 - [ ] Update Cargo.toml with required dependencies (serde for serialization, optional validation crates)
 - [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
-### Task 7: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+### Task 8: Implement Domain Events (GREEN Phase - AC: All)
+- [ ] Define TemplateCreated domain event
+- [ ] Add event emission in Template entity methods
+- [ ] Ensure events capture template creation state
+- [ ] **TDD REQUIREMENT:** Make all domain event tests pass
+
+### Task 9: Define CQRS Ports (GREEN Phase - AC: All)
+- [ ] Define TemplateCommand trait interface (shell for future implementation)
+- [ ] Define TemplateQuery trait interface (shell for future implementation)
+- [ ] Place ports in domain ports module
+- [ ] **TDD REQUIREMENT:** Make all port interface tests pass
+
+### Task 10: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
 - [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
 - [ ] **TDD VALIDATION:** Verify property-based tests catch template syntax edge cases
 - [ ] **TDD VALIDATION:** Ensure performance benchmarks meet targets (<500ms template operations)
@@ -104,7 +124,7 @@ So that template structure and business rules are properly validated at the doma
 - [ ] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [ ] **MANDATORY:** Verify hexagonal architecture boundaries maintained (template domain purity)
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `feat: implement template bounded context with MiniJinja validation and modular composition`
+- [ ] Commit with conventional commit message: `feat: implement template bounded context with validation, composition, domain events, and CQRS ports`
 
 ## Technical Requirements
 
