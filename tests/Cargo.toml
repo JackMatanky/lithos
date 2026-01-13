@@ -1,0 +1,35 @@
+[package]
+name = "lithos-integration-tests"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[dependencies]
+lithos-domain = { path = "../crates/domain" }
+lithos-app = { path = "../crates/app" }
+lithos-adapters = { path = "../crates/adapters" }
+lithos-test-utils = { path = "../crates/test-utils" }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+miette = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+
+[[test]]
+name = "event_patterns"
+path = "integration/event_patterns.rs"
+
+[[test]]
+name = "system_flows"
+path = "integration/system_flows.rs"
+
+[[test]]
+name = "purity"
+path = "arch/purity.rs"
+
+[[test]]
+name = "dummy_integration"
+path = "integration/dummy_integration.rs"

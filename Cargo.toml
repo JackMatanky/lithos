@@ -6,7 +6,7 @@
 # -----------------------------------------------------------------------------
 
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "tests", "benches"]
 resolver = "2"
 
 [workspace.package]

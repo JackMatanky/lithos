@@ -60,8 +60,6 @@ use tokio::sync::{Mutex, RwLock};
 
 // Submodules for specialized CQRS testing utilities
 pub mod events;
-pub mod observability;
-pub mod security;
 
 /// Result type for CQRS testing operations
 pub type CqrsTestResult<T> = Result<T, CqrsTestError>;
