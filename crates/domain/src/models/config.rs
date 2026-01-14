@@ -11,7 +11,7 @@
 
 #![expect(
     clippy::module_name_repetitions,
-    reason = "Domain types in config module are inherently config-related (ConfigValue, FsConfig, VaultConfig, GlobalConfig, FrontmatterConfig), making the repetition meaningful and clear. Renaming would reduce clarity and violate domain naming conventions."
+    reason = "Domain types in config module are inherently config-related (ConfigValue, FileSystemConfig, VaultConfig, GlobalConfig, FrontmatterConfig), making the repetition meaningful and clear. Renaming would reduce clarity and violate domain naming conventions."
 )]
 
 /// Default configuration constants organized by domain.
@@ -94,7 +94,7 @@ pub enum ConfigValue {
 /// - Property bank file is always located in `schemas_dir`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct FsConfig {
+pub struct FileSystemConfig {
     /// Directory for cache files (relative to `vault_path`).
     pub cache_dir: String,
     /// Filename for property bank (located in `schemas_dir`).
@@ -107,7 +107,7 @@ pub struct FsConfig {
     pub vault_path: String,
 }
 
-impl FsConfig {
+impl FileSystemConfig {
     /// Get the full path to the property bank file (`schemas_dir/property_bank_filename`).
     ///
     /// The property bank is always stored in the schemas directory.
@@ -154,7 +154,7 @@ pub struct FrontmatterConfig {
 #[non_exhaustive]
 pub struct VaultConfig {
     /// Filesystem configuration for vault.
-    pub filesystem: FsConfig,
+    pub filesystem: FileSystemConfig,
     /// Frontmatter configuration for vault.
     pub frontmatter: FrontmatterConfig,
     /// Log level (debug, info, warn, error).
@@ -171,7 +171,7 @@ pub struct VaultConfig {
 #[non_exhaustive]
 pub struct GlobalConfig {
     /// Filesystem configuration for global defaults.
-    pub filesystem: FsConfig,
+    pub filesystem: FileSystemConfig,
     /// Frontmatter configuration for global defaults.
     pub frontmatter: FrontmatterConfig,
     /// Log level (debug, info, warn, error).
@@ -194,7 +194,7 @@ pub struct GlobalConfig {
 /// use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig, FrontmatterConfig};
 ///
 /// let global = GlobalConfig {
-///     filesystem: FsConfig {
+///     filesystem: FileSystemConfig {
 ///         vault_path: ".".to_string(),
 ///         templates_dir: "templates".to_string(),
 ///         schemas_dir: "schemas".to_string(),
@@ -212,7 +212,7 @@ pub struct GlobalConfig {
 /// };
 ///
 /// let vault = VaultConfig {
-///     filesystem: FsConfig {
+///     filesystem: FileSystemConfig {
 ///         vault_path: "/vault".to_string(),
 ///         templates_dir: "templates".to_string(),
 ///         schemas_dir: "schemas".to_string(),
@@ -236,14 +236,14 @@ pub struct GlobalConfig {
 #[non_exhaustive]
 pub struct Config {
     /// Merged filesystem configuration.
-    pub filesystem: FsConfig,
+    pub filesystem: FileSystemConfig,
     /// Merged frontmatter configuration.
     pub frontmatter: FrontmatterConfig,
     /// Log level (debug, info, warn, error).
     pub log_level: String,
 }
 
-impl Default for FsConfig {
+impl Default for FileSystemConfig {
     #[inline]
     fn default() -> Self {
         Self {
@@ -276,7 +276,7 @@ impl Default for GlobalConfig {
     #[inline]
     fn default() -> Self {
         Self {
-            filesystem: FsConfig::default(),
+            filesystem: FileSystemConfig::default(),
             frontmatter: FrontmatterConfig::default(),
             log_level: defaults::logging::LOG_LEVEL.to_owned(),
         }
@@ -340,14 +340,14 @@ impl Config {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
     fn merge_filesystem(
-        global: &FsConfig,
-        vault: FsConfig,
-    ) -> Result<FsConfig, crate::ConfigError> {
+        global: &FileSystemConfig,
+        vault: FileSystemConfig,
+    ) -> Result<FileSystemConfig, crate::ConfigError> {
         Self::validate_vault_path(&vault.vault_path)?;
 
-        let defaults = FsConfig::default();
+        let defaults = FileSystemConfig::default();
 
-        Ok(FsConfig {
+        Ok(FileSystemConfig {
             cache_dir: Self::choose_value(
                 &vault.cache_dir,
                 &global.cache_dir,
@@ -594,7 +594,7 @@ mod tests {
     /// Test fixture: Create sample global configuration with defaults.
     fn sample_global_config() -> GlobalConfig {
         GlobalConfig {
-            filesystem: FsConfig {
+            filesystem: FileSystemConfig {
                 cache_dir: ".cache".to_owned(),
                 property_bank_filename: "property_bank.json".to_owned(),
                 schemas_dir: "schemas".to_owned(),
@@ -615,7 +615,7 @@ mod tests {
     /// Test fixture: Create sample vault configuration with overrides.
     fn sample_vault_config() -> VaultConfig {
         VaultConfig {
-            filesystem: FsConfig {
+            filesystem: FileSystemConfig {
                 cache_dir: ".cache".to_owned(),
                 property_bank_filename: "property_bank.json".to_owned(),
                 schemas_dir: "schemas".to_owned(), // same as global
@@ -670,7 +670,7 @@ mod tests {
     #[test]
     fn config_merge_applies_defaults_for_empty_values() {
         let global = GlobalConfig {
-            filesystem: FsConfig {
+            filesystem: FileSystemConfig {
                 cache_dir: String::new(), // Empty - should use default
                 property_bank_filename: String::new(),
                 schemas_dir: String::new(),
@@ -688,7 +688,7 @@ mod tests {
         };
 
         let vault = VaultConfig {
-            filesystem: FsConfig {
+            filesystem: FileSystemConfig {
                 cache_dir: String::new(),
                 property_bank_filename: String::new(),
                 schemas_dir: String::new(),
@@ -830,7 +830,7 @@ mod tests {
 
     #[test]
     fn filesystem_config_structure() {
-        let config = FsConfig {
+        let config = FileSystemConfig {
             cache_dir: ".cache".to_owned(),
             property_bank_filename: "props.json".to_owned(),
             schemas_dir: "schemas".to_owned(),
