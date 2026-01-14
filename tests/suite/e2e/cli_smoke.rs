@@ -18,7 +18,9 @@ fn cli_prints_hello() {
 }
 
 #[test]
-fn cli_help_works() {
+fn cli_prints_help() {
+    let _vault =
+        lithos_test_utils::TestVault::new().expect("Should create test vault");
     let mut cmd = Command::cargo_bin("lithos").expect("Binary should exist");
 
     cmd.arg("--help")
