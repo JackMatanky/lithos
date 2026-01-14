@@ -123,16 +123,60 @@ pub enum ConfigError {
 /// # Invariants.
 /// - Must remain backwards compatible (use #[`non_exhaustive`]).
 /// - All variants must be Send + Sync.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum DomainError {
     /// Configuration error.
     #[error(transparent)]
     Config(#[from] ConfigError),
 
+    /// Embed target path cannot be empty.
+    #[error("Embed target path cannot be empty")]
+    EmptyEmbedTarget,
+
+    /// Link target path cannot be empty.
+    #[error("Link target path cannot be empty")]
+    EmptyLinkTarget,
+
+    /// Path cannot be empty.
+    #[error("Path cannot be empty")]
+    EmptyPath,
+
+    /// Tag segment cannot be empty.
+    #[error("Tag segment cannot be empty")]
+    EmptyTagSegment,
+
     /// Initial placeholder error.
     #[error("Initialization error")]
     Initialize,
+
+    /// Invalid date format.
+    #[error("Invalid date format: {0}")]
+    InvalidDateFormat(String),
+
+    /// Invalid heading level.
+    #[error("Invalid heading level: {0} (must be 1-6)")]
+    InvalidHeadingLevel(u8),
+
+    /// Invalid note path.
+    #[error("Invalid note path: {0}")]
+    InvalidPath(String),
+
+    /// Invalid tag format.
+    #[error("Invalid tag format: {0}")]
+    InvalidTag(String),
+
+    /// Invalid task status.
+    #[error("Invalid task status: {0}")]
+    InvalidTaskStatus(String),
+
+    /// Invalid UUID format.
+    #[error("Invalid UUID: {0}")]
+    InvalidUuid(String),
+
+    /// General validation failure.
+    #[error("Validation failed: {0}")]
+    ValidationFailed(String),
 }
 
 #[cfg(test)]

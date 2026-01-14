@@ -27,8 +27,14 @@ pub mod ports;
 // deep module path knowledge (e.g., `lithos_domain::Config` vs `lithos_domain::models::config::Config`).
 pub use errors::{ConfigError, DomainError};
 pub use events::ConfigUpdated;
-pub use models::config::{
-    Config, ConfigValue, FileSystemConfig, FrontmatterConfig, GlobalConfig,
-    VaultConfig,
+pub use models::{
+    config::{
+        Config, ConfigValue, FileSystemConfig, FrontmatterConfig, GlobalConfig,
+        VaultConfig,
+    },
+    note::{
+        Embed, EmbedType, Frontmatter, FrontmatterValue, Heading, Link,
+        LinkType, Note, Section, Tag, Task, TaskStatus,
+    },
 };
 pub use ports::config::{Command as ConfigCommand, Query as ConfigQuery};
