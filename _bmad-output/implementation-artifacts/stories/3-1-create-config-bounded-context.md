@@ -28,6 +28,10 @@ So that configuration changes are validated and the domain enforces configuratio
 **When** I check domain events
 **Then** ConfigUpdated event is emitted for configuration changes
 
+**Given** hierarchical merging is needed
+**When** I implement merging in domain
+**Then** vault-level config overrides global-level (Vault > Global business rule)
+
 **Given** CQRS separation is needed
 **When** I define ports
 **Then** ConfigCommand and ConfigQuery trait interfaces are provided for future implementation
@@ -35,7 +39,7 @@ So that configuration changes are validated and the domain enforces configuratio
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Config Domain Tests First (RED Phase - AC: All)
-- [ ] **STRICT NAMING:** Mandate verb-first behavioral naming for config validation and structure tests
+- [ ] **STRICT NAMING:** Mandate verb-first behavioral naming for config validation, merging, and structure tests
 - [ ] Write failing unit tests for Config entity (hierarchical structure, validation, encryption)
 - [ ] Write failing unit tests for ConfigValue enum (string, number, boolean, encrypted fields)
 - [ ] Write failing unit tests for ConfigPath handling (Global/User/Project/Vault hierarchy)
@@ -46,19 +50,22 @@ So that configuration changes are validated and the domain enforces configuratio
 - [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 2: Implement Config Domain Entities (GREEN Phase - AC: 1-3)
-- [ ] Create file `crates/domain/src/models/config.rs` and implement Config entities (NO I/O or merging logic)
-- [ ] **DOMAIN ONLY:** Config defines structure and validation, adapters handle loading/merging
-- [ ] **SEPARATE CONCERNS:** Split Config into FileSystemConfig and FrontmatterConfig to prevent god-object
+- [ ] Create file `crates/domain/src/models/config.rs` and implement Config entities with merging logic
+- [ ] **DOMAIN BUSINESS LOGIC:** Config defines structure, validation, AND merging precedence (Vault > Global)
+- [ ] **SEPARATE LEVELS:** Define VaultConfig and GlobalConfig structs for each configuration level
+- [ ] Define VaultConfig struct: `#[derive(Debug, Clone, PartialEq)] pub struct VaultConfig { pub filesystem: FileSystemConfig, pub frontmatter: FrontmatterConfig }`
+- [ ] Define GlobalConfig struct: `#[derive(Debug, Clone, PartialEq)] pub struct GlobalConfig { pub filesystem: FileSystemConfig, pub frontmatter: FrontmatterConfig }`
+- [ ] Define merged Config struct: `#[derive(Debug, Clone, PartialEq)] pub struct Config { pub filesystem: FileSystemConfig, pub frontmatter: FrontmatterConfig }`
 - [ ] Define FileSystemConfig struct: `#[derive(Debug, Clone, PartialEq)] pub struct FileSystemConfig { pub vault_path: String, pub templates_dir: String, pub schemas_dir: String, pub property_bank_file: String, pub cache_dir: String, pub log_level: String }`
 - [ ] Define FrontmatterConfig struct: `#[derive(Debug, Clone, PartialEq)] pub struct FrontmatterConfig { pub file_class_key: String, pub title_key: String, pub alias_key: String, pub date_created_key: String, pub date_modified_key: String }`
-- [ ] Define main Config struct: `#[derive(Debug, Clone, PartialEq)] pub struct Config { pub filesystem: FileSystemConfig, pub frontmatter: FrontmatterConfig }`
+- [ ] Implement Config::merge() method: `pub fn merge(global: GlobalConfig, vault: VaultConfig) -> Result<Self, ConfigError>` with Vault > Global precedence
 - [ ] Implement Config::new() constructor with validation, returns `Result<Self, ConfigError>`
 - [ ] Implement Config::validate() method for business rule validation, returns `Result<(), ConfigError>`
 - [ ] Set defaults: filesystem defaults (vault_path=".", templates_dir="templates/", etc.), frontmatter defaults (file_class_key="file_class", title_key="title", etc.)
 - [ ] Define ConfigValue enum with `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ConfigValue { String(String), Number(f64), Boolean(bool), Encrypted(Vec<u8>), Array(Vec<ConfigValue>), Object(HashMap<String, ConfigValue>) }`
 - [ ] Implement From traits: `impl From<String> for ConfigValue`, `impl From<f64> for ConfigValue`, `impl From<bool> for ConfigValue`
-- [ ] **DOMAIN BOUNDARY:** Merging, file loading, and precedence logic belong in ADAPTERS, not domain
-- [ ] **TDD REQUIREMENT:** Make all Config tests pass (domain validation only, GREEN phase complete when all tests pass)
+- [ ] **DOMAIN MERGING:** Merging precedence is business logic, belongs in domain; adapters handle I/O only
+- [ ] **TDD REQUIREMENT:** Make all Config tests pass (including merging logic, GREEN phase complete when all tests pass)
 
 ### Task 3: Implement Domain Error Types (GREEN Phase - AC: All)
 - [ ] Implement comprehensive ConfigError enum with thiserror::Error derives
@@ -443,15 +450,15 @@ crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
 ├── models/
 │   ├── mod.rs               # Module declarations
-│   └── config.rs            # Config entities: FileSystemConfig, FrontmatterConfig,
-│                           # Config, ConfigValue (merging logic in adapters)
+│   └── config.rs            # Config entities: VaultConfig, GlobalConfig, Config (merged),
+│                           # FileSystemConfig, FrontmatterConfig, ConfigValue, merging logic
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
 │   └── config.rs            # ConfigCommand/ConfigQuery traits (shells)
 └── errors.rs                # Domain errors (EXTENDED with config errors)
 ```
 
-**Splitting Guideline:** Start with single file. Split when >1000 lines into config_filesystem.rs, config_frontmatter.rs, config_validation.rs.
+**Splitting Guideline:** Start with single file. Split when >1000 lines into config_levels.rs, config_core.rs, config_merging.rs.
 
 **Implementation Decision:**
 Use **subfolder organization** for Config bounded context due to complexity of hierarchical merging, validation rules, and encryption support.
