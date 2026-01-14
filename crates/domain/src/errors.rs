@@ -126,9 +126,17 @@ pub enum ConfigError {
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum DomainError {
+    /// Circular schema inheritance detected.
+    #[error("Circular schema inheritance detected: {0}")]
+    CircularInheritance(String),
+
     /// Configuration error.
     #[error(transparent)]
     Config(#[from] ConfigError),
+
+    /// Duplicate property name.
+    #[error("Duplicate property name: {0}")]
+    DuplicatePropertyName(String),
 
     /// Embed target path cannot be empty.
     #[error("Embed target path cannot be empty")]
@@ -142,6 +150,14 @@ pub enum DomainError {
     #[error("Path cannot be empty")]
     EmptyPath,
 
+    /// Property name cannot be empty.
+    #[error("Property name cannot be empty")]
+    EmptyPropertyName,
+
+    /// Schema name cannot be empty.
+    #[error("Schema name cannot be empty")]
+    EmptySchemaName,
+
     /// Tag segment cannot be empty.
     #[error("Tag segment cannot be empty")]
     EmptyTagSegment,
@@ -154,6 +170,23 @@ pub enum DomainError {
     #[error("Invalid date format: {0}")]
     InvalidDateFormat(String),
 
+    /// Invalid directory path.
+    #[error("Invalid directory path: {0}")]
+    InvalidDirectoryPath(String),
+
+    /// Invalid enum value.
+    #[error("Invalid enum value: {value} (allowed: {allowed:?})")]
+    InvalidEnumValue {
+        /// The value that was provided.
+        value: String,
+        /// The list of allowed values.
+        allowed: Vec<String>,
+    },
+
+    /// Invalid file class.
+    #[error("Invalid file class: {0}")]
+    InvalidFileClass(String),
+
     /// Invalid heading level.
     #[error("Invalid heading level: {0} (must be 1-6)")]
     InvalidHeadingLevel(u8),
@@ -161,6 +194,27 @@ pub enum DomainError {
     /// Invalid note path.
     #[error("Invalid note path: {0}")]
     InvalidPath(String),
+
+    /// Invalid property name.
+    #[error("Invalid property name: {0}")]
+    InvalidPropertyName(String),
+
+    /// Invalid regex pattern.
+    #[error("Invalid regex pattern: {0}")]
+    InvalidRegexPattern(String),
+
+    /// Invalid schema name.
+    #[error("Invalid schema name: {0}")]
+    InvalidSchemaName(String),
+
+    /// Invalid step value.
+    #[error("Invalid step value: {value} (step: {step})")]
+    InvalidStepValue {
+        /// The value that was provided.
+        value: f64,
+        /// The expected step increment.
+        step: f64,
+    },
 
     /// Invalid tag format.
     #[error("Invalid tag format: {0}")]
@@ -173,6 +227,47 @@ pub enum DomainError {
     /// Invalid UUID format.
     #[error("Invalid UUID: {0}")]
     InvalidUuid(String),
+
+    /// Number out of range.
+    #[error("Number out of range: {value} (min: {min:?}, max: {max:?})")]
+    NumberOutOfRange {
+        /// The value that was provided.
+        value: f64,
+        /// Minimum allowed value (if any).
+        min: Option<f64>,
+        /// Maximum allowed value (if any).
+        max: Option<f64>,
+    },
+
+    /// Parent schema not found.
+    #[error("Parent schema not found: {0}")]
+    ParentSchemaNotFound(String),
+
+    /// Property name too long.
+    #[error("Property name too long: {0} (max 64)")]
+    PropertyNameTooLong(usize),
+
+    /// Schema name too long.
+    #[error("Schema name too long: {0} (max 64)")]
+    SchemaNameTooLong(usize),
+
+    /// String too long.
+    #[error("String too long: {actual} (max: {max})")]
+    StringTooLong {
+        /// Maximum allowed length.
+        max: usize,
+        /// Actual length encountered.
+        actual: usize,
+    },
+
+    /// String too short.
+    #[error("String too short: {actual} (min: {min})")]
+    StringTooShort {
+        /// Minimum required length.
+        min: usize,
+        /// Actual length encountered.
+        actual: usize,
+    },
 
     /// General validation failure.
     #[error("Validation failed: {0}")]
