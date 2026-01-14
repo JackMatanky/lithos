@@ -12,9 +12,9 @@ So that configuration changes are validated and the domain enforces configuratio
 
 ## Acceptance Criteria
 
-**Given** I have researched hierarchical configuration patterns
+**Given** I have researched configuration merging patterns
 **When** I review the Config bounded context
-**Then** Config entity supports hierarchical structure (Global → User → Project → Vault)
+**Then** Config supports merging VaultConfig and GlobalConfig with business rules
 
 **Given** Config entity is defined
 **When** I check validation integration
@@ -42,9 +42,9 @@ So that configuration changes are validated and the domain enforces configuratio
 - [ ] **STRICT NAMING:** Mandate verb-first behavioral naming for config validation, merging, and structure tests
 - [ ] Write failing unit tests for Config entity (hierarchical structure, validation, encryption)
 - [ ] Write failing unit tests for ConfigValue enum (string, number, boolean, encrypted fields)
-- [ ] Write failing unit tests for ConfigPath handling (Global/User/Project/Vault hierarchy)
+- [ ] Write failing unit tests for VaultConfig and GlobalConfig structures
 - [ ] Write failing unit tests for semantic validation (type safety, required fields, constraints)
-- [ ] Write failing property-based tests for hierarchical merging and override logic
+- [ ] Write failing property-based tests for merging logic and validation boundaries
 - [ ] Write failing integration tests for encrypted field handling and validation
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 - [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
@@ -136,92 +136,68 @@ So that configuration changes are validated and the domain enforces configuratio
 
 **Core Entity Structure:**
 - **ConfigValue Enum**: Unified representation for all configuration value types
-- **ConfigPath Enum**: Hierarchical path levels (Global, User, Project, Vault)
-- **Config Struct**: Main entity with hierarchical merging and validation
+- **VaultConfig Struct**: Configuration from vault-specific files
+- **GlobalConfig Struct**: Configuration from global defaults
+- **Config Struct**: Merged result with business rules (Vault overrides Global)
 - **Immutability**: All config entities MUST be immutable following Rust ownership patterns
-- **Validation**: Hierarchical merging with type safety and constraint validation
+- **Validation**: Business rule validation with merging precedence
 - **Error Handling**: Use `thiserror::Error` for typed configuration errors
 
-**Hierarchical Structure - CRITICAL:**
-- **RULE 82 COMPLIANCE:** All paths MUST be managed via Figment/project-root. **PROHIBITED:** `std::env::current_dir` usage.
+**Configuration Merging - CRITICAL:**
+- **Business Rule:** Vault configuration overrides Global configuration
+- **Domain Responsibility:** Merging logic belongs in domain as business rules
+- **Adapter Responsibility:** File loading and parsing belong in adapters
+
 ```rust
-/// Configuration value types supporting hierarchical merging
+/// Configuration value types
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ConfigValue {
-    /// String configuration value
     String(String),
-    /// Numeric configuration value
     Number(f64),
-    /// Boolean configuration value
     Boolean(bool),
-    /// Encrypted sensitive value (stored as encrypted blob)
     Encrypted(Vec<u8>),
-    /// Array of configuration values
     Array(Vec<ConfigValue>),
-    /// Object/map of configuration key-value pairs
     Object(HashMap<String, ConfigValue>),
 }
 
-/// Hierarchical configuration levels with override precedence
-/// Enhanced with phantom types for compile-time context safety
+/// Vault-specific configuration
 #[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum ConfigPath<Level = Global> {
-    /// System-wide global configuration
-    Global(PhantomData<Global>),
-    /// User-specific configuration
-    User(PhantomData<User>),
-    /// Project-specific configuration
-    Project(PhantomData<Project>),
-    /// Vault-specific configuration (highest precedence)
-    Vault(PhantomData<Vault>),
+pub struct VaultConfig {
+    pub filesystem: FileSystemConfig,
+    pub frontmatter: FrontmatterConfig,
 }
 
-// Phantom type markers for context safety
-pub struct Global;
-pub struct User;
-pub struct Project;
-pub struct Vault;
-
-// Type-safe config path aliases
-pub type GlobalPath = ConfigPath<Global>;
-pub type UserPath = ConfigPath<User>;
-pub type ProjectPath = ConfigPath<Project>;
-pub type VaultPath = ConfigPath<Vault>;
-
-/// Main configuration entity with hierarchical support
-/// Uses phantom types to prevent mixing incompatible config contexts
+/// Global default configuration
 #[derive(Debug, Clone, PartialEq)]
-pub struct Config<Level = Global> {
-    /// Configuration values by hierarchical level (type-safe)
-    values: HashMap<ConfigPath<Level>, HashMap<String, ConfigValue>>,
-    /// Validation rules and constraints
-    validation_rules: HashMap<String, ValidationRule>,
-    /// Encrypted field metadata
-    encrypted_fields: HashSet<String>,
-    _marker: PhantomData<Level>,
+pub struct GlobalConfig {
+    pub filesystem: FileSystemConfig,
+    pub frontmatter: FrontmatterConfig,
 }
 
-// Type-safe config aliases
-pub type GlobalConfig = Config<Global>;
-pub type UserConfig = Config<User>;
-pub type ProjectConfig = Config<Project>;
-pub type VaultConfig = Config<Vault>;
+/// Merged configuration result
+#[derive(Debug, Clone, PartialEq)]
+pub struct Config {
+    pub filesystem: FileSystemConfig,
+    pub frontmatter: FrontmatterConfig,
+}
+
+impl Config {
+    /// Merge Vault and Global configs with business rules
+    /// Vault overrides Global (business requirement)
+    pub fn merge(global: GlobalConfig, vault: VaultConfig) -> Result<Self, ConfigError> {
+        // Business logic: vault takes precedence
+        let filesystem = merge_filesystem(global.filesystem, vault.filesystem);
+        let frontmatter = merge_frontmatter(global.frontmatter, vault.frontmatter);
+        Ok(Config { filesystem, frontmatter })
+    }
+}
 ```
 
-**Hierarchical Merging Algorithm:**
-1. Start with Global level configuration
-2. Override with User level (same keys) - compile-time guaranteed type compatibility
-3. Override with Project level (same keys) - phantom types prevent mixing
-4. Override with Vault level (highest precedence) - type-safe precedence
-5. Apply validation rules to merged configuration
-6. Decrypt encrypted fields on access
-
-**Phantom Type Benefits:**
-- Compile-time prevention of mixing config contexts (e.g., can't merge Global with User directly)
-- Type-safe APIs: functions can accept specific config types
-- Zero-cost abstraction: phantom types have no runtime overhead
+**Separation Benefits:**
+- Business rules (precedence) in domain
+- Infrastructure (file I/O) in adapters
+- Clear hexagonal boundaries maintained
 
 ### Encryption Support
 
@@ -247,49 +223,27 @@ Stored Config → Decrypt (Adapter) → Raw Value → Domain Logic
 - **Cross-Field Validation**: Dependencies between configuration fields
 - **Hierarchical Consistency**: Overrides must maintain type compatibility
 
-**Validation Rule Types:**
-```rust
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum ValidationRule {
-    /// Field must be present in final merged configuration
-    Required,
-    /// Field value must match one of these string values
-    Enum(Vec<String>),
-    /// Numeric field must be within this range
-    Range { min: Option<f64>, max: Option<f64> },
-    /// String field must match this regex pattern
-    Pattern(String),
-    /// Field depends on another field being present/set
-    DependsOn(String),
-}
-```
+**Validation Rules:**
+- Business rule validation for config structure and consistency
+- Type safety checks for ConfigValue variants
+- Required field validation for critical settings
+- Custom validation rules as needed for specific config fields
 
 ### Architecture Compliance - MANDATORY READING
 
 **Hexagonal Boundary Enforcement:**
-- Domain crate in `crates/domain/src/` with Config entities and validation
-- Adapter crate in `crates/adapters/src/` with encryption and file I/O
-- Application layer orchestrates hierarchical loading and merging
-- NO encryption logic in domain (only encrypted blob storage)
-- NO file I/O in domain layer (only configuration value types)
+- Domain crate contains Config entities, validation, and merging business logic
+- Adapter crate handles file I/O, parsing, and calls domain merging methods
+- Application layer orchestrates configuration loading and usage
+- NO file I/O in domain (merging logic is business rules, not infrastructure)
 
 **Standard Traits - REQUIRED:**
 ```rust
 // ALWAYS derive these for domain entities:
 #[derive(Debug, Clone, PartialEq)]
-// Add Serialize/Deserialize for config persistence
-// Use custom implementations for complex validation
-
-// Advanced Rust Patterns:
-// - Use phantom types for compile-time context safety
-// - Leverage associated types in port traits for type-safe operations
+// Add validation methods for business rules
+// Keep domain focused on business logic
 ```
-
-**Conversion Traits - MANDATORY:**
-- Use `From/Into` for converting between config levels and merged config
-- Use `TryFrom/TryInto` for validation during config construction
-- NEVER create ad-hoc `to_x()` methods
 
 **Exhaustive Matching:**
 ```rust
@@ -364,19 +318,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_config_hierarchical_merge() {
-        // Test Global → User → Project → Vault override precedence
-        let global = ConfigValue::String("global_value".to_string());
-        let user = ConfigValue::String("user_value".to_string());
-        let vault = ConfigValue::String("vault_value".to_string());
+    fn test_config_merge_vault_overrides_global() {
+        // Test business rule: Vault overrides Global
+        let global = GlobalConfig { /* global defaults */ };
+        let vault = VaultConfig { /* vault overrides */ };
 
-        let merged = Config::merge_hierarchical(vec![
-            (ConfigPath::Global, HashMap::from([("key".to_string(), global)])),
-            (ConfigPath::User, HashMap::from([("key".to_string(), user)])),
-            (ConfigPath::Vault, HashMap::from([("key".to_string(), vault)])),
-        ]);
+        let merged = Config::merge(global, vault).unwrap();
 
-        assert_eq!(merged.get("key"), Some(&ConfigValue::String("vault_value".to_string())));
+        // Assert vault values take precedence
+        assert_eq!(merged.some_field, vault_expected_value);
     }
 
     #[test]
@@ -384,7 +334,7 @@ mod tests {
         let config = Config::new(/* ... */);
         let result = config.validate();
 
-        // Test validation rules are applied correctly
+        // Test business validation rules
         assert!(result.is_ok());
     }
 }
@@ -402,22 +352,34 @@ mod tests {
 pub mod fixtures {
     use super::*;
 
-    pub fn sample_global_config() -> HashMap<String, ConfigValue> {
-        HashMap::from([
-            ("app.name".to_string(), ConfigValue::String("lithos".to_string())),
-            ("app.version".to_string(), ConfigValue::String("0.1.0".to_string())),
-        ])
+    pub fn sample_global_config() -> GlobalConfig {
+        GlobalConfig {
+            filesystem: FileSystemConfig {
+                vault_path: ".".to_string(),
+                templates_dir: "templates".to_string(),
+                // ... other defaults
+            },
+            frontmatter: FrontmatterConfig {
+                file_class_key: "file_class".to_string(),
+                title_key: "title".to_string(),
+                // ... other defaults
+            },
+        }
     }
 
-    pub fn sample_user_config() -> HashMap<String, ConfigValue> {
-        HashMap::from([
-            ("ui.theme".to_string(), ConfigValue::String("dark".to_string())),
-        ])
-    }
-
-    pub fn sample_encrypted_field() -> ConfigValue {
-        // Note: In tests, we use mock encryption
-        ConfigValue::Encrypted(b"mock_encrypted_data".to_vec())
+    pub fn sample_vault_config() -> VaultConfig {
+        VaultConfig {
+            filesystem: FileSystemConfig {
+                vault_path: "/vault".to_string(),
+                templates_dir: "custom_templates".to_string(),
+                // ... vault overrides
+            },
+            frontmatter: FrontmatterConfig {
+                file_class_key: "type".to_string(), // vault override
+                title_key: "title".to_string(),
+                // ... other settings
+            },
+        }
     }
 }
 ```
@@ -427,18 +389,15 @@ pub mod fixtures {
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn bench_config_merge(c: &mut Criterion) {
-    let configs = vec![
-        fixtures::sample_global_config(),
-        fixtures::sample_user_config(),
-        // Add project and vault configs
-    ];
+    let global = fixtures::sample_global_config();
+    let vault = fixtures::sample_vault_config();
 
-    c.bench_function("config_hierarchical_merge", |b| {
+    c.bench_function("config_merge_business_logic", |b| {
         b.iter(|| {
-            black_box(Config::merge_hierarchical(black_box(&configs)));
+            black_box(Config::merge(black_box(&global), black_box(&vault)));
         });
     });
-    // Target: <100μs for typical hierarchical merges
+    // Target: <100μs for typical config merges
 }
 ```
 
@@ -516,11 +475,10 @@ Use **subfolder organization** for Config bounded context due to complexity of h
 
 ### Architecture Intelligence
 
-**Hierarchical Configuration Requirements:**
+**Configuration Requirements:**
 - **Global Level**: System-wide defaults (read-only for users)
-- **User Level**: User-specific overrides (~/.config/lithos/)
-- **Project Level**: Project-specific settings (.lithos/ in project root)
-- **Vault Level**: Vault-specific configuration (.obsidian/ or .lithos/ in vault)
+- **Vault Level**: Vault-specific configuration (highest precedence)
+- **Business Rule**: Vault configurations override Global configurations
 
 **Performance Targets (from Architecture):**
 - Config loading: <500ms for typical configurations
@@ -536,34 +494,26 @@ Use **subfolder organization** for Config bounded context due to complexity of h
 
 ### Implementation Strategy
 
-**TDD Hierarchical Merging:**
+**TDD Business Rule Merging:**
 ```rust
 impl Config {
-    /// Merge configurations with proper precedence (Vault > Project > User > Global)
-    pub fn merge_hierarchical(
-        configs: Vec<(ConfigPath, HashMap<String, ConfigValue>)>
-    ) -> HashMap<String, ConfigValue> {
-        let mut merged = HashMap::new();
+    /// Merge configurations with business rules (Vault overrides Global)
+    pub fn merge(global: GlobalConfig, vault: VaultConfig) -> Result<Self, ConfigError> {
+        // Business logic: vault takes precedence over global
+        let filesystem = merge_filesystem(global.filesystem, vault.filesystem)?;
+        let frontmatter = merge_frontmatter(global.frontmatter, vault.frontmatter)?;
 
-        // Process in precedence order (lowest to highest)
-        let precedence_order = [
-            ConfigPath::Global,
-            ConfigPath::User,
-            ConfigPath::Project,
-            ConfigPath::Vault,
-        ];
-
-        for level in precedence_order {
-            if let Some(level_config) = configs.iter().find(|(path, _)| path == &level) {
-                // Override or add values at this level
-                for (key, value) in &level_config.1 {
-                    merged.insert(key.clone(), value.clone());
-                }
-            }
-        }
-
-        merged
+        Ok(Config { filesystem, frontmatter })
     }
+}
+
+fn merge_filesystem(global: FileSystemConfig, vault: FileSystemConfig) -> Result<FileSystemConfig, ConfigError> {
+    // Business rules for filesystem config merging
+    Ok(FileSystemConfig {
+        vault_path: vault.vault_path, // vault-specific
+        templates_dir: vault.templates_dir.or(global.templates_dir), // vault overrides
+        // ... other fields with precedence rules
+    })
 }
 ```
 
