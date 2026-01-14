@@ -47,7 +47,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Domain Tests First (RED Phase - AC: All)
-- [ ] **STRICT NAMING:** All tests MUST use verb-first behavioral naming (e.g., `returns_error_when_path_is_empty` NOT `test_empty_path`)
+- [ ] **STRICT NAMING:** All tests MUST use verb-first behavioral naming per @docs/testing/developer-guide.md (e.g., `returns_error_when_path_is_empty` NOT `test_empty_path`)
 - [ ] Write failing unit tests for Frontmatter entity (test validation, construction, invariants)
 - [ ] Write failing unit tests for FrontmatterValue enum (test type conversions, edge cases)
 - [ ] Write failing unit tests for Link entity (test wiki-link parsing, position tracking)
@@ -57,7 +57,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [ ] Write failing unit tests for Task entity (test status enum, markdown parsing)
 - [ ] Write failing unit tests for Section entity (test range calculation, heading association)
 - [ ] Write failing integration tests for Note aggregate (test composition, validation pipeline)
-- [ ] **VIRTUAL TIME:** Use `time_test!` macro for validating Note `created_at`/`updated_at` timestamps
+- [ ] **VIRTUAL TIME:** Use `time_test!` macro per @docs/testing/developer-guide.md for validating Note `created_at`/`updated_at` timestamps
 - [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 - [ ] Write failing property-based tests for edge cases (empty strings, boundary values, invalid formats)
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
@@ -100,7 +100,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 
 ### Task 5: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
 - [ ] Achieve 90%+ test coverage for all domain entities and validation logic
-- [ ] **FACTORY MACROS:** Use `test_builder!` macro for constructing Note aggregate examples in fixtures
+- [ ] **FACTORY MACROS:** Use `test_builder!` macro per @docs/testing/developer-guide.md for constructing Note aggregate examples in fixtures
 - [ ] Create test fixtures module with deterministic examples (fixed UUIDs, predictable data)
 - [ ] Implement property-based testing with proptest for edge cases and boundary conditions
 - [ ] Add integration tests for Note aggregate with realistic subentity combinations
@@ -555,7 +555,7 @@ Raw Markdown (adapter)
 
 ### Testing Requirements
 
-**Hexagonal Testing Hierarchy:**
+**Hexagonal Testing Hierarchy (per @docs/testing/developer-guide.md):**
 
 **Domain Tests (Pure Unit Tests):**
 ```rust
@@ -584,8 +584,8 @@ mod tests {
 **Test Coverage Target:**
 - **90%+ coverage** for domain entities and validation logic (per Epic 3 AC)
 - Test both success and error cases
-- Property-based testing with `proptest` for edge cases
-- Deterministic testing with fixed UUIDs and timestamps
+- Property-based testing with `proptest` per @docs/testing/developer-guide.md for edge cases
+- Deterministic testing with fixed UUIDs and timestamps per testing guide
 
 **Test Fixtures Strategy:**
 ```rust
@@ -628,7 +628,7 @@ fields.insert("created".to_string(), FrontmatterValue::Date(Utc.with_ymd_and_hms
 
 **Performance Testing:**
 ```rust
-// Add to benches/domain_models.rs when using criterion
+// Add to benches/domain_models.rs using criterion per @docs/testing/developer-guide.md
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn bench_note_creation(c: &mut Criterion) {

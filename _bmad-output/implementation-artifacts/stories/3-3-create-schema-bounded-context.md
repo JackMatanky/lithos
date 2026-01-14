@@ -56,8 +56,8 @@ So that schemas can define reusable property definitions with rich validation co
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Schema Domain Tests First (RED Phase - AC: All)
-- [ ] **MOCKALL:** Use `mockall` for defining any port trait mocks; avoid handwritten maintenance traps
-- [ ] **STRICT NAMING:** All tests MUST use verb-first behavioral naming
+- [ ] **MOCKALL:** Use `mockall` per @docs/testing/developer-guide.md for defining any port trait mocks; avoid handwritten maintenance traps
+- [ ] **STRICT NAMING:** All tests MUST use verb-first behavioral naming per @docs/testing/developer-guide.md
 - [ ] Write failing unit tests for PropertySpec variants (StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec)
 - [ ] Write failing unit tests for Property entity (ID generation determinism, validation, edge cases)
 - [ ] Write failing unit tests for PropertyBank singleton (registration, deduplication, lookup methods)
@@ -1060,8 +1060,8 @@ mod tests {
 **Test Coverage Target:**
 - **90%+ coverage** for domain entities and validation logic (per Epic 3 AC)
 - Test both success and error cases for all validation rules
-- Property-based testing with `proptest` for edge cases (especially ID generation)
-- Deterministic testing with fixed UUIDs
+- Property-based testing with `proptest` per @docs/testing/developer-guide.md for edge cases (especially ID generation)
+- Deterministic testing with fixed UUIDs per testing guide
 
 **Test Fixtures Strategy:**
 ```rust
@@ -1365,7 +1365,7 @@ fn detect_circular_inheritance(
 - Efficient string handling with owned types where appropriate
 
 **Benchmarking Requirements:**
-- Criterion.rs integration for regression detection
+- Criterion.rs integration per @docs/testing/developer-guide.md for regression detection
 - Performance tests for ID generation, inheritance, and lookups
 - Memory usage profiling for large property banks
 - Scalability testing with 1000+ schemas and properties
