@@ -189,14 +189,23 @@ pub struct Frontmatter {
 }
 
 pub enum FrontmatterValue {
-    String(String),  // All values stored as strings initially
+    String(String),
+    Number(f64),    // For numeric values that parse successfully
+    Boolean(bool),  // For boolean values that parse successfully
+    Date(DateTime<Utc>), // Flexible date parsing supporting multiple formats
     Array(Vec<FrontmatterValue>),
     Object(HashMap<String, FrontmatterValue>), // For nested YAML objects
 }
 
-// NOTE: No Number, Boolean, or Date variants in domain
-// Type classification happens at application layer with schema information
-// Domain stores all scalar values as strings to avoid premature typing
+// DateTime<Utc> from chrono crate - supports multiple input formats
+// Domain attempts parsing in order: ISO 8601, Moment.js (YYYY-MM-DD[T]HH:mm), RFC 3339, custom formats
+// Config date fields must parse successfully, others fallback to String if parsing fails
+
+// CRITICAL: Type classification is BEST EFFORT in domain
+// - Config-defined date fields (date_created, date_modified) MUST parse as dates
+// - Other fields attempt parsing but fall back to String if uncertain
+// - Schema validation at application layer enforces exact types and formats
+// - Domain provides type hints, application layer enforces schema constraints
 ```
 
 **Links Subentity:**
@@ -438,11 +447,13 @@ pub struct Note {
 - Example valid: `1`, `6`
 - Example invalid: `0`, `7`, `255`
 
-**Frontmatter Value Storage:**
-- All values stored as strings in domain (String variant)
-- Type classification deferred to application layer with schema information
-- Supports any date format (ISO 8601, Moment.js, custom) based on schema
-- Config-defined fields (date_created, date_modified) may have special handling
+**Frontmatter Value Storage - Best Effort Typing:**
+- Domain attempts intelligent type classification during parsing
+- Date fields support flexible parsing: ISO 8601, Moment.js, custom formats
+- Config-defined date fields (date_created, date_modified) enforce date parsing
+- Numbers and booleans parsed when unambiguous
+- Uncertain types stored as strings, converted by schema validation
+- Application layer schema validation ensures type correctness
 
 **Link/Embed Target Validation:**
 - MUST be non-empty
@@ -468,18 +479,21 @@ assert!(Tag::parse("#project//sub").is_err());     // Empty segment
 assert!(Tag::parse("").is_err());                  // Empty string
 ```
 
-**Example: Frontmatter Construction**
+**Example: Frontmatter Construction - Best Effort Typing**
 ```rust
 let mut fields = HashMap::new();
 fields.insert("title".to_string(), FrontmatterValue::String("My Note".to_string()));
-fields.insert("created".to_string(), FrontmatterValue::String("2024-01-15T14:30".to_string())); // Any format
+fields.insert("created".to_string(), FrontmatterValue::Date(DateTime::parse_from_rfc3339("2024-01-15T14:30:00Z").unwrap())); // ISO 8601
+fields.insert("published".to_string(), FrontmatterValue::Boolean(true)); // Parsed boolean
+fields.insert("priority".to_string(), FrontmatterValue::Number(5.0)); // Parsed number
+fields.insert("custom_field".to_string(), FrontmatterValue::String("unknown_type".to_string())); // String fallback
 fields.insert("tags".to_string(), FrontmatterValue::Array(vec![
     FrontmatterValue::String("rust".to_string()),
     FrontmatterValue::String("programming".to_string()),
 ]));
 
 let frontmatter = Frontmatter::new(fields)?;
-// Type validation (dates, numbers, booleans) happens at application layer with schema
+// Domain provides type hints, application layer schema validation ensures correctness
 ```
 
 **Example: Link Construction**
@@ -588,7 +602,7 @@ pub mod fixtures {
     pub fn example_frontmatter() -> Frontmatter {
         let mut fields = HashMap::new();
         fields.insert("title".to_string(), FrontmatterValue::String("Test Note".to_string()));
-        fields.insert("created".to_string(), FrontmatterValue::String("2024-01-15T14:30".to_string())); // Any format
+fields.insert("created".to_string(), FrontmatterValue::Date(Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0).unwrap()));
         Frontmatter::new(fields).expect("Valid frontmatter")
     }
 
