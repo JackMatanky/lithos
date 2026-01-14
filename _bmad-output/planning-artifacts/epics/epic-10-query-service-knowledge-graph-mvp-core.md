@@ -239,27 +239,35 @@ So that query interactions can be tested in isolation.
 
 ## Story 10.12: Review Epic 10 Test Suite
 
-As a developer maintaining the query service,
-I want an efficient test suite for Epic 10 components,
-So that tests provide good coverage without redundancy or excessive execution time.
+As a senior developer conducting adversarial code review,
+I want to brutally critique and improve the Epic 10 test suite to its foundation,
+So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
 
 **Given** all Epic 10 components are implemented with tests
-**When** I review the test suite
-**Then** it achieves 90%+ coverage for query service components
+**When** I conduct adversarial review
+**Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
+
+**Given** I take adversarial position against the test suite
+**When** I critique test quality
+**Then** I assess if tests actually validate business requirements vs implementation details
 
 **Given** the test suite is implemented
-**When** I check for redundancy
-**Then** no duplicate test cases exist across query components
+**When** I review for redundancy
+**Then** I eliminate duplicate test cases and consolidate overlapping coverage
 
 **Given** tests are executed
 **When** I measure performance
 **Then** test execution completes in <30 seconds for the full Epic 10 suite
 
+**Given** I conduct brutal foundation critique
+**When** I assess test design
+**Then** I verify tests use proper fixtures, avoid flaky behavior, and maintain clear intent
+
 **Given** test suite is reviewed
 **When** I check maintainability
-**Then** test code follows same quality standards as production code
+**Then** test code follows same quality standards as production code with proper documentation
 
 ## Story 10.12: Performance Benchmarking for Query Operations
 As a performance engineer, I want benchmarks for query operations to ensure fast lookups and efficient caching, so that query performance supports template execution requirements.
