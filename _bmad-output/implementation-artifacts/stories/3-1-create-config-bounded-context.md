@@ -48,6 +48,8 @@ So that configuration changes are validated and the domain enforces configuratio
 ### Task 2: Implement Config Domain Entities (GREEN Phase - AC: 1-3)
 - [ ] Create file `crates/domain/src/models/config.rs` and implement all Config entities in single file
 - [ ] Define phantom type markers: `#[derive(Debug)] pub struct Global; #[derive(Debug)] pub struct User; #[derive(Debug)] pub struct Project; #[derive(Debug)] pub struct Vault;`
+- [ ] Define Config struct with additional keys: `pub title_key: String`, `pub alias_key: String`, `pub date_created_key: String`, `pub date_modified_key: String`
+- [ ] Set defaults: title_key="title", alias_key="aliases", date_created_key="created", date_modified_key="modified"
 - [ ] Define ConfigValue enum with `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ConfigValue { String(String), Number(f64), Boolean(bool), Encrypted(Vec<u8>), Array(Vec<ConfigValue>), Object(HashMap<String, ConfigValue>) }`
 - [ ] Implement From traits: `impl From<String> for ConfigValue`, `impl From<f64> for ConfigValue`, `impl From<bool> for ConfigValue`
 - [ ] Define ConfigPath enum: `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ConfigPath<Level = Global> { Global(PhantomData<Global>), User(PhantomData<User>), Project(PhantomData<Project>), Vault(PhantomData<Vault>) }`
@@ -57,7 +59,7 @@ So that configuration changes are validated and the domain enforces configuratio
 - [ ] Define Config struct: `#[derive(Debug, Clone, PartialEq)] pub struct Config<Level = Global> { pub values: HashMap<ConfigPath<Level>, HashMap<String, ConfigValue>>, pub validation_rules: HashMap<String, ValidationRule>, pub encrypted_fields: HashSet<String>, _marker: PhantomData<Level> }`
 - [ ] Define type-safe config aliases: `pub type GlobalConfig = Config<Global>; pub type UserConfig = Config<User>; pub type ProjectConfig = Config<Project>; pub type VaultConfig = Config<Vault>;`
 - [ ] Implement Config::new() constructor that validates all inputs and returns `Result<Self, ConfigError>`
-- [ ] Implement Config::merge_hierarchical() method that merges configs with Vault > Project > User > Global precedence, returns `Result<HashMap<String, ConfigValue>, ConfigError>`
+- [ ] Implement Config::merge() method that merges configs with Vault > Project > User > Global precedence, returns `Result<HashMap<String, ConfigValue>, ConfigError>`
 - [ ] Implement Config::validate() method that applies all ValidationRule constraints to merged config, returns `Result<(), ConfigError>`
 - [ ] Implement Config::get() method with automatic hierarchical fallback (Vault -> Project -> User -> Global), returns `Option<&ConfigValue>`
 - [ ] Implement Config::decrypt_field() method that returns error if field not encrypted, actual decryption in adapter layer
