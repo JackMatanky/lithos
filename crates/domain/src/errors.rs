@@ -11,21 +11,21 @@
 
 /// Configuration-related domain errors.
 ///
-/// # Invariants.
+/// # Invariants
 /// - All errors must be `Send + Sync` for async contexts.
 /// - Error messages must be descriptive and actionable.
 /// - Use `#[from]` for automatic conversions from underlying errors.
 ///
-/// # Examples.
-/// ```.
-/// use lithos_domain::ConfigError;.
+/// # Examples
+/// ```
+/// use lithos_domain::ConfigError;
 ///
-/// let error = ConfigError::ValidationFailed {.
-///     field: "vault_path".to_string(),.
-///     message: "path cannot be empty".to_string(),.
-/// };.
-/// assert!(error.to_string().contains("vault_path"));.
-/// ```.
+/// let error = ConfigError::ValidationFailed {
+///     field: "vault_path".to_string(),
+///     message: "path cannot be empty".to_string(),
+/// };
+/// assert!(error.to_string().contains("vault_path"));
+/// ```
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum ConfigError {

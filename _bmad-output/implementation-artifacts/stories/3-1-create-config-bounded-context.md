@@ -625,18 +625,21 @@ No debugging required - TDD approach worked flawlessly with RED-GREEN-REFACTOR c
 - ✅ Implemented domain error types with 8 ConfigError variants for validation, type safety, and encryption
 - ✅ Defined CQRS ports (ConfigCommand and ConfigQuery) for future adapter integration
 - ✅ Created ConfigUpdated domain event for event-driven architecture
-- ✅ Wrote 25 comprehensive unit tests with 100% pass rate
+- ✅ Refactored defaults into domain-specific modules (filesystem/frontmatter/logging)
+- ✅ Moved `log_level` to top-level configs and centralized log-level validation
+- ✅ Property bank filename now resolves under `schemas_dir` via `property_bank_path()`
+- ✅ Wrote 26 comprehensive unit tests with 100% pass rate
 - ✅ All tests follow behavioral naming conventions (verb-first, no test_ prefix)
 - ✅ Full hexagonal architecture compliance - zero external dependencies in domain
 - ✅ Implemented complete TDD cycle: RED (failing tests) → GREEN (passing implementation) → REFACTOR (quality improvements)
 
 **Test Coverage:**
-- Config merging and validation: 6 tests
+- Config merging and validation: 7 tests
 - ConfigValue conversions and variants: 6 tests
 - Error handling and messages: 6 tests
 - Domain events: 3 tests
 - Port traits: 3 tests
-- **Total: 25 tests, 100% passing**
+- **Total: 26 tests, 100% passing**
 
 **Quality Metrics:**
 - Cognitive complexity: <25 (all functions within limits)
