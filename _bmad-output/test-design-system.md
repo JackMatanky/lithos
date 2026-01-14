@@ -32,7 +32,7 @@
 - **Unit: 70%**
   - Focus: Pure business logic in `crates/domain`, template parsing, schema validation rules, and CQRS command/query logic.
   - Rationale: High cyclomatic complexity in schema inheritance and template composition requires granular, fast feedback.
-  - Tools: `cargo test`, `proptest`.
+  - Tools: `mise run test:unit`, `proptest`.
 
 - **Integration: 20%**
   - Focus: `Redb` persistence, `pulldown-cmark` extraction accuracy, and event-bus delivery reliability across planes.

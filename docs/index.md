@@ -39,7 +39,7 @@ The core architectural definition and decision records for the system.
 
 Developer-focused guides and patterns for testing in Lithos.
 
-### [Developer Testing Guide](./testing/developer-guide.md)
+### [Lithos Test Guide](./test_guide.md)
 
 Comprehensive reference for testing standards, patterns, and tools.
 
