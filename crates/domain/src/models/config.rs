@@ -9,11 +9,6 @@
 //! - Encrypted fields are stored as opaque blobs (decryption is adapter concern)
 //! - Immutable configuration entities following Rust ownership patterns
 
-#![expect(
-    clippy::module_name_repetitions,
-    reason = "Domain types in config module are inherently config-related (ConfigValue, FileSystemConfig, VaultConfig, GlobalConfig, FrontmatterConfig), making the repetition meaningful and clear. Renaming would reduce clarity and violate domain naming conventions."
-)]
-
 /// Default configuration constants organized by domain.
 mod defaults {
     /// Filesystem-related defaults.
@@ -83,9 +78,9 @@ use std::collections::HashMap;
 /// ```
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub enum ConfigValue {
+pub enum Value {
     /// Array of configuration values.
-    Array(Vec<ConfigValue>),
+    Array(Vec<Value>),
     /// Boolean configuration value.
     Boolean(bool),
     /// Encrypted field data (opaque bytes, adapter handles encryption/decryption).
@@ -93,12 +88,12 @@ pub enum ConfigValue {
     /// Numeric configuration value (f64 for flexibility).
     Number(f64),
     /// Nested object configuration.
-    Object(HashMap<String, ConfigValue>),
+    Object(HashMap<String, Value>),
     /// String configuration value.
     String(String),
 }
 
-impl std::fmt::Debug for ConfigValue {
+impl std::fmt::Debug for Value {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
@@ -126,7 +121,7 @@ impl std::fmt::Debug for ConfigValue {
 /// - Property bank file is always located in `schemas_dir`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct FileSystemConfig {
+pub struct FileSystem {
     /// Directory for cache files (relative to `vault_path`).
     pub cache_dir: String,
     /// Filename for property bank (located in `schemas_dir`).
@@ -139,7 +134,7 @@ pub struct FileSystemConfig {
     pub vault_path: String,
 }
 
-impl FileSystemConfig {
+impl FileSystem {
     /// Get the full path to the property bank file (`schemas_dir/property_bank_filename`).
     ///
     /// The property bank is always stored in the schemas directory.
@@ -168,7 +163,7 @@ impl FileSystemConfig {
 /// - Keys should follow YAML/TOML naming conventions (lowercase, underscores).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct FrontmatterConfig {
+pub struct Frontmatter {
     /// Key for aliases in frontmatter.
     pub alias_key: String,
     /// Key for creation date in frontmatter.
@@ -191,11 +186,11 @@ pub struct FrontmatterConfig {
     Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
-pub struct VaultConfig {
+pub struct Vault {
     /// Filesystem configuration for vault.
-    pub filesystem: FileSystemConfig,
+    pub filesystem: FileSystem,
     /// Frontmatter configuration for vault.
-    pub frontmatter: FrontmatterConfig,
+    pub frontmatter: Frontmatter,
     /// Log level (debug, info, warn, error).
     pub log_level: String,
 }
@@ -208,11 +203,11 @@ pub struct VaultConfig {
 /// - All fields must have values (no optionals).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct GlobalConfig {
+pub struct Global {
     /// Filesystem configuration for global defaults.
-    pub filesystem: FileSystemConfig,
+    pub filesystem: FileSystem,
     /// Frontmatter configuration for global defaults.
-    pub frontmatter: FrontmatterConfig,
+    pub frontmatter: Frontmatter,
     /// Log level (debug, info, warn, error).
     pub log_level: String,
 }
@@ -243,14 +238,14 @@ pub struct GlobalConfig {
 #[non_exhaustive]
 pub struct Config {
     /// Merged filesystem configuration.
-    pub filesystem: FileSystemConfig,
+    pub filesystem: FileSystem,
     /// Merged frontmatter configuration.
-    pub frontmatter: FrontmatterConfig,
+    pub frontmatter: Frontmatter,
     /// Log level (debug, info, warn, error).
     pub log_level: String,
 }
 
-impl Default for FileSystemConfig {
+impl Default for FileSystem {
     #[inline]
     fn default() -> Self {
         Self {
@@ -264,7 +259,7 @@ impl Default for FileSystemConfig {
     }
 }
 
-impl Default for FrontmatterConfig {
+impl Default for Frontmatter {
     #[inline]
     fn default() -> Self {
         Self {
@@ -279,12 +274,12 @@ impl Default for FrontmatterConfig {
     }
 }
 
-impl Default for GlobalConfig {
+impl Default for Global {
     #[inline]
     fn default() -> Self {
         Self {
-            filesystem: FileSystemConfig::default(),
-            frontmatter: FrontmatterConfig::default(),
+            filesystem: FileSystem::default(),
+            frontmatter: Frontmatter::default(),
             log_level: defaults::logging::LOG_LEVEL.to_owned(),
         }
     }
@@ -308,8 +303,8 @@ impl Config {
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
     #[inline]
     pub fn merge(
-        global: &GlobalConfig,
-        vault: VaultConfig,
+        global: &Global,
+        vault: Vault,
     ) -> Result<Self, crate::ConfigError> {
         // Step 1: Pre-validate required Vault Path
         Self::validate_vault_path(&vault.filesystem.vault_path)?;
@@ -351,13 +346,10 @@ impl Config {
     }
 
     /// Merge filesystem configurations applying defaults where needed.
-    fn merge_filesystem(
-        global: &FileSystemConfig,
-        vault: FileSystemConfig,
-    ) -> FileSystemConfig {
-        let defaults = FileSystemConfig::default();
+    fn merge_filesystem(global: &FileSystem, vault: FileSystem) -> FileSystem {
+        let defaults = FileSystem::default();
 
-        FileSystemConfig {
+        FileSystem {
             cache_dir: Self::choose_value(
                 &vault.cache_dir,
                 &global.cache_dir,
@@ -384,12 +376,12 @@ impl Config {
 
     /// Merge frontmatter configurations applying defaults where needed.
     fn merge_frontmatter(
-        global: &FrontmatterConfig,
-        vault: &FrontmatterConfig,
-    ) -> FrontmatterConfig {
-        let defaults = FrontmatterConfig::default();
+        global: &Frontmatter,
+        vault: &Frontmatter,
+    ) -> Frontmatter {
+        let defaults = Frontmatter::default();
 
-        FrontmatterConfig {
+        Frontmatter {
             alias_key: Self::choose_value(
                 &vault.alias_key,
                 &global.alias_key,
@@ -563,7 +555,7 @@ impl Config {
     }
 }
 
-/// Convert String to `ConfigValue::String` variant.
+/// Convert String to `Value::String` variant.
 ///
 /// # Examples
 /// ```
@@ -572,14 +564,14 @@ impl Config {
 /// let value = ConfigValue::from("test".to_string());
 /// assert_eq!(value, ConfigValue::String("test".to_string()));
 /// ```
-impl From<String> for ConfigValue {
+impl From<String> for Value {
     #[inline]
     fn from(value: String) -> Self {
         Self::String(value)
     }
 }
 
-/// Convert f64 to `ConfigValue::Number` variant.
+/// Convert f64 to `Value::Number` variant.
 ///
 /// # Examples
 /// ```
@@ -588,14 +580,14 @@ impl From<String> for ConfigValue {
 /// let value = ConfigValue::from(42.5);
 /// assert_eq!(value, ConfigValue::Number(42.5));
 /// ```
-impl From<f64> for ConfigValue {
+impl From<f64> for Value {
     #[inline]
     fn from(value: f64) -> Self {
         Self::Number(value)
     }
 }
 
-/// Convert bool to `ConfigValue::Boolean` variant.
+/// Convert bool to `Value::Boolean` variant.
 ///
 /// # Examples
 /// ```
@@ -604,14 +596,14 @@ impl From<f64> for ConfigValue {
 /// let value = ConfigValue::from(true);
 /// assert_eq!(value, ConfigValue::Boolean(true));
 /// ```
-impl From<bool> for ConfigValue {
+impl From<bool> for Value {
     #[inline]
     fn from(value: bool) -> Self {
         Self::Boolean(value)
     }
 }
 
-/// Convert Vec<ConfigValue> to `ConfigValue::Array` variant.
+/// Convert Vec<ConfigValue> to `Value::Array` variant.
 ///
 /// # Examples
 /// ```
@@ -621,14 +613,14 @@ impl From<bool> for ConfigValue {
 /// let value = ConfigValue::from(array.clone());
 /// assert_eq!(value, ConfigValue::Array(array));
 /// ```
-impl From<Vec<ConfigValue>> for ConfigValue {
+impl From<Vec<Value>> for Value {
     #[inline]
-    fn from(value: Vec<ConfigValue>) -> Self {
+    fn from(value: Vec<Value>) -> Self {
         Self::Array(value)
     }
 }
 
-/// Convert `HashMap`<String, `ConfigValue`> to `ConfigValue::Object` variant.
+/// Convert `HashMap`<String, `Value`> to `Value::Object` variant.
 ///
 /// # Examples
 /// ```
@@ -640,9 +632,9 @@ impl From<Vec<ConfigValue>> for ConfigValue {
 /// let value = ConfigValue::from(map.clone());
 /// assert_eq!(value, ConfigValue::Object(map));
 /// ```
-impl From<HashMap<String, ConfigValue>> for ConfigValue {
+impl From<HashMap<String, Value>> for Value {
     #[inline]
-    fn from(value: HashMap<String, ConfigValue>) -> Self {
+    fn from(value: HashMap<String, Value>) -> Self {
         Self::Object(value)
     }
 }
@@ -695,15 +687,15 @@ mod tests {
 
         #[test]
         fn falls_back_to_defaults_when_inputs_are_empty() {
-            let global = GlobalConfig {
-                filesystem: FileSystemConfig {
+            let global = Global {
+                filesystem: FileSystem {
                     cache_dir: String::new(), // Empty - should use default
                     property_bank_filename: String::new(),
                     schemas_dir: String::new(),
                     templates_dir: String::new(),
                     vault_path: "/global".to_owned(),
                 },
-                frontmatter: FrontmatterConfig {
+                frontmatter: Frontmatter {
                     alias_key: String::new(),
                     date_created_key: String::new(),
                     date_modified_key: String::new(),
@@ -713,15 +705,15 @@ mod tests {
                 log_level: String::new(), // Empty - should use default "info"
             };
 
-            let vault = VaultConfig {
-                filesystem: FileSystemConfig {
+            let vault = Vault {
+                filesystem: FileSystem {
                     cache_dir: String::new(),
                     property_bank_filename: String::new(),
                     schemas_dir: String::new(),
                     templates_dir: String::new(),
                     vault_path: "/vault".to_owned(),
                 },
-                frontmatter: FrontmatterConfig {
+                frontmatter: Frontmatter {
                     alias_key: String::new(),
                     date_created_key: String::new(),
                     date_modified_key: String::new(),
@@ -873,6 +865,8 @@ mod tests {
     // ============================================================================
 
     mod config_value {
+        use Value as ConfigValue;
+
         use super::*;
 
         #[test]
@@ -1044,7 +1038,7 @@ mod tests {
 
         #[test]
         fn constructs_valid_property_bank_path() {
-            let config = FileSystemConfig {
+            let config = FileSystem {
                 cache_dir: ".cache".to_owned(),
                 property_bank_filename: "props.json".to_owned(),
                 schemas_dir: "schemas".to_owned(),
@@ -1069,7 +1063,7 @@ mod tests {
 
         #[test]
         fn preserves_frontmatter_key_mappings() {
-            let config = FrontmatterConfig {
+            let config = Frontmatter {
                 alias_key: "aliases".to_owned(),
                 date_created_key: "created".to_owned(),
                 date_modified_key: "modified".to_owned(),
@@ -1086,16 +1080,16 @@ mod tests {
     }
 
     /// Test fixture: Create sample global configuration with defaults.
-    fn sample_global_config() -> GlobalConfig {
-        GlobalConfig {
-            filesystem: FileSystemConfig {
+    fn sample_global_config() -> Global {
+        Global {
+            filesystem: FileSystem {
                 cache_dir: ".cache".to_owned(),
                 property_bank_filename: "property_bank.json".to_owned(),
                 schemas_dir: "schemas".to_owned(),
                 templates_dir: "templates".to_owned(),
                 vault_path: ".".to_owned(),
             },
-            frontmatter: FrontmatterConfig {
+            frontmatter: Frontmatter {
                 alias_key: "aliases".to_owned(),
                 date_created_key: "date_created".to_owned(),
                 date_modified_key: "date_modified".to_owned(),
@@ -1107,16 +1101,16 @@ mod tests {
     }
 
     /// Test fixture: Create sample vault configuration with overrides.
-    fn sample_vault_config() -> VaultConfig {
-        VaultConfig {
-            filesystem: FileSystemConfig {
+    fn sample_vault_config() -> Vault {
+        Vault {
+            filesystem: FileSystem {
                 cache_dir: ".cache".to_owned(),
                 property_bank_filename: "property_bank.json".to_owned(),
                 schemas_dir: "schemas".to_owned(), // same as global
                 templates_dir: "custom_templates".to_owned(),
                 vault_path: "/vault".to_owned(),
             },
-            frontmatter: FrontmatterConfig {
+            frontmatter: Frontmatter {
                 alias_key: "aliases".to_owned(),
                 date_created_key: "created".to_owned(), // vault override
                 date_modified_key: "modified".to_owned(), // vault override

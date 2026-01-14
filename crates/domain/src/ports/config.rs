@@ -8,7 +8,7 @@ use async_trait::async_trait;
 
 use crate::{
     errors::ConfigError,
-    models::config::{Config, GlobalConfig, VaultConfig},
+    models::config::{Config, Global, Vault},
 };
 
 /// Command port for configuration write operations.
@@ -22,7 +22,7 @@ use crate::{
 /// ```ignore
 /// #[async_trait]
 /// impl Command for MyConfigAdapter {
-///     async fn save_vault_config(&self, config: VaultConfig) -> Result<(), ConfigError> {
+///     async fn save_vault_config(&self, config: Vault) -> Result<(), ConfigError> {
 ///         // Adapter implementation for saving vault config
 ///         Ok(())
 ///     }
@@ -36,17 +36,15 @@ pub trait Command: Send + Sync {
     /// Returns `ConfigError` if save operation fails.
     async fn save_global_config(
         &self,
-        config: GlobalConfig,
+        config: Global,
     ) -> Result<(), ConfigError>;
 
     /// Save vault-specific configuration.
     ///
     /// # Errors
     /// Returns `ConfigError` if save operation fails.
-    async fn save_vault_config(
-        &self,
-        config: VaultConfig,
-    ) -> Result<(), ConfigError>;
+    async fn save_vault_config(&self, config: Vault)
+    -> Result<(), ConfigError>;
 }
 
 /// Query port for configuration read operations.
@@ -74,7 +72,7 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
-    async fn load_global_config(&self) -> Result<GlobalConfig, ConfigError>;
+    async fn load_global_config(&self) -> Result<Global, ConfigError>;
 
     /// Load merged configuration (Global + Vault).
     ///
@@ -94,7 +92,7 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
-    async fn load_vault_config(&self) -> Result<VaultConfig, ConfigError>;
+    async fn load_vault_config(&self) -> Result<Vault, ConfigError>;
 }
 
 #[cfg(test)]
