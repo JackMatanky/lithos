@@ -62,12 +62,22 @@ use std::collections::HashMap;
 /// - Array and Object variants allow nested configuration structures.
 ///
 /// # Examples
-/// ```
-/// use lithos_domain::ConfigValue;
 ///
+/// ```rust
+/// use lithos_domain::ConfigValue;
+/// use std::collections::HashMap;
+///
+/// // Create from primitives
 /// let string_val = ConfigValue::from("test".to_string());
 /// let number_val = ConfigValue::from(42.0);
 /// let bool_val = ConfigValue::from(true);
+///
+/// // Create complex nested structures
+/// let mut obj_map = HashMap::new();
+/// obj_map.insert("key".to_string(), string_val);
+/// let object_val = ConfigValue::from(obj_map);
+///
+/// let array_val = ConfigValue::from(vec![number_val, bool_val]);
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -113,8 +123,13 @@ impl FileSystemConfig {
     /// The property bank is always stored in the schemas directory.
     ///
     /// # Examples
-    /// ```ignore
-    /// let config = FileSystemConfig { schemas_dir: "schemas".to_string(), property_bank_filename: "props.json".to_string(), .. };
+    ///
+    /// ```rust
+    /// # use lithos_domain::FileSystemConfig;
+    /// let mut config = FileSystemConfig::default();
+    /// config.schemas_dir = "schemas".to_string();
+    /// config.property_bank_filename = "props.json".to_string();
+    ///
     /// assert_eq!(config.property_bank_path(), "schemas/props.json");
     /// ```
     #[inline]
@@ -150,7 +165,9 @@ pub struct FrontmatterConfig {
 /// - Vault configuration overrides Global configuration.
 /// - Loaded from vault-specific lithos.toml.
 /// - All fields optional (missing fields fall back to global).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Default, Clone, PartialEq, serde::Serialize, serde::Deserialize,
+)]
 #[non_exhaustive]
 pub struct VaultConfig {
     /// Filesystem configuration for vault.
@@ -187,49 +204,15 @@ pub struct GlobalConfig {
 /// - Immutable once created.
 ///
 /// # Examples
-/// ```ignore
-/// // Note: Config structs are #[non_exhaustive] so can only be constructed within the crate.
-/// // This example shows conceptual usage - actual construction would be done via builder
-/// // patterns or factory methods in adapters.
-/// use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig, FrontmatterConfig};
 ///
-/// let global = GlobalConfig {
-///     filesystem: FileSystemConfig {
-///         vault_path: ".".to_string(),
-///         templates_dir: "templates".to_string(),
-///         schemas_dir: "schemas".to_string(),
-///         property_bank_filename: "props.json".to_string(),
-///         cache_dir: ".cache".to_string(),
-///     },
-///     frontmatter: FrontmatterConfig {
-///         file_class_key: "file_class".to_string(),
-///         title_key: "title".to_string(),
-///         alias_key: "aliases".to_string(),
-///         date_created_key: "created".to_string(),
-///         date_modified_key: "modified".to_string(),
-///     },
-///     log_level: "info".to_string(),
-/// };
+/// ```rust
+/// use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig};
 ///
-/// let vault = VaultConfig {
-///     filesystem: FileSystemConfig {
-///         vault_path: "/vault".to_string(),
-///         templates_dir: "templates".to_string(),
-///         schemas_dir: "schemas".to_string(),
-///         property_bank_filename: "props.json".to_string(),
-///         cache_dir: ".cache".to_string(),
-///     },
-///     frontmatter: FrontmatterConfig {
-///         file_class_key: "type".to_string(),
-///         title_key: "title".to_string(),
-///         alias_key: "aliases".to_string(),
-///         date_created_key: "created".to_string(),
-///         date_modified_key: "modified".to_string(),
-///     },
-///     log_level: "debug".to_string(),
-/// };
+/// let global = GlobalConfig::default();
+/// let mut vault = VaultConfig::default();
+/// vault.filesystem.vault_path = "/vault".to_string();
 ///
-/// let config = Config::merge(global, vault).expect("merge should succeed");
+/// let config = Config::merge(&global, vault).expect("merge should succeed");
 /// assert_eq!(config.filesystem.vault_path, "/vault");
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -657,14 +640,21 @@ mod tests {
     }
 
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
+    )]
     fn config_validation_success() {
         let global = sample_global_config();
         let vault = sample_vault_config();
 
-        if let Ok(config) = Config::merge(&global, vault) {
-            let result = config.validate();
-            assert!(result.is_ok(), "valid config should pass validation");
-        }
+        let config = Config::merge(&global, vault).unwrap();
+        let result = config.validate();
+        assert!(
+            result.is_ok(),
+            "valid config should pass validation. Error: {:?}",
+            result.err()
+        );
     }
 
     #[test]
