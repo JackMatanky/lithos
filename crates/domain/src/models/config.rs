@@ -514,6 +514,23 @@ impl Config {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// // Create a valid config via merge
+    /// let global = GlobalConfig::default();
+    /// let mut vault = VaultConfig::default();
+    /// vault.filesystem.vault_path = "/vault".to_string();
+    ///
+    /// let mut config = Config::merge(&global, vault).unwrap();
+    /// assert!(config.validate().is_ok());
+    ///
+    /// // Make it invalid
+    /// config.filesystem.vault_path = String::new();
+    /// assert!(config.validate().is_err());
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         Self::validate_vault_path(&self.filesystem.vault_path)?;
@@ -530,10 +547,7 @@ impl Config {
 /// use lithos_domain::ConfigValue;
 ///
 /// let value = ConfigValue::from("test".to_string());
-/// match value {
-///     ConfigValue::String(s) => assert_eq!(s, "test"),
-///     _ => panic!("expected String variant"),
-/// }
+/// assert_eq!(value, ConfigValue::String("test".to_string()));
 /// ```
 impl From<String> for ConfigValue {
     #[inline]
@@ -549,10 +563,7 @@ impl From<String> for ConfigValue {
 /// use lithos_domain::ConfigValue;
 ///
 /// let value = ConfigValue::from(42.5);
-/// match value {
-///     ConfigValue::Number(n) => assert!((n - 42.5).abs() < f64::EPSILON),
-///     _ => panic!("expected Number variant"),
-/// }
+/// assert_eq!(value, ConfigValue::Number(42.5));
 /// ```
 impl From<f64> for ConfigValue {
     #[inline]
@@ -568,10 +579,7 @@ impl From<f64> for ConfigValue {
 /// use lithos_domain::ConfigValue;
 ///
 /// let value = ConfigValue::from(true);
-/// match value {
-///     ConfigValue::Boolean(b) => assert!(b),
-///     _ => panic!("expected Boolean variant"),
-/// }
+/// assert_eq!(value, ConfigValue::Boolean(true));
 /// ```
 impl From<bool> for ConfigValue {
     #[inline]
@@ -587,11 +595,8 @@ impl From<bool> for ConfigValue {
 /// use lithos_domain::ConfigValue;
 ///
 /// let array = vec![ConfigValue::String("item".to_string())];
-/// let value = ConfigValue::from(array);
-/// match value {
-///     ConfigValue::Array(items) => assert_eq!(items.len(), 1),
-///     _ => panic!("expected Array variant"),
-/// }
+/// let value = ConfigValue::from(array.clone());
+/// assert_eq!(value, ConfigValue::Array(array));
 /// ```
 impl From<Vec<ConfigValue>> for ConfigValue {
     #[inline]
@@ -609,11 +614,8 @@ impl From<Vec<ConfigValue>> for ConfigValue {
 ///
 /// let mut map = HashMap::new();
 /// map.insert("key".to_string(), ConfigValue::String("value".to_string()));
-/// let value = ConfigValue::from(map);
-/// match value {
-///     ConfigValue::Object(obj) => assert_eq!(obj.len(), 1),
-///     _ => panic!("expected Object variant"),
-/// }
+/// let value = ConfigValue::from(map.clone());
+/// assert_eq!(value, ConfigValue::Object(map));
 /// ```
 impl From<HashMap<String, ConfigValue>> for ConfigValue {
     #[inline]
