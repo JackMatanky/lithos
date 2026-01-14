@@ -19,6 +19,7 @@ async fn main() -> miette::Result<()> {
     let _ = clap::Command::new("lithos")
         .version("0.1.0")
         .about("A CLI-first templating and schema system for Obsidian vaults")
+        .ignore_errors(true) // Ignore test flags when running as a unit test
         .get_matches();
 
     println!("Hello, Lithos!");
