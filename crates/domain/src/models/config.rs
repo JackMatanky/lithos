@@ -660,7 +660,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
         )]
-        fn should_override_global_values_when_vault_config_is_provided() {
+        fn vault_values_take_precedence_over_global() {
             // Mitigates R-008: Config Merge Logic
             let global = sample_global_config();
             let vault = sample_vault_config();
@@ -691,7 +691,7 @@ mod tests {
         }
 
         #[test]
-        fn should_apply_defaults_when_merged_values_are_empty() {
+        fn falls_back_to_defaults_when_inputs_are_empty() {
             let global = GlobalConfig {
                 filesystem: FileSystemConfig {
                     cache_dir: String::new(), // Empty - should use default
@@ -773,7 +773,7 @@ mod tests {
         }
 
         #[test]
-        fn should_be_idempotent() {
+        fn merge_is_idempotent() {
             let global = sample_global_config();
             let vault = sample_vault_config();
 
@@ -805,7 +805,7 @@ mod tests {
         #[case::valid_config("/vault", "info", None)]
         #[case::empty_path("", "info", Some("vault_path"))]
         #[case::invalid_log_level("/vault", "invalid", Some("log_level"))]
-        fn should_enforce_business_rules(
+        fn enforces_required_fields_and_enum_constraints(
             #[case] path: &str,
             #[case] level: &str,
             #[case] expected_error_field: Option<&str>,
@@ -873,7 +873,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn should_convert_from_string() {
+        fn converts_from_string() {
             let value = ConfigValue::from("test".to_owned());
             assert_eq!(
                 value,
@@ -883,7 +883,7 @@ mod tests {
         }
 
         #[test]
-        fn should_convert_from_f64() {
+        fn converts_from_f64() {
             let value = ConfigValue::from(42.5f64);
             assert_eq!(
                 value,
@@ -893,7 +893,7 @@ mod tests {
         }
 
         #[test]
-        fn should_convert_from_bool() {
+        fn converts_from_bool() {
             let value = ConfigValue::from(true);
             assert_eq!(
                 value,
@@ -903,7 +903,7 @@ mod tests {
         }
 
         #[test]
-        fn should_store_encrypted_bytes() {
+        fn stores_opaque_encrypted_bytes() {
             let encrypted_data = vec![1, 2, 3, 4, 5];
             let value = ConfigValue::Encrypted(encrypted_data.clone());
 
@@ -915,7 +915,7 @@ mod tests {
         }
 
         #[test]
-        fn should_store_array_of_values() {
+        fn stores_nested_arrays() {
             let array = vec![
                 ConfigValue::String("item1".to_owned()),
                 ConfigValue::String("item2".to_owned()),
@@ -930,7 +930,7 @@ mod tests {
         }
 
         #[test]
-        fn should_store_object_map() {
+        fn stores_nested_objects() {
             let mut map = HashMap::new();
             map.insert(
                 "key1".to_owned(),
@@ -946,7 +946,7 @@ mod tests {
         }
 
         #[test]
-        fn should_convert_from_vec() {
+        fn converts_from_vector_of_values() {
             let array = vec![
                 ConfigValue::String("item1".to_owned()),
                 ConfigValue::Number(42.0),
@@ -961,7 +961,7 @@ mod tests {
         }
 
         #[test]
-        fn should_convert_from_hashmap() {
+        fn converts_from_hashmap_of_values() {
             let mut map = HashMap::new();
             map.insert(
                 "key1".to_owned(),
@@ -977,7 +977,7 @@ mod tests {
         }
 
         #[test]
-        fn should_mask_encrypted_values_in_debug_output() {
+        fn masks_encrypted_variant_in_debug_logs() {
             // Mitigates R-007: Encryption Exposure
             let val = ConfigValue::Encrypted(vec![1, 2, 3]);
             let debug_str = format!("{val:?}");
@@ -1000,7 +1000,7 @@ mod tests {
         use super::*;
 
         #[test]
-        fn should_support_standard_traits() {
+        fn supports_clone_debug_and_partial_eq() {
             let global = sample_global_config();
             let vault = sample_vault_config();
             let result1 = Config::merge(&global, vault.clone());
@@ -1040,7 +1040,7 @@ mod tests {
         }
 
         #[test]
-        fn should_maintain_correct_filesystem_paths() {
+        fn constructs_valid_property_bank_path() {
             let config = FileSystemConfig {
                 cache_dir: ".cache".to_owned(),
                 property_bank_filename: "props.json".to_owned(),
@@ -1065,7 +1065,7 @@ mod tests {
         }
 
         #[test]
-        fn should_maintain_frontmatter_keys() {
+        fn preserves_frontmatter_key_mappings() {
             let config = FrontmatterConfig {
                 alias_key: "aliases".to_owned(),
                 date_created_key: "created".to_owned(),
