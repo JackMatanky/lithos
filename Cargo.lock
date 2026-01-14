@@ -950,6 +950,7 @@ dependencies = [
  "async-trait",
  "lithos-test-utils",
  "serde",
+ "serde_json",
  "thiserror",
  "tokio",
  "uuid",
