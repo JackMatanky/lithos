@@ -452,14 +452,7 @@ impl Config {
             ("vault_path", &self.filesystem.vault_path),
         ];
 
-        for (name, value) in filesystem_fields {
-            if value.is_empty() {
-                return Err(crate::ConfigError::ValidationFailed {
-                    field: (*name).to_owned(),
-                    message: format!("{name} cannot be empty after merge"),
-                });
-            }
-        }
+        Self::validate_fields(&filesystem_fields)?;
 
         // Step 2: Validate Frontmatter Completeness
         let metadata_fields = [
@@ -470,7 +463,22 @@ impl Config {
             ("title_key", &self.frontmatter.title_key),
         ];
 
-        for (name, value) in metadata_fields {
+        Self::validate_fields(&metadata_fields)?;
+
+        // Step 3: Validate Log Level
+        Self::validate_log_level(&self.log_level)?;
+
+        Ok(())
+    }
+
+    /// Validate that all fields in the provided slice are non-empty.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if any field is empty.
+    fn validate_fields(
+        fields: &[(&str, &String)],
+    ) -> Result<(), crate::ConfigError> {
+        for &(name, value) in fields {
             if value.is_empty() {
                 return Err(crate::ConfigError::ValidationFailed {
                     field: (*name).to_owned(),
@@ -478,10 +486,6 @@ impl Config {
                 });
             }
         }
-
-        // Step 3: Validate Log Level
-        Self::validate_log_level(&self.log_level)?;
-
         Ok(())
     }
 
