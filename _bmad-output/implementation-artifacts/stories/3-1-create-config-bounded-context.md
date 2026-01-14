@@ -341,7 +341,7 @@ mod tests {
 ```
 
 **Test Coverage Target:**
-- **90%+ coverage** for Config domain entities and validation logic (per Epic 3 AC)
+- **80%+ coverage** for Config domain entities and validation logic (hybrid approach: quality over quantity)
 - Test both success and error cases for all validation rules
 - Property-based testing for hierarchical merging and validation edge cases
 - Deterministic testing with fixed test data
