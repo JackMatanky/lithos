@@ -88,7 +88,7 @@ build_test_args() {
 # Outputs:
 #   Writes test results to stdout
 #######################################
-run_nextest() {
+run_tests() {
     echo "🧪 Running unit tests..."
     cargo nextest run "$@"
 }
@@ -109,7 +109,7 @@ main() {
     local args=()
     build_test_args args "${resolved_package}"
 
-    run_nextest "${args[@]}"
+    run_tests "${args[@]}"
     echo "✅ Unit tests complete"
 }
 

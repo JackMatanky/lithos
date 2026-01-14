@@ -1,803 +1,263 @@
 # Async Testing Guidelines
 
-This document provides comprehensive guidelines and patterns for testing async code in Lithos using Tokio.
+Tactical specification for testing asynchronous code in Lithos using Tokio.
 
-## Table of Contents
+## 1. Key Principles
 
-1. [Overview](#overview)
-2. [Testing Patterns](#testing-patterns)
-3. [Runtime Configuration](#runtime-configuration)
-4. [Blocking Operations](#blocking-operations)
-5. [Timeouts and Cancellation](#timeouts-and-cancellation)
-6. [Race Condition Prevention](#race-condition-prevention)
-7. [Test Isolation](#test-isolation)
-8. [Error Handling](#error-handling)
-9. [Best Practices](#best-practices)
-10. [Examples](#examples)
+### Determinism First
+Async tests must be deterministic. Flakiness is unacceptable in a CI environment.
+- **Avoid Wall-Clock**: Never use `std::thread::sleep`. It relies on the OS scheduler and varies by machine load (e.g., CI runners are slower than dev machines).
+- **Virtual Time**: Use Tokio's test runtime to pause and advance time programmatically. This allows testing a "1-hour timeout" in milliseconds with 100% reliability.
+- **Fixed Seeds**: Any randomness (UUIDs, jitter, exponential backoff) must be seeded with a fixed value during testing.
 
-## Overview
+### Safety Invariants
+The Tokio runtime behaves differently than standard threads. Violating its invariants leads to difficult-to-debug hangs.
+- **No Blocking**: Blocking the async runtime thread for >10ms (Rule 103) starves other tasks on the same worker thread. Use `spawn_blocking_test` for `std::fs`, heavy JSON parsing, `bcrypt`, or large `Redb` write transactions.
+- **Lock Discipline**: NEVER hold a `std::sync::MutexGuard` across an `.await` point. This causes deadlocks because the task yields to the executor while holding the lock, preventing other tasks from acquiring it. Use `tokio::sync::Mutex` instead.
+- **Resource Bounds**: Unbounded concurrency (e.g., `join_all` on a list of 10k items) can exhaust file descriptors or memory. Use `Semaphore` or `JoinSet` to bound concurrency.
 
-Lithos uses Tokio for async operations throughout the hexagonal architecture. Async testing must follow standardized patterns to ensure:
+### Isolation
+- **Fresh Runtime**: Each test gets its own Tokio runtime instance created by the `#[tokio::test]` macro.
+- **Fresh Filesystem**: Use `IsolatedTestContext` to get a unique, randomized temporary directory per test.
+- **No Global State**: Avoid `static` mutable state. Use dependency injection for shared resources (e.g., pass `Arc<Bus>` rather than accessing a `lazy_static` Bus).
 
-- **Reliability**: Tests are deterministic and don't flake
-- **Safety**: Proper runtime behavior without blocking issues
-- **Isolation**: Tests don't interfere with each other
-- **Speed**: Tests run efficiently without unnecessary delays
+## 2. Golden Rules (The Invariants)
 
-## Testing Patterns
+1.  **Strict Flavor**: All tests must use `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` (or the `async_test!` macro). Single-threaded tests mask race conditions by executing tasks sequentially. Multi-threaded tests force actual parallelism.
+2.  **Mandatory Timeouts**: All async operations must be wrapped in `with_timeout` (default 5s) or `with_cancellation`. Hanging CI pipelines are a major productivity killer.
+3.  **Cancellation Paths**: Every long-running process (Actor/Service) must be tested for graceful shutdown via cancellation token or channel close.
+4.  **Error Paths**: Async results must be verified for both success (`Ok`) and failure (`Err`) conditions. Panics in spawned tasks must be caught and reported, not silently ignored.
 
-### Using `#[tokio::test]` Macro
+## 3. Implementation Reference
 
-All async tests must use `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` (or the `async_test!` helper from `lithos-test-utils`):
-
-```rust
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn my_async_function_test() {
-    // Your test code here
-    let result = my_async_function().await;
-    assert_eq!(result, expected);
-}
-```
-
-**Why multi_thread?**
-
-The macro configures `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` to:
-- Surface race conditions that might not appear in single-threaded tests
-- Test concurrent operations like event buses and shared state
-- Ensure tests behave similarly to production runtime
-
-### Testing Async Functions and Futures
-
-When testing async functions, follow these patterns:
+### Runtime Configuration
+The `multi_thread` flavor with 2 workers is the project standard. It balances speed with the ability to detect common async bugs like sending non-`Send` types across threads or deadlocking shared resources.
 
 ```rust
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_async_function() {
-    // Given
-    let input = 42;
+// Preferred: Use the macro provided by lithos-test-utils
+// Automatically configures multi_thread + 2 workers
+async_test!(async fn my_concurrent_test() {
+    // Test logic here
+});
 
-    // When
-    let result = my_async_function(input).await;
-
-    // Then
-    assert_eq!(result, expected_value);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_async_futures() {
-    // Test Future types directly
-    let future = my_async_future();
-
-    // You can await multiple futures concurrently
-    let (result1, result2) = tokio::join!(future, another_async_function());
-
-    assert!(result1.is_ok());
-}
-```
-
-## Runtime Configuration
-
-### Tokio Test Runtime
-
-The test runtime is configured via `lithos-test-utils`:
-
-```rust
-#[macro_export]
-macro_rules! async_test {
-    ($vis:vis async fn $name:ident() $body:block) => {
-        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-        $vis async fn $name() $body
-    };
-}
-```
-
-**Key Configuration Points:**
-
-1. **flavor = "multi_thread"**: Uses multiple worker threads
-2. **worker_threads = 2**: Limits concurrent threads to balance speed with race condition detection
-
-### Adjusting Worker Threads
-
-For specific tests that need different thread configurations:
-
-```rust
+// Manual (if specific config needed, e.g., simulating high contention)
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-async fn test_highly_concurrent_operations() {
-    // Test with 4 worker threads
+async fn heavy_concurrency_test() {
+    // ...
 }
 ```
 
-## Blocking Operations
-
-### The Blocking Problem
-
-NEVER perform blocking operations in async tests without proper handling:
-
-```rust
-// ❌ BAD - Blocks the async runtime thread
-#[tokio::test]
-async fn test_blocking_file_read() {
-    let content = std::fs::read_to_string("file.txt").unwrap(); // BLOCKING!
-}
-```
-
-### Using `spawn_blocking_test`
-
-Use the helper from `lithos-test-utils` for operations that cannot be made async:
+### Handling Blocking Operations
+If you must use `std::fs` (e.g., legacy code, initial setup, or Redb internals), offload it.
 
 ```rust
 use lithos_test_utils::spawn_blocking_test;
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_non_blocking_file_read() {
-    // ✅ GOOD - Offloads to blocking thread pool
+    // spawn_blocking_test offloads to a dedicated blocking thread pool
+    // It returns a Result<Result<T, E>, JoinError>
+    // The outer Result handles the JoinError (panic in task)
+    // The inner Result handles the application error (IO error)
     let content = spawn_blocking_test(|| {
-        std::fs::read_to_string("file.txt").unwrap()
-    }).await.unwrap();
+        // This closure runs on a thread where blocking is safe
+        std::fs::read_to_string("vault_config.toml").map_err(|e| e.to_string())
+    })
+    .await
+    .expect("Task failed/panicked")
+    .expect("File read failed");
 
     assert!(!content.is_empty());
 }
 ```
 
-## Deterministic Time Testing
-
-When testing time-sensitive logic (e.g., timeouts, debouncing), use the `time_test!` macro to control the virtual clock:
+### Deterministic Time Control
+Eliminate flakiness by pausing the global virtual clock.
 
 ```rust
 use lithos_test_utils::time_test;
 use tokio::time::{advance, Duration};
 
-time_test!(async fn test_timeout_logic() {
-    // Virtual time is paused here
-    let mut receiver = subscribe_to_events();
+time_test!(async fn validates_cache_expiry() {
+    // Virtual time is PAUSED by default in this macro.
 
-    // Advance time by 5 seconds
-    advance(Duration::from_secs(5)).await;
+    // 1. Set a key with 60s TTL
+    // The creation timestamp is captured relative to the frozen clock
+    cache.set("key", "val", Duration::from_secs(60)).await;
 
-    // Check if timeout event was triggered
-    assert!(receiver.try_recv().is_err());
+    // 2. Advance 30s (should still exist)
+    // This jumps forward instantly. No sleeping.
+    advance(Duration::from_secs(30)).await;
+    assert!(cache.get("key").await.is_some());
+
+    // 3. Advance another 31s (total 61s - expired)
+    advance(Duration::from_secs(31)).await;
+    assert!(cache.get("key").await.is_none());
 });
 ```
 
-`time_test!` uses `tokio::time::pause()` internally, allowing you to `advance` time deterministically without waiting for real-world time to pass.
-
-### When to Use `spawn_blocking`
-
-**Always use for:**
-- `std::fs` operations (reading/writing files)
-- Heavy CPU computations (e.g., parsing large documents)
-- Redb write transactions
-- Synchronous HTTP requests
-- Database operations without async drivers
-
-**Never use for:**
-- `tokio::fs` operations (already async)
-- `tokio::sync` primitives (designed for async)
-- `tokio::net` operations (already async)
-
-### Safety Invariant
-
-According to Lithos project rules:
-- NEVER block an async thread for >10ms (Rule 103)
-- Use `tokio::task::spawn_blocking` for all blocking operations
-- This prevents runtime thread starvation and maintains responsiveness
-
-## Resource Throttling
-
-When testing operations that consume significant resources (e.g., indexing thousands of files), use a `tokio::sync::Semaphore` to prevent exceeding OS limits or starving the executor:
+### Resource Throttling & JoinSets
+When testing indexing or batch operations, use `tokio::task::JoinSet` and `Semaphore` to prevent overwhelming the system.
 
 ```rust
 use tokio::sync::Semaphore;
-use std::sync::Arc;
+use tokio::task::JoinSet;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_throttled_io() {
-    let semaphore = Arc::new(Semaphore::new(10)); // Limit to 10 concurrent operations
-    let mut join_set = tokio::task::JoinSet::new();
+#[tokio::test]
+async fn test_batch_processing_under_load() {
+    let semaphore = Arc::new(Semaphore::new(10)); // Max 10 concurrent tasks
+    let mut join_set = JoinSet::new();
 
     for i in 0..100 {
+        // Acquire permit BEFORE spawning. This exerts backpressure.
         let permit = semaphore.clone().acquire_owned().await.unwrap();
+
         join_set.spawn(async move {
-            let _permit = permit; // Permit held until end of task
-            my_io_operation(i).await
+            // Permit is moved into the task and dropped when task completes
+            let _permit = permit;
+            process_vault_file(i).await
         });
     }
 
+    // Drain the set and check for failures
     while let Some(res) = join_set.join_next().await {
-        res.unwrap().unwrap();
+        match res {
+            Ok(app_result) => assert!(app_result.is_ok()),
+            Err(join_err) => panic!("Task panicked: {:?}", join_err),
+        }
     }
 }
 ```
 
-## Shutdown and Cancellation
-
-All actors and long-running services should respect a global shutdown signal. Use `tokio::select!` in tests to verify graceful exit:
+### Graceful Shutdown
+Actors must respect cancellation signals. Verify this using `tokio::select!`.
 
 ```rust
 use tokio::sync::broadcast;
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_graceful_shutdown() {
-    let (shutdown_tx, mut shutdown_rx) = broadcast::channel(1);
+#[tokio::test]
+async fn test_actor_shutdown() {
+    let (tx, _) = broadcast::channel(1);
+    let mut rx = tx.subscribe();
 
-    // Spawn actor
-    let handle = tokio::spawn(async move {
-        tokio::select! {
-            _ = shutdown_rx.recv() => {
-                // Perform cleanup
-                Ok::<_, anyhow::Error>("shutdown")
-            }
-            _ = tokio::time::sleep(tokio::time::Duration::from_secs(10)) => {
-                Err(anyhow::anyhow!("Timed out waiting for shutdown"))
+    let actor_handle = tokio::spawn(async move {
+        // Simulating an actor loop
+        loop {
+            tokio::select! {
+                // Priority 1: Shutdown signal
+                _ = rx.recv() => {
+                    return Ok::<_, anyhow::Error>("shutdown_cleanly");
+                }
+                // Priority 2: Work (mocked with sleep)
+                _ = tokio::time::sleep(Duration::from_secs(10)) => {
+                    // This branch should NOT be taken if cancellation works
+                    return Err(anyhow::anyhow!("Timed out waiting for shutdown"));
+                }
             }
         }
     });
 
-    // Send shutdown signal
-    shutdown_tx.send(()).unwrap();
+    // Simulate shutdown signal
+    tx.send(()).unwrap();
 
-    let result = handle.await.unwrap().unwrap();
-    assert_eq!(result, "shutdown");
+    let result = actor_handle.await.unwrap().unwrap();
+    assert_eq!(result, "shutdown_cleanly");
 }
 ```
 
-## Timeouts and Cancellation
+## 4. Advanced Scenarios & Debugging
 
-### Preventing Hanging Tests
-
-Always wrap async operations with timeouts:
-
-```rust
-use lithos_test_utils::{with_timeout, default_test_timeout};
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_with_timeout() {
-    let result = with_timeout(default_test_timeout(), async {
-        // Operation that should complete
-        my_async_operation().await
-    }).await;
-
-    assert!(result.is_ok());
-}
-```
-
-### Timeout Durations
-
-Choose appropriate timeouts based on operation complexity:
+### Testing Async Streams
+When testing `Stream` implementations (e.g., from `tokio-stream` or `futures`), use `StreamExt` traits.
 
 ```rust
-use lithos_test_utils::{short_test_timeout, default_test_timeout, long_test_timeout};
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_quick_operation() {
-    // Use for simple calculations or checks
-    with_timeout(short_test_timeout(), async {
-        quick_operation().await
-    }).await.unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_normal_operation() {
-    // Use for most operations (default: 5 seconds)
-    with_timeout(default_test_timeout(), async {
-        normal_operation().await
-    }).await.unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_heavy_operation() {
-    // Use for indexing, parsing, heavy computations (30 seconds)
-    with_timeout(long_test_timeout(), async {
-        heavy_operation().await
-    }).await.unwrap();
-}
-```
-
-### Cancellation Testing
-
-Test that operations respect shutdown signals:
-
-```rust
-use lithos_test_utils::with_cancellation;
-use tokio::sync::broadcast;
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_actor_shutdown() {
-    let result = with_cancellation(default_test_timeout(), |cancel| async move {
-        // Test actor shutdown behavior
-        let (shutdown_tx, mut shutdown_rx) = broadcast::channel(1);
-
-        tokio::select! {
-            _ = cancel.cancelled() => {
-                // Test was cancelled
-                Ok("cancelled".to_string())
-            }
-            _ = shutdown_rx.recv() => {
-                // Actor received shutdown signal
-                Ok("graceful_shutdown".to_string())
-            }
-            result = async {
-                // Normal operation
-                tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-                Ok("completed".to_string())
-            } => result
-        }
-    }).await;
-
-    assert!(result.is_ok());
-}
-```
-
-## Race Condition Prevention
-
-### Testing Concurrent Operations
-
-Use multi-threaded tests to surface race conditions:
-
-```rust
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_concurrent_counter() {
-    let counter = Arc::new(AtomicUsize::new(0));
-
-    // Spawn multiple tasks updating the same counter
-    let mut tasks = Vec::new();
-    for _ in 0..10 {
-        let counter = counter.clone();
-        tasks.push(tokio::spawn(async move {
-            for _ in 0..100 {
-                counter.fetch_add(1, Ordering::SeqCst);
-            }
-        }));
-    }
-
-    // Wait for all tasks
-    for task in tasks {
-        task.await.unwrap();
-    }
-
-    // Verify no race conditions occurred
-    assert_eq!(counter.load(Ordering::SeqCst), 1000);
-}
-```
-
-### Synchronization Primitives
-
-Use appropriate synchronization primitives:
-
-```rust
-use std::sync::Arc;
-use tokio::sync::{Mutex, RwLock, Semaphore};
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mutex_protection() {
-    let shared_data = Arc::new(Mutex::new(0));
-
-    // Multiple tasks accessing shared data
-    let mut handles = vec![];
-    for _ in 0..10 {
-        let data = shared_data.clone();
-        handles.push(tokio::spawn(async move {
-            let mut guard = data.lock().await;
-            *guard += 1;
-        }));
-    }
-
-    for handle in handles {
-        handle.await.unwrap();
-    }
-
-    assert_eq!(*shared_data.lock().await, 10);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_semaphore_throttling() {
-    let semaphore = Arc::new(Semaphore::new(2)); // Max 2 concurrent operations
-
-    let mut join_set = tokio::task::JoinSet::new();
-    for i in 0..5 {
-        let sem = semaphore.clone();
-        join_set.spawn(async move {
-            let _permit = sem.acquire().await;
-            // Simulate operation
-            tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
-            i
-        });
-    }
-
-    let mut results = Vec::new();
-    while let Some(result) = join_set.join_next().await {
-        results.push(result.unwrap());
-    }
-
-    assert_eq!(results.len(), 5);
-}
-```
-
-### Lock Discipline
-
-**CRITICAL**: NEVER hold a `std::sync::MutexGuard` across an `.await`:
-
-```rust
-// ❌ BAD - Deadlock risk
-use std::sync::Mutex;
+use futures::StreamExt;
 
 #[tokio::test]
-async fn test_deadlock_bad() {
-    let guard = std::sync::Mutex::new(1).lock().unwrap(); // Acquires lock
-    tokio::time::sleep(Duration::from_millis(10)).await; // AWAIT WITH LOCK HELD!
-    // Guard is held across await - may cause deadlock
-}
+async fn test_stream_yields_values() {
+    let mut stream = my_async_stream();
 
-// ✅ GOOD - Use tokio::sync::Mutex
-use tokio::sync::Mutex;
+    // Assert the first value
+    let val1 = stream.next().await.expect("Stream ended prematurely");
+    assert_eq!(val1, 1);
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_no_deadlock_good() {
-    let mutex = Mutex::new(1);
-    let guard = mutex.lock().await; // Acquires lock (async)
-    tokio::time::sleep(Duration::from_millis(10)).await;
-    // Guard can be held across await with tokio::sync::Mutex
+    // Assert the stream ends
+    assert!(stream.next().await.is_none());
 }
 ```
 
-## Test Isolation
-
-### No Shared State Between Tests
-
-Each test should be independent:
+### Race Condition Detection
+Race conditions often only appear under load or specific thread scheduling.
+- **Pattern**: Run the same logic in a loop within the test to increase probability of collision.
+- **Pattern**: Use `tokio::sync::Barrier` to align starting points of concurrent tasks.
 
 ```rust
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_isolated_operation() {
-    // Setup isolated for this test
-    let test_data = create_test_data();
+let barrier = Arc::new(Barrier::new(2));
+let c = barrier.clone();
 
-    // Test
-    let result = operation(test_data).await;
-    assert!(result.is_ok());
+let task_a = tokio::spawn(async move {
+    c.wait().await; // Wait for both tasks to be ready
+    // Perform Action A
+});
 
-    // Cleanup (optional, will be dropped when test ends)
-}
+barrier.wait().await; // Release the barrier
+// Perform Action B immediately concurrent with Action A
 ```
 
-### Using Fixtures for Test Data
+### Debugging Hung Tests
+If `mise run test` hangs, it usually means a task is:
+1.  Waiting on a channel that will never receive a message.
+2.  Waiting on a lock (`Mutex`) that is held by a suspended task (Deadlock).
+3.  Running an infinite loop without `.await` points (CPU starvation).
 
-Create reusable test fixtures:
+**Mitigation**:
+- Enable `console-subscriber` in `lithos-test-utils` config.
+- Use `#[tokio::test(flavor = "multi_thread")]` to prevent single-thread starvation.
+- Ensure strict timeouts (`with_timeout`) are applied.
+
+### Async Traits and Mockall
+When mocking `#[async_trait]`, ensure the mock is `Send + Sync`.
+- `mockall::automock` handles this automatically if configured correctly.
+- Ensure return types are `BoxFuture` compliant if manually mocking.
+
+### Error Handling
+Async tests often fail with `JoinError` (panic in task) vs. `AppError` (logic failure).
+- Differentiate between the two:
+  - `JoinError`: The code crashed/panicked. This is usually a bug in the code or test setup.
+  - `AppError`: The code handled an error condition. This is what you assert against.
 
 ```rust
-// In a fixtures module
-pub async fn create_test_vault() -> TestVault {
-    // Create isolated test vault
-    TestVault::new().await
-}
-
-// In tests
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_with_fixture() {
-    let vault = create_test_vault().await;
-    let result = vault.process_note("test.md").await;
-    assert!(result.is_ok());
-}
+let handle = tokio::spawn(async { panic!("oops") });
+let err = handle.await.unwrap_err();
+assert!(err.is_panic()); // Verify it was a panic
 ```
 
-## Error Handling
+## 5. Anti-Patterns (Do Not Do This)
 
-### Testing Error Cases
-
-Async functions return `Result`, so test both success and failure paths:
-
+### ❌ The "Sleep and Pray"
 ```rust
-use anyhow::Result;
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_success_path() {
-    let result = my_async_operation("valid_input").await;
-    assert!(result.is_ok());
-    assert_eq!(result.unwrap(), expected_value);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_error_path() {
-    let result = my_async_operation("invalid_input").await;
-    assert!(result.is_err());
-
-    // Optionally check specific error
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("expected error"));
-}
+// BAD: Flaky and slow
+tokio::spawn(async_work());
+tokio::time::sleep(Duration::from_millis(50)).await;
+assert!(check_work_done());
 ```
+**Fix**: Use channels or `Notify` to signal completion deterministically.
 
-### Using `miette` for Rich Errors
-
-When testing error handling, check that errors include helpful information:
-
+### ❌ The "Blocking Mutex"
 ```rust
-use miette::{Diagnostic, SourceSpan};
-use std::fmt;
-
-#[derive(Debug, Diagnostic)]
-#[error("Test error")]
-struct TestError {
-    #[source_code]
-    src: String,
-    #[label("here")]
-    span: SourceSpan,
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_error_with_diagnostic() {
-    let result = operation_that_errors().await;
-
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-
-    // Verify error has diagnostic information
-    assert!(err.to_string().contains("Test error"));
-}
+// BAD: Deadlock risk
+let lock = std::sync::Mutex::new(0);
+let guard = lock.lock().unwrap();
+some_async_fn().await; // Executor switches task, but lock is still held!
 ```
+**Fix**: Use `tokio::sync::Mutex` if you must hold it across await, or drop the guard before awaiting.
 
-## Best Practices
-
-### 1. Always Use Timeouts
-
+### ❌ The "Unawaited Future"
 ```rust
-use lithos_test_utils::with_timeout;
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_operation() {
-    // Always wrap with timeout
-    with_timeout(Duration::from_secs(5), async {
-        my_operation().await
-    }).await.unwrap();
-}
+// BAD: Does nothing
+my_async_fn(); // Returns a Future that is dropped immediately
 ```
+**Fix**: Always `.await` or `tokio::spawn` the future. `#[must_use]` on Futures helps catch this.
 
-### 2. Never Block Async Threads
-
-```rust
-// ❌ BAD
-#[tokio::test]
-async fn test() {
-    std::fs::read_to_string("file").unwrap(); // Blocks!
-}
-
-// ✅ GOOD
-use lithos_test_utils::spawn_blocking_test;
-
-#[tokio::test]
-async fn test() {
-    spawn_blocking_test(|| {
-        std::fs::read_to_string("file").unwrap()
-    }).await.unwrap();
-}
-```
-
-### 3. Use Multi-Threaded Tests for Concurrency
-
-```rust
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_concurrent() {
-    // Uses multi_thread flavor by default
-    // Surfaces race conditions
-}
-```
-
-### 4. Test Cancellation Paths
-
-```rust
-use lithos_test_utils::with_cancellation;
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_graceful_shutdown() {
-    with_cancellation(Duration::from_secs(5), |cancel| async move {
-        tokio::select! {
-            _ = cancel.cancelled() => Ok("cancelled"),
-            result = operation() => result,
-        }
-    }).await.unwrap();
-}
-```
-
-### 5. Avoid Global State
-
-Each test should create its own test data and resources:
-
-```rust
-// ❌ BAD - Global state
-static GLOBAL_DATA: OnceCell<Data> = OnceCell::new();
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_with_global() {
-    let data = GLOBAL_DATA.get_or_init(|| create_data());
-    // Tests share state - bad!
-}
-
-// ✅ GOOD - Local state
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_with_local() {
-    let data = create_data(); // Each test has its own
-    // Tests are isolated
-}
-```
-
-### 6. Test Edge Cases
-
-```rust
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_empty_input() {
-    let result = operation("").await;
-    assert!(result.is_err());
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_large_input() {
-    let large_input = vec![0; 1_000_000];
-    let result = operation(&large_input).await;
-    assert!(result.is_ok());
-}
-```
-
-## Examples
-
-### Complete Example: Async Repository Test
-
-```rust
-use lithos_test_utils::{with_timeout, spawn_blocking_test};
-use std::sync::Arc;
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_note_repository_crud() {
-    with_timeout(Duration::from_secs(5), async {
-        // Setup - create test repository
-        let repo = Arc::new(TestNoteRepository::new().await);
-
-        // Create
-        let note = Note::new("test", "content");
-        let created = repo.create(note.clone()).await.unwrap();
-        assert_eq!(created.id(), note.id());
-
-        // Read
-        let found = repo.get(note.id()).await.unwrap();
-        assert_eq!(found.title(), "test");
-
-        // Update
-        let updated = Note::new(note.id(), "updated content");
-        repo.update(updated.clone()).await.unwrap();
-
-        // Delete
-        repo.delete(note.id()).await.unwrap();
-        let result = repo.get(note.id()).await;
-        assert!(result.is_err());
-
-        Ok::<(), anyhow::Error>(())
-    }).await.unwrap();
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_note_repository_with_blocking() {
-    // Test with blocking operations (e.g., file I/O)
-    let path = "/tmp/test-notes.db";
-    let repo = spawn_blocking_test(move || {
-        // Blocking initialization
-        std::fs::File::create(path).unwrap();
-        NoteRepository::new(path)
-    }).await.unwrap();
-
-    // Async operations continue
-    repo.create(Note::new("test", "content")).await.unwrap();
-}
-```
-
-### Complete Example: Event Bus Testing
-
-```rust
-use lithos_test_utils::with_timeout;
-use tokio::sync::broadcast;
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_event_bus_publish_subscribe() {
-    with_timeout(Duration::from_secs(2), async {
-        let (tx, mut rx) = broadcast::channel(16);
-
-        // Spawn subscriber task
-        let subscriber_task = tokio::spawn(async move {
-            let mut received = Vec::new();
-            while let Ok(event) = rx.recv().await {
-                received.push(event);
-                if received.len() >= 3 {
-                    break;
-                }
-            }
-            received
-        });
-
-        // Publish events
-        tx.send(1).unwrap();
-        tx.send(2).unwrap();
-        tx.send(3).unwrap();
-
-        // Wait for subscriber
-        let events = subscriber_task.await.unwrap();
-        assert_eq!(events, vec![1, 2, 3]);
-
-        Ok::<(), anyhow::Error>(())
-    }).await.unwrap();
-}
-```
-
-### Complete Example: Cancellation Testing
-
-```rust
-use lithos_test_utils::{with_cancellation, default_test_timeout};
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_actor_graceful_shutdown() {
-    let result = with_cancellation(default_test_timeout(), |cancel| async move {
-        let (shutdown_tx, mut shutdown_rx) = broadcast::channel(1);
-
-        // Spawn an actor task
-        let actor_task = tokio::spawn(async move {
-            let mut counter = 0;
-
-            loop {
-                tokio::select! {
-                    _ = shutdown_rx.recv() => {
-                        // Gracefully shutdown - complete current work
-                        counter += 1;
-                        return Ok(counter);
-                    }
-                    _ = tokio::time::sleep(Duration::from_millis(10)) => {
-                        // Normal operation
-                        counter += 1;
-                        if counter > 10 {
-                            return Ok(counter);
-                        }
-                    }
-                }
-            }
-        });
-
-        // Test: Cancel after a short time
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        cancel.cancel();
-
-        let result = actor_task.await.unwrap()?;
-        assert!(result > 0);
-
-        Ok::<_, anyhow::Error>(())
-    }).await;
-
-    assert!(result.is_ok());
-}
-```
-
-## Summary
-
-### Key Takeaways
-
-1. **Always use `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]`** macro for proper runtime configuration
-2. **Never block async threads** - use `spawn_blocking_test` for blocking operations
-3. **Wrap with timeouts** to prevent hanging tests
-4. **Test cancellation paths** to ensure graceful shutdown
-5. **Use multi-threaded tests** to surface race conditions
-6. **Maintain test isolation** - no shared state between tests
-7. **Follow lock discipline** - use `tokio::sync::Mutex`, never `std::sync::Mutex` across awaits
-
-### Common Pitfalls to Avoid
-
-- ❌ Blocking operations in async context without `spawn_blocking`
-- ❌ Holding `std::sync::MutexGuard` across `.await`
-- ❌ Tests that can hang indefinitely (no timeouts)
-- ❌ Single-threaded tests for concurrent code
-- ❌ Global state between tests
-- ❌ Not testing error paths
-- ❌ Not testing cancellation/shutdown paths
-
-### Resources
-
-- [Tokio Testing Documentation](https://tokio.rs/tokio/topics/testing)
-- [Async/Await Book](https://rust-lang.github.io/async-book/)
-- [Lithos Project Context](../../project-context.md)
+---
+*For high-level guides, see [docs/test_guide.md](../test_guide.md)*
