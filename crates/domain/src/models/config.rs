@@ -14,6 +14,32 @@
     reason = "Domain types like ConfigValue and FileSystemConfig clearly indicate their purpose as configuration-related entities, which is more valuable than avoiding module name repetition"
 )]
 
+/// Default configuration constants.
+mod defaults {
+    /// Default log level.
+    pub const LOG_LEVEL: &str = "info";
+    /// Default templates directory.
+    pub const TEMPLATES_DIR: &str = "templates";
+    /// Default schemas directory.
+    pub const SCHEMAS_DIR: &str = "schemas";
+    /// Default cache directory.
+    pub const CACHE_DIR: &str = ".cache";
+    /// Default property bank file.
+    pub const PROPERTY_BANK_FILE: &str = "property_bank.json";
+    /// Default file class key.
+    pub const FILE_CLASS_KEY: &str = "file_class";
+    /// Default title key.
+    pub const TITLE_KEY: &str = "title";
+    /// Default alias key.
+    pub const ALIAS_KEY: &str = "aliases";
+    /// Default date created key.
+    pub const DATE_CREATED_KEY: &str = "date_created";
+    /// Default date modified key.
+    pub const DATE_MODIFIED_KEY: &str = "date_modified";
+    /// Valid log levels.
+    pub const VALID_LOG_LEVELS: &[&str] = &["debug", "info", "warn", "error"];
+}
+
 use std::collections::HashMap;
 
 /// Configuration value types supporting multiple data types and encryption.
@@ -53,14 +79,11 @@ pub enum ConfigValue {
 /// # Invariants
 /// - `vault_path` must be an absolute path (validated by Config).
 /// - All directory paths should end without trailing slash.
-/// - `log_level` must be valid log level string.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct FileSystemConfig {
     /// Directory for cache files (relative to `vault_path`).
     pub cache_dir: String,
-    /// Log level (debug, info, warn, error).
-    pub log_level: String,
     /// Path to property bank file (relative to `vault_path`).
     pub property_bank_file: String,
     /// Directory for schema files (relative to `vault_path`).
@@ -104,6 +127,8 @@ pub struct VaultConfig {
     pub filesystem: FileSystemConfig,
     /// Frontmatter configuration for vault.
     pub frontmatter: FrontmatterConfig,
+    /// Log level (debug, info, warn, error).
+    pub log_level: String,
 }
 
 /// Global default configuration (lowest precedence).
@@ -119,6 +144,8 @@ pub struct GlobalConfig {
     pub filesystem: FileSystemConfig,
     /// Frontmatter configuration for global defaults.
     pub frontmatter: FrontmatterConfig,
+    /// Log level (debug, info, warn, error).
+    pub log_level: String,
 }
 
 /// Merged configuration result (Vault overrides Global).
@@ -126,7 +153,7 @@ pub struct GlobalConfig {
 /// # Business Rules
 /// - Result of merging Global and Vault configurations.
 /// - Vault values take precedence over Global values.
-/// - Must be validated after merging.
+/// - Empty values are replaced with defaults during merge.
 /// - Immutable once created.
 ///
 /// # Examples
@@ -143,7 +170,6 @@ pub struct GlobalConfig {
 ///         schemas_dir: "schemas".to_string(),
 ///         property_bank_file: "props.json".to_string(),
 ///         cache_dir: ".cache".to_string(),
-///         log_level: "info".to_string(),
 ///     },
 ///     frontmatter: FrontmatterConfig {
 ///         file_class_key: "file_class".to_string(),
@@ -152,6 +178,7 @@ pub struct GlobalConfig {
 ///         date_created_key: "created".to_string(),
 ///         date_modified_key: "modified".to_string(),
 ///     },
+///     log_level: "info".to_string(),
 /// };
 ///
 /// let vault = VaultConfig {
@@ -161,7 +188,6 @@ pub struct GlobalConfig {
 ///         schemas_dir: "schemas".to_string(),
 ///         property_bank_file: "props.json".to_string(),
 ///         cache_dir: ".cache".to_string(),
-///         log_level: "debug".to_string(),
 ///     },
 ///     frontmatter: FrontmatterConfig {
 ///         file_class_key: "type".to_string(),
@@ -170,6 +196,7 @@ pub struct GlobalConfig {
 ///         date_created_key: "created".to_string(),
 ///         date_modified_key: "modified".to_string(),
 ///     },
+///     log_level: "debug".to_string(),
 /// };
 ///
 /// let config = Config::merge(global, vault).expect("merge should succeed");
@@ -182,131 +209,245 @@ pub struct Config {
     pub filesystem: FileSystemConfig,
     /// Merged frontmatter configuration.
     pub frontmatter: FrontmatterConfig,
+    /// Log level (debug, info, warn, error).
+    pub log_level: String,
+}
+
+impl Default for FileSystemConfig {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            cache_dir: defaults::CACHE_DIR.to_owned(),
+            property_bank_file: defaults::PROPERTY_BANK_FILE.to_owned(),
+            schemas_dir: defaults::SCHEMAS_DIR.to_owned(),
+            templates_dir: defaults::TEMPLATES_DIR.to_owned(),
+            vault_path: String::new(), // Must be provided by user
+        }
+    }
+}
+
+impl Default for FrontmatterConfig {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            alias_key: defaults::ALIAS_KEY.to_owned(),
+            date_created_key: defaults::DATE_CREATED_KEY.to_owned(),
+            date_modified_key: defaults::DATE_MODIFIED_KEY.to_owned(),
+            file_class_key: defaults::FILE_CLASS_KEY.to_owned(),
+            title_key: defaults::TITLE_KEY.to_owned(),
+        }
+    }
+}
+
+impl Default for GlobalConfig {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            filesystem: FileSystemConfig::default(),
+            frontmatter: FrontmatterConfig::default(),
+            log_level: defaults::LOG_LEVEL.to_owned(),
+        }
+    }
 }
 
 // GREEN PHASE: Actual implementations
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Methods grouped logically: public API first, then private helpers"
+)]
 impl Config {
     /// Merge Global and Vault configurations with business rules (Vault overrides Global).
     ///
     /// # Business Rules
     /// - Vault configuration takes precedence over Global configuration.
-    /// - All fields from vault override corresponding global fields.
-    /// - Result is validated after merging.
+    /// - Empty values in vault fall back to global values.
+    /// - Empty values in global use system defaults.
+    /// - Only `vault_path` must be non-empty (required field).
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if merged configuration fails validation.
+    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
     #[inline]
     pub fn merge(
-        _global: GlobalConfig,
+        global: &GlobalConfig,
         vault: VaultConfig,
     ) -> Result<Self, crate::ConfigError> {
-        // Business rule: Vault overrides Global
-        // Simply use vault values (vault has highest precedence)
-        let config = Self {
-            filesystem: vault.filesystem,
-            frontmatter: vault.frontmatter,
-        };
+        // Merge filesystem config with defaults
+        let filesystem =
+            Self::merge_filesystem(&global.filesystem, vault.filesystem)?;
 
-        // Validate merged configuration
-        config.validate()?;
+        // Merge frontmatter config with defaults
+        let frontmatter =
+            Self::merge_frontmatter(&global.frontmatter, &vault.frontmatter);
 
-        Ok(config)
+        // Merge log level with validation
+        let log_level =
+            Self::merge_log_level(&global.log_level, &vault.log_level)?;
+
+        Ok(Self {
+            filesystem,
+            frontmatter,
+            log_level,
+        })
     }
 
-    /// Validate configuration against business rules.
-    ///
-    /// # Validation Rules
-    /// - `vault_path` cannot be empty.
-    /// - All directory paths must be valid (non-empty).
-    /// - `log_level` must be one of: debug, info, warn, error.
-    /// - All frontmatter keys must be non-empty.
+    /// Choose value with precedence: vault > global > default.
+    fn choose_value(vault: &str, global: &str, default: &str) -> String {
+        if !vault.is_empty() {
+            vault.to_owned()
+        } else if !global.is_empty() {
+            global.to_owned()
+        } else {
+            default.to_owned()
+        }
+    }
+
+    /// Merge filesystem configurations applying defaults where needed.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if any validation rule is violated.
-    #[inline]
-    pub fn validate(&self) -> Result<(), crate::ConfigError> {
-        // Validate filesystem config
-        if self.filesystem.vault_path.is_empty() {
+    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    fn merge_filesystem(
+        global: &FileSystemConfig,
+        vault: FileSystemConfig,
+    ) -> Result<FileSystemConfig, crate::ConfigError> {
+        // Vault path is required - no default
+        if vault.vault_path.is_empty() {
             return Err(crate::ConfigError::ValidationFailed {
                 field: "vault_path".to_owned(),
-                message: "vault path cannot be empty".to_owned(),
+                message: "vault path cannot be empty (required field)"
+                    .to_owned(),
             });
         }
 
-        if self.filesystem.templates_dir.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "templates_dir".to_owned(),
-                message: "templates directory cannot be empty".to_owned(),
-            });
-        }
+        let defaults = FileSystemConfig::default();
 
-        if self.filesystem.schemas_dir.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "schemas_dir".to_owned(),
-                message: "schemas directory cannot be empty".to_owned(),
-            });
-        }
+        Ok(FileSystemConfig {
+            vault_path: vault.vault_path,
+            templates_dir: Self::choose_value(
+                &vault.templates_dir,
+                &global.templates_dir,
+                &defaults.templates_dir,
+            ),
+            schemas_dir: Self::choose_value(
+                &vault.schemas_dir,
+                &global.schemas_dir,
+                &defaults.schemas_dir,
+            ),
+            property_bank_file: Self::choose_value(
+                &vault.property_bank_file,
+                &global.property_bank_file,
+                &defaults.property_bank_file,
+            ),
+            cache_dir: Self::choose_value(
+                &vault.cache_dir,
+                &global.cache_dir,
+                &defaults.cache_dir,
+            ),
+        })
+    }
 
-        if self.filesystem.property_bank_file.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "property_bank_file".to_owned(),
-                message: "property bank file cannot be empty".to_owned(),
-            });
-        }
+    /// Merge frontmatter configurations applying defaults where needed.
+    fn merge_frontmatter(
+        global: &FrontmatterConfig,
+        vault: &FrontmatterConfig,
+    ) -> FrontmatterConfig {
+        let defaults = FrontmatterConfig::default();
 
-        if self.filesystem.cache_dir.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "cache_dir".to_owned(),
-                message: "cache directory cannot be empty".to_owned(),
-            });
+        FrontmatterConfig {
+            file_class_key: Self::choose_value(
+                &vault.file_class_key,
+                &global.file_class_key,
+                &defaults.file_class_key,
+            ),
+            title_key: Self::choose_value(
+                &vault.title_key,
+                &global.title_key,
+                &defaults.title_key,
+            ),
+            alias_key: Self::choose_value(
+                &vault.alias_key,
+                &global.alias_key,
+                &defaults.alias_key,
+            ),
+            date_created_key: Self::choose_value(
+                &vault.date_created_key,
+                &global.date_created_key,
+                &defaults.date_created_key,
+            ),
+            date_modified_key: Self::choose_value(
+                &vault.date_modified_key,
+                &global.date_modified_key,
+                &defaults.date_modified_key,
+            ),
         }
+    }
+
+    /// Merge log level with validation.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::InvalidEnumValue` if the chosen `log_level` is invalid.
+    fn merge_log_level(
+        global: &str,
+        vault: &str,
+    ) -> Result<String, crate::ConfigError> {
+        let log_level = if vault.is_empty() {
+            if global.is_empty() {
+                defaults::LOG_LEVEL
+            } else {
+                global
+            }
+        } else {
+            vault
+        };
 
         // Validate log level
-        let valid_log_levels = ["debug", "info", "warn", "error"];
-        if !valid_log_levels.contains(&self.filesystem.log_level.as_str()) {
+        if !defaults::VALID_LOG_LEVELS.contains(&log_level) {
             return Err(crate::ConfigError::InvalidEnumValue {
                 field: "log_level".to_owned(),
-                value: self.filesystem.log_level.clone(),
-                allowed: valid_log_levels
+                value: log_level.to_owned(),
+                allowed: defaults::VALID_LOG_LEVELS
                     .iter()
                     .map(|s| (*s).to_owned())
                     .collect(),
             });
         }
 
-        // Validate frontmatter config
-        if self.frontmatter.file_class_key.is_empty() {
+        Ok(log_level.to_owned())
+    }
+
+    /// Validate configuration against critical business rules.
+    ///
+    /// # Validation Rules
+    /// - `vault_path` cannot be empty (required field).
+    /// - `log_level` must be one of: debug, info, warn, error.
+    ///
+    /// # Note
+    /// This method is provided for post-construction validation if needed.
+    /// The `merge()` method already performs validation during construction.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
+    #[inline]
+    pub fn validate(&self) -> Result<(), crate::ConfigError> {
+        // Only validate critical fields
+        if self.filesystem.vault_path.is_empty() {
             return Err(crate::ConfigError::ValidationFailed {
-                field: "file_class_key".to_owned(),
-                message: "file class key cannot be empty".to_owned(),
+                field: "vault_path".to_owned(),
+                message: "vault path cannot be empty (required field)"
+                    .to_owned(),
             });
         }
 
-        if self.frontmatter.title_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "title_key".to_owned(),
-                message: "title key cannot be empty".to_owned(),
-            });
-        }
-
-        if self.frontmatter.alias_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "alias_key".to_owned(),
-                message: "alias key cannot be empty".to_owned(),
-            });
-        }
-
-        if self.frontmatter.date_created_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "date_created_key".to_owned(),
-                message: "date created key cannot be empty".to_owned(),
-            });
-        }
-
-        if self.frontmatter.date_modified_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "date_modified_key".to_owned(),
-                message: "date modified key cannot be empty".to_owned(),
+        // Validate log level
+        if !defaults::VALID_LOG_LEVELS.contains(&self.log_level.as_str()) {
+            return Err(crate::ConfigError::InvalidEnumValue {
+                field: "log_level".to_owned(),
+                value: self.log_level.clone(),
+                allowed: defaults::VALID_LOG_LEVELS
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect(),
             });
         }
 
@@ -380,7 +521,6 @@ mod tests {
         GlobalConfig {
             filesystem: FileSystemConfig {
                 cache_dir: ".cache".to_owned(),
-                log_level: "info".to_owned(),
                 property_bank_file: "property_bank.json".to_owned(),
                 schemas_dir: "schemas".to_owned(),
                 templates_dir: "templates".to_owned(),
@@ -393,6 +533,7 @@ mod tests {
                 file_class_key: "file_class".to_owned(),
                 title_key: "title".to_owned(),
             },
+            log_level: "info".to_owned(),
         }
     }
 
@@ -401,7 +542,6 @@ mod tests {
         VaultConfig {
             filesystem: FileSystemConfig {
                 cache_dir: ".cache".to_owned(),
-                log_level: "debug".to_owned(), // vault override
                 property_bank_file: "property_bank.json".to_owned(),
                 schemas_dir: "schemas".to_owned(), // same as global
                 templates_dir: "custom_templates".to_owned(),
@@ -414,6 +554,7 @@ mod tests {
                 file_class_key: "type".to_owned(),      // vault override
                 title_key: "title".to_owned(),
             },
+            log_level: "debug".to_owned(), // vault override
         }
     }
 
@@ -426,7 +567,7 @@ mod tests {
         let global = sample_global_config();
         let vault = sample_vault_config();
 
-        let result = Config::merge(global, vault);
+        let result = Config::merge(&global, vault);
         assert!(result.is_ok(), "merge should succeed");
 
         // Use pattern matching to extract value for assertions
@@ -434,7 +575,7 @@ mod tests {
             // Business rule: vault values take precedence
             assert_eq!(merged.filesystem.vault_path, "/vault");
             assert_eq!(merged.filesystem.templates_dir, "custom_templates");
-            assert_eq!(merged.filesystem.log_level, "debug");
+            assert_eq!(merged.log_level, "debug");
             assert_eq!(merged.frontmatter.file_class_key, "type");
             assert_eq!(merged.frontmatter.date_created_key, "created");
         }
@@ -444,7 +585,7 @@ mod tests {
     fn config_validation_success() {
         let global = sample_global_config();
         let vault = sample_vault_config();
-        let merge_result = Config::merge(global, vault);
+        let merge_result = Config::merge(&global, vault);
         assert!(merge_result.is_ok(), "merge should succeed");
 
         if let Ok(config) = merge_result {
@@ -454,10 +595,67 @@ mod tests {
     }
 
     #[test]
+    fn config_merge_applies_defaults_for_empty_values() {
+        let global = GlobalConfig {
+            filesystem: FileSystemConfig {
+                cache_dir: String::new(), // Empty - should use default
+                property_bank_file: String::new(),
+                schemas_dir: String::new(),
+                templates_dir: String::new(),
+                vault_path: "/global".to_owned(),
+            },
+            frontmatter: FrontmatterConfig {
+                alias_key: String::new(),
+                date_created_key: String::new(),
+                date_modified_key: String::new(),
+                file_class_key: String::new(),
+                title_key: String::new(),
+            },
+            log_level: String::new(), // Empty - should use default "info"
+        };
+
+        let vault = VaultConfig {
+            filesystem: FileSystemConfig {
+                cache_dir: String::new(),
+                property_bank_file: String::new(),
+                schemas_dir: String::new(),
+                templates_dir: String::new(),
+                vault_path: "/vault".to_owned(),
+            },
+            frontmatter: FrontmatterConfig {
+                alias_key: String::new(),
+                date_created_key: String::new(),
+                date_modified_key: String::new(),
+                file_class_key: String::new(),
+                title_key: String::new(),
+            },
+            log_level: String::new(),
+        };
+
+        let result = Config::merge(&global, vault);
+        assert!(result.is_ok(), "merge with empty values should succeed");
+
+        if let Ok(config) = result {
+            // Verify defaults were applied
+            assert_eq!(config.filesystem.cache_dir, ".cache");
+            assert_eq!(config.filesystem.templates_dir, "templates");
+            assert_eq!(config.filesystem.schemas_dir, "schemas");
+            assert_eq!(
+                config.filesystem.property_bank_file,
+                "property_bank.json"
+            );
+            assert_eq!(config.log_level, "info");
+            assert_eq!(config.frontmatter.file_class_key, "file_class");
+            assert_eq!(config.frontmatter.title_key, "title");
+            assert_eq!(config.frontmatter.alias_key, "aliases");
+        }
+    }
+
+    #[test]
     fn config_has_required_derives() {
         let global = sample_global_config();
         let vault = sample_vault_config();
-        let result1 = Config::merge(global.clone(), vault.clone());
+        let result1 = Config::merge(&global, vault.clone());
         assert!(result1.is_ok(), "first merge should succeed");
 
         if let Ok(config) = result1 {
@@ -469,7 +667,7 @@ mod tests {
             let _cloned = config.clone();
 
             // Test PartialEq
-            let result2 = Config::merge(global, vault);
+            let result2 = Config::merge(&global, vault);
             assert!(result2.is_ok(), "second merge should succeed");
             if let Ok(config2) = result2 {
                 assert_eq!(config, config2);
@@ -541,7 +739,6 @@ mod tests {
     fn filesystem_config_structure() {
         let config = FileSystemConfig {
             cache_dir: ".cache".to_owned(),
-            log_level: "debug".to_owned(),
             property_bank_file: "props.json".to_owned(),
             schemas_dir: "schemas".to_owned(),
             templates_dir: "templates".to_owned(),
@@ -549,7 +746,7 @@ mod tests {
         };
 
         assert_eq!(config.vault_path, "/test");
-        assert_eq!(config.log_level, "debug");
+        assert_eq!(config.cache_dir, ".cache");
     }
 
     #[test]
@@ -575,10 +772,10 @@ mod tests {
         let global = sample_global_config();
         let vault = sample_vault_config();
 
-        let result1 = Config::merge(global.clone(), vault.clone());
+        let result1 = Config::merge(&global, vault.clone());
         assert!(result1.is_ok(), "first merge should succeed");
 
-        let result2 = Config::merge(global, vault);
+        let result2 = Config::merge(&global, vault);
         assert!(result2.is_ok(), "second merge should succeed");
 
         if let (Ok(merged1), Ok(merged2)) = (result1, result2) {
@@ -592,7 +789,7 @@ mod tests {
         let mut vault = sample_vault_config();
         vault.filesystem.vault_path = String::new();
 
-        let result = Config::merge(global, vault);
+        let result = Config::merge(&global, vault);
 
         assert!(result.is_err(), "empty vault_path should fail validation");
         if let Err(e) = result {
