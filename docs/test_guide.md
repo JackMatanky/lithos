@@ -108,10 +108,22 @@ mod tests {
 ### Behavioral Rules
 
 1.  **One Behavior per Test**: Describe exactly one thing the unit does. If you find yourself using `and` in a test name, consider splitting it. This makes it easier to understand why a test is failing.
-2.  **Single Assertion Preference**: Ideally, use one assertion per test. If you are testing separate behaviors, make multiple tests. To avoid boilerplate for multiple inputs, use `rstest` cases with descriptive labels.
-3.  **Explicit Failure Messages**: All `assert!` and `assert_eq!` calls should include formatted context. For `Ok` scenarios, always include the `Err` case in the message or use `eprintln` to aid debugging:
+2.  **Single Assertion Preference**: Ideally, use one logical assertion per test to make failures easy to diagnose. If you are testing separate behaviors, create multiple tests.
+3.  **Parameterized Tests (rstest)**: To avoid boilerplate when testing the same behavior with multiple inputs, use `rstest` with **Named Cases**. This ensures each input is reported as a separate, identifiable test by `nextest`.
+
+    ```rust
+    #[rstest]
+    #[case::single_char("a")]
+    #[case::starts_with_a("ab")]
+    #[case::ends_with_a("ba")]
+    fn should_accept_strings_containing_a(#[case] input: &str) {
+        assert!(the_function(input).is_ok(), "Failed to accept valid input: {}", input);
+    }
+    ```
+
+4.  **Explicit Failure Messages**: All `assert!` and `assert_eq!` calls should include formatted context. For `Ok` scenarios, always include the `Err` case in the message or use `eprintln` to aid debugging:
     *   `assert!(res.is_ok(), "Expected success, got error: {:?}", res.err());`
-4.  **Matches over Equality**: When asserting on complex enums where you only care about the variant, use `matches!`. This avoids excessive boilerplate and keeps tests focused on one behavior.
+5.  **Matches over Equality**: When asserting on complex enums where you only care about the variant, use `matches!`. This avoids excessive boilerplate and keeps tests focused on one behavior.
     *   `assert!(matches!(err, DomainError::Validation(_)), "Expected validation error, found: {:?}", err);`
 
 ### Attributes & Metadata
