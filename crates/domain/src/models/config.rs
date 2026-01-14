@@ -78,9 +78,9 @@ use std::collections::HashMap;
 /// ```
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub enum Value {
+pub enum Setting {
     /// Array of configuration values.
-    Array(Vec<Value>),
+    Array(Vec<Setting>),
     /// Boolean configuration value.
     Boolean(bool),
     /// Encrypted field data (opaque bytes, adapter handles encryption/decryption).
@@ -88,12 +88,12 @@ pub enum Value {
     /// Numeric configuration value (f64 for flexibility).
     Number(f64),
     /// Nested object configuration.
-    Object(HashMap<String, Value>),
+    Object(HashMap<String, Setting>),
     /// String configuration value.
     String(String),
 }
 
-impl std::fmt::Debug for Value {
+impl std::fmt::Debug for Setting {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
@@ -564,7 +564,7 @@ impl Config {
 /// let value = ConfigValue::from("test".to_string());
 /// assert_eq!(value, ConfigValue::String("test".to_string()));
 /// ```
-impl From<String> for Value {
+impl From<String> for Setting {
     #[inline]
     fn from(value: String) -> Self {
         Self::String(value)
@@ -580,7 +580,7 @@ impl From<String> for Value {
 /// let value = ConfigValue::from(42.5);
 /// assert_eq!(value, ConfigValue::Number(42.5));
 /// ```
-impl From<f64> for Value {
+impl From<f64> for Setting {
     #[inline]
     fn from(value: f64) -> Self {
         Self::Number(value)
@@ -596,7 +596,7 @@ impl From<f64> for Value {
 /// let value = ConfigValue::from(true);
 /// assert_eq!(value, ConfigValue::Boolean(true));
 /// ```
-impl From<bool> for Value {
+impl From<bool> for Setting {
     #[inline]
     fn from(value: bool) -> Self {
         Self::Boolean(value)
@@ -613,9 +613,9 @@ impl From<bool> for Value {
 /// let value = ConfigValue::from(array.clone());
 /// assert_eq!(value, ConfigValue::Array(array));
 /// ```
-impl From<Vec<Value>> for Value {
+impl From<Vec<Setting>> for Setting {
     #[inline]
-    fn from(value: Vec<Value>) -> Self {
+    fn from(value: Vec<Setting>) -> Self {
         Self::Array(value)
     }
 }
@@ -632,9 +632,9 @@ impl From<Vec<Value>> for Value {
 /// let value = ConfigValue::from(map.clone());
 /// assert_eq!(value, ConfigValue::Object(map));
 /// ```
-impl From<HashMap<String, Value>> for Value {
+impl From<HashMap<String, Setting>> for Setting {
     #[inline]
-    fn from(value: HashMap<String, Value>) -> Self {
+    fn from(value: HashMap<String, Setting>) -> Self {
         Self::Object(value)
     }
 }
@@ -865,7 +865,7 @@ mod tests {
     // ============================================================================
 
     mod config_value {
-        use Value as ConfigValue;
+        use Setting as ConfigValue;
 
         use super::*;
 
