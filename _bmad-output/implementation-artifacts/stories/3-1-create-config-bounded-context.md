@@ -47,22 +47,25 @@ So that configuration changes are validated and the domain enforces configuratio
 
 ### Task 2: Implement Config Domain Entities (GREEN Phase - AC: 1-3)
 - [ ] Create file `crates/domain/src/models/config.rs` and implement all Config entities in single file
+- [ ] **SEPARATE CONCERNS:** Split Config into FileSystemConfig and FrontmatterConfig to prevent god-object
+- [ ] Define FileSystemConfig struct: `#[derive(Debug, Clone, PartialEq)] pub struct FileSystemConfig { pub vault_path: String, pub templates_dir: String, pub schemas_dir: String, pub property_bank_file: String, pub cache_dir: String, pub log_level: String }`
+- [ ] Define FrontmatterConfig struct: `#[derive(Debug, Clone, PartialEq)] pub struct FrontmatterConfig { pub file_class_key: String, pub title_key: String, pub alias_key: String, pub date_created_key: String, pub date_modified_key: String }`
+- [ ] Define main Config struct: `#[derive(Debug, Clone, PartialEq)] pub struct Config { pub filesystem: FileSystemConfig, pub frontmatter: FrontmatterConfig }`
+- [ ] Set defaults: filesystem defaults (vault_path=".", templates_dir="templates/", etc.), frontmatter defaults (file_class_key="file_class", title_key="title", etc.)
 - [ ] Define phantom type markers: `#[derive(Debug)] pub struct Global; #[derive(Debug)] pub struct User; #[derive(Debug)] pub struct Project; #[derive(Debug)] pub struct Vault;`
-- [ ] Define Config struct with additional keys: `pub title_key: String`, `pub alias_key: String`, `pub date_created_key: String`, `pub date_modified_key: String`
-- [ ] Set defaults: title_key="title", alias_key="aliases", date_created_key="created", date_modified_key="modified"
 - [ ] Define ConfigValue enum with `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ConfigValue { String(String), Number(f64), Boolean(bool), Encrypted(Vec<u8>), Array(Vec<ConfigValue>), Object(HashMap<String, ConfigValue>) }`
 - [ ] Implement From traits: `impl From<String> for ConfigValue`, `impl From<f64> for ConfigValue`, `impl From<bool> for ConfigValue`
 - [ ] Define ConfigPath enum: `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ConfigPath<Level = Global> { Global(PhantomData<Global>), User(PhantomData<User>), Project(PhantomData<Project>), Vault(PhantomData<Vault>) }`
 - [ ] Define type-safe aliases: `pub type GlobalPath = ConfigPath<Global>; pub type UserPath = ConfigPath<User>; pub type ProjectPath = ConfigPath<Project>; pub type VaultPath = ConfigPath<Vault>;`
 - [ ] Implement ConfigPath methods: `precedence_order() -> Vec<ConfigPath>` returning [Global, User, Project, Vault], `is_higher_precedence(&self, other: &ConfigPath<Level>) -> bool`
 - [ ] Define ValidationRule enum: `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum ValidationRule { Required, Enum(Vec<String>), Range { min: Option<f64>, max: Option<f64> }, Pattern(String), DependsOn(String) }`
-- [ ] Define Config struct: `#[derive(Debug, Clone, PartialEq)] pub struct Config<Level = Global> { pub values: HashMap<ConfigPath<Level>, HashMap<String, ConfigValue>>, pub validation_rules: HashMap<String, ValidationRule>, pub encrypted_fields: HashSet<String>, _marker: PhantomData<Level> }`
-- [ ] Define type-safe config aliases: `pub type GlobalConfig = Config<Global>; pub type UserConfig = Config<User>; pub type ProjectConfig = Config<Project>; pub type VaultConfig = Config<Vault>;`
-- [ ] Implement Config::new() constructor that validates all inputs and returns `Result<Self, ConfigError>`
-- [ ] Implement Config::merge() method that merges configs with Vault > Project > User > Global precedence, returns `Result<HashMap<String, ConfigValue>, ConfigError>`
-- [ ] Implement Config::validate() method that applies all ValidationRule constraints to merged config, returns `Result<(), ConfigError>`
-- [ ] Implement Config::get() method with automatic hierarchical fallback (Vault -> Project -> User -> Global), returns `Option<&ConfigValue>`
-- [ ] Implement Config::decrypt_field() method that returns error if field not encrypted, actual decryption in adapter layer
+- [ ] Define HierarchicalConfig struct: `#[derive(Debug, Clone, PartialEq)] pub struct HierarchicalConfig<Level = Global> { pub values: HashMap<ConfigPath<Level>, HashMap<String, ConfigValue>>, pub validation_rules: HashMap<String, ValidationRule>, pub encrypted_fields: HashSet<String>, _marker: PhantomData<Level> }`
+- [ ] Define type-safe config aliases: `pub type GlobalConfig = HierarchicalConfig<Global>; pub type UserConfig = HierarchicalConfig<User>; pub type ProjectConfig = HierarchicalConfig<Project>; pub type VaultConfig = HierarchicalConfig<Vault>;`
+- [ ] Implement HierarchicalConfig::new() constructor that validates all inputs and returns `Result<Self, ConfigError>`
+- [ ] Implement HierarchicalConfig::merge() method that merges configs with Vault > Project > User > Global precedence, returns `Result<HashMap<String, ConfigValue>, ConfigError>`
+- [ ] Implement HierarchicalConfig::validate() method that applies all ValidationRule constraints to merged config, returns `Result<(), ConfigError>`
+- [ ] Implement HierarchicalConfig::get() method with automatic hierarchical fallback (Vault -> Project -> User -> Global), returns `Option<&ConfigValue>`
+- [ ] Implement HierarchicalConfig::decrypt_field() method that returns error if field not encrypted, actual decryption in adapter layer
 - [ ] Define EncryptedField struct: `#[derive(Debug, Clone, PartialEq)] pub struct EncryptedField { pub encrypted_data: Vec<u8>, pub key_id: String }`
 - [ ] **TDD REQUIREMENT:** Make all Config tests pass (GREEN phase complete when all tests pass)
 
@@ -449,14 +452,15 @@ crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
 ├── models/
 │   ├── mod.rs               # Module declarations
-│   └── config.rs            # All Config entities, validation, and logic
+│   └── config.rs            # Config entities: FileSystemConfig, FrontmatterConfig,
+│                           # HierarchicalConfig, ConfigValue, ConfigPath, ValidationRule
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
 │   └── config.rs            # ConfigCommand/ConfigQuery traits (shells)
 └── errors.rs                # Domain errors (EXTENDED with config errors)
 ```
 
-**Splitting Guideline:** Start with single file. Split when >1000 lines into logical modules (e.g., config_types.rs, config_validation.rs, config_hierarchy.rs).
+**Splitting Guideline:** Start with single file. Split when >1000 lines into config_filesystem.rs, config_frontmatter.rs, config_hierarchy.rs, config_validation.rs.
 
 **Implementation Decision:**
 Use **subfolder organization** for Config bounded context due to complexity of hierarchical merging, validation rules, and encryption support.
