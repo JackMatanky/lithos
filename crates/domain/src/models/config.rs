@@ -343,14 +343,7 @@ impl Config {
         global: &FileSystemConfig,
         vault: FileSystemConfig,
     ) -> Result<FileSystemConfig, crate::ConfigError> {
-        // Vault path is required - no default
-        if vault.vault_path.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "vault_path".to_owned(),
-                message: "vault path cannot be empty (required field)"
-                    .to_owned(),
-            });
-        }
+        Self::validate_vault_path(&vault.vault_path)?;
 
         let defaults = FileSystemConfig::default();
 
@@ -457,6 +450,22 @@ impl Config {
         Ok(())
     }
 
+    /// Validate vault path value.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    fn validate_vault_path(vault_path: &str) -> Result<(), crate::ConfigError> {
+        if vault_path.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "vault_path".to_owned(),
+                message: "vault path cannot be empty (required field)"
+                    .to_owned(),
+            });
+        }
+
+        Ok(())
+    }
+
     /// Validate configuration against critical business rules.
     ///
     /// # Validation Rules
@@ -472,15 +481,7 @@ impl Config {
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
-        // Only validate critical fields
-        if self.filesystem.vault_path.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "vault_path".to_owned(),
-                message: "vault path cannot be empty (required field)"
-                    .to_owned(),
-            });
-        }
-
+        Self::validate_vault_path(&self.filesystem.vault_path)?;
         Self::validate_log_level(&self.log_level)?;
 
         Ok(())
@@ -617,10 +618,8 @@ mod tests {
     fn config_validation_success() {
         let global = sample_global_config();
         let vault = sample_vault_config();
-        let merge_result = Config::merge(&global, vault);
-        assert!(merge_result.is_ok(), "merge should succeed");
 
-        if let Ok(config) = merge_result {
+        if let Ok(config) = Config::merge(&global, vault) {
             let result = config.validate();
             assert!(result.is_ok(), "valid config should pass validation");
         }
