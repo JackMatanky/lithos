@@ -189,14 +189,14 @@ pub struct Frontmatter {
 }
 
 pub enum FrontmatterValue {
-    String(String),
-    Number(f64),
-    Boolean(bool),
-    Date(String),  // ISO 8601 string (e.g., "2024-01-15" or "2024-01-15T10:30:00Z")
-                   // Parsed to chrono types in adapter layer; domain stores as validated string
+    String(String),  // All values stored as strings initially
     Array(Vec<FrontmatterValue>),
     Object(HashMap<String, FrontmatterValue>), // For nested YAML objects
 }
+
+// NOTE: No Number, Boolean, or Date variants in domain
+// Type classification happens at application layer with schema information
+// Domain stores all scalar values as strings to avoid premature typing
 ```
 
 **Links Subentity:**
@@ -362,8 +362,8 @@ pub enum DomainError {
     #[error("Path cannot be empty")]
     EmptyPath,
 
-    #[error("Invalid frontmatter field type: expected {expected}, got {actual}")]
-    InvalidFrontmatterType { expected: String, actual: String },
+    // Note: Frontmatter type validation happens at application layer with schema
+    // Domain only validates structure, not field types
 
     #[error("Invalid tag format: {0}")]
     InvalidTag(String),
@@ -438,11 +438,11 @@ pub struct Note {
 - Example valid: `1`, `6`
 - Example invalid: `0`, `7`, `255`
 
-**Frontmatter Date Validation:**
-- MUST be ISO 8601 format string
-- Date-only: `"YYYY-MM-DD"` (e.g., `"2024-01-15"`)
-- DateTime: `"YYYY-MM-DDTHH:MM:SSZ"` (e.g., `"2024-01-15T10:30:00Z"`)
-- Validation happens at string level in domain; chrono parsing in adapter layer
+**Frontmatter Value Storage:**
+- All values stored as strings in domain (String variant)
+- Type classification deferred to application layer with schema information
+- Supports any date format (ISO 8601, Moment.js, custom) based on schema
+- Config-defined fields (date_created, date_modified) may have special handling
 
 **Link/Embed Target Validation:**
 - MUST be non-empty
@@ -472,13 +472,14 @@ assert!(Tag::parse("").is_err());                  // Empty string
 ```rust
 let mut fields = HashMap::new();
 fields.insert("title".to_string(), FrontmatterValue::String("My Note".to_string()));
-fields.insert("created".to_string(), FrontmatterValue::Date("2024-01-15".to_string()));
+fields.insert("created".to_string(), FrontmatterValue::String("2024-01-15T14:30".to_string())); // Any format
 fields.insert("tags".to_string(), FrontmatterValue::Array(vec![
     FrontmatterValue::String("rust".to_string()),
     FrontmatterValue::String("programming".to_string()),
 ]));
 
 let frontmatter = Frontmatter::new(fields)?;
+// Type validation (dates, numbers, booleans) happens at application layer with schema
 ```
 
 **Example: Link Construction**
@@ -587,7 +588,7 @@ pub mod fixtures {
     pub fn example_frontmatter() -> Frontmatter {
         let mut fields = HashMap::new();
         fields.insert("title".to_string(), FrontmatterValue::String("Test Note".to_string()));
-        fields.insert("created".to_string(), FrontmatterValue::Date("2024-01-15".to_string()));
+        fields.insert("created".to_string(), FrontmatterValue::String("2024-01-15T14:30".to_string())); // Any format
         Frontmatter::new(fields).expect("Valid frontmatter")
     }
 
