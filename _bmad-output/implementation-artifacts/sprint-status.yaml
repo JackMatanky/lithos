@@ -49,9 +49,9 @@ development_status:
     epic-2-retrospective: done
 
     epic-3: in-progress
-    3-1-create-note-bounded-context: ready-for-dev
-    3-2-create-schema-bounded-context: ready-for-dev
-    3-3-create-config-bounded-context: in-progress
+    3-1-create-config-bounded-context: review
+    3-2-create-note-bounded-context: ready-for-dev
+    3-3-create-schema-bounded-context: ready-for-dev
     3-4-create-template-bounded-context: ready-for-dev
     3-5-review-epic-3-test-suite-for-efficiency: ready-for-dev
     3-6-create-epic-3-documentation: ready-for-dev
