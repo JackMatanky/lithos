@@ -18,15 +18,15 @@ Domain models must remain pure and focused on business logic. However, serializa
 
 ## Decision
 
-**RECOMMENDATION: Domain models MAY optionally derive serde traits for JSON/YAML serialization, while rkyv remains prohibited in domain.**
+**Domain models MUST derive serde traits for JSON/YAML serialization when they represent API resources, while rkyv remains prohibited in domain.**
 
 ### Implementation Guidelines
 
-1. **Serde Allowance**: Domain entities MAY derive `serde::{Serialize, Deserialize}` when needed for JSON/YAML APIs
+1. **Serde Requirement**: Domain entities that represent API resources (Note, Schema) MUST derive `serde::{Serialize, Deserialize}`
 2. **rkyv Prohibition**: Domain entities SHALL NOT derive rkyv traits under any circumstances
 3. **Storage DTOs**: Adapters SHALL provide separate DTOs with rkyv derives for storage
-4. **Optional Dependencies**: Serde remains "optional" in Cargo.toml - domain crate can function without it
-5. **Domain Purity Guardian**: Automated tests enforce that domain has no required serialization dependencies
+4. **Required Dependencies**: Serde is required for API-facing domain models
+5. **Domain Purity Guardian**: Automated tests enforce that only API models have serde derives
 
 ### Rationale
 
