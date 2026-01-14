@@ -11,7 +11,7 @@
 
 #![expect(
     clippy::module_name_repetitions,
-    reason = "Domain types like ConfigValue and FileSystemConfig clearly indicate their purpose as configuration-related entities, which is more valuable than avoiding module name repetition"
+    reason = "Domain types in config module are inherently config-related (ConfigValue, FsConfig, VaultConfig, GlobalConfig, FrontmatterConfig), making the repetition meaningful and clear. Renaming would reduce clarity and violate domain naming conventions."
 )]
 
 /// Default configuration constants organized by domain.
@@ -94,7 +94,7 @@ pub enum ConfigValue {
 /// - Property bank file is always located in `schemas_dir`.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct FileSystemConfig {
+pub struct FsConfig {
     /// Directory for cache files (relative to `vault_path`).
     pub cache_dir: String,
     /// Filename for property bank (located in `schemas_dir`).
@@ -107,7 +107,7 @@ pub struct FileSystemConfig {
     pub vault_path: String,
 }
 
-impl FileSystemConfig {
+impl FsConfig {
     /// Get the full path to the property bank file (`schemas_dir/property_bank_filename`).
     ///
     /// The property bank is always stored in the schemas directory.
@@ -154,7 +154,7 @@ pub struct FrontmatterConfig {
 #[non_exhaustive]
 pub struct VaultConfig {
     /// Filesystem configuration for vault.
-    pub filesystem: FileSystemConfig,
+    pub filesystem: FsConfig,
     /// Frontmatter configuration for vault.
     pub frontmatter: FrontmatterConfig,
     /// Log level (debug, info, warn, error).
@@ -171,7 +171,7 @@ pub struct VaultConfig {
 #[non_exhaustive]
 pub struct GlobalConfig {
     /// Filesystem configuration for global defaults.
-    pub filesystem: FileSystemConfig,
+    pub filesystem: FsConfig,
     /// Frontmatter configuration for global defaults.
     pub frontmatter: FrontmatterConfig,
     /// Log level (debug, info, warn, error).
@@ -194,7 +194,7 @@ pub struct GlobalConfig {
 /// use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig, FrontmatterConfig};
 ///
 /// let global = GlobalConfig {
-///     filesystem: FileSystemConfig {
+///     filesystem: FsConfig {
 ///         vault_path: ".".to_string(),
 ///         templates_dir: "templates".to_string(),
 ///         schemas_dir: "schemas".to_string(),
@@ -212,7 +212,7 @@ pub struct GlobalConfig {
 /// };
 ///
 /// let vault = VaultConfig {
-///     filesystem: FileSystemConfig {
+///     filesystem: FsConfig {
 ///         vault_path: "/vault".to_string(),
 ///         templates_dir: "templates".to_string(),
 ///         schemas_dir: "schemas".to_string(),
@@ -236,14 +236,14 @@ pub struct GlobalConfig {
 #[non_exhaustive]
 pub struct Config {
     /// Merged filesystem configuration.
-    pub filesystem: FileSystemConfig,
+    pub filesystem: FsConfig,
     /// Merged frontmatter configuration.
     pub frontmatter: FrontmatterConfig,
     /// Log level (debug, info, warn, error).
     pub log_level: String,
 }
 
-impl Default for FileSystemConfig {
+impl Default for FsConfig {
     #[inline]
     fn default() -> Self {
         Self {
@@ -276,7 +276,7 @@ impl Default for GlobalConfig {
     #[inline]
     fn default() -> Self {
         Self {
-            filesystem: FileSystemConfig::default(),
+            filesystem: FsConfig::default(),
             frontmatter: FrontmatterConfig::default(),
             log_level: defaults::logging::LOG_LEVEL.to_owned(),
         }
@@ -340,14 +340,14 @@ impl Config {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
     fn merge_filesystem(
-        global: &FileSystemConfig,
-        vault: FileSystemConfig,
-    ) -> Result<FileSystemConfig, crate::ConfigError> {
+        global: &FsConfig,
+        vault: FsConfig,
+    ) -> Result<FsConfig, crate::ConfigError> {
         Self::validate_vault_path(&vault.vault_path)?;
 
-        let defaults = FileSystemConfig::default();
+        let defaults = FsConfig::default();
 
-        Ok(FileSystemConfig {
+        Ok(FsConfig {
             cache_dir: Self::choose_value(
                 &vault.cache_dir,
                 &global.cache_dir,
@@ -545,6 +545,48 @@ impl From<bool> for ConfigValue {
     }
 }
 
+/// Convert Vec<ConfigValue> to `ConfigValue::Array` variant.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::ConfigValue;
+///
+/// let array = vec![ConfigValue::String("item".to_string())];
+/// let value = ConfigValue::from(array);
+/// match value {
+///     ConfigValue::Array(items) => assert_eq!(items.len(), 1),
+///     _ => panic!("expected Array variant"),
+/// }
+/// ```
+impl From<Vec<ConfigValue>> for ConfigValue {
+    #[inline]
+    fn from(value: Vec<ConfigValue>) -> Self {
+        Self::Array(value)
+    }
+}
+
+/// Convert `HashMap`<String, `ConfigValue`> to `ConfigValue::Object` variant.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::ConfigValue;
+/// use std::collections::HashMap;
+///
+/// let mut map = HashMap::new();
+/// map.insert("key".to_string(), ConfigValue::String("value".to_string()));
+/// let value = ConfigValue::from(map);
+/// match value {
+///     ConfigValue::Object(obj) => assert_eq!(obj.len(), 1),
+///     _ => panic!("expected Object variant"),
+/// }
+/// ```
+impl From<HashMap<String, ConfigValue>> for ConfigValue {
+    #[inline]
+    fn from(value: HashMap<String, ConfigValue>) -> Self {
+        Self::Object(value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -552,7 +594,7 @@ mod tests {
     /// Test fixture: Create sample global configuration with defaults.
     fn sample_global_config() -> GlobalConfig {
         GlobalConfig {
-            filesystem: FileSystemConfig {
+            filesystem: FsConfig {
                 cache_dir: ".cache".to_owned(),
                 property_bank_filename: "property_bank.json".to_owned(),
                 schemas_dir: "schemas".to_owned(),
@@ -573,7 +615,7 @@ mod tests {
     /// Test fixture: Create sample vault configuration with overrides.
     fn sample_vault_config() -> VaultConfig {
         VaultConfig {
-            filesystem: FileSystemConfig {
+            filesystem: FsConfig {
                 cache_dir: ".cache".to_owned(),
                 property_bank_filename: "property_bank.json".to_owned(),
                 schemas_dir: "schemas".to_owned(), // same as global
@@ -596,22 +638,22 @@ mod tests {
     // ============================================================================
 
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
+    )]
     fn config_merge_vault_overrides_global() {
         let global = sample_global_config();
         let vault = sample_vault_config();
 
-        let result = Config::merge(&global, vault);
-        assert!(result.is_ok(), "merge should succeed");
+        let merged = Config::merge(&global, vault).unwrap();
 
-        // Use pattern matching to extract value for assertions
-        if let Ok(merged) = result {
-            // Business rule: vault values take precedence
-            assert_eq!(merged.filesystem.vault_path, "/vault");
-            assert_eq!(merged.filesystem.templates_dir, "custom_templates");
-            assert_eq!(merged.log_level, "debug");
-            assert_eq!(merged.frontmatter.file_class_key, "type");
-            assert_eq!(merged.frontmatter.date_created_key, "created");
-        }
+        // Business rule: vault values take precedence
+        assert_eq!(merged.filesystem.vault_path, "/vault");
+        assert_eq!(merged.filesystem.templates_dir, "custom_templates");
+        assert_eq!(merged.log_level, "debug");
+        assert_eq!(merged.frontmatter.file_class_key, "type");
+        assert_eq!(merged.frontmatter.date_created_key, "created");
     }
 
     #[test]
@@ -628,7 +670,7 @@ mod tests {
     #[test]
     fn config_merge_applies_defaults_for_empty_values() {
         let global = GlobalConfig {
-            filesystem: FileSystemConfig {
+            filesystem: FsConfig {
                 cache_dir: String::new(), // Empty - should use default
                 property_bank_filename: String::new(),
                 schemas_dir: String::new(),
@@ -646,7 +688,7 @@ mod tests {
         };
 
         let vault = VaultConfig {
-            filesystem: FileSystemConfig {
+            filesystem: FsConfig {
                 cache_dir: String::new(),
                 property_bank_filename: String::new(),
                 schemas_dir: String::new(),
@@ -762,13 +804,33 @@ mod tests {
         assert!(matches!(&value, ConfigValue::Object(obj) if obj.len() == 1));
     }
 
+    #[test]
+    fn config_value_from_array() {
+        let array = vec![
+            ConfigValue::String("item1".to_owned()),
+            ConfigValue::Number(42.0),
+        ];
+        let value = ConfigValue::from(array.clone());
+
+        assert!(matches!(&value, ConfigValue::Array(items) if items == &array));
+    }
+
+    #[test]
+    fn config_value_from_object() {
+        let mut map = HashMap::new();
+        map.insert("key1".to_owned(), ConfigValue::String("value1".to_owned()));
+        let value = ConfigValue::from(map.clone());
+
+        assert!(matches!(&value, ConfigValue::Object(obj) if obj == &map));
+    }
+
     // ============================================================================
     // Struct Tests
     // ============================================================================
 
     #[test]
     fn filesystem_config_structure() {
-        let config = FileSystemConfig {
+        let config = FsConfig {
             cache_dir: ".cache".to_owned(),
             property_bank_filename: "props.json".to_owned(),
             schemas_dir: "schemas".to_owned(),
@@ -826,6 +888,20 @@ mod tests {
         assert!(result.is_err(), "empty vault_path should fail validation");
         if let Err(e) = result {
             assert!(matches!(e, crate::ConfigError::ValidationFailed { .. }));
+        }
+    }
+
+    #[test]
+    fn config_validation_catches_invalid_log_level() {
+        let global = sample_global_config();
+        let mut vault = sample_vault_config();
+        vault.log_level = "invalid_level".to_owned();
+
+        let result = Config::merge(&global, vault);
+
+        assert!(result.is_err(), "invalid log_level should fail validation");
+        if let Err(e) = result {
+            assert!(matches!(e, crate::ConfigError::InvalidEnumValue { .. }));
         }
     }
 }
