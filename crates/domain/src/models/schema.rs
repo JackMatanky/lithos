@@ -9,6 +9,14 @@
 //! - PropertyBank acts as a singleton registry for deduplication.
 //! - Validation follows a three-phase pipeline: Syntactic → Orchestration → Semantic.
 
+/// Common regex patterns for schema validation.
+pub mod patterns {
+    /// Email regex pattern.
+    pub const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";
+    /// URL regex pattern.
+    pub const URL: &str = r"^https?://[^\s/$.?#].[^\s]*$";
+}
+
 use std::{
     collections::{HashMap, HashSet},
     fmt::Debug,
@@ -20,6 +28,7 @@ use crate::errors::DomainError;
 
 /// Schema aggregate defining metadata validation rules with inheritance support.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub struct Schema {
     /// Property names to exclude from parent schema.
     pub excludes: HashSet<String>,
@@ -36,6 +45,20 @@ pub struct Schema {
 }
 
 impl Schema {
+    /// Resolve property inheritance from parent schema.
+    ///
+    /// # Errors
+    /// Returns `DomainError` in RED phase.
+    #[inline]
+    fn _resolve_properties(
+        _own_properties: &[Property],
+        _parent_schema: Option<&Self>,
+        _excludes: &HashSet<String>,
+    ) -> Result<Vec<Property>, DomainError> {
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+    }
+
     /// Create a new schema with inheritance resolution.
     ///
     /// # Errors
@@ -46,18 +69,10 @@ impl Schema {
         _extends: Option<String>,
         _excludes: HashSet<String>,
         _properties: Vec<Property>,
-        _parent_schema: Option<&Schema>,
+        _parent_schema: Option<&Self>,
     ) -> Result<Self, DomainError> {
-        unimplemented!("RED PHASE: Not implemented")
-    }
-
-    /// Resolve property inheritance from parent schema.
-    fn _resolve_properties(
-        _own_properties: &[Property],
-        _parent_schema: Option<&Schema>,
-        _excludes: &HashSet<String>,
-    ) -> Result<Vec<Property>, DomainError> {
-        unimplemented!("RED PHASE: Not implemented")
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 }
 
@@ -65,13 +80,40 @@ impl Schema {
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
+#[non_exhaustive]
 pub struct PropertyBank {
     /// Map of property ID -> Property.
     pub properties: HashMap<String, Property>,
 }
 
 impl PropertyBank {
-    /// Create a new empty PropertyBank.
+    /// Get all properties in the bank.
+    #[inline]
+    pub fn all(&self) -> impl Iterator<Item = &Property> {
+        self.properties.values()
+    }
+
+    /// Lookup a property by ID.
+    #[inline]
+    #[must_use]
+    pub fn lookup(&self, _id: &str) -> Option<&Property> {
+        // RED PHASE: Not implemented
+        None
+    }
+
+    /// Lookup a property by name and spec (computes ID internally).
+    #[inline]
+    #[must_use]
+    pub fn lookup_by_definition(
+        &self,
+        _name: &str,
+        _spec: &PropertySpec,
+    ) -> Option<&Property> {
+        // RED PHASE: Not implemented
+        None
+    }
+
+    /// Create a new empty `PropertyBank`.
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -89,25 +131,8 @@ impl PropertyBank {
         &mut self,
         _property: Property,
     ) -> Result<&Property, DomainError> {
-        unimplemented!("RED PHASE: Not implemented")
-    }
-
-    /// Lookup a property by ID.
-    #[inline]
-    #[must_use]
-    pub fn lookup(&self, _id: &str) -> Option<&Property> {
-        unimplemented!("RED PHASE: Not implemented")
-    }
-
-    /// Lookup a property by name and spec (computes ID internally).
-    #[inline]
-    #[must_use]
-    pub fn lookup_by_definition(
-        &self,
-        _name: &str,
-        _spec: &PropertySpec,
-    ) -> Option<&Property> {
-        unimplemented!("RED PHASE: Not implemented")
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 
     /// Resolve $ref pointer to Property.
@@ -119,18 +144,14 @@ impl PropertyBank {
         &self,
         _ref_path: &str,
     ) -> Result<&Property, DomainError> {
-        unimplemented!("RED PHASE: Not implemented")
-    }
-
-    /// Get all properties in the bank.
-    #[inline]
-    pub fn all(&self) -> impl Iterator<Item = &Property> {
-        self.properties.values()
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 }
 
 /// Reusable property definition with type-specific validation.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub struct Property {
     /// Whether property accepts array of values.
     pub array: bool,
@@ -145,6 +166,14 @@ pub struct Property {
 }
 
 impl Property {
+    /// Compute deterministic ID from name and spec using Blake3.
+    #[inline]
+    #[must_use]
+    pub fn compute_id(_name: &str, _spec: &PropertySpec) -> String {
+        // RED PHASE: Not implemented
+        String::new()
+    }
+
     /// Create a new property with validation and deterministic ID.
     ///
     /// # Errors
@@ -156,14 +185,8 @@ impl Property {
         _array: bool,
         _spec: PropertySpec,
     ) -> Result<Self, DomainError> {
-        unimplemented!("RED PHASE: Not implemented")
-    }
-
-    /// Compute deterministic ID from name and spec using Blake3.
-    #[inline]
-    #[must_use]
-    pub fn compute_id(_name: &str, _spec: &PropertySpec) -> String {
-        unimplemented!("RED PHASE: Not implemented")
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 
     /// Validate property structure and constraints.
@@ -172,7 +195,8 @@ impl Property {
     /// Returns `DomainError` in RED phase.
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE: Not implemented")
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 }
 
@@ -204,6 +228,7 @@ pub trait PropertySpecTrait: Debug + Send + Sync {
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
 )]
 #[serde(rename_all = "lowercase")]
+#[non_exhaustive]
 pub enum PropertySpecType {
     /// Boolean type.
     Bool,
@@ -237,76 +262,11 @@ pub enum PropertySpec {
     String(StringSpec),
 }
 
-/// String property validation constraints.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-pub struct StringSpec {
-    /// Optional enum of allowed values.
-    pub enum_values: Option<Vec<String>>,
-    /// Optional max length.
-    pub max_length: Option<usize>,
-    /// Optional min length.
-    pub min_length: Option<usize>,
-    /// Optional regex pattern.
-    pub pattern: Option<String>,
-}
-
-impl PropertySpecTrait for StringSpec {
-    type Value = String;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::String
-    }
-
-    #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE")
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE")
-    }
-}
-
-/// Number property validation constraints.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-pub struct NumberSpec {
-    /// Optional maximum value.
-    pub max: Option<f64>,
-    /// Optional minimum value.
-    pub min: Option<f64>,
-    /// Optional step increment.
-    pub step: Option<f64>,
-}
-
-impl PropertySpecTrait for NumberSpec {
-    type Value = f64;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::Number
-    }
-
-    #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE")
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE")
-    }
-}
-
 /// Boolean property (marker type).
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
+#[non_exhaustive]
 pub struct BoolSpec;
 
 impl PropertySpecTrait for BoolSpec {
@@ -330,6 +290,7 @@ impl PropertySpecTrait for BoolSpec {
 
 /// Date property validation constraints.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
 pub struct DateSpec {
     /// Date format string.
     pub format: String,
@@ -345,12 +306,14 @@ impl PropertySpecTrait for DateSpec {
 
     #[inline]
     fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE")
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 
     #[inline]
     fn validate_spec(&self) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE")
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 }
 
@@ -358,6 +321,7 @@ impl PropertySpecTrait for DateSpec {
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
+#[non_exhaustive]
 pub struct FileSpec {
     /// Optional directory restriction.
     pub directory: Option<String>,
@@ -375,104 +339,171 @@ impl PropertySpecTrait for FileSpec {
 
     #[inline]
     fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE")
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 
     #[inline]
     fn validate_spec(&self) -> Result<(), DomainError> {
-        unimplemented!("RED PHASE")
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
     }
 }
 
-/// Common regex patterns for schema validation.
-pub mod patterns {
-    /// Email regex pattern.
-    pub const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";
-    /// URL regex pattern.
-    pub const URL: &str = r"^https?://[^\s/$.?#].[^\s]*$";
+/// Number property validation constraints.
+#[derive(
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[non_exhaustive]
+pub struct NumberSpec {
+    /// Optional maximum value.
+    pub max: Option<f64>,
+    /// Optional minimum value.
+    pub min: Option<f64>,
+    /// Optional step increment.
+    pub step: Option<f64>,
+}
+
+impl PropertySpecTrait for NumberSpec {
+    type Value = f64;
+
+    #[inline]
+    fn spec_type(&self) -> PropertySpecType {
+        PropertySpecType::Number
+    }
+
+    #[inline]
+    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), DomainError> {
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+    }
+}
+
+/// String property validation constraints.
+#[derive(
+    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
+)]
+#[non_exhaustive]
+pub struct StringSpec {
+    /// Optional enum of allowed values.
+    pub enum_values: Option<Vec<String>>,
+    /// Optional max length.
+    pub max_length: Option<usize>,
+    /// Optional min length.
+    pub min_length: Option<usize>,
+    /// Optional regex pattern.
+    pub pattern: Option<String>,
+}
+
+impl PropertySpecTrait for StringSpec {
+    type Value = String;
+
+    #[inline]
+    fn spec_type(&self) -> PropertySpecType {
+        PropertySpecType::String
+    }
+
+    #[inline]
+    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), DomainError> {
+        // RED PHASE: Not implemented
+        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     mod schema {
-        use super::*;
-
         #[test]
+        #[ignore = "RED Phase"]
         fn detects_circular_inheritance() {
             // A extends B, B extends A
             // This should fail with CircularInheritance error
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn resolves_inheritance_correctly() {
             // Parent has P1, P2. Child extends Parent, excludes P2, adds P3.
             // Result should have P1, P3.
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn validates_schema_name_format() {
             // Must be lowercase-with-hyphens
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
     }
 
     mod property {
-        use super::*;
-
         #[test]
+        #[ignore = "RED Phase"]
         fn id_is_deterministic_using_blake3() {
             // Same name + spec -> same ID
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn rejects_invalid_property_names() {
             // Spaces, uppercase, etc.
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn validates_regex_patterns_safely() {
             // Invalid regex should fail validation (R-005)
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
     }
 
     mod property_bank {
-        use super::*;
-
         #[test]
+        #[ignore = "RED Phase"]
         fn deduplicates_properties_on_registration() {
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn resolves_refs_correctly() {
             // #/properties/title -> title
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
     }
 
     mod specs {
-        use super::*;
-
         #[test]
+        #[ignore = "RED Phase"]
         fn string_spec_validates_enums() {
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn number_spec_validates_steps() {
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn file_spec_validates_file_classes() {
-            unimplemented!("RED PHASE")
+            // RED PHASE: Not implemented
         }
     }
 }

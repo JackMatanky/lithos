@@ -8,31 +8,31 @@ use uuid::Uuid;
 
 use crate::{
     errors::DomainError,
-    models::template::{Template, TemplateComposition},
+    models::template::{Composition, Template},
 };
 
 /// Command port for template-related write operations.
 #[async_trait]
-pub trait TemplateCommand: Send + Sync {
+pub trait Command: Send + Sync {
     /// Creates a new template.
     async fn create_template(
         &self,
         template: Template,
     ) -> Result<(), DomainError>;
 
+    /// Deletes a template by ID.
+    async fn delete_template(&self, id: Uuid) -> Result<(), DomainError>;
+
     /// Updates an existing template.
     async fn update_template(
         &self,
         template: Template,
     ) -> Result<(), DomainError>;
-
-    /// Deletes a template by ID.
-    async fn delete_template(&self, id: Uuid) -> Result<(), DomainError>;
 }
 
 /// Query port for template-related read operations.
 #[async_trait]
-pub trait TemplateQuery: Send + Sync {
+pub trait Query: Send + Sync {
     /// Gets a template by ID.
     async fn get_template(
         &self,
@@ -51,6 +51,6 @@ pub trait TemplateQuery: Send + Sync {
     /// Resolves a template composition.
     async fn resolve_composition(
         &self,
-        composition: TemplateComposition,
+        composition: Composition,
     ) -> Result<Template, DomainError>;
 }

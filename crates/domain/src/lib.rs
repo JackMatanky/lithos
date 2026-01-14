@@ -41,12 +41,13 @@ pub use models::{
         PropertySpec, Schema, StringSpec,
     },
     template::{
-        InsertionPosition, Template, TemplateComposition, TemplateMetadata,
-        TemplateSection, VariableDefinition,
+        Composition as TemplateComposition, InsertionPosition,
+        Metadata as TemplateMetadata, Section as TemplateSection, Template,
+        VariableDefinition,
     },
 };
 pub use ports::{
     config::{Command as ConfigCommand, Query as ConfigQuery},
-    schema::{SchemaCommand, SchemaQuery},
-    template::{TemplateCommand, TemplateQuery},
+    schema::{Command as SchemaCommand, Query as SchemaQuery},
+    template::{Command as TemplateCommand, Query as TemplateQuery},
 };
