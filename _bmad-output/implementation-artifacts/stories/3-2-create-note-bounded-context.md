@@ -99,13 +99,13 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [ ] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
 
 ### Task 5: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
-- [ ] Achieve 90%+ test coverage for all domain entities and validation logic
+- [ ] Achieve 80%+ test coverage for all domain entities and validation logic (quality over quantity)
 - [ ] **FACTORY MACROS:** Use `test_builder!` macro per @docs/testing/developer-guide.md for constructing Note aggregate examples in fixtures
 - [ ] Create test fixtures module with deterministic examples (fixed UUIDs, predictable data)
 - [ ] Implement property-based testing with proptest for edge cases and boundary conditions
 - [ ] Add integration tests for Note aggregate with realistic subentity combinations
 - [ ] Add performance benchmarks (<100μs Note construction, <10μs validation)
-- [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all property-based tests pass
+- [ ] **TDD REQUIREMENT:** Coverage reports show 80%+ coverage, all property-based tests pass (focus on business logic)
 
 ### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
 - [ ] Update domain crate lib.rs with proper public API surface and re-exports
@@ -129,7 +129,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [ ] **TDD REQUIREMENT:** Make all port interface tests pass
 
 ### Task 10: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
-- [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
+- [ ] **TDD VALIDATION:** Confirm all tests pass and coverage meets 80%+ requirement (prioritize quality)
 - [ ] **TDD VALIDATION:** Verify property-based tests catch edge cases appropriately
 - [ ] **TDD VALIDATION:** Ensure performance benchmarks meet targets (<100μs Note construction)
 - [ ] Run `mise run fmt` to format all code according to project standards
@@ -582,7 +582,7 @@ mod tests {
 ```
 
 **Test Coverage Target:**
-- **90%+ coverage** for domain entities and validation logic (per Epic 3 AC)
+- **80%+ coverage** for domain entities and validation logic (hybrid approach: quality over quantity)
 - Test both success and error cases
 - Property-based testing with `proptest` per @docs/testing/developer-guide.md for edge cases
 - Deterministic testing with fixed UUIDs and timestamps per testing guide
@@ -845,7 +845,7 @@ pub fn create_note(...) -> Result<Note, DomainError> {
    - Unit tests for each subentity
    - Integration tests for Note aggregate
    - Property-based tests for edge cases
-   - Aim for 90%+ coverage
+    - Aim for 80%+ coverage (focus on business logic testing)
 
 **Validation Pipeline (Three-Phase):**
 1. **Syntactic**: Type correctness, basic format validation

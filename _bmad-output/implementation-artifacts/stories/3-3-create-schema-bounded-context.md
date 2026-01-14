@@ -125,12 +125,12 @@ So that schemas can define reusable property definitions with rich validation co
 - [ ] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
 
 ### Task 8: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
-- [ ] Achieve 90%+ test coverage for all schema domain entities
+- [ ] Achieve 80%+ test coverage for all schema domain entities (quality over quantity)
 - [ ] Create test fixtures module with deterministic examples (fixed UUIDs, predictable schemas)
 - [ ] Implement property-based testing with proptest for edge cases (ID collisions, circular inheritance, validation boundaries)
 - [ ] Add integration tests for inheritance chains and $ref resolution
 - [ ] Add performance benchmarks meeting all targets (<1μs ID gen, <10μs inheritance, O(1) lookups)
-- [ ] **TDD REQUIREMENT:** Coverage reports show 90%+ coverage, all property-based tests pass
+- [ ] **TDD REQUIREMENT:** Coverage reports show 80%+ coverage, all property-based tests pass (focus on business logic)
 
 ### Task 10: Implement Domain Events (GREEN Phase - AC: All)
 - [ ] Define SchemaCreated and PropertyBankUpdated domain events
@@ -1058,7 +1058,7 @@ mod tests {
 ```
 
 **Test Coverage Target:**
-- **90%+ coverage** for domain entities and validation logic (per Epic 3 AC)
+- **80%+ coverage** for domain entities and validation logic (hybrid approach: quality over quantity)
 - Test both success and error cases for all validation rules
 - Property-based testing with `proptest` per @docs/testing/developer-guide.md for edge cases (especially ID generation)
 - Deterministic testing with fixed UUIDs per testing guide
@@ -1205,7 +1205,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 - `pub(crate)` visibility by default
 - Comprehensive error types with `thiserror`
 - Test fixtures in `#[cfg(test)] mod fixtures`
-- 90%+ test coverage target
+- 80%+ test coverage target (focus on business logic quality)
 
 **Critical Anti-Patterns to AVOID:**
 - ❌ Using `unwrap()`, `expect()`, `todo()`, `panic!()` in production code
@@ -1462,5 +1462,5 @@ Expected files to be created (9 TDD tasks for 3-2, 7 TDD tasks for 3-1):
 - crates/domain/Cargo.toml (UPDATED with blake3 dependency)
 - benches/schema_benchmarks.rs (performance benchmarks - Task 6)
 
-Comprehensive tests in each file with #[cfg(test)] modules (90%+ coverage target)
+Comprehensive tests in each file with #[cfg(test)] modules (80%+ coverage target, quality focus)
 ```

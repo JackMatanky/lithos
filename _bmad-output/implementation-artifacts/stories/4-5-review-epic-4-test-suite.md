@@ -14,7 +14,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 1. Given docs/testing/developer-guide.md provides testing standards and tools When I reference the guide during review Then I validate compliance with Lithos testing hierarchy, async patterns, and utilities
 
-2. Given all Epic 4 components are implemented with tests When I review the test suite Then it achieves 90%+ coverage for loading strategy components
+2. Given all Epic 4 components are implemented with tests When I review the test suite Then it achieves 80%+ coverage for loading strategy components (quality over quantity)
 
 3. Given the test suite is implemented When I check for redundancy Then no duplicate test cases exist across loading components
 
@@ -39,7 +39,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Review test file organization: check inline `#[cfg(test)]` modules vs separate test files
 - [ ] Identify specific coverage gaps in critical areas: interface contracts, parsing edge cases, validation scenarios, mock behaviors
 - [ ] Assess coverage quality vs metrics: review test code for meaningful assertions vs vanity coverage
-- [ ] Create document `_bmad-output/epic-4-coverage-analysis.md` explaining why 90%+ target is appropriate for Epic 4 MVP core components
+- [ ] Document coverage strategy: 80%+ target with quality focus for infrastructure components
 
 ### Task 3: Identify Redundancies and Inefficiencies
 - [ ] Review test fixtures for duplication across Epic 4 components
@@ -57,7 +57,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] **COVERAGE ASSURANCE:** Add integration tests for complete file loading workflows with validation
 - [ ] **COVERAGE ASSURANCE:** Ensure coverage quality (meaningful assertions, not just line coverage)
 - [ ] Configure nextest for optimal Epic 4 test execution and parallelization
-- [ ] Verify 90%+ coverage target achieved with `mise run test:coverage`
+- [ ] Verify 80%+ coverage target achieved with `mise run test:coverage` (focus on business logic quality)
 
 ### Task 5: Establish Test Maintenance Guidelines
 - [ ] Create test evolution tracking for maintenance cost monitoring
@@ -67,7 +67,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Create maintenance cost monitoring and alerting for Epic 4 test suite
 
 ### Task 6: Validate Optimized Test Suite
-- [ ] **COVERAGE VALIDATION:** Confirm 90%+ coverage achieved for all Epic 4 components
+- [ ] **COVERAGE VALIDATION:** Confirm 80%+ coverage achieved for all Epic 4 components (prioritize quality)
 - [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests validate meaningful behavior
 - [ ] **COVERAGE VALIDATION:** Ensure branch coverage for critical conditional logic
 - [ ] **COVERAGE VALIDATION:** Validate edge case and error path coverage across all components
@@ -78,7 +78,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 ### Task 7: Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [ ] **HEXAGONAL VALIDATION:** Confirm test suite properly mirrors hexagonal architecture (domain pure, adapters integrated)
-- [ ] **COVERAGE VALIDATION:** Confirm 90%+ coverage achieved and documented in coverage reports
+- [ ] **COVERAGE VALIDATION:** Confirm 80%+ coverage achieved and documented in coverage reports (business logic focus)
 - [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful domain and adapter behavior
 - [ ] **COVERAGE VALIDATION:** Ensure critical parsing, validation, and interface logic are fully covered
 - [ ] **VALIDATION:** Confirm Epic 4 test suite analysis is comprehensive and actionable

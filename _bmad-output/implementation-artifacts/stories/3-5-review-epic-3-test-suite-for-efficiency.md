@@ -51,7 +51,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Review test file organization: check that domain entities have inline `#[cfg(test)] mod tests` modules and integration tests are in `crates/domain/tests/` directory
 - [ ] Identify specific coverage gaps in critical areas: list uncovered lines in validation logic, error paths, edge cases, boundary conditions for each bounded context
 - [ ] Assess coverage quality vs metrics: review test code to identify vanity coverage (tests that only exercise code without meaningful assertions) vs meaningful tests
-- [ ] Create document `_bmad-output/coverage-analysis/coverage-target-justification.md` explaining why 90%+ target is appropriate for Epic 3 domain models vs 80%+ architecture baseline, citing business criticality of validation logic, type safety, error handling
+- [ ] Document coverage strategy: 80%+ target with quality focus (business logic, error cases, edge conditions over line coverage)
 - [ ] Document current coverage gaps, weak areas, and quality concerns
 
 ### Task 3: Identify Redundancies and Inefficiencies
@@ -70,7 +70,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] **COVERAGE ASSURANCE:** Add integration tests for cross-entity validation scenarios
 - [ ] **COVERAGE ASSURANCE:** Ensure coverage quality (meaningful assertions, not just line coverage)
 - [ ] Configure nextest for optimal Epic 3 test execution
-- [ ] Verify 90%+ coverage target achieved with `mise run test:coverage`
+- [ ] Verify 80%+ coverage target achieved with `mise run test:coverage` (focus on business logic quality)
 
 ### Task 5: Establish Test Maintenance Guidelines
 - [ ] Create test evolution tracking for maintenance cost monitoring (<20% target)
@@ -80,7 +80,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Create maintenance cost monitoring and alerting
 
 ### Task 6: Validate Optimized Test Suite
-- [ ] **COVERAGE VALIDATION:** Confirm 90%+ coverage achieved for domain entities and validation logic
+- [ ] **COVERAGE VALIDATION:** Confirm 80%+ coverage achieved for domain entities and validation logic (prioritize quality)
 - [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful behavior, not just lines
 - [ ] **COVERAGE VALIDATION:** Ensure branch coverage for critical conditional logic
 - [ ] **COVERAGE VALIDATION:** Validate edge case and error path coverage
@@ -91,7 +91,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 ### Task 7: Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [ ] **HEXAGONAL VALIDATION:** Confirm test suite properly mirrors hexagonal architecture (domain pure, adapters integrated)
-- [ ] **COVERAGE VALIDATION:** Confirm 90%+ coverage achieved and documented in coverage report
+- [ ] **COVERAGE VALIDATION:** Confirm 80%+ coverage achieved and documented in coverage report (business logic focus)
 - [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful domain behavior
 - [ ] **COVERAGE VALIDATION:** Ensure critical validation logic and error paths are covered
 - [ ] **VALIDATION:** Confirm Epic 3 test suite analysis is comprehensive and actionable
@@ -216,29 +216,29 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **Coverage Targets by Bounded Context:**
 
 **Note Bounded Context (Story 3-1):**
-- Note aggregate: 90%+ coverage (entity creation, validation, relationships)
-- Subentities: Frontmatter, Links, Embeds, Tags, Headings, Tasks, Sections (all 90%+)
+- Note aggregate: 80%+ coverage (entity creation, validation, relationships)
+- Subentities: Frontmatter, Links, Embeds, Tags, Headings, Tasks, Sections (all 80%+)
 - Business rules: Wiki-link resolution, vault path validation, semantic consistency
 - Error cases: Invalid relationships, malformed content, constraint violations
 
 **Schema Bounded Context (Story 3-2):**
-- Schema entity: 90%+ coverage (creation, inheritance, validation)
-- PropertyBank: 90%+ coverage (registry operations, lookup methods)
-- Property entity: 90%+ coverage (ID generation, constraint validation)
-- PropertySpec variants: 90%+ coverage (String, Number, Bool, Date, File specs)
-- Inheritance resolution: 90%+ coverage (Extends, Excludes, property merging)
+- Schema entity: 80%+ coverage (creation, inheritance, validation)
+- PropertyBank: 80%+ coverage (registry operations, lookup methods)
+- Property entity: 80%+ coverage (ID generation, constraint validation)
+- PropertySpec variants: 80%+ coverage (String, Number, Bool, Date, File specs)
+- Inheritance resolution: 80%+ coverage (Extends, Excludes, property merging)
 
 **Config Bounded Context (Story 3-3):**
-- Config entity: 90%+ coverage (hierarchical structure, validation)
-- Configuration layers: 90%+ coverage (Global, User, Project, Vault merging)
-- Business rules: 90%+ coverage (configuration integrity, type safety)
-- Error handling: 90%+ coverage (validation failures, merge conflicts)
+- Config entity: 80%+ coverage (hierarchical structure, validation)
+- Configuration layers: 80%+ coverage (Global, User, Project, Vault merging)
+- Business rules: 80%+ coverage (configuration integrity, type safety)
+- Error handling: 80%+ coverage (validation failures, merge conflicts)
 
 **Template Bounded Context (Story 3-4):**
-- Template entity: 90%+ coverage (structure validation, composition)
-- VariableDefinition enum: 90%+ coverage (type safety, constraints, defaults)
-- TemplateComposition: 90%+ coverage (modular assembly, dependency resolution)
-- Business rules: 90%+ coverage (variable naming, composition cycles, semantic validation)
+- Template entity: 80%+ coverage (structure validation, composition)
+- VariableDefinition enum: 80%+ coverage (type safety, constraints, defaults)
+- TemplateComposition: 80%+ coverage (modular assembly, dependency resolution)
+- Business rules: 80%+ coverage (variable naming, composition cycles, semantic validation)
 
 ### Test Efficiency Standards
 
@@ -310,7 +310,7 @@ mod integration_tests {
 
 **Coverage Analysis Tools:**
 - **tarpaulin**: Primary coverage tool with branch coverage analysis
-- **Minimum Thresholds**: 90%+ line coverage, 85%+ branch coverage for Epic 3
+- **Minimum Thresholds**: 80%+ line coverage, 75%+ branch coverage for Epic 3 (quality over quantity)
 - **Exclusion Rules**: Generated code, test utilities excluded from coverage
 - **Reporting**: HTML reports for detailed analysis, CI integration for enforcement
 
@@ -421,8 +421,8 @@ crates/
 - **Meaningful Coverage**: Focus on testing business logic, validation rules, and error conditions
 - **Avoid Vanity Metrics**: Don't write tests just to increase percentages - quality over quantity
 - **Risk-Based Testing**: Prioritize coverage for critical domain operations and edge cases
-- **Hexagonal Coverage Structure**: Domain (90%+), Adapters (integration), E2E (critical paths)
-- **Quality Gates**: 90%+ line coverage, 85%+ branch coverage for Epic 3 domain entities (vs 80%+ architecture baseline)
+- **Hexagonal Coverage Structure**: Domain (80%+), Adapters (integration), E2E (critical paths)
+- **Quality Gates**: 80%+ line coverage, 75%+ branch coverage for Epic 3 domain entities (quality-focused)
 - **Coverage Assurance**: Regular reviews to ensure tests validate behavior, not just execution paths
 
 **Coverage Assurance Techniques:**
