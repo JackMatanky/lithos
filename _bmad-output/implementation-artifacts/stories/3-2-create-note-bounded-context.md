@@ -35,6 +35,8 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 **Given** I have researched Obsidian vault patterns
 **When** I check the Note entity design
 **Then** it supports vault-relative paths and wiki-link resolution
+**And** Note IDs use **UUID v7** for strict chronological ordering and stability (R-002)
+**And** all file paths (Note path, Embed paths) are validated against **Path Traversal** (rejecting `../`, absolute paths, etc.) (R-004)
 
 **Given** the Note bounded context is defined
 **When** I check domain events

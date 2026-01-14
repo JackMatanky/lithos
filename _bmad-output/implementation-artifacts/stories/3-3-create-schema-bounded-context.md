@@ -44,6 +44,9 @@ So that schemas can define reusable property definitions with rich validation co
 **Given** semantic validation is integrated
 **When** I create Schema instances
 **Then** internal consistency validation occurs for all entities
+**And** **Circular Inheritance** is detected using a DFS-based algorithm (R-001)
+**And** Property IDs use **Blake3** hashing on normalized canonical representations for absolute determinism (R-002)
+**And** all user-defined **Regex patterns** in StringSpec are validated for safe compilation and ReDoS prevention (R-005)
 
 **Given** the Schema bounded context is defined
 **When** I check domain events

@@ -19,6 +19,9 @@ So that template structure and business rules are properly validated at the doma
 **Given** Template entity is defined
 **When** I check semantic validation
 **Then** template business rules and composition logic are validated internally
+**And** **Circular Composition** is detected in `includes` and `extends` using DFS (R-001)
+**And** composition depth is limited to **Max Depth 5** to prevent stack overflow (R-001)
+**And** variable definitions are verified for compatibility with **MiniJinja** syntax (R-006)
 
 **Given** template patterns are established
 **When** I validate the design
