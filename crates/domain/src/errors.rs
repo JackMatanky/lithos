@@ -130,6 +130,14 @@ pub enum DomainError {
     #[error("Circular schema inheritance detected: {0}")]
     CircularInheritance(String),
 
+    /// Circular template composition detected.
+    #[error("Circular template composition detected: {0}")]
+    CircularComposition(String),
+
+    /// Composition depth limit exceeded.
+    #[error("Composition depth limit exceeded: {0} (max 5)")]
+    CompositionDepthExceeded(usize),
+
     /// Configuration error.
     #[error(transparent)]
     Config(#[from] ConfigError),
@@ -228,6 +236,10 @@ pub enum DomainError {
     #[error("Invalid UUID: {0}")]
     InvalidUuid(String),
 
+    /// Maximum variables exceeded.
+    #[error("Maximum variables exceeded: {0} (max 50)")]
+    MaxVariablesExceeded(usize),
+
     /// Number out of range.
     #[error("Number out of range: {value} (min: {min:?}, max: {max:?})")]
     NumberOutOfRange {
@@ -269,9 +281,34 @@ pub enum DomainError {
         actual: usize,
     },
 
+    /// Template content too large.
+    #[error("Template content too large: {0} (max 1MB)")]
+    TemplateContentTooLarge(usize),
+
+    /// Template not found.
+    #[error("Template not found: {0}")]
+    TemplateNotFound(String),
+
     /// General validation failure.
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
+
+    /// Variable not found.
+    #[error("Variable not found: {0}")]
+    VariableNotFound(String),
+
+    /// Variable type mismatch.
+    #[error(
+        "Variable type mismatch for {name}: expected {expected}, got {actual}"
+    )]
+    VariableTypeMismatch {
+        /// Variable name.
+        name: String,
+        /// Expected type name.
+        expected: String,
+        /// Actual type encountered.
+        actual: String,
+    },
 }
 
 #[cfg(test)]
