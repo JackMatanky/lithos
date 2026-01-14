@@ -49,73 +49,60 @@ map_package_name() {
 #   Reference to an array for arguments
 #   The resolved package name
 # Outputs:
-#   None
+#   Writes test results to stdout
 #######################################
-build_test_args() {
+build_test_arg() {
     local -n ref_args=$1
     local package_name=$2
+    local test_type=$3
 
-    # Core test arguments matching mise.toml configuration
-    ref_args+=("--lib" "--bins")
-
-    if [[ "${usage_verbose:-}" == "1" ]]; then
-        ref_args+=("--verbose")
+    # Core test arguments
+    if [[ "${test_type}" == "nextest" ]]; then
+        ref_args+=("--lib" "--bins")
+        if [[ "${usage_verbose:-}" == "1" ]]; then
+            ref_args+=("--verbose")
+        fi
+        # Nextest specific
+        ref_args+=("--partition" "hash:1/1")
+        if [[ -n "${usage_filter:-}" ]]; then
+            ref_args+=("${usage_filter}")
+        fi
     fi
 
-    # Package selection
+    # Package selection (Common)
     if [[ -n "${package_name}" ]]; then
         ref_args+=("--package" "${package_name}")
     else
         ref_args+=("--workspace")
-    fi
-
-    # Nextest partitioning for consistent test distribution
-    ref_args+=("--partition" "hash:1/1")
-
-    # Note: JUnit output requires nextest profile configuration in .config/nextest.toml
-    # The --junit flag does not exist in nextest 0.9.x - removed for compatibility
-
-    # Test filter (if specified)
-    if [[ -n "${usage_filter:-}" ]]; then
-        ref_args+=("${usage_filter}")
-    fi
-}
-
-#######################################
-# Build arguments for cargo doc tests.
-# Globals:
-#   usage_package
-# Arguments:
-#   Reference to an array for arguments
-#   The resolved package name
-# Outputs:
-#   None
-#######################################
-build_doc_test_args() {
-    local -n ref_doc_args=$1
-    local package_name=$2
-
-    if [[ -n "${package_name}" ]]; then
-        ref_doc_args+=("--package" "${package_name}")
-    else
-        ref_doc_args+=("--workspace")
     fi
 }
 
 #######################################
 # Execute unit tests using nextest and doc tests using cargo.
 # Arguments:
-#   Arguments for cargo nextest run
-#   Arguments for cargo test --doc
+#   Arguments for cargo nextest run (array elements)
+#   --- separator ---
+#   Arguments for cargo test --doc (remaining array elements)
 # Outputs:
 #   Writes test results to stdout
 #######################################
 run_tests() {
-    local nextest_args=("$@")
+    local nextest_args=()
     local doc_args=()
-    local resolved_package
-    resolved_package=$(map_package_name)
-    build_doc_test_args doc_args "${resolved_package}"
+    local target="nextest"
+
+    for arg in "$@"; do
+        if [[ "${arg}" == "---" ]]; then
+            target="doc"
+            continue
+        fi
+
+        if [[ "${target}" == "nextest" ]]; then
+            nextest_args+=("${arg}")
+        else
+            doc_args+=("${arg}")
+        fi
+    done
 
     echo "🧪 Running unit tests (nextest)..."
     cargo nextest run "${nextest_args[@]}"
@@ -138,9 +125,12 @@ main() {
     resolved_package=$(map_package_name)
 
     local nextest_args=()
-    build_test_args nextest_args "${resolved_package}"
+    build_test_arg nextest_args "${resolved_package}" "nextest"
 
-    run_tests "${nextest_args[@]}"
+    local doc_args=()
+    build_test_arg doc_args "${resolved_package}" "doc"
+
+    run_tests "${nextest_args[@]}" "---" "${doc_args[@]}"
     echo "✅ All unit and doc tests complete"
 }
 
