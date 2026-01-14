@@ -140,6 +140,35 @@ pub struct FileSystemConfig {
 }
 
 impl FileSystemConfig {
+    /// Create a new filesystem configuration with validation.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    #[inline]
+    pub fn new(
+        cache_dir: String,
+        property_bank_filename: String,
+        schemas_dir: String,
+        templates_dir: String,
+        vault_path: String,
+    ) -> Result<Self, crate::ConfigError> {
+        if vault_path.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "vault_path".to_owned(),
+                message: "vault path cannot be empty (required field)"
+                    .to_owned(),
+            });
+        }
+
+        Ok(Self {
+            cache_dir,
+            property_bank_filename,
+            schemas_dir,
+            templates_dir,
+            vault_path,
+        })
+    }
+
     /// Get the full path to the property bank file (`schemas_dir/property_bank_filename`).
     ///
     /// The property bank is always stored in the schemas directory.
@@ -181,6 +210,60 @@ pub struct FrontmatterConfig {
     pub title_key: String,
 }
 
+impl FrontmatterConfig {
+    /// Create a new frontmatter configuration with validation.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if any key is empty.
+    #[inline]
+    pub fn new(
+        alias_key: String,
+        date_created_key: String,
+        date_modified_key: String,
+        file_class_key: String,
+        title_key: String,
+    ) -> Result<Self, crate::ConfigError> {
+        if alias_key.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "alias_key".to_owned(),
+                message: "key mapping cannot be empty".to_owned(),
+            });
+        }
+        if date_created_key.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "date_created_key".to_owned(),
+                message: "key mapping cannot be empty".to_owned(),
+            });
+        }
+        if date_modified_key.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "date_modified_key".to_owned(),
+                message: "key mapping cannot be empty".to_owned(),
+            });
+        }
+        if file_class_key.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "file_class_key".to_owned(),
+                message: "key mapping cannot be empty".to_owned(),
+            });
+        }
+        if title_key.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "title_key".to_owned(),
+                message: "key mapping cannot be empty".to_owned(),
+            });
+        }
+
+        Ok(Self {
+            alias_key,
+            date_created_key,
+            date_modified_key,
+            file_class_key,
+            title_key,
+        })
+    }
+}
+
 /// Vault-specific configuration (highest precedence).
 ///
 /// # Business Rules
@@ -200,6 +283,27 @@ pub struct VaultConfig {
     pub log_level: String,
 }
 
+impl VaultConfig {
+    /// Create a new vault configuration with validation.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if inner configuration validation fails.
+    #[inline]
+    pub fn new(
+        filesystem: FileSystemConfig,
+        frontmatter: FrontmatterConfig,
+        log_level: String,
+    ) -> Result<Self, crate::ConfigError> {
+        // Vault config allows empty values (falls back to global)
+        // Validation of non-empty values happens in merge
+        Ok(Self {
+            filesystem,
+            frontmatter,
+            log_level,
+        })
+    }
+}
+
 /// Global default configuration (lowest precedence).
 ///
 /// # Business Rules
@@ -215,6 +319,35 @@ pub struct GlobalConfig {
     pub frontmatter: FrontmatterConfig,
     /// Log level (debug, info, warn, error).
     pub log_level: String,
+}
+
+impl GlobalConfig {
+    /// Create a new global configuration with validation.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if validation fails.
+    #[inline]
+    pub fn new(
+        filesystem: FileSystemConfig,
+        frontmatter: FrontmatterConfig,
+        log_level: String,
+    ) -> Result<Self, crate::ConfigError> {
+        // Global config requires non-empty values for logic
+        // But since we use defaults in Default impl, we just validate here
+        if log_level.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "log_level".to_owned(),
+                message: "log level cannot be empty in global config"
+                    .to_owned(),
+            });
+        }
+
+        Ok(Self {
+            filesystem,
+            frontmatter,
+            log_level,
+        })
+    }
 }
 
 /// Merged configuration result (Vault overrides Global).
@@ -366,7 +499,7 @@ impl Config {
 
         // Merge frontmatter config with defaults
         let frontmatter =
-            Self::merge_frontmatter(&global.frontmatter, &vault.frontmatter);
+            Self::merge_frontmatter(&global.frontmatter, &vault.frontmatter)?;
 
         // Merge log level with validation
         let log_level =
@@ -398,69 +531,70 @@ impl Config {
         global: &FileSystemConfig,
         vault: FileSystemConfig,
     ) -> Result<FileSystemConfig, crate::ConfigError> {
-        Self::validate_vault_path(&vault.vault_path)?;
-
         let defaults = FileSystemConfig::default();
 
-        Ok(FileSystemConfig {
-            cache_dir: Self::choose_value(
+        FileSystemConfig::new(
+            Self::choose_value(
                 &vault.cache_dir,
                 &global.cache_dir,
                 &defaults.cache_dir,
             ),
-            property_bank_filename: Self::choose_value(
+            Self::choose_value(
                 &vault.property_bank_filename,
                 &global.property_bank_filename,
                 &defaults.property_bank_filename,
             ),
-            schemas_dir: Self::choose_value(
+            Self::choose_value(
                 &vault.schemas_dir,
                 &global.schemas_dir,
                 &defaults.schemas_dir,
             ),
-            templates_dir: Self::choose_value(
+            Self::choose_value(
                 &vault.templates_dir,
                 &global.templates_dir,
                 &defaults.templates_dir,
             ),
-            vault_path: vault.vault_path,
-        })
+            vault.vault_path,
+        )
     }
 
     /// Merge frontmatter configurations applying defaults where needed.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if validation fails.
     fn merge_frontmatter(
         global: &FrontmatterConfig,
         vault: &FrontmatterConfig,
-    ) -> FrontmatterConfig {
+    ) -> Result<FrontmatterConfig, crate::ConfigError> {
         let defaults = FrontmatterConfig::default();
 
-        FrontmatterConfig {
-            file_class_key: Self::choose_value(
-                &vault.file_class_key,
-                &global.file_class_key,
-                &defaults.file_class_key,
-            ),
-            title_key: Self::choose_value(
-                &vault.title_key,
-                &global.title_key,
-                &defaults.title_key,
-            ),
-            alias_key: Self::choose_value(
+        FrontmatterConfig::new(
+            Self::choose_value(
                 &vault.alias_key,
                 &global.alias_key,
                 &defaults.alias_key,
             ),
-            date_created_key: Self::choose_value(
+            Self::choose_value(
                 &vault.date_created_key,
                 &global.date_created_key,
                 &defaults.date_created_key,
             ),
-            date_modified_key: Self::choose_value(
+            Self::choose_value(
                 &vault.date_modified_key,
                 &global.date_modified_key,
                 &defaults.date_modified_key,
             ),
-        }
+            Self::choose_value(
+                &vault.file_class_key,
+                &global.file_class_key,
+                &defaults.file_class_key,
+            ),
+            Self::choose_value(
+                &vault.title_key,
+                &global.title_key,
+                &defaults.title_key,
+            ),
+        )
     }
 
     /// Merge log level with validation.
