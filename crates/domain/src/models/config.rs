@@ -64,9 +64,9 @@ use std::collections::HashMap;
 /// # Examples
 ///
 /// ```rust
-/// use lithos_domain::ConfigValue;
-/// use std::collections::HashMap;
-///
+/// # use lithos_domain::ConfigValue;
+/// # use std::collections::HashMap;
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// // Create from primitives
 /// let string_val = ConfigValue::from("test".to_string());
 /// let number_val = ConfigValue::from(42.0);
@@ -78,6 +78,8 @@ use std::collections::HashMap;
 /// let object_val = ConfigValue::from(obj_map);
 ///
 /// let array_val = ConfigValue::from(vec![number_val, bool_val]);
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -206,20 +208,23 @@ pub struct GlobalConfig {
 /// # Examples
 ///
 /// ```rust
-/// use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig};
-///
+/// # use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig};
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// let global = GlobalConfig::default();
 /// let mut vault = VaultConfig::default();
 /// vault.filesystem.vault_path = "/vault".to_string();
 ///
-/// let config = Config::merge(&global, vault).expect("merge should succeed");
+/// let config = Config::merge(&global, vault)?;
 /// assert_eq!(config.filesystem.vault_path, "/vault");
+/// # Ok(())
+/// # }
 /// ```
 ///
 /// ## Conceptual Structure
 ///
-/// Note: The following example shows the full conceptual structure of the hierarchical configuration.
-/// Actual construction is managed via the `merge()` method or builders in the application layer.
+/// Note: The following example shows the full conceptual structure of the
+/// hierarchical configuration. Actual construction is managed via the `merge()`
+/// method or builders in the application layer.
 ///
 /// ```rust,ignore
 /// use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig, FrontmatterConfig};

@@ -137,6 +137,8 @@ pub enum DomainError {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
     #[test]
@@ -151,51 +153,52 @@ mod tests {
         is_send_sync::<DomainError>();
     }
 
-    #[test]
-    fn config_error_validation_failed_message() {
-        let error = ConfigError::ValidationFailed {
+    #[rstest]
+    #[case::validation(
+        ConfigError::ValidationFailed {
             field: "vault_path".to_owned(),
-            message: "path cannot be empty".to_owned(),
-        };
-
-        let message = error.to_string();
-        assert!(message.contains("vault_path"));
-        assert!(message.contains("path cannot be empty"));
-    }
-
-    #[test]
-    fn config_error_missing_required_field_message() {
-        let error = ConfigError::MissingRequiredField {
-            field: "templates_dir".to_owned(),
-        };
-
-        let message = error.to_string();
-        assert!(message.contains("templates_dir"));
-        assert!(message.contains("missing"));
-    }
-
-    #[test]
-    fn config_error_invalid_type_message() {
-        let error = ConfigError::InvalidType {
+            message: "cannot be empty".to_owned()
+        },
+        &["vault_path", "cannot be empty"]
+    )]
+    #[case::missing_field(
+        ConfigError::MissingRequiredField {
+            field: "templates_dir".to_owned()
+        },
+        &["templates_dir", "missing"]
+    )]
+    #[case::invalid_type(
+        ConfigError::InvalidType {
             field: "log_level".to_owned(),
             expected: "String".to_owned(),
-            actual: "Number".to_owned(),
-        };
-
+            actual: "Number".to_owned()
+        },
+        &["log_level", "String", "Number"]
+    )]
+    fn should_display_correct_error_messages(
+        #[case] error: ConfigError,
+        #[case] expected_parts: &[&str],
+    ) {
         let message = error.to_string();
-        assert!(message.contains("log_level"));
-        assert!(message.contains("String"));
-        assert!(message.contains("Number"));
+        for part in expected_parts {
+            assert!(
+                message.contains(part),
+                "Error message '{message}' should contain '{part}'"
+            );
+        }
     }
 
     #[test]
-    fn domain_error_from_config_error() {
+    fn should_convert_config_to_domain_error() {
         let config_error = ConfigError::ValidationFailed {
             field: "test".to_owned(),
             message: "test error".to_owned(),
         };
 
         let domain_error: DomainError = config_error.into();
-        assert!(matches!(domain_error, DomainError::Config(_)));
+        assert!(
+            matches!(domain_error, DomainError::Config(_)),
+            "Expected DomainError::Config variant"
+        );
     }
 }
