@@ -82,15 +82,46 @@ build_test_args() {
 }
 
 #######################################
-# Execute unit tests using nextest.
+# Build arguments for cargo doc tests.
+# Globals:
+#   usage_package
+# Arguments:
+#   Reference to an array for arguments
+#   The resolved package name
+# Outputs:
+#   None
+#######################################
+build_doc_test_args() {
+    local -n ref_doc_args=$1
+    local package_name=$2
+
+    if [[ -n "${package_name}" ]]; then
+        ref_doc_args+=("--package" "${package_name}")
+    else
+        ref_doc_args+=("--workspace")
+    fi
+}
+
+#######################################
+# Execute unit tests using nextest and doc tests using cargo.
 # Arguments:
 #   Arguments for cargo nextest run
+#   Arguments for cargo test --doc
 # Outputs:
 #   Writes test results to stdout
 #######################################
 run_tests() {
-    echo "🧪 Running unit tests..."
-    cargo nextest run "$@"
+    local nextest_args=("$@")
+    local doc_args=()
+    local resolved_package
+    resolved_package=$(map_package_name)
+    build_doc_test_args doc_args "${resolved_package}"
+
+    echo "🧪 Running unit tests (nextest)..."
+    cargo nextest run "${nextest_args[@]}"
+
+    echo "📖 Running doc tests..."
+    cargo test --doc "${doc_args[@]}"
 }
 
 #######################################
@@ -106,11 +137,11 @@ main() {
     local resolved_package
     resolved_package=$(map_package_name)
 
-    local args=()
-    build_test_args args "${resolved_package}"
+    local nextest_args=()
+    build_test_args nextest_args "${resolved_package}"
 
-    run_tests "${args[@]}"
-    echo "✅ Unit tests complete"
+    run_tests "${nextest_args[@]}"
+    echo "✅ All unit and doc tests complete"
 }
 
 main "$@"
