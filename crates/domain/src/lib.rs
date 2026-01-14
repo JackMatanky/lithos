@@ -36,5 +36,12 @@ pub use models::{
         Embed, EmbedType, Frontmatter, FrontmatterValue, Heading, Link,
         LinkType, Note, Section, Tag, Task, TaskStatus,
     },
+    schema::{
+        BoolSpec, DateSpec, FileSpec, NumberSpec, Property, PropertyBank,
+        PropertySpec, Schema, StringSpec,
+    },
 };
-pub use ports::config::{Command as ConfigCommand, Query as ConfigQuery};
+pub use ports::{
+    config::{Command as ConfigCommand, Query as ConfigQuery},
+    schema::{SchemaCommand, SchemaQuery},
+};
