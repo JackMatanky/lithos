@@ -20,6 +20,7 @@ async-trait.workspace = true
 lithos-test-utils = { path = "../../tests/utils" }
 tokio = { workspace = true, features = ["full"] }
 serde_json.workspace = true
+mockall.workspace = true
 
 [lints]
 workspace = true
