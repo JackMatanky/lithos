@@ -5,3 +5,7 @@
 pub mod config;
 /// Note bounded context models.
 pub mod note;
+/// Schema bounded context models.
+pub mod schema;
+/// Template bounded context models.
+pub mod template;
