@@ -69,37 +69,43 @@ So that schemas can define reusable property definitions with rich validation co
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement PropertySpec Variants (GREEN Phase - AC: 3-5)
-- [ ] Implement StringSpec with enum values, regex patterns, predefined patterns, length constraints
-- [ ] Implement NumberSpec with min/max/step validation constraints
-- [ ] Implement BoolSpec marker type (no constraints, all booleans valid)
-- [ ] Implement DateSpec with format string validation (ISO 8601 patterns)
-- [ ] Implement FileSpec with file class restrictions ("image", "pdf", "note", "audio", "video") and directory constraints
-- [ ] Add validation methods to each spec variant with proper error handling
+- [ ] Implement StringSpec: `#[derive(Debug, Clone, PartialEq)] pub struct StringSpec { pub enum_values: Option<Vec<String>>, pub pattern: Option<String>, pub min_length: Option<usize>, pub max_length: Option<usize> }`
+- [ ] Implement StringSpec::validate() method for regex compilation and constraint checking
+- [ ] Implement NumberSpec: `#[derive(Debug, Clone, PartialEq)] pub struct NumberSpec { pub min: Option<f64>, pub max: Option<f64>, pub step: Option<f64> }`
+- [ ] Implement NumberSpec::validate() method for range and step validation
+- [ ] Implement BoolSpec: `#[derive(Debug, Clone, PartialEq)] pub struct BoolSpec;` (marker type)
+- [ ] Implement DateSpec: `#[derive(Debug, Clone, PartialEq)] pub struct DateSpec { pub format: String }`
+- [ ] Implement DateSpec::validate() method for format string validation
+- [ ] Implement FileSpec: `#[derive(Debug, Clone, PartialEq)] pub struct FileSpec { pub file_class: Option<String>, pub directory: Option<String> }`
+- [ ] Implement FileSpec::validate() method for file reference constraints
 - [ ] **TDD REQUIREMENT:** Make all PropertySpec tests pass (GREEN phase complete when spec tests pass)
 
 ### Task 3: Implement Property Entity (GREEN Phase - AC: 1-2)
-- [ ] **DETERMINISTIC IDs:** Implement Property struct with deterministic ID generation using blake3 hash (Lesson Learned: Mandatory for cross-schema deduplication)
-- [ ] Add property name validation (regex ^[a-z0-9_-]+, length 1-64 chars)
-- [ ] Implement Property::new() constructor with validation pipeline
-- [ ] Implement Property::compute_id() with name + spec content hashing
-- [ ] Add required/array boolean flags with proper defaults
+- [ ] Implement Property struct: `#[derive(Debug, Clone, PartialEq)] pub struct Property { pub id: String, pub name: String, pub required: bool, pub array: bool, pub spec: PropertySpec }`
+- [ ] **DETERMINISTIC IDs:** Use blake3 hash for ID generation (name + spec content)
+- [ ] Implement Property::new() constructor: `pub fn new(name: String, required: bool, array: bool, spec: PropertySpec) -> Result<Self, SchemaError>`
+- [ ] Implement Property::compute_id() method with blake3 hashing
+- [ ] Add name validation: regex `^[a-z0-9_-]+$`, length 1-64 chars
 - [ ] **TDD REQUIREMENT:** Make all Property entity tests pass (ID determinism, validation, edge cases)
 
 ### Task 4: Implement PropertyBank Singleton (GREEN Phase - AC: 2-4)
-- [ ] Implement PropertyBank with HashMap<String, Property> storage
-- [ ] Add register() method with deduplication (same ID returns existing property)
+- [ ] Implement PropertyBank struct: `#[derive(Debug, Clone, PartialEq)] pub struct PropertyBank { properties: HashMap<String, Property> }`
+- [ ] Implement PropertyBank::new() and PropertyBank::default()
+- [ ] Implement PropertyBank::register() method: `pub fn register(&mut self, property: Property) -> Result<&Property, SchemaError>`
+- [ ] Implement PropertyBank::lookup() method: `pub fn lookup(&self, id: &str) -> Option<&Property>`
+- [ ] Implement PropertyBank::lookup_by_definition() method for name+spec lookup
 - [ ] Implement lookup() by ID and lookup_by_definition() by name+spec
 - [ ] Add resolve_ref() method for $ref resolution (Epic 6 integration point)
 - [ ] Implement Default trait for easy instantiation
 - [ ] **TDD REQUIREMENT:** Make all PropertyBank tests pass (registration, deduplication, lookups)
 
 ### Task 5: Implement Schema Aggregate (GREEN Phase - AC: 1, 2)
-- [ ] Implement Schema struct with UUID v7 identity and inheritance fields (extends, excludes)
-- [ ] Add schema name validation (regex ^[a-z0-9]+(-[a-z0-9]+)*, length 1-64 chars)
-- [ ] Implement resolve_properties() for inheritance resolution algorithm
+- [ ] Implement Schema struct: `#[derive(Debug, Clone, PartialEq)] pub struct Schema { pub id: Uuid, pub name: String, pub extends: Option<String>, pub excludes: Vec<String>, pub properties: Vec<Property>, pub resolved_properties: Vec<Property> }`
+- [ ] Implement Schema::new() constructor with inheritance resolution and validation
+- [ ] Add name validation: regex `^[a-z0-9]+(-[a-z0-9]+)*$`, length 1-64 chars
+- [ ] Implement Schema::resolve_properties() method for inheritance algorithm
 - [ ] Add circular inheritance detection with proper error handling
-- [ ] Create Schema::new() constructor with validation and inheritance resolution
-- [ ] Store resolved_properties for O(1) access after inheritance computation
+- [ ] Store resolved_properties for O(1) access after computation
 - [ ] **TDD REQUIREMENT:** Make all Schema aggregate tests pass (inheritance, validation, circular detection)
 
 ### Task 6: Implement Domain Events (GREEN Phase - AC: All)

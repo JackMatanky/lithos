@@ -63,17 +63,21 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement Domain Entities (GREEN Phase - AC: 1-5)
-- [ ] Implement Frontmatter entity with HashMap<String, FrontmatterValue> and validation logic
-- [ ] Implement FrontmatterValue enum with proper type conversions and validation
-- [ ] Implement Link entity with source/target references, alias handling, position tracking
-- [ ] Implement Embed entity with file type classification and validation constraints
-- [ ] Implement Tag entity with hierarchical path parsing and regex validation (^[a-zA-Z0-9_-]+)
-- [ ] Implement Heading entity with level validation (1-6) and position tracking
-- [ ] Implement Task entity with status enum (Incomplete, Complete, Cancelled) and position tracking
-- [ ] Implement Section entity with content range calculation and optional heading reference
-- [ ] Implement Note aggregate root with UUID v7 identity generation and vault-relative path validation
+- [ ] Implement Frontmatter entity: `#[derive(Debug, Clone, PartialEq)] pub struct Frontmatter { pub fields: HashMap<String, FrontmatterValue> }`
+- [ ] Implement Frontmatter methods: `FileClass() -> String`, `Title() -> String`, `Aliases() -> Vec<String>` using Config keys
+- [ ] Implement FrontmatterValue enum: `#[derive(Debug, Clone, PartialEq)] pub enum FrontmatterValue { String(String), Number(f64), Boolean(bool), Array(Vec<FrontmatterValue>), Object(HashMap<String, FrontmatterValue>) }`
+- [ ] Implement Link entity: `#[derive(Debug, Clone, PartialEq)] pub struct Link { pub text: String, pub destination: String, pub is_wikilink: bool }`
+- [ ] Implement Link::new_wikilink() and Link::new_markdown_link() constructors
+- [ ] Implement Embed entity: `#[derive(Debug, Clone, PartialEq)] pub struct Embed { pub path: String, pub file_class: Option<String>, pub directory: Option<String> }`
+- [ ] Implement Tag entity: `#[derive(Debug, Clone, PartialEq)] pub struct Tag(pub String)` with regex validation `^[a-zA-Z0-9_-]+$`
+- [ ] Implement Heading entity: `#[derive(Debug, Clone, PartialEq)] pub struct Heading { pub level: u8, pub text: String, pub position: usize }`
+- [ ] Implement Heading validation: level 1-6, non-empty text
+- [ ] Implement Task entity: `#[derive(Debug, Clone, PartialEq)] pub struct Task { pub text: String, pub is_checked: bool, pub line: usize }`
+- [ ] Implement Section entity: `#[derive(Debug, Clone, PartialEq)] pub struct Section { pub heading: Option<Heading>, pub start_line: usize, pub end_line: usize }`
+- [ ] Implement Note aggregate: `#[derive(Debug, Clone, PartialEq)] pub struct Note { pub path: String, pub frontmatter: Frontmatter, pub links: Vec<Link>, pub headings: Vec<Heading>, pub tags: Vec<Tag>, pub tasks: Vec<Task>, pub sections: Vec<Section> }`
+- [ ] Implement Note::new() constructor with path validation and UUID v7 identity generation
+- [ ] Implement Note::validate() method for semantic validation pipeline
 - [ ] **VIRTUAL CLOCK:** Integrate with virtual clock infrastructure for deterministic timestamp generation
-- [ ] Implement semantic validation pipeline (Syntactic → Orchestration → Semantic)
 - [ ] **TDD REQUIREMENT:** Make all previously failing tests pass (GREEN phase complete when all tests pass)
 
 ### Task 3: Implement Domain Error Types (GREEN Phase - AC: All)
