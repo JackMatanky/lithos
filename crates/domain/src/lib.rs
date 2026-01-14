@@ -28,7 +28,6 @@ pub mod ports;
 pub use errors::{ConfigError, DomainError};
 pub use events::ConfigUpdated;
 pub use models::config::{
-    Config, ConfigValue, FileSystemConfig, FrontmatterConfig, GlobalConfig,
-    VaultConfig,
+    Config, ConfigValue, FrontmatterConfig, FsConfig, GlobalConfig, VaultConfig,
 };
 pub use ports::config::{Command as ConfigCommand, Query as ConfigQuery};
