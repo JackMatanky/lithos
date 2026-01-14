@@ -1,6 +1,6 @@
 # Story 3.1: Create Config Bounded Context
 
-Status: review
+Status: done
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
@@ -86,12 +86,12 @@ So that configuration changes are validated and the domain enforces configuratio
 - [x] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
 
 ### Task 5: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
-- [x] Achieve comprehensive test coverage for all Config domain entities and validation logic (26 tests)
+- [x] Achieve comprehensive test coverage for all Config domain entities and validation logic (40 tests)
 - [x] Create test fixtures with hierarchical config examples and edge cases (sample_global_config, sample_vault_config)
 - [x] Implement behavioral testing for hierarchical merging and validation boundaries
 - [x] Add integration tests for encrypted field handling and decryption workflows (ConfigValue tests)
 - [x] Verify test performance meets requirements (all tests pass quickly)
-- [x] **TDD REQUIREMENT:** All 26 tests pass, covering merging, validation, defaults, and error handling
+- [x] **TDD REQUIREMENT:** All 40 tests pass, covering merging, validation, defaults, and error handling
 
 ### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
 - [x] Update domain crate lib.rs with Config module public exports
@@ -113,7 +113,7 @@ So that configuration changes are validated and the domain enforces configuratio
 - [x] **TDD REQUIREMENT:** Make all port interface tests pass
 
 ### Task 10: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
-- [x] **TDD VALIDATION:** Confirm all tests pass and coverage meets requirement (26 tests passing)
+- [x] **TDD VALIDATION:** Confirm all tests pass and coverage meets requirement (40 tests passing)
 - [x] **TDD VALIDATION:** Verify behavioral tests catch hierarchical merging edge cases (config_merge_handles_various_empty_combinations)
 - [x] **TDD VALIDATION:** Ensure performance meets requirements (tests execute quickly, no performance issues)
 - [x] **TDD VALIDATION:** Verify ConfigValue encryption/decryption works for sensitive config fields
@@ -185,7 +185,7 @@ pub struct Config {
 impl Config {
     /// Merge Vault and Global configs with business rules
     /// Vault overrides Global (business requirement)
-    pub fn merge(global: GlobalConfig, vault: VaultConfig) -> Result<Self, ConfigError> {
+    pub fn merge(global: &GlobalConfig, vault: VaultConfig) -> Result<Self, ConfigError> {
         // Business logic: vault takes precedence
         let filesystem = merge_filesystem(global.filesystem, vault.filesystem);
         let frontmatter = merge_frontmatter(global.frontmatter, vault.frontmatter);
@@ -498,7 +498,7 @@ Use **subfolder organization** for Config bounded context due to complexity of h
 ```rust
 impl Config {
     /// Merge configurations with business rules (Vault overrides Global)
-    pub fn merge(global: GlobalConfig, vault: VaultConfig) -> Result<Self, ConfigError> {
+    pub fn merge(global: &GlobalConfig, vault: VaultConfig) -> Result<Self, ConfigError> {
         // Business logic: vault takes precedence over global
         let filesystem = merge_filesystem(global.filesystem, vault.filesystem)?;
         let frontmatter = merge_frontmatter(global.frontmatter, vault.frontmatter)?;
@@ -634,7 +634,8 @@ No debugging required - TDD approach worked flawlessly with RED-GREEN-REFACTOR c
 - ✅ Full hexagonal architecture compliance - zero external dependencies in domain
 - ✅ Implemented complete TDD cycle: RED (failing tests) → GREEN (passing implementation) → REFACTOR (quality improvements)
 - ✅ All quality assurance checks passed (clippy clean, pre-commit hooks, formatting, testing)
-- ✅ Final commit: `0ae3f69 feat: implement config bounded context with hierarchical validation, encryption, domain events, and CQRS ports`
+ - ✅ Final commit: `2aa6531 refactor(test): finalize config bounded context quality gates`
+ - ✅ Code review fixes applied: Updated test count to 40, corrected merge signature, updated commit hash, changed status to done
 
 **Test Coverage:**
 - Config merging and validation: 7 tests
@@ -642,7 +643,7 @@ No debugging required - TDD approach worked flawlessly with RED-GREEN-REFACTOR c
 - Error handling and messages: 6 tests
 - Domain events: 3 tests
 - Port traits: 3 tests
-- **Total: 26 tests, 100% passing**
+- **Total: 40 tests, 100% passing**
 
 **Quality Metrics:**
 - Cognitive complexity: <25 (all functions within limits)
