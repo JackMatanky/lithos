@@ -96,6 +96,10 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Acceptance Criteria:**
 
+**Given** docs/testing/developer-guide.md provides testing standards and tools
+**When** I reference the guide during review
+**Then** I validate compliance with Lithos testing hierarchy, async patterns, and utilities
+
 **Given** all Epic 4 components are implemented with tests
 **When** I conduct adversarial review
 **Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
