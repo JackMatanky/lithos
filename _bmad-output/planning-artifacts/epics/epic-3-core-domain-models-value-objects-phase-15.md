@@ -161,27 +161,35 @@ So that template structure and business rules are properly validated at the doma
 
 ## Story 3.5: Review Epic 3 Test Suite for Efficiency
 
-As a developer maintaining the codebase,
-I want an efficient test suite for Epic 3 domain models including domain events,
-So that tests provide good coverage without redundancy or excessive execution time.
+As a senior developer conducting adversarial code review,
+I want to brutally critique and improve the Epic 3 test suite to its foundation,
+So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
 
 **Given** all Epic 3 domain models are implemented with tests
-**When** I review the test suite
-**Then** it achieves 90%+ coverage for domain entities, validation logic, and domain events
+**When** I conduct adversarial review
+**Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
+
+**Given** I take adversarial position against the test suite
+**When** I critique test quality
+**Then** I assess if tests actually validate business requirements vs implementation details
 
 **Given** the test suite is implemented
-**When** I check for redundancy
-**Then** no duplicate test cases exist across domain models
+**When** I review for redundancy
+**Then** I eliminate duplicate test cases and consolidate overlapping coverage
 
 **Given** tests are executed
 **When** I measure performance
 **Then** test execution completes in <30 seconds for the full Epic 3 suite
 
+**Given** I conduct brutal foundation critique
+**When** I assess test design
+**Then** I verify tests use proper fixtures, avoid flaky behavior, and maintain clear intent
+
 **Given** test suite is reviewed
 **When** I check maintainability
-**Then** test code follows same quality standards as production code
+**Then** test code follows same quality standards as production code with proper documentation
 
 **Given** domain models evolve
 **When** I update tests
