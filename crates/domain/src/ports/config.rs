@@ -22,7 +22,7 @@ use crate::{
 /// ```ignore
 /// #[async_trait]
 /// impl Command for MyConfigAdapter {
-///     async fn save_vault_config(&self, config: Vault) -> Result<(), ConfigError> {
+///     async fn save_vault(&self, config: Vault) -> Result<(), ConfigError> {
 ///         // Adapter implementation for saving vault config
 ///         Ok(())
 ///     }
@@ -34,17 +34,13 @@ pub trait Command: Send + Sync {
     ///
     /// # Errors
     /// Returns `ConfigError` if save operation fails.
-    async fn save_global_config(
-        &self,
-        config: Global,
-    ) -> Result<(), ConfigError>;
+    async fn save_global(&self, config: Global) -> Result<(), ConfigError>;
 
     /// Save vault-specific configuration.
     ///
     /// # Errors
     /// Returns `ConfigError` if save operation fails.
-    async fn save_vault_config(&self, config: Vault)
-    -> Result<(), ConfigError>;
+    async fn save_vault(&self, config: Vault) -> Result<(), ConfigError>;
 }
 
 /// Query port for configuration read operations.
@@ -58,10 +54,10 @@ pub trait Command: Send + Sync {
 /// ```ignore
 /// #[async_trait]
 /// impl Query for MyConfigAdapter {
-///     async fn load_merged_config(&self) -> Result<Config, ConfigError> {
+///     async fn load_merged(&self) -> Result<Config, ConfigError> {
 ///         // Adapter implementation for loading and merging config
-///         let global = self.load_global_config().await?;
-///         let vault = self.load_vault_config().await?;
+///         let global = self.load_global().await?;
+///         let vault = self.load_vault().await?;
 ///         Config::merge(global, vault)
 ///     }
 /// }
@@ -72,7 +68,7 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
-    async fn load_global_config(&self) -> Result<Global, ConfigError>;
+    async fn load_global(&self) -> Result<Global, ConfigError>;
 
     /// Load merged configuration (Global + Vault).
     ///
@@ -86,13 +82,13 @@ pub trait Query: Send + Sync {
     /// - Load operation fails
     /// - Merge operation fails
     /// - Validation fails
-    async fn load_merged_config(&self) -> Result<Config, ConfigError>;
+    async fn load_merged(&self) -> Result<Config, ConfigError>;
 
     /// Load vault-specific configuration.
     ///
     /// # Errors
     /// Returns `ConfigError` if load operation fails or config is invalid.
-    async fn load_vault_config(&self) -> Result<Vault, ConfigError>;
+    async fn load_vault(&self) -> Result<Vault, ConfigError>;
 }
 
 #[cfg(test)]
