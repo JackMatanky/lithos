@@ -29,7 +29,7 @@ So that I can test file loading in isolation without actual file system operatio
 - [ ] Write failing tests for mock file system interactions (permissions, not found, corrupted data)
 - [ ] Write failing tests for mock format detection responses (TOML, JSON, YAML variations)
 - [ ] Write failing integration tests using mocks in adapter testing scenarios
-- [ ] Write failing property-based tests for mock data generation and validation
+- [ ] Write failing property-based tests for mock data generation and validation per @docs/testing/developer-guide.md
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement Mock FileLoaderAdapter (GREEN Phase - AC: 1,2,3)

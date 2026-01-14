@@ -29,7 +29,7 @@ So that obviously malformed files are caught early with helpful error messages.
 - [ ] Write failing unit tests for validation error types (file paths, line numbers, suggestions)
 - [ ] Write failing integration tests for validation in file loading pipeline
 - [ ] Write failing property-based tests for malformed data detection
-- [ ] Write failing performance tests for validation overhead (<50μs target)
+- [ ] Write failing performance tests for validation overhead (<50μs target) using criterion per @docs/testing/developer-guide.md
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement Basic Structure Validation (GREEN Phase - AC: 1)

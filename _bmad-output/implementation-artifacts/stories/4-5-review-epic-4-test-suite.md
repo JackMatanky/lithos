@@ -12,13 +12,15 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 ## Acceptance Criteria
 
-1. Given all Epic 4 components are implemented with tests When I review the test suite Then it achieves 90%+ coverage for loading strategy components
+1. Given docs/testing/developer-guide.md provides testing standards and tools When I reference the guide during review Then I validate compliance with Lithos testing hierarchy, async patterns, and utilities
 
-2. Given the test suite is implemented When I check for redundancy Then no duplicate test cases exist across loading components
+2. Given all Epic 4 components are implemented with tests When I review the test suite Then it achieves 90%+ coverage for loading strategy components
 
-3. Given tests are executed When I measure performance Then test execution completes in <30 seconds for the full Epic 4 suite
+3. Given the test suite is implemented When I check for redundancy Then no duplicate test cases exist across loading components
 
-4. Given test suite is reviewed When I check maintainability Then test code follows same quality standards as production code
+4. Given tests are executed When I measure performance Then test execution completes in <30 seconds for the full Epic 4 suite
+
+5. Given test suite is reviewed When I check maintainability Then test code follows same quality standards as production code
 
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
