@@ -19,6 +19,7 @@ async-trait.workspace = true
 [dev-dependencies]
 lithos-test-utils = { path = "../../tests/utils" }
 tokio = { workspace = true, features = ["full"] }
+serde_json.workspace = true
 
 [lints]
 workspace = true
