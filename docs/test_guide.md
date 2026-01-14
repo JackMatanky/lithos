@@ -33,7 +33,7 @@ Lithos follows a hexagonal testing strategy to ensure coverage across all layers
 
 | Layer                            | Focus                                                     | Location                    | Tools                     |
 | :------------------------------- | :-------------------------------------------------------- | :-------------------------- | :------------------------ |
-| **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `crates/domain/src/**/*.rs` | `cargo test`              |
+| **Domain (Unit)**                | Business logic, state transitions, conversions. Zero I/O. | `crates/domain/src/**/*.rs` | `mise run test:unit`      |
 | **Application (Integration)**    | Cross-module orchestration, port contracts, event flows.  | `crates/app/tests/`         | `nextest`, `mockall`      |
 | **Infrastructure (Integration)** | Adapters, persistence, external APIs.                     | `tests/suite/integration/`  | `nextest`                 |
 | **CLI (E2E)**                    | End-to-end user flows, binary execution.                  | `tests/suite/e2e/`          | `assert_cmd`, `TestVault` |
@@ -125,7 +125,7 @@ Lithos maintains strict quality gates even for test code. While tests have more 
 Doc-tests are prescribed for all **public domain models** and **utility functions**.
 
 - They serve as the "Living Documentation" for the codebase.
-- High-fidelity examples of how to use `lithos-test-utils` components must be implemented as doc-tests in the source code to ensure they are verified by `cargo test --doc`.
+- High-fidelity examples of how to use `lithos-test-utils` components must be implemented as doc-tests in the source code to ensure they are verified by `mise run test:unit` (which orchestrates both nextest and doc-tests).
 
 ## 7. Common Pitfalls
 
