@@ -171,6 +171,10 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I reference the guide during review
 **Then** I validate compliance with Lithos testing hierarchy, async patterns, and utilities
 
+**Given** domain purity is maintained with ZERO external dependencies
+**When** I review domain entities
+**Then** no serde or rkyv derives are present in domain models
+
 **Given** all Epic 3 domain models are implemented with tests
 **When** I conduct adversarial review
 **Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
