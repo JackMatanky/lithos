@@ -31,7 +31,7 @@ pub use models::{
     config::{
         Config, FileSystem as FileSystemConfig,
         Frontmatter as FrontmatterConfig, Global as GlobalConfig,
-        Value as ConfigValue, Vault as VaultConfig,
+        Setting as ConfigValue, Vault as VaultConfig,
     },
     note::{
         Embed, EmbedType, Frontmatter, FrontmatterValue, Heading, Link,
