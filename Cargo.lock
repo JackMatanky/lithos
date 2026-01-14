@@ -1016,8 +1016,10 @@ name = "lithos-domain"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "lithos-test-utils",
  "mockall",
+ "proptest",
  "rstest",
  "serde",
  "serde_json",
