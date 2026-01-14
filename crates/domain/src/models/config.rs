@@ -215,6 +215,53 @@ pub struct GlobalConfig {
 /// let config = Config::merge(&global, vault).expect("merge should succeed");
 /// assert_eq!(config.filesystem.vault_path, "/vault");
 /// ```
+///
+/// ## Conceptual Structure
+///
+/// Note: The following example shows the full conceptual structure of the hierarchical configuration.
+/// Actual construction is managed via the `merge()` method or builders in the application layer.
+///
+/// ```rust,ignore
+/// use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig, FrontmatterConfig};
+///
+/// let global = GlobalConfig {
+///     filesystem: FileSystemConfig {
+///         vault_path: ".".to_string(),
+///         templates_dir: "templates".to_string(),
+///         schemas_dir: "schemas".to_string(),
+///         property_bank_filename: "property_bank.json".to_string(),
+///         cache_dir: ".cache".to_string(),
+///     },
+///     frontmatter: FrontmatterConfig {
+///         file_class_key: "file_class".to_string(),
+///         title_key: "title".to_string(),
+///         alias_key: "aliases".to_string(),
+///         date_created_key: "created".to_string(),
+///         date_modified_key: "modified".to_string(),
+///     },
+///     log_level: "info".to_string(),
+/// };
+///
+/// let vault = VaultConfig {
+///     filesystem: FileSystemConfig {
+///         vault_path: "/vault".to_string(),
+///         templates_dir: "templates".to_string(),
+///         schemas_dir: "schemas".to_string(),
+///         property_bank_filename: "props.json".to_string(),
+///         cache_dir: ".cache".to_string(),
+///     },
+///     frontmatter: FrontmatterConfig {
+///         file_class_key: "type".to_string(),
+///         title_key: "title".to_string(),
+///         alias_key: "aliases".to_string(),
+///         date_created_key: "created".to_string(),
+///         date_modified_key: "modified".to_string(),
+///     },
+///     log_level: "debug".to_string(),
+/// };
+///
+/// let config = Config::merge(&global, vault).expect("merge should succeed");
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Config {
