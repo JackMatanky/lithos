@@ -104,6 +104,24 @@ impl<'a> tracing::field::Visit for FieldVisitor<'a> {
 }
 
 /// Handle to captured tracing data.
+///
+/// Use `init_tracing()` to install a subscriber and receive this handle.
+/// The subscriber is automatically uninstalled when this handle is dropped.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_test_utils::obs::tracing::init_tracing;
+/// use tracing::{info, span, Level};
+///
+/// let handle = init_tracing();
+///
+/// info!("Starting work");
+/// let _span = span!(Level::INFO, "test_context").entered();
+///
+/// handle.assert_logged("Starting work");
+/// handle.assert_span_created("test_context");
+/// ```
 pub struct TracingHandle {
     state: Arc<Mutex<SharedState>>,
     _guard: tracing::subscriber::DefaultGuard,

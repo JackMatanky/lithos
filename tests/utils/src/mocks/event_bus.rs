@@ -91,10 +91,34 @@ where
 }
 
 /// Mock implementation of a hybrid event bus for testing.
-pub struct MockEventBus<T>
-where
-    T: Clone + Send + Sync + 'static,
-{
+///
+/// Simulates the three-plane event architecture (Data, Control, State) defined
+/// in ADR 0007, allowing for isolated testing of publishers and subscribers.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_test_utils::mocks::event_bus::{MockEventBus, EventBusPort};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let bus = MockEventBus::<String>::new(10, 10);
+/// let mut data_rx = bus.subscribe_data().await?;
+///
+/// // Publish to Data Plane
+/// bus.publish_data("NoteCreated".into()).await?;
+///
+/// // Verify reception
+/// let event = data_rx.recv().await.unwrap();
+/// assert_eq!(event, "NoteCreated");
+///
+/// // Verify capture
+/// let records = bus.captured_data();
+/// assert_eq!(records.lock().await.len(), 1);
+/// # Ok(())
+/// # }
+/// ```
+pub struct MockEventBus<T> {
     data_sender: mpsc::Sender<T>,
     data_receiver: Mutex<Option<mpsc::Receiver<T>>>,
     control_sender: broadcast::Sender<T>,

@@ -76,18 +76,11 @@ Tests must read like sentences and describe the behavior being verified:
 
 The `lithos-test-utils` crate is the "Core OS" for testing in Lithos.
 
-### Async & Time Control
-
-```rust
-time_test!(async fn validates_cache_expiry() {
-    cache.set("key", "val", Duration::from_secs(60)).await;
-    advance(Duration::from_secs(61)).await;
-    assert!(cache.get("key").await.is_none());
-});
-```
+> [!IMPORTANT]
+> **Executable Source of Truth**: The examples below are simplified for quick reference. For the full, compiler-verified API documentation and advanced usage, run `mise run test:unit -p test-utils` or view the rustdoc for the relevant component in `tests/utils/src/`.
 
 ### Filesystem & Vaults
-
+Quickly spin up realistic environments for file-based operations.
 ```rust
 let vault = TestVault::new()
     .with_note("Work/Project.md", "# Project\nStatus: Active")
@@ -98,8 +91,18 @@ let context = IsolatedTestContext::new("my_test");
 // context.temp_dir() is ready for use
 ```
 
-### CQRS & Event Verification
+### Async & Time Control
+Streamline async setup and eliminate flakiness in time-sensitive code.
+```rust
+time_test!(async fn validates_cache_expiry() {
+    cache.set("key", "val", Duration::from_secs(60)).await;
+    advance(Duration::from_secs(61)).await;
+    assert!(cache.get("key").await.is_none());
+});
+```
 
+### CQRS & Event Verification
+Declarative verification of complex business flows and eventual consistency.
 ```rust
 tester.given(initial_events)
     .when(command)

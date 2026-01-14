@@ -222,7 +222,29 @@ impl<E: Entity + 'static, T: Send + Sync + 'static> Default
     }
 }
 
-/// Given-When-Then test framework for event sourcing aggregates
+/// Given-When-Then test framework for event sourcing aggregates.
+///
+/// This framework allows for declarative verification of aggregate behavior
+/// by providing a history of events and asserting on the resulting events
+/// after a command is handled.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_test_utils::cqrs::TestFramework;
+///
+/// #[derive(Debug, Clone, PartialEq)]
+/// enum UserEvent { Created(String) }
+/// struct CreateUser { name: String }
+///
+/// let framework: TestFramework<(), CreateUser, UserEvent> = TestFramework::new();
+///
+/// framework
+///     .given(vec![])
+///     .when(CreateUser { name: "Alice".into() })
+///     .execute(|_history, cmd| vec![UserEvent::Created(cmd.name)])
+///     .then_expect_events(vec![UserEvent::Created("Alice".into())]);
+/// ```
 pub struct TestFramework<A, C, E> {
     /// Initial event history
     given_events: Vec<E>,
@@ -300,7 +322,29 @@ impl<E: Clone + Debug + PartialEq> TestResultStage<E> {
     }
 }
 
-/// Event verification utilities for command handler testing
+/// Event verification utilities for command handler testing.
+///
+/// Captures emitted domain events and provides high-level assertions for
+/// verifying counts and existence within a test case.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_test_utils::cqrs::EventVerifier;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let verifier = EventVerifier::<String>::new();
+///
+/// // Simulate event emission from a handler
+/// verifier.record("UserCreated".into()).await;
+///
+/// // Assertions
+/// verifier.assert_event_count(1).await?;
+/// verifier.assert_event_exists(&"UserCreated".into()).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct EventVerifier<E> {
     /// Captured events
     events: Arc<Mutex<Vec<E>>>,
@@ -367,7 +411,38 @@ impl<E: Clone + Debug + PartialEq> Default for EventVerifier<E> {
     }
 }
 
-/// Eventual consistency testing utilities for write/read model synchronization
+/// Eventual consistency testing utilities for write/read model synchronization.
+///
+/// Provides polling-based wait mechanisms to avoid flaky `sleep()` calls in tests
+/// that depend on asynchronous projections or background indexing.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_test_utils::cqrs::EventualConsistencyTester;
+/// use std::sync::Arc;
+/// use tokio::sync::Mutex;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tester = EventualConsistencyTester::new();
+/// let flag = Arc::new(Mutex::new(false));
+///
+/// // Background task updates state
+/// let f = Arc::clone(&flag);
+/// tokio::spawn(async move {
+///     tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+///     *f.lock().await = true;
+/// });
+///
+/// // Wait until condition is met
+/// tester.wait_for_condition(|| {
+///     let f = Arc::clone(&flag);
+///     async move { *f.lock().await }
+/// }, tokio::time::Duration::from_millis(200)).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct EventualConsistencyTester {
     /// Default timeout for consistency checks
     default_timeout: tokio::time::Duration,
@@ -513,7 +588,34 @@ impl Default for EventualConsistencyTester {
     }
 }
 
-/// Cross-aggregate saga testing utilities
+/// Cross-aggregate saga testing utilities.
+///
+/// Tracks multiple participants in a long-running workflow and captures
+/// events to verify coordination logic across domain boundaries.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_test_utils::cqrs::SagaTester;
+/// use std::sync::Arc;
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let tester = SagaTester::new();
+///
+/// // Register expected participants
+/// tester.track_participant("Indexing").await;
+/// tester.track_participant("Search").await;
+///
+/// // Simulate saga progress
+/// tester.record_event("BatchStarted").await;
+/// tester.mark_updated("Indexing").await?;
+///
+/// // Assertions
+/// tester.verify_event_sequence(&["BatchStarted"]).await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct SagaTester {
     /// Participants in the saga with their update status
     participants: Arc<RwLock<HashMap<String, bool>>>,
