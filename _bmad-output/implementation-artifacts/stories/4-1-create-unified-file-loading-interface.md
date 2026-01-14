@@ -26,11 +26,11 @@ so that TOML, JSON, and YAML files can be loaded consistently with proper error 
 
 ### Task 1: Define Domain Tests First (RED Phase - AC: All)
 - [ ] Write failing unit tests for FileFormat enum (test format variants, validation)
-- [ ] Write failing unit tests for FileLoaderPort trait (test method signatures, async contracts)
+- [ ] Write failing unit tests for FileLoaderPort trait (test method signatures, async contracts per @docs/testing/developer-guide.md)
 - [ ] Write failing unit tests for format detection functions (extension and content analysis)
 - [ ] Write failing unit tests for domain error types (FileLoaderError variants)
-- [ ] Write failing integration tests for FileLoaderAdapter port implementation
-- [ ] Write failing property-based tests for edge cases (empty files, malformed extensions, binary content)
+- [ ] Write failing integration tests for FileLoaderAdapter port implementation (async testing patterns per testing guide)
+- [ ] Write failing property-based tests for edge cases per @docs/testing/developer-guide.md (empty files, malformed extensions, binary content)
 - [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 - [ ] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
