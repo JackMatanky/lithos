@@ -11,7 +11,33 @@ use std::{
 
 use crate::fs::temp::TempDir;
 
-/// A Lithos vault initialized for testing.
+/// A Lithos vault initialized for testing in an isolated temporary directory.
+///
+/// This utility provides a fluent-style API for scaffolding Obsidian-like vault
+/// structures, including standard Lithos metadata files and directories.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_test_utils::TestVault;
+/// use std::fs;
+///
+/// # fn main() -> std::io::Result<()> {
+/// let vault = TestVault::new()?;
+///
+/// // Add notes with relative paths
+/// let note_path = vault.add_note("Work/Project.md", "# Project\nStatus: Active")?;
+/// assert!(note_path.exists());
+///
+/// // Add raw binary files
+/// vault.add_file("Assets/logo.png", &[0x89, 0x50, 0x4E, 0x47])?;
+///
+/// // Access the vault root path
+/// let root = vault.path();
+/// assert!(root.join("lithos.toml").exists());
+/// # Ok(())
+/// # }
+/// ```
 #[derive(Debug)]
 pub struct TestVault {
     #[expect(dead_code)]
