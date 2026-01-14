@@ -140,27 +140,6 @@ pub struct FileSystemConfig {
 }
 
 impl FileSystemConfig {
-    /// Create a new filesystem configuration container.
-    ///
-    /// Note: Empty values are allowed here as they may be filled by defaults during merging.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        cache_dir: String,
-        property_bank_filename: String,
-        schemas_dir: String,
-        templates_dir: String,
-        vault_path: String,
-    ) -> Self {
-        Self {
-            cache_dir,
-            property_bank_filename,
-            schemas_dir,
-            templates_dir,
-            vault_path,
-        }
-    }
-
     /// Get the full path to the property bank file (`schemas_dir/property_bank_filename`).
     ///
     /// The property bank is always stored in the schemas directory.
@@ -202,29 +181,6 @@ pub struct FrontmatterConfig {
     pub title_key: String,
 }
 
-impl FrontmatterConfig {
-    /// Create a new frontmatter configuration container.
-    ///
-    /// Note: Empty values are allowed here as they may be filled by defaults during merging.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        alias_key: String,
-        date_created_key: String,
-        date_modified_key: String,
-        file_class_key: String,
-        title_key: String,
-    ) -> Self {
-        Self {
-            alias_key,
-            date_created_key,
-            date_modified_key,
-            file_class_key,
-            title_key,
-        }
-    }
-}
-
 /// Vault-specific configuration (highest precedence).
 ///
 /// # Business Rules
@@ -244,23 +200,6 @@ pub struct VaultConfig {
     pub log_level: String,
 }
 
-impl VaultConfig {
-    /// Create a new vault configuration container.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        filesystem: FileSystemConfig,
-        frontmatter: FrontmatterConfig,
-        log_level: String,
-    ) -> Self {
-        Self {
-            filesystem,
-            frontmatter,
-            log_level,
-        }
-    }
-}
-
 /// Global default configuration (lowest precedence).
 ///
 /// # Business Rules
@@ -276,23 +215,6 @@ pub struct GlobalConfig {
     pub frontmatter: FrontmatterConfig,
     /// Log level (debug, info, warn, error).
     pub log_level: String,
-}
-
-impl GlobalConfig {
-    /// Create a new global configuration container.
-    #[inline]
-    #[must_use]
-    pub fn new(
-        filesystem: FileSystemConfig,
-        frontmatter: FrontmatterConfig,
-        log_level: String,
-    ) -> Self {
-        Self {
-            filesystem,
-            frontmatter,
-            log_level,
-        }
-    }
 }
 
 /// Merged configuration result (Vault overrides Global).
@@ -471,29 +393,29 @@ impl Config {
     ) -> FileSystemConfig {
         let defaults = FileSystemConfig::default();
 
-        FileSystemConfig::new(
-            Self::choose_value(
+        FileSystemConfig {
+            cache_dir: Self::choose_value(
                 &vault.cache_dir,
                 &global.cache_dir,
                 &defaults.cache_dir,
             ),
-            Self::choose_value(
+            property_bank_filename: Self::choose_value(
                 &vault.property_bank_filename,
                 &global.property_bank_filename,
                 &defaults.property_bank_filename,
             ),
-            Self::choose_value(
+            schemas_dir: Self::choose_value(
                 &vault.schemas_dir,
                 &global.schemas_dir,
                 &defaults.schemas_dir,
             ),
-            Self::choose_value(
+            templates_dir: Self::choose_value(
                 &vault.templates_dir,
                 &global.templates_dir,
                 &defaults.templates_dir,
             ),
-            vault.vault_path,
-        )
+            vault_path: vault.vault_path,
+        }
     }
 
     /// Merge frontmatter configurations applying defaults where needed.
@@ -503,33 +425,33 @@ impl Config {
     ) -> FrontmatterConfig {
         let defaults = FrontmatterConfig::default();
 
-        FrontmatterConfig::new(
-            Self::choose_value(
+        FrontmatterConfig {
+            alias_key: Self::choose_value(
                 &vault.alias_key,
                 &global.alias_key,
                 &defaults.alias_key,
             ),
-            Self::choose_value(
+            date_created_key: Self::choose_value(
                 &vault.date_created_key,
                 &global.date_created_key,
                 &defaults.date_created_key,
             ),
-            Self::choose_value(
+            date_modified_key: Self::choose_value(
                 &vault.date_modified_key,
                 &global.date_modified_key,
                 &defaults.date_modified_key,
             ),
-            Self::choose_value(
+            file_class_key: Self::choose_value(
                 &vault.file_class_key,
                 &global.file_class_key,
                 &defaults.file_class_key,
             ),
-            Self::choose_value(
+            title_key: Self::choose_value(
                 &vault.title_key,
                 &global.title_key,
                 &defaults.title_key,
             ),
-        )
+        }
     }
 
     /// Choose value with precedence: vault > global > default.
