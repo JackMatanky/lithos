@@ -68,4 +68,29 @@ mod tests {
             assert_eq!(event.source, "vault");
         }
     }
+
+    #[test]
+    fn template_created_event_is_serializable() {
+        use uuid::Uuid;
+        let event = TemplateCreated {
+            id: Uuid::now_v7(),
+            name: "daily-note".to_owned(),
+            timestamp: 1_234_567_890,
+        };
+
+        let result = serde_json::to_string(&event);
+        assert!(result.is_ok(), "should serialize successfully");
+    }
+}
+
+/// Template created domain event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct TemplateCreated {
+    /// UUID of the template.
+    pub id: uuid::Uuid,
+    /// Name of the template.
+    pub name: String,
+    /// Unix timestamp when the template was created.
+    pub timestamp: i64,
 }
