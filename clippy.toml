@@ -10,7 +10,7 @@
 # -----------------------------------------------------------------------------
 
 # Complexity Thresholds
-cognitive-complexity-threshold = 25
+cognitive-complexity-threshold = 15
 too-many-lines-threshold = 100
 
 # Project Metadata

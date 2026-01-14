@@ -10,6 +10,8 @@ lithos-domain = { path = "../../crates/domain" }
 lithos-app = { path = "../../crates/app" }
 lithos-adapters = { path = "../../crates/adapters" }
 lithos-test-utils = { path = "../utils" }
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
 tokio = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }
@@ -17,6 +19,10 @@ serde_json = { workspace = true }
 miette = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
+
+[[test]]
+name = "cli_smoke"
+path = "e2e/cli_smoke.rs"
 
 [[test]]
 name = "event_patterns"

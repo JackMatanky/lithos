@@ -2,6 +2,7 @@
 //!
 //! This module defines command and query trait interfaces for configuration
 //! management following hexagonal architecture and CQRS principles.
+//!
 
 use async_trait::async_trait;
 

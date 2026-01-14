@@ -20,3 +20,8 @@ dhat = { workspace = true }
 name = "core_ops"
 harness = false
 path = "core_ops.rs"
+
+[[bench]]
+name = "indexing"
+harness = false
+path = "indexing.rs"

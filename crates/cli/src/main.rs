@@ -12,6 +12,16 @@
 #[tokio::main]
 /// The main entry point for the Lithos application.
 async fn main() -> miette::Result<()> {
+    #[expect(
+        clippy::let_underscore_untyped,
+        reason = "Command line matches are ignored for now as we only use this to trigger --help/--version"
+    )]
+    let _ = clap::Command::new("lithos")
+        .version("0.1.0")
+        .about("A CLI-first templating and schema system for Obsidian vaults")
+        .get_matches();
+
+    println!("Hello, Lithos!");
     tracing::info!("Hello, Lithos!");
     Ok(())
 }
