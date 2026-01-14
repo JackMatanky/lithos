@@ -143,7 +143,7 @@ impl FileSystemConfig {
     /// Create a new filesystem configuration with validation.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    /// Returns `ConfigError::ValidationFailed` if any field is empty.
     #[inline]
     pub fn new(
         cache_dir: String,
@@ -152,12 +152,21 @@ impl FileSystemConfig {
         templates_dir: String,
         vault_path: String,
     ) -> Result<Self, crate::ConfigError> {
-        if vault_path.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "vault_path".to_owned(),
-                message: "vault path cannot be empty (required field)"
-                    .to_owned(),
-            });
+        let fields = [
+            ("cache_dir", &cache_dir),
+            ("property_bank_filename", &property_bank_filename),
+            ("schemas_dir", &schemas_dir),
+            ("templates_dir", &templates_dir),
+            ("vault_path", &vault_path),
+        ];
+
+        for (name, value) in fields {
+            if value.is_empty() {
+                return Err(crate::ConfigError::ValidationFailed {
+                    field: (*name).to_owned(),
+                    message: format!("{name} cannot be empty"),
+                });
+            }
         }
 
         Ok(Self {
@@ -223,35 +232,21 @@ impl FrontmatterConfig {
         file_class_key: String,
         title_key: String,
     ) -> Result<Self, crate::ConfigError> {
-        if alias_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "alias_key".to_owned(),
-                message: "key mapping cannot be empty".to_owned(),
-            });
-        }
-        if date_created_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "date_created_key".to_owned(),
-                message: "key mapping cannot be empty".to_owned(),
-            });
-        }
-        if date_modified_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "date_modified_key".to_owned(),
-                message: "key mapping cannot be empty".to_owned(),
-            });
-        }
-        if file_class_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "file_class_key".to_owned(),
-                message: "key mapping cannot be empty".to_owned(),
-            });
-        }
-        if title_key.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "title_key".to_owned(),
-                message: "key mapping cannot be empty".to_owned(),
-            });
+        let keys = [
+            ("alias_key", &alias_key),
+            ("date_created_key", &date_created_key),
+            ("date_modified_key", &date_modified_key),
+            ("file_class_key", &file_class_key),
+            ("title_key", &title_key),
+        ];
+
+        for (name, value) in keys {
+            if value.is_empty() {
+                return Err(crate::ConfigError::ValidationFailed {
+                    field: (*name).to_owned(),
+                    message: format!("{name} mapping cannot be empty"),
+                });
+            }
         }
 
         Ok(Self {
