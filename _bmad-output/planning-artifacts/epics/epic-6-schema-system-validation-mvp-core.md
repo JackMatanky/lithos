@@ -6,8 +6,10 @@ Users can define metadata schemas with field types, inheritance, and validation 
 - SchemaPort and mocks created in this epic
 - Sample schema files created from docs/schemas/ JSON examples using Epic 4 loading foundation
 - Schema validation (syntactic in adapter, semantic in domain)
+- Frontmatter-schema compliance validation (application layer, warnings-only)
 - Schema-template integration contracts defined
 - User documentation for schema creation
+- Clear terminology: schema properties vs frontmatter fields to avoid Go implementation confusion
 
 ## Story 6.1: Implement Schema CQRS Ports from Epic 3
 
@@ -177,31 +179,67 @@ So that templates can safely access schema-defined properties.
 **When** I validate against Epic 11 template requirements
 **Then** all template input needs are satisfied by schema contracts
 
-## Story 6.9: Review Epic 6 Test Suite
+## Story 6.9: Implement Frontmatter-Schema Compliance Validation
 
-As a developer maintaining the schema system,
-I want an efficient test suite for Epic 6 components,
-So that tests provide good coverage without redundancy or excessive execution time.
+As a developer ensuring vault consistency,
+I want frontmatter-schema compliance validation as an application service,
+So that notes can be validated against their corresponding schemas for caching and querying improvements.
+
+**Acceptance Criteria:**
+
+**Given** notes have frontmatter with file class keys
+**When** I implement compliance validation service
+**Then** validation occurs between frontmatter fields and schema properties (not schema validation)
+
+**Given** compliance validation service is triggered by events
+**When** vault indexing runs
+**Then** notes are validated for schema compliance with warnings logged
+
+**Given** compliance validation service is triggered by events
+**When** template checking runs ("doctor" command)
+**Then** templates are validated for proper frontmatter usage
+
+**Given** compliance validation runs
+**When** frontmatter doesn't match schema
+**Then** warnings are generated (non-blocking) for caching/querying consistency
+
+**Given** Config defines file class keys
+**When** compliance validation determines schema
+**Then** only file class key from config is used (no other config influence on validation rules)
+
+## Story 6.10: Review Epic 6 Test Suite
+
+As a senior developer conducting adversarial code review,
+I want to brutally critique and improve the Epic 6 test suite to its foundation,
+So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
 
 **Given** all Epic 6 components are implemented with tests
-**When** I review the test suite
-**Then** it achieves 90%+ coverage for schema components
+**When** I conduct adversarial review
+**Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
+
+**Given** I take adversarial position against the test suite
+**When** I critique test quality
+**Then** I assess if tests actually validate business requirements vs implementation details
 
 **Given** the test suite is implemented
-**When** I check for redundancy
-**Then** no duplicate test cases exist across schema components
+**When** I review for redundancy
+**Then** I eliminate duplicate test cases and consolidate overlapping coverage
 
 **Given** tests are executed
 **When** I measure performance
 **Then** test execution completes in <30 seconds for the full Epic 6 suite
 
+**Given** I conduct brutal foundation critique
+**When** I assess test design
+**Then** I verify tests use proper fixtures, avoid flaky behavior, and maintain clear intent
+
 **Given** test suite is reviewed
 **When** I check maintainability
-**Then** test code follows same quality standards as production code
+**Then** test code follows same quality standards as production code with proper documentation
 
-## Story 6.10: Document Schema System for Users
+## Story 6.11: Document Schema System for Users
 
 As a user creating schemas,
 I want comprehensive documentation for schema creation and usage,
@@ -211,12 +249,12 @@ So that I can effectively define and use schemas in lithos.
 
 **Given** schema system is implemented
 **When** I create user documentation
-**Then** it includes all schema features: properties, inheritance, validation, examples
+**Then** it includes all schema features: properties, inheritance, validation, frontmatter compliance, examples
 
 **Given** documentation exists
 **When** I check completeness
-**Then** it covers all property types and inheritance patterns from docs/schemas/
+**Then** it covers all property types, inheritance patterns, and frontmatter compliance from docs/schemas/
 
 **Given** users read the documentation
 **When** they create schemas
-**Then** they can define valid schemas without developer assistance
+**Then** they can define valid schemas and understand frontmatter compliance without developer assistance
