@@ -309,7 +309,7 @@ lithos/
 **Critical Decisions (Block Implementation):**
 
 - **Storage Engine:** Redb + rkyv (Zero-copy structured KV). [ADR 0002](adr/0002-storage-redb-rkyv.md)
-- **Serialization Strategy:** Domain purity with adapter DTOs. [ADR 0008](adr/0008-domain-serialization-strategy.md)
+- **Serialization Strategy:** Controlled serde allowance in domain. [ADR 0013](adr/0013-domain-serialization-strategy.md)
 - **Templating:** MiniJinja (Dynamic Jinja2). [ADR 0003](adr/0003-template-engine.md)
 - **Markdown Parser:** pulldown-cmark (Event-streaming). [ADR 0004](adr/0004-markdown-parsing.md)
 - **Configuration:** Figment (Provider-based hierarchy). [ADR 0005](adr/0005-configuration-management.md)
