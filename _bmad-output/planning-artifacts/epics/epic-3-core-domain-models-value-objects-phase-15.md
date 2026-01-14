@@ -8,7 +8,27 @@ Developers have a clear, shared domain language with rich domain models that emb
 - Flexibility for Rust-specific refinements and supplementary models in later epics
 - Mocks for domain interfaces created as needed (not upfront)
 
-## Story 3.1: Create Note Bounded Context
+## Story 3.1: Create Config Bounded Context
+
+As a developer managing application configuration,
+I want a Config domain model with validation,
+So that configuration changes are validated and the domain enforces configuration integrity.
+
+**Acceptance Criteria:**
+
+**Given** I have researched hierarchical configuration patterns
+**When** I review the Config bounded context
+**Then** Config entity supports hierarchical structure (Global → User → Project → Vault)
+
+**Given** Config entity is defined
+**When** I check validation integration
+**Then** semantic validation ensures configuration integrity and type safety
+
+**Given** configuration patterns are established
+**When** I validate the design
+**Then** Config supports encrypted sensitive fields and validation rules
+
+## Story 3.2: Create Note Bounded Context
 
 As a developer working with note data,
 I want a comprehensive Note aggregate with all subentities,
@@ -40,7 +60,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 **When** I check the Note entity design
 **Then** it supports vault-relative paths and wiki-link resolution
 
-## Story 3.2: Create Schema Bounded Context
+## Story 3.3: Create Schema Bounded Context
 
 As a developer defining metadata schemas,
 I want a complete schema domain with PropertyBank, Property, and PropertySpec variants,
@@ -80,26 +100,6 @@ So that schemas can define reusable property definitions with rich validation co
 **Given** semantic validation is integrated
 **When** I create Schema instances
 **Then** internal consistency validation occurs for all entities
-
-## Story 3.3: Create Config Bounded Context
-
-As a developer managing application configuration,
-I want a Config domain model with validation,
-So that configuration changes are validated and the domain enforces configuration integrity.
-
-**Acceptance Criteria:**
-
-**Given** I have researched hierarchical configuration patterns
-**When** I review the Config bounded context
-**Then** Config entity supports hierarchical structure (Global → User → Project → Vault)
-
-**Given** Config entity is defined
-**When** I check validation integration
-**Then** semantic validation ensures configuration integrity and type safety
-
-**Given** configuration patterns are established
-**When** I validate the design
-**Then** Config supports encrypted sensitive fields and validation rules
 
 ## Story 3.4: Create Template Bounded Context
 
