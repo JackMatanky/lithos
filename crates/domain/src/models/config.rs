@@ -776,62 +776,70 @@ mod tests {
     // ============================================================================
 
     mod validate {
+        use rstest::rstest;
+
         use super::*;
 
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
-        )]
-        fn should_pass_validation_when_config_is_valid() {
-            let global = sample_global_config();
-            let vault = sample_vault_config();
-
-            let config = Config::merge(&global, vault).unwrap();
-            let result = config.validate();
-            assert!(
-                result.is_ok(),
-                "Valid config should pass validation, got error: {result:?}"
-            );
-        }
-
-        #[test]
-        fn should_fail_validation_when_vault_path_is_empty() {
+        #[rstest]
+        #[case::valid_config("/vault", "info", None)]
+        #[case::empty_path("", "info", Some("vault_path"))]
+        #[case::invalid_log_level("/vault", "invalid", Some("log_level"))]
+        fn should_enforce_business_rules(
+            #[case] path: &str,
+            #[case] level: &str,
+            #[case] expected_error_field: Option<&str>,
+        ) {
             let global = sample_global_config();
             let mut vault = sample_vault_config();
-            vault.filesystem.vault_path = String::new();
+            vault.filesystem.vault_path = path.to_owned();
+            vault.log_level = level.to_owned();
 
             let result = Config::merge(&global, vault);
 
-            assert!(
-                result.is_err(),
-                "Empty vault_path must fail validation during merge"
-            );
-            if let Err(e) = result {
-                assert!(
-                    matches!(&e, crate::ConfigError::ValidationFailed { field, .. } if field == "vault_path"),
-                    "Expected ValidationFailed error for vault_path, found: {e:?}"
-                );
-            }
-        }
+            match expected_error_field {
+                None => {
+                    assert!(
+                        result.is_ok(),
+                        "Configuration with path='{path}' and level='{level}' should be valid, but failed: {result:?}"
+                    );
+                    if let Ok(config) = result {
+                        assert!(
+                            config.validate().is_ok(),
+                            "Explicit validate() call should also pass for valid config"
+                        );
+                    }
+                }
+                Some(field_name) => {
+                    let err =
+                        result.expect_err("Validation should have failed");
 
-        #[test]
-        fn should_fail_validation_when_log_level_is_invalid() {
-            let global = sample_global_config();
-            let mut vault = sample_vault_config();
-            vault.log_level = "invalid_level".to_owned();
-
-            let result = Config::merge(&global, vault);
-
-            assert!(
-                result.is_err(),
-                "Invalid log_level must fail validation during merge"
-            );
-            if let Err(e) = result {
-                assert!(
-                    matches!(&e, crate::ConfigError::InvalidEnumValue { field, .. } if field == "log_level"),
-                    "Expected InvalidEnumValue error for log_level, found: {e:?}"
-                );
+                    // # LINT_DISABLE_REASON: Wildcard match is necessary for test resilience against new error variants. Panic is standard for test failure.
+                    #[expect(
+                        clippy::wildcard_enum_match_arm,
+                        clippy::panic,
+                        reason = "Test safety boundary"
+                    )]
+                    match err {
+                        crate::ConfigError::ValidationFailed {
+                            field,
+                            ..
+                        }
+                        | crate::ConfigError::InvalidEnumValue {
+                            field,
+                            ..
+                        } => {
+                            assert_eq!(
+                                field, field_name,
+                                "Error reported for wrong field"
+                            );
+                        }
+                        _ => {
+                            panic!(
+                                "Expected a validation-related error, found: {err:?}"
+                            );
+                        }
+                    }
+                }
             }
         }
     }
