@@ -81,7 +81,7 @@ use std::collections::HashMap;
 /// # Ok(())
 /// # }
 /// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum ConfigValue {
     /// Array of configuration values.
@@ -96,6 +96,26 @@ pub enum ConfigValue {
     Object(HashMap<String, ConfigValue>),
     /// String configuration value.
     String(String),
+}
+
+impl std::fmt::Debug for ConfigValue {
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics are preferred here for clarity, and pattern_type_mismatch is overly pedantic for this Debug implementation."
+    )]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
+            Self::Boolean(b) => f.debug_tuple("Boolean").field(b).finish(),
+            Self::Encrypted(_) => {
+                f.debug_tuple("Encrypted").field(&"***").finish()
+            }
+            Self::Number(n) => f.debug_tuple("Number").field(n).finish(),
+            Self::Object(map) => f.debug_tuple("Object").field(map).finish(),
+            Self::String(s) => f.debug_tuple("String").field(s).finish(),
+        }
+    }
 }
 
 /// Filesystem-related configuration settings.
@@ -641,6 +661,7 @@ mod tests {
             reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
         )]
         fn should_override_global_values_when_vault_config_is_provided() {
+            // Mitigates R-008: Config Merge Logic
             let global = sample_global_config();
             let vault = sample_vault_config();
 
@@ -952,6 +973,21 @@ mod tests {
                 value,
                 ConfigValue::Object(map),
                 "From<HashMap<String, ConfigValue>> conversion failed"
+            );
+        }
+
+        #[test]
+        fn should_mask_encrypted_values_in_debug_output() {
+            // Mitigates R-007: Encryption Exposure
+            let val = ConfigValue::Encrypted(vec![1, 2, 3]);
+            let debug_str = format!("{val:?}");
+            assert!(
+                !debug_str.contains("1, 2, 3"),
+                "Debug output must not contain raw encrypted bytes"
+            );
+            assert!(
+                debug_str.contains("***"),
+                "Debug output must contain mask characters"
             );
         }
     }
