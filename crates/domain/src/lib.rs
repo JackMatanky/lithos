@@ -29,8 +29,9 @@ pub use errors::{ConfigError, DomainError};
 pub use events::{ConfigUpdated, TemplateCreated};
 pub use models::{
     config::{
-        Config, ConfigValue, FileSystemConfig, FrontmatterConfig, GlobalConfig,
-        VaultConfig,
+        Config, FileSystem as FileSystemConfig,
+        Frontmatter as FrontmatterConfig, Global as GlobalConfig,
+        Value as ConfigValue, Vault as VaultConfig,
     },
     note::{
         Embed, EmbedType, Frontmatter, FrontmatterValue, Heading, Link,
