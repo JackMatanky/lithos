@@ -110,10 +110,10 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 ### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
 - [ ] Update domain crate lib.rs with proper public API surface and re-exports
 - [ ] Add comprehensive doc comments following project standards (invariants, examples, and error conditions)
-- [ ] Ensure all entities derive required traits (Debug, Clone, PartialEq)
+- [ ] Ensure all entities derive required traits (Debug, Clone, PartialEq, optional serde)
 - [ ] Verify integration points with future bounded contexts (storage adapters, application layer)
 - [ ] Document schema compliance validation as application-layer orchestration (warnings, not blocking)
-- [ ] Update Cargo.toml with required dependencies (uuid, thiserror, blake3)
+- [ ] Update Cargo.toml with required dependencies (uuid, thiserror, blake3, optional serde)
 - [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
 ### Task 8: Implement Domain Events (GREEN Phase - AC: All)
@@ -162,7 +162,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - This prevents the "directory trap" per Architecture ADR 0002
 
 **Domain Purity Requirements - CRITICAL:**
-- Domain crate has ZERO external dependencies (only std lib)
+- Domain crate has ZERO required external dependencies (only std lib + optional serde)
 - **PURITY GUARDIAN:** Compliance is enforced by the `Domain Purity Guardian` automated test
 - NO I/O operations in domain layer
 - NO `rkyv` in domain dependencies - persistence derives belong in storage adapter DTOs
@@ -394,11 +394,15 @@ pub enum DomainError {
 }
 ```
 
-**Serialization Strategy:**
+**Serialization Strategy (ADR 0013):**
 ```rust
-// Domain entities do NOT derive serialization traits
-// All serialization (JSON, YAML, rkyv, etc.) happens in adapters
-// Domain models remain pure and serialization-format agnostic
+// Domain entities MAY derive optional serde traits for JSON/YAML APIs
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct Note {
+    // fields
+}
+// rkyv is prohibited - storage DTOs in adapters only
+// Maintains domain purity while enabling practical API development
 ```
 
 **Memory Strategy:**

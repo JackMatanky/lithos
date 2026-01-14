@@ -171,9 +171,9 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I reference the guide during review
 **Then** I validate compliance with Lithos testing hierarchy, async patterns, and utilities
 
-**Given** domain purity is maintained with ZERO external dependencies
+**Given** ADR 0013 controls domain serialization strategy
 **When** I review domain entities
-**Then** no serde or rkyv derives are present in domain models
+**Then** optional serde derives are allowed but rkyv derives are prohibited
 
 **Given** all Epic 3 domain models are implemented with tests
 **When** I conduct adversarial review
