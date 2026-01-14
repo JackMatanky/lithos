@@ -152,14 +152,16 @@ Domain models must remain pure and focused on business logic. However, serializa
 
 ### Positive
 - **Balanced Architecture**: Practical API development without sacrificing purity
-- **Performance**: Appropriate tools for each use case (serde for APIs, rkyv for storage)
-- **Developer Experience**: Reduced boilerplate for common scenarios
+- **Performance**: Appropriate tools for each context (zero-copy storage, flexible APIs)
+- **Date Format Flexibility**: Supports any date format (ISO 8601, Moment.js, custom) without domain coupling
+- **Schema-Driven Typing**: Type classification happens at application layer with schema context
+- **Developer Experience**: Reduced DTO mapping for simple CRUD APIs
 - **Ecosystem Integration**: Works with standard Rust web frameworks
 
 ### Negative
-- **Dependency Management**: Conditional serde dependency requires feature flags
-- **Architectural Nuance**: Requires discipline to avoid misuse
-- **Testing Complexity**: Optional features need separate test configurations
+- **Dependency Management**: Required serde dependency increases domain crate size
+- **Type Safety Trade-off**: Frontmatter values are strings until schema validation
+- **Application Complexity**: Type validation logic moves to application layer
 
 ### Risks
 - **Scope Creep**: "Optional" serde could become required over time
