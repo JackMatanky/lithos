@@ -968,12 +968,11 @@ pub enum DomainError {
 }
 ```
 
-**Serde Serialization (Optional but Recommended):**
+**Serde Serialization (Required):**
 ```rust
-// Schema entities SHOULD derive serde for JSON/TOML serialization
-use serde::{Serialize, Deserialize};
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+// Schema entities MUST derive serde for JSON/TOML serialization
+// Required for schema file loading and API responses
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Schema {
     // fields
 }
@@ -1198,7 +1197,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 - **UUID 1.19 (v7)**: Time-ordered identifiers for Schema identity
 - **blake3 2.1**: Fast, cryptographic hashing for deterministic property IDs
 - **thiserror 2.0**: Structured domain error definitions
-- **serde 1.0**: Optional JSON/TOML serialization for schemas
+  - **serde 1.0**: Required JSON/TOML serialization for schemas
 
 **Pattern Consistency from Story 3.1:**
 - Subfolder organization for bounded contexts (`models/note/`, now `models/schema/`)

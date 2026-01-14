@@ -110,10 +110,10 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 ### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
 - [ ] Update domain crate lib.rs with proper public API surface and re-exports
 - [ ] Add comprehensive doc comments following project standards (invariants, examples, and error conditions)
-- [ ] Ensure all entities derive required traits (Debug, Clone, PartialEq, optional serde)
+- [ ] Ensure all entities derive required traits (Debug, Clone, PartialEq, serde)
 - [ ] Verify integration points with future bounded contexts (storage adapters, application layer)
 - [ ] Document schema compliance validation as application-layer orchestration (warnings, not blocking)
-- [ ] Update Cargo.toml with required dependencies (uuid, thiserror, blake3, optional serde)
+- [ ] Update Cargo.toml with required dependencies (uuid, thiserror, blake3, serde)
 - [ ] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
 ### Task 8: Implement Domain Events (GREEN Phase - AC: All)
@@ -396,13 +396,14 @@ pub enum DomainError {
 
 **Serialization Strategy (ADR 0013):**
 ```rust
-// Domain entities MAY derive optional serde traits for JSON/YAML APIs
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+// Domain entities MUST derive serde traits for JSON/YAML APIs
+// Required for API responses, debugging, and external integrations
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Note {
     // fields
 }
 // rkyv is prohibited - storage DTOs in adapters only
-// Maintains domain purity while enabling practical API development
+// Maintains domain purity while ensuring consistent API serialization
 ```
 
 **Memory Strategy:**
