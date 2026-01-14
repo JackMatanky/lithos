@@ -628,6 +628,416 @@ impl From<HashMap<String, ConfigValue>> for ConfigValue {
 mod tests {
     use super::*;
 
+    // ============================================================================
+    // Config::merge Tests
+    // ============================================================================
+
+    mod merge {
+        use super::*;
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
+        )]
+        fn should_override_global_values_when_vault_config_is_provided() {
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+
+            let merged = Config::merge(&global, vault).unwrap();
+
+            // Business rule: vault values take precedence
+            assert_eq!(
+                merged.filesystem.vault_path, "/vault",
+                "Vault path should override global"
+            );
+            assert_eq!(
+                merged.filesystem.templates_dir, "custom_templates",
+                "Templates directory should override global"
+            );
+            assert_eq!(
+                merged.log_level, "debug",
+                "Log level should override global"
+            );
+            assert_eq!(
+                merged.frontmatter.file_class_key, "type",
+                "File class key should override global"
+            );
+            assert_eq!(
+                merged.frontmatter.date_created_key, "created",
+                "Date created key should override global"
+            );
+        }
+
+        #[test]
+        fn should_apply_defaults_when_merged_values_are_empty() {
+            let global = GlobalConfig {
+                filesystem: FileSystemConfig {
+                    cache_dir: String::new(), // Empty - should use default
+                    property_bank_filename: String::new(),
+                    schemas_dir: String::new(),
+                    templates_dir: String::new(),
+                    vault_path: "/global".to_owned(),
+                },
+                frontmatter: FrontmatterConfig {
+                    alias_key: String::new(),
+                    date_created_key: String::new(),
+                    date_modified_key: String::new(),
+                    file_class_key: String::new(),
+                    title_key: String::new(),
+                },
+                log_level: String::new(), // Empty - should use default "info"
+            };
+
+            let vault = VaultConfig {
+                filesystem: FileSystemConfig {
+                    cache_dir: String::new(),
+                    property_bank_filename: String::new(),
+                    schemas_dir: String::new(),
+                    templates_dir: String::new(),
+                    vault_path: "/vault".to_owned(),
+                },
+                frontmatter: FrontmatterConfig {
+                    alias_key: String::new(),
+                    date_created_key: String::new(),
+                    date_modified_key: String::new(),
+                    file_class_key: String::new(),
+                    title_key: String::new(),
+                },
+                log_level: String::new(),
+            };
+
+            let result = Config::merge(&global, vault);
+            assert!(
+                result.is_ok(),
+                "Merge with empty values should succeed, got: {result:?}"
+            );
+
+            if let Ok(config) = result {
+                // Verify defaults were applied
+                assert_eq!(
+                    config.filesystem.cache_dir, ".cache",
+                    "Should fall back to default cache_dir"
+                );
+                assert_eq!(
+                    config.filesystem.templates_dir, "templates",
+                    "Should fall back to default templates_dir"
+                );
+                assert_eq!(
+                    config.filesystem.schemas_dir, "schemas",
+                    "Should fall back to default schemas_dir"
+                );
+                assert_eq!(
+                    config.filesystem.property_bank_filename,
+                    "property_bank.json",
+                    "Should fall back to default property_bank_filename"
+                );
+                assert_eq!(
+                    config.log_level, "info",
+                    "Should fall back to default log_level"
+                );
+                assert_eq!(
+                    config.frontmatter.file_class_key, "file_class",
+                    "Should fall back to default file_class_key"
+                );
+                assert_eq!(
+                    config.frontmatter.title_key, "title",
+                    "Should fall back to default title_key"
+                );
+                assert_eq!(
+                    config.frontmatter.alias_key, "aliases",
+                    "Should fall back to default alias_key"
+                );
+            }
+        }
+
+        #[test]
+        fn should_be_idempotent() {
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+
+            let result1 = Config::merge(&global, vault.clone());
+            assert!(result1.is_ok(), "First merge should succeed");
+
+            let result2 = Config::merge(&global, vault);
+            assert!(result2.is_ok(), "Second merge should succeed");
+
+            if let (Ok(merged1), Ok(merged2)) = (result1, result2) {
+                assert_eq!(
+                    merged1, merged2,
+                    "Repeated merges with same input must yield identical output"
+                );
+            }
+        }
+    }
+
+    // ============================================================================
+    // Config::validate Tests
+    // ============================================================================
+
+    mod validate {
+        use super::*;
+
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
+        )]
+        fn should_pass_validation_when_config_is_valid() {
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+
+            let config = Config::merge(&global, vault).unwrap();
+            let result = config.validate();
+            assert!(
+                result.is_ok(),
+                "Valid config should pass validation, got error: {result:?}"
+            );
+        }
+
+        #[test]
+        fn should_fail_validation_when_vault_path_is_empty() {
+            let global = sample_global_config();
+            let mut vault = sample_vault_config();
+            vault.filesystem.vault_path = String::new();
+
+            let result = Config::merge(&global, vault);
+
+            assert!(
+                result.is_err(),
+                "Empty vault_path must fail validation during merge"
+            );
+            if let Err(e) = result {
+                assert!(
+                    matches!(&e, crate::ConfigError::ValidationFailed { field, .. } if field == "vault_path"),
+                    "Expected ValidationFailed error for vault_path, found: {e:?}"
+                );
+            }
+        }
+
+        #[test]
+        fn should_fail_validation_when_log_level_is_invalid() {
+            let global = sample_global_config();
+            let mut vault = sample_vault_config();
+            vault.log_level = "invalid_level".to_owned();
+
+            let result = Config::merge(&global, vault);
+
+            assert!(
+                result.is_err(),
+                "Invalid log_level must fail validation during merge"
+            );
+            if let Err(e) = result {
+                assert!(
+                    matches!(&e, crate::ConfigError::InvalidEnumValue { field, .. } if field == "log_level"),
+                    "Expected InvalidEnumValue error for log_level, found: {e:?}"
+                );
+            }
+        }
+    }
+
+    // ============================================================================
+    // ConfigValue Tests
+    // ============================================================================
+
+    mod config_value {
+        use super::*;
+
+        #[test]
+        fn should_convert_from_string() {
+            let value = ConfigValue::from("test".to_owned());
+            assert_eq!(
+                value,
+                ConfigValue::String("test".to_owned()),
+                "Conversion from String to ConfigValue failed"
+            );
+        }
+
+        #[test]
+        fn should_convert_from_f64() {
+            let value = ConfigValue::from(42.5f64);
+            assert_eq!(
+                value,
+                ConfigValue::Number(42.5f64),
+                "Conversion from f64 to ConfigValue failed"
+            );
+        }
+
+        #[test]
+        fn should_convert_from_bool() {
+            let value = ConfigValue::from(true);
+            assert_eq!(
+                value,
+                ConfigValue::Boolean(true),
+                "Conversion from bool to ConfigValue failed"
+            );
+        }
+
+        #[test]
+        fn should_store_encrypted_bytes() {
+            let encrypted_data = vec![1, 2, 3, 4, 5];
+            let value = ConfigValue::Encrypted(encrypted_data.clone());
+
+            assert_eq!(
+                value,
+                ConfigValue::Encrypted(encrypted_data),
+                "Encrypted variant should store raw bytes correctly"
+            );
+        }
+
+        #[test]
+        fn should_store_array_of_values() {
+            let array = vec![
+                ConfigValue::String("item1".to_owned()),
+                ConfigValue::String("item2".to_owned()),
+            ];
+            let value = ConfigValue::Array(array.clone());
+
+            assert_eq!(
+                value,
+                ConfigValue::Array(array),
+                "Array variant should store nested ConfigValues"
+            );
+        }
+
+        #[test]
+        fn should_store_object_map() {
+            let mut map = HashMap::new();
+            map.insert(
+                "key1".to_owned(),
+                ConfigValue::String("value1".to_owned()),
+            );
+            let value = ConfigValue::Object(map.clone());
+
+            assert_eq!(
+                value,
+                ConfigValue::Object(map),
+                "Object variant should store HashMap of ConfigValues"
+            );
+        }
+
+        #[test]
+        fn should_convert_from_vec() {
+            let array = vec![
+                ConfigValue::String("item1".to_owned()),
+                ConfigValue::Number(42.0),
+            ];
+            let value = ConfigValue::from(array.clone());
+
+            assert_eq!(
+                value,
+                ConfigValue::Array(array),
+                "From<Vec<ConfigValue>> conversion failed"
+            );
+        }
+
+        #[test]
+        fn should_convert_from_hashmap() {
+            let mut map = HashMap::new();
+            map.insert(
+                "key1".to_owned(),
+                ConfigValue::String("value1".to_owned()),
+            );
+            let value = ConfigValue::from(map.clone());
+
+            assert_eq!(
+                value,
+                ConfigValue::Object(map),
+                "From<HashMap<String, ConfigValue>> conversion failed"
+            );
+        }
+    }
+
+    // ============================================================================
+    // Structural Integrity Tests
+    // ============================================================================
+
+    mod integrity {
+        use super::*;
+
+        #[test]
+        fn should_support_standard_traits() {
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+            let result1 = Config::merge(&global, vault.clone());
+            assert!(
+                result1.is_ok(),
+                "First merge for trait verification failed: {result1:?}"
+            );
+
+            if let Ok(config) = result1 {
+                // Test Debug
+                let debug_str = format!("{config:?}");
+                assert!(
+                    !debug_str.is_empty(),
+                    "Debug derivation should produce non-empty string"
+                );
+
+                // Test Clone
+                let cloned = config.clone();
+                assert_eq!(
+                    config, cloned,
+                    "Cloned config must be equal to original"
+                );
+
+                // Test PartialEq
+                let result2 = Config::merge(&global, vault);
+                assert!(
+                    result2.is_ok(),
+                    "Second merge for trait verification failed"
+                );
+                if let Ok(config2) = result2 {
+                    assert_eq!(
+                        config, config2,
+                        "Merged configs with identical input must be equal (PartialEq)"
+                    );
+                }
+            }
+        }
+
+        #[test]
+        fn should_maintain_correct_filesystem_paths() {
+            let config = FileSystemConfig {
+                cache_dir: ".cache".to_owned(),
+                property_bank_filename: "props.json".to_owned(),
+                schemas_dir: "schemas".to_owned(),
+                templates_dir: "templates".to_owned(),
+                vault_path: "/test".to_owned(),
+            };
+
+            assert_eq!(
+                config.vault_path, "/test",
+                "vault_path structure mismatch"
+            );
+            assert_eq!(
+                config.cache_dir, ".cache",
+                "cache_dir structure mismatch"
+            );
+            assert_eq!(
+                config.property_bank_path(),
+                "schemas/props.json",
+                "property_bank_path logic mismatch"
+            );
+        }
+
+        #[test]
+        fn should_maintain_frontmatter_keys() {
+            let config = FrontmatterConfig {
+                alias_key: "aliases".to_owned(),
+                date_created_key: "created".to_owned(),
+                date_modified_key: "modified".to_owned(),
+                file_class_key: "type".to_owned(),
+                title_key: "title".to_owned(),
+            };
+
+            assert_eq!(
+                config.file_class_key, "type",
+                "file_class_key mapping mismatch"
+            );
+            assert_eq!(config.title_key, "title", "title_key mapping mismatch");
+        }
+    }
+
     /// Test fixture: Create sample global configuration with defaults.
     fn sample_global_config() -> GlobalConfig {
         GlobalConfig {
@@ -667,285 +1077,6 @@ mod tests {
                 title_key: "title".to_owned(),
             },
             log_level: "debug".to_owned(), // vault override
-        }
-    }
-
-    // ============================================================================
-    // Config Entity Tests
-    // ============================================================================
-
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
-    )]
-    fn config_merge_vault_overrides_global() {
-        let global = sample_global_config();
-        let vault = sample_vault_config();
-
-        let merged = Config::merge(&global, vault).unwrap();
-
-        // Business rule: vault values take precedence
-        assert_eq!(merged.filesystem.vault_path, "/vault");
-        assert_eq!(merged.filesystem.templates_dir, "custom_templates");
-        assert_eq!(merged.log_level, "debug");
-        assert_eq!(merged.frontmatter.file_class_key, "type");
-        assert_eq!(merged.frontmatter.date_created_key, "created");
-    }
-
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
-    )]
-    fn config_validation_success() {
-        let global = sample_global_config();
-        let vault = sample_vault_config();
-
-        let config = Config::merge(&global, vault).unwrap();
-        let result = config.validate();
-        assert!(
-            result.is_ok(),
-            "valid config should pass validation. Error: {:?}",
-            result.err()
-        );
-    }
-
-    #[test]
-    fn config_merge_applies_defaults_for_empty_values() {
-        let global = GlobalConfig {
-            filesystem: FileSystemConfig {
-                cache_dir: String::new(), // Empty - should use default
-                property_bank_filename: String::new(),
-                schemas_dir: String::new(),
-                templates_dir: String::new(),
-                vault_path: "/global".to_owned(),
-            },
-            frontmatter: FrontmatterConfig {
-                alias_key: String::new(),
-                date_created_key: String::new(),
-                date_modified_key: String::new(),
-                file_class_key: String::new(),
-                title_key: String::new(),
-            },
-            log_level: String::new(), // Empty - should use default "info"
-        };
-
-        let vault = VaultConfig {
-            filesystem: FileSystemConfig {
-                cache_dir: String::new(),
-                property_bank_filename: String::new(),
-                schemas_dir: String::new(),
-                templates_dir: String::new(),
-                vault_path: "/vault".to_owned(),
-            },
-            frontmatter: FrontmatterConfig {
-                alias_key: String::new(),
-                date_created_key: String::new(),
-                date_modified_key: String::new(),
-                file_class_key: String::new(),
-                title_key: String::new(),
-            },
-            log_level: String::new(),
-        };
-
-        let result = Config::merge(&global, vault);
-        assert!(result.is_ok(), "merge with empty values should succeed");
-
-        if let Ok(config) = result {
-            // Verify defaults were applied
-            assert_eq!(config.filesystem.cache_dir, ".cache");
-            assert_eq!(config.filesystem.templates_dir, "templates");
-            assert_eq!(config.filesystem.schemas_dir, "schemas");
-            assert_eq!(
-                config.filesystem.property_bank_filename,
-                "property_bank.json"
-            );
-            assert_eq!(config.log_level, "info");
-            assert_eq!(config.frontmatter.file_class_key, "file_class");
-            assert_eq!(config.frontmatter.title_key, "title");
-            assert_eq!(config.frontmatter.alias_key, "aliases");
-        }
-    }
-
-    #[test]
-    fn config_has_required_derives() {
-        let global = sample_global_config();
-        let vault = sample_vault_config();
-        let result1 = Config::merge(&global, vault.clone());
-        assert!(result1.is_ok(), "first merge should succeed");
-
-        if let Ok(config) = result1 {
-            // Test Debug
-            let debug_str = format!("{config:?}");
-            assert!(!debug_str.is_empty());
-
-            // Test Clone
-            let _cloned = config.clone();
-
-            // Test PartialEq
-            let result2 = Config::merge(&global, vault);
-            assert!(result2.is_ok(), "second merge should succeed");
-            if let Ok(config2) = result2 {
-                assert_eq!(config, config2);
-            }
-        }
-    }
-
-    // ============================================================================
-    // ConfigValue Tests
-    // ============================================================================
-
-    #[test]
-    fn config_value_from_string() {
-        let value = ConfigValue::from("test".to_owned());
-        assert!(matches!(&value, ConfigValue::String(s) if s == "test"));
-    }
-
-    #[test]
-    fn config_value_from_number() {
-        let value = ConfigValue::from(42.5f64);
-        assert!(
-            matches!(value, ConfigValue::Number(n) if (n - 42.5f64).abs() < f64::EPSILON)
-        );
-    }
-
-    #[test]
-    fn config_value_from_bool() {
-        let value = ConfigValue::from(true);
-        assert!(matches!(value, ConfigValue::Boolean(true)));
-    }
-
-    #[test]
-    fn config_value_encrypted_field() {
-        let encrypted_data = vec![1, 2, 3, 4, 5];
-        let value = ConfigValue::Encrypted(encrypted_data.clone());
-
-        assert!(
-            matches!(&value, ConfigValue::Encrypted(data) if data == &encrypted_data)
-        );
-    }
-
-    #[test]
-    fn config_value_array() {
-        let array = vec![
-            ConfigValue::String("item1".to_owned()),
-            ConfigValue::String("item2".to_owned()),
-        ];
-        let value = ConfigValue::Array(array.clone());
-
-        assert!(
-            matches!(&value, ConfigValue::Array(items) if items.len() == 2)
-        );
-    }
-
-    #[test]
-    fn config_value_object() {
-        let mut map = HashMap::new();
-        map.insert("key1".to_owned(), ConfigValue::String("value1".to_owned()));
-        let value = ConfigValue::Object(map.clone());
-
-        assert!(matches!(&value, ConfigValue::Object(obj) if obj.len() == 1));
-    }
-
-    #[test]
-    fn config_value_from_array() {
-        let array = vec![
-            ConfigValue::String("item1".to_owned()),
-            ConfigValue::Number(42.0),
-        ];
-        let value = ConfigValue::from(array.clone());
-
-        assert!(matches!(&value, ConfigValue::Array(items) if items == &array));
-    }
-
-    #[test]
-    fn config_value_from_object() {
-        let mut map = HashMap::new();
-        map.insert("key1".to_owned(), ConfigValue::String("value1".to_owned()));
-        let value = ConfigValue::from(map.clone());
-
-        assert!(matches!(&value, ConfigValue::Object(obj) if obj == &map));
-    }
-
-    // ============================================================================
-    // Struct Tests
-    // ============================================================================
-
-    #[test]
-    fn filesystem_config_structure() {
-        let config = FileSystemConfig {
-            cache_dir: ".cache".to_owned(),
-            property_bank_filename: "props.json".to_owned(),
-            schemas_dir: "schemas".to_owned(),
-            templates_dir: "templates".to_owned(),
-            vault_path: "/test".to_owned(),
-        };
-
-        assert_eq!(config.vault_path, "/test");
-        assert_eq!(config.cache_dir, ".cache");
-        assert_eq!(config.property_bank_path(), "schemas/props.json");
-    }
-
-    #[test]
-    fn frontmatter_config_structure() {
-        let config = FrontmatterConfig {
-            alias_key: "aliases".to_owned(),
-            date_created_key: "created".to_owned(),
-            date_modified_key: "modified".to_owned(),
-            file_class_key: "type".to_owned(),
-            title_key: "title".to_owned(),
-        };
-
-        assert_eq!(config.file_class_key, "type");
-        assert_eq!(config.title_key, "title");
-    }
-
-    // ============================================================================
-    // Property-Based Tests
-    // ============================================================================
-
-    #[test]
-    fn config_merge_is_idempotent() {
-        let global = sample_global_config();
-        let vault = sample_vault_config();
-
-        let result1 = Config::merge(&global, vault.clone());
-        assert!(result1.is_ok(), "first merge should succeed");
-
-        let result2 = Config::merge(&global, vault);
-        assert!(result2.is_ok(), "second merge should succeed");
-
-        if let (Ok(merged1), Ok(merged2)) = (result1, result2) {
-            assert_eq!(merged1, merged2, "merge should be deterministic");
-        }
-    }
-
-    #[test]
-    fn config_validation_catches_empty_paths() {
-        let global = sample_global_config();
-        let mut vault = sample_vault_config();
-        vault.filesystem.vault_path = String::new();
-
-        let result = Config::merge(&global, vault);
-
-        assert!(result.is_err(), "empty vault_path should fail validation");
-        if let Err(e) = result {
-            assert!(matches!(e, crate::ConfigError::ValidationFailed { .. }));
-        }
-    }
-
-    #[test]
-    fn config_validation_catches_invalid_log_level() {
-        let global = sample_global_config();
-        let mut vault = sample_vault_config();
-        vault.log_level = "invalid_level".to_owned();
-
-        let result = Config::merge(&global, vault);
-
-        assert!(result.is_err(), "invalid log_level should fail validation");
-        if let Err(e) = result {
-            assert!(matches!(e, crate::ConfigError::InvalidEnumValue { .. }));
         }
     }
 }
