@@ -126,13 +126,13 @@ pub enum ConfigError {
 #[derive(Debug, thiserror::Error, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum DomainError {
-    /// Circular schema inheritance detected.
-    #[error("Circular schema inheritance detected: {0}")]
-    CircularInheritance(String),
-
     /// Circular template composition detected.
     #[error("Circular template composition detected: {0}")]
     CircularComposition(String),
+
+    /// Circular schema inheritance detected.
+    #[error("Circular schema inheritance detected: {0}")]
+    CircularInheritance(String),
 
     /// Composition depth limit exceeded.
     #[error("Composition depth limit exceeded: {0} (max 5)")]

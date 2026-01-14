@@ -239,54 +239,6 @@ pub struct GlobalConfig {
 /// # Ok(())
 /// # }
 /// ```
-///
-/// ## Conceptual Structure
-///
-/// Note: The following example shows the full conceptual structure of the
-/// hierarchical configuration. Actual construction is managed via the `merge()`
-/// method or builders in the application layer.
-///
-/// ```rust,ignore
-/// use lithos_domain::{Config, GlobalConfig, VaultConfig, FileSystemConfig, FrontmatterConfig};
-///
-/// let global = GlobalConfig {
-///     filesystem: FileSystemConfig {
-///         vault_path: ".".to_string(),
-///         templates_dir: "templates".to_string(),
-///         schemas_dir: "schemas".to_string(),
-///         property_bank_filename: "property_bank.json".to_string(),
-///         cache_dir: ".cache".to_string(),
-///     },
-///     frontmatter: FrontmatterConfig {
-///         file_class_key: "file_class".to_string(),
-///         title_key: "title".to_string(),
-///         alias_key: "aliases".to_string(),
-///         date_created_key: "created".to_string(),
-///         date_modified_key: "modified".to_string(),
-///     },
-///     log_level: "info".to_string(),
-/// };
-///
-/// let vault = VaultConfig {
-///     filesystem: FileSystemConfig {
-///         vault_path: "/vault".to_string(),
-///         templates_dir: "templates".to_string(),
-///         schemas_dir: "schemas".to_string(),
-///         property_bank_filename: "props.json".to_string(),
-///         cache_dir: ".cache".to_string(),
-///     },
-///     frontmatter: FrontmatterConfig {
-///         file_class_key: "type".to_string(),
-///         title_key: "title".to_string(),
-///         alias_key: "aliases".to_string(),
-///         date_created_key: "created".to_string(),
-///         date_modified_key: "modified".to_string(),
-///     },
-///     log_level: "debug".to_string(),
-/// };
-///
-/// let config = Config::merge(&global, vault).expect("merge should succeed");
-/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Config {
@@ -338,7 +290,6 @@ impl Default for GlobalConfig {
     }
 }
 
-// GREEN PHASE: Actual implementations
 #[expect(
     clippy::arbitrary_source_item_ordering,
     reason = "Methods grouped logically: public API first, then private helpers"
@@ -360,10 +311,10 @@ impl Config {
         global: &GlobalConfig,
         vault: VaultConfig,
     ) -> Result<Self, crate::ConfigError> {
-        // Step 1: Pre-validate required Vault Path (must be absolute/non-empty)
+        // Step 1: Pre-validate required Vault Path
         Self::validate_vault_path(&vault.filesystem.vault_path)?;
 
-        // Step 2: Merge values with precedence (Vault > Global > Defaults)
+        // Step 2: Merge values with precedence
         let filesystem =
             Self::merge_filesystem(&global.filesystem, vault.filesystem);
 
@@ -380,10 +331,23 @@ impl Config {
             log_level,
         };
 
-        // Step 4: Final invariant check (ensures all defaults were non-empty)
+        // Step 4: Final invariant check
         config.validate_internal()?;
 
         Ok(config)
+    }
+
+    /// Choose value with precedence: vault > global > default.
+    #[inline]
+    #[must_use]
+    fn choose_value(vault: &str, global: &str, default: &str) -> String {
+        if !vault.is_empty() {
+            vault.to_owned()
+        } else if !global.is_empty() {
+            global.to_owned()
+        } else {
+            default.to_owned()
+        }
     }
 
     /// Merge filesystem configurations applying defaults where needed.
@@ -454,63 +418,6 @@ impl Config {
         }
     }
 
-    /// Choose value with precedence: vault > global > default.
-    #[inline]
-    #[must_use]
-    fn choose_value(vault: &str, global: &str, default: &str) -> String {
-        if !vault.is_empty() {
-            vault.to_owned()
-        } else if !global.is_empty() {
-            global.to_owned()
-        } else {
-            default.to_owned()
-        }
-    }
-
-    /// Validate configuration against critical business rules (internal check).
-    fn validate_internal(&self) -> Result<(), crate::ConfigError> {
-        // Step 1: Validate Filesystem Completeness
-        let fs_fields = [
-            ("cache_dir", &self.filesystem.cache_dir),
-            ("property_bank_filename", &self.filesystem.property_bank_filename),
-            ("schemas_dir", &self.filesystem.schemas_dir),
-            ("templates_dir", &self.filesystem.templates_dir),
-            ("vault_path", &self.filesystem.vault_path),
-        ];
-
-        for (name, value) in fs_fields {
-            if value.is_empty() {
-                return Err(crate::ConfigError::ValidationFailed {
-                    field: (*name).to_owned(),
-                    message: format!("{name} cannot be empty after merge"),
-                });
-            }
-        }
-
-        // Step 2: Validate Frontmatter Completeness
-        let fm_fields = [
-            ("alias_key", &self.frontmatter.alias_key),
-            ("date_created_key", &self.frontmatter.date_created_key),
-            ("date_modified_key", &self.frontmatter.date_modified_key),
-            ("file_class_key", &self.frontmatter.file_class_key),
-            ("title_key", &self.frontmatter.title_key),
-        ];
-
-        for (name, value) in fm_fields {
-            if value.is_empty() {
-                return Err(crate::ConfigError::ValidationFailed {
-                    field: (*name).to_owned(),
-                    message: format!("{name} cannot be empty after merge"),
-                });
-            }
-        }
-
-        // Step 3: Validate Log Level
-        Self::validate_log_level(&self.log_level)?;
-
-        Ok(())
-    }
-
     /// Merge log level with validation.
     ///
     /// # Errors
@@ -532,6 +439,50 @@ impl Config {
         Self::validate_log_level(log_level)?;
 
         Ok(log_level.to_owned())
+    }
+
+    /// Validate configuration against critical business rules (internal check).
+    fn validate_internal(&self) -> Result<(), crate::ConfigError> {
+        // Step 1: Validate Filesystem Completeness
+        let filesystem_fields = [
+            ("cache_dir", &self.filesystem.cache_dir),
+            ("property_bank_filename", &self.filesystem.property_bank_filename),
+            ("schemas_dir", &self.filesystem.schemas_dir),
+            ("templates_dir", &self.filesystem.templates_dir),
+            ("vault_path", &self.filesystem.vault_path),
+        ];
+
+        for (name, value) in filesystem_fields {
+            if value.is_empty() {
+                return Err(crate::ConfigError::ValidationFailed {
+                    field: (*name).to_owned(),
+                    message: format!("{name} cannot be empty after merge"),
+                });
+            }
+        }
+
+        // Step 2: Validate Frontmatter Completeness
+        let metadata_fields = [
+            ("alias_key", &self.frontmatter.alias_key),
+            ("date_created_key", &self.frontmatter.date_created_key),
+            ("date_modified_key", &self.frontmatter.date_modified_key),
+            ("file_class_key", &self.frontmatter.file_class_key),
+            ("title_key", &self.frontmatter.title_key),
+        ];
+
+        for (name, value) in metadata_fields {
+            if value.is_empty() {
+                return Err(crate::ConfigError::ValidationFailed {
+                    field: (*name).to_owned(),
+                    message: format!("{name} cannot be empty after merge"),
+                });
+            }
+        }
+
+        // Step 3: Validate Log Level
+        Self::validate_log_level(&self.log_level)?;
+
+        Ok(())
     }
 
     /// Validate a log level value.

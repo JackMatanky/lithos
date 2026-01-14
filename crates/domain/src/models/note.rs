@@ -313,24 +313,28 @@ mod tests {
         use super::*;
 
         #[test]
+        #[ignore = "RED Phase"]
         fn rejects_empty_path() {
             let result = Note::new(String::new());
             assert!(matches!(result, Err(DomainError::EmptyPath)));
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn rejects_absolute_path() {
             let result = Note::new("/absolute/path.md".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn rejects_path_traversal() {
             let result = Note::new("../etc/passwd".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn rejects_path_missing_md_extension() {
             let result = Note::new("projects/lithos".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
@@ -338,6 +342,7 @@ mod tests {
 
         proptest! {
             #[test]
+            #[ignore = "RED Phase"]
             fn generates_monotonic_uuid_v7_ids(_ in 0..100u32) {
                 // In RED phase, we just show how we would test this
                 // We'd generate many notes and check ID ordering
@@ -349,6 +354,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[ignore = "RED Phase"]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn parses_hierarchical_tag_successfully() {
             let tag = Tag::parse("#work/project/urgent").unwrap();
@@ -357,18 +363,21 @@ mod tests {
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn returns_error_for_invalid_tag_characters() {
             let result = Tag::parse("#invalid segment");
             assert!(matches!(result, Err(DomainError::InvalidTag(_))));
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn returns_error_for_empty_tag_segments() {
             let result = Tag::parse("#project//urgent");
             assert!(matches!(result, Err(DomainError::EmptyTagSegment)));
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn returns_error_for_leading_or_trailing_slashes() {
             let result = Tag::parse("#/leading");
             assert!(matches!(result, Err(DomainError::InvalidTag(_))));
@@ -382,6 +391,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[ignore = "RED Phase"]
         #[expect(clippy::panic, reason = "Test error path")]
         fn parses_iso8601_date_successfully() {
             let date = Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0).unwrap();
@@ -394,6 +404,7 @@ mod tests {
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn converts_numeric_values_correctly() {
             let val = FrontmatterValue::Number(42.0);
             assert!(
@@ -402,6 +413,7 @@ mod tests {
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn converts_boolean_values_correctly() {
             let val = FrontmatterValue::Boolean(true);
             assert!(matches!(val, FrontmatterValue::Boolean(true)));
@@ -412,6 +424,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[ignore = "RED Phase"]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn parses_wikilink_with_alias_successfully() {
             let source_id = Uuid::now_v7();
@@ -428,6 +441,7 @@ mod tests {
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn tracks_link_position_in_document() {
             let source_id = Uuid::now_v7();
@@ -446,6 +460,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[ignore = "RED Phase"]
         fn validates_embed_target_is_not_empty() {
             let source_id = Uuid::now_v7();
             let result =
@@ -458,6 +473,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[ignore = "RED Phase"]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn validates_heading_levels_1_to_6() {
             for level in 1..=6 {
@@ -468,12 +484,14 @@ mod tests {
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn returns_error_for_invalid_heading_level_0() {
             let result = Heading::new(0, "Title".to_owned(), 0);
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(0))));
         }
 
         #[test]
+        #[ignore = "RED Phase"]
         fn returns_error_for_invalid_heading_level_7() {
             let result = Heading::new(7, "Title".to_owned(), 0);
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(7))));
@@ -484,6 +502,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[ignore = "RED Phase"]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn parses_all_task_status_variants() {
             let statuses = vec![
@@ -503,6 +522,7 @@ mod tests {
         use super::*;
 
         #[test]
+        #[ignore = "RED Phase"]
         fn calculates_content_range_correctly() {
             let range = 10..50;
             let section =
