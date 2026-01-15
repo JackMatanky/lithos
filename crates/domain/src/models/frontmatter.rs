@@ -648,53 +648,89 @@ mod tests {
 
     use super::*;
 
+    /// 3.2-UNIT-017: `FieldValue` Extraction - Date.
+    /// P1.
     #[test]
-    fn parses_iso8601_date_successfully() {
+    fn as_date_returns_date_when_variant_is_date() {
+        // GIVEN a Date variant
         let date = Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0).unwrap();
         let val = FieldValue::Date(date);
-        assert_eq!(val.as_date(), Some(date));
+
+        // WHEN the date is extracted
+        let result = val.as_date();
+
+        // THEN it returns the correct date
+        assert_eq!(result, Some(date));
         assert_eq!(date.year(), 2_024i32);
     }
 
+    /// 3.2-UNIT-018: `FieldValue` Extraction - Number.
+    /// P1.
     #[test]
-    fn converts_numeric_values_correctly() {
+    fn as_number_returns_float_when_variant_is_number() {
+        // GIVEN a Number variant
         let val = FieldValue::Number(42.0f64);
-        assert_eq!(val.as_number(), Some(42.0f64));
+
+        // WHEN the number is extracted
+        let result = val.as_number();
+
+        // THEN it returns the correct float
+        assert_eq!(result, Some(42.0f64));
         assert!(matches!(
             val,
             FieldValue::Number(n) if (n - 42.0f64).abs() < f64::EPSILON
         ));
     }
 
+    /// 3.2-UNIT-019: `FieldValue` Extraction - Boolean.
+    /// P1.
     #[test]
-    fn converts_boolean_values_correctly() {
+    fn as_bool_returns_bool_when_variant_is_boolean() {
+        // GIVEN a Boolean variant
         let val = FieldValue::Boolean(true);
-        assert_eq!(val.as_bool(), Some(true));
+
+        // WHEN the boolean is extracted
+        let result = val.as_bool();
+
+        // THEN it returns the correct value
+        assert_eq!(result, Some(true));
         assert!(matches!(val, FieldValue::Boolean(true)));
     }
 
+    /// 3.2-UNIT-020: Frontmatter Inspection - Field Presence.
+    /// P1.
     #[test]
     #[expect(
         clippy::disallowed_methods,
         reason = "Test fixture creation, unwrap is appropriate for test clarity"
     )]
-    // TODO (TEA Review): Add BDD structure (GWT) and Test ID (3.2-UNIT-007) - See test-review-story-3-2.md
-    fn has_method_detects_field_presence() {
+    fn frontmatter_has_returns_true_when_field_exists() {
+        // GIVEN frontmatter with a 'title' field
         let mut fields = HashMap::new();
         fields
             .insert("title".to_owned(), FieldValue::String("Test".to_owned()));
         let fm = Frontmatter::new(fields).unwrap();
 
-        assert!(fm.has("title"));
-        assert!(!fm.has("missing"));
+        // WHEN checking for field existence
+        let has_title = fm.has("title");
+        let has_missing = fm.has("missing");
+
+        // THEN it correctly identifies present and missing fields
+        assert!(has_title);
+        assert!(!has_missing);
     }
 
+    /// 3.2-UNIT-021: `FieldValue` Type Inspection - Variant Identification.
+    /// P1.
     #[test]
-    fn is_methods_identify_variants() {
+    fn field_value_is_variant_returns_true_when_types_match() {
+        // GIVEN various FieldValue variants
         let string_val = FieldValue::String("test".to_owned());
         let number_val = FieldValue::Number(42.0);
         let bool_val = FieldValue::Boolean(true);
 
+        // WHEN inspecting their types
+        // THEN they correctly identify their own variants
         assert!(string_val.is_string());
         assert!(!string_val.is_number());
 

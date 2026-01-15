@@ -645,28 +645,59 @@ mod tests {
     mod note {
         use super::*;
 
-        // TODO (TEA Review): Add BDD structure (GWT) and Test ID (3.2-UNIT-001) - See test-review-story-3-2.md
+        /// 3.2-UNIT-001: Note Creation - Empty Path.
+        /// P1.
         #[test]
-        fn rejects_empty_path() {
-            let result = Note::new(String::new());
+        fn new_note_returns_error_when_path_is_empty() {
+            // GIVEN an empty path string
+            let path = String::new();
+
+            // WHEN a new Note is constructed
+            let result = Note::new(path);
+
+            // THEN it returns an EmptyPath error
             assert!(matches!(result, Err(DomainError::EmptyPath)));
         }
 
+        /// 3.2-UNIT-002: Note Creation - Absolute Path.
+        /// P1.
         #[test]
-        fn rejects_absolute_path() {
-            let result = Note::new("/absolute/path.md".to_owned());
+        fn new_note_returns_error_when_path_is_absolute() {
+            // GIVEN an absolute path string
+            let path = "/absolute/path.md".to_owned();
+
+            // WHEN a new Note is constructed
+            let result = Note::new(path);
+
+            // THEN it returns an InvalidPath error
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
+        /// 3.2-UNIT-003: Note Creation - Path Traversal.
+        /// P1.
         #[test]
-        fn rejects_path_traversal() {
-            let result = Note::new("../etc/passwd".to_owned());
+        fn new_note_returns_error_when_path_contains_traversal() {
+            // GIVEN a path string with traversal components
+            let path = "../etc/passwd".to_owned();
+
+            // WHEN a new Note is constructed
+            let result = Note::new(path);
+
+            // THEN it returns an InvalidPath error
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
+        /// 3.2-UNIT-004: Note Creation - Missing Extension.
+        /// P1.
         #[test]
-        fn rejects_path_missing_md_extension() {
-            let result = Note::new("projects/lithos".to_owned());
+        fn new_note_returns_error_when_path_missing_md_extension() {
+            // GIVEN a path string without .md extension
+            let path = "projects/lithos".to_owned();
+
+            // WHEN a new Note is constructed
+            let result = Note::new(path);
+
+            // THEN it returns an InvalidPath error
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
     }
@@ -674,10 +705,18 @@ mod tests {
     mod tag {
         use super::*;
 
+        /// 3.2-UNIT-005: Tag Parsing - Hierarchical.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn parses_hierarchical_tag_successfully() {
-            let tag = Tag::parse("#work/project/urgent").expect("Valid tag");
+        fn parse_tag_succeeds_when_tag_is_hierarchical() {
+            // GIVEN a valid hierarchical tag string
+            let input = "#work/project/urgent";
+
+            // WHEN the tag is parsed
+            let tag = Tag::parse(input).expect("Valid tag");
+
+            // THEN it correctly extracts segments and full path
             assert_eq!(tag.full_path.as_ref(), "work/project/urgent");
             assert_eq!(
                 tag.segments,
@@ -685,60 +724,97 @@ mod tests {
             );
         }
 
+        /// 3.2-UNIT-006: Tag Parsing - Simple.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn parses_simple_tag_successfully() {
-            let tag = Tag::parse("#personal").expect("Valid tag");
+        fn parse_tag_succeeds_when_tag_is_simple() {
+            // GIVEN a valid simple tag string
+            let input = "#personal";
+
+            // WHEN the tag is parsed
+            let tag = Tag::parse(input).expect("Valid tag");
+
+            // THEN it correctly extracts the single segment
             assert_eq!(tag.full_path.as_ref(), "personal");
             assert_eq!(tag.segments, vec!["personal".into()]);
         }
 
+        /// 3.2-UNIT-007: Tag Parsing - Empty Segments.
+        /// P1.
         #[test]
-        fn returns_error_for_empty_tag_segments() {
-            let result = Tag::parse("#project//urgent");
+        fn parse_tag_returns_error_when_segments_are_empty() {
+            // GIVEN a tag string with empty segments
+            let input = "#project//urgent";
+
+            // WHEN the tag is parsed
+            let result = Tag::parse(input);
+
+            // THEN it returns an EmptyTagSegment error
             assert!(matches!(result, Err(DomainError::EmptyTagSegment)));
         }
 
+        /// 3.2-UNIT-008: Tag Parsing - Surrounding Slashes.
+        /// P1.
         #[test]
-        fn returns_error_for_leading_or_trailing_slashes() {
-            let result = Tag::parse("#/leading");
-            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+        fn parse_tag_returns_error_when_tag_has_surrounding_slashes() {
+            // GIVEN tags with leading or trailing slashes
+            let leading = "#/leading";
+            let trailing = "#trailing/";
 
-            let result = Tag::parse("#trailing/");
-            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+            // WHEN the tags are parsed
+            let res_leading = Tag::parse(leading);
+            let res_trailing = Tag::parse(trailing);
+
+            // THEN both return InvalidTag errors
+            assert!(matches!(res_leading, Err(DomainError::InvalidTag(_))));
+            assert!(matches!(res_trailing, Err(DomainError::InvalidTag(_))));
         }
     }
 
     mod link {
         use super::*;
 
+        /// 3.2-UNIT-009: Link Creation - `WikiLink` with Alias.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
-        fn parses_wikilink_with_alias_successfully() {
+        fn new_wikilink_succeeds_when_alias_is_provided() {
+            // GIVEN link parameters including an alias
             let source_id = Uuid::now_v7();
-            let link = Link::new_wikilink(
-                source_id,
-                "target.md".to_owned(),
-                Some("Alias".to_owned()),
-                100,
-            )
-            .unwrap();
+            let target = "target.md".to_owned();
+            let alias = Some("Alias".to_owned());
+            let pos = 100;
+
+            // WHEN a new wikilink is constructed
+            let link =
+                Link::new_wikilink(source_id, target, alias, pos).unwrap();
+
+            // THEN it maintains all provided attributes
             assert_eq!(link.target_path.as_ref(), "target.md");
             assert_eq!(link.alias, Some("Alias".into()));
             assert_eq!(link.link_type, LinkType::WikiLink);
         }
 
+        /// 3.2-UNIT-010: Link Creation - Position Tracking.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
-        fn tracks_link_position_in_document() {
+        fn new_wikilink_maintains_position_offset() {
+            // GIVEN a character offset
             let source_id = Uuid::now_v7();
+            let pos = 500;
+
+            // WHEN a new wikilink is constructed
             let link = Link::new_wikilink(
                 source_id,
                 "target.md".to_owned(),
                 None,
-                500,
+                pos,
             )
             .unwrap();
+
+            // THEN the position is correctly stored
             assert_eq!(link.position, 500);
         }
     }
@@ -746,11 +822,18 @@ mod tests {
     mod embed {
         use super::*;
 
+        /// 3.2-UNIT-011: Embed Creation - Target Validation.
+        /// P1.
         #[test]
-        fn validates_embed_target_is_not_empty() {
+        fn new_embed_returns_error_when_target_is_empty() {
+            // GIVEN an empty target path for an embed
             let source_id = Uuid::now_v7();
-            let result =
-                Embed::new(source_id, String::new(), EmbedType::Image, 0);
+            let path = String::new();
+
+            // WHEN a new Embed is constructed
+            let result = Embed::new(source_id, path, EmbedType::Image, 0);
+
+            // THEN it returns an EmptyEmbedTarget error
             assert!(matches!(result, Err(DomainError::EmptyEmbedTarget)));
         }
     }
@@ -758,25 +841,47 @@ mod tests {
     mod heading {
         use super::*;
 
+        /// 3.2-UNIT-012: Heading Creation - Valid Levels.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
-        fn validates_heading_levels_1_to_6() {
+        fn new_heading_succeeds_when_level_is_valid() {
+            // GIVEN valid heading levels 1 through 6
             for level in 1..=6 {
+                // WHEN a new heading is constructed
                 let heading =
                     Heading::new(level, "Title".to_owned(), 0).unwrap();
+
+                // THEN the level is correctly assigned
                 assert_eq!(heading.level, level);
             }
         }
 
+        /// 3.2-UNIT-013: Heading Creation - Level Zero.
+        /// P1.
         #[test]
-        fn returns_error_for_invalid_heading_level_0() {
-            let result = Heading::new(0, "Title".to_owned(), 0);
+        fn new_heading_returns_error_when_level_is_zero() {
+            // GIVEN an invalid heading level of 0
+            let level = 0;
+
+            // WHEN a new heading is constructed
+            let result = Heading::new(level, "Title".to_owned(), 0);
+
+            // THEN it returns an InvalidHeadingLevel error
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(0))));
         }
 
+        /// 3.2-UNIT-014: Heading Creation - Level Too High.
+        /// P1.
         #[test]
-        fn returns_error_for_invalid_heading_level_7() {
-            let result = Heading::new(7, "Title".to_owned(), 0);
+        fn new_heading_returns_error_when_level_is_too_high() {
+            // GIVEN an invalid heading level of 7
+            let level = 7;
+
+            // WHEN a new heading is constructed
+            let result = Heading::new(level, "Title".to_owned(), 0);
+
+            // THEN it returns an InvalidHeadingLevel error
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(7))));
         }
     }
@@ -784,17 +889,24 @@ mod tests {
     mod task {
         use super::*;
 
+        /// 3.2-UNIT-015: Task Creation - Status Variants.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
-        fn parses_all_task_status_variants() {
+        fn new_task_succeeds_for_all_status_variants() {
+            // GIVEN all possible task status variants
             let statuses = vec![
                 TaskStatus::Incomplete,
                 TaskStatus::Complete,
                 TaskStatus::Cancelled,
             ];
+
             for status in statuses {
+                // WHEN a new task is constructed
                 let task = Task::new("Buy milk".to_owned(), status.clone(), 0)
                     .unwrap();
+
+                // THEN the status is correctly assigned
                 assert_eq!(task.status, status);
             }
         }
@@ -803,11 +915,18 @@ mod tests {
     mod section {
         use super::*;
 
+        /// 3.2-UNIT-016: Section Creation - Content Range.
+        /// P1.
         #[test]
-        fn calculates_content_range_correctly() {
+        fn new_section_maintains_content_range() {
+            // GIVEN a character range
             let range = 10..50;
+
+            // WHEN a new section is constructed
             let section =
                 Section::new(None, "Content".to_owned(), range.clone());
+
+            // THEN the range is correctly preserved
             assert_eq!(section.range, range);
         }
     }
