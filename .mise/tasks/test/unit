@@ -23,20 +23,20 @@ set -euo pipefail
 #   Echoes the full package name
 #######################################
 map_package_name() {
-    case "${usage_package:-}" in
+  case "${usage_package:-}" in
     domain | app | adapters)
-        echo "lithos-${usage_package}"
-        ;;
+      echo "lithos-${usage_package}"
+      ;;
     test-utils)
-        echo "lithos-test-utils"
-        ;;
+      echo "lithos-test-utils"
+      ;;
     cli)
-        echo "lithos"
-        ;;
+      echo "lithos"
+      ;;
     *)
-        echo ""
-        ;;
-    esac
+      echo ""
+      ;;
+  esac
 }
 
 #######################################
@@ -48,67 +48,66 @@ map_package_name() {
 # Arguments:
 #   Reference to an array for arguments
 #   The resolved package name
+#   The test type (nextest or doc)
 # Outputs:
-#   Writes test results to stdout
+#   None
 #######################################
 build_test_arg() {
-    local -n ref_args=$1
-    local package_name=$2
-    local test_type=$3
+  local -n ref_args=$1
+  local package_name=$2
+  local test_type=$3
 
-    # Core test arguments
-    if [[ "${test_type}" == "nextest" ]]; then
-        ref_args+=("--lib" "--bins")
-        if [[ "${usage_verbose:-}" == "1" ]]; then
-            ref_args+=("--verbose")
-        fi
-        # Nextest specific
-        ref_args+=("--partition" "hash:1/1")
-        if [[ -n "${usage_filter:-}" ]]; then
-            ref_args+=("${usage_filter}")
-        fi
+  # Core test arguments
+  if [[ "${test_type}" == "nextest" ]]; then
+    ref_args+=("--lib" "--bins")
+    if [[ "${usage_verbose:-}" == "1" ]]; then
+      ref_args+=("--verbose")
     fi
+    # Nextest specific
+    ref_args+=("--partition" "hash:1/1")
+    if [[ -n "${usage_filter:-}" ]]; then
+      ref_args+=("${usage_filter}")
+    fi
+  fi
 
-    # Package selection (Common)
-    if [[ -n "${package_name}" ]]; then
-        ref_args+=("--package" "${package_name}")
-    else
-        ref_args+=("--workspace")
-    fi
+  # Package selection (Common)
+  if [[ -n "${package_name}" ]]; then
+    ref_args+=("--package" "${package_name}")
+  else
+    ref_args+=("--workspace")
+  fi
 }
 
 #######################################
 # Execute unit tests using nextest and doc tests using cargo.
 # Arguments:
-#   Arguments for cargo nextest run (array elements)
-#   --- separator ---
-#   Arguments for cargo test --doc (remaining array elements)
+#   $@: Arguments for cargo nextest run, then "---", then arguments for cargo test --doc
 # Outputs:
 #   Writes test results to stdout
 #######################################
 run_tests() {
-    local nextest_args=()
-    local doc_args=()
-    local target="nextest"
+  local nextest_args=()
+  local doc_args=()
+  local target="nextest"
 
-    for arg in "$@"; do
-        if [[ "${arg}" == "---" ]]; then
-            target="doc"
-            continue
-        fi
+  for arg in "$@"; do
+    if [[ "${arg}" == "---" ]]; then
+      target="doc"
+      continue
+    fi
 
-        if [[ "${target}" == "nextest" ]]; then
-            nextest_args+=("${arg}")
-        else
-            doc_args+=("${arg}")
-        fi
-    done
+    if [[ "${target}" == "nextest" ]]; then
+      nextest_args+=("${arg}")
+    else
+      doc_args+=("${arg}")
+    fi
+  done
 
-    echo "🧪 Running unit tests (nextest)..."
-    cargo nextest run "${nextest_args[@]}"
+  echo "🧪 Running unit tests (nextest)..."
+  cargo nextest run "${nextest_args[@]}"
 
-    echo "📖 Running doc tests..."
-    cargo test --doc "${doc_args[@]}"
+  echo "📖 Running doc tests..."
+  cargo test --doc "${doc_args[@]}"
 }
 
 #######################################
@@ -121,17 +120,17 @@ run_tests() {
 #   None
 #######################################
 main() {
-    local resolved_package
-    resolved_package=$(map_package_name)
+  local resolved_package
+  resolved_package=$(map_package_name)
 
-    local nextest_args=()
-    build_test_arg nextest_args "${resolved_package}" "nextest"
+  local nextest_args=()
+  build_test_arg nextest_args "${resolved_package}" "nextest"
 
-    local doc_args=()
-    build_test_arg doc_args "${resolved_package}" "doc"
+  local doc_args=()
+  build_test_arg doc_args "${resolved_package}" "doc"
 
-    run_tests "${nextest_args[@]}" "---" "${doc_args[@]}"
-    echo "✅ All unit and doc tests complete"
+  run_tests "${nextest_args[@]}" "---" "${doc_args[@]}"
+  echo "✅ All unit and doc tests complete"
 }
 
 main "$@"

@@ -645,6 +645,7 @@ mod tests {
     mod note {
         use super::*;
 
+        // TODO (TEA Review): Add BDD structure (GWT) and Test ID (3.2-UNIT-001) - See test-review-story-3-2.md
         #[test]
         fn rejects_empty_path() {
             let result = Note::new(String::new());

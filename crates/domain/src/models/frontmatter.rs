@@ -678,6 +678,7 @@ mod tests {
         clippy::disallowed_methods,
         reason = "Test fixture creation, unwrap is appropriate for test clarity"
     )]
+    // TODO (TEA Review): Add BDD structure (GWT) and Test ID (3.2-UNIT-007) - See test-review-story-3-2.md
     fn has_method_detects_field_presence() {
         let mut fields = HashMap::new();
         fields

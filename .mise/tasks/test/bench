@@ -22,18 +22,18 @@ set -euo pipefail
 #######################################
 map_package_name() {
   case "${usage_package:-}" in
-  domain | app | adapters)
-    echo "lithos-${usage_package}"
-    ;;
-  test-utils)
-    echo "lithos-test-utils"
-    ;;
-  cli)
-    echo "lithos"
-    ;;
-  *)
-    echo ""
-    ;;
+    domain | app | adapters)
+      echo "lithos-${usage_package}"
+      ;;
+    test-utils)
+      echo "lithos-test-utils"
+      ;;
+    cli)
+      echo "lithos"
+      ;;
+    *)
+      echo ""
+      ;;
   esac
 }
 
@@ -114,8 +114,6 @@ run_benchmarks() {
 
 #######################################
 # Main entry point for the benchmark task.
-# Globals:
-#   None
 # Arguments:
 #   None
 # Outputs:

@@ -53,12 +53,19 @@ ADR_DIR = "{{vars.adr_dir}}"
 #                        VARIABLES                              #
 # ------------------------------------------------------------- #
 [vars]
-# Specific crate paths
+# Specific Crate Paths
 domain_crate = "crates/domain"
 app_crate = "crates/app"
 adapters_crate = "crates/adapters"
 cli_crate = "crates/cli"
-test_utils_crate = "crates/test-utils"
+test_utils_crate = "tests/utils"
+test_macros_crate = "tests/macros"
+
+# Test Paths
+test_suite_dir = "tests/suite"
+test_architecture_dir = "{{vars.test_suite_dir}}/arch"
+test_e2e_dir = "{{vars.test_suite_dir}}/e2e"
+test_integration_dir = "{{vars.test_suite_dir}}/integration"
 
 # Directory paths
 docs_dir = "docs"
@@ -98,9 +105,9 @@ run = "cargo deny check"
 
 # -------------------------- Testing -------------------------- #
 [tasks.test]
-description = "Run all tests (unit and integration)"
+description = "Run all tests (unit, integration, e2e, arch)"
 alias = "t"
-depends = ["test:unit", "test:integration"]
+depends = ["test:unit", "test:integration", "test:e2e", "test:arch"]
 
 # Specific crate unit tests for developer convenience
 [tasks."test:unit:domain"]
@@ -171,7 +178,7 @@ run = "mise run clean reports"
 # --------------------- CI/CD Simulation ---------------------- #
 [tasks.ci]
 description = "Simulate CI/CD pipeline"
-depends = ["verify", "test:integration"]
+depends = ["verify"]
 
 [tasks.timing]
 description = "Run verify with detailed timing information"

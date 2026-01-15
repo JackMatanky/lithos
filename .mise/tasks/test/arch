@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-#MISE description="Run integration tests (SPI ports and system flows)"
-#MISE alias="ti"
+#MISE description="Run architecture and boundary enforcement tests"
+#MISE alias="ta"
 #MISE depends=["fmt", "build"]
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE env={RUST_BACKTRACE="1"}
@@ -12,7 +12,7 @@ set -euo pipefail
 #######################################
 # Extract test names from Cargo.toml based on directory.
 # Arguments:
-#   dir: The directory within tests/suite (e.g., "integration")
+#   dir: The directory within tests/suite (e.g., "arch")
 # Outputs:
 #   Echoes space-separated test names
 #######################################
@@ -29,29 +29,27 @@ get_tests_by_dir() {
 }
 
 #######################################
-# Run integration tests using nextest.
+# Run architecture tests using nextest.
 # Globals:
 #   usage_verbose
 #   usage_filter
-#   TEST_THREADS
 # Arguments:
 #   None
 # Outputs:
 #   Writes test results to stdout
 #######################################
-run_integration_tests() {
-  local suite_dir="integration"
+run_arch_tests() {
+  local suite_dir="arch"
   local test_names
   test_names=$(get_tests_by_dir "${suite_dir}")
 
   if [[ -z "${test_names}" ]]; then
-    echo "⚠️ No integration tests found in ${suite_dir}"
+    echo "⚠️ No architecture tests found in ${suite_dir}"
     return 0
   fi
 
   local args=(
     "--package" "lithos-integration-tests"
-    "--test-threads" "${TEST_THREADS:-4}"
   )
 
   for t in ${test_names}; do
@@ -66,7 +64,7 @@ run_integration_tests() {
     args+=("${usage_filter}")
   fi
 
-  echo "🧪 Running integration tests..."
+  echo "🏗️ Running architecture tests..."
   cargo nextest run "${args[@]}"
 }
 
@@ -78,8 +76,8 @@ run_integration_tests() {
 #   None
 #######################################
 main() {
-  run_integration_tests
-  echo "✅ Integration tests complete"
+  run_arch_tests
+  echo "✅ Architecture tests complete"
 }
 
 main "$@"

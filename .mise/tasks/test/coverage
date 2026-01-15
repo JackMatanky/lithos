@@ -15,16 +15,16 @@ set -euo pipefail
 #   None
 #######################################
 open_file() {
-    local path="$1"
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        open "${path}"
-    elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if command -v xdg-open >/dev/null; then
-            xdg-open "${path}"
-        else
-            echo "⚠️ Could not find xdg-open to open ${path}"
-        fi
+  local path="$1"
+  if [[ "$OSTYPE" == "darwin"* ]]; then
+    open "${path}"
+  elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    if command -v xdg-open >/dev/null; then
+      xdg-open "${path}"
+    else
+      echo "⚠️ Could not find xdg-open to open ${path}"
     fi
+  fi
 }
 
 #######################################
@@ -35,9 +35,9 @@ open_file() {
 #   Writes coverage report to stdout
 #######################################
 run_tarpaulin() {
-    echo "📊 Generating code coverage report..."
-    mkdir -p target/tarpaulin
-    cargo tarpaulin --ignore-tests --out Html --output-dir target/tarpaulin
+  echo "📊 Generating code coverage report..."
+  mkdir -p target/tarpaulin
+  cargo tarpaulin --ignore-tests --out Html --output-dir target/tarpaulin
 }
 
 #######################################
@@ -50,25 +50,23 @@ run_tarpaulin() {
 #   None
 #######################################
 open_report() {
-    if [[ "${usage_open:-}" == "1" ]]; then
-        echo "🌐 Opening coverage report..."
-        open_file "target/tarpaulin/tarpaulin-report.html"
-    fi
+  if [[ "${usage_open:-}" == "1" ]]; then
+    echo "🌐 Opening coverage report..."
+    open_file "target/tarpaulin/tarpaulin-report.html"
+  fi
 }
 
 #######################################
 # Main entry point.
-# Globals:
-#   None
 # Arguments:
 #   $@
 # Outputs:
 #   None
 #######################################
 main() {
-    run_tarpaulin
-    open_report
-    echo "✅ Coverage report generated"
+  run_tarpaulin
+  open_report
+  echo "✅ Coverage report generated"
 }
 
 main "$@"
