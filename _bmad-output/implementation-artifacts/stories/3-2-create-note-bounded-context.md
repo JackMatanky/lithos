@@ -1,6 +1,6 @@
 # Story 3.2: Create Note Bounded Context
 
-Status: in-progress
+Status: review
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
