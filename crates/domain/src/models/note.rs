@@ -213,10 +213,34 @@ impl Note {
 /// Returns `DomainError::EmptyPath` if path is empty.
 /// Returns `DomainError::InvalidPath` for violations.
 fn validate_vault_path(path: &str) -> Result<(), DomainError> {
+    validate_path_not_empty(path)?;
+    validate_path_is_relative(path)?;
+    validate_path_no_traversal(path)?;
+    validate_path_has_md_extension(path)?;
+    Ok(())
+}
+
+/// Validates that a path is not empty.
+///
+/// # Errors
+/// Returns `DomainError::EmptyPath` if the path is empty.
+#[inline]
+fn validate_path_not_empty(path: &str) -> Result<(), DomainError> {
     if path.is_empty() {
         return Err(DomainError::EmptyPath);
     }
+    Ok(())
+}
 
+/// Validates that a path is relative (not absolute).
+///
+/// Checks for both Unix-style (`/path`) and Windows-style (`C:/path`) absolute paths.
+///
+/// # Errors
+/// Returns `DomainError::InvalidPath` if the path is absolute.
+#[inline]
+fn validate_path_is_relative(path: &str) -> Result<(), DomainError> {
+    // Check for Unix-style absolute path
     if path.starts_with('/') {
         return Err(DomainError::InvalidPath(
             "Path must be relative".to_owned(),
@@ -224,24 +248,45 @@ fn validate_vault_path(path: &str) -> Result<(), DomainError> {
     }
 
     // Check for Windows-style absolute paths (drive letter followed by colon and slash)
-    if path.len() >= 3
-        && path.chars().nth(1) == Some(':')
-        && path.chars().nth(2) == Some('/')
-        && let Some(first_char) = path.chars().next()
-        && first_char.is_alphabetic()
-    {
+    if is_windows_absolute_path(path) {
         return Err(DomainError::InvalidPath(
             "Path must be relative (Windows absolute paths not allowed)"
                 .to_owned(),
         ));
     }
 
+    Ok(())
+}
+
+/// Checks if a path is a Windows-style absolute path (e.g., `C:/path`).
+#[inline]
+fn is_windows_absolute_path(path: &str) -> bool {
+    path.len() >= 3
+        && path.chars().nth(1) == Some(':')
+        && path.chars().nth(2) == Some('/')
+        && path.chars().next().is_some_and(char::is_alphabetic)
+}
+
+/// Validates that a path does not contain path traversal sequences.
+///
+/// # Errors
+/// Returns `DomainError::InvalidPath` if the path contains `..`.
+#[inline]
+fn validate_path_no_traversal(path: &str) -> Result<(), DomainError> {
     if path.contains("..") {
         return Err(DomainError::InvalidPath(
             "Path traversal not allowed".to_owned(),
         ));
     }
+    Ok(())
+}
 
+/// Validates that a path has a `.md` extension.
+///
+/// # Errors
+/// Returns `DomainError::InvalidPath` if the path does not end with `.md`.
+#[inline]
+fn validate_path_has_md_extension(path: &str) -> Result<(), DomainError> {
     if !std::path::Path::new(path)
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
@@ -250,7 +295,6 @@ fn validate_vault_path(path: &str) -> Result<(), DomainError> {
             "Path must end with .md".to_owned(),
         ));
     }
-
     Ok(())
 }
 
