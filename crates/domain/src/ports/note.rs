@@ -20,8 +20,9 @@ use crate::{errors::DomainError, models::note::Note};
 /// #[async_trait]
 /// impl Command for NoteCommandHandler {
 ///     async fn create(&self, path: String) -> Result<Note, DomainError> {
-///         // Implementation would persist note and publish events
-///         Note::new(path)
+///         // Implementation would get or generate UUID and persist note
+///         let id = self.repository.get_or_create_note_id(&path).await?;
+///         Note::new(id, path)
 ///     }
 /// }
 /// ```

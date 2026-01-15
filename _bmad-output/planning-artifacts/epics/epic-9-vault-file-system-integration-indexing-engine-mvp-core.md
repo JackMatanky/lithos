@@ -96,8 +96,8 @@ So that note metadata can be indexed and queried.
 ## Story 9.5: Create Vault Indexing Engine with Incremental Updates
 
 As a developer building the indexing system,
-I want an indexing engine that supports incremental updates,
-So that only changed files are reprocessed for efficiency.
+I want an indexing engine that supports incremental updates and rename detection,
+So that only changed files are reprocessed and note identity is preserved across renames.
 
 **Acceptance Criteria:**
 
@@ -112,6 +112,46 @@ So that only changed files are reprocessed for efficiency.
 **Given** incremental indexing works
 **When** I validate efficiency
 **Then** large vaults show significant performance improvement over full rebuilds
+
+**Given** a note file is renamed between indexing runs (Lithos not running)
+**When** I perform incremental indexing
+**Then** the engine detects potential renames using a three-tier strategy: filesystem metadata → frontmatter matching → content hash fallback
+**And** UUID v7 identity is preserved for correctly detected renames
+
+**Given** filesystem metadata suggests a rename (unchanged mtime but changed ctime)
+**When** I validate with frontmatter matching
+**Then** I parse the file's Frontmatter using domain's Frontmatter struct
+**And** I compare against cached Frontmatter using PartialEq
+**And** exact frontmatter matches result in high-confidence rename (0.90)
+**And** partial matches (title + created date) result in medium-confidence (0.70)
+
+**Given** frontmatter matching is inconclusive
+**When** content hashing is enabled in configuration
+**Then** I compute SHA256 hash of file content
+**And** I compare against cached content hashes for missing files
+**And** exact hash matches result in very-high-confidence rename (0.95)
+
+**Given** rename detection produces confidence scores
+**When** I apply rename decisions
+**Then** I auto-accept renames above user-configured threshold (high/medium/never)
+**And** I prompt for confirmation if interactive mode is enabled
+**And** I log all rename decisions with confidence scores and detection signals
+
+**Given** rename detection completes
+**When** I update storage persistence
+**Then** the original UUID is preserved for detected renames
+**And** the path_index mapping is updated to reflect the new path
+**And** NoteRenamed event is published with old_path, new_path, and uuid
+
+**Given** rename detection performance is measured
+**When** I benchmark with 1000-file vault containing 10 renames
+**Then** metadata-first approach avoids content hashing in 95%+ of cases
+**And** total indexing time remains within NFR2 (<2s for 1000+ files)
+
+**Given** rename detection is configurable
+**When** users set preferences in lithos.toml
+**Then** they can configure: rename_detection strategy, auto_accept_threshold, interactive_prompts, allow_content_hashing, frontmatter_signature_fields
+**And** they can disable rename detection entirely for performance-critical scenarios
 
 ## Story 9.6: Add Indexing Performance Optimization and Monitoring
 

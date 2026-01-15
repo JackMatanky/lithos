@@ -35,7 +35,7 @@ pub use models::{
         Frontmatter as FrontmatterConfig, Global as GlobalConfig,
         SettingValue as ConfigValue, Vault as VaultConfig,
     },
-    frontmatter::{FromFrontmatterValue, Frontmatter, FrontmatterValue},
+    frontmatter::{FieldValue, FromFieldValue, Frontmatter},
     note::{
         Embed, EmbedType, Heading, Link, LinkType, Note, Section, Tag, Task,
         TaskStatus,
