@@ -160,7 +160,8 @@ Adversarial audit reveals significant non-compliance with **@docs/test_guide.md*
 1. **Structural Violation**: Missing unit test modules in `tag.rs`, `structure.rs`, and `task.rs`.
 2. **Organization Violation**: Flat module structure in `note.rs` (Section 5 violation).
 3. **Missing Proptest**: Implement `proptest!` for `Note` aggregate paths and validation.
-4. **Integrate Macros**: Refactor tests to utilize `test_builder!` and `time_test!`.
+4. **Integrate Macros**: Refactor tests to utilize `test_builder!`.
+5. **Virtual Time Analysis**: Address hallucinated timestamp requirements and implement sequence testing for UUID v7 using `time_test!`.
 
 **Full Report**: [3-2-note-review.md](../reviews/3-2-note-review.md)
 
