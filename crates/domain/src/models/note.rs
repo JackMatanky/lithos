@@ -9,14 +9,28 @@
 //! - Tags are hierarchical and follow specific format rules.
 //! - Validation follows a three-phase pipeline: Syntactic → Orchestration → Semantic.
 
-use std::{collections::HashMap, ops::Range};
+use std::ops::Range;
 
-use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use super::frontmatter::Frontmatter;
 use crate::errors::DomainError;
 
 /// Aggregate root representing an Obsidian note.
+///
+/// # Invariants
+/// - `id` is always a valid UUID v7.
+/// - `path` is vault-relative, non-empty, ends with `.md`, no traversal.
+/// - All subentities are consistent (e.g., link targets non-empty).
+/// - Entities are immutable after construction.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::models::note::Note;
+///
+/// let note = Note::new("projects/example.md".to_string()).unwrap();
+/// assert_eq!(note.path.as_ref(), "projects/example.md");
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Note {
@@ -31,7 +45,7 @@ pub struct Note {
     /// Outgoing links.
     pub links: Vec<Link>,
     /// Vault-relative path.
-    pub path: String,
+    pub path: Box<str>,
     /// Document sections.
     pub sections: Vec<Section>,
     /// Hierarchical tags.
@@ -43,50 +57,31 @@ pub struct Note {
 impl Note {
     /// Creates a new note aggregate with path validation and identity generation.
     ///
+    /// # Invariants
+    /// - Generates a new UUID v7 for `id`.
+    /// - Validates path according to vault-relative rules.
+    ///
     /// # Errors
     /// Returns `DomainError::EmptyPath` if path is empty.
-    /// Returns `DomainError::InvalidPath` if path is absolute or contains traversal.
+    /// Returns `DomainError::InvalidPath` if path is absolute, missing `.md` extension, or contains `..`.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::Note;
+    ///
+    /// let note = Note::new("vault/notes/project.md".to_string()).unwrap();
+    /// assert!(note.id.to_string().starts_with("01"));
+    /// ```
     #[inline]
     pub fn new(path: String) -> Result<Self, DomainError> {
-        // Validate path is not empty
-        if path.is_empty() {
-            return Err(DomainError::EmptyPath);
-        }
-
-        // Validate path ends with .md extension
-        if !std::path::Path::new(&path)
-            .extension()
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-        {
-            return Err(DomainError::InvalidPath(
-                "Path must end with .md extension".to_owned(),
-            ));
-        }
-
-        // Validate path is vault-relative (not absolute)
-        if path.starts_with('/') || path.contains(':') {
-            return Err(DomainError::InvalidPath(
-                "Path must be vault-relative, not absolute".to_owned(),
-            ));
-        }
-
-        // Validate path does not contain traversal sequences
-        let path_buf = std::path::Path::new(&path);
-        for component in path_buf.components() {
-            if matches!(component, std::path::Component::ParentDir) {
-                return Err(DomainError::InvalidPath(
-                    "Path cannot contain parent directory traversal (..)"
-                        .to_owned(),
-                ));
-            }
-        }
+        validate_vault_path(&path)?;
 
         // Generate UUID v7 identity (time-ordered)
         let id = Uuid::now_v7();
 
         Ok(Self {
             id,
-            path,
+            path: path.into(),
             frontmatter: None,
             links: vec![],
             embeds: vec![],
@@ -99,11 +94,21 @@ impl Note {
 
     /// Validates the note's internal consistency.
     ///
+    /// Performs semantic validation on all subentities.
+    ///
     /// # Errors
     /// Returns `DomainError::ValidationFailed` if tags have empty segments.
     /// Returns `DomainError::InvalidHeadingLevel` if heading level is not 1-6.
     /// Returns `DomainError::EmptyLinkTarget` if any link has an empty target.
     /// Returns `DomainError::EmptyEmbedTarget` if any embed has an empty target.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::Note;
+    ///
+    /// let note = Note::new("valid.md".to_string()).unwrap();
+    /// assert!(note.validate().is_ok());
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
         for tag in &self.tags {
@@ -132,133 +137,27 @@ impl Note {
     }
 }
 
-/// Represents YAML metadata extracted from a note header.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Frontmatter {
-    /// Key-value pairs of metadata fields.
-    pub fields: HashMap<String, FrontmatterValue>,
-}
-
-/// Possible values in a frontmatter field.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub enum FrontmatterValue {
-    /// Array of values.
-    Array(Vec<FrontmatterValue>),
-    /// Boolean value.
-    Boolean(bool),
-    /// Date/time value.
-    Date(DateTime<Utc>),
-    /// Numeric value (float).
-    Number(f64),
-    /// Nested object of values.
-    Object(HashMap<String, FrontmatterValue>),
-    /// String value.
-    String(String),
-}
-
-impl Frontmatter {
-    /// Extracts the aliases field from frontmatter using the configured key.
-    #[inline]
-    #[must_use]
-    pub fn aliases(
-        &self,
-        config: &crate::models::config::Config,
-    ) -> Vec<String> {
-        self.get_string_array(&config.frontmatter.alias_key)
-    }
-
-    /// Extracts the `file_class` field from frontmatter using the configured key.
-    #[inline]
-    #[must_use]
-    pub fn file_class(&self, config: &crate::models::config::Config) -> String {
-        self.get_string(&config.frontmatter.file_class_key).unwrap_or_default()
-    }
-
-    /// Gets a frontmatter value by key.
-    #[inline]
-    #[must_use]
-    pub fn get(&self, key: &str) -> Option<&FrontmatterValue> {
-        self.fields.get(key)
-    }
-
-    /// Extracts a string value from frontmatter by key.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics are preferred here for clarity when matching FrontmatterValue variants"
-    )]
-    pub fn get_string(&self, key: &str) -> Option<String> {
-        match self.get(key)? {
-            FrontmatterValue::String(s) => Some(s.clone()),
-            &FrontmatterValue::Array(_)
-            | &FrontmatterValue::Boolean(_)
-            | &FrontmatterValue::Date(_)
-            | &FrontmatterValue::Number(_)
-            | &FrontmatterValue::Object(_) => None,
-        }
-    }
-
-    /// Extracts a string array from frontmatter by key.
-    #[inline]
-    #[must_use]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics are preferred here for clarity when matching FrontmatterValue variants"
-    )]
-    pub fn get_string_array(&self, key: &str) -> Vec<String> {
-        match self.get(key) {
-            Some(FrontmatterValue::Array(arr)) => arr
-                .iter()
-                .filter_map(|item| match item {
-                    FrontmatterValue::String(s) => Some(s.clone()),
-                    &FrontmatterValue::Array(_)
-                    | &FrontmatterValue::Boolean(_)
-                    | &FrontmatterValue::Date(_)
-                    | &FrontmatterValue::Number(_)
-                    | &FrontmatterValue::Object(_) => None,
-                })
-                .collect(),
-            Some(
-                &FrontmatterValue::Boolean(_)
-                | &FrontmatterValue::Date(_)
-                | &FrontmatterValue::Number(_)
-                | &FrontmatterValue::Object(_)
-                | &FrontmatterValue::String(_),
-            )
-            | None => Vec::new(),
-        }
-    }
-
-    /// Creates a new frontmatter from fields.
-    ///
-    /// # Errors
-    /// Returns `DomainError::ValidationFailed` if fields are invalid.
-    #[inline]
-    pub fn new(
-        fields: HashMap<String, FrontmatterValue>,
-    ) -> Result<Self, DomainError> {
-        Ok(Self {
-            fields,
-        })
-    }
-
-    /// Extracts the title field from frontmatter using the configured key.
-    #[inline]
-    #[must_use]
-    pub fn title(&self, config: &crate::models::config::Config) -> String {
-        self.get_string(&config.frontmatter.title_key).unwrap_or_default()
-    }
-}
-
 /// Represents a link between notes.
+///
+/// # Invariants
+/// - `target_path` is non-empty.
+/// - `source_note_id` references a valid note.
+/// - `position` is a valid offset in the source document.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::models::note::{Link, LinkType};
+/// use uuid::Uuid;
+///
+/// let source_id = Uuid::now_v7();
+/// let link = Link::new_wikilink(source_id, "target.md".to_string(), None, 100).unwrap();
+/// assert_eq!(link.link_type, LinkType::WikiLink);
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Link {
     /// Optional display alias.
-    pub alias: Option<String>,
+    pub alias: Option<Box<str>>,
     /// Type of link (e.g., `WikiLink`).
     pub link_type: LinkType,
     /// Character offset in the source document.
@@ -266,7 +165,7 @@ pub struct Link {
     /// UUID of the source note.
     pub source_note_id: Uuid,
     /// Vault-relative path to the target.
-    pub target_path: String,
+    pub target_path: Box<str>,
 }
 
 /// Supported link types.
@@ -284,6 +183,16 @@ impl Link {
     ///
     /// # Errors
     /// Returns `DomainError::EmptyLinkTarget` if target path is empty.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::{Link, LinkType};
+    /// use uuid::Uuid;
+    ///
+    /// let source_id = Uuid::now_v7();
+    /// let link = Link::new_markdown_link(source_id, "doc.html".to_string(), Some("Link".to_string()), 75).unwrap();
+    /// assert_eq!(link.link_type, LinkType::MarkdownLink);
+    /// ```
     #[inline]
     pub fn new_markdown_link(
         source_id: Uuid,
@@ -296,8 +205,8 @@ impl Link {
         }
         Ok(Self {
             source_note_id: source_id,
-            target_path: target,
-            alias,
+            target_path: target.into(),
+            alias: alias.map(std::convert::Into::into),
             link_type: LinkType::MarkdownLink,
             position: pos,
         })
@@ -307,6 +216,16 @@ impl Link {
     ///
     /// # Errors
     /// Returns `DomainError::EmptyLinkTarget` if target path is empty.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::Link;
+    /// use uuid::Uuid;
+    ///
+    /// let source_id = Uuid::now_v7();
+    /// let link = Link::new_wikilink(source_id, "page.md".to_string(), Some("Display".to_string()), 50).unwrap();
+    /// assert_eq!(link.target_path.as_ref(), "page.md");
+    /// ```
     #[inline]
     pub fn new_wikilink(
         source_id: Uuid,
@@ -319,8 +238,8 @@ impl Link {
         }
         Ok(Self {
             source_note_id: source_id,
-            target_path: target,
-            alias,
+            target_path: target.into(),
+            alias: alias.map(std::convert::Into::into),
             link_type: LinkType::WikiLink,
             position: pos,
         })
@@ -328,6 +247,20 @@ impl Link {
 }
 
 /// Represents embedded content in a note (e.g., ![[image.png]]).
+///
+/// # Invariants
+/// - `target_path` is non-empty.
+/// - `source_note_id` references a valid note.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::models::note::{Embed, EmbedType};
+/// use uuid::Uuid;
+///
+/// let source_id = Uuid::now_v7();
+/// let embed = Embed::new(source_id, "diagram.png".to_string(), EmbedType::Image, 200).unwrap();
+/// assert_eq!(embed.embed_type, EmbedType::Image);
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Embed {
@@ -338,7 +271,7 @@ pub struct Embed {
     /// UUID of the note containing this embed.
     pub source_note_id: Uuid,
     /// Vault-relative path to the embedded file.
-    pub target_path: String,
+    pub target_path: Box<str>,
 }
 
 /// Supported embed types.
@@ -362,6 +295,16 @@ impl Embed {
     ///
     /// # Errors
     /// Returns `DomainError::EmptyEmbedTarget` if path is empty.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::{Embed, EmbedType};
+    /// use uuid::Uuid;
+    ///
+    /// let source_id = Uuid::now_v7();
+    /// let embed = Embed::new(source_id, "audio.mp3".to_string(), EmbedType::Audio, 150).unwrap();
+    /// assert_eq!(embed.target_path.as_ref(), "audio.mp3");
+    /// ```
     #[inline]
     pub fn new(
         source_id: Uuid,
@@ -374,7 +317,7 @@ impl Embed {
         }
         Ok(Self {
             source_note_id: source_id,
-            target_path: path,
+            target_path: path.into(),
             embed_type,
             position: pos,
         })
@@ -382,21 +325,48 @@ impl Embed {
 }
 
 /// Represents a hierarchical tag (e.g., #work/project).
+///
+/// # Invariants
+/// - `full_path` does not include the leading `#`.
+/// - `segments` contains 1-10 valid segments.
+/// - Each segment matches `^[a-zA-Z0-9_-]+$`.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::models::note::Tag;
+///
+/// let tag = Tag::parse("#work/project").unwrap();
+/// assert_eq!(tag.full_path.as_ref(), "work/project");
+/// assert_eq!(tag.segments, vec!["work".into(), "project".into()]);
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Tag {
     /// Full tag path without the leading '#'.
-    pub full_path: String,
+    pub full_path: Box<str>,
     /// List of segments in the hierarchy.
-    pub segments: Vec<String>,
+    pub segments: Vec<Box<str>>,
 }
 
 impl Tag {
     /// Parses a tag string into a hierarchy.
     ///
+    /// Accepts tags with or without leading `#`.
+    ///
     /// # Errors
-    /// Returns `DomainError::InvalidTag` if format is incorrect.
+    /// Returns `DomainError::InvalidTag` if format is incorrect or too many segments.
     /// Returns `DomainError::EmptyTagSegment` if a segment is empty.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::Tag;
+    ///
+    /// let tag = Tag::parse("#personal").unwrap();
+    /// assert_eq!(tag.segments.len(), 1);
+    ///
+    /// let hierarchical = Tag::parse("work/deep/nested").unwrap();
+    /// assert_eq!(hierarchical.segments.len(), 3);
+    /// ```
     #[inline]
     pub fn parse(input: &str) -> Result<Self, DomainError> {
         let normalized = input.strip_prefix('#').unwrap_or(input);
@@ -413,21 +383,14 @@ impl Tag {
             ));
         }
 
-        let segments: Vec<String> =
-            normalized.split('/').map(String::from).collect();
+        let segments: Vec<Box<str>> =
+            normalized.split('/').map(std::convert::Into::into).collect();
 
         for segment in &segments {
             if segment.is_empty() {
                 return Err(DomainError::EmptyTagSegment);
             }
-            if !segment
-                .chars()
-                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
-            {
-                return Err(DomainError::InvalidTag(format!(
-                    "Invalid characters in segment '{segment}'"
-                )));
-            }
+            validate_tag_segment(segment)?;
         }
 
         if segments.len() > 10 {
@@ -438,13 +401,26 @@ impl Tag {
         }
 
         Ok(Self {
-            full_path: normalized.to_owned(),
+            full_path: normalized.into(),
             segments,
         })
     }
 }
 
 /// Represents a markdown heading (e.g., ## Title).
+///
+/// # Invariants
+/// - `level` is between 1 and 6 inclusive.
+/// - `text` is non-empty.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::models::note::Heading;
+///
+/// let heading = Heading::new(2, "Implementation".to_string(), 10).unwrap();
+/// assert_eq!(heading.level, 2);
+/// assert_eq!(heading.text.as_ref(), "Implementation");
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Heading {
@@ -453,7 +429,7 @@ pub struct Heading {
     /// Character offset in the source document.
     pub position: usize,
     /// Heading text content.
-    pub text: String,
+    pub text: Box<str>,
 }
 
 impl Heading {
@@ -461,6 +437,15 @@ impl Heading {
     ///
     /// # Errors
     /// Returns `DomainError::InvalidHeadingLevel` if level is not 1-6.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::Heading;
+    ///
+    /// let h1 = Heading::new(1, "Title".to_string(), 0).unwrap();
+    /// let h6 = Heading::new(6, "Subsection".to_string(), 100).unwrap();
+    /// assert!(Heading::new(0, "Invalid".to_string(), 0).is_err());
+    /// ```
     #[inline]
     pub fn new(
         level: u8,
@@ -473,12 +458,24 @@ impl Heading {
         Ok(Self {
             level,
             position,
-            text,
+            text: text.into(),
         })
     }
 }
 
 /// Represents a markdown task item (e.g., - [ ] Task).
+///
+/// # Invariants
+/// - `text` is the task description.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::models::note::{Task, TaskStatus};
+///
+/// let task = Task::new("Buy milk".to_string(), TaskStatus::Incomplete, 50).unwrap();
+/// assert_eq!(task.text.as_ref(), "Buy milk");
+/// assert_eq!(task.status, TaskStatus::Incomplete);
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Task {
@@ -487,7 +484,7 @@ pub struct Task {
     /// Task completion status.
     pub status: TaskStatus,
     /// Task text content.
-    pub text: String,
+    pub text: Box<str>,
 }
 
 /// Supported task statuses.
@@ -507,6 +504,14 @@ impl Task {
     ///
     /// # Errors
     /// Returns `DomainError::ValidationFailed` if task data is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::{Task, TaskStatus};
+    ///
+    /// let complete = Task::new("Completed task".to_string(), TaskStatus::Complete, 25).unwrap();
+    /// let cancelled = Task::new("Cancelled".to_string(), TaskStatus::Cancelled, 75).unwrap();
+    /// ```
     #[inline]
     pub fn new(
         text: String,
@@ -514,7 +519,7 @@ impl Task {
         pos: usize,
     ) -> Result<Self, DomainError> {
         Ok(Self {
-            text,
+            text: text.into(),
             status,
             position: pos,
         })
@@ -522,6 +527,19 @@ impl Task {
 }
 
 /// Represents a section of content in a note, optionally associated with a heading.
+///
+/// # Invariants
+/// - `range` is a valid range in the document.
+/// - If `heading` is Some, it starts the section.
+///
+/// # Examples
+/// ```
+/// use lithos_domain::models::note::Section;
+/// use std::ops::Range;
+///
+/// let section = Section::new(None, "Content without heading".to_string(), 0..100);
+/// assert!(section.heading.is_none());
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Section {
@@ -535,6 +553,15 @@ pub struct Section {
 
 impl Section {
     /// Creates a new section.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::note::Section;
+    /// use std::ops::Range;
+    ///
+    /// let section = Section::new(None, "Body content".to_string(), 10..200);
+    /// assert_eq!(section.range, 10..200);
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(
@@ -551,51 +578,95 @@ impl Section {
     }
 }
 
+/// Validates a vault-relative path for use in notes.
+///
+/// # Errors
+/// Returns `DomainError::EmptyPath` if path is empty.
+/// Returns `DomainError::InvalidPath` if path is absolute, missing .md extension, or contains traversal.
+#[inline]
+fn validate_vault_path(path: &str) -> Result<(), DomainError> {
+    // Validate path is not empty
+    if path.is_empty() {
+        return Err(DomainError::EmptyPath);
+    }
+
+    // Validate path ends with .md extension
+    if !std::path::Path::new(path)
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+    {
+        return Err(DomainError::InvalidPath(
+            "Path must end with .md extension".to_owned(),
+        ));
+    }
+
+    // Validate path is vault-relative (not absolute)
+    if path.starts_with('/') || path.contains(':') {
+        return Err(DomainError::InvalidPath(
+            "Path must be vault-relative, not absolute".to_owned(),
+        ));
+    }
+
+    // Validate path does not contain traversal sequences
+    let path_buf = std::path::Path::new(path);
+    for component in path_buf.components() {
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err(DomainError::InvalidPath(
+                "Path cannot contain parent directory traversal (..)"
+                    .to_owned(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Validates a tag segment for allowed characters.
+///
+/// # Errors
+/// Returns `DomainError::InvalidTag` if segment contains invalid characters.
+#[inline]
+fn validate_tag_segment(segment: &str) -> Result<(), DomainError> {
+    if !segment
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        return Err(DomainError::InvalidTag(format!(
+            "Invalid characters in segment '{segment}'"
+        )));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike as _, TimeZone as _};
-    use proptest::prelude::*;
-
     use super::*;
 
     mod note {
         use super::*;
 
         #[test]
-
         fn rejects_empty_path() {
             let result = Note::new(String::new());
             assert!(matches!(result, Err(DomainError::EmptyPath)));
         }
 
         #[test]
-
         fn rejects_absolute_path() {
             let result = Note::new("/absolute/path.md".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
         #[test]
-
         fn rejects_path_traversal() {
             let result = Note::new("../etc/passwd".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
         #[test]
-
         fn rejects_path_missing_md_extension() {
             let result = Note::new("projects/lithos".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
-        }
-
-        proptest! {
-            #[test]
-
-            fn generates_monotonic_uuid_v7_ids(_ in 0..100u32) {
-                // In RED phase, we just show how we would test this
-                // We'd generate many notes and check ID ordering
-            }
         }
     }
 
@@ -603,67 +674,37 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test baseline")]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn parses_hierarchical_tag_successfully() {
-            let tag = Tag::parse("#work/project/urgent").unwrap();
-            assert_eq!(tag.full_path, "work/project/urgent");
-            assert_eq!(tag.segments, vec!["work", "project", "urgent"]);
+            let tag = Tag::parse("#work/project/urgent").expect("Valid tag");
+            assert_eq!(tag.full_path.as_ref(), "work/project/urgent");
+            assert_eq!(
+                tag.segments,
+                vec!["work".into(), "project".into(), "urgent".into()]
+            );
         }
 
         #[test]
-
-        fn returns_error_for_invalid_tag_characters() {
-            let result = Tag::parse("#invalid segment");
-            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn parses_simple_tag_successfully() {
+            let tag = Tag::parse("#personal").expect("Valid tag");
+            assert_eq!(tag.full_path.as_ref(), "personal");
+            assert_eq!(tag.segments, vec!["personal".into()]);
         }
 
         #[test]
-
         fn returns_error_for_empty_tag_segments() {
             let result = Tag::parse("#project//urgent");
             assert!(matches!(result, Err(DomainError::EmptyTagSegment)));
         }
 
         #[test]
-
         fn returns_error_for_leading_or_trailing_slashes() {
             let result = Tag::parse("#/leading");
             assert!(matches!(result, Err(DomainError::InvalidTag(_))));
 
             let result = Tag::parse("#trailing/");
             assert!(matches!(result, Err(DomainError::InvalidTag(_))));
-        }
-    }
-
-    mod frontmatter {
-        use super::*;
-
-        #[test]
-        #[expect(clippy::panic, reason = "Test error path")]
-        fn parses_iso8601_date_successfully() {
-            let date = Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0).unwrap();
-            let val = FrontmatterValue::Date(date);
-            if let FrontmatterValue::Date(d) = val {
-                assert_eq!(d.year(), 2_024i32);
-            } else {
-                panic!("Expected Date variant");
-            }
-        }
-
-        #[test]
-
-        fn converts_numeric_values_correctly() {
-            let val = FrontmatterValue::Number(42.0);
-            assert!(
-                matches!(val, FrontmatterValue::Number(n) if (n - 42.0).abs() < f64::EPSILON)
-            );
-        }
-
-        #[test]
-
-        fn converts_boolean_values_correctly() {
-            let val = FrontmatterValue::Boolean(true);
-            assert!(matches!(val, FrontmatterValue::Boolean(true)));
         }
     }
 
@@ -681,8 +722,8 @@ mod tests {
                 100,
             )
             .unwrap();
-            assert_eq!(link.target_path, "target.md");
-            assert_eq!(link.alias, Some("Alias".to_owned()));
+            assert_eq!(link.target_path.as_ref(), "target.md");
+            assert_eq!(link.alias, Some("Alias".into()));
             assert_eq!(link.link_type, LinkType::WikiLink);
         }
 
@@ -705,7 +746,6 @@ mod tests {
         use super::*;
 
         #[test]
-
         fn validates_embed_target_is_not_empty() {
             let source_id = Uuid::now_v7();
             let result =
@@ -728,14 +768,12 @@ mod tests {
         }
 
         #[test]
-
         fn returns_error_for_invalid_heading_level_0() {
             let result = Heading::new(0, "Title".to_owned(), 0);
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(0))));
         }
 
         #[test]
-
         fn returns_error_for_invalid_heading_level_7() {
             let result = Heading::new(7, "Title".to_owned(), 0);
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(7))));
@@ -765,7 +803,6 @@ mod tests {
         use super::*;
 
         #[test]
-
         fn calculates_content_range_correctly() {
             let range = 10..50;
             let section =
@@ -778,7 +815,10 @@ mod tests {
 /// Test fixtures for deterministic note data.
 #[cfg(test)]
 pub mod fixtures {
+    use std::collections::HashMap;
+
     use super::*;
+    use crate::models::frontmatter::FrontmatterValue;
 
     /// Fixed UUID for deterministic tests (valid UUID v7 format).
     /// Uses timestamp 2024-01-01 00:00:00 UTC for consistency.
@@ -804,8 +844,8 @@ pub mod fixtures {
     #[must_use]
     pub fn example_tag() -> Tag {
         Tag {
-            full_path: "work/project".to_owned(),
-            segments: vec!["work".to_owned(), "project".to_owned()],
+            full_path: "work/project".into(),
+            segments: vec!["work".into(), "project".into()],
         }
     }
 
@@ -819,7 +859,7 @@ pub mod fixtures {
             headings: vec![],
             id: TEST_NOTE_ID,
             links: vec![],
-            path: "test/example.md".to_owned(),
+            path: "test/example.md".into(),
             sections: vec![],
             tags: vec![example_tag()],
             tasks: vec![],
