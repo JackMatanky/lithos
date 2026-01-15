@@ -37,7 +37,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
     - *Safety Invariant*: All commands MUST be executed via `mise run <task>` to ensure toolchain parity across environments.
     - **Available Tasks Reference:**
         - **Quality Gates:** `quality` (fmt+lint+validate), `verify` (full gates + tests), `fmt`, `lint`, `deny`
-        - **Testing:** `test` (unit+integration, alias: `t`), `test:unit`, `test:integration`, `test:coverage`, `test:watch`, `test:unit:*` (crate-specific)
+        - **Testing:** `test` (unit+integration, alias: `t`), `test:unit`, `test:integration`, `test:e2e`, `test:arch`, `test:coverage`, `test:watch`, `test:unit:*` (crate-specific)
         - **CI/CD:** `ci` (pipeline simulation), `verify` (alias: `v`)
         - **Development:** `build`, `clean`, `doc`, `dev-setup`, `bench`
         - **ADR Management:** `adr:validate`, `adr:metrics`
