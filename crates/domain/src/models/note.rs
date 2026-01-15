@@ -232,7 +232,7 @@ mod tests {
 
     mod note {
         use super::*;
-        use crate::LinkType;
+        use crate::{EmbedType, LinkType};
 
         /// 3.2-UNIT-001: Note Creation - Empty Path.
         /// P1.
@@ -328,7 +328,7 @@ mod tests {
                 Link::new_embed(
                     note.id,
                     "image.png".into(),
-                    LinkType::EmbedImage,
+                    EmbedType::Image,
                     0,
                 )
                 .expect("Valid target"),
@@ -381,6 +381,7 @@ mod tests {
                 target_path: "".into(),
                 alias: None,
                 link_type: LinkType::WikiLink,
+                embed_type: None,
                 position: 0,
             });
 
@@ -406,7 +407,8 @@ mod tests {
                 source_note_id: note.id,
                 target_path: "".into(),
                 alias: None,
-                link_type: LinkType::EmbedImage,
+                link_type: LinkType::Embed,
+                embed_type: Some(EmbedType::Image),
                 position: 0,
             });
 
