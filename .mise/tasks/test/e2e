@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+#MISE description="Run end-to-end (E2E) tests using nextest"
+#MISE alias="te"
+#MISE depends=["fmt", "build"]
+#MISE sources=["{{vars.test_e2e_dir}}/**/*.rs", "Cargo.toml"]
+#MISE env={RUST_BACKTRACE="1", TEST_E2E_DIR="{{vars.test_e2e_dir}}"}
+#USAGE flag "-v --verbose" help="Verbose output"
+#USAGE arg "[filter]" help="Filter tests by name"
+
+set -euo pipefail
+
+#######################################
+# Build arguments for nextest E2E tests.
+# Globals:
+#   usage_verbose
+#   usage_filter
+#   TEST_THREADS (from env)
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
+build_test_args() {
+  local -n ref_args=$1
+
+  # Parallel execution control matching mise.toml configuration
+  ref_args+=("--test-threads" "${TEST_THREADS:-4}")
+
+  # Target the integration tests package
+  ref_args+=("--package" "lithos-integration-tests")
+
+  # Filter for E2E tests based on binary name
+  ref_args+=("--filter-expr" "binary(cli_smoke)")
+
+  # Nextest partitioning for consistent test distribution
+  ref_args+=("--partition" "hash:1/1")
+
+  if [[ "${usage_verbose:-}" == "1" ]]; then
+    ref_args+=("--verbose")
+  fi
+
+  # Test filter (if specified)
+  if [[ -n "${usage_filter:-}" ]]; then
+    ref_args+=("${usage_filter}")
+  fi
+}
+
+#######################################
+# Execute E2E tests using nextest.
+# Arguments:
+#   Arguments for cargo nextest run
+# Outputs:
+#   Writes test results to stdout
+#######################################
+run_nextest() {
+  echo "🧪 Running E2E tests..."
+  cargo nextest run "$@"
+}
+
+#######################################
+# Main entry point.
+# Globals:
+#   RUST_BACKTRACE (set by #MISE env directive)
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
+main() {
+  local args=()
+  build_test_args args
+  run_nextest "${args[@]}"
+  echo "✅ E2E tests complete"
+}
+
+main "$@"
