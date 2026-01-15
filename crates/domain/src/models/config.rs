@@ -301,6 +301,17 @@ impl Config {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// let global = GlobalConfig::default();
+    /// let mut vault = VaultConfig::default();
+    /// vault.filesystem.vault_path = "/vault".to_string();
+    ///
+    /// let config = Config::merge(&global, vault).unwrap();
+    /// assert_eq!(config.filesystem.vault_path, "/vault");
+    /// ```
     #[inline]
     pub fn merge(
         global: &Global,
@@ -621,7 +632,50 @@ mod tests {
     use super::*;
 
     // ============================================================================
-    // Config::merge Tests
+    // Property-Based Tests for Edge Cases - Automated Fuzzing Coverage
+    // Target: Discover edge cases in path handling and string processing
+    // ============================================================================
+
+    #[cfg(test)]
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::*;
+
+        proptest! {
+            #[test]
+            fn merge_handles_various_path_lengths(
+                vault_path in "[a-zA-Z0-9/_-]{1,200}",
+                templates_dir in "[a-zA-Z0-9/_-]{0,100}"
+            ) {
+                let global = sample_global_config();
+                let vault = Vault {
+                    filesystem: FileSystem {
+                        vault_path: vault_path.clone(),
+                        templates_dir: templates_dir.clone(),
+                        ..FileSystem::default()
+                    },
+                    ..Vault::default()
+                };
+
+                let result = Config::merge(&global, vault);
+
+                if vault_path.is_empty() {
+                    prop_assert!(result.is_err(), "Empty vault_path should fail");
+                } else {
+                    prop_assert!(result.is_ok(), "Valid paths should merge successfully");
+                    if let Ok(config) = result {
+                        prop_assert_eq!(config.filesystem.vault_path, vault_path);
+                    }
+                }
+            }
+        }
+    }
+
+    // ============================================================================
+    // Config::merge Tests - Core Business Logic Coverage
+    // Target: 80%+ coverage for hierarchical merging and precedence rules
+    // Test Level: Unit (70% of total test coverage per test-design-system.md)
     // ============================================================================
 
     mod merge {
@@ -633,13 +687,15 @@ mod tests {
             reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
         )]
         fn vault_values_take_precedence_over_global() {
-            // Mitigates R-008: Config Merge Logic
+            // GIVEN a global config with default settings and a vault config with custom overrides
             let global = sample_global_config();
             let vault = sample_vault_config();
 
-            let merged = Config::merge(&global, vault).unwrap();
+            // WHEN merging vault and global configs
+            let merged = Config::merge(&global, vault)
+                .expect("Config merge should succeed with valid sample data");
 
-            // Business rule: vault values take precedence
+            // THEN vault values take precedence over global values
             assert_eq!(
                 merged.filesystem.vault_path, "/vault",
                 "Vault path should override global"
@@ -664,6 +720,7 @@ mod tests {
 
         #[test]
         fn falls_back_to_defaults_when_inputs_are_empty() {
+            // GIVEN configs with empty fields that should fall back to system defaults
             let global = Global {
                 filesystem: FileSystem {
                     cache_dir: String::new(), // Empty - should use default
@@ -700,7 +757,10 @@ mod tests {
                 log_level: String::new(),
             };
 
+            // WHEN merging the configs
             let result = Config::merge(&global, vault);
+
+            // THEN merge should succeed and apply system defaults
             assert!(
                 result.is_ok(),
                 "Merge with empty values should succeed, got: {result:?}"
@@ -746,15 +806,18 @@ mod tests {
 
         #[test]
         fn merge_is_idempotent() {
+            // GIVEN the same global and vault configs
             let global = sample_global_config();
             let vault = sample_vault_config();
 
+            // WHEN merging the same inputs multiple times
             let result1 = Config::merge(&global, vault.clone());
             assert!(result1.is_ok(), "First merge should succeed");
 
             let result2 = Config::merge(&global, vault);
             assert!(result2.is_ok(), "Second merge should succeed");
 
+            // THEN results should be identical
             if let (Ok(merged1), Ok(merged2)) = (result1, result2) {
                 assert_eq!(
                     merged1, merged2,
@@ -765,7 +828,8 @@ mod tests {
     }
 
     // ============================================================================
-    // Config::validate Tests
+    // Config::validate Tests - Validation Logic and Error Handling Coverage
+    // Target: 80%+ coverage for business rule validation and error variants
     // ============================================================================
 
     mod validate {
@@ -782,13 +846,16 @@ mod tests {
             #[case] level: &str,
             #[case] expected_error_field: Option<&str>,
         ) {
+            // GIVEN a vault config with specific field values
             let global = sample_global_config();
             let mut vault = sample_vault_config();
             vault.filesystem.vault_path = path.to_owned();
             vault.log_level = level.to_owned();
 
+            // WHEN attempting to merge the configs
             let result = Config::merge(&global, vault);
 
+            // THEN validation should succeed or fail as expected
             match expected_error_field {
                 None => {
                     assert!(
@@ -809,7 +876,6 @@ mod tests {
                     // # LINT_DISABLE_REASON: Wildcard match is necessary for test resilience against new error variants. Panic is standard for test failure.
                     #[expect(
                         clippy::wildcard_enum_match_arm,
-                        clippy::panic,
                         reason = "Test safety boundary"
                     )]
                     match err {
@@ -827,6 +893,7 @@ mod tests {
                             );
                         }
                         _ => {
+                            #[allow(clippy::panic)]
                             panic!(
                                 "Expected a validation-related error, found: {err:?}"
                             );
@@ -838,7 +905,8 @@ mod tests {
     }
 
     // ============================================================================
-    // ConfigValue Tests
+    // ConfigValue Tests - Type System and Conversion Coverage
+    // Target: 80%+ coverage for enum variants and From trait implementations
     // ============================================================================
 
     mod config_value {
@@ -967,7 +1035,8 @@ mod tests {
     }
 
     // ============================================================================
-    // Structural Integrity Tests
+    // Structural Integrity Tests - Entity Behavior and Performance Coverage
+    // Target: 80%+ coverage for trait implementations and derived paths
     // ============================================================================
 
     mod integrity {
@@ -1054,9 +1123,53 @@ mod tests {
             );
             assert_eq!(config.title_key, "title", "title_key mapping mismatch");
         }
+
+        #[test]
+        fn merge_performance_meets_target() {
+            // GIVEN valid global and vault configs
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+
+            // WHEN performing 1000 merge operations
+            let start = std::time::Instant::now();
+            for _ in 0i32..1000i32 {
+                // We don't assert here as we're just timing, the merge should succeed
+                // based on our fixture data
+                debug_assert!(Config::merge(&global, vault.clone()).is_ok());
+            }
+            let total_duration = start.elapsed();
+            let avg_duration = total_duration / 1000;
+
+            // THEN average merge time should meet architectural performance target
+            assert!(
+                avg_duration < std::time::Duration::from_micros(100),
+                "Config::merge performance degraded: {}μs per operation (target: <100μs)",
+                avg_duration.as_micros()
+            );
+        }
     }
 
-    /// Test fixture: Create sample global configuration with defaults.
+    /// Test fixture: Create sample global configuration with system defaults.
+    ///
+    /// This fixture provides a complete Global configuration suitable for testing
+    /// merge operations, validation logic, and default value fallback behavior.
+    /// All fields are populated with realistic values that represent a typical
+    /// global configuration setup.
+    ///
+    /// # Field Values
+    /// - `filesystem.vault_path`: "." (placeholder, not used in global)
+    /// - `filesystem.templates_dir`: "templates" (system default)
+    /// - `filesystem.schemas_dir`: "schemas" (system default)
+    /// - `frontmatter.*`: All set to system defaults (`"file_class"`, `"title"`, etc.)
+    /// - `log_level`: "info" (system default)
+    ///
+    /// # Usage
+    /// Use this fixture when you need a baseline global configuration for merge testing.
+    /// ```rust
+    /// let global = sample_global_config();
+    /// let vault = sample_vault_config();
+    /// let config = Config::merge(&global, vault).unwrap();
+    /// ```
     fn sample_global_config() -> Global {
         Global {
             filesystem: FileSystem {
@@ -1077,7 +1190,27 @@ mod tests {
         }
     }
 
-    /// Test fixture: Create sample vault configuration with overrides.
+    /// Test fixture: Create sample vault configuration with user overrides.
+    ///
+    /// This fixture provides a complete Vault configuration with realistic overrides
+    /// that demonstrate vault-level customization. Key overrides show how vault
+    /// configuration takes precedence over global defaults.
+    ///
+    /// # Key Overrides (Vault takes precedence)
+    /// - `filesystem.templates_dir`: `"custom_templates"` (vs global `"templates"`)
+    /// - `filesystem.vault_path`: "/vault" (required field)
+    /// - `frontmatter.file_class_key`: `"type"` (vs global `"file_class"`)
+    /// - `frontmatter.date_created_key`: `"created"` (vs global `"date_created"`)
+    /// - `log_level`: "debug" (vs global "info")
+    ///
+    /// # Usage
+    /// Use this fixture to test vault-level overrides and precedence rules.
+    /// ```rust
+    /// let global = sample_global_config();
+    /// let vault = sample_vault_config();
+    /// let config = Config::merge(&global, vault).unwrap();
+    /// assert_eq!(config.filesystem.templates_dir, "custom_templates"); // vault override
+    /// ```
     fn sample_vault_config() -> Vault {
         Vault {
             filesystem: FileSystem {
