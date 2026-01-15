@@ -26,7 +26,7 @@ Note: This review audits existing tests; it does not generate tests.
 
 ❌ **Missing Property-Based Tests**: Task 5 claims completion, but no `proptest!` exists for the `Note` aggregate.
 ❌ **Unused Factory Macros**: `test_builder!` is defined but not used to construct Note aggregates in tests.
-❌ **Unused Virtual Time Macros**: `time_test!` is defined but not used for Note timestamp validation.
+❌ **Unused Virtual Time Macros**: `time_test!` is claimed but unused. The requirement for timestamp validation was hallucinated (struct lacks fields), but sequence testing for UUID v7 was neglected.
 ❌ **Structural Deficiencies**: Missing unit test modules in `tag.rs`, `structure.rs`, and `task.rs`.
 ❌ **Standard Violation**: Flat module structure in `note.rs` violates the mandatory "Module-Per-Function" pattern.
 
@@ -104,6 +104,12 @@ Grade:                   C
 
 **Severity**: P1 (High)
 **Issue**: `note.rs` uses a flat module structure. Must refactor to Module-Per-Function (e.g., `mod new`, `mod validate`).
+
+### 5. Virtual Time Hallucination & Neglect
+
+**Severity**: P1 (High)
+**Issue**: Task 1 claims completion of `time_test!` for `created_at`/`updated_at` timestamps. However, the `Note` struct contains NO timestamp fields.
+**Architect's Critique**: While the fields don't exist, the **UUID v7** generation is time-sensitive. Marking this "Complete" when the target fields are missing and the actual time-sensitive logic (UUID sequences) remains unverified is a quality gate failure.
 
 ---
 
