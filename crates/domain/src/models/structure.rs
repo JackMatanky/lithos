@@ -116,3 +116,74 @@ impl Section {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod heading {
+        use super::*;
+
+        #[test]
+        fn new_succeeds_for_valid_input() {
+            // GIVEN valid heading parameters
+            let level = 2;
+            let text = "Implementation".to_owned();
+            let position = 10;
+
+            // WHEN creating a new heading
+            let result = Heading::new(level, text, position).unwrap();
+
+            // THEN it has the correct values
+            assert_eq!(result.level, 2);
+            assert_eq!(result.text.as_ref(), "Implementation");
+            assert_eq!(result.position, 10);
+        }
+
+        #[test]
+        fn new_returns_error_for_invalid_level() {
+            // GIVEN an invalid heading level
+            let level = 7;
+            let text = "Invalid".to_owned();
+
+            // WHEN creating a new heading
+            let result = Heading::new(level, text, 0);
+
+            // THEN it returns InvalidHeadingLevel
+            assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(7))));
+        }
+
+        #[test]
+        fn new_returns_error_for_empty_text() {
+            // GIVEN empty heading text
+            let level = 1;
+            let text = "   ".to_owned();
+
+            // WHEN creating a new heading
+            let result = Heading::new(level, text, 0);
+
+            // THEN it returns ValidationFailed
+            assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
+        }
+    }
+
+    mod section {
+        use super::*;
+
+        #[test]
+        fn new_succeeds_for_valid_input() {
+            // GIVEN valid section parameters
+            let heading = Some(Heading::new(1, "Title".into(), 0).unwrap());
+            let content = "Section content".to_owned();
+            let range = 0..15;
+
+            // WHEN creating a new section
+            let result = Section::new(heading.clone(), content, range.clone());
+
+            // THEN it has the correct values
+            assert_eq!(result.heading, heading);
+            assert_eq!(result.content.as_ref(), "Section content");
+            assert_eq!(result.range, range);
+        }
+    }
+}

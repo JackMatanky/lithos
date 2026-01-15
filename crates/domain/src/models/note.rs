@@ -303,17 +303,33 @@ fn validate_path_has_md_extension(path: &str) -> Result<(), DomainError> {
 
 #[cfg(test)]
 mod tests {
+    use lithos_test_utils::test_builder;
+
     use super::*;
 
-    mod note {
+    test_builder!(NoteBuilder, Note, {
+        id: Uuid = Uuid::now_v7(),
+        path: Box<str> = "default.md".into(),
+        frontmatter: Option<Frontmatter> = None,
+        links: Vec<Link> = vec![],
+        embeds: Vec<Link> = vec![],
+        tags: Vec<Tag> = vec![],
+        headings: Vec<Heading> = vec![],
+        tasks: Vec<Task> = vec![],
+        sections: Vec<Section> = vec![],
+    });
+
+    mod new {
+        use lithos_test_utils::time_test;
+        use tokio::time::Duration;
+
         use super::*;
-        use crate::{EmbedType, LinkType};
 
         /// 3.2-UNIT-001: Note Creation - Empty Path.
         /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn new_note_returns_error_when_path_is_empty() {
+        fn returns_error_when_path_is_empty() {
             // GIVEN a test UUID and empty path string
             let test_id =
                 Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567890")
@@ -331,7 +347,7 @@ mod tests {
         /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn new_note_returns_error_when_path_is_absolute() {
+        fn returns_error_when_path_is_absolute() {
             // GIVEN a test UUID and absolute path string
             let test_id =
                 Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567891")
@@ -349,7 +365,7 @@ mod tests {
         /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn new_note_returns_error_when_path_contains_traversal() {
+        fn returns_error_when_path_contains_traversal() {
             // GIVEN a test UUID and path string with traversal components
             let test_id =
                 Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567892")
@@ -367,7 +383,7 @@ mod tests {
         /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn new_note_returns_error_when_path_missing_md_extension() {
+        fn returns_error_when_path_missing_md_extension() {
             // GIVEN a test UUID and path string without .md extension
             let test_id =
                 Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567893")
@@ -381,57 +397,96 @@ mod tests {
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
+        /// 3.2-UNIT-034: Note Path Validation - Absolute Paths (Windows).
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn returns_error_for_windows_absolute_paths() {
+            // GIVEN a test UUID and path with a colon (Windows absolute)
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567898")
+                    .unwrap();
+            let path = "C:/path.md".to_owned();
+
+            // WHEN constructed
+            let result = Note::new(test_id, path);
+
+            // THEN it returns InvalidPath
+            assert!(matches!(result, Err(DomainError::InvalidPath(_))));
+        }
+
+        /// 3.2-UNIT-035: Note Creation - UUID v7 Sequence.
+        /// P1.
+        time_test!(
+            async fn generates_sequential_uuids() {
+                // GIVEN a note created at T0
+                let note1 = Note::new(Uuid::now_v7(), "one.md".into()).unwrap();
+
+                // WHEN advancing time and creating a second note
+                tokio::time::advance(Duration::from_millis(10)).await;
+                let note2 = Note::new(Uuid::now_v7(), "two.md".into()).unwrap();
+
+                // THEN the second ID is strictly greater than the first
+                assert!(
+                    note2.id > note1.id,
+                    "UUID v7 must be chronologically sortable"
+                );
+            }
+        );
+    }
+
+    mod validate {
+        use super::*;
+        use crate::{EmbedType, LinkType};
+
         /// 3.2-UNIT-022: Note Validation - Success.
         /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn validate_note_succeeds_when_all_entities_are_valid() {
-            // GIVEN a test UUID and note with valid sub-entities
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567894")
-                    .unwrap();
-            let mut note =
-                Note::new(test_id, "valid.md".to_owned()).expect("Valid path");
-            note.tags.push(Tag::parse("#work").expect("Valid tag"));
-            note.headings
-                .push(Heading::new(1, "Title".into(), 0).expect("Valid level"));
-            note.links.push(
-                Link::new_wikilink(note.id, "target.md".into(), None, 0)
+        fn succeeds_when_all_entities_are_valid() {
+            // GIVEN a note with valid sub-entities using NoteBuilder
+            let note = NoteBuilder::new()
+                .path("valid.md".into())
+                .tags(vec![Tag::parse("#work").expect("Valid tag")])
+                .headings(vec![
+                    Heading::new(1, "Title".into(), 0).expect("Valid heading"),
+                ])
+                .links(vec![
+                    Link::new_wikilink(
+                        Uuid::now_v7(),
+                        "target.md".into(),
+                        None,
+                        0,
+                    )
                     .expect("Valid target"),
-            );
-            note.embeds.push(
-                Link::new_embed(
-                    note.id,
-                    "image.png".into(),
-                    EmbedType::Image,
-                    0,
-                )
-                .expect("Valid target"),
-            );
+                ])
+                .build();
 
             // WHEN validation is performed
             let result = note.validate();
 
             // THEN it succeeds
-            result.unwrap();
+            assert!(
+                result.is_ok(),
+                "Expected valid note, got: {:?}",
+                result.err()
+            );
         }
 
         /// 3.2-UNIT-023: Note Validation - Invalid Heading.
         /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn validate_note_returns_error_when_heading_level_is_invalid() {
-            // GIVEN a test UUID and note with an invalid heading (manually constructed)
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567895")
-                    .unwrap();
-            let mut note =
-                Note::new(test_id, "valid.md".to_owned()).expect("Valid path");
-            note.headings.push(Heading {
-                level: 0,
-                text: "Invalid".into(),
-                position: 0,
-            });
+        fn returns_error_when_heading_level_is_invalid() {
+            // GIVEN a note with an invalid heading (manually constructed)
+            let note = NoteBuilder::new()
+                .path("valid.md".into())
+                .headings(vec![Heading {
+                    level: 0,
+                    text: "Invalid".into(),
+                    position: 0,
+                }])
+                .build();
 
             // WHEN the note is validated
             let result = note.validate();
@@ -444,21 +499,18 @@ mod tests {
         /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn validate_note_returns_error_when_link_target_is_empty() {
-            // GIVEN a test UUID and note with an empty link target
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567896")
-                    .unwrap();
-            let mut note =
-                Note::new(test_id, "valid.md".into()).expect("Valid path");
-            note.links.push(Link {
-                source_note_id: note.id,
-                target_path: "".into(),
-                alias: None,
-                link_type: LinkType::WikiLink,
-                embed_type: None,
-                position: 0,
-            });
+        fn returns_error_when_link_target_is_empty() {
+            // GIVEN a note with an empty link target
+            let note = NoteBuilder::new()
+                .links(vec![Link {
+                    source_note_id: Uuid::now_v7(),
+                    target_path: "".into(),
+                    alias: None,
+                    link_type: LinkType::WikiLink,
+                    embed_type: None,
+                    position: 0,
+                }])
+                .build();
 
             // WHEN validated
             let result = note.validate();
@@ -471,21 +523,18 @@ mod tests {
         /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn validate_note_returns_error_when_embed_target_is_empty() {
-            // GIVEN a test UUID and note with an empty embed target
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567897")
-                    .unwrap();
-            let mut note =
-                Note::new(test_id, "valid.md".into()).expect("Valid path");
-            note.embeds.push(Link {
-                source_note_id: note.id,
-                target_path: "".into(),
-                alias: None,
-                link_type: LinkType::Embed,
-                embed_type: Some(EmbedType::Image),
-                position: 0,
-            });
+        fn returns_error_when_embed_target_is_empty() {
+            // GIVEN a note with an empty embed target
+            let note = NoteBuilder::new()
+                .embeds(vec![Link {
+                    source_note_id: Uuid::now_v7(),
+                    target_path: "".into(),
+                    alias: None,
+                    link_type: LinkType::Embed,
+                    embed_type: Some(EmbedType::Image),
+                    position: 0,
+                }])
+                .build();
 
             // WHEN validated
             let result = note.validate();
@@ -493,23 +542,55 @@ mod tests {
             // THEN it returns EmptyLinkTarget
             assert!(matches!(result, Err(DomainError::EmptyLinkTarget)));
         }
+    }
 
-        /// 3.2-UNIT-034: Note Path Validation - Absolute Paths.
-        /// P1.
-        #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn new_note_returns_error_for_windows_absolute_paths() {
-            // GIVEN a test UUID and path with a colon (Windows absolute)
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567898")
-                    .unwrap();
-            let path = "C:/path.md".to_owned();
+    #[cfg(test)]
+    mod proptests {
+        use proptest::prelude::*;
 
-            // WHEN constructed
-            let result = Note::new(test_id, path);
+        use super::*;
 
-            // THEN it returns InvalidPath
-            assert!(matches!(result, Err(DomainError::InvalidPath(_))));
+        proptest! {
+            /// 3.2-PROP-001: Path Traversal Security Fuzzing.
+            #[test]
+            fn rejects_path_traversal(
+                s in r#".*\.\..*"# // Generates strings containing ".."
+            ) {
+                let result = validate_vault_path(&s);
+                prop_assert!(
+                    result.is_err(),
+                    "Path traversal '..' should always be rejected: {}",
+                    s
+                );
+            }
+
+            /// 3.2-PROP-002: Extension Enforcement Fuzzing.
+            #[test]
+            fn enforces_md_extension(
+                s in r#"[a-zA-Z0-9/_-]{1,50}"# // Generates paths without extensions
+            ) {
+                // Ensure the string doesn't accidentally end with .md or .MD
+                prop_assume!(!s.to_lowercase().ends_with(".md"));
+                let result = validate_vault_path(&s);
+                prop_assert!(
+                    result.is_err(),
+                    "Paths without .md extension must be rejected: {}",
+                    s
+                );
+            }
+
+            /// 3.2-PROP-003: Absolute Path Fuzzing.
+            #[test]
+            fn rejects_absolute_paths(
+                s in r#"/.*"# // Generates paths starting with /
+            ) {
+                let result = validate_vault_path(&s);
+                prop_assert!(
+                    result.is_err(),
+                    "Absolute paths must be rejected: {}",
+                    s
+                );
+            }
         }
     }
 }

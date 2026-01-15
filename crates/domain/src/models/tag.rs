@@ -125,3 +125,112 @@ fn validate_tag_segments(segments: &[&str]) -> Result<(), DomainError> {
 fn is_valid_tag_segment(segment: &str) -> bool {
     segment.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod parse {
+        use super::*;
+
+        #[test]
+        fn succeeds_for_valid_simple_tag() {
+            // GIVEN a valid simple tag string
+            let input = "#personal";
+            // WHEN parsing the tag
+            let result = Tag::parse(input).unwrap();
+            // THEN it has the correct path and segments
+            assert_eq!(result.full_path.as_ref(), "personal");
+            assert_eq!(result.segments, vec!["personal".into()]);
+        }
+
+        #[test]
+        fn succeeds_for_valid_hierarchical_tag() {
+            // GIVEN a valid hierarchical tag string
+            let input = "#work/project/urgent";
+            // WHEN parsing the tag
+            let result = Tag::parse(input).unwrap();
+            // THEN it has the correct path and segments
+            assert_eq!(result.full_path.as_ref(), "work/project/urgent");
+            assert_eq!(
+                result.segments,
+                vec!["work".into(), "project".into(), "urgent".into()]
+            );
+        }
+
+        #[test]
+        fn returns_error_when_missing_hash_prefix() {
+            // GIVEN a tag string missing the # prefix
+            let input = "invalid";
+            // WHEN parsing
+            let result = Tag::parse(input);
+            // THEN it returns an InvalidTag error
+            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+        }
+
+        #[test]
+        fn returns_error_when_tag_is_only_hash() {
+            // GIVEN a tag string that is just #
+            let input = "#";
+            // WHEN parsing
+            let result = Tag::parse(input);
+            // THEN it returns an InvalidTag error
+            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+        }
+
+        #[test]
+        fn returns_error_for_empty_segments() {
+            // GIVEN a tag string with double slashes
+            let input = "#work//urgent";
+            // WHEN parsing
+            let result = Tag::parse(input);
+            // THEN it returns an EmptyTagSegment error
+            assert!(matches!(result, Err(DomainError::EmptyTagSegment)));
+        }
+
+        #[test]
+        fn returns_error_for_invalid_characters() {
+            // GIVEN a tag string with invalid characters (space)
+            let input = "#work project";
+            // WHEN parsing
+            let result = Tag::parse(input);
+            // THEN it returns an InvalidTag error
+            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+        }
+    }
+
+    #[cfg(test)]
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::*;
+
+        proptest! {
+            /// 3.2-PROP-004: Tag Segment Validation Fuzzing.
+            #[test]
+            fn rejects_invalid_characters_in_segments(
+                s in r#"#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*"#
+            ) {
+                let result = Tag::parse(&s);
+                prop_assert!(
+                    result.is_err(),
+                    "Tags with special characters in segments should be rejected: {}",
+                    s
+                );
+            }
+
+            /// 3.2-PROP-005: Valid Tag Fuzzing.
+            #[test]
+            fn accepts_valid_alphanumeric_tags(
+                s in r#"#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*"#
+            ) {
+                let result = Tag::parse(&s);
+                prop_assert!(
+                    result.is_ok(),
+                    "Valid alphanumeric tags should be accepted: {}",
+                    s
+                );
+            }
+        }
+    }
+}

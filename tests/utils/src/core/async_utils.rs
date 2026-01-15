@@ -386,7 +386,7 @@ macro_rules! async_test {
 #[macro_export]
 macro_rules! time_test {
     ($(#[$meta:meta])* $vis:vis async fn $name:ident() $body:block) => {
-        #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+        #[tokio::test(flavor = "current_thread")]
         $(#[$meta])*
         $vis async fn $name() {
             tokio::time::pause();

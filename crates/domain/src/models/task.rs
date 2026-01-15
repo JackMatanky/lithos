@@ -72,3 +72,40 @@ impl Task {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod new {
+        use super::*;
+
+        #[test]
+        fn succeeds_for_valid_input() {
+            // GIVEN valid task parameters
+            let text = "Buy milk".to_owned();
+            let status = TaskStatus::Incomplete;
+            let position = 50;
+
+            // WHEN creating a new task
+            let result = Task::new(text, status, position).unwrap();
+
+            // THEN it has the correct values
+            assert_eq!(result.text.as_ref(), "Buy milk");
+            assert_eq!(result.status, TaskStatus::Incomplete);
+            assert_eq!(result.position, 50);
+        }
+
+        #[test]
+        fn returns_error_for_empty_text() {
+            // GIVEN empty task text
+            let text = "   ".to_owned();
+
+            // WHEN creating a new task
+            let result = Task::new(text, TaskStatus::Complete, 0);
+
+            // THEN it returns ValidationFailed
+            assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
+        }
+    }
+}
