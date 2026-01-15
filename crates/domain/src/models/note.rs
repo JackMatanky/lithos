@@ -818,7 +818,7 @@ pub mod fixtures {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::models::frontmatter::FrontmatterValue;
+    use crate::models::frontmatter::FieldValue;
 
     /// Fixed UUID for deterministic tests (valid UUID v7 format).
     /// Uses timestamp 2024-01-01 00:00:00 UTC for consistency.
@@ -832,7 +832,7 @@ pub mod fixtures {
         let mut fields = HashMap::new();
         fields.insert(
             "title".to_owned(),
-            FrontmatterValue::String("Test Note".to_owned()),
+            FieldValue::String("Test Note".to_owned()),
         );
         Frontmatter {
             fields,
