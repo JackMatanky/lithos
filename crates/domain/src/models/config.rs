@@ -317,7 +317,7 @@ impl Config {
             Self::merge_frontmatter(&global.frontmatter, &vault.frontmatter);
 
         let log_level =
-            Self::merge_log_level(&global.log_level, &vault.log_level)?;
+            Self::merge_log_level(&global.log_level, &vault.log_level);
 
         // Step 3: Construct the final strictly-validated aggregate
         let config = Self {
@@ -327,7 +327,7 @@ impl Config {
         };
 
         // Step 4: Final invariant check
-        config.validate_internal()?;
+        config.validate()?;
 
         Ok(config)
     }
@@ -410,57 +410,11 @@ impl Config {
         }
     }
 
-    /// Merge log level with validation.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::InvalidEnumValue` if the chosen `log_level` is invalid.
-    fn merge_log_level(
-        global: &str,
-        vault: &str,
-    ) -> Result<String, crate::ConfigError> {
-        let log_level = if vault.is_empty() {
-            if global.is_empty() {
-                defaults::logging::LOG_LEVEL
-            } else {
-                global
-            }
-        } else {
-            vault
-        };
-
-        Self::validate_log_level(log_level)?;
-
-        Ok(log_level.to_owned())
-    }
-
-    /// Validate configuration against critical business rules (internal check).
-    fn validate_internal(&self) -> Result<(), crate::ConfigError> {
-        // Step 1: Validate Filesystem Completeness
-        let filesystem_fields = [
-            ("cache_dir", &self.filesystem.cache_dir),
-            ("property_bank_filename", &self.filesystem.property_bank_filename),
-            ("schemas_dir", &self.filesystem.schemas_dir),
-            ("templates_dir", &self.filesystem.templates_dir),
-            ("vault_path", &self.filesystem.vault_path),
-        ];
-
-        Self::validate_fields(&filesystem_fields)?;
-
-        // Step 2: Validate Frontmatter Completeness
-        let metadata_fields = [
-            ("alias_key", &self.frontmatter.alias_key),
-            ("date_created_key", &self.frontmatter.date_created_key),
-            ("date_modified_key", &self.frontmatter.date_modified_key),
-            ("file_class_key", &self.frontmatter.file_class_key),
-            ("title_key", &self.frontmatter.title_key),
-        ];
-
-        Self::validate_fields(&metadata_fields)?;
-
-        // Step 3: Validate Log Level
-        Self::validate_log_level(&self.log_level)?;
-
-        Ok(())
+    /// Merge log level applying precedence rules.
+    #[inline]
+    #[must_use]
+    fn merge_log_level(global: &str, vault: &str) -> String {
+        Self::choose_value(vault, global, defaults::logging::LOG_LEVEL)
     }
 
     /// Validate that all fields in the provided slice are non-empty.
@@ -519,7 +473,8 @@ impl Config {
     /// Validate configuration against critical business rules.
     ///
     /// # Validation Rules
-    /// - `vault_path` cannot be empty (required field).
+    /// - All filesystem fields must be non-empty.
+    /// - All frontmatter fields must be non-empty.
     /// - `log_level` must be one of: debug, info, warn, error.
     ///
     /// # Note
@@ -527,7 +482,7 @@ impl Config {
     /// The `merge()` method already performs validation during construction.
     ///
     /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    /// Returns `ConfigError::ValidationFailed` if any required field is empty.
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
     ///
     /// # Examples
@@ -548,7 +503,29 @@ impl Config {
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
-        Self::validate_vault_path(&self.filesystem.vault_path)?;
+        // Step 1: Validate Filesystem Completeness
+        let filesystem_fields = [
+            ("cache_dir", &self.filesystem.cache_dir),
+            ("property_bank_filename", &self.filesystem.property_bank_filename),
+            ("schemas_dir", &self.filesystem.schemas_dir),
+            ("templates_dir", &self.filesystem.templates_dir),
+            ("vault_path", &self.filesystem.vault_path),
+        ];
+
+        Self::validate_fields(&filesystem_fields)?;
+
+        // Step 2: Validate Frontmatter Completeness
+        let metadata_fields = [
+            ("alias_key", &self.frontmatter.alias_key),
+            ("date_created_key", &self.frontmatter.date_created_key),
+            ("date_modified_key", &self.frontmatter.date_modified_key),
+            ("file_class_key", &self.frontmatter.file_class_key),
+            ("title_key", &self.frontmatter.title_key),
+        ];
+
+        Self::validate_fields(&metadata_fields)?;
+
+        // Step 3: Validate Log Level
         Self::validate_log_level(&self.log_level)?;
 
         Ok(())
