@@ -117,7 +117,7 @@ impl Link {
         embed_type: EmbedType,
         position: usize,
     ) -> Result<Self, DomainError> {
-        let target_path = Self::validate_target_path(target_path)?;
+        let target_path = Self::validate_path(target_path)?;
         Ok(Self::create_link(
             source_note_id,
             target_path,
@@ -154,7 +154,7 @@ impl Link {
         alias: Option<String>,
         position: usize,
     ) -> Result<Self, DomainError> {
-        let target_path = Self::validate_target_path(target_path)?;
+        let target_path = Self::validate_path(target_path)?;
         Ok(Self::create_link(
             source_note_id,
             target_path,
@@ -193,7 +193,7 @@ impl Link {
         alias: Option<String>,
         position: usize,
     ) -> Result<Self, DomainError> {
-        let target_path = Self::validate_target_path(target_path)?;
+        let target_path = Self::validate_path(target_path)?;
         Ok(Self::create_link(
             source_note_id,
             target_path,
@@ -204,14 +204,12 @@ impl Link {
         ))
     }
 
-    /// Validates and converts a target path string.
+    /// Validates and converts a path string.
     #[inline]
-    fn validate_target_path(
-        target_path: String,
-    ) -> Result<Box<str>, DomainError> {
-        if target_path.is_empty() {
+    fn validate_path(path: String) -> Result<Box<str>, DomainError> {
+        if path.is_empty() {
             return Err(DomainError::EmptyLinkTarget);
         }
-        Ok(target_path.into())
+        Ok(path.into())
     }
 }
