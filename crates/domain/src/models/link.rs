@@ -4,7 +4,7 @@
 
 use crate::errors::DomainError;
 
-/// Represents different types of links and embeds that can appear in notes.
+/// Represents different types of links that can appear in notes.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[expect(
@@ -12,23 +12,33 @@ use crate::errors::DomainError;
     reason = "LinkType is the correct domain name for link types"
 )]
 pub enum LinkType {
-    /// Embedded audio: ![[audio.mp3]].
-    EmbedAudio,
-    /// Embedded image: ![[image.png]].
-    EmbedImage,
-    /// Embedded note content: ![[another-note]].
-    EmbedNote,
-    /// Embedded PDF: ![[document.pdf]].
-    EmbedPdf,
-    /// Embedded video: ![[video.mp4]].
-    EmbedVideo,
+    /// Embedded content: ![[target]].
+    Embed,
+    /// Markdown-style link: [text](url).
+    MdLink,
     /// Wiki-style link: [[target]] or [[target|alias]].
     WikiLink,
 }
 
+/// Represents different types of embedded content.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub enum EmbedType {
+    /// Embedded audio: ![[audio.mp3]].
+    Audio,
+    /// Embedded image: ![[image.png]].
+    Image,
+    /// Embedded note content: ![[another-note]].
+    Note,
+    /// Embedded PDF: ![[document.pdf]].
+    Pdf,
+    /// Embedded video: ![[video.mp4]].
+    Video,
+}
+
 /// Represents a link within a note.
 ///
-/// Links can be wiki-links (Obsidian style) or other reference types.
+/// Links can be wiki-links (Obsidian style), markdown links, or embeds.
 /// Each link belongs to a specific note and has positioning information.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -41,10 +51,12 @@ pub struct Link {
     pub source_note_id: uuid::Uuid,
     /// Path to the target note/file (vault-relative).
     pub target_path: Box<str>,
-    /// Optional display alias (for [[target|alias]] syntax).
+    /// Optional display alias (for [[target|alias]] or [text](url) syntax).
     pub alias: Option<Box<str>>,
     /// Type of link.
     pub link_type: LinkType,
+    /// Type of embedded content (only present for Embed links).
+    pub embed_type: Option<EmbedType>,
     /// Character position in the source document.
     pub position: usize,
 }
@@ -91,6 +103,7 @@ impl Link {
             target_path: target_path.into(),
             alias: alias.map(std::convert::Into::into),
             link_type: LinkType::WikiLink,
+            embed_type: None,
             position,
         })
     }
@@ -129,7 +142,8 @@ impl Link {
             source_note_id,
             target_path: target_path.into(),
             alias: alias.map(std::convert::Into::into),
-            link_type: LinkType::WikiLink, // For now, treat as wikilink
+            link_type: LinkType::MdLink,
+            embed_type: None,
             position,
         })
     }
@@ -138,18 +152,19 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::models::link::{Link, LinkType};
+    /// use lithos_domain::models::link::{Link, LinkType, EmbedType};
     /// use uuid::Uuid;
     ///
     /// let source_id = Uuid::now_v7();
     /// let embed = Link::new_embed(
     ///     source_id,
     ///     "diagram.png".to_string(),
-    ///     LinkType::EmbedImage,
+    ///     EmbedType::Image,
     ///     200
     /// ).unwrap();
     /// assert_eq!(embed.target_path.as_ref(), "diagram.png");
-    /// assert_eq!(embed.link_type, LinkType::EmbedImage);
+    /// assert_eq!(embed.link_type, LinkType::Embed);
+    /// assert_eq!(embed.embed_type, Some(EmbedType::Image));
     /// ```
     ///
     /// # Errors
@@ -158,30 +173,19 @@ impl Link {
     pub fn new_embed(
         source_note_id: uuid::Uuid,
         target_path: String,
-        link_type: LinkType,
+        embed_type: EmbedType,
         position: usize,
     ) -> Result<Self, DomainError> {
         if target_path.is_empty() {
             return Err(DomainError::EmptyLinkTarget);
         }
 
-        // Validate that link_type is an embed type
-        if !matches!(
-            link_type,
-            LinkType::EmbedAudio
-                | LinkType::EmbedImage
-                | LinkType::EmbedNote
-                | LinkType::EmbedPdf
-                | LinkType::EmbedVideo
-        ) {
-            return Err(DomainError::InvalidLinkType);
-        }
-
         Ok(Self {
             source_note_id,
             target_path: target_path.into(),
             alias: None, // Embeds don't have aliases
-            link_type,
+            link_type: LinkType::Embed,
+            embed_type: Some(embed_type),
             position,
         })
     }
@@ -190,13 +194,6 @@ impl Link {
     #[inline]
     #[must_use]
     pub fn is_embed(&self) -> bool {
-        matches!(
-            self.link_type,
-            LinkType::EmbedAudio
-                | LinkType::EmbedImage
-                | LinkType::EmbedNote
-                | LinkType::EmbedPdf
-                | LinkType::EmbedVideo
-        )
+        self.link_type == LinkType::Embed
     }
 }

@@ -705,6 +705,30 @@ crates/domain/src/
 - Either approach is acceptable; prioritize readability and maintainability
 - Future bounded contexts (Schema, Config, Template) will follow the same pattern for consistency
 
+**Architecture Decision: Unified Link/Embed Model**
+
+**Decision:** Embed entities are implemented as a special type of Link entity, not as a separate struct.
+
+**Rationale:**
+- In Obsidian, embeds use identical syntax to links but with `!` prefix: `[[target]]` vs `![[target]]`
+- Conceptually, embeds ARE links with special rendering behavior - they reference content and have aliases
+- Unifying the model eliminates code duplication and follows domain-driven design principles
+- The `LinkType` enum now includes both link and embed variants for type safety
+
+**Implementation:**
+- `LinkType` enum extended with embed variants: `EmbedAudio`, `EmbedImage`, `EmbedNote`, `EmbedPdf`, `EmbedVideo`
+- `Link::new_embed()` constructor for creating embed links
+- `Link::is_embed()` helper method to distinguish embed links
+- Single validation logic for both links and embeds using `EmptyLinkTarget` error
+- Removed separate `Embed` struct and `embed.rs` module
+
+**Benefits:**
+- ✅ Reduced code duplication (~88 lines eliminated)
+- ✅ Consistent API for both links and embeds
+- ✅ Type-safe distinction via `LinkType` enum
+- ✅ Follows Obsidian's conceptual model where embeds are specialized links
+- ✅ Maintains all existing functionality with improved architecture
+
 **Naming Conventions - STRICT:**
 - Files: `snake_case.rs`
 - Modules: `snake_case`
@@ -1139,13 +1163,21 @@ let title: Option<String> = frontmatter.get_as("title");
 
 **Files Created:**
 - `crates/domain/src/ports/note.rs` - NoteCommand and NoteQuery trait definitions
+- `crates/domain/src/models/link.rs` - Link subentity with unified link/embed model
+- `crates/domain/src/models/embed.rs` - **REMOVED** (unified into Link)
+- `crates/domain/src/models/tag.rs` - Tag subentity with hierarchical parsing
+- `crates/domain/src/models/task.rs` - Task subentity with status enum
+- `crates/domain/src/models/section.rs` - Section subentity for content organization
+- `crates/domain/src/models/heading.rs` - Heading subentity with level validation
 
 **Files Modified:**
-- `crates/domain/src/models/note.rs` - Implemented all 8 entities with constructors and validation, extracted validation logic, optimized memory usage, added comprehensive documentation; updated to use `FieldValue` instead of `FrontmatterValue`; **FIXED**: Windows absolute path detection in `validate_vault_path`, fixed tag test to pass "#work" instead of "work"
+- `crates/domain/src/models/note.rs` - Implemented all 8 entities with constructors and validation, extracted validation logic, optimized memory usage, added comprehensive documentation; updated to use `FieldValue` instead of `FrontmatterValue`; **FIXED**: Windows absolute path detection in `validate_vault_path`, fixed tag test to pass "#work" instead of "work"; **REFACTORED**: embeds field now uses `Vec<Link>` instead of `Vec<Embed>`
 - `crates/domain/src/models/frontmatter.rs` - **MAJOR REFACTORING**: Renamed `FrontmatterValue` → `FieldValue`, removed legacy `ref` patterns, added modern match ergonomics, added `has()` method, added convenience methods (`get_str`, `get_bool`, `get_number`, `get_date`, `get_string_array`), added `is_*()` type inspection methods, comprehensive documentation with architectural rationale
+- `crates/domain/src/errors.rs` - Added `InvalidLinkType` error for link type validation
 - `crates/domain/src/events.rs` - Added NoteCreated and NoteFrontmatterValidated events
 - `crates/domain/src/ports/mod.rs` - Added note module export
-- `crates/domain/src/lib.rs` - Updated exports: `FrontmatterValue` → `FieldValue`, `FromFrontmatterValue` → `FromFieldValue`
+- `crates/domain/src/lib.rs` - Updated exports: `FrontmatterValue` → `FieldValue`, `FromFrontmatterValue` → `FromFieldValue`; removed `Embed` export
+- `crates/domain/src/models/mod.rs` - Added new model modules, removed embed module
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` - Updated story status to in-progress
 
 ### Test Fixes Completion - 2026-01-15
@@ -1162,6 +1194,34 @@ let title: Option<String> = frontmatter.get_as("title");
 - ✅ Tag parsing validation working correctly
 - ✅ Zero test regressions
 - ✅ Ready for final quality gates and commit
+
+### Architecture Refactoring - 2026-01-15
+
+**Major Refactoring: Unified Link/Embed Model**
+
+**Decision Made:** Combined `Embed` struct into `Link` struct as embeds are conceptually specialized links.
+
+**Changes Implemented:**
+- ✅ Extended `LinkType` enum with embed variants: `EmbedAudio`, `EmbedImage`, `EmbedNote`, `EmbedPdf`, `EmbedVideo`
+- ✅ Added `Link::new_embed()` constructor method for creating embed links
+- ✅ Added `Link::is_embed()` helper method to distinguish embed links
+- ✅ Updated `Note.embeds` field from `Vec<Embed>` to `Vec<Link>`
+- ✅ Updated validation to use `EmptyLinkTarget` for both links and embeds
+- ✅ Added `InvalidLinkType` error for validation
+- ✅ Removed separate `Embed` struct and `embed.rs` module (88 lines eliminated)
+- ✅ Updated all tests and imports
+
+**Benefits Achieved:**
+- ✅ **Reduced Code Duplication**: Eliminated ~88 lines of duplicate code
+- ✅ **Conceptual Accuracy**: Follows Obsidian's model where embeds are specialized links
+- ✅ **Type Safety**: `LinkType` enum provides compile-time distinction
+- ✅ **Consistent API**: Single `Link` struct handles both links and embeds
+- ✅ **Maintainability**: Single codebase for link/embed logic
+
+**Validation:**
+- ✅ All tests pass with unified model
+- ✅ No functionality lost - embeds work identically
+- ✅ Better architecture following domain-driven design principles
 
 **Remaining Story Issues (from Code Review):**
 - ⚠️ **CRITICAL**: Domain events defined but NOT emitted (AC violation)

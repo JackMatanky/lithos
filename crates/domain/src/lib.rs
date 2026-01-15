@@ -37,7 +37,7 @@ pub use models::{
     },
     frontmatter::{FieldValue, FromFieldValue, Frontmatter},
     heading::Heading,
-    link::{Link, LinkType},
+    link::{EmbedType, Link, LinkType},
     note::Note,
     schema::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, Property, PropertyBank,
