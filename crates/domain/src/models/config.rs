@@ -628,6 +628,11 @@ impl From<HashMap<String, SettingValue>> for SettingValue {
 }
 
 #[cfg(test)]
+#[cfg(test)]
+#[expect(
+    clippy::panic,
+    reason = "Test safety boundary - panic is acceptable in test code for exhaustive match failures"
+)]
 mod tests {
     use super::*;
 
@@ -893,7 +898,6 @@ mod tests {
                             );
                         }
                         _ => {
-                            #[allow(clippy::panic)]
                             panic!(
                                 "Expected a validation-related error, found: {err:?}"
                             );
