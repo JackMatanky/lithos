@@ -11,8 +11,11 @@
 use uuid::Uuid;
 
 use super::{
-    frontmatter::Frontmatter, heading::Heading, link::Link, section::Section,
-    tag::Tag, task::Task,
+    frontmatter::Frontmatter,
+    link::Link,
+    structure::{Heading, Section},
+    tag::Tag,
+    task::Task,
 };
 use crate::errors::DomainError;
 
