@@ -22,11 +22,8 @@ set -euo pipefail
 #######################################
 map_package_name() {
   case "${usage_package:-}" in
-  domain | app | adapters)
+  domain | app | adapters | test-utils)
     echo "lithos-${usage_package}"
-    ;;
-  test-utils)
-    echo "lithos-test-utils"
     ;;
   cli)
     echo "lithos"

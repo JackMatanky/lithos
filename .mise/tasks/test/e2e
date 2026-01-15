@@ -10,39 +10,72 @@
 set -euo pipefail
 
 #######################################
-# Build arguments for nextest E2E tests.
+# Add parallel execution control
 # Globals:
-#   usage_verbose
-#   usage_filter
 #   TEST_THREADS (from env)
 # Arguments:
 #   Reference to an array for arguments
 # Outputs:
 #   None
 #######################################
+add_threading_args() {
+    local -n _threading_ref_args=$1
+    _threading_ref_args+=("--test-threads" "${TEST_THREADS:-4}")
+}
+
+#######################################
+# Add nextest execution options
+# Globals:
+#   usage_verbose
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
+add_execution_args() {
+    local -n _exec_ref_args=$1
+    _exec_ref_args+=("--partition" "hash:1/1")
+
+    if [[ "${usage_verbose:-}" == "1" ]]; then
+        _exec_ref_args+=("--verbose")
+    fi
+}
+
+#######################################
+# Add E2E specific filter arguments
+# Globals:
+#   usage_filter
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
+add_filter_args() {
+    local -n _filter_ref_args=$1
+
+    # Target the integration tests package
+    _filter_ref_args+=("--package" "lithos-integration-tests")
+
+    # Filter for E2E tests based on binary name
+    _filter_ref_args+=("--filter-expr" "binary(cli_smoke)")
+
+    if [[ -n "${usage_filter:-}" ]]; then
+        _filter_ref_args+=("${usage_filter}")
+    fi
+}
+
+#######################################
+# Build arguments for nextest E2E tests.
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
 build_test_args() {
-  local -n ref_args=$1
-
-  # Parallel execution control matching mise.toml configuration
-  ref_args+=("--test-threads" "${TEST_THREADS:-4}")
-
-  # Target the integration tests package
-  ref_args+=("--package" "lithos-integration-tests")
-
-  # Filter for E2E tests based on binary name
-  ref_args+=("--filter-expr" "binary(cli_smoke)")
-
-  # Nextest partitioning for consistent test distribution
-  ref_args+=("--partition" "hash:1/1")
-
-  if [[ "${usage_verbose:-}" == "1" ]]; then
-    ref_args+=("--verbose")
-  fi
-
-  # Test filter (if specified)
-  if [[ -n "${usage_filter:-}" ]]; then
-    ref_args+=("${usage_filter}")
-  fi
+    local -n _main_ref_args=$1
+    add_threading_args _main_ref_args
+    add_filter_args _main_ref_args
+    add_execution_args _main_ref_args
 }
 
 #######################################
@@ -53,24 +86,22 @@ build_test_args() {
 #   Writes test results to stdout
 #######################################
 run_nextest() {
-  echo "🧪 Running E2E tests..."
-  cargo nextest run "$@"
+    echo "🧪 Running E2E tests..."
+    cargo nextest run "$@"
 }
 
 #######################################
 # Main entry point.
-# Globals:
-#   RUST_BACKTRACE (set by #MISE env directive)
 # Arguments:
 #   $@
 # Outputs:
 #   None
 #######################################
 main() {
-  local args=()
-  build_test_args args
-  run_nextest "${args[@]}"
-  echo "✅ E2E tests complete"
+    local args=()
+    build_test_args args
+    run_nextest "${args[@]}"
+    echo "✅ E2E tests complete"
 }
 
 main "$@"
