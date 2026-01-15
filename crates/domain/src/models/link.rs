@@ -61,91 +61,32 @@ pub struct Link {
     pub position: usize,
 }
 
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "new_wikilink is more commonly used than new_markdown_link"
-)]
 impl Link {
-    /// Creates a new wiki-link.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_domain::models::link::{Link, LinkType};
-    /// use uuid::Uuid;
-    ///
-    /// let source_id = Uuid::now_v7();
-    /// let link = Link::new_wikilink(
-    ///     source_id,
-    ///     "target.md".to_string(),
-    ///     Some("Alias".to_string()),
-    ///     100
-    /// ).unwrap();
-    /// assert_eq!(link.target_path.as_ref(), "target.md");
-    /// assert_eq!(link.alias, Some("Alias".into()));
-    /// assert_eq!(link.link_type, LinkType::WikiLink);
-    /// ```
-    ///
-    /// # Errors
-    /// Returns `DomainError::EmptyLinkTarget` if `target_path` is empty.
+    /// Creates a Link instance with the given parameters.
     #[inline]
-    pub fn new_wikilink(
+    fn create_link(
         source_note_id: uuid::Uuid,
-        target_path: String,
+        target_path: Box<str>,
         alias: Option<String>,
+        link_type: LinkType,
+        embed_type: Option<EmbedType>,
         position: usize,
-    ) -> Result<Self, DomainError> {
-        if target_path.is_empty() {
-            return Err(DomainError::EmptyLinkTarget);
-        }
-
-        Ok(Self {
+    ) -> Self {
+        Self {
             source_note_id,
-            target_path: target_path.into(),
+            target_path,
             alias: alias.map(std::convert::Into::into),
-            link_type: LinkType::WikiLink,
-            embed_type: None,
+            link_type,
+            embed_type,
             position,
-        })
+        }
     }
 
-    /// Creates a new markdown-style link.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_domain::models::link::{Link, LinkType};
-    /// use uuid::Uuid;
-    ///
-    /// let source_id = Uuid::now_v7();
-    /// let link = Link::new_markdown_link(
-    ///     source_id,
-    ///     "doc.html".to_string(),
-    ///     Some("Link".to_string()),
-    ///     75
-    /// ).unwrap();
-    /// assert_eq!(link.target_path.as_ref(), "doc.html");
-    /// ```
-    ///
-    /// # Errors
-    /// Returns `DomainError::EmptyLinkTarget` if `target_path` is empty.
+    /// Returns true if this link represents an embedded content reference.
     #[inline]
-    pub fn new_markdown_link(
-        source_note_id: uuid::Uuid,
-        target_path: String,
-        alias: Option<String>,
-        position: usize,
-    ) -> Result<Self, DomainError> {
-        if target_path.is_empty() {
-            return Err(DomainError::EmptyLinkTarget);
-        }
-
-        Ok(Self {
-            source_note_id,
-            target_path: target_path.into(),
-            alias: alias.map(std::convert::Into::into),
-            link_type: LinkType::MdLink,
-            embed_type: None,
-            position,
-        })
+    #[must_use]
+    pub fn is_embed(&self) -> bool {
+        self.link_type == LinkType::Embed
     }
 
     /// Creates a new embedded content reference.
@@ -176,24 +117,101 @@ impl Link {
         embed_type: EmbedType,
         position: usize,
     ) -> Result<Self, DomainError> {
+        let target_path = Self::validate_target_path(target_path)?;
+        Ok(Self::create_link(
+            source_note_id,
+            target_path,
+            None, // Embeds don't have aliases
+            LinkType::Embed,
+            Some(embed_type),
+            position,
+        ))
+    }
+
+    /// Creates a new markdown-style link.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::link::{Link, LinkType};
+    /// use uuid::Uuid;
+    ///
+    /// let source_id = Uuid::now_v7();
+    /// let link = Link::new_markdown_link(
+    ///     source_id,
+    ///     "doc.html".to_string(),
+    ///     Some("Link".to_string()),
+    ///     75
+    /// ).unwrap();
+    /// assert_eq!(link.target_path.as_ref(), "doc.html");
+    /// ```
+    ///
+    /// # Errors
+    /// Returns `DomainError::EmptyLinkTarget` if `target_path` is empty.
+    #[inline]
+    pub fn new_markdown_link(
+        source_note_id: uuid::Uuid,
+        target_path: String,
+        alias: Option<String>,
+        position: usize,
+    ) -> Result<Self, DomainError> {
+        let target_path = Self::validate_target_path(target_path)?;
+        Ok(Self::create_link(
+            source_note_id,
+            target_path,
+            alias,
+            LinkType::MdLink,
+            None,
+            position,
+        ))
+    }
+
+    /// Creates a new wiki-link.
+    ///
+    /// # Examples
+    /// ```
+    /// use lithos_domain::models::link::{Link, LinkType};
+    /// use uuid::Uuid;
+    ///
+    /// let source_id = Uuid::now_v7();
+    /// let link = Link::new_wikilink(
+    ///     source_id,
+    ///     "target.md".to_string(),
+    ///     Some("Alias".to_string()),
+    ///     100
+    /// ).unwrap();
+    /// assert_eq!(link.target_path.as_ref(), "target.md");
+    /// assert_eq!(link.alias, Some("Alias".into()));
+    /// assert_eq!(link.link_type, LinkType::WikiLink);
+    /// ```
+    ///
+    /// # Errors
+    /// Returns `DomainError::EmptyLinkTarget` if `target_path` is empty.
+    #[inline]
+    pub fn new_wikilink(
+        source_note_id: uuid::Uuid,
+        target_path: String,
+        alias: Option<String>,
+        position: usize,
+    ) -> Result<Self, DomainError> {
+        let target_path = Self::validate_target_path(target_path)?;
+        Ok(Self::create_link(
+            source_note_id,
+            target_path,
+            alias,
+            LinkType::WikiLink,
+            None,
+            position,
+        ))
+    }
+
+    /// Validates and converts a target path string.
+    #[inline]
+    fn validate_target_path(
+        target_path: String,
+    ) -> Result<Box<str>, DomainError> {
         if target_path.is_empty() {
             return Err(DomainError::EmptyLinkTarget);
         }
-
-        Ok(Self {
-            source_note_id,
-            target_path: target_path.into(),
-            alias: None, // Embeds don't have aliases
-            link_type: LinkType::Embed,
-            embed_type: Some(embed_type),
-            position,
-        })
-    }
-
-    /// Returns true if this link represents an embedded content reference.
-    #[inline]
-    #[must_use]
-    pub fn is_embed(&self) -> bool {
-        self.link_type == LinkType::Embed
+        Ok(target_path.into())
     }
 }
