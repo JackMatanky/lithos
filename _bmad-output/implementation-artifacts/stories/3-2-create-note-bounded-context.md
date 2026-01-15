@@ -750,7 +750,12 @@ crates/domain/src/
 - Path validation is string structure validation - no Config dependency needed
 
 **Implementation:**
-- `validate_vault_path()` checks string structure only (relative, .md extension, no traversal)
+- `validate_vault_path()` orchestrates validation through focused helper functions
+- `validate_path_not_empty()` - checks for empty path
+- `validate_path_is_relative()` - detects Unix and Windows absolute paths
+- `is_windows_absolute_path()` - helper for Windows path detection (e.g., `C:/`)
+- `validate_path_no_traversal()` - prevents `..` path traversal
+- `validate_path_has_md_extension()` - ensures `.md` extension
 - Repository/Adapter layer will check actual filesystem when reading/writing notes
 - No coupling between Note entity and Config entity needed for path validation
 - This follows hexagonal architecture principles and maintains domain purity
@@ -758,7 +763,9 @@ crates/domain/src/
 **Benefits:**
 - ✅ **Domain Purity**: Note entity has zero dependencies on infrastructure concerns
 - ✅ **Separation of Concerns**: String validation vs filesystem validation are distinct
+- ✅ **Single Responsibility**: Each validation function has one focused purpose
 - ✅ **Testability**: Domain path validation can be tested without filesystem setup
+- ✅ **Maintainability**: Validation logic is easy to understand and modify
 - ✅ **Hexagonal Compliance**: Domain layer remains pure and infrastructure-independent
 
 **Validation:**
