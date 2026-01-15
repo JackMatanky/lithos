@@ -141,6 +141,55 @@ impl Note {
     /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
+        self.validate_tags()?;
+        self.validate_headings()?;
+        self.validate_links()?;
+        self.validate_embeds()?;
+
+        // Validation successful - NoteFrontmatterValidated event would be emitted here
+        // Note: Event emission is handled by the application layer (Epic 7)
+        // This is a placeholder for the event emission infrastructure
+        // TODO: Integrate with event bus in application layer
+
+        Ok(())
+    }
+
+    /// Validates all embeds in the note.
+    #[inline]
+    fn validate_embeds(&self) -> Result<(), DomainError> {
+        for embed in &self.embeds {
+            if embed.target_path.is_empty() {
+                return Err(DomainError::EmptyLinkTarget);
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates all headings in the note.
+    #[inline]
+    fn validate_headings(&self) -> Result<(), DomainError> {
+        for heading in &self.headings {
+            if !(1..=6).contains(&heading.level) {
+                return Err(DomainError::InvalidHeadingLevel(heading.level));
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates all links in the note.
+    #[inline]
+    fn validate_links(&self) -> Result<(), DomainError> {
+        for link in &self.links {
+            if link.target_path.is_empty() {
+                return Err(DomainError::EmptyLinkTarget);
+            }
+        }
+        Ok(())
+    }
+
+    /// Validates all tags in the note.
+    #[inline]
+    fn validate_tags(&self) -> Result<(), DomainError> {
         for tag in &self.tags {
             if tag.segments.is_empty() {
                 return Err(DomainError::ValidationFailed(
@@ -148,27 +197,6 @@ impl Note {
                 ));
             }
         }
-        for heading in &self.headings {
-            if !(1..=6).contains(&heading.level) {
-                return Err(DomainError::InvalidHeadingLevel(heading.level));
-            }
-        }
-        for link in &self.links {
-            if link.target_path.is_empty() {
-                return Err(DomainError::EmptyLinkTarget);
-            }
-        }
-        for embed in &self.embeds {
-            if embed.target_path.is_empty() {
-                return Err(DomainError::EmptyLinkTarget);
-            }
-        }
-
-        // Validation successful - NoteFrontmatterValidated event would be emitted here
-        // Note: Event emission is handled by the application layer (Epic 7)
-        // This is a placeholder for the event emission infrastructure
-        // TODO: Integrate with event bus in application layer
-
         Ok(())
     }
 }
