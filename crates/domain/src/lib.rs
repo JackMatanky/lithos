@@ -26,7 +26,9 @@ pub mod ports;
 // This provides a simplified public API for external crates without requiring
 // deep module path knowledge (e.g., `lithos_domain::Config` vs `lithos_domain::models::config::Config`).
 pub use errors::{ConfigError, DomainError};
-pub use events::{ConfigUpdated, TemplateCreated};
+pub use events::{
+    ConfigUpdated, NoteCreated, NoteFrontmatterValidated, TemplateCreated,
+};
 pub use models::{
     config::{
         Config, FileSystem as FileSystemConfig,
@@ -49,6 +51,7 @@ pub use models::{
 };
 pub use ports::{
     config::{Command as ConfigCommand, Query as ConfigQuery},
+    note::{Command as NoteCommand, Query as NoteQuery},
     schema::{Command as SchemaCommand, Query as SchemaQuery},
     template::{Command as TemplateCommand, Query as TemplateQuery},
 };

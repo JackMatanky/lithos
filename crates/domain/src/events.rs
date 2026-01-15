@@ -94,3 +94,33 @@ pub struct TemplateCreated {
     /// Unix timestamp when the template was created.
     pub timestamp: i64,
 }
+
+/// Note created domain event.
+///
+/// Published when a new Note aggregate is created, allowing other
+/// bounded contexts to react to note lifecycle events.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NoteCreated {
+    /// UUID v7 of the note.
+    pub id: uuid::Uuid,
+    /// Vault-relative path of the note.
+    pub path: String,
+    /// Unix timestamp when the note was created.
+    pub timestamp: i64,
+}
+
+/// Note frontmatter validated domain event.
+///
+/// Published when a Note's frontmatter has been validated against schema,
+/// allowing other systems to react to validated metadata.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct NoteFrontmatterValidated {
+    /// Number of frontmatter fields validated.
+    pub field_count: usize,
+    /// UUID v7 of the note.
+    pub note_id: uuid::Uuid,
+    /// Unix timestamp when validation occurred.
+    pub timestamp: i64,
+}
