@@ -4,7 +4,7 @@
 #MISE depends=["fmt", "build"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["{{vars.nextest_dir}}/default"]
-#MISE env={RUST_BACKTRACE="1"}
+#MISE env={RUST_BACKTRACE="1", TEST_E2E_DIR="{{vars.test_e2e_dir}}", TEST_ARCH_DIR="{{vars.test_arch_dir}}"}
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE arg "[filter]" help="Filter tests by name"
 
@@ -23,17 +23,19 @@ set -euo pipefail
 #   None
 #######################################
 build_test_args() {
-    local -n ref_args=$1
+  local -n ref_args=$1
 
-    # Parallel execution control matching mise.toml configuration
-    # Use TEST_THREADS from environment (set by mise.toml env section)
-    ref_args+=("--test-threads" "${TEST_THREADS:-4}")
+  # Parallel execution control matching mise.toml configuration
+  # Use TEST_THREADS from environment (set by mise.toml env section)
+  ref_args+=("--test-threads" "${TEST_THREADS:-4}")
 
-    # Run all workspace tests
-    ref_args+=("--workspace")
+  # Run workspace tests excluding unit tests (libs and bins)
+  # This targets only the "integration" tests in tests/ directories
+  ref_args+=("--workspace")
+  ref_args+=("--filter-expr" "not (lib() or bins() or binary(cli_smoke) or binary(purity))")
 
-    # Nextest partitioning for consistent test distribution
-    ref_args+=("--partition" "hash:1/1")
+  # Nextest partitioning for consistent test distribution
+  ref_args+=("--partition" "hash:1/1")
 
     # Note: JUnit output requires nextest profile configuration in .config/nextest.toml
     # The --junit flag does not exist in nextest 0.9.x - removed for compatibility

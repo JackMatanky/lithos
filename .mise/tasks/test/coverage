@@ -3,6 +3,7 @@
 #MISE alias="tc"
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE outputs=["{{vars.coverage_report}}"]
+#MISE env={TARGET_DIR="{{vars.target_dir}}", COVERAGE_REPORT="{{vars.coverage_report}}"}
 #USAGE flag "-o --open" help="Open coverage report in browser"
 
 set -euo pipefail
@@ -36,14 +37,17 @@ open_file() {
 #######################################
 run_tarpaulin() {
     echo "📊 Generating code coverage report..."
-    mkdir -p target/tarpaulin
-    cargo tarpaulin --ignore-tests --out Html --output-dir target/tarpaulin
+    local output_dir="${TARGET_DIR}/tarpaulin"
+    mkdir -p "${output_dir}"
+    cargo tarpaulin --ignore-tests --out Html --output-dir "${output_dir}"
 }
 
 #######################################
 # Handle opening the report if requested.
 # Globals:
 #   usage_open
+#   TARGET_DIR
+#   COVERAGE_REPORT
 # Arguments:
 #   None
 # Outputs:
@@ -52,7 +56,7 @@ run_tarpaulin() {
 open_report() {
     if [[ "${usage_open:-}" == "1" ]]; then
         echo "🌐 Opening coverage report..."
-        open_file "target/tarpaulin/tarpaulin-report.html"
+        open_file "${TARGET_DIR}/tarpaulin/${COVERAGE_REPORT}"
     fi
 }
 

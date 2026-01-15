@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#MISE description="Run architectural enforcement tests using nextest"
+#MISE alias="ta"
+#MISE depends=["fmt"]
+#MISE sources=["{{vars.test_arch_dir}}/**/*.rs", "Cargo.toml"]
+#MISE env={RUST_BACKTRACE="1", TEST_ARCH_DIR="{{vars.test_arch_dir}}"}
+#USAGE flag "-v --verbose" help="Verbose output"
+#USAGE arg "[filter]" help="Filter tests by name"
+
+set -euo pipefail
+
+#######################################
+# Build arguments for nextest arch tests.
+# Globals:
+#   usage_verbose
+#   usage_filter
+#   TEST_THREADS (from env)
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
+build_test_args() {
+  local -n ref_args=$1
+
+  # Arch tests are usually fast and don't need many threads, but we follow project standards
+  ref_args+=("--test-threads" "${TEST_THREADS:-4}")
+
+  # Target the integration tests package where arch tests reside
+  ref_args+=("--package" "lithos-integration-tests")
+
+  # Filter for arch tests based on binary name
+  ref_args+=("--filter-expr" "binary(purity)")
+
+
+  # Nextest partitioning for consistent test distribution
+  ref_args+=("--partition" "hash:1/1")
+
+  if [[ "${usage_verbose:-}" == "1" ]]; then
+    ref_args+=("--verbose")
+  fi
+
+  # Test filter (if specified)
+  if [[ -n "${usage_filter:-}" ]]; then
+    ref_args+=("${usage_filter}")
+  fi
+}
+
+#######################################
+# Execute arch tests using nextest.
+# Arguments:
+#   Arguments for cargo nextest run
+# Outputs:
+#   Writes test results to stdout
+#######################################
+run_nextest() {
+  echo "🧪 Running architectural tests..."
+  cargo nextest run "$@"
+}
+
+#######################################
+# Main entry point.
+# Globals:
+#   RUST_BACKTRACE (set by #MISE env directive)
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
+main() {
+  local args=()
+  build_test_args args
+  run_nextest "${args[@]}"
+  echo "✅ Architectural tests complete"
+}
+
+main "$@"

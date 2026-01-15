@@ -46,8 +46,6 @@ DOMAIN_CRATE = "{{vars.domain_crate}}"
 APP_CRATE = "{{vars.app_crate}}"
 ADAPTERS_CRATE = "{{vars.adapters_crate}}"
 CLI_CRATE = "{{vars.cli_crate}}"
-DOCS_DIR = "{{vars.docs_dir}}"
-ADR_DIR = "{{vars.adr_dir}}"
 
 # ------------------------------------------------------------- #
 #                        VARIABLES                              #
@@ -58,7 +56,18 @@ domain_crate = "crates/domain"
 app_crate = "crates/app"
 adapters_crate = "crates/adapters"
 cli_crate = "crates/cli"
-test_utils_crate = "crates/test-utils"
+
+# Test paths
+tests_dir = "tests"
+test_utils_crate = "{{vars.tests_dir}}/utils"
+test_macros_crate = "{{vars.tests_dir}}/macros"
+
+# Test Suite
+test_suite_dir = "{{vars.tests_dir}}/suite"
+test_arch_dir = "{{vars.test_suite_dir}}/arch"
+test_e2e_dir = "{{vars.test_suite_dir}}/e2e"
+test_integration_dir = "{{vars.test_suite_dir}}/integration"
+test_bench_dir = "benches"
 
 # Directory paths
 docs_dir = "docs"
@@ -81,26 +90,11 @@ binary_name = "lithos"
 #                             Tasks                             #
 # ------------------------------------------------------------- #
 
-# ----------------------- Quality Gates ----------------------- #
-[tasks.quality]
-description = "Run all quality gates (fmt, lint, adr:validate)"
-alias = "q"
-depends = ["lint", "adr:validate"]
-
-[tasks.verify]
-description = "Full quality gate orchestration"
-alias = "v"
-depends = ["lint", "test", "deny"]
-
-[tasks.deny]
-description = "Check dependencies for security vulnerabilities and license compliance"
-run = "cargo deny check"
-
 # -------------------------- Testing -------------------------- #
 [tasks.test]
-description = "Run all tests (unit and integration)"
+description = "Run all tests (unit, integration, e2e, and arch)"
 alias = "t"
-depends = ["test:unit", "test:integration"]
+depends = ["test:unit", "test:integration", "test:e2e", "test:arch"]
 
 # Specific crate unit tests for developer convenience
 [tasks."test:unit:domain"]
@@ -152,22 +146,6 @@ alias = "tbc"
 run = "mise run test:bench -- -p cli"
 quiet = false
 
-# ------------------------- Cleanup --------------------------- #
-# Note: Main clean task is defined in .mise/tasks/clean (file-based task)
-# These are convenient aliases that call the main task with specific targets
-
-[tasks."clean:cargo"]
-description = "Clean only cargo build artifacts"
-run = "mise run clean cargo"
-
-[tasks."clean:test"]
-description = "Clean only test output artifacts"
-run = "mise run clean test"
-
-[tasks."clean:reports"]
-description = "Clean only coverage and JUnit reports"
-run = "mise run clean reports"
-
 # --------------------- CI/CD Simulation ---------------------- #
 [tasks.ci]
 description = "Simulate CI/CD pipeline"
@@ -188,3 +166,34 @@ hide = true
 description = "Internal cleanup task"
 run = "echo 'Cleanup complete'"
 hide = true
+
+# ------------------------- Cleanup --------------------------- #
+# Note: Main clean task is defined in .mise/tasks/clean (file-based task)
+# These are convenient aliases that call the main task with specific targets
+
+[tasks."clean:cargo"]
+description = "Clean only cargo build artifacts"
+run = "mise run clean cargo"
+
+[tasks."clean:test"]
+description = "Clean only test output artifacts"
+run = "mise run clean test"
+
+[tasks."clean:reports"]
+description = "Clean only coverage and JUnit reports"
+run = "mise run clean reports"
+
+# ----------------------- Quality Gates ----------------------- #
+[tasks.quality]
+description = "Run all quality gates (fmt, lint, adr:validate)"
+alias = "q"
+depends = ["lint", "adr:validate"]
+
+[tasks.verify]
+description = "Full quality gate orchestration"
+alias = "v"
+depends = ["lint", "test", "deny"]
+
+[tasks.deny]
+description = "Check dependencies for security vulnerabilities and license compliance"
+run = "cargo deny check"
