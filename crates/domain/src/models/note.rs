@@ -700,9 +700,117 @@ mod tests {
             // THEN it returns an InvalidPath error
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
+
+        /// 3.2-UNIT-022: Note Validation - Success.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn validate_note_succeeds_when_all_entities_are_valid() {
+            // GIVEN a note with valid sub-entities
+            let mut note =
+                Note::new("valid.md".to_owned()).expect("Valid path");
+            note.tags.push(Tag::parse("work").expect("Valid tag"));
+            note.headings
+                .push(Heading::new(1, "Title".into(), 0).expect("Valid level"));
+            note.links.push(
+                Link::new_wikilink(note.id, "target.md".into(), None, 0)
+                    .expect("Valid target"),
+            );
+            note.embeds.push(
+                Embed::new(note.id, "img.png".into(), EmbedType::Image, 0)
+                    .expect("Valid target"),
+            );
+
+            // WHEN the note is validated
+            // THEN it returns Ok
+            note.validate().expect("Validation failed");
+        }
+
+        /// 3.2-UNIT-023: Note Validation - Invalid Heading.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn validate_note_returns_error_when_heading_level_is_invalid() {
+            // GIVEN a note with an invalid heading (manually constructed)
+            let mut note =
+                Note::new("valid.md".to_owned()).expect("Valid path");
+            note.headings.push(Heading {
+                level: 0,
+                text: "Invalid".into(),
+                position: 0,
+            });
+
+            // WHEN the note is validated
+            let result = note.validate();
+
+            // THEN it returns an InvalidHeadingLevel error
+            assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(0))));
+        }
+
+        /// 3.2-UNIT-032: Note Validation - Empty Link Target.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn validate_note_returns_error_when_link_target_is_empty() {
+            // GIVEN a note with an empty link target
+            let mut note = Note::new("valid.md".into()).expect("Valid path");
+            note.links.push(Link {
+                alias: None,
+                link_type: LinkType::WikiLink,
+                position: 0,
+                source_note_id: note.id,
+                target_path: "".into(),
+            });
+
+            // WHEN validated
+            // THEN it returns EmptyLinkTarget
+            assert!(matches!(
+                note.validate(),
+                Err(DomainError::EmptyLinkTarget)
+            ));
+        }
+
+        /// 3.2-UNIT-033: Note Validation - Empty Embed Target.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn validate_note_returns_error_when_embed_target_is_empty() {
+            // GIVEN a note with an empty embed target
+            let mut note = Note::new("valid.md".into()).expect("Valid path");
+            note.embeds.push(Embed {
+                embed_type: EmbedType::Image,
+                position: 0,
+                source_note_id: note.id,
+                target_path: "".into(),
+            });
+
+            // WHEN validated
+            // THEN it returns EmptyEmbedTarget
+            assert!(matches!(
+                note.validate(),
+                Err(DomainError::EmptyEmbedTarget)
+            ));
+        }
+
+        /// 3.2-UNIT-034: Note Path Validation - Absolute Paths.
+        /// P1.
+        #[test]
+        fn new_note_returns_error_when_path_has_colon() {
+            // GIVEN a path with a colon (Windows absolute)
+            let path = "C:/path.md".to_owned();
+
+            // WHEN constructed
+            // THEN it returns InvalidPath
+            assert!(matches!(
+                Note::new(path),
+                Err(DomainError::InvalidPath(_))
+            ));
+        }
     }
 
     mod tag {
+        use proptest::prelude::*;
+
         use super::*;
 
         /// 3.2-UNIT-005: Tag Parsing - Hierarchical.
@@ -770,9 +878,57 @@ mod tests {
             assert!(matches!(res_leading, Err(DomainError::InvalidTag(_))));
             assert!(matches!(res_trailing, Err(DomainError::InvalidTag(_))));
         }
+
+        /// 3.2-UNIT-024: Tag Parsing - Too Many Segments.
+        /// P1.
+        #[test]
+        fn parse_tag_returns_error_when_too_many_segments() {
+            // GIVEN a tag with 11 segments
+            let input = "1/2/3/4/5/6/7/8/9/10/11";
+
+            // WHEN the tag is parsed
+            let result = Tag::parse(input);
+
+            // THEN it returns an InvalidTag error
+            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+        }
+
+        /// 3.2-UNIT-035: Tag Segment Validation - Invalid Characters.
+        /// P1.
+        #[test]
+        fn parse_tag_returns_error_when_segment_contains_invalid_chars() {
+            // GIVEN a tag with invalid character
+            let input = "invalid!";
+
+            // WHEN parsed
+            // THEN it returns InvalidTag
+            assert!(matches!(
+                Tag::parse(input),
+                Err(DomainError::InvalidTag(_))
+            ));
+        }
+
+        proptest! {
+            /// 3.2-PROP-001: Tag Property - Hierarchical Segments.
+            /// P2.
+            #[test]
+            #[expect(clippy::disallowed_methods, clippy::indexing_slicing, reason = "Test logic")]
+            fn property_tag_parsing_preserves_hierarchy(
+                s in prop::collection::vec("[a-zA-Z0-9_-]+", 1..10)
+            ) {
+                let input = s.join("/");
+                let tag = Tag::parse(&input).expect("Valid tag");
+                assert_eq!(tag.segments.len(), s.len());
+                for (i, segment) in tag.segments.iter().enumerate() {
+                    assert_eq!(segment.as_ref(), &s[i]);
+                }
+            }
+        }
     }
 
     mod link {
+        use uuid::Uuid;
+
         use super::*;
 
         /// 3.2-UNIT-009: Link Creation - `WikiLink` with Alias.
@@ -817,9 +973,29 @@ mod tests {
             // THEN the position is correctly stored
             assert_eq!(link.position, 500);
         }
+
+        /// 3.2-UNIT-025: Link Creation - Markdown Link.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn new_markdown_link_succeeds_with_valid_data() {
+            // GIVEN markdown link parameters
+            let source_id = Uuid::now_v7();
+            let target = "https://example.com".to_owned();
+            let alias = Some("Example".to_owned());
+
+            // WHEN a new markdown link is constructed
+            let link = Link::new_markdown_link(source_id, target, alias, 0)
+                .expect("Valid target");
+
+            // THEN it is correctly typed as MarkdownLink
+            assert_eq!(link.link_type, LinkType::MarkdownLink);
+        }
     }
 
     mod embed {
+        use uuid::Uuid;
+
         use super::*;
 
         /// 3.2-UNIT-011: Embed Creation - Target Validation.
@@ -936,6 +1112,8 @@ mod tests {
 #[cfg(test)]
 pub mod fixtures {
     use std::collections::HashMap;
+
+    use uuid::Uuid;
 
     use super::*;
     use crate::models::frontmatter::FieldValue;

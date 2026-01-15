@@ -644,7 +644,9 @@ impl Frontmatter {
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Datelike as _, TimeZone as _};
+    use std::collections::HashMap;
+
+    use chrono::{Datelike as _, TimeZone as _, Utc};
 
     use super::*;
 
@@ -709,7 +711,7 @@ mod tests {
         let mut fields = HashMap::new();
         fields
             .insert("title".to_owned(), FieldValue::String("Test".to_owned()));
-        let fm = Frontmatter::new(fields).unwrap();
+        let fm = Frontmatter::new(fields).expect("Valid fields");
 
         // WHEN checking for field existence
         let has_title = fm.has("title");
@@ -726,18 +728,200 @@ mod tests {
     fn field_value_is_variant_returns_true_when_types_match() {
         // GIVEN various FieldValue variants
         let string_val = FieldValue::String("test".to_owned());
-        let number_val = FieldValue::Number(42.0);
+        let number_val = FieldValue::Number(42.0f64);
         let bool_val = FieldValue::Boolean(true);
+        let array_val = FieldValue::Array(vec![]);
+        let obj_val = FieldValue::Object(HashMap::new());
+        let date_val = FieldValue::Date(
+            Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+        );
 
         // WHEN inspecting their types
         // THEN they correctly identify their own variants
         assert!(string_val.is_string());
-        assert!(!string_val.is_number());
-
         assert!(number_val.is_number());
-        assert!(!number_val.is_string());
-
         assert!(bool_val.is_bool());
-        assert!(!bool_val.is_string());
+        assert!(array_val.is_array());
+        assert!(obj_val.is_object());
+        assert!(date_val.is_date());
+    }
+
+    /// 3.2-UNIT-026: `FieldValue` Extraction - Complex Types.
+    /// P1.
+    #[test]
+    fn as_methods_return_references_for_complex_variants() {
+        // GIVEN Array and Object variants
+        let mut obj_map = HashMap::new();
+        obj_map.insert("k".to_owned(), FieldValue::Boolean(true));
+        let obj = FieldValue::Object(obj_map.clone());
+        let arr = FieldValue::Array(vec![FieldValue::Number(1.0f64)]);
+
+        // WHEN extracting references
+        let obj_ref = obj.as_object().expect("Not an object");
+        let arr_ref = arr.as_array().expect("Not an array");
+
+        // THEN they match the original data
+        assert_eq!(obj_ref, &obj_map);
+        assert_eq!(arr_ref.len(), 1);
+    }
+
+    /// 3.2-UNIT-027: `FromFieldValue` Implementation.
+    /// P1.
+    #[test]
+    #[expect(clippy::similar_names, reason = "Test coverage")]
+    fn from_field_value_converts_to_target_types() {
+        // GIVEN various variants
+        let string_val = FieldValue::String("val".into());
+        let bool_val = FieldValue::Boolean(false);
+        let num_val = FieldValue::Number(1.5f64);
+        let arr = FieldValue::Array(vec![FieldValue::String("a".into())]);
+        let mixed_arr = FieldValue::Array(vec![
+            FieldValue::String("a".into()),
+            FieldValue::Boolean(true),
+        ]);
+
+        // WHEN using the trait for extraction
+        let res_s: Option<String> = FromFieldValue::from_value(&string_val);
+        let res_b: Option<bool> = FromFieldValue::from_value(&bool_val);
+        let res_n: Option<f64> = FromFieldValue::from_value(&num_val);
+        let res_v: Option<Vec<String>> = FromFieldValue::from_value(&arr);
+        let res_vs: Option<Vec<String>> =
+            FromFieldValue::from_value(&string_val);
+        let res_mixed: Option<Vec<String>> =
+            FromFieldValue::from_value(&mixed_arr);
+
+        // THEN conversions succeed
+        assert_eq!(res_s, Some("val".to_owned()));
+        assert_eq!(res_b, Some(false));
+        assert_eq!(res_n, Some(1.5f64));
+        assert_eq!(res_v, Some(vec!["a".to_owned()]));
+        assert_eq!(res_vs, Some(vec!["val".to_owned()]));
+        assert_eq!(res_mixed, Some(vec!["a".to_owned()]));
+
+        // AND mismatched types return None
+        assert!(<String as FromFieldValue>::from_value(&bool_val).is_none());
+        assert!(<f64 as FromFieldValue>::from_value(&string_val).is_none());
+        assert!(<bool as FromFieldValue>::from_value(&num_val).is_none());
+        assert!(
+            <DateTime<Utc> as FromFieldValue>::from_value(&string_val)
+                .is_none()
+        );
+        assert!(
+            <Vec<String> as FromFieldValue>::from_value(&bool_val).is_none()
+        );
+    }
+
+    /// 3.2-UNIT-028: `Frontmatter` Accessors.
+    /// P1.
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "Test setup")]
+    fn frontmatter_accessors_return_typed_values() {
+        // GIVEN frontmatter with mixed fields
+        let mut fields = HashMap::new();
+        fields.insert("s".into(), FieldValue::String("str".into()));
+        fields.insert("b".into(), FieldValue::Boolean(true));
+        fields.insert("n".into(), FieldValue::Number(10.0f64));
+        let date = Utc::now();
+        fields.insert("d".into(), FieldValue::Date(date));
+        let fm = Frontmatter::new(fields).expect("Valid fields");
+
+        // WHEN using convenience accessors
+        // THEN they return the expected types
+        assert_eq!(fm.get_str("s"), Some("str"));
+        assert_eq!(fm.get_bool("b"), Some(true));
+        assert_eq!(fm.get_number("n"), Some(10.0f64));
+        assert_eq!(fm.get_date("d"), Some(date));
+        assert_eq!(fm.get_as::<String>("s"), Some("str".to_owned()));
+    }
+
+    /// 3.2-UNIT-029: `Frontmatter` Collection Accessors.
+    /// P1.
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "Test setup")]
+    fn frontmatter_collection_accessors_handle_arrays_and_fallbacks() {
+        // GIVEN frontmatter with arrays and single values
+        let mut fields = HashMap::new();
+        fields.insert(
+            "tags".into(),
+            FieldValue::Array(vec![
+                FieldValue::String("t1".into()),
+                FieldValue::Number(2.0f64), // Non-string in array
+            ]),
+        );
+        fields.insert("alias".into(), FieldValue::String("a1".into()));
+        let fm = Frontmatter::new(fields).expect("Valid fields");
+
+        // WHEN extracting string arrays
+        let tags = fm.get_string_array("tags").expect("Missing tags");
+        let aliases = fm.get_string_array("alias").expect("Missing alias");
+
+        // THEN it handles both cases correctly and filters non-strings
+        assert_eq!(tags, vec!["t1".to_owned()]);
+        assert_eq!(aliases, vec!["a1".to_owned()]);
+    }
+
+    /// 3.2-UNIT-030: `FieldValue` Extraction - Error Paths.
+    /// P1.
+    #[test]
+    #[expect(
+        clippy::many_single_char_names,
+        reason = "Coverage exhausting variants"
+    )]
+    fn as_methods_return_none_when_variants_mismatch() {
+        // GIVEN all variants
+        let b = FieldValue::Boolean(true);
+        let n = FieldValue::Number(1.0f64);
+        let s = FieldValue::String(String::new());
+        let d = FieldValue::Date(
+            Utc.with_ymd_and_hms(2024, 1, 1, 0, 0, 0).unwrap(),
+        );
+        let o = FieldValue::Object(HashMap::new());
+        let a = FieldValue::Array(vec![]);
+
+        let variants = vec![&b, &n, &s, &d, &o, &a];
+
+        // WHEN calling extraction methods on mismatched variants
+        // THEN they all return None (exhaustively covering match arms)
+        for v in variants {
+            if !v.is_array() {
+                assert!(v.as_array().is_none());
+            }
+            if !v.is_bool() {
+                assert!(v.as_bool().is_none());
+            }
+            if !v.is_date() {
+                assert!(v.as_date().is_none());
+            }
+            if !v.is_number() {
+                assert!(v.as_number().is_none());
+            }
+            if !v.is_object() {
+                assert!(v.as_object().is_none());
+            }
+            if !v.is_string() {
+                assert!(v.as_str().is_none());
+            }
+        }
+    }
+
+    /// 3.2-UNIT-031: `Frontmatter` Config-based Extraction.
+    /// P1.
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "Test setup")]
+    fn frontmatter_extracts_mapped_keys_from_config() {
+        // GIVEN a config and frontmatter with mapped keys
+        use crate::models::config::Config;
+        let config = Config::default();
+        let mut fields = HashMap::new();
+        fields.insert("title".into(), FieldValue::String("My Title".into()));
+        fields.insert("aliases".into(), FieldValue::String("alias1".into()));
+        fields.insert("file_class".into(), FieldValue::String("task".into()));
+        let fm = Frontmatter::new(fields).expect("Valid fields");
+
+        // WHEN extracting using config-based methods
+        // THEN it uses the correct keys from Config
+        assert_eq!(fm.title(&config), "My Title");
+        assert_eq!(fm.aliases(&config), vec!["alias1".to_owned()]);
+        assert_eq!(fm.file_class(&config), "task");
     }
 }

@@ -274,6 +274,17 @@ impl Default for Frontmatter {
     }
 }
 
+impl Default for Config {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            filesystem: FileSystem::default(),
+            frontmatter: Frontmatter::default(),
+            log_level: defaults::logging::LOG_LEVEL.to_owned(),
+        }
+    }
+}
+
 impl Default for Global {
     #[inline]
     fn default() -> Self {
