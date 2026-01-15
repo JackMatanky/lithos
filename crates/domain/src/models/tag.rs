@@ -138,6 +138,10 @@ mod tests {
             // GIVEN a valid simple tag string
             let input = "#personal";
             // WHEN parsing the tag
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Setup phase - test fixture creation"
+            )]
             let result = Tag::parse(input).unwrap();
             // THEN it has the correct path and segments
             assert_eq!(result.full_path.as_ref(), "personal");
@@ -149,6 +153,10 @@ mod tests {
             // GIVEN a valid hierarchical tag string
             let input = "#work/project/urgent";
             // WHEN parsing the tag
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Setup phase - test fixture creation"
+            )]
             let result = Tag::parse(input).unwrap();
             // THEN it has the correct path and segments
             assert_eq!(result.full_path.as_ref(), "work/project/urgent");
@@ -209,7 +217,7 @@ mod tests {
             /// 3.2-PROP-004: Tag Segment Validation Fuzzing.
             #[test]
             fn rejects_invalid_characters_in_segments(
-                s in r#"#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*"#
+                s in "#[a-zA-Z0-9_-]*/[ !@#$%^&*()]+/[a-zA-Z0-9_-]*"
             ) {
                 let result = Tag::parse(&s);
                 prop_assert!(
@@ -222,7 +230,7 @@ mod tests {
             /// 3.2-PROP-005: Valid Tag Fuzzing.
             #[test]
             fn accepts_valid_alphanumeric_tags(
-                s in r#"#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*"#
+                s in "#[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)*"
             ) {
                 let result = Tag::parse(&s);
                 prop_assert!(
