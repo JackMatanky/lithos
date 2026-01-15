@@ -1,6 +1,6 @@
 # Story 3.2: Create Note Bounded Context
 
-Status: done
+Status: in-progress
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
@@ -1141,12 +1141,38 @@ let title: Option<String> = frontmatter.get_as("title");
 - `crates/domain/src/ports/note.rs` - NoteCommand and NoteQuery trait definitions
 
 **Files Modified:**
-- `crates/domain/src/models/note.rs` - Implemented all 8 entities with constructors and validation, extracted validation logic, optimized memory usage, added comprehensive documentation; updated to use `FieldValue` instead of `FrontmatterValue`
+- `crates/domain/src/models/note.rs` - Implemented all 8 entities with constructors and validation, extracted validation logic, optimized memory usage, added comprehensive documentation; updated to use `FieldValue` instead of `FrontmatterValue`; **FIXED**: Windows absolute path detection in `validate_vault_path`, fixed tag test to pass "#work" instead of "work"
 - `crates/domain/src/models/frontmatter.rs` - **MAJOR REFACTORING**: Renamed `FrontmatterValue` → `FieldValue`, removed legacy `ref` patterns, added modern match ergonomics, added `has()` method, added convenience methods (`get_str`, `get_bool`, `get_number`, `get_date`, `get_string_array`), added `is_*()` type inspection methods, comprehensive documentation with architectural rationale
 - `crates/domain/src/events.rs` - Added NoteCreated and NoteFrontmatterValidated events
 - `crates/domain/src/ports/mod.rs` - Added note module export
 - `crates/domain/src/lib.rs` - Updated exports: `FrontmatterValue` → `FieldValue`, `FromFrontmatterValue` → `FromFieldValue`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` - Updated story status to in-progress
+
+### Test Fixes Completion - 2026-01-15
+
+**Critical Test Failures Fixed:**
+
+1. **Windows Absolute Path Detection**: Updated `validate_vault_path()` to detect drive letter patterns (e.g., "C:/path.md") by checking for alphabetic character followed by ':' and '/'. Added comprehensive error message.
+
+2. **Tag Parsing Test**: Fixed test case to pass "#work" instead of "work" to `Tag::parse()`, which requires tags to start with '#' prefix.
+
+**Results:**
+- ✅ All 48 domain tests passing (previously 46 passed, 2 failed)
+- ✅ Windows absolute path validation working correctly
+- ✅ Tag parsing validation working correctly
+- ✅ Zero test regressions
+- ✅ Ready for final quality gates and commit
+
+**Remaining Story Issues (from Code Review):**
+- ⚠️ **CRITICAL**: Domain events defined but NOT emitted (AC violation)
+- ⚠️ **HIGH**: Test coverage 63.88% (needs 80%+)
+- ⚠️ **HIGH**: Unwrap calls in production code (violating requirements)
+- ⏳ **TODO**: Implement actual domain event emission in application layer
+- ⏳ **TODO**: Add test_builder! macro usage in fixtures
+- ⏳ **TODO**: Update story status to "done" after fixes
+- ⏳ **TODO**: Run pre-commit hooks and verify no unwrap/expect/todo/panic
+
+**Current Status:** Test fixes completed, story updated to in-progress. Ready for commit with conventional commit message.
 
 **Files from ATDD (pre-existing):**
 - `crates/domain/src/models/note.rs` - RED phase tests (20 tests)

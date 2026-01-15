@@ -199,6 +199,10 @@ pub enum DomainError {
     #[error("Invalid heading level: {0} (must be 1-6)")]
     InvalidHeadingLevel(u8),
 
+    /// Invalid link type for operation.
+    #[error("Invalid link type for operation")]
+    InvalidLinkType,
+
     /// Invalid note path.
     #[error("Invalid note path: {0}")]
     InvalidPath(String),
@@ -209,87 +213,66 @@ pub enum DomainError {
 
     /// Invalid regex pattern.
     #[error("Invalid regex pattern: {0}")]
-    InvalidRegexPattern(String),
+    InvalidRegex(String),
 
     /// Invalid schema name.
     #[error("Invalid schema name: {0}")]
     InvalidSchemaName(String),
 
-    /// Invalid step value.
-    #[error("Invalid step value: {value} (step: {step})")]
-    InvalidStepValue {
-        /// The value that was provided.
-        value: f64,
-        /// The expected step increment.
-        step: f64,
-    },
-
-    /// Invalid tag format.
-    #[error("Invalid tag format: {0}")]
+    /// Invalid tag.
+    #[error("Invalid tag: {0}")]
     InvalidTag(String),
 
-    /// Invalid task status.
-    #[error("Invalid task status: {0}")]
-    InvalidTaskStatus(String),
+    /// Invalid type.
+    #[error("Invalid type: {value} (expected: {expected})")]
+    InvalidType {
+        /// The value that was provided.
+        value: String,
+        /// The expected type.
+        expected: String,
+    },
 
-    /// Invalid UUID format.
-    #[error("Invalid UUID: {0}")]
-    InvalidUuid(String),
+    /// Invalid YAML.
+    #[error("Invalid YAML: {0}")]
+    InvalidYaml(String),
 
-    /// Maximum variables exceeded.
-    #[error("Maximum variables exceeded: {0} (max 50)")]
+    /// IO error.
+    #[error("IO error: {0}")]
+    Io(String),
+
+    /// Maximum number of template variables exceeded.
+    #[error("Maximum number of template variables exceeded: {0}")]
     MaxVariablesExceeded(usize),
 
-    /// Number out of range.
-    #[error("Number out of range: {value} (min: {min:?}, max: {max:?})")]
-    NumberOutOfRange {
-        /// The value that was provided.
-        value: f64,
-        /// Minimum allowed value (if any).
-        min: Option<f64>,
-        /// Maximum allowed value (if any).
-        max: Option<f64>,
-    },
+    /// Missing required field.
+    #[error("Missing required field: {0}")]
+    MissingField(String),
 
-    /// Parent schema not found.
-    #[error("Parent schema not found: {0}")]
-    ParentSchemaNotFound(String),
+    /// Parse error.
+    #[error("Parse error: {0}")]
+    Parse(String),
 
-    /// Property name too long.
-    #[error("Property name too long: {0} (max 64)")]
-    PropertyNameTooLong(usize),
+    /// Property bank error.
+    #[error("Property bank error: {0}")]
+    PropertyBank(String),
 
-    /// Schema name too long.
-    #[error("Schema name too long: {0} (max 64)")]
-    SchemaNameTooLong(usize),
+    /// Property not found.
+    #[error("Property not found: {0}")]
+    PropertyNotFound(String),
 
-    /// String too long.
-    #[error("String too long: {actual} (max: {max})")]
-    StringTooLong {
-        /// Maximum allowed length.
-        max: usize,
-        /// Actual length encountered.
-        actual: usize,
-    },
-
-    /// String too short.
-    #[error("String too short: {actual} (min: {min})")]
-    StringTooShort {
-        /// Minimum required length.
-        min: usize,
-        /// Actual length encountered.
-        actual: usize,
-    },
+    /// Serialization error.
+    #[error("Serialization error: {0}")]
+    Serialization(String),
 
     /// Template content too large.
-    #[error("Template content too large: {0} (max 1MB)")]
-    TemplateContentTooLarge(usize),
+    #[error("Template content too large: {0} bytes (max: {1})")]
+    TemplateContentTooLarge(usize, usize),
 
-    /// Template not found.
-    #[error("Template not found: {0}")]
-    TemplateNotFound(String),
+    /// Unexpected error.
+    #[error("Unexpected error: {0}")]
+    Unexpected(String),
 
-    /// General validation failure.
+    /// Validation failed.
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
 

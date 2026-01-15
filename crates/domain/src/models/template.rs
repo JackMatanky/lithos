@@ -309,7 +309,7 @@ mod tests {
             );
             assert!(matches!(
                 result,
-                Err(DomainError::TemplateContentTooLarge(_))
+                Err(DomainError::TemplateContentTooLarge(_, _))
             ));
         }
 
