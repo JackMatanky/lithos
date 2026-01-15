@@ -624,11 +624,32 @@ pub mod fixtures {
     use crate::models::frontmatter::FieldValue;
 
     /// Fixed UUID for deterministic tests (valid UUID v7 format).
-    /// Uses timestamp 2024-01-01 00:00:00 UTC for consistency.
+    ///
+    /// Uses timestamp 2024-01-01 00:00:00 UTC for consistency across test runs.
+    /// This UUID v7 format ensures time-ordered, sortable identifiers suitable
+    /// for testing Note identity and creation scenarios.
+    ///
+    /// # Value
+    /// `0x018C_0000_0000_7000_8000_0000_0000_0001`.
     pub const TEST_NOTE_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001);
 
-    /// Creates an example frontmatter for testing.
+    /// Test fixture: Create example frontmatter with realistic field values.
+    ///
+    /// This fixture provides a complete Frontmatter instance suitable for testing
+    /// Note aggregate construction, validation logic, and metadata operations.
+    ///
+    /// # Field Values
+    /// - `title`: "Test Note" (String) - Basic title for test notes
+    /// - `created`: "2024-01-15T14:30:00Z" (Date) - Fixed creation timestamp
+    ///
+    /// # Usage
+    /// Use this fixture when constructing test Note instances that require frontmatter.
+    /// ```rust
+    /// use lithos_domain::models::note::fixtures::example_frontmatter;
+    /// let fm = example_frontmatter();
+    /// assert_eq!(fm.title(), Some("Test Note"));
+    /// ```
     ///
     /// # Panics
     /// Panics if the hardcoded date string is invalid (should never happen).
@@ -655,7 +676,21 @@ pub mod fixtures {
         Frontmatter::new(fields).expect("Valid frontmatter")
     }
 
-    /// Creates an example tag for testing.
+    /// Test fixture: Create example hierarchical tag for testing.
+    ///
+    /// This fixture provides a valid hierarchical Tag instance demonstrating
+    /// nested tag structure commonly used in knowledge management systems.
+    ///
+    /// # Field Values
+    /// - Tag path: `"work/project"` - Hierarchical tag with two levels
+    ///
+    /// # Usage
+    /// Use this fixture when testing Note instances that require tag metadata.
+    /// ```rust
+    /// use lithos_domain::models::note::fixtures::example_tag;
+    /// let tag = example_tag();
+    /// assert_eq!(tag.as_str(), "work/project");
+    /// ```
     ///
     /// # Panics
     /// Panics if the hardcoded tag string is invalid (should never happen).
@@ -669,7 +704,34 @@ pub mod fixtures {
         Tag::parse("work/project").expect("Valid tag")
     }
 
-    /// Creates an example note for testing.
+    /// Test fixture: Create complete example Note aggregate for testing.
+    ///
+    /// This fixture provides a fully-constructed Note aggregate with realistic
+    /// field values, suitable for testing validation logic, event emission,
+    /// aggregate operations, and integration scenarios.
+    ///
+    /// # Field Values
+    /// - `id`: [`TEST_NOTE_ID`] - Deterministic UUID v7 for reproducible tests
+    /// - `path`: `"test/example.md"` - Valid vault-relative markdown path
+    /// - `frontmatter`: Contains title "Test Note" and creation date
+    /// - `tags`: Single hierarchical tag `"work/project"`
+    /// - `links`, `embeds`, `headings`, `tasks`, `sections`: Empty (minimal example)
+    /// - `pending_events`: Empty (no events yet)
+    ///
+    /// # Usage
+    /// Use this fixture when you need a complete Note instance for integration
+    /// testing or as a baseline for modification in specific test scenarios.
+    /// ```rust
+    /// use lithos_domain::models::note::fixtures::example_note;
+    /// let note = example_note();
+    /// assert_eq!(note.path.as_ref(), "test/example.md");
+    /// assert!(note.validate().is_ok());
+    /// ```
+    ///
+    /// # See Also
+    /// - [`example_frontmatter`] - For frontmatter-only testing
+    /// - [`example_tag`] - For tag-only testing
+    /// - [`TEST_NOTE_ID`] - For deterministic UUID in custom fixtures
     #[inline]
     #[must_use]
     pub fn example_note() -> Note {
