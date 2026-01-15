@@ -320,7 +320,6 @@ mod tests {
     });
 
     mod new {
-        use lithos_test_utils::time_test;
         use tokio::time::Duration;
 
         use super::*;
@@ -415,10 +414,15 @@ mod tests {
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
-        /// 3.2-UNIT-035: Note Creation - UUID v7 Sequence.
-        /// P1.
-        time_test!(
-            async fn generates_sequential_uuids() {
+        #[test]
+        fn generates_sequential_uuids() {
+            let rt = tokio::runtime::Builder::new_current_thread()
+                .enable_time()
+                .start_paused(true)
+                .build()
+                .unwrap();
+
+            rt.block_on(async {
                 // GIVEN a note created at T0
                 let note1 = Note::new(Uuid::now_v7(), "one.md".into()).unwrap();
 
@@ -431,8 +435,8 @@ mod tests {
                     note2.id > note1.id,
                     "UUID v7 must be chronologically sortable"
                 );
-            }
-        );
+            });
+        }
     }
 
     mod validate {
