@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #MISE description="Run all integration tests across the workspace using nextest"
 #MISE alias="ti"
-#MISE depends=["fmt"]
+#MISE depends=["fmt", "build"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["{{vars.nextest_dir}}/default"]
 #MISE env={RUST_BACKTRACE="1"}
