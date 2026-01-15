@@ -27,8 +27,11 @@ use crate::errors::DomainError;
 /// # Examples
 /// ```
 /// use lithos_domain::models::note::Note;
+/// use uuid::Uuid;
 ///
-/// let note = Note::new("projects/example.md".to_string()).unwrap();
+/// // For new files (first-time indexing)
+/// let new_id = Uuid::now_v7();
+/// let note = Note::new(new_id, "projects/example.md".to_string()).unwrap();
 /// assert_eq!(note.path.as_ref(), "projects/example.md");
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -55,10 +58,18 @@ pub struct Note {
 }
 
 impl Note {
-    /// Creates a new note aggregate with path validation and identity generation.
+    /// Creates a new note aggregate with the provided UUID and validated path.
+    ///
+    /// # UUID Source
+    /// The UUID should be obtained from the repository layer via:
+    /// - `NoteRepository::get_or_create_note_id()` for indexed files (preserves existing identity)
+    /// - `Uuid::now_v7()` for brand-new notes (first-time indexing)
+    ///
+    /// This design ensures UUID stability across file renames and system restarts,
+    /// as UUIDs are persisted in the Redb cache and retrieved via path lookups.
     ///
     /// # Invariants
-    /// - Generates a new UUID v7 for `id`.
+    /// - Uses the provided UUID v7 for `id` (time-ordered identity).
     /// - Validates path according to vault-relative rules.
     ///
     /// # Errors
@@ -68,16 +79,21 @@ impl Note {
     /// # Examples
     /// ```
     /// use lithos_domain::models::note::Note;
+    /// use uuid::Uuid;
     ///
-    /// let note = Note::new("vault/notes/project.md".to_string()).unwrap();
+    /// // For new files (first-time indexing)
+    /// let new_id = Uuid::now_v7();
+    /// let note = Note::new(new_id, "vault/notes/project.md".to_string()).unwrap();
     /// assert!(note.id.to_string().starts_with("01"));
+    ///
+    /// // For existing files (rename detection preserves UUID)
+    /// let existing_id = Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567890").unwrap();
+    /// let renamed_note = Note::new(existing_id, "archive/old-project.md".to_string()).unwrap();
+    /// assert_eq!(renamed_note.id, existing_id);
     /// ```
     #[inline]
-    pub fn new(path: String) -> Result<Self, DomainError> {
+    pub fn new(id: Uuid, path: String) -> Result<Self, DomainError> {
         validate_vault_path(&path)?;
-
-        // Generate UUID v7 identity (time-ordered)
-        let id = Uuid::now_v7();
 
         Ok(Self {
             id,
@@ -105,8 +121,10 @@ impl Note {
     /// # Examples
     /// ```
     /// use lithos_domain::models::note::Note;
+    /// use uuid::Uuid;
     ///
-    /// let note = Note::new("valid.md".to_string()).unwrap();
+    /// let test_id = Uuid::now_v7();
+    /// let note = Note::new(test_id, "valid.md".to_string()).unwrap();
     /// assert!(note.validate().is_ok());
     /// ```
     #[inline]
@@ -645,27 +663,198 @@ mod tests {
     mod note {
         use super::*;
 
+        /// 3.2-UNIT-001: Note Creation - Empty Path.
+        /// P1.
         #[test]
-        fn rejects_empty_path() {
-            let result = Note::new(String::new());
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn new_note_returns_error_when_path_is_empty() {
+            // GIVEN a test UUID and empty path string
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567890")
+                    .unwrap();
+            let path = String::new();
+
+            // WHEN a new Note is constructed
+            let result = Note::new(test_id, path);
+
+            // THEN it returns an EmptyPath error
             assert!(matches!(result, Err(DomainError::EmptyPath)));
         }
 
+        /// 3.2-UNIT-002: Note Creation - Absolute Path.
+        /// P1.
         #[test]
-        fn rejects_absolute_path() {
-            let result = Note::new("/absolute/path.md".to_owned());
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn new_note_returns_error_when_path_is_absolute() {
+            // GIVEN a test UUID and absolute path string
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567891")
+                    .unwrap();
+            let path = "/absolute/path.md".to_owned();
+
+            // WHEN a new Note is constructed
+            let result = Note::new(test_id, path);
+
+            // THEN it returns an InvalidPath error
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
+        /// 3.2-UNIT-003: Note Creation - Path Traversal.
+        /// P1.
         #[test]
-        fn rejects_path_traversal() {
-            let result = Note::new("../etc/passwd".to_owned());
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn new_note_returns_error_when_path_contains_traversal() {
+            // GIVEN a test UUID and path string with traversal components
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567892")
+                    .unwrap();
+            let path = "../etc/passwd".to_owned();
+
+            // WHEN a new Note is constructed
+            let result = Note::new(test_id, path);
+
+            // THEN it returns an InvalidPath error
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
+        /// 3.2-UNIT-004: Note Creation - Missing Extension.
+        /// P1.
         #[test]
-        fn rejects_path_missing_md_extension() {
-            let result = Note::new("projects/lithos".to_owned());
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn new_note_returns_error_when_path_missing_md_extension() {
+            // GIVEN a test UUID and path string without .md extension
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567893")
+                    .unwrap();
+            let path = "projects/lithos".to_owned();
+
+            // WHEN a new Note is constructed
+            let result = Note::new(test_id, path);
+
+            // THEN it returns an InvalidPath error
+            assert!(matches!(result, Err(DomainError::InvalidPath(_))));
+        }
+
+        /// 3.2-UNIT-022: Note Validation - Success.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn validate_note_succeeds_when_all_entities_are_valid() {
+            // GIVEN a test UUID and note with valid sub-entities
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567894")
+                    .unwrap();
+            let mut note =
+                Note::new(test_id, "valid.md".to_owned()).expect("Valid path");
+            note.tags.push(Tag::parse("work").expect("Valid tag"));
+            note.headings
+                .push(Heading::new(1, "Title".into(), 0).expect("Valid level"));
+            note.links.push(
+                Link::new_wikilink(note.id, "target.md".into(), None, 0)
+                    .expect("Valid target"),
+            );
+            note.embeds.push(
+                Embed::new(note.id, "image.png".into(), EmbedType::Image, 0)
+                    .expect("Valid target"),
+            );
+
+            // WHEN validation is performed
+            let result = note.validate();
+
+            // THEN it succeeds
+            result.unwrap();
+        }
+
+        /// 3.2-UNIT-023: Note Validation - Invalid Heading.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn validate_note_returns_error_when_heading_level_is_invalid() {
+            // GIVEN a test UUID and note with an invalid heading (manually constructed)
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567895")
+                    .unwrap();
+            let mut note =
+                Note::new(test_id, "valid.md".to_owned()).expect("Valid path");
+            note.headings.push(Heading {
+                level: 0,
+                text: "Invalid".into(),
+                position: 0,
+            });
+
+            // WHEN the note is validated
+            let result = note.validate();
+
+            // THEN it returns an InvalidHeadingLevel error
+            assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(0))));
+        }
+
+        /// 3.2-UNIT-032: Note Validation - Empty Link Target.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn validate_note_returns_error_when_link_target_is_empty() {
+            // GIVEN a test UUID and note with an empty link target
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567896")
+                    .unwrap();
+            let mut note =
+                Note::new(test_id, "valid.md".into()).expect("Valid path");
+            note.links.push(Link {
+                alias: None,
+                link_type: LinkType::WikiLink,
+                position: 0,
+                source_note_id: note.id,
+                target_path: "".into(),
+            });
+
+            // WHEN validated
+            let result = note.validate();
+
+            // THEN it returns EmptyLinkTarget
+            assert!(matches!(result, Err(DomainError::EmptyLinkTarget)));
+        }
+
+        /// 3.2-UNIT-033: Note Validation - Empty Embed Target.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn validate_note_returns_error_when_embed_target_is_empty() {
+            // GIVEN a test UUID and note with an empty embed target
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567897")
+                    .unwrap();
+            let mut note =
+                Note::new(test_id, "valid.md".into()).expect("Valid path");
+            note.embeds.push(Embed {
+                embed_type: EmbedType::Image,
+                position: 0,
+                source_note_id: note.id,
+                target_path: "".into(),
+            });
+
+            // WHEN validated
+            let result = note.validate();
+
+            // THEN it returns EmptyEmbedTarget
+            assert!(matches!(result, Err(DomainError::EmptyEmbedTarget)));
+        }
+
+        /// 3.2-UNIT-034: Note Path Validation - Absolute Paths.
+        /// P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn new_note_returns_error_for_windows_absolute_paths() {
+            // GIVEN a test UUID and path with a colon (Windows absolute)
+            let test_id =
+                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567898")
+                    .unwrap();
+            let path = "C:/path.md".to_owned();
+
+            // WHEN constructed
+            let result = Note::new(test_id, path);
+
+            // THEN it returns InvalidPath
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
     }
@@ -673,10 +862,18 @@ mod tests {
     mod tag {
         use super::*;
 
+        /// 3.2-UNIT-011: Tag Parsing - Hierarchical.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn parses_hierarchical_tag_successfully() {
-            let tag = Tag::parse("#work/project/urgent").expect("Valid tag");
+            // GIVEN a hierarchical tag string
+            let tag_string = "#work/project/urgent";
+
+            // WHEN parsed
+            let tag = Tag::parse(tag_string).expect("Valid tag");
+
+            // THEN it has the correct full path and segments
             assert_eq!(tag.full_path.as_ref(), "work/project/urgent");
             assert_eq!(
                 tag.segments,
@@ -684,72 +881,118 @@ mod tests {
             );
         }
 
+        /// 3.2-UNIT-012: Tag Parsing - Simple.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn parses_simple_tag_successfully() {
-            let tag = Tag::parse("#personal").expect("Valid tag");
+            // GIVEN a simple tag string
+            let tag_string = "#personal";
+
+            // WHEN parsed
+            let tag = Tag::parse(tag_string).expect("Valid tag");
+
+            // THEN it has the correct full path and single segment
             assert_eq!(tag.full_path.as_ref(), "personal");
             assert_eq!(tag.segments, vec!["personal".into()]);
         }
 
+        /// 3.2-UNIT-013: Tag Parsing - Empty Segments.
+        /// P1.
         #[test]
         fn returns_error_for_empty_tag_segments() {
-            let result = Tag::parse("#project//urgent");
+            // GIVEN a tag string with empty segments
+            let tag_string = "#project//urgent";
+
+            // WHEN parsed
+            let result = Tag::parse(tag_string);
+
+            // THEN it returns EmptyTagSegment error
             assert!(matches!(result, Err(DomainError::EmptyTagSegment)));
         }
 
+        /// 3.2-UNIT-014: Tag Parsing - Invalid Slashes.
+        /// P1.
         #[test]
         fn returns_error_for_leading_or_trailing_slashes() {
-            let result = Tag::parse("#/leading");
-            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+            // GIVEN tag strings with leading or trailing slashes
 
-            let result = Tag::parse("#trailing/");
-            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+            // WHEN parsed
+            let result1 = Tag::parse("#/leading");
+            let result2 = Tag::parse("#trailing/");
+
+            // THEN both return InvalidTag error
+            assert!(matches!(result1, Err(DomainError::InvalidTag(_))));
+            assert!(matches!(result2, Err(DomainError::InvalidTag(_))));
         }
     }
 
     mod link {
         use super::*;
 
+        /// 3.2-UNIT-015: Link Parsing - Wikilink with Alias.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn parses_wikilink_with_alias_successfully() {
+            // GIVEN a source note ID, target path, alias, and position
             let source_id = Uuid::now_v7();
+            let target_path = "target.md".to_owned();
+            let alias = Some("Alias".to_owned());
+            let position = 100;
+
+            // WHEN a wikilink is created
             let link = Link::new_wikilink(
                 source_id,
-                "target.md".to_owned(),
-                Some("Alias".to_owned()),
-                100,
+                target_path.clone(),
+                alias.clone(),
+                position,
             )
             .unwrap();
-            assert_eq!(link.target_path.as_ref(), "target.md");
-            assert_eq!(link.alias, Some("Alias".into()));
+
+            // THEN it has the correct properties
+            assert_eq!(link.target_path.as_ref(), target_path);
+            assert_eq!(link.alias, alias.map(std::convert::Into::into));
             assert_eq!(link.link_type, LinkType::WikiLink);
+            assert_eq!(link.position, position);
         }
 
+        /// 3.2-UNIT-016: Link Parsing - Position Tracking.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn tracks_link_position_in_document() {
+            // GIVEN a source note ID, target path, and position
             let source_id = Uuid::now_v7();
-            let link = Link::new_wikilink(
-                source_id,
-                "target.md".to_owned(),
-                None,
-                500,
-            )
-            .unwrap();
-            assert_eq!(link.position, 500);
+            let target_path = "target.md".to_owned();
+            let position = 500;
+
+            // WHEN a wikilink is created
+            let link =
+                Link::new_wikilink(source_id, target_path, None, position)
+                    .unwrap();
+
+            // THEN it tracks the correct position
+            assert_eq!(link.position, position);
         }
     }
 
     mod embed {
         use super::*;
 
+        /// 3.2-UNIT-017: Embed Validation - Empty Target.
+        /// P1.
         #[test]
         fn validates_embed_target_is_not_empty() {
+            // GIVEN a source note ID and empty target path
             let source_id = Uuid::now_v7();
+            let target_path = String::new();
+
+            // WHEN an embed is created
             let result =
-                Embed::new(source_id, String::new(), EmbedType::Image, 0);
+                Embed::new(source_id, target_path, EmbedType::Image, 0);
+
+            // THEN it returns EmptyEmbedTarget error
             assert!(matches!(result, Err(DomainError::EmptyEmbedTarget)));
         }
     }
@@ -757,25 +1000,52 @@ mod tests {
     mod heading {
         use super::*;
 
+        /// 3.2-UNIT-018: Heading Validation - Valid Levels.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn validates_heading_levels_1_to_6() {
+            // GIVEN heading levels 1 through 6
+
+            // WHEN headings are created for each level
             for level in 1..=6 {
                 let heading =
                     Heading::new(level, "Title".to_owned(), 0).unwrap();
+
+                // THEN each has the correct level
                 assert_eq!(heading.level, level);
             }
         }
 
+        /// 3.2-UNIT-019: Heading Validation - Level 0 Invalid.
+        /// P1.
         #[test]
         fn returns_error_for_invalid_heading_level_0() {
-            let result = Heading::new(0, "Title".to_owned(), 0);
+            // GIVEN heading level 0
+            let level = 0;
+            let text = "Title".to_owned();
+            let position = 0;
+
+            // WHEN a heading is created
+            let result = Heading::new(level, text, position);
+
+            // THEN it returns InvalidHeadingLevel error
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(0))));
         }
 
+        /// 3.2-UNIT-020: Heading Validation - Level 7 Invalid.
+        /// P1.
         #[test]
         fn returns_error_for_invalid_heading_level_7() {
-            let result = Heading::new(7, "Title".to_owned(), 0);
+            // GIVEN heading level 7
+            let level = 7;
+            let text = "Title".to_owned();
+            let position = 0;
+
+            // WHEN a heading is created
+            let result = Heading::new(level, text, position);
+
+            // THEN it returns InvalidHeadingLevel error
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(7))));
         }
     }
@@ -783,17 +1053,25 @@ mod tests {
     mod task {
         use super::*;
 
+        /// 3.2-UNIT-021: Task Parsing - All Status Variants.
+        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test baseline")]
         fn parses_all_task_status_variants() {
+            // GIVEN all possible task status variants
             let statuses = vec![
                 TaskStatus::Incomplete,
                 TaskStatus::Complete,
                 TaskStatus::Cancelled,
             ];
+
+            // WHEN tasks are created for each status
             for status in statuses {
-                let task = Task::new("Buy milk".to_owned(), status.clone(), 0)
-                    .unwrap();
+                let task =
+                    Task::new("Task content".to_owned(), status.clone(), 0)
+                        .unwrap();
+
+                // THEN each task has the correct status
                 assert_eq!(task.status, status);
             }
         }
@@ -818,7 +1096,7 @@ pub mod fixtures {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::models::frontmatter::FrontmatterValue;
+    use crate::models::frontmatter::FieldValue;
 
     /// Fixed UUID for deterministic tests (valid UUID v7 format).
     /// Uses timestamp 2024-01-01 00:00:00 UTC for consistency.
@@ -832,7 +1110,7 @@ pub mod fixtures {
         let mut fields = HashMap::new();
         fields.insert(
             "title".to_owned(),
-            FrontmatterValue::String("Test Note".to_owned()),
+            FieldValue::String("Test Note".to_owned()),
         );
         Frontmatter {
             fields,

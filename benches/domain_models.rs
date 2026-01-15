@@ -1,11 +1,17 @@
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use lithos_domain::models::note::{Note, Tag};
+use uuid::Uuid;
 
 fn bench_note_creation(c: &mut Criterion) {
+    let test_id =
+        Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567890").unwrap();
     c.bench_function("note_creation", |b| {
         b.iter(|| {
-            let note =
-                Note::new(black_box("bench/test.md".to_string())).unwrap();
+            let note = Note::new(
+                black_box(test_id),
+                black_box("bench/test.md".to_string()),
+            )
+            .unwrap();
             black_box(note);
         });
     });
