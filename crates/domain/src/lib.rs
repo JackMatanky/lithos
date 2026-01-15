@@ -36,14 +36,16 @@ pub use models::{
         SettingValue as ConfigValue, Vault as VaultConfig,
     },
     frontmatter::{FieldValue, FromFieldValue, Frontmatter},
-    note::{
-        Embed, EmbedType, Heading, Link, LinkType, Note, Section, Tag, Task,
-        TaskStatus,
-    },
+    heading::Heading,
+    link::{Link, LinkType},
+    note::Note,
     schema::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, Property, PropertyBank,
         PropertySpec, Schema, StringSpec,
     },
+    section::Section,
+    tag::Tag,
+    task::{Task, TaskStatus},
     template::{
         Composition as TemplateComposition, InsertionPosition,
         Metadata as TemplateMetadata, Section as TemplateSection, Template,
