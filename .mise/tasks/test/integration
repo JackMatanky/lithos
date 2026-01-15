@@ -4,50 +4,128 @@
 #MISE depends=["fmt", "build"]
 #MISE sources=["**/*.rs", "Cargo.toml", "rustfmt.toml", "rust-toolchain.toml"]
 #MISE outputs=["{{vars.nextest_dir}}/default"]
-#MISE env={RUST_BACKTRACE="1", TEST_E2E_DIR="{{vars.test_e2e_dir}}", TEST_ARCH_DIR="{{vars.test_arch_dir}}"}
+#MISE env={RUST_BACKTRACE="1", TEST_INTEGRATION_DIR="{{vars.test_integration_dir}}"}
 #USAGE flag "-v --verbose" help="Verbose output"
+#USAGE flag "-p --package <package>" help="Run tests for a specific package" {
+#USAGE   choices "domain" "app" "adapters" "cli" "test-utils" "integration-tests"
+#USAGE }
 #USAGE arg "[filter]" help="Filter tests by name"
 
 set -euo pipefail
 
 #######################################
-# Build arguments for nextest integration tests.
+# Map shorthand package names to full cargo package names.
 # Globals:
-#   usage_verbose
-#   usage_filter
+#   usage_package
+# Arguments:
+#   None
+# Outputs:
+#   Echoes the full package name
+#######################################
+map_package_name() {
+    case "${usage_package:-}" in
+    domain | app | adapters | test-utils | integration-tests)
+        echo "lithos-${usage_package}"
+        ;;
+    cli)
+        echo "lithos"
+        ;;
+    *)
+        echo ""
+        ;;
+    esac
+}
+
+#######################################
+# Add parallel execution control matching mise.toml configuration
+# Globals:
 #   TEST_THREADS (from env)
-#   RUST_BACKTRACE (set by #MISE env directive)
 # Arguments:
 #   Reference to an array for arguments
 # Outputs:
 #   None
 #######################################
-build_test_args() {
-  local -n ref_args=$1
+add_threading_args() {
+    local -n _threading_ref_args=$1
+    _threading_ref_args+=("--test-threads" "${TEST_THREADS:-4}")
+}
 
-  # Parallel execution control matching mise.toml configuration
-  # Use TEST_THREADS from environment (set by mise.toml env section)
-  ref_args+=("--test-threads" "${TEST_THREADS:-4}")
+#######################################
+# Add package selection logic.
+# Arguments:
+#   Reference to an array for arguments
+#   The resolved package name (optional)
+# Outputs:
+#   None
+#######################################
+add_package_args() {
+    local -n _package_ref_args=$1
+    local package_name=$2
 
-  # Run workspace tests excluding unit tests (libs and bins)
-  # This targets only the "integration" tests in tests/ directories
-  ref_args+=("--workspace")
-  ref_args+=("--filter-expr" "not (lib() or bins() or binary(cli_smoke) or binary(purity))")
+    if [[ -n "${package_name}" ]]; then
+        _package_ref_args+=("--package" "${package_name}")
+    else
+        # If no package is specified, target everything in workspace
+        _package_ref_args+=("--workspace")
+    fi
+}
 
-  # Nextest partitioning for consistent test distribution
-  ref_args+=("--partition" "hash:1/1")
+#######################################
+# Add exclusion filters to remove unwanted tests.
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
+add_filter_args() {
+    local -n _filter_ref_args=$1
 
-    # Note: JUnit output requires nextest profile configuration in .config/nextest.toml
-    # The --junit flag does not exist in nextest 0.9.x - removed for compatibility
+    # Filter out E2E (cli_smoke) and Arch (purity) tests using the robust syntax
+    # "not (test(foo)) and not (test(bar))"
+    _filter_ref_args+=("--filter-expr" "not (test(cli_smoke)) and not (test(purity))")
+
+    # Optional user-provided filter
+    if [[ -n "${usage_filter:-}" ]]; then
+        _filter_ref_args+=("${usage_filter}")
+    fi
+}
+
+#######################################
+# Add nextest execution options (partitioning, verbosity).
+# Globals:
+#   usage_verbose
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
+add_execution_args() {
+    local -n _exec_ref_args=$1
+
+    # Nextest partitioning for consistent test distribution
+    _exec_ref_args+=("--partition" "hash:1/1")
 
     if [[ "${usage_verbose:-}" == "1" ]]; then
-        ref_args+=("--verbose")
+        _exec_ref_args+=("--verbose")
     fi
+}
 
-    # Test filter (if specified)
-    if [[ -n "${usage_filter:-}" ]]; then
-        ref_args+=("${usage_filter}")
-    fi
+#######################################
+# Main build function orchestrating argument assembly.
+# Arguments:
+#   Reference to an array for arguments
+#   The resolved package name
+# Outputs:
+#   None
+#######################################
+build_test_args() {
+    local -n _main_ref_args=$1
+    local package_name=$2
+
+    add_threading_args _main_ref_args
+    add_package_args _main_ref_args "${package_name}"
+    add_filter_args _main_ref_args
+    add_execution_args _main_ref_args
 }
 
 #######################################
@@ -72,8 +150,11 @@ run_nextest() {
 #   None
 #######################################
 main() {
+    local resolved_package
+    resolved_package=$(map_package_name)
+
     local args=()
-    build_test_args args
+    build_test_args args "${resolved_package}"
     run_nextest "${args[@]}"
     echo "✅ Integration tests complete"
 }
