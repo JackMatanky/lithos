@@ -165,34 +165,38 @@ impl NoteCreated {
     }
 }
 
-/// Note frontmatter validated domain event.
+/// Frontmatter validated domain event.
 ///
-/// Published when a Note's frontmatter has been validated against schema,
+/// Published when frontmatter has been validated against schema in the application layer,
 /// allowing other systems to react to validated metadata.
+///
+/// # Emission Point
+/// This event is emitted by the application layer after schema compliance validation,
+/// NOT by the domain layer. The domain layer only validates structural consistency.
 ///
 /// # Examples
 /// ```
-/// use lithos_domain::NoteFrontmatterValidated;
+/// use lithos_domain::FrontmatterValidated;
 /// use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();
-/// let event = NoteFrontmatterValidated::new(id, 5, 1234567890);
+/// let event = FrontmatterValidated::new(id, 5, 1234567890);
 /// assert_eq!(event.note_id, id);
 /// assert_eq!(event.field_count, 5);
 /// ```
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
-pub struct NoteFrontmatterValidated {
+pub struct FrontmatterValidated {
     /// Number of frontmatter fields validated.
     pub field_count: usize,
-    /// UUID v7 of the note.
+    /// UUID v7 of the note containing this frontmatter.
     pub note_id: uuid::Uuid,
     /// Unix timestamp when validation occurred.
     pub timestamp: i64,
 }
 
-impl NoteFrontmatterValidated {
-    /// Creates a new note frontmatter validated event.
+impl FrontmatterValidated {
+    /// Creates a new frontmatter validated event.
     #[inline]
     #[must_use]
     pub fn new(
@@ -201,8 +205,8 @@ impl NoteFrontmatterValidated {
         timestamp: i64,
     ) -> Self {
         Self {
-            note_id,
             field_count,
+            note_id,
             timestamp,
         }
     }

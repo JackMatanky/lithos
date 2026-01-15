@@ -88,6 +88,10 @@ mod tests {
             let position = 50;
 
             // WHEN creating a new task
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Setup phase - test fixture creation"
+            )]
             let result = Task::new(text, status, position).unwrap();
 
             // THEN it has the correct values

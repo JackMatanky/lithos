@@ -27,7 +27,7 @@ pub mod ports;
 // deep module path knowledge (e.g., `lithos_domain::Config` vs `lithos_domain::models::config::Config`).
 pub use errors::{ConfigError, DomainError};
 pub use events::{
-    ConfigUpdated, NoteCreated, NoteFrontmatterValidated, TemplateCreated,
+    ConfigUpdated, FrontmatterValidated, NoteCreated, TemplateCreated,
 };
 pub use models::{
     config::{

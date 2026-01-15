@@ -3,6 +3,7 @@
 //! This module defines the command and query trait interfaces for the Note aggregate.
 //! These are shells for future implementation by adapters.
 
+use async_trait::async_trait;
 use uuid::Uuid;
 
 use crate::{errors::DomainError, models::note::Note};
@@ -26,24 +27,25 @@ use crate::{errors::DomainError, models::note::Note};
 ///     }
 /// }
 /// ```
+#[async_trait]
 pub trait Command: Send + Sync {
     /// Creates a new note with the given vault-relative path.
     ///
     /// # Errors
     /// Returns `DomainError` if note creation fails validation or persistence.
-    fn create(&self, path: String) -> Result<Note, DomainError>;
+    async fn create(&self, path: String) -> Result<Note, DomainError>;
 
     /// Deletes a note by ID.
     ///
     /// # Errors
     /// Returns `DomainError` if note deletion fails.
-    fn delete(&self, id: Uuid) -> Result<(), DomainError>;
+    async fn delete(&self, id: Uuid) -> Result<(), DomainError>;
 
     /// Updates an existing note.
     ///
     /// # Errors
     /// Returns `DomainError` if note update fails validation or persistence.
-    fn update(&self, note: Note) -> Result<Note, DomainError>;
+    async fn update(&self, note: Note) -> Result<Note, DomainError>;
 }
 
 /// Query port for Note read operations.
@@ -64,24 +66,28 @@ pub trait Command: Send + Sync {
 ///     }
 /// }
 /// ```
+#[async_trait]
 pub trait Query: Send + Sync {
     /// Finds a note by its UUID v7 identifier.
     ///
     /// # Errors
     /// Returns `DomainError` if query execution fails.
-    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, DomainError>;
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, DomainError>;
 
     /// Finds a note by its vault-relative path.
     ///
     /// # Errors
     /// Returns `DomainError` if query execution fails.
-    fn find_by_path(&self, path: &str) -> Result<Option<Note>, DomainError>;
+    async fn find_by_path(
+        &self,
+        path: &str,
+    ) -> Result<Option<Note>, DomainError>;
 
     /// Lists all notes in the vault.
     ///
     /// # Errors
     /// Returns `DomainError` if query execution fails.
-    fn list_all(&self) -> Result<Vec<Note>, DomainError>;
+    async fn list_all(&self) -> Result<Vec<Note>, DomainError>;
 }
 
 #[cfg(test)]
