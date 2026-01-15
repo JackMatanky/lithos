@@ -390,8 +390,19 @@ impl Frontmatter {
     /// Returns a vector of alias strings. Supports both single strings and arrays.
     ///
     /// # Examples
-    /// ```ignore
+    /// ```
+    /// # use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// # use std::collections::HashMap;
+    /// # let mut fields = HashMap::new();
+    /// # fields.insert("aliases".to_string(), FieldValue::String("My Alias".to_string()));
+    /// # let frontmatter = Frontmatter::new(fields).unwrap();
+    /// # let global = GlobalConfig::default();
+    /// # let mut vault = VaultConfig::default();
+    /// # vault.filesystem.vault_path = "/vault".to_string();
+    /// # let config = Config::merge(&global, vault).unwrap();
     /// let aliases = frontmatter.aliases(&config);
+    /// assert_eq!(aliases, vec!["My Alias".to_string()]);
     /// ```
     #[inline]
     #[must_use]
@@ -405,8 +416,19 @@ impl Frontmatter {
     /// Extracts the `file_class` field from frontmatter using the configured key.
     ///
     /// # Examples
-    /// ```ignore
+    /// ```
+    /// # use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// # use std::collections::HashMap;
+    /// # let mut fields = HashMap::new();
+    /// # fields.insert("file_class".to_string(), FieldValue::String("note".to_string()));
+    /// # let frontmatter = Frontmatter::new(fields).unwrap();
+    /// # let global = GlobalConfig::default();
+    /// # let mut vault = VaultConfig::default();
+    /// # vault.filesystem.vault_path = "/vault".to_string();
+    /// # let config = Config::merge(&global, vault).unwrap();
     /// let file_class = frontmatter.file_class(&config);
+    /// assert_eq!(file_class, "note");
     /// ```
     #[inline]
     #[must_use]
@@ -630,8 +652,19 @@ impl Frontmatter {
     /// Extracts the title field from frontmatter using the configured key.
     ///
     /// # Examples
-    /// ```ignore
+    /// ```
+    /// # use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// # use std::collections::HashMap;
+    /// # let mut fields = HashMap::new();
+    /// # fields.insert("title".to_string(), FieldValue::String("My Note".to_string()));
+    /// # let frontmatter = Frontmatter::new(fields).unwrap();
+    /// # let global = GlobalConfig::default();
+    /// # let mut vault = VaultConfig::default();
+    /// # vault.filesystem.vault_path = "/vault".to_string();
+    /// # let config = Config::merge(&global, vault).unwrap();
     /// let title = frontmatter.title(&config);
+    /// assert_eq!(title, "My Note");
     /// ```
     #[inline]
     #[must_use]
