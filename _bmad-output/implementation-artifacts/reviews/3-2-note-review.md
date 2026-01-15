@@ -1,6 +1,6 @@
 # Test Quality Review: Story 3.2 - Note Bounded Context
 
-**Quality Score**: 78/100 (B - Acceptable)
+**Quality Score**: 72/100 (C - Remediation Required)
 **Review Date**: 2026-01-15
 **Review Scope**: directory (crates/domain/src/models/)
 **Reviewer**: Murat, Master Test Architect 🧪
@@ -11,9 +11,9 @@ Note: This review audits existing tests; it does not generate tests.
 
 ## Executive Summary
 
-**Overall Assessment**: Needs Improvement
+**Overall Assessment**: Remediation Required
 
-**Recommendation**: Request Changes
+**Recommendation**: Hard Block / Request Changes
 
 ### Key Strengths
 
@@ -27,12 +27,14 @@ Note: This review audits existing tests; it does not generate tests.
 ❌ **Missing Property-Based Tests**: Task 5 claims completion, but no `proptest!` exists for the `Note` aggregate.
 ❌ **Unused Factory Macros**: `test_builder!` is defined but not used to construct Note aggregates in tests.
 ❌ **Unused Virtual Time Macros**: `time_test!` is defined but not used for Note timestamp validation.
+❌ **Structural Deficiencies**: Missing unit test modules in `tag.rs`, `structure.rs`, and `task.rs`.
+❌ **Standard Violation**: Flat module structure in `note.rs` violates the mandatory "Module-Per-Function" pattern.
 
 ### Summary
 
-The tests for the Note Bounded Context demonstrate excellent naming conventions and core business logic validation. The use of verb-first behavioral naming makes the test intent very clear and aligns perfectly with the project standards.
+The tests for the Note Bounded Context exhibit a "surface-level" professional appearance due to good naming, but an adversarial audit reveals significant non-compliance with the **Lithos Test Guide**.
 
-However, there is a significant mismatch between the story's progress claims and the actual implementation. Specifically, Task 5 claims completion of property-based testing and macro integration, but these are currently absent from the `Note` aggregate tests. While the core logic is sound, these technical requirements must be fulfilled to meet the Definition of Done.
+There is a direct violation of **Standard Section 3 (Location)** where 50% of the domain files lack dedicated unit test modules, and **Standard Section 5 (Organization)** where `note.rs` uses a flat list instead of structured sub-modules. Furthermore, the developer has checked off tasks (Proptest, Factory Macros) that are entirely absent from the code. This is a quality and integrity failure that must be remediated before Epic 4 begins.
 
 ---
 
@@ -46,15 +48,16 @@ However, there is a significant mismatch between the story's progress claims and
 | Hard Waits (sleep, waitForTimeout)   | ✅ PASS                         | 0          | No async waits in domain logic. |
 | Determinism (no conditionals)        | ✅ PASS                         | 0          | Domain tests are pure and deterministic. |
 | Isolation (cleanup, no shared state) | ✅ PASS                         | 0          | Pure functions, no shared state. |
-| Fixture Patterns                     | ⚠️ WARN                         | 1          | Macros exist but are not used in Note tests. |
+| Fixture Patterns                     | ❌ FAIL                         | 1          | Macros exist but are not used; manual setup used instead. |
 | Data Factories                       | ❌ FAIL                         | 1          | `test_builder!` not applied to Note aggregate. |
 | Network-First Pattern                | ✅ PASS                         | 0          | N/A for domain layer. |
 | Explicit Assertions                  | ✅ PASS                         | 0          | Assertions are clear and specific. |
 | Test Length (≤300 lines)             | ✅ PASS                         | 0          | Files are well-organized. |
 | Test Duration (≤1.5 min)             | ✅ PASS                         | 0          | Millisecond execution time. |
-| Flakiness Patterns                   | ✅ PASS                         | 0          | None detected. |
+| Module Organization                  | ❌ FAIL                         | 1          | Flat structure in note.rs (Section 5 violation). |
+| Structural Location                  | ❌ FAIL                         | 1          | Missing test modules in subentities (Section 3 violation). |
 
-**Total Violations**: 0 Critical, 3 High, 1 Medium, 0 Low
+**Total Violations**: 0 Critical, 5 High, 1 Medium, 0 Low
 
 ---
 
@@ -63,136 +66,71 @@ However, there is a significant mismatch between the story's progress claims and
 ```
 Starting Score:          100
 Critical Violations:     -0
-High Violations:         -3 × 5 = -15
+High Violations:         -5 × 5 = -25
 Medium Violations:       -1 × 2 = -2
 Low Violations:          -0
 
 Bonus Points:
   Excellent BDD:         +5
-  Comprehensive Fixtures: +0
-  Data Factories:        +0
-  Network-First:         +0
   Perfect Isolation:     +5
   All Test IDs:          +5
                          --------
 Total Bonus:             +15
 
-Final Score:             78/100
-Grade:                   B
+Final Score:             72/100
+Grade:                   C
 ```
 
 ---
 
 ## Critical Issues (Must Fix)
 
-### 1. Missing Property-Based Testing for Note Aggregate
+### 1. Missing Property-Based Testing (Task Integrity)
 
 **Severity**: P1 (High)
-**Location**: `crates/domain/src/models/note.rs`
-**Criterion**: Flakiness Patterns / Data Factories
-**Knowledge Base**: [selective-testing.md](../../../testarch/knowledge/selective-testing.md)
+**Issue**: Task 5 requires `proptest` for edge cases. Marked `[x]` but absent. Security-critical path validation (R-004) is NOT fuzzed.
 
-**Issue Description**:
-Task 5 explicitly requires property-based testing with `proptest` for edge cases. While implemented for `Config` and `Template`, it is missing for the `Note` aggregate, which handles complex path and subentity validation.
-
-**Recommended Fix**:
-Implement a `proptest!` block in `note.rs` to fuzz path validation and note construction.
-
-### 2. Failure to use Factory Macros (test_builder!)
+### 2. Failure to use Factory Macros (Standard Section 7)
 
 **Severity**: P1 (High)
-**Location**: `crates/domain/src/models/note.rs`
-**Criterion**: Fixture Patterns
-**Knowledge Base**: [fixture-architecture.md](../../../testarch/knowledge/fixture-architecture.md)
+**Issue**: `test_builder!` is not applied. Tests use brittle manual construction for a 7-field aggregate.
 
-**Issue Description**:
-The story claims `FACTORY MACROS` usage is complete. However, the `Note` aggregate tests still use manual construction instead of the `test_builder!` macro defined in `lithos-test-utils`.
-
-**Recommended Fix**:
-Apply `test_builder!` to create a `NoteBuilder` for more robust test data setup.
-
-### 3. Failure to use Virtual Time Macros (time_test!)
+### 3. Structural Violation (Standard Section 3)
 
 **Severity**: P1 (High)
-**Location**: `crates/domain/src/models/note.rs`
-**Criterion**: Flakiness Patterns
-**Knowledge Base**: [timing-debugging.md](../../../testarch/knowledge/timing-debugging.md)
+**Issue**: `tag.rs`, `structure.rs`, and `task.rs` lack `mod tests`. Doc-tests alone are insufficient for domain logic validation.
 
-**Issue Description**:
-The story claims `VIRTUAL TIME` usage is complete for timestamp validation. However, `time_test!` is not used in the Note tests.
+### 4. Organization Violation (Standard Section 5)
 
----
-
-## Test File Analysis
-
-### File Metadata
-
-- **File Path**: `crates/domain/src/models/note.rs`
-- **File Size**: 588 lines
-- **Test Framework**: Rust Built-in
-- **Language**: Rust
-
-### Test Structure
-
-- **Describe Blocks**: N/A (Rust modules)
-- **Test Cases (it/test)**: 9 (Note aggregate) + ~15 across subentities
-- **Average Test Length**: ~15 lines per test
-- **Fixtures Used**: 3 (in `mod fixtures`)
-- **Data Factories Used**: 0
+**Severity**: P1 (High)
+**Issue**: `note.rs` uses a flat module structure. Must refactor to Module-Per-Function (e.g., `mod new`, `mod validate`).
 
 ---
 
 ## Next Steps
 
-### Immediate Actions (Before Merge)
+### Immediate Actions (Hard Block)
 
-1. **Implement proptests** - Add property-based testing for Note aggregate paths.
-   - Priority: P1
-   - Owner: Dev
-   - Estimated Effort: 2h
-
-2. **Integrate Macros** - Refactor tests to use `test_builder!` and `time_test!`.
-   - Priority: P1
-   - Owner: Dev
-   - Estimated Effort: 1h
-
-### Follow-up Actions (Future PRs)
-
-1. **Expand Subentity Coverage** - Add explicit unit tests for Link, Tag, and Task entities.
-   - Priority: P2
-   - Target: next_sprint
-
-### Re-Review Needed?
-
-⚠️ Re-review after critical fixes - request changes, then re-review
+1. **Refactor Organization**: Split `note.rs` tests into functional sub-modules.
+2. **Add Missing Modules**: Implement `mod tests` in all subentity files.
+3. **Implement Proptests**: Add fuzzing for path and tag validation.
+4. **Integrate Builders**: Use `test_builder!` for Note construction.
 
 ---
 
 ## Decision
 
-**Recommendation**: Request Changes
+**Recommendation**: Hard Block / Request Changes
 
 **Rationale**:
-Test quality is acceptable with 78/100 score, but critical technical requirements from the story (Proptest, Factory Macros, Virtual Time) are missing from the implementation. These must be addressed before the Note Bounded Context can be considered complete.
-
----
-
-## Appendix
-
-### Violation Summary by Location
-
-| Line | Severity | Criterion | Issue | Fix |
-| ---- | -------- | --------- | ----- | --- |
-| 305  | P1 | Data Factories | Missing proptests | Add proptest! block |
-| 388  | P1 | Fixture Patterns | Manual construction | Use test_builder! |
-| N/A  | P1 | Flakiness | No virtual time | Apply time_test! |
+The implemention violates multiple mandatory standards in the @docs/test_guide.md and contains misleading task status updates. Remediation is required to ensure long-term maintainability and security of the Note aggregate.
 
 ---
 
 ## Review Metadata
 
 **Generated By**: BMad TEA Agent (Test Architect)
-**Workflow**: testarch-test-review v4.0
-**Review ID**: test-review-note-20260115
-**Timestamp**: 2026-01-15 10:30:00
-**Version**: 1.0
+**Workflow**: testarch-test-review v4.1 (Adversarial Audit)
+**Review ID**: test-review-note-20260115-ADV
+**Timestamp**: 2026-01-16 11:00:00
+**Version**: 1.1
