@@ -40,41 +40,72 @@ map_package_name() {
 }
 
 #######################################
-# Build arguments for nextest unit tests.
+# Add nextest specific arguments.
 # Globals:
 #   usage_verbose
 #   usage_filter
-#   RUST_BACKTRACE (set by #MISE env directive)
+# Arguments:
+#   Reference to an array for arguments
+# Outputs:
+#   None
+#######################################
+add_nextest_args() {
+    local -n _nextest_ref_args=$1
+
+    _nextest_ref_args+=("--lib" "--bins")
+    _nextest_ref_args+=("--partition" "hash:1/1")
+
+    if [[ "${usage_verbose:-}" == "1" ]]; then
+        _nextest_ref_args+=("--verbose")
+    fi
+
+    if [[ -n "${usage_filter:-}" ]]; then
+        _nextest_ref_args+=("${usage_filter}")
+    fi
+}
+
+#######################################
+# Add package selection arguments.
 # Arguments:
 #   Reference to an array for arguments
 #   The resolved package name
 # Outputs:
-#   Writes test results to stdout
+#   None
+#######################################
+add_package_args() {
+    local -n _pkg_ref_args=$1
+    local package_name=$2
+
+    if [[ -n "${package_name}" ]]; then
+        _pkg_ref_args+=("--package" "${package_name}")
+    else
+        _pkg_ref_args+=("--workspace")
+    fi
+}
+
+#######################################
+# Build arguments for nextest unit tests.
+# Globals:
+#   RUST_BACKTRACE (set by #MISE env directive)
+# Arguments:
+#   Reference to an array for arguments
+#   The resolved package name
+#   The test runner type ("nextest" or "doc")
+# Outputs:
+#   None
 #######################################
 build_test_arg() {
-    local -n ref_args=$1
+    local -n _main_ref_args=$1
     local package_name=$2
     local test_type=$3
 
     # Core test arguments
     if [[ "${test_type}" == "nextest" ]]; then
-        ref_args+=("--lib" "--bins")
-        if [[ "${usage_verbose:-}" == "1" ]]; then
-            ref_args+=("--verbose")
-        fi
-        # Nextest specific
-        ref_args+=("--partition" "hash:1/1")
-        if [[ -n "${usage_filter:-}" ]]; then
-            ref_args+=("${usage_filter}")
-        fi
+        add_nextest_args _main_ref_args
     fi
 
     # Package selection (Common)
-    if [[ -n "${package_name}" ]]; then
-        ref_args+=("--package" "${package_name}")
-    else
-        ref_args+=("--workspace")
-    fi
+    add_package_args _main_ref_args "${package_name}"
 }
 
 #######################################
