@@ -882,7 +882,7 @@ So that template structure and syntax are properly validated at the domain level
 **When** I validate the design
 **Then** Template supports modular composition and variable definitions
 
-### Story 3.5: Review Epic 3 Test Suite for Efficiency
+### Story 3.5: Review Epic 3 Test Suite
 
 As a developer maintaining the codebase,
 I want an efficient test suite for Epic 3 domain models,
