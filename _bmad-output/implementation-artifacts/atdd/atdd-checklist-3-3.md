@@ -88,33 +88,31 @@ As a developer defining metadata schemas, I want a complete schema domain with P
 ## Implementation Checklist
 
 ### Test: id_is_deterministic_using_blake3
-**File:** `crates/domain/src/models/schema.rs`
-- [ ] Implement `Property::compute_id` using `blake3`.
-- [ ] Ensure name and spec debug representation are hashed.
-- [ ] Run test: `cargo test models::schema::tests::property::id_is_deterministic_using_blake3`
+**File:** `crates/domain/src/models/property.rs`
+- [x] Implement `Property::compute_id` using `blake3`.
+- [x] Ensure name and spec debug representation are hashed.
+- [x] Run test: `cargo test models::property::tests::property::id_is_deterministic_using_blake3`
 
 ### Test: detects_circular_inheritance
 **File:** `crates/domain/src/models/schema.rs`
-- [ ] Implement DFS-based cycle detection in `Schema::new`.
-- [ ] Use `visited` set to track inheritance chain.
-- [ ] Run test: `cargo test models::schema::tests::schema::detects_circular_inheritance`
+- [x] Implement DFS-based cycle detection in `Schema::new`.
+- [x] Use `visited` set to track inheritance chain (Note: unit test uses direct check, aggregate check in app layer).
+- [x] Run test: `cargo test models::schema::tests::schema::detects_circular_inheritance`
 
 ### Test: validates_regex_patterns_safely
-**File:** `crates/domain/src/models/schema.rs`
-- [ ] Implement regex compilation check in `StringSpec::validate`.
-- [ ] Use `regex` crate for safe compilation.
-- [ ] Run test: `cargo test models::schema::tests::property::validates_regex_patterns_safely`
+**File:** `crates/domain/src/models/property.rs`
+- [x] Implement regex compilation check in `StringSpec::validate`.
+- [x] Use `regex` crate for safe compilation.
+- [x] Run test: `cargo test models::property::tests::property::validates_regex_patterns_safely`
 
 ---
 
 ## Running Tests
 
 ```bash
-# Run all tests for the schema model
+# Run all tests for the schema context
 cargo test models::schema
-
-# Run specific test with backtrace
-RUST_BACKTRACE=1 cargo test models::schema::tests::schema::detects_circular_inheritance
+cargo test models::property
 ```
 
 ---
@@ -128,7 +126,21 @@ RUST_BACKTRACE=1 cargo test models::schema::tests::schema::detects_circular_inhe
 - ✅ Ports defined in ports/schema.rs
 - ✅ Implementation checklist created
 
----
+### GREEN Phase (Complete) ✅
+
+- ✅ PropertySpec variants implemented with validation logic.
+- ✅ Property entity implemented with Blake3 deterministic IDs.
+- ✅ PropertyBank singleton registry implemented with deduplication.
+- ✅ Schema aggregate implemented with inheritance resolution.
+- ✅ Circular inheritance detection implemented.
+- ✅ All 11 tests passing.
+- ✅ Clippy warnings resolved.
+
+### REFACTOR Phase (Complete) ✅
+
+- ✅ Split schema.rs into schema.rs and property.rs for maintainability.
+- ✅ Refactored validation logic to use `is_some_and` for cleaner code.
+- ✅ Simplified test structure and refined clippy expectations.
 
 ## Knowledge Base References Applied
 

@@ -219,6 +219,15 @@ pub enum DomainError {
     #[error("Invalid schema name: {0}")]
     InvalidSchemaName(String),
 
+    /// Invalid step value.
+    #[error("Invalid step value: {value} (step: {step})")]
+    InvalidStepValue {
+        /// Provided value.
+        value: f64,
+        /// Step constraint.
+        step: f64,
+    },
+
     /// Invalid tag.
     #[error("Invalid tag: {0}")]
     InvalidTag(String),
@@ -248,6 +257,21 @@ pub enum DomainError {
     #[error("Missing required field: {0}")]
     MissingField(String),
 
+    /// Number out of range.
+    #[error("Number out of range: {value} (min: {min:?}, max: {max:?})")]
+    NumberOutOfRange {
+        /// Provided value.
+        value: f64,
+        /// Minimum allowed value.
+        min: Option<f64>,
+        /// Maximum allowed value.
+        max: Option<f64>,
+    },
+
+    /// Parent schema not found.
+    #[error("Parent schema not found: {0}")]
+    ParentSchemaNotFound(String),
+
     /// Parse error.
     #[error("Parse error: {0}")]
     Parse(String),
@@ -256,13 +280,39 @@ pub enum DomainError {
     #[error("Property bank error: {0}")]
     PropertyBank(String),
 
+    /// Property name too long.
+    #[error("Property name too long: {0} (max 64)")]
+    PropertyNameTooLong(usize),
+
     /// Property not found.
     #[error("Property not found: {0}")]
     PropertyNotFound(String),
 
+    /// Schema name too long.
+    #[error("Schema name too long: {0} (max 64)")]
+    SchemaNameTooLong(usize),
+
     /// Serialization error.
     #[error("Serialization error: {0}")]
     Serialization(String),
+
+    /// String too long.
+    #[error("String too long: {actual} (max: {max})")]
+    StringTooLong {
+        /// Maximum length allowed.
+        max: usize,
+        /// Actual length provided.
+        actual: usize,
+    },
+
+    /// String too short.
+    #[error("String too short: {actual} (min: {min})")]
+    StringTooShort {
+        /// Minimum length required.
+        min: usize,
+        /// Actual length provided.
+        actual: usize,
+    },
 
     /// Template content too large.
     #[error("Template content too large: {0} bytes (max: {1})")]

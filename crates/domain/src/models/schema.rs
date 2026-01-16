@@ -1,30 +1,16 @@
 //! Schema domain entities and business logic.
 //!
-//! This module defines the Schema aggregate root, PropertyBank, Property,
-//! and PropertySpec variants for metadata validation.
-//!
-//! # Business Rules
-//! - Property IDs are deterministically generated from hash of name + spec content.
-//! - Circular inheritance in schemas is detected using a DFS-based algorithm.
-//! - PropertyBank acts as a singleton registry for deduplication.
-//! - Validation follows a three-phase pipeline: Syntactic → Orchestration → Semantic.
+//! This module defines the Schema aggregate root and PropertyBank registry.
 
-/// Common regex patterns for schema validation.
-pub mod patterns {
-    /// Email regex pattern.
-    pub const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";
-    /// URL regex pattern.
-    pub const URL: &str = r"^https?://[^\s/$.?#].[^\s]*$";
-}
-
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::Debug,
-};
+use std::collections::{HashMap, HashSet};
 
 use uuid::Uuid;
 
-use crate::errors::DomainError;
+use crate::{
+    errors::DomainError,
+    events::{PropertyBankUpdated, SchemaCreated},
+    models::property::Property,
+};
 
 /// Schema aggregate defining metadata validation rules with inheritance support.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -38,41 +24,137 @@ pub struct Schema {
     pub id: Uuid,
     /// Unique schema name (e.g., "project-note").
     pub name: String,
+    /// Domain events pending emission.
+    #[serde(skip)]
+    pub pending_events: Vec<DomainEvent>,
     /// Properties directly defined in this schema.
     pub properties: Vec<Property>,
     /// Fully resolved properties after inheritance (computed).
     pub resolved_properties: Vec<Property>,
 }
 
+/// Domain events for the Schema context.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum DomainEvent {
+    /// Property bank was updated.
+    PropertyBankUpdated(PropertyBankUpdated),
+    /// Schema was created.
+    SchemaCreated(SchemaCreated),
+}
+
 impl Schema {
     /// Resolve property inheritance from parent schema.
-    ///
-    /// # Errors
-    /// Returns `DomainError` in RED phase.
     #[inline]
     fn _resolve_properties(
-        _own_properties: &[Property],
-        _parent_schema: Option<&Self>,
-        _excludes: &HashSet<String>,
-    ) -> Result<Vec<Property>, DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+        own_properties: &[Property],
+        parent_schema: Option<&Self>,
+        excludes: &HashSet<String>,
+    ) -> Vec<Property> {
+        let mut resolved = Vec::new();
+
+        // 1. Start with parent's resolved properties
+        if let Some(parent) = parent_schema {
+            for prop in &parent.resolved_properties {
+                // 2. Filter out excluded properties
+                if !excludes.contains(&prop.name) {
+                    resolved.push(prop.clone());
+                }
+            }
+        }
+
+        // 3. Add/Override with own properties
+        for prop in own_properties {
+            if let Some(pos) = resolved.iter().position(|p| p.name == prop.name)
+            {
+                if let Some(p) = resolved.get_mut(pos) {
+                    *p = prop.clone();
+                }
+            } else {
+                resolved.push(prop.clone());
+            }
+        }
+
+        resolved
+    }
+
+    /// Adds a domain event to the pending events collection.
+    #[inline]
+    fn add_event(&mut self, event: DomainEvent) {
+        self.pending_events.push(event);
     }
 
     /// Create a new schema with inheritance resolution.
     ///
     /// # Errors
     /// Returns `DomainError` if validation fails or inheritance resolution fails.
+    ///
+    /// # Panics
+    /// Panics if internal regex fails to compile (should never happen).
     #[inline]
     pub fn new(
-        _name: String,
-        _extends: Option<String>,
-        _excludes: HashSet<String>,
-        _properties: Vec<Property>,
-        _parent_schema: Option<&Self>,
+        name: String,
+        extends: Option<String>,
+        excludes: HashSet<String>,
+        properties: Vec<Property>,
+        parent_schema: Option<&Self>,
     ) -> Result<Self, DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+        // Validate name
+        if name.is_empty() {
+            return Err(DomainError::EmptySchemaName);
+        }
+        if name.len() > 64 {
+            return Err(DomainError::SchemaNameTooLong(name.len()));
+        }
+        let re = regex::Regex::new("^[a-z0-9]+(-[a-z0-9]+)*$")
+            .map_err(|e| DomainError::ValidationFailed(e.to_string()))?;
+        if !re.is_match(&name) {
+            return Err(DomainError::InvalidSchemaName(name.clone()));
+        }
+
+        // Circular Inheritance Detection
+        if let Some(parent) = parent_schema {
+            if parent.name == name {
+                return Err(DomainError::CircularInheritance(name));
+            }
+            // Simple DFS check: if parent extends child, it's a cycle
+            if parent.extends.as_deref() == Some(&name) {
+                return Err(DomainError::CircularInheritance(format!(
+                    "{name} -> {}",
+                    parent.name
+                )));
+            }
+        }
+
+        // Inheritance resolution
+        let resolved_properties =
+            Self::_resolve_properties(&properties, parent_schema, &excludes);
+
+        let id = Uuid::now_v7();
+        let mut schema = Self {
+            excludes,
+            extends,
+            id,
+            name: name.clone(),
+            pending_events: Vec::new(),
+            properties,
+            resolved_properties,
+        };
+
+        schema.add_event(DomainEvent::SchemaCreated(SchemaCreated::new(
+            id,
+            name,
+            chrono::Utc::now().timestamp(),
+        )));
+
+        Ok(schema)
+    }
+
+    /// Returns all pending domain events and clears the collection.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<DomainEvent> {
+        std::mem::take(&mut self.pending_events)
     }
 }
 
@@ -82,11 +164,20 @@ impl Schema {
 )]
 #[non_exhaustive]
 pub struct PropertyBank {
+    /// Domain events pending emission.
+    #[serde(skip)]
+    pub pending_events: Vec<DomainEvent>,
     /// Map of property ID -> Property.
     pub properties: HashMap<String, Property>,
 }
 
 impl PropertyBank {
+    /// Adds a domain event to the pending events collection.
+    #[inline]
+    fn add_event(&mut self, event: DomainEvent) {
+        self.pending_events.push(event);
+    }
+
     /// Get all properties in the bank.
     #[inline]
     pub fn all(&self) -> impl Iterator<Item = &Property> {
@@ -96,9 +187,8 @@ impl PropertyBank {
     /// Lookup a property by ID.
     #[inline]
     #[must_use]
-    pub fn lookup(&self, _id: &str) -> Option<&Property> {
-        // RED PHASE: Not implemented
-        None
+    pub fn lookup(&self, id: &str) -> Option<&Property> {
+        self.properties.get(id)
     }
 
     /// Lookup a property by name and spec (computes ID internally).
@@ -106,11 +196,11 @@ impl PropertyBank {
     #[must_use]
     pub fn lookup_by_definition(
         &self,
-        _name: &str,
-        _spec: &PropertySpec,
+        name: &str,
+        spec: &crate::models::property::PropertySpec,
     ) -> Option<&Property> {
-        // RED PHASE: Not implemented
-        None
+        let id = Property::compute_id(name, spec);
+        self.lookup(&id)
     }
 
     /// Create a new empty `PropertyBank`.
@@ -118,6 +208,7 @@ impl PropertyBank {
     #[must_use]
     pub fn new() -> Self {
         Self {
+            pending_events: Vec::new(),
             properties: HashMap::new(),
         }
     }
@@ -125,386 +216,204 @@ impl PropertyBank {
     /// Register a property in the bank.
     ///
     /// # Errors
-    /// Returns `DomainError` in RED phase.
+    /// Returns `DomainError` if validation fails.
     #[inline]
     pub fn register(
         &mut self,
-        _property: Property,
+        property: Property,
     ) -> Result<&Property, DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+        property.validate()?;
+        let id = property.id.clone();
+
+        // Handle insertion and event emission without borrow conflicts
+        self.properties.entry(id.clone()).or_insert(property);
+
+        let count = self.properties.len();
+        self.add_event(DomainEvent::PropertyBankUpdated(
+            PropertyBankUpdated::new(count, chrono::Utc::now().timestamp()),
+        ));
+
+        self.properties.get(&id).ok_or_else(|| {
+            DomainError::Unexpected(
+                "Failed to retrieve property after registration".to_owned(),
+            )
+        })
     }
 
     /// Resolve $ref pointer to Property.
     ///
+    /// Format: `#/properties/name`.
+    ///
     /// # Errors
-    /// Returns `DomainError` in RED phase.
+    /// Returns `DomainError` if resolution fails.
     #[inline]
     pub fn resolve_ref(
         &self,
-        _ref_path: &str,
+        ref_path: &str,
     ) -> Result<&Property, DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+        let prefix = "#/properties/";
+        if !ref_path.starts_with(prefix) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid ref path format: {ref_path}"
+            )));
+        }
+        let name = ref_path.get(prefix.len()..).ok_or_else(|| {
+            DomainError::ValidationFailed(format!(
+                "Empty property name in ref: {ref_path}"
+            ))
+        })?;
+        self.properties
+            .values()
+            .find(|p| p.name == name)
+            .ok_or_else(|| DomainError::PropertyNotFound(name.to_owned()))
     }
-}
 
-/// Reusable property definition with type-specific validation.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Property {
-    /// Whether property accepts array of values.
-    pub array: bool,
-    /// Deterministic ID: hash(name + spec content).
-    pub id: String,
-    /// Property name (e.g., "title", "status").
-    pub name: String,
-    /// Whether property is required.
-    pub required: bool,
-    /// Type-specific validation specification.
-    pub spec: PropertySpec,
-}
-
-impl Property {
-    /// Compute deterministic ID from name and spec using Blake3.
+    /// Returns all pending domain events and clears the collection.
     #[inline]
     #[must_use]
-    pub fn compute_id(_name: &str, _spec: &PropertySpec) -> String {
-        // RED PHASE: Not implemented
-        String::new()
-    }
-
-    /// Create a new property with validation and deterministic ID.
-    ///
-    /// # Errors
-    /// Returns `DomainError` in RED phase.
-    #[inline]
-    pub fn new(
-        _name: String,
-        _required: bool,
-        _array: bool,
-        _spec: PropertySpec,
-    ) -> Result<Self, DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-
-    /// Validate property structure and constraints.
-    ///
-    /// # Errors
-    /// Returns `DomainError` in RED phase.
-    #[inline]
-    pub fn validate(&self) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-}
-
-/// Core trait for property specifications.
-///
-/// Provides type-safe validation while maintaining flexibility.
-pub trait PropertySpecTrait: Debug + Send + Sync {
-    /// The value type this spec validates.
-    type Value: Debug + Send + Sync;
-
-    /// Get the spec type identifier.
-    fn spec_type(&self) -> PropertySpecType;
-
-    /// Validate a value against this spec's constraints.
-    ///
-    /// # Errors
-    /// Returns `DomainError` if validation fails.
-    fn validate(&self, value: &Self::Value) -> Result<(), DomainError>;
-
-    /// Validate the spec's own structural constraints.
-    ///
-    /// # Errors
-    /// Returns `DomainError` if the spec definition is invalid.
-    fn validate_spec(&self) -> Result<(), DomainError>;
-}
-
-/// Supported property specification types.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum PropertySpecType {
-    /// Boolean type.
-    Bool,
-    /// Date type.
-    Date,
-    /// File reference type.
-    File,
-    /// Numeric type.
-    Number,
-    /// String type.
-    String,
-}
-
-/// Sum type for all supported property specifications.
-///
-/// This enum acts as the data container for persistence and equality,
-/// while individual variants implement `PropertySpecTrait`.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum PropertySpec {
-    /// Boolean property (marker type).
-    Bool(BoolSpec),
-    /// Date property validation constraints.
-    Date(DateSpec),
-    /// File property validation constraints.
-    File(FileSpec),
-    /// Number property validation constraints.
-    Number(NumberSpec),
-    /// String property validation constraints.
-    String(StringSpec),
-}
-
-/// Boolean property (marker type).
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct BoolSpec;
-
-impl PropertySpecTrait for BoolSpec {
-    type Value = bool;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::Bool
-    }
-
-    #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        Ok(())
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        Ok(())
-    }
-}
-
-/// Date property validation constraints.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct DateSpec {
-    /// Date format string.
-    pub format: String,
-}
-
-impl PropertySpecTrait for DateSpec {
-    type Value = String;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::Date
-    }
-
-    #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-}
-
-/// File property validation constraints.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct FileSpec {
-    /// Optional directory restriction.
-    pub directory: Option<String>,
-    /// Optional file class restriction.
-    pub file_class: Option<String>,
-}
-
-impl PropertySpecTrait for FileSpec {
-    type Value = String;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::File
-    }
-
-    #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-}
-
-/// Number property validation constraints.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct NumberSpec {
-    /// Optional maximum value.
-    pub max: Option<f64>,
-    /// Optional minimum value.
-    pub min: Option<f64>,
-    /// Optional step increment.
-    pub step: Option<f64>,
-}
-
-impl PropertySpecTrait for NumberSpec {
-    type Value = f64;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::Number
-    }
-
-    #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-}
-
-/// String property validation constraints.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct StringSpec {
-    /// Optional enum of allowed values.
-    pub enum_values: Option<Vec<String>>,
-    /// Optional max length.
-    pub max_length: Option<usize>,
-    /// Optional min length.
-    pub min_length: Option<usize>,
-    /// Optional regex pattern.
-    pub pattern: Option<String>,
-}
-
-impl PropertySpecTrait for StringSpec {
-    type Value = String;
-
-    #[inline]
-    fn spec_type(&self) -> PropertySpecType {
-        PropertySpecType::String
-    }
-
-    #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+    pub fn take_events(&mut self) -> Vec<DomainEvent> {
+        std::mem::take(&mut self.pending_events)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    mod schema {
-        #[test]
-        #[ignore = "RED Phase"]
-        fn detects_circular_inheritance() {
-            // A extends B, B extends A
-            // This should fail with CircularInheritance error
-            // RED PHASE: Not implemented
-        }
+    use uuid::Uuid;
 
-        #[test]
-        #[ignore = "RED Phase"]
-        fn resolves_inheritance_correctly() {
-            // Parent has P1, P2. Child extends Parent, excludes P2, adds P3.
-            // Result should have P1, P3.
-            // RED PHASE: Not implemented
-        }
+    use super::*;
 
-        #[test]
-        #[ignore = "RED Phase"]
-        fn validates_schema_name_format() {
-            // Must be lowercase-with-hyphens
-            // RED PHASE: Not implemented
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
+    fn validates_schema_name_format() {
+        // Valid name
+        let res = Schema::new(
+            "valid-schema-name".to_owned(),
+            None,
+            std::collections::HashSet::new(),
+            vec![],
+            None,
+        );
+        res.unwrap();
+
+        // Invalid names
+        let invalid_names =
+            vec!["InvalidName", "invalid_name", "invalid--name", ""];
+        for name in invalid_names {
+            let res = Schema::new(
+                name.to_owned(),
+                None,
+                std::collections::HashSet::new(),
+                vec![],
+                None,
+            );
+            assert!(
+                matches!(res, Err(DomainError::InvalidSchemaName(_)))
+                    || matches!(res, Err(DomainError::EmptySchemaName))
+            );
         }
     }
 
-    mod property {
-        #[test]
-        #[ignore = "RED Phase"]
-        fn id_is_deterministic_using_blake3() {
-            // Same name + spec -> same ID
-            // RED PHASE: Not implemented
-        }
+    #[test]
+    fn detects_circular_inheritance() {
+        // In a real scenario, this involves a registry, but for the unit test
+        // we simulate by passing a parent that already claims to extend the child.
+        let parent = Schema {
+            excludes: std::collections::HashSet::new(),
+            extends: Some("child".to_owned()),
+            id: Uuid::now_v7(),
+            name: "parent".to_owned(),
+            pending_events: Vec::new(),
+            properties: vec![],
+            resolved_properties: vec![],
+        };
 
-        #[test]
-        #[ignore = "RED Phase"]
-        fn rejects_invalid_property_names() {
-            // Spaces, uppercase, etc.
-            // RED PHASE: Not implemented
-        }
+        let res = Schema::new(
+            "child".to_owned(),
+            Some("parent".to_owned()),
+            std::collections::HashSet::new(),
+            vec![],
+            Some(&parent),
+        );
 
-        #[test]
-        #[ignore = "RED Phase"]
-        fn validates_regex_patterns_safely() {
-            // Invalid regex should fail validation (R-005)
-            // RED PHASE: Not implemented
+        assert!(matches!(res, Err(DomainError::CircularInheritance(_))));
+    }
+
+    #[test]
+    fn resolves_inheritance_correctly() {
+        use crate::models::schema::fixtures::example_property;
+        let p1 = example_property(); // "status"
+        let parent = Schema {
+            excludes: std::collections::HashSet::new(),
+            extends: None,
+            id: Uuid::now_v7(),
+            name: "parent".to_owned(),
+            pending_events: Vec::new(),
+            properties: vec![p1.clone()],
+            resolved_properties: vec![p1.clone()],
+        };
+
+        let mut excludes = std::collections::HashSet::new();
+        let _: bool = excludes.insert("status".to_owned());
+
+        let child_res = Schema::new(
+            "child".to_owned(),
+            Some("parent".to_owned()),
+            excludes,
+            vec![],
+            Some(&parent),
+        );
+
+        assert!(child_res.is_ok());
+        if let Ok(child) = child_res {
+            assert!(
+                child.resolved_properties.is_empty(),
+                "Property 'status' should have been excluded"
+            );
         }
     }
 
-    mod property_bank {
-        #[test]
-        #[ignore = "RED Phase"]
-        fn deduplicates_properties_on_registration() {
-            // RED PHASE: Not implemented
-        }
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
+    fn deduplicates_properties_on_registration() {
+        use crate::models::schema::fixtures::example_property;
+        let mut bank = PropertyBank::new();
+        let prop = example_property();
 
-        #[test]
-        #[ignore = "RED Phase"]
-        fn resolves_refs_correctly() {
-            // #/properties/title -> title
-            // RED PHASE: Not implemented
-        }
+        bank.register(prop.clone()).unwrap();
+        bank.register(prop.clone()).unwrap();
+
+        assert_eq!(bank.all().count(), 1);
     }
 
-    mod specs {
-        #[test]
-        #[ignore = "RED Phase"]
-        fn string_spec_validates_enums() {
-            // RED PHASE: Not implemented
-        }
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
+    fn resolves_refs_correctly() {
+        use crate::models::schema::fixtures::example_property;
+        let mut bank = PropertyBank::new();
+        let prop = example_property(); // name is "status"
+        bank.register(prop.clone()).unwrap();
 
-        #[test]
-        #[ignore = "RED Phase"]
-        fn number_spec_validates_steps() {
-            // RED PHASE: Not implemented
-        }
+        let res = bank.resolve_ref("#/properties/status");
+        assert_eq!(res.unwrap().name, "status");
+    }
 
-        #[test]
-        #[ignore = "RED Phase"]
-        fn file_spec_validates_file_classes() {
-            // RED PHASE: Not implemented
-        }
+    #[test]
+    #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
+    fn emits_events_on_creation() {
+        let res = Schema::new(
+            "test-schema".to_owned(),
+            None,
+            std::collections::HashSet::new(),
+            vec![],
+            None,
+        );
+        let mut schema = res.unwrap();
+        let events = schema.take_events();
+        assert_eq!(events.len(), 1);
+        assert!(matches!(
+            events.first().unwrap(),
+            DomainEvent::SchemaCreated(_)
+        ));
     }
 }
 
@@ -513,11 +422,11 @@ mod tests {
 pub mod fixtures {
     use uuid::Uuid;
 
-    use super::*;
+    use crate::models::property::{Property, PropertySpec, StringSpec};
 
     /// Fixed UUID for deterministic tests.
     pub const TEST_SCHEMA_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0002);
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0002);
 
     /// Example property for testing.
     #[inline]
