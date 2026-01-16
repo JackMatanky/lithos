@@ -2,7 +2,10 @@
 //!
 //! This module defines the Schema aggregate root and PropertyBank registry.
 
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::{LazyLock, Mutex},
+};
 
 use uuid::Uuid;
 
@@ -12,10 +15,16 @@ use crate::{
     models::property::Property,
 };
 
+/// Global singleton registry for Property definitions.
+pub static PROPERTY_BANK: LazyLock<Mutex<PropertyBank>> =
+    LazyLock::new(|| Mutex::new(PropertyBank::new()));
+
 /// Schema aggregate defining metadata validation rules with inheritance support.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Schema {
+    /// Ordered list of all ancestor schema names (inheritance chain).
+    pub ancestry: Vec<String>,
     /// Property names to exclude from parent schema.
     pub excludes: HashSet<String>,
     /// Optional parent schema name for inheritance.
@@ -93,6 +102,7 @@ impl Schema {
     /// Panics if internal regex fails to compile (should never happen).
     #[inline]
     pub fn new(
+        id: Uuid,
         name: String,
         extends: Option<String>,
         excludes: HashSet<String>,
@@ -112,26 +122,27 @@ impl Schema {
             return Err(DomainError::InvalidSchemaName(name.clone()));
         }
 
-        // Circular Inheritance Detection
+        let mut ancestry = Vec::new();
+
+        // Circular Inheritance Detection using Ancestry Chain
         if let Some(parent) = parent_schema {
-            if parent.name == name {
-                return Err(DomainError::CircularInheritance(name));
-            }
-            // Simple DFS check: if parent extends child, it's a cycle
-            if parent.extends.as_deref() == Some(&name) {
+            if parent.name == name || parent.ancestry.contains(&name) {
                 return Err(DomainError::CircularInheritance(format!(
                     "{name} -> {}",
                     parent.name
                 )));
             }
+            // Build ancestry chain: [parent, grandparent, ...]
+            ancestry.push(parent.name.clone());
+            ancestry.extend(parent.ancestry.clone());
         }
 
         // Inheritance resolution
         let resolved_properties =
             Self::_resolve_properties(&properties, parent_schema, &excludes);
 
-        let id = Uuid::now_v7();
         let mut schema = Self {
+            ancestry,
             excludes,
             extends,
             id,
@@ -199,7 +210,7 @@ impl PropertyBank {
         name: &str,
         spec: &crate::models::property::PropertySpec,
     ) -> Option<&Property> {
-        let id = Property::compute_id(name, spec);
+        let id = Property::compute_id(name, spec).ok()?;
         self.lookup(&id)
     }
 
@@ -277,16 +288,20 @@ impl PropertyBank {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Unit tests use unwrap/expect for simplicity"
+)]
 mod tests {
     use uuid::Uuid;
 
     use super::*;
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
     fn validates_schema_name_format() {
         // Valid name
         let res = Schema::new(
+            Uuid::now_v7(),
             "valid-schema-name".to_owned(),
             None,
             std::collections::HashSet::new(),
@@ -300,6 +315,7 @@ mod tests {
             vec!["InvalidName", "invalid_name", "invalid--name", ""];
         for name in invalid_names {
             let res = Schema::new(
+                Uuid::now_v7(),
                 name.to_owned(),
                 None,
                 std::collections::HashSet::new(),
@@ -318,6 +334,7 @@ mod tests {
         // In a real scenario, this involves a registry, but for the unit test
         // we simulate by passing a parent that already claims to extend the child.
         let parent = Schema {
+            ancestry: vec!["child".to_owned()],
             excludes: std::collections::HashSet::new(),
             extends: Some("child".to_owned()),
             id: Uuid::now_v7(),
@@ -328,6 +345,7 @@ mod tests {
         };
 
         let res = Schema::new(
+            Uuid::now_v7(),
             "child".to_owned(),
             Some("parent".to_owned()),
             std::collections::HashSet::new(),
@@ -343,6 +361,7 @@ mod tests {
         use crate::models::schema::fixtures::example_property;
         let p1 = example_property(); // "status"
         let parent = Schema {
+            ancestry: Vec::new(),
             excludes: std::collections::HashSet::new(),
             extends: None,
             id: Uuid::now_v7(),
@@ -355,25 +374,23 @@ mod tests {
         let mut excludes = std::collections::HashSet::new();
         let _: bool = excludes.insert("status".to_owned());
 
-        let child_res = Schema::new(
+        let child = Schema::new(
+            Uuid::now_v7(),
             "child".to_owned(),
             Some("parent".to_owned()),
             excludes,
             vec![],
             Some(&parent),
-        );
+        )
+        .unwrap();
 
-        assert!(child_res.is_ok());
-        if let Ok(child) = child_res {
-            assert!(
-                child.resolved_properties.is_empty(),
-                "Property 'status' should have been excluded"
-            );
-        }
+        assert!(
+            child.resolved_properties.is_empty(),
+            "Property 'status' should have been excluded"
+        );
     }
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
     fn deduplicates_properties_on_registration() {
         use crate::models::schema::fixtures::example_property;
         let mut bank = PropertyBank::new();
@@ -386,28 +403,27 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
     fn resolves_refs_correctly() {
         use crate::models::schema::fixtures::example_property;
         let mut bank = PropertyBank::new();
         let prop = example_property(); // name is "status"
         bank.register(prop.clone()).unwrap();
 
-        let res = bank.resolve_ref("#/properties/status");
-        assert_eq!(res.unwrap().name, "status");
+        let p = bank.resolve_ref("#/properties/status").unwrap();
+        assert_eq!(p.name, "status");
     }
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
     fn emits_events_on_creation() {
-        let res = Schema::new(
+        let mut schema = Schema::new(
+            Uuid::now_v7(),
             "test-schema".to_owned(),
             None,
             std::collections::HashSet::new(),
             vec![],
             None,
-        );
-        let mut schema = res.unwrap();
+        )
+        .unwrap();
         let events = schema.take_events();
         assert_eq!(events.len(), 1);
         assert!(matches!(
@@ -419,6 +435,10 @@ mod tests {
 
 /// Test fixtures for deterministic schema data.
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test fixtures use expect for deterministic setup"
+)]
 pub mod fixtures {
     use uuid::Uuid;
 
@@ -429,15 +449,20 @@ pub mod fixtures {
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0002);
 
     /// Example property for testing.
+    ///
+    /// # Panics
+    /// Panics if ID computation fails.
     #[inline]
     #[must_use]
     pub fn example_property() -> Property {
+        let spec = PropertySpec::String(StringSpec::default());
+        let id = Property::compute_id("status", &spec).expect("Valid ID");
         Property {
             array: false,
-            id: "test-id".to_owned(),
+            id,
             name: "status".to_owned(),
             required: true,
-            spec: PropertySpec::String(StringSpec::default()),
+            spec,
         }
     }
 }

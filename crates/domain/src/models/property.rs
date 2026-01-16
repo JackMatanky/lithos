@@ -11,7 +11,7 @@
 /// Common regex patterns for property validation.
 pub mod patterns {
     /// Email regex pattern.
-    pub const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";
+    pub const EMAIL: &str = r"^[^@]+@[@]+\.[^@]+$";
     /// URL regex pattern.
     pub const URL: &str = r"^https?://[^\s/$.?#].[^\s]*$";
 }
@@ -38,31 +38,50 @@ pub struct Property {
 
 impl Property {
     /// Compute deterministic ID from name and spec using Blake3.
-    #[inline]
-    #[must_use]
-    pub fn compute_id(name: &str, spec: &PropertySpec) -> String {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(name.as_bytes());
-        // Use Debug representation for spec content to ensure determinism
-        let spec_repr = format!("{spec:?}");
-        hasher.update(spec_repr.as_bytes());
-        let hash = hasher.finalize();
-        let hex = hash.to_hex();
-        hex.as_str().chars().take(16).collect()
-    }
-
-    /// Create a new property with validation and deterministic ID.
     ///
     /// # Errors
-    /// Returns `DomainError` if validation fails.
+    /// Returns `DomainError` if canonicalization fails.
+    #[inline]
+    pub fn compute_id(
+        name: &str,
+        spec: &PropertySpec,
+    ) -> Result<String, DomainError> {
+        let mut hasher = blake3::Hasher::new();
+        hasher.update(name.as_bytes());
+        // Use canonical JSON representation for spec content to ensure absolute determinism
+        let spec_json = serde_json::to_string(spec).map_err(|e| {
+            DomainError::ValidationFailed(format!(
+                "Failed to canonicalize spec: {e}"
+            ))
+        })?;
+        hasher.update(spec_json.as_bytes());
+        Ok(hasher.finalize().to_hex().to_string())
+    }
+
+    /// Create a new property with validation.
+    ///
+    /// # Identity Integrity
+    /// The `id` must be provided by the caller but will be validated against the
+    /// computed hash of the property's definition (name + spec) using Blake3.
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails or the provided ID does not match
+    /// the computed definition hash.
     #[inline]
     pub fn new(
+        id: String,
         name: String,
         required: bool,
         array: bool,
         spec: PropertySpec,
     ) -> Result<Self, DomainError> {
-        let id = Self::compute_id(&name, &spec);
+        let computed_id = Self::compute_id(&name, &spec)?;
+        if id != computed_id {
+            return Err(DomainError::ValidationFailed(format!(
+                "Property ID mismatch for {name}. Expected {computed_id}, got {id}"
+            )));
+        }
+
         let property = Self {
             array,
             id,
@@ -318,12 +337,15 @@ impl PropertySpecTrait for DateSpec {
 }
 
 /// File property validation constraints.
+///
+/// In Lithos, a File property accepts a link to a file in the vault.
+/// It can be restricted to specific directories or return pages based on a query.
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
 pub struct FileSpec {
-    /// Optional directory restriction.
+    /// Optional directory restriction (vault-relative path).
     pub directory: Option<String>,
     /// Optional file class restriction.
     pub file_class: Option<String>,
@@ -339,46 +361,12 @@ impl PropertySpecTrait for FileSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        if let Some(class) = self.file_class.as_deref() {
-            let valid_classes = ["image", "pdf", "note", "audio", "video"];
-            if !valid_classes.contains(&class) {
-                return Err(DomainError::InvalidFileClass(class.to_owned()));
-            }
-
-            // Rough check for extension based on class
-            let ext = value.split('.').next_back().unwrap_or("");
-            match class {
-                "image" => {
-                    let images = ["png", "jpg", "jpeg", "gif", "webp"];
-                    if !images.contains(&ext.to_lowercase().as_str()) {
-                        return Err(DomainError::InvalidFileClass(format!(
-                            "File {value} is not an image"
-                        )));
-                    }
-                }
-                "pdf" => {
-                    if ext.to_lowercase() != "pdf" {
-                        return Err(DomainError::InvalidFileClass(format!(
-                            "File {value} is not a pdf"
-                        )));
-                    }
-                }
-                "note" => {
-                    if ext.to_lowercase() != "md" {
-                        return Err(DomainError::InvalidFileClass(format!(
-                            "File {value} is not a note (.md)"
-                        )));
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        if self.directory.as_deref().is_some_and(|dir| !value.starts_with(dir))
+        // Basic directory validation if restricted
+        if let Some(dir) = self.directory.as_ref()
+            && !value.starts_with(dir)
         {
             return Err(DomainError::InvalidDirectoryPath(format!(
-                "File {value} must be in directory {}",
-                self.directory.as_deref().unwrap_or_default()
+                "File {value} must be in directory {dir}"
             )));
         }
 
@@ -387,12 +375,11 @@ impl PropertySpecTrait for FileSpec {
 
     #[inline]
     fn validate_spec(&self) -> Result<(), DomainError> {
-        if self.file_class.as_deref().is_some_and(|class| {
-            !["image", "pdf", "note", "audio", "video"].contains(&class)
-        }) {
-            return Err(DomainError::InvalidFileClass(
-                self.file_class.clone().unwrap_or_default(),
-            ));
+        if let Some(fc) = self.file_class.as_ref() {
+            let allowed = ["image", "pdf", "note", "audio", "video"];
+            if !allowed.contains(&fc.as_str()) {
+                return Err(DomainError::InvalidFileClass(fc.clone()));
+            }
         }
         Ok(())
     }
@@ -427,14 +414,18 @@ impl PropertySpecTrait for NumberSpec {
         reason = "Core numeric validation logic"
     )]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        if self.min.is_some_and(|min| *value < min) {
+        if let Some(min) = self.min
+            && *value < min
+        {
             return Err(DomainError::NumberOutOfRange {
                 value: *value,
                 min: self.min,
                 max: self.max,
             });
         }
-        if self.max.is_some_and(|max| *value > max) {
+        if let Some(max) = self.max
+            && *value > max
+        {
             return Err(DomainError::NumberOutOfRange {
                 value: *value,
                 min: self.min,
@@ -464,7 +455,9 @@ impl PropertySpecTrait for NumberSpec {
 
     #[inline]
     fn validate_spec(&self) -> Result<(), DomainError> {
-        if self.min.is_some_and(|min| self.max.is_some_and(|max| min > max)) {
+        if let (Some(min), Some(max)) = (self.min, self.max)
+            && min > max
+        {
             return Err(DomainError::ValidationFailed(
                 "min cannot be greater than max".to_owned(),
             ));
@@ -504,26 +497,34 @@ impl PropertySpecTrait for StringSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        if self.min_length.is_some_and(|min| value.len() < min) {
+        if let Some(min) = self.min_length
+            && value.len() < min
+        {
             return Err(DomainError::StringTooShort {
-                min: self.min_length.unwrap_or_default(),
+                min,
                 actual: value.len(),
             });
         }
-        if self.max_length.is_some_and(|max| value.len() > max) {
+        if let Some(max) = self.max_length
+            && value.len() > max
+        {
             return Err(DomainError::StringTooLong {
-                max: self.max_length.unwrap_or_default(),
+                max,
                 actual: value.len(),
             });
         }
-        if self.enum_values.as_ref().is_some_and(|enums| !enums.contains(value))
+        if let Some(enums) = self.enum_values.as_ref()
+            && !enums.contains(value)
         {
             return Err(DomainError::InvalidEnumValue {
                 value: value.clone(),
-                allowed: self.enum_values.clone().unwrap_or_default(),
+                allowed: enums.clone(),
             });
         }
         if let Some(pattern) = self.pattern.as_ref() {
+            // ReDoS Prevention: The `regex` crate uses a finite automaton (NFA/DFA)
+            // instead of backtracking, which provides O(n) worst-case time complexity
+            // and is safe against ReDoS attacks by design.
             let re = regex::Regex::new(pattern).map_err(|e| {
                 DomainError::InvalidRegex(format!(
                     "Invalid pattern {pattern}: {e}"
@@ -540,9 +541,8 @@ impl PropertySpecTrait for StringSpec {
 
     #[inline]
     fn validate_spec(&self) -> Result<(), DomainError> {
-        if self
-            .min_length
-            .is_some_and(|min| self.max_length.is_some_and(|max| min > max))
+        if let (Some(min), Some(max)) = (self.min_length, self.max_length)
+            && min > max
         {
             return Err(DomainError::ValidationFailed(
                 "min_length cannot be greater than max_length".to_owned(),
@@ -560,6 +560,10 @@ impl PropertySpecTrait for StringSpec {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Unit tests return () and use unwrap/expect for simplicity"
+)]
 mod tests {
     use super::*;
 
@@ -569,9 +573,9 @@ mod tests {
         #[test]
         fn id_is_deterministic_using_blake3() {
             let spec = PropertySpec::String(StringSpec::default());
-            let id1 = Property::compute_id("title", &spec);
-            let id2 = Property::compute_id("title", &spec);
-            let id3 = Property::compute_id("other", &spec);
+            let id1 = Property::compute_id("title", &spec).unwrap();
+            let id2 = Property::compute_id("title", &spec).unwrap();
+            let id3 = Property::compute_id("other", &spec).unwrap();
 
             assert_eq!(id1, id2);
             assert_ne!(id1, id3);
@@ -581,8 +585,9 @@ mod tests {
         #[test]
         fn rejects_invalid_property_names() {
             let spec = PropertySpec::String(StringSpec::default());
+            let id = Property::compute_id("Invalid Name", &spec).unwrap();
             let res =
-                Property::new("Invalid Name".to_owned(), true, false, spec);
+                Property::new(id, "Invalid Name".to_owned(), true, false, spec);
             assert!(matches!(res, Err(DomainError::InvalidPropertyName(_))));
         }
 
@@ -593,7 +598,8 @@ mod tests {
                 ..Default::default()
             });
 
-            let res = Property::new("test".to_owned(), true, false, spec);
+            let id = Property::compute_id("test", &spec).unwrap();
+            let res = Property::new(id, "test".to_owned(), true, false, spec);
             assert!(matches!(res, Err(DomainError::InvalidRegex(_))));
         }
     }
@@ -602,22 +608,18 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
         fn string_spec_validates_enums() {
             let spec = StringSpec {
                 enum_values: Some(vec!["A".to_owned(), "B".to_owned()]),
                 ..Default::default()
             };
 
-            spec.validate(&"A".to_owned()).expect("valid");
-            assert!(matches!(
-                spec.validate(&"C".to_owned()),
-                Err(DomainError::InvalidEnumValue { .. })
-            ));
+            spec.validate(&"A".to_owned()).unwrap();
+            let res2 = spec.validate(&"C".to_owned());
+            assert!(matches!(res2, Err(DomainError::InvalidEnumValue { .. })));
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
         fn number_spec_validates_steps() {
             let spec = NumberSpec {
                 min: Some(0.0f64),
@@ -625,26 +627,21 @@ mod tests {
                 ..Default::default()
             };
 
-            spec.validate(&2.0f64).expect("valid");
-            assert!(
-                spec.validate(&3.0f64).is_err(),
-                "3.0 is not a multiple of step 2.0 from min 0.0"
-            );
+            spec.validate(&2.0f64).unwrap();
+            let res2 = spec.validate(&3.0f64);
+            assert!(res2.is_err());
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Standard in tests")]
-        fn file_spec_validates_file_classes() {
+        fn file_spec_validates_directory() {
             let spec = FileSpec {
-                file_class: Some("image".to_owned()),
-                ..Default::default()
+                directory: Some("Attachments".to_owned()),
+                file_class: None,
             };
 
-            spec.validate(&"test.png".to_owned()).expect("valid");
-            assert!(matches!(
-                spec.validate(&"test.txt".to_owned()),
-                Err(DomainError::InvalidFileClass(_))
-            ));
+            spec.validate(&"Attachments/photo.png".to_owned()).unwrap();
+            let res2 = spec.validate(&"Other/photo.png".to_owned());
+            assert!(matches!(res2, Err(DomainError::InvalidDirectoryPath(_))));
         }
     }
 }
