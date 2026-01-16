@@ -139,7 +139,32 @@ So that invalid schemas are caught early with actionable feedback.
 **When** I provide error messages
 **Then** errors include schema file path, line numbers, and suggested fixes
 
-## Story 6.7: Create Sample Schema Files
+## Story 6.7: Implement Schema Caching and Integrity Hashing
+
+As a developer optimizing schema performance,
+I want to cache fully resolved schemas and verify their integrity using content hashes,
+So that vault indexing stays within performance bounds and schema changes are detected efficiently.
+
+**Acceptance Criteria:**
+
+**Given** a Schema is loaded from a source file (JSON/TOML/YAML)
+**When** the adapter processes the file
+**Then** it computes a Blake3 hash of the raw content as a "digest"
+
+**Given** a resolved Schema instance
+**When** it is persisted to the Redb cache
+**Then** it includes the content digest and the fully resolved property list
+
+**Given** a request to validate a note against a schema
+**When** the schema exists in the cache
+**Then** the system compares the current file hash with the cached digest
+**And** it bypasses domain inheritance resolution if the hashes match (O(1) hit)
+
+**Given** the source schema file has changed
+**When** the next validation or indexing run occurs
+**Then** the hash mismatch triggers a full domain resolution and cache update
+
+## Story 6.8: Create Sample Schema Files
 
 As a user creating schemas,
 I want comprehensive sample schemas demonstrating all features,
@@ -159,7 +184,7 @@ So that I can understand schema capabilities and use them as templates.
 **When** I validate them
 **Then** all samples pass validation and demonstrate schema capabilities
 
-## Story 6.8: Define Schema-Template Integration Contracts
+## Story 6.9: Define Schema-Template Integration Contracts
 
 As a developer integrating schemas with templates,
 I want clear contracts for how schemas provide inputs to templates,
@@ -179,7 +204,7 @@ So that templates can safely access schema-defined properties.
 **When** I validate against Epic 11 template requirements
 **Then** all template input needs are satisfied by schema contracts
 
-## Story 6.9: Implement Frontmatter-Schema Compliance Validation
+## Story 6.10: Implement Frontmatter-Schema Compliance Validation
 
 As a developer ensuring vault consistency,
 I want frontmatter-schema compliance validation as an application service,
@@ -207,7 +232,7 @@ So that notes can be validated against their corresponding schemas for caching a
 **When** compliance validation determines schema
 **Then** only file class key from config is used (no other config influence on validation rules)
 
-## Story 6.10: Review Epic 6 Test Suite
+## Story 6.11: Review Epic 6 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 6 test suite to its foundation,
@@ -243,7 +268,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
 
-## Story 6.11: Document Schema System for Users
+## Story 6.12: Document Schema System for Users
 
 As a user creating schemas,
 I want comprehensive documentation for schema creation and usage,
