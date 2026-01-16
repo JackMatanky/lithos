@@ -15,6 +15,7 @@ So that schemas can define reusable property definitions with rich validation co
 **Given** I have researched schema domain patterns for metadata validation systems
 **When** I review the Schema bounded context
 **Then** it includes these domain models:
+
 - Schema entity (Name, Extends, Excludes, Properties[], ResolvedProperties[])
 - PropertyBank entity (singleton registry of reusable Property definitions)
 - Property entity (ID, Name, Required, Array, Spec)
@@ -35,6 +36,7 @@ So that schemas can define reusable property definitions with rich validation co
 **Given** PropertySpec variants are defined
 **When** I review type-specific constraints
 **Then** each variant supports appropriate validation:
+
 - StringSpec: enum values and regex patterns
 - NumberSpec: min/max/step constraints
 - BoolSpec: marker type (no constraints)
@@ -59,6 +61,7 @@ So that schemas can define reusable property definitions with rich validation co
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Schema Domain Tests First (RED Phase - AC: All)
+
 - [x] **MOCKALL:** Use `mockall` per @docs/testing/developer-guide.md for defining any port trait mocks; avoid handwritten maintenance traps
 - [x] **STRICT NAMING:** All tests MUST use verb-first behavioral naming per @docs/testing/developer-guide.md
 - [x] Write failing unit tests for PropertySpec variants (StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec)
@@ -72,6 +75,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement PropertySpec Variants (GREEN Phase - AC: 3-5)
+
 - [x] Implement StringSpec: `#[derive(Debug, Clone, PartialEq)] pub struct StringSpec { pub enum_values: Option<Vec<String>>, pub pattern: Option<String>, pub min_length: Option<usize>, pub max_length: Option<usize> }`
 - [x] Implement StringSpec::validate() method for regex compilation and constraint checking
 - [x] Implement NumberSpec: `#[derive(Debug, Clone, PartialEq)] pub struct NumberSpec { pub min: Option<f64>, pub max: Option<f64>, pub step: Option<f64> }`
@@ -84,6 +88,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **TDD REQUIREMENT:** Make all PropertySpec tests pass (GREEN phase complete when spec tests pass)
 
 ### Task 3: Implement Property Entity (GREEN Phase - AC: 1-2)
+
 - [x] Implement Property struct: `#[derive(Debug, Clone, PartialEq)] pub struct Property { pub id: String, pub name: String, pub required: bool, pub array: bool, pub spec: PropertySpec }`
 - [x] **DETERMINISTIC IDs:** Use blake3 hash for ID generation (name + spec content)
 - [x] Implement Property::new() constructor: `pub fn new(name: String, required: bool, array: bool, spec: PropertySpec) -> Result<Self, SchemaError>`
@@ -92,6 +97,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **TDD REQUIREMENT:** Make all Property entity tests pass (ID determinism, validation, edge cases)
 
 ### Task 4: Implement PropertyBank Singleton (GREEN Phase - AC: 2-4)
+
 - [x] Implement PropertyBank struct: `#[derive(Debug, Clone, PartialEq)] pub struct PropertyBank { properties: HashMap<String, Property> }`
 - [x] Implement PropertyBank::new() and PropertyBank::default()
 - [x] Implement PropertyBank::register() method: `pub fn register(&mut self, property: Property) -> Result<&Property, SchemaError>`
@@ -103,6 +109,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **TDD REQUIREMENT:** Make all PropertyBank tests pass (registration, deduplication, lookups)
 
 ### Task 5: Implement Schema Aggregate (GREEN Phase - AC: 1, 2)
+
 - [x] Implement Schema struct: `#[derive(Debug, Clone, PartialEq)] pub struct Schema { pub id: Uuid, pub name: String, pub extends: Option<String>, pub excludes: Vec<String>, pub properties: Vec<Property>, pub resolved_properties: Vec<Property> }`
 - [x] Implement Schema::new() constructor with inheritance resolution and validation
 - [x] Add name validation: regex `^[a-z0-9]+(-[a-z0-9]+)*$`, length 1-64 chars
@@ -112,6 +119,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **TDD REQUIREMENT:** Make all Schema aggregate tests pass (inheritance, validation, circular detection)
 
 ### Task 6: Implement Domain Events (GREEN Phase - AC: All)
+
 - [x] Define DomainEvent enum with SchemaCreated, PropertyBankUpdated variants
 - [x] Implement event publishing integration points for schema lifecycle
 - [x] Ensure events align with Hybrid Event Bus architecture (MPSC + broadcast)
@@ -119,6 +127,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **TDD REQUIREMENT:** Make all domain event tests pass
 
 ### Task 7: Refactor for Quality (REFACTOR Phase - AC: All)
+
 - [x] Optimize Property ID generation performance (<1μs target with blake3)
 - [x] Implement efficient inheritance resolution (<10μs target)
 - [x] Add comprehensive error handling with thiserror throughout domain
@@ -128,6 +137,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
 
 ### Task 8: Comprehensive Testing Coverage (RED-GREEN-REFACTOR - AC: All)
+
 - [x] Achieve 80%+ test coverage for all schema domain entities (quality over quantity)
 - [x] Create test fixtures module with deterministic examples (fixed UUIDs, predictable schemas)
 - [x] Implement property-based testing with proptest for edge cases (ID collisions, circular inheritance, validation boundaries)
@@ -136,18 +146,21 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **TDD REQUIREMENT:** Coverage reports show 80%+ coverage, all property-based tests pass (focus on business logic)
 
 ### Task 10: Implement Domain Events (GREEN Phase - AC: All)
+
 - [x] Define SchemaCreated and PropertyBankUpdated domain events
 - [x] Add event emission in Schema and PropertyBank entity methods
 - [x] Ensure events capture schema state changes and property updates
 - [x] **TDD REQUIREMENT:** Make all domain event tests pass
 
 ### Task 11: Define CQRS Ports (GREEN Phase - AC: All)
+
 - [x] Define SchemaCommand trait interface (shell for future implementation)
 - [x] Define SchemaQuery trait interface (shell for future implementation)
 - [x] Place ports in domain ports module
 - [x] **TDD REQUIREMENT:** Make all port interface tests pass
 
 ### Task 12: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+
 - [x] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
 - [x] **TDD VALIDATION:** Verify property-based tests catch edge cases (ID collisions, circular inheritance)
 - [x] **TDD VALIDATION:** Ensure performance benchmarks meet targets (<1μs ID gen, <10μs inheritance)
@@ -173,6 +186,7 @@ So that schemas can define reusable property definitions with rich validation co
 **MANDATORY: Domain models MUST align with existing JSON schema format at `docs/schemas/property_bank.json`**
 
 **PropertyBank Structure:**
+
 ```json
 {
   "properties": {
@@ -202,12 +216,14 @@ So that schemas can define reusable property definitions with rich validation co
 ```
 
 **$ref Resolution System - CRITICAL:**
+
 - Schemas use `$ref` pointers: `"$ref": "#/properties/title"`
 - PropertyBank resolves references to actual Property definitions
 - Domain models must support this reference system
 - Story 6.3 implements $ref resolution using PropertyBank lookup
 
 **PropertyBank $ref Integration:**
+
 ```rust
 impl PropertyBank {
     /// Resolve $ref pointer to Property
@@ -222,12 +238,14 @@ impl PropertyBank {
 ```
 
 **Schema Loading Flow (Cross-Story Dependency):**
+
 1. JSON schema loaded (Epic 4 file loading)
 2. $ref pointers resolved via PropertyBank.resolve_ref() (Story 6.3)
 3. Resolved properties used to construct Schema domain model (This story)
 4. Schema validated and events published
 
 **File Class Constraints - CRITICAL:**
+
 - FileSpec.file_class must support: `"image"`, `"pdf"`, `"note"`, `"audio"`, `"video"`
 - Architecture specifies these exact file class restrictions
 - File filtering depends on these exact values
@@ -235,6 +253,7 @@ impl PropertyBank {
 ### Domain Model Foundation
 
 **Core Entity Structure:**
+
 - **Schema Entity**: Defines metadata validation rules with inheritance capabilities
 - **PropertyBank Entity**: Singleton registry providing centralized property definition management
 - **Property Entity**: Reusable property definitions with type-specific validation specs
@@ -244,6 +263,7 @@ impl PropertyBank {
 - **Error Handling**: Use `thiserror::Error` for typed domain errors
 
 **Identity Pattern - CRITICAL:**
+
 - Property ID is **deterministically generated** from hash of `Name + Spec content`
 - This ensures identical property definitions get same ID across schema files
 - Use `blake3` or `sha256` for fast, collision-resistant hashing
@@ -251,6 +271,7 @@ impl PropertyBank {
 - Deterministic IDs enable property reuse and deduplication in PropertyBank
 
 **Domain Purity Requirements - CRITICAL:**
+
 - Domain crate has ZERO external dependencies (std lib + optional serde + blake3 for business rule hashing)
 - NO I/O operations in domain layer
 - NO `rkyv` in domain dependencies - persistence derives belong in storage adapter DTOs
@@ -259,6 +280,7 @@ impl PropertyBank {
 - NO direct schema file loading - that's adapter layer responsibility
 
 **Persistence Strategy:**
+
 - Domain entities remain pure and dependency-free
 - Storage adapters (`adapters/spi/storage`) create separate DTOs with `rkyv` derives
 - Use `From/Into` traits to convert between domain entities and storage DTOs
@@ -267,6 +289,7 @@ impl PropertyBank {
 ### Schema Entity Specification
 
 **Schema Aggregate Root:**
+
 ```rust
 use uuid::Uuid;
 use std::collections::{HashMap, HashSet};
@@ -333,6 +356,7 @@ impl Schema {
 ```
 
 **Schema Validation Rules:**
+
 - Name MUST be non-empty, lowercase-with-hyphens (e.g., "project-note", "meeting-notes")
 - Name MUST match regex: `^[a-z0-9]+(-[a-z0-9]+)*$`
 - Name MAX length: 64 characters
@@ -345,6 +369,7 @@ impl Schema {
 ### PropertyBank Entity Specification
 
 **PropertyBank Singleton:**
+
 ```rust
 use std::collections::HashMap;
 
@@ -401,6 +426,7 @@ impl Default for PropertyBank {
 ```
 
 **PropertyBank Design Rationale:**
+
 - Singleton pattern enables reuse of common properties (e.g., "title", "created", "tags")
 - Deterministic IDs ensure same property definition gets same ID across schemas
 - Deduplication reduces memory usage and ensures consistency
@@ -409,6 +435,7 @@ impl Default for PropertyBank {
 ### Property Entity Specification
 
 **Property Aggregate:**
+
 ```rust
 /// Reusable property definition with type-specific validation
 #[derive(Debug, Clone, PartialEq)]
@@ -518,6 +545,7 @@ impl Property {
 ```
 
 **Property Validation Rules:**
+
 - Name MUST be non-empty, lowercase-with-underscores or hyphens (e.g., "created_at", "title")
 - Name MUST match regex: `^[a-z0-9_-]+$`
 - Name MAX length: 64 characters
@@ -529,6 +557,7 @@ impl Property {
 ### PropertySpec Trait-Based Generic Design
 
 **PropertySpec Trait with Associated Types:**
+
 ```rust
 /// Core trait for property specifications with associated value type
 /// Provides type-safe validation while maintaining flexibility
@@ -756,6 +785,7 @@ impl FileSpec {
 **PropertySpec Validation Rules:**
 
 **StringSpec:**
+
 - `enum_values`: If present, MUST be non-empty array
 - `pattern`: If present, MUST be valid regex string or predefined pattern identifier
 - `min_length`: If present, MUST be >= 0
@@ -763,6 +793,7 @@ impl FileSpec {
 - Value validation: Check enum, regex, length constraints in order
 
 **Predefined Regex Patterns (PRD Enhancement):**
+
 ```rust
 /// Common regex patterns for schema validation
 pub mod patterns {
@@ -802,21 +833,25 @@ let url_property = Property::new(
 ```
 
 **NumberSpec:**
+
 - `min`: If present, no constraint
 - `max`: If present, MUST be > min
 - `step`: If present, MUST be > 0
 - Value validation: Check min, max, step (value - min must be multiple of step)
 
 **BoolSpec:**
+
 - No constraints (marker type)
 - All boolean values are valid
 
 **DateSpec:**
+
 - `format`: MUST be non-empty ISO 8601 format string
 - Common formats: `"YYYY-MM-DD"`, `"YYYY-MM-DDTHH:MM:SSZ"`
 - Value validation: String MUST match format pattern
 
 **FileSpec:**
+
 - `file_class`: If present, MUST be one of: `"image"`, `"pdf"`, `"note"`, `"audio"`, `"video"`
 - `directory`: If present, MUST be valid vault-relative path (no leading `/`)
 - Value validation: Check file extension matches class, path starts with directory
@@ -824,6 +859,7 @@ let url_property = Property::new(
 ### Architecture Compliance - MANDATORY READING
 
 **Hexagonal Boundary Enforcement:**
+
 - Domain crate in `crates/domain/src/` with ZERO external dependencies (blake3 justified for deterministic ID generation)
 - Only allow: std lib, serde (optional), blake3 (for deterministic IDs), uuid
 - All ports (traits) in `domain/src/ports/` using `#[async_trait]` for async methods
@@ -831,6 +867,7 @@ let url_property = Property::new(
 - Use `pub(crate)` for internal types, `pub` only for public API surface
 
 **Standard Traits - REQUIRED:**
+
 ```rust
 // ALWAYS derive these for domain entities:
 #[derive(Debug, Clone, PartialEq)]
@@ -843,11 +880,13 @@ let url_property = Property::new(
 ```
 
 **Conversion Traits - MANDATORY:**
+
 - Use `From/Into` for infallible conversions
 - Use `TryFrom/TryInto` for fallible conversions (especially for validation)
 - NEVER create ad-hoc `to_x()` methods
 
 **Exhaustive Matching:**
+
 ```rust
 // Use #[non_exhaustive] on domain enums
 #[derive(Debug, Clone, PartialEq)]
@@ -871,6 +910,7 @@ match spec {
 ### Domain Events - CRITICAL
 
 **Schema Domain Events (Architecture ADR 0007):**
+
 ```rust
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
@@ -898,11 +938,13 @@ pub enum DomainEvent {
 ```
 
 **Event Publishing Requirements:**
+
 - SchemaLoaded event fired after successful schema creation/validation
 - Events published to Hybrid Event Bus (MPSC for data plane, broadcast for control)
 - Enables event-driven cache invalidation and cross-service coordination
 
 **Required Error Variants:**
+
 ```rust
 use thiserror::Error;
 
@@ -972,6 +1014,7 @@ pub enum DomainError {
 ```
 
 **Serde Serialization (Required):**
+
 ```rust
 // Schema entities MUST derive serde for JSON/TOML serialization
 // Required for schema file loading and API responses
@@ -984,6 +1027,7 @@ pub struct Schema {
 ### Validation Rules Summary
 
 **Schema Validation:**
+
 - Name: lowercase-with-hyphens, 1-64 chars, regex `^[a-z0-9]+(-[a-z0-9]+)*$`
 - Extends: Optional, must reference valid parent schema
 - Excludes: Optional set of property names to exclude from parent
@@ -991,12 +1035,14 @@ pub struct Schema {
 - NO circular inheritance chains
 
 **Property Validation:**
+
 - Name: lowercase-with-underscores-or-hyphens, 1-64 chars, regex `^[a-z0-9_-]+$`
 - ID: Deterministically generated from hash(name + spec)
 - Required/Array: Boolean flags (always valid)
 - Spec: Must be valid PropertySpec variant
 
 **PropertySpec Validation:**
+
 - Each spec type has specific constraints (see individual specs above)
 - Validation happens at value assignment time (in app/adapter layers)
 - Domain provides validation methods, adapters call them
@@ -1004,6 +1050,7 @@ pub struct Schema {
 ### Testing Requirements
 
 **Domain Tests (Pure Unit Tests):**
+
 ```rust
 #[cfg(test)]
 mod tests {
@@ -1061,12 +1108,14 @@ mod tests {
 ```
 
 **Test Coverage Target:**
+
 - **80%+ coverage** for domain entities and validation logic (hybrid approach: quality over quantity)
 - Test both success and error cases for all validation rules
 - Property-based testing with `proptest` per @docs/testing/developer-guide.md for edge cases (especially ID generation)
 - Deterministic testing with fixed UUIDs per testing guide
 
 **Test Fixtures Strategy:**
+
 ```rust
 #[cfg(test)]
 pub mod fixtures {
@@ -1108,6 +1157,7 @@ pub mod fixtures {
 ### File Structure Requirements
 
 **Single File Structure (Split at 1000+ Lines):**
+
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
@@ -1123,6 +1173,7 @@ crates/domain/src/
 **Splitting Guideline:** Start with single file containing all schema-related domain models. Split when >1000 lines into schema_core.rs, schema_properties.rs, etc.
 
 **Alternative Single-File Layout:**
+
 ```
 crates/domain/src/
 ├── lib.rs
@@ -1142,11 +1193,13 @@ Use **subfolder layout** for Schema bounded context due to complexity of Propert
 ### Code Quality Standards
 
 **Clippy Complexity Limits - ENFORCED:**
+
 - Cognitive complexity: **max 25 (deny)**
 - Function length: **max 100 lines (deny)**
 - Keep inheritance resolution logic composable
 
 **MANDATORY Quality Gates (Task 9):**
+
 - **NO EXCEPTIONS:** All clippy warnings MUST be fixed (no bypassing)
 - **NO EXCEPTIONS:** All pre-commit hooks MUST pass (no bypassing)
 - **MANDATORY:** Run `mise run verify` for comprehensive quality assurance
@@ -1154,12 +1207,14 @@ Use **subfolder layout** for Schema bounded context due to complexity of Propert
 - **MANDATORY:** Conventional commit message required for final commit
 
 **Formatting:**
+
 - Run `mise run verify` before committing
 - Pre-commit hooks enforce formatting
 - Import grouping: `StdExternalCrate`
 
 **Documentation Standards:**
-```rust
+
+````rust
 /// Schema aggregate defining metadata validation rules.
 ///
 /// # Invariants
@@ -1181,13 +1236,14 @@ Use **subfolder layout** for Schema bounded context due to complexity of Propert
 /// # Errors
 /// Returns `DomainError::InvalidSchemaName` if name is invalid.
 pub fn new(...) -> Result<Self, DomainError> { }
-```
+````
 
 ## Dev Notes
 
 ### Project Context Integration
 
 **Current Codebase State:**
+
 - Workspace structure exists with domain/app/adapters/cli crates
 - **Story 3.1 completed**: Note bounded context implemented with all subentities
 - Domain crate has `DomainError` enum (needs extension for schema errors)
@@ -1196,6 +1252,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 - Epic 3 in progress: Note done, Schema next, then Config and Template
 
 **Technology Stack (from project-context.md):**
+
 - **Rust 1.92+**: Memory safety, zero-cost abstractions
 - **UUID 1.19 (v7)**: Time-ordered identifiers for Schema identity
 - **blake3 2.1**: Fast, cryptographic hashing for deterministic property IDs
@@ -1203,6 +1260,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
   - **serde 1.0**: Required JSON/TOML serialization for schemas
 
 **Pattern Consistency from Story 3.1:**
+
 - Subfolder organization for bounded contexts (`models/note/`, now `models/schema/`)
 - Immutable domain entities with semantic validation
 - `pub(crate)` visibility by default
@@ -1211,6 +1269,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 - 80%+ test coverage target (focus on business logic quality)
 
 **Critical Anti-Patterns to AVOID:**
+
 - ❌ Using `unwrap()`, `expect()`, `todo()`, `panic!()` in production code
 - ❌ Using `as` casting (use `.try_into().expect("...")` or proper error handling)
 - ❌ Creating ad-hoc conversion methods instead of From/TryFrom traits
@@ -1224,6 +1283,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 **From PRD and Architecture Analysis:**
 
 **Schema Purpose (FR8-FR14):**
+
 - Define metadata validation rules for note frontmatter
 - Support inheritance (extends parent schema) and exclusion (remove inherited properties)
 - Provide input parameters for template functions (enums → suggesters, dirs → file filters)
@@ -1231,18 +1291,21 @@ pub fn new(...) -> Result<Self, DomainError> { }
 - Support rich property types: string, number, boolean, date, file
 
 **PropertyBank Rationale:**
+
 - Central registry prevents property duplication across schemas
 - Deterministic IDs enable property reuse and consistency
 - Singleton pattern matches real-world usage (one bank per vault)
 - Lookup by ID or definition supports flexible queries
 
 **Property ID Generation - CRITICAL:**
+
 - MUST be deterministic: same name + spec → same ID
 - Use fast, collision-resistant hash (blake3 recommended)
 - IDs enable deduplication in PropertyBank
 - IDs stable across schema file reloads
 
 **Inheritance Resolution Algorithm:**
+
 1. Start with parent's `resolved_properties` (if parent exists)
 2. Filter out properties in `excludes` set (by name)
 3. Add own `properties`, overriding parent properties with same name
@@ -1250,6 +1313,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 5. Store in `resolved_properties` field for fast access
 
 **PropertySpec Design Decisions:**
+
 - **StringSpec**: Supports enums (for suggesters), regex (validation), length constraints
 - **NumberSpec**: Supports min/max/step (for numeric inputs)
 - **BoolSpec**: Marker type (no constraints, all booleans valid)
@@ -1257,6 +1321,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 - **FileSpec**: File class and directory restrictions (for file pickers)
 
 **Schema Validation Strategies:**
+
 - **Syntactic**: Type correctness (handled by Rust type system)
 - **Semantic**: Business rules (name format, no circular inheritance, unique property names)
 - **Orchestration**: Cross-schema validation (handled in app layer, not domain)
@@ -1264,6 +1329,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 ### Implementation Strategy
 
 **Trait-Based PropertySpec Implementation:**
+
 ```rust
 // PropertySpec trait with associated types for type safety
 pub trait PropertySpec: Send + Sync + Debug + Clone {
@@ -1289,6 +1355,7 @@ impl Property {
 ```
 
 **Deterministic ID Generation Example:**
+
 ```rust
 use blake3::Hasher;
 
@@ -1308,6 +1375,7 @@ let id = hash.to_hex()[..16].to_string();  // First 16 hex chars
 ```
 
 **Circular Inheritance Detection:**
+
 ```rust
 fn detect_circular_inheritance(
     schema_name: &str,
@@ -1332,12 +1400,14 @@ fn detect_circular_inheritance(
 ### Cross-Story Dependencies
 
 **Prerequisites:**
+
 - ✅ Story 3.1 completed (Note bounded context pattern established)
 - ✅ Epic 1 completed (workspace, tooling, quality gates)
 - ✅ Epic 2 ready (test patterns for domain testing)
 - ✅ Architecture established (hexagonal boundaries, ADRs)
 
 **Enables Future Stories:**
+
 - Story 3.3: Config Bounded Context (configuration for schema loading)
 - Story 3.4: Template Bounded Context (templates reference schemas)
 - Epic 5: Configuration Management (load schemas from files)
@@ -1347,6 +1417,7 @@ fn detect_circular_inheritance(
 - Epic 11: Template System (uses schemas for input parameters)
 
 **Inter-Bounded-Context Relationships:**
+
 - **Schema → Note**: Schemas validate Note frontmatter fields
 - **Schema → Template**: Templates use schema properties for input parameters
 - **Schema → Config**: Schemas loaded from config files
@@ -1354,7 +1425,9 @@ fn detect_circular_inheritance(
 - **Schema → Schema**: Inheritance relationships between schemas
 
 ### Performance Considerations
+
 **Critical Performance Targets:**
+
 - **Property ID Generation**: <1μs for deterministic hash generation (blake3)
 - **Inheritance Resolution**: <10μs for complex inheritance chains (up to 10 levels)
 - **PropertyBank Lookups**: O(1) hash map lookups for registered properties
@@ -1362,20 +1435,48 @@ fn detect_circular_inheritance(
 - **Memory Usage**: Minimal overhead for PropertyBank deduplication
 
 **Performance Optimizations:**
+
 - Deterministic IDs enable property reuse and reduce memory duplication
 - Inheritance resolution computed once at schema load time
 - PropertyBank singleton minimizes lookup overhead
 - Efficient string handling with owned types where appropriate
 
 **Benchmarking Requirements:**
+
 - Criterion.rs integration per @docs/testing/developer-guide.md for regression detection
 - Performance tests for ID generation, inheritance, and lookups
 - Memory usage profiling for large property banks
+
+---
+
+## Test Quality Review (2026-01-16)
+
+**Quality Score**: 96/100 (A - Excellent)
+**Recommendation**: Approve with Comments
+
+### Executive Summary
+
+The schema domain tests demonstrate high technical quality with deterministic ID generation and robust boundary enforcement. 100% of acceptance criteria are covered by functional tests.
+
+### Critical Issues
+
+No critical issues detected. ✅
+
+### Recommendations
+
+- **Traceability**: Add Test IDs (e.g., `3.3-UNIT-001`) to all test functions.
+- **Prioritization**: Explicitly mark critical path tests (circular inheritance) as P0.
+- **Maintainability**: Evolve static fixtures into data factories with override support.
+
+Full report: [\_bmad-output/test-review-schema-context.md](../test-review-schema-context.md)
+
 - Scalability testing with 1000+ schemas and properties
 
 ### Epic 2 Test Infrastructure Integration
+
 **Planned Integration with Epic 2 Test Utils:**
 This story will leverage the test utilities being developed in Epic 2:
+
 - **Story 2-4**: Centralized test utilities and infrastructure (artifact management, isolation)
 - **Story 2-6**: Integration testing patterns and infrastructure (cross-crate testing, external service mocking)
 - **Story 2-7**: Benchmarking infrastructure and performance testing patterns (criterion integration, regression detection)
@@ -1385,6 +1486,7 @@ This story will leverage the test utilities being developed in Epic 2:
 ### References
 
 **Architecture Documents:**
+
 - [Source: _bmad-output/planning-artifacts/architecture.md#Data Architecture]
   - UUID v7 identity for schemas
   - Hexagonal boundary enforcement
@@ -1401,6 +1503,7 @@ This story will leverage the test utilities being developed in Epic 2:
   - AI pitfall protections (no unwrap, no as casting)
 
 **Epic Context:**
+
 - [Source: _bmad-output/planning-artifacts/epics/epic-3-core-domain-models-value-objects-phase-15.md#Story 3.2]
   - Complete acceptance criteria
   - Schema entity specification
@@ -1408,6 +1511,7 @@ This story will leverage the test utilities being developed in Epic 2:
   - PropertySpec variant details
 
 **PRD Requirements:**
+
 - [Source: _bmad-output/planning-artifacts/prd.md#Schema Management FR8-FR14]
   - Schema definition and validation
   - Schema inheritance and extension
@@ -1415,11 +1519,13 @@ This story will leverage the test utilities being developed in Epic 2:
   - Template integration requirements
 
 **JSON Schema Specifications:**
+
 - [Source: docs/schemas/property_bank.json] - PropertyBank JSON format (MANDATORY alignment)
 - [Source: docs/schemas/] - Complete schema examples with $ref usage
 - [Source: docs/schemas/pkm.json] - Complex schema with inheritance examples
 
 **Previous Story Learnings:**
+
 - [Source: _bmad-output/implementation-artifacts/stories/3-1-create-note-bounded-context.md]
   - Subfolder organization pattern
   - Comprehensive error types
@@ -1428,6 +1534,7 @@ This story will leverage the test utilities being developed in Epic 2:
   - Validation pipeline approach
 
 **Epic 6 Dependencies:**
+
 - [Source: _bmad-output/planning-artifacts/epics/epic-6-schema-system-validation-mvp-core.md#Story 6.2]
   - PropertyBank $ref support requirement
   - JSON schema format compliance
@@ -1451,6 +1558,7 @@ This story will leverage the test utilities being developed in Epic 2:
 ### File List
 
 <!-- Dev agent will list all files created/modified during implementation -->
+
 ```
 Expected files to be created (9 TDD tasks for 3-2, 7 TDD tasks for 3-1):
 - crates/domain/src/errors.rs (UPDATED with schema error variants)
