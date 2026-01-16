@@ -27,7 +27,8 @@ pub mod ports;
 // deep module path knowledge (e.g., `lithos_domain::Config` vs `lithos_domain::models::config::Config`).
 pub use errors::{ConfigError, DomainError};
 pub use events::{
-    ConfigUpdated, FrontmatterValidated, NoteCreated, TemplateCreated,
+    ConfigUpdated, FrontmatterValidated, NoteCreated, PropertyBankUpdated,
+    SchemaCreated, TemplateCreated,
 };
 pub use models::{
     config::{
@@ -38,10 +39,11 @@ pub use models::{
     frontmatter::{FieldValue, FromFieldValue, Frontmatter},
     link::{EmbedType, Link, LinkType},
     note::Note,
-    schema::{
-        BoolSpec, DateSpec, FileSpec, NumberSpec, Property, PropertyBank,
-        PropertySpec, Schema, StringSpec,
+    property::{
+        BoolSpec, DateSpec, FileSpec, NumberSpec, Property, PropertySpec,
+        StringSpec,
     },
+    schema::{PropertyBank, Schema},
     structure::{Heading, Section},
     tag::Tag,
     task::{Task, TaskStatus},

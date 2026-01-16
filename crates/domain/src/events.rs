@@ -211,3 +211,50 @@ impl FrontmatterValidated {
         }
     }
 }
+
+/// Schema created domain event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct SchemaCreated {
+    /// UUID of the schema.
+    pub id: uuid::Uuid,
+    /// Name of the schema.
+    pub name: String,
+    /// Unix timestamp when the schema was created.
+    pub timestamp: i64,
+}
+
+impl SchemaCreated {
+    /// Creates a new schema created event.
+    #[inline]
+    #[must_use]
+    pub fn new(id: uuid::Uuid, name: String, timestamp: i64) -> Self {
+        Self {
+            id,
+            name,
+            timestamp,
+        }
+    }
+}
+
+/// Property bank updated domain event.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[non_exhaustive]
+pub struct PropertyBankUpdated {
+    /// Number of properties in the bank after update.
+    pub property_count: usize,
+    /// Unix timestamp when the update occurred.
+    pub timestamp: i64,
+}
+
+impl PropertyBankUpdated {
+    /// Creates a new property bank updated event.
+    #[inline]
+    #[must_use]
+    pub fn new(property_count: usize, timestamp: i64) -> Self {
+        Self {
+            property_count,
+            timestamp,
+        }
+    }
+}

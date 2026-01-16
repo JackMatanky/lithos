@@ -9,6 +9,8 @@ pub mod frontmatter;
 pub mod link;
 /// Note bounded context aggregate and main entities.
 pub mod note;
+/// Property and PropertySpec models.
+pub mod property;
 /// Schema bounded context models.
 pub mod schema;
 /// Document structure subentities (Heading and Section) for Note aggregate.
