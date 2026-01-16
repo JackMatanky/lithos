@@ -176,7 +176,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - Project context: _bmad-output/project-context.md
 - Testing standards: _bmad-output/project-context.md#Testing Rules
 - Previous Stories: Stories 4-1 through 4-4 test patterns and coverage goals
-- Epic 3 Example: _bmad-output/implementation-artifacts/stories/3-5-review-epic-3-test-suite-for-efficiency.md
+- Epic 3 Example: _bmad-output/implementation-artifacts/stories/3-5-review-epic-3-test-suite.md
 - Quality Assurance Pattern: _bmad-output/implementation-artifacts/stories/3-1-create-note-bounded-context.md#Task-7-Quality-Assurance-and-Commit
 - Validation Report: _bmad-output/implementation-artifacts/reports/validation-report-2026-01-12-story-4-5-review-epic-4-test-suite.md
 
