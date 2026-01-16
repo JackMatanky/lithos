@@ -159,7 +159,7 @@ So that template structure and business rules are properly validated at the doma
 **When** I define ports
 **Then** TemplateCommand and TemplateQuery trait interfaces are provided for future implementation
 
-## Story 3.5: Review Epic 3 Test Suite for Efficiency
+## Story 3.5: Review Epic 3 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 3 test suite to its foundation,

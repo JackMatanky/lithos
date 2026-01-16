@@ -138,7 +138,7 @@ As a performance engineer, I want CLI command performance benchmarks, so that NF
 **Then** performance benchmarks are part of CI/CD pipeline
 **And** startup time remains fast across all supported platforms
 
-## Story 13.13: Clap CLI Performance Regression Testing
+### Story 13.13: Clap CLI Performance Regression Testing
 As a performance engineer, I want automated regression tests for Clap CLI operations, so that the architectural choice of Clap remains optimal and CLI parsing stays under 50μs baseline.
 **Acceptance Criteria:**
 **Given** Clap CLI implementation
@@ -148,17 +148,51 @@ As a performance engineer, I want automated regression tests for Clap CLI operat
 **And** complex command structures maintain fast parsing
 **And** CLI benchmarks run in CI/CD for every CLI-related change
 
-### Story 13.12: [Test] Epic 13 Test Suite Review & Optimization
-As a developer, I want a comprehensive test suite for the CLI and error handling features, so that I can maintain the command-line interface with confidence.
+### Story 13.14: Review Epic 13 Test Suite
+
+As a senior developer conducting adversarial code review,
+I want to brutally critique and improve the Epic 13 test suite to its foundation,
+So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
+
 **Acceptance Criteria:**
-- **Given** the implementation of Epic 13
-- **When** I run the test suite
-- **Then** it achieves 90%+ coverage for CLI parsing, error formatting, and platform detection.
-- **And** integration tests verify end-to-end CLI workflows.
-- **And** the suite validates that all commands produce consistent help output.
+
+**Given** docs/testing/developer-guide.md provides testing standards and tools
+**When** I reference the guide during review
+**Then** I validate compliance with Lithos testing hierarchy, async patterns, and utilities
+
+**Given** the implementation of Epic 13
+**When** I run the test suite
+**Then** it achieves 90%+ coverage for CLI parsing, error formatting, and platform detection
+**And** integration tests verify end-to-end CLI workflows
+**And** the suite validates that all commands produce consistent help output
+
+**Given** all Epic 13 components are implemented with tests
+**When** I conduct adversarial review
+**Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
+
+**Given** I take adversarial position against the test suite
+**When** I critique test quality
+**Then** I assess if tests actually validate business requirements vs implementation details
+
+**Given** the test suite is implemented
+**When** I review for redundancy
+**Then** I eliminate duplicate test cases and consolidate overlapping coverage
+
+**Given** tests are executed
+**When** I measure performance
+**Then** test execution completes in <30 seconds for the full Epic 13 suite
+
+**Given** I conduct brutal foundation critique
+**When** I assess test design
+**Then** I verify tests use proper fixtures, avoid flaky behavior, and maintain clear intent
+
+**Given** test suite is reviewed
+**When** I check maintainability
+**Then** test code follows same quality standards as production code with proper documentation
+
 **References:** NFR16
 
-### Story 13.15: [Docs] Epic 13 CLI Documentation
+### Story 13.15: Epic 13 CLI Documentation
 As a user, I want comprehensive CLI documentation with examples and tutorials, so that I can master the command-line interface.
 **Acceptance Criteria:**
 - **Given** a completed Epic 13

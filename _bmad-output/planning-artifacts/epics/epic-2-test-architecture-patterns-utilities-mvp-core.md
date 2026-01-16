@@ -280,7 +280,7 @@ So that performance is monitored and regressions are caught early.
 - Environment consistency across runs
 - Memory usage tracking alongside timing
 
-## Story 2.8: Test Suite Review for Efficiency and Best Practices
+## Story 2.8: Review Epic 2 Test Suite
 
 As a developer responsible for test quality,
 I want a structured test suite review aligned to Rust testing best practices,

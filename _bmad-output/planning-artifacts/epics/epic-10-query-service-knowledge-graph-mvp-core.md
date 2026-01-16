@@ -237,7 +237,22 @@ So that query interactions can be tested in isolation.
 **When** I use mocks
 **Then** they simulate realistic query behavior for comprehensive testing
 
-## Story 10.12: Review Epic 10 Test Suite
+## Story 10.12: Performance Benchmarking for Query Operations
+As a performance engineer, I want benchmarks for query operations to ensure fast lookups and efficient caching, so that query performance supports template execution requirements.
+**Acceptance Criteria:**
+**Given** query service is implemented
+**When** I run query performance benchmarks
+**Then** basic lookups (filename, path) complete in <100ms
+**And** complex queries with metadata filtering complete in <500ms
+**And** cache hit rates exceed 90% for repeated queries
+
+**Given** performance benchmarks are established
+**When** I monitor query performance
+**Then** metrics are collected for optimization
+**And** query performance regressions are detected
+**And** memory usage for query caches stays within NFR9 bounds
+
+## Story 10.13: Review Epic 10 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 10 test suite to its foundation,
@@ -273,22 +288,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
 
-## Story 10.12: Performance Benchmarking for Query Operations
-As a performance engineer, I want benchmarks for query operations to ensure fast lookups and efficient caching, so that query performance supports template execution requirements.
-**Acceptance Criteria:**
-**Given** query service is implemented
-**When** I run query performance benchmarks
-**Then** basic lookups (filename, path) complete in <100ms
-**And** complex queries with metadata filtering complete in <500ms
-**And** cache hit rates exceed 90% for repeated queries
-
-**Given** performance benchmarks are established
-**When** I monitor query performance
-**Then** metrics are collected for optimization
-**And** query performance regressions are detected
-**And** memory usage for query caches stays within NFR9 bounds
-
-## Story 10.13: Document Query Service for Developers
+## Story 10.14: Document Query Service for Developers
 
 As a developer working with query operations,
 I want comprehensive developer documentation for the query service,

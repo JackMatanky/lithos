@@ -135,7 +135,21 @@ So that I can understand configuration options and get started quickly with vali
 **When** they start lithos using Epic 4's file loading
 **Then** configurations load successfully and demonstrate expected behavior
 
-## Story 5.7: Review Epic 5 Test Suite
+## Story 5.7: Configuration Error Recovery and Rollback
+As a user who has made configuration mistakes, I want the system to provide clear error messages and recovery options, so that I can fix configuration issues without losing my work.
+**Acceptance Criteria:**
+**Given** configuration validation fails
+**When** I attempt to load invalid configuration
+**Then** clear error messages identify the specific problems and suggest fixes
+**And** the system falls back to default values for invalid settings
+**And** previous valid configuration is preserved
+
+**Given** configuration changes cause system instability
+**When** I need to rollback
+**Then** the system can restore previous known-good configuration
+**And** configuration history is maintained for recovery
+
+## Story 5.8: Review Epic 5 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 5 test suite to its foundation,
@@ -170,20 +184,6 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
-
-## Story 5.8: Configuration Error Recovery and Rollback
-As a user who has made configuration mistakes, I want the system to provide clear error messages and recovery options, so that I can fix configuration issues without losing my work.
-**Acceptance Criteria:**
-**Given** configuration validation fails
-**When** I attempt to load invalid configuration
-**Then** clear error messages identify the specific problems and suggest fixes
-**And** the system falls back to default values for invalid settings
-**And** previous valid configuration is preserved
-
-**Given** configuration changes cause system instability
-**When** I need to rollback
-**Then** the system can restore previous known-good configuration
-**And** configuration history is maintained for recovery
 
 ## Story 5.9: Document Configuration System for Users
 
