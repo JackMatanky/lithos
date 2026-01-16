@@ -68,7 +68,7 @@ As a user, I want to select multiple items from a list using a fuzzy-searchable 
 - **And** it returns a collection of the internal `values` for the selected items.
 **References:** FR17
 
-### Story 12.7: [Test] Epic 12 Test Suite Review & Optimization
+### Story 12.7: Review Epic 12 Test Suite
 As a developer, I want a comprehensive and efficient test suite for the advanced template features, so that I can maintain the code with confidence.
 **Acceptance Criteria:**
 - **Given** the implementation of Epic 12

@@ -297,7 +297,47 @@ So that vault interactions can be tested in isolation without filesystem access.
 **When** I use mocks
 **Then** they simulate realistic vault behavior for comprehensive testing
 
-## Story 9.13: Review Epic 9 Test Suite
+## Story 9.13: Performance Benchmarking for Vault Indexing (NFR2 Validation)
+As a performance engineer, I want comprehensive benchmarks for vault indexing operations, so that NFR2 (<2s for 1000+ files) is validated and monitored.
+**Acceptance Criteria:**
+**Given** vault indexing system is implemented
+**When** I run performance benchmarks
+**Then** indexing 1000+ files completes in <2 seconds
+**And** incremental updates are measured and validated
+**And** memory usage stays within NFR9 bounds (<500MB)
+
+**Given** performance benchmarks are established
+**When** I monitor indexing performance
+**Then** metrics are collected for optimization
+**And** performance regressions are detected
+**And** scaling characteristics are documented
+
+## Story 9.14: Vault Operation Monitoring and Health Checks
+As a system administrator, I want continuous monitoring of vault operations, so that performance issues and failures are detected before they impact users.
+**Acceptance Criteria:**
+**Given** vault indexing is running
+**When** I monitor system health
+**Then** indexing performance metrics are collected continuously
+**And** memory usage is tracked against NFR9 limits
+**And** alerts trigger when performance degrades beyond thresholds
+
+**Given** vault operations encounter issues
+**When** health checks run
+**Then** they detect corrupted indexes or inconsistent state
+**And** they trigger automatic recovery procedures
+**And** they log detailed diagnostic information
+
+## Story 9.15: Redb Storage Performance Regression Testing
+As a performance engineer, I want automated regression tests for Redb storage operations, so that the architectural choice of Redb + rkyv remains optimal and performance degradation is caught immediately.
+**Acceptance Criteria:**
+**Given** Redb storage implementation
+**When** performance regression tests run
+**Then** read/write benchmarks are compared against established baselines
+**And** memory usage is validated against winning olympics metrics
+**And** query performance regressions trigger alerts and investigation
+**And** storage benchmarks run in CI/CD pipeline for every change
+
+## Story 9.16: Review Epic 9 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 9 test suite to its foundation,
@@ -332,46 +372,6 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
-
-## Story 9.14: Performance Benchmarking for Vault Indexing (NFR2 Validation)
-As a performance engineer, I want comprehensive benchmarks for vault indexing operations, so that NFR2 (<2s for 1000+ files) is validated and monitored.
-**Acceptance Criteria:**
-**Given** vault indexing system is implemented
-**When** I run performance benchmarks
-**Then** indexing 1000+ files completes in <2 seconds
-**And** incremental updates are measured and validated
-**And** memory usage stays within NFR9 bounds (<500MB)
-
-**Given** performance benchmarks are established
-**When** I monitor indexing performance
-**Then** metrics are collected for optimization
-**And** performance regressions are detected
-**And** scaling characteristics are documented
-
-## Story 9.15: Vault Operation Monitoring and Health Checks
-As a system administrator, I want continuous monitoring of vault operations, so that performance issues and failures are detected before they impact users.
-**Acceptance Criteria:**
-**Given** vault indexing is running
-**When** I monitor system health
-**Then** indexing performance metrics are collected continuously
-**And** memory usage is tracked against NFR9 limits
-**And** alerts trigger when performance degrades beyond thresholds
-
-**Given** vault operations encounter issues
-**When** health checks run
-**Then** they detect corrupted indexes or inconsistent state
-**And** they trigger automatic recovery procedures
-**And** they log detailed diagnostic information
-
-## Story 9.16: Redb Storage Performance Regression Testing
-As a performance engineer, I want automated regression tests for Redb storage operations, so that the architectural choice of Redb + rkyv remains optimal and performance degradation is caught immediately.
-**Acceptance Criteria:**
-**Given** Redb storage implementation
-**When** performance regression tests run
-**Then** read/write benchmarks are compared against established baselines
-**And** memory usage is validated against winning olympics metrics
-**And** query performance regressions trigger alerts and investigation
-**And** storage benchmarks run in CI/CD pipeline for every change
 
 ## Story 9.17: Document Vault Indexing System for Developers
 

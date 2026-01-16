@@ -149,17 +149,7 @@ As a template author, I want UUID generation using the existing uuid crate, so t
 - **And** the function is documented with examples in the standard library reference.
 **References:** Additional utility functions
 
-### Story 11.15: [Test] Epic 11 Test Suite Review & Optimization
-As a developer, I want a comprehensive and efficient test suite for the interactive template system, so that I can maintain the code with confidence.
-**Acceptance Criteria:**
-- **Given** the implementation of Epic 11
-- **When** I run the test suite
-- **Then** it achieves 90%+ coverage for the `PromptSession` state machine and `BindingService`.
-- **And** property-based tests verify that `Abort` signals never result in filesystem side-effects.
-- **And** the suite validates architectural boundaries (e.g. Domain has zero I/O).
-**References:** NFR16
-
-### Story 11.16: Template System Resource Limits and Timeouts
+### Story 11.15: Template System Resource Limits and Timeouts
 As a system administrator, I want template execution to be bounded by resource limits and timeouts, so that runaway templates cannot exhaust system resources or hang indefinitely.
 **Acceptance Criteria:**
 **Given** template execution starts
@@ -174,7 +164,7 @@ As a system administrator, I want template execution to be bounded by resource l
 **And** users receive actionable timeout messages
 **And** long-running operations provide progress indicators
 
-### Story 11.17: Template System Fallback Strategies
+### Story 11.16: Template System Fallback Strategies
 As a user experiencing template failures, I want automatic fallback mechanisms, so that template operations degrade gracefully rather than failing completely.
 **Acceptance Criteria:**
 **Given** advanced template features fail
@@ -189,7 +179,7 @@ As a user experiencing template failures, I want automatic fallback mechanisms, 
 **And** manual data entry remains possible
 **And** template completion is still achievable
 
-## Story 11.18: MiniJinja Template Performance Regression Testing
+### Story 11.17: MiniJinja Template Performance Regression Testing
 As a performance engineer, I want automated regression tests for MiniJinja template operations, so that the architectural choice of MiniJinja remains optimal and template execution stays under 500ms NFR1.
 **Acceptance Criteria:**
 **Given** MiniJinja template implementation
@@ -199,22 +189,62 @@ As a performance engineer, I want automated regression tests for MiniJinja templ
 **And** template compilation performance regressions trigger alerts
 **And** template benchmarks run in CI/CD for every template-related change
 
-### Story 11.18: [Docs] Epic 11 User & Developer Documentation
+### Story 11.18: Review Epic 11 Test Suite
+
+As a senior developer conducting adversarial code review,
+I want to brutally critique and improve the Epic 11 test suite to its foundation,
+So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
+
+**Acceptance Criteria:**
+
+**Given** docs/testing/developer-guide.md provides testing standards and tools
+**When** I reference the guide during review
+**Then** I validate compliance with Lithos testing hierarchy, async patterns, and utilities
+
+**Given** the implementation of Epic 11
+**When** I run the test suite
+**Then** it achieves 90%+ coverage for the `PromptSession` state machine and `BindingService`
+**And** property-based tests verify that `Abort` signals never result in filesystem side-effects
+**And** the suite validates architectural boundaries (e.g. Domain has zero I/O)
+
+**Given** all Epic 11 components are implemented with tests
+**When** I conduct adversarial review
+**Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
+
+**Given** I take adversarial position against the test suite
+**When** I critique test quality
+**Then** I assess if tests actually validate business requirements vs implementation details
+
+**Given** the test suite is implemented
+**When** I review for redundancy
+**Then** I eliminate duplicate test cases and consolidate overlapping coverage
+
+**Given** tests are executed
+**When** I measure performance
+**Then** test execution completes in <30 seconds for the full Epic 11 suite
+
+**Given** I conduct brutal foundation critique
+**When** I assess test design
+**Then** I verify tests use proper fixtures, avoid flaky behavior, and maintain clear intent
+
+**Given** test suite is reviewed
+**When** I check maintainability
+**Then** test code follows same quality standards as production code with proper documentation
+
+**References:** NFR16
+
+### Story 11.19: Epic 11 User and Developer Documentation
+
 As a user, I want clear instructions on how to create and use interactive templates with schema support, so that I can leverage the full power of the system.
+
 **Acceptance Criteria:**
-- **Given** a completed Epic 11
-- **When** I review the documentation
-- **Then** it includes a guide on how schemas automate folder-picking queries.
-- **And** it provides examples for using the `suggest()` helper for ad-hoc terminal prompts.
-- **And** it explains the "Clean Slate" policy and how to recover from errors.
-- **And** it lists all available standard library functions with usage examples.
-- **And** it documents resource limits, timeouts, and fallback behaviors.
-**References:** NFR13
-**Acceptance Criteria:**
-- **Given** a completed Epic 11
-- **When** I review the documentation
-- **Then** it includes a guide on how schemas automate folder-picking queries.
-- **And** it provides examples for using the `suggest()` helper for ad-hoc terminal prompts.
-- **And** it explains the "Clean Slate" policy and how to recover from errors.
-- **And** it lists all available standard library functions with usage examples.
+
+**Given** a completed Epic 11
+**When** I review the documentation
+**Then** it includes a guide on how schemas automate folder-picking queries
+**And** it provides examples for using the `suggest()` helper for ad-hoc terminal prompts
+**And** it explains the "Clean Slate" policy and how to recover from errors
+**And** it lists all available standard library functions with usage examples
+**And** it documents resource limits, timeouts, and fallback behaviors
+
 **References:** NFR13
