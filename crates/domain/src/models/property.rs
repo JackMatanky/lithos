@@ -9,7 +9,7 @@ use crate::errors::DomainError;
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::models::schema::{Property, PropertySpec, StringSpec};
+/// use lithos_domain::models::property::{Property, PropertySpec, StringSpec};
 ///
 /// let spec = PropertySpec::String(StringSpec::default());
 /// let name = "status".to_string();
