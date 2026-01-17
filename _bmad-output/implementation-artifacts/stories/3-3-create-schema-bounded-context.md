@@ -231,9 +231,9 @@ So that schemas can define reusable property definitions with rich validation co
 
 ```rust
 impl PropertyBank {
-    /// Decodes JSON Pointer $ref path to Property
+    /// Decodes $ref path to Property
     /// Used by schema loading (Story 6.5) for $ref resolution
-    pub fn decode_ref(&self, ref_path: &str) -> Result<&Property, DomainError> {
+    pub fn decode(&self, ref_path: &str) -> Result<&Property, DomainError> {
         // Parse "#/properties/title" → "title"
         // Lookup by property name (not ID)
         // Return &Property for schema composition
