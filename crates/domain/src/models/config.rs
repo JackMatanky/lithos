@@ -235,7 +235,7 @@ pub struct Global {
 /// let mut vault = VaultConfig::default();
 /// vault.filesystem.vault_path = "/vault".to_string();
 ///
-/// let config = Config::merge(&global, vault)?;
+/// let config = Config::build(&global, vault)?;
 /// assert_eq!(config.filesystem.vault_path, "/vault");
 /// # Ok(())
 /// # }
@@ -296,7 +296,7 @@ impl Default for Global {
     reason = "Methods grouped logically: public API first, then private helpers"
 )]
 impl Config {
-    /// Merge Global and Vault configurations with business rules (Vault overrides Global).
+    /// Build a new Config by merging Global and Vault configurations with business rules (Vault overrides Global).
     ///
     /// # Business Rules
     /// - Vault configuration takes precedence over Global configuration.
@@ -315,11 +315,11 @@ impl Config {
     /// let mut vault = VaultConfig::default();
     /// vault.filesystem.vault_path = "/vault".to_string();
     ///
-    /// let config = Config::merge(&global, vault).unwrap();
+    /// let config = Config::build(&global, vault).unwrap();
     /// assert_eq!(config.filesystem.vault_path, "/vault");
     /// ```
     #[inline]
-    pub fn merge(
+    pub fn build(
         global: &Global,
         vault: Vault,
     ) -> Result<Self, crate::ConfigError> {
@@ -496,7 +496,7 @@ impl Config {
     ///
     /// # Note
     /// This method is provided for post-construction validation if needed.
-    /// The `merge()` method already performs validation during construction.
+    /// The `build()` method already performs validation during construction.
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if any required field is empty.
@@ -506,12 +506,12 @@ impl Config {
     ///
     /// ```rust
     /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
-    /// // Create a valid config via merge
+    /// // Create a valid config via build
     /// let global = GlobalConfig::default();
     /// let mut vault = VaultConfig::default();
     /// vault.filesystem.vault_path = "/vault".to_string();
     ///
-    /// let mut config = Config::merge(&global, vault).unwrap();
+    /// let mut config = Config::build(&global, vault).unwrap();
     /// assert!(config.validate().is_ok());
     ///
     /// // Make it invalid
@@ -669,7 +669,7 @@ mod tests {
                     ..Vault::default()
                 };
 
-                let result = Config::merge(&global, vault);
+                let result = Config::build(&global, vault);
 
                 if vault_path.is_empty() {
                     prop_assert!(result.is_err(), "Empty vault_path should fail");
@@ -684,7 +684,7 @@ mod tests {
     }
 
     // ============================================================================
-    // Config::merge Tests - Core Business Logic Coverage
+    // Config::build Tests - Core Business Logic Coverage
     // Target: 80%+ coverage for hierarchical merging and precedence rules
     // Test Level: Unit (70% of total test coverage per test-design-system.md)
     // ============================================================================
@@ -703,8 +703,8 @@ mod tests {
             let vault = sample_vault_config();
 
             // WHEN merging vault and global configs
-            let merged = Config::merge(&global, vault)
-                .expect("Config merge should succeed with valid sample data");
+            let merged = Config::build(&global, vault)
+                .expect("Config build should succeed with valid sample data");
 
             // THEN vault values take precedence over global values
             assert_eq!(
@@ -769,7 +769,7 @@ mod tests {
             };
 
             // WHEN merging the configs
-            let result = Config::merge(&global, vault);
+            let result = Config::build(&global, vault);
 
             // THEN merge should succeed and apply system defaults
             assert!(
@@ -822,10 +822,10 @@ mod tests {
             let vault = sample_vault_config();
 
             // WHEN merging the same inputs multiple times
-            let result1 = Config::merge(&global, vault.clone());
+            let result1 = Config::build(&global, vault.clone());
             assert!(result1.is_ok(), "First merge should succeed");
 
-            let result2 = Config::merge(&global, vault);
+            let result2 = Config::build(&global, vault);
             assert!(result2.is_ok(), "Second merge should succeed");
 
             // THEN results should be identical
@@ -864,7 +864,7 @@ mod tests {
             vault.log_level = level.to_owned();
 
             // WHEN attempting to merge the configs
-            let result = Config::merge(&global, vault);
+            let result = Config::build(&global, vault);
 
             // THEN validation should succeed or fail as expected
             match expected_error_field {
@@ -1056,7 +1056,7 @@ mod tests {
         fn supports_clone_debug_and_partial_eq() {
             let global = sample_global_config();
             let vault = sample_vault_config();
-            let result1 = Config::merge(&global, vault.clone());
+            let result1 = Config::build(&global, vault.clone());
             assert!(
                 result1.is_ok(),
                 "First merge for trait verification failed: {result1:?}"
@@ -1078,7 +1078,7 @@ mod tests {
                 );
 
                 // Test PartialEq
-                let result2 = Config::merge(&global, vault);
+                let result2 = Config::build(&global, vault);
                 assert!(
                     result2.is_ok(),
                     "Second merge for trait verification failed"
@@ -1145,7 +1145,7 @@ mod tests {
             for _ in 0i32..1000i32 {
                 // We don't assert here as we're just timing, the merge should succeed
                 // based on our fixture data
-                debug_assert!(Config::merge(&global, vault.clone()).is_ok());
+                debug_assert!(Config::build(&global, vault.clone()).is_ok());
             }
             let total_duration = start.elapsed();
             let avg_duration = total_duration / 1000;
@@ -1153,7 +1153,7 @@ mod tests {
             // THEN average merge time should meet architectural performance target
             assert!(
                 avg_duration < std::time::Duration::from_micros(100),
-                "Config::merge performance degraded: {}μs per operation (target: <100μs)",
+                "Config::build performance degraded: {}μs per operation (target: <100μs)",
                 avg_duration.as_micros()
             );
         }
@@ -1178,7 +1178,7 @@ mod tests {
     /// ```rust
     /// let global = sample_global_config();
     /// let vault = sample_vault_config();
-    /// let config = Config::merge(&global, vault).unwrap();
+    /// let config = Config::build(&global, vault).unwrap();
     /// ```
     fn sample_global_config() -> Global {
         Global {
@@ -1218,7 +1218,7 @@ mod tests {
     /// ```rust
     /// let global = sample_global_config();
     /// let vault = sample_vault_config();
-    /// let config = Config::merge(&global, vault).unwrap();
+    /// let config = Config::build(&global, vault).unwrap();
     /// assert_eq!(config.filesystem.templates_dir, "custom_templates"); // vault override
     /// ```
     fn sample_vault_config() -> Vault {
