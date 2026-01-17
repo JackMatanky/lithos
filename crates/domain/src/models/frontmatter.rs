@@ -400,7 +400,7 @@ impl Frontmatter {
     /// # let global = GlobalConfig::default();
     /// # let mut vault = VaultConfig::default();
     /// # vault.filesystem.vault_path = "/vault".to_string();
-    /// # let config = Config::merge(&global, vault).unwrap();
+    /// # let config = Config::build(&global, vault).unwrap();
     /// let aliases = frontmatter.aliases(&config);
     /// assert_eq!(aliases, vec!["My Alias".to_string()]);
     /// ```
@@ -426,7 +426,7 @@ impl Frontmatter {
     /// # let global = GlobalConfig::default();
     /// # let mut vault = VaultConfig::default();
     /// # vault.filesystem.vault_path = "/vault".to_string();
-    /// # let config = Config::merge(&global, vault).unwrap();
+    /// # let config = Config::build(&global, vault).unwrap();
     /// let file_class = frontmatter.file_class(&config);
     /// assert_eq!(file_class, "note");
     /// ```
@@ -662,7 +662,7 @@ impl Frontmatter {
     /// # let global = GlobalConfig::default();
     /// # let mut vault = VaultConfig::default();
     /// # vault.filesystem.vault_path = "/vault".to_string();
-    /// # let config = Config::merge(&global, vault).unwrap();
+    /// # let config = Config::build(&global, vault).unwrap();
     /// let title = frontmatter.title(&config);
     /// assert_eq!(title, "My Note");
     /// ```

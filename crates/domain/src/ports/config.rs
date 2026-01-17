@@ -58,7 +58,7 @@ pub trait Command: Send + Sync {
 ///         // Adapter implementation for loading and merging config
 ///         let global = self.load_global().await?;
 ///         let vault = self.load_vault().await?;
-///         Config::merge(global, vault)
+///         Config::build(global, vault)
 ///     }
 /// }
 /// ```
@@ -74,7 +74,7 @@ pub trait Query: Send + Sync {
     ///
     /// # Business Rules
     /// - Loads both Global and Vault configurations
-    /// - Merges using `Config::merge` with Vault precedence
+    /// - Merges using `Config::build` with Vault precedence
     /// - Validates merged result
     ///
     /// # Errors

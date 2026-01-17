@@ -58,7 +58,7 @@ So that configuration changes are validated and the domain enforces configuratio
  - [x] Define merged Config struct: `#[derive(Debug, Clone, PartialEq)] pub struct Config { pub filesystem: FileSystem, pub frontmatter: Frontmatter, pub log_level: String }` (FileSystem and Frontmatter aliased as FileSystemConfig and FrontmatterConfig in lib.rs)
  - [x] Define FileSystem struct: `#[derive(Debug, Clone, PartialEq)] pub struct FileSystem { pub vault_path: String, pub templates_dir: String, pub schemas_dir: String, pub property_bank_filename: String, pub cache_dir: String }` (aliased as FileSystemConfig in lib.rs)
  - [x] Define Frontmatter struct: `#[derive(Debug, Clone, PartialEq)] pub struct Frontmatter { pub file_class_key: String, pub title_key: String, pub alias_key: String, pub date_created_key: String, pub date_modified_key: String }` (aliased as FrontmatterConfig in lib.rs)
- - [x] Implement Config::merge() method: `pub fn merge(global: &Global, vault: Vault) -> Result<Self, ConfigError>` with Vault > Global precedence (using aliased names GlobalConfig, VaultConfig)
+ - [x] Implement Config::build() method: `pub fn merge(global: &Global, vault: Vault) -> Result<Self, ConfigError>` with Vault > Global precedence (using aliased names GlobalConfig, VaultConfig)
 - [x] Implement Config::validate() method for business rule validation, returns `Result<(), ConfigError>`
 - [x] Set defaults organized by domain: filesystem defaults (templates_dir="templates/", schemas_dir="schemas/", etc.), frontmatter defaults (file_class_key="file_class", title_key="title", etc.), logging defaults (log_level="info")
  - [x] Define SettingValue enum with `#[derive(Debug, Clone, PartialEq)] #[non_exhaustive] pub enum SettingValue { String(String), Number(f64), Boolean(bool), Encrypted(Vec<u8>), Array(Vec<SettingValue>), Object(HashMap<String, SettingValue>) }` (aliased as ConfigValue in lib.rs)
@@ -326,7 +326,7 @@ mod tests {
         let global = GlobalConfig { /* global defaults */ };
         let vault = VaultConfig { /* vault overrides */ };
 
-        let merged = Config::merge(global, vault).unwrap();
+        let merged = Config::build(global, vault).unwrap();
 
         // Assert vault values take precedence
         assert_eq!(merged.some_field, vault_expected_value);
@@ -397,7 +397,7 @@ fn bench_config_merge(c: &mut Criterion) {
 
     c.bench_function("config_merge_business_logic", |b| {
         b.iter(|| {
-            black_box(Config::merge(black_box(&global), black_box(&vault)));
+            black_box(Config::build(black_box(&global), black_box(&vault)));
         });
     });
     // Target: <100μs for typical config merges
