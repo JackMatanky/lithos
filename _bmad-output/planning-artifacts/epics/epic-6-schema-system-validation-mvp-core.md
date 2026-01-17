@@ -90,30 +90,30 @@ So that schemas can define reusable property definitions with rich validation co
 ## Story 6.4: Implement PropertyBank Singleton Service
 
 As a developer implementing the schema bounded context,
-I want a PropertyBankService that provides singleton instance management,
+I want a PropertyBankRegistry that provides singleton instance management,
 So that all CLI operations access the same PropertyBank registry consistently.
 
 **Acceptance Criteria:**
 
 **Given** PropertyBank domain entity is pure and immutable
-**When** I implement PropertyBankService adapter
+**When** I implement PropertyBankRegistry adapter
 **Then** it wraps PropertyBank with singleton management using Arc<OnceLock<T>> pattern
 
 **Given** CLI operations need consistent PropertyBank access
 **When** I implement singleton instance method
-**Then** PropertyBankService::global() returns the same instance across all calls
+**Then** PropertyBankRegistry::global() returns the same instance across all calls
 
 **Given** concurrent CLI operations require thread safety
 **When** I implement access patterns
-**Then** PropertyBankService supports unlimited concurrent reads without lock contention
+**Then** PropertyBankRegistry supports unlimited concurrent reads without lock contention
 
 **Given** architecture must remain hexagonal
 **When** I implement service layer
-**Then** PropertyBank domain contains no singleton logic while PropertyBankService manages all infrastructure concerns
+**Then** PropertyBank domain contains no singleton logic while PropertyBankRegistry manages all infrastructure concerns
 
 **Given** hot reloading will be needed for future LSP phase
 **When** I design the singleton implementation
-**Then** PropertyBankService supports atomic updates using AtomicPtr swap pattern
+**Then** PropertyBankRegistry supports atomic updates using AtomicPtr swap pattern
 
 **Given** performance optimization is valuable for CLI operations
 **When** I benchmark PropertyBank access
@@ -121,21 +121,21 @@ So that all CLI operations access the same PropertyBank registry consistently.
 
 **Given** CLI requires reliable PropertyBank state
 **When** I implement initialization
-**Then** PropertyBankService provides OnceCell initialization guarantees
+**Then** PropertyBankRegistry provides OnceCell initialization guarantees
 
 **Integration Requirements:**
 
 **Given** Story 6.3 provides PropertyBank domain entity
-**When** I implement PropertyBankService adapter
+**When** I implement PropertyBankRegistry adapter
 **Then** it exposes PropertyBank methods through the singleton interface
 
 **Given** Epic 4 provides file loading infrastructure
-**When** I integrate with PropertyBankService
+**When** I integrate with PropertyBankRegistry
 **Then** PropertyBank can be populated from JSON schema files
 
 **Given** CLI commands need PropertyBank access
 **When** I implement command integration
-**Then** all CLI operations use PropertyBankService::global() for consistent access
+**Then** all CLI operations use PropertyBankRegistry::global() for consistent access
 
 ## Story 6.5: Implement Schema Loading with $ref Resolution
 
@@ -150,10 +150,10 @@ So that schemas can reference shared properties from the PropertyBank.
 **Then** schemas are loaded from JSON files in docs/schemas/
 
 **Given** schemas contain $ref pointers
-**When** I resolve references using PropertyBankService from Story 6.4
+**When** I resolve references using PropertyBankRegistry from Story 6.4
 **Then** $ref pointers are replaced with actual Property definitions using consistent singleton access
 
-**Given** PropertyBankService provides global registry
+**Given** PropertyBankRegistry provides global registry
 **When** I integrate schema loading
 **Then** all schema operations use the same PropertyBank instance
 

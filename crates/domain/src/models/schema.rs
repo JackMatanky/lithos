@@ -184,7 +184,10 @@ impl Schema {
     }
 }
 
-/// Singleton registry of reusable Property definitions.
+/// Registry of reusable Property definitions.
+///
+/// This is a pure domain entity that maintains a collection of properties.
+/// Singleton behavior is handled by the adapter layer (`PropertyBankRegistry`).
 ///
 /// # Examples
 ///

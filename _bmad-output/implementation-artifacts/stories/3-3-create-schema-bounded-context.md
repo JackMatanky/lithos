@@ -27,7 +27,15 @@ So that schemas can define reusable property definitions with rich validation co
 
 **Given** PropertyBank is defined
 **When** I validate its design
-**Then** it provides singleton registry with Lookup method and reference support
+**Then** it provides registry with Lookup method and reference support
+
+**Given** architecture requires hexagonal separation
+**When** I implement PropertyBank domain entity
+**Then** PropertyBank remains pure with no singleton logic or infrastructure concerns
+
+**Given** CLI operations need consistent PropertyBank access across the application
+**When** I prepare for singleton implementation in adapter layer
+**Then** PropertyBank domain entity is designed to be wrapped by PropertyBankRegistry with Arc<OnceLock<T>> pattern for performance-ready singleton management
 
 **Given** Property entity is defined
 **When** I check identity generation
@@ -96,17 +104,31 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] Add name validation: regex `^[a-z0-9_-]+$`, length 1-64 chars
 - [x] **TDD REQUIREMENT:** Make all Property entity tests pass (ID determinism, validation, edge cases)
 
-### Task 4: Implement PropertyBank Singleton (GREEN Phase - AC: 2-4)
+### Task 4: Implement PropertyBank Domain Entity (GREEN Phase - AC: 1-2)
 
-- [x] Implement PropertyBank struct: `#[derive(Debug, Clone, PartialEq)] pub struct PropertyBank { properties: HashMap<String, Property> }`
+- [x] Implement PropertyBank struct: `#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)] pub struct PropertyBank { pub pending_events: Vec<DomainEvent>, pub properties: HashMap<String, Property> }`
 - [x] Implement PropertyBank::new() and PropertyBank::default()
-- [x] Implement PropertyBank::register() method: `pub fn register(&mut self, property: Property) -> Result<&Property, SchemaError>`
 - [x] Implement PropertyBank::lookup() method: `pub fn lookup(&self, id: &str) -> Option<&Property>`
 - [x] Implement PropertyBank::lookup_by_definition() method for name+spec lookup
 - [x] Implement lookup() by ID and lookup_by_definition() by name+spec
-- [x] Add resolve_ref() method for $ref resolution (Epic 6 integration point)
+- [x] Add resolve_ref() method for $ref resolution (Epic 6.4 integration point)
+- [x] Add add_event() and take_events() methods for domain event management
 - [x] Implement Default trait for easy instantiation
 - [x] **TDD REQUIREMENT:** Make all PropertyBank tests pass (registration, deduplication, lookups)
+
+### Task 4.1: Implement PropertyBank Singleton Service (GREEN Phase - AC: 6.4)
+
+- [ ] **PERFORMANCE-READY SINGLETON:** Use `Arc<OnceLock<T>>` pattern for PropertyBank singleton management
+- [ ] **CLI CONSISTENCY:** PropertyBankRegistry::global() returns the same instance across all calls
+- [ ] **THREAD SAFETY:** PropertyBankRegistry supports unlimited concurrent reads without lock contention
+- [ ] **HEXAGONAL ARCHITECTURE:** PropertyBank domain contains no singleton logic while PropertyBankRegistry manages all infrastructure concerns
+- [ ] **HOT RELOAD READY:** PropertyBankRegistry supports atomic updates using AtomicPtr swap pattern for future LSP phase
+- [ ] **PERFORMANCE OPTIMIZATION:** PropertyBankRegistry access completes in <2ns for warm cache hits
+- [ ] **RELIABLE INITIALIZATION:** PropertyBankRegistry provides OnceCell initialization guarantees
+- [ ] **INTEGRATION REQUIREMENTS:** PropertyBankRegistry wraps PropertyBank domain entity with singleton interface
+- [ ] **EPIC 4 INTEGRATION:** PropertyBankRegistry integrates with Epic 4 file loading infrastructure for population from JSON schema files
+- [ ] **CLI COMMAND INTEGRATION:** All CLI operations use PropertyBankRegistry::global() for consistent access
+- [ ] **TDD REQUIREMENT:** Make all PropertyBankRegistry tests pass (singleton behavior, performance benchmarks, thread safety)
 
 ### Task 5: Implement Schema Aggregate (GREEN Phase - AC: 1, 2)
 
