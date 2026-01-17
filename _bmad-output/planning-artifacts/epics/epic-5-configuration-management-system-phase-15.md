@@ -6,6 +6,10 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - ConfigPort and mocks created in this epic
 - Sample config files based on JSON schema (lithos-specific)
 - User documentation for configuration
+- **LSP-Ready Singleton Implementation**: Use `Arc<OnceLock<T>>` pattern for performance-critical data
+- **Hybrid Architecture**: `Arc<OnceLock<T>>` for hot paths (PropertyBank, schemas) + `Arc<RwLock<T>>` for mutable config
+- **Performance Target**: Sub-microsecond access times for LSP completion/hover requests
+- **Hot Reloading**: Zero-downtime config updates via AtomicPtr swap pattern
 
 ## Story 5.1: Implement Config CQRS Ports from Epic 3
 
@@ -47,9 +51,21 @@ So that configuration can be loaded through a well-defined contract following he
 **When** I implement mocks for testing
 **Then** test doubles are available for isolated unit testing
 
-**Given** the domain interface exists
+**Given** domain interface exists
 **When** I validate the design
 **Then** it follows hexagonal principles with clear separation between domain and infrastructure
+
+**Given** LSP runtime requires high-performance configuration access
+**When** I implement singleton pattern
+**Then** use `Arc<OnceLock<T>>` for performance-critical configuration data (PropertyBank, schemas)
+
+**Given** configuration must support hot-reloading for LSP
+**When** I design the singleton implementation
+**Then** implement hybrid approach: `Arc<OnceLock<T>>` for performance data + `Arc<RwLock<T>>` for mutable configuration
+
+**Given** LSP requests need sub-microsecond response times
+**When** I implement configuration access patterns
+**Then** ensure zero-locking for 90% of LSP operations (completion, hover, diagnostics)
 
 ## Story 5.3: Implement Hierarchical Configuration Loading
 
