@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     errors::DomainError,
     events::{PropertyBankUpdated, SchemaCreated},
-    models::property::{Property, PropertySpec},
+    models::property::Property,
 };
 
 /// Schema aggregate defining metadata validation rules with inheritance support.
@@ -278,24 +278,25 @@ impl PropertyBank {
         self.properties.values()
     }
 
-    /// Decodes a JSON Pointer `$ref` path to a Property.
+    /// Decodes a `$ref` path to a Property.
     ///
-    /// JSON Schema uses `$ref` with JSON Pointer format to reference properties.
-    /// This method decodes the pointer and returns the referenced property.
+    /// Schema files use `$ref` with JSON Pointer format to reference properties.
+    /// This method decodes the `$ref` and returns the referenced property.
+    /// Format-agnostic: works with JSON, TOML, or YAML schema definitions.
     ///
     /// # Format
     /// - **Valid**: `#/properties/{property_name}`
     /// - **Example**: `#/properties/status` resolves to property named "status"
     ///
     /// # Arguments
-    /// * `ref_path` - JSON Pointer reference path (e.g., `#/properties/title`)
+    /// * `ref_path` - `$ref` path (e.g., `#/properties/title`)
     ///
     /// # Returns
     /// * `Ok(&Property)` - Reference to the property if found
-    /// * `Err(DomainError)` - If path format is invalid or property not found
+    /// * `Err(DomainError)` - If `$ref` format is invalid or property not found
     ///
     /// # Errors
-    /// - `ValidationFailed` - Invalid pointer format or empty property name
+    /// - `ValidationFailed` - Invalid `$ref` format or empty property name
     /// - `PropertyNotFound` - Property with the given name doesn't exist
     ///
     /// # Examples
@@ -308,21 +309,21 @@ impl PropertyBank {
     /// let property = Property::new(id, name, true, false, spec).unwrap();
     /// bank.register(property).unwrap();
     ///
-    /// // Decode the JSON Pointer reference
-    /// let prop = bank.decode_ref("#/properties/status").unwrap();
+    /// // Decode the $ref
+    /// let prop = bank.decode("#/properties/status").unwrap();
     /// assert_eq!(prop.name, "status");
     /// ```
     #[inline]
-    pub fn decode_ref(&self, ref_path: &str) -> Result<&Property, DomainError> {
+    pub fn decode(&self, ref_path: &str) -> Result<&Property, DomainError> {
         let prefix = "#/properties/";
         if !ref_path.starts_with(prefix) {
             return Err(DomainError::ValidationFailed(format!(
-                "Invalid ref path format: {ref_path}"
+                "Invalid $ref format: {ref_path}"
             )));
         }
         let name = ref_path.get(prefix.len()..).ok_or_else(|| {
             DomainError::ValidationFailed(format!(
-                "Empty property name in ref: {ref_path}"
+                "Empty property name in $ref: {ref_path}"
             ))
         })?;
         self.properties
@@ -351,20 +352,6 @@ impl PropertyBank {
         self.get_by_name(key)
     }
 
-    /// Gets a property by name and spec (computes ID internally).
-    ///
-    /// This is useful when you have the property definition but not the computed ID.
-    #[inline]
-    #[must_use]
-    pub fn get_by_definition(
-        &self,
-        name: &str,
-        spec: &PropertySpec,
-    ) -> Option<&Property> {
-        let id = Property::compute_id(name, spec).ok()?;
-        self.get(&id)
-    }
-
     /// Gets a property by ID.
     #[inline]
     fn get_by_id(&self, id: &str) -> Option<&Property> {
@@ -388,7 +375,19 @@ impl PropertyBank {
     #[inline]
     #[must_use]
     pub fn has(&self, key: &str) -> bool {
-        self.get(key).is_some()
+        self.has_id(key) || self.has_name(key)
+    }
+
+    /// Checks if a property exists by ID.
+    #[inline]
+    fn has_id(&self, id: &str) -> bool {
+        self.properties.contains_key(id)
+    }
+
+    /// Checks if a property exists by name.
+    #[inline]
+    fn has_name(&self, name: &str) -> bool {
+        self.properties.values().any(|p| p.name == name)
     }
 
     /// Create a new empty `PropertyBank`.
@@ -585,7 +584,7 @@ mod tests {
         }
     }
 
-    mod decode_ref {
+    mod decode {
         use super::super::*;
         use crate::models::schema::fixtures::example_property;
 
@@ -596,7 +595,7 @@ mod tests {
             let prop = example_property(); // name is "status"
             bank.register(prop).unwrap();
 
-            let p = bank.decode_ref("#/properties/status").unwrap();
+            let p = bank.decode("#/properties/status").unwrap();
             assert_eq!(p.name, "status");
         }
     }
