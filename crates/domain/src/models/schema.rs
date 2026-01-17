@@ -108,6 +108,56 @@ impl Schema {
         self.pending_events.push(event);
     }
 
+    /// Gets a property by name or ID.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::models::schema::Schema;
+    /// # use uuid::Uuid;
+    /// # use std::collections::HashSet;
+    /// # let schema = Schema::new(Uuid::now_v7(), "test".to_string(), None, HashSet::new(), vec![], None).unwrap();
+    /// let prop = schema.get("title");
+    /// assert!(prop.is_none());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn get(&self, key: &str) -> Option<&Property> {
+        // Try by name first (most common case)
+        if let Some(prop) = self.get_by_name(key) {
+            return Some(prop);
+        }
+        // Fall back to ID lookup
+        self.get_by_id(key)
+    }
+
+    /// Gets a property by ID.
+    #[inline]
+    fn get_by_id(&self, id: &str) -> Option<&Property> {
+        self.properties.iter().find(|p| p.id == id)
+    }
+
+    /// Gets a property by name.
+    #[inline]
+    fn get_by_name(&self, name: &str) -> Option<&Property> {
+        self.properties.iter().find(|p| p.name == name)
+    }
+
+    /// Checks if a property exists by name.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::models::schema::Schema;
+    /// # use uuid::Uuid;
+    /// # use std::collections::HashSet;
+    /// # let schema = Schema::new(Uuid::now_v7(), "test".to_string(), None, HashSet::new(), vec![], None).unwrap();
+    /// assert!(!schema.has("title"));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn has(&self, name: &str) -> bool {
+        self.properties.iter().any(|p| p.name == name)
+    }
+
     /// Create a new schema with inheritance resolution.
     ///
     /// # Errors
@@ -228,23 +278,64 @@ impl PropertyBank {
         self.properties.values()
     }
 
-    /// Lookup a property by ID.
+    /// Gets a property by name or ID.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::PropertyBank;
+    /// let bank = PropertyBank::new();
+    /// let prop = bank.get("title");
+    /// assert!(prop.is_none());
+    /// ```
     #[inline]
     #[must_use]
-    pub fn lookup(&self, id: &str) -> Option<&Property> {
-        self.properties.get(id)
+    pub fn get(&self, key: &str) -> Option<&Property> {
+        // Try by ID first (HashMap lookup is O(1))
+        if let Some(prop) = self.get_by_id(key) {
+            return Some(prop);
+        }
+        // Fall back to name lookup (O(n))
+        self.get_by_name(key)
     }
 
-    /// Lookup a property by name and spec (computes ID internally).
+    /// Gets a property by name and spec (computes ID internally).
+    ///
+    /// This is useful when you have the property definition but not the computed ID.
     #[inline]
     #[must_use]
-    pub fn lookup_by_definition(
+    pub fn get_by_definition(
         &self,
         name: &str,
         spec: &PropertySpec,
     ) -> Option<&Property> {
         let id = Property::compute_id(name, spec).ok()?;
-        self.lookup(&id)
+        self.get(&id)
+    }
+
+    /// Gets a property by ID.
+    #[inline]
+    fn get_by_id(&self, id: &str) -> Option<&Property> {
+        self.properties.get(id)
+    }
+
+    /// Gets a property by name.
+    #[inline]
+    fn get_by_name(&self, name: &str) -> Option<&Property> {
+        self.properties.values().find(|p| p.name == name)
+    }
+
+    /// Checks if a property exists by name or ID.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::PropertyBank;
+    /// let bank = PropertyBank::new();
+    /// assert!(!bank.has("title"));
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn has(&self, key: &str) -> bool {
+        self.get(key).is_some()
     }
 
     /// Create a new empty `PropertyBank`.
