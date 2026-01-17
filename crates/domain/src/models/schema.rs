@@ -278,6 +278,59 @@ impl PropertyBank {
         self.properties.values()
     }
 
+    /// Decodes a JSON Pointer `$ref` path to a Property.
+    ///
+    /// JSON Schema uses `$ref` with JSON Pointer format to reference properties.
+    /// This method decodes the pointer and returns the referenced property.
+    ///
+    /// # Format
+    /// - **Valid**: `#/properties/{property_name}`
+    /// - **Example**: `#/properties/status` resolves to property named "status"
+    ///
+    /// # Arguments
+    /// * `ref_path` - JSON Pointer reference path (e.g., `#/properties/title`)
+    ///
+    /// # Returns
+    /// * `Ok(&Property)` - Reference to the property if found
+    /// * `Err(DomainError)` - If path format is invalid or property not found
+    ///
+    /// # Errors
+    /// - `ValidationFailed` - Invalid pointer format or empty property name
+    /// - `PropertyNotFound` - Property with the given name doesn't exist
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{PropertyBank, Property, PropertySpec, StringSpec};
+    /// let mut bank = PropertyBank::new();
+    /// let spec = PropertySpec::String(StringSpec::default());
+    /// let name = "status".to_string();
+    /// let id = Property::compute_id(&name, &spec).unwrap();
+    /// let property = Property::new(id, name, true, false, spec).unwrap();
+    /// bank.register(property).unwrap();
+    ///
+    /// // Decode the JSON Pointer reference
+    /// let prop = bank.decode_ref("#/properties/status").unwrap();
+    /// assert_eq!(prop.name, "status");
+    /// ```
+    #[inline]
+    pub fn decode_ref(&self, ref_path: &str) -> Result<&Property, DomainError> {
+        let prefix = "#/properties/";
+        if !ref_path.starts_with(prefix) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid ref path format: {ref_path}"
+            )));
+        }
+        let name = ref_path.get(prefix.len()..).ok_or_else(|| {
+            DomainError::ValidationFailed(format!(
+                "Empty property name in ref: {ref_path}"
+            ))
+        })?;
+        self.properties
+            .values()
+            .find(|p| p.name == name)
+            .ok_or_else(|| DomainError::PropertyNotFound(name.to_owned()))
+    }
+
     /// Gets a property by name or ID.
     ///
     /// # Examples
@@ -375,34 +428,6 @@ impl PropertyBank {
                 "Failed to retrieve property after registration".to_owned(),
             )
         })
-    }
-
-    /// Resolve $ref pointer to Property.
-    ///
-    /// Format: `#/properties/name`.
-    ///
-    /// # Errors
-    /// Returns `DomainError` if resolution fails.
-    #[inline]
-    pub fn resolve_ref(
-        &self,
-        ref_path: &str,
-    ) -> Result<&Property, DomainError> {
-        let prefix = "#/properties/";
-        if !ref_path.starts_with(prefix) {
-            return Err(DomainError::ValidationFailed(format!(
-                "Invalid ref path format: {ref_path}"
-            )));
-        }
-        let name = ref_path.get(prefix.len()..).ok_or_else(|| {
-            DomainError::ValidationFailed(format!(
-                "Empty property name in ref: {ref_path}"
-            ))
-        })?;
-        self.properties
-            .values()
-            .find(|p| p.name == name)
-            .ok_or_else(|| DomainError::PropertyNotFound(name.to_owned()))
     }
 
     /// Returns all pending domain events and clears the collection.
@@ -560,7 +585,7 @@ mod tests {
         }
     }
 
-    mod resolve_ref {
+    mod decode_ref {
         use super::super::*;
         use crate::models::schema::fixtures::example_property;
 
@@ -571,7 +596,7 @@ mod tests {
             let prop = example_property(); // name is "status"
             bank.register(prop).unwrap();
 
-            let p = bank.resolve_ref("#/properties/status").unwrap();
+            let p = bank.decode_ref("#/properties/status").unwrap();
             assert_eq!(p.name, "status");
         }
     }

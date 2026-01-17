@@ -32,10 +32,7 @@ So that schemas can define reusable property definitions with rich validation co
 **Given** architecture requires hexagonal separation
 **When** I implement PropertyBank domain entity
 **Then** PropertyBank remains pure with no singleton logic or infrastructure concerns
-
-**Given** CLI operations need consistent PropertyBank access across the application
-**When** I prepare for singleton implementation in adapter layer
-**Then** PropertyBank domain entity is designed to be wrapped by PropertyBankRegistry with Arc<OnceLock<T>> pattern for performance-ready singleton management
+**And** singleton behavior will be handled in Epic 6, Story 6.4 (PropertyBankRegistry adapter)
 
 **Given** Property entity is defined
 **When** I check identity generation
@@ -115,20 +112,6 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] Add add_event() and take_events() methods for domain event management
 - [x] Implement Default trait for easy instantiation
 - [x] **TDD REQUIREMENT:** Make all PropertyBank tests pass (registration, deduplication, lookups)
-
-### Task 4.1: Implement PropertyBank Singleton Service (GREEN Phase - AC: 6.4)
-
-- [ ] **PERFORMANCE-READY SINGLETON:** Use `Arc<OnceLock<T>>` pattern for PropertyBank singleton management
-- [ ] **CLI CONSISTENCY:** PropertyBankRegistry::global() returns the same instance across all calls
-- [ ] **THREAD SAFETY:** PropertyBankRegistry supports unlimited concurrent reads without lock contention
-- [ ] **HEXAGONAL ARCHITECTURE:** PropertyBank domain contains no singleton logic while PropertyBankRegistry manages all infrastructure concerns
-- [ ] **HOT RELOAD READY:** PropertyBankRegistry supports atomic updates using AtomicPtr swap pattern for future LSP phase
-- [ ] **PERFORMANCE OPTIMIZATION:** PropertyBankRegistry access completes in <2ns for warm cache hits
-- [ ] **RELIABLE INITIALIZATION:** PropertyBankRegistry provides OnceCell initialization guarantees
-- [ ] **INTEGRATION REQUIREMENTS:** PropertyBankRegistry wraps PropertyBank domain entity with singleton interface
-- [ ] **EPIC 4 INTEGRATION:** PropertyBankRegistry integrates with Epic 4 file loading infrastructure for population from JSON schema files
-- [ ] **CLI COMMAND INTEGRATION:** All CLI operations use PropertyBankRegistry::global() for consistent access
-- [ ] **TDD REQUIREMENT:** Make all PropertyBankRegistry tests pass (singleton behavior, performance benchmarks, thread safety)
 
 ### Task 5: Implement Schema Aggregate (GREEN Phase - AC: 1, 2)
 
@@ -248,9 +231,9 @@ So that schemas can define reusable property definitions with rich validation co
 
 ```rust
 impl PropertyBank {
-    /// Resolve $ref pointer to Property
-    /// Used by schema loading (Story 6.3) for $ref resolution
-    pub fn resolve_ref(&self, ref_path: &str) -> Result<&Property, DomainError> {
+    /// Decodes JSON Pointer $ref path to Property
+    /// Used by schema loading (Story 6.5) for $ref resolution
+    pub fn decode_ref(&self, ref_path: &str) -> Result<&Property, DomainError> {
         // Parse "#/properties/title" → "title"
         // Lookup by property name (not ID)
         // Return &Property for schema composition
