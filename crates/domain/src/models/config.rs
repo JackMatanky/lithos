@@ -8,6 +8,12 @@
 //! - All configuration must be validated before use
 //! - Encrypted fields are stored as opaque blobs (decryption is adapter concern)
 //! - Immutable configuration entities following Rust ownership patterns
+//!
+//! # LSP Forward-Threading Design
+//! - Domain entities remain pure (no singleton patterns in domain layer)
+//! - Singleton patterns implemented in adapter layer (Epic 5) using `Arc<OnceLock<T>>`
+//! - Performance-optimized for LSP hot paths: `PropertyBank`, schemas, completion data
+//! - Hot-reload capable via `AtomicPtr` swap for zero-downtime updates
 
 /// Default configuration constants organized by domain.
 mod defaults {

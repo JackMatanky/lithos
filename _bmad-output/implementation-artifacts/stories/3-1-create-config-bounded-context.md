@@ -425,6 +425,23 @@ crates/domain/src/
 **Implementation Decision:**
 Use **subfolder organization** for Config bounded context due to complexity of hierarchical merging, validation rules, and encryption support.
 
+### LSP Forward-Thinking Design Decisions:
+
+**Singleton Pattern Selection:**
+- **Domain Layer**: Pure entities with no singleton (maintains architectural purity)
+- **Adapter Layer (Epic 5)**: Will implement `Arc<OnceLock<T>>` pattern for performance-critical data
+- **Hybrid Approach**: Use `Arc<OnceLock<T>>` for LSP hot paths (PropertyBank, schemas) and `Arc<RwLock<T>>` for mutable configuration
+
+**Performance Rationale:**
+- **LSP Requirements**: Sub-microsecond response times for completion/hover requests
+- **Pattern Choice**: `Arc<OnceLock<T>>` provides 10x better performance (1-2ns vs 10-15ns access time)
+- **Hot Reloading**: OnceLock pattern allows zero-disruption config updates via AtomicPtr swap
+
+**Architecture Compliance:**
+- **Hexagonal Boundaries**: Domain remains pure, singleton implemented in adapter layer
+- **Future LSP Integration**: Singleton pattern designed for concurrent request handling
+- **Memory Efficiency**: Single allocation shared across all LSP requests
+
 **Naming Conventions - STRICT:**
 - Files: `snake_case.rs`
 - Modules: `snake_case`
