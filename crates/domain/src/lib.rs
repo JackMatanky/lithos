@@ -48,9 +48,9 @@ pub use models::{
     tag::Tag,
     task::{Task, TaskStatus},
     template::{
-        Composition as TemplateComposition, InsertionPosition,
-        Metadata as TemplateMetadata, Section as TemplateSection, Template,
-        VariableDefinition,
+        Composition as TemplateComposition, DomainEvent as TemplateDomainEvent,
+        InsertionPosition, Metadata as TemplateMetadata,
+        Section as TemplateSection, Template, VariableDefinition,
     },
 };
 pub use ports::{
