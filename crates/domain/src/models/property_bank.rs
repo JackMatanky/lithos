@@ -1,7 +1,5 @@
 //! PropertyBank domain entity for centralized property management.
 
-use std::collections::HashMap;
-
 use crate::{
     errors::DomainError,
     events::PropertyBankUpdated,
@@ -18,11 +16,12 @@ use crate::{
 /// use lithos_domain::models::property_bank::PropertyBank;
 /// use lithos_domain::models::property::{Property, PropertyName};
 /// use lithos_domain::models::property_spec::{PropertySpec, BoolSpec};
+/// use uuid::Uuid;
 ///
 /// let mut bank = PropertyBank::new();
 /// let name = PropertyName::new("is_active".to_string()).unwrap();
 /// let spec = PropertySpec::Bool(BoolSpec::default());
-/// let id = Property::compute_id(name.as_str(), &spec).unwrap();
+/// let id = Uuid::now_v7();
 /// let property = Property::new(id, name, true, false, spec).unwrap();
 ///
 /// bank.register(property).unwrap();
@@ -34,9 +33,9 @@ use crate::{
 #[non_exhaustive]
 pub struct PropertyBank {
     /// Index mapping ID -> index in properties vector.
-    pub id_index: HashMap<String, usize>,
+    pub id_index: std::collections::HashMap<uuid::Uuid, usize>,
     /// Index mapping Name -> index in properties vector.
-    pub name_index: HashMap<String, usize>,
+    pub name_index: std::collections::HashMap<String, usize>,
     /// Dense storage of properties.
     pub properties: Vec<Property>,
 }
@@ -74,11 +73,18 @@ impl PropertyBank {
     /// ```
     #[inline]
     pub fn decode(&self, key: &str) -> Result<&Property, DomainError> {
+        // Try parsing key as UUID first
+        if let Ok(id) = uuid::Uuid::parse_str(key)
+            && let Some(prop) = self.get_by_id(id)
+        {
+            return Ok(prop);
+        }
+        // Fall back to name lookup
         self.get_by_name(key)
             .ok_or_else(|| DomainError::PropertyNotFound(key.to_owned()))
     }
 
-    /// Gets a property by name or ID.
+    /// Gets a property by name or ID (string).
     ///
     /// # Examples
     ///
@@ -91,19 +97,21 @@ impl PropertyBank {
     #[inline]
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&Property> {
-        // Try by ID first (HashMap lookup is O(1))
-        if let Some(prop) = self.get_by_id(key) {
+        // Try by ID first
+        if let Ok(id) = uuid::Uuid::parse_str(key)
+            && let Some(prop) = self.get_by_id(id)
+        {
             return Some(prop);
         }
-        // Fall back to name lookup (O(1))
+        // Fall back to name lookup
         self.get_by_name(key)
     }
 
     /// Lookup property by ID (O(1)).
     #[inline]
     #[must_use]
-    pub fn get_by_id(&self, id: &str) -> Option<&Property> {
-        let &idx = self.id_index.get(id)?;
+    pub fn get_by_id(&self, id: uuid::Uuid) -> Option<&Property> {
+        let &idx = self.id_index.get(&id)?;
         self.properties.get(idx)
     }
 
@@ -118,8 +126,8 @@ impl PropertyBank {
     /// Checks if a property exists by ID.
     #[inline]
     #[must_use]
-    pub fn has_id(&self, id: &str) -> bool {
-        self.id_index.contains_key(id)
+    pub fn has_id(&self, id: uuid::Uuid) -> bool {
+        self.id_index.contains_key(&id)
     }
 
     /// Checks if a property exists by name.
@@ -130,15 +138,6 @@ impl PropertyBank {
     }
 
     /// Create a new empty `PropertyBank`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_domain::models::property_bank::PropertyBank;
-    ///
-    /// let bank = PropertyBank::new();
-    /// assert_eq!(bank.all().count(), 0);
-    /// ```
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -153,11 +152,12 @@ impl PropertyBank {
     /// use lithos_domain::models::property_bank::PropertyBank;
     /// use lithos_domain::models::property::{Property, PropertyName};
     /// use lithos_domain::models::property_spec::{PropertySpec, BoolSpec};
+    /// use uuid::Uuid;
     ///
     /// let mut bank = PropertyBank::new();
     /// let name = PropertyName::new("is_active".to_string()).unwrap();
     /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let id = Property::compute_id(name.as_str(), &spec).unwrap();
+    /// let id = Uuid::now_v7();
     /// let property = Property::new(id, name, true, false, spec).unwrap();
     ///
     /// let (count, event) = bank.register(property).unwrap();
@@ -181,7 +181,7 @@ impl PropertyBank {
         // Prevent duplicate names
         self.validate_name_unique(property.name.as_str())?;
 
-        let id = property.id.clone();
+        let id = property.id;
         let name = property.name.to_string();
         let idx = self.properties.len();
 
@@ -206,6 +206,8 @@ impl PropertyBank {
     reason = "Unit tests use unwrap/expect for simplicity"
 )]
 mod tests {
+    use uuid::Uuid;
+
     use super::*;
     use crate::models::{
         property::{Property, PropertyName},
@@ -220,8 +222,8 @@ mod tests {
         let mut bank = PropertyBank::new();
         let spec = PropertySpec::String(StringSpec::default());
         let name = PropertyName::new("test".to_owned()).unwrap();
-        let id = Property::compute_id(name.as_str(), &spec).unwrap();
-        let prop = Property::new(id, name, false, false, spec).unwrap();
+        let prop =
+            Property::new(Uuid::now_v7(), name, false, false, spec).unwrap();
 
         // WHEN registering the same property twice
         bank.register(prop.clone()).unwrap();
@@ -241,14 +243,14 @@ mod tests {
         let spec = PropertySpec::String(StringSpec::default());
         let name_str = "test".to_owned();
         let name = PropertyName::new(name_str.clone()).unwrap();
-        let id = Property::compute_id(&name_str, &spec).unwrap();
-        let prop = Property::new(id.clone(), name, false, false, spec).unwrap();
+        let id = Uuid::now_v7();
+        let prop = Property::new(id, name, false, false, spec).unwrap();
 
         // WHEN registering the property
         bank.register(prop).unwrap();
 
         // THEN it should be accessible by both ID and name
-        assert!(bank.get_by_id(&id).is_some());
+        assert!(bank.get_by_id(id).is_some());
         assert!(bank.get_by_name("test").is_some());
     }
 
@@ -260,15 +262,15 @@ mod tests {
         let mut bank = PropertyBank::new();
         let spec1 = PropertySpec::String(StringSpec::default());
         let name = PropertyName::new("test".to_owned()).unwrap();
-        let id1 = Property::compute_id(name.as_str(), &spec1).unwrap();
         let prop1 =
-            Property::new(id1, name.clone(), false, false, spec1).unwrap();
+            Property::new(Uuid::now_v7(), name.clone(), false, false, spec1)
+                .unwrap();
         bank.register(prop1).unwrap();
 
         // WHEN registering a different definition with the same name
         let spec2 = PropertySpec::Bool(BoolSpec::default());
-        let id2 = Property::compute_id(name.as_str(), &spec2).unwrap();
-        let prop2 = Property::new(id2, name, false, false, spec2).unwrap();
+        let prop2 =
+            Property::new(Uuid::now_v7(), name, false, false, spec2).unwrap();
         let res = bank.register(prop2);
 
         // THEN it must return a DuplicatePropertyName error

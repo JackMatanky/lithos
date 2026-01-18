@@ -10,6 +10,8 @@ use std::{
     sync::OnceLock,
 };
 
+use uuid::Uuid;
+
 use crate::{errors::DomainError, models::property_spec::PropertySpec};
 
 /// Validated property name value object.
@@ -114,8 +116,8 @@ impl AsRef<str> for PropertyName {
 pub struct Property {
     /// Whether property accepts array of values.
     pub array: bool,
-    /// Deterministic ID: hash(name + spec content).
-    pub id: String,
+    /// Unique identity (UUID v7).
+    pub id: Uuid,
     /// Property name.
     pub name: PropertyName,
     /// Whether property is required.
@@ -125,68 +127,33 @@ pub struct Property {
 }
 
 impl Property {
-    /// Compute deterministic ID from name and spec using Blake3.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use lithos_domain::models::property::Property;
-    /// use lithos_domain::models::property_spec::{PropertySpec, BoolSpec};
-    ///
-    /// let name = "is_active";
-    /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let id = Property::compute_id(name, &spec).unwrap();
-    /// assert_eq!(id.len(), 64); // Blake3 hex length
-    /// ```
-    ///
-    /// # Errors
-    /// Returns `DomainError` if canonicalization fails.
-    #[inline]
-    pub fn compute_id(
-        name: &str,
-        spec: &PropertySpec,
-    ) -> Result<String, DomainError> {
-        let mut hasher = blake3::Hasher::new();
-        hasher.update(name.as_bytes());
-        // Use Debug representation for spec content to ensure absolute determinism
-        // as suggested in the architectural requirements for property identity.
-        let spec_repr = format!("{spec:?}");
-        hasher.update(spec_repr.as_bytes());
-        Ok(hasher.finalize().to_hex().to_string())
-    }
-
     /// Create a new property with validation.
-    ///
-    /// # Identity Integrity
-    /// The `id` must be provided by the caller but will be validated against the
-    /// computed hash of the property's definition (name + spec) using Blake3.
     ///
     /// # Examples
     ///
     /// ```
     /// use lithos_domain::models::property::{Property, PropertyName};
     /// use lithos_domain::models::property_spec::{PropertySpec, BoolSpec};
+    /// use uuid::Uuid;
     ///
     /// let name = PropertyName::new("is_active".to_string()).unwrap();
     /// let spec = PropertySpec::Bool(BoolSpec::default());
-    /// let id = Property::compute_id(name.as_str(), &spec).unwrap();
+    /// let id = Uuid::now_v7();
     ///
     /// let property = Property::new(id, name, true, false, spec).unwrap();
     /// assert!(property.required);
     /// ```
     ///
     /// # Errors
-    /// Returns `DomainError` if validation fails or the provided ID does not match
-    /// the computed definition hash.
+    /// Returns `DomainError` if validation fails.
     #[inline]
     pub fn new(
-        id: String,
+        id: Uuid,
         name: PropertyName,
         required: bool,
         array: bool,
         spec: PropertySpec,
     ) -> Result<Self, DomainError> {
-        Self::validate_id_integrity(&id, name.as_str(), &spec)?;
         let property = Self {
             array,
             id,
@@ -210,18 +177,31 @@ impl Property {
         Ok(())
     }
 
-    fn validate_id_integrity(
-        id: &str,
-        name: &str,
-        spec: &PropertySpec,
+    /// Validate a value against this property's specification.
+    ///
+    /// This method uses `serde_json::Value` as a universal Intermediate Representation (IR)
+    /// for metadata values, allowing validation of data loaded from JSON, YAML, or TOML.
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails.
+    #[inline]
+    pub fn validate_value(
+        &self,
+        value: &serde_json::Value,
     ) -> Result<(), DomainError> {
-        let computed_id = Self::compute_id(name, spec)?;
-        if id != computed_id {
-            return Err(DomainError::ValidationFailed(format!(
-                "Property ID mismatch for {name}. Expected {computed_id}, got {id}"
-            )));
+        if self.array {
+            let arr =
+                value.as_array().ok_or_else(|| DomainError::InvalidType {
+                    value: value.to_string(),
+                    expected: "array".to_owned(),
+                })?;
+            for item in arr {
+                self.spec.validate(item)?;
+            }
+            Ok(())
+        } else {
+            self.spec.validate(value)
         }
-        Ok(())
     }
 }
 
@@ -258,14 +238,15 @@ pub struct RawPropertyRef {
 /// Inline variant of a raw property.
 ///
 /// Corresponds to the `Property` definition in the JSON schema but used as input.
-/// Differs from `Property` entity by missing the `id` (which is computed later)
-/// and using raw types before validation.
+/// Missing identity is assigned by the adapter before entering the Domain resolution.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyInline {
     /// Whether property accepts array of values.
     #[serde(default)]
     pub array: bool,
+    /// Unique identity assigned by adapter.
+    pub id: Uuid,
     /// Property name.
     pub name: String,
     /// Whether property is required.
@@ -281,7 +262,7 @@ pub mod fixtures {
     use super::*;
     use crate::models::property_spec::StringSpec;
 
-    /// 3.3-UNIT-018: `PropertyBuilder` for flexible test data generation.
+    /// `PropertyBuilder` for flexible test data generation.
     pub struct PropertyBuilder {
         array: bool,
         name: String,
@@ -322,10 +303,14 @@ pub mod fixtures {
         )]
         pub fn build(self) -> Property {
             let name = PropertyName::new(self.name).expect("Valid name");
-            let id = Property::compute_id(name.as_str(), &self.spec)
-                .expect("Valid ID");
-            Property::new(id, name, self.required, self.array, self.spec)
-                .expect("Valid property")
+            Property::new(
+                Uuid::now_v7(),
+                name,
+                self.required,
+                self.array,
+                self.spec,
+            )
+            .expect("Valid property")
         }
 
         /// Sets the name of the property.
@@ -377,24 +362,6 @@ mod tests {
     mod property {
         use super::super::*;
         use crate::models::property_spec::StringSpec;
-
-        /// 3.3-UNIT-005: `id_is_deterministic_using_blake3_and_canonical_json`.
-        /// Priority: P0.
-        #[test]
-        fn id_is_deterministic_using_blake3_and_canonical_json() {
-            // GIVEN a property specification
-            let spec = PropertySpec::String(StringSpec::default());
-
-            // WHEN computing IDs for identical and different definitions
-            let id1 = Property::compute_id("title", &spec).unwrap();
-            let id2 = Property::compute_id("title", &spec).unwrap();
-            let id3 = Property::compute_id("other", &spec).unwrap();
-
-            // THEN identical definitions must produce same ID
-            assert_eq!(id1, id2, "Identical definitions must produce same ID");
-            // AND different names must produce different IDs
-            assert_ne!(id1, id3, "Different names must produce different IDs");
-        }
 
         /// 3.3-UNIT-006: `returns_error_when_property_name_format_is_invalid`.
         /// Priority: P1.
@@ -477,7 +444,6 @@ mod tests {
         use proptest::prelude::*;
 
         use super::super::*;
-        use crate::models::property_spec::BoolSpec;
 
         proptest! {
             /// 3.3-UNIT-015: `validates_property_name_format_proptest`.
@@ -500,19 +466,6 @@ mod tests {
                     // THEN it must fail
                     PropertyName::new(name).unwrap_err();
                 }
-            }
-
-            /// 3.3-UNIT-017: `compute_id_is_deterministic_proptest`.
-            /// Priority: P1.
-            #[test]
-            fn compute_id_is_deterministic_proptest(name in "[a-z0-9_-]{1,64}") {
-                // GIVEN an arbitrary name and a fixed spec
-                let spec = PropertySpec::Bool(BoolSpec::default());
-                // WHEN computing IDs multiple times
-                let id1 = Property::compute_id(&name, &spec).unwrap();
-                let id2 = Property::compute_id(&name, &spec).unwrap();
-                // THEN results must be identical
-                assert_eq!(id1, id2);
             }
         }
     }

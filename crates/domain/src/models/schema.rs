@@ -150,15 +150,17 @@ pub enum DomainEvent {
 /// Raw schema definition (Input).
 ///
 /// Represents the unresolved schema loaded from a file.
-/// Contains inheritance pointers and excluded properties that need resolution.
+/// Identity is assigned by the adapter layer (e.g. based on file hash or storage key).
 ///
 /// # Examples
 ///
 /// ```
 /// use lithos_domain::models::schema::{RawSchema, SchemaName};
 /// use std::collections::HashSet;
+/// use uuid::Uuid;
 ///
 /// let raw = RawSchema::new(
+///     Uuid::now_v7(),
 ///     SchemaName::new("daily-note".into()).unwrap(),
 ///     Some(SchemaName::new("base-note".into()).unwrap()),
 ///     HashSet::new(),
@@ -173,6 +175,8 @@ pub struct RawSchema {
     pub excludes: HashSet<PropertyName>,
     /// Optional parent schema name for inheritance.
     pub extends: Option<SchemaName>,
+    /// Unique identity for the schema definition.
+    pub id: Uuid,
     /// Unique schema name.
     pub name: SchemaName,
     /// List of raw property definitions.
@@ -184,6 +188,7 @@ impl RawSchema {
     #[inline]
     #[must_use]
     pub fn new(
+        id: Uuid,
         name: SchemaName,
         extends: Option<SchemaName>,
         excludes: HashSet<PropertyName>,
@@ -192,6 +197,7 @@ impl RawSchema {
         Self {
             excludes,
             extends,
+            id,
             name,
             properties,
         }
@@ -406,9 +412,14 @@ impl SchemaGraph {
     ) -> Result<(), DomainError> {
         if let Some(parent_opt) = self.nodes.get(name)
             && let Some(parent) = parent_opt.as_ref()
-            && self.nodes.contains_key(parent)
         {
-            self.visit(parent, visited, temp_visited, sorted)?;
+            if self.nodes.contains_key(parent) {
+                self.visit(parent, visited, temp_visited, sorted)?;
+            } else {
+                return Err(DomainError::ParentSchemaNotFound(
+                    parent.to_string(),
+                ));
+            }
         }
         Ok(())
     }
@@ -431,9 +442,11 @@ impl Default for SchemaGraph {
 /// use lithos_domain::models::schema::{SchemaResolver, RawSchema, SchemaName};
 /// use lithos_domain::models::property_bank::PropertyBank;
 /// use std::collections::HashSet;
+/// use uuid::Uuid;
 ///
 /// let bank = PropertyBank::new();
 /// let raw = RawSchema::new(
+///     Uuid::now_v7(),
 ///     SchemaName::new("test".into()).unwrap(),
 ///     None,
 ///     HashSet::new(),
@@ -496,8 +509,8 @@ impl SchemaResolver {
         // Sort for determinism
         final_props.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
 
-        // Create the Schema entity
-        let (schema, _) = Schema::new(Uuid::now_v7(), raw.name, final_props)?;
+        // Create the Schema entity using the identity of its raw definition
+        let (schema, _) = Schema::new(raw.id, raw.name, final_props)?;
         Ok(schema)
     }
 
@@ -520,9 +533,8 @@ impl SchemaResolver {
         match raw_prop {
             crate::models::property::RawProperty::Inline(inline) => {
                 let name = PropertyName::new(inline.name)?;
-                let id = Property::compute_id(name.as_str(), &inline.spec)?;
                 Ok(Property::new(
-                    id,
+                    inline.id,
                     name,
                     inline.required,
                     inline.array,

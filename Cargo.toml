@@ -32,7 +32,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 redb = "3.1"
 rkyv = { version = "0.8", features = ["bytecheck", "std"] }
-uuid = { version = "1.19", features = ["v7", "serde"] }
+uuid = { version = "1.19", features = ["v7", "v5", "serde"] }
 
 # Application Logic
 minijinja = "2.14"

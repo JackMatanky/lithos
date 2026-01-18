@@ -28,18 +28,35 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
    **When** I implement core utilities
    **Then** they are implemented once in the core and reused across all bounded contexts
 
+5. **Given** the models directory is flattened
+   **When** I complete the refactor
+   **Then** models are organized into bounded context subfolders (Note, Schema, Template), solitary models like `config.rs` remain at the root, and shared constants/utilities are consolidated in `lib.rs`, with domain events remaining centralized
+
+6. **Given** inconsistent validation patterns across models
+   **When** I consolidate utilities
+   **Then** validation methods follow a standardized pattern and share common logic via the domain core
+
 ## Tasks / Subtasks
 
 ### Task 1: Audit Domain Crate for Redundancy
 - [ ] Scan `crates/domain/src/models/` for duplicate utility functions (path handling, string manipulation, etc.)
+- [ ] **Audit Validation Patterns:** Identify all `validate()` methods and internal validation helpers across models to identify inconsistent patterns or redundant logic
 - [ ] Identify shared logic between Note, Schema, Config, and Template contexts
 - [ ] Review error mapping patterns and identify opportunities for consolidation
-- [ ] Document all identified redundancies in `_bmad-output/domain-redundancy-audit.md`
+- [ ] Document all identified redundancies and validation inconsistencies in `_bmad-output/domain-redundancy-audit.md`
 
 ### Task 2: Consolidate into lib.rs and Core Modules
-- [ ] Create or update `crates/domain/src/lib.rs` to house shared traits, macros, and prelude
+- [ ] Create or update `crates/domain/src/lib.rs` to house shared traits, macros, constants (from `patterns.rs`), and common identity logic (UUID handling)
+- [ ] **Restructure Domain Models:** Organize `crates/domain/src/models/` into bounded context subfolders:
+    - `note/`: Note aggregate, Tag, Task, Link, Frontmatter, Structure
+    - `schema/`: Schema aggregate, PropertyBank, PropertySpec, Property
+    - `template/`: Template aggregate, Syntax, Variable, Composition
+- [ ] **Root-Level Models:** Keep `config.rs` at the `models/` root level as it remains a solitary file
+- [ ] **Modularize Large Models:** Split complex aggregates like `Note` into focused files within their respective subfolders (e.g., `note/mod.rs` for aggregate and `note/validation.rs` for logic)
+- [ ] **Standardize Validation Logic:** Refactor validation methods to use a consistent pattern (e.g., consistent naming, use of shared validation helpers in `lib.rs`, and uniform error propagation)
+- [ ] **Centralized Events:** Maintain all domain events within the existing `crates/domain/src/events.rs` file
 - [ ] Move shared internal utilities to `pub(crate)` modules within `crates/domain/src/`
-- [ ] Refactor Note, Schema, Config, and Template models to use the consolidated utilities
+- [ ] Refactor all domain components to use the consolidated utilities and new module paths
 - [ ] Ensure all consolidated code maintains the "no external I/O" hexagonal rule
 
 ### Task 3: Refactor Error Handling
