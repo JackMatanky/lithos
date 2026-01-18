@@ -2,11 +2,6 @@
 //!
 //! Represents wiki-links and references within notes.
 
-#![expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
-
 use crate::errors::DomainError;
 
 /// Represents different types of links that can appear in notes.
@@ -59,6 +54,10 @@ pub enum EmbedType {
     clippy::struct_field_names,
     reason = "link_type is the correct domain name"
 )]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
+)]
 pub struct Link {
     /// UUID of the note containing this link.
     pub(crate) source_note_id: uuid::Uuid,
@@ -75,61 +74,11 @@ pub struct Link {
 }
 
 impl Link {
-    /// Returns the UUID of the note containing this link.
-    #[inline]
-    #[must_use]
-    pub const fn source_note_id(&self) -> uuid::Uuid {
-        self.source_note_id
-    }
-
-    /// Sets the source note ID.
-    ///
-    /// This is used by the Note aggregate to enforce consistency.
-    #[inline]
-    pub(crate) fn set_source_note_id(&mut self, id: uuid::Uuid) {
-        self.source_note_id = id;
-    }
-
-    /// Returns the target path of the link.
-    #[inline]
-    #[must_use]
-    pub fn target_path(&self) -> &str {
-        &self.target_path
-    }
-
     /// Returns the optional display alias.
     #[inline]
     #[must_use]
     pub fn alias(&self) -> Option<&str> {
         self.alias.as_deref()
-    }
-
-    /// Returns the type of link.
-    #[inline]
-    #[must_use]
-    pub const fn link_type(&self) -> &LinkType {
-        &self.link_type
-    }
-
-    /// Returns true if this link represents an embedded content reference.
-    #[inline]
-    #[must_use]
-    pub fn is_embed(&self) -> bool {
-        self.link_type == LinkType::Embed
-    }
-
-    /// Returns the type of embedded content, if applicable.
-    #[inline]
-    #[must_use]
-    pub const fn embed_type(&self) -> Option<EmbedType> {
-        self.embed_type
-    }
-
-    /// Returns the character position in the source document.
-    #[inline]
-    #[must_use]
-    pub const fn position(&self) -> usize {
-        self.position
     }
 
     /// Creates a Link instance with the given parameters.
@@ -150,6 +99,27 @@ impl Link {
             embed_type,
             position,
         }
+    }
+
+    /// Returns the type of embedded content, if applicable.
+    #[inline]
+    #[must_use]
+    pub const fn embed_type(&self) -> Option<EmbedType> {
+        self.embed_type
+    }
+
+    /// Returns true if this link represents an embedded content reference.
+    #[inline]
+    #[must_use]
+    pub fn is_embed(&self) -> bool {
+        self.link_type == LinkType::Embed
+    }
+
+    /// Returns the type of link.
+    #[inline]
+    #[must_use]
+    pub const fn link_type(&self) -> &LinkType {
+        &self.link_type
     }
 
     /// Creates a new embedded content reference.
@@ -265,6 +235,35 @@ impl Link {
             None,
             position,
         ))
+    }
+
+    /// Returns the character position in the source document.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> usize {
+        self.position
+    }
+
+    /// Sets the source note ID.
+    ///
+    /// This is used by the Note aggregate to enforce consistency.
+    #[inline]
+    pub(crate) fn set_source_note_id(&mut self, id: uuid::Uuid) {
+        self.source_note_id = id;
+    }
+
+    /// Returns the UUID of the note containing this link.
+    #[inline]
+    #[must_use]
+    pub const fn source_note_id(&self) -> uuid::Uuid {
+        self.source_note_id
+    }
+
+    /// Returns the target path of the link.
+    #[inline]
+    #[must_use]
+    pub fn target_path(&self) -> &str {
+        &self.target_path
     }
 
     /// Validates and converts a path string.

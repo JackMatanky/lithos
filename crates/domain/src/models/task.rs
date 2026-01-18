@@ -2,11 +2,6 @@
 //!
 //! Represents task items with completion status within notes.
 
-#![expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
-
 use crate::errors::DomainError;
 
 /// Represents the status of a task item.
@@ -36,6 +31,10 @@ pub enum TaskStatus {
 #[expect(
     clippy::field_scoped_visibility_modifiers,
     reason = "pub(crate) used for internal builders and tests"
+)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
 )]
 pub struct Task {
     /// Task description text.
@@ -83,11 +82,11 @@ impl Task {
         })
     }
 
-    /// Returns the task description text.
+    /// Returns the character position in the source document.
     #[inline]
     #[must_use]
-    pub fn text(&self) -> &str {
-        &self.text
+    pub const fn position(&self) -> usize {
+        self.position
     }
 
     /// Returns the current completion status.
@@ -97,11 +96,11 @@ impl Task {
         self.status
     }
 
-    /// Returns the character position in the source document.
+    /// Returns the task description text.
     #[inline]
     #[must_use]
-    pub const fn position(&self) -> usize {
-        self.position
+    pub fn text(&self) -> &str {
+        &self.text
     }
 }
 
