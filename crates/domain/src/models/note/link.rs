@@ -126,7 +126,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::models::link::{Link, LinkType, EmbedType};
+    /// use lithos_domain::models::note::link::{Link, LinkType, EmbedType};
     /// use uuid::Uuid;
     ///
     /// let source_id = Uuid::now_v7();
@@ -165,7 +165,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::models::link::{Link, LinkType};
+    /// use lithos_domain::models::note::link::{Link, LinkType};
     /// use uuid::Uuid;
     ///
     /// let source_id = Uuid::now_v7();
@@ -202,7 +202,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::models::link::{Link, LinkType};
+    /// use lithos_domain::models::note::link::{Link, LinkType};
     /// use uuid::Uuid;
     ///
     /// let source_id = Uuid::now_v7();

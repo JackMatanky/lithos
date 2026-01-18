@@ -50,7 +50,7 @@ impl Task {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::models::task::{Task, TaskStatus};
+    /// use lithos_domain::models::note::task::{Task, TaskStatus};
     ///
     /// let task = Task::new(
     ///     "Buy milk".to_string(),

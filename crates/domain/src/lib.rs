@@ -36,9 +36,14 @@ pub use models::{
         Frontmatter as FrontmatterConfig, Global as GlobalConfig,
         SettingValue as ConfigValue, Vault as VaultConfig,
     },
-    frontmatter::{FieldValue, FromFieldValue, Frontmatter},
-    link::{EmbedType, Link, LinkType},
-    note::Note,
+    note::{
+        core::Note,
+        frontmatter::{FieldValue, FromFieldValue, Frontmatter},
+        link::{EmbedType, Link, LinkType},
+        structure::{Heading, Section},
+        tag::Tag,
+        task::{Task, TaskStatus},
+    },
     schema::{
         core::{DomainEvent as SchemaDomainEvent, Schema},
         property::{Property, PropertyName, RawProperty},
@@ -48,9 +53,6 @@ pub use models::{
             PropertySpecTrait, PropertySpecType, StringSpec,
         },
     },
-    structure::{Heading, Section},
-    tag::Tag,
-    task::{Task, TaskStatus},
     template::{
         Composition as TemplateComposition, DomainEvent as TemplateDomainEvent,
         InsertionPosition, Metadata as TemplateMetadata, PlaceholderSyntax,
