@@ -5,7 +5,7 @@ use regex::Regex;
 use uuid::Uuid;
 
 use super::{
-    template_comp::{Composition, InsertionPosition},
+    template_comp::{Composition, InsertionPosition, Section},
     template_var::VariableDefinition,
 };
 use crate::{errors::DomainError, events::TemplateCreated};
@@ -93,54 +93,68 @@ impl Template {
         self.pending_events.push(event);
     }
 
-    /// Composes a template from a base and a composition.
-    ///
-    /// # Errors
-    /// Returns `DomainError::ValidationFailed` if composition validation fails.
-    #[inline]
+    /// Applies additional sections to content.
     #[expect(clippy::arithmetic_side_effects, reason = "String manipulation")]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Matching on enum references"
     )]
+    fn apply_sections(content: &mut String, sections: &[Section]) {
+        for section in sections {
+            match &section.position {
+                InsertionPosition::Beginning => {
+                    content.insert(0, '\n');
+                    content.insert_str(0, &section.content);
+                }
+                InsertionPosition::End => {
+                    content.push('\n');
+                    content.push_str(&section.content);
+                }
+                InsertionPosition::BeforeVariable(var_name) => {
+                    let mut placeholder =
+                        String::with_capacity(var_name.len() + 4);
+                    placeholder.push_str("{{");
+                    placeholder.push_str(var_name);
+                    placeholder.push_str("}}");
+
+                    if let Some(pos) = content.find(&placeholder) {
+                        content.insert_str(pos, &section.content);
+                        content.insert(pos + section.content.len(), '\n');
+                    }
+                }
+                InsertionPosition::AfterVariable(var_name) => {
+                    let mut placeholder =
+                        String::with_capacity(var_name.len() + 4);
+                    placeholder.push_str("{{");
+                    placeholder.push_str(var_name);
+                    placeholder.push_str("}}");
+
+                    if let Some(pos) = content.find(&placeholder) {
+                        let insert_pos = pos + placeholder.len();
+                        content.insert(insert_pos, '\n');
+                        content.insert_str(insert_pos + 1, &section.content);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Composes a template from a base and a composition.
+    ///
+    /// # Errors
+    /// Returns `DomainError::ValidationFailed` if composition validation fails.
+    #[inline]
     pub fn compose(
         base: &Self,
         composition: &Composition,
     ) -> Result<Self, DomainError> {
         composition.validate(base)?;
 
-        let content = base.content.clone();
-        let variables = base.variables.clone();
-
-        let mut final_content = content;
-        for section in &composition.additional_sections {
-            match &section.position {
-                InsertionPosition::Beginning => {
-                    final_content =
-                        format!("{}\n{final_content}", section.content);
-                }
-                InsertionPosition::End => {
-                    final_content =
-                        format!("{final_content}\n{}", section.content);
-                }
-                InsertionPosition::BeforeVariable(var_name) => {
-                    let placeholder = format!("{{{{{var_name}}}}}");
-                    if let Some(pos) = final_content.find(&placeholder) {
-                        final_content
-                            .insert_str(pos, &format!("{}\n", section.content));
-                    }
-                }
-                InsertionPosition::AfterVariable(var_name) => {
-                    let placeholder = format!("{{{{{var_name}}}}}");
-                    if let Some(pos) = final_content.find(&placeholder) {
-                        final_content.insert_str(
-                            pos + placeholder.len(),
-                            &format!("\n{}", section.content),
-                        );
-                    }
-                }
-            }
-        }
+        let mut final_content = base.content.clone();
+        Self::apply_sections(
+            &mut final_content,
+            &composition.additional_sections,
+        );
 
         Ok(Self {
             content: final_content,
@@ -149,7 +163,7 @@ impl Template {
             metadata: Metadata::default(),
             name: format!("{}-composed", base.name),
             pending_events: vec![],
-            variables,
+            variables: base.variables.clone(),
         })
     }
 
@@ -158,10 +172,6 @@ impl Template {
     /// # Errors
     /// Returns `DomainError` if validation fails (name format, size limits, etc).
     #[inline]
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Validation doesn't require order"
-    )]
     pub fn new(
         name: String,
         content: String,
@@ -169,55 +179,9 @@ impl Template {
         extends: Option<String>,
         metadata: Metadata,
     ) -> Result<Self, DomainError> {
-        if name.is_empty() {
-            return Err(DomainError::ValidationFailed(
-                "Template name cannot be empty".to_owned(),
-            ));
-        }
-        if name.len() > 64 {
-            return Err(DomainError::ValidationFailed(
-                "Template name too long".to_owned(),
-            ));
-        }
-        if !NAME_RE.is_match(&name) {
-            return Err(DomainError::ValidationFailed(format!(
-                "Invalid template name: {name}"
-            )));
-        }
-
-        if content.len() > 1024 * 1024 {
-            return Err(DomainError::TemplateContentTooLarge(
-                content.len(),
-                1024 * 1024,
-            ));
-        }
-
-        if variables.len() > 50 {
-            return Err(DomainError::MaxVariablesExceeded(variables.len()));
-        }
-
-        for var_name in variables.keys() {
-            if var_name.is_empty() {
-                return Err(DomainError::ValidationFailed(
-                    "Variable name cannot be empty".to_owned(),
-                ));
-            }
-            if var_name.len() > 32 {
-                return Err(DomainError::ValidationFailed(
-                    "Variable name too long".to_owned(),
-                ));
-            }
-            if !VAR_RE.is_match(var_name) {
-                return Err(DomainError::ValidationFailed(format!(
-                    "Invalid variable name: {var_name}"
-                )));
-            }
-            if RESERVED_WORDS.contains(&var_name.as_str()) {
-                return Err(DomainError::ValidationFailed(format!(
-                    "Variable name '{var_name}' is a reserved word"
-                )));
-            }
-        }
+        Self::validate_name(&name)?;
+        Self::validate_content(&content)?;
+        Self::validate_variable_definitions(&variables)?;
 
         let id = Uuid::now_v7();
         let mut template = Self {
@@ -261,6 +225,80 @@ impl Template {
     /// Currently always returns `Ok(())`.
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
+        Ok(())
+    }
+
+    /// Validates template content.
+    fn validate_content(content: &str) -> Result<(), DomainError> {
+        if content.len() > 1024 * 1024 {
+            return Err(DomainError::TemplateContentTooLarge(
+                content.len(),
+                1024 * 1024,
+            ));
+        }
+        Ok(())
+    }
+
+    /// Validates template name format.
+    fn validate_name(name: &str) -> Result<(), DomainError> {
+        if name.is_empty() {
+            return Err(DomainError::ValidationFailed(
+                "Template name cannot be empty".to_owned(),
+            ));
+        }
+        if name.len() > 64 {
+            return Err(DomainError::ValidationFailed(
+                "Template name too long".to_owned(),
+            ));
+        }
+        if !NAME_RE.is_match(name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid template name: {name}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Validates variable definitions.
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Validation order is irrelevant"
+    )]
+    fn validate_variable_definitions(
+        variables: &HashMap<String, VariableDefinition>,
+    ) -> Result<(), DomainError> {
+        if variables.len() > 50 {
+            return Err(DomainError::MaxVariablesExceeded(variables.len()));
+        }
+
+        for var_name in variables.keys() {
+            Self::validate_variable_name(var_name)?;
+        }
+        Ok(())
+    }
+
+    /// Validates individual variable name.
+    fn validate_variable_name(name: &str) -> Result<(), DomainError> {
+        if name.is_empty() {
+            return Err(DomainError::ValidationFailed(
+                "Variable name cannot be empty".to_owned(),
+            ));
+        }
+        if name.len() > 32 {
+            return Err(DomainError::ValidationFailed(
+                "Variable name too long".to_owned(),
+            ));
+        }
+        if !VAR_RE.is_match(name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid variable name: {name}"
+            )));
+        }
+        if RESERVED_WORDS.contains(&name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Variable name '{name}' is a reserved word"
+            )));
+        }
         Ok(())
     }
 }
