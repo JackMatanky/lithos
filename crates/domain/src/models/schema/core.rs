@@ -16,7 +16,7 @@ use uuid::Uuid;
 use crate::{
     errors::DomainError,
     events::{PropertyBankUpdated, SchemaCreated},
-    models::{
+    models::schema::{
         property::{Property, PropertyName, RawProperty, RawPropertyRef},
         property_bank::PropertyBank,
     },
@@ -32,7 +32,7 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::models::schema::SchemaName;
+/// use lithos_domain::models::schema::core::SchemaName;
 ///
 /// let name = SchemaName::new("project-note".to_string()).unwrap();
 /// assert_eq!(name.as_str(), "project-note");
@@ -440,7 +440,7 @@ impl Default for SchemaGraph {
 ///
 /// ```
 /// use lithos_domain::models::schema::{SchemaResolver, RawSchema, SchemaName};
-/// use lithos_domain::models::property_bank::PropertyBank;
+/// use lithos_domain::models::schema::property_bank::PropertyBank;
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
 ///
@@ -531,7 +531,7 @@ impl SchemaResolver {
         bank: &PropertyBank,
     ) -> Result<Property, DomainError> {
         match raw_prop {
-            crate::models::property::RawProperty::Inline(inline) => {
+            crate::models::schema::property::RawProperty::Inline(inline) => {
                 let name = PropertyName::new(inline.name)?;
                 Ok(Property::new(
                     inline.id,
@@ -541,9 +541,11 @@ impl SchemaResolver {
                     inline.spec,
                 )?)
             }
-            crate::models::property::RawProperty::Ref(RawPropertyRef {
-                ref_path,
-            }) => bank
+            crate::models::schema::property::RawProperty::Ref(
+                RawPropertyRef {
+                    ref_path,
+                },
+            ) => bank
                 .get_by_name(&ref_path)
                 .cloned()
                 .ok_or_else(|| DomainError::PropertyNotFound(ref_path.clone())),
@@ -561,7 +563,9 @@ pub mod fixtures {
     use uuid::Uuid;
 
     use super::SchemaName;
-    use crate::models::property::{Property, fixtures::PropertyBuilder};
+    use crate::models::schema::property::{
+        Property, fixtures::PropertyBuilder,
+    };
 
     /// Fixed UUID for deterministic tests.
     pub const TEST_SCHEMA_ID: Uuid =

@@ -39,13 +39,15 @@ pub use models::{
     frontmatter::{FieldValue, FromFieldValue, Frontmatter},
     link::{EmbedType, Link, LinkType},
     note::Note,
-    property::{Property, PropertyName, RawProperty},
-    property_bank::PropertyBank,
-    property_spec::{
-        BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,
-        PropertySpecTrait, PropertySpecType, StringSpec,
+    schema::{
+        core::{DomainEvent as SchemaDomainEvent, Schema},
+        property::{Property, PropertyName, RawProperty},
+        property_bank::PropertyBank,
+        property_spec::{
+            BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,
+            PropertySpecTrait, PropertySpecType, StringSpec,
+        },
     },
-    schema::{DomainEvent as SchemaDomainEvent, Schema},
     structure::{Heading, Section},
     tag::Tag,
     task::{Task, TaskStatus},

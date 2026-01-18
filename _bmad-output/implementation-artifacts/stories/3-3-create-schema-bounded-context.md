@@ -165,7 +165,17 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] Place ports in domain ports module
 - [x] **TDD REQUIREMENT:** Make all port interface tests pass
 
-### Task 12: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
+### Task 12: Modularize Schema Bounded Context (ADDITIONAL TASK - Architecture Refinement)
+
+- [x] Extract `SchemaGraph` service into dedicated `graph.rs` module
+- [x] Extract `SchemaResolver` service into dedicated `resolver.rs` module
+- [x] Rename `schema.rs` to `core.rs` containing core entities (SchemaName, DomainEvent, RawSchema, Schema)
+- [x] Update all import statements throughout codebase for new modular structure
+- [x] Update module declarations and public API exports
+- [x] Verify all tests pass with new structure
+- [x] Update story documentation to reflect modular organization
+
+### Task 13: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
 
 - [x] **TDD VALIDATION:** Confirm all tests pass and coverage meets 90%+ requirement
 - [x] **TDD VALIDATION:** Verify property-based tests catch edge cases (ID collisions, circular inheritance)
@@ -182,6 +192,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [x] **MANDATORY:** Verify JSON schema format compliance (docs/schemas/property_bank.json alignment)
 - [x] **MANDATORY:** Verify hexagonal architecture boundaries maintained (domain purity, blake3 only external dep)
+- [x] **COMPLETED:** Modularize schema bounded context with core, graph, and resolver modules
 - [x] Stage all files created or modified during story development
 - [x] Commit with conventional commit message: `feat: implement schema bounded context with PropertyBank, Property, PropertySpec variants, domain events, CQRS ports, and TDD validation`
 
@@ -1135,9 +1146,16 @@ crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
 ├── models/
 │   ├── mod.rs               # Module declarations
-│   ├── property.rs          # Property and PropertySpec variants
-│   ├── property_bank.rs     # PropertyBank registry and deduplication
-│   └── schema.rs            # Schema entities, RawSchema, services
+│   ├── schema/              # Schema bounded context subfolder
+│   │   ├── mod.rs           # Module declarations for schema context
+│   │   ├── core.rs          # Core entities: SchemaName, DomainEvent, RawSchema, Schema
+│   │   ├── graph.rs         # SchemaGraph service for inheritance resolution
+│   │   ├── resolver.rs      # SchemaResolver service for schema resolution
+│   │   ├── property.rs      # Property entity and value objects
+│   │   ├── property_bank.rs # PropertyBank registry and deduplication
+│   │   ├── property_spec.rs # PropertySpec trait and implementations
+│   │   └── patterns.rs      # Predefined regex patterns
+│   └── ...
 ├── ports/
 │   ├── mod.rs
 │   └── schema.rs            # SchemaCommand/SchemaQuery traits (shells)
@@ -1145,7 +1163,15 @@ crates/domain/src/
 ```
 
 **Implementation Decision:**
-The Schema bounded context is split into `schema.rs`, `property.rs`, and `property_bank.rs` to maintain high modularity and keep individual file lengths manageable as validation logic expands.
+The Schema bounded context is organized in a dedicated `schema/` subfolder with focused modules for better maintainability:
+
+- **core.rs**: Fundamental domain entities and value objects
+- **graph.rs**: Inheritance graph management and topological sorting
+- **resolver.rs**: Schema resolution logic and property merging
+- **property*.rs**: Property-related entities and specifications
+- **patterns.rs**: Common validation patterns
+
+This modular structure enables independent development and testing of each service while maintaining clear domain boundaries.
 
 ### Code Quality Standards
 

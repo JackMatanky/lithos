@@ -1,9 +1,9 @@
-//! PropertyBank domain entity for centralized property management.
+//! `PropertyBank` domain entity for centralized property management.
 
+use super::core::DomainEvent;
 use crate::{
-    errors::DomainError,
-    events::PropertyBankUpdated,
-    models::{property::Property, schema::DomainEvent},
+    errors::DomainError, events::PropertyBankUpdated,
+    models::schema::property::Property,
 };
 
 /// Registry of reusable Property definitions with dual indexing.
@@ -13,9 +13,9 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::models::property_bank::PropertyBank;
-/// use lithos_domain::models::property::{Property, PropertyName};
-/// use lithos_domain::models::property_spec::{PropertySpec, BoolSpec};
+/// use lithos_domain::models::schema::property_bank::PropertyBank;
+/// use lithos_domain::models::schema::{Property, PropertyName};
+/// use lithos_domain::models::schema::{PropertySpec, BoolSpec};
 /// use uuid::Uuid;
 ///
 /// let mut bank = PropertyBank::new();
@@ -65,7 +65,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::models::property_bank::PropertyBank;
+    /// use lithos_domain::models::schema::property_bank::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// let result = bank.decode("missing");
@@ -89,7 +89,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::models::property_bank::PropertyBank;
+    /// use lithos_domain::models::schema::property_bank::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// assert!(bank.get("any").is_none());
@@ -149,9 +149,9 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::models::property_bank::PropertyBank;
-    /// use lithos_domain::models::property::{Property, PropertyName};
-    /// use lithos_domain::models::property_spec::{PropertySpec, BoolSpec};
+    /// use lithos_domain::models::schema::property_bank::PropertyBank;
+    /// use lithos_domain::models::schema::{Property, PropertyName};
+    /// use lithos_domain::models::schema::{PropertySpec, BoolSpec};
     /// use uuid::Uuid;
     ///
     /// let mut bank = PropertyBank::new();
@@ -209,7 +209,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::models::{
+    use crate::models::schema::{
         property::{Property, PropertyName},
         property_spec::{BoolSpec, PropertySpec, StringSpec},
     };
