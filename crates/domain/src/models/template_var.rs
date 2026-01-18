@@ -371,77 +371,104 @@ impl VariableDefinition {
 #[expect(clippy::disallowed_methods, reason = "Test logic")]
 #[expect(clippy::assertions_on_result_states, reason = "Test logic")]
 mod tests {
-    use std::collections::HashMap;
+    mod constraints {
+        use super::super::*;
 
-    use super::*;
-    use crate::models::template::{Metadata, Template};
+        /// 3.4-UNIT-009: `should_validate_boolean_constraints`
+        /// AC: `VariableDefinition::Boolean` simple type check.
+        #[test]
+        fn should_validate_boolean_constraints() {
+            // Given
+            let def = VariableDefinition::Boolean {
+                default: None,
+            };
 
-    #[test]
-    fn rejects_invalid_variable_names() {
-        let names = vec![
-            String::new(),
-            "123var".to_owned(),
-            "var-name".to_owned(),
-            "var name".to_owned(),
-            "if".to_owned(),
-            "for".to_owned(),
-        ];
-        for name in names {
-            let mut variables = HashMap::new();
-            variables.insert(
-                name.clone(),
-                VariableDefinition::Boolean {
-                    default: None,
-                },
-            );
-            let result = Template::new(
-                "test".to_owned(),
-                "content".to_owned(),
-                variables,
-                None,
-                Metadata::default(),
-            );
+            // Then
+            assert!(def.validate_value(&serde_json::json!(true)).is_ok());
+            assert!(def.validate_value(&serde_json::json!("true")).is_err());
+        }
+
+        /// 3.4-UNIT-008: `should_validate_number_constraints`
+        /// AC: `VariableDefinition::Number` { min, max }.
+        #[test]
+        fn should_validate_number_constraints() {
+            // Given
+            let def = VariableDefinition::Number {
+                default: None,
+                max: Some(10.0f64),
+                min: Some(1.0f64),
+            };
+
+            // Then
+            assert!(def.validate_value(&serde_json::json!(5.0f64)).is_ok());
+            assert!(def.validate_value(&serde_json::json!(0.5f64)).is_err());
+            assert!(def.validate_value(&serde_json::json!(10.5f64)).is_err());
+        }
+
+        /// 3.4-UNIT-007: `should_validate_string_constraints`
+        /// AC: `VariableDefinition::String` { `min_length`, `max_length`, `pattern` }.
+        #[test]
+        fn should_validate_string_constraints() {
+            // Given
+            let def = VariableDefinition::String {
+                default: None,
+                max_length: Some(10),
+                min_length: Some(3),
+                pattern: Some("^[a-z]+$".to_owned()),
+            };
+
+            // Then
+            assert!(def.validate_value(&serde_json::json!("abc")).is_ok());
+            assert!(def.validate_value(&serde_json::json!("ab")).is_err());
             assert!(
-                result.is_err(),
-                "Expected variable name '{name}' to be rejected"
+                def.validate_value(&serde_json::json!("abcdefghijk")).is_err()
             );
+            assert!(def.validate_value(&serde_json::json!("ABC")).is_err());
         }
     }
 
-    #[test]
-    fn validates_string_constraints() {
-        let def = VariableDefinition::String {
-            default: None,
-            max_length: Some(10),
-            min_length: Some(3),
-            pattern: Some("^[a-z]+$".to_owned()),
-        };
+    mod variable_naming {
+        use super::super::*;
+        use crate::models::template::{Metadata, Template};
 
-        assert!(def.validate_value(&serde_json::json!("abc")).is_ok());
-        assert!(def.validate_value(&serde_json::json!("ab")).is_err());
-        assert!(def.validate_value(&serde_json::json!("abcdefghijk")).is_err());
-        assert!(def.validate_value(&serde_json::json!("ABC")).is_err());
-    }
+        /// 3.4-UNIT-006: `should_reject_invalid_variable_names`
+        /// AC: Variable name validation regex `^[a-zA-Z_][a-zA-Z0-9_]*$`.
+        #[test]
+        fn should_reject_invalid_variable_names() {
+            // Given
+            let names = vec![
+                String::new(),
+                "123var".to_owned(),
+                "var-name".to_owned(),
+                "var name".to_owned(),
+                "if".to_owned(),
+                "for".to_owned(),
+            ];
 
-    #[test]
-    fn validates_number_constraints() {
-        let def = VariableDefinition::Number {
-            default: None,
-            max: Some(10.0f64),
-            min: Some(1.0f64),
-        };
+            for name in names {
+                let mut variables = std::collections::HashMap::new();
+                variables.insert(
+                    name.clone(),
+                    VariableDefinition::Boolean {
+                        default: None,
+                    },
+                );
 
-        assert!(def.validate_value(&serde_json::json!(5.0f64)).is_ok());
-        assert!(def.validate_value(&serde_json::json!(0.5f64)).is_err());
-        assert!(def.validate_value(&serde_json::json!(10.5f64)).is_err());
-    }
+                // When
+                let result = Template::new(
+                    "test".to_owned(),
+                    "content".to_owned(),
+                    variables,
+                    None,
+                    Metadata::default(),
+                );
 
-    #[test]
-    fn validates_boolean_constraints() {
-        let def = VariableDefinition::Boolean {
-            default: None,
-        };
-        assert!(def.validate_value(&serde_json::json!(true)).is_ok());
-        assert!(def.validate_value(&serde_json::json!("true")).is_err());
+                // Then
+                assert!(
+                    result.is_err(),
+                    "Expected variable name '{name}' to be rejected"
+                );
+            }
+        }
     }
 }

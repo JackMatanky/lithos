@@ -140,93 +140,123 @@ pub enum InsertionPosition {
 #[cfg(test)]
 #[expect(clippy::disallowed_methods, reason = "Test logic")]
 mod tests {
-    use uuid::Uuid;
+    mod cycle_detection {
+        use uuid::Uuid;
 
-    use super::{
-        super::{template::Metadata, template_syntax::PlaceholderSyntax},
-        *,
-    };
-
-    #[test]
-    fn detects_direct_circular_composition() {
-        let mut templates = HashMap::new();
-        let base = Template {
-            content: "content".to_owned(),
-            extends: None,
-            id: Uuid::now_v7(),
-            metadata: Metadata::default(),
-            name: "A".to_owned(),
-            pending_events: vec![],
-            syntax: PlaceholderSyntax::default(),
-            variables: HashMap::new(),
-        };
-        templates.insert("A".to_owned(), base);
-
-        let composition = Composition {
-            additional_sections: Vec::new(),
-            base_template: "A".to_owned(),
-            includes: vec!["A".to_owned()],
-            variable_overrides: HashMap::new(),
+        use super::super::{
+            super::{template::Metadata, template_syntax::PlaceholderSyntax},
+            *,
         };
 
-        let result = composition.detect_cycles(0, &templates);
-        assert!(matches!(result, Err(DomainError::CircularComposition(_))));
+        /// 3.4-UNIT-010: `should_detect_circular_composition_when_includes_base`
+        /// AC: Circular Composition is detected in `includes` and `extends` using DFS (R-001).
+        #[test]
+        fn should_detect_circular_composition_when_includes_base() {
+            // Given
+            let mut templates = HashMap::new();
+            let base = Template {
+                content: "content".to_owned(),
+                extends: None,
+                id: Uuid::now_v7(),
+                metadata: Metadata::default(),
+                name: "A".to_owned(),
+                pending_events: vec![],
+                syntax: PlaceholderSyntax::default(),
+                variables: HashMap::new(),
+            };
+            templates.insert("A".to_owned(), base);
+
+            let composition = Composition {
+                additional_sections: Vec::new(),
+                base_template: "A".to_owned(),
+                includes: vec!["A".to_owned()],
+                variable_overrides: HashMap::new(),
+            };
+
+            // When
+            let result = composition.detect_cycles(0, &templates);
+
+            // Then
+            assert!(matches!(result, Err(DomainError::CircularComposition(_))));
+        }
+
+        /// 3.4-UNIT-011: `should_enforce_max_composition_depth_limit`
+        /// AC: composition depth is limited to Max Depth 5 to prevent stack overflow (R-001).
+        #[test]
+        fn should_enforce_max_composition_depth_limit() {
+            // Given
+            let composition = Composition {
+                additional_sections: Vec::new(),
+                base_template: "base".to_owned(),
+                includes: Vec::new(),
+                variable_overrides: HashMap::new(),
+            };
+            let templates = HashMap::new();
+
+            // When
+            let result = composition.detect_cycles(6, &templates);
+
+            // Then
+            assert!(matches!(
+                result,
+                Err(DomainError::CompositionDepthExceeded(6))
+            ));
+        }
     }
 
-    #[test]
-    fn enforces_max_depth_limit() {
-        let composition = Composition {
-            additional_sections: Vec::new(),
-            base_template: "base".to_owned(),
-            includes: Vec::new(),
-            variable_overrides: HashMap::new(),
+    mod overrides {
+        use uuid::Uuid;
+
+        use super::super::{
+            super::{template::Metadata, template_syntax::PlaceholderSyntax},
+            *,
         };
 
-        let templates = HashMap::new();
-        let result = composition.detect_cycles(6, &templates);
-        assert!(matches!(
-            result,
-            Err(DomainError::CompositionDepthExceeded(6))
-        ));
-    }
+        /// 3.4-UNIT-012: `should_reject_override_when_type_is_inconsistent`
+        /// AC: variable definitions are verified for compatibility.
+        #[test]
+        fn should_reject_override_when_type_is_inconsistent() {
+            // Given
+            let mut variables = HashMap::new();
+            variables.insert(
+                "count".to_owned(),
+                crate::models::template_var::VariableDefinition::Number {
+                    default: None,
+                    max: None,
+                    min: None,
+                },
+            );
 
-    #[test]
-    fn validates_override_type_consistency() {
-        let mut variables = HashMap::new();
-        variables.insert(
-            "count".to_owned(),
-            crate::models::template_var::VariableDefinition::Number {
-                default: None,
-                max: None,
-                min: None,
-            },
-        );
+            let base = Template {
+                content: "content".to_owned(),
+                extends: None,
+                id: Uuid::now_v7(),
+                metadata: Metadata::default(),
+                name: "base".to_owned(),
+                pending_events: vec![],
+                syntax: PlaceholderSyntax::default(),
+                variables,
+            };
 
-        let base = Template {
-            content: "content".to_owned(),
-            extends: None,
-            id: Uuid::now_v7(),
-            metadata: Metadata::default(),
-            name: "base".to_owned(),
-            pending_events: vec![],
-            syntax: PlaceholderSyntax::default(),
-            variables,
-        };
+            let mut overrides = HashMap::new();
+            overrides
+                .insert("count".to_owned(), serde_json::json!("not a number"));
 
-        let mut overrides = HashMap::new();
-        overrides.insert("count".to_owned(), serde_json::json!("not a number"));
+            let composition = Composition {
+                additional_sections: Vec::new(),
+                base_template: "base".to_owned(),
+                includes: vec![],
+                variable_overrides: overrides,
+            };
 
-        let composition = Composition {
-            additional_sections: Vec::new(),
-            base_template: "base".to_owned(),
-            includes: vec![],
-            variable_overrides: overrides,
-        };
+            // When
+            let result = composition.validate(&base);
 
-        let result = composition.validate(&base);
-        assert!(matches!(
-            result,
-            Err(DomainError::VariableTypeMismatch { .. })
-        ));
+            // Then
+            assert!(matches!(
+                result,
+                Err(DomainError::VariableTypeMismatch { .. })
+            ));
+        }
     }
 }
