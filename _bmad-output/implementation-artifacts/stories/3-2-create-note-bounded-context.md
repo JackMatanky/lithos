@@ -700,6 +700,7 @@ crates/domain/src/
 ```
 
 **Splitting Guideline:** Start with single file. Split when >1000 lines into logical modules (e.g., note_frontmatter.rs, note_links.rs).
+```
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
 │   └── repository.rs        # Future NoteRepositoryPort trait (not in this story)
