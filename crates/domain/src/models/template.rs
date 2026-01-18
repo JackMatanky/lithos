@@ -69,24 +69,28 @@ pub enum DomainEvent {
     clippy::partial_pub_fields,
     reason = "pending_events is internally managed"
 )]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Meaningful logical ordering of aggregate fields"
+)]
 pub struct Template {
-    /// Template content (standard placeholder syntax).
-    pub content: String,
-    /// Optional parent template for composition.
-    pub extends: Option<String>,
     /// UUID v7 identity.
     pub id: Uuid,
-    /// Metadata for template management.
-    pub metadata: Metadata,
     /// Unique template name.
     pub name: String,
-    /// Domain events pending emission (not serialized).
-    #[serde(skip)]
-    pub(crate) pending_events: Vec<DomainEvent>,
+    /// Template content (standard placeholder syntax).
+    pub content: String,
     /// Syntax used for placeholders.
     pub syntax: PlaceholderSyntax,
     /// Variable definitions with types and constraints.
     pub variables: HashMap<String, VariableDefinition>,
+    /// Optional parent template for composition.
+    pub extends: Option<String>,
+    /// Metadata for template management.
+    pub metadata: Metadata,
+    /// Domain events pending emission (not serialized).
+    #[serde(skip)]
+    pub(crate) pending_events: Vec<DomainEvent>,
 }
 
 impl Template {
