@@ -18,26 +18,25 @@ pub struct Composition {
 }
 
 impl Composition {
-    /// Detects circular references in composition.
-    ///
-    /// # Errors
-    /// Returns `DomainError::CompositionDepthExceeded` if depth > 5.
-    /// Returns `DomainError::CircularComposition` if cycle detected.
-    #[inline]
+    /// Checks for circularity in includes.
+    fn check_include_circularity(&self) -> Result<(), DomainError> {
+        for include in &self.includes {
+            if include == &self.base_template {
+                return Err(DomainError::CircularComposition(include.clone()));
+            }
+        }
+        Ok(())
+    }
+
+    /// Checks if base template extends itself.
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Matching on enum references"
     )]
-    pub fn detect_cycles(
+    fn check_self_extension(
         &self,
-        depth: usize,
         templates: &HashMap<String, Template>,
     ) -> Result<(), DomainError> {
-        if depth > 5 {
-            return Err(DomainError::CompositionDepthExceeded(depth));
-        }
-
-        // Check if base template exists
         if let Some(base) = templates.get(&self.base_template)
             && let Some(parent_name) = &base.extends
             && parent_name == &self.base_template
@@ -46,13 +45,23 @@ impl Composition {
                 self.base_template.clone(),
             ));
         }
+        Ok(())
+    }
 
-        // Check includes for circularity
-        for include in &self.includes {
-            if include == &self.base_template {
-                return Err(DomainError::CircularComposition(include.clone()));
-            }
-        }
+    /// Detects circular references in composition.
+    ///
+    /// # Errors
+    /// Returns `DomainError::CompositionDepthExceeded` if depth > 5.
+    /// Returns `DomainError::CircularComposition` if cycle detected.
+    #[inline]
+    pub fn detect_cycles(
+        &self,
+        depth: usize,
+        templates: &HashMap<String, Template>,
+    ) -> Result<(), DomainError> {
+        Self::validate_depth(depth)?;
+        self.check_self_extension(templates)?;
+        self.check_include_circularity()?;
 
         Ok(())
     }
@@ -90,6 +99,14 @@ impl Composition {
             })?;
         }
 
+        Ok(())
+    }
+
+    /// Validates recursion depth.
+    fn validate_depth(depth: usize) -> Result<(), DomainError> {
+        if depth > 5 {
+            return Err(DomainError::CompositionDepthExceeded(depth));
+        }
         Ok(())
     }
 }
