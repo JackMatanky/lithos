@@ -1,6 +1,6 @@
 # Story 3.3: Create Schema Bounded Context
 
-Status: review
+Status: complete
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
@@ -16,11 +16,11 @@ So that schemas can define reusable property definitions with rich validation co
 **When** I review the Schema bounded context
 **Then** it includes these domain models:
 
-- RawSchema entity (Name, Extends, Excludes, RawProperties[]) - Input definition
-- Schema entity (ID, Name, Properties[]) - Pure, fully resolved output
-- PropertyBank entity (registry of reusable Property definitions with dual indexing)
-- Property entity (ID, Name, Required, Array, Spec)
-- PropertySpec trait with variants: StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec
+- [x] RawSchema entity (Name, Extends, Excludes, RawProperties[]) - Input definition
+- [x] Schema entity (ID, Name, Properties[]) - Pure, fully resolved output
+- [x] PropertyBank entity (registry of reusable Property definitions with dual indexing)
+- [x] Property entity (ID, Name, Required, Array, Spec)
+- [x] PropertySpec trait with variants: StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec
 
 **Given** schemas form an inheritance graph
 **When** I implement the `SchemaGraph` domain service
@@ -43,11 +43,11 @@ So that schemas can define reusable property definitions with rich validation co
 **When** I review type-specific constraints
 **Then** each variant supports appropriate validation:
 
-- StringSpec: enum values and regex patterns
-- NumberSpec: min/max/step constraints
-- BoolSpec: marker type (no constraints)
-- DateSpec: format strings
-- FileSpec: fileClass and directory restrictions
+- [x] StringSpec: enum values and regex patterns
+- [x] NumberSpec: min/max/step constraints
+- [x] BoolSpec: marker type (no constraints)
+- [x] DateSpec: format strings
+- [x] FileSpec: fileClass and directory restrictions
 
 **Given** semantic validation is integrated
 **When** I create Schema instances

@@ -5,9 +5,35 @@
     reason = "Core domain logic and naming convention where Spec suffix is descriptive"
 )]
 
-use std::fmt::Debug;
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    sync::{Mutex, OnceLock},
+};
 
 use crate::errors::DomainError;
+
+static REGEX_CACHE: OnceLock<Mutex<HashMap<String, regex::Regex>>> =
+    OnceLock::new();
+
+/// Supported property specification types.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub enum PropertySpecType {
+    /// Boolean type.
+    Bool,
+    /// Date type.
+    Date,
+    /// File reference type.
+    File,
+    /// Numeric type.
+    Number,
+    /// String type.
+    String,
+}
 
 /// Core trait for property specifications.
 pub trait PropertySpecTrait: Debug + Send + Sync {
@@ -28,25 +54,6 @@ pub trait PropertySpecTrait: Debug + Send + Sync {
     /// # Errors
     /// Returns `DomainError` if the spec definition is invalid.
     fn validate_spec(&self) -> Result<(), DomainError>;
-}
-
-/// Supported property specification types.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
-)]
-#[serde(rename_all = "lowercase")]
-#[non_exhaustive]
-pub enum PropertySpecType {
-    /// Boolean type.
-    Bool,
-    /// Date type.
-    Date,
-    /// File reference type.
-    File,
-    /// Numeric type.
-    Number,
-    /// String type.
-    String,
 }
 
 /// Sum type for all supported property specifications.
@@ -146,13 +153,35 @@ impl PropertySpecTrait for DateSpec {
 }
 
 impl DateSpec {
-    fn validate_format_string(&self, _value: &str) -> Result<(), DomainError> {
-        // Here we would check if the value matches the format string.
-        // For MVP, we ensure the spec itself is valid.
+    fn validate_format_string(&self, value: &str) -> Result<(), DomainError> {
         if self.format.is_empty() {
             return Err(DomainError::InvalidDateFormat(
                 "Format cannot be empty".to_owned(),
             ));
+        }
+
+        // Map common moment-style tokens to chrono format strings
+        let chrono_format = self
+            .format
+            .replace("YYYY", "%Y")
+            .replace("MM", "%m")
+            .replace("DD", "%d")
+            .replace("HH", "%H")
+            .replace("mm", "%M")
+            .replace("SS", "%S");
+
+        // Try parsing as DateTime first, then as Date
+        let is_valid =
+            chrono::NaiveDateTime::parse_from_str(value, &chrono_format)
+                .is_ok()
+                || chrono::NaiveDate::parse_from_str(value, &chrono_format)
+                    .is_ok();
+
+        if !is_valid {
+            return Err(DomainError::InvalidDateFormat(format!(
+                "Value {value} does not match format {}",
+                self.format
+            )));
         }
         Ok(())
     }
@@ -418,11 +447,7 @@ impl StringSpec {
 
     fn validate_pattern(&self, value: &str) -> Result<(), DomainError> {
         if let Some(pattern) = self.pattern.as_ref() {
-            let re = regex::Regex::new(pattern).map_err(|e| {
-                DomainError::InvalidRegex(format!(
-                    "Invalid pattern {pattern}: {e}"
-                ))
-            })?;
+            let re = get_cached_regex(pattern)?;
             if !re.is_match(value) {
                 return Err(DomainError::ValidationFailed(format!(
                     "Value {value} does not match pattern {pattern}"
@@ -434,14 +459,28 @@ impl StringSpec {
 
     fn validate_pattern_validity(&self) -> Result<(), DomainError> {
         if let Some(pattern) = self.pattern.as_ref() {
-            regex::Regex::new(pattern).map_err(|e| {
-                DomainError::InvalidRegex(format!(
-                    "Invalid pattern {pattern}: {e}"
-                ))
-            })?;
+            get_cached_regex(pattern)?;
         }
         Ok(())
     }
+}
+
+fn get_cached_regex(pattern: &str) -> Result<regex::Regex, DomainError> {
+    let cache = REGEX_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = cache.lock().map_err(|e| {
+        DomainError::ValidationFailed(format!("Regex cache poison: {e}"))
+    })?;
+
+    if let Some(re) = guard.get(pattern) {
+        return Ok(re.clone());
+    }
+
+    let re = regex::Regex::new(pattern).map_err(|e| {
+        DomainError::InvalidRegex(format!("Invalid pattern {pattern}: {e}"))
+    })?;
+
+    guard.insert(pattern.to_owned(), re.clone());
+    Ok(re)
 }
 
 #[cfg(test)]

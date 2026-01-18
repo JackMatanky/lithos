@@ -1039,8 +1039,10 @@ dependencies = [
  "criterion",
  "dhat",
  "lithos-app",
+ "lithos-domain",
  "lithos-test-utils",
  "tokio",
+ "uuid",
 ]
 
 [[package]]
