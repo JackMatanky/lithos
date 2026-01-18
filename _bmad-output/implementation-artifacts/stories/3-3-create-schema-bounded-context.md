@@ -251,9 +251,9 @@ impl PropertyBank {
 
 **File Class Constraints - CRITICAL:**
 
-- FileSpec.file_class must support: `"image"`, `"pdf"`, `"note"`, `"audio"`, `"video"`
-- Architecture specifies these exact file class restrictions
-- File filtering depends on these exact values
+- FileSpec.file_class refers to a **Schema Name** (e.g., "project-note", "meeting-minutes")
+- It validates that the referenced file has a matching `fileClass` frontmatter key
+- Validation constraint: Must be a valid schema name string (regex: `^[a-z0-9]+(-[a-z0-9]+)*$`)
 
 ### Domain Model Foundation
 
@@ -823,8 +823,7 @@ let url_property = Property::new(
 - Value validation: String MUST match format pattern
 
 **FileSpec:**
-
-- `file_class`: If present, MUST be one of: `"image"`, `"pdf"`, `"note"`, `"audio"`, `"video"`
+- `file_class`: If present, must be a valid schema name (regex: `^[a-z0-9]+(-[a-z0-9]+)*$`)
 - `directory`: If present, MUST be valid vault-relative path (no leading `/`)
 - Value validation: Check file extension matches class, path starts with directory
 

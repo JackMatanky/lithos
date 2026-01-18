@@ -1,30 +1,103 @@
 //! Property and `PropertySpec` domain entities.
 
-use std::fmt::Debug;
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "Core domain logic and naming convention where Property prefix is descriptive"
+)]
+
+use std::fmt::{Debug, Display};
 
 use crate::errors::DomainError;
 
+/// Validated property name value object.
+///
+/// Enforces invariants:
+/// - Non-empty
+/// - Max 64 characters
+/// - Matches regex `^[a-z0-9_-]+$`
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(try_from = "String", into = "String")]
+pub struct PropertyName(String);
+
+impl PropertyName {
+    /// Get string reference.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Create a new `PropertyName` with validation.
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails.
+    #[inline]
+    pub fn new(name: String) -> Result<Self, DomainError> {
+        Self::validate_non_empty(&name)?;
+        Self::validate_length(&name)?;
+        Self::validate_format(&name)?;
+        Ok(Self(name))
+    }
+
+    fn validate_format(name: &str) -> Result<(), DomainError> {
+        let re = regex::Regex::new("^[a-z0-9_-]+$")
+            .map_err(|e| DomainError::ValidationFailed(e.to_string()))?;
+        if !re.is_match(name) {
+            return Err(DomainError::InvalidPropertyName(name.to_owned()));
+        }
+        Ok(())
+    }
+
+    fn validate_length(name: &str) -> Result<(), DomainError> {
+        if name.len() > 64 {
+            return Err(DomainError::PropertyNameTooLong(name.len()));
+        }
+        Ok(())
+    }
+
+    fn validate_non_empty(name: &str) -> Result<(), DomainError> {
+        if name.is_empty() {
+            return Err(DomainError::EmptyPropertyName);
+        }
+        Ok(())
+    }
+}
+
+impl Display for PropertyName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<String> for PropertyName {
+    type Error = DomainError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl From<PropertyName> for String {
+    #[inline]
+    fn from(val: PropertyName) -> Self {
+        val.0
+    }
+}
+
+impl AsRef<str> for PropertyName {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
 /// Reusable property definition with type-specific validation.
 ///
-/// # Examples
-///
-/// ```
-/// use lithos_domain::models::property::{Property, PropertySpec, StringSpec};
-///
-/// let spec = PropertySpec::String(StringSpec::default());
-/// let name = "status".to_string();
-/// let id = Property::compute_id(&name, &spec).unwrap();
-///
-/// let property = Property::new(
-///     id,
-///     name,
-///     true,
-///     false,
-///     spec
-/// ).expect("Valid property");
-///
-/// assert_eq!(property.name, "status");
-/// ```
+/// This is the resolved entity used in the Domain layer.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Property {
@@ -32,8 +105,8 @@ pub struct Property {
     pub array: bool,
     /// Deterministic ID: hash(name + spec content).
     pub id: String,
-    /// Property name (e.g., "title", "status").
-    pub name: String,
+    /// Property name.
+    pub name: PropertyName,
     /// Whether property is required.
     pub required: bool,
     /// Type-specific validation specification.
@@ -74,18 +147,12 @@ impl Property {
     #[inline]
     pub fn new(
         id: String,
-        name: String,
+        name: PropertyName,
         required: bool,
         array: bool,
         spec: PropertySpec,
     ) -> Result<Self, DomainError> {
-        let computed_id = Self::compute_id(&name, &spec)?;
-        if id != computed_id {
-            return Err(DomainError::ValidationFailed(format!(
-                "Property ID mismatch for {name}. Expected {computed_id}, got {id}"
-            )));
-        }
-
+        Self::validate_id_integrity(&id, name.as_str(), &spec)?;
         let property = Self {
             array,
             id,
@@ -101,35 +168,76 @@ impl Property {
     ///
     /// # Errors
     /// Returns `DomainError` if validation fails.
-    ///
-    /// # Panics
-    /// Panics if internal regex fails to compile (should never happen).
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
-        if self.name.is_empty() {
-            return Err(DomainError::EmptyPropertyName);
-        }
-        if self.name.len() > 64 {
-            return Err(DomainError::PropertyNameTooLong(self.name.len()));
-        }
-
-        // Validate name format: ^[a-z0-9_-]+$
-        let re = regex::Regex::new("^[a-z0-9_-]+$")
-            .map_err(|e| DomainError::ValidationFailed(e.to_string()))?;
-        if !re.is_match(&self.name) {
-            return Err(DomainError::InvalidPropertyName(self.name.clone()));
-        }
-
+        // Name validation is handled by PropertyName type.
+        // We only validate the spec constraints here.
         self.spec.validate_spec()?;
+        Ok(())
+    }
+
+    fn validate_id_integrity(
+        id: &str,
+        name: &str,
+        spec: &PropertySpec,
+    ) -> Result<(), DomainError> {
+        let computed_id = Self::compute_id(name, spec)?;
+        if id != computed_id {
+            return Err(DomainError::ValidationFailed(format!(
+                "Property ID mismatch for {name}. Expected {computed_id}, got {id}"
+            )));
+        }
         Ok(())
     }
 }
 
-/// Core trait for property specifications.
+/// Raw property input definition (Inline or Ref).
+///
+/// Matches the `PropertyOrRef` schema definition used in input files.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+#[non_exhaustive]
 #[expect(
     clippy::module_name_repetitions,
     reason = "Core domain logic and naming"
 )]
+pub enum RawProperty {
+    /// An inline property definition.
+    Inline(RawPropertyInline),
+    /// A reference to a property in the `PropertyBank`.
+    Ref(RawPropertyRef),
+}
+
+/// Reference variant of a raw property.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawPropertyRef {
+    /// The reference string (e.g., "#/properties/title").
+    #[serde(rename = "$ref")]
+    pub ref_path: String,
+}
+
+/// Inline variant of a raw property.
+///
+/// Corresponds to the `Property` definition in the JSON schema but used as input.
+/// Differs from `Property` entity by missing the `id` (which is computed later)
+/// and using raw types before validation.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct RawPropertyInline {
+    /// Whether property accepts array of values.
+    #[serde(default)]
+    pub array: bool,
+    /// Property name.
+    pub name: String,
+    /// Whether property is required.
+    #[serde(default)]
+    pub required: bool,
+    /// Type-specific validation constraints.
+    pub spec: PropertySpec,
+}
+
+/// Core trait for property specifications.
 pub trait PropertySpecTrait: Debug + Send + Sync {
     /// The value type this spec validates.
     type Value: Debug + Send + Sync;
@@ -156,10 +264,6 @@ pub trait PropertySpecTrait: Debug + Send + Sync {
 )]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Core domain logic and naming"
-)]
 pub enum PropertySpecType {
     /// Boolean type.
     Bool,
@@ -177,10 +281,6 @@ pub enum PropertySpecType {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 #[non_exhaustive]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Core domain logic and naming"
-)]
 pub enum PropertySpec {
     /// Boolean property (marker type).
     Bool(BoolSpec),
@@ -195,73 +295,6 @@ pub enum PropertySpec {
 }
 
 impl PropertySpec {
-    /// Validate a JSON value against this spec.
-    ///
-    /// # Errors
-    /// Returns `DomainError` if validation fails.
-    #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: self is &PropertySpec, variants bind implicitly. Consistent with frontmatter pattern."
-    )]
-    pub fn validate_json(
-        &self,
-        value: &serde_json::Value,
-    ) -> Result<(), DomainError> {
-        match self {
-            Self::Bool(s) => {
-                if let Some(b) = value.as_bool() {
-                    s.validate(&b)
-                } else {
-                    Err(DomainError::InvalidType {
-                        value: value.to_string(),
-                        expected: "boolean".to_owned(),
-                    })
-                }
-            }
-            Self::Date(s) => {
-                if let Some(st) = value.as_str() {
-                    s.validate(&st.to_owned())
-                } else {
-                    Err(DomainError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string (date)".to_owned(),
-                    })
-                }
-            }
-            Self::File(s) => {
-                if let Some(st) = value.as_str() {
-                    s.validate(&st.to_owned())
-                } else {
-                    Err(DomainError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string (file path)".to_owned(),
-                    })
-                }
-            }
-            Self::Number(s) => {
-                if let Some(f) = value.as_f64() {
-                    s.validate(&f)
-                } else {
-                    Err(DomainError::InvalidType {
-                        value: value.to_string(),
-                        expected: "number".to_owned(),
-                    })
-                }
-            }
-            Self::String(s) => {
-                if let Some(st) = value.as_str() {
-                    s.validate(&st.to_owned())
-                } else {
-                    Err(DomainError::InvalidType {
-                        value: value.to_string(),
-                        expected: "string".to_owned(),
-                    })
-                }
-            }
-        }
-    }
-
     /// Validate the spec's own structural constraints.
     ///
     /// # Errors
@@ -325,7 +358,12 @@ impl PropertySpecTrait for DateSpec {
     }
 
     #[inline]
-    fn validate(&self, _value: &Self::Value) -> Result<(), DomainError> {
+    fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
+        self.validate_format_string(value)
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), DomainError> {
         if self.format.is_empty() {
             return Err(DomainError::InvalidDateFormat(
                 "Format cannot be empty".to_owned(),
@@ -333,9 +371,12 @@ impl PropertySpecTrait for DateSpec {
         }
         Ok(())
     }
+}
 
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
+impl DateSpec {
+    fn validate_format_string(&self, _value: &str) -> Result<(), DomainError> {
+        // Here we would check if the value matches the format string.
+        // For MVP, we ensure the spec itself is valid.
         if self.format.is_empty() {
             return Err(DomainError::InvalidDateFormat(
                 "Format cannot be empty".to_owned(),
@@ -353,7 +394,7 @@ impl PropertySpecTrait for DateSpec {
 pub struct FileSpec {
     /// Optional directory restriction (vault-relative path).
     pub directory: Option<String>,
-    /// Optional file class restriction.
+    /// Optional file class restriction (schema name).
     pub file_class: Option<String>,
 }
 
@@ -367,6 +408,17 @@ impl PropertySpecTrait for FileSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
+        self.validate_directory(value)
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), DomainError> {
+        self.validate_file_class_validity()
+    }
+}
+
+impl FileSpec {
+    fn validate_directory(&self, value: &str) -> Result<(), DomainError> {
         if let Some(dir) = self.directory.as_ref()
             && !value.starts_with(dir)
         {
@@ -377,11 +429,13 @@ impl PropertySpecTrait for FileSpec {
         Ok(())
     }
 
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
+    fn validate_file_class_validity(&self) -> Result<(), DomainError> {
         if let Some(fc) = self.file_class.as_ref() {
-            let allowed = ["image", "pdf", "note", "audio", "video"];
-            if !allowed.contains(&fc.as_str()) {
+            // File class is a schema name reference, so it must be a valid schema name.
+            // Using standard schema name regex: ^[a-z0-9]+(-[a-z0-9]+)*$
+            let re = regex::Regex::new("^[a-z0-9]+(-[a-z0-9]+)*$")
+                .map_err(|e| DomainError::ValidationFailed(e.to_string()))?;
+            if !re.is_match(fc) {
                 return Err(DomainError::InvalidFileClass(fc.clone()));
             }
         }
@@ -412,34 +466,69 @@ impl PropertySpecTrait for NumberSpec {
     }
 
     #[inline]
+    fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
+        self.validate_min(*value)?;
+        self.validate_max(*value)?;
+        self.validate_step(*value)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), DomainError> {
+        self.validate_range_validity()?;
+        self.validate_step_validity()?;
+        Ok(())
+    }
+}
+
+impl NumberSpec {
+    fn validate_max(&self, value: f64) -> Result<(), DomainError> {
+        if let Some(max) = self.max
+            && value > max
+        {
+            return Err(DomainError::NumberOutOfRange {
+                value,
+                min: self.min,
+                max: self.max,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_min(&self, value: f64) -> Result<(), DomainError> {
+        if let Some(min) = self.min
+            && value < min
+        {
+            return Err(DomainError::NumberOutOfRange {
+                value,
+                min: self.min,
+                max: self.max,
+            });
+        }
+        Ok(())
+    }
+
+    fn validate_range_validity(&self) -> Result<(), DomainError> {
+        if let (Some(min), Some(max)) = (self.min, self.max)
+            && min > max
+        {
+            return Err(DomainError::ValidationFailed(
+                "min cannot be greater than max".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
     #[expect(
         clippy::float_arithmetic,
         clippy::modulo_arithmetic,
         reason = "Core numeric validation logic"
     )]
-    fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        if let Some(min) = self.min
-            && *value < min
-        {
-            return Err(DomainError::NumberOutOfRange {
-                value: *value,
-                min: self.min,
-                max: self.max,
-            });
-        }
-        if let Some(max) = self.max
-            && *value > max
-        {
-            return Err(DomainError::NumberOutOfRange {
-                value: *value,
-                min: self.min,
-                max: self.max,
-            });
-        }
+    fn validate_step(&self, value: f64) -> Result<(), DomainError> {
         if let Some(step) = self.step {
             if step <= 0.0f64 {
                 return Err(DomainError::InvalidStepValue {
-                    value: *value,
+                    value,
                     step,
                 });
             }
@@ -448,7 +537,7 @@ impl PropertySpecTrait for NumberSpec {
             let rem = diff % step;
             if rem > 1e-10f64 && (step - rem) > 1e-10f64 {
                 return Err(DomainError::InvalidStepValue {
-                    value: *value,
+                    value,
                     step,
                 });
             }
@@ -456,15 +545,7 @@ impl PropertySpecTrait for NumberSpec {
         Ok(())
     }
 
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        if let (Some(min), Some(max)) = (self.min, self.max)
-            && min > max
-        {
-            return Err(DomainError::ValidationFailed(
-                "min cannot be greater than max".to_owned(),
-            ));
-        }
+    fn validate_step_validity(&self) -> Result<(), DomainError> {
         if self.step.is_some_and(|step| step <= 0.0f64) {
             return Err(DomainError::ValidationFailed(
                 "step must be positive".to_owned(),
@@ -500,14 +581,46 @@ impl PropertySpecTrait for StringSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        if let Some(min) = self.min_length
-            && value.len() < min
+        self.validate_min_length(value)?;
+        self.validate_max_length(value)?;
+        self.validate_enum(value)?;
+        self.validate_pattern(value)?;
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), DomainError> {
+        self.validate_length_range_validity()?;
+        self.validate_pattern_validity()?;
+        Ok(())
+    }
+}
+
+impl StringSpec {
+    fn validate_enum(&self, value: &str) -> Result<(), DomainError> {
+        if let Some(enums) = self.enum_values.as_ref()
+            && !enums.contains(&value.to_owned())
         {
-            return Err(DomainError::StringTooShort {
-                min,
-                actual: value.len(),
+            return Err(DomainError::InvalidEnumValue {
+                value: value.to_owned(),
+                allowed: enums.clone(),
             });
         }
+        Ok(())
+    }
+
+    fn validate_length_range_validity(&self) -> Result<(), DomainError> {
+        if let (Some(min), Some(max)) = (self.min_length, self.max_length)
+            && min > max
+        {
+            return Err(DomainError::ValidationFailed(
+                "min_length cannot be greater than max_length".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_max_length(&self, value: &str) -> Result<(), DomainError> {
         if let Some(max) = self.max_length
             && value.len() > max
         {
@@ -516,14 +629,22 @@ impl PropertySpecTrait for StringSpec {
                 actual: value.len(),
             });
         }
-        if let Some(enums) = self.enum_values.as_ref()
-            && !enums.contains(value)
+        Ok(())
+    }
+
+    fn validate_min_length(&self, value: &str) -> Result<(), DomainError> {
+        if let Some(min) = self.min_length
+            && value.len() < min
         {
-            return Err(DomainError::InvalidEnumValue {
-                value: value.clone(),
-                allowed: enums.clone(),
+            return Err(DomainError::StringTooShort {
+                min,
+                actual: value.len(),
             });
         }
+        Ok(())
+    }
+
+    fn validate_pattern(&self, value: &str) -> Result<(), DomainError> {
         if let Some(pattern) = self.pattern.as_ref() {
             let re = regex::Regex::new(pattern).map_err(|e| {
                 DomainError::InvalidRegex(format!(
@@ -539,15 +660,7 @@ impl PropertySpecTrait for StringSpec {
         Ok(())
     }
 
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        if let (Some(min), Some(max)) = (self.min_length, self.max_length)
-            && min > max
-        {
-            return Err(DomainError::ValidationFailed(
-                "min_length cannot be greater than max_length".to_owned(),
-            ));
-        }
+    fn validate_pattern_validity(&self) -> Result<(), DomainError> {
         if let Some(pattern) = self.pattern.as_ref() {
             regex::Regex::new(pattern).map_err(|e| {
                 DomainError::InvalidRegex(format!(
@@ -587,24 +700,57 @@ mod tests {
         fn returns_error_when_property_name_format_is_invalid() {
             let spec = PropertySpec::String(StringSpec::default());
             let invalid_names = vec!["Invalid Name", "invalid.name", ""];
-            for name in invalid_names {
-                let id = Property::compute_id(name, &spec).unwrap_or_default();
-                let res = Property::new(
-                    id,
-                    name.to_owned(),
-                    true,
-                    false,
-                    spec.clone(),
+            for name_str in invalid_names {
+                // PropertyName::new checks validation
+                assert!(
+                    PropertyName::new(name_str.to_owned()).is_err(),
+                    "Should reject invalid name: {name_str}"
                 );
-                assert!(res.is_err(), "Should reject invalid name: {name}");
             }
+            // Use _spec to suppress warning about unused variable if the loop didn't consume it
+            let _: PropertySpec = spec;
+        }
+    }
+
+    mod property_name {
+        use super::*;
+
+        #[test]
+        fn validates_regex_and_length() {
+            PropertyName::new("valid_name".into()).unwrap();
+            PropertyName::new("valid-name-123".into()).unwrap();
+            PropertyName::new(String::new()).unwrap_err();
+            PropertyName::new("Invalid Name".into()).unwrap_err();
+            PropertyName::new("a".repeat(65)).unwrap_err();
+        }
+
+        #[test]
+        fn validates_format() {
+            PropertyName::new("invalid_name!".into()).unwrap_err();
+            PropertyName::new("valid_name".into()).unwrap();
+        }
+
+        #[test]
+        fn validates_length() {
+            let long_name = "a".repeat(65);
+            assert!(matches!(
+                PropertyName::new(long_name),
+                Err(DomainError::PropertyNameTooLong(_))
+            ));
+        }
+
+        #[test]
+        fn validates_non_empty() {
+            assert!(matches!(
+                PropertyName::new(String::new()),
+                Err(DomainError::EmptyPropertyName)
+            ));
         }
     }
 
     mod specs {
         use super::*;
 
-        /// 3.3-UNIT-007: `string_spec_validates_enums_and_patterns`.
         #[test]
         fn string_spec_validates_enums_and_patterns() {
             let spec = StringSpec {
@@ -614,6 +760,46 @@ mod tests {
 
             spec.validate(&"A".to_owned()).unwrap();
             assert!(spec.validate(&"C".to_owned()).is_err());
+        }
+
+        #[test]
+        fn number_spec_validates_min_max_step() {
+            let spec = NumberSpec {
+                min: Some(0.0f64),
+                max: Some(10.0f64),
+                step: Some(0.5f64),
+            };
+            spec.validate(&0.0f64).unwrap();
+            spec.validate(&10.0f64).unwrap();
+            spec.validate(&5.5f64).unwrap();
+            assert!(spec.validate(&-1.0f64).is_err());
+            assert!(spec.validate(&11.0f64).is_err());
+            assert!(spec.validate(&5.2f64).is_err());
+        }
+
+        #[test]
+        fn file_spec_validates_directory() {
+            let spec = FileSpec {
+                directory: Some("notes/".to_owned()),
+                file_class: None,
+            };
+            spec.validate(&"notes/my_note.md".to_owned()).unwrap();
+            assert!(spec.validate(&"other/note.md".to_owned()).is_err());
+        }
+
+        #[test]
+        fn file_spec_validates_file_class_format() {
+            let spec = FileSpec {
+                directory: None,
+                file_class: Some("valid-schema".to_owned()),
+            };
+            spec.validate_spec().unwrap();
+
+            let invalid_spec = FileSpec {
+                directory: None,
+                file_class: Some("Invalid Schema!".to_owned()),
+            };
+            assert!(invalid_spec.validate_spec().is_err());
         }
     }
 }
