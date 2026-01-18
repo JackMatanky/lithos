@@ -81,7 +81,7 @@ impl Schema {
         if let Some(parent) = parent_schema {
             for prop in &parent.resolved_properties {
                 // 2. Filter out excluded properties
-                if !excludes.contains(&prop.name) {
+                if !excludes.contains(prop.name.as_str()) {
                     resolved.push(prop.clone());
                 }
             }
@@ -139,7 +139,7 @@ impl Schema {
     /// Gets a property by name.
     #[inline]
     fn get_by_name(&self, name: &str) -> Option<&Property> {
-        self.properties.iter().find(|p| p.name == name)
+        self.properties.iter().find(|p| p.name.as_str() == name)
     }
 
     /// Checks if a property exists by name.
@@ -155,7 +155,7 @@ impl Schema {
     #[inline]
     #[must_use]
     pub fn has(&self, name: &str) -> bool {
-        self.properties.iter().any(|p| p.name == name)
+        self.properties.iter().any(|p| p.name.as_str() == name)
     }
 
     /// Create a new schema with inheritance resolution.
@@ -243,11 +243,12 @@ impl Schema {
 ///
 /// ```
 /// use lithos_domain::{PropertyBank, Property, PropertySpec, StringSpec};
+/// use lithos_domain::models::property::PropertyName;
 ///
 /// let mut bank = PropertyBank::new();
 /// let spec = PropertySpec::String(StringSpec::default());
-/// let name = "status".to_string();
-/// let id = Property::compute_id(&name, &spec).unwrap();
+/// let name = PropertyName::new("status".to_string()).unwrap();
+/// let id = Property::compute_id(name.as_str(), &spec).unwrap();
 /// let property = Property::new(id, name, true, false, spec).unwrap();
 ///
 /// bank.register(property).expect("Successfully registered");
@@ -302,16 +303,17 @@ impl PropertyBank {
     /// # Examples
     /// ```
     /// # use lithos_domain::{PropertyBank, Property, PropertySpec, StringSpec};
+    /// # use lithos_domain::models::property::PropertyName;
     /// let mut bank = PropertyBank::new();
     /// let spec = PropertySpec::String(StringSpec::default());
-    /// let name = "status".to_string();
-    /// let id = Property::compute_id(&name, &spec).unwrap();
+    /// let name = PropertyName::new("status".to_string()).unwrap();
+    /// let id = Property::compute_id(name.as_str(), &spec).unwrap();
     /// let property = Property::new(id, name, true, false, spec).unwrap();
     /// bank.register(property).unwrap();
     ///
     /// // Decode the $ref
     /// let prop = bank.decode("#/properties/status").unwrap();
-    /// assert_eq!(prop.name, "status");
+    /// assert_eq!(prop.name.as_str(), "status");
     /// ```
     #[inline]
     pub fn decode(&self, ref_path: &str) -> Result<&Property, DomainError> {
@@ -328,7 +330,7 @@ impl PropertyBank {
         })?;
         self.properties
             .values()
-            .find(|p| p.name == name)
+            .find(|p| p.name.as_str() == name)
             .ok_or_else(|| DomainError::PropertyNotFound(name.to_owned()))
     }
 
@@ -361,7 +363,7 @@ impl PropertyBank {
     /// Gets a property by name.
     #[inline]
     fn get_by_name(&self, name: &str) -> Option<&Property> {
-        self.properties.values().find(|p| p.name == name)
+        self.properties.values().find(|p| p.name.as_str() == name)
     }
 
     /// Checks if a property exists by name or ID.
@@ -387,7 +389,7 @@ impl PropertyBank {
     /// Checks if a property exists by name.
     #[inline]
     fn has_name(&self, name: &str) -> bool {
-        self.properties.values().any(|p| p.name == name)
+        self.properties.values().any(|p| p.name.as_str() == name)
     }
 
     /// Create a new empty `PropertyBank`.
@@ -596,7 +598,7 @@ mod tests {
             bank.register(prop).unwrap();
 
             let p = bank.decode("#/properties/status").unwrap();
-            assert_eq!(p.name, "status");
+            assert_eq!(p.name.as_str(), "status");
         }
     }
 }
@@ -610,7 +612,9 @@ mod tests {
 pub mod fixtures {
     use uuid::Uuid;
 
-    use crate::models::property::{Property, PropertySpec, StringSpec};
+    use crate::models::property::{
+        Property, PropertyName, PropertySpec, StringSpec,
+    };
 
     /// Fixed UUID for deterministic tests.
     pub const TEST_SCHEMA_ID: Uuid =
@@ -624,11 +628,12 @@ pub mod fixtures {
     #[must_use]
     pub fn example_property() -> Property {
         let spec = PropertySpec::String(StringSpec::default());
-        let id = Property::compute_id("status", &spec).expect("Valid ID");
+        let name = PropertyName::new("status".to_owned()).expect("Valid Name");
+        let id = Property::compute_id(name.as_str(), &spec).expect("Valid ID");
         Property {
             array: false,
             id,
-            name: "status".to_owned(),
+            name,
             required: true,
             spec,
         }
