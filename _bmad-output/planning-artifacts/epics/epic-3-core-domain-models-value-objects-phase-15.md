@@ -160,7 +160,31 @@ So that template structure and business rules are properly validated at the doma
 **When** I define ports
 **Then** TemplateCommand and TemplateQuery trait interfaces are provided for future implementation
 
-## Story 3.5: Review Epic 3 Test Suite
+## Story 3.5: Consolidate Domain Core and Internal Utilities
+
+As a developer maintaining the domain layer,
+I want to consolidate shared logic and internal utilities into a central `lib.rs` and core modules within the domain crate,
+So that the codebase remains DRY, maintainable, and architectural boundaries are respected.
+
+**Acceptance Criteria:**
+
+**Given** redundant utility functions and shared logic exist across Note, Schema, Config, and Template bounded contexts
+**When** I refactor the domain crate
+**Then** shared logic is moved to `crates/domain/src/lib.rs` or internal core modules
+
+**Given** internal domain utilities are exposed publicly
+**When** I review visibility
+**Then** internal utilities use `pub(crate)` to prevent leaking into the application layer
+
+**Given** the domain crate is the "inviolate core"
+**When** I consolidate utilities
+**Then** ZERO external dependencies (except justified ones like `serde` or `thiserror`) are introduced
+
+**Given** common patterns like UUID v7 handling or shared error mapping are used
+**When** I implement core utilities
+**Then** they are implemented once in the core and reused across all bounded contexts
+
+## Story 3.6: Review Epic 3 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 3 test suite to its foundation,
@@ -208,7 +232,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I test port interfaces
 **Then** trait interface tests validate correct signatures and contracts
 
-## Story 3.6: Create Epic 3 Documentation
+## Story 3.7: Create Epic 3 Documentation
 
 As a developer working with the domain models,
 I want comprehensive documentation of the domain entities, their relationships, domain events, and evolution guidelines,
