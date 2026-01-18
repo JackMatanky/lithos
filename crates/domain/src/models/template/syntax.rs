@@ -1,6 +1,10 @@
 /// Defines the syntax for variables placeholders within a template.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "PlaceholderSyntax follows domain naming conventions"
+)]
 pub struct PlaceholderSyntax {
     /// The opening delimiter (e.g., "{{").
     pub prefix: String,

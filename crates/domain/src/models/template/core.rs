@@ -95,6 +95,14 @@ pub struct Template {
     pub(crate) pending_events: Vec<DomainEvent>,
 }
 
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Function ordering optimized for logical flow over strict alphabetical order"
+)]
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "Matching on reference to enum with owned variants for borrow checker compliance"
+)]
 impl Template {
     /// Adds a domain event to the pending events collection.
     #[inline]
@@ -189,31 +197,10 @@ impl Template {
         &self.pending_events
     }
 
-    /// Returns and clears pending domain events.
-    #[inline]
-    #[must_use]
-    pub fn take_events(&mut self) -> Vec<DomainEvent> {
-        std::mem::take(&mut self.pending_events)
-    }
-
-    /// Validates template business rules.
-    ///
-    /// # Errors
-    /// Returns `DomainError::ValidationFailed` if placeholders are unbalanced.
-    #[inline]
-    pub fn validate(&self) -> Result<(), DomainError> {
-        validate_structure(
-            &self.content,
-            &self.syntax.prefix,
-            &self.syntax.suffix,
-        )?;
-        Ok(())
-    }
-
     /// Applies additional sections to content.
     fn apply_sections(&self, content: &mut String, sections: &[Section]) {
         for section in sections {
-            match section.position {
+            match &section.position {
                 InsertionPosition::Beginning => {
                     content.insert(0, '\n');
                     content.insert_str(0, &section.content);
@@ -222,7 +209,7 @@ impl Template {
                     content.push('\n');
                     content.push_str(&section.content);
                 }
-                InsertionPosition::BeforeVariable(ref var_name) => {
+                InsertionPosition::BeforeVariable(var_name) => {
                     self.insert_relative_to_variable(
                         content,
                         var_name,
@@ -230,7 +217,7 @@ impl Template {
                         false,
                     );
                 }
-                InsertionPosition::AfterVariable(ref var_name) => {
+                InsertionPosition::AfterVariable(var_name) => {
                     self.insert_relative_to_variable(
                         content,
                         var_name,
@@ -240,6 +227,13 @@ impl Template {
                 }
             }
         }
+    }
+
+    /// Returns and clears pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<DomainEvent> {
+        std::mem::take(&mut self.pending_events)
     }
 
     fn insert_relative_to_variable(
@@ -274,10 +268,33 @@ impl Template {
         }
     }
 
+    /// Validates template business rules.
+    ///
+    /// # Errors
+    /// Returns `DomainError::ValidationFailed` if placeholders are unbalanced.
+    #[inline]
+    pub fn validate(&self) -> Result<(), DomainError> {
+        validate_structure(
+            &self.content,
+            &self.syntax.prefix,
+            &self.syntax.suffix,
+        )?;
+        Ok(())
+    }
+
     fn validate_name(name: &str) -> Result<(), DomainError> {
         Self::ensure_name_not_empty(name)?;
         Self::ensure_name_within_length(name)?;
         Self::ensure_name_matches_pattern(name)?;
+        Ok(())
+    }
+
+    fn ensure_name_matches_pattern(name: &str) -> Result<(), DomainError> {
+        if !NAME_RE.is_match(name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid template name: {name}"
+            )));
+        }
         Ok(())
     }
 
@@ -299,15 +316,6 @@ impl Template {
         Ok(())
     }
 
-    fn ensure_name_matches_pattern(name: &str) -> Result<(), DomainError> {
-        if !NAME_RE.is_match(name) {
-            return Err(DomainError::ValidationFailed(format!(
-                "Invalid template name: {name}"
-            )));
-        }
-        Ok(())
-    }
-
     #[expect(clippy::iter_over_hash_type, reason = "Validation only")]
     fn validate_variable_definitions(
         variables: &HashMap<String, VariableDefinition>,
@@ -320,11 +328,11 @@ impl Template {
         Ok(())
     }
 
-    fn ensure_max_variables_not_exceeded(
-        count: usize,
-    ) -> Result<(), DomainError> {
-        if count > 50 {
-            return Err(DomainError::MaxVariablesExceeded(count));
+    fn ensure_variable_name_not_empty(name: &str) -> Result<(), DomainError> {
+        if name.is_empty() {
+            return Err(DomainError::ValidationFailed(
+                "Variable name cannot be empty".to_owned(),
+            ));
         }
         Ok(())
     }
@@ -337,11 +345,13 @@ impl Template {
         Ok(())
     }
 
-    fn ensure_variable_name_not_empty(name: &str) -> Result<(), DomainError> {
-        if name.is_empty() {
-            return Err(DomainError::ValidationFailed(
-                "Variable name cannot be empty".to_owned(),
-            ));
+    fn ensure_variable_name_matches_pattern(
+        name: &str,
+    ) -> Result<(), DomainError> {
+        if !VAR_RE.is_match(name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid variable name: {name}"
+            )));
         }
         Ok(())
     }
@@ -357,13 +367,11 @@ impl Template {
         Ok(())
     }
 
-    fn ensure_variable_name_matches_pattern(
-        name: &str,
+    fn ensure_max_variables_not_exceeded(
+        count: usize,
     ) -> Result<(), DomainError> {
-        if !VAR_RE.is_match(name) {
-            return Err(DomainError::ValidationFailed(format!(
-                "Invalid variable name: {name}"
-            )));
+        if count > 50 {
+            return Err(DomainError::MaxVariablesExceeded(count));
         }
         Ok(())
     }

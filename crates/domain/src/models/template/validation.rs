@@ -1,6 +1,10 @@
 use crate::errors::DomainError;
 
 /// Validates template content size.
+///
+/// # Errors
+/// Returns `DomainError::TemplateContentTooLarge` if content exceeds 1MB.
+#[inline]
 pub fn validate_content(content: &str) -> Result<(), DomainError> {
     if content.len() > 1024 * 1024 {
         return Err(DomainError::TemplateContentTooLarge(
@@ -13,6 +17,10 @@ pub fn validate_content(content: &str) -> Result<(), DomainError> {
 
 /// Validates that template content has balanced placeholders.
 /// (Basic structure validation as required by story).
+///
+/// # Errors
+/// Returns `DomainError::ValidationFailed` if placeholders are unbalanced.
+#[inline]
 pub fn validate_structure(
     content: &str,
     prefix: &str,

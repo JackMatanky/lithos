@@ -17,36 +17,11 @@ pub struct Composition {
     pub variable_overrides: HashMap<String, serde_json::Value>,
 }
 
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Function ordering optimized for logical flow over strict alphabetical order"
+)]
 impl Composition {
-    /// Detects circular references in composition using DFS.
-    ///
-    /// # Errors
-    /// Returns `DomainError::CompositionDepthExceeded` if depth > 5.
-    /// Returns `DomainError::CircularComposition` if cycle detected.
-    #[inline]
-    pub fn detect_cycles(
-        &self,
-        templates: &HashMap<String, Template>,
-    ) -> Result<(), DomainError> {
-        let mut visited = HashSet::new();
-        let mut stack = HashSet::new();
-
-        self.dfs_check(
-            &self.base_template,
-            0,
-            templates,
-            &mut visited,
-            &mut stack,
-        )
-    }
-
-    fn ensure_depth_within_limit(depth: usize) -> Result<(), DomainError> {
-        if depth > 5 {
-            return Err(DomainError::CompositionDepthExceeded(depth));
-        }
-        Ok(())
-    }
-
     fn check_template_dependencies(
         &self,
         template: &Template,
@@ -104,6 +79,35 @@ impl Composition {
         }
 
         stack.remove(current_name);
+        Ok(())
+    }
+
+    /// Detects circular references in composition using DFS.
+    ///
+    /// # Errors
+    /// Returns `DomainError::CompositionDepthExceeded` if depth > 5.
+    /// Returns `DomainError::CircularComposition` if cycle detected.
+    #[inline]
+    pub fn detect_cycles(
+        &self,
+        templates: &HashMap<String, Template>,
+    ) -> Result<(), DomainError> {
+        let mut visited = HashSet::new();
+        let mut stack = HashSet::new();
+
+        self.dfs_check(
+            &self.base_template,
+            0,
+            templates,
+            &mut visited,
+            &mut stack,
+        )
+    }
+
+    fn ensure_depth_within_limit(depth: usize) -> Result<(), DomainError> {
+        if depth > 5 {
+            return Err(DomainError::CompositionDepthExceeded(depth));
+        }
         Ok(())
     }
 

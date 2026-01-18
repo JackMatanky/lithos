@@ -3,6 +3,14 @@ use crate::errors::DomainError;
 /// Type-safe variable definition with validation constraints.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
+#[expect(
+    clippy::unsafe_derive_deserialize,
+    reason = "No unsafe code in this enum, false positive"
+)]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "VariableDefinition follows domain naming conventions"
+)]
 pub enum VariableDefinition {
     /// Boolean variable.
     Boolean {
@@ -45,6 +53,10 @@ pub enum VariableDefinition {
     },
 }
 
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Function ordering optimized for logical flow over strict alphabetical order"
+)]
 impl VariableDefinition {
     /// Checks if a number is within the specified range.
     fn check_number_range(
@@ -54,6 +66,41 @@ impl VariableDefinition {
     ) -> Result<(), DomainError> {
         Self::ensure_number_at_least_min(n, min, max)?;
         Self::ensure_number_at_most_max(n, min, max)?;
+        Ok(())
+    }
+
+    /// Checks string pattern constraints.
+    /// Adversarial Review Fix: Use a cache to avoid recompiling the same regex.
+    fn check_string_pattern(
+        s: &str,
+        pattern: Option<&str>,
+    ) -> Result<(), DomainError> {
+        if let Some(p) = pattern {
+            thread_local! {
+                static CACHE: std::cell::RefCell<std::collections::HashMap<String, regex::Regex>> =
+                    std::cell::RefCell::new(std::collections::HashMap::new());
+            }
+
+            let is_match =
+                CACHE.with(|cache| -> Result<bool, DomainError> {
+                    let mut cache = cache.borrow_mut();
+                    if let Some(re) = cache.get(p) {
+                        Ok(re.is_match(s))
+                    } else {
+                        let re = regex::Regex::new(p).map_err(|e| {
+                            DomainError::InvalidRegex(e.to_string())
+                        })?;
+                        let is_match = re.is_match(s);
+                        cache.insert(p.to_owned(), re);
+                        Ok(is_match)
+                    }
+                })?;
+            if !is_match {
+                return Err(DomainError::ValidationFailed(format!(
+                    "String does not match pattern: {p}"
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -91,17 +138,6 @@ impl VariableDefinition {
         Ok(())
     }
 
-    /// Checks string length constraints.
-    fn check_string_length(
-        s: &str,
-        min: Option<usize>,
-        max: Option<usize>,
-    ) -> Result<(), DomainError> {
-        Self::ensure_string_min_length(s, min)?;
-        Self::ensure_string_max_length(s, max)?;
-        Ok(())
-    }
-
     fn ensure_string_min_length(
         s: &str,
         min: Option<usize>,
@@ -128,42 +164,6 @@ impl VariableDefinition {
                 max: m,
                 actual: s.len(),
             });
-        }
-        Ok(())
-    }
-
-    /// Checks string pattern constraints.
-    /// Adversarial Review Fix: Use a cache to avoid recompiling the same regex.
-    fn check_string_pattern(
-        s: &str,
-        pattern: Option<&str>,
-    ) -> Result<(), DomainError> {
-        if let Some(p) = pattern {
-            thread_local! {
-                static CACHE: std::cell::RefCell<std::collections::HashMap<String, regex::Regex>> =
-                    std::cell::RefCell::new(std::collections::HashMap::new());
-            }
-
-            let is_match =
-                CACHE.with(|cache| -> Result<bool, DomainError> {
-                    let mut cache = cache.borrow_mut();
-                    if let Some(re) = cache.get(p) {
-                        Ok(re.is_match(s))
-                    } else {
-                        let re = regex::Regex::new(p).map_err(|e| {
-                            DomainError::InvalidRegex(e.to_string())
-                        })?;
-                        let res = re.is_match(s);
-                        cache.insert(p.to_owned(), re);
-                        Ok(res)
-                    }
-                })?;
-
-            if !is_match {
-                return Err(DomainError::ValidationFailed(format!(
-                    "String does not match pattern: {p}"
-                )));
-            }
         }
         Ok(())
     }
@@ -225,49 +225,8 @@ impl VariableDefinition {
         }
     }
 
-    /// Validates a value against this definition.
     #[inline]
-    #[expect(clippy::pattern_type_mismatch, reason = "Enum reference matching")]
-    pub fn validate_value(
-        &self,
-        value: &serde_json::Value,
-    ) -> Result<(), DomainError> {
-        match self {
-            Self::Boolean {
-                ..
-            } => self.validate_boolean(value),
-            Self::Date {
-                format,
-                ..
-            } => self.validate_date(value, format.as_deref()),
-            Self::File {
-                file_types,
-                ..
-            } => self.validate_file(value, file_types.as_deref()),
-            Self::Number {
-                min,
-                max,
-                ..
-            } => self.validate_number(value, *min, *max),
-            Self::String {
-                min_length,
-                max_length,
-                pattern,
-                ..
-            } => self.validate_string(
-                value,
-                *min_length,
-                *max_length,
-                pattern.as_deref(),
-            ),
-        }
-    }
-
-    #[inline]
-    fn validate_boolean(
-        &self,
-        value: &serde_json::Value,
-    ) -> Result<(), DomainError> {
+    fn validate_boolean(value: &serde_json::Value) -> Result<(), DomainError> {
         if !value.is_boolean() {
             return Err(DomainError::InvalidType {
                 value: value.to_string(),
@@ -279,7 +238,6 @@ impl VariableDefinition {
 
     #[inline]
     fn validate_date(
-        &self,
         value: &serde_json::Value,
         format: Option<&str>,
     ) -> Result<(), DomainError> {
@@ -298,9 +256,66 @@ impl VariableDefinition {
         Ok(())
     }
 
+    /// Validates a value against this definition.
+    ///
+    /// # Errors
+    /// Returns `DomainError::InvalidType` if value type doesn't match.
+    /// Returns `DomainError::ValidationFailed` for constraint violations.
+    #[inline]
+    #[expect(clippy::pattern_type_mismatch, reason = "Enum reference matching")]
+    pub fn validate_value(
+        &self,
+        value: &serde_json::Value,
+    ) -> Result<(), DomainError> {
+        match self {
+            Self::Boolean {
+                ..
+            } => Self::validate_boolean(value),
+            Self::Date {
+                format,
+                ..
+            } => Self::validate_date(value, format.as_deref()),
+            Self::File {
+                file_types,
+                ..
+            } => Self::validate_file(value, file_types.as_deref()),
+            Self::Number {
+                min,
+                max,
+                ..
+            } => Self::validate_number(value, *min, *max),
+            Self::String {
+                min_length,
+                max_length,
+                pattern,
+                ..
+            } => Self::validate_string(
+                value,
+                *min_length,
+                *max_length,
+                pattern.as_deref(),
+            ),
+        }
+    }
+
+    fn ensure_file_extension_allowed(
+        s: &str,
+        allowed_types: Option<&[String]>,
+    ) -> Result<(), DomainError> {
+        if let Some(allowed) = allowed_types {
+            let ext = std::path::Path::new(s)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            if !allowed.iter().any(|a| a == ext) {
+                return Err(DomainError::InvalidFileClass(s.to_owned()));
+            }
+        }
+        Ok(())
+    }
+
     #[inline]
     fn validate_file(
-        &self,
         value: &serde_json::Value,
         file_types: Option<&[String]>,
     ) -> Result<(), DomainError> {
@@ -321,25 +336,8 @@ impl VariableDefinition {
         Ok(())
     }
 
-    fn ensure_file_extension_allowed(
-        s: &str,
-        allowed_types: Option<&[String]>,
-    ) -> Result<(), DomainError> {
-        if let Some(allowed) = allowed_types {
-            let ext = std::path::Path::new(s)
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
-            if !allowed.iter().any(|a| a == ext) {
-                return Err(DomainError::InvalidFileClass(s.to_owned()));
-            }
-        }
-        Ok(())
-    }
-
     #[inline]
     fn validate_number(
-        &self,
         value: &serde_json::Value,
         min: Option<f64>,
         max: Option<f64>,
@@ -353,7 +351,6 @@ impl VariableDefinition {
 
     #[inline]
     fn validate_string(
-        &self,
         value: &serde_json::Value,
         min_length: Option<usize>,
         max_length: Option<usize>,
@@ -363,13 +360,18 @@ impl VariableDefinition {
             value: value.to_string(),
             expected: "string".to_owned(),
         })?;
-        Self::check_string_length(s, min_length, max_length)?;
+        Self::ensure_string_min_length(s, min_length)?;
+        Self::ensure_string_max_length(s, max_length)?;
         Self::check_string_pattern(s, pattern)?;
         Ok(())
     }
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test code uses expect/unwrap for simplicity and determinism"
+)]
 mod tests {
     use super::*;
 
