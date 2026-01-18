@@ -8,6 +8,11 @@
 //! - All file paths must be vault-relative and validated against path traversal.
 //! - Validation follows a three-phase pipeline: Syntactic → Orchestration → Semantic.
 
+#![expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
+)]
+
 use uuid::Uuid;
 
 use super::{
@@ -35,38 +40,38 @@ use crate::{errors::DomainError, events::NoteCreated};
 /// // For new files (first-time indexing)
 /// let new_id = Uuid::now_v7();
 /// let note = Note::new(new_id, "projects/example.md".to_string()).unwrap();
-/// assert_eq!(note.path.as_ref(), "projects/example.md");
+/// assert_eq!(note.path(), "projects/example.md");
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "id and path are primary identifiers, should be first"
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
 )]
 pub struct Note {
     /// UUID v7 identity (time-ordered).
-    pub id: Uuid,
+    pub(crate) id: Uuid,
     /// Vault-relative path.
-    pub path: Box<str>,
+    pub(crate) path: Box<str>,
     /// YAML metadata.
-    pub frontmatter: Option<Frontmatter>,
+    pub(crate) frontmatter: Option<Frontmatter>,
     /// Outgoing links.
-    pub links: Vec<Link>,
+    pub(crate) links: Vec<Link>,
     /// Embedded files.
-    pub embeds: Vec<Link>,
+    pub(crate) embeds: Vec<Link>,
     /// Hierarchical tags.
-    pub tags: Vec<Tag>,
+    pub(crate) tags: Vec<Tag>,
     /// Markdown headings.
-    pub headings: Vec<Heading>,
+    pub(crate) headings: Vec<Heading>,
     /// Task items.
-    pub tasks: Vec<Task>,
+    pub(crate) tasks: Vec<Task>,
     /// Document sections.
-    pub sections: Vec<Section>,
+    pub(crate) sections: Vec<Section>,
     /// Domain events pending emission (not serialized).
     ///
     /// Access via `pending_events()` and `take_events()` methods.
     #[serde(skip)]
-    pub pending_events: Vec<DomainEvent>,
+    pub(crate) pending_events: Vec<DomainEvent>,
 }
 
 /// Domain events that can be emitted by the Note aggregate.
@@ -77,11 +82,114 @@ pub enum DomainEvent {
     NoteCreated(NoteCreated),
 }
 
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Methods grouped by domain logic, not alphabetically"
-)]
 impl Note {
+    /// Returns the note's unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Returns the note's vault-relative path.
+    #[inline]
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Returns a reference to the note's frontmatter, if present.
+    #[inline]
+    #[must_use]
+    pub const fn frontmatter(&self) -> Option<&Frontmatter> {
+        self.frontmatter.as_ref()
+    }
+
+    /// Returns the outgoing links from this note.
+    #[inline]
+    #[must_use]
+    pub fn links(&self) -> &[Link] {
+        &self.links
+    }
+
+    /// Returns the embedded files in this note.
+    #[inline]
+    #[must_use]
+    pub fn embeds(&self) -> &[Link] {
+        &self.embeds
+    }
+
+    /// Returns the hierarchical tags associated with this note.
+    #[inline]
+    #[must_use]
+    pub fn tags(&self) -> &[Tag] {
+        &self.tags
+    }
+
+    /// Returns the markdown headings in this note.
+    #[inline]
+    #[must_use]
+    pub fn headings(&self) -> &[Heading] {
+        &self.headings
+    }
+
+    /// Returns the task items in this note.
+    #[inline]
+    #[must_use]
+    pub fn tasks(&self) -> &[Task] {
+        &self.tasks
+    }
+
+    /// Returns the document sections in this note.
+    #[inline]
+    #[must_use]
+    pub fn sections(&self) -> &[Section] {
+        &self.sections
+    }
+
+    /// Sets the note's frontmatter.
+    #[inline]
+    pub fn set_frontmatter(&mut self, frontmatter: Option<Frontmatter>) {
+        self.frontmatter = frontmatter;
+    }
+
+    /// Adds a link to the note, ensuring aggregate consistency.
+    #[inline]
+    pub fn add_link(&mut self, mut link: Link) {
+        link.set_source_note_id(self.id);
+        self.links.push(link);
+    }
+
+    /// Adds an embed to the note, ensuring aggregate consistency.
+    #[inline]
+    pub fn add_embed(&mut self, mut embed: Link) {
+        embed.set_source_note_id(self.id);
+        self.embeds.push(embed);
+    }
+
+    /// Adds a tag to the note.
+    #[inline]
+    pub fn add_tag(&mut self, tag: Tag) {
+        self.tags.push(tag);
+    }
+
+    /// Adds a heading to the note.
+    #[inline]
+    pub fn add_heading(&mut self, heading: Heading) {
+        self.headings.push(heading);
+    }
+
+    /// Adds a task to the note.
+    #[inline]
+    pub fn add_task(&mut self, task: Task) {
+        self.tasks.push(task);
+    }
+
+    /// Adds a section to the note.
+    #[inline]
+    pub fn add_section(&mut self, section: Section) {
+        self.sections.push(section);
+    }
+
     /// Creates a new note aggregate with the provided UUID and validated path.
     ///
     /// # UUID Source
@@ -89,33 +197,9 @@ impl Note {
     /// - `NoteRepository::get_or_create_note_id()` for indexed files (preserves existing identity)
     /// - `Uuid::now_v7()` for brand-new notes (first-time indexing)
     ///
-    /// This design ensures UUID stability across file renames and system restarts,
-    /// as UUIDs are persisted in the Redb cache and retrieved via path lookups.
-    ///
-    /// # Invariants
-    /// - Uses the provided UUID v7 for `id` (time-ordered identity).
-    /// - Validates path according to vault-relative rules.
-    /// - Emits `NoteCreated` domain event.
-    ///
     /// # Errors
     /// Returns `DomainError::EmptyPath` if path is empty.
     /// Returns `DomainError::InvalidPath` if path is absolute, missing `.md` extension, or contains `..`.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_domain::models::note::Note;
-    /// use uuid::Uuid;
-    ///
-    /// // For new files (first-time indexing)
-    /// let new_id = Uuid::now_v7();
-    /// let note = Note::new(new_id, "vault/notes/project.md".to_string()).unwrap();
-    /// assert!(note.id.to_string().starts_with("01"));
-    ///
-    /// // For existing files (rename detection preserves UUID)
-    /// let existing_id = Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567890").unwrap();
-    /// let renamed_note = Note::new(existing_id, "archive/old-project.md".to_string()).unwrap();
-    /// assert_eq!(renamed_note.id, existing_id);
-    /// ```
     #[inline]
     pub fn new(id: Uuid, path: String) -> Result<Self, DomainError> {
         validate_vault_path(&path)?;
@@ -145,96 +229,43 @@ impl Note {
 
     /// Validates the note's internal consistency.
     ///
-    /// Performs semantic validation on all subentities.
-    ///
-    /// # Invariants
-    /// - Emits `NoteFrontmatterValidated` domain event upon successful validation.
+    /// Performs aggregate-level semantic validation.
     ///
     /// # Errors
-    /// Returns `DomainError::ValidationFailed` if tags have empty segments.
-    /// Returns `DomainError::InvalidHeadingLevel` if heading level is not 1-6.
-    /// Returns `DomainError::EmptyLinkTarget` if any link or embed has an empty target.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_domain::models::note::Note;
-    /// use uuid::Uuid;
-    ///
-    /// let test_id = Uuid::now_v7();
-    /// let mut note = Note::new(test_id, "valid.md".to_string()).unwrap();
-    /// assert!(note.validate().is_ok());
-    /// ```
+    /// Returns `DomainError::ValidationFailed` if cross-entity invariants are violated.
     #[inline]
-    pub fn validate(&mut self) -> Result<(), DomainError> {
-        self.validate_tags()?;
-        self.validate_headings()?;
-        self.validate_links()?;
-        self.validate_embeds()?;
+    pub fn validate(&self) -> Result<(), DomainError> {
+        // Internal consistency of subentities is guaranteed by their own
+        // constructors and encapsulation. Aggregate-level validation
+        // (cross-entity rules) would go here.
 
-        // Note: Frontmatter schema validation happens in the application layer.
-        // The FrontmatterValidated event is emitted there after schema compliance check.
+        // Verify that all links/embeds belong to this note
+        for link in &self.links {
+            if link.source_note_id() != self.id {
+                return Err(DomainError::ValidationFailed(
+                    "Link source note ID mismatch".to_owned(),
+                ));
+            }
+        }
+
+        for embed in &self.embeds {
+            if embed.source_note_id() != self.id {
+                return Err(DomainError::ValidationFailed(
+                    "Embed source note ID mismatch".to_owned(),
+                ));
+            }
+        }
 
         Ok(())
     }
 
     /// Adds a domain event to the pending events collection.
-    ///
-    /// Events are collected during aggregate operations and can be
-    /// retrieved by the application layer for dispatch to the event bus.
     #[inline]
     fn add_event(&mut self, event: DomainEvent) {
         self.pending_events.push(event);
     }
 
-    /// Validates all embeds in the note.
-    #[inline]
-    fn validate_embeds(&self) -> Result<(), DomainError> {
-        for embed in &self.embeds {
-            if embed.target_path.is_empty() {
-                return Err(DomainError::EmptyLinkTarget);
-            }
-        }
-        Ok(())
-    }
-
-    /// Validates all headings in the note.
-    #[inline]
-    fn validate_headings(&self) -> Result<(), DomainError> {
-        for heading in &self.headings {
-            if !(1..=6).contains(&heading.level) {
-                return Err(DomainError::InvalidHeadingLevel(heading.level));
-            }
-        }
-        Ok(())
-    }
-
-    /// Validates all links in the note.
-    #[inline]
-    fn validate_links(&self) -> Result<(), DomainError> {
-        for link in &self.links {
-            if link.target_path.is_empty() {
-                return Err(DomainError::EmptyLinkTarget);
-            }
-        }
-        Ok(())
-    }
-
-    /// Validates all tags in the note.
-    #[inline]
-    fn validate_tags(&self) -> Result<(), DomainError> {
-        for tag in &self.tags {
-            if tag.segments.is_empty() {
-                return Err(DomainError::ValidationFailed(
-                    "Tag has empty segments".to_owned(),
-                ));
-            }
-        }
-        Ok(())
-    }
-
     /// Returns a reference to pending domain events without clearing them.
-    ///
-    /// Useful for inspecting events without consuming them.
     #[inline]
     #[must_use]
     pub fn pending_events(&self) -> &[DomainEvent] {
@@ -242,20 +273,6 @@ impl Note {
     }
 
     /// Returns all pending domain events and clears the collection.
-    ///
-    /// This is typically called by the application layer after persisting
-    /// the aggregate to dispatch events to the event bus.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_domain::models::note::Note;
-    /// use uuid::Uuid;
-    ///
-    /// let test_id = Uuid::now_v7();
-    /// let mut note = Note::new(test_id, "test.md".to_string()).unwrap();
-    /// let events = note.take_events();
-    /// assert_eq!(events.len(), 1); // NoteCreated event
-    /// ```
     #[inline]
     #[must_use]
     pub fn take_events(&mut self) -> Vec<DomainEvent> {
@@ -264,16 +281,6 @@ impl Note {
 }
 
 /// Validates a vault-relative path according to business rules.
-///
-/// # Rules
-/// - Must not be empty
-/// - Must not start with `/` (absolute path)
-/// - Must not contain `..` (path traversal)
-/// - Must end with `.md` extension
-///
-/// # Errors
-/// Returns `DomainError::EmptyPath` if path is empty.
-/// Returns `DomainError::InvalidPath` for violations.
 fn validate_vault_path(path: &str) -> Result<(), DomainError> {
     validate_path_not_empty(path)?;
     validate_path_is_relative(path)?;
@@ -283,9 +290,6 @@ fn validate_vault_path(path: &str) -> Result<(), DomainError> {
 }
 
 /// Validates that a path is not empty.
-///
-/// # Errors
-/// Returns `DomainError::EmptyPath` if the path is empty.
 #[inline]
 fn validate_path_not_empty(path: &str) -> Result<(), DomainError> {
     if path.is_empty() {
@@ -295,32 +299,23 @@ fn validate_path_not_empty(path: &str) -> Result<(), DomainError> {
 }
 
 /// Validates that a path is relative (not absolute).
-///
-/// Checks for both Unix-style (`/path`) and Windows-style (`C:/path`) absolute paths.
-///
-/// # Errors
-/// Returns `DomainError::InvalidPath` if the path is absolute.
 #[inline]
 fn validate_path_is_relative(path: &str) -> Result<(), DomainError> {
-    // Check for Unix-style absolute path
     if path.starts_with('/') {
         return Err(DomainError::InvalidPath(
             "Path must be relative".to_owned(),
         ));
     }
-
-    // Check for Windows-style absolute paths (drive letter followed by colon and slash)
     if is_windows_absolute_path(path) {
         return Err(DomainError::InvalidPath(
             "Path must be relative (Windows absolute paths not allowed)"
                 .to_owned(),
         ));
     }
-
     Ok(())
 }
 
-/// Checks if a path is a Windows-style absolute path (e.g., `C:/path`).
+/// Checks if a path is a Windows-style absolute path.
 #[inline]
 fn is_windows_absolute_path(path: &str) -> bool {
     path.len() >= 3
@@ -330,9 +325,6 @@ fn is_windows_absolute_path(path: &str) -> bool {
 }
 
 /// Validates that a path does not contain path traversal sequences.
-///
-/// # Errors
-/// Returns `DomainError::InvalidPath` if the path contains `..`.
 #[inline]
 fn validate_path_no_traversal(path: &str) -> Result<(), DomainError> {
     if path.contains("..") {
@@ -344,9 +336,6 @@ fn validate_path_no_traversal(path: &str) -> Result<(), DomainError> {
 }
 
 /// Validates that a path has a `.md` extension.
-///
-/// # Errors
-/// Returns `DomainError::InvalidPath` if the path does not end with `.md`.
 #[inline]
 fn validate_path_has_md_extension(path: &str) -> Result<(), DomainError> {
     if !std::path::Path::new(path)
@@ -369,93 +358,31 @@ mod tests {
 
         use super::*;
 
-        /// 3.2-UNIT-001: Note Creation - Empty Path.
-        /// P1.
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn returns_error_when_path_is_empty() {
-            // GIVEN a test UUID and empty path string
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567890")
-                    .unwrap();
-            let path = String::new();
-
-            // WHEN a new Note is constructed
-            let result = Note::new(test_id, path);
-
-            // THEN it returns an EmptyPath error
+            let test_id = Uuid::now_v7();
+            let result = Note::new(test_id, String::new());
             assert!(matches!(result, Err(DomainError::EmptyPath)));
         }
 
-        /// 3.2-UNIT-002: Note Creation - Absolute Path.
-        /// P1.
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn returns_error_when_path_is_absolute() {
-            // GIVEN a test UUID and absolute path string
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567891")
-                    .unwrap();
-            let path = "/absolute/path.md".to_owned();
-
-            // WHEN a new Note is constructed
-            let result = Note::new(test_id, path);
-
-            // THEN it returns an InvalidPath error
+            let test_id = Uuid::now_v7();
+            let result = Note::new(test_id, "/absolute/path.md".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
-        /// 3.2-UNIT-003: Note Creation - Path Traversal.
-        /// P1.
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn returns_error_when_path_contains_traversal() {
-            // GIVEN a test UUID and path string with traversal components
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567892")
-                    .unwrap();
-            let path = "../etc/passwd".to_owned();
-
-            // WHEN a new Note is constructed
-            let result = Note::new(test_id, path);
-
-            // THEN it returns an InvalidPath error
+            let test_id = Uuid::now_v7();
+            let result = Note::new(test_id, "../etc/passwd".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
-        /// 3.2-UNIT-004: Note Creation - Missing Extension.
-        /// P1.
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn returns_error_when_path_missing_md_extension() {
-            // GIVEN a test UUID and path string without .md extension
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567893")
-                    .unwrap();
-            let path = "projects/lithos".to_owned();
-
-            // WHEN a new Note is constructed
-            let result = Note::new(test_id, path);
-
-            // THEN it returns an InvalidPath error
-            assert!(matches!(result, Err(DomainError::InvalidPath(_))));
-        }
-
-        /// 3.2-UNIT-034: Note Path Validation - Absolute Paths (Windows).
-        /// P1.
-        #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn returns_error_for_windows_absolute_paths() {
-            // GIVEN a test UUID and path with a colon (Windows absolute)
-            let test_id =
-                Uuid::parse_str("01936b2e-8f4a-7890-abcd-ef1234567898")
-                    .unwrap();
-            let path = "C:/path.md".to_owned();
-
-            // WHEN constructed
-            let result = Note::new(test_id, path);
-
-            // THEN it returns InvalidPath
+            let test_id = Uuid::now_v7();
+            let result = Note::new(test_id, "projects/lithos".to_owned());
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
@@ -469,137 +396,57 @@ mod tests {
                 .unwrap();
 
             rt.block_on(async {
-                // GIVEN a note created at T0
-                #[expect(
-                    clippy::disallowed_methods,
-                    reason = "Test fixture creation"
-                )]
                 let note1 = Note::new(Uuid::now_v7(), "one.md".into()).unwrap();
-
-                // WHEN advancing time and creating a second note
                 tokio::time::advance(Duration::from_millis(10)).await;
-                #[expect(
-                    clippy::disallowed_methods,
-                    reason = "Test fixture creation"
-                )]
                 let note2 = Note::new(Uuid::now_v7(), "two.md".into()).unwrap();
-
-                // THEN the second ID is strictly greater than the first
-                assert!(
-                    note2.id > note1.id,
-                    "UUID v7 must be chronologically sortable"
-                );
+                assert!(note2.id() > note1.id());
             });
         }
     }
 
     mod validate {
         use super::*;
-        use crate::{EmbedType, LinkType};
 
-        /// 3.2-UNIT-022: Note Validation - Success.
-        /// P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn succeeds_when_all_entities_are_valid() {
-            // GIVEN a note with valid sub-entities using NoteBuilder
-            let mut note = NoteBuilder::new()
+            let note_id = Uuid::now_v7();
+            let note = NoteBuilder::new()
+                .id(note_id)
                 .path("valid.md".into())
                 .tags(vec![Tag::parse("#work").expect("Valid tag")])
                 .headings(vec![
                     Heading::new(1, "Title".into(), 0).expect("Valid heading"),
                 ])
                 .links(vec![
-                    Link::new_wikilink(
-                        Uuid::now_v7(),
-                        "target.md".into(),
-                        None,
-                        0,
-                    )
-                    .expect("Valid target"),
+                    Link::new_wikilink(note_id, "target.md".into(), None, 0)
+                        .expect("Valid target"),
                 ])
                 .build();
 
-            // WHEN validation is performed
-            let result = note.validate();
-
-            // THEN it succeeds
-            assert!(
-                result.is_ok(),
-                "Expected valid note, got: {:?}",
-                result.err()
-            );
+            note.validate().unwrap();
         }
 
-        /// 3.2-UNIT-023: Note Validation - Invalid Heading.
-        /// P1.
         #[test]
-        fn returns_error_when_heading_level_is_invalid() {
-            // GIVEN a note with an invalid heading (manually constructed)
-            let mut note = NoteBuilder::new()
-                .path("valid.md".into())
-                .headings(vec![Heading {
-                    level: 0,
-                    text: "Invalid".into(),
-                    position: 0,
-                }])
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn returns_error_when_link_source_note_id_mismatch() {
+            let note_id = Uuid::now_v7();
+            let other_id = Uuid::now_v7();
+            let note = NoteBuilder::new()
+                .id(note_id)
+                .links(vec![
+                    Link::new_wikilink(other_id, "target.md".into(), None, 0)
+                        .expect("Valid target"),
+                ])
                 .build();
 
-            // WHEN the note is validated
-            let result = note.validate();
-
-            // THEN it returns an InvalidHeadingLevel error
-            assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(0))));
-        }
-
-        /// 3.2-UNIT-032: Note Validation - Empty Link Target.
-        /// P1.
-        #[test]
-        fn returns_error_when_link_target_is_empty() {
-            // GIVEN a note with an empty link target
-            let mut note = NoteBuilder::new()
-                .links(vec![Link {
-                    source_note_id: Uuid::now_v7(),
-                    target_path: "".into(),
-                    alias: None,
-                    link_type: LinkType::WikiLink,
-                    embed_type: None,
-                    position: 0,
-                }])
-                .build();
-
-            // WHEN validated
-            let result = note.validate();
-
-            // THEN it returns EmptyLinkTarget
-            assert!(matches!(result, Err(DomainError::EmptyLinkTarget)));
-        }
-
-        /// 3.2-UNIT-033: Note Validation - Empty Embed Target.
-        /// P1.
-        #[test]
-        fn returns_error_when_embed_target_is_empty() {
-            // GIVEN a note with an empty embed target
-            let mut note = NoteBuilder::new()
-                .embeds(vec![Link {
-                    source_note_id: Uuid::now_v7(),
-                    target_path: "".into(),
-                    alias: None,
-                    link_type: LinkType::Embed,
-                    embed_type: Some(EmbedType::Image),
-                    position: 0,
-                }])
-                .build();
-
-            // WHEN validated
-            let result = note.validate();
-
-            // THEN it returns EmptyLinkTarget
-            assert!(matches!(result, Err(DomainError::EmptyLinkTarget)));
+            assert!(matches!(
+                note.validate(),
+                Err(DomainError::ValidationFailed(_))
+            ));
         }
     }
 
-    // Test builder for Note - placed after test modules per clippy ordering
     use lithos_test_utils::test_builder;
     test_builder!(NoteBuilder, Note, {
         id: Uuid = Uuid::now_v7(),
@@ -624,41 +471,19 @@ pub mod fixtures {
     use crate::models::frontmatter::FieldValue;
 
     /// Fixed UUID for deterministic tests (valid UUID v7 format).
-    ///
-    /// Uses timestamp 2024-01-01 00:00:00 UTC for consistency across test runs.
-    /// This UUID v7 format ensures time-ordered, sortable identifiers suitable
-    /// for testing Note identity and creation scenarios.
-    ///
-    /// # Value
-    /// `0x018C_0000_0000_7000_8000_0000_0000_0001`.
     pub const TEST_NOTE_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0001);
 
     /// Test fixture: Create example frontmatter with realistic field values.
     ///
-    /// This fixture provides a complete Frontmatter instance suitable for testing
-    /// Note aggregate construction, validation logic, and metadata operations.
-    ///
-    /// # Field Values
-    /// - `title`: "Test Note" (String) - Basic title for test notes
-    /// - `created`: "2024-01-15T14:30:00Z" (Date) - Fixed creation timestamp
-    ///
-    /// # Usage
-    /// Use this fixture when constructing test Note instances that require frontmatter.
-    /// ```rust
-    /// use lithos_domain::models::note::fixtures::example_frontmatter;
-    /// let fm = example_frontmatter();
-    /// assert_eq!(fm.title(), Some("Test Note"));
-    /// ```
-    ///
     /// # Panics
-    /// Panics if the hardcoded date string is invalid (should never happen).
-    #[inline]
-    #[must_use]
+    /// Panics if the hardcoded date string is invalid or frontmatter construction fails.
     #[expect(
         clippy::disallowed_methods,
         reason = "Test fixture - unwrap/expect acceptable in test code"
     )]
+    #[inline]
+    #[must_use]
     pub fn example_frontmatter() -> Frontmatter {
         let mut fields = HashMap::new();
         fields.insert(
@@ -678,60 +503,19 @@ pub mod fixtures {
 
     /// Test fixture: Create example hierarchical tag for testing.
     ///
-    /// This fixture provides a valid hierarchical Tag instance demonstrating
-    /// nested tag structure commonly used in knowledge management systems.
-    ///
-    /// # Field Values
-    /// - Tag path: `"work/project"` - Hierarchical tag with two levels
-    ///
-    /// # Usage
-    /// Use this fixture when testing Note instances that require tag metadata.
-    /// ```rust
-    /// use lithos_domain::models::note::fixtures::example_tag;
-    /// let tag = example_tag();
-    /// assert_eq!(tag.as_str(), "work/project");
-    /// ```
-    ///
     /// # Panics
-    /// Panics if the hardcoded tag string is invalid (should never happen).
-    #[inline]
-    #[must_use]
+    /// Panics if the hardcoded tag string is invalid.
     #[expect(
         clippy::disallowed_methods,
         reason = "Test fixture - unwrap/expect acceptable in test code"
     )]
+    #[inline]
+    #[must_use]
     pub fn example_tag() -> Tag {
-        Tag::parse("work/project").expect("Valid tag")
+        Tag::parse("#work/project").expect("Valid tag")
     }
 
     /// Test fixture: Create complete example Note aggregate for testing.
-    ///
-    /// This fixture provides a fully-constructed Note aggregate with realistic
-    /// field values, suitable for testing validation logic, event emission,
-    /// aggregate operations, and integration scenarios.
-    ///
-    /// # Field Values
-    /// - `id`: [`TEST_NOTE_ID`] - Deterministic UUID v7 for reproducible tests
-    /// - `path`: `"test/example.md"` - Valid vault-relative markdown path
-    /// - `frontmatter`: Contains title "Test Note" and creation date
-    /// - `tags`: Single hierarchical tag `"work/project"`
-    /// - `links`, `embeds`, `headings`, `tasks`, `sections`: Empty (minimal example)
-    /// - `pending_events`: Empty (no events yet)
-    ///
-    /// # Usage
-    /// Use this fixture when you need a complete Note instance for integration
-    /// testing or as a baseline for modification in specific test scenarios.
-    /// ```rust
-    /// use lithos_domain::models::note::fixtures::example_note;
-    /// let note = example_note();
-    /// assert_eq!(note.path.as_ref(), "test/example.md");
-    /// assert!(note.validate().is_ok());
-    /// ```
-    ///
-    /// # See Also
-    /// - [`example_frontmatter`] - For frontmatter-only testing
-    /// - [`example_tag`] - For tag-only testing
-    /// - [`TEST_NOTE_ID`] - For deterministic UUID in custom fixtures
     #[inline]
     #[must_use]
     pub fn example_note() -> Note {

@@ -144,6 +144,15 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 - [x] **MANDATORY:** Confirm all domain entities pass clippy cognitive complexity limits (<25)
 - [x] **MANDATORY:** Verify no `unwrap()`, `expect()`, `todo()`, `panic!()` remain in production code
 - [x] **MANDATORY:** Verify hexagonal architecture boundaries maintained (no external dependencies)
+
+### Task 11: Refactor to Rich Domain Model (REFACTOR Phase - AC: 3)
+- [x] Encapsulate subentity fields (private/pub(crate)) to enforce immutability
+- [x] Move internal validation logic from Note::validate into subentity constructors/methods
+- [x] Implement controlled mutation/composition methods in Note aggregate root
+- [x] Update tests to use public API/getters instead of direct field access
+- [x] **TDD VALIDATION:** All tests pass with encapsulated models
+- [x] Stage and commit refactored domain models
+
 - [x] Stage all files created or modified during story development
 - [x] Commit with conventional commit message: `feat: implement note bounded context with comprehensive subentities, domain events, CQRS ports, and TDD validation`
 
@@ -855,6 +864,24 @@ crates/domain/src/
 
 ---
 
+**Architecture Decision: Rich Domain Model & Encapsulation**
+
+**Decision:** Encapsulate all domain model fields and move internal validation to subentities.
+
+**Rationale:**
+- Prevents "Anemic Domain Model" anti-pattern.
+- Enforces "Immutable after construction" business rule through compiler-enforced encapsulation.
+- Follows SRP by letting subentities manage their own internal invariants.
+- Reduces duplication in `Note::validate` by trusting valid sub-objects.
+
+**Implementation:**
+- Change `pub` fields to `pub(crate)` or private in `Note`, `Link`, `Tag`, `Heading`, `Task`, `Section`.
+- Add public getters for read access.
+- Subentities validate internal state during `new()`/`parse()`.
+- `Note` provides high-level orchestration methods (e.g., `add_link`) that enforce cross-entity invariants.
+
+---
+
 **Architecture Decision: Unified Structure Module**
 
 **Decision:** Merge `heading.rs` and `section.rs` into unified `structure.rs` module.
@@ -1021,3 +1048,22 @@ Adversarial code review identified critical false completion claims in Story 3.2
 
 Story 3.2 serves as an exemplary implementation of domain-driven design,
 hexagonal architecture, and platinum-level testing standards for the Lithos project.
+
+---
+
+## Dev Agent Record - Rich Domain Model Refactoring (2026-01-18)
+
+**Agent**: dev
+**Session**: Rich Domain Model Refactoring
+**Status**: completed
+
+### Context
+Post-implementation review identified an anemic domain model with excessive `pub` fields and validation logic leaking into the aggregate root.
+
+### Changes Implemented
+1.  **Encapsulation**: Moved all subentity fields to `pub(crate)` to enforce immutability outside the domain crate.
+2.  **Getter Implementation**: Added comprehensive public getters for all fields.
+3.  **Validation Migration**: Moved internal invariant validation into constructors (`Link::new_embed`, `Tag::parse`, etc.).
+4.  **Controlled Mutation**: Added orchestration methods to `Note` (e.g., `add_link`, `add_tag`) that maintain aggregate consistency.
+5.  **Ordering**: Restored logical item ordering (primary identifiers first) and used file-level `#[expect(clippy::arbitrary_source_item_ordering)]`.
+6.  **Aggregate Invariants**: `Note::validate` now focuses on cross-entity rules, such as verifying `source_note_id` matches the aggregate ID.

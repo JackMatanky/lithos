@@ -4,6 +4,11 @@
 //! Headings (H1-H6) mark structural points in the document, while sections group
 //! content between headings.
 
+#![expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
+)]
+
 use crate::errors::DomainError;
 
 // ============================================================================
@@ -17,16 +22,16 @@ use crate::errors::DomainError;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "level is primary data, text and position are secondary"
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
 )]
 pub struct Heading {
     /// Heading level (1-6, corresponding to # through ######).
-    pub level: u8,
+    pub(crate) level: u8,
     /// Heading text content.
-    pub text: Box<str>,
+    pub(crate) text: Box<str>,
     /// Character position in the source document.
-    pub position: usize,
+    pub(crate) position: usize,
 }
 
 impl Heading {
@@ -37,9 +42,9 @@ impl Heading {
     /// use lithos_domain::models::structure::Heading;
     ///
     /// let heading = Heading::new(2, "Implementation".to_string(), 10).unwrap();
-    /// assert_eq!(heading.level, 2);
-    /// assert_eq!(heading.text.as_ref(), "Implementation");
-    /// assert_eq!(heading.position, 10);
+    /// assert_eq!(heading.level(), 2);
+    /// assert_eq!(heading.text(), "Implementation");
+    /// assert_eq!(heading.position(), 10);
     /// ```
     ///
     /// # Errors
@@ -66,6 +71,27 @@ impl Heading {
             position,
         })
     }
+
+    /// Returns the heading level.
+    #[inline]
+    #[must_use]
+    pub const fn level(&self) -> u8 {
+        self.level
+    }
+
+    /// Returns the heading text content.
+    #[inline]
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Returns the character position in the source document.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> usize {
+        self.position
+    }
 }
 
 // ============================================================================
@@ -78,13 +104,17 @@ impl Heading {
 /// structural organization for large documents.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
+)]
 pub struct Section {
-    /// Section content text.
-    pub content: Box<str>,
     /// Optional heading that starts this section (None for content before first heading).
-    pub heading: Option<Heading>,
+    pub(crate) heading: Option<Heading>,
+    /// Section content text.
+    pub(crate) content: Box<str>,
     /// Character range in the source document.
-    pub range: std::ops::Range<usize>,
+    pub(crate) range: std::ops::Range<usize>,
 }
 
 impl Section {
@@ -100,7 +130,7 @@ impl Section {
     ///     "Content here...".to_string(),
     ///     range.clone()
     /// );
-    /// assert_eq!(section.range, range);
+    /// assert_eq!(section.range(), range);
     /// ```
     #[inline]
     #[must_use]
@@ -114,6 +144,27 @@ impl Section {
             content: content.into(),
             range,
         }
+    }
+
+    /// Returns the optional heading that starts this section.
+    #[inline]
+    #[must_use]
+    pub const fn heading(&self) -> Option<&Heading> {
+        self.heading.as_ref()
+    }
+
+    /// Returns the section content text.
+    #[inline]
+    #[must_use]
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Returns the character range in the source document.
+    #[inline]
+    #[must_use]
+    pub fn range(&self) -> std::ops::Range<usize> {
+        self.range.clone()
     }
 }
 
@@ -139,9 +190,9 @@ mod tests {
             let result = Heading::new(level, text, position).unwrap();
 
             // THEN it has the correct values
-            assert_eq!(result.level, 2);
-            assert_eq!(result.text.as_ref(), "Implementation");
-            assert_eq!(result.position, 10);
+            assert_eq!(result.level(), 2);
+            assert_eq!(result.text(), "Implementation");
+            assert_eq!(result.position(), 10);
         }
 
         #[test]
@@ -189,9 +240,9 @@ mod tests {
             let result = Section::new(heading.clone(), content, range.clone());
 
             // THEN it has the correct values
-            assert_eq!(result.heading, heading);
-            assert_eq!(result.content.as_ref(), "Section content");
-            assert_eq!(result.range, range);
+            assert_eq!(result.heading(), heading.as_ref());
+            assert_eq!(result.content(), "Section content");
+            assert_eq!(result.range(), range);
         }
     }
 }

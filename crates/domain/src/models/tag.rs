@@ -2,6 +2,11 @@
 //!
 //! Represents hierarchical tags used for note organization.
 
+#![expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
+)]
+
 use crate::errors::DomainError;
 
 /// Represents a hierarchical tag with segments.
@@ -10,11 +15,15 @@ use crate::errors::DomainError;
 /// for organizing and categorizing notes.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
+)]
 pub struct Tag {
     /// Full tag path (e.g., "work/project/urgent").
-    pub full_path: Box<str>,
+    pub(crate) full_path: Box<str>,
     /// Individual path segments.
-    pub segments: Vec<Box<str>>,
+    pub(crate) segments: Vec<Box<str>>,
 }
 
 impl Tag {
@@ -31,12 +40,12 @@ impl Tag {
     /// use lithos_domain::models::tag::Tag;
     ///
     /// let tag = Tag::parse("#work/project/urgent").unwrap();
-    /// assert_eq!(tag.full_path.as_ref(), "work/project/urgent");
-    /// assert_eq!(tag.segments, vec!["work".into(), "project".into(), "urgent".into()]);
+    /// assert_eq!(tag.as_str(), "work/project/urgent");
+    /// assert_eq!(tag.segments(), &[ "work".into(), "project".into(), "urgent".into() ]);
     ///
     /// let simple_tag = Tag::parse("#personal").unwrap();
-    /// assert_eq!(simple_tag.full_path.as_ref(), "personal");
-    /// assert_eq!(simple_tag.segments, vec!["personal".into()]);
+    /// assert_eq!(simple_tag.as_str(), "personal");
+    /// assert_eq!(simple_tag.segments(), &["personal".into()]);
     /// ```
     ///
     /// # Errors
@@ -54,6 +63,20 @@ impl Tag {
             full_path: tag_path.into(),
             segments: segments.into_iter().map(Into::into).collect(),
         })
+    }
+
+    /// Returns the full tag path without the leading `#`.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.full_path
+    }
+
+    /// Returns the individual path segments.
+    #[inline]
+    #[must_use]
+    pub fn segments(&self) -> &[Box<str>] {
+        &self.segments
     }
 }
 
@@ -144,8 +167,8 @@ mod tests {
             )]
             let result = Tag::parse(input).unwrap();
             // THEN it has the correct path and segments
-            assert_eq!(result.full_path.as_ref(), "personal");
-            assert_eq!(result.segments, vec!["personal".into()]);
+            assert_eq!(result.as_str(), "personal");
+            assert_eq!(result.segments(), &["personal".into()]);
         }
 
         #[test]
@@ -159,10 +182,10 @@ mod tests {
             )]
             let result = Tag::parse(input).unwrap();
             // THEN it has the correct path and segments
-            assert_eq!(result.full_path.as_ref(), "work/project/urgent");
+            assert_eq!(result.as_str(), "work/project/urgent");
             assert_eq!(
-                result.segments,
-                vec!["work".into(), "project".into(), "urgent".into()]
+                result.segments(),
+                &["work".into(), "project".into(), "urgent".into()]
             );
         }
 

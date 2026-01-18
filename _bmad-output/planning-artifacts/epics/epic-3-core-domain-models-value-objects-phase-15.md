@@ -9,6 +9,7 @@ Developers have a clear, shared domain language with rich domain models that emb
 - CQRS ports defined in domain, implemented by later epics (5,6,9)
 - Single-file-per-context approach with 1000+ line splitting guideline
 - Domain events for state changes and cross-context coordination
+- Rich Domain Models: Entities and Value Objects enforce their own invariants through encapsulation and private fields.
 
 ## Story 3.1: Create Config Bounded Context
 
