@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::core::Template;
+use super::template::Template;
 use crate::errors::DomainError;
 
 /// Template composition for modular template building.
@@ -125,7 +125,7 @@ pub enum InsertionPosition {
 mod tests {
     use uuid::Uuid;
 
-    use super::{super::core::Metadata, *};
+    use super::{super::template::Metadata, *};
 
     #[test]
     fn detects_direct_circular_composition() {
@@ -174,7 +174,7 @@ mod tests {
         let mut variables = HashMap::new();
         variables.insert(
             "count".to_owned(),
-            crate::models::template::VariableDefinition::Number {
+            crate::models::template_var::VariableDefinition::Number {
                 default: None,
                 max: None,
                 min: None,
