@@ -94,7 +94,6 @@ impl Template {
     }
 
     /// Applies additional sections to content.
-    #[expect(clippy::arithmetic_side_effects, reason = "String manipulation")]
     #[expect(
         clippy::pattern_type_mismatch,
         reason = "Matching on enum references"
@@ -111,29 +110,20 @@ impl Template {
                     content.push_str(&section.content);
                 }
                 InsertionPosition::BeforeVariable(var_name) => {
-                    let mut placeholder =
-                        String::with_capacity(var_name.len() + 4);
-                    placeholder.push_str("{{");
-                    placeholder.push_str(var_name);
-                    placeholder.push_str("}}");
-
-                    if let Some(pos) = content.find(&placeholder) {
-                        content.insert_str(pos, &section.content);
-                        content.insert(pos + section.content.len(), '\n');
-                    }
+                    Self::insert_relative_to_variable(
+                        content,
+                        var_name,
+                        &section.content,
+                        false,
+                    );
                 }
                 InsertionPosition::AfterVariable(var_name) => {
-                    let mut placeholder =
-                        String::with_capacity(var_name.len() + 4);
-                    placeholder.push_str("{{");
-                    placeholder.push_str(var_name);
-                    placeholder.push_str("}}");
-
-                    if let Some(pos) = content.find(&placeholder) {
-                        let insert_pos = pos + placeholder.len();
-                        content.insert(insert_pos, '\n');
-                        content.insert_str(insert_pos + 1, &section.content);
-                    }
+                    Self::insert_relative_to_variable(
+                        content,
+                        var_name,
+                        &section.content,
+                        true,
+                    );
                 }
             }
         }
@@ -165,6 +155,37 @@ impl Template {
             pending_events: vec![],
             variables: base.variables.clone(),
         })
+    }
+
+    /// Formats a variable name as a `MiniJinja` placeholder.
+    #[expect(clippy::arithmetic_side_effects, reason = "String capacity")]
+    fn format_placeholder(var_name: &str) -> String {
+        let mut placeholder = String::with_capacity(var_name.len() + 4);
+        placeholder.push_str("{{");
+        placeholder.push_str(var_name);
+        placeholder.push_str("}}");
+        placeholder
+    }
+
+    /// Inserts content relative to a variable placeholder.
+    #[expect(clippy::arithmetic_side_effects, reason = "Index calculation")]
+    fn insert_relative_to_variable(
+        content: &mut String,
+        var_name: &str,
+        section_content: &str,
+        after: bool,
+    ) {
+        let placeholder = Self::format_placeholder(var_name);
+        if let Some(pos) = content.find(&placeholder) {
+            if after {
+                let insert_pos = pos + placeholder.len();
+                content.insert(insert_pos, '\n');
+                content.insert_str(insert_pos + 1, section_content);
+            } else {
+                content.insert_str(pos, section_content);
+                content.insert(pos + section_content.len(), '\n');
+            }
+        }
     }
 
     /// Creates a new template aggregate with validation.
