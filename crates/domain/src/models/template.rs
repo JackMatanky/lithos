@@ -360,107 +360,172 @@ impl Default for Metadata {
 
 #[cfg(test)]
 mod tests {
+    mod fixtures {
+        use std::collections::HashMap;
+
+        use crate::models::{
+            template::Metadata, template_var::VariableDefinition,
+        };
+
+        pub fn basic_template_attributes() -> (
+            String,
+            String,
+            HashMap<String, VariableDefinition>,
+            Option<String>,
+            Metadata,
+        ) {
+            let mut variables = HashMap::new();
+            variables.insert(
+                "title".to_owned(),
+                VariableDefinition::String {
+                    default: Some("Default".to_owned()),
+                    max_length: None,
+                    min_length: None,
+                    pattern: None,
+                },
+            );
+            (
+                "daily-note".to_owned(),
+                "# {{title}}".to_owned(),
+                variables,
+                None,
+                Metadata::default(),
+            )
+        }
+    }
+
     use proptest::prelude::*;
 
     use super::*;
 
-    #[test]
-    fn creates_valid_template_successfully() {
-        let metadata = Metadata::default();
-        let mut variables = HashMap::new();
-        variables.insert(
-            "title".to_owned(),
-            VariableDefinition::String {
-                default: Some("Default".to_owned()),
-                max_length: None,
-                min_length: None,
-                pattern: None,
-            },
-        );
+    mod new {
+        use super::*;
 
-        let result = Template::new(
-            "daily-note".to_owned(),
-            "# {{title}}".to_owned(),
-            variables,
-            None,
-            metadata,
-        );
-
-        assert!(
-            result.is_ok(),
-            "Expected valid template creation to succeed, got {:?}",
-            result.err()
-        );
-    }
-
-    #[test]
-    fn rejects_invalid_template_names() {
-        let names = vec![
-            String::new(),
-            "Invalid Name".to_owned(),
-            "name!".to_owned(),
-            "a".repeat(65),
-        ];
-        for name in names {
-            let result = Template::new(
-                name.clone(),
-                "content".to_owned(),
-                HashMap::new(),
-                None,
-                Metadata::default(),
-            );
-            assert!(result.is_err(), "Expected name '{name}' to be rejected");
-        }
-    }
-
-    #[test]
-    fn rejects_large_content() {
-        let large_content = "a".repeat(1024 * 1024 + 1); // 1MB + 1
-        let result = Template::new(
-            "large".to_owned(),
-            large_content,
-            HashMap::new(),
-            None,
-            Metadata::default(),
-        );
-        assert!(matches!(
-            result,
-            Err(DomainError::TemplateContentTooLarge(_, _))
-        ));
-    }
-
-    #[test]
-    fn rejects_too_many_variables() {
-        let mut variables = HashMap::new();
-        for i in 0i32..51i32 {
-            variables.insert(
-                format!("var{i}"),
-                VariableDefinition::Boolean {
-                    default: None,
-                },
-            );
-        }
-        let result = Template::new(
-            "many-vars".to_owned(),
-            "content".to_owned(),
-            variables,
-            None,
-            Metadata::default(),
-        );
-        assert!(matches!(result, Err(DomainError::MaxVariablesExceeded(_))));
-    }
-
-    proptest! {
+        /// 3.4-UNIT-001: `should_create_template_when_attributes_are_valid`
+        /// AC: Template entity includes structure validation and business rules.
         #[test]
-        fn validates_template_name_format(name in "[a-zA-Z0-9_-]{1,64}") {
+        fn should_create_template_when_attributes_are_valid() {
+            // Given
+            let (name, content, variables, extends, metadata) =
+                fixtures::basic_template_attributes();
+
+            // When
+            let result =
+                Template::new(name, content, variables, extends, metadata);
+
+            // Then
+            assert!(
+                result.is_ok(),
+                "Expected valid template creation to succeed, got {:?}",
+                result.err()
+            );
+        }
+
+        /// 3.4-UNIT-002: `should_reject_template_when_name_format_is_invalid`
+        /// AC: Template name validation regex `^[a-zA-Z0-9_-]+$`.
+        #[test]
+        fn should_reject_template_when_name_format_is_invalid() {
+            // Given
+            let names = vec![
+                String::new(),
+                "Invalid Name".to_owned(),
+                "name!".to_owned(),
+                "a".repeat(65),
+            ];
+
+            for name in names {
+                // When
+                let result = Template::new(
+                    name.clone(),
+                    "content".to_owned(),
+                    HashMap::new(),
+                    None,
+                    Metadata::default(),
+                );
+
+                // Then
+                assert!(
+                    result.is_err(),
+                    "Expected name '{name}' to be rejected"
+                );
+            }
+        }
+
+        /// 3.4-UNIT-003: `should_reject_template_when_content_size_exceeds_limit`
+        /// AC: Template content: MAX 1MB.
+        #[test]
+        fn should_reject_template_when_content_size_exceeds_limit() {
+            // Given
+            let large_content = "a".repeat(1024 * 1024 + 1); // 1MB + 1
+
+            // When
             let result = Template::new(
-                name.clone(),
-                "content".to_owned(),
+                "large".to_owned(),
+                large_content,
                 HashMap::new(),
                 None,
                 Metadata::default(),
             );
-            prop_assert!(result.is_ok());
+
+            // Then
+            assert!(matches!(
+                result,
+                Err(DomainError::TemplateContentTooLarge(_, _))
+            ));
+        }
+
+        /// 3.4-UNIT-004: `should_reject_template_when_variable_count_exceeds_limit`
+        /// AC: Variable count: MAX 50 variables.
+        #[test]
+        fn should_reject_template_when_variable_count_exceeds_limit() {
+            // Given
+            let mut variables = HashMap::new();
+            for i in 0i32..51i32 {
+                variables.insert(
+                    format!("var{i}"),
+                    VariableDefinition::Boolean {
+                        default: None,
+                    },
+                );
+            }
+
+            // When
+            let result = Template::new(
+                "many-vars".to_owned(),
+                "content".to_owned(),
+                variables,
+                None,
+                Metadata::default(),
+            );
+
+            // Then
+            assert!(matches!(
+                result,
+                Err(DomainError::MaxVariablesExceeded(_))
+            ));
+        }
+    }
+
+    mod validation {
+        use super::*;
+
+        proptest! {
+            /// 3.4-UNIT-005: `should_validate_template_name_format_across_edge_cases`
+            /// AC: Mathematical edge-case verification for name regex.
+            #[test]
+            fn should_validate_template_name_format_across_edge_cases(name in "[a-zA-Z0-9_-]{1,64}") {
+                // When
+                let result = Template::new(
+                    name.clone(),
+                    "content".to_owned(),
+                    HashMap::new(),
+                    None,
+                    Metadata::default(),
+                );
+
+                // Then
+                prop_assert!(result.is_ok());
+            }
         }
     }
 }
