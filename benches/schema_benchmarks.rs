@@ -11,15 +11,25 @@ use lithos_domain::models::{
 };
 use uuid::Uuid;
 
-fn bench_property_id_generation(c: &mut Criterion) {
+fn bench_property_creation(c: &mut Criterion) {
     let spec = PropertySpec::String(StringSpec::default());
-    let name = "test_property";
+    let name = lithos_domain::models::property::PropertyName::new(
+        "test_property".to_string(),
+    )
+    .unwrap();
+    let id = Uuid::now_v7();
 
-    c.bench_function("property_id_generation", |b| {
+    c.bench_function("property_creation", |b| {
         b.iter(|| {
-            let id = Property::compute_id(black_box(name), black_box(&spec))
-                .unwrap();
-            black_box(id);
+            let prop = Property::new(
+                black_box(id),
+                black_box(name.clone()),
+                black_box(true),
+                black_box(false),
+                black_box(spec.clone()),
+            )
+            .unwrap();
+            black_box(prop);
         });
     });
 }
@@ -59,7 +69,7 @@ fn bench_schema_creation(c: &mut Criterion) {
 
 criterion_group!(
     benches,
-    bench_property_id_generation,
+    bench_property_creation,
     bench_schema_inheritance_resolution,
     bench_schema_creation
 );

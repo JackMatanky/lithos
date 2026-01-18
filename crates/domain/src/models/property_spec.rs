@@ -74,6 +74,80 @@ pub enum PropertySpec {
 }
 
 impl PropertySpec {
+    /// Get the spec type identifier.
+    #[inline]
+    #[must_use]
+    pub fn spec_type(&self) -> PropertySpecType {
+        match *self {
+            Self::Bool(_) => PropertySpecType::Bool,
+            Self::Date(_) => PropertySpecType::Date,
+            Self::File(_) => PropertySpecType::File,
+            Self::Number(_) => PropertySpecType::Number,
+            Self::String(_) => PropertySpecType::String,
+        }
+    }
+
+    /// Validate a value against this spec's constraints.
+    ///
+    /// This method uses `serde_json::Value` as a universal Intermediate Representation (IR)
+    /// for metadata values, allowing validation of data loaded from JSON, YAML, or TOML.
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails.
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics: self is &PropertySpec, variants bind implicitly. Consistent with frontmatter pattern."
+    )]
+    pub fn validate(
+        &self,
+        value: &serde_json::Value,
+    ) -> Result<(), DomainError> {
+        match self {
+            Self::Bool(s) => {
+                let b = value.as_bool().ok_or_else(|| {
+                    DomainError::InvalidType {
+                        value: value.to_string(),
+                        expected: "boolean".to_owned(),
+                    }
+                })?;
+                s.validate(&b)
+            }
+            Self::Date(s) => {
+                let val =
+                    value.as_str().ok_or_else(|| DomainError::InvalidType {
+                        value: value.to_string(),
+                        expected: "string (date)".to_owned(),
+                    })?;
+                s.validate(&val.to_owned())
+            }
+            Self::File(s) => {
+                let val =
+                    value.as_str().ok_or_else(|| DomainError::InvalidType {
+                        value: value.to_string(),
+                        expected: "string (file path)".to_owned(),
+                    })?;
+                s.validate(&val.to_owned())
+            }
+            Self::Number(s) => {
+                let n =
+                    value.as_f64().ok_or_else(|| DomainError::InvalidType {
+                        value: value.to_string(),
+                        expected: "number".to_owned(),
+                    })?;
+                s.validate(&n)
+            }
+            Self::String(s) => {
+                let val =
+                    value.as_str().ok_or_else(|| DomainError::InvalidType {
+                        value: value.to_string(),
+                        expected: "string".to_owned(),
+                    })?;
+                s.validate(&val.to_owned())
+            }
+        }
+    }
+
     /// Validate the spec's own structural constraints.
     ///
     /// # Errors
@@ -124,7 +198,7 @@ impl PropertySpecTrait for BoolSpec {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct DateSpec {
-    /// Date format string.
+    /// Date format string (using chrono format tokens).
     pub format: String,
 }
 
@@ -138,21 +212,10 @@ impl PropertySpecTrait for DateSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        // Map common moment-style tokens to chrono format strings
-        let chrono_format = self
-            .format
-            .replace("YYYY", "%Y")
-            .replace("MM", "%m")
-            .replace("DD", "%d")
-            .replace("HH", "%H")
-            .replace("mm", "%M")
-            .replace("SS", "%S");
-
-        // Try parsing as DateTime first, then as Date
+        // Use chrono format tokens directly
         let is_valid =
-            chrono::NaiveDateTime::parse_from_str(value, &chrono_format)
-                .is_ok()
-                || chrono::NaiveDate::parse_from_str(value, &chrono_format)
+            chrono::NaiveDateTime::parse_from_str(value, &self.format).is_ok()
+                || chrono::NaiveDate::parse_from_str(value, &self.format)
                     .is_ok();
 
         if !is_valid {
@@ -209,14 +272,12 @@ impl PropertySpecTrait for FileSpec {
 
     #[inline]
     fn validate_spec(&self) -> Result<(), DomainError> {
-        if let Some(fc) = self.file_class.as_ref() {
-            // File class is a schema name reference, so it must be a valid schema name.
-            // Using standard schema name regex: ^[a-z0-9]+(-[a-z0-9]+)*$
-            let re = regex::Regex::new("^[a-z0-9]+(-[a-z0-9]+)*$")
-                .map_err(|e| DomainError::ValidationFailed(e.to_string()))?;
-            if !re.is_match(fc) {
-                return Err(DomainError::InvalidFileClass(fc.clone()));
-            }
+        if let Some(fc) = self.file_class.as_ref()
+            && fc.is_empty()
+        {
+            return Err(DomainError::InvalidFileClass(
+                "File class cannot be empty".to_owned(),
+            ));
         }
         Ok(())
     }
@@ -529,15 +590,15 @@ mod tests {
         // GIVEN a valid file_class spec
         let spec = FileSpec {
             directory: None,
-            file_class: Some("valid-schema".to_owned()),
+            file_class: Some("any-schema-name".to_owned()),
         };
         // THEN it should be valid
         spec.validate_spec().unwrap();
 
-        // GIVEN an invalid file_class spec
+        // GIVEN an empty file_class spec
         let invalid_spec = FileSpec {
             directory: None,
-            file_class: Some("Invalid Schema!".to_owned()),
+            file_class: Some(String::new()),
         };
         // THEN it should be invalid
         assert!(invalid_spec.validate_spec().is_err());
