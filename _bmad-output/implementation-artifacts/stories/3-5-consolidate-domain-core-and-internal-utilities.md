@@ -12,52 +12,63 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 
 ## Acceptance Criteria
 
-1. **Given** redundant utility functions and shared logic exist across Note, Schema, Config, and Template bounded contexts
-   **When** I refactor the domain crate
-   **Then** shared logic is moved to `crates/domain/src/lib.rs` or internal core modules
+1. **Given** the domain crate contains existing behavior
+   **When** I begin any refactoring work
+   **Then** comprehensive unit tests exist for ALL domain logic to be refactored, ensuring behavior can be validated before and after changes
 
-2. **Given** internal domain utilities are exposed publicly
+2. **Given** redundant utility functions and shared logic exist across Note, Schema, Config, and Template bounded contexts
+   **When** I refactor the domain crate
+   **Then** shared logic is moved to `crates/domain/src/lib.rs` or internal core modules AND all tests pass without modification
+
+3. **Given** internal domain utilities are exposed publicly
    **When** I review visibility
    **Then** internal utilities use `pub(crate)` to prevent leaking into the application layer
 
-3. **Given** the domain crate is the "inviolate core"
+4. **Given** the domain crate is the "inviolate core"
    **When** I consolidate utilities
    **Then** ZERO external dependencies (except justified ones like `serde` or `thiserror`) are introduced
 
-4. **Given** common patterns like UUID v7 handling or shared error mapping are used
+5. **Given** common patterns like UUID v7 handling or shared error mapping are used
    **When** I implement core utilities
    **Then** they are implemented once in the core and reused across all bounded contexts
 
-5. **Given** the models directory is flattened
+6. **Given** the models directory is already organized into bounded context subfolders (`note/`, `schema/`, `template/`)
    **When** I complete the refactor
-   **Then** models are organized into bounded context subfolders (Note, Schema, Template), solitary models like `config.rs` remain at the root, and shared constants/utilities are consolidated in `lib.rs`, with domain events remaining centralized
+   **Then** shared constants (like `patterns.rs`) are consolidated into `lib.rs` or dedicated validation modules, solitary models like `config.rs` remain at the root, and domain events remain centralized
 
-6. **Given** inconsistent validation patterns across models
+7. **Given** inconsistent validation patterns across models
    **When** I consolidate utilities
    **Then** validation methods follow a standardized pattern and share common logic via the domain core
 
 ## Tasks / Subtasks
 
+### Task 0: Pre-Refactoring Test Coverage Validation (MANDATORY FIRST TASK)
+- [ ] **CRITICAL:** Run `mise run test:unit:domain` to establish baseline test coverage
+- [ ] **Test Gap Analysis:** Identify ANY domain logic that lacks unit test coverage
+- [ ] **Fill Test Gaps:** Write comprehensive unit tests for ALL untested domain behavior before proceeding with refactoring
+- [ ] **Behavioral Documentation:** Ensure each test clearly documents the expected behavior it validates
+- [ ] **Validation Checkpoint:** Run `mise run test:unit` and confirm 100% of tests pass
+- [ ] **Coverage Report:** Generate coverage report with `mise run test:coverage` and document current coverage percentage
+- [ ] **BLOCKING REQUIREMENT:** DO NOT PROCEED to Task 1 until all domain logic to be refactored has accompanying tests
+
 ### Task 1: Audit Domain Crate for Deep Behavioral Redundancy
-- [ ] **Behavioral Audit:** Review ALL domain models and subentities (Note, Schema, Template, Config, Frontmatter, etc.) to identify redundant logic and patterns.
-- [ ] **CRITICAL:** Do not just look for identical function or struct names. Analyze the **behavior** and **intent** of logic (e.g., how paths are manipulated, how strings are sanitized, how collections are validated) to find logically equivalent code that should be consolidated.
-- [ ] **Audit Validation Patterns:** Deeply analyze all `validate()` methods and internal validation helpers. Look for identical business rules being enforced via different implementation styles and consolidate them into the core.
-- [ ] Identify shared logic between Note, Schema, Config, and Template contexts that can be abstracted into generic traits or shared utilities in `lib.rs`.
+- [ ] **Behavioral Audit:** Review ALL domain models and subentities across existing bounded contexts (`note/`, `schema/`, `template/`, and `config.rs`) to identify redundant logic and patterns.
+- [ ] **CRITICAL:** Do not just look for identical function or struct names. Analyze the **behavior** and **intent** of logic (e.g., how paths are manipulated, how strings are sanitized, how collections are validated, how UUIDs are generated/handled) to find logically equivalent code that should be consolidated.
+- [ ] **Audit Validation Patterns:** Deeply analyze all `validate()` methods and internal validation helpers across all contexts. Look for identical business rules being enforced via different implementation styles and consolidate them into the core.
+- [ ] **Cross-Context Patterns:** Review `note/core.rs`, `schema/core.rs`, `template/core.rs`, `schema/validation.rs`, and `config.rs` for shared logic that can be abstracted into generic traits or shared utilities in `lib.rs`.
+- [ ] **Constants Consolidation:** Identify if `schema/patterns.rs` contains constants that should be available domain-wide (not just in the schema context).
 - [ ] Review error mapping patterns and identify opportunities for a unified domain error context strategy.
 - [ ] Document all identified behavioral redundancies and validation inconsistencies in `_bmad-output/domain-redundancy-audit.md`
 
 ### Task 2: Consolidate into lib.rs and Core Modules
-- [ ] Create or update `crates/domain/src/lib.rs` to house shared traits, macros, constants (from `patterns.rs`), and common identity logic (UUID handling)
-- [ ] **Restructure Domain Models:** Organize `crates/domain/src/models/` into bounded context subfolders:
-    - `note/`: Note aggregate, Tag, Task, Link, Frontmatter, Structure
-    - `schema/`: Schema aggregate, PropertyBank, PropertySpec, Property
-    - `template/`: Template aggregate, Syntax, Variable, Composition
-- [ ] **Root-Level Models:** Keep `config.rs` at the `models/` root level as it remains a solitary file
-- [ ] **Modularize Large Models:** Split complex aggregates like `Note` into focused files within their respective subfolders (e.g., `note/mod.rs` for aggregate and `note/validation.rs` for logic)
-- [ ] **Standardize Validation Logic:** Refactor validation methods to use a consistent pattern (e.g., consistent naming, use of shared validation helpers in `lib.rs`, and uniform error propagation)
+- [ ] **NOTE:** Domain models are already organized into bounded context subfolders (`note/`, `schema/`, `template/`), and `config.rs` remains at the root. This structure is complete.
+- [ ] Create or update `crates/domain/src/lib.rs` to house shared traits, macros, constants (currently in `schema/patterns.rs`), and common identity logic (UUID handling)
+- [ ] **Consolidate Shared Patterns:** Move `schema/patterns.rs` constants into `lib.rs` or a dedicated `crates/domain/src/validation.rs` module for cross-context reuse
+- [ ] **Review Existing Structure:** Validate that current bounded context folders (`note/`, `schema/`, `template/`) have logical internal organization (e.g., `core.rs`, `validation.rs`, subentities)
+- [ ] **Standardize Validation Logic:** Refactor validation methods across all contexts to use a consistent pattern (e.g., consistent naming, use of shared validation helpers in `lib.rs`, and uniform error propagation)
 - [ ] **Centralized Events:** Maintain all domain events within the existing `crates/domain/src/events.rs` file
 - [ ] Move shared internal utilities to `pub(crate)` modules within `crates/domain/src/`
-- [ ] Refactor all domain components to use the consolidated utilities and new module paths
+- [ ] Refactor all domain components to use the consolidated utilities
 - [ ] Ensure all consolidated code maintains the "no external I/O" hexagonal rule
 
 ### Task 3: Refactor Error Handling
@@ -65,8 +76,10 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 - [ ] Ensure consistent error context injection across the domain
 - [ ] Verify `thiserror` is used correctly for all consolidated error types
 
-### Task 4: Verification and Quality Assurance
-- [ ] Run `mise run test:unit` to ensure no regressions in domain logic
+### Task 4: Post-Refactoring Test Validation and Quality Assurance
+- [ ] **CRITICAL:** Run `mise run test:unit` and confirm ALL tests pass without modification
+- [ ] **Behavioral Verification:** Manually review test output to ensure no behavior changes occurred
+- [ ] **Coverage Validation:** Run `mise run test:coverage` and confirm coverage percentage is equal to or greater than pre-refactoring baseline
 - [ ] Run `mise run lint` to verify compliance with complexity and quality rules
 - [ ] Run `mise run verify` for full gate check
 - [ ] **HEXAGONAL CHECK:** Confirm `crates/domain` still has ZERO unauthorized external dependencies
@@ -83,6 +96,8 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 ## Dev Notes
 
 ### Architectural Invariants
+- **Test-First Refactoring (CRITICAL):** NO refactoring work begins until comprehensive unit tests exist for ALL domain logic to be modified. Tests are the safety net that ensures behavior preservation.
+- **Behavior Preservation:** Refactoring MUST NOT change any observable behavior. All tests must pass without modification after refactoring is complete.
 - **Domain Purity:** The domain crate MUST NOT have dependencies on `app`, `adapters`, or `lithos`.
 - **Visibility:** Prefer `pub(crate)` for all internal utilities. Only export what is strictly necessary for the public API.
 - **Deep Behavioral DRY:** Consolidation is based on **logic and intent**, not just name matches. If two different modules implement the same business rule or data manipulation logic, they must be consolidated into a single source of truth in the domain core.
