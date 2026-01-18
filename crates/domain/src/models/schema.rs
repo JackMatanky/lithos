@@ -1,4 +1,4 @@
-//! Schema aggregate root, resolution services, and PropertyBank.
+//! Schema aggregate root and resolution services.
 
 #![allow(
     clippy::module_name_repetitions,
@@ -15,7 +15,10 @@ use uuid::Uuid;
 use crate::{
     errors::DomainError,
     events::{PropertyBankUpdated, SchemaCreated},
-    models::property::{Property, PropertyName, RawProperty, RawPropertyRef},
+    models::{
+        property::{Property, PropertyName, RawProperty, RawPropertyRef},
+        property_bank::PropertyBank,
+    },
 };
 
 /// Validated schema name value object.
@@ -177,6 +180,17 @@ impl Schema {
 
     /// Create a new resolved Schema.
     ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_domain::models::schema::{Schema, SchemaName};
+    /// use uuid::Uuid;
+    ///
+    /// let name = SchemaName::new("project-note".to_string()).unwrap();
+    /// let (schema, event) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// assert_eq!(schema.name.as_str(), "project-note");
+    /// ```
+    ///
     /// # Errors
     /// Returns `DomainError` if validation fails.
     #[inline]
@@ -199,135 +213,6 @@ impl Schema {
         ));
 
         Ok((schema, event))
-    }
-}
-
-/// Registry of reusable Property definitions with dual indexing.
-///
-/// Provides O(1) lookup by ID and Name.
-#[derive(
-    Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
-)]
-#[non_exhaustive]
-pub struct PropertyBank {
-    /// Index mapping ID -> index in properties vector.
-    pub id_index: HashMap<String, usize>,
-    /// Index mapping Name -> index in properties vector.
-    pub name_index: HashMap<String, usize>,
-    /// Dense storage of properties.
-    pub properties: Vec<Property>,
-}
-
-impl PropertyBank {
-    /// Get all properties in the bank.
-    #[inline]
-    pub fn all(&self) -> impl Iterator<Item = &Property> {
-        self.properties.iter()
-    }
-
-    fn create_updated_event(&self) -> DomainEvent {
-        DomainEvent::PropertyBankUpdated(PropertyBankUpdated::new(
-            self.properties.len(),
-            chrono::Utc::now().timestamp(),
-        ))
-    }
-
-    /// Decodes a `$ref` path to a Property.
-    ///
-    /// Format-agnostic: the key is extracted by the adapter.
-    ///
-    /// # Errors
-    /// Returns `PropertyNotFound` if key does not exist.
-    #[inline]
-    pub fn decode(&self, ref_path: &str) -> Result<&Property, DomainError> {
-        self.get_by_name(ref_path)
-            .ok_or_else(|| DomainError::PropertyNotFound(ref_path.to_owned()))
-    }
-
-    /// Gets a property by name or ID.
-    #[inline]
-    #[must_use]
-    pub fn get(&self, key: &str) -> Option<&Property> {
-        // Try by ID first (HashMap lookup is O(1))
-        if let Some(prop) = self.get_by_id(key) {
-            return Some(prop);
-        }
-        // Fall back to name lookup (O(1))
-        self.get_by_name(key)
-    }
-
-    /// Lookup property by ID (O(1)).
-    #[inline]
-    #[must_use]
-    pub fn get_by_id(&self, id: &str) -> Option<&Property> {
-        let &idx = self.id_index.get(id)?;
-        self.properties.get(idx)
-    }
-
-    /// Lookup property by Name (O(1)).
-    #[inline]
-    #[must_use]
-    pub fn get_by_name(&self, name: &str) -> Option<&Property> {
-        let &idx = self.name_index.get(name)?;
-        self.properties.get(idx)
-    }
-
-    /// Checks if a property exists by ID.
-    #[inline]
-    #[must_use]
-    pub fn has_id(&self, id: &str) -> bool {
-        self.id_index.contains_key(id)
-    }
-
-    /// Checks if a property exists by name.
-    #[inline]
-    #[must_use]
-    pub fn has_name(&self, name: &str) -> bool {
-        self.name_index.contains_key(name)
-    }
-
-    /// Create a new empty `PropertyBank`.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Register a property in the bank.
-    ///
-    /// # Errors
-    /// Returns `DomainError` if validation fails.
-    #[inline]
-    pub fn register(
-        &mut self,
-        property: Property,
-    ) -> Result<(usize, DomainEvent), DomainError> {
-        property.validate()?;
-
-        // Idempotent success if ID already exists
-        if self.id_index.contains_key(&property.id) {
-            return Ok((self.properties.len(), self.create_updated_event()));
-        }
-
-        // Prevent duplicate names
-        self.validate_name_unique(property.name.as_str())?;
-
-        let id = property.id.clone();
-        let name = property.name.to_string();
-        let idx = self.properties.len();
-
-        self.id_index.insert(id, idx);
-        self.name_index.insert(name, idx);
-        self.properties.push(property);
-
-        Ok((self.properties.len(), self.create_updated_event()))
-    }
-
-    fn validate_name_unique(&self, name: &str) -> Result<(), DomainError> {
-        if self.name_index.contains_key(name) {
-            return Err(DomainError::DuplicatePropertyName(name.to_owned()));
-        }
-        Ok(())
     }
 }
 
@@ -541,6 +426,40 @@ impl SchemaResolver {
     }
 }
 
+/// Test fixtures for deterministic schema data.
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test fixtures use expect for deterministic setup"
+)]
+pub mod fixtures {
+    use uuid::Uuid;
+
+    use super::SchemaName;
+    use crate::models::property::{Property, fixtures::PropertyBuilder};
+
+    /// Fixed UUID for deterministic tests.
+    pub const TEST_SCHEMA_ID: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0002);
+
+    /// Example property for testing.
+    #[inline]
+    #[must_use]
+    pub fn example_property() -> Property {
+        PropertyBuilder::new().name("status").required(true).build()
+    }
+
+    /// Example schema name for testing.
+    ///
+    /// # Panics
+    /// Panics if the default schema name is invalid.
+    #[inline]
+    #[must_use]
+    pub fn example_schema_name() -> SchemaName {
+        SchemaName::new("test-schema".to_owned()).expect("Valid default name")
+    }
+}
+
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
@@ -555,6 +474,8 @@ mod tests {
         use super::super::*;
 
         proptest! {
+            /// 3.3-UNIT-018: `schema_graph_detects_arbitrary_cycles`.
+            /// Priority: P0.
             #[test]
             #[expect(clippy::indexing_slicing, reason = "Test logic uses indices known to be in bounds")]
             #[expect(clippy::integer_division_remainder_used, reason = "Test logic uses modulo for cycling")]
@@ -562,32 +483,36 @@ mod tests {
             fn schema_graph_detects_arbitrary_cycles(
                 names in prop::collection::vec("[a-z0-9]{3,10}", 2..10)
             ) {
-                // Ensure names are unique to avoid accidental self-cycles or early cycles
+                // GIVEN a set of unique schema names
                 let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
                 if unique_names.len() < 2 { return Ok(()); }
 
+                // WHEN creating a circular inheritance graph
                 let mut graph = SchemaGraph::new();
                 for i in 0..unique_names.len() {
                     let next = (i + 1) % unique_names.len();
-                    // All names match regex because of the proptest strategy
                     let name = SchemaName::new(unique_names[i].clone()).unwrap();
                     let next_name = SchemaName::new(unique_names[next].clone()).unwrap();
                     graph.add_node(name, Some(next_name));
                 }
 
+                // THEN it must detect the circular inheritance
                 let res = graph.resolve_order();
                 assert!(matches!(res, Err(DomainError::CircularInheritance(_))));
             }
 
+            /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
+            /// Priority: P1.
             #[test]
             #[expect(clippy::indexing_slicing, reason = "Test logic uses indices known to be in bounds")]
             #[expect(clippy::arithmetic_side_effects, reason = "Test logic uses safe arithmetic")]
             fn schema_graph_accepts_arbitrary_lineage(
                 names in prop::collection::vec("[a-z0-9]{3,10}", 1..10)
             ) {
-                // Ensure names are unique to avoid cycles
+                // GIVEN a set of unique schema names
                 let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
 
+                // WHEN creating a valid linear inheritance graph
                 let mut graph = SchemaGraph::new();
                 for i in 0..unique_names.len() {
                     let name = SchemaName::new(unique_names[i].clone()).unwrap();
@@ -595,6 +520,7 @@ mod tests {
                     graph.add_node(name, parent);
                 }
 
+                // THEN it must succeed and return the correct order
                 let res = graph.resolve_order();
                 assert!(res.is_ok());
                 if let Ok(order) = res {
@@ -604,89 +530,53 @@ mod tests {
         }
     }
 
-    use super::*;
-    use crate::models::property::{PropertySpec, StringSpec};
+    mod schema_graph {
+        use lithos_test_utils::assert_eq_detailed;
 
-    #[test]
-    fn property_bank_indexing() {
-        let mut bank = PropertyBank::new();
-        let spec = PropertySpec::String(StringSpec::default());
-        let name_str = "test".to_owned();
-        let name = PropertyName::new(name_str.clone()).unwrap();
-        let id = Property::compute_id(&name_str, &spec).unwrap();
-        let prop = Property::new(id.clone(), name, false, false, spec).unwrap();
+        use super::super::*;
 
-        bank.register(prop).unwrap();
+        /// 3.3-UNIT-021: `detects_circular_inheritance`.
+        /// Priority: P0.
+        #[test]
+        fn detects_circular_inheritance() {
+            // GIVEN a simple circular dependency between two schemas
+            let mut graph = SchemaGraph::new();
+            graph.add_node(
+                "a".try_into().unwrap(),
+                Some("b".try_into().unwrap()),
+            );
+            graph.add_node(
+                "b".try_into().unwrap(),
+                Some("a".try_into().unwrap()),
+            );
 
-        assert!(bank.get_by_id(&id).is_some());
-        assert!(bank.get_by_name("test").is_some());
-    }
+            // WHEN resolving the order
+            let res = graph.resolve_order();
 
-    #[test]
-    fn schema_graph_detects_cycles() {
-        let mut graph = SchemaGraph::new();
-        graph.add_node("a".try_into().unwrap(), Some("b".try_into().unwrap()));
-        graph.add_node("b".try_into().unwrap(), Some("a".try_into().unwrap()));
+            // THEN it must return a CircularInheritance error
+            assert!(matches!(res, Err(DomainError::CircularInheritance(_))));
+        }
 
-        let res = graph.resolve_order();
-        assert!(matches!(res, Err(DomainError::CircularInheritance(_))));
-    }
+        /// 3.3-UNIT-022: `determines_topological_resolution_order`.
+        /// Priority: P1.
+        #[test]
+        fn determines_topological_resolution_order() {
+            // GIVEN a linear inheritance: child -> parent
+            let mut graph = SchemaGraph::new();
+            graph.add_node(
+                "child".try_into().unwrap(),
+                Some("parent".try_into().unwrap()),
+            );
+            graph.add_node("parent".try_into().unwrap(), None);
 
-    #[test]
-    fn schema_graph_topological_sort() {
-        let mut graph = SchemaGraph::new();
-        graph.add_node(
-            "child".try_into().unwrap(),
-            Some("parent".try_into().unwrap()),
-        );
-        graph.add_node("parent".try_into().unwrap(), None);
+            // WHEN resolving the order
+            let order = graph.resolve_order().unwrap();
 
-        let order = graph.resolve_order().unwrap();
-        assert_eq!(
-            order,
-            vec!["parent".try_into().unwrap(), "child".try_into().unwrap()]
-        );
-    }
-}
-
-/// Test fixtures for deterministic schema data.
-#[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    reason = "Test fixtures use expect for deterministic setup"
-)]
-pub mod fixtures {
-    use uuid::Uuid;
-
-    use super::SchemaName;
-    use crate::models::property::{
-        Property, PropertyName, PropertySpec, StringSpec,
-    };
-
-    /// Fixed UUID for deterministic tests.
-    pub const TEST_SCHEMA_ID: Uuid =
-        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0002);
-
-    /// Example property for testing.
-    ///
-    /// # Panics
-    /// Panics if ID computation fails.
-    #[inline]
-    #[must_use]
-    pub fn example_property() -> Property {
-        let spec = PropertySpec::String(StringSpec::default());
-        let name = PropertyName::new("status".to_owned()).expect("Valid Name");
-        let id = Property::compute_id(name.as_str(), &spec).expect("Valid ID");
-        Property::new(id, name, true, false, spec).expect("Valid property")
-    }
-
-    /// Example schema name for testing.
-    ///
-    /// # Panics
-    /// Panics if name is invalid.
-    #[inline]
-    #[must_use]
-    pub fn example_schema_name() -> SchemaName {
-        SchemaName::new("test-schema".to_owned()).unwrap()
+            // THEN it should return parent before child
+            assert_eq_detailed!(
+                order,
+                vec!["parent".try_into().unwrap(), "child".try_into().unwrap()]
+            );
+        }
     }
 }
