@@ -138,28 +138,6 @@ impl PropertySpecTrait for DateSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        self.validate_format_string(value)
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        if self.format.is_empty() {
-            return Err(DomainError::InvalidDateFormat(
-                "Format cannot be empty".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-impl DateSpec {
-    fn validate_format_string(&self, value: &str) -> Result<(), DomainError> {
-        if self.format.is_empty() {
-            return Err(DomainError::InvalidDateFormat(
-                "Format cannot be empty".to_owned(),
-            ));
-        }
-
         // Map common moment-style tokens to chrono format strings
         let chrono_format = self
             .format
@@ -182,6 +160,16 @@ impl DateSpec {
                 "Value {value} does not match format {}",
                 self.format
             )));
+        }
+        Ok(())
+    }
+
+    #[inline]
+    fn validate_spec(&self) -> Result<(), DomainError> {
+        if self.format.is_empty() {
+            return Err(DomainError::InvalidDateFormat(
+                "Format cannot be empty".to_owned(),
+            ));
         }
         Ok(())
     }
@@ -209,17 +197,6 @@ impl PropertySpecTrait for FileSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        self.validate_directory(value)
-    }
-
-    #[inline]
-    fn validate_spec(&self) -> Result<(), DomainError> {
-        self.validate_file_class_validity()
-    }
-}
-
-impl FileSpec {
-    fn validate_directory(&self, value: &str) -> Result<(), DomainError> {
         if let Some(dir) = self.directory.as_ref()
             && !value.starts_with(dir)
         {
@@ -230,7 +207,8 @@ impl FileSpec {
         Ok(())
     }
 
-    fn validate_file_class_validity(&self) -> Result<(), DomainError> {
+    #[inline]
+    fn validate_spec(&self) -> Result<(), DomainError> {
         if let Some(fc) = self.file_class.as_ref() {
             // File class is a schema name reference, so it must be a valid schema name.
             // Using standard schema name regex: ^[a-z0-9]+(-[a-z0-9]+)*$
@@ -276,13 +254,33 @@ impl PropertySpecTrait for NumberSpec {
 
     #[inline]
     fn validate_spec(&self) -> Result<(), DomainError> {
-        self.validate_range_validity()?;
-        self.validate_step_validity()?;
+        self.check_range()?;
+        self.check_step()?;
         Ok(())
     }
 }
 
 impl NumberSpec {
+    fn check_range(&self) -> Result<(), DomainError> {
+        if let (Some(min), Some(max)) = (self.min, self.max)
+            && min > max
+        {
+            return Err(DomainError::ValidationFailed(
+                "min cannot be greater than max".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_step(&self) -> Result<(), DomainError> {
+        if self.step.is_some_and(|step| step <= 0.0f64) {
+            return Err(DomainError::ValidationFailed(
+                "step must be positive".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
     fn validate_max(&self, value: f64) -> Result<(), DomainError> {
         if let Some(max) = self.max
             && value > max
@@ -309,17 +307,6 @@ impl NumberSpec {
         Ok(())
     }
 
-    fn validate_range_validity(&self) -> Result<(), DomainError> {
-        if let (Some(min), Some(max)) = (self.min, self.max)
-            && min > max
-        {
-            return Err(DomainError::ValidationFailed(
-                "min cannot be greater than max".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-
     #[expect(
         clippy::float_arithmetic,
         clippy::modulo_arithmetic,
@@ -327,12 +314,7 @@ impl NumberSpec {
     )]
     fn validate_step(&self, value: f64) -> Result<(), DomainError> {
         if let Some(step) = self.step {
-            if step <= 0.0f64 {
-                return Err(DomainError::InvalidStepValue {
-                    value,
-                    step,
-                });
-            }
+            // Note: step positivity is guaranteed by check_step() in validate_spec
             let base = self.min.unwrap_or(0.0f64);
             let diff = (value - base).abs();
             let rem = diff % step;
@@ -342,15 +324,6 @@ impl NumberSpec {
                     step,
                 });
             }
-        }
-        Ok(())
-    }
-
-    fn validate_step_validity(&self) -> Result<(), DomainError> {
-        if self.step.is_some_and(|step| step <= 0.0f64) {
-            return Err(DomainError::ValidationFailed(
-                "step must be positive".to_owned(),
-            ));
         }
         Ok(())
     }
@@ -391,13 +364,31 @@ impl PropertySpecTrait for StringSpec {
 
     #[inline]
     fn validate_spec(&self) -> Result<(), DomainError> {
-        self.validate_length_range_validity()?;
-        self.validate_pattern_validity()?;
+        self.check_length_range()?;
+        self.check_pattern()?;
         Ok(())
     }
 }
 
 impl StringSpec {
+    fn check_length_range(&self) -> Result<(), DomainError> {
+        if let (Some(min), Some(max)) = (self.min_length, self.max_length)
+            && min > max
+        {
+            return Err(DomainError::ValidationFailed(
+                "min_length cannot be greater than max_length".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_pattern(&self) -> Result<(), DomainError> {
+        if let Some(pattern) = self.pattern.as_ref() {
+            get_cached_regex(pattern)?;
+        }
+        Ok(())
+    }
+
     fn validate_enum(&self, value: &str) -> Result<(), DomainError> {
         if let Some(enums) = self.enum_values.as_ref()
             && !enums.contains(&value.to_owned())
@@ -406,17 +397,6 @@ impl StringSpec {
                 value: value.to_owned(),
                 allowed: enums.clone(),
             });
-        }
-        Ok(())
-    }
-
-    fn validate_length_range_validity(&self) -> Result<(), DomainError> {
-        if let (Some(min), Some(max)) = (self.min_length, self.max_length)
-            && min > max
-        {
-            return Err(DomainError::ValidationFailed(
-                "min_length cannot be greater than max_length".to_owned(),
-            ));
         }
         Ok(())
     }
@@ -447,19 +427,13 @@ impl StringSpec {
 
     fn validate_pattern(&self, value: &str) -> Result<(), DomainError> {
         if let Some(pattern) = self.pattern.as_ref() {
+            // Note: pattern compilation is guaranteed by check_pattern() in validate_spec
             let re = get_cached_regex(pattern)?;
             if !re.is_match(value) {
                 return Err(DomainError::ValidationFailed(format!(
                     "Value {value} does not match pattern {pattern}"
                 )));
             }
-        }
-        Ok(())
-    }
-
-    fn validate_pattern_validity(&self) -> Result<(), DomainError> {
-        if let Some(pattern) = self.pattern.as_ref() {
-            get_cached_regex(pattern)?;
         }
         Ok(())
     }
