@@ -16,23 +16,24 @@ So that schemas can define reusable property definitions with rich validation co
 **When** I review the Schema bounded context
 **Then** it includes these domain models:
 
-- Schema entity (Name, Extends, Excludes, Properties[], ResolvedProperties[])
-- PropertyBank entity (singleton registry of reusable Property definitions)
+- RawSchema entity (Name, Extends, Excludes, RawProperties[]) - Input definition
+- Schema entity (ID, Name, Properties[]) - Pure, fully resolved output
+- PropertyBank entity (registry of reusable Property definitions with dual indexing)
 - Property entity (ID, Name, Required, Array, Spec)
 - PropertySpec trait with variants: StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec
 
-**Given** the Schema entity is defined
-**When** I check inheritance capabilities
-**Then** Schema supports Extends (parent schema) and Excludes (properties to remove)
+**Given** schemas form an inheritance graph
+**When** I implement the `SchemaGraph` domain service
+**Then** it validates acyclic lineage and determines topological resolution order
+
+**Given** raw schemas need to be resolved
+**When** I implement the `SchemaResolver` domain service
+**Then** it merges parent properties, applies excludes, and resolves `$ref` pointers via PropertyBank
 
 **Given** PropertyBank is defined
 **When** I validate its design
-**Then** it provides registry with Lookup method and reference support
-
-**Given** architecture requires hexagonal separation
-**When** I implement PropertyBank domain entity
-**Then** PropertyBank remains pure with no singleton logic or infrastructure concerns
-**And** singleton behavior will be handled in Epic 6, Story 6.4 (PropertyBankRegistry adapter)
+**Then** it provides O(1) lookup by ID and Name using dual indexing
+**And** it supports `$ref` key lookup (format-agnostic)
 
 **Given** Property entity is defined
 **When** I check identity generation
@@ -51,7 +52,7 @@ So that schemas can define reusable property definitions with rich validation co
 **Given** semantic validation is integrated
 **When** I create Schema instances
 **Then** internal consistency validation occurs for all entities
-**And** **Circular Inheritance** is detected using a DFS-based algorithm (R-001)
+**And** **Circular Inheritance** is detected using the SchemaGraph service
 **And** Property IDs use **Blake3** hashing on normalized canonical representations for absolute determinism (R-002)
 **And** all user-defined **Regex patterns** in StringSpec are validated for safe compilation and ReDoS prevention (R-005)
 
@@ -103,25 +104,24 @@ So that schemas can define reusable property definitions with rich validation co
 
 ### Task 4: Implement PropertyBank Domain Entity (GREEN Phase - AC: 1-2)
 
-- [x] Implement PropertyBank struct: `#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)] pub struct PropertyBank { pub pending_events: Vec<DomainEvent>, pub properties: HashMap<String, Property> }`
-- [x] Implement PropertyBank::new() and PropertyBank::default()
-- [x] Implement PropertyBank::lookup() method: `pub fn lookup(&self, id: &str) -> Option<&Property>`
-- [x] Implement PropertyBank::lookup_by_definition() method for name+spec lookup
-- [x] Implement lookup() by ID and lookup_by_definition() by name+spec
-- [x] Add resolve_ref() method for $ref resolution (Epic 6.4 integration point)
-- [x] Add add_event() and take_events() methods for domain event management
-- [x] Implement Default trait for easy instantiation
-- [x] **TDD REQUIREMENT:** Make all PropertyBank tests pass (registration, deduplication, lookups)
+- [ ] Implement PropertyBank struct with dual indexing: `pub struct PropertyBank { properties: Vec<Property>, id_index: HashMap<String, usize>, name_index: HashMap<String, usize> }`
+- [ ] Implement PropertyBank::new() and PropertyBank::default()
+- [ ] Implement O(1) lookups: `get_by_id` and `get_by_name`
+- [ ] Implement `register` method with index updates
+- [ ] Add domain event management (pending_events)
+- [ ] **TDD REQUIREMENT:** Make all PropertyBank tests pass
 
-### Task 5: Implement Schema Aggregate (GREEN Phase - AC: 1, 2)
+### Task 5: Implement Schema Entities and Services (GREEN Phase - AC: 1, 2)
 
-- [x] Implement Schema struct: `#[derive(Debug, Clone, PartialEq)] pub struct Schema { pub id: Uuid, pub name: String, pub extends: Option<String>, pub excludes: Vec<String>, pub properties: Vec<Property>, pub resolved_properties: Vec<Property> }`
-- [x] Implement Schema::new() constructor with inheritance resolution and validation
-- [x] Add name validation: regex `^[a-z0-9]+(-[a-z0-9]+)*$`, length 1-64 chars
-- [x] Implement Schema::resolve_properties() method for inheritance algorithm
-- [x] Add circular inheritance detection with proper error handling
-- [x] Store resolved_properties for O(1) access after computation
-- [x] **TDD REQUIREMENT:** Make all Schema aggregate tests pass (inheritance, validation, circular detection)
+- [ ] Define `RawSchema` struct (Input): `pub struct RawSchema { name: String, extends: Option<String>, excludes: HashSet<String>, properties: Vec<RawPropertyDefinition> }`
+- [ ] Define `Schema` struct (Resolved Output): `pub struct Schema { id: Uuid, name: String, properties: Vec<Property> }`
+- [ ] Implement `SchemaGraph` domain service:
+    - `add_node(name, extends)`
+    - `resolve_order()` (Topological Sort with cycle detection)
+- [ ] Implement `SchemaResolver` domain service:
+    - `resolve(raw, parent, bank)` -> `Schema`
+    - Merge logic: Parent props + Own props - Excludes
+- [ ] **TDD REQUIREMENT:** Make all Schema service tests pass (inheritance, cycle detection, merge logic)
 
 ### Task 6: Implement Domain Events (GREEN Phase - AC: All)
 
@@ -242,12 +242,12 @@ impl PropertyBank {
 }
 ```
 
-**Schema Loading Flow (Cross-Story Dependency):**
+**Schema Loading Flow (Graph-Based Resolution):**
 
-1. JSON schema loaded (Epic 4 file loading)
-2. $ref pointers resolved via PropertyBank.resolve_ref() (Story 6.3)
-3. Resolved properties used to construct Schema domain model (This story)
-4. Schema validated and events published
+1.  **Load:** Adapters load all files into `RawSchema` definitions (unresolved).
+2.  **Graph:** `SchemaGraph` builds dependency graph and determines resolution order.
+3.  **Resolve:** `SchemaResolver` processes schemas in topological order, merging parent properties.
+4.  **Output:** Result is a collection of fully resolved `Schema` entities.
 
 **File Class Constraints - CRITICAL:**
 
@@ -308,54 +308,27 @@ pub struct Schema {
     /// Unique schema name (e.g., "project-note", "literature-review")
     pub name: String,
 
-    /// Optional parent schema name for inheritance
-    pub extends: Option<String>,
-
-    /// Property names to exclude from parent schema
-    pub excludes: HashSet<String>,
-
-    /// Properties directly defined in this schema (before inheritance resolution)
-    pub properties: Vec<Property>,
-
     /// Fully resolved properties after inheritance (computed field)
     /// This includes inherited properties minus excluded ones
-    pub resolved_properties: Vec<Property>,
+    pub properties: Vec<Property>,
 }
 
 impl Schema {
-    /// Create a new schema with inheritance resolution
+    /// Create a new resolved schema
     ///
     /// # Arguments
+    /// * `id` - UUID v7
     /// * `name` - Unique schema name
-    /// * `extends` - Optional parent schema name
-    /// * `excludes` - Property names to exclude from parent
-    /// * `properties` - Properties defined in this schema
-    /// * `parent_schema` - Optional parent schema for inheritance resolution
+    /// * `properties` - Fully resolved property list
     ///
     /// # Errors
-    /// Returns `DomainError` if validation fails or inheritance resolution fails
+    /// Returns `DomainError` if validation fails
     pub fn new(
+        id: Uuid,
         name: String,
-        extends: Option<String>,
-        excludes: HashSet<String>,
         properties: Vec<Property>,
-        parent_schema: Option<&Schema>,
-    ) -> Result<Self, DomainError> {
-        // Validation and inheritance resolution logic
-        // Returns Schema with resolved_properties computed
-    }
-
-    /// Resolve property inheritance from parent schema
-    fn resolve_properties(
-        own_properties: &[Property],
-        parent_schema: Option<&Schema>,
-        excludes: &HashSet<String>,
-    ) -> Result<Vec<Property>, DomainError> {
-        // Inheritance resolution:
-        // 1. Start with parent's resolved_properties (if parent exists)
-        // 2. Remove any properties in excludes set
-        // 3. Add/override with own_properties
-        // 4. Return combined, deduplicated list
+    ) -> Result<(Self, DomainEvent), DomainError> {
+        // Validation logic
     }
 }
 ```
@@ -382,17 +355,18 @@ use std::collections::HashMap;
 /// Provides centralized management and lookup of properties across schemas
 #[derive(Debug, Clone, PartialEq)]
 pub struct PropertyBank {
-    /// Map of property ID -> Property
-    /// ID is deterministic hash of property name + spec
-    properties: HashMap<String, Property>,
+    /// Dense storage of properties
+    pub properties: Vec<Property>,
+    /// Index mapping ID -> index in properties vector
+    pub id_index: HashMap<String, usize>,
+    /// Index mapping Name -> index in properties vector
+    pub name_index: HashMap<String, usize>,
 }
 
 impl PropertyBank {
     /// Create a new empty PropertyBank
     pub fn new() -> Self {
-        Self {
-            properties: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Register a property in the bank
@@ -400,26 +374,19 @@ impl PropertyBank {
     ///
     /// # Errors
     /// Returns `DomainError` if property validation fails
-    pub fn register(&mut self, property: Property) -> Result<&Property, DomainError> {
-        let id = property.id.clone();
-        self.properties.entry(id.clone()).or_insert(property);
-        Ok(self.properties.get(&id).unwrap())
+    pub fn register(&mut self, property: Property) -> Result<DomainEvent, DomainError> {
+        // Registration logic with duplicate check and indexing
+        Ok(self.create_updated_event())
     }
 
-    /// Lookup a property by ID
-    pub fn lookup(&self, id: &str) -> Option<&Property> {
-        self.properties.get(id)
+    /// Lookup a property by ID (O(1))
+    pub fn get_by_id(&self, id: &str) -> Option<&Property> {
+        self.id_index.get(id).and_then(|&idx| self.properties.get(idx))
     }
 
-    /// Lookup a property by name and spec (computes ID internally)
-    pub fn lookup_by_definition(&self, name: &str, spec: &PropertySpec) -> Option<&Property> {
-        let computed_id = Property::compute_id(name, spec);
-        self.lookup(&computed_id)
-    }
-
-    /// Get all properties in the bank
-    pub fn all(&self) -> impl Iterator<Item = &Property> {
-        self.properties.values()
+    /// Lookup a property by Name (O(1))
+    pub fn get_by_name(&self, name: &str) -> Option<&Property> {
+        self.name_index.get(name).and_then(|&idx| self.properties.get(idx))
     }
 }
 

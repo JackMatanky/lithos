@@ -341,6 +341,17 @@ lithos/
   - **State Plane (Watch):** Zero-latency LSP state synchronization.
 - **ADR Reference:** [ADR 0007: Event Orchestration](adr/0007-event-orchestration.md)
 
+### Schema System Architecture
+
+- **Initialization Lifecycle:** Schemas form a **Directed Acyclic Graph (DAG)** resolved at startup via topological sort.
+  - **Phase 1 (Load):** Adapters load `RawSchema` definitions (unresolved).
+  - **Phase 2 (Graph):** Domain `SchemaGraph` service validates acyclic lineage and determines resolution order.
+  - **Phase 3 (Resolve):** Application layer drives `SchemaResolver` (Domain Service) to merge properties in order.
+- **Resolution Strategy:** Separation of `RawSchema` (Input) and `Schema` (Resolved Output).
+  - **RawSchema:** Contains `extends`, `excludes`, and unresolved `$ref` pointers.
+  - **Schema:** Contains only final, fully resolved `properties` list.
+- **Reference Handling:** Format-specific adapters (JSON Pointer, TOML Path) parse references; Domain `PropertyBank` performs key lookups only.
+
 ### Technical Preferences (Step 4 Refinement)
 
 - **Templating:** **MiniJinja**. Selected for "Mechanical Sympathy"—minimal dependencies and VM-based rendering for user-defined Markdown templates. [ADR 0003](adr/0003-template-engine.md)
