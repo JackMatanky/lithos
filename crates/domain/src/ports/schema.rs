@@ -31,3 +31,25 @@ pub trait Query: Send + Sync {
     /// List all available schemas.
     async fn list_all(&self) -> Result<Vec<Schema>, DomainError>;
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_trait_is_object_safe() {
+        let _: Option<Box<dyn Command>> = None;
+    }
+
+    #[test]
+    fn query_trait_is_object_safe() {
+        let _: Option<Box<dyn Query>> = None;
+    }
+
+    #[test]
+    fn traits_are_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync + ?Sized>() {}
+        assert_send_sync::<dyn Command>();
+        assert_send_sync::<dyn Query>();
+    }
+}

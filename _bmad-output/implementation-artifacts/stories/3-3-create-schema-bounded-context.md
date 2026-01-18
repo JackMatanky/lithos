@@ -1,6 +1,6 @@
 # Story 3.3: Create Schema Bounded Context
 
-Status: ready-for-dev
+Status: review
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
@@ -104,24 +104,24 @@ So that schemas can define reusable property definitions with rich validation co
 
 ### Task 4: Implement PropertyBank Domain Entity (GREEN Phase - AC: 1-2)
 
-- [ ] Implement PropertyBank struct with dual indexing: `pub struct PropertyBank { properties: Vec<Property>, id_index: HashMap<String, usize>, name_index: HashMap<String, usize> }`
-- [ ] Implement PropertyBank::new() and PropertyBank::default()
-- [ ] Implement O(1) lookups: `get_by_id` and `get_by_name`
-- [ ] Implement `register` method with index updates
-- [ ] Add domain event management (pending_events)
-- [ ] **TDD REQUIREMENT:** Make all PropertyBank tests pass
+- [x] Implement PropertyBank struct with dual indexing: `pub struct PropertyBank { properties: Vec<Property>, id_index: HashMap<String, usize>, name_index: HashMap<String, usize> }`
+- [x] Implement PropertyBank::new() and PropertyBank::default()
+- [x] Implement O(1) lookups: `get_by_id` and `get_by_name`
+- [x] Implement `register` method with index updates
+- [x] Add domain event management (pending_events)
+- [x] **TDD VALIDATION:** confirm all PropertyBank tests pass
 
 ### Task 5: Implement Schema Entities and Services (GREEN Phase - AC: 1, 2)
 
-- [ ] Define `RawSchema` struct (Input): `pub struct RawSchema { name: String, extends: Option<String>, excludes: HashSet<String>, properties: Vec<RawPropertyDefinition> }`
-- [ ] Define `Schema` struct (Resolved Output): `pub struct Schema { id: Uuid, name: String, properties: Vec<Property> }`
-- [ ] Implement `SchemaGraph` domain service:
+- [x] Define `RawSchema` struct (Input): `pub struct RawSchema { name: String, extends: Option<String>, excludes: HashSet<String>, properties: Vec<RawPropertyDefinition> }`
+- [x] Define `Schema` struct (Resolved Output): `pub struct Schema { id: Uuid, name: String, properties: Vec<Property> }`
+- [x] Implement `SchemaGraph` domain service:
     - `add_node(name, extends)`
     - `resolve_order()` (Topological Sort with cycle detection)
-- [ ] Implement `SchemaResolver` domain service:
+- [x] Implement `SchemaResolver` domain service:
     - `resolve(raw, parent, bank)` -> `Schema`
     - Merge logic: Parent props + Own props - Excludes
-- [ ] **TDD REQUIREMENT:** Make all Schema service tests pass (inheritance, cycle detection, merge logic)
+- [x] **TDD VALIDATION:** confirm all Schema service tests pass (inheritance, cycle detection, merge logic)
 
 ### Task 6: Implement Domain Events (GREEN Phase - AC: All)
 
@@ -1524,11 +1524,23 @@ This story will leverage the test utilities being developed in Epic 2:
 
 ### Completion Notes List
 
-<!-- Dev agent will document completion status and any deviations -->
+- Verified implementation of `Property`, `PropertySpec`, `PropertyBank`, `Schema`, `SchemaGraph`, and `SchemaResolver`.
+- All acceptance criteria satisfied.
+- Comprehensive unit tests and proptests implemented and passing.
+- Clippy clean and all pre-commit hooks passing.
+- Domain events `SchemaCreated` and `PropertyBankUpdated` implemented.
+- CQRS ports `SchemaCommand` and `SchemaQuery` defined.
 
 ### File List
 
-<!-- Dev agent will list all files created/modified during implementation -->
+- `crates/domain/src/errors.rs` (Updated with schema errors)
+- `crates/domain/src/events.rs` (Updated with schema events)
+- `crates/domain/src/models/mod.rs` (Updated)
+- `crates/domain/src/models/property.rs` (Property and specs)
+- `crates/domain/src/models/schema.rs` (Schema and bank)
+- `crates/domain/src/ports/schema.rs` (CQRS ports)
+- `crates/domain/src/lib.rs` (Public re-exports)
+
 
 ```
 Expected files to be created (9 TDD tasks for 3-2, 7 TDD tasks for 3-1):
