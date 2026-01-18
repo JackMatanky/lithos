@@ -64,8 +64,8 @@ impl VariableDefinition {
         min: Option<f64>,
         max: Option<f64>,
     ) -> Result<(), DomainError> {
-        Self::ensure_number_at_least_min(n, min, max)?;
-        Self::ensure_number_at_most_max(n, min, max)?;
+        Self::validate_number_at_least_min(n, min, max)?;
+        Self::validate_number_at_most_max(n, min, max)?;
         Ok(())
     }
 
@@ -104,7 +104,7 @@ impl VariableDefinition {
         Ok(())
     }
 
-    fn ensure_number_at_least_min(
+    fn validate_number_at_least_min(
         n: f64,
         min: Option<f64>,
         max: Option<f64>,
@@ -121,7 +121,7 @@ impl VariableDefinition {
         Ok(())
     }
 
-    fn ensure_number_at_most_max(
+    fn validate_number_at_most_max(
         n: f64,
         min: Option<f64>,
         max: Option<f64>,
@@ -138,7 +138,7 @@ impl VariableDefinition {
         Ok(())
     }
 
-    fn ensure_string_min_length(
+    fn validate_string_min_length(
         s: &str,
         min: Option<usize>,
     ) -> Result<(), DomainError> {
@@ -153,7 +153,7 @@ impl VariableDefinition {
         Ok(())
     }
 
-    fn ensure_string_max_length(
+    fn validate_string_max_length(
         s: &str,
         max: Option<usize>,
     ) -> Result<(), DomainError> {
@@ -298,7 +298,7 @@ impl VariableDefinition {
         }
     }
 
-    fn ensure_file_extension_allowed(
+    fn validate_file_extension_allowed(
         s: &str,
         allowed_types: Option<&[String]>,
     ) -> Result<(), DomainError> {
@@ -324,12 +324,12 @@ impl VariableDefinition {
             expected: "string (file path)".to_owned(),
         })?;
 
-        Self::ensure_file_path_not_empty(s)?;
-        Self::ensure_file_extension_allowed(s, file_types)?;
+        Self::validate_file_path_not_empty(s)?;
+        Self::validate_file_extension_allowed(s, file_types)?;
         Ok(())
     }
 
-    fn ensure_file_path_not_empty(s: &str) -> Result<(), DomainError> {
+    fn validate_file_path_not_empty(s: &str) -> Result<(), DomainError> {
         if s.is_empty() {
             return Err(DomainError::EmptyPath);
         }
@@ -360,8 +360,8 @@ impl VariableDefinition {
             value: value.to_string(),
             expected: "string".to_owned(),
         })?;
-        Self::ensure_string_min_length(s, min_length)?;
-        Self::ensure_string_max_length(s, max_length)?;
+        Self::validate_string_min_length(s, min_length)?;
+        Self::validate_string_max_length(s, max_length)?;
         Self::check_string_pattern(s, pattern)?;
         Ok(())
     }
