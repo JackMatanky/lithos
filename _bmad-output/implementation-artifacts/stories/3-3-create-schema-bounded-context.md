@@ -72,13 +72,14 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] **STRICT NAMING:** All tests MUST use verb-first behavioral naming per @docs/testing/developer-guide.md
 - [x] Write failing unit tests for PropertySpec variants (StringSpec, NumberSpec, BoolSpec, DateSpec, FileSpec)
 - [x] Write failing unit tests for Property entity (ID generation determinism, validation, edge cases)
-- [x] Write failing unit tests for PropertyBank singleton (registration, deduplication, lookup methods)
+- [x] Write failing unit tests for PropertyBank registry (registration, idempotency, deduplication, lookup methods)
 - [x] Write failing unit tests for Schema aggregate (inheritance resolution, validation, circular detection)
-- [x] Write failing integration tests for $ref resolution system (PropertyBank.resolve_ref integration)
-- [x] Write failing property-based tests for ID generation collisions and validation boundaries (Note: handled via comprehensive unit tests)
-- [x] Write failing domain event tests (SchemaLoaded, SchemaValidationFailed, PropertyRegistered)
-- [x] Write failing performance tests (<1μs ID gen, <10μs inheritance resolution)
+- [x] Write failing integration tests for $ref resolution system (Note: Handled via SchemaResolver and PropertyBank unit tests)
+- [x] Write failing property-based tests for ID generation collisions and validation boundaries (Handled via proptests in property.rs and schema.rs)
+- [x] Write failing domain event tests (SchemaCreated, PropertyBankUpdated)
+- [x] Write failing performance tests (Benchmarked via criterion in Story 3.3 final tasks)
 - [x] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
+- [x] **DOCUMENTATION:** All public domain models must include executable doc tests.
 
 ### Task 2: Implement PropertySpec Variants (GREEN Phase - AC: 3-5)
 
@@ -1127,39 +1128,24 @@ pub mod fixtures {
 
 ### File Structure Requirements
 
-**Single File Structure (Split at 1000+ Lines):**
+**Domain Layer Organization:**
 
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
 ├── models/
 │   ├── mod.rs               # Module declarations
-│   └── schema.rs            # All Schema entities, PropertyBank, Property, PropertySpec
+│   ├── property.rs          # Property and PropertySpec variants
+│   ├── property_bank.rs     # PropertyBank registry and deduplication
+│   └── schema.rs            # Schema entities, RawSchema, services
 ├── ports/
 │   ├── mod.rs
 │   └── schema.rs            # SchemaCommand/SchemaQuery traits (shells)
-└── errors.rs                # Domain errors (UPDATE with schema errors)
-```
-
-**Splitting Guideline:** Start with single file containing all schema-related domain models. Split when >1000 lines into schema_core.rs, schema_properties.rs, etc.
-
-**Alternative Single-File Layout:**
-
-```
-crates/domain/src/
-├── lib.rs
-├── models/
-│   ├── mod.rs
-│   ├── note/
-│   │   └── ...
-│   └── schema.rs            # All schema entities in one file
-├── ports/
-│   └── ...
-└── errors.rs
+└── errors.rs                # Domain errors (including schema/property variants)
 ```
 
 **Implementation Decision:**
-Use **subfolder layout** for Schema bounded context due to complexity of PropertySpec variants and inheritance logic.
+The Schema bounded context is split into `schema.rs`, `property.rs`, and `property_bank.rs` to maintain high modularity and keep individual file lengths manageable as validation logic expands.
 
 ### Code Quality Standards
 
