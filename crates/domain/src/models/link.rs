@@ -2,10 +2,17 @@
 //!
 //! Represents wiki-links and references within notes.
 
+#![expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
+)]
+
 use crate::errors::DomainError;
 
 /// Represents different types of links that can appear in notes.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 #[non_exhaustive]
 #[expect(
     clippy::module_name_repetitions,
@@ -21,7 +28,9 @@ pub enum LinkType {
 }
 
 /// Represents different types of embedded content.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 #[non_exhaustive]
 pub enum EmbedType {
     /// Embedded audio: ![[audio.mp3]].
@@ -43,25 +52,86 @@ pub enum EmbedType {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "source_note_id must be first for logical grouping"
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
+)]
+#[expect(
+    clippy::struct_field_names,
+    reason = "link_type is the correct domain name"
 )]
 pub struct Link {
     /// UUID of the note containing this link.
-    pub source_note_id: uuid::Uuid,
+    pub(crate) source_note_id: uuid::Uuid,
     /// Path to the target note/file (vault-relative).
-    pub target_path: Box<str>,
+    pub(crate) target_path: Box<str>,
     /// Optional display alias (for [[target|alias]] or [text](url) syntax).
-    pub alias: Option<Box<str>>,
+    pub(crate) alias: Option<Box<str>>,
     /// Type of link.
-    pub link_type: LinkType,
+    pub(crate) link_type: LinkType,
     /// Type of embedded content (only present for Embed links).
-    pub embed_type: Option<EmbedType>,
+    pub(crate) embed_type: Option<EmbedType>,
     /// Character position in the source document.
-    pub position: usize,
+    pub(crate) position: usize,
 }
 
 impl Link {
+    /// Returns the UUID of the note containing this link.
+    #[inline]
+    #[must_use]
+    pub const fn source_note_id(&self) -> uuid::Uuid {
+        self.source_note_id
+    }
+
+    /// Sets the source note ID.
+    ///
+    /// This is used by the Note aggregate to enforce consistency.
+    #[inline]
+    pub(crate) fn set_source_note_id(&mut self, id: uuid::Uuid) {
+        self.source_note_id = id;
+    }
+
+    /// Returns the target path of the link.
+    #[inline]
+    #[must_use]
+    pub fn target_path(&self) -> &str {
+        &self.target_path
+    }
+
+    /// Returns the optional display alias.
+    #[inline]
+    #[must_use]
+    pub fn alias(&self) -> Option<&str> {
+        self.alias.as_deref()
+    }
+
+    /// Returns the type of link.
+    #[inline]
+    #[must_use]
+    pub const fn link_type(&self) -> &LinkType {
+        &self.link_type
+    }
+
+    /// Returns true if this link represents an embedded content reference.
+    #[inline]
+    #[must_use]
+    pub fn is_embed(&self) -> bool {
+        self.link_type == LinkType::Embed
+    }
+
+    /// Returns the type of embedded content, if applicable.
+    #[inline]
+    #[must_use]
+    pub const fn embed_type(&self) -> Option<EmbedType> {
+        self.embed_type
+    }
+
+    /// Returns the character position in the source document.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> usize {
+        self.position
+    }
+
     /// Creates a Link instance with the given parameters.
     #[inline]
     fn create_link(
@@ -82,13 +152,6 @@ impl Link {
         }
     }
 
-    /// Returns true if this link represents an embedded content reference.
-    #[inline]
-    #[must_use]
-    pub fn is_embed(&self) -> bool {
-        self.link_type == LinkType::Embed
-    }
-
     /// Creates a new embedded content reference.
     ///
     /// # Examples
@@ -103,9 +166,9 @@ impl Link {
     ///     EmbedType::Image,
     ///     200
     /// ).unwrap();
-    /// assert_eq!(embed.target_path.as_ref(), "diagram.png");
-    /// assert_eq!(embed.link_type, LinkType::Embed);
-    /// assert_eq!(embed.embed_type, Some(EmbedType::Image));
+    /// assert_eq!(embed.target_path(), "diagram.png");
+    /// assert_eq!(embed.link_type(), &LinkType::Embed);
+    /// assert_eq!(embed.embed_type(), Some(EmbedType::Image));
     /// ```
     ///
     /// # Errors
@@ -142,7 +205,7 @@ impl Link {
     ///     Some("Link".to_string()),
     ///     75
     /// ).unwrap();
-    /// assert_eq!(link.target_path.as_ref(), "doc.html");
+    /// assert_eq!(link.target_path(), "doc.html");
     /// ```
     ///
     /// # Errors
@@ -179,9 +242,9 @@ impl Link {
     ///     Some("Alias".to_string()),
     ///     100
     /// ).unwrap();
-    /// assert_eq!(link.target_path.as_ref(), "target.md");
-    /// assert_eq!(link.alias, Some("Alias".into()));
-    /// assert_eq!(link.link_type, LinkType::WikiLink);
+    /// assert_eq!(link.target_path(), "target.md");
+    /// assert_eq!(link.alias(), Some("Alias"));
+    /// assert_eq!(link.link_type(), &LinkType::WikiLink);
     /// ```
     ///
     /// # Errors

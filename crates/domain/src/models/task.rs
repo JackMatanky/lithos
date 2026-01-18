@@ -2,10 +2,17 @@
 //!
 //! Represents task items with completion status within notes.
 
+#![expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
+)]
+
 use crate::errors::DomainError;
 
 /// Represents the status of a task item.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+)]
 #[non_exhaustive]
 #[expect(
     clippy::module_name_repetitions,
@@ -26,13 +33,17 @@ pub enum TaskStatus {
 /// tracked for completion status.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal builders and tests"
+)]
 pub struct Task {
-    /// Character position in the source document.
-    pub position: usize,
-    /// Current completion status.
-    pub status: TaskStatus,
     /// Task description text.
-    pub text: Box<str>,
+    pub(crate) text: Box<str>,
+    /// Current completion status.
+    pub(crate) status: TaskStatus,
+    /// Character position in the source document.
+    pub(crate) position: usize,
 }
 
 impl Task {
@@ -47,8 +58,8 @@ impl Task {
     ///     TaskStatus::Incomplete,
     ///     50
     /// ).unwrap();
-    /// assert_eq!(task.text.as_ref(), "Buy milk");
-    /// assert_eq!(task.status, TaskStatus::Incomplete);
+    /// assert_eq!(task.text(), "Buy milk");
+    /// assert_eq!(task.status(), TaskStatus::Incomplete);
     /// ```
     ///
     /// # Errors
@@ -66,10 +77,31 @@ impl Task {
         }
 
         Ok(Self {
-            position,
-            status,
             text: text.into(),
+            status,
+            position,
         })
+    }
+
+    /// Returns the task description text.
+    #[inline]
+    #[must_use]
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Returns the current completion status.
+    #[inline]
+    #[must_use]
+    pub const fn status(&self) -> TaskStatus {
+        self.status
+    }
+
+    /// Returns the character position in the source document.
+    #[inline]
+    #[must_use]
+    pub const fn position(&self) -> usize {
+        self.position
     }
 }
 
@@ -95,9 +127,9 @@ mod tests {
             let result = Task::new(text, status, position).unwrap();
 
             // THEN it has the correct values
-            assert_eq!(result.text.as_ref(), "Buy milk");
-            assert_eq!(result.status, TaskStatus::Incomplete);
-            assert_eq!(result.position, 50);
+            assert_eq!(result.text(), "Buy milk");
+            assert_eq!(result.status(), TaskStatus::Incomplete);
+            assert_eq!(result.position(), 50);
         }
 
         #[test]
