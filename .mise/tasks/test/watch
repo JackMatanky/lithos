@@ -16,11 +16,11 @@ set -euo pipefail
 #   Echoes the watch command
 #######################################
 build_watch_command() {
-    if [[ -n "${usage_args:-}" ]]; then
-        echo "test -- ${usage_args}"
-    else
-        echo "test"
-    fi
+  if [[ -n "${usage_args:-}" ]]; then
+    echo "test -- ${usage_args}"
+  else
+    echo "test"
+  fi
 }
 
 #######################################
@@ -31,24 +31,22 @@ build_watch_command() {
 #   Writes test results to stdout on every change
 #######################################
 run_cargo_watch() {
-    local watch_cmd=$1
-    echo "👀 Watching for changes..."
-    cargo watch -x "${watch_cmd}"
+  local watch_cmd=$1
+  echo "👀 Watching for changes..."
+  cargo watch -x "${watch_cmd}"
 }
 
 #######################################
 # Main entry point.
-# Globals:
-#   None
 # Arguments:
 #   $@
 # Outputs:
 #   None
 #######################################
 main() {
-    local watch_cmd
-    watch_cmd=$(build_watch_command)
-    run_cargo_watch "${watch_cmd}"
+  local watch_cmd
+  watch_cmd=$(build_watch_command)
+  run_cargo_watch "${watch_cmd}"
 }
 
 main "$@"
