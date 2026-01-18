@@ -729,11 +729,32 @@ crates/domain/src/
 └── errors.rs                # Domain error types
 ```
 
+**Implemented Structure (Subfolder Organization):**
+```
+crates/domain/src/
+├── lib.rs                    # Public API surface, re-exports
+├── models/
+│   ├── mod.rs               # Module declarations
+│   └── note/                # Note bounded context subfolder
+│       ├── mod.rs           # Note context module declarations
+│       ├── frontmatter.rs   # Frontmatter value objects and logic
+│       ├── link.rs          # Link subentity for Note aggregate
+│       ├── note.rs          # Note aggregate root
+│       ├── structure.rs     # Heading and Section subentities
+│       ├── tag.rs           # Tag subentity
+│       └── task.rs          # Task subentity
+├── ports/
+│   ├── mod.rs               # Port trait declarations
+│   └── note.rs              # NoteCommand/NoteQuery traits
+└── errors.rs                # Domain errors (EXTENDED with note errors)
+```
+
 **Implementation Decision:**
-- Use **Option 1 (subfolder)** if the Note bounded context exceeds ~300 lines or has complex subentities
-- Use **Option 2 (single file)** if all entities can fit cleanly in one file with good organization
-- Either approach is acceptable; prioritize readability and maintainability
-- Future bounded contexts (Schema, Config, Template) will follow the same pattern for consistency
+- **Chosen: Subfolder organization** for the Note bounded context due to complexity and size (multiple subentities with rich domain logic)
+- Note context organized into dedicated `note/` subfolder for better bounded context isolation
+- Each subentity has its own module for maintainability and focused responsibilities
+- Follows domain-driven design principles with clear bounded context boundaries
+- Future bounded contexts (Schema, Config, Template) will follow the same subfolder pattern for consistency
 
 **Architecture Decision: Unified Link/Embed Model**
 

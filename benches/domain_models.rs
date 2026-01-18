@@ -4,7 +4,7 @@
 )]
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use lithos_domain::models::{note::Note, tag::Tag};
+use lithos_domain::models::note::{core::Note, tag::Tag};
 use uuid::Uuid;
 
 fn bench_note_creation(c: &mut Criterion) {

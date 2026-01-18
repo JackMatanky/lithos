@@ -29,7 +29,7 @@ use crate::{errors::DomainError, events::NoteCreated};
 ///
 /// # Examples
 /// ```
-/// use lithos_domain::models::note::Note;
+/// use lithos_domain::models::note::core::Note;
 /// use uuid::Uuid;
 ///
 /// // For new files (first-time indexing)
@@ -467,7 +467,7 @@ pub mod fixtures {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::models::frontmatter::FieldValue;
+    use crate::models::note::frontmatter::FieldValue;
 
     /// Fixed UUID for deterministic tests (valid UUID v7 format).
     pub const TEST_NOTE_ID: Uuid =
