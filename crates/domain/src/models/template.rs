@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use super::{
     template_comp::{Composition, InsertionPosition, Section},
+    template_syntax::PlaceholderSyntax,
     template_var::VariableDefinition,
 };
 use crate::{errors::DomainError, events::TemplateCreated};
@@ -82,6 +83,8 @@ pub struct Template {
     /// Domain events pending emission (not serialized).
     #[serde(skip)]
     pub(crate) pending_events: Vec<DomainEvent>,
+    /// Syntax used for placeholders.
+    pub syntax: PlaceholderSyntax,
     /// Variable definitions with types and constraints.
     pub variables: HashMap<String, VariableDefinition>,
 }
@@ -98,7 +101,7 @@ impl Template {
         clippy::pattern_type_mismatch,
         reason = "Matching on enum references"
     )]
-    fn apply_sections(content: &mut String, sections: &[Section]) {
+    fn apply_sections(&self, content: &mut String, sections: &[Section]) {
         for section in sections {
             match &section.position {
                 InsertionPosition::Beginning => {
@@ -110,7 +113,7 @@ impl Template {
                     content.push_str(&section.content);
                 }
                 InsertionPosition::BeforeVariable(var_name) => {
-                    Self::insert_relative_to_variable(
+                    self.insert_relative_to_variable(
                         content,
                         var_name,
                         &section.content,
@@ -118,7 +121,7 @@ impl Template {
                     );
                 }
                 InsertionPosition::AfterVariable(var_name) => {
-                    Self::insert_relative_to_variable(
+                    self.insert_relative_to_variable(
                         content,
                         var_name,
                         &section.content,
@@ -141,7 +144,7 @@ impl Template {
         composition.validate(base)?;
 
         let mut final_content = base.content.clone();
-        Self::apply_sections(
+        base.apply_sections(
             &mut final_content,
             &composition.additional_sections,
         );
@@ -153,29 +156,26 @@ impl Template {
             metadata: Metadata::default(),
             name: format!("{}-composed", base.name),
             pending_events: vec![],
+            syntax: base.syntax.clone(),
             variables: base.variables.clone(),
         })
     }
 
     /// Formats a variable name as a template placeholder.
-    #[expect(clippy::arithmetic_side_effects, reason = "String capacity")]
-    fn format_placeholder(var_name: &str) -> String {
-        let mut placeholder = String::with_capacity(var_name.len() + 4);
-        placeholder.push_str("{{");
-        placeholder.push_str(var_name);
-        placeholder.push_str("}}");
-        placeholder
+    fn format_placeholder(&self, var_name: &str) -> String {
+        self.syntax.wrap(var_name)
     }
 
     /// Inserts content relative to a variable placeholder.
     #[expect(clippy::arithmetic_side_effects, reason = "Index calculation")]
     fn insert_relative_to_variable(
+        &self,
         content: &mut String,
         var_name: &str,
         section_content: &str,
         after: bool,
     ) {
-        let placeholder = Self::format_placeholder(var_name);
+        let placeholder = self.format_placeholder(var_name);
         if let Some(pos) = content.find(&placeholder) {
             if after {
                 let insert_pos = pos + placeholder.len();
@@ -212,6 +212,7 @@ impl Template {
             metadata,
             name: name.clone(),
             pending_events: vec![],
+            syntax: PlaceholderSyntax::default(),
             variables,
         };
 

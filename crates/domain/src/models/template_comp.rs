@@ -142,7 +142,10 @@ pub enum InsertionPosition {
 mod tests {
     use uuid::Uuid;
 
-    use super::{super::template::Metadata, *};
+    use super::{
+        super::{template::Metadata, template_syntax::PlaceholderSyntax},
+        *,
+    };
 
     #[test]
     fn detects_direct_circular_composition() {
@@ -154,6 +157,7 @@ mod tests {
             metadata: Metadata::default(),
             name: "A".to_owned(),
             pending_events: vec![],
+            syntax: PlaceholderSyntax::default(),
             variables: HashMap::new(),
         };
         templates.insert("A".to_owned(), base);
@@ -205,6 +209,7 @@ mod tests {
             metadata: Metadata::default(),
             name: "base".to_owned(),
             pending_events: vec![],
+            syntax: PlaceholderSyntax::default(),
             variables,
         };
 
