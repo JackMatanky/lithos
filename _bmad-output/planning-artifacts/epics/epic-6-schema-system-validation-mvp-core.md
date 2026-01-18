@@ -147,19 +147,16 @@ So that schemas can reference shared properties from the PropertyBank.
 
 **Given** Epic 4 provides file loading infrastructure
 **When** I implement schema loading using Epic 4 for JSON parsing
-**Then** schemas are loaded from JSON files in docs/schemas/
+**Then** schemas are loaded into `RawSchema` definitions from JSON files in docs/schemas/
 
-**Given** schemas contain $ref pointers
-**When** I resolve references using PropertyBankRegistry from Story 6.4
-**Then** $ref pointers are replaced with actual Property definitions using consistent singleton access
+**Given** schemas contain $ref pointers (e.g., "#/properties/title")
+**When** I resolve references using adapters
+**Then** adapter parses the format-specific reference string
+**And** queries PropertyBank by key to retrieve the `Property` definition
 
 **Given** PropertyBankRegistry provides global registry
 **When** I integrate schema loading
 **Then** all schema operations use the same PropertyBank instance
-
-**Given** schema loading is implemented
-**When** I load complex schemas like docs/schemas/pkm.json
-**Then** all $ref resolutions work correctly and schemas are fully expanded
 
 ## Story 6.6: Implement Schema Inheritance Resolution
 
@@ -169,17 +166,21 @@ So that child schemas can extend and modify parent schemas.
 
 **Acceptance Criteria:**
 
-**Given** schemas have Extends relationships
-**When** I implement inheritance resolution
-**Then** parent schemas are loaded and child properties are merged
+**Given** multiple `RawSchema` definitions are loaded
+**When** I initialize the schema system
+**Then** the `SchemaGraph` domain service builds a dependency graph
+**And** determines the topological resolution order (parents before children)
 
-**Given** schemas have Excludes lists
-**When** I process inheritance
-**Then** excluded parent properties are removed from the resolved schema
+**Given** resolution order is determined
+**When** the `SchemaResolver` domain service processes a schema
+**Then** it merges properties from the resolved parent `Schema`
+**And** applies `excludes` from the child definition
+**And** overrides/appends child properties
 
 **Given** complex inheritance chains exist
 **When** I resolve docs/schemas/ inheritance examples
 **Then** multi-level inheritance works (e.g., task_child extends task extends base)
+**And** circular inheritance is detected and rejected by `SchemaGraph`
 
 ## Story 6.7: Add Schema Validation and Error Handling
 
