@@ -55,6 +55,7 @@ pub use models::{
         Composition as TemplateComposition, InsertionPosition,
         Section as TemplateSection,
     },
+    template_syntax::PlaceholderSyntax,
     template_var::VariableDefinition,
 };
 pub use ports::{
