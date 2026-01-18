@@ -52,6 +52,16 @@ impl VariableDefinition {
         min: Option<f64>,
         max: Option<f64>,
     ) -> Result<(), DomainError> {
+        Self::ensure_number_at_least_min(n, min, max)?;
+        Self::ensure_number_at_most_max(n, min, max)?;
+        Ok(())
+    }
+
+    fn ensure_number_at_least_min(
+        n: f64,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Result<(), DomainError> {
         if let Some(min_val) = min
             && n < min_val
         {
@@ -61,6 +71,14 @@ impl VariableDefinition {
                 max,
             });
         }
+        Ok(())
+    }
+
+    fn ensure_number_at_most_max(
+        n: f64,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Result<(), DomainError> {
         if let Some(max_val) = max
             && n > max_val
         {
@@ -79,6 +97,15 @@ impl VariableDefinition {
         min: Option<usize>,
         max: Option<usize>,
     ) -> Result<(), DomainError> {
+        Self::ensure_string_min_length(s, min)?;
+        Self::ensure_string_max_length(s, max)?;
+        Ok(())
+    }
+
+    fn ensure_string_min_length(
+        s: &str,
+        min: Option<usize>,
+    ) -> Result<(), DomainError> {
         if let Some(m) = min
             && s.len() < m
         {
@@ -87,6 +114,13 @@ impl VariableDefinition {
                 actual: s.len(),
             });
         }
+        Ok(())
+    }
+
+    fn ensure_string_max_length(
+        s: &str,
+        max: Option<usize>,
+    ) -> Result<(), DomainError> {
         if let Some(m) = max
             && s.len() > m
         {
@@ -275,11 +309,23 @@ impl VariableDefinition {
             expected: "string (file path)".to_owned(),
         })?;
 
+        Self::ensure_file_path_not_empty(s)?;
+        Self::ensure_file_extension_allowed(s, file_types)?;
+        Ok(())
+    }
+
+    fn ensure_file_path_not_empty(s: &str) -> Result<(), DomainError> {
         if s.is_empty() {
             return Err(DomainError::EmptyPath);
         }
+        Ok(())
+    }
 
-        if let Some(allowed) = file_types {
+    fn ensure_file_extension_allowed(
+        s: &str,
+        allowed_types: Option<&[String]>,
+    ) -> Result<(), DomainError> {
+        if let Some(allowed) = allowed_types {
             let ext = std::path::Path::new(s)
                 .extension()
                 .and_then(|e| e.to_str())

@@ -40,6 +40,40 @@ impl Composition {
         )
     }
 
+    fn ensure_depth_within_limit(depth: usize) -> Result<(), DomainError> {
+        if depth > 5 {
+            return Err(DomainError::CompositionDepthExceeded(depth));
+        }
+        Ok(())
+    }
+
+    fn check_template_dependencies(
+        &self,
+        template: &Template,
+        depth: usize,
+        templates: &HashMap<String, Template>,
+        visited: &mut HashSet<String>,
+        stack: &mut HashSet<String>,
+        current_name: &str,
+    ) -> Result<(), DomainError> {
+        #[expect(clippy::pattern_type_mismatch, reason = "DFS logic")]
+        if let Some(parent_name) = &template.extends {
+            #[expect(clippy::arithmetic_side_effects, reason = "DFS logic")]
+            self.dfs_check(parent_name, depth + 1, templates, visited, stack)?;
+        }
+
+        if current_name == self.base_template {
+            for include in &self.includes {
+                #[expect(
+                    clippy::arithmetic_side_effects,
+                    reason = "DFS logic"
+                )]
+                self.dfs_check(include, depth + 1, templates, visited, stack)?;
+            }
+        }
+        Ok(())
+    }
+
     fn dfs_check(
         &self,
         current_name: &str,
@@ -48,15 +82,8 @@ impl Composition {
         visited: &mut HashSet<String>,
         stack: &mut HashSet<String>,
     ) -> Result<(), DomainError> {
-        if depth > 5 {
-            return Err(DomainError::CompositionDepthExceeded(depth));
-        }
-
-        if stack.contains(current_name) {
-            return Err(DomainError::CircularComposition(
-                current_name.to_owned(),
-            ));
-        }
+        Self::ensure_depth_within_limit(depth)?;
+        Self::ensure_not_in_stack(current_name, stack)?;
 
         if visited.contains(current_name) {
             return Ok(());
@@ -66,38 +93,27 @@ impl Composition {
         stack.insert(current_name.to_owned());
 
         if let Some(template) = templates.get(current_name) {
-            if let Some(parent_name) = &template.extends {
-                #[expect(
-                    clippy::arithmetic_side_effects,
-                    reason = "DFS logic"
-                )]
-                self.dfs_check(
-                    parent_name,
-                    depth + 1,
-                    templates,
-                    visited,
-                    stack,
-                )?;
-            }
-
-            if current_name == self.base_template {
-                for include in &self.includes {
-                    #[expect(
-                        clippy::arithmetic_side_effects,
-                        reason = "DFS logic"
-                    )]
-                    self.dfs_check(
-                        include,
-                        depth + 1,
-                        templates,
-                        visited,
-                        stack,
-                    )?;
-                }
-            }
+            self.check_template_dependencies(
+                template,
+                depth,
+                templates,
+                visited,
+                stack,
+                current_name,
+            )?;
         }
 
         stack.remove(current_name);
+        Ok(())
+    }
+
+    fn ensure_not_in_stack(
+        name: &str,
+        stack: &HashSet<String>,
+    ) -> Result<(), DomainError> {
+        if stack.contains(name) {
+            return Err(DomainError::CircularComposition(name.to_owned()));
+        }
         Ok(())
     }
 
