@@ -40,14 +40,15 @@ impl PropertyBank {
 
     /// Decodes a `$ref` path to a Property.
     ///
-    /// Format-agnostic: the key is extracted by the adapter.
+    /// This method performs a key lookup for a property. Format-specific parsing
+    /// (e.g., handling "#/properties/") must be handled by the adapters.
     ///
     /// # Errors
     /// Returns `PropertyNotFound` if key does not exist.
     #[inline]
-    pub fn decode(&self, ref_path: &str) -> Result<&Property, DomainError> {
-        self.get_by_name(ref_path)
-            .ok_or_else(|| DomainError::PropertyNotFound(ref_path.to_owned()))
+    pub fn decode(&self, key: &str) -> Result<&Property, DomainError> {
+        self.get_by_name(key)
+            .ok_or_else(|| DomainError::PropertyNotFound(key.to_owned()))
     }
 
     /// Gets a property by name or ID.

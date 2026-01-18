@@ -1,5 +1,10 @@
+#![expect(
+    clippy::disallowed_methods,
+    reason = "Benchmarks use unwrap for simplicity in setup and iteration"
+)]
+
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use lithos_domain::models::note::{Note, Tag};
+use lithos_domain::models::{note::Note, tag::Tag};
 use uuid::Uuid;
 
 fn bench_note_creation(c: &mut Criterion) {

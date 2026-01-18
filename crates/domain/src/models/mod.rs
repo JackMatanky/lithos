@@ -9,6 +9,8 @@ pub mod frontmatter;
 pub mod link;
 /// Note bounded context aggregate and main entities.
 pub mod note;
+/// Predefined regex patterns for common validations.
+pub mod patterns;
 /// Property and PropertySpec models.
 pub mod property;
 /// Registry of reusable property definitions.

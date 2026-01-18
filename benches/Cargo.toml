@@ -9,12 +9,14 @@ publish = false
 dhat-on = []
 
 [dependencies]
+lithos-domain = { path = "../crates/domain" }
 lithos-app = { path = "../crates/app" }
 lithos-test-utils = { path = "../tests/utils" }
 criterion = { workspace = true }
 tokio = { workspace = true }
 chrono = { workspace = true }
 dhat = { workspace = true }
+uuid = { workspace = true }
 
 [[bench]]
 name = "core_ops"
@@ -25,3 +27,13 @@ path = "core_ops.rs"
 name = "indexing"
 harness = false
 path = "indexing.rs"
+
+[[bench]]
+name = "domain_models"
+harness = false
+path = "domain_models.rs"
+
+[[bench]]
+name = "schema_benchmarks"
+harness = false
+path = "schema_benchmarks.rs"

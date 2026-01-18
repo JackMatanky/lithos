@@ -5,7 +5,10 @@
     reason = "Core domain logic and naming convention where Property prefix is descriptive"
 )]
 
-use std::fmt::{Debug, Display};
+use std::{
+    fmt::{Debug, Display},
+    sync::OnceLock,
+};
 
 use crate::{errors::DomainError, models::property_spec::PropertySpec};
 
@@ -42,8 +45,16 @@ impl PropertyName {
     }
 
     fn validate_format(name: &str) -> Result<(), DomainError> {
-        let re = regex::Regex::new("^[a-z0-9_-]+$")
-            .map_err(|e| DomainError::ValidationFailed(e.to_string()))?;
+        static NAME_RE: OnceLock<regex::Regex> = OnceLock::new();
+        #[expect(
+            clippy::expect_used,
+            clippy::disallowed_methods,
+            reason = "Standard pattern for hardcoded regexes - Regex is known valid"
+        )]
+        let re = NAME_RE.get_or_init(|| {
+            regex::Regex::new("^[a-z0-9_-]+$")
+                .expect("Hardcoded regex is valid")
+        });
         if !re.is_match(name) {
             return Err(DomainError::InvalidPropertyName(name.to_owned()));
         }
@@ -137,13 +148,10 @@ impl Property {
     ) -> Result<String, DomainError> {
         let mut hasher = blake3::Hasher::new();
         hasher.update(name.as_bytes());
-        // Use canonical JSON representation for spec content to ensure absolute determinism
-        let spec_json = serde_json::to_string(spec).map_err(|e| {
-            DomainError::ValidationFailed(format!(
-                "Failed to canonicalize spec: {e}"
-            ))
-        })?;
-        hasher.update(spec_json.as_bytes());
+        // Use Debug representation for spec content to ensure absolute determinism
+        // as suggested in the architectural requirements for property identity.
+        let spec_repr = format!("{spec:?}");
+        hasher.update(spec_repr.as_bytes());
         Ok(hasher.finalize().to_hex().to_string())
     }
 
@@ -229,8 +237,12 @@ impl Property {
 )]
 pub enum RawProperty {
     /// An inline property definition.
+    ///
+    /// This variant handles inline definitions in schema files.
     Inline(RawPropertyInline),
     /// A reference to a property in the `PropertyBank`.
+    ///
+    /// This variant handles `$ref` pointers in schema files.
     Ref(RawPropertyRef),
 }
 

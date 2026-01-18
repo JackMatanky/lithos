@@ -8,6 +8,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
+    sync::OnceLock,
 };
 
 use uuid::Uuid;
@@ -54,8 +55,16 @@ impl SchemaName {
     }
 
     fn validate_format(name: &str) -> Result<(), DomainError> {
-        let re = regex::Regex::new("^[a-z0-9]+(-[a-z0-9]+)*$")
-            .map_err(|e| DomainError::ValidationFailed(e.to_string()))?;
+        static SCHEMA_NAME_RE: OnceLock<regex::Regex> = OnceLock::new();
+        #[expect(
+            clippy::expect_used,
+            clippy::disallowed_methods,
+            reason = "Standard pattern for hardcoded regexes - Regex is known valid"
+        )]
+        let re = SCHEMA_NAME_RE.get_or_init(|| {
+            regex::Regex::new("^[a-z0-9]+(-[a-z0-9]+)*$")
+                .expect("Hardcoded regex is valid")
+        });
         if !re.is_match(name) {
             return Err(DomainError::InvalidSchemaName(name.to_owned()));
         }
