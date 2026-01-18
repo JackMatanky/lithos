@@ -28,6 +28,18 @@ use crate::{
 /// - Non-empty
 /// - Max 64 characters
 /// - Matches regex `^[a-z0-9]+(-[a-z0-9]+)*$` (kebab-case)
+///
+/// # Examples
+///
+/// ```
+/// use lithos_domain::models::schema::SchemaName;
+///
+/// let name = SchemaName::new("project-note".to_string()).unwrap();
+/// assert_eq!(name.as_str(), "project-note");
+///
+/// let invalid = SchemaName::new("Project_Note".to_string());
+/// assert!(invalid.is_err());
+/// ```
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -139,6 +151,20 @@ pub enum DomainEvent {
 ///
 /// Represents the unresolved schema loaded from a file.
 /// Contains inheritance pointers and excluded properties that need resolution.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_domain::models::schema::{RawSchema, SchemaName};
+/// use std::collections::HashSet;
+///
+/// let raw = RawSchema::new(
+///     SchemaName::new("daily-note".into()).unwrap(),
+///     Some(SchemaName::new("base-note".into()).unwrap()),
+///     HashSet::new(),
+///     vec![],
+/// );
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawSchema {
@@ -153,6 +179,25 @@ pub struct RawSchema {
     pub properties: Vec<RawProperty>,
 }
 
+impl RawSchema {
+    /// Create a new `RawSchema`.
+    #[inline]
+    #[must_use]
+    pub fn new(
+        name: SchemaName,
+        extends: Option<SchemaName>,
+        excludes: HashSet<PropertyName>,
+        properties: Vec<RawProperty>,
+    ) -> Self {
+        Self {
+            excludes,
+            extends,
+            name,
+            properties,
+        }
+    }
+}
+
 /// Schema aggregate defining metadata validation rules (Output).
 ///
 /// Represents a fully resolved schema with no external dependencies.
@@ -161,6 +206,17 @@ pub struct RawSchema {
 /// # Invariants
 /// - Schema name must be valid kebab-case.
 /// - Properties are fully resolved and unique by name.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_domain::models::schema::{Schema, SchemaName};
+/// use uuid::Uuid;
+///
+/// let name = SchemaName::new("project-note".into()).unwrap();
+/// let (schema, _) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+/// assert!(schema.properties.is_empty());
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Schema {
@@ -174,6 +230,17 @@ pub struct Schema {
 
 impl Schema {
     /// Gets a property by name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_domain::models::schema::{Schema, SchemaName};
+    /// use uuid::Uuid;
+    ///
+    /// let name = SchemaName::new("test".into()).unwrap();
+    /// let (schema, _) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// assert!(schema.get("missing").is_none());
+    /// ```
     #[inline]
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&Property> {
@@ -226,6 +293,22 @@ impl Schema {
 }
 
 /// Domain Service: Manages schema lineage and resolution order.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_domain::models::schema::{SchemaGraph, SchemaName};
+///
+/// let mut graph = SchemaGraph::new();
+/// let child = SchemaName::new("child".into()).unwrap();
+/// let parent = SchemaName::new("parent".into()).unwrap();
+///
+/// graph.add_node(child.clone(), Some(parent.clone()));
+/// graph.add_node(parent.clone(), None);
+///
+/// let order = graph.resolve_order().unwrap();
+/// assert_eq!(order, vec![parent, child]);
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct SchemaGraph {
@@ -339,6 +422,27 @@ impl Default for SchemaGraph {
 }
 
 /// Domain Service: Resolves a raw schema into a final Schema entity.
+///
+/// Merges parent properties, applies excludes, and resolves `$ref` pointers.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_domain::models::schema::{SchemaResolver, RawSchema, SchemaName};
+/// use lithos_domain::models::property_bank::PropertyBank;
+/// use std::collections::HashSet;
+///
+/// let bank = PropertyBank::new();
+/// let raw = RawSchema::new(
+///     SchemaName::new("test".into()).unwrap(),
+///     None,
+///     HashSet::new(),
+///     vec![],
+/// );
+///
+/// let schema = SchemaResolver::resolve(raw, None, &bank).unwrap();
+/// assert_eq!(schema.name.as_str(), "test");
+/// ```
 #[non_exhaustive]
 pub struct SchemaResolver;
 

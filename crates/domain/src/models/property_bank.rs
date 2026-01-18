@@ -11,6 +11,23 @@ use crate::{
 /// Registry of reusable Property definitions with dual indexing.
 ///
 /// Provides O(1) lookup by ID and Name.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_domain::models::property_bank::PropertyBank;
+/// use lithos_domain::models::property::{Property, PropertyName};
+/// use lithos_domain::models::property_spec::{PropertySpec, BoolSpec};
+///
+/// let mut bank = PropertyBank::new();
+/// let name = PropertyName::new("is_active".to_string()).unwrap();
+/// let spec = PropertySpec::Bool(BoolSpec::default());
+/// let id = Property::compute_id(name.as_str(), &spec).unwrap();
+/// let property = Property::new(id, name, true, false, spec).unwrap();
+///
+/// bank.register(property).unwrap();
+/// assert!(bank.has_name("is_active"));
+/// ```
 #[derive(
     Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize,
 )]
@@ -45,6 +62,16 @@ impl PropertyBank {
     ///
     /// # Errors
     /// Returns `PropertyNotFound` if key does not exist.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_domain::models::property_bank::PropertyBank;
+    ///
+    /// let bank = PropertyBank::new();
+    /// let result = bank.decode("missing");
+    /// assert!(result.is_err());
+    /// ```
     #[inline]
     pub fn decode(&self, key: &str) -> Result<&Property, DomainError> {
         self.get_by_name(key)
@@ -52,6 +79,15 @@ impl PropertyBank {
     }
 
     /// Gets a property by name or ID.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_domain::models::property_bank::PropertyBank;
+    ///
+    /// let bank = PropertyBank::new();
+    /// assert!(bank.get("any").is_none());
+    /// ```
     #[inline]
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&Property> {
