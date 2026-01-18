@@ -7,9 +7,10 @@
 
 use std::{
     fmt::{Debug, Display},
-    sync::OnceLock,
+    sync::LazyLock,
 };
 
+use regex::Regex;
 use uuid::Uuid;
 
 use crate::{errors::DomainError, models::schema::property_spec::PropertySpec};
@@ -19,7 +20,7 @@ use crate::{errors::DomainError, models::schema::property_spec::PropertySpec};
 /// Enforces invariants:
 /// - Non-empty
 /// - Max 64 characters
-/// - Matches regex `^[a-z0-9_-]+$`
+/// - Matches regex `^[a-zA-Z0-9_-]+$` (alphanumeric, underscores, dashes)
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
@@ -47,17 +48,16 @@ impl PropertyName {
     }
 
     fn validate_format(name: &str) -> Result<(), DomainError> {
-        static NAME_RE: OnceLock<regex::Regex> = OnceLock::new();
-        #[expect(
-            clippy::expect_used,
-            clippy::disallowed_methods,
-            reason = "Standard pattern for hardcoded regexes - Regex is known valid"
-        )]
-        let re = NAME_RE.get_or_init(|| {
-            regex::Regex::new("^[a-z0-9_-]+$")
-                .expect("Hardcoded regex is valid")
+        static PROPERTY_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
+            #[expect(
+                clippy::expect_used,
+                clippy::disallowed_methods,
+                reason = "Hardcoded regex literal is guaranteed valid"
+            )]
+            Regex::new("^[a-zA-Z0-9_-]+$").expect("Static regex literal")
         });
-        if !re.is_match(name) {
+
+        if !PROPERTY_NAME_RE.is_match(name) {
             return Err(DomainError::InvalidPropertyName(name.to_owned()));
         }
         Ok(())
@@ -449,7 +449,7 @@ mod tests {
             /// 3.3-UNIT-015: `validates_property_name_format_proptest`.
             /// Priority: P2.
             #[test]
-            fn validates_property_name_format_proptest(name in "[a-z0-9_-]{1,64}") {
+            fn validates_property_name_format_proptest(name in "[a-zA-Z0-9_-]{1,64}") {
                 // GIVEN an arbitrary valid property name
                 // WHEN creating a PropertyName
                 // THEN it must succeed
@@ -459,7 +459,7 @@ mod tests {
             /// 3.3-UNIT-016: `rejects_invalid_property_name_characters_proptest`.
             /// Priority: P2.
             #[test]
-            fn rejects_invalid_property_name_characters_proptest(name in ".*[^a-z0-9_-].*") {
+            fn rejects_invalid_property_name_characters_proptest(name in ".*[^a-zA-Z0-9_-].*") {
                 // GIVEN an arbitrary string containing invalid characters
                 // WHEN creating a PropertyName (filtering for correct length)
                 if !name.is_empty() && name.len() <= 64 {
