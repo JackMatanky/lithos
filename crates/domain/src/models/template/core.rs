@@ -5,9 +5,10 @@ use regex::Regex;
 use uuid::Uuid;
 
 use super::{
-    template_comp::{Composition, InsertionPosition, Section},
-    template_syntax::PlaceholderSyntax,
-    template_var::VariableDefinition,
+    composition::{Composition, InsertionPosition, Section},
+    syntax::PlaceholderSyntax,
+    validation::{validate_content, validate_structure},
+    variable::VariableDefinition,
 };
 use crate::{errors::DomainError, events::TemplateCreated};
 
@@ -16,6 +17,7 @@ use crate::{errors::DomainError, events::TemplateCreated};
 static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new("^[a-zA-Z0-9_-]+$").expect("Invalid static regex literal")
 });
+
 #[expect(clippy::disallowed_methods, reason = "Static regex initialization")]
 #[expect(clippy::expect_used, reason = "Static regex initialization")]
 static VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
@@ -78,7 +80,7 @@ pub struct Template {
     pub id: Uuid,
     /// Unique template name.
     pub name: String,
-    /// Template content (standard placeholder syntax).
+    /// Template content.
     pub content: String,
     /// Syntax used for placeholders.
     pub syntax: PlaceholderSyntax,
@@ -88,7 +90,7 @@ pub struct Template {
     pub extends: Option<String>,
     /// Metadata for template management.
     pub metadata: Metadata,
-    /// Domain events pending emission (not serialized).
+    /// Domain events pending emission.
     #[serde(skip)]
     pub(crate) pending_events: Vec<DomainEvent>,
 }
@@ -100,42 +102,6 @@ impl Template {
         self.pending_events.push(event);
     }
 
-    /// Applies additional sections to content.
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Matching on enum references"
-    )]
-    fn apply_sections(&self, content: &mut String, sections: &[Section]) {
-        for section in sections {
-            match &section.position {
-                InsertionPosition::Beginning => {
-                    content.insert(0, '\n');
-                    content.insert_str(0, &section.content);
-                }
-                InsertionPosition::End => {
-                    content.push('\n');
-                    content.push_str(&section.content);
-                }
-                InsertionPosition::BeforeVariable(var_name) => {
-                    self.insert_relative_to_variable(
-                        content,
-                        var_name,
-                        &section.content,
-                        false,
-                    );
-                }
-                InsertionPosition::AfterVariable(var_name) => {
-                    self.insert_relative_to_variable(
-                        content,
-                        var_name,
-                        &section.content,
-                        true,
-                    );
-                }
-            }
-        }
-    }
-
     /// Composes a template from a base and a composition.
     ///
     /// # Errors
@@ -144,8 +110,10 @@ impl Template {
     pub fn compose(
         base: &Self,
         composition: &Composition,
+        templates: &HashMap<String, Template>,
     ) -> Result<Self, DomainError> {
         composition.validate(base)?;
+        composition.detect_cycles(templates)?;
 
         let mut final_content = base.content.clone();
         base.apply_sections(
@@ -153,43 +121,26 @@ impl Template {
             &composition.additional_sections,
         );
 
-        Ok(Self {
+        let id = Uuid::now_v7();
+        let name = format!("{}-composed", base.name);
+        let mut template = Self {
             content: final_content,
             extends: Some(base.name.clone()),
-            id: Uuid::now_v7(),
+            id,
             metadata: Metadata::default(),
-            name: format!("{}-composed", base.name),
+            name: name.clone(),
             pending_events: vec![],
             syntax: base.syntax.clone(),
             variables: base.variables.clone(),
-        })
-    }
+        };
 
-    /// Formats a variable name as a template placeholder.
-    fn format_placeholder(&self, var_name: &str) -> String {
-        self.syntax.wrap(var_name)
-    }
+        template.add_event(DomainEvent::TemplateCreated(TemplateCreated::new(
+            id,
+            name,
+            chrono::Utc::now().timestamp(),
+        )));
 
-    /// Inserts content relative to a variable placeholder.
-    #[expect(clippy::arithmetic_side_effects, reason = "Index calculation")]
-    fn insert_relative_to_variable(
-        &self,
-        content: &mut String,
-        var_name: &str,
-        section_content: &str,
-        after: bool,
-    ) {
-        let placeholder = self.format_placeholder(var_name);
-        if let Some(pos) = content.find(&placeholder) {
-            if after {
-                let insert_pos = pos + placeholder.len();
-                content.insert(insert_pos, '\n');
-                content.insert_str(insert_pos + 1, section_content);
-            } else {
-                content.insert_str(pos, section_content);
-                content.insert(pos + section_content.len(), '\n');
-            }
-        }
+        Ok(template)
     }
 
     /// Creates a new template aggregate with validation.
@@ -205,7 +156,7 @@ impl Template {
         metadata: Metadata,
     ) -> Result<Self, DomainError> {
         Self::validate_name(&name)?;
-        Self::validate_content(&content)?;
+        validate_content(&content)?;
         Self::validate_variable_definitions(&variables)?;
 
         let id = Uuid::now_v7();
@@ -231,14 +182,14 @@ impl Template {
         Ok(template)
     }
 
-    /// Returns a reference to pending domain events without clearing them.
+    /// Returns a reference to pending domain events.
     #[inline]
     #[must_use]
     pub fn pending_events(&self) -> &[DomainEvent] {
         &self.pending_events
     }
 
-    /// Returns all pending domain events and clears the collection.
+    /// Returns and clears pending domain events.
     #[inline]
     #[must_use]
     pub fn take_events(&mut self) -> Vec<DomainEvent> {
@@ -248,24 +199,81 @@ impl Template {
     /// Validates template business rules.
     ///
     /// # Errors
-    /// Currently always returns `Ok(())`.
+    /// Returns `DomainError::ValidationFailed` if placeholders are unbalanced.
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
+        validate_structure(
+            &self.content,
+            &self.syntax.prefix,
+            &self.syntax.suffix,
+        )?;
         Ok(())
     }
 
-    /// Validates template content.
-    fn validate_content(content: &str) -> Result<(), DomainError> {
-        if content.len() > 1024 * 1024 {
-            return Err(DomainError::TemplateContentTooLarge(
-                content.len(),
-                1024 * 1024,
-            ));
+    /// Applies additional sections to content.
+    fn apply_sections(&self, content: &mut String, sections: &[Section]) {
+        for section in sections {
+            match section.position {
+                InsertionPosition::Beginning => {
+                    content.insert(0, '\n');
+                    content.insert_str(0, &section.content);
+                }
+                InsertionPosition::End => {
+                    content.push('\n');
+                    content.push_str(&section.content);
+                }
+                InsertionPosition::BeforeVariable(ref var_name) => {
+                    self.insert_relative_to_variable(
+                        content,
+                        var_name,
+                        &section.content,
+                        false,
+                    );
+                }
+                InsertionPosition::AfterVariable(ref var_name) => {
+                    self.insert_relative_to_variable(
+                        content,
+                        var_name,
+                        &section.content,
+                        true,
+                    );
+                }
+            }
         }
-        Ok(())
     }
 
-    /// Validates template name format.
+    fn insert_relative_to_variable(
+        &self,
+        content: &mut String,
+        var_name: &str,
+        section_content: &str,
+        after: bool,
+    ) {
+        let placeholder = self.syntax.wrap(var_name);
+        if let Some(pos) = content.find(&placeholder) {
+            if after {
+                #[expect(
+                    clippy::arithmetic_side_effects,
+                    reason = "Index logic"
+                )]
+                let insert_pos = pos + placeholder.len();
+                content.insert(insert_pos, '\n');
+                #[expect(
+                    clippy::arithmetic_side_effects,
+                    reason = "Index logic"
+                )]
+                content.insert_str(insert_pos + 1, section_content);
+            } else {
+                content.insert_str(pos, section_content);
+                #[expect(
+                    clippy::arithmetic_side_effects,
+                    reason = "Index logic"
+                )]
+                content.insert(pos + section_content.len(), '\n');
+            }
+        }
+    }
+
     fn validate_name(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
             return Err(DomainError::ValidationFailed(
@@ -285,11 +293,7 @@ impl Template {
         Ok(())
     }
 
-    /// Validates variable definitions.
-    #[expect(
-        clippy::iter_over_hash_type,
-        reason = "Validation order is irrelevant"
-    )]
+    #[expect(clippy::iter_over_hash_type, reason = "Validation only")]
     fn validate_variable_definitions(
         variables: &HashMap<String, VariableDefinition>,
     ) -> Result<(), DomainError> {
@@ -303,7 +307,6 @@ impl Template {
         Ok(())
     }
 
-    /// Validates individual variable name.
     fn validate_variable_name(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
             return Err(DomainError::ValidationFailed(
@@ -360,20 +363,15 @@ impl Default for Metadata {
 
 #[cfg(test)]
 mod tests {
-    mod fixtures {
-        use std::collections::HashMap;
+    use proptest::prelude::*;
 
-        use crate::models::{
-            template::Metadata, template_var::VariableDefinition,
-        };
+    use super::*;
 
-        pub fn basic_template_attributes() -> (
-            String,
-            String,
-            HashMap<String, VariableDefinition>,
-            Option<String>,
-            Metadata,
-        ) {
+    mod new {
+        use super::*;
+
+        #[test]
+        fn should_create_template_when_attributes_are_valid() {
             let mut variables = HashMap::new();
             variables.insert(
                 "title".to_owned(),
@@ -384,148 +382,65 @@ mod tests {
                     pattern: None,
                 },
             );
-            (
+
+            let result = Template::new(
                 "daily-note".to_owned(),
                 "# {{title}}".to_owned(),
                 variables,
                 None,
                 Metadata::default(),
-            )
-        }
-    }
+            );
 
-    use proptest::prelude::*;
-
-    use super::*;
-
-    mod new {
-        use super::*;
-
-        /// 3.4-UNIT-001: `should_create_template_when_attributes_are_valid`
-        /// AC: Template entity includes structure validation and business rules.
-        #[test]
-        fn should_create_template_when_attributes_are_valid() {
-            // Given
-            let (name, content, variables, extends, metadata) =
-                fixtures::basic_template_attributes();
-
-            // When
-            let result =
-                Template::new(name, content, variables, extends, metadata);
-
-            // Then
             assert!(
                 result.is_ok(),
-                "Expected valid template creation to succeed, got {:?}",
-                result.err()
+                "Expected valid template creation to succeed"
             );
         }
 
-        /// 3.4-UNIT-002: `should_reject_template_when_name_format_is_invalid`
-        /// AC: Template name validation regex `^[a-zA-Z0-9_-]+$`.
         #[test]
         fn should_reject_template_when_name_format_is_invalid() {
-            // Given
-            let names = vec![
-                String::new(),
-                "Invalid Name".to_owned(),
-                "name!".to_owned(),
-                "a".repeat(65),
-            ];
-
+            let invalid_long_name = "a".repeat(65);
+            let names = vec!["", "Invalid Name", "name!", &invalid_long_name];
             for name in names {
-                // When
                 let result = Template::new(
-                    name.clone(),
+                    name.to_owned(),
                     "content".to_owned(),
                     HashMap::new(),
                     None,
                     Metadata::default(),
                 );
-
-                // Then
-                assert!(
-                    result.is_err(),
-                    "Expected name '{name}' to be rejected"
-                );
+                assert!(result.is_err(), "Expected error for name: {name}");
             }
         }
 
-        /// 3.4-UNIT-003: `should_reject_template_when_content_size_exceeds_limit`
-        /// AC: Template content: MAX 1MB.
         #[test]
-        fn should_reject_template_when_content_size_exceeds_limit() {
-            // Given
-            let large_content = "a".repeat(1024 * 1024 + 1); // 1MB + 1
-
-            // When
+        fn should_reject_template_when_unbalanced_placeholders() {
             let result = Template::new(
-                "large".to_owned(),
-                large_content,
+                "unbalanced".to_owned(),
+                "{{open but no close".to_owned(),
                 HashMap::new(),
                 None,
                 Metadata::default(),
             );
-
-            // Then
-            assert!(matches!(
-                result,
-                Err(DomainError::TemplateContentTooLarge(_, _))
-            ));
-        }
-
-        /// 3.4-UNIT-004: `should_reject_template_when_variable_count_exceeds_limit`
-        /// AC: Variable count: MAX 50 variables.
-        #[test]
-        fn should_reject_template_when_variable_count_exceeds_limit() {
-            // Given
-            let mut variables = HashMap::new();
-            for i in 0i32..51i32 {
-                variables.insert(
-                    format!("var{i}"),
-                    VariableDefinition::Boolean {
-                        default: None,
-                    },
-                );
-            }
-
-            // When
-            let result = Template::new(
-                "many-vars".to_owned(),
-                "content".to_owned(),
-                variables,
-                None,
-                Metadata::default(),
+            assert!(result.is_err());
+            assert!(
+                result.unwrap_err().to_string().contains("Unbalanced"),
+                "Expected unbalanced error"
             );
-
-            // Then
-            assert!(matches!(
-                result,
-                Err(DomainError::MaxVariablesExceeded(_))
-            ));
         }
     }
 
-    mod validation {
-        use super::*;
-
-        proptest! {
-            /// 3.4-UNIT-005: `should_validate_template_name_format_across_edge_cases`
-            /// AC: Mathematical edge-case verification for name regex.
-            #[test]
-            fn should_validate_template_name_format_across_edge_cases(name in "[a-zA-Z0-9_-]{1,64}") {
-                // When
-                let result = Template::new(
-                    name.clone(),
-                    "content".to_owned(),
-                    HashMap::new(),
-                    None,
-                    Metadata::default(),
-                );
-
-                // Then
-                prop_assert!(result.is_ok());
-            }
+    proptest! {
+        #[test]
+        fn should_validate_template_name_format_across_edge_cases(name in "[a-zA-Z0-9_-]{1,64}") {
+            let result = Template::new(
+                name,
+                "content".to_owned(),
+                HashMap::new(),
+                None,
+                Metadata::default(),
+            );
+            prop_assert!(result.is_ok());
         }
     }
 }

@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     errors::DomainError,
-    models::{template::Template, template_comp::Composition},
+    models::template::{Composition, Template},
 };
 
 /// Command port for template-related write operations.
