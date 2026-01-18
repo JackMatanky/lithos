@@ -48,6 +48,75 @@ pub enum VariableDefinition {
 }
 
 impl VariableDefinition {
+    /// Checks if a number is within the specified range.
+    fn check_number_range(
+        n: f64,
+        min: Option<f64>,
+        max: Option<f64>,
+    ) -> Result<(), DomainError> {
+        if let Some(min_val) = min
+            && n < min_val
+        {
+            return Err(DomainError::NumberOutOfRange {
+                value: n,
+                min: Some(min_val),
+                max,
+            });
+        }
+        if let Some(max_val) = max
+            && n > max_val
+        {
+            return Err(DomainError::NumberOutOfRange {
+                value: n,
+                min,
+                max: Some(max_val),
+            });
+        }
+        Ok(())
+    }
+
+    /// Checks string length constraints.
+    fn check_string_length(
+        s: &str,
+        min: Option<usize>,
+        max: Option<usize>,
+    ) -> Result<(), DomainError> {
+        if let Some(m) = min
+            && s.len() < m
+        {
+            return Err(DomainError::StringTooShort {
+                min: m,
+                actual: s.len(),
+            });
+        }
+        if let Some(m) = max
+            && s.len() > m
+        {
+            return Err(DomainError::StringTooLong {
+                max: m,
+                actual: s.len(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Checks string pattern constraints.
+    fn check_string_pattern(
+        s: &str,
+        pattern: Option<&str>,
+    ) -> Result<(), DomainError> {
+        if let Some(p) = pattern {
+            let re = regex::Regex::new(p)
+                .map_err(|e| DomainError::InvalidRegex(e.to_string()))?;
+            if !re.is_match(s) {
+                return Err(DomainError::ValidationFailed(format!(
+                    "String does not match pattern: {p}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// Gets default value as `serde_json::Value`.
     #[inline]
     #[must_use]
@@ -75,7 +144,7 @@ impl VariableDefinition {
             | Self::String {
                 default,
                 ..
-            } => default.as_ref().map(|v| serde_json::Value::from(v.as_str())),
+            } => default.as_deref().map(serde_json::Value::from),
         }
     }
 
@@ -111,6 +180,21 @@ impl VariableDefinition {
         }
     }
 
+    /// Parses a date string with an optional format.
+    fn parse_date_string(
+        s: &str,
+        format: Option<&str>,
+    ) -> Result<(), DomainError> {
+        if let Some(fmt) = format {
+            chrono::NaiveDate::parse_from_str(s, fmt)
+                .map_err(|e| DomainError::InvalidDateFormat(e.to_string()))?;
+        } else {
+            s.parse::<DateTime<Utc>>()
+                .map_err(|e| DomainError::InvalidDateFormat(e.to_string()))?;
+        }
+        Ok(())
+    }
+
     fn validate_boolean(value: &serde_json::Value) -> Result<(), DomainError> {
         if !value.is_boolean() {
             return Err(DomainError::InvalidType {
@@ -138,16 +222,7 @@ impl VariableDefinition {
                 value: value.to_string(),
                 expected: "string (date)".to_owned(),
             })?;
-            if let Some(fmt) = format {
-                chrono::NaiveDate::parse_from_str(s, fmt).map_err(|e| {
-                    DomainError::InvalidDateFormat(e.to_string())
-                })?;
-            } else {
-                s.parse::<DateTime<Utc>>().map_err(|e| {
-                    DomainError::InvalidDateFormat(e.to_string())
-                })?;
-            }
-            Ok(())
+            Self::parse_date_string(s, format.as_deref())
         } else {
             Err(DomainError::ValidationFailed(
                 "Expected Date variant".to_owned(),
@@ -172,24 +247,32 @@ impl VariableDefinition {
                 value: value.to_string(),
                 expected: "string (file path)".to_owned(),
             })?;
-            if s.is_empty() {
-                return Err(DomainError::EmptyPath);
-            }
-            if let Some(allowed) = file_types {
-                let ext = std::path::Path::new(s)
-                    .extension()
-                    .and_then(|e| e.to_str())
-                    .unwrap_or("");
-                if !allowed.iter().any(|a| a == ext) {
-                    return Err(DomainError::InvalidFileClass(s.to_owned()));
-                }
-            }
-            Ok(())
+            Self::validate_file_path(s, file_types.as_deref())
         } else {
             Err(DomainError::ValidationFailed(
                 "Expected File variant".to_owned(),
             ))
         }
+    }
+
+    /// Validates a file path and its extension.
+    fn validate_file_path(
+        s: &str,
+        allowed_types: Option<&[String]>,
+    ) -> Result<(), DomainError> {
+        if s.is_empty() {
+            return Err(DomainError::EmptyPath);
+        }
+        if let Some(allowed) = allowed_types {
+            let ext = std::path::Path::new(s)
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("");
+            if !allowed.iter().any(|a| a == ext) {
+                return Err(DomainError::InvalidFileClass(s.to_owned()));
+            }
+        }
+        Ok(())
     }
 
     #[expect(
@@ -211,26 +294,7 @@ impl VariableDefinition {
                 expected: "number".to_owned(),
             })?;
 
-            if let Some(min_val) = min
-                && n < *min_val
-            {
-                return Err(DomainError::NumberOutOfRange {
-                    value: n,
-                    min: Some(*min_val),
-                    max: *max,
-                });
-            }
-
-            if let Some(max_val) = max
-                && n > *max_val
-            {
-                return Err(DomainError::NumberOutOfRange {
-                    value: n,
-                    min: *min,
-                    max: Some(*max_val),
-                });
-            }
-            Ok(())
+            Self::check_number_range(n, *min, *max)
         } else {
             Err(DomainError::ValidationFailed(
                 "Expected Number variant".to_owned(),
@@ -258,33 +322,8 @@ impl VariableDefinition {
                 expected: "string".to_owned(),
             })?;
 
-            if let Some(min) = min_length
-                && s.len() < *min
-            {
-                return Err(DomainError::StringTooShort {
-                    min: *min,
-                    actual: s.len(),
-                });
-            }
-
-            if let Some(max) = max_length
-                && s.len() > *max
-            {
-                return Err(DomainError::StringTooLong {
-                    max: *max,
-                    actual: s.len(),
-                });
-            }
-
-            if let Some(p) = pattern {
-                let re = regex::Regex::new(p)
-                    .map_err(|e| DomainError::InvalidRegex(e.to_string()))?;
-                if !re.is_match(s) {
-                    return Err(DomainError::ValidationFailed(format!(
-                        "String does not match pattern: {p}"
-                    )));
-                }
-            }
+            Self::check_string_length(s, *min_length, *max_length)?;
+            Self::check_string_pattern(s, pattern.as_deref())?;
             Ok(())
         } else {
             Err(DomainError::ValidationFailed(
