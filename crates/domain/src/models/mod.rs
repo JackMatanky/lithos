@@ -27,9 +27,3 @@ pub mod tag;
 pub mod task;
 /// Template bounded context models.
 pub mod template;
-/// Template composition models.
-pub mod template_comp;
-/// Template syntax models.
-pub mod template_syntax;
-/// Template variable models.
-pub mod template_var;

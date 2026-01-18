@@ -50,15 +50,10 @@ pub use models::{
     tag::Tag,
     task::{Task, TaskStatus},
     template::{
-        DomainEvent as TemplateDomainEvent, Metadata as TemplateMetadata,
-        Template,
+        Composition as TemplateComposition, DomainEvent as TemplateDomainEvent,
+        InsertionPosition, Metadata as TemplateMetadata, PlaceholderSyntax,
+        Section as TemplateSection, Template, VariableDefinition,
     },
-    template_comp::{
-        Composition as TemplateComposition, InsertionPosition,
-        Section as TemplateSection,
-    },
-    template_syntax::PlaceholderSyntax,
-    template_var::VariableDefinition,
 };
 pub use ports::{
     config::{Command as ConfigCommand, Query as ConfigQuery},
