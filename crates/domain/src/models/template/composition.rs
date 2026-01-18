@@ -57,8 +57,8 @@ impl Composition {
         visited: &mut HashSet<String>,
         stack: &mut HashSet<String>,
     ) -> Result<(), DomainError> {
-        Self::ensure_depth_within_limit(depth)?;
-        Self::ensure_not_in_stack(current_name, stack)?;
+        Self::validate_depth_within_limit(depth)?;
+        Self::validate_not_in_stack(current_name, stack)?;
 
         if visited.contains(current_name) {
             return Ok(());
@@ -104,14 +104,14 @@ impl Composition {
         )
     }
 
-    fn ensure_depth_within_limit(depth: usize) -> Result<(), DomainError> {
+    fn validate_depth_within_limit(depth: usize) -> Result<(), DomainError> {
         if depth > 5 {
             return Err(DomainError::CompositionDepthExceeded(depth));
         }
         Ok(())
     }
 
-    fn ensure_not_in_stack(
+    fn validate_not_in_stack(
         name: &str,
         stack: &HashSet<String>,
     ) -> Result<(), DomainError> {
