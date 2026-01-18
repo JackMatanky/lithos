@@ -69,7 +69,7 @@ pub enum DomainEvent {
     reason = "pending_events is internally managed"
 )]
 pub struct Template {
-    /// Template content (MiniJinja-compatible syntax).
+    /// Template content (standard placeholder syntax).
     pub content: String,
     /// Optional parent template for composition.
     pub extends: Option<String>,
@@ -157,7 +157,7 @@ impl Template {
         })
     }
 
-    /// Formats a variable name as a `MiniJinja` placeholder.
+    /// Formats a variable name as a template placeholder.
     #[expect(clippy::arithmetic_side_effects, reason = "String capacity")]
     fn format_placeholder(var_name: &str) -> String {
         let mut placeholder = String::with_capacity(var_name.len() + 4);
