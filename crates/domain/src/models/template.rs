@@ -1,79 +1,331 @@
-//! Template domain entities and business logic.
-//!
-//! This module defines the Template aggregate root and its associated subentities:
-//! VariableDefinition, Composition, Section, and Metadata.
-//!
-//! # Business Rules
-//! - Template IDs use UUID v7 for stable, time-ordered identity.
-//! - Names must follow regex `^[a-zA-Z0-9_-]+$` and be max 64 characters.
-//! - Variable names must follow regex `^[a-zA-Z_][a-zA-Z0-9_]*$` and be max 32 characters.
-//! - Circular compositions are prohibited (detected via DFS).
-//! - Composition depth is limited to 5 to prevent stack overflow.
-//! - Maximum of 50 variables per template.
-
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::LazyLock};
 
 use chrono::{DateTime, Utc};
+use regex::Regex;
 use uuid::Uuid;
 
-use crate::errors::DomainError;
+use super::{
+    template_comp::{Composition, InsertionPosition, Section},
+    template_syntax::PlaceholderSyntax,
+    template_var::VariableDefinition,
+};
+use crate::{errors::DomainError, events::TemplateCreated};
+
+#[expect(clippy::disallowed_methods, reason = "Static regex initialization")]
+#[expect(clippy::expect_used, reason = "Static regex initialization")]
+static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("^[a-zA-Z0-9_-]+$").expect("Invalid static regex literal")
+});
+#[expect(clippy::disallowed_methods, reason = "Static regex initialization")]
+#[expect(clippy::expect_used, reason = "Static regex initialization")]
+static VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new("^[a-zA-Z_][a-zA-Z0-9_]*$")
+        .expect("Invalid static regex literal")
+});
+
+const RESERVED_WORDS: &[&str] = &[
+    "block",
+    "call",
+    "elif",
+    "else",
+    "endblock",
+    "endcall",
+    "endfilter",
+    "endfor",
+    "endmacro",
+    "endif",
+    "endwith",
+    "extends",
+    "false",
+    "filter",
+    "for",
+    "if",
+    "import",
+    "in",
+    "include",
+    "macro",
+    "none",
+    "set",
+    "true",
+    "with",
+];
+
+/// Domain events that can be emitted by the Template aggregate.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum DomainEvent {
+    /// Template was created.
+    TemplateCreated(TemplateCreated),
+}
 
 /// Aggregate root representing a reusable template.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
+#[expect(
+    clippy::field_scoped_visibility_modifiers,
+    reason = "pub(crate) used for internal consistency with other domain models"
+)]
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "pending_events is internally managed"
+)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Meaningful logical ordering of aggregate fields"
+)]
 pub struct Template {
-    /// Template content (MiniJinja-compatible syntax).
-    pub content: String,
-    /// Optional parent template for composition.
-    pub extends: Option<String>,
     /// UUID v7 identity.
     pub id: Uuid,
-    /// Metadata for template management.
-    pub metadata: Metadata,
     /// Unique template name.
     pub name: String,
+    /// Template content (standard placeholder syntax).
+    pub content: String,
+    /// Syntax used for placeholders.
+    pub syntax: PlaceholderSyntax,
     /// Variable definitions with types and constraints.
     pub variables: HashMap<String, VariableDefinition>,
+    /// Optional parent template for composition.
+    pub extends: Option<String>,
+    /// Metadata for template management.
+    pub metadata: Metadata,
+    /// Domain events pending emission (not serialized).
+    #[serde(skip)]
+    pub(crate) pending_events: Vec<DomainEvent>,
 }
 
 impl Template {
+    /// Adds a domain event to the pending events collection.
+    #[inline]
+    pub fn add_event(&mut self, event: DomainEvent) {
+        self.pending_events.push(event);
+    }
+
+    /// Applies additional sections to content.
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Matching on enum references"
+    )]
+    fn apply_sections(&self, content: &mut String, sections: &[Section]) {
+        for section in sections {
+            match &section.position {
+                InsertionPosition::Beginning => {
+                    content.insert(0, '\n');
+                    content.insert_str(0, &section.content);
+                }
+                InsertionPosition::End => {
+                    content.push('\n');
+                    content.push_str(&section.content);
+                }
+                InsertionPosition::BeforeVariable(var_name) => {
+                    self.insert_relative_to_variable(
+                        content,
+                        var_name,
+                        &section.content,
+                        false,
+                    );
+                }
+                InsertionPosition::AfterVariable(var_name) => {
+                    self.insert_relative_to_variable(
+                        content,
+                        var_name,
+                        &section.content,
+                        true,
+                    );
+                }
+            }
+        }
+    }
+
     /// Composes a template from a base and a composition.
     ///
     /// # Errors
-    /// Returns `DomainError::ValidationFailed` in RED phase.
+    /// Returns `DomainError::ValidationFailed` if composition validation fails.
     #[inline]
     pub fn compose(
-        _base: &Self,
-        _composition: &Composition,
+        base: &Self,
+        composition: &Composition,
     ) -> Result<Self, DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+        composition.validate(base)?;
+
+        let mut final_content = base.content.clone();
+        base.apply_sections(
+            &mut final_content,
+            &composition.additional_sections,
+        );
+
+        Ok(Self {
+            content: final_content,
+            extends: Some(base.name.clone()),
+            id: Uuid::now_v7(),
+            metadata: Metadata::default(),
+            name: format!("{}-composed", base.name),
+            pending_events: vec![],
+            syntax: base.syntax.clone(),
+            variables: base.variables.clone(),
+        })
+    }
+
+    /// Formats a variable name as a template placeholder.
+    fn format_placeholder(&self, var_name: &str) -> String {
+        self.syntax.wrap(var_name)
+    }
+
+    /// Inserts content relative to a variable placeholder.
+    #[expect(clippy::arithmetic_side_effects, reason = "Index calculation")]
+    fn insert_relative_to_variable(
+        &self,
+        content: &mut String,
+        var_name: &str,
+        section_content: &str,
+        after: bool,
+    ) {
+        let placeholder = self.format_placeholder(var_name);
+        if let Some(pos) = content.find(&placeholder) {
+            if after {
+                let insert_pos = pos + placeholder.len();
+                content.insert(insert_pos, '\n');
+                content.insert_str(insert_pos + 1, section_content);
+            } else {
+                content.insert_str(pos, section_content);
+                content.insert(pos + section_content.len(), '\n');
+            }
+        }
     }
 
     /// Creates a new template aggregate with validation.
     ///
     /// # Errors
-    /// Returns `DomainError::ValidationFailed` in RED phase.
+    /// Returns `DomainError` if validation fails (name format, size limits, etc).
     #[inline]
     pub fn new(
-        _name: String,
-        _content: String,
-        _variables: HashMap<String, VariableDefinition>,
-        _extends: Option<String>,
-        _metadata: Metadata,
+        name: String,
+        content: String,
+        variables: HashMap<String, VariableDefinition>,
+        extends: Option<String>,
+        metadata: Metadata,
     ) -> Result<Self, DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+        Self::validate_name(&name)?;
+        Self::validate_content(&content)?;
+        Self::validate_variable_definitions(&variables)?;
+
+        let id = Uuid::now_v7();
+        let mut template = Self {
+            content,
+            extends,
+            id,
+            metadata,
+            name: name.clone(),
+            pending_events: vec![],
+            syntax: PlaceholderSyntax::default(),
+            variables,
+        };
+
+        template.validate()?;
+
+        template.add_event(DomainEvent::TemplateCreated(TemplateCreated::new(
+            id,
+            name,
+            chrono::Utc::now().timestamp(),
+        )));
+
+        Ok(template)
+    }
+
+    /// Returns a reference to pending domain events without clearing them.
+    #[inline]
+    #[must_use]
+    pub fn pending_events(&self) -> &[DomainEvent] {
+        &self.pending_events
+    }
+
+    /// Returns all pending domain events and clears the collection.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<DomainEvent> {
+        std::mem::take(&mut self.pending_events)
     }
 
     /// Validates template business rules.
     ///
     /// # Errors
-    /// Returns `DomainError::ValidationFailed` in RED phase.
+    /// Currently always returns `Ok(())`.
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
+        Ok(())
+    }
+
+    /// Validates template content.
+    fn validate_content(content: &str) -> Result<(), DomainError> {
+        if content.len() > 1024 * 1024 {
+            return Err(DomainError::TemplateContentTooLarge(
+                content.len(),
+                1024 * 1024,
+            ));
+        }
+        Ok(())
+    }
+
+    /// Validates template name format.
+    fn validate_name(name: &str) -> Result<(), DomainError> {
+        if name.is_empty() {
+            return Err(DomainError::ValidationFailed(
+                "Template name cannot be empty".to_owned(),
+            ));
+        }
+        if name.len() > 64 {
+            return Err(DomainError::ValidationFailed(
+                "Template name too long".to_owned(),
+            ));
+        }
+        if !NAME_RE.is_match(name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid template name: {name}"
+            )));
+        }
+        Ok(())
+    }
+
+    /// Validates variable definitions.
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Validation order is irrelevant"
+    )]
+    fn validate_variable_definitions(
+        variables: &HashMap<String, VariableDefinition>,
+    ) -> Result<(), DomainError> {
+        if variables.len() > 50 {
+            return Err(DomainError::MaxVariablesExceeded(variables.len()));
+        }
+
+        for var_name in variables.keys() {
+            Self::validate_variable_name(var_name)?;
+        }
+        Ok(())
+    }
+
+    /// Validates individual variable name.
+    fn validate_variable_name(name: &str) -> Result<(), DomainError> {
+        if name.is_empty() {
+            return Err(DomainError::ValidationFailed(
+                "Variable name cannot be empty".to_owned(),
+            ));
+        }
+        if name.len() > 32 {
+            return Err(DomainError::ValidationFailed(
+                "Variable name too long".to_owned(),
+            ));
+        }
+        if !VAR_RE.is_match(name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid variable name: {name}"
+            )));
+        }
+        if RESERVED_WORDS.contains(&name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Variable name '{name}' is a reserved word"
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -106,182 +358,83 @@ impl Default for Metadata {
     }
 }
 
-/// Type-safe variable definition with validation constraints.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub enum VariableDefinition {
-    /// Boolean variable.
-    Boolean {
-        /// Default value.
-        default: Option<bool>,
-    },
-    /// Date variable.
-    Date {
-        /// Default value.
-        default: Option<String>,
-        /// ISO 8601 format string.
-        format: Option<String>,
-    },
-    /// File reference variable.
-    File {
-        /// Default value.
-        default: Option<String>,
-        /// Allowed file types.
-        file_types: Option<Vec<String>>,
-    },
-    /// Number variable.
-    Number {
-        /// Default value.
-        default: Option<f64>,
-        /// Maximum value.
-        max: Option<f64>,
-        /// Minimum value.
-        min: Option<f64>,
-    },
-    /// String variable.
-    String {
-        /// Default value.
-        default: Option<String>,
-        /// Maximum length.
-        max_length: Option<usize>,
-        /// Minimum length.
-        min_length: Option<usize>,
-        /// Regex pattern.
-        pattern: Option<String>,
-    },
-}
-
-impl VariableDefinition {
-    /// Validates a value against this definition.
-    ///
-    /// # Errors
-    /// Returns `DomainError::ValidationFailed` in RED phase.
-    #[inline]
-    pub fn validate_value(
-        &self,
-        _value: &serde_json::Value,
-    ) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-}
-
-/// Template composition for modular template building.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Composition {
-    /// Additional content sections to append.
-    pub additional_sections: Vec<Section>,
-    /// Base template name.
-    pub base_template: String,
-    /// Child templates to include.
-    pub includes: Vec<String>,
-    /// Variable overrides for base template.
-    pub variable_overrides: HashMap<String, serde_json::Value>,
-}
-
-impl Composition {
-    /// Detects circular references in composition.
-    ///
-    /// # Errors
-    /// Returns `DomainError::ValidationFailed` in RED phase.
-    #[inline]
-    pub fn detect_cycles(
-        &self,
-        _depth: usize,
-        _templates: &HashMap<String, Template>,
-    ) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-
-    /// Validates composition business rules.
-    ///
-    /// # Errors
-    /// Returns `DomainError::ValidationFailed` in RED phase.
-    #[inline]
-    pub fn validate(&self, _base: &Template) -> Result<(), DomainError> {
-        // RED PHASE: Not implemented
-        Err(DomainError::ValidationFailed("Not implemented".to_owned()))
-    }
-}
-
-/// Template section for composition.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Section {
-    /// Section content.
-    pub content: String,
-    /// Section name.
-    pub name: String,
-    /// Insertion point.
-    pub position: InsertionPosition,
-}
-
-/// Insertion point for template sections.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub enum InsertionPosition {
-    /// Insert after named variable.
-    AfterVariable(String),
-    /// Insert before named variable.
-    BeforeVariable(String),
-    /// Insert at template start.
-    Beginning,
-    /// Insert at template end.
-    End,
-}
-
 #[cfg(test)]
 mod tests {
-    use proptest::prelude::*;
+    mod fixtures {
+        use std::collections::HashMap;
 
-    use super::*;
+        use crate::models::{
+            template::Metadata, template_var::VariableDefinition,
+        };
 
-    mod template {
-        use super::*;
-
-        #[test]
-        #[ignore = "RED Phase"]
-        fn creates_valid_template_successfully() {
-            let metadata = Metadata::default();
+        pub fn basic_template_attributes() -> (
+            String,
+            String,
+            HashMap<String, VariableDefinition>,
+            Option<String>,
+            Metadata,
+        ) {
             let mut variables = HashMap::new();
             variables.insert(
                 "title".to_owned(),
                 VariableDefinition::String {
                     default: Some("Default".to_owned()),
-                    min_length: None,
                     max_length: None,
+                    min_length: None,
                     pattern: None,
                 },
             );
-
-            let result = Template::new(
+            (
                 "daily-note".to_owned(),
                 "# {{title}}".to_owned(),
                 variables,
                 None,
-                metadata,
-            );
+                Metadata::default(),
+            )
+        }
+    }
 
-            // In RED phase, this fails because implementation returns error
+    use proptest::prelude::*;
+
+    use super::*;
+
+    mod new {
+        use super::*;
+
+        /// 3.4-UNIT-001: `should_create_template_when_attributes_are_valid`
+        /// AC: Template entity includes structure validation and business rules.
+        #[test]
+        fn should_create_template_when_attributes_are_valid() {
+            // Given
+            let (name, content, variables, extends, metadata) =
+                fixtures::basic_template_attributes();
+
+            // When
+            let result =
+                Template::new(name, content, variables, extends, metadata);
+
+            // Then
             assert!(
                 result.is_ok(),
-                "Expected valid template creation to succeed"
+                "Expected valid template creation to succeed, got {:?}",
+                result.err()
             );
         }
 
+        /// 3.4-UNIT-002: `should_reject_template_when_name_format_is_invalid`
+        /// AC: Template name validation regex `^[a-zA-Z0-9_-]+$`.
         #[test]
-        #[ignore = "RED Phase"]
-        fn rejects_invalid_template_names() {
+        fn should_reject_template_when_name_format_is_invalid() {
+            // Given
             let names = vec![
                 String::new(),
                 "Invalid Name".to_owned(),
-                "too--many--dashes".to_owned(),
                 "name!".to_owned(),
                 "a".repeat(65),
             ];
+
             for name in names {
+                // When
                 let result = Template::new(
                     name.clone(),
                     "content".to_owned(),
@@ -289,6 +442,8 @@ mod tests {
                     None,
                     Metadata::default(),
                 );
+
+                // Then
                 assert!(
                     result.is_err(),
                     "Expected name '{name}' to be rejected"
@@ -296,10 +451,14 @@ mod tests {
             }
         }
 
+        /// 3.4-UNIT-003: `should_reject_template_when_content_size_exceeds_limit`
+        /// AC: Template content: MAX 1MB.
         #[test]
-        #[ignore = "RED Phase"]
-        fn rejects_large_content() {
+        fn should_reject_template_when_content_size_exceeds_limit() {
+            // Given
             let large_content = "a".repeat(1024 * 1024 + 1); // 1MB + 1
+
+            // When
             let result = Template::new(
                 "large".to_owned(),
                 large_content,
@@ -307,15 +466,19 @@ mod tests {
                 None,
                 Metadata::default(),
             );
+
+            // Then
             assert!(matches!(
                 result,
                 Err(DomainError::TemplateContentTooLarge(_, _))
             ));
         }
 
+        /// 3.4-UNIT-004: `should_reject_template_when_variable_count_exceeds_limit`
+        /// AC: Variable count: MAX 50 variables.
         #[test]
-        #[ignore = "RED Phase"]
-        fn rejects_too_many_variables() {
+        fn should_reject_template_when_variable_count_exceeds_limit() {
+            // Given
             let mut variables = HashMap::new();
             for i in 0i32..51i32 {
                 variables.insert(
@@ -325,6 +488,8 @@ mod tests {
                     },
                 );
             }
+
+            // When
             let result = Template::new(
                 "many-vars".to_owned(),
                 "content".to_owned(),
@@ -332,16 +497,24 @@ mod tests {
                 None,
                 Metadata::default(),
             );
+
+            // Then
             assert!(matches!(
                 result,
                 Err(DomainError::MaxVariablesExceeded(_))
             ));
         }
+    }
+
+    mod validation {
+        use super::*;
 
         proptest! {
+            /// 3.4-UNIT-005: `should_validate_template_name_format_across_edge_cases`
+            /// AC: Mathematical edge-case verification for name regex.
             #[test]
-            #[ignore = "RED Phase"]
-            fn validates_template_name_format(name in "[a-zA-Z0-9_-]{1,64}") {
+            fn should_validate_template_name_format_across_edge_cases(name in "[a-zA-Z0-9_-]{1,64}") {
+                // When
                 let result = Template::new(
                     name.clone(),
                     "content".to_owned(),
@@ -349,226 +522,10 @@ mod tests {
                     None,
                     Metadata::default(),
                 );
-                // Should be Ok(..) eventually, but fails in RED phase
+
+                // Then
                 prop_assert!(result.is_ok());
             }
-        }
-    }
-
-    mod variables {
-        use super::*;
-
-        #[test]
-        #[ignore = "RED Phase"]
-        fn rejects_invalid_variable_names() {
-            let names = vec![
-                String::new(),
-                "123var".to_owned(),
-                "var-name".to_owned(),
-                "var name".to_owned(),
-                "if".to_owned(),
-                "for".to_owned(),
-            ];
-            for name in names {
-                let mut variables = HashMap::new();
-                variables.insert(
-                    name.clone(),
-                    VariableDefinition::Boolean {
-                        default: None,
-                    },
-                );
-                let result = Template::new(
-                    "test".to_owned(),
-                    "content".to_owned(),
-                    variables,
-                    None,
-                    Metadata::default(),
-                );
-                assert!(
-                    result.is_err(),
-                    "Expected variable name '{name}' to be rejected"
-                );
-            }
-        }
-
-        #[test]
-        #[ignore = "RED Phase"]
-        #[expect(clippy::disallowed_methods, reason = "Test baseline")]
-        fn validates_string_constraints() {
-            let def = VariableDefinition::String {
-                default: None,
-                min_length: Some(3),
-                max_length: Some(10),
-                pattern: Some("^[a-z]+$".to_owned()),
-            };
-
-            def.validate_value(&serde_json::json!("abc")).unwrap();
-            assert!(def.validate_value(&serde_json::json!("ab")).is_err());
-            assert!(
-                def.validate_value(&serde_json::json!("abcdefghijk")).is_err()
-            );
-            assert!(def.validate_value(&serde_json::json!("ABC")).is_err());
-        }
-
-        #[test]
-        #[ignore = "RED Phase"]
-        #[expect(clippy::disallowed_methods, reason = "Test baseline")]
-        fn validates_number_constraints() {
-            let def = VariableDefinition::Number {
-                default: None,
-                min: Some(1.0f64),
-                max: Some(10.0f64),
-            };
-
-            def.validate_value(&serde_json::json!(5.0f64)).unwrap();
-            assert!(def.validate_value(&serde_json::json!(0.5f64)).is_err());
-            assert!(def.validate_value(&serde_json::json!(10.5f64)).is_err());
-        }
-    }
-
-    mod composition {
-        use super::*;
-
-        #[test]
-        #[ignore = "RED Phase"]
-        fn detects_direct_circular_composition() {
-            let mut templates = HashMap::new();
-            let base = Template {
-                id: Uuid::now_v7(),
-                name: "A".to_owned(),
-                content: "content".to_owned(),
-                variables: HashMap::new(),
-                extends: None,
-                metadata: Metadata::default(),
-            };
-            templates.insert("A".to_owned(), base);
-
-            let composition = Composition {
-                base_template: "A".to_owned(),
-                variable_overrides: HashMap::new(),
-                additional_sections: Vec::new(),
-                includes: vec!["A".to_owned()],
-            };
-
-            let result = composition.detect_cycles(0, &templates);
-            assert!(matches!(result, Err(DomainError::CircularComposition(_))));
-        }
-
-        #[test]
-        #[ignore = "RED Phase"]
-        fn detects_indirect_circular_composition() {
-            let mut templates = HashMap::new();
-
-            let a = Template {
-                id: Uuid::now_v7(),
-                name: "A".to_owned(),
-                content: "content".to_owned(),
-                variables: HashMap::new(),
-                extends: None,
-                metadata: Metadata::default(),
-            };
-            let b = Template {
-                id: Uuid::now_v7(),
-                name: "B".to_owned(),
-                content: "content".to_owned(),
-                variables: HashMap::new(),
-                extends: None,
-                metadata: Metadata::default(),
-            };
-            templates.insert("A".to_owned(), a);
-            templates.insert("B".to_owned(), b);
-
-            // RED PHASE: Cycle detection test for indirect cycles
-        }
-
-        #[test]
-        #[ignore = "RED Phase"]
-        fn enforces_max_depth_limit() {
-            let composition = Composition {
-                base_template: "base".to_owned(),
-                variable_overrides: HashMap::new(),
-                additional_sections: Vec::new(),
-                includes: Vec::new(),
-            };
-
-            let templates = HashMap::new();
-            let result = composition.detect_cycles(6, &templates);
-            assert!(matches!(
-                result,
-                Err(DomainError::CompositionDepthExceeded(6))
-            ));
-        }
-
-        #[test]
-        #[ignore = "RED Phase"]
-        #[expect(clippy::disallowed_methods, reason = "Test baseline")]
-        fn validates_override_type_consistency() {
-            let mut variables = HashMap::new();
-            variables.insert(
-                "count".to_owned(),
-                VariableDefinition::Number {
-                    default: None,
-                    min: None,
-                    max: None,
-                },
-            );
-
-            let base = Template {
-                id: Uuid::now_v7(),
-                name: "base".to_owned(),
-                content: "content".to_owned(),
-                variables,
-                extends: None,
-                metadata: Metadata::default(),
-            };
-
-            let mut overrides = HashMap::new();
-            overrides
-                .insert("count".to_owned(), serde_json::json!("not a number"));
-
-            let composition = Composition {
-                base_template: "base".to_owned(),
-                variable_overrides: overrides,
-                additional_sections: Vec::new(),
-                includes: vec![],
-            };
-
-            let result = composition.validate(&base);
-            assert!(matches!(
-                result,
-                Err(DomainError::VariableTypeMismatch { .. })
-            ));
-        }
-    }
-}
-
-/// Test fixtures for deterministic template data.
-#[cfg(test)]
-pub mod fixtures {
-    use super::*;
-
-    /// Creates an example template for testing.
-    #[inline]
-    #[must_use]
-    pub fn example_template() -> Template {
-        let mut variables = HashMap::new();
-        variables.insert(
-            "title".to_owned(),
-            VariableDefinition::String {
-                default: Some("Untitled".to_owned()),
-                max_length: Some(100),
-                min_length: Some(1),
-                pattern: None,
-            },
-        );
-
-        Template {
-            content: "# {{title}}".to_owned(),
-            extends: None,
-            id: Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0000_0003),
-            metadata: Metadata::default(),
-            name: "example".to_owned(),
-            variables,
         }
     }
 }
