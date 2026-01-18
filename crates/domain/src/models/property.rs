@@ -802,4 +802,33 @@ mod tests {
             assert!(invalid_spec.validate_spec().is_err());
         }
     }
+
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::super::*;
+
+        proptest! {
+            #[test]
+            fn validates_property_name_format(name in "[a-z0-9_-]{1,64}") {
+                PropertyName::new(name).unwrap();
+            }
+
+            #[test]
+            fn rejects_invalid_property_name_characters(name in ".*[^a-z0-9_-].*") {
+                // Ensure the string isn't empty and length is valid, as those are different errors
+                if !name.is_empty() && name.len() <= 64 {
+                    PropertyName::new(name).unwrap_err();
+                }
+            }
+
+            #[test]
+            fn compute_id_is_deterministic(name in "[a-z0-9_-]{1,64}") {
+                let spec = PropertySpec::Bool(BoolSpec);
+                let id1 = Property::compute_id(&name, &spec).unwrap();
+                let id2 = Property::compute_id(&name, &spec).unwrap();
+                assert_eq!(id1, id2);
+            }
+        }
+    }
 }
