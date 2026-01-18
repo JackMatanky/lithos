@@ -275,16 +275,31 @@ impl Template {
     }
 
     fn validate_name(name: &str) -> Result<(), DomainError> {
+        Self::ensure_name_not_empty(name)?;
+        Self::ensure_name_within_length(name)?;
+        Self::ensure_name_matches_pattern(name)?;
+        Ok(())
+    }
+
+    fn ensure_name_not_empty(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
             return Err(DomainError::ValidationFailed(
                 "Template name cannot be empty".to_owned(),
             ));
         }
+        Ok(())
+    }
+
+    fn ensure_name_within_length(name: &str) -> Result<(), DomainError> {
         if name.len() > 64 {
             return Err(DomainError::ValidationFailed(
                 "Template name too long".to_owned(),
             ));
         }
+        Ok(())
+    }
+
+    fn ensure_name_matches_pattern(name: &str) -> Result<(), DomainError> {
         if !NAME_RE.is_match(name) {
             return Err(DomainError::ValidationFailed(format!(
                 "Invalid template name: {name}"
@@ -297,9 +312,7 @@ impl Template {
     fn validate_variable_definitions(
         variables: &HashMap<String, VariableDefinition>,
     ) -> Result<(), DomainError> {
-        if variables.len() > 50 {
-            return Err(DomainError::MaxVariablesExceeded(variables.len()));
-        }
+        Self::ensure_max_variables_not_exceeded(variables.len())?;
 
         for var_name in variables.keys() {
             Self::validate_variable_name(var_name)?;
@@ -307,22 +320,57 @@ impl Template {
         Ok(())
     }
 
+    fn ensure_max_variables_not_exceeded(
+        count: usize,
+    ) -> Result<(), DomainError> {
+        if count > 50 {
+            return Err(DomainError::MaxVariablesExceeded(count));
+        }
+        Ok(())
+    }
+
     fn validate_variable_name(name: &str) -> Result<(), DomainError> {
+        Self::ensure_variable_name_not_empty(name)?;
+        Self::ensure_variable_name_within_length(name)?;
+        Self::ensure_variable_name_matches_pattern(name)?;
+        Self::ensure_variable_name_not_reserved(name)?;
+        Ok(())
+    }
+
+    fn ensure_variable_name_not_empty(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
             return Err(DomainError::ValidationFailed(
                 "Variable name cannot be empty".to_owned(),
             ));
         }
+        Ok(())
+    }
+
+    fn ensure_variable_name_within_length(
+        name: &str,
+    ) -> Result<(), DomainError> {
         if name.len() > 32 {
             return Err(DomainError::ValidationFailed(
                 "Variable name too long".to_owned(),
             ));
         }
+        Ok(())
+    }
+
+    fn ensure_variable_name_matches_pattern(
+        name: &str,
+    ) -> Result<(), DomainError> {
         if !VAR_RE.is_match(name) {
             return Err(DomainError::ValidationFailed(format!(
                 "Invalid variable name: {name}"
             )));
         }
+        Ok(())
+    }
+
+    fn ensure_variable_name_not_reserved(
+        name: &str,
+    ) -> Result<(), DomainError> {
         if RESERVED_WORDS.contains(&name) {
             return Err(DomainError::ValidationFailed(format!(
                 "Variable name '{name}' is a reserved word"
