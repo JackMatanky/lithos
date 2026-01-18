@@ -5,8 +5,8 @@ use regex::Regex;
 use uuid::Uuid;
 
 use super::{
-    composition::{Composition, InsertionPosition},
-    variable::VariableDefinition,
+    template_comp::{Composition, InsertionPosition},
+    template_var::VariableDefinition,
 };
 use crate::{errors::DomainError, events::TemplateCreated};
 

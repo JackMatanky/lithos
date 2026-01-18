@@ -48,10 +48,14 @@ pub use models::{
     tag::Tag,
     task::{Task, TaskStatus},
     template::{
-        Composition as TemplateComposition, DomainEvent as TemplateDomainEvent,
-        InsertionPosition, Metadata as TemplateMetadata,
-        Section as TemplateSection, Template, VariableDefinition,
+        DomainEvent as TemplateDomainEvent, Metadata as TemplateMetadata,
+        Template,
     },
+    template_comp::{
+        Composition as TemplateComposition, InsertionPosition,
+        Section as TemplateSection,
+    },
+    template_var::VariableDefinition,
 };
 pub use ports::{
     config::{Command as ConfigCommand, Query as ConfigQuery},
