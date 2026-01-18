@@ -4,16 +4,7 @@
 //! Headings (H1-H6) mark structural points in the document, while sections group
 //! content between headings.
 
-#![expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
-
 use crate::errors::DomainError;
-
-// ============================================================================
-// Heading
-// ============================================================================
 
 /// Represents a heading within a note.
 ///
@@ -25,6 +16,10 @@ use crate::errors::DomainError;
     clippy::field_scoped_visibility_modifiers,
     reason = "pub(crate) used for internal builders and tests"
 )]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical ordering: level and text define the heading, position is metadata"
+)]
 pub struct Heading {
     /// Heading level (1-6, corresponding to # through ######).
     pub(crate) level: u8,
@@ -35,6 +30,13 @@ pub struct Heading {
 }
 
 impl Heading {
+    /// Returns the heading level.
+    #[inline]
+    #[must_use]
+    pub const fn level(&self) -> u8 {
+        self.level
+    }
+
     /// Creates a new heading with validation.
     ///
     /// # Examples
@@ -72,11 +74,11 @@ impl Heading {
         })
     }
 
-    /// Returns the heading level.
+    /// Returns the character position in the source document.
     #[inline]
     #[must_use]
-    pub const fn level(&self) -> u8 {
-        self.level
+    pub const fn position(&self) -> usize {
+        self.position
     }
 
     /// Returns the heading text content.
@@ -85,18 +87,7 @@ impl Heading {
     pub fn text(&self) -> &str {
         &self.text
     }
-
-    /// Returns the character position in the source document.
-    #[inline]
-    #[must_use]
-    pub const fn position(&self) -> usize {
-        self.position
-    }
 }
-
-// ============================================================================
-// Section
-// ============================================================================
 
 /// Represents a content section within a note.
 ///
@@ -108,6 +99,10 @@ impl Heading {
     clippy::field_scoped_visibility_modifiers,
     reason = "pub(crate) used for internal builders and tests"
 )]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
+)]
 pub struct Section {
     /// Optional heading that starts this section (None for content before first heading).
     pub(crate) heading: Option<Heading>,
@@ -118,6 +113,20 @@ pub struct Section {
 }
 
 impl Section {
+    /// Returns the section content text.
+    #[inline]
+    #[must_use]
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Returns the optional heading that starts this section.
+    #[inline]
+    #[must_use]
+    pub const fn heading(&self) -> Option<&Heading> {
+        self.heading.as_ref()
+    }
+
     /// Creates a new section.
     ///
     /// # Examples
@@ -144,20 +153,6 @@ impl Section {
             content: content.into(),
             range,
         }
-    }
-
-    /// Returns the optional heading that starts this section.
-    #[inline]
-    #[must_use]
-    pub const fn heading(&self) -> Option<&Heading> {
-        self.heading.as_ref()
-    }
-
-    /// Returns the section content text.
-    #[inline]
-    #[must_use]
-    pub fn content(&self) -> &str {
-        &self.content
     }
 
     /// Returns the character range in the source document.

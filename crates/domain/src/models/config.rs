@@ -19,12 +19,12 @@
 mod defaults {
     /// Filesystem-related defaults.
     pub mod filesystem {
+        /// Default cache directory.
+        pub const CACHE_DIR: &str = ".cache";
         /// Default templates directory.
         pub const TEMPLATES_DIR: &str = "templates";
         /// Default schemas directory.
         pub const SCHEMAS_DIR: &str = "schemas";
-        /// Default cache directory.
-        pub const CACHE_DIR: &str = ".cache";
         /// Default property bank filename (located in schemas directory).
         pub const PROPERTY_BANK_FILENAME: &str = "property_bank.json";
     }
@@ -302,10 +302,6 @@ impl Default for Global {
     }
 }
 
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Methods grouped logically: public API first, then private helpers"
-)]
 impl Config {
     /// Build a new Config by merging Global and Vault configurations with business rules (Vault overrides Global).
     ///
@@ -445,59 +441,6 @@ impl Config {
         Self::choose_value(vault, global, defaults::logging::LOG_LEVEL)
     }
 
-    /// Validate that all fields in the provided slice are non-empty.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if any field is empty.
-    fn validate_fields(
-        fields: &[(&str, &String)],
-    ) -> Result<(), crate::ConfigError> {
-        for &(name, value) in fields {
-            if value.is_empty() {
-                return Err(crate::ConfigError::ValidationFailed {
-                    field: (*name).to_owned(),
-                    message: format!("{name} cannot be empty after merge"),
-                });
-            }
-        }
-        Ok(())
-    }
-
-    /// Validate a log level value.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
-    fn validate_log_level(log_level: &str) -> Result<(), crate::ConfigError> {
-        if !defaults::logging::VALID_LOG_LEVELS.contains(&log_level) {
-            return Err(crate::ConfigError::InvalidEnumValue {
-                field: "log_level".to_owned(),
-                value: log_level.to_owned(),
-                allowed: defaults::logging::VALID_LOG_LEVELS
-                    .iter()
-                    .map(|s| (*s).to_owned())
-                    .collect(),
-            });
-        }
-
-        Ok(())
-    }
-
-    /// Validate vault path value.
-    ///
-    /// # Errors
-    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
-    fn validate_vault_path(vault_path: &str) -> Result<(), crate::ConfigError> {
-        if vault_path.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "vault_path".to_owned(),
-                message: "vault path cannot be empty (required field)"
-                    .to_owned(),
-            });
-        }
-
-        Ok(())
-    }
-
     /// Validate configuration against critical business rules.
     ///
     /// # Validation Rules
@@ -555,6 +498,59 @@ impl Config {
 
         // Step 3: Validate Log Level
         Self::validate_log_level(&self.log_level)?;
+
+        Ok(())
+    }
+
+    /// Validate that all fields in the provided slice are non-empty.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if any field is empty.
+    fn validate_fields(
+        fields: &[(&str, &String)],
+    ) -> Result<(), crate::ConfigError> {
+        for &(name, value) in fields {
+            if value.is_empty() {
+                return Err(crate::ConfigError::ValidationFailed {
+                    field: (*name).to_owned(),
+                    message: format!("{name} cannot be empty after merge"),
+                });
+            }
+        }
+        Ok(())
+    }
+
+    /// Validate a log level value.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
+    fn validate_log_level(log_level: &str) -> Result<(), crate::ConfigError> {
+        if !defaults::logging::VALID_LOG_LEVELS.contains(&log_level) {
+            return Err(crate::ConfigError::InvalidEnumValue {
+                field: "log_level".to_owned(),
+                value: log_level.to_owned(),
+                allowed: defaults::logging::VALID_LOG_LEVELS
+                    .iter()
+                    .map(|s| (*s).to_owned())
+                    .collect(),
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Validate vault path value.
+    ///
+    /// # Errors
+    /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    fn validate_vault_path(vault_path: &str) -> Result<(), crate::ConfigError> {
+        if vault_path.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "vault_path".to_owned(),
+                message: "vault path cannot be empty (required field)"
+                    .to_owned(),
+            });
+        }
 
         Ok(())
     }
@@ -653,11 +649,6 @@ impl From<HashMap<String, SettingValue>> for SettingValue {
 mod tests {
     use super::*;
 
-    // ============================================================================
-    // Property-Based Tests for Edge Cases - Automated Fuzzing Coverage
-    // Target: Discover edge cases in path handling and string processing
-    // ============================================================================
-
     #[cfg(test)]
     mod proptests {
         use proptest::prelude::*;
@@ -693,12 +684,6 @@ mod tests {
             }
         }
     }
-
-    // ============================================================================
-    // Config::build Tests - Core Business Logic Coverage
-    // Target: 80%+ coverage for hierarchical merging and precedence rules
-    // Test Level: Unit (70% of total test coverage per test-design-system.md)
-    // ============================================================================
 
     mod merge {
         use super::*;
@@ -849,11 +834,6 @@ mod tests {
         }
     }
 
-    // ============================================================================
-    // Config::validate Tests - Validation Logic and Error Handling Coverage
-    // Target: 80%+ coverage for business rule validation and error variants
-    // ============================================================================
-
     mod validate {
         use rstest::rstest;
 
@@ -924,11 +904,6 @@ mod tests {
             }
         }
     }
-
-    // ============================================================================
-    // ConfigValue Tests - Type System and Conversion Coverage
-    // Target: 80%+ coverage for enum variants and From trait implementations
-    // ============================================================================
 
     mod config_value {
         use SettingValue as ConfigValue;
@@ -1054,11 +1029,6 @@ mod tests {
             );
         }
     }
-
-    // ============================================================================
-    // Structural Integrity Tests - Entity Behavior and Performance Coverage
-    // Target: 80%+ coverage for trait implementations and derived paths
-    // ============================================================================
 
     mod integrity {
         use super::*;

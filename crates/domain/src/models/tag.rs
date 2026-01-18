@@ -2,11 +2,6 @@
 //!
 //! Represents hierarchical tags used for note organization.
 
-#![expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
-
 use crate::errors::DomainError;
 
 /// Represents a hierarchical tag with segments.
@@ -27,6 +22,13 @@ pub struct Tag {
 }
 
 impl Tag {
+    /// Returns the full tag path without the leading `#`.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.full_path
+    }
+
     /// Parses a tag string into a Tag struct.
     ///
     /// # Tag Format
@@ -63,13 +65,6 @@ impl Tag {
             full_path: tag_path.into(),
             segments: segments.into_iter().map(Into::into).collect(),
         })
-    }
-
-    /// Returns the full tag path without the leading `#`.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.full_path
     }
 
     /// Returns the individual path segments.

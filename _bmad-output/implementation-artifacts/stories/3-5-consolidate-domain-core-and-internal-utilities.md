@@ -38,12 +38,13 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 
 ## Tasks / Subtasks
 
-### Task 1: Audit Domain Crate for Redundancy
-- [ ] Scan `crates/domain/src/models/` for duplicate utility functions (path handling, string manipulation, etc.)
-- [ ] **Audit Validation Patterns:** Identify all `validate()` methods and internal validation helpers across models to identify inconsistent patterns or redundant logic
-- [ ] Identify shared logic between Note, Schema, Config, and Template contexts
-- [ ] Review error mapping patterns and identify opportunities for consolidation
-- [ ] Document all identified redundancies and validation inconsistencies in `_bmad-output/domain-redundancy-audit.md`
+### Task 1: Audit Domain Crate for Deep Behavioral Redundancy
+- [ ] **Behavioral Audit:** Review ALL domain models and subentities (Note, Schema, Template, Config, Frontmatter, etc.) to identify redundant logic and patterns.
+- [ ] **CRITICAL:** Do not just look for identical function or struct names. Analyze the **behavior** and **intent** of logic (e.g., how paths are manipulated, how strings are sanitized, how collections are validated) to find logically equivalent code that should be consolidated.
+- [ ] **Audit Validation Patterns:** Deeply analyze all `validate()` methods and internal validation helpers. Look for identical business rules being enforced via different implementation styles and consolidate them into the core.
+- [ ] Identify shared logic between Note, Schema, Config, and Template contexts that can be abstracted into generic traits or shared utilities in `lib.rs`.
+- [ ] Review error mapping patterns and identify opportunities for a unified domain error context strategy.
+- [ ] Document all identified behavioral redundancies and validation inconsistencies in `_bmad-output/domain-redundancy-audit.md`
 
 ### Task 2: Consolidate into lib.rs and Core Modules
 - [ ] Create or update `crates/domain/src/lib.rs` to house shared traits, macros, constants (from `patterns.rs`), and common identity logic (UUID handling)
@@ -84,4 +85,5 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 ### Architectural Invariants
 - **Domain Purity:** The domain crate MUST NOT have dependencies on `app`, `adapters`, or `lithos`.
 - **Visibility:** Prefer `pub(crate)` for all internal utilities. Only export what is strictly necessary for the public API.
-- **DRY Logic:** If a piece of logic is used in more than two bounded contexts, it belongs in the domain core.
+- **Deep Behavioral DRY:** Consolidation is based on **logic and intent**, not just name matches. If two different modules implement the same business rule or data manipulation logic, they must be consolidated into a single source of truth in the domain core.
+- **Standardized Validation:** All bounded contexts must use the same "flavor" of validation (consistent error types, shared path logic, etc.) to ensure vault-wide consistency.

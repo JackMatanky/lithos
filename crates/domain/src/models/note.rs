@@ -8,11 +8,6 @@
 //! - All file paths must be vault-relative and validated against path traversal.
 //! - Validation follows a three-phase pipeline: Syntactic → Orchestration → Semantic.
 
-#![expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
-
 use uuid::Uuid;
 
 use super::{
@@ -47,6 +42,10 @@ use crate::{errors::DomainError, events::NoteCreated};
 #[expect(
     clippy::field_scoped_visibility_modifiers,
     reason = "pub(crate) used for internal builders and tests"
+)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
 )]
 pub struct Note {
     /// UUID v7 identity (time-ordered).
@@ -83,73 +82,23 @@ pub enum DomainEvent {
 }
 
 impl Note {
-    /// Returns the note's unique identifier.
+    /// Adds an embed to the note, ensuring aggregate consistency.
     #[inline]
-    #[must_use]
-    pub const fn id(&self) -> Uuid {
-        self.id
+    pub fn add_embed(&mut self, mut embed: Link) {
+        embed.set_source_note_id(self.id);
+        self.embeds.push(embed);
     }
 
-    /// Returns the note's vault-relative path.
+    /// Adds a domain event to the pending events collection.
     #[inline]
-    #[must_use]
-    pub fn path(&self) -> &str {
-        &self.path
+    fn add_event(&mut self, event: DomainEvent) {
+        self.pending_events.push(event);
     }
 
-    /// Returns a reference to the note's frontmatter, if present.
+    /// Adds a heading to the note.
     #[inline]
-    #[must_use]
-    pub const fn frontmatter(&self) -> Option<&Frontmatter> {
-        self.frontmatter.as_ref()
-    }
-
-    /// Returns the outgoing links from this note.
-    #[inline]
-    #[must_use]
-    pub fn links(&self) -> &[Link] {
-        &self.links
-    }
-
-    /// Returns the embedded files in this note.
-    #[inline]
-    #[must_use]
-    pub fn embeds(&self) -> &[Link] {
-        &self.embeds
-    }
-
-    /// Returns the hierarchical tags associated with this note.
-    #[inline]
-    #[must_use]
-    pub fn tags(&self) -> &[Tag] {
-        &self.tags
-    }
-
-    /// Returns the markdown headings in this note.
-    #[inline]
-    #[must_use]
-    pub fn headings(&self) -> &[Heading] {
-        &self.headings
-    }
-
-    /// Returns the task items in this note.
-    #[inline]
-    #[must_use]
-    pub fn tasks(&self) -> &[Task] {
-        &self.tasks
-    }
-
-    /// Returns the document sections in this note.
-    #[inline]
-    #[must_use]
-    pub fn sections(&self) -> &[Section] {
-        &self.sections
-    }
-
-    /// Sets the note's frontmatter.
-    #[inline]
-    pub fn set_frontmatter(&mut self, frontmatter: Option<Frontmatter>) {
-        self.frontmatter = frontmatter;
+    pub fn add_heading(&mut self, heading: Heading) {
+        self.headings.push(heading);
     }
 
     /// Adds a link to the note, ensuring aggregate consistency.
@@ -159,11 +108,10 @@ impl Note {
         self.links.push(link);
     }
 
-    /// Adds an embed to the note, ensuring aggregate consistency.
+    /// Adds a section to the note.
     #[inline]
-    pub fn add_embed(&mut self, mut embed: Link) {
-        embed.set_source_note_id(self.id);
-        self.embeds.push(embed);
+    pub fn add_section(&mut self, section: Section) {
+        self.sections.push(section);
     }
 
     /// Adds a tag to the note.
@@ -172,22 +120,45 @@ impl Note {
         self.tags.push(tag);
     }
 
-    /// Adds a heading to the note.
-    #[inline]
-    pub fn add_heading(&mut self, heading: Heading) {
-        self.headings.push(heading);
-    }
-
     /// Adds a task to the note.
     #[inline]
     pub fn add_task(&mut self, task: Task) {
         self.tasks.push(task);
     }
 
-    /// Adds a section to the note.
+    /// Returns the embedded files in this note.
     #[inline]
-    pub fn add_section(&mut self, section: Section) {
-        self.sections.push(section);
+    #[must_use]
+    pub fn embeds(&self) -> &[Link] {
+        &self.embeds
+    }
+
+    /// Returns a reference to the note's frontmatter, if present.
+    #[inline]
+    #[must_use]
+    pub const fn frontmatter(&self) -> Option<&Frontmatter> {
+        self.frontmatter.as_ref()
+    }
+
+    /// Returns the markdown headings in this note.
+    #[inline]
+    #[must_use]
+    pub fn headings(&self) -> &[Heading] {
+        &self.headings
+    }
+
+    /// Returns the note's unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Returns the outgoing links from this note.
+    #[inline]
+    #[must_use]
+    pub fn links(&self) -> &[Link] {
+        &self.links
     }
 
     /// Creates a new note aggregate with the provided UUID and validated path.
@@ -227,6 +198,54 @@ impl Note {
         Ok(note)
     }
 
+    /// Returns the note's vault-relative path.
+    #[inline]
+    #[must_use]
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
+    /// Returns a reference to pending domain events without clearing them.
+    #[inline]
+    #[must_use]
+    pub fn pending_events(&self) -> &[DomainEvent] {
+        &self.pending_events
+    }
+
+    /// Returns the document sections in this note.
+    #[inline]
+    #[must_use]
+    pub fn sections(&self) -> &[Section] {
+        &self.sections
+    }
+
+    /// Sets the note's frontmatter.
+    #[inline]
+    pub fn set_frontmatter(&mut self, frontmatter: Option<Frontmatter>) {
+        self.frontmatter = frontmatter;
+    }
+
+    /// Returns the hierarchical tags associated with this note.
+    #[inline]
+    #[must_use]
+    pub fn tags(&self) -> &[Tag] {
+        &self.tags
+    }
+
+    /// Returns all pending domain events and clears the collection.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<DomainEvent> {
+        std::mem::take(&mut self.pending_events)
+    }
+
+    /// Returns the task items in this note.
+    #[inline]
+    #[must_use]
+    pub fn tasks(&self) -> &[Task] {
+        &self.tasks
+    }
+
     /// Validates the note's internal consistency.
     ///
     /// Performs aggregate-level semantic validation.
@@ -257,26 +276,6 @@ impl Note {
         }
 
         Ok(())
-    }
-
-    /// Adds a domain event to the pending events collection.
-    #[inline]
-    fn add_event(&mut self, event: DomainEvent) {
-        self.pending_events.push(event);
-    }
-
-    /// Returns a reference to pending domain events without clearing them.
-    #[inline]
-    #[must_use]
-    pub fn pending_events(&self) -> &[DomainEvent] {
-        &self.pending_events
-    }
-
-    /// Returns all pending domain events and clears the collection.
-    #[inline]
-    #[must_use]
-    pub fn take_events(&mut self) -> Vec<DomainEvent> {
-        std::mem::take(&mut self.pending_events)
     }
 }
 

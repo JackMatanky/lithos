@@ -388,33 +388,58 @@ impl FromFieldValue for Vec<String> {
     }
 }
 
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Methods grouped by domain logic: Constructors -> Basic Getters -> Type Accessors -> Obsidian Patterns"
-)]
 impl Frontmatter {
-    /// Creates a new frontmatter from fields.
+    /// Extracts the aliases field from frontmatter using the configured key.
     ///
-    /// # Errors
-    /// Returns `DomainError::ValidationFailed` if fields are invalid.
+    /// Returns a vector of alias strings. Supports both single strings and arrays.
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
-    /// use std::collections::HashMap;
-    ///
-    /// let mut fields = HashMap::new();
-    /// fields.insert("title".to_string(), FieldValue::String("My Note".to_string()));
-    /// let fm = Frontmatter::new(fields).unwrap();
-    /// assert!(fm.has("title"));
+    /// # use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// # use std::collections::HashMap;
+    /// # let mut fields = HashMap::new();
+    /// # fields.insert("aliases".to_string(), FieldValue::String("My Alias".to_string()));
+    /// # let frontmatter = Frontmatter::new(fields).unwrap();
+    /// # let global = GlobalConfig::default();
+    /// # let mut vault = VaultConfig::default();
+    /// # vault.filesystem.vault_path = "/vault".to_string();
+    /// # let config = Config::build(&global, vault).unwrap();
+    /// let aliases = frontmatter.aliases(&config);
+    /// assert_eq!(aliases, vec!["My Alias".to_string()]);
     /// ```
     #[inline]
-    pub fn new(
-        fields: HashMap<String, FieldValue>,
-    ) -> Result<Self, DomainError> {
-        Ok(Self {
-            fields,
-        })
+    #[must_use]
+    pub fn aliases(
+        &self,
+        config: &crate::models::config::Config,
+    ) -> Vec<String> {
+        self.get_string_array(&config.frontmatter.alias_key).unwrap_or_default()
+    }
+
+    /// Extracts the `file_class` field from frontmatter using the configured key.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// # use std::collections::HashMap;
+    /// # let mut fields = HashMap::new();
+    /// # fields.insert("file_class".to_string(), FieldValue::String("note".to_string()));
+    /// # let frontmatter = Frontmatter::new(fields).unwrap();
+    /// # let global = GlobalConfig::default();
+    /// # let mut vault = VaultConfig::default();
+    /// # vault.filesystem.vault_path = "/vault".to_string();
+    /// # let config = Config::build(&global, vault).unwrap();
+    /// let file_class = frontmatter.file_class(&config);
+    /// assert_eq!(file_class, "note");
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn file_class(&self, config: &crate::models::config::Config) -> String {
+        self.get_str(&config.frontmatter.file_class_key)
+            .map(ToOwned::to_owned)
+            .unwrap_or_default()
     }
 
     /// Gets a frontmatter value by key without type conversion.
@@ -460,26 +485,6 @@ impl Frontmatter {
     #[must_use]
     pub fn get_as<T: FromFieldValue>(&self, key: &str) -> Option<T> {
         self.fields.get(key).and_then(T::from_value)
-    }
-
-    /// Checks if a field exists in the frontmatter.
-    ///
-    /// # Examples
-    /// ```
-    /// use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
-    /// use std::collections::HashMap;
-    ///
-    /// let mut fields = HashMap::new();
-    /// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
-    /// let fm = Frontmatter::new(fields).unwrap();
-    ///
-    /// assert!(fm.has("title"));
-    /// assert!(!fm.has("missing"));
-    /// ```
-    #[inline]
-    #[must_use]
-    pub fn has(&self, key: &str) -> bool {
-        self.fields.contains_key(key)
     }
 
     /// Gets a boolean field value.
@@ -604,57 +609,48 @@ impl Frontmatter {
         }
     }
 
-    /// Extracts the aliases field from frontmatter using the configured key.
-    ///
-    /// Returns a vector of alias strings. Supports both single strings and arrays.
+    /// Checks if a field exists in the frontmatter.
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
-    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
-    /// # use std::collections::HashMap;
-    /// # let mut fields = HashMap::new();
-    /// # fields.insert("aliases".to_string(), FieldValue::String("My Alias".to_string()));
-    /// # let frontmatter = Frontmatter::new(fields).unwrap();
-    /// # let global = GlobalConfig::default();
-    /// # let mut vault = VaultConfig::default();
-    /// # vault.filesystem.vault_path = "/vault".to_string();
-    /// # let config = Config::build(&global, vault).unwrap();
-    /// let aliases = frontmatter.aliases(&config);
-    /// assert_eq!(aliases, vec!["My Alias".to_string()]);
+    /// use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
+    /// use std::collections::HashMap;
+    ///
+    /// let mut fields = HashMap::new();
+    /// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
+    /// let fm = Frontmatter::new(fields).unwrap();
+    ///
+    /// assert!(fm.has("title"));
+    /// assert!(!fm.has("missing"));
     /// ```
     #[inline]
     #[must_use]
-    pub fn aliases(
-        &self,
-        config: &crate::models::config::Config,
-    ) -> Vec<String> {
-        self.get_string_array(&config.frontmatter.alias_key).unwrap_or_default()
+    pub fn has(&self, key: &str) -> bool {
+        self.fields.contains_key(key)
     }
 
-    /// Extracts the `file_class` field from frontmatter using the configured key.
+    /// Creates a new frontmatter from fields.
+    ///
+    /// # Errors
+    /// Returns `DomainError::ValidationFailed` if fields are invalid.
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
-    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
-    /// # use std::collections::HashMap;
-    /// # let mut fields = HashMap::new();
-    /// # fields.insert("file_class".to_string(), FieldValue::String("note".to_string()));
-    /// # let frontmatter = Frontmatter::new(fields).unwrap();
-    /// # let global = GlobalConfig::default();
-    /// # let mut vault = VaultConfig::default();
-    /// # vault.filesystem.vault_path = "/vault".to_string();
-    /// # let config = Config::build(&global, vault).unwrap();
-    /// let file_class = frontmatter.file_class(&config);
-    /// assert_eq!(file_class, "note");
+    /// use lithos_domain::models::frontmatter::{Frontmatter, FieldValue};
+    /// use std::collections::HashMap;
+    ///
+    /// let mut fields = HashMap::new();
+    /// fields.insert("title".to_string(), FieldValue::String("My Note".to_string()));
+    /// let fm = Frontmatter::new(fields).unwrap();
+    /// assert!(fm.has("title"));
     /// ```
     #[inline]
-    #[must_use]
-    pub fn file_class(&self, config: &crate::models::config::Config) -> String {
-        self.get_str(&config.frontmatter.file_class_key)
-            .map(ToOwned::to_owned)
-            .unwrap_or_default()
+    pub fn new(
+        fields: HashMap<String, FieldValue>,
+    ) -> Result<Self, DomainError> {
+        Ok(Self {
+            fields,
+        })
     }
 
     /// Extracts the title field from frontmatter using the configured key.
