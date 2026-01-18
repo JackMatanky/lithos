@@ -8,9 +8,10 @@
 use std::{
     collections::{HashMap, HashSet},
     fmt::{Debug, Display},
-    sync::OnceLock,
+    sync::LazyLock,
 };
 
+use regex::Regex;
 use uuid::Uuid;
 
 use crate::{
@@ -27,7 +28,7 @@ use crate::{
 /// Enforces invariants:
 /// - Non-empty
 /// - Max 64 characters
-/// - Matches regex `^[a-z0-9]+(-[a-z0-9]+)*$` (kebab-case)
+/// - Matches regex `^[a-zA-Z0-9_-]+$` (alphanumeric, underscores, dashes)
 ///
 /// # Examples
 ///
@@ -37,7 +38,13 @@ use crate::{
 /// let name = SchemaName::new("project-note".to_string()).unwrap();
 /// assert_eq!(name.as_str(), "project-note");
 ///
-/// let invalid = SchemaName::new("Project_Note".to_string());
+/// let name2 = SchemaName::new("daily_note".to_string()).unwrap();
+/// assert_eq!(name2.as_str(), "daily_note");
+///
+/// let name3 = SchemaName::new("MySchema".to_string()).unwrap();
+/// assert_eq!(name3.as_str(), "MySchema");
+///
+/// let invalid = SchemaName::new("".to_string());
 /// assert!(invalid.is_err());
 /// ```
 #[derive(
@@ -67,17 +74,16 @@ impl SchemaName {
     }
 
     fn validate_format(name: &str) -> Result<(), DomainError> {
-        static SCHEMA_NAME_RE: OnceLock<regex::Regex> = OnceLock::new();
-        #[expect(
-            clippy::expect_used,
-            clippy::disallowed_methods,
-            reason = "Standard pattern for hardcoded regexes - Regex is known valid"
-        )]
-        let re = SCHEMA_NAME_RE.get_or_init(|| {
-            regex::Regex::new("^[a-z0-9]+(-[a-z0-9]+)*$")
-                .expect("Hardcoded regex is valid")
+        static SCHEMA_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
+            #[expect(
+                clippy::expect_used,
+                clippy::disallowed_methods,
+                reason = "Hardcoded regex literal is guaranteed valid"
+            )]
+            Regex::new("^[a-zA-Z0-9_-]+$").expect("Static regex literal")
         });
-        if !re.is_match(name) {
+
+        if !SCHEMA_NAME_RE.is_match(name) {
             return Err(DomainError::InvalidSchemaName(name.to_owned()));
         }
         Ok(())
@@ -610,7 +616,7 @@ mod tests {
             #[expect(clippy::integer_division_remainder_used, reason = "Test logic uses modulo for cycling")]
             #[expect(clippy::arithmetic_side_effects, reason = "Test logic uses safe arithmetic")]
             fn schema_graph_detects_arbitrary_cycles(
-                names in prop::collection::vec("[a-z0-9]{3,10}", 2..10)
+                names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10)
             ) {
                 // GIVEN a set of unique schema names
                 let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
@@ -636,7 +642,7 @@ mod tests {
             #[expect(clippy::indexing_slicing, reason = "Test logic uses indices known to be in bounds")]
             #[expect(clippy::arithmetic_side_effects, reason = "Test logic uses safe arithmetic")]
             fn schema_graph_accepts_arbitrary_lineage(
-                names in prop::collection::vec("[a-z0-9]{3,10}", 1..10)
+                names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10)
             ) {
                 // GIVEN a set of unique schema names
                 let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();

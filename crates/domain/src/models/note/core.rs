@@ -17,7 +17,9 @@ use super::{
     tag::Tag,
     task::Task,
 };
-use crate::{errors::DomainError, events::NoteCreated};
+use crate::{
+    errors::DomainError, events::NoteCreated, validation::validate_vault_path,
+};
 
 /// Aggregate root representing an Obsidian note.
 ///
@@ -173,7 +175,8 @@ impl Note {
     /// Returns `DomainError::InvalidPath` if path is absolute, missing `.md` extension, or contains `..`.
     #[inline]
     pub fn new(id: Uuid, path: String) -> Result<Self, DomainError> {
-        validate_vault_path(&path)?;
+        // Use shared validation utility from domain core
+        validate_vault_path(&path, Some("md"))?;
 
         let mut note = Self {
             id,
@@ -279,74 +282,8 @@ impl Note {
     }
 }
 
-/// Validates a vault-relative path according to business rules.
-fn validate_vault_path(path: &str) -> Result<(), DomainError> {
-    validate_path_not_empty(path)?;
-    validate_path_is_relative(path)?;
-    validate_path_no_traversal(path)?;
-    validate_path_has_md_extension(path)?;
-    Ok(())
-}
-
-/// Validates that a path is not empty.
-#[inline]
-fn validate_path_not_empty(path: &str) -> Result<(), DomainError> {
-    if path.is_empty() {
-        return Err(DomainError::EmptyPath);
-    }
-    Ok(())
-}
-
-/// Validates that a path is relative (not absolute).
-#[inline]
-fn validate_path_is_relative(path: &str) -> Result<(), DomainError> {
-    if path.starts_with('/') {
-        return Err(DomainError::InvalidPath(
-            "Path must be relative".to_owned(),
-        ));
-    }
-    if is_windows_absolute_path(path) {
-        return Err(DomainError::InvalidPath(
-            "Path must be relative (Windows absolute paths not allowed)"
-                .to_owned(),
-        ));
-    }
-    Ok(())
-}
-
-/// Checks if a path is a Windows-style absolute path.
-#[inline]
-fn is_windows_absolute_path(path: &str) -> bool {
-    path.len() >= 3
-        && path.chars().nth(1) == Some(':')
-        && path.chars().nth(2) == Some('/')
-        && path.chars().next().is_some_and(char::is_alphabetic)
-}
-
-/// Validates that a path does not contain path traversal sequences.
-#[inline]
-fn validate_path_no_traversal(path: &str) -> Result<(), DomainError> {
-    if path.contains("..") {
-        return Err(DomainError::InvalidPath(
-            "Path traversal not allowed".to_owned(),
-        ));
-    }
-    Ok(())
-}
-
-/// Validates that a path has a `.md` extension.
-#[inline]
-fn validate_path_has_md_extension(path: &str) -> Result<(), DomainError> {
-    if !std::path::Path::new(path)
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
-    {
-        return Err(DomainError::InvalidPath(
-            "Path must end with .md".to_owned(),
-        ));
-    }
-    Ok(())
-}
+// Path validation logic has been consolidated into crates/domain/src/validation.rs
+// This eliminates ~65 lines of redundant code and uses shared validation utilities.
 
 #[cfg(test)]
 mod tests {
