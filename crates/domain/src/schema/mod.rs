@@ -6,7 +6,6 @@
 pub mod core;
 pub mod events;
 pub mod graph;
-pub mod patterns;
 pub mod property;
 pub mod property_bank;
 pub mod property_spec;
