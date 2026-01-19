@@ -522,7 +522,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Ran `mise run test:unit --package domain` after proptest strategy updates.
 - 2026-01-19: Consolidated note fixtures in-domain and added integration fixture module under tests/suite/common.
 - 2026-01-19: Optimized doc-tests with hidden boilerplate and updated resolver example; ran domain doctests.
-- 2026-01-19: Added doc-tests for core domain constructors and verified doctest pass.
+- 2026-01-19: Added doc-tests for core domain constructors and validators; verified doctest pass.
 
 ### Completion Notes List
 
@@ -545,8 +545,8 @@ This story will leverage the test utilities being developed in Epic 2:
 - `mise run test:unit --package domain` passes (105 unit tests, 49 doc tests, 4 ignored).
 - Consolidated note fixtures to stay with domain unit tests and added integration fixture location under `tests/suite/common/mod.rs`.
 - Cleaned doc-test examples by hiding boilerplate imports and aligning schema resolver example with actual API.
-- Added doc-test examples for core domain constructors (Config::build, Note::new, PropertyName, Template::new, TemplateComposition, PlaceholderSyntax, VariableDefinition).
-- `cargo test -p lithos-domain --doc` passes (55 doctests, 5 ignored).
+- Added doc-test examples for core domain constructors and validators (Config::build/validate, Note::new/validate, PropertyName, Property::validate_value, PropertySpec::validate/validate_spec, Template::new/compose/validate, VariableDefinition::validate_value, Frontmatter/Logging validation, Vault metadata helpers).
+- `cargo test -p lithos-domain --doc` passes (65 doctests, 7 ignored).
 
 ### File List
 

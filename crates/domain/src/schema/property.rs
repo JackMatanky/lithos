@@ -199,6 +199,16 @@ impl Property {
     ///
     /// # Errors
     /// Returns `DomainError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Property, PropertyName, PropertySpec, BoolSpec};
+    /// # use uuid::Uuid;
+    /// let name = PropertyName::new("enabled".to_string()).unwrap();
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// let property = Property::new(Uuid::now_v7(), name, true, false, spec).unwrap();
+    /// property.validate_value(&serde_json::json!(true)).unwrap();
+    /// ```
     #[inline]
     pub fn validate_value(
         &self,

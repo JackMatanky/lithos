@@ -24,6 +24,16 @@ impl TrustedVaults {
     ///
     /// Returns `ConfigError::ValidationFailed` if both list and map are specified,
     /// or if neither is specified.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_domain::TrustedVaultsConfig;
+    /// let trusted = TrustedVaultsConfig {
+    ///     list: Some(vec!["/vault".to_string()]),
+    ///     map: None,
+    /// };
+    /// trusted.validate().unwrap();
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         #[expect(

@@ -276,6 +276,15 @@ impl Config {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if any required field is empty.
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// let global = GlobalConfig::default();
+    /// let vault = VaultConfig::default();
+    /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
+    /// config.validate().unwrap();
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         // Validate all component parts

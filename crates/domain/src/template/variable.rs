@@ -193,6 +193,18 @@ impl VariableDefinition {
     /// # Errors
     /// Returns `DomainError::InvalidType` if value type doesn't match.
     /// Returns `DomainError::ValidationFailed` for constraint violations.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::VariableDefinition;
+    /// let definition = VariableDefinition::String {
+    ///     default: None,
+    ///     min_length: Some(1),
+    ///     max_length: Some(5),
+    ///     pattern: None,
+    /// };
+    /// definition.validate_value(&serde_json::json!("note")).unwrap();
+    /// ```
     #[inline]
     #[expect(clippy::pattern_type_mismatch, reason = "Enum reference matching")]
     pub fn validate_value(
