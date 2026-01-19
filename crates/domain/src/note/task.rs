@@ -113,11 +113,11 @@ mod tests {
 
         #[test]
         fn accessors_return_expected_values() {
-            // GIVEN a task
+            // GIVEN: a task
             let task = Task::new("Review".to_owned(), TaskStatus::Cancelled, 5)
                 .unwrap();
 
-            // THEN accessors return expected values
+            // THEN: accessors return expected values
             assert_eq!(task.text(), "Review");
             assert_eq!(task.status(), TaskStatus::Cancelled);
             assert_eq!(task.position(), 5);
@@ -125,19 +125,19 @@ mod tests {
 
         #[test]
         fn succeeds_for_valid_input() {
-            // GIVEN valid task parameters
+            // GIVEN: valid task parameters
             let text = "Buy milk".to_owned();
             let status = TaskStatus::Incomplete;
             let position = 50;
 
-            // WHEN creating a new task
+            // WHEN: creating a new task
             #[expect(
                 clippy::disallowed_methods,
                 reason = "Setup phase - test fixture creation"
             )]
             let result = Task::new(text, status, position).unwrap();
 
-            // THEN it has the correct values
+            // THEN: it has the correct values
             assert_eq!(result.text(), "Buy milk");
             assert_eq!(result.status(), TaskStatus::Incomplete);
             assert_eq!(result.position(), 50);
@@ -145,13 +145,13 @@ mod tests {
 
         #[test]
         fn returns_error_for_empty_text() {
-            // GIVEN empty task text
+            // GIVEN: empty task text
             let text = "   ".to_owned();
 
-            // WHEN creating a new task
+            // WHEN: creating a new task
             let result = Task::new(text, TaskStatus::Complete, 0);
 
-            // THEN it returns ValidationFailed
+            // THEN: it returns ValidationFailed
             assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
         }
     }

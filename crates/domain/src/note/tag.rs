@@ -157,40 +157,44 @@ mod tests {
 
         #[test]
         fn accessors_return_expected_values() {
-            // GIVEN a parsed tag
+            // GIVEN: a parsed tag
             let tag = Tag::parse("#work/project").unwrap();
 
-            // THEN accessors expose path and segments
+            // THEN: accessors expose path and segments
             assert_eq!(tag.as_str(), "work/project");
             assert_eq!(tag.segments(), &["work".into(), "project".into()]);
         }
 
         #[test]
         fn succeeds_for_valid_simple_tag() {
-            // GIVEN a valid simple tag string
+            // GIVEN: a valid simple tag string
             let input = "#personal";
-            // WHEN parsing the tag
+
+            // WHEN: parsing the tag
             #[expect(
                 clippy::disallowed_methods,
                 reason = "Setup phase - test fixture creation"
             )]
             let result = Tag::parse(input).unwrap();
-            // THEN it has the correct path and segments
+
+            // THEN: it has the correct path and segments
             assert_eq!(result.as_str(), "personal");
             assert_eq!(result.segments(), &["personal".into()]);
         }
 
         #[test]
         fn succeeds_for_valid_hierarchical_tag() {
-            // GIVEN a valid hierarchical tag string
+            // GIVEN: a valid hierarchical tag string
             let input = "#work/project/urgent";
-            // WHEN parsing the tag
+
+            // WHEN: parsing the tag
             #[expect(
                 clippy::disallowed_methods,
                 reason = "Setup phase - test fixture creation"
             )]
             let result = Tag::parse(input).unwrap();
-            // THEN it has the correct path and segments
+
+            // THEN: it has the correct path and segments
             assert_eq!(result.as_str(), "work/project/urgent");
             assert_eq!(
                 result.segments(),
@@ -200,41 +204,49 @@ mod tests {
 
         #[test]
         fn returns_error_when_missing_hash_prefix() {
-            // GIVEN a tag string missing the # prefix
+            // GIVEN: a tag string missing the # prefix
             let input = "invalid";
-            // WHEN parsing
+
+            // WHEN: parsing
             let result = Tag::parse(input);
-            // THEN it returns an InvalidTag error
+
+            // THEN: it returns an InvalidTag error
             assert!(matches!(result, Err(DomainError::InvalidTag(_))));
         }
 
         #[test]
         fn returns_error_when_tag_is_only_hash() {
-            // GIVEN a tag string that is just #
+            // GIVEN: a tag string that is just #
             let input = "#";
-            // WHEN parsing
+
+            // WHEN: parsing
             let result = Tag::parse(input);
-            // THEN it returns an InvalidTag error
+
+            // THEN: it returns an InvalidTag error
             assert!(matches!(result, Err(DomainError::InvalidTag(_))));
         }
 
         #[test]
         fn returns_error_for_empty_segments() {
-            // GIVEN a tag string with double slashes
+            // GIVEN: a tag string with double slashes
             let input = "#work//urgent";
-            // WHEN parsing
+
+            // WHEN: parsing
             let result = Tag::parse(input);
-            // THEN it returns an EmptyTagSegment error
+
+            // THEN: it returns an EmptyTagSegment error
             assert!(matches!(result, Err(DomainError::EmptyTagSegment)));
         }
 
         #[test]
         fn returns_error_for_invalid_characters() {
-            // GIVEN a tag string with invalid characters (space)
+            // GIVEN: a tag string with invalid characters (space)
             let input = "#work project";
-            // WHEN parsing
+
+            // WHEN: parsing
             let result = Tag::parse(input);
-            // THEN it returns an InvalidTag error
+
+            // THEN: it returns an InvalidTag error
             assert!(matches!(result, Err(DomainError::InvalidTag(_))));
         }
     }

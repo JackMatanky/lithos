@@ -176,10 +176,10 @@ mod tests {
 
         #[test]
         fn accessors_return_expected_values() {
-            // GIVEN a heading
+            // GIVEN: a heading
             let heading = Heading::new(3, "Summary".to_owned(), 22).unwrap();
 
-            // THEN accessors expose fields
+            // THEN: accessors expose fields
             assert_eq!(heading.level(), 3);
             assert_eq!(heading.text(), "Summary");
             assert_eq!(heading.position(), 22);
@@ -187,19 +187,19 @@ mod tests {
 
         #[test]
         fn new_succeeds_for_valid_input() {
-            // GIVEN valid heading parameters
+            // GIVEN: valid heading parameters
             let level = 2;
             let text = "Implementation".to_owned();
             let position = 10;
 
-            // WHEN creating a new heading
+            // WHEN: creating a new heading
             #[expect(
                 clippy::disallowed_methods,
                 reason = "Setup phase - test fixture creation"
             )]
             let result = Heading::new(level, text, position).unwrap();
 
-            // THEN it has the correct values
+            // THEN: it has the correct values
             assert_eq!(result.level(), 2);
             assert_eq!(result.text(), "Implementation");
             assert_eq!(result.position(), 10);
@@ -207,27 +207,27 @@ mod tests {
 
         #[test]
         fn new_returns_error_for_invalid_level() {
-            // GIVEN an invalid heading level
+            // GIVEN: an invalid heading level
             let level = 7;
             let text = "Invalid".to_owned();
 
-            // WHEN creating a new heading
+            // WHEN: creating a new heading
             let result = Heading::new(level, text, 0);
 
-            // THEN it returns InvalidHeadingLevel
+            // THEN: it returns InvalidHeadingLevel
             assert!(matches!(result, Err(DomainError::InvalidHeadingLevel(7))));
         }
 
         #[test]
         fn new_returns_error_for_empty_text() {
-            // GIVEN empty heading text
+            // GIVEN: empty heading text
             let level = 1;
             let text = "   ".to_owned();
 
-            // WHEN creating a new heading
+            // WHEN: creating a new heading
             let result = Heading::new(level, text, 0);
 
-            // THEN it returns ValidationFailed
+            // THEN: it returns ValidationFailed
             assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
         }
     }
@@ -237,12 +237,12 @@ mod tests {
 
         #[test]
         fn accessors_return_expected_values() {
-            // GIVEN a section with heading
+            // GIVEN: a section with heading
             let heading = Heading::new(1, "Intro".to_owned(), 0).unwrap();
             let section =
                 Section::new(Some(heading.clone()), "Body".to_owned(), 0..4);
 
-            // THEN accessors return expected values
+            // THEN: accessors return expected values
             assert_eq!(section.content(), "Body");
             assert_eq!(section.heading().unwrap().text(), "Intro");
             assert_eq!(section.range(), 0..4);
@@ -250,7 +250,7 @@ mod tests {
 
         #[test]
         fn new_succeeds_for_valid_input() {
-            // GIVEN valid section parameters
+            // GIVEN: valid section parameters
             #[expect(
                 clippy::disallowed_methods,
                 reason = "Setup phase - test fixture creation"
@@ -259,10 +259,10 @@ mod tests {
             let content = "Section content".to_owned();
             let range = 0..15;
 
-            // WHEN creating a new section
+            // WHEN: creating a new section
             let result = Section::new(heading.clone(), content, range.clone());
 
-            // THEN it has the correct values
+            // THEN: it has the correct values
             assert_eq!(result.heading(), heading.as_ref());
             assert_eq!(result.content(), "Section content");
             assert_eq!(result.range(), range);
