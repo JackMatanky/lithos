@@ -1,7 +1,6 @@
-use std::{collections::HashMap, sync::LazyLock};
+use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use regex::Regex;
 use uuid::Uuid;
 
 use super::{
@@ -11,23 +10,7 @@ use super::{
     validation::{validate_content, validate_structure},
     variable::VariableDefinition,
 };
-use crate::{errors::DomainError, patterns};
-
-/// Template name validation pattern (alphanumeric with underscores/dashes).
-#[expect(clippy::disallowed_methods, reason = "Static regex initialization")]
-#[expect(clippy::expect_used, reason = "Static regex initialization")]
-static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(patterns::ALPHANUMERIC_NAME)
-        .expect("Hardcoded pattern from patterns module")
-});
-
-/// Template variable name validation pattern (programming identifier style).
-#[expect(clippy::disallowed_methods, reason = "Static regex initialization")]
-#[expect(clippy::expect_used, reason = "Static regex initialization")]
-static VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(patterns::IDENTIFIER_NAME)
-        .expect("Hardcoded pattern from patterns module")
-});
+use crate::{errors::DomainError, validation};
 
 const RESERVED_WORDS: &[&str] = &[
     "block",
@@ -287,35 +270,20 @@ impl Template {
     }
 
     fn validate_name(name: &str) -> Result<(), DomainError> {
-        Self::validate_name_not_empty(name)?;
-        Self::validate_name_within_length(name)?;
-        Self::validate_name_matches_pattern(name)?;
-        Ok(())
-    }
-
-    fn validate_name_matches_pattern(name: &str) -> Result<(), DomainError> {
-        if !NAME_RE.is_match(name) {
-            return Err(DomainError::ValidationFailed(format!(
-                "Invalid template name: {name}"
-            )));
-        }
-        Ok(())
-    }
-
-    fn validate_name_not_empty(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
             return Err(DomainError::ValidationFailed(
                 "Template name cannot be empty".to_owned(),
             ));
         }
-        Ok(())
-    }
-
-    fn validate_name_within_length(name: &str) -> Result<(), DomainError> {
         if name.len() > 64 {
             return Err(DomainError::ValidationFailed(
                 "Template name too long".to_owned(),
             ));
+        }
+        if !validation::is_alphanumeric_name(name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid template name: {name}"
+            )));
         }
         Ok(())
     }
@@ -332,42 +300,23 @@ impl Template {
         Ok(())
     }
 
-    fn validate_variable_name_not_empty(name: &str) -> Result<(), DomainError> {
+    fn validate_variable_name(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
             return Err(DomainError::ValidationFailed(
                 "Variable name cannot be empty".to_owned(),
             ));
         }
-        Ok(())
-    }
-
-    fn validate_variable_name(name: &str) -> Result<(), DomainError> {
-        Self::validate_variable_name_not_empty(name)?;
-        Self::validate_variable_name_within_length(name)?;
-        Self::validate_variable_name_matches_pattern(name)?;
-        Self::validate_variable_name_not_reserved(name)?;
-        Ok(())
-    }
-
-    fn validate_variable_name_matches_pattern(
-        name: &str,
-    ) -> Result<(), DomainError> {
-        if !VAR_RE.is_match(name) {
-            return Err(DomainError::ValidationFailed(format!(
-                "Invalid variable name: {name}"
-            )));
-        }
-        Ok(())
-    }
-
-    fn validate_variable_name_within_length(
-        name: &str,
-    ) -> Result<(), DomainError> {
         if name.len() > 32 {
             return Err(DomainError::ValidationFailed(
                 "Variable name too long".to_owned(),
             ));
         }
+        if !validation::is_identifier_name(name) {
+            return Err(DomainError::ValidationFailed(format!(
+                "Invalid variable name: {name}"
+            )));
+        }
+        Self::validate_variable_name_not_reserved(name)?;
         Ok(())
     }
 

@@ -1,4 +1,4 @@
-use crate::errors::DomainError;
+use crate::{errors::DomainError, validation};
 
 /// Type-safe variable definition with validation constraints.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -58,17 +58,6 @@ pub enum VariableDefinition {
     reason = "Function ordering optimized for logical flow over strict alphabetical order"
 )]
 impl VariableDefinition {
-    /// Checks if a number is within the specified range.
-    fn check_number_range(
-        n: f64,
-        min: Option<f64>,
-        max: Option<f64>,
-    ) -> Result<(), DomainError> {
-        Self::validate_number_at_least_min(n, min, max)?;
-        Self::validate_number_at_most_max(n, min, max)?;
-        Ok(())
-    }
-
     /// Checks string pattern constraints.
     /// Adversarial Review Fix: Use a cache to avoid recompiling the same regex.
     fn check_string_pattern(
@@ -100,70 +89,6 @@ impl VariableDefinition {
                     "String does not match pattern: {p}"
                 )));
             }
-        }
-        Ok(())
-    }
-
-    fn validate_number_at_least_min(
-        n: f64,
-        min: Option<f64>,
-        max: Option<f64>,
-    ) -> Result<(), DomainError> {
-        if let Some(min_val) = min
-            && n < min_val
-        {
-            return Err(DomainError::NumberOutOfRange {
-                value: n,
-                min: Some(min_val),
-                max,
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_number_at_most_max(
-        n: f64,
-        min: Option<f64>,
-        max: Option<f64>,
-    ) -> Result<(), DomainError> {
-        if let Some(max_val) = max
-            && n > max_val
-        {
-            return Err(DomainError::NumberOutOfRange {
-                value: n,
-                min,
-                max: Some(max_val),
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_string_min_length(
-        s: &str,
-        min: Option<usize>,
-    ) -> Result<(), DomainError> {
-        if let Some(m) = min
-            && s.len() < m
-        {
-            return Err(DomainError::StringTooShort {
-                min: m,
-                actual: s.len(),
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_string_max_length(
-        s: &str,
-        max: Option<usize>,
-    ) -> Result<(), DomainError> {
-        if let Some(m) = max
-            && s.len() > m
-        {
-            return Err(DomainError::StringTooLong {
-                max: m,
-                actual: s.len(),
-            });
         }
         Ok(())
     }
@@ -324,15 +249,8 @@ impl VariableDefinition {
             expected: "string (file path)".to_owned(),
         })?;
 
-        Self::validate_file_path_not_empty(s)?;
+        validation::validate_vault_path(s, None)?;
         Self::validate_file_extension_allowed(s, file_types)?;
-        Ok(())
-    }
-
-    fn validate_file_path_not_empty(s: &str) -> Result<(), DomainError> {
-        if s.is_empty() {
-            return Err(DomainError::EmptyPath);
-        }
         Ok(())
     }
 
@@ -346,7 +264,7 @@ impl VariableDefinition {
             value: value.to_string(),
             expected: "number".to_owned(),
         })?;
-        Self::check_number_range(n, min, max)
+        validation::validate_numeric_range(n, min, max)
     }
 
     #[inline]
@@ -360,8 +278,7 @@ impl VariableDefinition {
             value: value.to_string(),
             expected: "string".to_owned(),
         })?;
-        Self::validate_string_min_length(s, min_length)?;
-        Self::validate_string_max_length(s, max_length)?;
+        validation::validate_string_length(s, min_length, max_length)?;
         Self::check_string_pattern(s, pattern)?;
         Ok(())
     }

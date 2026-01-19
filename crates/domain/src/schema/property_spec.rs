@@ -11,7 +11,7 @@ use std::{
     sync::{Mutex, OnceLock},
 };
 
-use crate::errors::DomainError;
+use crate::{errors::DomainError, validation};
 
 static REGEX_CACHE: OnceLock<Mutex<HashMap<String, regex::Regex>>> =
     OnceLock::new();
@@ -307,8 +307,7 @@ impl PropertySpecTrait for NumberSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        self.validate_min(*value)?;
-        self.validate_max(*value)?;
+        validation::validate_numeric_range(*value, self.min, self.max)?;
         self.validate_step(*value)?;
         Ok(())
     }
@@ -342,49 +341,11 @@ impl NumberSpec {
         Ok(())
     }
 
-    fn validate_max(&self, value: f64) -> Result<(), DomainError> {
-        if let Some(max) = self.max
-            && value > max
-        {
-            return Err(DomainError::NumberOutOfRange {
-                value,
-                min: self.min,
-                max: self.max,
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_min(&self, value: f64) -> Result<(), DomainError> {
-        if let Some(min) = self.min
-            && value < min
-        {
-            return Err(DomainError::NumberOutOfRange {
-                value,
-                min: self.min,
-                max: self.max,
-            });
-        }
-        Ok(())
-    }
-
-    #[expect(
-        clippy::float_arithmetic,
-        clippy::modulo_arithmetic,
-        reason = "Core numeric validation logic"
-    )]
     fn validate_step(&self, value: f64) -> Result<(), DomainError> {
         if let Some(step) = self.step {
             // Note: step positivity is guaranteed by check_step() in validate_spec
             let base = self.min.unwrap_or(0.0f64);
-            let diff = (value - base).abs();
-            let rem = diff % step;
-            if rem > 1e-10f64 && (step - rem) > 1e-10f64 {
-                return Err(DomainError::InvalidStepValue {
-                    value,
-                    step,
-                });
-            }
+            validation::validate_numeric_step(value, base, step)?;
         }
         Ok(())
     }
@@ -416,8 +377,11 @@ impl PropertySpecTrait for StringSpec {
 
     #[inline]
     fn validate(&self, value: &Self::Value) -> Result<(), DomainError> {
-        self.validate_min_length(value)?;
-        self.validate_max_length(value)?;
+        validation::validate_string_length(
+            value,
+            self.min_length,
+            self.max_length,
+        )?;
         self.validate_enum(value)?;
         self.validate_pattern(value)?;
         Ok(())
@@ -457,30 +421,6 @@ impl StringSpec {
             return Err(DomainError::InvalidEnumValue {
                 value: value.to_owned(),
                 allowed: enums.clone(),
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_max_length(&self, value: &str) -> Result<(), DomainError> {
-        if let Some(max) = self.max_length
-            && value.len() > max
-        {
-            return Err(DomainError::StringTooLong {
-                max,
-                actual: value.len(),
-            });
-        }
-        Ok(())
-    }
-
-    fn validate_min_length(&self, value: &str) -> Result<(), DomainError> {
-        if let Some(min) = self.min_length
-            && value.len() < min
-        {
-            return Err(DomainError::StringTooShort {
-                min,
-                actual: value.len(),
             });
         }
         Ok(())

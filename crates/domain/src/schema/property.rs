@@ -5,16 +5,12 @@
     reason = "Core domain logic and naming convention where Property prefix is descriptive"
 )]
 
-use std::{
-    fmt::{Debug, Display},
-    sync::LazyLock,
-};
+use std::fmt::{Debug, Display};
 
-use regex::Regex;
 use uuid::Uuid;
 
 use super::property_spec::PropertySpec;
-use crate::{errors::DomainError, patterns};
+use crate::{errors::DomainError, validation};
 
 /// Validated property name value object.
 ///
@@ -42,41 +38,16 @@ impl PropertyName {
     /// Returns `DomainError` if validation fails.
     #[inline]
     pub fn new(name: String) -> Result<Self, DomainError> {
-        Self::validate_non_empty(&name)?;
-        Self::validate_length(&name)?;
-        Self::validate_format(&name)?;
-        Ok(Self(name))
-    }
-
-    fn validate_format(name: &str) -> Result<(), DomainError> {
-        static PROPERTY_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
-            #[expect(
-                clippy::expect_used,
-                clippy::disallowed_methods,
-                reason = "Hardcoded pattern from patterns module"
-            )]
-            Regex::new(patterns::ALPHANUMERIC_NAME)
-                .expect("Hardcoded pattern from patterns module")
-        });
-
-        if !PROPERTY_NAME_RE.is_match(name) {
-            return Err(DomainError::InvalidPropertyName(name.to_owned()));
-        }
-        Ok(())
-    }
-
-    fn validate_length(name: &str) -> Result<(), DomainError> {
-        if name.len() > 64 {
-            return Err(DomainError::PropertyNameTooLong(name.len()));
-        }
-        Ok(())
-    }
-
-    fn validate_non_empty(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
             return Err(DomainError::EmptyPropertyName);
         }
-        Ok(())
+        if name.len() > 64 {
+            return Err(DomainError::PropertyNameTooLong(name.len()));
+        }
+        if !validation::is_alphanumeric_name(&name) {
+            return Err(DomainError::InvalidPropertyName(name));
+        }
+        Ok(Self(name))
     }
 }
 
