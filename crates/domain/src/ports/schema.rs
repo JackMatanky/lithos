@@ -38,18 +38,29 @@ mod tests {
 
     #[test]
     fn command_trait_is_object_safe() {
+        // GIVEN: the Command trait
+        // WHEN: checking for object safety
         let _: Option<Box<dyn Command>> = None;
+        // THEN: it compiles
     }
 
     #[test]
     fn query_trait_is_object_safe() {
+        // GIVEN: the Query trait
+        // WHEN: checking for object safety
         let _: Option<Box<dyn Query>> = None;
+        // THEN: it compiles
     }
 
     #[test]
     fn traits_are_send_and_sync() {
+        // GIVEN: the port traits
         fn assert_send_sync<T: Send + Sync + ?Sized>() {}
+
+        // WHEN: checking Send + Sync bounds
         assert_send_sync::<dyn Command>();
         assert_send_sync::<dyn Query>();
+
+        // THEN: they satisfy the bounds
     }
 }
