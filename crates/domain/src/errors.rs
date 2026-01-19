@@ -9,6 +9,8 @@
 //! - Errors are `Send + Sync` for use across async boundaries
 //! - Use `#[from]` attribute for automatic error conversions
 
+use std::borrow::Cow;
+
 /// Configuration-related domain errors.
 ///
 /// # Invariants
@@ -204,8 +206,11 @@ pub enum DomainError {
     InvalidLinkType,
 
     /// Invalid note path.
+    ///
+    /// Uses `Cow<'static, str>` to avoid allocation for static error messages
+    /// while still supporting dynamic messages when needed.
     #[error("Invalid note path: {0}")]
-    InvalidPath(String),
+    InvalidPath(Cow<'static, str>),
 
     /// Invalid property name.
     #[error("Invalid property name: {0}")]

@@ -177,9 +177,15 @@ impl Note {
         // Use shared validation utility from domain core
         validate_vault_path(&path, Some("md"))?;
 
+        // Convert path to Box<str> for storage (no clone needed)
+        let path_box: Box<str> = path.into();
+
+        // Clone path string for event (necessary since path_box doesn't implement Copy)
+        let path_for_event = path_box.to_string();
+
         let mut note = Self {
             id,
-            path: path.clone().into(),
+            path: path_box,
             frontmatter: None,
             links: vec![],
             embeds: vec![],
@@ -193,7 +199,7 @@ impl Note {
         // Emit NoteCreated domain event
         note.add_event(DomainEvent::NoteCreated(NoteCreated {
             id,
-            path,
+            path: path_for_event,
             timestamp: chrono::Utc::now().timestamp(),
         }));
 

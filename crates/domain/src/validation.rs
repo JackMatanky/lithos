@@ -18,6 +18,23 @@
     reason = "Some functions will be used in future refactoring"
 )]
 
+// ============================================================================
+// Error Message Constants
+// ============================================================================
+
+/// Static error messages to avoid repeated allocations.
+///
+/// These are used with `Cow::Borrowed` to avoid heap allocations for
+/// common validation errors.
+mod error_messages {
+    pub(super) const PATH_RELATIVE: &str = "Path must be relative";
+    pub(super) const PATH_WINDOWS_ABS: &str =
+        "Path must be relative (Windows absolute paths not allowed)";
+    pub(super) const PATH_TRAVERSAL: &str = "Path traversal not allowed";
+}
+
+use std::borrow::Cow;
+
 use crate::errors::DomainError;
 
 // ============================================================================
@@ -113,15 +130,14 @@ fn validate_path_not_empty(path: &str) -> Result<(), DomainError> {
 #[inline]
 fn validate_path_is_relative(path: &str) -> Result<(), DomainError> {
     if path.starts_with('/') {
-        return Err(DomainError::InvalidPath(
-            "Path must be relative".to_owned(),
-        ));
+        return Err(DomainError::InvalidPath(Cow::Borrowed(
+            error_messages::PATH_RELATIVE,
+        )));
     }
     if is_windows_absolute_path(path) {
-        return Err(DomainError::InvalidPath(
-            "Path must be relative (Windows absolute paths not allowed)"
-                .to_owned(),
-        ));
+        return Err(DomainError::InvalidPath(Cow::Borrowed(
+            error_messages::PATH_WINDOWS_ABS,
+        )));
     }
     Ok(())
 }
@@ -130,9 +146,9 @@ fn validate_path_is_relative(path: &str) -> Result<(), DomainError> {
 #[inline]
 fn validate_path_no_traversal(path: &str) -> Result<(), DomainError> {
     if path.contains("..") {
-        return Err(DomainError::InvalidPath(
-            "Path traversal not allowed".to_owned(),
-        ));
+        return Err(DomainError::InvalidPath(Cow::Borrowed(
+            error_messages::PATH_TRAVERSAL,
+        )));
     }
     Ok(())
 }
@@ -147,9 +163,9 @@ fn validate_path_has_extension(
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case(required_ext))
     {
-        return Err(DomainError::InvalidPath(format!(
+        return Err(DomainError::InvalidPath(Cow::Owned(format!(
             "Path must end with .{required_ext}"
-        )));
+        ))));
     }
     Ok(())
 }
