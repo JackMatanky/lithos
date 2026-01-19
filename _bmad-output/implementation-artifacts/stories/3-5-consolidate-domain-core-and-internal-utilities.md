@@ -1,6 +1,6 @@
 # Story 3.5: Consolidate Domain Core and Internal Utilities
 
-Status: review
+Status: done
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
@@ -254,6 +254,12 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 
 ### Debug Log
 
+**2026-01-19 - ADVERSARIAL REVIEW FIXES:**
+- ✅ **Dependency Purity**: Moved `proptest` to `dev-dependencies` in `Cargo.toml`.
+- ✅ **Config Aggregate Compliance**: Implemented `pending_events`, `take_events`, and `add_event` in `Config`. Added `ConfigEvents` enum.
+- ✅ **Semantic Errors**: Added `EmptyTemplateName`, `TemplateNameTooLong`, `InvalidTemplateName`, etc. to `DomainError` and updated `Template` validation to use them.
+- ✅ **Documentation**: Synchronized `File List` with actual modified files from refactor.
+
 **2026-01-19 - FINAL STANDARDIZATION:**
 - ✅ **Encapsulation**: Made fields private in `Note`, `Schema`, `Template`, `Config`, and `PropertyBank`. Added public accessors.
 - ✅ **Event Sourcing**: Standardized `pending_events` and `take_events()` pattern.
@@ -339,10 +345,21 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 - `_bmad-output/domain-standardization-audit.md` - **Standardization audit** (readability patterns - delete in Task 5)
 
 **Modified Files:**
+- `crates/domain/Cargo.toml` - Move proptest to dev-dependencies, clean up duplicates
 - `crates/domain/src/lib.rs` - Added `pub(crate) mod validation;`, minimized public API re-exports
-- `crates/domain/src/note/core.rs` - Refactored to use shared `validate_vault_path()` (-65 lines), renamed to `NoteEvent`
-- `crates/domain/src/schema/aggregate.rs` - Standardized construction, renamed to `SchemaEvent`
-- `crates/domain/src/template/core.rs` - Renamed to `TemplateEvent`, standardized patterns
+- `crates/domain/src/errors.rs` - Added semantic error variants for Template/Variable
+- `crates/domain/src/config/aggregate.rs` - Added event handling (pending_events, take_events) to Config aggregate
+- `crates/domain/src/config/events.rs` - Added ConfigEvents enum wrapper
+- `crates/domain/src/config/mod.rs` - Structural adjustments for bounded context organization
+- `crates/domain/src/note/core.rs` - Refactored to use shared `validate_vault_path()` (-65 lines), renamed to `NoteEvents`
+- `crates/domain/src/note/frontmatter.rs` - Visibility and structural standardization
+- `crates/domain/src/ports/mod.rs` - Visibility adjustments for hexagonal compliance
+- `crates/domain/src/schema/aggregate.rs` - Standardized construction, renamed to `SchemaEvents`
+- `crates/domain/src/schema/property.rs` - Standardization of regex patterns and validation
+- `crates/domain/src/schema/resolver.rs` - Path updates for context restructuring
+- `crates/domain/src/template/core.rs` - Renamed to `TemplateEvents`, standardized patterns and semantic errors
+- `crates/domain/src/template/composition.rs` - Updates for context restructuring
+- `benches/schema_benchmarks.rs` - Path updates for context restructuring
 
 ## Change Log
 - **2026-01-19 17:00:** Created `crates/domain/src/validation.rs` with comprehensive shared utilities

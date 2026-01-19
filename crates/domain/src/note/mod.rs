@@ -4,7 +4,7 @@
 //! and its subentities in the domain layer.
 
 /// Core Note aggregate root and main entities.
-pub(crate) mod core;
+pub(crate) mod aggregate;
 /// Note domain events.
 pub(crate) mod events;
 
@@ -20,3 +20,4 @@ pub(crate) mod tag;
 pub(crate) mod task;
 
 // Re-export main types for internal use and lib.rs re-exports
+pub use aggregate::Note;

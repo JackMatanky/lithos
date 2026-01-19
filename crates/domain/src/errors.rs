@@ -172,6 +172,14 @@ pub enum DomainError {
     #[error("Tag segment cannot be empty")]
     EmptyTagSegment,
 
+    /// Template name cannot be empty.
+    #[error("Template name cannot be empty")]
+    EmptyTemplateName,
+
+    /// Variable name cannot be empty.
+    #[error("Variable name cannot be empty")]
+    EmptyVariableName,
+
     /// Initial placeholder error.
     #[error("Initialization error")]
     Initialize,
@@ -237,6 +245,10 @@ pub enum DomainError {
     #[error("Invalid tag: {0}")]
     InvalidTag(String),
 
+    /// Invalid template name.
+    #[error("Invalid template name: {0}")]
+    InvalidTemplateName(String),
+
     /// Invalid type.
     #[error("Invalid type: {value} (expected: {expected})")]
     InvalidType {
@@ -245,6 +257,10 @@ pub enum DomainError {
         /// The expected type.
         expected: String,
     },
+
+    /// Invalid variable name.
+    #[error("Invalid variable name: {0}")]
+    InvalidVariableName(String),
 
     /// Invalid YAML.
     #[error("Invalid YAML: {0}")]
@@ -323,6 +339,10 @@ pub enum DomainError {
     #[error("Template content too large: {0} bytes (max: {1})")]
     TemplateContentTooLarge(usize, usize),
 
+    /// Template name too long.
+    #[error("Template name too long: {0} (max 64)")]
+    TemplateNameTooLong(usize),
+
     /// Unexpected error.
     #[error("Unexpected error: {0}")]
     Unexpected(String),
@@ -330,6 +350,10 @@ pub enum DomainError {
     /// Validation failed.
     #[error("Validation failed: {0}")]
     ValidationFailed(String),
+
+    /// Variable name too long.
+    #[error("Variable name too long: {0} (max 32)")]
+    VariableNameTooLong(usize),
 
     /// Variable not found.
     #[error("Variable not found: {0}")]

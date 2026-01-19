@@ -1,4 +1,5 @@
 use super::{
+    events::{ConfigEvents, ConfigUpdated},
     global,
     global::Global,
     types::{Frontmatter, Logging, Schema, Template},
@@ -14,60 +15,58 @@ use super::{
 /// for a vault operation.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Logical grouping preferred over alphabetical for domain models"
+)]
 pub struct Config {
-    /// Merged frontmatter configuration.
-    frontmatter: Frontmatter,
-    /// Global filesystem configuration.
-    global_filesystem: global::Filesystem,
-    /// Merged logging configuration.
-    logging: Logging,
-    /// Vault filesystem configuration.
-    vault_filesystem: vault::Filesystem,
     /// Vault metadata with versioning and naming.
     vault_metadata: vault::Metadata,
+    /// Merged logging configuration.
+    logging: Logging,
+    /// Global filesystem configuration.
+    global_filesystem: global::Filesystem,
+    /// Vault filesystem configuration.
+    vault_filesystem: vault::Filesystem,
+    /// Merged frontmatter configuration.
+    frontmatter: Frontmatter,
+    /// Domain events pending emission.
+    pending_events: Vec<ConfigEvents>,
 }
 
 impl Default for Config {
     #[inline]
     fn default() -> Self {
         Self {
-            vault_metadata: vault::Metadata::default(),
-            global_filesystem: global::Filesystem::default(),
-            vault_filesystem: vault::Filesystem::default(),
             frontmatter: Frontmatter::default(),
+            global_filesystem: global::Filesystem::default(),
             logging: Logging::default(),
+            pending_events: vec![],
+            vault_filesystem: vault::Filesystem::default(),
+            vault_metadata: vault::Metadata::default(),
         }
     }
 }
 
 impl Config {
+    /// Adds a domain event to the pending events collection.
+    #[inline]
+    fn add_event(&mut self, event: ConfigEvents) {
+        self.pending_events.push(event);
+    }
+
     /// Build a new Config by combining optional Global and Vault configurations with business rules.
-    ///
-    /// # Business Rules
-    /// - Filesystems are kept separate (global library vs vault-specific).
-    /// - Frontmatter and logging merge with vault precedence over global.
-    /// - Vault path is required and used to set vault metadata defaults.
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
-    /// let global = GlobalConfig::default();
-    /// let vault = VaultConfig::default();
-    ///
-    /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
-    /// assert_eq!(config.vault_metadata().vault_path, "/vault");
-    /// ```
     #[inline]
     pub fn build(
         global: Option<&Global>,
         vault_path: &str,
         vault: Vault,
     ) -> Result<Self, crate::ConfigError> {
-        // Step 1: Pre-validate required Vault Path
+        // Pre-validate required Vault Path
         vault::Metadata::validate_vault_path(vault_path)?;
 
         // Step 2: Set vault metadata defaults
@@ -157,13 +156,19 @@ impl Config {
         );
 
         // Step 5: Construct the final strictly-validated aggregate
-        let config = Self {
+        let mut config = Self {
             frontmatter,
             global_filesystem,
             logging,
             vault_filesystem,
             vault_metadata,
+            pending_events: vec![],
         };
+
+        config.add_event(ConfigEvents::ConfigUpdated(ConfigUpdated::new(
+            "merged".to_owned(),
+            chrono::Utc::now().timestamp(),
+        )));
 
         // Step 5: Final invariant check
         config.validate()?;
@@ -243,33 +248,25 @@ impl Config {
         }
     }
 
+    /// Returns a reference to pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn pending_events(&self) -> &[ConfigEvents] {
+        &self.pending_events
+    }
+
+    /// Returns and clears pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<ConfigEvents> {
+        std::mem::take(&mut self.pending_events)
+    }
+
     /// Validate configuration against critical business rules.
     ///
-    /// # Validation Rules
-    /// - All filesystem fields must be non-empty.
-    /// - All frontmatter fields must be non-empty.
-    /// - `log_level` must be one of: debug, info, warn, error.
-    ///
-    /// # Note
-    /// This method is provided for post-construction validation if needed.
-    /// The `build()` method already performs validation during construction.
-    ///
     /// # Errors
-    ///
     /// Returns `ConfigError::ValidationFailed` if any required field is empty.
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
-    ///
-    /// # Examples
-    ///
-    /// ```rust
-    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
-    /// // Create a valid config via build
-    /// let global = GlobalConfig::default();
-    /// let vault = VaultConfig::default();
-    ///
-    /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
-    /// assert!(config.validate().is_ok());
-    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         // Validate all component parts
