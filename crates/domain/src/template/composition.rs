@@ -4,6 +4,35 @@ use super::aggregate::Template;
 use crate::errors::DomainError;
 
 /// Template composition for modular template building.
+///
+/// # Examples
+/// ```ignore
+/// # use lithos_domain::{InsertionPosition, Template, TemplateMetadata, TemplateSection};
+/// # use lithos_domain::TemplateComposition;
+/// # use std::collections::HashMap;
+/// # fn run() -> Result<(), lithos_domain::DomainError> {
+/// let base = Template::new(
+///     "base".to_string(),
+///     "Hello {{name}}".to_string(),
+///     HashMap::new(),
+///     None,
+///     TemplateMetadata::default(),
+/// )?;
+/// let composition = TemplateComposition {
+///     additional_sections: vec![TemplateSection {
+///         name: "footer".to_string(),
+///         content: "--".to_string(),
+///         position: InsertionPosition::End,
+///     }],
+///     base_template: base.name().to_string(),
+///     includes: Vec::new(),
+///     variable_overrides: HashMap::new(),
+/// };
+/// assert_eq!(composition.additional_sections.len(), 1);
+/// # Ok(())
+/// # }
+/// # run().unwrap();
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Composition {

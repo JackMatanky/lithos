@@ -60,6 +60,15 @@ impl Config {
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
+    /// let global = GlobalConfig::default();
+    /// let vault = VaultConfig::default();
+    /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
+    /// assert_eq!(config.vault_metadata().vault_path, "/vault");
+    /// ```
     #[inline]
     pub fn build(
         global: Option<&Global>,
