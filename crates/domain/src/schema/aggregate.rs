@@ -1,9 +1,252 @@
-//! `PropertyBank` domain entity for centralized property management.
+//! Schema domain aggregates: Schema and `PropertyBank`.
+//!
+//! This module contains the primary aggregate roots for the Schema bounded context,
+//! providing a pure domain representation of schemas and a centralized property registry.
+
+#![allow(
+    clippy::module_name_repetitions,
+    reason = "Core domain logic and naming convention where Schema/PropertyBank prefixes are descriptive"
+)]
+
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Display},
+    sync::LazyLock,
+};
+
+use regex::Regex;
+use uuid::Uuid;
 
 use super::{
-    core::DomainEvent, events::PropertyBankUpdated, property::Property,
+    events::{PropertyBankUpdated, SchemaCreated},
+    property::Property,
 };
-use crate::errors::DomainError;
+use crate::{errors::DomainError, patterns};
+
+/// Validated schema name value object.
+///
+/// Enforces invariants:
+/// - Non-empty
+/// - Max 64 characters
+/// - Matches regex `^[a-zA-Z0-9_-]+$` (alphanumeric, underscores, dashes)
+///
+/// # Examples
+///
+/// ```
+/// use lithos_domain::schema::SchemaName;
+///
+/// let name = SchemaName::new("project-note".to_string()).unwrap();
+/// assert_eq!(name.as_str(), "project-note");
+///
+/// let name2 = SchemaName::new("daily_note".to_string()).unwrap();
+/// assert_eq!(name2.as_str(), "daily_note");
+///
+/// let name3 = SchemaName::new("MySchema".to_string()).unwrap();
+/// assert_eq!(name3.as_str(), "MySchema");
+///
+/// let invalid = SchemaName::new("".to_string());
+/// assert!(invalid.is_err());
+/// ```
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+#[serde(try_from = "String", into = "String")]
+pub struct SchemaName(String);
+
+impl SchemaName {
+    /// Get string reference.
+    #[inline]
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// Create a new `SchemaName` with validation.
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails.
+    #[inline]
+    pub fn new(name: String) -> Result<Self, DomainError> {
+        Self::validate_non_empty(&name)?;
+        Self::validate_length(&name)?;
+        Self::validate_format(&name)?;
+        Ok(Self(name))
+    }
+
+    fn validate_format(name: &str) -> Result<(), DomainError> {
+        static SCHEMA_NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
+            #[expect(
+                clippy::expect_used,
+                clippy::disallowed_methods,
+                reason = "Hardcoded pattern from patterns module"
+            )]
+            Regex::new(patterns::ALPHANUMERIC_NAME)
+                .expect("Hardcoded pattern from patterns module")
+        });
+
+        if !SCHEMA_NAME_RE.is_match(name) {
+            return Err(DomainError::InvalidSchemaName(name.to_owned()));
+        }
+        Ok(())
+    }
+
+    fn validate_length(name: &str) -> Result<(), DomainError> {
+        if name.len() > 64 {
+            return Err(DomainError::SchemaNameTooLong(name.len()));
+        }
+        Ok(())
+    }
+
+    fn validate_non_empty(name: &str) -> Result<(), DomainError> {
+        if name.is_empty() {
+            return Err(DomainError::EmptySchemaName);
+        }
+        Ok(())
+    }
+}
+
+impl Display for SchemaName {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl TryFrom<String> for SchemaName {
+    type Error = DomainError;
+
+    #[inline]
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        Self::new(value)
+    }
+}
+
+impl TryFrom<&str> for SchemaName {
+    type Error = DomainError;
+
+    #[inline]
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::new(value.to_owned())
+    }
+}
+
+impl From<SchemaName> for String {
+    #[inline]
+    fn from(val: SchemaName) -> Self {
+        val.0
+    }
+}
+
+impl AsRef<str> for SchemaName {
+    #[inline]
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Domain events for the Schema context.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum DomainEvent {
+    /// Property bank was updated.
+    PropertyBankUpdated(PropertyBankUpdated),
+    /// Schema was created.
+    SchemaCreated(SchemaCreated),
+}
+
+/// Schema aggregate defining metadata validation rules (Output).
+///
+/// Represents a fully resolved schema with no external dependencies.
+/// This is the "Truth" used for validation.
+///
+/// # Invariants
+/// - Schema name must be valid alphanumeric/underscore/dash format.
+/// - Properties are fully resolved and unique by name.
+///
+/// # Examples
+///
+/// ```
+/// use lithos_domain::schema::{Schema, SchemaName};
+/// use uuid::Uuid;
+///
+/// let name = SchemaName::new("project-note".into()).unwrap();
+/// let (schema, _) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+/// assert!(schema.properties.is_empty());
+/// ```
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Schema {
+    /// UUID v7 identity for schema.
+    pub id: Uuid,
+    /// Unique schema name.
+    pub name: SchemaName,
+    /// Fully resolved properties after inheritance.
+    pub properties: Vec<Property>,
+}
+
+impl Schema {
+    /// Gets a property by name.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_domain::schema::{Schema, SchemaName};
+    /// use uuid::Uuid;
+    ///
+    /// let name = SchemaName::new("test".into()).unwrap();
+    /// let (schema, _) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// assert!(schema.get("missing").is_none());
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn get(&self, name: &str) -> Option<&Property> {
+        self.properties.iter().find(|p| p.name.as_str() == name)
+    }
+
+    /// Checks if a property exists by name.
+    #[inline]
+    #[must_use]
+    pub fn has(&self, name: &str) -> bool {
+        self.properties.iter().any(|p| p.name.as_str() == name)
+    }
+
+    /// Create a new resolved Schema.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use lithos_domain::schema::{Schema, SchemaName};
+    /// use uuid::Uuid;
+    ///
+    /// let name = SchemaName::new("project-note".to_string()).unwrap();
+    /// let (schema, event) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// assert_eq!(schema.name.as_str(), "project-note");
+    /// ```
+    ///
+    /// # Errors
+    /// Returns `DomainError` if validation fails.
+    #[inline]
+    pub fn new(
+        id: Uuid,
+        name: SchemaName,
+        properties: Vec<Property>,
+    ) -> Result<(Self, DomainEvent), DomainError> {
+        let name_str = name.to_string();
+        let schema = Self {
+            id,
+            name,
+            properties,
+        };
+
+        let event = DomainEvent::SchemaCreated(SchemaCreated::new(
+            id,
+            name_str,
+            chrono::Utc::now().timestamp(),
+        ));
+
+        Ok((schema, event))
+    }
+}
 
 /// Registry of reusable Property definitions with dual indexing.
 ///
@@ -12,7 +255,7 @@ use crate::errors::DomainError;
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::schema::property_bank::PropertyBank;
+/// use lithos_domain::schema::PropertyBank;
 /// use lithos_domain::schema::{Property, PropertyName};
 /// use lithos_domain::schema::{PropertySpec, BoolSpec};
 /// use uuid::Uuid;
@@ -32,9 +275,9 @@ use crate::errors::DomainError;
 #[non_exhaustive]
 pub struct PropertyBank {
     /// Index mapping ID -> index in properties vector.
-    pub id_index: std::collections::HashMap<uuid::Uuid, usize>,
+    pub id_index: HashMap<Uuid, usize>,
     /// Index mapping Name -> index in properties vector.
-    pub name_index: std::collections::HashMap<String, usize>,
+    pub name_index: HashMap<String, usize>,
     /// Dense storage of properties.
     pub properties: Vec<Property>,
 }
@@ -64,7 +307,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::property_bank::PropertyBank;
+    /// use lithos_domain::schema::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// let result = bank.decode("missing");
@@ -73,7 +316,7 @@ impl PropertyBank {
     #[inline]
     pub fn decode(&self, key: &str) -> Result<&Property, DomainError> {
         // Try parsing key as UUID first
-        if let Ok(id) = uuid::Uuid::parse_str(key)
+        if let Ok(id) = Uuid::parse_str(key)
             && let Some(prop) = self.get_by_id(id)
         {
             return Ok(prop);
@@ -88,7 +331,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::property_bank::PropertyBank;
+    /// use lithos_domain::schema::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// assert!(bank.get("any").is_none());
@@ -97,7 +340,7 @@ impl PropertyBank {
     #[must_use]
     pub fn get(&self, key: &str) -> Option<&Property> {
         // Try by ID first
-        if let Ok(id) = uuid::Uuid::parse_str(key)
+        if let Ok(id) = Uuid::parse_str(key)
             && let Some(prop) = self.get_by_id(id)
         {
             return Some(prop);
@@ -109,7 +352,7 @@ impl PropertyBank {
     /// Lookup property by ID (O(1)).
     #[inline]
     #[must_use]
-    pub fn get_by_id(&self, id: uuid::Uuid) -> Option<&Property> {
+    pub fn get_by_id(&self, id: Uuid) -> Option<&Property> {
         let &idx = self.id_index.get(&id)?;
         self.properties.get(idx)
     }
@@ -125,7 +368,7 @@ impl PropertyBank {
     /// Checks if a property exists by ID.
     #[inline]
     #[must_use]
-    pub fn has_id(&self, id: uuid::Uuid) -> bool {
+    pub fn has_id(&self, id: Uuid) -> bool {
         self.id_index.contains_key(&id)
     }
 
@@ -148,7 +391,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::property_bank::PropertyBank;
+    /// use lithos_domain::schema::PropertyBank;
     /// use lithos_domain::schema::{Property, PropertyName};
     /// use lithos_domain::schema::{PropertySpec, BoolSpec};
     /// use uuid::Uuid;
@@ -199,6 +442,42 @@ impl PropertyBank {
     }
 }
 
+/// Test fixtures for deterministic schema data.
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test fixtures use expect for deterministic setup"
+)]
+pub mod fixtures {
+    use uuid::Uuid;
+
+    use super::{
+        super::property::{Property, fixtures::PropertyBuilder},
+        SchemaName,
+    };
+
+    /// Fixed UUID for deterministic tests.
+    pub const TEST_SCHEMA_ID: Uuid =
+        Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0002);
+
+    /// Example property for testing.
+    #[inline]
+    #[must_use]
+    pub fn example_property() -> Property {
+        PropertyBuilder::new().name("status").required(true).build()
+    }
+
+    /// Example schema name for testing.
+    ///
+    /// # Panics
+    /// Panics if the default schema name is invalid.
+    #[inline]
+    #[must_use]
+    pub fn example_schema_name() -> SchemaName {
+        SchemaName::new("test-schema".to_owned()).expect("Valid default name")
+    }
+}
+
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
@@ -214,7 +493,6 @@ mod tests {
         },
         *,
     };
-    use crate::errors::DomainError;
 
     /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
     /// Priority: P1.

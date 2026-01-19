@@ -9,7 +9,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::core::SchemaName;
+use super::aggregate::SchemaName;
 use crate::errors::DomainError;
 
 /// Domain Service: Validates acyclic schema inheritance and determines resolution order.
@@ -152,6 +152,70 @@ impl Default for SchemaGraph {
     reason = "Unit tests use unwrap/expect for simplicity"
 )]
 mod tests {
+    mod proptests {
+        use std::collections::BTreeSet;
+
+        use proptest::prelude::*;
+
+        use super::super::*;
+
+        proptest! {
+            /// 3.3-UNIT-018: `schema_graph_detects_arbitrary_cycles`.
+            /// Priority: P0.
+            #[test]
+            #[expect(clippy::indexing_slicing, reason = "Test logic uses indices known to be in bounds")]
+            #[expect(clippy::integer_division_remainder_used, reason = "Test logic uses modulo for cycling")]
+            #[expect(clippy::arithmetic_side_effects, reason = "Test logic uses safe arithmetic")]
+            fn schema_graph_detects_arbitrary_cycles(
+                names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10)
+            ) {
+                // GIVEN a set of unique schema names
+                let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
+                if unique_names.len() < 2 { return Ok(()); }
+
+                // WHEN creating a circular inheritance graph
+                let mut graph = SchemaGraph::new();
+                for i in 0..unique_names.len() {
+                    let next = (i + 1) % unique_names.len();
+                    let name = SchemaName::new(unique_names[i].clone()).unwrap();
+                    let next_name = SchemaName::new(unique_names[next].clone()).unwrap();
+                    graph.add_node(name, Some(next_name));
+                }
+
+                // THEN it must detect the circular inheritance
+                let res = graph.resolve_order();
+                assert!(matches!(res, Err(DomainError::CircularInheritance(_))));
+            }
+
+            /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
+            /// Priority: P1.
+            #[test]
+            #[expect(clippy::indexing_slicing, reason = "Test logic uses indices known to be in bounds")]
+            #[expect(clippy::arithmetic_side_effects, reason = "Test logic uses safe arithmetic")]
+            fn schema_graph_accepts_arbitrary_lineage(
+                names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10)
+            ) {
+                // GIVEN a set of unique schema names
+                let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
+
+                // WHEN creating a valid linear inheritance graph
+                let mut graph = SchemaGraph::new();
+                for i in 0..unique_names.len() {
+                    let name = SchemaName::new(unique_names[i].clone()).unwrap();
+                    let parent = if i == 0 { None } else { Some(SchemaName::new(unique_names[i-1].clone()).unwrap()) };
+                    graph.add_node(name, parent);
+                }
+
+                // THEN it must succeed and return the correct order
+                let res = graph.resolve_order();
+                assert!(res.is_ok());
+                if let Ok(order) = res {
+                    assert_eq!(order.len(), unique_names.len());
+                }
+            }
+        }
+    }
+
     use lithos_test_utils::assert_eq_detailed;
 
     use super::*;

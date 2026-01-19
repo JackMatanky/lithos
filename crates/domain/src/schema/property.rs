@@ -207,57 +207,6 @@ impl Property {
     }
 }
 
-/// Raw property input definition (Inline or Ref).
-///
-/// Matches the `PropertyOrRef` schema definition used in input files.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(untagged)]
-#[non_exhaustive]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Core domain logic and naming"
-)]
-pub enum RawProperty {
-    /// An inline property definition.
-    ///
-    /// This variant handles inline definitions in schema files.
-    Inline(RawPropertyInline),
-    /// A reference to a property in the `PropertyBank`.
-    ///
-    /// This variant handles `$ref` pointers in schema files.
-    Ref(RawPropertyRef),
-}
-
-/// Reference variant of a raw property.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawPropertyRef {
-    /// The reference string (e.g., "#/properties/title").
-    #[serde(rename = "$ref")]
-    pub ref_path: String,
-}
-
-/// Inline variant of a raw property.
-///
-/// Corresponds to the `Property` definition in the JSON schema but used as input.
-/// Missing identity is assigned by the adapter before entering the Domain resolution.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct RawPropertyInline {
-    /// Whether property accepts array of values.
-    #[serde(default)]
-    pub array: bool,
-    /// Unique identity assigned by adapter.
-    pub id: Uuid,
-    /// Property name.
-    pub name: String,
-    /// Whether property is required.
-    #[serde(default)]
-    pub required: bool,
-    /// Type-specific validation constraints.
-    pub spec: PropertySpec,
-}
-
 /// Test fixtures and builders for `Property`.
 #[cfg(test)]
 pub mod fixtures {
