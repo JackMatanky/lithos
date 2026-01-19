@@ -11,15 +11,14 @@
 use uuid::Uuid;
 
 use super::{
+    events::NoteCreated,
     frontmatter::Frontmatter,
     link::Link,
     structure::{Heading, Section},
     tag::Tag,
     task::Task,
 };
-use crate::{
-    errors::DomainError, events::NoteCreated, validation::validate_vault_path,
-};
+use crate::{errors::DomainError, validation::validate_vault_path};
 
 /// Aggregate root representing an Obsidian note.
 ///
@@ -31,7 +30,7 @@ use crate::{
 ///
 /// # Examples
 /// ```
-/// use lithos_domain::models::note::core::Note;
+/// use lithos_domain::note::core::Note;
 /// use uuid::Uuid;
 ///
 /// // For new files (first-time indexing)
@@ -404,7 +403,7 @@ pub mod fixtures {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::models::note::frontmatter::FieldValue;
+    use crate::note::frontmatter::FieldValue;
 
     /// Fixed UUID for deterministic tests (valid UUID v7 format).
     pub const TEST_NOTE_ID: Uuid =

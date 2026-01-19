@@ -7,8 +7,8 @@
 use async_trait::async_trait;
 
 use crate::{
+    config::{Config, Global, Vault},
     errors::ConfigError,
-    models::config::{Config, Global, Vault},
 };
 
 /// Command port for configuration write operations.

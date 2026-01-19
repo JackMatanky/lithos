@@ -185,7 +185,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::models::template::{Metadata, syntax::PlaceholderSyntax};
+    use crate::template::{Metadata, syntax::PlaceholderSyntax};
 
     #[test]
     fn should_detect_circular_composition() {

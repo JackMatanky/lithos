@@ -20,7 +20,7 @@ use crate::errors::DomainError;
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::models::schema::{SchemaGraph, SchemaName};
+/// use lithos_domain::schema::{SchemaGraph, SchemaName};
 ///
 /// let mut graph = SchemaGraph::new();
 /// graph.add_node("child".try_into().unwrap(), Some("parent".try_into().unwrap()));

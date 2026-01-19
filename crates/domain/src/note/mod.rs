@@ -5,6 +5,8 @@
 
 /// Core Note aggregate root and main entities.
 pub mod core;
+/// Note domain events.
+pub mod events;
 
 /// Frontmatter value objects and logic.
 pub mod frontmatter;

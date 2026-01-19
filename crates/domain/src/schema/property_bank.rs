@@ -1,10 +1,9 @@
 //! `PropertyBank` domain entity for centralized property management.
 
-use super::core::DomainEvent;
-use crate::{
-    errors::DomainError, events::PropertyBankUpdated,
-    models::schema::property::Property,
+use super::{
+    core::DomainEvent, events::PropertyBankUpdated, property::Property,
 };
+use crate::errors::DomainError;
 
 /// Registry of reusable Property definitions with dual indexing.
 ///
@@ -13,9 +12,9 @@ use crate::{
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::models::schema::property_bank::PropertyBank;
-/// use lithos_domain::models::schema::{Property, PropertyName};
-/// use lithos_domain::models::schema::{PropertySpec, BoolSpec};
+/// use lithos_domain::schema::property_bank::PropertyBank;
+/// use lithos_domain::schema::{Property, PropertyName};
+/// use lithos_domain::schema::{PropertySpec, BoolSpec};
 /// use uuid::Uuid;
 ///
 /// let mut bank = PropertyBank::new();
@@ -65,7 +64,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::models::schema::property_bank::PropertyBank;
+    /// use lithos_domain::schema::property_bank::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// let result = bank.decode("missing");
@@ -89,7 +88,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::models::schema::property_bank::PropertyBank;
+    /// use lithos_domain::schema::property_bank::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// assert!(bank.get("any").is_none());
@@ -149,9 +148,9 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::models::schema::property_bank::PropertyBank;
-    /// use lithos_domain::models::schema::{Property, PropertyName};
-    /// use lithos_domain::models::schema::{PropertySpec, BoolSpec};
+    /// use lithos_domain::schema::property_bank::PropertyBank;
+    /// use lithos_domain::schema::{Property, PropertyName};
+    /// use lithos_domain::schema::{PropertySpec, BoolSpec};
     /// use uuid::Uuid;
     ///
     /// let mut bank = PropertyBank::new();
@@ -208,11 +207,14 @@ impl PropertyBank {
 mod tests {
     use uuid::Uuid;
 
-    use super::*;
-    use crate::models::schema::{
-        property::{Property, PropertyName},
-        property_spec::{BoolSpec, PropertySpec, StringSpec},
+    use super::{
+        super::{
+            property::{Property, PropertyName},
+            property_spec::{BoolSpec, PropertySpec, StringSpec},
+        },
+        *,
     };
+    use crate::errors::DomainError;
 
     /// 3.3-UNIT-023: `is_idempotent_on_identical_registration`.
     /// Priority: P1.
