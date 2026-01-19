@@ -57,10 +57,26 @@ So that the codebase remains self-documenting, precise, and free of unnecessary 
 - [ ] Verify that hexagonal boundaries are correctly described in the documentation
 - [ ] Ensure that persistence-related invariants (rkyv, redb) are clearly documented in the infrastructure layer
 
-### Task 5: Final Verification & Generation
+### Task 5: Project Lifecycle & Documentation Updates
+- [ ] **ROADMAP UPDATE:** Update `ROADMAP.md` to mark Epic 4 (File Loading Strategy Foundation) as complete in Milestone 2.
+- [ ] **CHANGELOG UPDATE:** Update `CHANGELOG.md` with Epic 4 highlights (Unified loading interface, format detection, parsing strategies, loading mocks).
+- [ ] Ensure all documentation accurately reflects the final state of the implementation.
+
+### Task 6: Quality Assurance, Commit, and Remote Sync (MANDATORY FINAL TASK)
 - [ ] Run `mise run doc` and browse the generated documentation to ensure clarity and professional presentation
 - [ ] Verify that no linter warnings (e.g., `missing_docs`, `rustdoc::broken_intra_doc_links`) exist
-- [ ] Commit all documentation refinements with a clear, conventional commit message
+- [ ] Run `mise run fmt` to format all code according to project standards
+- [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
+- [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS, NO BYPASSING
+- [ ] **CRITICAL:** Ensure ALL pre-commit hooks pass - NO EXCEPTIONS, NO BYPASSING
+- [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
+- [ ] **MANDATORY:** Confirm all documentation meets quality standards and covers all requirements
+- [ ] Stage all files created or modified during story development
+- [ ] Commit with conventional commit message: `docs: complete epic 4 documentation audit and finalize project artifacts`
+- [ ] **REMOTE SYNC:** Push all changes to the remote branch `rust-conversion` using `git push`.
+- [ ] **CI VERIFICATION:** Monitor and verify that all GitHub Action CI checks pass for the pushed changes.
 
 ## Dev Notes
 

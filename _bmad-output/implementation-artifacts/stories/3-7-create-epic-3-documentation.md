@@ -123,7 +123,12 @@ So that developers understand the domain language and can work effectively with 
 - [ ] Test documentation by having another developer use it to understand domain models
 - [ ] Incorporate feedback and iterate on documentation clarity
 
-### Task 11: Quality Assurance and Commit (MANDATORY FINAL TASK)
+### Task 11: Project Lifecycle & Documentation Updates
+- [ ] **ROADMAP UPDATE:** Update `ROADMAP.md` to mark Epic 3 (Implement fundamental domain models) as complete in Milestone 1.
+- [ ] **CHANGELOG UPDATE:** Update `CHANGELOG.md` with Epic 3 highlights (Note aggregate, Schema system, Config hierarchy, Template composition).
+- [ ] Ensure all documentation accurately reflects the final state of the implementation.
+
+### Task 12: Quality Assurance, Commit, and Remote Sync (MANDATORY FINAL TASK)
 - [ ] Run `mise run fmt` to format all code according to project standards
 - [ ] Run `mise run lint` to check for all code quality issues and anti-patterns
 - [ ] Run `mise run verify` for comprehensive verification (fmt + lint + tests + coverage)
@@ -133,7 +138,9 @@ So that developers understand the domain language and can work effectively with 
 - [ ] **MANDATORY:** If any warnings or hook failures exist, fix them immediately and re-run verification
 - [ ] **MANDATORY:** Confirm all documentation meets quality standards and covers all requirements
 - [ ] Stage all files created or modified during story development
-- [ ] Commit with conventional commit message: `docs: create comprehensive epic 3 domain model documentation with entity relationships and evolution guidelines`
+- [ ] Commit with conventional commit message: `docs: complete epic 3 documentation and finalize project artifacts`
+- [ ] **REMOTE SYNC:** Push all changes to the remote branch `rust-conversion` using `git push`.
+- [ ] **CI VERIFICATION:** Monitor and verify that all GitHub Action CI checks pass for the pushed changes.
 
 ## Dev Notes
 
