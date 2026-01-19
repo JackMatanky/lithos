@@ -14,6 +14,28 @@ use super::{
 };
 
 /// Raw schema definition (Input).
+///
+/// # Examples
+/// ```ignore
+/// use lithos_domain::{RawSchema, RawProperty, RawPropertyInline, SchemaName, PropertySpec, BoolSpec};
+/// use std::collections::HashSet;
+/// use uuid::Uuid;
+///
+/// let schema = RawSchema::new(
+///     Uuid::now_v7(),
+///     SchemaName::new("note".to_string()).unwrap(),
+///     None,
+///     HashSet::new(),
+///     vec![RawProperty::Inline(RawPropertyInline {
+///         id: Uuid::now_v7(),
+///         name: "archived".to_string(),
+///         required: false,
+///         array: false,
+///         spec: PropertySpec::Bool(BoolSpec::default()),
+///     })],
+/// );
+/// assert_eq!(schema.properties.len(), 1);
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawSchema {

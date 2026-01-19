@@ -121,10 +121,13 @@ impl Resolver {
             }
             RawProperty::Ref(RawPropertyRef {
                 ref_path,
-            }) => bank
-                .get_by_name(&ref_path)
-                .cloned()
-                .ok_or_else(|| DomainError::PropertyNotFound(ref_path.clone())),
+            }) => {
+                let lookup =
+                    ref_path.strip_prefix("#/properties/").unwrap_or(&ref_path);
+                bank.get_by_name(lookup).cloned().ok_or_else(|| {
+                    DomainError::PropertyNotFound(ref_path.clone())
+                })
+            }
         }
     }
 }
