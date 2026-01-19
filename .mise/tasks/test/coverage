@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 #MISE description="Generate code coverage reports using tarpaulin"
 #MISE alias="tc"
+#MISE depends=["fmt", "build"]
 #MISE sources=["**/*.rs", "Cargo.toml"]
 #MISE outputs=["{{vars.coverage_report}}"]
 #MISE env={TARGET_DIR="{{vars.target_dir}}", COVERAGE_REPORT="{{vars.coverage_report}}"}
 #USAGE flag "-o --open" help="Open coverage report in browser"
+#USAGE flag "-p --package <package>" help="Run coverage for a specific package" {
+#USAGE   choices "domain" "app" "adapters" "cli" "test-utils" "integration-tests"
+#USAGE }
+#USAGE flag "--skip-e2e" help="Skip cli_smoke/purity tests (when coverage tooling cannot build CLI binaries)"
 
 set -euo pipefail
 
@@ -29,6 +34,48 @@ open_file() {
 }
 
 #######################################
+# Map shorthand package names to full cargo package names.
+# Globals:
+#   usage_package
+# Arguments:
+#   None
+# Outputs:
+#   Echoes the full package name
+#######################################
+map_package_name() {
+    case "${usage_package:-}" in
+    domain | app | adapters | test-utils | integration-tests)
+        echo "lithos-${usage_package}"
+        ;;
+    cli)
+        echo "lithos"
+        ;;
+    *)
+        echo ""
+        ;;
+    esac
+}
+
+#######################################
+# Build tarpaulin args based on package selection.
+# Arguments:
+#   Reference to an array for arguments
+#   The resolved package name
+# Outputs:
+#   None
+#######################################
+build_tarpaulin_args() {
+    local -n _tarpaulin_ref_args=$1
+    local package_name=$2
+
+    if [[ -n "${package_name}" ]]; then
+        _tarpaulin_ref_args+=("--packages" "${package_name}")
+    else
+        _tarpaulin_ref_args+=("--workspace")
+    fi
+}
+
+#######################################
 # Generate code coverage report using tarpaulin.
 # Arguments:
 #   None
@@ -39,7 +86,19 @@ run_tarpaulin() {
     echo "📊 Generating code coverage report..."
     local output_dir="${TARGET_DIR}/tarpaulin"
     mkdir -p "${output_dir}"
-    cargo tarpaulin --ignore-tests --out Html --output-dir "${output_dir}"
+
+    local resolved_package
+    resolved_package=$(map_package_name)
+
+    local tarpaulin_args=("--ignore-tests" "--out" "Html" "--output-dir" "${output_dir}")
+    build_tarpaulin_args tarpaulin_args "${resolved_package}"
+
+    local test_args=()
+    if [[ "${usage_skip_e2e:-}" == "1" ]]; then
+        test_args=("--" "--skip" "cli_smoke" "--skip" "purity")
+    fi
+
+    cargo tarpaulin "${tarpaulin_args[@]}" "${test_args[@]}"
 }
 
 #######################################
