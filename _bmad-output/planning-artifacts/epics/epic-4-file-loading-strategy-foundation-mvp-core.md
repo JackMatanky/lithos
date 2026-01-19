@@ -88,7 +88,27 @@ So that I can test file loading in isolation without actual file system operatio
 **When** I use mocks
 **Then** they simulate real file loading behavior for comprehensive testing
 
-## Story 4.5: Review Epic 4 Test Suite
+## Story 4.5: Adversarial Refactor of Epic 4 Foundation
+
+As an adversarial senior developer,
+I want to brutally review and refactor the Epic 4 loading foundation,
+So that it follows the leanest, most performant idiomatic Rust practices, balances OOP/FP principles, and eliminates technical debt before testing and documentation.
+
+**Acceptance Criteria:**
+
+**Given** the Epic 4 implementation is complete
+**When** I conduct an adversarial refactor
+**Then** the code follows strict SRP (Single Responsibility Principle) and has zero redundant logic
+
+**Given** Rust-specific performance targets
+**When** I optimize the code
+**Then** all expensive operations (clones, allocations) are justified or eliminated in favor of zero-copy patterns where possible
+
+**Given** the hybrid OOP/FP architecture
+**When** I review the implementation
+**Then** I ensure appropriate use of traits (OOP) vs functional patterns (iterators, closures, immutable state)
+
+## Story 4.6: Review Epic 4 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 4 test suite to its foundation,
@@ -104,22 +124,22 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I conduct adversarial review
 **Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
 
-**Given** I take adversarial position against the test suite
-**When** I critique test quality
-**Then** I assess if tests actually validate business requirements vs implementation details
+## Story 4.7: Comprehensive Documentation Audit
 
-**Given** the test suite is implemented
-**When** I review for redundancy
-**Then** I eliminate duplicate test cases and consolidate overlapping coverage
+As a developer maintaining the long-term health of the codebase,
+I want a comprehensive audit of all Epic 4 documentation and doc comments,
+So that the codebase remains self-documenting, precise, and free of unnecessary clutter.
 
-**Given** tests are executed
-**When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 4 suite
+**Acceptance Criteria:**
 
-**Given** I conduct brutal foundation critique
-**When** I assess test design
-**Then** I verify tests use proper fixtures, avoid flaky behavior, and maintain clear intent
+**Given** Epic 4 implementation and testing are complete
+**When** I conduct the documentation audit
+**Then** every public API has accurate, high-fidelity doc comments (///)
 
-**Given** test suite is reviewed
-**When** I check maintainability
-**Then** test code follows same quality standards as production code with proper documentation
+**Given** the "Why" mandate in project-context.md
+**When** I review doc comments
+**Then** they focus on invariants and architectural context rather than just repeating the function name
+
+**Given** doc-tests are used as "Living Documentation"
+**When** I audit the examples
+**Then** every doc-test is accurate, functional, and demonstrates idiomatic usage without boilerplate noise
