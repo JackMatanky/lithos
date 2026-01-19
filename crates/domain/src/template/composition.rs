@@ -209,12 +209,15 @@ pub enum InsertionPosition {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Test setup uses unwrap/expect for readability"
+)]
 mod tests {
     use super::*;
     use crate::template::Metadata;
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Test setup")]
     fn should_detect_circular_composition() {
         let mut templates = HashMap::new();
         // GIVEN a template that extends itself
@@ -243,7 +246,6 @@ mod tests {
     }
 
     #[test]
-    #[expect(clippy::disallowed_methods, reason = "Test setup")]
     fn should_detect_circular_include() {
         let mut templates = HashMap::new();
         let base = Template::new(
@@ -265,5 +267,12 @@ mod tests {
 
         let result = composition.detect_cycles(&templates);
         assert!(matches!(result, Err(DomainError::CircularComposition(_))));
+    }
+
+    #[test]
+    fn insertion_positions_round_trip() {
+        let insertion = InsertionPosition::AfterVariable("title".to_owned());
+
+        assert!(matches!(insertion, InsertionPosition::AfterVariable(_)));
     }
 }

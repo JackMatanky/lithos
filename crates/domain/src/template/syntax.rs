@@ -47,3 +47,15 @@ impl Default for PlaceholderSyntax {
         Self::new("{{", "}}")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_syntax_wraps_variables() {
+        let syntax = PlaceholderSyntax::default();
+
+        assert_eq!(syntax.wrap("name"), "{{name}}");
+    }
+}
