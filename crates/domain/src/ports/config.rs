@@ -97,22 +97,31 @@ mod tests {
 
     #[test]
     fn command_trait_is_object_safe() {
-        // Verify trait can be used as trait object
+        // GIVEN the Command trait
         fn _assert_object_safe(_: &dyn Command) {}
+
+        // WHEN using it as a trait object
+        // THEN it remains object-safe
     }
 
     #[test]
     fn query_trait_is_object_safe() {
-        // Verify trait can be used as trait object
+        // GIVEN the Query trait
         fn _assert_object_safe(_: &dyn Query) {}
+
+        // WHEN using it as a trait object
+        // THEN it remains object-safe
     }
 
     #[test]
     fn traits_are_send_and_sync() {
-        // Compile-time check that trait objects are Send + Sync.
-        // This test documents the requirement explicitly.
+        // GIVEN Command and Query trait objects
         fn is_send_sync<T: Send + Sync>() {}
+
+        // WHEN checking Send + Sync bounds
         is_send_sync::<Box<dyn Command>>();
         is_send_sync::<Box<dyn Query>>();
+
+        // THEN trait objects satisfy Send + Sync
     }
 }
