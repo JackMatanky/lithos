@@ -3,7 +3,7 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use crate::{errors::DomainError, schema::core::Schema};
+use crate::{errors::DomainError, schema::aggregate::Schema};
 
 /// Command port for Schema bounded context.
 #[async_trait]

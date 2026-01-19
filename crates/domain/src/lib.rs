@@ -74,14 +74,16 @@ pub use ports::{
 };
 // Schema context re-exports
 pub use schema::{
-    core::{DomainEvent as SchemaDomainEvent, Schema},
+    aggregate::{
+        DomainEvent as SchemaDomainEvent, PropertyBank, Schema, SchemaName,
+    },
     events::{PropertyBankUpdated, SchemaCreated},
-    property::{Property, PropertyName, RawProperty},
-    property_bank::PropertyBank,
+    property::{Property, PropertyName},
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,
         PropertySpecTrait, PropertySpecType, StringSpec,
     },
+    raw::{RawProperty, RawPropertyInline, RawPropertyRef, RawSchema},
 };
 // Template context re-exports
 pub use template::{

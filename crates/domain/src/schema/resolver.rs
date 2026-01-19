@@ -11,9 +11,9 @@
 use std::collections::{HashMap, HashSet};
 
 use super::{
-    core::{RawSchema, Schema},
-    property::{Property, PropertyName, RawProperty, RawPropertyRef},
-    property_bank::PropertyBank,
+    aggregate::{PropertyBank, Schema},
+    property::{Property, PropertyName},
+    raw::{RawProperty, RawPropertyRef, RawSchema},
 };
 use crate::errors::DomainError;
 
@@ -24,8 +24,7 @@ use crate::errors::DomainError;
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::schema::{SchemaResolver, RawSchema, SchemaName};
-/// use lithos_domain::schema::property_bank::PropertyBank;
+/// use lithos_domain::schema::{SchemaResolver, RawSchema, SchemaName, PropertyBank};
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
 ///
