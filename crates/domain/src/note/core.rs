@@ -30,7 +30,7 @@ use crate::{errors::DomainError, validation::validate_vault_path};
 ///
 /// # Examples
 /// ```
-/// use lithos_domain::note::core::Note;
+/// use lithos_domain::Note;
 /// use uuid::Uuid;
 ///
 /// // For new files (first-time indexing)
@@ -396,6 +396,7 @@ mod tests {
 }
 
 #[cfg(test)]
+#[expect(dead_code, reason = "Test fixtures may be used by other crates")]
 /// Test fixtures for Note model testing.
 pub mod fixtures {
     use std::collections::HashMap;

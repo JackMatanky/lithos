@@ -9,10 +9,6 @@ use crate::errors::DomainError;
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "LinkType is the correct domain name for link types"
-)]
 pub enum LinkType {
     /// Embedded content: ![[target]].
     Embed,
@@ -126,7 +122,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::link::{Link, LinkType, EmbedType};
+    /// use lithos_domain::{Link, LinkType, EmbedType};
     /// use uuid::Uuid;
     ///
     /// let source_id = Uuid::now_v7();
@@ -165,7 +161,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::link::{Link, LinkType};
+    /// use lithos_domain::{Link, LinkType};
     /// use uuid::Uuid;
     ///
     /// let source_id = Uuid::now_v7();
@@ -202,7 +198,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::link::{Link, LinkType};
+    /// use lithos_domain::{Link, LinkType};
     /// use uuid::Uuid;
     ///
     /// let source_id = Uuid::now_v7();

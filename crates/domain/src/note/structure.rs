@@ -41,7 +41,7 @@ impl Heading {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::structure::Heading;
+    /// use lithos_domain::Heading;
     ///
     /// let heading = Heading::new(2, "Implementation".to_string(), 10).unwrap();
     /// assert_eq!(heading.level(), 2);
@@ -131,7 +131,7 @@ impl Section {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::structure::{Section, Heading};
+    /// use lithos_domain::{Section, Heading};
     ///
     /// let range = 10..50;
     /// let section = Section::new(

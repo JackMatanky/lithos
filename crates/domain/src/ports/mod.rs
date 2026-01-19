@@ -2,10 +2,15 @@
 //!
 //! This module defines trait interfaces for adapters to implement.
 
-pub mod config;
+pub(crate) mod config;
 /// Note domain ports.
-pub mod note;
+pub(crate) mod note;
 /// Schema domain ports.
-pub mod schema;
+pub(crate) mod schema;
 /// Template domain ports.
-pub mod template;
+pub(crate) mod template;
+
+pub use config::{Command as ConfigCommand, Query as ConfigQuery};
+pub use note::{Command as NoteCommand, Query as NoteQuery};
+pub use schema::{Command as SchemaCommand, Query as SchemaQuery};
+pub use template::{Command as TemplateCommand, Query as TemplateQuery};

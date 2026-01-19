@@ -17,11 +17,11 @@
 
 #![allow(clippy::pub_use, reason = "Simplified public API for external crates")]
 
-// Bounded Contexts
-pub mod config;
-pub mod note;
-pub mod schema;
-pub mod template;
+// Bounded Contexts (Internal module structure hidden from public API)
+pub(crate) mod config;
+pub(crate) mod note;
+pub(crate) mod schema;
+pub(crate) mod template;
 
 // Cross-cutting concerns
 pub mod errors;
@@ -36,6 +36,7 @@ pub(crate) mod patterns;
 // Re-export commonly used types for convenience.
 // This provides a simplified public API for external crates without requiring
 // deep module path knowledge (e.g., `lithos_domain::Config` vs `lithos_domain::config::Config`).
+
 // Config context re-exports
 pub use config::{
     aggregate::Config,
@@ -74,8 +75,9 @@ pub use ports::{
 };
 // Schema context re-exports
 pub use schema::{
-    aggregate::{PropertyBank, Schema, SchemaName},
-    events::{PropertyBankUpdated, SchemaCreated, SchemaEvents},
+    PropertyBank, Schema, SchemaEvents, SchemaGraph, SchemaName,
+    SchemaResolver,
+    events::{PropertyBankUpdated, SchemaCreated},
     property::{Property, PropertyName},
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,

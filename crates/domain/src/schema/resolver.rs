@@ -19,7 +19,7 @@ use crate::errors::DomainError;
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::schema::{SchemaResolver, RawSchema, SchemaName, PropertyBank};
+/// use lithos_domain::{SchemaResolver, RawSchema, SchemaName, PropertyBank};
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
 ///

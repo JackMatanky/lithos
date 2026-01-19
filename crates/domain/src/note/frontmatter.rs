@@ -36,7 +36,7 @@ pub struct Frontmatter {
 ///
 /// **Pattern 1: Unknown Type (Runtime Inspection).**
 /// ```
-/// use lithos_domain::note::frontmatter::FieldValue;
+/// use lithos_domain::FieldValue;
 ///
 /// # let value = FieldValue::String("test".to_string());
 /// if value.is_string() {
@@ -48,7 +48,7 @@ pub struct Frontmatter {
 ///
 /// **Pattern 2: Known Type (Schema-Driven).**
 /// ```
-/// use lithos_domain::note::frontmatter::{FieldValue, FromFieldValue};
+/// use lithos_domain::{FieldValue, FromFieldValue};
 ///
 /// let value = FieldValue::String("test".to_string());
 /// let extracted: Option<String> = FromFieldValue::from_value(&value);
@@ -74,12 +74,9 @@ pub enum FieldValue {
 impl FieldValue {
     /// Returns the array if this is an Array variant.
     ///
-    /// Uses Rust 2018 match ergonomics (RFC 2005) for automatic reference binding.
-    /// This is the same pattern used by `serde_json::Value::as_array()`.
-    ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::FieldValue;
+    /// use lithos_domain::FieldValue;
     ///
     /// let arr = FieldValue::Array(vec![FieldValue::String("item".to_string())]);
     /// assert!(arr.as_array().is_some());
@@ -108,7 +105,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::FieldValue;
+    /// use lithos_domain::FieldValue;
     ///
     /// let val = FieldValue::Boolean(true);
     /// assert_eq!(val.as_bool(), Some(true));
@@ -137,7 +134,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::FieldValue;
+    /// use lithos_domain::FieldValue;
     /// use chrono::{DateTime, Utc, TimeZone};
     ///
     /// let date = Utc.with_ymd_and_hms(2024, 1, 15, 0, 0, 0).unwrap();
@@ -165,7 +162,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::FieldValue;
+    /// use lithos_domain::FieldValue;
     ///
     /// let val = FieldValue::Number(42.0);
     /// assert_eq!(val.as_number(), Some(42.0));
@@ -191,7 +188,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::FieldValue;
+    /// use lithos_domain::FieldValue;
     /// use std::collections::HashMap;
     ///
     /// let mut obj = HashMap::new();
@@ -220,7 +217,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::FieldValue;
+    /// use lithos_domain::FieldValue;
     ///
     /// let val = FieldValue::String("hello".to_string());
     /// assert_eq!(val.as_str(), Some("hello"));
@@ -246,7 +243,7 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::FieldValue;
+    /// use lithos_domain::FieldValue;
     ///
     /// let val = FieldValue::Array(vec![]);
     /// assert!(val.is_array());
@@ -309,7 +306,7 @@ impl FieldValue {
 ///
 /// **Known Type (Schema-Driven):**
 /// ```
-/// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+/// use lithos_domain::{Frontmatter, FieldValue};
 /// use std::collections::HashMap;
 ///
 /// let mut fields = HashMap::new();
@@ -323,7 +320,7 @@ impl FieldValue {
 ///
 /// **Unknown Type (Runtime Inspection):**
 /// ```
-/// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+/// use lithos_domain::{Frontmatter, FieldValue};
 /// use std::collections::HashMap;
 ///
 /// let mut fields = HashMap::new();
@@ -395,7 +392,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_domain::{Frontmatter, FieldValue};
     /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
     /// # use std::collections::HashMap;
     /// # let mut fields = HashMap::new();
@@ -417,7 +414,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_domain::{Frontmatter, FieldValue};
     /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
     /// # use std::collections::HashMap;
     /// # let mut fields = HashMap::new();
@@ -443,7 +440,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
     /// let mut fields = HashMap::new();
@@ -466,7 +463,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
     /// let mut fields = HashMap::new();
@@ -486,7 +483,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
     /// let mut fields = HashMap::new();
@@ -506,7 +503,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     /// use chrono::{DateTime, Utc, TimeZone};
     ///
@@ -527,7 +524,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
     /// let mut fields = HashMap::new();
@@ -548,7 +545,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
     /// let mut fields = HashMap::new();
@@ -571,7 +568,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
     /// // Array case
@@ -608,7 +605,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
     /// let mut fields = HashMap::new();
@@ -631,7 +628,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
     /// let mut fields = HashMap::new();
@@ -652,7 +649,7 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::note::frontmatter::{Frontmatter, FieldValue};
+    /// # use lithos_domain::{Frontmatter, FieldValue};
     /// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
     /// # use std::collections::HashMap;
     /// # let mut fields = HashMap::new();
