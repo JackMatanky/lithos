@@ -605,6 +605,8 @@ mod tests {
 
         // THEN accessor methods return expected values
         assert_eq!(schema.name().as_str(), "status");
+        assert_eq!(schema.name().as_ref(), "status");
+        assert_eq!(schema.name().to_string(), "status");
         assert!(schema.has("flag"));
         assert!(schema.get("flag").is_some());
         assert_eq!(schema.properties().len(), 1);

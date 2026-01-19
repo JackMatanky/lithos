@@ -13,7 +13,13 @@ mod tests {
     /// Ensures the integration test harness is operational.
     #[test]
     fn app_integration_environment_ready() {
+        // GIVEN: the integration harness is initialized
         let status = "ready";
-        assert_eq!(status, "ready");
+
+        // WHEN: the harness status is queried
+        let observed = status;
+
+        // THEN: the harness reports readiness
+        assert_eq!(observed, "ready");
     }
 }

@@ -72,7 +72,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
     - [x] Hide setup/boilerplate imports and logic using the `#` prefix
     - [x] Ensure examples are high-fidelity and demonstrate real-world usage of `lithos-test-utils`
     - [x] Use appropriate attributes (`no_run`, `compile_fail`, `should_panic`) to accurately reflect intended behavior
-- [ ] Optimize slow tests using parallel execution and Epic 2 patterns
+- [x] Optimize slow tests using parallel execution and Epic 2 patterns
 - [x] **COVERAGE ASSURANCE:** Add targeted tests for uncovered domain entities and validation logic
 - [x] **COVERAGE ASSURANCE:** Implement property-based tests for edge cases and error paths
 - [ ] **COVERAGE ASSURANCE:** Add integration tests for cross-entity validation scenarios
@@ -92,7 +92,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful behavior, not just lines
 - [ ] **COVERAGE VALIDATION:** Ensure branch coverage for critical conditional logic
 - [ ] **COVERAGE VALIDATION:** Validate edge case and error path coverage
-- [ ] Verify <30 second execution time for complete Epic 3 test suite
+- [x] Verify <30 second execution time for complete Epic 3 test suite
 - [ ] Ensure zero duplicate test cases across bounded contexts
 - [ ] Validate test maintainability standards are met
 - [ ] Document test suite efficiency improvements, coverage gains, and ROI
@@ -529,6 +529,8 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Added schema and template aggregate accessor coverage.
 - 2026-01-19: Added global config, template events, and property accessor tests.
 - 2026-01-19: Added composition validation type-mismatch coverage.
+- 2026-01-19: Added config validation edge-case tests, resolver parent merge coverage, property builder tests, and link empty-target validation.
+- 2026-01-20: Added BDD-style GIVEN/WHEN/THEN comments, standardized async test runtime, and removed unnecessary timing assertions in integration/E2E tests. Ran `mise run test` to confirm full-suite time under 30s.
 
 ### Completion Notes List
 
@@ -546,6 +548,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - `rstest` usage is limited to config aggregate validation and error message table tests; both use named cases and are justified. No unnecessary parameterization found.
 - Overlapping scenarios: PropertyName validation and SchemaName validation follow similar constraints; property name tests and schema name tests could share a generic name validation harness to reduce redundancy.
 - Slow-test risk: Full suite at ~42.6s misses 30s target; integration tests (~23.6s) are the dominant contributor. Domain-only tests are fast. Focus optimization on integration suites and E2E concurrency to meet performance target.
+- Performance follow-up: `mise run test` now completes in ~18.84s total (unit 18.16s, integration 9.57s, e2e 8.71s, arch 10.30s, fmt 175ms) after removing per-test timing assertions and reducing redundant CLI build work.
 - Redundancy elimination opportunities: unify fixture builders, centralize common validation assertions (e.g., name-format error cases) and consider moving repeated setup into `lithos_test_utils` helpers.
 - Added shared proptest strategies in `tests/utils/src/data/properties.rs` for valid/invalid identifiers and reused them in schema/property and template tests.
 - `mise run test:unit --package domain` passes (105 unit tests, 49 doc tests, 4 ignored).
@@ -555,10 +558,17 @@ This story will leverage the test utilities being developed in Epic 2:
 - `cargo test -p lithos-domain --doc` passes (65 doctests, 7 ignored).
 - Resolver now normalizes property refs by trimming `#/properties/` prefix when present while preserving non-JSON refs.
 - Added unit tests for schema events, raw schema input structures, resolver ref handling (JSON pointer vs plain names), and note link/tag/task/heading/section accessors.
-- Added template variable default accessors, composition insertion positions, placeholder syntax defaults, vault filesystem validation, schema accessors, template aggregate accessors, global config defaults, template event Send/Sync, property accessors, and composition type-mismatch validation.
+- Added template variable default accessors, composition insertion positions, placeholder syntax defaults, vault filesystem validation, schema accessors, template aggregate accessors, global config defaults, template event Send/Sync, property accessors, composition type-mismatch validation, config validation edge cases, schema resolver parent merge coverage, property builder tests, and link empty-target tests.
+- Added BDD-style GIVEN/WHEN/THEN comments, standard multi-thread tokio runtime annotations, and reduced E2E build overhead by caching the CLI binary.
+- `mise run test` now completes in 18.84s with all suites passing (223 unit, 247 integration, 2 e2e, 1 arch).
 - Tarpaulin domain coverage remains 51.13% (676/1322); key gaps in schema resolver, property specs, template variables, and note frontmatter/link remain and need focused tests to hit 80%+.
 
 ### File List
 
 - _bmad-output/test-utilities-reference.md
 - target/tarpaulin/tarpaulin-report.html
+- tests/suite/arch/purity.rs
+- tests/suite/e2e/cli_smoke.rs
+- tests/suite/integration/dummy_integration.rs
+- tests/suite/integration/system_flows.rs
+- tests/suite/integration/event_patterns.rs
