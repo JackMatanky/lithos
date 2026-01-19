@@ -40,7 +40,7 @@ pub(crate) mod patterns;
 // Config context re-exports
 pub use config::{
     aggregate::Config,
-    events::ConfigUpdated,
+    events::{ConfigEvents, ConfigUpdated},
     global::{
         Filesystem as GlobalFilesystemConfig, Global as GlobalConfig,
         TrustedVaults as TrustedVaultsConfig,
@@ -58,7 +58,7 @@ pub use config::{
 pub use errors::{ConfigError, DomainError};
 // Note context re-exports
 pub use note::{
-    core::Note,
+    Note,
     events::{FrontmatterValidated, NoteCreated, NoteEvents},
     frontmatter::{FieldValue, FromFieldValue, Frontmatter},
     link::{EmbedType, Link, LinkType},

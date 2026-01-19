@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use super::core::Template;
+use super::aggregate::Template;
 use crate::errors::DomainError;
 
 /// Template composition for modular template building.

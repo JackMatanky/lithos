@@ -36,6 +36,14 @@ impl ConfigUpdated {
     }
 }
 
+/// Domain events that can be emitted by the Config aggregate.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum ConfigEvents {
+    /// Configuration was updated.
+    ConfigUpdated(ConfigUpdated),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

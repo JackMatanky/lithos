@@ -300,19 +300,13 @@ impl Template {
 
     fn validate_name(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
-            return Err(DomainError::ValidationFailed(
-                "Template name cannot be empty".to_owned(),
-            ));
+            return Err(DomainError::EmptyTemplateName);
         }
         if name.len() > 64 {
-            return Err(DomainError::ValidationFailed(
-                "Template name too long".to_owned(),
-            ));
+            return Err(DomainError::TemplateNameTooLong(name.len()));
         }
         if !validation::is_alphanumeric_name(name) {
-            return Err(DomainError::ValidationFailed(format!(
-                "Invalid template name: {name}"
-            )));
+            return Err(DomainError::InvalidTemplateName(name.to_owned()));
         }
         Ok(())
     }
@@ -331,19 +325,13 @@ impl Template {
 
     fn validate_variable_name(name: &str) -> Result<(), DomainError> {
         if name.is_empty() {
-            return Err(DomainError::ValidationFailed(
-                "Variable name cannot be empty".to_owned(),
-            ));
+            return Err(DomainError::EmptyVariableName);
         }
         if name.len() > 32 {
-            return Err(DomainError::ValidationFailed(
-                "Variable name too long".to_owned(),
-            ));
+            return Err(DomainError::VariableNameTooLong(name.len()));
         }
         if !validation::is_identifier_name(name) {
-            return Err(DomainError::ValidationFailed(format!(
-                "Invalid variable name: {name}"
-            )));
+            return Err(DomainError::InvalidVariableName(name.to_owned()));
         }
         Self::validate_variable_name_not_reserved(name)?;
         Ok(())
@@ -362,7 +350,7 @@ impl Template {
         name: &str,
     ) -> Result<(), DomainError> {
         if RESERVED_WORDS.contains(&name) {
-            return Err(DomainError::ValidationFailed(format!(
+            return Err(DomainError::InvalidVariableName(format!(
                 "Variable name '{name}' is a reserved word"
             )));
         }
