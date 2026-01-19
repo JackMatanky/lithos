@@ -7,10 +7,6 @@ use crate::{errors::DomainError, validation};
     clippy::unsafe_derive_deserialize,
     reason = "No unsafe code in this enum, false positive"
 )]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "VariableDefinition follows domain naming conventions"
-)]
 pub enum VariableDefinition {
     /// Boolean variable.
     Boolean {

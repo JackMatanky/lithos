@@ -105,8 +105,8 @@ impl Property {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::{Property, PropertyName};
-    /// use lithos_domain::schema::{PropertySpec, BoolSpec};
+    /// use lithos_domain::{Property, PropertyName};
+    /// use lithos_domain::{PropertySpec, BoolSpec};
     /// use uuid::Uuid;
     ///
     /// let name = PropertyName::new("is_active".to_string()).unwrap();
@@ -178,8 +178,9 @@ impl Property {
     }
 }
 
-/// Test fixtures and builders for `Property`.
 #[cfg(test)]
+#[expect(dead_code, reason = "Test fixtures may be used by other crates")]
+/// Test fixtures and builders for `Property`.
 pub mod fixtures {
     use uuid::Uuid;
 

@@ -3,15 +3,14 @@
 //! This module contains configuration domain entities, business logic, and events.
 
 /// Configuration aggregate types and business logic.
-pub mod aggregate;
+pub(crate) mod aggregate;
 /// Configuration domain events.
-pub mod events;
+pub(crate) mod events;
 /// Global configuration types.
-pub mod global;
-pub mod types;
+pub(crate) mod global;
+pub(crate) mod types;
 /// Vault configuration types.
-pub mod vault;
+pub(crate) mod vault;
 
-// Re-export main types for convenience
+// Re-export main types for internal use and lib.rs re-exports
 pub use aggregate::Config;
-pub use types::*;

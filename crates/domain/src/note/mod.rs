@@ -4,17 +4,19 @@
 //! and its subentities in the domain layer.
 
 /// Core Note aggregate root and main entities.
-pub mod core;
+pub(crate) mod core;
 /// Note domain events.
-pub mod events;
+pub(crate) mod events;
 
 /// Frontmatter value objects and logic.
-pub mod frontmatter;
+pub(crate) mod frontmatter;
 /// Link subentity for Note aggregate.
-pub mod link;
+pub(crate) mod link;
 /// Document structure subentities (Heading and Section) for Note aggregate.
-pub mod structure;
+pub(crate) mod structure;
 /// Tag subentity for Note aggregate.
-pub mod tag;
+pub(crate) mod tag;
 /// Task subentity for Note aggregate.
-pub mod task;
+pub(crate) mod task;
+
+// Re-export main types for internal use and lib.rs re-exports

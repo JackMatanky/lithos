@@ -9,10 +9,6 @@ use crate::errors::DomainError;
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "TaskStatus is the correct domain name for task statuses"
-)]
 pub enum TaskStatus {
     /// Task is cancelled: `- [-] Task description`.
     Cancelled,
@@ -50,7 +46,7 @@ impl Task {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::note::task::{Task, TaskStatus};
+    /// use lithos_domain::{Task, TaskStatus};
     ///
     /// let task = Task::new(
     ///     "Buy milk".to_string(),

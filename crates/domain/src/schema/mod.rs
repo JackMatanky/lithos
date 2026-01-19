@@ -3,42 +3,16 @@
 //! This module contains all entities and services for the schema system,
 //! organized into focused modules for better maintainability.
 
-pub mod aggregate;
-pub mod events;
-pub mod graph;
-pub mod property;
-pub mod property_spec;
-pub mod raw;
-pub mod resolver;
+pub(crate) mod aggregate;
+pub(crate) mod events;
+pub(crate) mod graph;
+pub(crate) mod property;
+pub(crate) mod property_spec;
+pub(crate) mod raw;
+pub(crate) mod resolver;
 
 // Re-export main types for convenience
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Schema types follow domain naming conventions"
-)]
 pub use aggregate::{PropertyBank, Schema, SchemaName};
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Context-specific event enum naming"
-)]
 pub use events::SchemaEvents;
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "SchemaGraph follows domain service naming conventions"
-)]
 pub use graph::Graph as SchemaGraph;
-pub use property::{Property, PropertyName};
-pub use property_spec::{
-    BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec, PropertySpecTrait,
-    PropertySpecType, StringSpec,
-};
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Raw types follow naming conventions for input definitions"
-)]
-pub use raw::{RawProperty, RawPropertyInline, RawPropertyRef, RawSchema};
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "SchemaResolver follows domain service naming conventions"
-)]
 pub use resolver::Resolver as SchemaResolver;

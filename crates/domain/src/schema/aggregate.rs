@@ -31,7 +31,7 @@ use crate::{errors::DomainError, validation};
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::schema::SchemaName;
+/// use lithos_domain::SchemaName;
 ///
 /// let name = SchemaName::new("project-note".to_string()).unwrap();
 /// assert_eq!(name.as_str(), "project-note");
@@ -129,7 +129,7 @@ impl AsRef<str> for SchemaName {
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::schema::{Schema, SchemaName};
+/// use lithos_domain::{Schema, SchemaName};
 /// use uuid::Uuid;
 ///
 /// let name = SchemaName::new("project-note".into()).unwrap();
@@ -153,7 +153,7 @@ impl Schema {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::{Schema, SchemaName};
+    /// use lithos_domain::{Schema, SchemaName};
     /// use uuid::Uuid;
     ///
     /// let name = SchemaName::new("test".into()).unwrap();
@@ -178,7 +178,7 @@ impl Schema {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::{Schema, SchemaName};
+    /// use lithos_domain::{Schema, SchemaName};
     /// use uuid::Uuid;
     ///
     /// let name = SchemaName::new("project-note".to_string()).unwrap();
@@ -218,9 +218,9 @@ impl Schema {
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::schema::PropertyBank;
-/// use lithos_domain::schema::{Property, PropertyName};
-/// use lithos_domain::schema::{PropertySpec, BoolSpec};
+/// use lithos_domain::PropertyBank;
+/// use lithos_domain::{Property, PropertyName};
+/// use lithos_domain::{PropertySpec, BoolSpec};
 /// use uuid::Uuid;
 ///
 /// let mut bank = PropertyBank::new();
@@ -270,7 +270,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::PropertyBank;
+    /// use lithos_domain::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// let result = bank.decode("missing");
@@ -294,7 +294,7 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::PropertyBank;
+    /// use lithos_domain::PropertyBank;
     ///
     /// let bank = PropertyBank::new();
     /// assert!(bank.get("any").is_none());
@@ -354,9 +354,9 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::schema::PropertyBank;
-    /// use lithos_domain::schema::{Property, PropertyName};
-    /// use lithos_domain::schema::{PropertySpec, BoolSpec};
+    /// use lithos_domain::PropertyBank;
+    /// use lithos_domain::{Property, PropertyName};
+    /// use lithos_domain::{PropertySpec, BoolSpec};
     /// use uuid::Uuid;
     ///
     /// let mut bank = PropertyBank::new();
@@ -405,12 +405,13 @@ impl PropertyBank {
     }
 }
 
-/// Test fixtures for deterministic schema data.
 #[cfg(test)]
 #[expect(
+    dead_code,
     clippy::disallowed_methods,
     reason = "Test fixtures use expect for deterministic setup"
 )]
+/// Test fixtures for deterministic schema data.
 pub mod fixtures {
     use uuid::Uuid;
 
