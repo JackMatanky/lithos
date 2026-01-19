@@ -30,6 +30,9 @@ pub mod ports;
 // Internal validation utilities (not part of public API)
 pub(crate) mod validation;
 
+// Shared validation patterns (not part of public API)
+pub(crate) mod patterns;
+
 // Re-export commonly used types for convenience.
 // This provides a simplified public API for external crates without requiring
 // deep module path knowledge (e.g., `lithos_domain::Config` vs `lithos_domain::config::Config`).
