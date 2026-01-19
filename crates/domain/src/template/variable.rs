@@ -331,4 +331,17 @@ mod tests {
         assert!(def.validate_value(&serde_json::json!(0.5f64)).is_err());
         assert!(def.validate_value(&serde_json::json!(10.5f64)).is_err());
     }
+
+    #[test]
+    fn accessors_expose_defaults() {
+        let def = VariableDefinition::String {
+            default: Some("Title".to_owned()),
+            max_length: None,
+            min_length: None,
+            pattern: None,
+        };
+
+        assert!(def.has_default());
+        assert_eq!(def.get_default_value(), Some(serde_json::json!("Title")));
+    }
 }

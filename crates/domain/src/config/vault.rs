@@ -221,4 +221,20 @@ mod tests {
             "Expected validation failure for empty cache_dir"
         );
     }
+
+    #[test]
+    fn filesystem_validate_passes_with_defaults() {
+        // GIVEN default filesystem config
+        let filesystem = Filesystem::default();
+
+        // WHEN validating
+        let result = filesystem.validate();
+
+        // THEN it succeeds
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test assertion uses unwrap for clarity"
+        )]
+        result.unwrap();
+    }
 }
