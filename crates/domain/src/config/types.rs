@@ -307,3 +307,234 @@ impl Template {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{Frontmatter, Schema, SettingValue, Template};
+
+    #[test]
+    fn converts_from_string() {
+        // GIVEN a string value for configuration
+        let input = "test".to_owned();
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(input.clone());
+
+        // THEN the string variant is produced
+        assert_eq!(
+            value,
+            SettingValue::String(input),
+            "Conversion from String to SettingValue failed"
+        );
+    }
+
+    #[test]
+    fn converts_from_f64() {
+        // GIVEN a floating point value for configuration
+        let input = 42.5f64;
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(input);
+
+        // THEN the number variant is produced
+        assert_eq!(
+            value,
+            SettingValue::Number(42.5f64),
+            "Conversion from f64 to SettingValue failed"
+        );
+    }
+
+    #[test]
+    fn converts_from_bool() {
+        // GIVEN a boolean configuration value
+        let input = true;
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(input);
+
+        // THEN the boolean variant is produced
+        assert_eq!(
+            value,
+            SettingValue::Boolean(true),
+            "Conversion from bool to SettingValue failed"
+        );
+    }
+
+    #[test]
+    fn stores_opaque_encrypted_bytes() {
+        // GIVEN encrypted bytes from an adapter
+        let encrypted_data = vec![1, 2, 3, 4, 5];
+
+        // WHEN storing them in the encrypted variant
+        let value = SettingValue::Encrypted(encrypted_data.clone());
+
+        // THEN the raw bytes remain intact
+        assert_eq!(
+            value,
+            SettingValue::Encrypted(encrypted_data),
+            "Encrypted variant should store raw bytes correctly"
+        );
+    }
+
+    #[test]
+    fn stores_nested_arrays() {
+        // GIVEN nested configuration values
+        let array = vec![
+            SettingValue::String("item1".to_owned()),
+            SettingValue::String("item2".to_owned()),
+        ];
+
+        // WHEN storing them in an array variant
+        let value = SettingValue::Array(array.clone());
+
+        // THEN the array preserves the nested values
+        assert_eq!(
+            value,
+            SettingValue::Array(array),
+            "Array variant should store nested SettingValues"
+        );
+    }
+
+    #[test]
+    fn stores_nested_objects() {
+        // GIVEN nested configuration values in a map
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "key1".to_owned(),
+            SettingValue::String("value1".to_owned()),
+        );
+
+        // WHEN storing them in an object variant
+        let value = SettingValue::Object(map.clone());
+
+        // THEN the map preserves the nested values
+        assert_eq!(
+            value,
+            SettingValue::Object(map),
+            "Object variant should store HashMap of SettingValues"
+        );
+    }
+
+    #[test]
+    fn converts_from_vector_of_values() {
+        // GIVEN a vector of configuration values
+        let array = vec![
+            SettingValue::String("item1".to_owned()),
+            SettingValue::Number(42.0),
+        ];
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(array.clone());
+
+        // THEN the array variant is produced
+        assert_eq!(
+            value,
+            SettingValue::Array(array),
+            "From<Vec<SettingValue>> conversion failed"
+        );
+    }
+
+    #[test]
+    fn converts_from_hashmap_of_values() {
+        // GIVEN a hashmap of configuration values
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "key1".to_owned(),
+            SettingValue::String("value1".to_owned()),
+        );
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(map.clone());
+
+        // THEN the object variant is produced
+        assert_eq!(
+            value,
+            SettingValue::Object(map),
+            "From<HashMap<String, SettingValue>> conversion failed"
+        );
+    }
+
+    #[test]
+    fn masks_encrypted_variant_in_debug_logs() {
+        // GIVEN an encrypted configuration value
+        let val = SettingValue::Encrypted(vec![1, 2, 3]);
+
+        // WHEN formatting for debug output
+        let debug_str = format!("{val:?}");
+
+        // THEN the raw bytes are masked
+        assert!(
+            !debug_str.contains("1, 2, 3"),
+            "Debug output must not contain raw encrypted bytes"
+        );
+        assert!(
+            debug_str.contains("***"),
+            "Debug output must contain mask characters"
+        );
+    }
+
+    #[test]
+    fn constructs_valid_property_bank_path() {
+        // GIVEN schema configuration with explicit paths
+        let schema = Schema {
+            schemas_dir: "schemas".to_owned(),
+            property_bank_filename: "props.json".to_owned(),
+        };
+
+        // WHEN deriving the property bank path
+        let path = schema.property_bank_path();
+
+        // THEN the path is composed from schema settings
+        assert_eq!(
+            path, "schemas/props.json",
+            "property_bank_path logic works"
+        );
+    }
+
+    #[test]
+    fn preserves_frontmatter_key_mappings() {
+        // GIVEN explicit frontmatter mappings
+        let config = Frontmatter {
+            alias_key: "aliases".to_owned(),
+            date_created_key: "created".to_owned(),
+            date_modified_key: "modified".to_owned(),
+            file_class_key: "type".to_owned(),
+            title_key: "title".to_owned(),
+        };
+
+        // WHEN accessing the key mappings
+        let file_class = &config.file_class_key;
+        let title = &config.title_key;
+
+        // THEN the mappings match the configured values
+        assert_eq!(file_class, "type", "file_class_key mapping mismatch");
+        assert_eq!(title, "title", "title_key mapping mismatch");
+    }
+
+    #[test]
+    fn rejects_empty_templates_dir() {
+        // GIVEN a template config with an empty templates_dir
+        let template = Template {
+            templates_dir: String::new(),
+        };
+
+        // WHEN validating the template configuration
+        let result = template.validate();
+
+        // THEN the validation fails with the templates_dir field
+        assert!(
+            result.is_err(),
+            "Expected validation failure for empty templates_dir"
+        );
+        if let Err(crate::ConfigError::ValidationFailed {
+            field,
+            ..
+        }) = result
+        {
+            assert_eq!(
+                field, "templates_dir",
+                "Expected templates_dir validation failure"
+            );
+        }
+    }
+}

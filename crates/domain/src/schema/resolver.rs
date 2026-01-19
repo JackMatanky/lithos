@@ -1,12 +1,7 @@
-//! `SchemaResolver` domain service for schema resolution.
+//! `Resolver` domain service for schema resolution.
 //!
 //! Resolves raw schemas into fully resolved Schema entities by merging parent properties,
 //! applying excludes, and resolving $ref pointers through the `PropertyBank`.
-
-#![allow(
-    clippy::module_name_repetitions,
-    reason = "SchemaResolver is the primary service in this module"
-)]
 
 use std::collections::{HashMap, HashSet};
 
@@ -41,9 +36,9 @@ use crate::errors::DomainError;
 /// assert_eq!(schema.name.as_str(), "test");
 /// ```
 #[non_exhaustive]
-pub struct SchemaResolver;
+pub struct Resolver;
 
-impl SchemaResolver {
+impl Resolver {
     fn merge_parent_properties(
         resolved_props: &mut HashMap<String, Property>,
         parent: Option<&Schema>,
