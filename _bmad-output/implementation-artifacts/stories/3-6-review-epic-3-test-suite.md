@@ -97,7 +97,22 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Validate test maintainability standards are met
 - [ ] Document test suite efficiency improvements, coverage gains, and ROI
 
-### Task 7: Quality Assurance and Commit (MANDATORY FINAL TASK)
+### Task 7: Enforce Epic 2 Quality Standards
+- [ ] **BDD DOCUMENTATION:** Ensure all tests include internal expressive BDD comments (e.g., `// GIVEN: a valid note with multiple links`, `// WHEN: the link resolution service is called`, `// THEN: all links are resolved to absolute vault paths`). The GIVEN-WHEN-THEN words must be followed by descriptive text explaining the context, action, and expected outcome.
+- [ ] **STRICT NAMING:** Verify 100% compliance with verb-first behavioral naming across all Epic 3 tests using the formula: `unit_of_work` + `expected_behavior` + `state_under_test`
+- [ ] **PARAMETERIZED TESTS:** Ensure `rstest` is used ONLY when it provides a real benefit to clarity and maintainability. Avoid using it for single scenarios or when it makes the test logic harder to follow. Always use **Named Cases**.
+- [ ] **KISS COMPLIANCE:** Verify that tests are readable and maintainable. A test should be easier to understand than the code it tests. Eliminate any "test logic" that is as complex as the production logic.
+- [ ] **SNAPSHOT TESTING:** Verify that complex structures (Note AST, Schema inheritance graphs) use `insta` snapshots with proper **Redactions** for UUIDs and Timestamps
+- [ ] **ASYNC SAFETY:** Confirm all async tests use `#[tokio::test(flavor = "multi_thread")]` and incorporate timeouts and `spawn_blocking_test` for I/O or heavy CPU tasks
+- [ ] **LINT DISCIPLINE:** Enforce `#[expect(...)]` over `#[allow(...)]` for intentional violations and verify every test module includes a `LINT_DISABLE_REASON` header
+- [ ] **DOC-TESTS:** Verify mandatory doc-test coverage for ALL public domain models and utility functions as "Living Documentation", ensuring boilerplate is hidden and attributes are correctly applied
+- [ ] **ERROR ASSERTIONS:** Ensure all error cases use the `assert_err_kind!` macro for standardized and readable error matching
+- [ ] **OBSERVABILITY:** Verify use of `TestTracingSubscriber` where domain events or tracing spans need validation
+- [ ] **TEST PLACEMENT:** Ensure no test code exists outside `tests/utils` and `tests/macros` (except for inline unit tests)
+- [ ] **VIRTUAL TIME:** Confirm all time-sensitive domain logic uses the `time_test!` virtual clock infrastructure
+- [ ] **PURITY GUARDIAN:** Run the Domain Purity Guardian and confirm 100% compliance for all Epic 3 domain models
+
+### Task 8: Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [ ] **HEXAGONAL VALIDATION:** Confirm test suite properly mirrors hexagonal architecture (domain pure, adapters integrated)
 - [ ] **COVERAGE VALIDATION:** Confirm 80%+ coverage achieved and documented in coverage report (business logic focus)
 - [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful domain behavior
@@ -116,21 +131,6 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] **MANDATORY:** Confirm all analysis artifacts pass quality gates and coverage targets are met
 - [ ] Stage all files created or modified during story development
 - [ ] Commit with conventional commit message: `refactor: optimize epic 3 test suite for efficiency with comprehensive analysis and actionable recommendations`
-
-### Task 8: Enforce Epic 2 Quality Standards
-- [ ] **BDD DOCUMENTATION:** Ensure all tests include internal expressive BDD comments (e.g., `// GIVEN: a valid note with multiple links`, `// WHEN: the link resolution service is called`, `// THEN: all links are resolved to absolute vault paths`). The GIVEN-WHEN-THEN words must be followed by descriptive text explaining the context, action, and expected outcome.
-- [ ] **STRICT NAMING:** Verify 100% compliance with verb-first behavioral naming across all Epic 3 tests using the formula: `unit_of_work` + `expected_behavior` + `state_under_test`
-- [ ] **PARAMETERIZED TESTS:** Ensure `rstest` is used ONLY when it provides a real benefit to clarity and maintainability. Avoid using it for single scenarios or when it makes the test logic harder to follow. Always use **Named Cases**.
-- [ ] **KISS COMPLIANCE:** Verify that tests are readable and maintainable. A test should be easier to understand than the code it tests. Eliminate any "test logic" that is as complex as the production logic.
-- [ ] **SNAPSHOT TESTING:** Verify that complex structures (Note AST, Schema inheritance graphs) use `insta` snapshots with proper **Redactions** for UUIDs and Timestamps
-- [ ] **ASYNC SAFETY:** Confirm all async tests use `#[tokio::test(flavor = "multi_thread")]` and incorporate timeouts and `spawn_blocking_test` for I/O or heavy CPU tasks
-- [ ] **LINT DISCIPLINE:** Enforce `#[expect(...)]` over `#[allow(...)]` for intentional violations and verify every test module includes a `LINT_DISABLE_REASON` header
-- [ ] **DOC-TESTS:** Verify mandatory doc-test coverage for ALL public domain models and utility functions as "Living Documentation", ensuring boilerplate is hidden and attributes are correctly applied
-- [ ] **ERROR ASSERTIONS:** Ensure all error cases use the `assert_err_kind!` macro for standardized and readable error matching
-- [ ] **OBSERVABILITY:** Verify use of `TestTracingSubscriber` where domain events or tracing spans need validation
-- [ ] **TEST PLACEMENT:** Ensure no test code exists outside `tests/utils` and `tests/macros` (except for inline unit tests)
-- [ ] **VIRTUAL TIME:** Confirm all time-sensitive domain logic uses the `time_test!` virtual clock infrastructure
-- [ ] **PURITY GUARDIAN:** Run the Domain Purity Guardian and confirm 100% compliance for all Epic 3 domain models
 
 ## Dev Notes
 

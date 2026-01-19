@@ -1,4 +1,4 @@
-# Story 4.7: Comprehensive Documentation Audit
+# Story 4.7: Documentation Audit
 
 Status: pending
 
