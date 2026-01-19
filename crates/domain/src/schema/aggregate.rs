@@ -588,4 +588,58 @@ mod tests {
         // THEN it must return a DuplicatePropertyName error
         assert!(matches!(res, Err(DomainError::DuplicatePropertyName(_))));
     }
+
+    #[test]
+    fn schema_accessors_return_expected_values() {
+        // GIVEN a schema with properties
+        let name = SchemaName::new("status".to_owned()).unwrap();
+        let property = Property::new(
+            Uuid::now_v7(),
+            PropertyName::new("flag".to_owned()).unwrap(),
+            true,
+            false,
+            PropertySpec::Bool(BoolSpec::default()),
+        )
+        .unwrap();
+        let schema = Schema::new(Uuid::now_v7(), name, vec![property]).unwrap();
+
+        // THEN accessor methods return expected values
+        assert_eq!(schema.name().as_str(), "status");
+        assert!(schema.has("flag"));
+        assert!(schema.get("flag").is_some());
+        assert_eq!(schema.properties().len(), 1);
+        assert_eq!(schema.pending_events().len(), 1);
+    }
+
+    #[test]
+    fn property_bank_accessors_cover_ids_and_names() {
+        // GIVEN a property bank with an inserted property
+        let mut bank = PropertyBank::new();
+        let property = Property::new(
+            Uuid::now_v7(),
+            PropertyName::new("flag".to_owned()).unwrap(),
+            true,
+            false,
+            PropertySpec::Bool(BoolSpec::default()),
+        )
+        .unwrap();
+        let id = property.id();
+        bank.register(property).unwrap();
+
+        // THEN accessors for id/name work
+        assert!(bank.has_id(id));
+        assert!(bank.has_name("flag"));
+        assert!(bank.get_by_id(id).is_some());
+        assert!(bank.get_by_name("flag").is_some());
+        assert!(bank.get(id.to_string().as_str()).is_some());
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test assertion uses unwrap for clarity"
+        )]
+        bank.decode(id.to_string().as_str()).unwrap();
+        assert_eq!(bank.pending_events().len(), 1);
+
+        let events = bank.take_events();
+        assert!(events.is_empty() || events.len() == 1);
+    }
 }
