@@ -6,7 +6,7 @@
 use async_trait::async_trait;
 use uuid::Uuid;
 
-use crate::{errors::DomainError, models::note::core::Note};
+use crate::{errors::DomainError, note::core::Note};
 
 /// Command port for Note write operations.
 ///

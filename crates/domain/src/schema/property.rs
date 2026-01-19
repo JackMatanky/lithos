@@ -13,7 +13,8 @@ use std::{
 use regex::Regex;
 use uuid::Uuid;
 
-use crate::{errors::DomainError, models::schema::property_spec::PropertySpec};
+use super::property_spec::PropertySpec;
+use crate::errors::DomainError;
 
 /// Validated property name value object.
 ///
@@ -132,8 +133,8 @@ impl Property {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::models::schema::{Property, PropertyName};
-    /// use lithos_domain::models::schema::{PropertySpec, BoolSpec};
+    /// use lithos_domain::schema::{Property, PropertyName};
+    /// use lithos_domain::schema::{PropertySpec, BoolSpec};
     /// use uuid::Uuid;
     ///
     /// let name = PropertyName::new("is_active".to_string()).unwrap();
@@ -259,8 +260,9 @@ pub struct RawPropertyInline {
 /// Test fixtures and builders for `Property`.
 #[cfg(test)]
 pub mod fixtures {
-    use super::*;
-    use crate::models::schema::property_spec::StringSpec;
+    use uuid::Uuid;
+
+    use super::{super::property_spec::StringSpec, *};
 
     /// `PropertyBuilder` for flexible test data generation.
     pub struct PropertyBuilder {
@@ -360,8 +362,7 @@ pub mod fixtures {
 )]
 mod tests {
     mod property {
-        use super::super::*;
-        use crate::models::schema::property_spec::StringSpec;
+        use super::super::{super::property_spec::StringSpec, *};
 
         /// 3.3-UNIT-006: `returns_error_when_property_name_format_is_invalid`.
         /// Priority: P1.

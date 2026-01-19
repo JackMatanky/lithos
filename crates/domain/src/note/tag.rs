@@ -39,7 +39,7 @@ impl Tag {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::models::note::tag::Tag;
+    /// use lithos_domain::note::tag::Tag;
     ///
     /// let tag = Tag::parse("#work/project/urgent").unwrap();
     /// assert_eq!(tag.as_str(), "work/project/urgent");

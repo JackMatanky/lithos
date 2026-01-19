@@ -24,8 +24,8 @@ use crate::errors::DomainError;
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::models::schema::{SchemaResolver, RawSchema, SchemaName};
-/// use lithos_domain::models::schema::property_bank::PropertyBank;
+/// use lithos_domain::schema::{SchemaResolver, RawSchema, SchemaName};
+/// use lithos_domain::schema::property_bank::PropertyBank;
 /// use std::collections::HashSet;
 /// use uuid::Uuid;
 ///

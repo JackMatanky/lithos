@@ -4,7 +4,7 @@
 )]
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
-use lithos_domain::models::schema::{
+use lithos_domain::schema::{
     core::{Schema, SchemaName},
     graph::SchemaGraph,
     property::Property,
@@ -14,7 +14,7 @@ use uuid::Uuid;
 
 fn bench_property_creation(c: &mut Criterion) {
     let spec = PropertySpec::String(StringSpec::default());
-    let name = lithos_domain::models::schema::property::PropertyName::new(
+    let name = lithos_domain::schema::property::PropertyName::new(
         "test_property".to_string(),
     )
     .unwrap();

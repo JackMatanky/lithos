@@ -15,6 +15,8 @@
 //! - Performance-optimized for LSP hot paths: `PropertyBank`, schemas, completion data
 //! - Hot-reload capable via `AtomicPtr` swap for zero-downtime updates
 
+pub mod events;
+
 /// Default configuration constants organized by domain.
 mod defaults {
     /// Filesystem-related defaults.

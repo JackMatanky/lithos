@@ -4,6 +4,8 @@
 pub mod composition;
 /// Core Template aggregate root and identity.
 pub mod core;
+/// Template domain events.
+pub mod events;
 /// Placeholder syntax and wrap logic.
 pub mod syntax;
 /// Domain-level structure and content validation.

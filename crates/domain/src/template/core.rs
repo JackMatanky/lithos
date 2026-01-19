@@ -6,11 +6,12 @@ use uuid::Uuid;
 
 use super::{
     composition::{Composition, InsertionPosition, Section},
+    events::TemplateCreated,
     syntax::PlaceholderSyntax,
     validation::{validate_content, validate_structure},
     variable::VariableDefinition,
 };
-use crate::{errors::DomainError, events::TemplateCreated};
+use crate::errors::DomainError;
 
 #[expect(clippy::disallowed_methods, reason = "Static regex initialization")]
 #[expect(clippy::expect_used, reason = "Static regex initialization")]

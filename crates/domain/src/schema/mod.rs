@@ -4,6 +4,7 @@
 //! organized into focused modules for better maintainability.
 
 pub mod core;
+pub mod events;
 pub mod graph;
 pub mod patterns;
 pub mod property;
