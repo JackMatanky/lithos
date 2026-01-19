@@ -54,8 +54,13 @@ mod tests {
 
     #[test]
     fn default_syntax_wraps_variables() {
+        // GIVEN: the default placeholder syntax
         let syntax = PlaceholderSyntax::default();
 
-        assert_eq!(syntax.wrap("name"), "{{name}}");
+        // WHEN: wrapping a variable name
+        let wrapped = syntax.wrap("name");
+
+        // THEN: it uses the standard double-curly braces
+        assert_eq!(wrapped, "{{name}}");
     }
 }

@@ -313,27 +313,43 @@ mod tests {
 
     #[test]
     fn should_validate_boolean_constraints() {
+        // GIVEN: a boolean variable definition
         let def = VariableDefinition::Boolean {
             default: None,
         };
-        def.validate_value(&serde_json::json!(true)).expect("Valid boolean");
-        assert!(def.validate_value(&serde_json::json!("true")).is_err());
+
+        // WHEN: validating boolean and non-boolean values
+        let valid_result = def.validate_value(&serde_json::json!(true));
+        let invalid_result = def.validate_value(&serde_json::json!("true"));
+
+        // THEN: only the boolean value is accepted
+        valid_result.expect("Valid boolean");
+        assert!(invalid_result.is_err());
     }
 
     #[test]
     fn should_validate_number_constraints() {
+        // GIVEN: a numeric variable definition with range constraints
         let def = VariableDefinition::Number {
             default: None,
             max: Some(10.0f64),
             min: Some(1.0f64),
         };
-        def.validate_value(&serde_json::json!(5.0f64)).expect("Valid number");
-        assert!(def.validate_value(&serde_json::json!(0.5f64)).is_err());
-        assert!(def.validate_value(&serde_json::json!(10.5f64)).is_err());
+
+        // WHEN: validating values within and outside the range
+        let valid_result = def.validate_value(&serde_json::json!(5.0f64));
+        let too_low = def.validate_value(&serde_json::json!(0.5f64));
+        let too_high = def.validate_value(&serde_json::json!(10.5f64));
+
+        // THEN: range constraints are enforced
+        valid_result.expect("Valid number");
+        assert!(too_low.is_err());
+        assert!(too_high.is_err());
     }
 
     #[test]
     fn accessors_expose_defaults() {
+        // GIVEN: a variable definition with a default value
         let def = VariableDefinition::String {
             default: Some("Title".to_owned()),
             max_length: None,
@@ -341,7 +357,12 @@ mod tests {
             pattern: None,
         };
 
-        assert!(def.has_default());
-        assert_eq!(def.get_default_value(), Some(serde_json::json!("Title")));
+        // WHEN: checking for defaults
+        let has_default = def.has_default();
+        let default_val = def.get_default_value();
+
+        // THEN: the default value is correctly exposed
+        assert!(has_default);
+        assert_eq!(default_val, Some(serde_json::json!("Title")));
     }
 }
