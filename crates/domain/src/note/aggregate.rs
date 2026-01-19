@@ -355,6 +355,7 @@ mod tests {
     }
 
     use lithos_test_utils::test_builder;
+
     test_builder!(NoteBuilder, Note, {
         id: Uuid = Uuid::now_v7(),
         path: Box<str> = "default.md".into(),

@@ -67,7 +67,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 ### Task 4: Optimize Test Performance and Coverage
 - [x] Implement shared test utilities leveraging Epic 2 infrastructure
-- [ ] Consolidate duplicate fixtures into reusable modules
+- [x] Consolidate duplicate fixtures into reusable modules
 - [ ] **DOC-TEST OPTIMIZATION:** Apply "Living Documentation" patterns to doc-tests:
     - [ ] Hide setup/boilerplate imports and logic using the `#` prefix
     - [ ] Ensure examples are high-fidelity and demonstrate real-world usage of `lithos-test-utils`
@@ -520,6 +520,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Audited fixture duplication, property-based test usage, `rstest` usage, overlapping scenarios, and slow-test contributors for Task 3.
 - 2026-01-19: Added shared proptest identifier strategies to test utils and reused in domain/template tests.
 - 2026-01-19: Ran `mise run test:unit --package domain` after proptest strategy updates.
+- 2026-01-19: Consolidated note fixtures in-domain and added integration fixture module under tests/suite/common.
 
 ### Completion Notes List
 
@@ -540,6 +541,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - Redundancy elimination opportunities: unify fixture builders, centralize common validation assertions (e.g., name-format error cases) and consider moving repeated setup into `lithos_test_utils` helpers.
 - Added shared proptest strategies in `tests/utils/src/data/properties.rs` for valid/invalid identifiers and reused them in schema/property and template tests.
 - `mise run test:unit --package domain` passes (105 unit tests, 49 doc tests, 4 ignored).
+- Consolidated note fixtures to stay with domain unit tests and added integration fixture location under `tests/suite/common/mod.rs`.
 
 ### File List
 

@@ -74,6 +74,12 @@ Lithos is built on Tokio. All async tests must follow these safety invariants:
 
 ## 5. Test Authoring Standards
 
+### Fixture Placement
+
+- **Unit fixtures**: Keep fixtures inside the module under `#[cfg(test)]` so they can use private APIs and remain close to the code under test.
+- **Integration fixtures**: Store shared helpers under `tests/common/mod.rs` so integration tests can reuse setup without creating extra test crates.
+- **Avoid cycles**: Do not place domain-specific fixtures in `lithos-test-utils` if that would require `lithos-domain` to depend on it (or vice versa). Prefer keeping domain fixtures in `crates/domain` or a separate fixtures crate used only by integration tests.
+
 Tests are the first place people look to understand how your code works. They must be clear, targeted, and serve as **Living Documentation**.
 
 ### Naming Conventions & Organization
