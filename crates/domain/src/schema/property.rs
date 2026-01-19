@@ -126,10 +126,9 @@ impl Property {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::{Property, PropertyName};
-    /// use lithos_domain::{PropertySpec, BoolSpec};
-    /// use uuid::Uuid;
-    ///
+    /// # use lithos_domain::{Property, PropertyName};
+    /// # use lithos_domain::{PropertySpec, BoolSpec};
+    /// # use uuid::Uuid;
     /// let name = PropertyName::new("is_active".to_string()).unwrap();
     /// let spec = PropertySpec::Bool(BoolSpec::default());
     /// let id = Uuid::now_v7();

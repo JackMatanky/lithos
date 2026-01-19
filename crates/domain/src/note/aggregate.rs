@@ -30,9 +30,8 @@ use crate::{errors::DomainError, validation::validate_vault_path};
 ///
 /// # Examples
 /// ```
-/// use lithos_domain::Note;
-/// use uuid::Uuid;
-///
+/// # use lithos_domain::Note;
+/// # use uuid::Uuid;
 /// // For new files (first-time indexing)
 /// let new_id = Uuid::now_v7();
 /// let note = Note::new(new_id, "projects/example.md".to_string()).unwrap();
