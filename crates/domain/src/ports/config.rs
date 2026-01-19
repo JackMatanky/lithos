@@ -7,7 +7,7 @@
 use async_trait::async_trait;
 
 use crate::{
-    config::{Config, Global, Vault},
+    config::{aggregate::Config, global::Global, vault::Vault},
     errors::ConfigError,
 };
 
@@ -54,7 +54,7 @@ pub trait Command: Send + Sync {
 /// ```ignore
 /// #[async_trait]
 /// impl Query for MyConfigAdapter {
-///     async fn load_merged(&self) -> Result<Config, ConfigError> {
+///     async fn load(&self) -> Result<Config, ConfigError> {
 ///         // Adapter implementation for loading and merging config
 ///         let global = self.load_global().await?;
 ///         let vault = self.load_vault().await?;
@@ -64,13 +64,7 @@ pub trait Command: Send + Sync {
 /// ```
 #[async_trait]
 pub trait Query: Send + Sync {
-    /// Load global configuration.
-    ///
-    /// # Errors
-    /// Returns `ConfigError` if load operation fails or config is invalid.
-    async fn load_global(&self) -> Result<Global, ConfigError>;
-
-    /// Load merged configuration (Global + Vault).
+    /// Load configuration (Global + Vault merged).
     ///
     /// # Business Rules
     /// - Loads both Global and Vault configurations
@@ -82,7 +76,13 @@ pub trait Query: Send + Sync {
     /// - Load operation fails
     /// - Merge operation fails
     /// - Validation fails
-    async fn load_merged(&self) -> Result<Config, ConfigError>;
+    async fn load(&self) -> Result<Config, ConfigError>;
+
+    /// Load global configuration.
+    ///
+    /// # Errors
+    /// Returns `ConfigError` if load operation fails or config is invalid.
+    async fn load_global(&self) -> Result<Global, ConfigError>;
 
     /// Load vault-specific configuration.
     ///

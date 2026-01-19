@@ -38,9 +38,18 @@ pub(crate) mod patterns;
 // deep module path knowledge (e.g., `lithos_domain::Config` vs `lithos_domain::config::Config`).
 // Config context re-exports
 pub use config::{
-    Config, FileSystem as FileSystemConfig, Frontmatter as FrontmatterConfig,
-    Global as GlobalConfig, SettingValue as ConfigValue, Vault as VaultConfig,
+    aggregate::Config,
     events::ConfigUpdated,
+    global::{
+        Global as GlobalConfig, GlobalFilesystem as GlobalFilesystemConfig,
+        TrustedVaults as TrustedVaultsConfig,
+    },
+    types::{
+        Frontmatter as FrontmatterConfig, Logging as LoggingConfig,
+        Schema as SchemaConfig, SettingValue as ConfigValue,
+        Template as TemplateConfig,
+    },
+    vault::{Vault as VaultConfig, VaultFilesystem, VaultMetadata},
 };
 pub use errors::{ConfigError, DomainError};
 // Note context re-exports
