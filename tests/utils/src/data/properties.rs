@@ -28,6 +28,18 @@ pub fn note_content() -> impl Strategy<Value = String> {
     prop::collection::vec(".*", 1..10).prop_map(|lines| lines.join("\n"))
 }
 
+/// Strategy for generating valid identifier-like names.
+pub fn valid_identifier() -> impl Strategy<Value = String> {
+    "[a-zA-Z0-9_-]{1,64}"
+}
+
+/// Strategy for generating invalid identifier-like names.
+pub fn invalid_identifier() -> impl Strategy<Value = String> {
+    ".*[^a-zA-Z0-9_-].*".prop_filter("invalid identifier length", |s| {
+        !s.is_empty() && s.len() <= 64
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -43,6 +55,17 @@ mod tests {
         fn test_filename_strategy(f in filename()) {
             assert!(f.contains('.'));
             assert!(!f.is_empty());
+        }
+
+        #[test]
+        fn test_valid_identifier_strategy(name in valid_identifier()) {
+            assert!(!name.is_empty());
+            assert!(name.len() <= 64);
+        }
+
+        #[test]
+        fn test_invalid_identifier_strategy(name in invalid_identifier()) {
+            assert!(name.chars().any(|c| !c.is_ascii_alphanumeric() && c != '_' && c != '-'));
         }
     }
 }

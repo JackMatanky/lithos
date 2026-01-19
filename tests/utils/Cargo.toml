@@ -39,7 +39,7 @@ dhat = { workspace = true }
 lithos-test-macros = { path = "../macros" }
 insta = { version = "1.39", features = ["json", "redactions", "filters"] }
 mockall = "0.13"
- proptest = "1.4"
+proptest = "1.4"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 

@@ -399,6 +399,9 @@ mod tests {
     }
 
     mod proptests {
+        use lithos_test_utils::data::properties::{
+            invalid_identifier, valid_identifier,
+        };
         use proptest::prelude::*;
 
         use super::super::*;
@@ -407,7 +410,7 @@ mod tests {
             /// 3.3-UNIT-015: `validates_property_name_format_proptest`.
             /// Priority: P2.
             #[test]
-            fn validates_property_name_format_proptest(name in "[a-zA-Z0-9_-]{1,64}") {
+            fn validates_property_name_format_proptest(name in valid_identifier()) {
                 // GIVEN an arbitrary valid property name
                 // WHEN creating a PropertyName
                 // THEN it must succeed
@@ -417,13 +420,11 @@ mod tests {
             /// 3.3-UNIT-016: `rejects_invalid_property_name_characters_proptest`.
             /// Priority: P2.
             #[test]
-            fn rejects_invalid_property_name_characters_proptest(name in ".*[^a-zA-Z0-9_-].*") {
+            fn rejects_invalid_property_name_characters_proptest(name in invalid_identifier()) {
                 // GIVEN an arbitrary string containing invalid characters
                 // WHEN creating a PropertyName (filtering for correct length)
-                if !name.is_empty() && name.len() <= 64 {
-                    // THEN it must fail
-                    PropertyName::new(name).unwrap_err();
-                }
+                // THEN it must fail
+                PropertyName::new(name).unwrap_err();
             }
         }
     }
