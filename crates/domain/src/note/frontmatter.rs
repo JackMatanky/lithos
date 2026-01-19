@@ -402,9 +402,8 @@ impl Frontmatter {
     /// # fields.insert("aliases".to_string(), FieldValue::String("My Alias".to_string()));
     /// # let frontmatter = Frontmatter::new(fields).unwrap();
     /// # let global = GlobalConfig::default();
-    /// # let mut vault = VaultConfig::default();
-    /// # vault.filesystem.vault_path = "/vault".to_string();
-    /// # let config = Config::build(&global, vault).unwrap();
+    /// # let vault = VaultConfig::default();
+    /// # let config = Config::build(Some(&global), "/vault", vault).unwrap();
     /// let aliases = frontmatter.aliases(&config);
     /// assert_eq!(aliases, vec!["My Alias".to_string()]);
     /// ```
@@ -425,9 +424,8 @@ impl Frontmatter {
     /// # fields.insert("file_class".to_string(), FieldValue::String("note".to_string()));
     /// # let frontmatter = Frontmatter::new(fields).unwrap();
     /// # let global = GlobalConfig::default();
-    /// # let mut vault = VaultConfig::default();
-    /// # vault.filesystem.vault_path = "/vault".to_string();
-    /// # let config = Config::build(&global, vault).unwrap();
+    /// # let vault = VaultConfig::default();
+    /// # let config = Config::build(Some(&global), "/vault", vault).unwrap();
     /// let file_class = frontmatter.file_class(&config);
     /// assert_eq!(file_class, "note");
     /// ```
@@ -661,9 +659,8 @@ impl Frontmatter {
     /// # fields.insert("title".to_string(), FieldValue::String("My Note".to_string()));
     /// # let frontmatter = Frontmatter::new(fields).unwrap();
     /// # let global = GlobalConfig::default();
-    /// # let mut vault = VaultConfig::default();
-    /// # vault.filesystem.vault_path = "/vault".to_string();
-    /// # let config = Config::build(&global, vault).unwrap();
+    /// # let vault = VaultConfig::default();
+    /// # let config = Config::build(Some(&global), "/vault", vault).unwrap();
     /// let title = frontmatter.title(&config);
     /// assert_eq!(title, "My Note");
     /// ```

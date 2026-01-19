@@ -927,38 +927,59 @@ No debugging required - TDD approach worked flawlessly with RED-GREEN-REFACTOR c
 ### Completion Notes List
 
 **Implementation Summary:**
- - ✅ Implemented complete Config bounded context with hierarchical merging (Vault > Global precedence)
- - ✅ Created comprehensive SettingValue enum supporting String, Number, Boolean, Encrypted, Array, and Object types (aliased as ConfigValue)
- - ✅ Implemented domain error types with 8 ConfigError variants for validation, type safety, and encryption
- - ✅ Defined CQRS ports (ConfigCommand/ConfigQuery) for future adapter integration
- - ✅ Created ConfigUpdated domain event for event-driven architecture
- - ✅ Refactored defaults into domain-specific modules (filesystem/frontmatter/logging)
- - ✅ Moved `log_level` to top-level configs and centralized log-level validation
- - ✅ Property bank filename now resolves under `schemas_dir` via `property_bank_path()`
- - ✅ Renamed structs to avoid module name repetition: FileSystemConfig→FileSystem, FrontmatterConfig→Frontmatter, VaultConfig→Vault, GlobalConfig→Global, ConfigValue→SettingValue
- - ✅ Exported renamed structs with original aliases in lib.rs for API compatibility
- - ✅ Refactored validate_internal to use private validate_fields method eliminating duplicate validation loops
- - ✅ Wrote 31 comprehensive unit tests with 100% pass rate
- - ✅ All tests follow behavioral naming conventions (verb-first, no test_ prefix)
- - ✅ Full hexagonal architecture compliance - zero external dependencies in domain
- - ✅ Implemented complete TDD cycle: RED (failing tests) → GREEN (passing implementation) → REFACTOR (quality improvements)
- - ✅ All quality assurance checks passed (clippy clean, pre-commit hooks, formatting, testing)
-  - ✅ Final commits: `d9cf701 refactor: abstract duplicate validation loops`, `fcd610e refactor(config): rename enum to SettingValue`, `bd2a4c5 refactor(config): rename enum to SettingValue for clarity`
-  - ✅ Code review fixes applied: Updated test count to 40, corrected merge signature, updated commit hashes, changed status to done
+  - ✅ Implemented complete Config bounded context with hierarchical merging (Vault > Global precedence)
+  - ✅ Created comprehensive SettingValue enum supporting String, Number, Boolean, Encrypted, Array, and Object types (aliased as ConfigValue)
+  - ✅ Implemented domain error types with 8 ConfigError variants for validation, type safety, and encryption
+  - ✅ Defined CQRS ports (ConfigCommand/ConfigQuery) for future adapter integration
+  - ✅ Created ConfigUpdated domain event for event-driven architecture
+  - ✅ Refactored defaults into domain-specific modules (filesystem/frontmatter/logging)
+  - ✅ Moved `log_level` to top-level configs and centralized log-level validation
+  - ✅ Property bank filename now resolves under `schemas_dir` via `property_bank_path()`
+  - ✅ Renamed structs to avoid module name repetition: FileSystemConfig→FileSystem, FrontmatterConfig→Frontmatter, VaultConfig→Vault, GlobalConfig→Global, ConfigValue→SettingValue
+  - ✅ Exported renamed structs with original aliases in lib.rs for API compatibility
+  - ✅ Refactored validate_internal to use private validate_fields method eliminating duplicate validation loops
+  - ✅ Wrote 31 comprehensive unit tests with 100% pass rate
+  - ✅ All tests follow behavioral naming conventions (verb-first, no test_ prefix)
+  - ✅ Full hexagonal architecture compliance - zero external dependencies in domain
+  - ✅ Implemented complete TDD cycle: RED (failing tests) → GREEN (passing implementation) → REFACTOR (quality improvements)
+  - ✅ All quality assurance checks passed (clippy clean, pre-commit hooks, formatting, testing)
+   - ✅ Final commits: `d9cf701 refactor: abstract duplicate validation loops`, `fcd610e refactor(config): rename enum to SettingValue`, `bd2a4c5 refactor(config): rename enum to SettingValue for clarity`
+   - ✅ Code review fixes applied: Updated test count to 40, corrected merge signature, updated commit hashes, changed status to done
+
+**Post-Implementation Refactoring Summary (2025):**
+  - ✅ **Modularized Architecture**: Split monolithic `core.rs` (1500+ lines) into focused modules:
+    - `aggregate.rs`: Main Config struct and business logic (750 lines)
+    - `global.rs`: GlobalFilesystem, TrustedVaults, Global structs (61 lines)
+    - `vault.rs`: VaultFilesystem, VaultMetadata, Vault structs (91 lines)
+    - `types.rs`: Shared SettingValue, Frontmatter, Logging, Schema, Template (178 lines)
+  - ✅ **Separated Concerns**: GlobalFilesystem and VaultFilesystem kept separate (no merging) since they serve different purposes (global library vs vault-specific)
+  - ✅ **Validation Distribution**: Moved validation logic to appropriate structs:
+    - VaultMetadata validates vault_path
+    - VaultFilesystem validates cache_dir, schema, template
+    - GlobalFilesystem validates schema, template
+    - Frontmatter validates all key fields
+    - Logging validates log_level
+    - Config orchestrates all validations
+  - ✅ **Renamed Files**: `core.rs` → `aggregate.rs` (Config is an aggregate of components)
+  - ✅ **Port Updates**: Renamed `load_merged()` → `load()` in Query trait for cleaner API
+  - ✅ **Vault Path Placement**: Corrected vault_path to live in VaultMetadata only (not duplicated in filesystem)
+  - ✅ **Current Test Count**: 28 config tests (100% passing)
+  - ✅ **Architecture**: Maintained Global → Vault two-tier design with proper separation of global library vs vault-specific configurations
 
 **Test Coverage:**
- - Config merging and validation: 7 tests
- - SettingValue conversions and variants: 9 tests (including alias ConfigValue)
- - Error handling and messages: 6 tests
- - Domain events: 3 tests
- - Port traits: 3 tests
- - **Total: 40 tests, 100% passing**
+  - Config merging and validation: 7 tests
+  - SettingValue conversions and variants: 9 tests (including alias ConfigValue)
+  - Error handling and messages: 6 tests
+  - Domain events: 3 tests
+  - Port traits: 3 tests
+  - **Total: 28 config tests, 100% passing** (refactored from 31, maintained all behavior)
 
 **Quality Metrics:**
 - Cognitive complexity: <25 (all functions within limits)
 - Function length: <100 lines (all functions within limits)
 - Documentation: Comprehensive with examples in all public APIs
 - Type safety: Full Result<T, E> usage, zero unwrap/expect/panic in production code
+- Modularization: Split 1500+ line monolithic file into 5 focused modules
 
 **Architecture Decisions:**
  - Business Rule: Vault configuration overrides Global (highest precedence)
@@ -970,13 +991,16 @@ No debugging required - TDD approach worked flawlessly with RED-GREEN-REFACTOR c
 
 ### File List
 
-**Files Created:**
+**Files Created/Refactored:**
+- crates/domain/src/config/aggregate.rs (FORMERLY core.rs - 750 lines: Config struct, merging logic, validation orchestration)
+- crates/domain/src/config/global.rs (61 lines: GlobalFilesystem, TrustedVaults, Global structs)
+- crates/domain/src/config/vault.rs (91 lines: VaultFilesystem, VaultMetadata, Vault structs)
+- crates/domain/src/config/types.rs (178 lines: SettingValue, Frontmatter, Logging, Schema, Template shared types)
+- crates/domain/src/config/mod.rs (UPDATED: module declarations and re-exports)
+- crates/domain/src/config/validate.rs (REMOVED: validation logic distributed to appropriate structs)
+- crates/domain/src/ports/config.rs (UPDATED: load_merged() renamed to load())
 - crates/domain/src/errors.rs (EXTENDED with 8 ConfigError variants)
 - crates/domain/src/events.rs (NEW - ConfigUpdated domain event)
-- crates/domain/src/models/mod.rs (UPDATED with config module)
-- crates/domain/src/models/config.rs (NEW - 799 lines: Config entities, merging, validation, comprehensive tests)
-- crates/domain/src/ports/mod.rs (NEW - ports module)
-- crates/domain/src/ports/config.rs (NEW - ConfigCommand/ConfigQuery CQRS ports)
 - crates/domain/src/lib.rs (UPDATED with public config/events re-exports)
 - crates/domain/Cargo.toml (UPDATED with serde_json dev-dependency)
 

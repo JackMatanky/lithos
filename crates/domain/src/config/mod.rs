@@ -2,8 +2,16 @@
 //!
 //! This module contains configuration domain entities, business logic, and events.
 
-pub mod core;
+/// Configuration aggregate types and business logic.
+pub mod aggregate;
+/// Configuration domain events.
 pub mod events;
+/// Global configuration types.
+pub mod global;
+pub mod types;
+/// Vault configuration types.
+pub mod vault;
 
 // Re-export main types for convenience
-pub use core::{Config, FileSystem, Frontmatter, Global, SettingValue, Vault};
+pub use aggregate::Config;
+pub use types::*;
