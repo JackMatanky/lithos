@@ -96,29 +96,36 @@ mod tests {
 
     #[test]
     fn command_trait_is_object_safe() {
-        // This test ensures the trait can be used as a trait object (dyn Command)
+        // GIVEN: the Command trait
+        // WHEN: used as a trait object
         fn _assert_object_safe(_: &dyn Command) {}
+        // THEN: it compiles
     }
 
     #[test]
     fn query_trait_is_object_safe() {
-        // This test ensures the trait can be used as a trait object (dyn Query)
+        // GIVEN: the Query trait
+        // WHEN: used as a trait object
         fn _assert_object_safe(_: &dyn Query) {}
+        // THEN: it compiles
     }
 
     #[test]
     fn traits_are_send_and_sync() {
+        // GIVEN: the port traits
         #[expect(
             dead_code,
             reason = "Helper function for compile-time trait checking"
         )]
         fn is_send_sync<T: Send + Sync>() {}
-        // Verify trait bounds are correct
+
+        // WHEN: checking Send + Sync bounds
         fn _assert_command_is_send_sync<T: Command>() {
             is_send_sync::<T>();
         }
         fn _assert_query_is_send_sync<T: Query>() {
             is_send_sync::<T>();
         }
+        // THEN: they satisfy the bounds
     }
 }
