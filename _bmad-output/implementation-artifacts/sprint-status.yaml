@@ -75,7 +75,7 @@ development_status:
     4-4-create-loading-strategy-mocks: "ready-for-dev"
     4-5-adversarial-refactor-of-epic-4-foundation: "ready-for-dev"
     4-6-review-epic-4-test-suite: "ready-for-dev"
-    4-7-comprehensive-documentation-audit: "ready-for-dev"
+    4-7-documentation-audit: "ready-for-dev"
     epic-4-retrospective: "optional"
 
     epic-5: "backlog"
