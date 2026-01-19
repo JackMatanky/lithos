@@ -26,6 +26,14 @@
 - Path: `_bmad/bmb/workflows/workflow-compliance-check/workflow.md`
 - Systematic validation of workflows against BMAD standards with adversarial analysis and detailed reporting
 
+**module**
+- Path: `_bmad/bmb/workflows/module/workflow.md`
+- Quad-modal workflow for creating BMAD modules (Brief + Create + Edit + Validate)
+
+**workflow**
+- Path: `_bmad/bmb/workflows/workflow/workflow.md`
+- Create structured standalone workflows using markdown-based step architecture (tri-modal: create, validate, edit)
+
 
 ## Execution
 
