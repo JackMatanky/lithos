@@ -57,13 +57,13 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [x] Document current coverage gaps, weak areas, and quality concerns
 
 ### Task 3: Identify Redundancies, Inefficiencies, and Over-Complexity
-- [ ] Review test fixtures for duplication across bounded contexts
-- [ ] Analyze property-based test patterns for consolidation opportunities
-- [ ] **COMPLEXITY AUDIT:** Identify "clever" or overly complex test logic that hinders readability. Ensure tests follow the KISS principle.
-- [ ] **RSTEST EVALUATION:** Audit usage of `rstest`. Verify that parameterized cases provide a clear benefit (e.g., testing same logic with multiple critical inputs) rather than adding unnecessary indirection for simple cases.
-- [ ] Check for overlapping test scenarios between domain models
-- [ ] Identify slow-running tests that impact the <30 second target
-- [ ] Document redundancy and complexity elimination opportunities
+- [x] Review test fixtures for duplication across bounded contexts
+- [x] Analyze property-based test patterns for consolidation opportunities
+- [x] **COMPLEXITY AUDIT:** Identify "clever" or overly complex test logic that hinders readability. Ensure tests follow the KISS principle.
+- [x] **RSTEST EVALUATION:** Audit usage of `rstest`. Verify that parameterized cases provide a clear benefit (e.g., testing same logic with multiple critical inputs) rather than adding unnecessary indirection for simple cases.
+- [x] Check for overlapping test scenarios between domain models
+- [x] Identify slow-running tests that impact the <30 second target
+- [x] Document redundancy and complexity elimination opportunities
 
 ### Task 4: Optimize Test Performance and Coverage
 - [ ] Implement shared test utilities leveraging Epic 2 infrastructure
@@ -517,6 +517,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Ran `cargo test -p lithos-domain --doc -- --list` to audit doc-tests in domain models.
 - 2026-01-19: Reviewed domain test modules for hexagonal compliance (no external deps; inline `#[cfg(test)]`), integration tests in tests/suite.
 - 2026-01-19: Ran `mise run test:coverage --package domain --skip-e2e` to generate tarpaulin HTML report and per-file coverage stats.
+- 2026-01-19: Audited fixture duplication, property-based test usage, `rstest` usage, overlapping scenarios, and slow-test contributors for Task 3.
 
 ### Completion Notes List
 
@@ -528,6 +529,13 @@ This story will leverage the test utilities being developed in Epic 2:
 - Tarpaulin coverage (domain-only, skip E2E): 51.13% overall (676/1322). HTML report at `target/tarpaulin/tarpaulin-report.html`.
 - Coverage gaps are concentrated in note frontmatter/link aggregate paths, schema resolver/property_spec, template variable validation, and template aggregate composition helper paths. Coverage quality is strong for validation modules and core invariants but thin for complex branches and error paths.
 - Coverage strategy documented: prioritize business logic, error paths, and edge conditions over raw line metrics; use property tests and targeted unit coverage for complex branches.
+- Fixture duplication exists between note fixtures (`crates/domain/src/note/aggregate.rs`) and schema/property fixtures (`crates/domain/src/schema/aggregate.rs`, `crates/domain/src/schema/property.rs`). Consolidate into shared `tests/utils` factories or a domain-level fixture module.
+- Property-based tests appear in schema graph, config aggregate, template aggregate, and property name validation; several overlapping valid-name strategies could share a common proptest strategy helper.
+- Complexity hotspots: schema graph proptest logic uses nested collections, manual sorting, and index math; could be replaced with helper builder or shared `SchemaGraphFixture` to reduce cognitive load. Config aggregate proptest uses deep nested object setup that could leverage shared fixture builders. These are readable but at risk for KISS violations if expanded.
+- `rstest` usage is limited to config aggregate validation and error message table tests; both use named cases and are justified. No unnecessary parameterization found.
+- Overlapping scenarios: PropertyName validation and SchemaName validation follow similar constraints; property name tests and schema name tests could share a generic name validation harness to reduce redundancy.
+- Slow-test risk: Full suite at ~42.6s misses 30s target; integration tests (~23.6s) are the dominant contributor. Domain-only tests are fast. Focus optimization on integration suites and E2E concurrency to meet performance target.
+- Redundancy elimination opportunities: unify fixture builders, centralize common validation assertions (e.g., name-format error cases) and consider moving repeated setup into `lithos_test_utils` helpers.
 
 ### File List
 
