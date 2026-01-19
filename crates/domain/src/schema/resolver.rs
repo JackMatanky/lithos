@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn resolves_ref_property_with_json_pointer_prefix() {
-        // GIVEN a property bank with a property
+        // GIVEN: a property bank with a property
         let mut bank = PropertyBank::new();
         let property = Property::new(
             Uuid::now_v7(),
@@ -161,17 +161,17 @@ mod tests {
             ref_path: "#/properties/status".to_owned(),
         });
 
-        // WHEN resolving the ref
+        // WHEN: resolving the ref
         let resolved =
             Resolver::resolve_single_property(raw, &bank).expect("resolve ref");
 
-        // THEN it finds the property by name
+        // THEN: it finds the property by name
         assert_eq!(resolved.name().as_str(), "status");
     }
 
     #[test]
     fn resolves_ref_property_with_plain_name() {
-        // GIVEN a property bank with a property
+        // GIVEN: a property bank with a property
         let mut bank = PropertyBank::new();
         let property = Property::new(
             Uuid::now_v7(),
@@ -187,17 +187,17 @@ mod tests {
             ref_path: "status".to_owned(),
         });
 
-        // WHEN resolving the ref
+        // WHEN: resolving the ref
         let resolved =
             Resolver::resolve_single_property(raw, &bank).expect("resolve ref");
 
-        // THEN it finds the property by name
+        // THEN: it finds the property by name
         assert_eq!(resolved.name().as_str(), "status");
     }
 
     #[test]
     fn resolve_includes_parent_properties() {
-        // GIVEN a parent schema with a property
+        // GIVEN: a parent schema with a property
         let mut bank = PropertyBank::new();
         let parent_prop = Property::new(
             Uuid::now_v7(),
@@ -215,7 +215,7 @@ mod tests {
         )
         .expect("valid schema");
 
-        // WHEN resolving a child raw schema
+        // WHEN: resolving a child raw schema
         let raw = RawSchema::new(
             Uuid::now_v7(),
             SchemaName::new("child".to_owned()).expect("valid name"),
@@ -226,7 +226,7 @@ mod tests {
         let schema = Resolver::resolve(raw, Some(&parent_schema), &bank)
             .expect("resolve schema");
 
-        // THEN parent property is retained
+        // THEN: parent property is retained
         assert!(schema.has("parent"));
     }
 }
