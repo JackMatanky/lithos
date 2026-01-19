@@ -16,15 +16,15 @@ use super::{
 #[non_exhaustive]
 pub struct Config {
     /// Merged frontmatter configuration.
-    pub frontmatter: Frontmatter,
+    frontmatter: Frontmatter,
     /// Global filesystem configuration.
-    pub global_filesystem: global::Filesystem,
+    global_filesystem: global::Filesystem,
     /// Merged logging configuration.
-    pub logging: Logging,
+    logging: Logging,
     /// Vault filesystem configuration.
-    pub vault_filesystem: vault::Filesystem,
+    vault_filesystem: vault::Filesystem,
     /// Vault metadata with versioning and naming.
-    pub vault_metadata: vault::Metadata,
+    vault_metadata: vault::Metadata,
 }
 
 impl Default for Config {
@@ -59,7 +59,7 @@ impl Config {
     /// let vault = VaultConfig::default();
     ///
     /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
-    /// assert_eq!(config.vault_metadata.vault_path, "/vault");
+    /// assert_eq!(config.vault_metadata().vault_path, "/vault");
     /// ```
     #[inline]
     pub fn build(
@@ -171,6 +171,27 @@ impl Config {
         Ok(config)
     }
 
+    /// Returns the merged frontmatter configuration.
+    #[inline]
+    #[must_use]
+    pub const fn frontmatter(&self) -> &Frontmatter {
+        &self.frontmatter
+    }
+
+    /// Returns the global filesystem configuration.
+    #[inline]
+    #[must_use]
+    pub const fn global_filesystem(&self) -> &global::Filesystem {
+        &self.global_filesystem
+    }
+
+    /// Returns the merged logging configuration.
+    #[inline]
+    #[must_use]
+    pub const fn logging(&self) -> &Logging {
+        &self.logging
+    }
+
     /// Merge frontmatter configurations applying defaults where needed.
     pub(crate) fn merge_frontmatter(
         global: Option<&Frontmatter>,
@@ -260,6 +281,20 @@ impl Config {
 
         Ok(())
     }
+
+    /// Returns the vault filesystem configuration.
+    #[inline]
+    #[must_use]
+    pub const fn vault_filesystem(&self) -> &vault::Filesystem {
+        &self.vault_filesystem
+    }
+
+    /// Returns the vault metadata.
+    #[inline]
+    #[must_use]
+    pub const fn vault_metadata(&self) -> &vault::Metadata {
+        &self.vault_metadata
+    }
 }
 
 /// Choose value with precedence: vault > global > default.
@@ -319,7 +354,7 @@ mod tests {
                 } else {
                     prop_assert!(result.is_ok(), "Valid paths should merge successfully");
                     if let Ok(config) = result {
-                        prop_assert_eq!(config.vault_metadata.vault_path, vault_path);
+                        prop_assert_eq!(config.vault_metadata().vault_path.as_str(), vault_path);
                     }
                 }
             }
@@ -345,20 +380,23 @@ mod tests {
 
             // THEN vault values override global defaults
             assert_eq!(
-                merged.vault_filesystem.template.templates_dir,
+                merged.vault_filesystem().template.templates_dir,
                 "custom_templates",
                 "Vault filesystem should have custom templates"
             );
             assert_eq!(
-                merged.logging.log_level, "debug",
+                merged.logging().log_level,
+                "debug",
                 "Log level should override global"
             );
             assert_eq!(
-                merged.frontmatter.file_class_key, "type",
+                merged.frontmatter().file_class_key,
+                "type",
                 "File class key should override global"
             );
             assert_eq!(
-                merged.frontmatter.date_created_key, "created",
+                merged.frontmatter().date_created_key,
+                "created",
                 "Date created key should override global"
             );
         }
@@ -417,36 +455,43 @@ mod tests {
             if let Ok(config) = result {
                 // Verify defaults were applied to vault filesystem
                 assert_eq!(
-                    config.vault_filesystem.cache_dir, ".cache",
+                    config.vault_filesystem().cache_dir,
+                    ".cache",
                     "Should fall back to default cache_dir"
                 );
                 assert_eq!(
-                    config.vault_filesystem.template.templates_dir, "templates",
+                    config.vault_filesystem().template.templates_dir,
+                    "templates",
                     "Should fall back to default templates_dir"
                 );
                 assert_eq!(
-                    config.vault_filesystem.schema.schemas_dir, "schemas",
+                    config.vault_filesystem().schema.schemas_dir,
+                    "schemas",
                     "Should fall back to default schemas_dir"
                 );
                 assert_eq!(
-                    config.vault_filesystem.schema.property_bank_filename,
+                    config.vault_filesystem().schema.property_bank_filename,
                     "property_bank.json",
                     "Should fall back to default property_bank_filename"
                 );
                 assert_eq!(
-                    config.logging.log_level, "info",
+                    config.logging().log_level,
+                    "info",
                     "Should fall back to default log_level"
                 );
                 assert_eq!(
-                    config.frontmatter.file_class_key, "file_class",
+                    config.frontmatter().file_class_key,
+                    "file_class",
                     "Should fall back to default file_class_key"
                 );
                 assert_eq!(
-                    config.frontmatter.title_key, "title",
+                    config.frontmatter().title_key,
+                    "title",
                     "Should fall back to default title_key"
                 );
                 assert_eq!(
-                    config.frontmatter.alias_key, "aliases",
+                    config.frontmatter().alias_key,
+                    "aliases",
                     "Should fall back to default alias_key"
                 );
             }
@@ -625,26 +670,6 @@ mod tests {
     }
 
     /// Test fixture: Create sample global configuration with system defaults.
-    ///
-    /// This fixture provides a complete Global configuration suitable for testing
-    /// merge operations, validation logic, and default value fallback behavior.
-    /// All fields are populated with realistic values that represent a typical
-    /// global configuration setup.
-    ///
-    /// # Field Values
-    /// - `filesystem.vault_path`: "." (placeholder, not used in global)
-    /// - `filesystem.templates_dir`: "templates" (system default)
-    /// - `filesystem.schemas_dir`: "schemas" (system default)
-    /// - `frontmatter.*`: All set to system defaults (`"file_class"`, `"title"`, etc.)
-    /// - `log_level`: "info" (system default)
-    ///
-    /// # Usage
-    /// Use this fixture when you need a baseline global configuration for merge testing.
-    /// ```rust
-    /// let global = sample_global_config();
-    /// let vault = sample_vault_config();
-    /// let config = Config::build(&global, vault).unwrap();
-    /// ```
     fn sample_global_config() -> Global {
         Global {
             filesystem: global::Filesystem {
@@ -671,26 +696,6 @@ mod tests {
     }
 
     /// Test fixture: Create sample vault configuration with user overrides.
-    ///
-    /// This fixture provides a complete Vault configuration with realistic overrides
-    /// that demonstrate vault-level customization. Key overrides show how vault
-    /// configuration takes precedence over global defaults.
-    ///
-    /// # Key Overrides (Vault takes precedence)
-    /// - `filesystem.templates_dir`: `"custom_templates"` (vs global `"templates"`)
-    /// - `filesystem.vault_path`: "/vault" (required field)
-    /// - `frontmatter.file_class_key`: `"type"` (vs global `"file_class"`)
-    /// - `frontmatter.date_created_key`: `"created"` (vs global `"date_created"`)
-    /// - `log_level`: "debug" (vs global "info")
-    ///
-    /// # Usage
-    /// Use this fixture to test vault-level overrides and precedence rules.
-    /// ```rust
-    /// let global = sample_global_config();
-    /// let vault = sample_vault_config();
-    /// let config = Config::build(&global, vault).unwrap();
-    /// assert_eq!(config.vault_filesystem.template.templates_dir, "custom_templates"); // vault filesystem
-    /// ```
     fn sample_vault_config() -> Vault {
         Vault {
             filesystem: vault::Filesystem {

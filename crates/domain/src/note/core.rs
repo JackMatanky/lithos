@@ -41,37 +41,31 @@ use crate::{errors::DomainError, validation::validate_vault_path};
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
-#[expect(
     clippy::arbitrary_source_item_ordering,
     reason = "Logical grouping preferred over alphabetical for domain models"
 )]
 pub struct Note {
     /// UUID v7 identity (time-ordered).
-    pub(crate) id: Uuid,
+    id: Uuid,
     /// Vault-relative path.
-    pub(crate) path: Box<str>,
+    path: Box<str>,
     /// YAML metadata.
-    pub(crate) frontmatter: Option<Frontmatter>,
+    frontmatter: Option<Frontmatter>,
     /// Outgoing links.
-    pub(crate) links: Vec<Link>,
+    links: Vec<Link>,
     /// Embedded files.
-    pub(crate) embeds: Vec<Link>,
+    embeds: Vec<Link>,
     /// Hierarchical tags.
-    pub(crate) tags: Vec<Tag>,
+    tags: Vec<Tag>,
     /// Markdown headings.
-    pub(crate) headings: Vec<Heading>,
+    headings: Vec<Heading>,
     /// Task items.
-    pub(crate) tasks: Vec<Task>,
+    tasks: Vec<Task>,
     /// Document sections.
-    pub(crate) sections: Vec<Section>,
+    sections: Vec<Section>,
     /// Domain events pending emission (not serialized).
-    ///
-    /// Access via `pending_events()` and `take_events()` methods.
     #[serde(skip)]
-    pub(crate) pending_events: Vec<NoteEvents>,
+    pending_events: Vec<NoteEvents>,
 }
 
 impl Note {
@@ -156,23 +150,14 @@ impl Note {
 
     /// Creates a new note aggregate with the provided UUID and validated path.
     ///
-    /// # UUID Source
-    /// The UUID should be obtained from the repository layer via:
-    /// - `NoteRepository::get_or_create_note_id()` for indexed files (preserves existing identity)
-    /// - `Uuid::now_v7()` for brand-new notes (first-time indexing)
-    ///
     /// # Errors
     /// Returns `DomainError::EmptyPath` if path is empty.
     /// Returns `DomainError::InvalidPath` if path is absolute, missing `.md` extension, or contains `..`.
     #[inline]
     pub fn new(id: Uuid, path: String) -> Result<Self, DomainError> {
-        // Use shared validation utility from domain core
         validate_vault_path(&path, Some("md"))?;
 
-        // Convert path to Box<str> for storage (no clone needed)
         let path_box: Box<str> = path.into();
-
-        // Clone path string for event (necessary since path_box doesn't implement Copy)
         let path_for_event = path_box.to_string();
 
         let mut note = Self {
@@ -188,12 +173,11 @@ impl Note {
             pending_events: vec![],
         };
 
-        // Emit NoteCreated domain event
-        note.add_event(NoteEvents::NoteCreated(NoteCreated {
+        note.add_event(NoteEvents::NoteCreated(NoteCreated::new(
             id,
-            path: path_for_event,
-            timestamp: chrono::Utc::now().timestamp(),
-        }));
+            path_for_event,
+            chrono::Utc::now().timestamp(),
+        )));
 
         Ok(note)
     }
@@ -248,17 +232,10 @@ impl Note {
 
     /// Validates the note's internal consistency.
     ///
-    /// Performs aggregate-level semantic validation.
-    ///
     /// # Errors
     /// Returns `DomainError::ValidationFailed` if cross-entity invariants are violated.
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
-        // Internal consistency of subentities is guaranteed by their own
-        // constructors and encapsulation. Aggregate-level validation
-        // (cross-entity rules) would go here.
-
-        // Verify that all links/embeds belong to this note
         for link in &self.links {
             if link.source_note_id() != self.id {
                 return Err(DomainError::ValidationFailed(
@@ -278,9 +255,6 @@ impl Note {
         Ok(())
     }
 }
-
-// Path validation logic has been consolidated into crates/domain/src/validation.rs
-// This eliminates ~65 lines of redundant code and uses shared validation utilities.
 
 #[cfg(test)]
 mod tests {

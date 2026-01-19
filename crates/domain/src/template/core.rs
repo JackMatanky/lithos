@@ -43,35 +43,27 @@ const RESERVED_WORDS: &[&str] = &[
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[expect(
-    clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal consistency with other domain models"
-)]
-#[expect(
-    clippy::partial_pub_fields,
-    reason = "pending_events is internally managed"
-)]
-#[expect(
     clippy::arbitrary_source_item_ordering,
     reason = "Meaningful logical ordering of aggregate fields"
 )]
 pub struct Template {
     /// UUID v7 identity.
-    pub id: Uuid,
+    id: Uuid,
     /// Unique template name.
-    pub name: String,
+    name: String,
     /// Template content.
-    pub content: String,
+    content: String,
     /// Syntax used for placeholders.
-    pub syntax: PlaceholderSyntax,
+    syntax: PlaceholderSyntax,
     /// Variable definitions with types and constraints.
-    pub variables: HashMap<String, VariableDefinition>,
+    variables: HashMap<String, VariableDefinition>,
     /// Optional parent template for composition.
-    pub extends: Option<String>,
+    extends: Option<String>,
     /// Metadata for template management.
-    pub metadata: Metadata,
+    metadata: Metadata,
     /// Domain events pending emission.
     #[serde(skip)]
-    pub(crate) pending_events: Vec<TemplateEvents>,
+    pending_events: Vec<TemplateEvents>,
 }
 
 #[expect(
@@ -85,7 +77,7 @@ pub struct Template {
 impl Template {
     /// Adds a domain event to the pending events collection.
     #[inline]
-    pub fn add_event(&mut self, event: TemplateEvents) {
+    fn add_event(&mut self, event: TemplateEvents) {
         self.pending_events.push(event);
     }
 
@@ -126,6 +118,41 @@ impl Template {
         ));
 
         Ok(template)
+    }
+
+    /// Returns the template's content.
+    #[inline]
+    #[must_use]
+    pub fn content(&self) -> &str {
+        &self.content
+    }
+
+    /// Returns the name of the template this one extends, if any.
+    #[inline]
+    #[must_use]
+    pub fn extends(&self) -> Option<&str> {
+        self.extends.as_deref()
+    }
+
+    /// Returns the template's unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Returns the template's metadata.
+    #[inline]
+    #[must_use]
+    pub const fn metadata(&self) -> &Metadata {
+        &self.metadata
+    }
+
+    /// Returns the template's unique name.
+    #[inline]
+    #[must_use]
+    pub fn name(&self) -> &str {
+        &self.name
     }
 
     /// Creates a new template aggregate with validation.
@@ -172,6 +199,27 @@ impl Template {
         &self.pending_events
     }
 
+    /// Returns the template's placeholder syntax.
+    #[inline]
+    #[must_use]
+    pub const fn syntax(&self) -> &PlaceholderSyntax {
+        &self.syntax
+    }
+
+    /// Returns and clears pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<TemplateEvents> {
+        std::mem::take(&mut self.pending_events)
+    }
+
+    /// Returns the template's variable definitions.
+    #[inline]
+    #[must_use]
+    pub const fn variables(&self) -> &HashMap<String, VariableDefinition> {
+        &self.variables
+    }
+
     /// Applies additional sections to content.
     fn apply_sections(&self, content: &mut String, sections: &[Section]) {
         for section in sections {
@@ -202,13 +250,6 @@ impl Template {
                 }
             }
         }
-    }
-
-    /// Returns and clears pending domain events.
-    #[inline]
-    #[must_use]
-    pub fn take_events(&mut self) -> Vec<TemplateEvents> {
-        std::mem::take(&mut self.pending_events)
     }
 
     fn insert_relative_to_variable(

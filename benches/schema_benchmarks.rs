@@ -52,7 +52,7 @@ fn bench_schema_creation(c: &mut Criterion) {
 
     c.bench_function("schema_creation", |b| {
         b.iter(|| {
-            let (schema, _event) = Schema::new(
+            let schema = Schema::new(
                 black_box(id),
                 black_box(name.clone()),
                 black_box(vec![]),
