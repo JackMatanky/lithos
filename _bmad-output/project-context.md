@@ -29,7 +29,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Application Engine
 - **MiniJinja 2.14**: VM-based template engine for user-defined Markdown templates.
 - **miette 7.6**: High-fidelity terminal diagnostics and error reporting.
-- **Figment 0.10**: Hierarchical configuration (Global -> User -> Project -> Vault).
+- **Figment 0.10**: Two-tier configuration (Global -> Vault).
 - **thiserror 2.0 & anyhow 1.0**: Structured error definition and ergonomic context chaining.
 
 ### Tooling & Orchestration

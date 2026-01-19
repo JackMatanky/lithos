@@ -10,11 +10,13 @@ As a developer managing application configuration,
 I want a Config domain model with validation,
 So that configuration changes are validated and the domain enforces configuration integrity.
 
+
+
 ## Acceptance Criteria
 
 **Given** I have researched configuration merging patterns
 **When** I review the Config bounded context
-**Then** Config supports merging Vault and Global configurations with business rules (aliased as VaultConfig/GlobalConfig)
+**Then** Config supports merging VaultConfig and GlobalConfig with business rules (Vault > Global precedence)
 
 **Given** Config entity is defined
 **When** I check validation integration
@@ -30,7 +32,23 @@ So that configuration changes are validated and the domain enforces configuratio
 
 **Given** hierarchical merging is needed
 **When** I implement merging in domain
-**Then** vault-level config overrides global-level (Vault > Global business rule)
+**Then** vault-level config overrides global-level (Global → Vault two-tier system, optional global config)
+
+**Given** schema versioning is needed
+**When** I implement vault config
+**Then** schema_version is optional and defaults to current Lithos binary version for quick use
+
+**Given** vault naming is needed
+**When** I implement vault metadata
+**Then** vault name defaults to directory basename (e.g., `/vaults/work` → "work")
+
+**Given** trusted vaults are needed
+**When** I implement global config
+**Then** trusted_vaults supports list format OR map format (not both) with validation
+
+**Given** global templates are needed
+**When** I implement global config
+**Then** global config supports schemas_dir and templates_dir for global template library
 
 **Given** CQRS separation is needed
 **When** I define ports
@@ -115,6 +133,26 @@ So that configuration changes are validated and the domain enforces configuratio
 - [x] Ensure ports are placed in domain ports module
 - [x] **TDD REQUIREMENT:** Make all port interface tests pass
 
+### Task 9.1: Refactor Config Architecture to Global → Vault Design (REFACTOR Phase - NEW TASK)
+- [ ] **ARCHITECTURAL REFACTOR:** Update Config domain to implement revised Global → Vault two-tier system
+- [ ] **MODULARIZATION:** Create focused embedded structs by concern:
+  - `Schema` struct (schemas_dir, property_bank_filename) - schema configuration
+  - `Template` struct (templates_dir) - template configuration
+  - `Logging` struct (log_level) - logging configuration with validation
+- [ ] **STRUCT REFACTOR:** Split `FileSystem` into `GlobalFilesystem` + `VaultFilesystem` using embedded structs
+- [ ] **VAULT METADATA:** Add `VaultMetadata` struct with optional `schema_version` + `name` (defaults to binary version + directory basename)
+- [ ] **TRUSTED VAULTS:** Add `TrustedVaults` struct supporting list OR map format with validation
+- [ ] **GLOBAL FILESYSTEM:** Add `GlobalFilesystem` embedding `Schema` + `Template` (global library)
+- [ ] **VAULT FILESYSTEM:** Add `VaultFilesystem` embedding `Schema` + `Template` + `cache_dir` (vault-scoped)
+- [ ] **DEFAULTS STRATEGY:** Use direct string literals in Default impls - eliminate redundant defaults constants (simpler, no duplication)
+- [ ] **REMOVE DEFAULTS MODULE:** Delete the existing `mod defaults` block - no longer needed with direct literals
+- [ ] **MERGE LOGIC:** Update `Config::build()` to handle optional vault overrides and new struct layout
+- [ ] **VALIDATION MODULARIZATION:** Implement component-specific validation methods on embedded structs
+- [ ] **VAULT DISCOVERY:** Implement logic to find vault path and set name defaults
+- [ ] **TESTS UPDATE:** Update all existing tests to match new struct definitions and embedded composition
+- [ ] **BEHAVIOR PRESERVATION:** Ensure all existing domain behavior is maintained through refactoring
+- [ ] **QUALITY GATES:** Run `mise run verify` to ensure no regressions introduced
+
 ### Task 10: Quality Assurance and Commit (MANDATORY FINAL TASK - TDD Validation)
 - [x] **TDD VALIDATION:** Confirm all tests pass and coverage meets requirement (40 tests passing)
 - [x] **TDD VALIDATION:** Verify behavioral tests catch hierarchical merging edge cases (config_merge_handles_various_empty_combinations)
@@ -138,16 +176,27 @@ So that configuration changes are validated and the domain enforces configuratio
 ### Domain Model Foundation
 
 **Core Entity Structure:**
- - **SettingValue Enum**: Unified representation for all configuration value types (aliased as ConfigValue)
- - **Vault Struct**: Configuration from vault-specific files (aliased as VaultConfig)
- - **Global Struct**: Configuration from global defaults (aliased as GlobalConfig)
- - **Config Struct**: Merged result with business rules (Vault overrides Global)
- - **Immutability**: All config entities MUST be immutable following Rust ownership patterns
- - **Validation**: Business rule validation with merging precedence
- - **Error Handling**: Use `thiserror::Error` for typed configuration errors
+  - **SettingValue Enum**: Unified representation for all configuration value types (aliased as ConfigValue)
+  - **VaultMetadata Struct**: Vault schema version (optional, defaults to binary version) + name (optional, defaults to directory basename)
+  - **VaultFilesystem Struct**: Vault-scoped directories (cache_dir, schemas_dir, templates_dir, property_bank_filename)
+  - **GlobalFilesystem Struct**: Global template/schema library directories
+  - **TrustedVaults Struct**: Flexible vault discovery (list OR map format, validated)
+  - **Vault Struct**: Vault-specific configuration with optional overrides
+  - **Global Struct**: Global defaults configuration
+  - **Config Struct**: Merged result with business rules (Vault > Global precedence)
+  - **Struct Composition**: Smaller composable structs with Default impls for better modularity
+  - **Immutability**: All config entities MUST be immutable following Rust ownership patterns
+  - **Validation**: Business rule validation with merging precedence
+  - **Error Handling**: Use `thiserror::Error` for typed configuration errors
 
 **Configuration Merging - CRITICAL:**
-- **Business Rule:** Vault configuration overrides Global configuration
+- **Business Rule:** Vault configuration overrides Global configuration (Vault > Global precedence)
+- **Hierarchy:** Global → Vault two-tier system (optional global config)
+- **Capabilities without Global:** Vault operations work normally, no global template creation/trusted vaults
+- **Schema Version:** Optional in vault config, defaults to current Lithos binary version for quick use
+- **Vault Name:** Defaults to directory basename (e.g., `/vaults/work` → "work")
+- **Trusted Vaults:** Flexible format (list OR map), error on mixing both
+- **Global Templates:** Global config supports schemas_dir/templates_dir for global template library
 - **Domain Responsibility:** Merging logic belongs in domain as business rules
 - **Adapter Responsibility:** File loading and parsing belong in adapters
 
@@ -406,21 +455,223 @@ fn bench_config_merge(c: &mut Criterion) {
 
 ### File Structure Requirements
 
-**File Structure (Single File per Context - Split at 1000+ Lines):**
+**File Structure (Bounded Context Organization):**
 ```
 crates/domain/src/
-├── lib.rs                    # Public API surface with aliases: ConfigValue=SettingValue, VaultConfig=Vault, etc.
-├── models/
-│   ├── mod.rs               # Module declarations
-│   └── config.rs            # Config entities: Vault, Global, Config (merged),
-│                           # FileSystem, Frontmatter, SettingValue, merging logic, validate_fields()
+├── config/                   # Config bounded context
+│   ├── mod.rs               # Config module exports
+│   ├── core.rs              # Config entities, structs, and business logic
+│   └── events.rs            # ConfigUpdated domain event
+├── lib.rs                   # Public API surface with aliases
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
-│   └── config.rs            # ConfigCommand/ConfigQuery traits (shells)
-└── errors.rs                # Domain errors (EXTENDED with config errors)
+│   └── config.rs            # ConfigCommand/ConfigQuery traits
+└── errors.rs                # Domain errors (includes ConfigError)
 ```
 
-**Splitting Guideline:** Start with single file. Split when >1000 lines into config_levels.rs, config_core.rs, config_merging.rs.
+**Struct Organization:**
+- `VaultMetadata`: Schema version + name defaults
+- `Schema`: Schema configuration (schemas_dir, property_bank_filename)
+- `Template`: Template configuration (templates_dir)
+- `Logging`: Log level configuration
+- `VaultFilesystem`: Vault-scoped configuration (Schema + Template + cache_dir)
+- `GlobalFilesystem`: Global library configuration (Schema + Template)
+- `TrustedVaults`: Flexible vault discovery
+- `Vault`: Optional overrides of global defaults
+- `Global`: System-wide defaults
+- `Config`: Merged result with Vault > Global precedence
+
+**Further Modularization Suggestions:**
+
+**1. Schema Configuration Struct**
+```rust
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Schema {
+    pub schemas_dir: String,
+    pub property_bank_filename: String,
+}
+
+impl Default for Schema {
+    fn default() -> Self {
+        Self {
+            schemas_dir: defaults::filesystem::SCHEMAS_DIR.to_string(),
+            property_bank_filename: defaults::filesystem::PROPERTY_BANK_FILENAME.to_string(),
+        }
+    }
+}
+
+impl Schema {
+    pub fn property_bank_path(&self) -> String {
+        format!("{}/{}", self.schemas_dir, self.property_bank_filename)
+    }
+
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        // Schema-specific validation (directory exists, filename valid, etc.)
+        Ok(())
+    }
+}
+```
+*Benefits:* Focused on schema concerns, property_bank_filename belongs with schemas_dir, self-contained validation.
+
+**2. Template Configuration Struct**
+```rust
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Template {
+    pub templates_dir: String,
+}
+
+impl Default for Template {
+    fn default() -> Self {
+        Self {
+            templates_dir: defaults::filesystem::TEMPLATES_DIR.to_string(),
+        }
+    }
+}
+
+impl Template {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        // Template-specific validation (directory exists, etc.)
+        Ok(())
+    }
+}
+```
+*Benefits:* Single responsibility for template configuration, independent evolution, focused validation.
+
+**3. Logging Configuration Struct**
+```rust
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Logging {
+    pub log_level: String,
+}
+
+impl Default for Logging {
+    fn default() -> Self {
+        Self {
+            log_level: defaults::logging::LOG_LEVEL.to_string(),
+        }
+    }
+}
+
+impl Logging {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        if !defaults::logging::VALID_LOG_LEVELS.contains(&self.log_level.as_str()) {
+            return Err(ConfigError::InvalidEnumValue {
+                field: "log_level".to_string(),
+                value: self.log_level.clone(),
+                allowed: defaults::logging::VALID_LOG_LEVELS.iter().map(|s| s.to_string()).collect(),
+            });
+        }
+        Ok(())
+    }
+}
+```
+*Benefits:* Dedicated logging configuration with encapsulated validation logic.
+
+**4. Using #[derive(Default)] in Current Rust (Pre-RFC 3681)**
+```rust
+// Current Rust: #[derive(Default)] only provides TYPE-level defaults (String="", i32=0, etc.)
+// CANNOT specify custom field values directly in derive - requires manual Default impls
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Schema {
+    pub schemas_dir: String,
+    pub property_bank_filename: String,
+}
+
+// Direct string literals eliminate redundant defaults constants
+// NOTE: In future Rust with RFC 3681, this would become:
+// #[derive(Default)]
+// pub struct Schema {
+//     pub schemas_dir: String = "schemas".to_string(),
+//     pub property_bank_filename: String = "property_bank.json".to_string(),
+// }
+impl Default for Schema {
+    fn default() -> Self {
+        Self {
+            schemas_dir: "schemas".to_string(),
+            property_bank_filename: "property_bank.json".to_string(),
+        }
+    }
+}
+
+// For simple structs, derive + factory method pattern
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, Default)]
+pub struct Template {
+    pub templates_dir: String,  // Gets "" from String::default()
+}
+
+// Factory method provides custom defaults
+// NOTE: Manual constructor needed since derive can't specify custom defaults.
+// Future: `templates_dir: String = "templates".to_string()` in struct definition.
+impl Template {
+    pub fn with_defaults() -> Self {
+        Self {
+            templates_dir: "templates".to_string(),
+        }
+    }
+}
+
+// Future Rust (RFC 3681 - proposed): Would allow field-level defaults
+// #[derive(Default)]
+// pub struct Schema {
+//     pub schemas_dir: String = "schemas".to_string(),
+//     pub property_bank_filename: String = "property_bank.json".to_string(),
+// }
+```
+*Benefits:* Current derive provides type defaults automatically. Custom field defaults require manual impls. RFC 3681 proposes field-level default syntax but is not yet implemented.
+
+**5. Embedded Struct Usage**
+```rust
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct VaultFilesystem {
+    pub schema: Schema,            // schemas_dir, property_bank_filename
+    pub template: Template,        // templates_dir
+    pub cache_dir: String,         // Vault-specific only
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GlobalFilesystem {
+    pub schema: Schema,            // schemas_dir, property_bank_filename
+    pub template: Template,        // templates_dir
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Vault {
+    pub filesystem: VaultFilesystem,
+    pub frontmatter: Option<Frontmatter>,
+    pub logging: Option<Logging>,   // Optional override
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Global {
+    pub filesystem: GlobalFilesystem,
+    pub frontmatter: Frontmatter,
+    pub logging: Logging,
+}
+```
+*Benefits:* Granular composition by concern, each struct validates its own domain, clear separation of schema vs template concerns.
+
+**6. Validation Modularization**
+```rust
+impl VaultFilesystem {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.schema.validate()?;
+        self.template.validate()?;
+        // Additional vault-specific validation (cache_dir, etc.)
+        Ok(())
+    }
+}
+
+impl GlobalFilesystem {
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        self.schema.validate()?;
+        self.template.validate()?;
+        // Additional global-specific validation
+        Ok(())
+    }
+}
+```
+*Benefits:* Hierarchical validation composition, each component validates itself, aggregate structs orchestrate validation.
 
 **Implementation Decision:**
 Use **subfolder organization** for Config bounded context due to complexity of hierarchical merging, validation rules, and encryption support.
@@ -496,9 +747,12 @@ Use **subfolder organization** for Config bounded context due to complexity of h
 ### Architecture Intelligence
 
 **Configuration Requirements:**
-- **Global Level**: System-wide defaults (read-only for users)
+- **Global Level**: System-wide defaults (optional, enables advanced features)
 - **Vault Level**: Vault-specific configuration (highest precedence)
-- **Business Rule**: Vault configurations override Global configurations
+- **Business Rule**: Vault configurations override Global configurations (Vault > Global)
+- **Quick Use**: No configuration required initially - schema version defaults to binary version, vault name to directory basename
+- **Capabilities without Global**: Vault operations work, no global template creation/trusted vaults
+- **Trusted Vaults**: Flexible discovery (list OR map format with validation)
 
 **Performance Targets (from Architecture):**
 - Config loading: <500ms for typical configurations
@@ -517,23 +771,55 @@ Use **subfolder organization** for Config bounded context due to complexity of h
 **TDD Business Rule Merging:**
 ```rust
 impl Config {
-    /// Merge configurations with business rules (Vault overrides Global)
-    pub fn merge(global: &GlobalConfig, vault: VaultConfig) -> Result<Self, ConfigError> {
-        // Business logic: vault takes precedence over global
-        let filesystem = merge_filesystem(global.filesystem, vault.filesystem)?;
-        let frontmatter = merge_frontmatter(global.frontmatter, vault.frontmatter)?;
+    /// Build configuration with Global → Vault precedence (optional global config)
+    pub fn build(global: Option<&Global>, vault_path: &str, vault_config: Vault) -> Result<Self, ConfigError> {
+        // Step 1: Set vault metadata defaults
+        let vault_metadata = VaultMetadata {
+            schema_version: vault_config.vault.schema_version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
+            name: vault_config.vault.name.or_else(|| Path::new(vault_path).file_name().and_then(|n| n.to_str()).map(|s| s.to_string())),
+        };
 
-        Ok(Config { filesystem, frontmatter })
+        // Step 2: Apply Global → Vault merge precedence
+        let filesystem = Self::merge_filesystem(
+            global.map(|g| &g.filesystem),
+            &vault_config.filesystem,
+            vault_path
+        );
+
+        let frontmatter = Self::merge_frontmatter(
+            global.map(|g| &g.frontmatter),
+            vault_config.frontmatter.as_ref()
+        );
+
+        // Step 3: Validate merged result
+        let config = Self { vault_metadata, filesystem, frontmatter, /* ... */ };
+        config.validate()?;
+
+        Ok(config)
     }
 }
 
-fn merge_filesystem(global: FileSystemConfig, vault: FileSystemConfig) -> Result<FileSystemConfig, ConfigError> {
-    // Business rules for filesystem config merging
-    Ok(FileSystemConfig {
-        vault_path: vault.vault_path, // vault-specific
-        templates_dir: vault.templates_dir.or(global.templates_dir), // vault overrides
-        // ... other fields with precedence rules
-    })
+fn merge_filesystem(global_fs: Option<&GlobalFilesystem>, vault_fs: &VaultFilesystem, vault_path: &str) -> FileSystem {
+    // Schema configuration (vault overrides global)
+    let schema = Schema {
+        schemas_dir: vault_fs.schema.schemas_dir.clone(),
+        property_bank_filename: vault_fs.schema.property_bank_filename.clone(),
+    };
+
+    // Template configuration (vault overrides global)
+    let template = Template {
+        templates_dir: vault_fs.template.templates_dir.clone(),
+    };
+
+    // Vault-specific cache directory
+    let cache_dir = vault_fs.cache_dir.clone();
+
+    FileSystem {
+        vault_path: vault_path.to_string(),
+        schema,        // Embedded Schema struct
+        template,      // Embedded Template struct
+        cache_dir,     // Vault-specific
+    }
 }
 ```
 
