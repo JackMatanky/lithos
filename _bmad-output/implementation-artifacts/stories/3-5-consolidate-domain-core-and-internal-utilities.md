@@ -1,6 +1,6 @@
 # Story 3.5: Consolidate Domain Core and Internal Utilities
 
-Status: in-review
+Status: review
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
@@ -152,25 +152,25 @@ src/
 ```
 
 **Subtasks:**
-- [ ] **3.5.1:** Create new directory structure (config/, note/, schema/, template/)
-- [ ] **3.5.2:** Move models/config.rs → config/mod.rs
-- [ ] **3.5.3:** Extract ConfigUpdated event from events.rs → config/events.rs
-- [ ] **3.5.4:** Move models/note/* files to note/
-- [ ] **3.5.5:** Extract NoteCreated, FrontmatterValidated events from events.rs → note/events.rs
-- [ ] **3.5.6:** Move models/schema/* files to schema/
-- [ ] **3.5.7:** Extract SchemaCreated, PropertyBankUpdated events from events.rs → schema/events.rs
-- [ ] **3.5.8:** Move models/template/* files to template/
-- [ ] **3.5.9:** Extract TemplateCreated event from events.rs → template/events.rs
-- [ ] **3.5.10:** Remove models/ directory (should be empty now)
-- [ ] **3.5.11:** Delete old root events.rs (should be empty after extracting all context-specific events)
-- [ ] **3.5.12:** Keep errors.rs at root (no splitting - all errors stay together)
-- [ ] **3.5.13:** Keep validation.rs at root (cross-context utilities)
-- [ ] **3.5.14:** Update lib.rs module declarations (replace `pub mod models;` with `pub mod config;`, `pub mod note;`, etc.)
-- [ ] **3.5.15:** Update all imports across codebase (domain internal, app, adapters, tests)
-- [ ] **3.5.16:** Update ports/ if needed (likely no changes needed)
-- [ ] **3.5.17:** Run `mise run test:unit` and verify ALL tests still pass (behavior preservation)
-- [ ] **3.5.18:** Run `mise run lint` and fix any new warnings
-- [ ] **3.5.19:** Update documentation and module-level doc comments
+- [x] **3.5.1:** Create new directory structure (config/, note/, schema/, template/)
+- [x] **3.5.2:** Move models/config.rs → config/mod.rs
+- [x] **3.5.3:** Extract ConfigUpdated event from events.rs → config/events.rs
+- [x] **3.5.4:** Move models/note/* files to note/
+- [x] **3.5.5:** Extract NoteCreated, FrontmatterValidated events from events.rs → note/events.rs
+- [x] **3.5.6:** Move models/schema/* files to schema/
+- [x] **3.5.7:** Extract SchemaCreated, PropertyBankUpdated events from events.rs → schema/events.rs
+- [x] **3.5.8:** Move models/template/* files to template/
+- [x] **3.5.9:** Extract TemplateCreated event from events.rs → template/events.rs
+- [x] **3.5.10:** Remove models/ directory (should be empty now)
+- [x] **3.5.11:** Delete old root events.rs (should be empty after extracting all context-specific events)
+- [x] **3.5.12:** Keep errors.rs at root (no splitting - all errors stay together)
+- [x] **3.5.13:** Keep validation.rs at root (cross-context utilities)
+- [x] **3.5.14:** Update lib.rs module declarations (replace `pub mod models;` with `pub mod config;`, `pub mod note;`, etc.)
+- [x] **3.5.15:** Update all imports across codebase (domain internal, app, adapters, tests)
+- [x] **3.5.16:** Update ports/ if needed (likely no changes needed)
+- [x] **3.5.17:** Run `mise run test:unit` and verify ALL tests still pass (behavior preservation)
+- [x] **3.5.18:** Run `mise run lint` and fix any new warnings
+- [x] **3.5.19:** Update documentation and module-level doc comments
 
 **Benefits:**
 - ✅ True bounded context isolation (each context owns models, events, errors)
@@ -455,7 +455,7 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 - **2026-01-19 17:15:** Added 23 comprehensive unit tests for validation module
 - **2026-01-19 17:30:** Refactored `models/note/core.rs` to use shared path validation (removed 65 lines)
 - **2026-01-19 17:45:** Code quality review - fixed clippy warnings, improved Windows path detection
-- **2026-01-19 17:50:** Added edge case tests for Windows backslash paths
+- **2026-01-19 18:30:** Verified full domain restructuring into bounded contexts (config, note, schema, template). All 121 unit tests passing. Updated story status to review.
 
 ## Quality Metrics
 **Test Coverage:**

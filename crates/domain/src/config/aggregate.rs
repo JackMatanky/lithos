@@ -413,6 +413,7 @@ mod tests {
                 "Merge with empty values should succeed, got: {result:?}"
             );
 
+            // THEN defaults are applied to merged configuration
             if let Ok(config) = result {
                 // Verify defaults were applied to vault filesystem
                 assert_eq!(
