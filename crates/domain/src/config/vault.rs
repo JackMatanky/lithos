@@ -8,11 +8,7 @@ use super::types::{Frontmatter, Logging, Schema, Template};
 /// Vault metadata with schema versioning and naming.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Struct name matches module name which is conventional for configuration types"
-)]
-pub struct VaultMetadata {
+pub struct Metadata {
     /// Human-readable name for the vault (defaults to directory basename).
     pub name: Option<String>,
     /// Schema version for the vault (defaults to binary version).
@@ -21,7 +17,7 @@ pub struct VaultMetadata {
     pub vault_path: String,
 }
 
-impl Default for VaultMetadata {
+impl Default for Metadata {
     #[inline]
     fn default() -> Self {
         Self {
@@ -32,7 +28,7 @@ impl Default for VaultMetadata {
     }
 }
 
-impl VaultMetadata {
+impl Metadata {
     /// Derive vault name from vault path (defaults to directory basename).
     fn derive_vault_name(vault_path: &str) -> Option<String> {
         std::path::Path::new(vault_path)
@@ -91,11 +87,7 @@ impl VaultMetadata {
 /// Vault filesystem configuration (vault-scoped).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Struct name matches module name which is conventional for configuration types"
-)]
-pub struct VaultFilesystem {
+pub struct Filesystem {
     /// Cache directory for vault.
     pub cache_dir: String,
     /// Schema configuration for vault.
@@ -104,7 +96,7 @@ pub struct VaultFilesystem {
     pub template: Template,
 }
 
-impl Default for VaultFilesystem {
+impl Default for Filesystem {
     #[inline]
     fn default() -> Self {
         Self {
@@ -115,7 +107,7 @@ impl Default for VaultFilesystem {
     }
 }
 
-impl VaultFilesystem {
+impl Filesystem {
     /// Validate vault filesystem configuration.
     ///
     /// # Errors
@@ -148,7 +140,7 @@ impl VaultFilesystem {
 #[non_exhaustive]
 pub struct Vault {
     /// Filesystem configuration for vault.
-    pub filesystem: VaultFilesystem,
+    pub filesystem: Filesystem,
     /// Frontmatter configuration for vault (optional overrides).
     pub frontmatter: Option<Frontmatter>,
     /// Logging configuration for vault (optional overrides).

@@ -48,18 +48,14 @@ impl TrustedVaults {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[derive(Default)]
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Struct name matches module name which is conventional for configuration types"
-)]
-pub struct GlobalFilesystem {
+pub struct Filesystem {
     /// Schema configuration for global library.
     pub schema: Schema,
     /// Template configuration for global library.
     pub template: Template,
 }
 
-impl GlobalFilesystem {
+impl Filesystem {
     /// Validate global filesystem configuration.
     ///
     /// # Errors
@@ -83,7 +79,7 @@ impl GlobalFilesystem {
 #[non_exhaustive]
 pub struct Global {
     /// Filesystem configuration for global defaults.
-    pub filesystem: GlobalFilesystem,
+    pub filesystem: Filesystem,
     /// Frontmatter configuration for global defaults.
     pub frontmatter: Frontmatter,
     /// Logging configuration for global defaults.
@@ -96,7 +92,7 @@ impl Default for Global {
     #[inline]
     fn default() -> Self {
         Self {
-            filesystem: GlobalFilesystem::default(),
+            filesystem: Filesystem::default(),
             frontmatter: Frontmatter::default(),
             logging: Logging::default(),
             trusted_vaults: None,
