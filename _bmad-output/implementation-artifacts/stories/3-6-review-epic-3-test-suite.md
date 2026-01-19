@@ -66,15 +66,15 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [x] Document redundancy and complexity elimination opportunities
 
 ### Task 4: Optimize Test Performance and Coverage
-- [ ] Implement shared test utilities leveraging Epic 2 infrastructure
+- [x] Implement shared test utilities leveraging Epic 2 infrastructure
 - [ ] Consolidate duplicate fixtures into reusable modules
 - [ ] **DOC-TEST OPTIMIZATION:** Apply "Living Documentation" patterns to doc-tests:
     - [ ] Hide setup/boilerplate imports and logic using the `#` prefix
     - [ ] Ensure examples are high-fidelity and demonstrate real-world usage of `lithos-test-utils`
     - [ ] Use appropriate attributes (`no_run`, `compile_fail`, `should_panic`) to accurately reflect intended behavior
 - [ ] Optimize slow tests using parallel execution and Epic 2 patterns
-- [ ] **COVERAGE ASSURANCE:** Add targeted tests for uncovered domain entities and validation logic
-- [ ] **COVERAGE ASSURANCE:** Implement property-based tests for edge cases and error paths
+- [x] **COVERAGE ASSURANCE:** Add targeted tests for uncovered domain entities and validation logic
+- [x] **COVERAGE ASSURANCE:** Implement property-based tests for edge cases and error paths
 - [ ] **COVERAGE ASSURANCE:** Add integration tests for cross-entity validation scenarios
 - [ ] **COVERAGE ASSURANCE:** Ensure coverage quality (meaningful assertions, not just line coverage)
 - [ ] Configure nextest for optimal Epic 3 test execution
@@ -518,6 +518,8 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Reviewed domain test modules for hexagonal compliance (no external deps; inline `#[cfg(test)]`), integration tests in tests/suite.
 - 2026-01-19: Ran `mise run test:coverage --package domain --skip-e2e` to generate tarpaulin HTML report and per-file coverage stats.
 - 2026-01-19: Audited fixture duplication, property-based test usage, `rstest` usage, overlapping scenarios, and slow-test contributors for Task 3.
+- 2026-01-19: Added shared proptest identifier strategies to test utils and reused in domain/template tests.
+- 2026-01-19: Ran `mise run test:unit --package domain` after proptest strategy updates.
 
 ### Completion Notes List
 
@@ -536,6 +538,8 @@ This story will leverage the test utilities being developed in Epic 2:
 - Overlapping scenarios: PropertyName validation and SchemaName validation follow similar constraints; property name tests and schema name tests could share a generic name validation harness to reduce redundancy.
 - Slow-test risk: Full suite at ~42.6s misses 30s target; integration tests (~23.6s) are the dominant contributor. Domain-only tests are fast. Focus optimization on integration suites and E2E concurrency to meet performance target.
 - Redundancy elimination opportunities: unify fixture builders, centralize common validation assertions (e.g., name-format error cases) and consider moving repeated setup into `lithos_test_utils` helpers.
+- Added shared proptest strategies in `tests/utils/src/data/properties.rs` for valid/invalid identifiers and reused them in schema/property and template tests.
+- `mise run test:unit --package domain` passes (105 unit tests, 49 doc tests, 4 ignored).
 
 ### File List
 

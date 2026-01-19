@@ -456,9 +456,11 @@ mod tests {
         }
     }
 
+    use lithos_test_utils::data::properties::valid_identifier;
+
     proptest! {
         #[test]
-        fn should_validate_template_name_format_across_edge_cases(name in "[a-zA-Z0-9_-]{1,64}") {
+        fn should_validate_template_name_format_across_edge_cases(name in valid_identifier()) {
             let result = Template::new(
                 name,
                 "content".to_owned(),
