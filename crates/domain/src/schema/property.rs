@@ -18,6 +18,14 @@ use crate::{errors::DomainError, validation};
 /// - Non-empty
 /// - Max 64 characters
 /// - Matches regex `^[a-zA-Z0-9_-]+$` (alphanumeric, underscores, dashes)
+///
+/// # Examples
+/// ```
+/// # use lithos_domain::PropertyName;
+/// let name = PropertyName::new("status".to_string()).unwrap();
+/// assert_eq!(name.as_str(), "status");
+/// assert!(PropertyName::new("".to_string()).is_err());
+/// ```
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]

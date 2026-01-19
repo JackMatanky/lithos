@@ -159,6 +159,31 @@ impl Template {
     ///
     /// # Errors
     /// Returns `DomainError` if validation fails (name format, size limits, etc).
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Template, VariableDefinition, TemplateMetadata};
+    /// # use std::collections::HashMap;
+    /// let mut variables = HashMap::new();
+    /// variables.insert(
+    ///     "title".to_string(),
+    ///     VariableDefinition::String {
+    ///         default: Some("Daily".to_string()),
+    ///         max_length: None,
+    ///         min_length: None,
+    ///         pattern: None,
+    ///     },
+    /// );
+    /// let template = Template::new(
+    ///     "daily".to_string(),
+    ///     "# {{title}}".to_string(),
+    ///     variables,
+    ///     None,
+    ///     TemplateMetadata::default(),
+    /// )
+    /// .unwrap();
+    /// assert_eq!(template.name(), "daily");
+    /// ```
     #[inline]
     pub fn new(
         name: String,

@@ -1,6 +1,17 @@
 use crate::{errors::DomainError, validation};
 
 /// Type-safe variable definition with validation constraints.
+///
+/// # Examples
+/// ```
+/// # use lithos_domain::VariableDefinition;
+/// let definition = VariableDefinition::Number {
+///     default: Some(3.0),
+///     min: Some(1.0),
+///     max: Some(5.0),
+/// };
+/// assert!(definition.has_default());
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 #[expect(

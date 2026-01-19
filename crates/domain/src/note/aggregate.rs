@@ -152,6 +152,14 @@ impl Note {
     /// # Errors
     /// Returns `DomainError::EmptyPath` if path is empty.
     /// Returns `DomainError::InvalidPath` if path is absolute, missing `.md` extension, or contains `..`.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::Note;
+    /// # use uuid::Uuid;
+    /// let note = Note::new(Uuid::now_v7(), "notes/intro.md".to_string()).unwrap();
+    /// assert_eq!(note.path(), "notes/intro.md");
+    /// ```
     #[inline]
     pub fn new(id: Uuid, path: String) -> Result<Self, DomainError> {
         validate_vault_path(&path, Some("md"))?;

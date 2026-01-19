@@ -70,7 +70,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [x] Consolidate duplicate fixtures into reusable modules
 - [x] **DOC-TEST OPTIMIZATION:** Apply "Living Documentation" patterns to doc-tests:
     - [x] Hide setup/boilerplate imports and logic using the `#` prefix
-    - [ ] Ensure examples are high-fidelity and demonstrate real-world usage of `lithos-test-utils`
+    - [x] Ensure examples are high-fidelity and demonstrate real-world usage of `lithos-test-utils`
     - [x] Use appropriate attributes (`no_run`, `compile_fail`, `should_panic`) to accurately reflect intended behavior
 - [ ] Optimize slow tests using parallel execution and Epic 2 patterns
 - [x] **COVERAGE ASSURANCE:** Add targeted tests for uncovered domain entities and validation logic
@@ -522,6 +522,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Ran `mise run test:unit --package domain` after proptest strategy updates.
 - 2026-01-19: Consolidated note fixtures in-domain and added integration fixture module under tests/suite/common.
 - 2026-01-19: Optimized doc-tests with hidden boilerplate and updated resolver example; ran domain doctests.
+- 2026-01-19: Added doc-tests for core domain constructors and verified doctest pass.
 
 ### Completion Notes List
 
@@ -544,7 +545,8 @@ This story will leverage the test utilities being developed in Epic 2:
 - `mise run test:unit --package domain` passes (105 unit tests, 49 doc tests, 4 ignored).
 - Consolidated note fixtures to stay with domain unit tests and added integration fixture location under `tests/suite/common/mod.rs`.
 - Cleaned doc-test examples by hiding boilerplate imports and aligning schema resolver example with actual API.
-- `cargo test -p lithos-domain --doc` passes (49 doctests, 4 ignored).
+- Added doc-test examples for core domain constructors (Config::build, Note::new, PropertyName, Template::new, TemplateComposition, PlaceholderSyntax, VariableDefinition).
+- `cargo test -p lithos-domain --doc` passes (55 doctests, 5 ignored).
 
 ### File List
 

@@ -1,4 +1,11 @@
 /// Defines the syntax for variables placeholders within a template.
+///
+/// # Examples
+/// ```
+/// # use lithos_domain::PlaceholderSyntax;
+/// let syntax = PlaceholderSyntax::new("{{", "}}");
+/// assert_eq!(syntax.wrap("title"), "{{title}}");
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct PlaceholderSyntax {
