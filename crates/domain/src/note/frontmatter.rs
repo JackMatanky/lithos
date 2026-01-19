@@ -679,16 +679,27 @@ mod tests {
 
     #[test]
     fn parses_iso8601_date_successfully() {
+        // GIVEN: a date in ISO8601 format
         let date = Utc.with_ymd_and_hms(2024, 1, 15, 14, 30, 0).unwrap();
+
+        // WHEN: wrapped in a FieldValue
         let val = FieldValue::Date(date);
+
+        // THEN: extraction returns the original date
         assert_eq!(val.as_date(), Some(date));
         assert_eq!(date.year(), 2_024i32);
     }
 
     #[test]
     fn converts_numeric_values_correctly() {
+        // GIVEN: a numeric value
         let val = FieldValue::Number(42.0f64);
-        assert_eq!(val.as_number(), Some(42.0f64));
+
+        // WHEN: extracting the number
+        let observed = val.as_number();
+
+        // THEN: it matches the input within epsilon
+        assert_eq!(observed, Some(42.0f64));
         assert!(matches!(
             val,
             FieldValue::Number(n) if (n - 42.0f64).abs() < f64::EPSILON
@@ -697,8 +708,14 @@ mod tests {
 
     #[test]
     fn converts_boolean_values_correctly() {
+        // GIVEN: a boolean value
         let val = FieldValue::Boolean(true);
-        assert_eq!(val.as_bool(), Some(true));
+
+        // WHEN: extracting the boolean
+        let observed = val.as_bool();
+
+        // THEN: it matches the input
+        assert_eq!(observed, Some(true));
         assert!(matches!(val, FieldValue::Boolean(true)));
     }
 
@@ -708,21 +725,30 @@ mod tests {
         reason = "Test fixture creation, unwrap is appropriate for test clarity"
     )]
     fn has_method_detects_field_presence() {
+        // GIVEN: frontmatter with a title field
         let mut fields = HashMap::new();
         fields
             .insert("title".to_owned(), FieldValue::String("Test".to_owned()));
         let fm = Frontmatter::new(fields).unwrap();
 
-        assert!(fm.has("title"));
-        assert!(!fm.has("missing"));
+        // WHEN: checking for field presence
+        let has_title = fm.has("title");
+        let has_missing = fm.has("missing");
+
+        // THEN: presence is correctly reported
+        assert!(has_title);
+        assert!(!has_missing);
     }
 
     #[test]
     fn is_methods_identify_variants() {
+        // GIVEN: field values of different types
         let string_val = FieldValue::String("test".to_owned());
         let number_val = FieldValue::Number(42.0);
         let bool_val = FieldValue::Boolean(true);
 
+        // WHEN: checking variant types
+        // THEN: they identify correctly
         assert!(string_val.is_string());
         assert!(!string_val.is_number());
 

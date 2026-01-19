@@ -50,27 +50,27 @@ mod tests {
 
     #[test]
     fn config_updated_event_is_send_and_sync() {
-        // GIVEN the ConfigUpdated event type
+        // GIVEN: the ConfigUpdated event type
         fn is_send_sync<T: Send + Sync>() {}
 
-        // WHEN checking Send + Sync bounds
+        // WHEN: checking Send + Sync bounds
         is_send_sync::<ConfigUpdated>();
 
-        // THEN the event type satisfies Send + Sync
+        // THEN: the event type satisfies Send + Sync
     }
 
     #[test]
     fn config_updated_event_is_serializable() {
-        // GIVEN a configuration updated event
+        // GIVEN: a configuration updated event
         let event = ConfigUpdated {
             source: "vault".to_owned(),
             timestamp: 1_234_567_890,
         };
 
-        // WHEN serializing to JSON
+        // WHEN: serializing to JSON
         let result = serde_json::to_string(&event);
 
-        // THEN serialization succeeds and includes expected fields
+        // THEN: serialization succeeds and includes expected fields
         assert!(result.is_ok(), "should serialize successfully");
         if let Ok(json) = result {
             assert!(json.contains("vault"));
@@ -80,13 +80,13 @@ mod tests {
 
     #[test]
     fn config_updated_event_is_deserializable() {
-        // GIVEN JSON for a configuration updated event
+        // GIVEN: JSON for a configuration updated event
         let json = r#"{"source":"vault","timestamp":1234567890}"#;
 
-        // WHEN deserializing into ConfigUpdated
+        // WHEN: deserializing into ConfigUpdated
         let result: Result<ConfigUpdated, _> = serde_json::from_str(json);
 
-        // THEN deserialization succeeds and preserves fields
+        // THEN: deserialization succeeds and preserves fields
         assert!(result.is_ok(), "should deserialize successfully");
 
         if let Ok(event) = result {

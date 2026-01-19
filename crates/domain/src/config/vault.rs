@@ -166,13 +166,13 @@ mod tests {
 
     #[test]
     fn derives_metadata_from_vault_path() {
-        // GIVEN a vault path
+        // GIVEN: a vault path
         let vault_path = "/vaults/work".to_owned();
 
-        // WHEN building metadata from the path
+        // WHEN: building metadata from the path
         let metadata = Metadata::new(vault_path.clone());
 
-        // THEN schema_version and name defaults are applied
+        // THEN: schema_version and name defaults are applied
         assert!(
             metadata.schema_version.is_some(),
             "Expected schema_version default to be set"
@@ -190,13 +190,13 @@ mod tests {
 
     #[test]
     fn rejects_empty_vault_path() {
-        // GIVEN an empty vault path
+        // GIVEN: an empty vault path
         let vault_path = "";
 
-        // WHEN validating the vault path
+        // WHEN: validating the vault path
         let result = Metadata::validate_vault_path(vault_path);
 
-        // THEN validation fails with a required field error
+        // THEN: validation fails with a required field error
         assert!(
             result.is_err(),
             "Expected validation failure for empty vault_path"
@@ -205,17 +205,17 @@ mod tests {
 
     #[test]
     fn rejects_empty_cache_dir() {
-        // GIVEN a filesystem with empty cache_dir
+        // GIVEN: a filesystem with empty cache_dir
         let filesystem = Filesystem {
             cache_dir: String::new(),
             schema: super::Schema::default(),
             template: super::Template::default(),
         };
 
-        // WHEN validating the filesystem configuration
+        // WHEN: validating the filesystem configuration
         let result = filesystem.validate();
 
-        // THEN validation fails for cache_dir
+        // THEN: validation fails for cache_dir
         assert!(
             result.is_err(),
             "Expected validation failure for empty cache_dir"
@@ -224,13 +224,13 @@ mod tests {
 
     #[test]
     fn filesystem_validate_passes_with_defaults() {
-        // GIVEN default filesystem config
+        // GIVEN: default filesystem config
         let filesystem = Filesystem::default();
 
-        // WHEN validating
+        // WHEN: validating
         let result = filesystem.validate();
 
-        // THEN it succeeds
+        // THEN: it succeeds
         #[expect(
             clippy::disallowed_methods,
             reason = "Test assertion uses unwrap for clarity"
