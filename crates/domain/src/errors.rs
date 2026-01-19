@@ -381,13 +381,21 @@ mod tests {
 
     #[test]
     fn config_error_is_send_and_sync() {
+        // GIVEN: the ConfigError type
         fn is_send_sync<T: Send + Sync>() {}
+
+        // WHEN: checking Send + Sync bounds
+        // THEN: it satisfies the bounds
         is_send_sync::<ConfigError>();
     }
 
     #[test]
     fn domain_error_is_send_and_sync() {
+        // GIVEN: the DomainError type
         fn is_send_sync<T: Send + Sync>() {}
+
+        // WHEN: checking Send + Sync bounds
+        // THEN: it satisfies the bounds
         is_send_sync::<DomainError>();
     }
 
@@ -417,7 +425,11 @@ mod tests {
         #[case] error: ConfigError,
         #[case] expected_parts: &[&str],
     ) {
+        // GIVEN: a configuration error variant
+        // WHEN: formatting the error message
         let message = error.to_string();
+
+        // THEN: it contains the expected context parts
         for part in expected_parts {
             assert!(
                 message.contains(part),
@@ -428,12 +440,16 @@ mod tests {
 
     #[test]
     fn should_convert_config_to_domain_error() {
+        // GIVEN: a configuration error
         let config_error = ConfigError::ValidationFailed {
             field: "test".to_owned(),
             message: "test error".to_owned(),
         };
 
+        // WHEN: converting into a general domain error
         let domain_error: DomainError = config_error.into();
+
+        // THEN: it is wrapped in the Config variant
         assert!(
             matches!(domain_error, DomainError::Config(_)),
             "Expected DomainError::Config variant"
