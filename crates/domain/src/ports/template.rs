@@ -27,11 +27,14 @@ pub trait Command: Send + Sync {
 /// Query port for template-related read operations.
 #[async_trait]
 pub trait Query: Send + Sync {
-    /// Gets a template by ID.
-    async fn get(&self, id: Uuid) -> Result<Option<Template>, DomainError>;
+    /// Find a template by ID.
+    async fn find_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<Template>, DomainError>;
 
-    /// Gets a template by name.
-    async fn get_by_name(
+    /// Find a template by name.
+    async fn find_by_name(
         &self,
         name: &str,
     ) -> Result<Option<Template>, DomainError>;
@@ -40,7 +43,7 @@ pub trait Query: Send + Sync {
     async fn list_all(&self) -> Result<Vec<Template>, DomainError>;
 
     /// Resolves a template composition.
-    async fn resolve_composition(
+    async fn resolve(
         &self,
         composition: Composition,
     ) -> Result<Template, DomainError>;
