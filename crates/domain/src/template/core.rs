@@ -5,7 +5,7 @@ use uuid::Uuid;
 
 use super::{
     composition::{Composition, InsertionPosition, Section},
-    events::TemplateCreated,
+    events::{TemplateCreated, TemplateEvents},
     syntax::PlaceholderSyntax,
     validation::{validate_content, validate_structure},
     variable::VariableDefinition,
@@ -39,14 +39,6 @@ const RESERVED_WORDS: &[&str] = &[
     "with",
 ];
 
-/// Domain events that can be emitted by the Template aggregate.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum DomainEvent {
-    /// Template was created.
-    TemplateCreated(TemplateCreated),
-}
-
 /// Aggregate root representing a reusable template.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
@@ -79,7 +71,7 @@ pub struct Template {
     pub metadata: Metadata,
     /// Domain events pending emission.
     #[serde(skip)]
-    pub(crate) pending_events: Vec<DomainEvent>,
+    pub(crate) pending_events: Vec<TemplateEvents>,
 }
 
 #[expect(
@@ -93,7 +85,7 @@ pub struct Template {
 impl Template {
     /// Adds a domain event to the pending events collection.
     #[inline]
-    pub fn add_event(&mut self, event: DomainEvent) {
+    pub fn add_event(&mut self, event: TemplateEvents) {
         self.pending_events.push(event);
     }
 
@@ -129,11 +121,9 @@ impl Template {
             variables: base.variables.clone(),
         };
 
-        template.add_event(DomainEvent::TemplateCreated(TemplateCreated::new(
-            id,
-            name,
-            chrono::Utc::now().timestamp(),
-        )));
+        template.add_event(TemplateEvents::TemplateCreated(
+            TemplateCreated::new(id, name, chrono::Utc::now().timestamp()),
+        ));
 
         Ok(template)
     }
@@ -168,11 +158,9 @@ impl Template {
 
         template.validate()?;
 
-        template.add_event(DomainEvent::TemplateCreated(TemplateCreated::new(
-            id,
-            name,
-            chrono::Utc::now().timestamp(),
-        )));
+        template.add_event(TemplateEvents::TemplateCreated(
+            TemplateCreated::new(id, name, chrono::Utc::now().timestamp()),
+        ));
 
         Ok(template)
     }
@@ -180,7 +168,7 @@ impl Template {
     /// Returns a reference to pending domain events.
     #[inline]
     #[must_use]
-    pub fn pending_events(&self) -> &[DomainEvent] {
+    pub fn pending_events(&self) -> &[TemplateEvents] {
         &self.pending_events
     }
 
@@ -219,7 +207,7 @@ impl Template {
     /// Returns and clears pending domain events.
     #[inline]
     #[must_use]
-    pub fn take_events(&mut self) -> Vec<DomainEvent> {
+    pub fn take_events(&mut self) -> Vec<TemplateEvents> {
         std::mem::take(&mut self.pending_events)
     }
 

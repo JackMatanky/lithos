@@ -16,7 +16,7 @@ use std::{
 use uuid::Uuid;
 
 use super::{
-    events::{PropertyBankUpdated, SchemaCreated},
+    events::{PropertyBankUpdated, SchemaCreated, SchemaEvents},
     property::Property,
 };
 use crate::{errors::DomainError, validation};
@@ -117,16 +117,6 @@ impl AsRef<str> for SchemaName {
     }
 }
 
-/// Domain events for the Schema context.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum DomainEvent {
-    /// Property bank was updated.
-    PropertyBankUpdated(PropertyBankUpdated),
-    /// Schema was created.
-    SchemaCreated(SchemaCreated),
-}
-
 /// Schema aggregate defining metadata validation rules (Output).
 ///
 /// Represents a fully resolved schema with no external dependencies.
@@ -203,7 +193,7 @@ impl Schema {
         id: Uuid,
         name: SchemaName,
         properties: Vec<Property>,
-    ) -> Result<(Self, DomainEvent), DomainError> {
+    ) -> Result<(Self, SchemaEvents), DomainError> {
         let name_str = name.to_string();
         let schema = Self {
             id,
@@ -211,7 +201,7 @@ impl Schema {
             properties,
         };
 
-        let event = DomainEvent::SchemaCreated(SchemaCreated::new(
+        let event = SchemaEvents::SchemaCreated(SchemaCreated::new(
             id,
             name_str,
             chrono::Utc::now().timestamp(),
@@ -262,8 +252,8 @@ impl PropertyBank {
         self.properties.iter()
     }
 
-    fn create_updated_event(&self) -> DomainEvent {
-        DomainEvent::PropertyBankUpdated(PropertyBankUpdated::new(
+    fn create_updated_event(&self) -> SchemaEvents {
+        SchemaEvents::PropertyBankUpdated(PropertyBankUpdated::new(
             self.properties.len(),
             chrono::Utc::now().timestamp(),
         ))
@@ -385,7 +375,7 @@ impl PropertyBank {
     pub fn register(
         &mut self,
         property: Property,
-    ) -> Result<(usize, DomainEvent), DomainError> {
+    ) -> Result<(usize, SchemaEvents), DomainError> {
         property.validate()?;
 
         // Idempotent success if ID already exists

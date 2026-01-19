@@ -16,7 +16,12 @@ pub mod resolver;
     clippy::module_name_repetitions,
     reason = "Schema types follow domain naming conventions"
 )]
-pub use aggregate::{DomainEvent, PropertyBank, Schema, SchemaName};
+pub use aggregate::{PropertyBank, Schema, SchemaName};
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Context-specific event enum naming"
+)]
+pub use events::SchemaEvents;
 #[expect(
     clippy::module_name_repetitions,
     reason = "SchemaGraph follows domain service naming conventions"

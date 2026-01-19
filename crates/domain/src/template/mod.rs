@@ -13,8 +13,13 @@ pub mod validation;
 /// Variable definition and type-safe validation.
 pub mod variable;
 
-pub use core::{DomainEvent, Metadata, Template};
+pub use core::{Metadata, Template};
 
 pub use composition::{Composition, InsertionPosition, Section};
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Context-specific event enum naming"
+)]
+pub use events::TemplateEvents;
 pub use syntax::PlaceholderSyntax;
 pub use variable::VariableDefinition;

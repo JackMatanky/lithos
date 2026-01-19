@@ -58,7 +58,7 @@ pub use errors::{ConfigError, DomainError};
 // Note context re-exports
 pub use note::{
     core::Note,
-    events::{FrontmatterValidated, NoteCreated},
+    events::{FrontmatterValidated, NoteCreated, NoteEvents},
     frontmatter::{FieldValue, FromFieldValue, Frontmatter},
     link::{EmbedType, Link, LinkType},
     structure::{Heading, Section},
@@ -74,10 +74,8 @@ pub use ports::{
 };
 // Schema context re-exports
 pub use schema::{
-    aggregate::{
-        DomainEvent as SchemaDomainEvent, PropertyBank, Schema, SchemaName,
-    },
-    events::{PropertyBankUpdated, SchemaCreated},
+    aggregate::{PropertyBank, Schema, SchemaName},
+    events::{PropertyBankUpdated, SchemaCreated, SchemaEvents},
     property::{Property, PropertyName},
     property_spec::{
         BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,
@@ -87,8 +85,8 @@ pub use schema::{
 };
 // Template context re-exports
 pub use template::{
-    Composition as TemplateComposition, DomainEvent as TemplateDomainEvent,
-    InsertionPosition, Metadata as TemplateMetadata, PlaceholderSyntax,
+    Composition as TemplateComposition, InsertionPosition,
+    Metadata as TemplateMetadata, PlaceholderSyntax,
     Section as TemplateSection, Template, VariableDefinition,
-    events::TemplateCreated,
+    events::{TemplateCreated, TemplateEvents},
 };
