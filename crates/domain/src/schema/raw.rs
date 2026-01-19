@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn raw_schema_initializes_fields() {
-        // GIVEN a raw schema definition
+        // GIVEN: a raw schema definition
         let schema = RawSchema::new(
             Uuid::now_v7(),
             SchemaName::new("note".to_owned()).expect("valid schema name"),
@@ -131,14 +131,14 @@ mod tests {
             Vec::new(),
         );
 
-        // THEN fields are preserved
+        // THEN: fields are preserved
         assert!(schema.excludes.is_empty());
         assert!(schema.extends.is_none());
     }
 
     #[test]
     fn raw_property_variants_construct() {
-        // GIVEN inline and reference properties
+        // GIVEN: inline and reference properties
         let inline = RawPropertyInline {
             id: Uuid::now_v7(),
             name: "archived".to_owned(),
@@ -150,11 +150,11 @@ mod tests {
             ref_path: "status".to_owned(),
         };
 
-        // WHEN wrapping into enum variants
+        // WHEN: wrapping into enum variants
         let inline_variant = RawProperty::Inline(inline);
         let reference_variant = RawProperty::Ref(reference);
 
-        // THEN variants hold expected values
+        // THEN: variants hold expected values
         assert!(matches!(inline_variant, RawProperty::Inline(_)));
         assert!(matches!(reference_variant, RawProperty::Ref(_)));
     }

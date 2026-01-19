@@ -366,6 +366,7 @@ mod tests {
 
         #[test]
         fn accessors_return_expected_values() {
+            // GIVEN: a property aggregate
             let spec = PropertySpec::String(StringSpec::default());
             let property = Property::new(
                 Uuid::now_v7(),
@@ -376,6 +377,7 @@ mod tests {
             )
             .unwrap();
 
+            // THEN: accessors expose fields correctly
             assert!(property.required());
             assert!(property.is_required_scalar());
             assert!(!property.array());
@@ -386,14 +388,14 @@ mod tests {
         /// Priority: P1.
         #[test]
         fn returns_error_when_property_name_format_is_invalid() {
-            // GIVEN a property specification
+            // GIVEN: a property specification
             let spec = PropertySpec::String(StringSpec::default());
-            // AND a set of invalid names
+            // AND: a set of invalid names
             let invalid_names = vec!["Invalid Name", "invalid.name", ""];
 
-            // WHEN validating property names
+            // WHEN: validating property names
             for name_str in invalid_names {
-                // THEN it should reject invalid names
+                // THEN: it should reject invalid names
                 assert!(
                     PropertyName::new(name_str.to_owned()).is_err(),
                     "Should reject invalid name: {name_str}"
@@ -410,9 +412,9 @@ mod tests {
         /// Priority: P1.
         #[test]
         fn property_name_validates_regex_and_length() {
-            // GIVEN various property name inputs
-            // WHEN creating PropertyName instances
-            // THEN it should accept valid names and reject invalid ones
+            // GIVEN: various property name inputs
+            // WHEN: creating PropertyName instances
+            // THEN: it should accept valid names and reject invalid ones
             PropertyName::new("valid_name".into()).unwrap();
             PropertyName::new("valid-name-123".into()).unwrap();
             PropertyName::new(String::new()).unwrap_err();
@@ -424,11 +426,11 @@ mod tests {
         /// Priority: P1.
         #[test]
         fn property_name_validates_format() {
-            // GIVEN invalid and valid name formats
-            // WHEN creating PropertyName instances
-            // THEN it should reject invalid characters
+            // GIVEN: invalid and valid name formats
+            // WHEN: creating PropertyName instances
+            // THEN: it should reject invalid characters
             PropertyName::new("invalid_name!".into()).unwrap_err();
-            // AND accept valid snake/kebab case with underscores
+            // AND: accept valid snake/kebab case with underscores
             PropertyName::new("valid_name".into()).unwrap();
         }
 
@@ -436,13 +438,13 @@ mod tests {
         /// Priority: P2.
         #[test]
         fn property_name_validates_length() {
-            // GIVEN a name exceeding the 64 character limit
+            // GIVEN: a name exceeding the 64 character limit
             let long_name = "a".repeat(65);
 
-            // WHEN creating a PropertyName
+            // WHEN: creating a PropertyName
             let res = PropertyName::new(long_name);
 
-            // THEN it should return a PropertyNameTooLong error
+            // THEN: it should return a PropertyNameTooLong error
             assert!(matches!(res, Err(DomainError::PropertyNameTooLong(_))));
         }
 
@@ -450,11 +452,11 @@ mod tests {
         /// Priority: P2.
         #[test]
         fn property_name_validates_non_empty() {
-            // GIVEN an empty name string
-            // WHEN creating a PropertyName
+            // GIVEN: an empty name string
+            // WHEN: creating a PropertyName
             let res = PropertyName::new(String::new());
 
-            // THEN it should return an EmptyPropertyName error
+            // THEN: it should return an EmptyPropertyName error
             assert!(matches!(res, Err(DomainError::EmptyPropertyName)));
         }
     }

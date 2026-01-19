@@ -484,16 +484,16 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn string_spec_validates_enums_and_patterns() {
-        // GIVEN a StringSpec with enum values
+        // GIVEN: a StringSpec with enum values
         let spec = StringSpec {
             enum_values: Some(vec!["A".to_owned(), "B".to_owned()]),
             ..Default::default()
         };
 
-        // WHEN validating values
-        // THEN it should accept values in the enum
+        // WHEN: validating values
+        // THEN: it should accept values in the enum
         spec.validate(&"A".to_owned()).unwrap();
-        // AND reject values not in the enum
+        // AND: reject values not in the enum
         assert!(spec.validate(&"C".to_owned()).is_err());
     }
 
@@ -501,22 +501,22 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn number_spec_validates_min_max_step() {
-        // GIVEN a NumberSpec with range and step constraints
+        // GIVEN: a NumberSpec with range and step constraints
         let spec = NumberSpec {
             min: Some(0.0f64),
             max: Some(10.0f64),
             step: Some(0.5f64),
         };
 
-        // WHEN validating numeric values
-        // THEN it should accept valid values
+        // WHEN: validating numeric values
+        // THEN: it should accept valid values
         spec.validate(&0.0f64).unwrap();
         spec.validate(&10.0f64).unwrap();
         spec.validate(&5.5f64).unwrap();
-        // AND reject values out of range
+        // AND: reject values out of range
         assert!(spec.validate(&-1.0f64).is_err());
         assert!(spec.validate(&11.0f64).is_err());
-        // AND reject values not matching the step
+        // AND: reject values not matching the step
         assert!(spec.validate(&5.2f64).is_err());
     }
 
@@ -524,16 +524,16 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn file_spec_validates_directory() {
-        // GIVEN a FileSpec with a directory restriction
+        // GIVEN: a FileSpec with a directory restriction
         let spec = FileSpec {
             directory: Some("notes/".to_owned()),
             file_class: None,
         };
 
-        // WHEN validating file paths
-        // THEN it should accept paths within the directory
+        // WHEN: validating file paths
+        // THEN: it should accept paths within the directory
         spec.validate(&"notes/my_note.md".to_owned()).unwrap();
-        // AND reject paths outside the directory
+        // AND: reject paths outside the directory
         assert!(spec.validate(&"other/note.md".to_owned()).is_err());
     }
 
@@ -541,20 +541,27 @@ mod tests {
     /// Priority: P2.
     #[test]
     fn file_spec_validates_file_class_format() {
-        // GIVEN a valid file_class spec
+        // GIVEN: a valid file_class spec
         let spec = FileSpec {
             directory: None,
             file_class: Some("any-schema-name".to_owned()),
         };
-        // THEN it should be valid
+        // THEN: it should be valid
         spec.validate_spec().unwrap();
+    }
 
-        // GIVEN an empty file_class spec
+    #[test]
+    fn file_spec_rejects_empty_file_class() {
+        // GIVEN: an empty file_class spec
         let invalid_spec = FileSpec {
             directory: None,
             file_class: Some(String::new()),
         };
-        // THEN it should be invalid
-        assert!(invalid_spec.validate_spec().is_err());
+
+        // WHEN: validating the spec
+        let result = invalid_spec.validate_spec();
+
+        // THEN: it should be invalid
+        assert!(result.is_err());
     }
 }
