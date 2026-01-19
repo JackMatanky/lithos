@@ -9,6 +9,12 @@
 //! are not part of the public API.
 //!
 //! # Available Patterns
+//!
+//! ## Domain-Specific Patterns (Currently Used)
+//! - **`ALPHANUMERIC_NAME`**: Name validation for schemas, properties, and templates
+//! - **`IDENTIFIER_NAME`**: Variable name validation (programming identifier style)
+//!
+//! ## General Patterns (Future Use)
 //! - Email validation
 //! - URL validation
 //! - `WikiLink` validation (Obsidian-style links)
@@ -21,6 +27,40 @@
     dead_code,
     reason = "Patterns provided for future use across contexts"
 )]
+
+// ============================================================================
+// Domain-Specific Patterns (Actively Used)
+// ============================================================================
+
+/// Alphanumeric name pattern: letters, numbers, underscores, and dashes.
+///
+/// Used by:
+/// - Template names (`Template::validate_name`)
+/// - Schema names (`SchemaName::validate_format`)
+/// - Property names (`PropertyName::validate_format`)
+///
+/// Pattern: `^[a-zA-Z0-9_-]+$`.
+///
+/// # Examples
+/// - Valid: `daily-note`, `project_schema`, `MyTemplate123`
+/// - Invalid: `invalid name`, `name!`, `name.txt`
+pub(crate) const ALPHANUMERIC_NAME: &str = "^[a-zA-Z0-9_-]+$";
+
+/// Identifier name pattern: programming-style identifiers.
+///
+/// Used by:
+/// - Template variable names (`Template::validate_variable_name`)
+///
+/// Pattern: `^[a-zA-Z_][a-zA-Z0-9_]*$`.
+///
+/// # Examples
+/// - Valid: `title`, `my_var`, `_private`, `camelCase`
+/// - Invalid: `123var`, `my-var`, `var!`
+pub(crate) const IDENTIFIER_NAME: &str = "^[a-zA-Z_][a-zA-Z0-9_]*$";
+
+// ============================================================================
+// General Patterns (Available for Future Use)
+// ============================================================================
 
 /// Basic email validation pattern.
 pub(crate) const EMAIL: &str = r"^[^@]+@[^@]+\.[^@]+$";

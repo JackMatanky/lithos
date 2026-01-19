@@ -14,7 +14,7 @@ use regex::Regex;
 use uuid::Uuid;
 
 use super::property_spec::PropertySpec;
-use crate::errors::DomainError;
+use crate::{errors::DomainError, patterns};
 
 /// Validated property name value object.
 ///
@@ -53,9 +53,10 @@ impl PropertyName {
             #[expect(
                 clippy::expect_used,
                 clippy::disallowed_methods,
-                reason = "Hardcoded regex literal is guaranteed valid"
+                reason = "Hardcoded pattern from patterns module"
             )]
-            Regex::new("^[a-zA-Z0-9_-]+$").expect("Static regex literal")
+            Regex::new(patterns::ALPHANUMERIC_NAME)
+                .expect("Hardcoded pattern from patterns module")
         });
 
         if !PROPERTY_NAME_RE.is_match(name) {

@@ -11,19 +11,22 @@ use super::{
     validation::{validate_content, validate_structure},
     variable::VariableDefinition,
 };
-use crate::errors::DomainError;
+use crate::{errors::DomainError, patterns};
 
+/// Template name validation pattern (alphanumeric with underscores/dashes).
 #[expect(clippy::disallowed_methods, reason = "Static regex initialization")]
 #[expect(clippy::expect_used, reason = "Static regex initialization")]
 static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("^[a-zA-Z0-9_-]+$").expect("Invalid static regex literal")
+    Regex::new(patterns::ALPHANUMERIC_NAME)
+        .expect("Hardcoded pattern from patterns module")
 });
 
+/// Template variable name validation pattern (programming identifier style).
 #[expect(clippy::disallowed_methods, reason = "Static regex initialization")]
 #[expect(clippy::expect_used, reason = "Static regex initialization")]
 static VAR_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new("^[a-zA-Z_][a-zA-Z0-9_]*$")
-        .expect("Invalid static regex literal")
+    Regex::new(patterns::IDENTIFIER_NAME)
+        .expect("Hardcoded pattern from patterns module")
 });
 
 const RESERVED_WORDS: &[&str] = &[
