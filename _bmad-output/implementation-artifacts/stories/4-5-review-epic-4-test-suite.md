@@ -25,6 +25,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Establish Epic 4 Test Infrastructure Context
+- [ ] Read the full text of `docs/test_guide.md` and `_bmad-output/test-design-system.md` to internalize the project's testing standards, safety invariants, and quality gates
 - [ ] Read the full text of Story 4-1 from `_bmad-output/implementation-artifacts/stories/4-1-create-unified-file-loading-interface.md` to understand interface testing patterns
 - [ ] Read the full text of Story 4-2 from `_bmad-output/implementation-artifacts/stories/4-2-implement-format-detection-and-parsing.md` to understand parsing test patterns
 - [ ] Read the full text of Story 4-3 from `_bmad-output/implementation-artifacts/stories/4-3-add-basic-file-loading-validation.md` to understand validation testing patterns
@@ -33,24 +34,32 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 ### Task 2: Analyze Current Epic 4 Test Implementation
 - [ ] Run `mise run test:coverage` to generate detailed tarpaulin HTML report for Epic 4 crates
-- [ ] Run `mise run test` with timing to measure total execution time and individual test category times
+- [ ] Run `mise run test` with timing to measure total execution time and record individual test category times
+- [ ] **DOC-TEST ANALYSIS:** Audit existing public API documentation for missing or broken doc-tests, ensuring all public Epic 4 components have at least one executable example
 - [ ] Open coverage reports and analyze coverage percentage for each Epic 4 component (interface, parsing, validation, mocks)
+
 - [ ] Perform hexagonal compliance check for Epic 4 tests: verify domain tests are pure, adapter tests include I/O, integration tests span boundaries
 - [ ] Review test file organization: check inline `#[cfg(test)]` modules vs separate test files
 - [ ] Identify specific coverage gaps in critical areas: interface contracts, parsing edge cases, validation scenarios, mock behaviors
 - [ ] Assess coverage quality vs metrics: review test code for meaningful assertions vs vanity coverage
 - [ ] Document coverage strategy: 80%+ target with quality focus for infrastructure components
 
-### Task 3: Identify Redundancies and Inefficiencies
+### Task 3: Identify Redundancies, Inefficiencies, and Over-Complexity
 - [ ] Review test fixtures for duplication across Epic 4 components
 - [ ] Analyze property-based test patterns for consolidation opportunities
+- [ ] **COMPLEXITY AUDIT:** Identify "clever" or overly complex test logic that hinders readability. Ensure tests follow the KISS principle.
+- [ ] **RSTEST EVALUATION:** Audit usage of `rstest`. Verify that parameterized cases provide a clear benefit (e.g., testing same logic with multiple file formats) rather than adding unnecessary indirection.
 - [ ] Check for overlapping test scenarios between interface, parsing, validation, and mock tests
 - [ ] Identify slow-running tests that impact the <30 second target
-- [ ] Document redundancy elimination opportunities and efficiency improvements
+- [ ] Document redundancy and complexity elimination opportunities
 
 ### Task 4: Optimize Test Performance and Coverage
 - [ ] Implement shared test utilities leveraging Epic 2 infrastructure where available
 - [ ] Consolidate duplicate fixtures into reusable modules within Epic 4
+- [ ] **DOC-TEST OPTIMIZATION:** Apply "Living Documentation" patterns to doc-tests:
+    - [ ] Hide setup/boilerplate imports and logic using the `#` prefix
+    - [ ] Ensure examples are high-fidelity and demonstrate real-world usage of Epic 4 interfaces
+    - [ ] Use appropriate attributes (`no_run`, `compile_fail`, `should_panic`) to accurately reflect intended behavior
 - [ ] Optimize slow tests using parallel execution and efficient mocking
 - [ ] **COVERAGE ASSURANCE:** Add targeted tests for uncovered interface contracts and domain logic
 - [ ] **COVERAGE ASSURANCE:** Implement property-based tests for parsing edge cases and format detection
@@ -96,7 +105,22 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Stage all files created or modified during story development
 - [ ] Commit with conventional commit message: `refactor: optimize epic 4 test suite for efficiency with comprehensive analysis and actionable recommendations`
 
+### Task 8: Enforce Project Quality Standards
+- [ ] **BDD DOCUMENTATION:** Ensure all tests include internal expressive BDD comments (e.g., `// GIVEN: a valid markdown file`, `// WHEN: the loader attempts to detect format`, `// THEN: it returns the Markdown variant`). The GIVEN-WHEN-THEN words must be followed by descriptive text.
+- [ ] **STRICT NAMING:** Verify 100% compliance with verb-first behavioral naming across all Epic 4 tests using the formula: `unit_of_work` + `expected_behavior` + `state_under_test`
+- [ ] **PARAMETERIZED TESTS:** Ensure `rstest` is used ONLY when it provides a real benefit to clarity and maintainability. Avoid using it for single scenarios. Always use **Named Cases**.
+- [ ] **KISS COMPLIANCE:** Verify that tests are readable and maintainable. A test should be easier to understand than the code it tests.
+- [ ] **SNAPSHOT TESTING:** Verify that complex outputs (e.g., parsed Frontmatter DTOs) use `insta` snapshots with proper **Redactions** for UUIDs and Timestamps.
+- [ ] **ASYNC SAFETY:** Confirm all async tests use `#[tokio::test(flavor = "multi_thread")]` and incorporate timeouts and `spawn_blocking_test` for I/O tasks.
+- [ ] **LINT DISCIPLINE:** Enforce `#[expect(...)]` over `#[allow(...)]` for intentional violations and verify every test module includes a `LINT_DISABLE_REASON` header.
+- [ ] **DOC-TESTS:** Verify mandatory doc-test coverage for ALL public Epic 4 components as "Living Documentation", ensuring boilerplate is hidden and attributes are correctly applied.
+- [ ] **ERROR ASSERTIONS:** Ensure all error cases use the `assert_err_kind!` macro for standardized and readable error matching.
+- [ ] **OBSERVABILITY:** Verify use of `TestTracingSubscriber` where loader events or tracing spans need validation.
+- [ ] **TEST PLACEMENT:** Ensure no test code exists outside `tests/utils` and `tests/macros` (except for inline unit tests).
+- [ ] **PURITY GUARDIAN:** Run the Domain Purity Guardian and confirm 100% compliance for all Epic 4 domain interfaces.
+
 ## Dev Notes
+
 
 ### Epic 4 Test Context
 - **Test Targets**: File loading interface, format detection, parsing, validation, and mock implementations
@@ -163,6 +187,42 @@ This story will leverage the test utilities being developed in Epic 2:
 - Coverage analysis: <10 seconds for report generation
 - Memory usage: <500MB during test execution
 - Parallel execution: Optimal CPU utilization
+
+## Technical Requirements
+
+### Epic 4 Test Efficiency Standards
+
+**Performance Requirements:**
+- **Execution Time**: <30 seconds for complete Epic 4 test suite
+- **Individual Tests**: <100ms per test (parallel execution encouraged)
+- **Setup Time**: <5 seconds for test fixtures and data preparation
+- **Coverage Analysis**: <10 seconds for tarpaulin report generation
+
+**Redundancy Elimination:**
+- **Shared Fixtures**: Common test data in `file_loader::test_utils` module
+- **Test Factories**: Reusable mock and fixture creation patterns
+- **Pattern Sharing**: Common file loading test patterns across strategies
+- **Validation Test Patterns**: Standardized validation error testing for loaders
+
+**Maintenance Cost Control:**
+- **Test-to-Code Ratio**: Maintain <3:1 test lines per production line
+- **Update Frequency**: <20% of development time spent on test maintenance
+- **Evolution Tracking**: Metrics collection for test suite health monitoring
+
+### Architecture Compliance - MANDATORY READING
+
+**Hexagonal Testing Architecture:**
+- **Domain Layer Tests**: Pure unit tests with ZERO external dependencies (Port interfaces)
+- **Adapter Layer Tests**: Integration tests for FileLoader implementations (Adapters)
+- **Cross-Crate Tests**: Integration tests spanning domain/app/adapters boundaries
+- **E2E Tests**: Integration with CLI workflows
+
+**Test Quality Standards:**
+- **Naming**: `snake_case` with verb-first behavioral naming formula: `unit_of_work` + `expected_behavior` + `state_under_test`
+- **Documentation**: Comprehensive doc comments explaining test purpose and scenarios; mandatory internal expressive BDD comments (e.g., `// GIVEN: [context]`, `// WHEN: [action]`, `// THEN: [expectation]`) for all test bodies to ensure the test logic is self-explanatory.
+- **Isolation**: Each test independent, no shared state between tests
+- **Deterministic**: Fixed seeds for property-based tests, no flaky behavior
+- **Performance**: Sub-100ms execution time per test
 
 ### Project Structure Notes
 - Alignment with unified project structure (tests/ directory organization)
