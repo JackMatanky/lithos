@@ -31,8 +31,7 @@ impl Composition {
         stack: &mut HashSet<String>,
         current_name: &str,
     ) -> Result<(), DomainError> {
-        #[expect(clippy::pattern_type_mismatch, reason = "DFS logic")]
-        if let Some(parent_name) = &template.extends {
+        if let Some(parent_name) = template.extends() {
             #[expect(clippy::arithmetic_side_effects, reason = "DFS logic")]
             self.dfs_check(parent_name, depth + 1, templates, visited, stack)?;
         }
@@ -131,7 +130,7 @@ impl Composition {
     pub fn validate(&self, base: &Template) -> Result<(), DomainError> {
         for (name, value) in &self.variable_overrides {
             let def = base
-                .variables
+                .variables()
                 .get(name)
                 .ok_or_else(|| DomainError::VariableNotFound(name.clone()))?;
             def.validate_value(value).map_err(|e| {
@@ -182,24 +181,22 @@ pub enum InsertionPosition {
 
 #[cfg(test)]
 mod tests {
-    use uuid::Uuid;
-
     use super::*;
-    use crate::template::{Metadata, syntax::PlaceholderSyntax};
+    use crate::template::Metadata;
 
     #[test]
+    #[expect(clippy::disallowed_methods, reason = "Test setup")]
     fn should_detect_circular_composition() {
         let mut templates = HashMap::new();
-        let base = Template {
-            content: "content".to_owned(),
-            extends: Some("A".to_owned()), // Circular extension
-            id: Uuid::now_v7(),
-            metadata: Metadata::default(),
-            name: "A".to_owned(),
-            pending_events: vec![],
-            syntax: PlaceholderSyntax::default(),
-            variables: HashMap::new(),
-        };
+        // GIVEN a template that extends itself
+        let base = Template::new(
+            "A".to_owned(),
+            "content".to_owned(),
+            HashMap::new(),
+            Some("A".to_owned()),
+            Metadata::default(),
+        )
+        .expect("Valid template setup");
         templates.insert("A".to_owned(), base);
 
         let composition = Composition {
@@ -209,23 +206,25 @@ mod tests {
             variable_overrides: HashMap::new(),
         };
 
+        // WHEN detecting cycles
         let result = composition.detect_cycles(&templates);
+
+        // THEN it must return a CircularComposition error
         assert!(matches!(result, Err(DomainError::CircularComposition(_))));
     }
 
     #[test]
+    #[expect(clippy::disallowed_methods, reason = "Test setup")]
     fn should_detect_circular_include() {
         let mut templates = HashMap::new();
-        let base = Template {
-            content: "content".to_owned(),
-            extends: None,
-            id: Uuid::now_v7(),
-            metadata: Metadata::default(),
-            name: "A".to_owned(),
-            pending_events: vec![],
-            syntax: PlaceholderSyntax::default(),
-            variables: HashMap::new(),
-        };
+        let base = Template::new(
+            "A".to_owned(),
+            "content".to_owned(),
+            HashMap::new(),
+            None,
+            Metadata::default(),
+        )
+        .expect("Valid template setup");
         templates.insert("A".to_owned(), base);
 
         let composition = Composition {

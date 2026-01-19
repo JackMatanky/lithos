@@ -88,18 +88,39 @@ impl AsRef<str> for PropertyName {
 #[non_exhaustive]
 pub struct Property {
     /// Whether property accepts array of values.
-    pub array: bool,
+    array: bool,
     /// Unique identity (UUID v7).
-    pub id: Uuid,
+    id: Uuid,
     /// Property name.
-    pub name: PropertyName,
+    name: PropertyName,
     /// Whether property is required.
-    pub required: bool,
+    required: bool,
     /// Type-specific validation specification.
-    pub spec: PropertySpec,
+    spec: PropertySpec,
 }
 
 impl Property {
+    /// Returns true if this property accepts an array of values.
+    #[inline]
+    #[must_use]
+    pub const fn array(&self) -> bool {
+        self.array
+    }
+
+    /// Returns the property's unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Returns the property's name.
+    #[inline]
+    #[must_use]
+    pub const fn name(&self) -> &PropertyName {
+        &self.name
+    }
+
     /// Create a new property with validation.
     ///
     /// # Examples
@@ -114,7 +135,7 @@ impl Property {
     /// let id = Uuid::now_v7();
     ///
     /// let property = Property::new(id, name, true, false, spec).unwrap();
-    /// assert!(property.required);
+    /// assert!(property.required());
     /// ```
     ///
     /// # Errors
@@ -136,6 +157,20 @@ impl Property {
         };
         property.validate()?;
         Ok(property)
+    }
+
+    /// Returns true if this property is required.
+    #[inline]
+    #[must_use]
+    pub const fn required(&self) -> bool {
+        self.required
+    }
+
+    /// Returns the type-specific validation specification.
+    #[inline]
+    #[must_use]
+    pub const fn spec(&self) -> &PropertySpec {
+        &self.spec
     }
 
     /// Validate property structure and constraints.

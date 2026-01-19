@@ -133,21 +133,30 @@ impl AsRef<str> for SchemaName {
 /// use uuid::Uuid;
 ///
 /// let name = SchemaName::new("project-note".into()).unwrap();
-/// let (schema, _) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
-/// assert!(schema.properties.is_empty());
+/// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+/// assert!(schema.properties().is_empty());
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Schema {
     /// UUID v7 identity for schema.
-    pub id: Uuid,
+    id: Uuid,
     /// Unique schema name.
-    pub name: SchemaName,
+    name: SchemaName,
+    /// Domain events pending emission.
+    #[serde(skip)]
+    pending_events: Vec<SchemaEvents>,
     /// Fully resolved properties after inheritance.
-    pub properties: Vec<Property>,
+    properties: Vec<Property>,
 }
 
 impl Schema {
+    /// Adds a domain event to the pending events collection.
+    #[inline]
+    fn add_event(&mut self, event: SchemaEvents) {
+        self.pending_events.push(event);
+    }
+
     /// Gets a property by name.
     ///
     /// # Examples
@@ -157,20 +166,34 @@ impl Schema {
     /// use uuid::Uuid;
     ///
     /// let name = SchemaName::new("test".into()).unwrap();
-    /// let (schema, _) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
     /// assert!(schema.get("missing").is_none());
     /// ```
     #[inline]
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&Property> {
-        self.properties.iter().find(|p| p.name.as_str() == name)
+        self.properties.iter().find(|p| p.name().as_str() == name)
     }
 
     /// Checks if a property exists by name.
     #[inline]
     #[must_use]
     pub fn has(&self, name: &str) -> bool {
-        self.properties.iter().any(|p| p.name.as_str() == name)
+        self.properties.iter().any(|p| p.name().as_str() == name)
+    }
+
+    /// Returns the schema's unique identifier.
+    #[inline]
+    #[must_use]
+    pub const fn id(&self) -> Uuid {
+        self.id
+    }
+
+    /// Returns the schema's unique name.
+    #[inline]
+    #[must_use]
+    pub const fn name(&self) -> &SchemaName {
+        &self.name
     }
 
     /// Create a new resolved Schema.
@@ -182,8 +205,8 @@ impl Schema {
     /// use uuid::Uuid;
     ///
     /// let name = SchemaName::new("project-note".to_string()).unwrap();
-    /// let (schema, event) = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
-    /// assert_eq!(schema.name.as_str(), "project-note");
+    /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
+    /// assert_eq!(schema.name().as_str(), "project-note");
     /// ```
     ///
     /// # Errors
@@ -193,21 +216,43 @@ impl Schema {
         id: Uuid,
         name: SchemaName,
         properties: Vec<Property>,
-    ) -> Result<(Self, SchemaEvents), DomainError> {
+    ) -> Result<Self, DomainError> {
         let name_str = name.to_string();
-        let schema = Self {
+        let mut schema = Self {
             id,
             name,
             properties,
+            pending_events: vec![],
         };
 
-        let event = SchemaEvents::SchemaCreated(SchemaCreated::new(
+        schema.add_event(SchemaEvents::SchemaCreated(SchemaCreated::new(
             id,
             name_str,
             chrono::Utc::now().timestamp(),
-        ));
+        )));
 
-        Ok((schema, event))
+        Ok(schema)
+    }
+
+    /// Returns a reference to pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn pending_events(&self) -> &[SchemaEvents] {
+        &self.pending_events
+    }
+
+    /// Returns the fully resolved properties.
+    #[inline]
+    #[must_use]
+    pub fn properties(&self) -> &[Property] {
+        &self.properties
+    }
+
+    /// Returns and clears pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<SchemaEvents> {
+        std::mem::take(&mut self.pending_events)
     }
 }
 
@@ -238,14 +283,23 @@ impl Schema {
 #[non_exhaustive]
 pub struct PropertyBank {
     /// Index mapping ID -> index in properties vector.
-    pub id_index: HashMap<Uuid, usize>,
+    id_index: HashMap<Uuid, usize>,
     /// Index mapping Name -> index in properties vector.
-    pub name_index: HashMap<String, usize>,
+    name_index: HashMap<String, usize>,
+    /// Domain events pending emission.
+    #[serde(skip)]
+    pending_events: Vec<SchemaEvents>,
     /// Dense storage of properties.
-    pub properties: Vec<Property>,
+    properties: Vec<Property>,
 }
 
 impl PropertyBank {
+    /// Adds a domain event to the pending events collection.
+    #[inline]
+    fn add_event(&mut self, event: SchemaEvents) {
+        self.pending_events.push(event);
+    }
+
     /// Get all properties in the bank.
     #[inline]
     pub fn all(&self) -> impl Iterator<Item = &Property> {
@@ -349,6 +403,13 @@ impl PropertyBank {
         Self::default()
     }
 
+    /// Returns a reference to pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn pending_events(&self) -> &[SchemaEvents] {
+        &self.pending_events
+    }
+
     /// Register a property in the bank.
     ///
     /// # Examples
@@ -365,36 +426,45 @@ impl PropertyBank {
     /// let id = Uuid::now_v7();
     /// let property = Property::new(id, name, true, false, spec).unwrap();
     ///
-    /// let (count, event) = bank.register(property).unwrap();
-    /// assert_eq!(count, 1);
+    /// bank.register(property).unwrap();
+    /// assert_eq!(bank.all().count(), 1);
     /// ```
     ///
     /// # Errors
     /// Returns `DomainError` if validation fails.
     #[inline]
-    pub fn register(
-        &mut self,
-        property: Property,
-    ) -> Result<(usize, SchemaEvents), DomainError> {
+    pub fn register(&mut self, property: Property) -> Result<(), DomainError> {
         property.validate()?;
 
         // Idempotent success if ID already exists
-        if self.id_index.contains_key(&property.id) {
-            return Ok((self.properties.len(), self.create_updated_event()));
+        if self.id_index.contains_key(&property.id()) {
+            let event = self.create_updated_event();
+            self.add_event(event);
+            return Ok(());
         }
 
         // Prevent duplicate names
-        self.validate_name_unique(property.name.as_str())?;
+        self.validate_name_unique(property.name().as_str())?;
 
-        let id = property.id;
-        let name = property.name.to_string();
+        let id = property.id();
+        let name = property.name().to_string();
         let idx = self.properties.len();
 
         self.id_index.insert(id, idx);
         self.name_index.insert(name, idx);
         self.properties.push(property);
 
-        Ok((self.properties.len(), self.create_updated_event()))
+        let event = self.create_updated_event();
+        self.add_event(event);
+
+        Ok(())
+    }
+
+    /// Returns and clears pending domain events.
+    #[inline]
+    #[must_use]
+    pub fn take_events(&mut self) -> Vec<SchemaEvents> {
+        std::mem::take(&mut self.pending_events)
     }
 
     fn validate_name_unique(&self, name: &str) -> Result<(), DomainError> {
@@ -471,10 +541,9 @@ mod tests {
 
         // WHEN registering the same property twice
         bank.register(prop.clone()).unwrap();
-        let (count, _) = bank.register(prop).unwrap();
+        bank.register(prop).unwrap();
 
         // THEN the count remains 1
-        assert_eq!(count, 1);
         assert_eq!(bank.all().count(), 1);
     }
 

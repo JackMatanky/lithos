@@ -33,7 +33,7 @@ use crate::errors::DomainError;
 /// );
 ///
 /// let schema = SchemaResolver::resolve(raw, None, &bank).unwrap();
-/// assert_eq!(schema.name.as_str(), "test");
+/// assert_eq!(schema.name().as_str(), "test");
 /// ```
 #[non_exhaustive]
 pub struct Resolver;
@@ -45,9 +45,10 @@ impl Resolver {
         excludes: &HashSet<PropertyName>,
     ) {
         if let Some(p) = parent {
-            for prop in &p.properties {
-                if !excludes.contains(&prop.name) {
-                    resolved_props.insert(prop.name.to_string(), prop.clone());
+            for prop in p.properties() {
+                if !excludes.contains(prop.name()) {
+                    resolved_props
+                        .insert(prop.name().to_string(), prop.clone());
                 }
             }
         }
@@ -86,11 +87,10 @@ impl Resolver {
         let mut final_props: Vec<Property> =
             resolved_props.into_values().collect();
         // Sort for determinism
-        final_props.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
+        final_props.sort_by(|a, b| a.name().as_str().cmp(b.name().as_str()));
 
         // Create the Schema entity using the identity of its raw definition
-        let (schema, _) = Schema::new(raw.id, raw.name, final_props)?;
-        Ok(schema)
+        Schema::new(raw.id, raw.name, final_props)
     }
 
     fn resolve_own_properties(
@@ -100,7 +100,7 @@ impl Resolver {
     ) -> Result<(), DomainError> {
         for raw_prop in raw_properties {
             let prop = Self::resolve_single_property(raw_prop, bank)?;
-            resolved_props.insert(prop.name.to_string(), prop);
+            resolved_props.insert(prop.name().to_string(), prop);
         }
         Ok(())
     }
