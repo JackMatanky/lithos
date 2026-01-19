@@ -34,9 +34,11 @@ So that it follows the leanest, most performant idiomatic Rust practices, balanc
 
 ## Tasks / Subtasks
 
-### Task 1: Architectural Integrity & Boundary Audit
-- [ ] Review all Epic 4 interfaces and ensure proper trait-based abstraction (Hexagonal Ports)
-- [ ] Verify that the `domain` layer has ZERO knowledge of specific parsing libraries (serde_json, toml, etc.)
+### Task 1: Comprehensive Review & Dynamic Task Generation
+- [ ] Perform a deep code audit of all Epic 4 implementation files, checking against Rust idiomatic standards, performance patterns, and hexagonal boundaries.
+- [ ] **SELF-EVOLUTION:** Based on the audit findings, add specific, actionable subtasks to Tasks 2, 3, and 4 in this story to address the identified technical debt and "smells".
+- [ ] Review all Epic 4 interfaces and ensure proper trait-based abstraction (Hexagonal Ports).
+- [ ] Verify that the `domain` layer has ZERO knowledge of specific parsing libraries (serde_json, toml, etc.).
 - [ ] Ensure that format-specific logic is strictly contained within the `adapters` layer
 - [ ] Audit the `UnitOfWork` and `TransactionContext` usage for any transactional loading scenarios
 
