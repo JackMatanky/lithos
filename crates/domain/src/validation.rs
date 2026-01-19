@@ -295,6 +295,9 @@ mod tests {
         reason = "Test expectations use unwrap"
     )]
     fn validate_vault_path_works() {
+        // GIVEN: various path strings and requirements
+        // WHEN: validating the paths
+        // THEN: they succeed or fail as expected
         validate_vault_path("valid/path.md", Some("md")).unwrap();
         assert!(matches!(
             validate_vault_path("", None),
@@ -328,6 +331,9 @@ mod tests {
         reason = "Literal f64 in tests is standard"
     )]
     fn validate_numeric_range_works() {
+        // GIVEN: a value and range constraints
+        // WHEN: validating the range
+        // THEN: range boundaries are enforced
         validate_numeric_range(5.0, Some(0.0), Some(10.0)).unwrap();
         assert!(matches!(
             validate_numeric_range(-1.0, Some(0.0), None),
@@ -345,6 +351,9 @@ mod tests {
         reason = "Test expectations use unwrap"
     )]
     fn validate_numeric_step_works() {
+        // GIVEN: a value, base, and step increment
+        // WHEN: validating the step alignment
+        // THEN: only valid multiples are accepted
         validate_numeric_step(10.0, 0.0, 2.0).unwrap();
         validate_numeric_step(10.1, 0.0, 0.1).unwrap();
         assert!(matches!(
@@ -359,6 +368,9 @@ mod tests {
         reason = "Test expectations use unwrap"
     )]
     fn validate_string_length_works() {
+        // GIVEN: a string and length constraints
+        // WHEN: validating the length
+        // THEN: min/max limits are enforced
         validate_string_length("abc", Some(2), Some(5)).unwrap();
         assert!(matches!(
             validate_string_length("a", Some(2), None),
@@ -372,6 +384,8 @@ mod tests {
 
     #[test]
     fn is_alphanumeric_name_works() {
+        // GIVEN: various alphanumeric name candidates
+        // THEN: format rules are enforced correctly
         assert!(is_alphanumeric_name("valid-name_123"));
         assert!(!is_alphanumeric_name("invalid name"));
         assert!(!is_alphanumeric_name("invalid!"));
@@ -379,6 +393,8 @@ mod tests {
 
     #[test]
     fn is_identifier_name_works() {
+        // GIVEN: various identifier name candidates
+        // THEN: format rules for identifiers (snake_case) are enforced
         assert!(is_identifier_name("valid_name_123"));
         assert!(is_identifier_name("_private"));
         assert!(!is_identifier_name("123invalid"));
@@ -387,6 +403,8 @@ mod tests {
 
     #[test]
     fn is_windows_absolute_path_works() {
+        // GIVEN: various path strings
+        // THEN: Windows absolute path formats are identified
         assert!(is_windows_absolute_path("C:/path"));
         assert!(is_windows_absolute_path("D:\\path"));
         assert!(!is_windows_absolute_path("/unix/path"));
