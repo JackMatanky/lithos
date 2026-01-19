@@ -49,3 +49,19 @@ pub enum TemplateEvents {
     /// Template was created.
     TemplateCreated(TemplateCreated),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn template_events_are_send_sync() {
+        // GIVEN the template events enum
+        fn is_send_sync<T: Send + Sync>() {}
+
+        // WHEN checking Send + Sync bounds
+        is_send_sync::<TemplateEvents>();
+
+        // THEN it satisfies the bounds
+    }
+}
