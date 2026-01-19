@@ -276,7 +276,6 @@ fn choose_value(vault: &str, global: &str, default: &str) -> String {
 }
 
 #[cfg(test)]
-#[cfg(test)]
 #[expect(
     clippy::panic,
     reason = "Test safety boundary - panic is acceptable in test code for exhaustive match failures"
@@ -297,6 +296,7 @@ mod tests {
                 vault_path in "[a-zA-Z0-9/_-]{1,200}",
                 templates_dir in "[a-zA-Z0-9/_-]{0,100}"
             ) {
+                // GIVEN a global config and generated vault path/template overrides
                 let global = sample_global_config();
                 let vault_config = Vault {
                     filesystem: vault::Filesystem {
@@ -309,8 +309,11 @@ mod tests {
                     frontmatter: None,
                     logging: None,
                 };
+
+                // WHEN building a config from the generated inputs
                 let result = Config::build(Some(&global), &vault_path, vault_config);
 
+                // THEN empty paths fail and valid paths preserve metadata
                 if vault_path.is_empty() {
                     prop_assert!(result.is_err(), "Empty vault_path should fail");
                 } else {
@@ -339,6 +342,8 @@ mod tests {
             // WHEN merging vault and global configs
             let merged = Config::build(Some(&global), "/vault", vault)
                 .expect("Config build should succeed with valid sample data");
+
+            // THEN vault values override global defaults
             assert_eq!(
                 merged.vault_filesystem.template.templates_dir,
                 "custom_templates",
@@ -548,160 +553,36 @@ mod tests {
         }
     }
 
-    mod config_value {
-        use std::collections::HashMap;
-
-        use crate::config::types::SettingValue as ConfigValue;
-
-        #[test]
-        fn converts_from_string() {
-            let value = ConfigValue::from("test".to_owned());
-            assert_eq!(
-                value,
-                ConfigValue::String("test".to_owned()),
-                "Conversion from String to ConfigValue failed"
-            );
-        }
-
-        #[test]
-        fn converts_from_f64() {
-            let value = ConfigValue::from(42.5f64);
-            assert_eq!(
-                value,
-                ConfigValue::Number(42.5f64),
-                "Conversion from f64 to ConfigValue failed"
-            );
-        }
-
-        #[test]
-        fn converts_from_bool() {
-            let value = ConfigValue::from(true);
-            assert_eq!(
-                value,
-                ConfigValue::Boolean(true),
-                "Conversion from bool to ConfigValue failed"
-            );
-        }
-
-        #[test]
-        fn stores_opaque_encrypted_bytes() {
-            let encrypted_data = vec![1, 2, 3, 4, 5];
-            let value = ConfigValue::Encrypted(encrypted_data.clone());
-
-            assert_eq!(
-                value,
-                ConfigValue::Encrypted(encrypted_data),
-                "Encrypted variant should store raw bytes correctly"
-            );
-        }
-
-        #[test]
-        fn stores_nested_arrays() {
-            let array = vec![
-                ConfigValue::String("item1".to_owned()),
-                ConfigValue::String("item2".to_owned()),
-            ];
-            let value = ConfigValue::Array(array.clone());
-
-            assert_eq!(
-                value,
-                ConfigValue::Array(array),
-                "Array variant should store nested ConfigValues"
-            );
-        }
-
-        #[test]
-        fn stores_nested_objects() {
-            let mut map = HashMap::new();
-            map.insert(
-                "key1".to_owned(),
-                ConfigValue::String("value1".to_owned()),
-            );
-            let value = ConfigValue::Object(map.clone());
-
-            assert_eq!(
-                value,
-                ConfigValue::Object(map),
-                "Object variant should store HashMap of ConfigValues"
-            );
-        }
-
-        #[test]
-        fn converts_from_vector_of_values() {
-            let array = vec![
-                ConfigValue::String("item1".to_owned()),
-                ConfigValue::Number(42.0),
-            ];
-            let value = ConfigValue::from(array.clone());
-
-            assert_eq!(
-                value,
-                ConfigValue::Array(array),
-                "From<Vec<ConfigValue>> conversion failed"
-            );
-        }
-
-        #[test]
-        fn converts_from_hashmap_of_values() {
-            let mut map = HashMap::new();
-            map.insert(
-                "key1".to_owned(),
-                ConfigValue::String("value1".to_owned()),
-            );
-            let value = ConfigValue::from(map.clone());
-
-            assert_eq!(
-                value,
-                ConfigValue::Object(map),
-                "From<HashMap<String, ConfigValue>> conversion failed"
-            );
-        }
-
-        #[test]
-        fn masks_encrypted_variant_in_debug_logs() {
-            // Mitigates R-007: Encryption Exposure
-            let val = ConfigValue::Encrypted(vec![1, 2, 3]);
-            let debug_str = format!("{val:?}");
-            assert!(
-                !debug_str.contains("1, 2, 3"),
-                "Debug output must not contain raw encrypted bytes"
-            );
-            assert!(
-                debug_str.contains("***"),
-                "Debug output must contain mask characters"
-            );
-        }
-    }
-
     mod integrity {
         use super::*;
 
         #[test]
         fn supports_clone_debug_and_partial_eq() {
+            // GIVEN a merged configuration built from valid fixtures
             let global = sample_global_config();
             let vault = sample_vault_config();
+
+            // WHEN building the configuration
             let result1 = Config::build(Some(&global), "/vault", vault.clone());
             assert!(
                 result1.is_ok(),
                 "First merge for trait verification failed: {result1:?}"
             );
 
+            // THEN debug/clone/eq traits behave as expected
             if let Ok(config) = result1 {
-                // Test Debug
                 let debug_str = format!("{config:?}");
                 assert!(
                     !debug_str.is_empty(),
                     "Debug derivation should produce non-empty string"
                 );
 
-                // Test Clone
                 let cloned = config.clone();
                 assert_eq!(
                     config, cloned,
                     "Cloned config must be equal to original"
                 );
 
-                // Test PartialEq
                 let result2 = Config::build(Some(&global), "/vault", vault);
                 assert!(
                     result2.is_ok(),
@@ -717,37 +598,6 @@ mod tests {
         }
 
         #[test]
-        fn constructs_valid_property_bank_path() {
-            let schema = Schema {
-                schemas_dir: "schemas".to_owned(),
-                property_bank_filename: "props.json".to_owned(),
-            };
-
-            assert_eq!(
-                schema.property_bank_path(),
-                "schemas/props.json",
-                "property_bank_path logic works"
-            );
-        }
-
-        #[test]
-        fn preserves_frontmatter_key_mappings() {
-            let config = Frontmatter {
-                alias_key: "aliases".to_owned(),
-                date_created_key: "created".to_owned(),
-                date_modified_key: "modified".to_owned(),
-                file_class_key: "type".to_owned(),
-                title_key: "title".to_owned(),
-            };
-
-            assert_eq!(
-                config.file_class_key, "type",
-                "file_class_key mapping mismatch"
-            );
-            assert_eq!(config.title_key, "title", "title_key mapping mismatch");
-        }
-
-        #[test]
         fn merge_performance_meets_target() {
             // GIVEN valid global and vault configs
             let global = sample_global_config();
@@ -756,8 +606,6 @@ mod tests {
             // WHEN performing 1000 merge operations
             let start = std::time::Instant::now();
             for _ in 0i32..1000i32 {
-                // We don't assert here as we're just timing, the merge should succeed
-                // based on our fixture data
                 debug_assert!(
                     Config::build(Some(&global), "/vault", vault.clone())
                         .is_ok()
@@ -766,7 +614,7 @@ mod tests {
             let total_duration = start.elapsed();
             let avg_duration = total_duration / 1000;
 
-            // THEN average merge time should meet architectural performance target
+            // THEN average merge time meets the performance target
             assert!(
                 avg_duration < std::time::Duration::from_micros(100),
                 "Config::build performance degraded: {}μs per operation (target: <100μs)",

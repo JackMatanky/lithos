@@ -1,11 +1,6 @@
-//! `SchemaGraph` domain service for inheritance resolution.
+//! `Graph` domain service for inheritance resolution.
 //!
 //! Provides topological sorting and cycle detection for schema inheritance graphs.
-
-#![allow(
-    clippy::module_name_repetitions,
-    reason = "SchemaGraph is the primary service in this module"
-)]
 
 use std::collections::{HashMap, HashSet};
 
@@ -31,19 +26,19 @@ use crate::errors::DomainError;
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-pub struct SchemaGraph {
+pub struct Graph {
     /// Adjacency list: Schema Name -> Parent Name.
     pub nodes: HashMap<SchemaName, Option<SchemaName>>,
 }
 
-impl SchemaGraph {
+impl Graph {
     /// Add a schema node to the graph.
     #[inline]
     pub fn add_node(&mut self, name: SchemaName, extends: Option<SchemaName>) {
         self.nodes.insert(name, extends);
     }
 
-    /// Create a new `SchemaGraph`.
+    /// Create a new `Graph`.
     #[inline]
     #[must_use]
     pub fn new() -> Self {
@@ -139,7 +134,7 @@ impl SchemaGraph {
     }
 }
 
-impl Default for SchemaGraph {
+impl Default for Graph {
     #[inline]
     fn default() -> Self {
         Self::new()
@@ -174,7 +169,7 @@ mod tests {
                 if unique_names.len() < 2 { return Ok(()); }
 
                 // WHEN creating a circular inheritance graph
-                let mut graph = SchemaGraph::new();
+                let mut graph = Graph::new();
                 for i in 0..unique_names.len() {
                     let next = (i + 1) % unique_names.len();
                     let name = SchemaName::new(unique_names[i].clone()).unwrap();
@@ -199,7 +194,7 @@ mod tests {
                 let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
 
                 // WHEN creating a valid linear inheritance graph
-                let mut graph = SchemaGraph::new();
+                let mut graph = Graph::new();
                 for i in 0..unique_names.len() {
                     let name = SchemaName::new(unique_names[i].clone()).unwrap();
                     let parent = if i == 0 { None } else { Some(SchemaName::new(unique_names[i-1].clone()).unwrap()) };
@@ -225,7 +220,7 @@ mod tests {
     #[test]
     fn detects_circular_inheritance() {
         // GIVEN a simple circular dependency between two schemas
-        let mut graph = SchemaGraph::new();
+        let mut graph = Graph::new();
         graph.add_node("a".try_into().unwrap(), Some("b".try_into().unwrap()));
         graph.add_node("b".try_into().unwrap(), Some("a".try_into().unwrap()));
 
@@ -241,7 +236,7 @@ mod tests {
     #[test]
     fn determines_topological_resolution_order() {
         // GIVEN a linear inheritance: child -> parent
-        let mut graph = SchemaGraph::new();
+        let mut graph = Graph::new();
         graph.add_node(
             "child".try_into().unwrap(),
             Some("parent".try_into().unwrap()),

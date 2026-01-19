@@ -5,8 +5,7 @@
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use lithos_domain::schema::{
-    Schema, SchemaName,
-    graph::SchemaGraph,
+    Schema, SchemaGraph, SchemaName,
     property::Property,
     property_spec::{PropertySpec, StringSpec},
 };

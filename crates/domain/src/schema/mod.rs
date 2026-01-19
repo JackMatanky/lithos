@@ -21,7 +21,7 @@ pub use aggregate::{DomainEvent, PropertyBank, Schema, SchemaName};
     clippy::module_name_repetitions,
     reason = "SchemaGraph follows domain service naming conventions"
 )]
-pub use graph::SchemaGraph;
+pub use graph::Graph as SchemaGraph;
 pub use property::{Property, PropertyName};
 pub use property_spec::{
     BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec, PropertySpecTrait,
@@ -36,4 +36,4 @@ pub use raw::{RawProperty, RawPropertyInline, RawPropertyRef, RawSchema};
     clippy::module_name_repetitions,
     reason = "SchemaResolver follows domain service naming conventions"
 )]
-pub use resolver::SchemaResolver;
+pub use resolver::Resolver as SchemaResolver;

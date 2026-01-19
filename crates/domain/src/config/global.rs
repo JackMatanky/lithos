@@ -99,3 +99,88 @@ impl Default for Global {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::TrustedVaults;
+
+    #[test]
+    fn rejects_trusted_vaults_with_list_and_map() {
+        // GIVEN trusted vaults configured with both list and map formats
+        let trusted = TrustedVaults {
+            list: Some(vec!["/vaults/alpha".to_owned()]),
+            map: Some(
+                [("alpha".to_owned(), "/vaults/alpha".to_owned())]
+                    .into_iter()
+                    .collect(),
+            ),
+        };
+
+        // WHEN validating the trusted vault configuration
+        let result = trusted.validate();
+
+        // THEN validation fails because formats are mixed
+        assert!(
+            result.is_err(),
+            "Expected validation failure when list and map are both set"
+        );
+    }
+
+    #[test]
+    fn rejects_trusted_vaults_with_no_entries() {
+        // GIVEN trusted vaults configured with no list or map
+        let trusted = TrustedVaults {
+            list: None,
+            map: None,
+        };
+
+        // WHEN validating the trusted vault configuration
+        let result = trusted.validate();
+
+        // THEN validation fails because no format is provided
+        assert!(
+            result.is_err(),
+            "Expected validation failure when no trusted vaults are provided"
+        );
+    }
+
+    #[test]
+    fn accepts_trusted_vaults_with_list_only() {
+        // GIVEN trusted vaults configured with list format
+        let trusted = TrustedVaults {
+            list: Some(vec!["/vaults/alpha".to_owned()]),
+            map: None,
+        };
+
+        // WHEN validating the trusted vault configuration
+        let result = trusted.validate();
+
+        // THEN validation succeeds
+        assert!(
+            result.is_ok(),
+            "Expected validation success for list-only trusted vaults"
+        );
+    }
+
+    #[test]
+    fn accepts_trusted_vaults_with_map_only() {
+        // GIVEN trusted vaults configured with map format
+        let trusted = TrustedVaults {
+            list: None,
+            map: Some(
+                [("alpha".to_owned(), "/vaults/alpha".to_owned())]
+                    .into_iter()
+                    .collect(),
+            ),
+        };
+
+        // WHEN validating the trusted vault configuration
+        let result = trusted.validate();
+
+        // THEN validation succeeds
+        assert!(
+            result.is_ok(),
+            "Expected validation success for map-only trusted vaults"
+        );
+    }
+}
