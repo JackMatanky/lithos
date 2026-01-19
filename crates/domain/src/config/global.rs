@@ -166,10 +166,11 @@ mod tests {
         let result = trusted.validate();
 
         // THEN validation succeeds
-        assert!(
-            result.is_ok(),
-            "Expected validation success for list-only trusted vaults"
-        );
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test validation uses unwrap for clarity"
+        )]
+        result.unwrap();
     }
 
     #[test]
@@ -188,9 +189,36 @@ mod tests {
         let result = trusted.validate();
 
         // THEN validation succeeds
-        assert!(
-            result.is_ok(),
-            "Expected validation success for map-only trusted vaults"
-        );
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test validation uses unwrap for clarity"
+        )]
+        result.unwrap();
+    }
+
+    #[test]
+    fn filesystem_validate_passes_with_defaults() {
+        // GIVEN a default filesystem config
+        let filesystem = super::Filesystem::default();
+
+        // WHEN validating
+        let result = filesystem.validate();
+
+        // THEN it succeeds
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test validation uses unwrap for clarity"
+        )]
+        result.unwrap();
+    }
+
+    #[test]
+    fn global_defaults_have_expected_shape() {
+        // GIVEN default global config
+        let global = super::Global::default();
+
+        // THEN default structures are populated
+        assert!(global.trusted_vaults.is_none());
+        assert_eq!(global.logging.log_level, "info");
     }
 }

@@ -122,6 +122,13 @@ impl Property {
         self.id
     }
 
+    /// Returns true if this property is required and not an array.
+    #[inline]
+    #[must_use]
+    pub const fn is_required_scalar(&self) -> bool {
+        self.required && !self.array
+    }
+
     /// Returns the property's name.
     #[inline]
     #[must_use]
@@ -337,6 +344,24 @@ pub mod fixtures {
 mod tests {
     mod property {
         use super::super::{super::property_spec::StringSpec, *};
+
+        #[test]
+        fn accessors_return_expected_values() {
+            let spec = PropertySpec::String(StringSpec::default());
+            let property = Property::new(
+                Uuid::now_v7(),
+                PropertyName::new("status".to_owned()).unwrap(),
+                true,
+                false,
+                spec,
+            )
+            .unwrap();
+
+            assert!(property.required());
+            assert!(property.is_required_scalar());
+            assert!(!property.array());
+            assert_eq!(property.name().as_str(), "status");
+        }
 
         /// 3.3-UNIT-006: `returns_error_when_property_name_format_is_invalid`.
         /// Priority: P1.

@@ -527,6 +527,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Added accessor tests for note links, tags, tasks, headings, and sections.
 - 2026-01-19: Added template accessor tests and vault filesystem validation coverage.
 - 2026-01-19: Added schema and template aggregate accessor coverage.
+- 2026-01-19: Added global config, template events, and property accessor tests.
 
 ### Completion Notes List
 
@@ -553,7 +554,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - `cargo test -p lithos-domain --doc` passes (65 doctests, 7 ignored).
 - Resolver now normalizes property refs by trimming `#/properties/` prefix when present while preserving non-JSON refs.
 - Added unit tests for schema events, raw schema input structures, resolver ref handling (JSON pointer vs plain names), and note link/tag/task/heading/section accessors.
-- Added template variable default accessors, composition insertion positions, placeholder syntax defaults, vault filesystem validation, schema accessors, and template aggregate accessor tests.
+- Added template variable default accessors, composition insertion positions, placeholder syntax defaults, vault filesystem validation, schema accessors, template aggregate accessors, global config defaults, template event Send/Sync, and property accessors.
 - Tarpaulin domain coverage remains 51.13% (676/1322); key gaps in schema resolver, property specs, template variables, and note frontmatter/link remain and need focused tests to hit 80%+.
 
 ### File List
