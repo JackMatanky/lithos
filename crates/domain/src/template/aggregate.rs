@@ -158,6 +158,13 @@ impl Template {
         &self.content
     }
 
+    /// Returns true if the template defines any variables.
+    #[inline]
+    #[must_use]
+    pub fn has_variables(&self) -> bool {
+        !self.variables.is_empty()
+    }
+
     /// Returns the name of the template this one extends, if any.
     #[inline]
     #[must_use]
@@ -459,6 +466,10 @@ impl Default for Metadata {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Unit tests use unwrap/expect for readability"
+)]
 mod tests {
     use proptest::prelude::*;
 
@@ -468,30 +479,22 @@ mod tests {
         use super::*;
 
         #[test]
-        fn should_create_template_when_attributes_are_valid() {
-            let mut variables = HashMap::new();
-            variables.insert(
-                "title".to_owned(),
-                VariableDefinition::String {
-                    default: Some("Default".to_owned()),
-                    max_length: None,
-                    min_length: None,
-                    pattern: None,
-                },
-            );
-
-            let result = Template::new(
-                "daily-note".to_owned(),
-                "# {{title}}".to_owned(),
-                variables,
+        fn accessors_return_expected_values() {
+            let mut template = Template::new(
+                "base".to_owned(),
+                "Hello".to_owned(),
+                HashMap::new(),
                 None,
                 Metadata::default(),
-            );
+            )
+            .unwrap();
 
-            assert!(
-                result.is_ok(),
-                "Expected valid template creation to succeed"
-            );
+            assert_eq!(template.name(), "base");
+            assert_eq!(template.content(), "Hello");
+            assert!(template.extends().is_none());
+            assert!(!template.has_variables());
+            assert_eq!(template.pending_events().len(), 1);
+            assert_eq!(template.take_events().len(), 1);
         }
 
         #[test]
