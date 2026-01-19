@@ -41,7 +41,7 @@ pub use config::{
     aggregate::Config,
     events::ConfigUpdated,
     global::{
-        Global as GlobalConfig, GlobalFilesystem as GlobalFilesystemConfig,
+        Filesystem as GlobalFilesystemConfig, Global as GlobalConfig,
         TrustedVaults as TrustedVaultsConfig,
     },
     types::{
@@ -49,7 +49,10 @@ pub use config::{
         Schema as SchemaConfig, SettingValue as ConfigValue,
         Template as TemplateConfig,
     },
-    vault::{Vault as VaultConfig, VaultFilesystem, VaultMetadata},
+    vault::{
+        Filesystem as VaultFilesystem, Metadata as VaultMetadata,
+        Vault as VaultConfig,
+    },
 };
 pub use errors::{ConfigError, DomainError};
 // Note context re-exports

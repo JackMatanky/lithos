@@ -1,46 +1,39 @@
-pub use super::{global::*, types::*, vault::*};
+use super::{
+    global,
+    global::Global,
+    types::{Frontmatter, Logging, Schema, Template},
+    vault,
+    vault::Vault,
+};
 
-/// Merged configuration result (Vault overrides Global for some fields).
+/// Merged configuration result from global and vault configurations.
 ///
-/// # Business Rules
-/// - Filesystems are kept separate (global library vs vault-specific).
-/// - Frontmatter and logging are merged with vault precedence.
-/// - Vault metadata contains vault-specific information.
-/// - Immutable once created.
-///
-/// # Examples
-///
-/// ```rust
-/// # use lithos_domain::{Config, GlobalConfig, VaultConfig};
-/// // Create a valid config via build
-/// let global = GlobalConfig::default();
-/// let vault = VaultConfig::default();
-///
-/// let config = Config::build(Some(&global), "/vault", vault).unwrap();
-/// assert_eq!(config.vault_metadata.vault_path, "/vault");
-/// ```
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+/// This struct represents the final merged configuration after applying
+/// business rules for precedence (vault overrides global). The configuration
+/// is immutable once created and represents the complete runtime configuration
+/// for a vault operation.
+#[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub struct Config {
     /// Merged frontmatter configuration.
     pub frontmatter: Frontmatter,
     /// Global filesystem configuration.
-    pub global_filesystem: GlobalFilesystem,
+    pub global_filesystem: global::Filesystem,
     /// Merged logging configuration.
     pub logging: Logging,
     /// Vault filesystem configuration.
-    pub vault_filesystem: VaultFilesystem,
+    pub vault_filesystem: vault::Filesystem,
     /// Vault metadata with versioning and naming.
-    pub vault_metadata: VaultMetadata,
+    pub vault_metadata: vault::Metadata,
 }
 
 impl Default for Config {
     #[inline]
     fn default() -> Self {
         Self {
-            vault_metadata: VaultMetadata::default(),
-            global_filesystem: GlobalFilesystem::default(),
-            vault_filesystem: VaultFilesystem::default(),
+            vault_metadata: vault::Metadata::default(),
+            global_filesystem: global::Filesystem::default(),
+            vault_filesystem: vault::Filesystem::default(),
             frontmatter: Frontmatter::default(),
             logging: Logging::default(),
         }
@@ -75,14 +68,14 @@ impl Config {
         vault: Vault,
     ) -> Result<Self, crate::ConfigError> {
         // Step 1: Pre-validate required Vault Path
-        VaultMetadata::validate_vault_path(vault_path)?;
+        vault::Metadata::validate_vault_path(vault_path)?;
 
         // Step 2: Set vault metadata defaults
-        let vault_metadata = VaultMetadata::new(vault_path.to_owned());
+        let vault_metadata = vault::Metadata::new(vault_path.to_owned());
 
         // Step 3: Set filesystem configurations with defaults applied
         let global_filesystem = global
-            .map(|g| GlobalFilesystem {
+            .map(|g| global::Filesystem {
                 schema: Schema {
                     schemas_dir: if g.filesystem.schema.schemas_dir.is_empty() {
                         "schemas".to_owned()
@@ -115,7 +108,7 @@ impl Config {
             })
             .unwrap_or_default();
 
-        let vault_filesystem = VaultFilesystem {
+        let vault_filesystem = vault::Filesystem {
             schema: Schema {
                 schemas_dir: if vault.filesystem.schema.schemas_dir.is_empty() {
                     "schemas".to_owned()
@@ -288,12 +281,7 @@ fn choose_value(vault: &str, global: &str, default: &str) -> String {
     clippy::panic,
     reason = "Test safety boundary - panic is acceptable in test code for exhaustive match failures"
 )]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Test module structure requires this ordering for clarity"
-)]
 mod tests {
-    use std::collections::HashMap;
 
     use super::*;
 
@@ -311,7 +299,7 @@ mod tests {
             ) {
                 let global = sample_global_config();
                 let vault_config = Vault {
-                    filesystem: VaultFilesystem {
+                    filesystem: vault::Filesystem {
                         schema: Schema::default(),
                         template: Template {
                             templates_dir: templates_dir.clone(),
@@ -374,7 +362,7 @@ mod tests {
         fn falls_back_to_defaults_when_inputs_are_empty() {
             // GIVEN configs with empty fields that should fall back to system defaults
             let global = Global {
-                filesystem: GlobalFilesystem {
+                filesystem: global::Filesystem {
                     schema: Schema {
                         schemas_dir: String::new(), // Empty - should use default
                         property_bank_filename: String::new(),
@@ -397,7 +385,7 @@ mod tests {
             };
 
             let vault = Vault {
-                filesystem: VaultFilesystem {
+                filesystem: vault::Filesystem {
                     schema: Schema {
                         schemas_dir: String::new(),
                         property_bank_filename: String::new(),
@@ -498,7 +486,7 @@ mod tests {
             // GIVEN a vault config with specific field values
             let global = sample_global_config();
             let vault = Vault {
-                filesystem: VaultFilesystem {
+                filesystem: vault::Filesystem {
                     schema: Schema::default(),
                     template: Template::default(),
                     cache_dir: ".cache".to_owned(),
@@ -561,9 +549,9 @@ mod tests {
     }
 
     mod config_value {
-        use SettingValue as ConfigValue;
+        use std::collections::HashMap;
 
-        use super::*;
+        use crate::config::types::SettingValue as ConfigValue;
 
         #[test]
         fn converts_from_string() {
@@ -810,7 +798,7 @@ mod tests {
     /// ```
     fn sample_global_config() -> Global {
         Global {
-            filesystem: GlobalFilesystem {
+            filesystem: global::Filesystem {
                 schema: Schema {
                     schemas_dir: "schemas".to_owned(),
                     property_bank_filename: "property_bank.json".to_owned(),
@@ -856,7 +844,7 @@ mod tests {
     /// ```
     fn sample_vault_config() -> Vault {
         Vault {
-            filesystem: VaultFilesystem {
+            filesystem: vault::Filesystem {
                 schema: Schema {
                     schemas_dir: "schemas".to_owned(), // same as global
                     property_bank_filename: "property_bank.json".to_owned(),

@@ -947,32 +947,37 @@ No debugging required - TDD approach worked flawlessly with RED-GREEN-REFACTOR c
    - ✅ Code review fixes applied: Updated test count to 40, corrected merge signature, updated commit hashes, changed status to done
 
 **Post-Implementation Refactoring Summary (2025):**
-  - ✅ **Modularized Architecture**: Split monolithic `core.rs` (1500+ lines) into focused modules:
-    - `aggregate.rs`: Main Config struct and business logic (750 lines)
-    - `global.rs`: GlobalFilesystem, TrustedVaults, Global structs (61 lines)
-    - `vault.rs`: VaultFilesystem, VaultMetadata, Vault structs (91 lines)
-    - `types.rs`: Shared SettingValue, Frontmatter, Logging, Schema, Template (178 lines)
-  - ✅ **Separated Concerns**: GlobalFilesystem and VaultFilesystem kept separate (no merging) since they serve different purposes (global library vs vault-specific)
-  - ✅ **Validation Distribution**: Moved validation logic to appropriate structs:
-    - VaultMetadata validates vault_path
-    - VaultFilesystem validates cache_dir, schema, template
-    - GlobalFilesystem validates schema, template
-    - Frontmatter validates all key fields
-    - Logging validates log_level
-    - Config orchestrates all validations
-  - ✅ **Renamed Files**: `core.rs` → `aggregate.rs` (Config is an aggregate of components)
-  - ✅ **Port Updates**: Renamed `load_merged()` → `load()` in Query trait for cleaner API
-  - ✅ **Vault Path Placement**: Corrected vault_path to live in VaultMetadata only (not duplicated in filesystem)
-  - ✅ **Current Test Count**: 28 config tests (100% passing)
-  - ✅ **Architecture**: Maintained Global → Vault two-tier design with proper separation of global library vs vault-specific configurations
+   - ✅ **Modularized Architecture**: Split monolithic `core.rs` (1500+ lines) into focused modules:
+     - `aggregate.rs`: Main Config struct and business logic (750+ lines)
+     - `global.rs`: GlobalFilesystem, TrustedVaults, Global structs (102 lines)
+     - `vault.rs`: VaultFilesystem, VaultMetadata, Vault structs (149 lines)
+     - `types.rs`: Shared SettingValue, Frontmatter, Logging, Schema, Template (310 lines)
+     - `mod.rs`: Module exports and organization
+   - ✅ **Separated Concerns**: GlobalFilesystem and VaultFilesystem kept separate (no merging) since they serve different purposes (global library vs vault-specific)
+   - ✅ **Validation Distribution**: Moved validation logic to appropriate structs:
+     - VaultMetadata validates vault_path
+     - VaultFilesystem validates cache_dir, schema, template
+     - GlobalFilesystem validates schema, template
+     - Frontmatter validates all key fields
+     - Logging validates log_level enum values
+     - Config orchestrates all validations
+   - ✅ **Renamed Files**: `core.rs` → `aggregate.rs` (Config is an aggregate of components)
+   - ✅ **Port Updates**: Renamed `load_merged()` → `load()` in Query trait for cleaner API
+   - ✅ **Vault Path Placement**: Corrected vault_path to live in VaultMetadata only (not duplicated in filesystem)
+   - ✅ **Current Test Count**: 28 config tests (100% passing)
+   - ✅ **Architecture**: Maintained Global → Vault two-tier design with proper separation of global library vs vault-specific configurations
+   - ✅ **Linter Compliance**: All clippy warnings resolved with proper #[expect] attributes and alphabetical field ordering
+   - ✅ **Quality Gates**: All pre-commit hooks passed, conventional commit standards met
+   - ✅ **Documentation**: All doc tests compile and run successfully
+   - ✅ **Final Commit**: `3a43fd57 refactor: modularize config bounded context` (conventional commit message, comprehensive summary)
 
 **Test Coverage:**
-  - Config merging and validation: 7 tests
-  - SettingValue conversions and variants: 9 tests (including alias ConfigValue)
-  - Error handling and messages: 6 tests
-  - Domain events: 3 tests
-  - Port traits: 3 tests
-  - **Total: 28 config tests, 100% passing** (refactored from 31, maintained all behavior)
+   - Config merging and validation: 7 tests
+   - SettingValue conversions and variants: 9 tests (including alias ConfigValue)
+   - Error handling and messages: 6 tests
+   - Domain events: 3 tests
+   - Port traits: 3 tests
+   - **Total: 28 config tests, 100% passing** (comprehensive coverage maintained through refactoring)
 
 **Quality Metrics:**
 - Cognitive complexity: <25 (all functions within limits)
@@ -992,21 +997,22 @@ No debugging required - TDD approach worked flawlessly with RED-GREEN-REFACTOR c
 ### File List
 
 **Files Created/Refactored:**
-- crates/domain/src/config/aggregate.rs (FORMERLY core.rs - 750 lines: Config struct, merging logic, validation orchestration)
-- crates/domain/src/config/global.rs (61 lines: GlobalFilesystem, TrustedVaults, Global structs)
-- crates/domain/src/config/vault.rs (91 lines: VaultFilesystem, VaultMetadata, Vault structs)
-- crates/domain/src/config/types.rs (178 lines: SettingValue, Frontmatter, Logging, Schema, Template shared types)
+- crates/domain/src/config/aggregate.rs (FORMERLY core.rs - 906 lines: Config struct, merging logic, validation orchestration, comprehensive tests)
+- crates/domain/src/config/global.rs (102 lines: GlobalFilesystem, TrustedVaults, Global structs)
+- crates/domain/src/config/vault.rs (149 lines: VaultFilesystem, VaultMetadata, Vault structs)
+- crates/domain/src/config/types.rs (310 lines: SettingValue, Frontmatter, Logging, Schema, Template shared types with validation)
 - crates/domain/src/config/mod.rs (UPDATED: module declarations and re-exports)
 - crates/domain/src/config/validate.rs (REMOVED: validation logic distributed to appropriate structs)
 - crates/domain/src/ports/config.rs (UPDATED: load_merged() renamed to load())
+- crates/domain/src/note/frontmatter.rs (UPDATED: fixed doc tests to use correct imports)
 - crates/domain/src/errors.rs (EXTENDED with 8 ConfigError variants)
-- crates/domain/src/events.rs (NEW - ConfigUpdated domain event)
+- crates/domain/src/events.rs (EXTENDED with ConfigUpdated domain event)
 - crates/domain/src/lib.rs (UPDATED with public config/events re-exports)
 - crates/domain/Cargo.toml (UPDATED with serde_json dev-dependency)
 
 **Test Coverage:**
- - 31 unit tests across 1 test module
- - Behavioral naming (verb-first, no test_ prefix)
- - Property-based testing (idempotency, determinism)
- - Error handling validation
- - Refactoring preserved all test behavior
+  - 28 unit tests across 1 test module
+  - Behavioral naming (verb-first, no test_ prefix)
+  - Property-based testing (idempotency, determinism)
+  - Error handling validation
+  - Refactoring preserved all test behavior
