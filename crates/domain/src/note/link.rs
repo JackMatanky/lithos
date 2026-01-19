@@ -327,4 +327,19 @@ mod tests {
         assert_eq!(embed.embed_type(), Some(EmbedType::Image));
         assert!(embed.is_embed());
     }
+
+    #[test]
+    fn rejects_empty_link_targets() {
+        let source_id = uuid::Uuid::now_v7();
+
+        let embed =
+            Link::new_embed(source_id, String::new(), EmbedType::Note, 1);
+        let markdown =
+            Link::new_markdown_link(source_id, String::new(), None, 2);
+        let wiki = Link::new_wikilink(source_id, String::new(), None, 3);
+
+        assert!(matches!(embed, Err(DomainError::EmptyLinkTarget)));
+        assert!(matches!(markdown, Err(DomainError::EmptyLinkTarget)));
+        assert!(matches!(wiki, Err(DomainError::EmptyLinkTarget)));
+    }
 }

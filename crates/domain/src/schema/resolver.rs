@@ -141,7 +141,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{BoolSpec, PropertySpec};
+    use crate::{BoolSpec, PropertySpec, SchemaName};
 
     #[test]
     fn resolves_ref_property_with_json_pointer_prefix() {
@@ -193,5 +193,40 @@ mod tests {
 
         // THEN it finds the property by name
         assert_eq!(resolved.name().as_str(), "status");
+    }
+
+    #[test]
+    fn resolve_includes_parent_properties() {
+        // GIVEN a parent schema with a property
+        let mut bank = PropertyBank::new();
+        let parent_prop = Property::new(
+            Uuid::now_v7(),
+            PropertyName::new("parent".to_owned()).expect("valid name"),
+            true,
+            false,
+            PropertySpec::Bool(BoolSpec::default()),
+        )
+        .expect("valid property");
+        bank.register(parent_prop.clone()).expect("register property");
+        let parent_schema = Schema::new(
+            Uuid::now_v7(),
+            SchemaName::new("parent".to_owned()).expect("valid name"),
+            vec![parent_prop],
+        )
+        .expect("valid schema");
+
+        // WHEN resolving a child raw schema
+        let raw = RawSchema::new(
+            Uuid::now_v7(),
+            SchemaName::new("child".to_owned()).expect("valid name"),
+            None,
+            HashSet::new(),
+            Vec::new(),
+        );
+        let schema = Resolver::resolve(raw, Some(&parent_schema), &bank)
+            .expect("resolve schema");
+
+        // THEN parent property is retained
+        assert!(schema.has("parent"));
     }
 }

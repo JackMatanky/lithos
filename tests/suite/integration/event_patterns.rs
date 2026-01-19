@@ -47,12 +47,16 @@ mod tests {
         /// Confirms Given/When/Then scenarios return expected events.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn returns_expected_events_for_given_history() {
+            // GIVEN: an account history with one event
             let expected = vec![account_event("acct-1", 2)];
+
+            // WHEN: the framework applies a transition
             let result =
                 EventTestFramework::given(vec![account_event("acct-1", 1)])
                     .when(|_history| vec![account_event("acct-1", 2)])
                     .then_expect_events(&expected);
 
+            // THEN: the expected events are produced
             assert!(result.is_ok(), "unexpected result: {result:?}");
         }
     }
@@ -63,6 +67,7 @@ mod tests {
         /// Ensures published events reach a data-plane subscriber.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn delivers_published_event_to_subscriber() {
+            // GIVEN: a data-plane subscription ready to receive events
             let fixture = data_plane_fixture(8).await;
             assert!(fixture.is_ok(), "fixture error: {fixture:?}");
             let Ok((bus, mut receiver, event)) = fixture else {
@@ -70,9 +75,11 @@ mod tests {
             };
             let expected = event.clone();
 
+            // WHEN: a payload is published through the data plane
             let delivery =
                 publish_and_receive(&bus, &mut receiver, event).await;
 
+            // THEN: the subscriber receives the published payload
             assert!(
                 matches!(delivery.as_ref(), Ok(payload) if payload == &expected),
                 "delivery mismatch: {delivery:?}"
@@ -82,6 +89,7 @@ mod tests {
         /// Captures published records for assertions against stored payloads.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn captures_published_events_for_assertion() {
+            // GIVEN: a data-plane subscription that records published events
             let fixture = data_plane_fixture(8).await;
             assert!(fixture.is_ok(), "fixture error: {fixture:?}");
             let Ok((bus, mut receiver, event)) = fixture else {
@@ -89,6 +97,7 @@ mod tests {
             };
             let expected = event.clone();
 
+            // WHEN: a payload is published and recorded
             let record_result: Result<EventRecord<AccountEvent>, String> =
                 match publish_and_receive(&bus, &mut receiver, event).await {
                     Ok(_) => {
@@ -102,6 +111,7 @@ mod tests {
                     Err(error) => Err(error),
                 };
 
+            // THEN: the captured record matches the expected payload
             assert!(
                 matches!(record_result.as_ref(), Ok(record) if record.payload == expected),
                 "record mismatch: {record_result:?}"
@@ -111,12 +121,14 @@ mod tests {
         /// Verifies recorded data plane events keep increasing sequences.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn maintains_event_sequence_ordering() {
+            // GIVEN: a data-plane event bus with sequencing enabled
             let fixture = data_plane_fixture(8).await;
             assert!(fixture.is_ok(), "fixture error: {fixture:?}");
             let Ok((bus, mut receiver, event)) = fixture else {
                 return;
             };
 
+            // WHEN: an event is published and recorded
             let sequence_result =
                 match publish_and_receive(&bus, &mut receiver, event).await {
                     Ok(_) => {
@@ -128,6 +140,7 @@ mod tests {
                     Err(error) => Err(error),
                 };
 
+            // THEN: sequence numbers increase monotonically
             assert!(
                 sequence_result.is_ok(),
                 "sequence validation failed: {sequence_result:?}"
@@ -137,12 +150,14 @@ mod tests {
         /// Validates payload equality with the domain event contract helper.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn verifies_payload_integrity_with_contract_helper() {
+            // GIVEN: a data-plane bus that records published payloads
             let fixture = data_plane_fixture(8).await;
             assert!(fixture.is_ok(), "fixture error: {fixture:?}");
             let Ok((bus, mut receiver, event)) = fixture else {
                 return;
             };
 
+            // WHEN: a payload is published through the event bus
             let payload_result =
                 match publish_and_receive(&bus, &mut receiver, event.clone())
                     .await
@@ -165,6 +180,7 @@ mod tests {
                     Err(error) => Err(error),
                 };
 
+            // THEN: the contract helper verifies payload integrity
             assert!(
                 payload_result.is_ok(),
                 "payload verification failed: {payload_result:?}"
@@ -178,9 +194,12 @@ mod tests {
         /// Confirms control-plane broadcasts reach subscribed listeners.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn broadcasts_control_events_to_subscribers() {
+            // GIVEN: a control-plane subscriber on the event bus
             let bus = MockEventBus::new_with_clock(4, 4, fixed_clock());
             let mut receiver = bus.subscribe_control();
             let event = account_event("acct-3", 1);
+
+            // WHEN: a control-plane event is published
             let publish_result = bus
                 .publish_control(event.clone())
                 .await
@@ -190,6 +209,7 @@ mod tests {
                 Err(error) => Err(error),
             };
 
+            // THEN: subscribers receive the broadcast payload
             assert!(
                 matches!(delivery.as_ref(), Ok(payload) if payload == &event),
                 "control plane delivery mismatch: {delivery:?}"
@@ -208,20 +228,28 @@ mod tests {
         /// Ensures malformed events are handled without panics.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn reports_malformed_event_payloads() {
+            // GIVEN: a malformed payload that violates the event schema
             let malformed = json!({"account_id": 10i64, "version": "oops"});
+
+            // WHEN: the payload is parsed into the domain event type
             let result = parse_event(malformed);
 
+            // THEN: parsing reports a validation error instead of panicking
             assert!(result.is_err(), "expected malformed event error");
         }
 
         /// Ensures subscriber lifecycle allows only one data-plane receiver.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn enforces_single_data_plane_subscription() {
+            // GIVEN: a mock bus configured for a single data-plane receiver
             let bus: MockEventBus<AccountEvent> =
                 MockEventBus::new_with_clock(2, 2, fixed_clock());
+
+            // WHEN: the first subscriber registers
             let first = bus.subscribe_data().await;
             assert!(first.is_ok(), "first subscription failed: {first:?}");
 
+            // THEN: a second subscriber is rejected
             let second = bus.subscribe_data().await;
             assert!(
                 second.is_err(),
@@ -237,6 +265,7 @@ mod tests {
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn relays_events_from_data_to_control_plane() -> Result<(), String>
         {
+            // GIVEN: subscribers for data and control planes
             let bus =
                 Arc::new(MockEventBus::new_with_clock(4, 4, fixed_clock()));
             let mut data_receiver = bus
@@ -255,6 +284,7 @@ mod tests {
                 }
             });
 
+            // WHEN: a data-plane event is published
             let event = account_event("acct-flow", 1);
             bus.publish_data(event.clone())
                 .await
@@ -266,6 +296,7 @@ mod tests {
             .await
             .map_err(|error| error.to_string())??;
 
+            // THEN: the control plane receives the relayed event
             let relay_result =
                 relay_task.await.map_err(|error| error.to_string())?;
             if let Err(error) = relay_result {

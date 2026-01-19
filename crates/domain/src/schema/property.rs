@@ -334,6 +334,25 @@ pub mod fixtures {
     pub fn example_property() -> Property {
         PropertyBuilder::new().build()
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn builder_sets_fields() {
+            let property = PropertyBuilder::new()
+                .name("priority")
+                .required(true)
+                .array(true)
+                .spec(PropertySpec::String(StringSpec::default()))
+                .build();
+
+            assert_eq!(property.name().as_str(), "priority");
+            assert!(property.required());
+            assert!(property.array());
+        }
+    }
 }
 
 #[cfg(test)]

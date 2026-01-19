@@ -324,7 +324,7 @@ impl Template {
 
 #[cfg(test)]
 mod tests {
-    use super::{Frontmatter, Schema, SettingValue, Template};
+    use super::{Frontmatter, Logging, Schema, SettingValue, Template};
 
     #[test]
     fn converts_from_string() {
@@ -376,18 +376,62 @@ mod tests {
 
     #[test]
     fn stores_opaque_encrypted_bytes() {
-        // GIVEN encrypted bytes from an adapter
-        let encrypted_data = vec![1, 2, 3, 4, 5];
+        // GIVEN encrypted data
+        let raw = vec![1, 2, 3, 4];
 
-        // WHEN storing them in the encrypted variant
-        let value = SettingValue::Encrypted(encrypted_data.clone());
+        // WHEN creating an encrypted config value
+        let value = SettingValue::Encrypted(raw.clone());
 
-        // THEN the raw bytes remain intact
-        assert_eq!(
-            value,
-            SettingValue::Encrypted(encrypted_data),
-            "Encrypted variant should store raw bytes correctly"
-        );
+        // THEN debug output must not reveal raw bytes
+        let debug = format!("{value:?}");
+        assert!(debug.contains("***"), "Expected masked debug output");
+    }
+
+    #[test]
+    fn frontmatter_validate_rejects_empty_keys() {
+        // GIVEN frontmatter with empty key
+        let frontmatter = Frontmatter {
+            title_key: String::new(),
+            ..Frontmatter::default()
+        };
+
+        // WHEN validating
+        let result = frontmatter.validate();
+
+        // THEN it fails
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn logging_rejects_invalid_levels() {
+        // GIVEN an invalid log level
+        let logging = Logging {
+            log_level: "verbose".to_owned(),
+        };
+
+        // WHEN validating
+        let result = logging.validate();
+
+        // THEN it fails with invalid enum
+        assert!(matches!(
+            result,
+            Err(crate::ConfigError::InvalidEnumValue { .. })
+        ));
+    }
+
+    #[test]
+    fn schema_validate_rejects_empty_paths() {
+        // GIVEN schema config with empty fields
+        let schema = Schema {
+            schemas_dir: String::new(),
+            property_bank_filename: String::new(),
+        };
+
+        // WHEN validating
+        let result = schema.validate();
+
+        // THEN validation fails
+        assert!(result.is_err());
     }
 
     #[test]
