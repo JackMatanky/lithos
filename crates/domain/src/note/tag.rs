@@ -145,11 +145,25 @@ fn is_valid_tag_segment(segment: &str) -> bool {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Unit tests use unwrap for readability"
+)]
 mod tests {
     use super::*;
 
     mod parse {
         use super::*;
+
+        #[test]
+        fn accessors_return_expected_values() {
+            // GIVEN a parsed tag
+            let tag = Tag::parse("#work/project").unwrap();
+
+            // THEN accessors expose path and segments
+            assert_eq!(tag.as_str(), "work/project");
+            assert_eq!(tag.segments(), &["work".into(), "project".into()]);
+        }
 
         #[test]
         fn succeeds_for_valid_simple_tag() {

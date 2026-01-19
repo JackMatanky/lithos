@@ -524,6 +524,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - 2026-01-19: Optimized doc-tests with hidden boilerplate and updated resolver example; ran domain doctests.
 - 2026-01-19: Added doc-tests for core domain constructors and validators; verified doctest pass.
 - 2026-01-19: Updated schema resolver ref handling to preserve non-JSON refs; added schema event/raw schema/resolver tests.
+- 2026-01-19: Added accessor tests for note links, tags, tasks, headings, and sections.
 
 ### Completion Notes List
 
@@ -549,7 +550,7 @@ This story will leverage the test utilities being developed in Epic 2:
 - Added doc-test examples for core domain constructors and validators (Config::build/validate, Note::new/validate, PropertyName, Property::validate_value, PropertySpec::validate/validate_spec, Template::new/compose/validate, VariableDefinition::validate_value, Frontmatter/Logging validation, Vault metadata helpers).
 - `cargo test -p lithos-domain --doc` passes (65 doctests, 7 ignored).
 - Resolver now normalizes property refs by trimming `#/properties/` prefix when present while preserving non-JSON refs.
-- Added unit tests for schema events, raw schema input structures, and resolver ref handling (JSON pointer vs plain names).
+- Added unit tests for schema events, raw schema input structures, resolver ref handling (JSON pointer vs plain names), and note link/tag/task/heading/section accessors.
 - Tarpaulin domain coverage remains 51.13% (676/1322); key gaps in schema resolver, property specs, template variables, and note frontmatter/link remain and need focused tests to hit 80%+.
 
 ### File List
