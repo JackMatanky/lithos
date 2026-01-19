@@ -365,4 +365,115 @@ mod tests {
         assert!(has_default);
         assert_eq!(default_val, Some(serde_json::json!("Title")));
     }
+
+    #[test]
+    fn should_validate_date_variable() {
+        // GIVEN: a date variable definition
+        let def = VariableDefinition::Date {
+            default: None,
+            format: None,
+        };
+
+        // THEN: it validates ISO8601 strings
+        def.validate_value(&serde_json::json!("2024-01-15T10:00:00Z")).unwrap();
+        assert!(def.validate_value(&serde_json::json!("invalid")).is_err());
+
+        // AND: handles custom formats
+        let def_fmt = VariableDefinition::Date {
+            default: None,
+            format: Some("%Y-%m-%d".to_owned()),
+        };
+        def_fmt.validate_value(&serde_json::json!("2024-01-15")).unwrap();
+        assert!(
+            def_fmt.validate_value(&serde_json::json!("2024/01/15")).is_err()
+        );
+    }
+
+    #[test]
+    fn should_validate_file_variable() {
+        // GIVEN: a file variable definition
+        let def = VariableDefinition::File {
+            default: None,
+            file_types: Some(vec!["md".to_owned()]),
+        };
+
+        // THEN: it validates vault-relative paths and extensions
+        def.validate_value(&serde_json::json!("note.md")).unwrap();
+        assert!(def.validate_value(&serde_json::json!("img.png")).is_err());
+        assert!(def.validate_value(&serde_json::json!("/abs/path")).is_err());
+
+        // AND: handles no type restriction
+        let def_any = VariableDefinition::File {
+            default: None,
+            file_types: None,
+        };
+        def_any.validate_value(&serde_json::json!("any.file")).unwrap();
+    }
+
+    #[test]
+    fn should_validate_file_variable_extensions() {
+        // GIVEN: a file variable with multiple allowed types
+        let def = VariableDefinition::File {
+            default: None,
+            file_types: Some(vec!["md".to_owned(), "txt".to_owned()]),
+        };
+
+        // THEN: it accepts matching extensions
+        def.validate_value(&serde_json::json!("test.md")).unwrap();
+        def.validate_value(&serde_json::json!("test.txt")).unwrap();
+
+        // AND: rejects others
+        assert!(def.validate_value(&serde_json::json!("test.png")).is_err());
+    }
+
+    #[test]
+    fn should_validate_string_variable_constraints() {
+        // GIVEN: a string variable with length constraints
+        let def = VariableDefinition::String {
+            default: None,
+            max_length: Some(5),
+            min_length: Some(2),
+            pattern: None,
+        };
+
+        // THEN: it enforces length limits
+        def.validate_value(&serde_json::json!("abc")).unwrap();
+        assert!(def.validate_value(&serde_json::json!("a")).is_err());
+        assert!(def.validate_value(&serde_json::json!("abcdef")).is_err());
+
+        // AND: handles min/max independently
+        let def_min = VariableDefinition::String {
+            default: None,
+            min_length: Some(3),
+            max_length: None,
+            pattern: None,
+        };
+        assert!(def_min.validate_value(&serde_json::json!("ab")).is_err());
+
+        let def_max = VariableDefinition::String {
+            default: None,
+            min_length: None,
+            max_length: Some(3),
+            pattern: None,
+        };
+        assert!(def_max.validate_value(&serde_json::json!("abcd")).is_err());
+    }
+
+    #[test]
+    fn should_validate_string_pattern_with_caching() {
+        // GIVEN: a string variable with a pattern
+        let def = VariableDefinition::String {
+            default: None,
+            max_length: None,
+            min_length: None,
+            pattern: Some(r"^\d+$".to_owned()),
+        };
+
+        // THEN: it validates matching strings (multiple times to trigger cache)
+        def.validate_value(&serde_json::json!("123")).unwrap();
+        def.validate_value(&serde_json::json!("456")).unwrap();
+
+        // AND: rejects non-matching strings
+        assert!(def.validate_value(&serde_json::json!("abc")).is_err());
+    }
 }

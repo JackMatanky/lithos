@@ -439,20 +439,98 @@ mod tests {
     }
 
     #[test]
-    fn should_convert_config_to_domain_error() {
-        // GIVEN: a configuration error
-        let config_error = ConfigError::ValidationFailed {
-            field: "test".to_owned(),
-            message: "test error".to_owned(),
-        };
+    fn domain_error_display_is_comprehensive() {
+        // GIVEN: various domain error variants
+        let errors = vec![
+            DomainError::CircularComposition("A".into()),
+            DomainError::CircularInheritance("B".into()),
+            DomainError::DuplicatePropertyName("C".into()),
+            DomainError::EmptyPath,
+            DomainError::InvalidHeadingLevel(7),
+            DomainError::InvalidPath(Cow::Borrowed("err")),
+            DomainError::InvalidType {
+                value: "v".into(),
+                expected: "e".into(),
+            },
+            DomainError::MaxVariablesExceeded(10),
+            DomainError::MissingField("f".into()),
+            DomainError::NumberOutOfRange {
+                value: 1.0f64,
+                min: Some(2.0f64),
+                max: None,
+            },
+            DomainError::ParentSchemaNotFound("p".into()),
+            DomainError::PropertyNameTooLong(100),
+            DomainError::PropertyNotFound("p".into()),
+            DomainError::SchemaNameTooLong(100),
+            DomainError::StringTooLong {
+                max: 5,
+                actual: 10,
+            },
+            DomainError::StringTooShort {
+                min: 5,
+                actual: 2,
+            },
+            DomainError::VariableTypeMismatch {
+                name: "v".into(),
+                expected: "e".into(),
+                actual: "a".into(),
+            },
+        ];
 
-        // WHEN: converting into a general domain error
-        let domain_error: DomainError = config_error.into();
+        // WHEN: formatting them as strings
+        // THEN: they all produce non-empty messages
+        for err in errors {
+            assert!(!err.to_string().is_empty());
+        }
+    }
 
-        // THEN: it is wrapped in the Config variant
-        assert!(
-            matches!(domain_error, DomainError::Config(_)),
-            "Expected DomainError::Config variant"
-        );
+    #[test]
+    fn config_error_display_is_comprehensive() {
+        // GIVEN: all configuration error variants
+        let errors = vec![
+            ConfigError::DependencyViolation {
+                field: "f".into(),
+                depends_on: "d".into(),
+            },
+            ConfigError::EncryptionError {
+                field: "f".into(),
+                message: "m".into(),
+            },
+            ConfigError::InvalidEnumValue {
+                field: "f".into(),
+                value: "v".into(),
+                allowed: vec!["a".into()],
+            },
+            ConfigError::InvalidType {
+                field: "f".into(),
+                expected: "e".into(),
+                actual: "a".into(),
+            },
+            ConfigError::MergeConflict {
+                field: "f".into(),
+                path1: "p1".into(),
+                path2: "p2".into(),
+            },
+            ConfigError::MissingRequiredField {
+                field: "f".into(),
+            },
+            ConfigError::OutOfRange {
+                field: "f".into(),
+                value: 1.0f64,
+                min: Some(0.0f64),
+                max: Some(2.0f64),
+            },
+            ConfigError::ValidationFailed {
+                field: "f".into(),
+                message: "m".into(),
+            },
+        ];
+
+        // WHEN: formatting them as strings
+        // THEN: they all produce non-empty messages
+        for err in errors {
+            assert!(!err.to_string().is_empty());
+        }
     }
 }

@@ -564,4 +564,95 @@ mod tests {
         // THEN: it should be invalid
         assert!(result.is_err());
     }
+
+    #[test]
+    fn bool_spec_validates_type() {
+        // GIVEN: a BoolSpec
+        let spec = BoolSpec::default();
+
+        // THEN: it accepts booleans
+        spec.validate(&true).unwrap();
+        spec.validate(&false).unwrap();
+    }
+
+    #[test]
+    fn date_spec_validates_iso8601() {
+        // GIVEN: a DateSpec with RFC3339-like format
+        let spec = DateSpec {
+            format: "%Y-%m-%dT%H:%M:%SZ".to_owned(),
+        };
+
+        // THEN: it accepts matching strings
+        spec.validate(&"2024-01-15T14:30:00Z".to_owned()).unwrap();
+
+        // AND: rejects invalid dates
+        assert!(spec.validate(&"not-a-date".to_owned()).is_err());
+    }
+
+    #[test]
+    fn number_spec_validates_spec_definition() {
+        // GIVEN: an invalid NumberSpec (min > max)
+        let invalid = NumberSpec {
+            min: Some(10.0f64),
+            max: Some(5.0f64),
+            step: None,
+        };
+
+        // THEN: it fails spec validation
+        assert!(invalid.validate_spec().is_err());
+
+        // AND: valid specs pass
+        let valid = NumberSpec {
+            min: Some(5.0f64),
+            max: Some(10.0f64),
+            step: Some(1.0f64),
+        };
+        valid.validate_spec().unwrap();
+    }
+
+    #[test]
+    fn string_spec_validates_regex_pattern() {
+        // GIVEN: a StringSpec with a regex pattern
+        let spec = StringSpec {
+            pattern: Some(r"^\d+$".to_owned()),
+            ..Default::default()
+        };
+
+        // THEN: it accepts matching strings
+        spec.validate(&"123".to_owned()).unwrap();
+
+        // AND: rejects non-matching strings
+        assert!(spec.validate(&"abc".to_owned()).is_err());
+    }
+
+    #[test]
+    fn string_spec_validates_length_constraints() {
+        // GIVEN: a StringSpec with length limits
+        let spec = StringSpec {
+            max_length: Some(5),
+            min_length: Some(2),
+            ..Default::default()
+        };
+
+        // THEN: it enforces length limits
+        spec.validate(&"abc".to_owned()).unwrap();
+        assert!(spec.validate(&"a".to_owned()).is_err());
+        assert!(spec.validate(&"abcdef".to_owned()).is_err());
+    }
+
+    #[test]
+    fn property_spec_dispatch_works() {
+        // GIVEN: various spec variants
+        let b = PropertySpec::Bool(BoolSpec::default());
+        let s = PropertySpec::String(StringSpec::default());
+        let n = PropertySpec::Number(NumberSpec::default());
+
+        // THEN: spec_type returns correct discriminant
+        assert_eq!(b.spec_type(), PropertySpecType::Bool);
+        assert_eq!(s.spec_type(), PropertySpecType::String);
+        assert_eq!(n.spec_type(), PropertySpecType::Number);
+
+        // AND: validate dispatches to inner spec (tested via successful bool parse)
+        b.validate(&serde_json::json!(true)).unwrap();
+    }
 }

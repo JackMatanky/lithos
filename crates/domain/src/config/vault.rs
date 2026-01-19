@@ -237,4 +237,17 @@ mod tests {
         )]
         result.unwrap();
     }
+
+    #[test]
+    fn filesystem_validate_rejects_invalid_template() {
+        // GIVEN: a vault filesystem with invalid template config
+        let mut filesystem = Filesystem::default();
+        filesystem.template.templates_dir = String::new();
+
+        // WHEN: validating
+        let result = filesystem.validate();
+
+        // THEN: it fails
+        assert!(result.is_err());
+    }
 }

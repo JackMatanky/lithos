@@ -213,6 +213,19 @@ mod tests {
     }
 
     #[test]
+    fn filesystem_validate_rejects_invalid_schema() {
+        // GIVEN: a filesystem config with an invalid schema path
+        let mut filesystem = super::Filesystem::default();
+        filesystem.schema.schemas_dir = String::new();
+
+        // WHEN: validating
+        let result = filesystem.validate();
+
+        // THEN: it fails
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn global_defaults_have_expected_shape() {
         // GIVEN: default global config
         let global = super::Global::default();
