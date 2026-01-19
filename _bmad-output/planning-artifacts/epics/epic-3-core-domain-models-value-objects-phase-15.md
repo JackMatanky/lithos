@@ -278,3 +278,7 @@ So that developers understand the domain language and can work effectively with 
 **Given** documentation exists
 **When** a developer reads it
 **Then** they understand domain evolution rules, event-driven architecture, and inter-entity contracts without needing user-facing knowledge
+
+**Given** Epic 3 domain models are implemented
+**When** I review the source code
+**Then** all files in the domain (`crates/domain/src/models/`) are reviewed thoroughly to ensure full and proper use of doc comments with doc tests and that every relevant component has a well written doc comment.

@@ -1,4 +1,4 @@
-# Story 3.5: Review Epic 3 Test Suite
+# Story 3.6: Review Epic 3 Test Suite
 
 Status: ready-for-dev
 
@@ -35,6 +35,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 ## Tasks / Subtasks
 
 ### Task 1: Establish Epic 2 Test Infrastructure Context
+- [ ] Read the full text of `docs/test_guide.md` and `_bmad-output/test-design-system.md` to internalize the project's testing standards, safety invariants, and quality gates
 - [ ] Read the full text of Story 2.4 from `_bmad-output/implementation-artifacts/stories/2-4-create-centralized-test-utilities-and-infrastructure.md` to understand available test utilities like temporary directories, fixture factories, assertion helpers
 - [ ] Read the full text of Story 2.5 from `_bmad-output/implementation-artifacts/stories/2-5-configure-mise-test-task-orchestration.md` to understand mise commands: `mise run test` (all tests), `mise run test:unit` (domain only), `mise run test:integration` (cross-crate), `mise run test:coverage` (tarpaulin), `mise run test:watch` (continuous)
 - [ ] Read the full text of Story 2.6 from `_bmad-output/implementation-artifacts/stories/2-6-establish-integration-testing-patterns-and-infrastructure.md` to understand integration testing patterns for cross-module testing, isolation strategies, external service mocking
@@ -45,6 +46,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 ### Task 2: Analyze Current Epic 3 Test Implementation
 - [ ] Run `mise run test:coverage` to generate detailed tarpaulin HTML report in `_bmad-output/coverage-reports/` directory
 - [ ] Run `mise run test` with `time mise run test` to measure total execution time and record individual test category times (unit, integration, property tests)
+- [ ] **DOC-TEST ANALYSIS:** Audit existing public API documentation for missing or broken doc-tests, ensuring all public domain models have at least one executable example
 - [ ] Open the generated HTML coverage report and analyze coverage percentage for each bounded context: Note domain entities, Schema domain entities, Config domain entities, Template domain entities
 - [ ] Perform hexagonal compliance check for domain tests: verify `crates/domain/src/models/*/tests.rs` modules have ZERO external dependencies (no tokio, no adapters, no app layer imports) and use `#[cfg(test)]` attribute
 - [ ] Perform hexagonal compliance check for adapter/integration tests: verify adapter layer tests are in `tests/` directory or `adapters/*/tests/` modules and properly mock external dependencies
@@ -54,16 +56,22 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Document coverage strategy: 80%+ target with quality focus (business logic, error cases, edge conditions over line coverage)
 - [ ] Document current coverage gaps, weak areas, and quality concerns
 
-### Task 3: Identify Redundancies and Inefficiencies
+### Task 3: Identify Redundancies, Inefficiencies, and Over-Complexity
 - [ ] Review test fixtures for duplication across bounded contexts
 - [ ] Analyze property-based test patterns for consolidation opportunities
+- [ ] **COMPLEXITY AUDIT:** Identify "clever" or overly complex test logic that hinders readability. Ensure tests follow the KISS principle.
+- [ ] **RSTEST EVALUATION:** Audit usage of `rstest`. Verify that parameterized cases provide a clear benefit (e.g., testing same logic with multiple critical inputs) rather than adding unnecessary indirection for simple cases.
 - [ ] Check for overlapping test scenarios between domain models
 - [ ] Identify slow-running tests that impact the <30 second target
-- [ ] Document redundancy elimination opportunities
+- [ ] Document redundancy and complexity elimination opportunities
 
 ### Task 4: Optimize Test Performance and Coverage
 - [ ] Implement shared test utilities leveraging Epic 2 infrastructure
 - [ ] Consolidate duplicate fixtures into reusable modules
+- [ ] **DOC-TEST OPTIMIZATION:** Apply "Living Documentation" patterns to doc-tests:
+    - [ ] Hide setup/boilerplate imports and logic using the `#` prefix
+    - [ ] Ensure examples are high-fidelity and demonstrate real-world usage of `lithos-test-utils`
+    - [ ] Use appropriate attributes (`no_run`, `compile_fail`, `should_panic`) to accurately reflect intended behavior
 - [ ] Optimize slow tests using parallel execution and Epic 2 patterns
 - [ ] **COVERAGE ASSURANCE:** Add targeted tests for uncovered domain entities and validation logic
 - [ ] **COVERAGE ASSURANCE:** Implement property-based tests for edge cases and error paths
@@ -110,9 +118,17 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [ ] Commit with conventional commit message: `refactor: optimize epic 3 test suite for efficiency with comprehensive analysis and actionable recommendations`
 
 ### Task 8: Enforce Epic 2 Quality Standards
-- [ ] **STRICT NAMING:** Verify 100% compliance with verb-first behavioral naming across all Epic 3 tests
+- [ ] **BDD DOCUMENTATION:** Ensure all tests include internal expressive BDD comments (e.g., `// GIVEN: a valid note with multiple links`, `// WHEN: the link resolution service is called`, `// THEN: all links are resolved to absolute vault paths`). The GIVEN-WHEN-THEN words must be followed by descriptive text explaining the context, action, and expected outcome.
+- [ ] **STRICT NAMING:** Verify 100% compliance with verb-first behavioral naming across all Epic 3 tests using the formula: `unit_of_work` + `expected_behavior` + `state_under_test`
+- [ ] **PARAMETERIZED TESTS:** Ensure `rstest` is used ONLY when it provides a real benefit to clarity and maintainability. Avoid using it for single scenarios or when it makes the test logic harder to follow. Always use **Named Cases**.
+- [ ] **KISS COMPLIANCE:** Verify that tests are readable and maintainable. A test should be easier to understand than the code it tests. Eliminate any "test logic" that is as complex as the production logic.
+- [ ] **SNAPSHOT TESTING:** Verify that complex structures (Note AST, Schema inheritance graphs) use `insta` snapshots with proper **Redactions** for UUIDs and Timestamps
+- [ ] **ASYNC SAFETY:** Confirm all async tests use `#[tokio::test(flavor = "multi_thread")]` and incorporate timeouts and `spawn_blocking_test` for I/O or heavy CPU tasks
+- [ ] **LINT DISCIPLINE:** Enforce `#[expect(...)]` over `#[allow(...)]` for intentional violations and verify every test module includes a `LINT_DISABLE_REASON` header
+- [ ] **DOC-TESTS:** Verify mandatory doc-test coverage for ALL public domain models and utility functions as "Living Documentation", ensuring boilerplate is hidden and attributes are correctly applied
+- [ ] **ERROR ASSERTIONS:** Ensure all error cases use the `assert_err_kind!` macro for standardized and readable error matching
+- [ ] **OBSERVABILITY:** Verify use of `TestTracingSubscriber` where domain events or tracing spans need validation
 - [ ] **TEST PLACEMENT:** Ensure no test code exists outside `tests/utils` and `tests/macros` (except for inline unit tests)
-- [ ] **LINT HEADERS:** Verify every test module includes a `LINT_DISABLE_REASON` header if lints are suppressed
 - [ ] **VIRTUAL TIME:** Confirm all time-sensitive domain logic uses the `time_test!` virtual clock infrastructure
 - [ ] **PURITY GUARDIAN:** Run the Domain Purity Guardian and confirm 100% compliance for all Epic 3 domain models
 
@@ -302,8 +318,8 @@ mod integration_tests {
 ```
 
 **Test Quality Standards:**
-- **Naming**: `snake_case` with `test_` prefix (e.g., `test_validate_schema_inheritance`)
-- **Documentation**: Comprehensive doc comments explaining test purpose and scenarios
+- **Naming**: `snake_case` with verb-first behavioral naming formula: `unit_of_work` + `expected_behavior` + `state_under_test`
+- **Documentation**: Comprehensive doc comments explaining test purpose and scenarios; mandatory internal expressive BDD comments (e.g., `// GIVEN: [context]`, `// WHEN: [action]`, `// THEN: [expectation]`) for all test bodies to ensure the test logic is self-explanatory.
 - **Isolation**: Each test independent, no shared state between tests
 - **Deterministic**: Fixed seeds for property-based tests, no flaky behavior
 - **Performance**: Sub-100ms execution time per test
