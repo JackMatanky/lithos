@@ -215,7 +215,7 @@ pub enum InsertionPosition {
 )]
 mod tests {
     use super::*;
-    use crate::template::Metadata;
+    use crate::{VariableDefinition, template::Metadata};
 
     #[test]
     fn should_detect_circular_composition() {
@@ -274,5 +274,45 @@ mod tests {
         let insertion = InsertionPosition::AfterVariable("title".to_owned());
 
         assert!(matches!(insertion, InsertionPosition::AfterVariable(_)));
+    }
+
+    #[test]
+    fn validate_rejects_variable_type_mismatch() {
+        // GIVEN a base template with a string variable
+        let mut variables = HashMap::new();
+        variables.insert(
+            "title".to_owned(),
+            VariableDefinition::String {
+                default: None,
+                max_length: None,
+                min_length: None,
+                pattern: None,
+            },
+        );
+        let base = Template::new(
+            "base".to_owned(),
+            "Hello {{title}}".to_owned(),
+            variables,
+            None,
+            Metadata::default(),
+        )
+        .unwrap();
+
+        // WHEN overriding with an incompatible value
+        let mut overrides = HashMap::new();
+        overrides.insert("title".to_owned(), serde_json::json!(42i64));
+        let composition = Composition {
+            additional_sections: Vec::new(),
+            base_template: "base".to_owned(),
+            includes: Vec::new(),
+            variable_overrides: overrides,
+        };
+
+        // THEN validation reports a type mismatch
+        let result = composition.validate(&base);
+        assert!(matches!(
+            result,
+            Err(DomainError::VariableTypeMismatch { .. })
+        ));
     }
 }
