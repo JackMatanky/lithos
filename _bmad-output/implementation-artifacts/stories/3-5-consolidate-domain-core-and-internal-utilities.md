@@ -1,6 +1,6 @@
 # Story 3.5: Consolidate Domain Core and Internal Utilities
 
-Status: in-review
+Status: in-progress
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
@@ -111,28 +111,99 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 - [x] ✅ `thiserror` is used correctly for all error types
 - [x] **DECISION:** Keep separate error enums (ConfigError, DomainError) - they serve different bounded contexts
 
-### Task 4: Post-Refactoring Test Validation and Quality Assurance
-- [x] **CRITICAL:** Run `mise run test:unit` - ✅ ALL 116 tests pass without modification
-- [x] **Behavioral Verification:** ✅ Test output confirms no behavior changes occurred
-- [x] **Coverage Validation:** ✅ Coverage increased from 50.42% to 51.95% (705/1357 lines)
-- [x] Run `mise run lint` - ✅ Zero warnings
-- [x] Run `mise run verify` - ✅ All gates pass
-- [x] **HEXAGONAL CHECK:** ✅ Confirmed `crates/domain` has ZERO unauthorized external dependencies
+### Task 3.5: Restructure Domain into True Bounded Contexts (NEW - CRITICAL)
+**Objective:** Remove `models/` folder and organize domain by bounded contexts with each owning their events and errors.
 
-### Task 5: Quality Assurance and Commit (MANDATORY FINAL TASK)
-- [x] Run `mise run fmt` - ✅ Code formatted
-- [x] Run `mise run lint` - ✅ Zero warnings
-- [x] Run `mise run verify` - ✅ All tests pass
-- [x] Run `pre-commit run --all-files` - ✅ All hooks pass
-- [x] **CRITICAL:** ✅ Zero linter warnings
-- [x] **CLEANUP:** ✅ Deleted ALL temporary documentation artifacts:
-  - [x] ✅ Deleted `_bmad-output/domain-redundancy-audit.md`
-  - [x] ✅ Deleted `_bmad-output/domain-comprehensive-audit.md`
-  - [x] ✅ Deleted `_bmad-output/refactoring-architectural-review.md`
-  - [x] ✅ Deleted `_bmad-output/intelligent-dry-decisions.md`
-  - [x] ✅ Deleted `_bmad-output/domain-standardization-audit.md`
-- [x] Stage all files
-- [x] Commit with conventional commit message: `refactor: consolidate domain internal utilities and shared core logic`
+**Current Structure:**
+```
+src/
+├── errors.rs (all errors)
+├── events.rs (all events)
+├── models/
+│   ├── config.rs
+│   ├── note/
+│   ├── schema/
+│   └── template/
+└── validation.rs
+```
+
+**Target Structure:**
+```
+src/
+├── config/
+│   ├── mod.rs
+│   └── events.rs
+├── note/
+│   ├── mod.rs (or core.rs)
+│   ├── events.rs
+│   └── ... (frontmatter.rs, link.rs, etc.)
+├── schema/
+│   ├── mod.rs (or core.rs)
+│   ├── events.rs
+│   └── ... (property.rs, resolver.rs, etc.)
+├── template/
+│   ├── mod.rs (or core.rs)
+│   ├── events.rs
+│   └── ... (composition.rs, variable.rs, etc.)
+├── errors.rs (all errors - ConfigError, DomainError - stays at root)
+├── validation.rs (cross-context utilities - stays at root)
+├── ports/ (organized by context or flatten)
+└── lib.rs
+```
+
+**Subtasks:**
+- [ ] **3.5.1:** Create new directory structure (config/, note/, schema/, template/)
+- [ ] **3.5.2:** Move models/config.rs → config/mod.rs
+- [ ] **3.5.3:** Extract ConfigUpdated event from events.rs → config/events.rs
+- [ ] **3.5.4:** Move models/note/* files to note/
+- [ ] **3.5.5:** Extract NoteCreated, FrontmatterValidated events from events.rs → note/events.rs
+- [ ] **3.5.6:** Move models/schema/* files to schema/
+- [ ] **3.5.7:** Extract SchemaCreated, PropertyBankUpdated events from events.rs → schema/events.rs
+- [ ] **3.5.8:** Move models/template/* files to template/
+- [ ] **3.5.9:** Extract TemplateCreated event from events.rs → template/events.rs
+- [ ] **3.5.10:** Remove models/ directory (should be empty now)
+- [ ] **3.5.11:** Delete old root events.rs (should be empty after extracting all context-specific events)
+- [ ] **3.5.12:** Keep errors.rs at root (no splitting - all errors stay together)
+- [ ] **3.5.13:** Keep validation.rs at root (cross-context utilities)
+- [ ] **3.5.14:** Update lib.rs module declarations (replace `pub mod models;` with `pub mod config;`, `pub mod note;`, etc.)
+- [ ] **3.5.15:** Update all imports across codebase (domain internal, app, adapters, tests)
+- [ ] **3.5.16:** Update ports/ if needed (likely no changes needed)
+- [ ] **3.5.17:** Run `mise run test:unit` and verify ALL tests still pass (behavior preservation)
+- [ ] **3.5.18:** Run `mise run lint` and fix any new warnings
+- [ ] **3.5.19:** Update documentation and module-level doc comments
+
+**Benefits:**
+- ✅ True bounded context isolation (each context owns models, events, errors)
+- ✅ Clearer ownership and easier navigation
+- ✅ Better encapsulation - contexts can evolve independently
+- ✅ DDD alignment - structure matches Domain-Driven Design principles
+- ✅ Future-proof - easy to extract a context into separate crate if needed
+
+**Considerations:**
+- All errors stay in root errors.rs (ConfigError, DomainError) - no splitting
+- Cross-context utilities (validation.rs) stay at root
+- Each context gets its own events.rs for context-specific events
+- Ports likely don't need changes (already organized)
+- This is a large refactor touching many files - test at each step
+- Main benefit: each bounded context owns its models and events in one place
+
+### Task 4: Post-Refactoring Test Validation and Quality Assurance (RESET)
+- [ ] **CRITICAL:** Run `mise run test:unit` and confirm ALL tests pass without modification
+- [ ] **Behavioral Verification:** Manually review test output to ensure no behavior changes occurred
+- [ ] **Coverage Validation:** Run `mise run test:coverage` and confirm coverage percentage is maintained or improved
+- [ ] Run `mise run lint` to verify compliance with complexity and quality rules
+- [ ] Run `mise run verify` for full gate check
+- [ ] **HEXAGONAL CHECK:** Confirm `crates/domain` still has ZERO unauthorized external dependencies
+
+### Task 5: Quality Assurance and Commit (MANDATORY FINAL TASK - RESET)
+- [ ] Run `mise run fmt` to format all code
+- [ ] Run `mise run lint` to check for all code quality issues
+- [ ] Run `mise run verify` for comprehensive verification
+- [ ] Run `pre-commit run --all-files` to execute all pre-commit hooks
+- [ ] **CRITICAL:** Fix ALL linter warnings - NO EXCEPTIONS
+- [ ] **CLEANUP:** Verify ALL temporary documentation artifacts deleted
+- [ ] Stage all files
+- [ ] Commit with conventional commit message: `refactor: consolidate domain into bounded contexts with shared utilities`
 
 ## Dev Notes
 
@@ -332,27 +403,35 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 **Total Impact:** ~120 lines of **legitimate** duplication eliminated
 
 ### Completion Notes
-**Status:** ✅ **COMPLETE** - All tasks finished successfully
-**Quality:** ✅ Production-ready - All tests passing, zero warnings, idiomatic Rust
-**Risk:** LOW - Behavior preserved, comprehensive test coverage, intelligent DRY applied
+**Status:** 🚧 **IN PROGRESS** - Tasks 0-3 complete, Task 3.5 (bounded context restructuring) in progress
+**Quality:** ✅ Production-ready code so far - All tests passing, zero warnings, idiomatic Rust
+**Risk:** LOW-MEDIUM - Task 3.5 is large refactor but test coverage ensures behavior preservation
 
-**Final Summary:**
+**Completed So Far (Tasks 0-3):**
 - ✅ Created `validation.rs` module with comprehensive shared utilities
 - ✅ Refactored Note bounded context to use shared path validation (-65 lines)
 - ✅ Standardized SchemaName and PropertyName format validation with LazyLock
 - ✅ Applied intelligent DRY principles (rejected template/property_spec consolidation)
 - ✅ Standardized lazy regex initialization pattern (LazyLock for static regexes)
-- ✅ Maintained hexagonal architecture (zero unauthorized dependencies)
+- ✅ Error handling reviewed (well-separated, no consolidation needed)
 - ✅ Coverage increased from 50.42% to 51.95%
 - ✅ All 116 tests passing
 - ✅ Zero clippy warnings
-- ✅ All temporary audit documents deleted
+
+**Remaining Work:**
+- 🚧 Task 3.5: Restructure domain into true bounded contexts (NEW - large refactor)
+  - Remove `models/` folder
+  - Each context owns its models, events, and errors
+  - Create `shared/` for cross-context utilities
+- 🚧 Task 4: Post-refactoring validation (RESET - must re-run after Task 3.5)
+- 🚧 Task 5: Quality assurance and commit (RESET - final commit after all work)
 
 **Key Architectural Decisions:**
 1. **Essential Sameness Only:** Only consolidated path validation (same business rule everywhere)
 2. **Bounded Context Autonomy:** Kept template/property_spec validation separate (different error semantics, validation rules)
 3. **LazyLock Standard:** Established LazyLock as the standard pattern for static regexes
 4. **Dynamic Caches Preserved:** Kept Mutex and thread_local caches for their specific use cases
+5. **NEW - True Bounded Contexts:** Each context (config, note, schema, template) owns all its code (models, events, errors)
 
 ## File List
 **New Files (Production):**
