@@ -104,6 +104,13 @@ impl Link {
         self.embed_type
     }
 
+    /// Returns true if this link stores an alias.
+    #[inline]
+    #[must_use]
+    pub fn has_alias(&self) -> bool {
+        self.alias.is_some()
+    }
+
     /// Returns true if this link represents an embedded content reference.
     #[inline]
     #[must_use]
@@ -269,5 +276,55 @@ impl Link {
             return Err(DomainError::EmptyLinkTarget);
         }
         Ok(path.into())
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Unit tests use unwrap for readability"
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn link_accessors_return_expected_values() {
+        // GIVEN a markdown link
+        let source_id = uuid::Uuid::now_v7();
+        let link = Link::new_markdown_link(
+            source_id,
+            "doc.md".to_owned(),
+            Some("Docs".to_owned()),
+            42,
+        )
+        .unwrap();
+
+        // THEN accessors expose the expected data
+        assert_eq!(link.source_note_id(), source_id);
+        assert_eq!(link.target_path(), "doc.md");
+        assert_eq!(link.alias(), Some("Docs"));
+        assert!(link.has_alias());
+        assert_eq!(link.link_type(), &LinkType::MdLink);
+        assert_eq!(link.embed_type(), None);
+        assert_eq!(link.position(), 42);
+        assert!(!link.is_embed());
+    }
+
+    #[test]
+    fn embed_accessors_expose_embed_metadata() {
+        // GIVEN an embed link
+        let source_id = uuid::Uuid::now_v7();
+        let embed = Link::new_embed(
+            source_id,
+            "image.png".to_owned(),
+            EmbedType::Image,
+            12,
+        )
+        .unwrap();
+
+        // THEN embed accessors reflect embed-specific state
+        assert_eq!(embed.link_type(), &LinkType::Embed);
+        assert_eq!(embed.embed_type(), Some(EmbedType::Image));
+        assert!(embed.is_embed());
     }
 }

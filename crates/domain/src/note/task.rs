@@ -101,11 +101,27 @@ impl Task {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Unit tests use unwrap for readability"
+)]
 mod tests {
     use super::*;
 
     mod new {
         use super::*;
+
+        #[test]
+        fn accessors_return_expected_values() {
+            // GIVEN a task
+            let task = Task::new("Review".to_owned(), TaskStatus::Cancelled, 5)
+                .unwrap();
+
+            // THEN accessors return expected values
+            assert_eq!(task.text(), "Review");
+            assert_eq!(task.status(), TaskStatus::Cancelled);
+            assert_eq!(task.position(), 5);
+        }
 
         #[test]
         fn succeeds_for_valid_input() {

@@ -164,11 +164,26 @@ impl Section {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Unit tests use unwrap for readability"
+)]
 mod tests {
     use super::*;
 
     mod heading {
         use super::*;
+
+        #[test]
+        fn accessors_return_expected_values() {
+            // GIVEN a heading
+            let heading = Heading::new(3, "Summary".to_owned(), 22).unwrap();
+
+            // THEN accessors expose fields
+            assert_eq!(heading.level(), 3);
+            assert_eq!(heading.text(), "Summary");
+            assert_eq!(heading.position(), 22);
+        }
 
         #[test]
         fn new_succeeds_for_valid_input() {
@@ -219,6 +234,19 @@ mod tests {
 
     mod section {
         use super::*;
+
+        #[test]
+        fn accessors_return_expected_values() {
+            // GIVEN a section with heading
+            let heading = Heading::new(1, "Intro".to_owned(), 0).unwrap();
+            let section =
+                Section::new(Some(heading.clone()), "Body".to_owned(), 0..4);
+
+            // THEN accessors return expected values
+            assert_eq!(section.content(), "Body");
+            assert_eq!(section.heading().unwrap().text(), "Intro");
+            assert_eq!(section.range(), 0..4);
+        }
 
         #[test]
         fn new_succeeds_for_valid_input() {
