@@ -165,11 +165,11 @@ mod tests {
             fn schema_graph_detects_arbitrary_cycles(
                 names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10)
             ) {
-                // GIVEN a set of unique schema names
+                // GIVEN: a set of unique schema names
                 let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
                 if unique_names.len() < 2 { return Ok(()); }
 
-                // WHEN creating a circular inheritance graph
+                // WHEN: creating a circular inheritance graph
                 let mut graph = Graph::new();
                 for i in 0..unique_names.len() {
                     let next = (i + 1) % unique_names.len();
@@ -178,7 +178,7 @@ mod tests {
                     graph.add_node(name, Some(next_name));
                 }
 
-                // THEN it must detect the circular inheritance
+                // THEN: it must detect the circular inheritance
                 let res = graph.resolve_order();
                 assert!(matches!(res, Err(DomainError::CircularInheritance(_))));
             }
@@ -191,10 +191,10 @@ mod tests {
             fn schema_graph_accepts_arbitrary_lineage(
                 names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10)
             ) {
-                // GIVEN a set of unique schema names
+                // GIVEN: a set of unique schema names
                 let unique_names: Vec<_> = names.into_iter().collect::<BTreeSet<_>>().into_iter().collect();
 
-                // WHEN creating a valid linear inheritance graph
+                // WHEN: creating a valid linear inheritance graph
                 let mut graph = Graph::new();
                 for i in 0..unique_names.len() {
                     let name = SchemaName::new(unique_names[i].clone()).unwrap();
@@ -202,7 +202,7 @@ mod tests {
                     graph.add_node(name, parent);
                 }
 
-                // THEN it must succeed and return the correct order
+                // THEN: it must succeed and return the correct order
                 let res = graph.resolve_order();
                 assert!(res.is_ok());
                 if let Ok(order) = res {
@@ -220,15 +220,15 @@ mod tests {
     /// Priority: P0.
     #[test]
     fn detects_circular_inheritance() {
-        // GIVEN a simple circular dependency between two schemas
+        // GIVEN: a simple circular dependency between two schemas
         let mut graph = Graph::new();
         graph.add_node("a".try_into().unwrap(), Some("b".try_into().unwrap()));
         graph.add_node("b".try_into().unwrap(), Some("a".try_into().unwrap()));
 
-        // WHEN resolving the order
+        // WHEN: resolving the order
         let res = graph.resolve_order();
 
-        // THEN it must return a CircularInheritance error
+        // THEN: it must return a CircularInheritance error
         assert!(matches!(res, Err(DomainError::CircularInheritance(_))));
     }
 
@@ -236,7 +236,7 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn determines_topological_resolution_order() {
-        // GIVEN a linear inheritance: child -> parent
+        // GIVEN: a linear inheritance: child -> parent
         let mut graph = Graph::new();
         graph.add_node(
             "child".try_into().unwrap(),
@@ -244,10 +244,10 @@ mod tests {
         );
         graph.add_node("parent".try_into().unwrap(), None);
 
-        // WHEN resolving the order
+        // WHEN: resolving the order
         let order = graph.resolve_order().unwrap();
 
-        // THEN it should return parent before child
+        // THEN: it should return parent before child
         assert_eq_detailed!(
             order,
             vec!["parent".try_into().unwrap(), "child".try_into().unwrap()]

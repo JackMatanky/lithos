@@ -531,18 +531,18 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn is_idempotent_on_identical_registration() {
-        // GIVEN a PropertyBank and an existing property
+        // GIVEN: a PropertyBank and an existing property
         let mut bank = PropertyBank::new();
         let spec = PropertySpec::String(StringSpec::default());
         let name = PropertyName::new("test".to_owned()).unwrap();
         let prop =
             Property::new(Uuid::now_v7(), name, false, false, spec).unwrap();
 
-        // WHEN registering the same property twice
+        // WHEN: registering the same property twice
         bank.register(prop.clone()).unwrap();
         bank.register(prop).unwrap();
 
-        // THEN the count remains 1
+        // THEN: the count remains 1
         assert_eq!(bank.all().count(), 1);
     }
 
@@ -550,7 +550,7 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn maintains_dual_indices_for_fast_lookup() {
-        // GIVEN a PropertyBank and a Property definition
+        // GIVEN: a PropertyBank and a Property definition
         let mut bank = PropertyBank::new();
         let spec = PropertySpec::String(StringSpec::default());
         let name_str = "test".to_owned();
@@ -558,10 +558,10 @@ mod tests {
         let id = Uuid::now_v7();
         let prop = Property::new(id, name, false, false, spec).unwrap();
 
-        // WHEN registering the property
+        // WHEN: registering the property
         bank.register(prop).unwrap();
 
-        // THEN it should be accessible by both ID and name
+        // THEN: it should be accessible by both ID and name
         assert!(bank.get_by_id(id).is_some());
         assert!(bank.get_by_name("test").is_some());
     }
@@ -570,7 +570,7 @@ mod tests {
     /// Priority: P1.
     #[test]
     fn rejects_duplicate_names_with_different_definitions() {
-        // GIVEN a PropertyBank with a registered property
+        // GIVEN: a PropertyBank with a registered property
         let mut bank = PropertyBank::new();
         let spec1 = PropertySpec::String(StringSpec::default());
         let name = PropertyName::new("test".to_owned()).unwrap();
@@ -579,19 +579,19 @@ mod tests {
                 .unwrap();
         bank.register(prop1).unwrap();
 
-        // WHEN registering a different definition with the same name
+        // WHEN: registering a different definition with the same name
         let spec2 = PropertySpec::Bool(BoolSpec::default());
         let prop2 =
             Property::new(Uuid::now_v7(), name, false, false, spec2).unwrap();
         let res = bank.register(prop2);
 
-        // THEN it must return a DuplicatePropertyName error
+        // THEN: it must return a DuplicatePropertyName error
         assert!(matches!(res, Err(DomainError::DuplicatePropertyName(_))));
     }
 
     #[test]
     fn schema_accessors_return_expected_values() {
-        // GIVEN a schema with properties
+        // GIVEN: a schema with properties
         let name = SchemaName::new("status".to_owned()).unwrap();
         let property = Property::new(
             Uuid::now_v7(),
@@ -603,7 +603,7 @@ mod tests {
         .unwrap();
         let schema = Schema::new(Uuid::now_v7(), name, vec![property]).unwrap();
 
-        // THEN accessor methods return expected values
+        // THEN: accessor methods return expected values
         assert_eq!(schema.name().as_str(), "status");
         assert_eq!(schema.name().as_ref(), "status");
         assert_eq!(schema.name().to_string(), "status");
@@ -615,7 +615,7 @@ mod tests {
 
     #[test]
     fn property_bank_accessors_cover_ids_and_names() {
-        // GIVEN a property bank with an inserted property
+        // GIVEN: a property bank with an inserted property
         let mut bank = PropertyBank::new();
         let property = Property::new(
             Uuid::now_v7(),
@@ -628,7 +628,7 @@ mod tests {
         let id = property.id();
         bank.register(property).unwrap();
 
-        // THEN accessors for id/name work
+        // THEN: accessors for id/name work
         assert!(bank.has_id(id));
         assert!(bank.has_name("flag"));
         assert!(bank.get_by_id(id).is_some());
