@@ -94,6 +94,13 @@ impl PropertySpec {
     ///
     /// # Errors
     /// Returns `DomainError` if validation fails.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{PropertySpec, BoolSpec};
+    /// let spec = PropertySpec::Bool(BoolSpec::default());
+    /// spec.validate(&serde_json::json!(true)).unwrap();
+    /// ```
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
@@ -152,6 +159,13 @@ impl PropertySpec {
     ///
     /// # Errors
     /// Returns `DomainError` if the spec definition is invalid.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{PropertySpec, StringSpec};
+    /// let spec = PropertySpec::String(StringSpec::default());
+    /// spec.validate_spec().unwrap();
+    /// ```
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,

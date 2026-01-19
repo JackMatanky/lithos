@@ -148,6 +148,13 @@ impl Frontmatter {
     /// # Errors
     ///
     /// Returns `ConfigError::ValidationFailed` if any frontmatter key is empty.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::FrontmatterConfig;
+    /// let frontmatter = FrontmatterConfig::default();
+    /// frontmatter.validate().unwrap();
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         let fields = [
@@ -194,6 +201,13 @@ impl Logging {
     /// # Errors
     ///
     /// Returns `ConfigError::InvalidEnumValue` if `log_level` is not one of: debug, info, warn, error.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::LoggingConfig;
+    /// let logging = LoggingConfig::default();
+    /// logging.validate().unwrap();
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         let valid_levels = ["debug", "info", "warn", "error"];

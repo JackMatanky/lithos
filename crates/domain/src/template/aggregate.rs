@@ -85,6 +85,37 @@ impl Template {
     ///
     /// # Errors
     /// Returns `DomainError::ValidationFailed` if composition validation fails.
+    ///
+    /// # Examples
+    /// ```ignore
+    /// # use lithos_domain::{Template, TemplateComposition, TemplateMetadata, TemplateSection, InsertionPosition};
+    /// # use std::collections::HashMap;
+    /// # fn run() -> Result<(), lithos_domain::DomainError> {
+    /// let base = Template::new(
+    ///     "base".to_string(),
+    ///     "Hello {{name}}".to_string(),
+    ///     HashMap::new(),
+    ///     None,
+    ///     TemplateMetadata::default(),
+    /// )?;
+    /// let composition = TemplateComposition {
+    ///     additional_sections: vec![TemplateSection {
+    ///         name: "footer".to_string(),
+    ///         content: "--".to_string(),
+    ///         position: InsertionPosition::End,
+    ///     }],
+    ///     base_template: base.name().to_string(),
+    ///     includes: Vec::new(),
+    ///     variable_overrides: HashMap::new(),
+    /// };
+    /// let mut templates = HashMap::new();
+    /// templates.insert(base.name().to_string(), base.clone());
+    /// let composed = Template::compose(&base, &composition, &templates)?;
+    /// assert!(composed.extends().is_some());
+    /// # Ok(())
+    /// # }
+    /// # run().unwrap();
+    /// ```
     #[inline]
     pub fn compose(
         base: &Self,
@@ -313,6 +344,21 @@ impl Template {
     ///
     /// # Errors
     /// Returns `DomainError::ValidationFailed` if placeholders are unbalanced.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Template, TemplateMetadata};
+    /// # use std::collections::HashMap;
+    /// let template = Template::new(
+    ///     "basic".to_string(),
+    ///     "Hello {{name}}".to_string(),
+    ///     HashMap::new(),
+    ///     None,
+    ///     TemplateMetadata::default(),
+    /// )
+    /// .unwrap();
+    /// template.validate().unwrap();
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
         validate_structure(

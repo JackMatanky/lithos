@@ -38,6 +38,13 @@ impl Metadata {
     }
 
     /// Create vault metadata with defaults derived from vault path.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::VaultMetadata;
+    /// let metadata = VaultMetadata::new("/vaults/work".to_string());
+    /// assert_eq!(metadata.vault_path, "/vaults/work");
+    /// ```
     #[inline]
     #[must_use]
     pub fn new(vault_path: String) -> Self {
@@ -68,6 +75,12 @@ impl Metadata {
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::VaultMetadata;
+    /// VaultMetadata::validate_vault_path("/vault").unwrap();
+    /// ```
     #[inline]
     pub fn validate_vault_path(
         vault_path: &str,
