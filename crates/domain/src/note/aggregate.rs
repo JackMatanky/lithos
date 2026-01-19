@@ -274,45 +274,69 @@ mod tests {
 
         #[test]
         fn returns_error_when_path_is_empty() {
+            // GIVEN: an empty vault path
             let test_id = Uuid::now_v7();
+
+            // WHEN: creating a note with an empty path
             let result = Note::new(test_id, String::new());
+
+            // THEN: the constructor rejects the path
             assert!(matches!(result, Err(DomainError::EmptyPath)));
         }
 
         #[test]
         fn returns_error_when_path_is_absolute() {
+            // GIVEN: an absolute vault path
             let test_id = Uuid::now_v7();
+
+            // WHEN: creating a note with an absolute path
             let result = Note::new(test_id, "/absolute/path.md".to_owned());
+
+            // THEN: the constructor rejects the path
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
         #[test]
         fn returns_error_when_path_contains_traversal() {
+            // GIVEN: a vault path with traversal
             let test_id = Uuid::now_v7();
+
+            // WHEN: creating a note with traversal in the path
             let result = Note::new(test_id, "../etc/passwd".to_owned());
+
+            // THEN: the constructor rejects the path
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
         #[test]
         fn returns_error_when_path_missing_md_extension() {
+            // GIVEN: a path without a markdown extension
             let test_id = Uuid::now_v7();
+
+            // WHEN: creating a note with a non-markdown path
             let result = Note::new(test_id, "projects/lithos".to_owned());
+
+            // THEN: the constructor rejects the path
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test fixture creation")]
         fn generates_sequential_uuids() {
+            // GIVEN: a paused tokio runtime for deterministic UUID time
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_time()
                 .start_paused(true)
                 .build()
                 .unwrap();
 
+            // WHEN: creating notes across advanced time
             rt.block_on(async {
                 let note1 = Note::new(Uuid::now_v7(), "one.md".into()).unwrap();
                 tokio::time::advance(Duration::from_millis(10)).await;
                 let note2 = Note::new(Uuid::now_v7(), "two.md".into()).unwrap();
+
+                // THEN: later UUIDs sort after earlier ones
                 assert!(note2.id() > note1.id());
             });
         }
@@ -324,6 +348,7 @@ mod tests {
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn succeeds_when_all_entities_are_valid() {
+            // GIVEN: a note aggregate with consistent sub-entities
             let note_id = Uuid::now_v7();
             let note = NoteBuilder::new()
                 .id(note_id)
@@ -338,12 +363,17 @@ mod tests {
                 ])
                 .build();
 
-            note.validate().unwrap();
+            // WHEN: validating the aggregate
+            let result = note.validate();
+
+            // THEN: validation succeeds
+            result.unwrap();
         }
 
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn returns_error_when_link_source_note_id_mismatch() {
+            // GIVEN: a note with a link from a different source ID
             let note_id = Uuid::now_v7();
             let other_id = Uuid::now_v7();
             let note = NoteBuilder::new()
@@ -354,10 +384,11 @@ mod tests {
                 ])
                 .build();
 
-            assert!(matches!(
-                note.validate(),
-                Err(DomainError::ValidationFailed(_))
-            ));
+            // WHEN: validating the aggregate
+            let result = note.validate();
+
+            // THEN: validation fails with a mismatch error
+            assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
         }
     }
 
