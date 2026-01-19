@@ -19,17 +19,16 @@ use crate::errors::DomainError;
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::{SchemaResolver, RawSchema, SchemaName, PropertyBank};
-/// use std::collections::HashSet;
-/// use uuid::Uuid;
-///
+/// # use lithos_domain::{RawSchema, SchemaName, PropertyBank, SchemaResolver};
+/// # use std::collections::HashSet;
+/// # use uuid::Uuid;
 /// let bank = PropertyBank::new();
 /// let raw = RawSchema::new(
 ///     Uuid::now_v7(),
 ///     SchemaName::new("test".into()).unwrap(),
 ///     None,
 ///     HashSet::new(),
-///     vec![],
+///     Vec::new(),
 /// );
 ///
 /// let schema = SchemaResolver::resolve(raw, None, &bank).unwrap();

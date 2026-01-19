@@ -263,11 +263,10 @@ impl Schema {
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::PropertyBank;
-/// use lithos_domain::{Property, PropertyName};
-/// use lithos_domain::{PropertySpec, BoolSpec};
-/// use uuid::Uuid;
-///
+/// # use lithos_domain::PropertyBank;
+/// # use lithos_domain::{Property, PropertyName};
+/// # use lithos_domain::{PropertySpec, BoolSpec};
+/// # use uuid::Uuid;
 /// let mut bank = PropertyBank::new();
 /// let name = PropertyName::new("is_active".to_string()).unwrap();
 /// let spec = PropertySpec::Bool(BoolSpec::default());
