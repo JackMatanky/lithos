@@ -330,14 +330,17 @@ mod tests {
 
     #[test]
     fn rejects_empty_link_targets() {
+        // GIVEN: an empty target path
         let source_id = uuid::Uuid::now_v7();
 
+        // WHEN: creating links or embeds with the empty target
         let embed =
             Link::new_embed(source_id, String::new(), EmbedType::Note, 1);
         let markdown =
             Link::new_markdown_link(source_id, String::new(), None, 2);
         let wiki = Link::new_wikilink(source_id, String::new(), None, 3);
 
+        // THEN: all constructors return an EmptyLinkTarget error
         assert!(matches!(embed, Err(DomainError::EmptyLinkTarget)));
         assert!(matches!(markdown, Err(DomainError::EmptyLinkTarget)));
         assert!(matches!(wiki, Err(DomainError::EmptyLinkTarget)));

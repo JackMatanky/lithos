@@ -116,7 +116,7 @@ mod tests {
 
     #[test]
     fn rejects_trusted_vaults_with_list_and_map() {
-        // GIVEN trusted vaults configured with both list and map formats
+        // GIVEN: trusted vaults configured with both list and map formats
         let trusted = TrustedVaults {
             list: Some(vec!["/vaults/alpha".to_owned()]),
             map: Some(
@@ -126,10 +126,10 @@ mod tests {
             ),
         };
 
-        // WHEN validating the trusted vault configuration
+        // WHEN: validating the trusted vault configuration
         let result = trusted.validate();
 
-        // THEN validation fails because formats are mixed
+        // THEN: validation fails because formats are mixed
         assert!(
             result.is_err(),
             "Expected validation failure when list and map are both set"
@@ -138,16 +138,16 @@ mod tests {
 
     #[test]
     fn rejects_trusted_vaults_with_no_entries() {
-        // GIVEN trusted vaults configured with no list or map
+        // GIVEN: trusted vaults configured with no list or map
         let trusted = TrustedVaults {
             list: None,
             map: None,
         };
 
-        // WHEN validating the trusted vault configuration
+        // WHEN: validating the trusted vault configuration
         let result = trusted.validate();
 
-        // THEN validation fails because no format is provided
+        // THEN: validation fails because no format is provided
         assert!(
             result.is_err(),
             "Expected validation failure when no trusted vaults are provided"
@@ -156,16 +156,16 @@ mod tests {
 
     #[test]
     fn accepts_trusted_vaults_with_list_only() {
-        // GIVEN trusted vaults configured with list format
+        // GIVEN: trusted vaults configured with list format
         let trusted = TrustedVaults {
             list: Some(vec!["/vaults/alpha".to_owned()]),
             map: None,
         };
 
-        // WHEN validating the trusted vault configuration
+        // WHEN: validating the trusted vault configuration
         let result = trusted.validate();
 
-        // THEN validation succeeds
+        // THEN: validation succeeds
         #[expect(
             clippy::disallowed_methods,
             reason = "Test validation uses unwrap for clarity"
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn accepts_trusted_vaults_with_map_only() {
-        // GIVEN trusted vaults configured with map format
+        // GIVEN: trusted vaults configured with map format
         let trusted = TrustedVaults {
             list: None,
             map: Some(
@@ -185,10 +185,10 @@ mod tests {
             ),
         };
 
-        // WHEN validating the trusted vault configuration
+        // WHEN: validating the trusted vault configuration
         let result = trusted.validate();
 
-        // THEN validation succeeds
+        // THEN: validation succeeds
         #[expect(
             clippy::disallowed_methods,
             reason = "Test validation uses unwrap for clarity"
@@ -198,13 +198,13 @@ mod tests {
 
     #[test]
     fn filesystem_validate_passes_with_defaults() {
-        // GIVEN a default filesystem config
+        // GIVEN: a default filesystem config
         let filesystem = super::Filesystem::default();
 
-        // WHEN validating
+        // WHEN: validating
         let result = filesystem.validate();
 
-        // THEN it succeeds
+        // THEN: it succeeds
         #[expect(
             clippy::disallowed_methods,
             reason = "Test validation uses unwrap for clarity"
@@ -214,10 +214,10 @@ mod tests {
 
     #[test]
     fn global_defaults_have_expected_shape() {
-        // GIVEN default global config
+        // GIVEN: default global config
         let global = super::Global::default();
 
-        // THEN default structures are populated
+        // THEN: default structures are populated
         assert!(global.trusted_vaults.is_none());
         assert_eq!(global.logging.log_level, "info");
     }

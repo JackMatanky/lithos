@@ -385,15 +385,15 @@ mod tests {
             reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
         )]
         fn vault_values_take_precedence_over_global() {
-            // GIVEN a global config with default settings and a vault config with custom overrides
+            // GIVEN: a global config with default settings and a vault config with custom overrides
             let global = sample_global_config();
             let vault = sample_vault_config();
 
-            // WHEN merging vault and global configs
+            // WHEN: merging vault and global configs
             let merged = Config::build(Some(&global), "/vault", vault)
                 .expect("Config build should succeed with valid sample data");
 
-            // THEN vault values override global defaults
+            // THEN: vault values override global defaults
             assert_eq!(
                 merged.vault_filesystem().template.templates_dir,
                 "custom_templates",
@@ -418,7 +418,7 @@ mod tests {
 
         #[test]
         fn falls_back_to_defaults_when_inputs_are_empty() {
-            // GIVEN configs with empty fields that should fall back to system defaults
+            // GIVEN: configs with empty fields that should fall back to system defaults
             let global = Global {
                 filesystem: global::Filesystem {
                     schema: Schema {
@@ -457,16 +457,16 @@ mod tests {
                 logging: None,
             };
 
-            // WHEN merging the configs
+            // WHEN: merging the configs
             let result = Config::build(Some(&global), "/vault", vault);
 
-            // THEN merge should succeed and apply system defaults
+            // THEN: merge should succeed and apply system defaults
             assert!(
                 result.is_ok(),
                 "Merge with empty values should succeed, got: {result:?}"
             );
 
-            // THEN defaults are applied to merged configuration
+            // THEN: defaults are applied to merged configuration
             if let Ok(config) = result {
                 // Verify defaults were applied to vault filesystem
                 assert_eq!(
@@ -514,18 +514,18 @@ mod tests {
 
         #[test]
         fn merge_is_idempotent() {
-            // GIVEN the same global and vault configs
+            // GIVEN: the same global and vault configs
             let global = sample_global_config();
             let vault = sample_vault_config();
 
-            // WHEN merging the same inputs multiple times
+            // WHEN: merging the same inputs multiple times
             let result1 = Config::build(Some(&global), "/vault", vault.clone());
             assert!(result1.is_ok(), "First merge should succeed");
 
             let result2 = Config::build(Some(&global), "/vault", vault);
             assert!(result2.is_ok(), "Second merge should succeed");
 
-            // THEN results should be identical
+            // THEN: results should be identical
             if let (Ok(merged1), Ok(merged2)) = (result1, result2) {
                 assert_eq!(
                     merged1, merged2,
@@ -549,7 +549,7 @@ mod tests {
             #[case] level: &str,
             #[case] expected_error_field: Option<&str>,
         ) {
-            // GIVEN a vault config with specific field values
+            // GIVEN: a vault config with specific field values
             let global = sample_global_config();
             let vault = Vault {
                 filesystem: vault::Filesystem {
@@ -563,10 +563,10 @@ mod tests {
                 }),
             };
 
-            // WHEN attempting to merge the configs
+            // WHEN: attempting to merge the configs
             let result = Config::build(Some(&global), path, vault);
 
-            // THEN validation should succeed or fail as expected
+            // THEN: validation should succeed or fail as expected
             match expected_error_field {
                 None => {
                     assert!(
@@ -619,18 +619,18 @@ mod tests {
 
         #[test]
         fn supports_clone_debug_and_partial_eq() {
-            // GIVEN a merged configuration built from valid fixtures
+            // GIVEN: a merged configuration built from valid fixtures
             let global = sample_global_config();
             let vault = sample_vault_config();
 
-            // WHEN building the configuration
+            // WHEN: building the configuration
             let result1 = Config::build(Some(&global), "/vault", vault.clone());
             assert!(
                 result1.is_ok(),
                 "First merge for trait verification failed: {result1:?}"
             );
 
-            // THEN debug/clone/eq traits behave as expected
+            // THEN: debug/clone/eq traits behave as expected
             if let Ok(config) = result1 {
                 let debug_str = format!("{config:?}");
                 assert!(
@@ -660,11 +660,11 @@ mod tests {
 
         #[test]
         fn merge_performance_meets_target() {
-            // GIVEN valid global and vault configs
+            // GIVEN: valid global and vault configs
             let global = sample_global_config();
             let vault = sample_vault_config();
 
-            // WHEN performing 1000 merge operations
+            // WHEN: performing 1000 merge operations
             let start = std::time::Instant::now();
             for _ in 0i32..1000i32 {
                 debug_assert!(
@@ -675,7 +675,7 @@ mod tests {
             let total_duration = start.elapsed();
             let avg_duration = total_duration / 1000;
 
-            // THEN average merge time meets the performance target
+            // THEN: average merge time meets the performance target
             assert!(
                 avg_duration < std::time::Duration::from_micros(100),
                 "Config::build performance degraded: {}μs per operation (target: <100μs)",
