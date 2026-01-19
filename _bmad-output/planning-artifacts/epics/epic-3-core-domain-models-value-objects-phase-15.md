@@ -14,14 +14,14 @@ Developers have a clear, shared domain language with rich domain models that emb
 ## Story 3.1: Create Config Bounded Context
 
 As a developer managing application configuration,
-I want a Config domain model with business rules for merging Vault and Global configurations,
-So that configuration changes are validated and the domain enforces configuration integrity.
+I want a Config domain model with Global → Vault hierarchy, optional schema versions, and flexible trusted vaults,
+So that configuration supports quick use (no config required) while enabling advanced features for power users.
 
 **Acceptance Criteria:**
 
 **Given** I have researched configuration merging patterns
 **When** I review the Config bounded context
-**Then** Config supports merging VaultConfig and GlobalConfig with business rules
+**Then** Config supports merging VaultConfig and GlobalConfig with business rules (Vault > Global precedence)
 
 **Given** Config entity is defined
 **When** I check validation integration
@@ -37,7 +37,23 @@ So that configuration changes are validated and the domain enforces configuratio
 
 **Given** hierarchical merging is needed
 **When** I implement merging in domain
-**Then** vault-level config overrides global-level (Vault > Global business rule)
+**Then** vault-level config overrides global-level (Global → Vault two-tier system, optional global config)
+
+**Given** schema versioning is needed
+**When** I implement vault config
+**Then** schema_version is optional and defaults to current Lithos binary version for quick use
+
+**Given** vault naming is needed
+**When** I implement vault metadata
+**Then** vault name defaults to directory basename (e.g., `/vaults/work` → "work")
+
+**Given** trusted vaults are needed
+**When** I implement global config
+**Then** trusted_vaults supports list format OR map format (not both) with validation
+
+**Given** global templates are needed
+**When** I implement global config
+**Then** global config supports schemas_dir and templates_dir for global template library
 
 **Given** CQRS separation is needed
 **When** I define ports
