@@ -77,7 +77,7 @@ impl Note {
 
     /// Adds a domain event to the pending events collection.
     #[inline]
-    fn add_event(&mut self, event: NoteEvents) {
+    pub fn add_event(&mut self, event: NoteEvents) {
         self.pending_events.push(event);
     }
 
@@ -264,8 +264,15 @@ impl Note {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "Test module organization"
+)]
 mod tests {
     use super::*;
+    use crate::note::{
+        frontmatter::FieldValue, link::EmbedType, task::TaskStatus,
+    };
 
     mod new {
         use tokio::time::Duration;
@@ -389,6 +396,87 @@ mod tests {
 
             // THEN: validation fails with a mismatch error
             assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
+        }
+
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn returns_error_when_embed_source_note_id_mismatch() {
+            // GIVEN: a note with an embed from a different source ID
+            let note_id = Uuid::now_v7();
+            let other_id = Uuid::now_v7();
+            let note = NoteBuilder::new()
+                .id(note_id)
+                .embeds(vec![
+                    Link::new_embed(
+                        other_id,
+                        "img.png".to_owned(),
+                        EmbedType::Image,
+                        0,
+                    )
+                    .expect("Valid target"),
+                ])
+                .build();
+
+            // WHEN: validating the aggregate
+            let result = note.validate();
+
+            // THEN: validation fails with a mismatch error
+            assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
+        }
+    }
+
+    mod accessors {
+        use super::*;
+
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn mutators_update_aggregate_state() {
+            // GIVEN: a basic note
+            let note_id = Uuid::now_v7();
+            let mut note = Note::new(note_id, "note.md".to_owned()).unwrap();
+
+            // WHEN: adding various sub-entities
+            note.add_tag(Tag::parse("#test").unwrap());
+            note.add_heading(Heading::new(1, "H1".into(), 0).unwrap());
+            note.add_task(
+                Task::new("Task".into(), TaskStatus::Incomplete, 0).unwrap(),
+            );
+            note.add_section(Section::new(None, "Body".into(), 0..4));
+            note.add_link(
+                Link::new_wikilink(Uuid::nil(), "link.md".into(), None, 0)
+                    .unwrap(),
+            );
+            note.add_embed(
+                Link::new_embed(
+                    Uuid::nil(),
+                    "img.png".into(),
+                    EmbedType::Image,
+                    0,
+                )
+                .unwrap(),
+            );
+
+            let fm_fields =
+                [("title".to_owned(), FieldValue::String("Title".into()))]
+                    .into_iter()
+                    .collect();
+            note.set_frontmatter(Some(Frontmatter::new(fm_fields).unwrap()));
+
+            // THEN: the aggregate state is updated correctly
+            assert_eq!(note.tags().len(), 1);
+            assert_eq!(note.headings().len(), 1);
+            assert_eq!(note.tasks().len(), 1);
+            assert_eq!(note.sections().len(), 1);
+            assert_eq!(note.links().len(), 1);
+            assert_eq!(note.embeds().len(), 1);
+            assert!(note.frontmatter().is_some());
+
+            // AND: link/embed source IDs were fixed to the aggregate ID
+            assert_eq!(note.links().first().unwrap().source_note_id(), note_id);
+            assert_eq!(
+                note.embeds().first().unwrap().source_note_id(),
+                note_id
+            );
         }
     }
 

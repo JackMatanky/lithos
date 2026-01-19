@@ -741,21 +741,129 @@ mod tests {
     }
 
     #[test]
-    fn is_methods_identify_variants() {
-        // GIVEN: field values of different types
-        let string_val = FieldValue::String("test".to_owned());
-        let number_val = FieldValue::Number(42.0);
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test setup uses unwrap for clarity"
+    )]
+    fn accessors_handle_configured_keys() {
+        // GIVEN: a custom config
+        let mut global = crate::GlobalConfig::default();
+        global.frontmatter.title_key = "subject".to_owned();
+        global.frontmatter.file_class_key = "kind".to_owned();
+        global.frontmatter.alias_key = "names".to_owned();
+        let config = crate::Config::build(
+            Some(&global),
+            "/v",
+            crate::VaultConfig::default(),
+        )
+        .unwrap();
+
+        // AND: frontmatter with matching fields
+        let mut fields = HashMap::new();
+        fields.insert("subject".to_owned(), FieldValue::String("Subj".into()));
+        fields.insert("kind".to_owned(), FieldValue::String("Note".into()));
+        fields.insert("names".to_owned(), FieldValue::String("Alias".into()));
+        let fm = Frontmatter::new(fields).unwrap();
+
+        // THEN: accessors use the configured keys
+        assert_eq!(fm.title(&config), "Subj");
+        assert_eq!(fm.file_class(&config), "Note");
+        assert_eq!(fm.aliases(&config), vec!["Alias".to_owned()]);
+    }
+
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test setup uses unwrap for clarity"
+    )]
+    fn get_as_performs_type_conversion() {
+        // GIVEN: frontmatter with various types
+        let mut fields = HashMap::new();
+        fields.insert("s".to_owned(), FieldValue::String("text".into()));
+        fields.insert("b".to_owned(), FieldValue::Boolean(true));
+        fields.insert("n".to_owned(), FieldValue::Number(1.5f64));
+        let fm = Frontmatter::new(fields).unwrap();
+
+        // THEN: get_as converts to expected types
+        assert_eq!(fm.get_as::<String>("s"), Some("text".to_owned()));
+        assert_eq!(fm.get_as::<bool>("b"), Some(true));
+        assert_eq!(fm.get_as::<f64>("n"), Some(1.5f64));
+
+        // AND: returns None for mismatch
+        assert_eq!(fm.get_as::<bool>("s"), None);
+    }
+
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test setup uses unwrap for clarity"
+    )]
+    fn get_string_array_handles_single_and_multiple() {
+        // GIVEN: frontmatter with single string and array of strings
+        let mut fields = HashMap::new();
+        fields.insert("single".to_owned(), FieldValue::String("a".into()));
+        fields.insert(
+            "multi".to_owned(),
+            FieldValue::Array(vec![FieldValue::String("b".into())]),
+        );
+        let fm = Frontmatter::new(fields).unwrap();
+
+        // THEN: both are returned as vectors
+        assert_eq!(fm.get_string_array("single"), Some(vec!["a".to_owned()]));
+        assert_eq!(fm.get_string_array("multi"), Some(vec!["b".to_owned()]));
+    }
+
+    #[test]
+    fn field_value_coercion_covers_all_variants() {
+        // GIVEN: all field value variants
+        let arr_val = FieldValue::Array(vec![FieldValue::Boolean(true)]);
         let bool_val = FieldValue::Boolean(true);
+        let date_val = FieldValue::Date(Utc::now());
+        let num_val = FieldValue::Number(1.0f64);
+        let mut obj_map = HashMap::new();
+        obj_map.insert("k".to_owned(), FieldValue::Boolean(false));
+        let obj_val = FieldValue::Object(obj_map);
+        let str_val = FieldValue::String("s".into());
 
-        // WHEN: checking variant types
-        // THEN: they identify correctly
-        assert!(string_val.is_string());
-        assert!(!string_val.is_number());
+        // THEN: as_* methods correctly identify variants
+        assert!(arr_val.as_array().is_some());
+        assert!(bool_val.as_bool().is_some());
+        assert!(date_val.as_date().is_some());
+        assert!(num_val.as_number().is_some());
+        assert!(obj_val.as_object().is_some());
+        assert!(str_val.as_str().is_some());
 
-        assert!(number_val.is_number());
-        assert!(!number_val.is_string());
+        // AND: as_* methods return None for wrong variants
+        assert!(arr_val.as_bool().is_none());
+        assert!(bool_val.as_array().is_none());
+        assert!(date_val.as_number().is_none());
+        assert!(num_val.as_date().is_none());
+        assert!(obj_val.as_str().is_none());
+        assert!(str_val.as_object().is_none());
+    }
 
-        assert!(bool_val.is_bool());
-        assert!(!bool_val.is_string());
+    #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "Test setup uses unwrap for clarity"
+    )]
+    fn get_typed_helpers_retrieve_values() {
+        // GIVEN: frontmatter with various fields
+        let mut fields = HashMap::new();
+        fields.insert("b".to_owned(), FieldValue::Boolean(true));
+        fields.insert("n".to_owned(), FieldValue::Number(1.0f64));
+        fields.insert("s".to_owned(), FieldValue::String("s".into()));
+        fields.insert("d".to_owned(), FieldValue::Date(Utc::now()));
+        let fm = Frontmatter::new(fields).unwrap();
+
+        // THEN: typed helpers work
+        assert_eq!(fm.get_bool("b"), Some(true));
+        assert_eq!(fm.get_number("n"), Some(1.0f64));
+        assert_eq!(fm.get_str("s"), Some("s"));
+        assert!(fm.get_date("d").is_some());
+
+        // AND: return None for missing or wrong type
+        assert!(fm.get_bool("missing").is_none());
+        assert!(fm.get_bool("n").is_none());
     }
 }

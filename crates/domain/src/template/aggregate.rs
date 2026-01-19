@@ -563,4 +563,87 @@ mod tests {
             prop_assert!(result.is_ok());
         }
     }
+
+    #[test]
+    fn should_compose_templates_with_sections() {
+        // GIVEN: a base template and a composition
+        let base = Template::new(
+            "base".to_owned(),
+            "Base: {{v}}".to_owned(),
+            [(
+                "v".to_owned(),
+                VariableDefinition::Boolean {
+                    default: None,
+                },
+            )]
+            .into_iter()
+            .collect(),
+            None,
+            Metadata::default(),
+        )
+        .unwrap();
+
+        let composition = Composition {
+            base_template: "base".to_owned(),
+            additional_sections: vec![
+                Section {
+                    name: "top".to_owned(),
+                    content: "Header".to_owned(),
+                    position: InsertionPosition::Beginning,
+                },
+                Section {
+                    name: "bottom".to_owned(),
+                    content: "Footer".to_owned(),
+                    position: InsertionPosition::End,
+                },
+                Section {
+                    name: "mid".to_owned(),
+                    content: "Inside".to_owned(),
+                    position: InsertionPosition::AfterVariable("v".to_owned()),
+                },
+            ],
+            includes: vec![],
+            variable_overrides: [("v".to_owned(), serde_json::json!(true))]
+                .into_iter()
+                .collect(),
+        };
+
+        let templates =
+            [("base".to_owned(), base.clone())].into_iter().collect();
+
+        // WHEN: composing the template
+        let composed =
+            Template::compose(&base, &composition, &templates).unwrap();
+
+        // THEN: content is correctly assembled
+        assert!(composed.content().starts_with("Header\n"));
+        assert!(composed.content().ends_with("\nFooter"));
+        assert!(composed.content().contains("Base: {{v}}\nInside"));
+        assert_eq!(composed.extends(), Some("base"));
+    }
+
+    #[test]
+    fn apply_sections_handles_missing_variable() {
+        // GIVEN: a template without variables
+        let base = Template::new(
+            "b".to_owned(),
+            "no var".to_owned(),
+            HashMap::new(),
+            None,
+            Metadata::default(),
+        )
+        .unwrap();
+
+        // WHEN: applying a section relative to a missing variable
+        let mut content = "no var".to_owned();
+        let sections = vec![Section {
+            name: "s".to_owned(),
+            content: "cont".to_owned(),
+            position: InsertionPosition::AfterVariable("missing".to_owned()),
+        }];
+        base.apply_sections(&mut content, &sections);
+
+        // THEN: content remains unchanged
+        assert_eq!(content, "no var");
+    }
 }

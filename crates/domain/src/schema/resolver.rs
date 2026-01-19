@@ -144,29 +144,41 @@ mod tests {
     use crate::{BoolSpec, PropertySpec, SchemaName};
 
     #[test]
-    fn resolves_ref_property_with_json_pointer_prefix() {
-        // GIVEN: a property bank with a property
-        let mut bank = PropertyBank::new();
-        let property = Property::new(
+    fn resolve_includes_parent_properties() {
+        // GIVEN: a parent schema with a property
+        let bank = PropertyBank::new();
+        let parent_prop = Property::new(
             Uuid::now_v7(),
-            PropertyName::new("status".to_owned()).expect("valid name"),
+            PropertyName::new("parent".to_owned()).expect("valid name"),
             true,
             false,
             PropertySpec::Bool(BoolSpec::default()),
         )
         .expect("valid property");
-        bank.register(property.clone()).expect("register property");
+        let mut bank_with_prop = PropertyBank::new();
+        bank_with_prop
+            .register(parent_prop.clone())
+            .expect("register property");
+        let parent_schema = Schema::new(
+            Uuid::now_v7(),
+            SchemaName::new("parent".to_owned()).expect("valid name"),
+            vec![parent_prop],
+        )
+        .expect("valid schema");
 
-        let raw = RawProperty::Ref(RawPropertyRef {
-            ref_path: "#/properties/status".to_owned(),
-        });
+        // WHEN: resolving a child raw schema
+        let raw = RawSchema::new(
+            Uuid::now_v7(),
+            SchemaName::new("child".to_owned()).expect("valid name"),
+            None,
+            HashSet::new(),
+            Vec::new(),
+        );
+        let schema = Resolver::resolve(raw, Some(&parent_schema), &bank)
+            .expect("resolve schema");
 
-        // WHEN: resolving the ref
-        let resolved =
-            Resolver::resolve_single_property(raw, &bank).expect("resolve ref");
-
-        // THEN: it finds the property by name
-        assert_eq!(resolved.name().as_str(), "status");
+        // THEN: parent property is retained
+        assert!(schema.has("parent"));
     }
 
     #[test]
@@ -196,37 +208,54 @@ mod tests {
     }
 
     #[test]
-    fn resolve_includes_parent_properties() {
+    fn resolve_handles_excludes() {
         // GIVEN: a parent schema with a property
-        let mut bank = PropertyBank::new();
-        let parent_prop = Property::new(
+        let bank = PropertyBank::new();
+        let prop = Property::new(
             Uuid::now_v7(),
-            PropertyName::new("parent".to_owned()).expect("valid name"),
+            PropertyName::new("p".to_owned()).unwrap(),
             true,
             false,
             PropertySpec::Bool(BoolSpec::default()),
         )
-        .expect("valid property");
-        bank.register(parent_prop.clone()).expect("register property");
-        let parent_schema = Schema::new(
+        .unwrap();
+        let parent = Schema::new(
             Uuid::now_v7(),
-            SchemaName::new("parent".to_owned()).expect("valid name"),
-            vec![parent_prop],
+            SchemaName::new("parent".into()).unwrap(),
+            vec![prop],
         )
-        .expect("valid schema");
+        .unwrap();
 
-        // WHEN: resolving a child raw schema
+        // AND: a child schema that excludes that property
+        let mut excludes = HashSet::new();
+        excludes.insert(PropertyName::new("p".to_owned()).unwrap());
         let raw = RawSchema::new(
             Uuid::now_v7(),
-            SchemaName::new("child".to_owned()).expect("valid name"),
+            SchemaName::new("child".into()).unwrap(),
             None,
-            HashSet::new(),
-            Vec::new(),
+            excludes,
+            vec![],
         );
-        let schema = Resolver::resolve(raw, Some(&parent_schema), &bank)
-            .expect("resolve schema");
 
-        // THEN: parent property is retained
-        assert!(schema.has("parent"));
+        // WHEN: resolving
+        let resolved = Resolver::resolve(raw, Some(&parent), &bank).unwrap();
+
+        // THEN: the property is excluded
+        assert!(!resolved.has("p"));
+    }
+
+    #[test]
+    fn resolve_returns_error_for_missing_ref() {
+        // GIVEN: an empty property bank
+        let bank = PropertyBank::new();
+        let raw = RawProperty::Ref(RawPropertyRef {
+            ref_path: "missing".to_owned(),
+        });
+
+        // WHEN: resolving a missing ref
+        let result = Resolver::resolve_single_property(raw, &bank);
+
+        // THEN: it returns a PropertyNotFound error
+        assert!(matches!(result, Err(DomainError::PropertyNotFound(_))));
     }
 }

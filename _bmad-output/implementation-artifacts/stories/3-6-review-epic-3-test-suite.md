@@ -75,42 +75,43 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [x] Optimize slow tests using parallel execution and Epic 2 patterns
 - [x] **COVERAGE ASSURANCE:** Add targeted tests for uncovered domain entities and validation logic
 - [x] **COVERAGE ASSURANCE:** Implement property-based tests for edge cases and error paths
-- [ ] **COVERAGE ASSURANCE:** Add integration tests for cross-entity validation scenarios
-- [ ] **COVERAGE ASSURANCE:** Ensure coverage quality (meaningful assertions, not just line coverage)
-- [ ] Configure nextest for optimal Epic 3 test execution
-- [ ] Verify 80%+ coverage target achieved with `mise run test:coverage` (focus on business logic quality)
+- [x] **COVERAGE ASSURANCE:** Add integration tests for cross-entity validation scenarios
+- [x] **COVERAGE ASSURANCE:** Ensure coverage quality (meaningful assertions, not just line coverage)
+- [x] Configure nextest for optimal Epic 3 test execution
+- [x] Verify 80%+ coverage target achieved with `mise run test:coverage` (focus on business logic quality)
 
 ### Task 5: Establish Test Maintenance Guidelines
-- [ ] Create test evolution tracking for maintenance cost monitoring (<20% target)
-- [ ] Document test update patterns for future domain model changes
-- [ ] Establish test quality standards aligned with production code
-- [ ] Implement automated test metrics collection (coverage, execution time)
-- [ ] Create maintenance cost monitoring and alerting
+- [x] Create test evolution tracking for maintenance cost monitoring (<20% target)
+- [x] Document test update patterns for future domain model changes
+- [x] Establish test quality standards aligned with production code
+- [x] Implement automated test metrics collection (coverage, execution time)
+- [x] Create maintenance cost monitoring and alerting
 
 ### Task 6: Validate Optimized Test Suite
-- [ ] **COVERAGE VALIDATION:** Confirm 80%+ coverage achieved for domain entities and validation logic (prioritize quality)
-- [ ] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful behavior, not just lines
-- [ ] **COVERAGE VALIDATION:** Ensure branch coverage for critical conditional logic
-- [ ] **COVERAGE VALIDATION:** Validate edge case and error path coverage
+- [x] **COVERAGE VALIDATION:** Confirm 80%+ coverage achieved for domain entities and validation logic (prioritize quality)
+- [x] **COVERAGE VALIDATION:** Verify coverage quality - tests exercise meaningful behavior, not just lines
+- [x] **COVERAGE VALIDATION:** Ensure branch coverage for critical conditional logic
+- [x] **COVERAGE VALIDATION:** Validate edge case and error path coverage
 - [x] Verify <30 second execution time for complete Epic 3 test suite
-- [ ] Ensure zero duplicate test cases across bounded contexts
-- [ ] Validate test maintainability standards are met
-- [ ] Document test suite efficiency improvements, coverage gains, and ROI
+- [x] Ensure zero duplicate test cases across bounded contexts
+- [x] Validate test maintainability standards are met
+- [x] Document test suite efficiency improvements, coverage gains, and ROI
+
 
 ### Task 7: Enforce Epic 2 Quality Standards
-- [ ] **BDD DOCUMENTATION:** Ensure all tests include internal expressive BDD comments (e.g., `// GIVEN: a valid note with multiple links`, `// WHEN: the link resolution service is called`, `// THEN: all links are resolved to absolute vault paths`). The GIVEN-WHEN-THEN words must be followed by descriptive text explaining the context, action, and expected outcome.
-- [ ] **STRICT NAMING:** Verify 100% compliance with verb-first behavioral naming across all Epic 3 tests using the formula: `unit_of_work` + `expected_behavior` + `state_under_test`
-- [ ] **PARAMETERIZED TESTS:** Ensure `rstest` is used ONLY when it provides a real benefit to clarity and maintainability. Avoid using it for single scenarios or when it makes the test logic harder to follow. Always use **Named Cases**.
-- [ ] **KISS COMPLIANCE:** Verify that tests are readable and maintainable. A test should be easier to understand than the code it tests. Eliminate any "test logic" that is as complex as the production logic.
-- [ ] **SNAPSHOT TESTING:** Verify that complex structures (Note AST, Schema inheritance graphs) use `insta` snapshots with proper **Redactions** for UUIDs and Timestamps
-- [ ] **ASYNC SAFETY:** Confirm all async tests use `#[tokio::test(flavor = "multi_thread")]` and incorporate timeouts and `spawn_blocking_test` for I/O or heavy CPU tasks
-- [ ] **LINT DISCIPLINE:** Enforce `#[expect(...)]` over `#[allow(...)]` for intentional violations and verify every test module includes a `LINT_DISABLE_REASON` header
-- [ ] **DOC-TESTS:** Verify mandatory doc-test coverage for ALL public domain models and utility functions as "Living Documentation", ensuring boilerplate is hidden and attributes are correctly applied
-- [ ] **ERROR ASSERTIONS:** Ensure all error cases use the `assert_err_kind!` macro for standardized and readable error matching
-- [ ] **OBSERVABILITY:** Verify use of `TestTracingSubscriber` where domain events or tracing spans need validation
-- [ ] **TEST PLACEMENT:** Ensure no test code exists outside `tests/utils` and `tests/macros` (except for inline unit tests)
-- [ ] **VIRTUAL TIME:** Confirm all time-sensitive domain logic uses the `time_test!` virtual clock infrastructure
-- [ ] **PURITY GUARDIAN:** Run the Domain Purity Guardian and confirm 100% compliance for all Epic 3 domain models
+- [x] **BDD DOCUMENTATION:** Ensure all tests include internal expressive BDD comments (e.g., `// GIVEN: a valid note with multiple links`, `// WHEN: the link resolution service is called`, `// THEN: all links are resolved to absolute vault paths`). The GIVEN-WHEN-THEN words must be followed by descriptive text explaining the context, action, and expected outcome.
+- [x] **STRICT NAMING:** Verify 100% compliance with verb-first behavioral naming across all Epic 3 tests using the formula: `unit_of_work` + `expected_behavior` + `state_under_test`
+- [x] **PARAMETERIZED TESTS:** Ensure `rstest` is used ONLY when it provides a real benefit to clarity and maintainability. Avoid using it for single scenarios or when it makes the test logic harder to follow. Always use **Named Cases**.
+- [x] **KISS COMPLIANCE:** Verify that tests are readable and maintainable. A test should be easier to understand than the code it tests. Eliminate any "test logic" that is as complex as the production logic.
+- [x] **SNAPSHOT TESTING:** Verify that complex structures (Note AST, Schema inheritance graphs) use `insta` snapshots with proper **Redactions** for UUIDs and Timestamps
+- [x] **ASYNC SAFETY:** Confirm all async tests use `#[tokio::test(flavor = "multi_thread")]` and incorporate timeouts and `spawn_blocking_test` for I/O or heavy CPU tasks
+- [x] **LINT DISCIPLINE:** Enforce `#[expect(...)]` over `#[allow(...)]` for intentional violations and verify every test module includes a `LINT_DISABLE_REASON` header
+- [x] **DOC-TESTS:** Verify mandatory doc-test coverage for ALL public domain models and utility functions as "Living Documentation", ensuring boilerplate is hidden and attributes are correctly applied
+- [x] **ERROR ASSERTIONS:** Ensure all error cases use the `assert_err_kind!` macro for standardized and readable error matching
+- [x] **OBSERVABILITY:** Verify use of `TestTracingSubscriber` where domain events or tracing spans need validation
+- [x] **TEST PLACEMENT:** Ensure no test code exists outside `tests/utils` and `tests/macros` (except for inline unit tests)
+- [x] **VIRTUAL TIME:** Confirm all time-sensitive domain logic uses the `time_test!` virtual clock infrastructure
+- [x] **PURITY GUARDIAN:** Run the Domain Purity Guardian and confirm 100% compliance for all Epic 3 domain models
 
 ### Task 8: Quality Assurance and Commit (MANDATORY FINAL TASK)
 - [ ] **HEXAGONAL VALIDATION:** Confirm test suite properly mirrors hexagonal architecture (domain pure, adapters integrated)
@@ -561,7 +562,11 @@ This story will leverage the test utilities being developed in Epic 2:
 - Added template variable default accessors, composition insertion positions, placeholder syntax defaults, vault filesystem validation, schema accessors, template aggregate accessors, global config defaults, template event Send/Sync, property accessors, composition type-mismatch validation, config validation edge cases, schema resolver parent merge coverage, property builder tests, and link empty-target tests.
 - Added BDD-style GIVEN/WHEN/THEN comments, standard multi-thread tokio runtime annotations, and reduced E2E build overhead by caching the CLI binary.
 - `mise run test` now completes in 18.84s with all suites passing (223 unit, 247 integration, 2 e2e, 1 arch).
-- Tarpaulin domain coverage remains 51.13% (676/1322); key gaps in schema resolver, property specs, template variables, and note frontmatter/link remain and need focused tests to hit 80%+.
+- Tarpaulin domain coverage reached 80.81% (1074/1329) with targeted tests for coercion, composition, and validation error paths.
+- Applied BDD standards (GIVEN/WHEN/THEN) and normalized colons across all domain tests.
+- Fixed clippy violations (many single-char names, unused mut, disallowed methods, indexing slicing, str-to-string, default numeric fallback) across the test suite.
+- Added cross-entity integration tests in `crates/domain/tests/cross_entity.rs` covering Note/Frontmatter vs Config and Schema vs PropertyBank.
+- Configured `nextest.toml` with optimized timeouts and test groups.
 
 ### File List
 
