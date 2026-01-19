@@ -84,3 +84,19 @@ pub enum SchemaEvents {
     /// Schema was created.
     SchemaCreated(SchemaCreated),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn schema_events_are_send_sync() {
+        // GIVEN the schema events enum
+        fn is_send_sync<T: Send + Sync>() {}
+
+        // WHEN checking Send + Sync bounds
+        is_send_sync::<SchemaEvents>();
+
+        // THEN it satisfies the bounds
+    }
+}

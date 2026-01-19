@@ -131,3 +131,67 @@ impl Resolver {
         }
     }
 }
+
+#[cfg(test)]
+#[expect(
+    clippy::disallowed_methods,
+    reason = "Unit tests use expect for readability"
+)]
+mod tests {
+    use uuid::Uuid;
+
+    use super::*;
+    use crate::{BoolSpec, PropertySpec};
+
+    #[test]
+    fn resolves_ref_property_with_json_pointer_prefix() {
+        // GIVEN a property bank with a property
+        let mut bank = PropertyBank::new();
+        let property = Property::new(
+            Uuid::now_v7(),
+            PropertyName::new("status".to_owned()).expect("valid name"),
+            true,
+            false,
+            PropertySpec::Bool(BoolSpec::default()),
+        )
+        .expect("valid property");
+        bank.register(property.clone()).expect("register property");
+
+        let raw = RawProperty::Ref(RawPropertyRef {
+            ref_path: "#/properties/status".to_owned(),
+        });
+
+        // WHEN resolving the ref
+        let resolved =
+            Resolver::resolve_single_property(raw, &bank).expect("resolve ref");
+
+        // THEN it finds the property by name
+        assert_eq!(resolved.name().as_str(), "status");
+    }
+
+    #[test]
+    fn resolves_ref_property_with_plain_name() {
+        // GIVEN a property bank with a property
+        let mut bank = PropertyBank::new();
+        let property = Property::new(
+            Uuid::now_v7(),
+            PropertyName::new("status".to_owned()).expect("valid name"),
+            true,
+            false,
+            PropertySpec::Bool(BoolSpec::default()),
+        )
+        .expect("valid property");
+        bank.register(property.clone()).expect("register property");
+
+        let raw = RawProperty::Ref(RawPropertyRef {
+            ref_path: "status".to_owned(),
+        });
+
+        // WHEN resolving the ref
+        let resolved =
+            Resolver::resolve_single_property(raw, &bank).expect("resolve ref");
+
+        // THEN it finds the property by name
+        assert_eq!(resolved.name().as_str(), "status");
+    }
+}
