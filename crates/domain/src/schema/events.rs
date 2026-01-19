@@ -55,3 +55,17 @@ impl PropertyBankUpdated {
         }
     }
 }
+
+/// Domain events for the Schema context.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Context-specific event enum naming"
+)]
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum SchemaEvents {
+    /// Property bank was updated.
+    PropertyBankUpdated(PropertyBankUpdated),
+    /// Schema was created.
+    SchemaCreated(SchemaCreated),
+}

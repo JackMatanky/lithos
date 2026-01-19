@@ -41,3 +41,15 @@ impl TemplateCreated {
         }
     }
 }
+
+/// Domain events that can be emitted by the Template aggregate.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Context-specific event enum naming"
+)]
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum TemplateEvents {
+    /// Template was created.
+    TemplateCreated(TemplateCreated),
+}

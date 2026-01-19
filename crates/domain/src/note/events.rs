@@ -84,3 +84,17 @@ impl FrontmatterValidated {
         }
     }
 }
+
+/// Domain events that can be emitted by the Note aggregate.
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Context-specific event enum naming"
+)]
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum NoteEvents {
+    /// Frontmatter was validated.
+    FrontmatterValidated(FrontmatterValidated),
+    /// Note was created.
+    NoteCreated(NoteCreated),
+}

@@ -11,7 +11,7 @@
 use uuid::Uuid;
 
 use super::{
-    events::NoteCreated,
+    events::{NoteCreated, NoteEvents},
     frontmatter::Frontmatter,
     link::Link,
     structure::{Heading, Section},
@@ -71,15 +71,7 @@ pub struct Note {
     ///
     /// Access via `pending_events()` and `take_events()` methods.
     #[serde(skip)]
-    pub(crate) pending_events: Vec<DomainEvent>,
-}
-
-/// Domain events that can be emitted by the Note aggregate.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum DomainEvent {
-    /// Note was created.
-    NoteCreated(NoteCreated),
+    pub(crate) pending_events: Vec<NoteEvents>,
 }
 
 impl Note {
@@ -92,7 +84,7 @@ impl Note {
 
     /// Adds a domain event to the pending events collection.
     #[inline]
-    fn add_event(&mut self, event: DomainEvent) {
+    fn add_event(&mut self, event: NoteEvents) {
         self.pending_events.push(event);
     }
 
@@ -197,7 +189,7 @@ impl Note {
         };
 
         // Emit NoteCreated domain event
-        note.add_event(DomainEvent::NoteCreated(NoteCreated {
+        note.add_event(NoteEvents::NoteCreated(NoteCreated {
             id,
             path: path_for_event,
             timestamp: chrono::Utc::now().timestamp(),
@@ -216,7 +208,7 @@ impl Note {
     /// Returns a reference to pending domain events without clearing them.
     #[inline]
     #[must_use]
-    pub fn pending_events(&self) -> &[DomainEvent] {
+    pub fn pending_events(&self) -> &[NoteEvents] {
         &self.pending_events
     }
 
@@ -243,7 +235,7 @@ impl Note {
     /// Returns all pending domain events and clears the collection.
     #[inline]
     #[must_use]
-    pub fn take_events(&mut self) -> Vec<DomainEvent> {
+    pub fn take_events(&mut self) -> Vec<NoteEvents> {
         std::mem::take(&mut self.pending_events)
     }
 
@@ -399,7 +391,7 @@ mod tests {
         headings: Vec<Heading> = vec![],
         tasks: Vec<Task> = vec![],
         sections: Vec<Section> = vec![],
-        pending_events: Vec<DomainEvent> = vec![],
+        pending_events: Vec<NoteEvents> = vec![],
     });
 }
 
