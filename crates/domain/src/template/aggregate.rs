@@ -480,6 +480,7 @@ mod tests {
 
         #[test]
         fn accessors_return_expected_values() {
+            // GIVEN: a new template aggregate
             let mut template = Template::new(
                 "base".to_owned(),
                 "Hello".to_owned(),
@@ -489,18 +490,25 @@ mod tests {
             )
             .unwrap();
 
+            // WHEN: reading template accessors
+            let event_count = template.pending_events().len();
+
+            // THEN: accessors expose expected data
             assert_eq!(template.name(), "base");
             assert_eq!(template.content(), "Hello");
             assert!(template.extends().is_none());
             assert!(!template.has_variables());
-            assert_eq!(template.pending_events().len(), 1);
+            assert_eq!(event_count, 1);
             assert_eq!(template.take_events().len(), 1);
         }
 
         #[test]
         fn should_reject_template_when_name_format_is_invalid() {
+            // GIVEN: invalid template names
             let invalid_long_name = "a".repeat(65);
             let names = vec!["", "Invalid Name", "name!", &invalid_long_name];
+
+            // WHEN: creating templates with invalid names
             for name in names {
                 let result = Template::new(
                     name.to_owned(),
@@ -509,12 +517,15 @@ mod tests {
                     None,
                     Metadata::default(),
                 );
+
+                // THEN: validation rejects the name
                 assert!(result.is_err(), "Expected error for name: {name}");
             }
         }
 
         #[test]
         fn should_reject_template_when_unbalanced_placeholders() {
+            // GIVEN: a template with unbalanced placeholders
             let result = Template::new(
                 "unbalanced".to_owned(),
                 "{{open but no close".to_owned(),
@@ -522,11 +533,12 @@ mod tests {
                 None,
                 Metadata::default(),
             );
-            assert!(result.is_err());
-            assert!(
-                result.unwrap_err().to_string().contains("Unbalanced"),
-                "Expected unbalanced error"
-            );
+
+            // WHEN: validation runs during construction
+            let error = result.unwrap_err();
+
+            // THEN: a validation error describes the unbalanced syntax
+            assert!(error.to_string().contains("Unbalanced"));
         }
     }
 
@@ -535,13 +547,19 @@ mod tests {
     proptest! {
         #[test]
         fn should_validate_template_name_format_across_edge_cases(name in valid_identifier()) {
+            // GIVEN: a generated valid identifier
+            let input = name;
+
+            // WHEN: constructing a template with the identifier
             let result = Template::new(
-                name,
+                input,
                 "content".to_owned(),
                 HashMap::new(),
                 None,
                 Metadata::default(),
             );
+
+            // THEN: construction succeeds
             prop_assert!(result.is_ok());
         }
     }

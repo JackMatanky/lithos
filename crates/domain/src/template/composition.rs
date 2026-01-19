@@ -219,8 +219,8 @@ mod tests {
 
     #[test]
     fn should_detect_circular_composition() {
-        let mut templates = HashMap::new();
         // GIVEN a template that extends itself
+        let mut templates = HashMap::new();
         let base = Template::new(
             "A".to_owned(),
             "content".to_owned(),
@@ -247,6 +247,7 @@ mod tests {
 
     #[test]
     fn should_detect_circular_include() {
+        // GIVEN a base template with a self-include
         let mut templates = HashMap::new();
         let base = Template::new(
             "A".to_owned(),
@@ -265,20 +266,29 @@ mod tests {
             variable_overrides: HashMap::new(),
         };
 
+        // WHEN detecting cycles
         let result = composition.detect_cycles(&templates);
+
+        // THEN it reports a circular composition error
         assert!(matches!(result, Err(DomainError::CircularComposition(_))));
     }
 
     #[test]
     fn insertion_positions_round_trip() {
+        // GIVEN an insertion position
         let insertion = InsertionPosition::AfterVariable("title".to_owned());
 
-        assert!(matches!(insertion, InsertionPosition::AfterVariable(_)));
+        // WHEN matching on the insertion position
+        let matches_variant =
+            matches!(insertion, InsertionPosition::AfterVariable(_));
+
+        // THEN the expected variant is preserved
+        assert!(matches_variant);
     }
 
     #[test]
     fn validate_rejects_variable_type_mismatch() {
-        // GIVEN a base template with a string variable
+        // GIVEN: a base template with a string variable
         let mut variables = HashMap::new();
         variables.insert(
             "title".to_owned(),
@@ -298,7 +308,7 @@ mod tests {
         )
         .unwrap();
 
-        // WHEN overriding with an incompatible value
+        // WHEN: overriding with an incompatible value
         let mut overrides = HashMap::new();
         overrides.insert("title".to_owned(), serde_json::json!(42i64));
         let composition = Composition {
@@ -308,7 +318,7 @@ mod tests {
             variable_overrides: overrides,
         };
 
-        // THEN validation reports a type mismatch
+        // THEN: validation reports a type mismatch
         let result = composition.validate(&base);
         assert!(matches!(
             result,
