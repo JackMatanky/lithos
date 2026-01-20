@@ -903,6 +903,52 @@ crates/domain/src/
 
 ---
 
+**Architecture Decision: Link Decomposition & Unresolved Link Support (2026-01-20)**
+
+**Decision:** Decompose Link struct to support unresolved links and improve type safety.
+
+**Rationale:**
+- Original Link struct mixed concerns (embed_type only valid for Embed links)
+- No support for unresolved links (links to notes that don't exist yet) - a core Obsidian feature
+- Missing support for heading anchors (`[[note#heading]]`) and block references (`[[note^block-id]]`)
+- `source_note_id` was redundant since links are owned by the Note aggregate
+
+**Implementation:**
+
+*New Types:*
+- `LinkTarget` enum: `External { url }` | `Resolved { id, path }` | `Unresolved { raw }` - models resolution state
+- `LinkAnchor` enum: `BlockRef(str)` | `Heading(str)` - sub-note targeting
+- `LinkType` enum: `Embed(EmbedType)` | `MdLink` | `WikiLink` - embed type moved inside variant
+
+*Link Struct Changes:*
+- Removed `source_note_id` - parent relationship implicit via aggregate ownership
+- Added `target: LinkTarget` - replaces `target_path: Box<str>`
+- Added `anchor: Option<LinkAnchor>` - supports `#heading` and `^block-id`
+- `embed_type` moved into `LinkType::Embed(EmbedType)` variant for type safety
+
+*Note Aggregate Changes:*
+- Unified `links` and `embeds` into single `Vec<Link>` field
+- Removed `add_embed()` method - use `add_link()` for all link types
+- Added filter iterators: `wikilinks()`, `markdown_links()`, `embeds()`
+- Removed `source_note_id` validation (ownership is structural)
+
+*New Exports:*
+- `LinkTarget`, `LinkAnchor` added to `lib.rs` public API
+
+**Validation Rules:**
+- Embeds cannot have anchors (enforced at construction)
+- External links cannot have block references (only heading anchors allowed)
+- Empty targets rejected for all link types
+
+**Benefits:**
+- ✅ **Resolution State Explicit**: `LinkTarget::Unresolved` models links to non-existent notes
+- ✅ **Type Safety**: `LinkType::Embed(EmbedType)` ensures embed type always present for embeds
+- ✅ **DDD Compliance**: Aggregate ownership implicit through containment, no redundant IDs
+- ✅ **Obsidian Parity**: Supports anchors, block refs, and unresolved links like Obsidian/Oxide
+- ✅ **Unified Collection**: All links in one `Vec<Link>`, filtered on demand
+
+---
+
 **Architecture Decision: Unified Structure Module**
 
 **Decision:** Merge `heading.rs` and `section.rs` into unified `structure.rs` module.

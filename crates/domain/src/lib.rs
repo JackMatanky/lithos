@@ -58,7 +58,7 @@ pub use note::{
     Note,
     events::{FrontmatterValidated, NoteCreated, NoteEvents},
     frontmatter::{FieldValue, FromFieldValue, Frontmatter},
-    link::{EmbedType, Link, LinkType},
+    link::{EmbedType, Link, LinkAnchor, LinkTarget, LinkType},
     structure::{Heading, Section},
     tag::Tag,
     task::{Task, TaskStatus},
