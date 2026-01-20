@@ -478,67 +478,141 @@ fn get_cached_regex(pattern: &str) -> Result<regex::Regex, DomainError> {
     reason = "Unit tests use unwrap/expect for simplicity"
 )]
 mod tests {
+    use rstest::rstest;
+
     use super::*;
 
-    /// 3.3-UNIT-011: `string_spec_validates_enums_and_patterns`.
+    /// 3.3-UNIT-011: String Specification Validation Matrix.
     /// Priority: P1.
-    #[test]
-    fn string_spec_validates_enums_and_patterns() {
-        // GIVEN: a StringSpec with enum values
-        let spec = StringSpec {
-            enum_values: Some(vec!["A".to_owned(), "B".to_owned()]),
-            ..Default::default()
-        };
+    #[rstest]
+    #[case::enum_match(
+        StringSpec { enum_values: Some(vec!["A".to_owned(), "B".to_owned()]), ..Default::default() },
+        "A",
+        Ok(())
+    )]
+    #[case::enum_mismatch(
+        StringSpec { enum_values: Some(vec!["A".to_owned(), "B".to_owned()]), ..Default::default() },
+        "C",
+        Err(DomainError::InvalidEnumValue { value: "C".to_owned(), allowed: vec!["A".to_owned(), "B".to_owned()] })
+    )]
+    #[case::regex_match(
+        StringSpec { pattern: Some(r"^\d+$".to_owned()), ..Default::default() },
+        "123",
+        Ok(())
+    )]
+    #[case::regex_mismatch(
+        StringSpec { pattern: Some(r"^\d+$".to_owned()), ..Default::default() },
+        "abc",
+        Err(DomainError::ValidationFailed("abc does not match pattern ^\\d+$".to_owned()))
+    )]
+    #[case::length_match(
+        StringSpec { min_length: Some(2), max_length: Some(5), ..Default::default() },
+        "abc",
+        Ok(())
+    )]
+    #[case::too_short(
+        StringSpec { min_length: Some(2), ..Default::default() },
+        "a",
+        Err(DomainError::StringTooShort { min: 2, actual: 1 })
+    )]
+    #[case::too_long(
+        StringSpec { max_length: Some(5), ..Default::default() },
+        "abcdef",
+        Err(DomainError::StringTooLong { max: 5, actual: 6 })
+    )]
+    fn string_spec_validation_matrix(
+        #[case] spec: StringSpec,
+        #[case] value: &str,
+        #[case] expected: Result<(), DomainError>,
+    ) {
+        // WHEN: validating a string value
+        let result = spec.validate(&value.to_owned());
 
-        // WHEN: validating values
-        // THEN: it should accept values in the enum
-        spec.validate(&"A".to_owned()).unwrap();
-        // AND: reject values not in the enum
-        assert!(spec.validate(&"C".to_owned()).is_err());
+        // THEN: the result matches the expectation
+        match expected {
+            Ok(()) => {
+                assert!(result.is_ok(), "Expected value '{value}' to be valid");
+            }
+            Err(e) => {
+                let actual = result.unwrap_err();
+                assert_eq!(
+                    std::mem::discriminant(&actual),
+                    std::mem::discriminant(&e),
+                    "Value '{value}' produced wrong error variant"
+                );
+            }
+        }
     }
 
-    /// 3.3-UNIT-012: `number_spec_validates_min_max_step`.
+    /// 3.3-UNIT-012: Number Specification Validation Matrix.
     /// Priority: P1.
-    #[test]
-    fn number_spec_validates_min_max_step() {
-        // GIVEN: a NumberSpec with range and step constraints
-        let spec = NumberSpec {
-            min: Some(0.0f64),
-            max: Some(10.0f64),
-            step: Some(0.5f64),
-        };
+    #[rstest]
+    #[case::in_range(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, 5.0f64, Ok(()))]
+    #[case::at_min(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, 0.0f64, Ok(()))]
+    #[case::at_max(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, 10.0f64, Ok(()))]
+    #[case::below_min(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, -1.0f64, Err(DomainError::NumberOutOfRange { value: -1.0f64, min: Some(0.0f64), max: Some(10.0f64) }))]
+    #[case::above_max(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, 11.0f64, Err(DomainError::NumberOutOfRange { value: 11.0f64, min: Some(0.0f64), max: Some(10.0f64) }))]
+    #[case::valid_step(NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() }, 5.5f64, Ok(()))]
+    #[case::invalid_step(NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() }, 5.2f64, Err(DomainError::InvalidStepValue { value: 5.2f64, step: 0.5f64 }))]
+    fn number_spec_validation_matrix(
+        #[case] spec: NumberSpec,
+        #[case] value: f64,
+        #[case] expected: Result<(), DomainError>,
+    ) {
+        // WHEN: validating a numeric value
+        let result = spec.validate(&value);
 
-        // WHEN: validating numeric values
-        // THEN: it should accept valid values
-        spec.validate(&0.0f64).unwrap();
-        spec.validate(&10.0f64).unwrap();
-        spec.validate(&5.5f64).unwrap();
-        // AND: reject values out of range
-        assert!(spec.validate(&-1.0f64).is_err());
-        assert!(spec.validate(&11.0f64).is_err());
-        // AND: reject values not matching the step
-        assert!(spec.validate(&5.2f64).is_err());
+        // THEN: the result matches the expectation
+        match expected {
+            Ok(()) => {
+                assert!(result.is_ok(), "Expected value '{value}' to be valid");
+            }
+            Err(e) => {
+                let actual = result.unwrap_err();
+                assert_eq!(
+                    std::mem::discriminant(&actual),
+                    std::mem::discriminant(&e),
+                    "Value '{value}' produced wrong error variant"
+                );
+            }
+        }
     }
 
-    /// 3.3-UNIT-013: `file_spec_validates_directory`.
+    /// 3.3-UNIT-013: File Specification Validation Matrix.
     /// Priority: P1.
-    #[test]
-    fn file_spec_validates_directory() {
+    #[rstest]
+    #[case::in_dir("notes/my_note.md", "notes/", Ok(()))]
+    #[case::out_dir("other/note.md", "notes/", Err(DomainError::InvalidDirectoryPath("other/note.md must be in directory notes/".to_owned())))]
+    fn file_spec_validation_matrix(
+        #[case] path: &str,
+        #[case] dir: &str,
+        #[case] expected: Result<(), DomainError>,
+    ) {
         // GIVEN: a FileSpec with a directory restriction
         let spec = FileSpec {
-            directory: Some("notes/".to_owned()),
+            directory: Some(dir.to_owned()),
             file_class: None,
         };
 
         // WHEN: validating file paths
-        // THEN: it should accept paths within the directory
-        spec.validate(&"notes/my_note.md".to_owned()).unwrap();
-        // AND: reject paths outside the directory
-        assert!(spec.validate(&"other/note.md".to_owned()).is_err());
+        let result = spec.validate(&path.to_owned());
+
+        // THEN: the result matches the expectation
+        match expected {
+            Ok(()) => {
+                assert!(result.is_ok(), "Expected path '{path}' to be valid");
+            }
+            Err(e) => {
+                let actual = result.unwrap_err();
+                assert_eq!(
+                    std::mem::discriminant(&actual),
+                    std::mem::discriminant(&e),
+                    "Path '{path}' produced wrong error variant"
+                );
+            }
+        }
     }
 
-    /// 3.3-UNIT-014: `file_spec_validates_file_class_format`.
-    /// Priority: P2.
     #[test]
     fn file_spec_validates_file_class_format() {
         // GIVEN: a valid file_class spec
@@ -608,36 +682,6 @@ mod tests {
             step: Some(1.0f64),
         };
         valid.validate_spec().unwrap();
-    }
-
-    #[test]
-    fn string_spec_validates_regex_pattern() {
-        // GIVEN: a StringSpec with a regex pattern
-        let spec = StringSpec {
-            pattern: Some(r"^\d+$".to_owned()),
-            ..Default::default()
-        };
-
-        // THEN: it accepts matching strings
-        spec.validate(&"123".to_owned()).unwrap();
-
-        // AND: rejects non-matching strings
-        assert!(spec.validate(&"abc".to_owned()).is_err());
-    }
-
-    #[test]
-    fn string_spec_validates_length_constraints() {
-        // GIVEN: a StringSpec with length limits
-        let spec = StringSpec {
-            max_length: Some(5),
-            min_length: Some(2),
-            ..Default::default()
-        };
-
-        // THEN: it enforces length limits
-        spec.validate(&"abc".to_owned()).unwrap();
-        assert!(spec.validate(&"a".to_owned()).is_err());
-        assert!(spec.validate(&"abcdef".to_owned()).is_err());
     }
 
     #[test]

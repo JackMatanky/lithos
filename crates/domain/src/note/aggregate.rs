@@ -275,64 +275,45 @@ mod tests {
     };
 
     mod new {
+        use rstest::rstest;
         use tokio::time::Duration;
 
         use super::*;
 
-        /// 3.1-UNIT-001: `returns_error_when_path_is_empty`.
+        /// 3.1-UNIT-001: Note Path Validation Matrix.
         /// Priority: P0.
-        #[test]
-        fn returns_error_when_path_is_empty() {
-            // GIVEN: an empty vault path
+        #[rstest]
+        #[case::empty("", Err(DomainError::EmptyPath))]
+        #[case::absolute("/absolute/path.md", Err(DomainError::InvalidPath("Path must be relative".into())))]
+        #[case::traversal("../etc/passwd", Err(DomainError::InvalidPath("Path traversal not allowed".into())))]
+        #[case::missing_extension("projects/lithos", Err(DomainError::InvalidPath("Path must end with .md".into())))]
+        #[case::valid("valid.md", Ok(()))]
+        #[case::nested_valid("folder/sub/note.md", Ok(()))]
+        fn path_validation_matrix(
+            #[case] path: &str,
+            #[case] expected: Result<(), DomainError>,
+        ) {
+            // GIVEN: a vault path from the validation matrix
             let test_id = Uuid::now_v7();
 
-            // WHEN: creating a note with an empty path
-            let result = Note::new(test_id, String::new());
+            // WHEN: creating a note
+            let result = Note::new(test_id, path.to_owned());
 
-            // THEN: the constructor rejects the path
-            assert!(matches!(result, Err(DomainError::EmptyPath)));
-        }
-
-        /// 3.1-UNIT-002: `returns_error_when_path_is_absolute`.
-        /// Priority: P0.
-        #[test]
-        fn returns_error_when_path_is_absolute() {
-            // GIVEN: an absolute vault path
-            let test_id = Uuid::now_v7();
-
-            // WHEN: creating a note with an absolute path
-            let result = Note::new(test_id, "/absolute/path.md".to_owned());
-
-            // THEN: the constructor rejects the path
-            assert!(matches!(result, Err(DomainError::InvalidPath(_))));
-        }
-
-        /// 3.1-UNIT-003: `returns_error_when_path_contains_traversal`.
-        /// Priority: P0.
-        #[test]
-        fn returns_error_when_path_contains_traversal() {
-            // GIVEN: a vault path with traversal
-            let test_id = Uuid::now_v7();
-
-            // WHEN: creating a note with traversal in the path
-            let result = Note::new(test_id, "../etc/passwd".to_owned());
-
-            // THEN: the constructor rejects the path
-            assert!(matches!(result, Err(DomainError::InvalidPath(_))));
-        }
-
-        /// 3.1-UNIT-004: `returns_error_when_path_missing_md_extension`.
-        /// Priority: P0.
-        #[test]
-        fn returns_error_when_path_missing_md_extension() {
-            // GIVEN: a path without a markdown extension
-            let test_id = Uuid::now_v7();
-
-            // WHEN: creating a note with a non-markdown path
-            let result = Note::new(test_id, "projects/lithos".to_owned());
-
-            // THEN: the constructor rejects the path
-            assert!(matches!(result, Err(DomainError::InvalidPath(_))));
+            // THEN: the result matches the expected outcome
+            match expected {
+                Ok(()) => assert!(
+                    result.is_ok(),
+                    "Expected path '{path}' to be valid"
+                ),
+                Err(e) => {
+                    let actual = result.unwrap_err();
+                    assert_eq!(
+                        std::mem::discriminant(&actual),
+                        std::mem::discriminant(&e),
+                        "Path '{path}' produced wrong error variant"
+                    );
+                }
+            }
         }
 
         /// 3.1-UNIT-005: `generates_sequential_uuids`.
