@@ -150,6 +150,7 @@ fn is_valid_tag_segment(segment: &str) -> bool {
     reason = "Unit tests use unwrap for readability"
 )]
 mod tests {
+    // # LINT_DISABLE_REASON: Standard test utilities and behavioral verification patterns.
     use super::*;
 
     mod parse {
@@ -196,18 +197,13 @@ mod tests {
             // THEN: the result matches the expected outcome
             match expected {
                 Ok(segments) => {
-                    let tag = result.unwrap();
+                    let tag = result.expect("Should be Ok");
                     let actual_segments: Vec<&str> =
                         tag.segments().iter().map(AsRef::as_ref).collect();
                     assert_eq!(actual_segments, segments);
                 }
                 Err(e) => {
-                    let actual = result.unwrap_err();
-                    assert_eq!(
-                        std::mem::discriminant(&actual),
-                        std::mem::discriminant(&e),
-                        "Tag '{input}' produced wrong error variant"
-                    );
+                    assert_eq!(result.unwrap_err(), e);
                 }
             }
         }
