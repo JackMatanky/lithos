@@ -65,18 +65,16 @@ fn lithos_binary() -> PathBuf {
         .clone()
 }
 
-/// 3.6-E2E-001: `cli_prints_hello`.
+/// 3.6-E2E-001: `cli_executes_successfully`.
 /// Priority: P0.
 #[test]
-fn cli_prints_hello() {
+fn cli_executes_successfully() {
     // GIVEN: the lithos binary is available for execution
     let mut cmd = Command::new(lithos_binary());
 
     // WHEN: the CLI is run without arguments
-    let assertion = cmd.assert().success();
-
-    // THEN: a welcome message is printed for the user
-    assertion.stdout(predicate::str::contains("Hello, Lithos!"));
+    // THEN: it exits successfully
+    cmd.assert().success();
 }
 
 /// 3.6-E2E-002: `cli_prints_help`.

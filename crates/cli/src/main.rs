@@ -22,7 +22,6 @@ async fn main() -> miette::Result<()> {
         .ignore_errors(true) // Ignore test flags when running as a unit test
         .get_matches();
 
-    println!("Hello, Lithos!");
     tracing::info!("Hello, Lithos!");
     Ok(())
 }
