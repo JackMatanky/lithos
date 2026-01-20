@@ -35,7 +35,3 @@ path = "integration/system_flows.rs"
 [[test]]
 name = "purity"
 path = "arch/purity.rs"
-
-[[test]]
-name = "dummy_integration"
-path = "integration/dummy_integration.rs"

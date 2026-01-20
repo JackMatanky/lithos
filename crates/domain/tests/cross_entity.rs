@@ -18,6 +18,8 @@ use lithos_domain::{
 mod tests {
     use super::*;
 
+    /// 3.6-INT-001: `frontmatter_uses_config_keys`.
+    /// Priority: P1.
     #[test]
     fn frontmatter_uses_config_keys() {
         // GIVEN: a custom config with non-standard frontmatter keys
@@ -49,6 +51,8 @@ mod tests {
         assert_eq!(aliases, vec!["Alias 1".to_owned()]);
     }
 
+    /// 3.6-INT-002: `frontmatter_falls_back_to_defaults_when_config_keys_missing`.
+    /// Priority: P2.
     #[test]
     fn frontmatter_falls_back_to_defaults_when_config_keys_missing() {
         // GIVEN: a default config
@@ -68,6 +72,8 @@ mod tests {
         assert!(aliases.is_empty());
     }
 
+    /// 3.6-INT-003: `config_validation_fails_if_vault_path_invalid`.
+    /// Priority: P1.
     #[test]
     fn config_validation_fails_if_vault_path_invalid() {
         // GIVEN: an empty vault path
@@ -81,6 +87,8 @@ mod tests {
         result.unwrap_err();
     }
 
+    /// 3.6-INT-004: `schema_registration_maintains_bank_consistency`.
+    /// Priority: P1.
     #[test]
     fn schema_registration_maintains_bank_consistency() {
         // GIVEN: a property bank and a property

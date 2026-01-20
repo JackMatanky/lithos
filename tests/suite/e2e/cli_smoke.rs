@@ -65,6 +65,8 @@ fn lithos_binary() -> PathBuf {
         .clone()
 }
 
+/// 3.6-E2E-001: `cli_prints_hello`.
+/// Priority: P0.
 #[test]
 fn cli_prints_hello() {
     // GIVEN: the lithos binary is available for execution
@@ -77,6 +79,8 @@ fn cli_prints_hello() {
     assertion.stdout(predicate::str::contains("Hello, Lithos!"));
 }
 
+/// 3.6-E2E-002: `cli_prints_help`.
+/// Priority: P0.
 #[test]
 fn cli_prints_help() {
     // GIVEN: a test vault exists for the CLI to reference

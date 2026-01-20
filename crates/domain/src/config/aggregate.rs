@@ -340,6 +340,8 @@ mod tests {
 
         use super::*;
 
+        // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
+        // Priority: P2.
         proptest! {
             #[test]
             fn merge_handles_various_path_lengths(
@@ -379,6 +381,8 @@ mod tests {
     mod merge {
         use super::*;
 
+        /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
+        /// Priority: P0.
         #[test]
         #[expect(
             clippy::disallowed_methods,
@@ -416,6 +420,8 @@ mod tests {
             );
         }
 
+        /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
+        /// Priority: P1.
         #[test]
         fn falls_back_to_defaults_when_inputs_are_empty() {
             // GIVEN: configs with empty fields that should fall back to system defaults
@@ -512,6 +518,8 @@ mod tests {
             }
         }
 
+        /// 3.3-UNIT-015: `merge_is_idempotent`.
+        /// Priority: P1.
         #[test]
         fn merge_is_idempotent() {
             // GIVEN: the same global and vault configs
@@ -540,6 +548,8 @@ mod tests {
 
         use super::*;
 
+        /// 3.3-UNIT-016: `enforces_required_fields_and_enum_constraints`.
+        /// Priority: P0.
         #[rstest]
         #[case::valid_config("/vault", "info", None)]
         #[case::empty_path("", "info", Some("vault_path"))]
@@ -617,6 +627,8 @@ mod tests {
     mod integrity {
         use super::*;
 
+        /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
+        /// Priority: P3.
         #[test]
         fn supports_clone_debug_and_partial_eq() {
             // GIVEN: a merged configuration built from valid fixtures
@@ -658,6 +670,8 @@ mod tests {
             }
         }
 
+        /// 3.3-UNIT-018: `merge_performance_meets_target`.
+        /// Priority: P2.
         #[test]
         fn merge_performance_meets_target() {
             // GIVEN: valid global and vault configs
@@ -683,6 +697,8 @@ mod tests {
             );
         }
 
+        /// 3.3-UNIT-019: `merge_frontmatter_handles_various_input_combinations`.
+        /// Priority: P1.
         #[test]
         fn merge_frontmatter_handles_various_input_combinations() {
             // GIVEN: combinations of global and vault frontmatter configs
@@ -712,6 +728,8 @@ mod tests {
             );
         }
 
+        /// 3.3-UNIT-020: `build_handles_missing_global`.
+        /// Priority: P1.
         #[test]
         #[expect(
             clippy::disallowed_methods,
@@ -737,6 +755,8 @@ mod tests {
             );
         }
 
+        /// 3.3-UNIT-021: `config_manages_domain_events`.
+        /// Priority: P1.
         #[test]
         fn config_manages_domain_events() {
             // GIVEN: a configuration aggregate

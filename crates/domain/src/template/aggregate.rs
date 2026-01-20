@@ -478,6 +478,8 @@ mod tests {
     mod new {
         use super::*;
 
+        /// 3.4-UNIT-022: `accessors_return_expected_values`.
+        /// Priority: P1.
         #[test]
         fn accessors_return_expected_values() {
             // GIVEN: a new template aggregate
@@ -502,6 +504,8 @@ mod tests {
             assert_eq!(template.take_events().len(), 1);
         }
 
+        /// 3.4-UNIT-023: `should_reject_template_when_name_format_is_invalid`.
+        /// Priority: P0.
         #[test]
         fn should_reject_template_when_name_format_is_invalid() {
             // GIVEN: invalid template names
@@ -523,6 +527,8 @@ mod tests {
             }
         }
 
+        /// 3.4-UNIT-024: `should_reject_template_when_unbalanced_placeholders`.
+        /// Priority: P0.
         #[test]
         fn should_reject_template_when_unbalanced_placeholders() {
             // GIVEN: a template with unbalanced placeholders
@@ -544,6 +550,8 @@ mod tests {
 
     use lithos_test_utils::data::properties::valid_identifier;
 
+    // 3.4-UNIT-025: `should_validate_template_name_format_across_edge_cases`.
+    // Priority: P2.
     proptest! {
         #[test]
         fn should_validate_template_name_format_across_edge_cases(name in valid_identifier()) {
@@ -564,6 +572,8 @@ mod tests {
         }
     }
 
+    /// 3.4-UNIT-026: `should_compose_templates_with_sections`.
+    /// Priority: P1.
     #[test]
     fn should_compose_templates_with_sections() {
         // GIVEN: a base template and a composition
@@ -622,6 +632,8 @@ mod tests {
         assert_eq!(composed.extends(), Some("base"));
     }
 
+    /// 3.4-UNIT-027: `apply_sections_handles_missing_variable`.
+    /// Priority: P2.
     #[test]
     fn apply_sections_handles_missing_variable() {
         // GIVEN: a template without variables
