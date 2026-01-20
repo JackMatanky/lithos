@@ -55,6 +55,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-01-11
+          components: rustfmt, clippy
       - uses: jdx/mise-action@v2
       - uses: swatinem/rust-cache@v2
       - name: Run Quality Gates
@@ -117,6 +121,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-01-11
+          components: rustfmt, clippy
       - uses: jdx/mise-action@v2
       - uses: swatinem/rust-cache@v2
       - name: Run Burn-In Loop
@@ -129,6 +137,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly-2026-01-11
+          components: rustfmt, clippy
       - uses: jdx/mise-action@v2
       - uses: swatinem/rust-cache@v2
       - name: Generate Coverage
