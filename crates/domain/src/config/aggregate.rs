@@ -1,3 +1,17 @@
+//! Config bounded context aggregate root.
+//!
+//! This module defines the `Config` aggregate root that represents the final
+//! resolved configuration for a vault operation. It handles the merging logic
+//! between global settings and vault-specific overrides.
+//!
+//! # Business Rules
+//! - **Precedence**: Vault-specific configuration always overrides global configuration.
+//! - **Defaults**: Sensible system defaults are applied when both global and vault
+//!   configurations are missing specific fields.
+//! - **Immutability**: Once built, the configuration is immutable and serves as
+//!   the "Source of Truth" for the current execution context.
+//! - **Validation**: All paths and enums are strictly validated during the build phase.
+
 use super::{
     events::{ConfigEvents, ConfigUpdated},
     global,
