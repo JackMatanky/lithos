@@ -585,4 +585,4 @@ This story will leverage the test utilities being developed in Epic 2:
 - **Traceability**: Future stories should include explicit Test IDs in function names for automated mapping.
 - **Metadata**: Consider adding priority markers to tests to enable risk-based subset execution in CI.
 
-See full report: [_bmad-output/test-review.md](../test-review.md)
+See full report: [_bmad-output/implementation-artifacts/reviews/3-6-test-suite-review.md](../reviews/3-6-test-suite-review.md)
