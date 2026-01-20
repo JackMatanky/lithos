@@ -165,15 +165,9 @@ mod tests {
             #[test]
             #[expect(
                 clippy::indexing_slicing,
-                reason = "Test logic uses indices known to be in bounds"
-            )]
-            #[expect(
                 clippy::integer_division_remainder_used,
-                reason = "Test logic uses modulo for cycling"
-            )]
-            #[expect(
                 clippy::arithmetic_side_effects,
-                reason = "Test logic uses safe arithmetic"
+                reason = "Test logic uses indices known to be in bounds, modulo cycling, and safe arithmetic"
             )]
             fn schema_graph_detects_arbitrary_cycles(
                 names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10)
@@ -201,11 +195,8 @@ mod tests {
             #[test]
             #[expect(
                 clippy::indexing_slicing,
-                reason = "Test logic uses indices known to be in bounds"
-            )]
-            #[expect(
                 clippy::arithmetic_side_effects,
-                reason = "Test logic uses safe arithmetic"
+                reason = "Test logic uses indices known to be in bounds and safe arithmetic"
             )]
             fn schema_graph_accepts_arbitrary_lineage(
                 names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10)

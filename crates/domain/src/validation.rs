@@ -327,11 +327,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test expectations use unwrap"
-    )]
-    #[expect(
         clippy::default_numeric_fallback,
-        reason = "Literal f64 in tests is standard"
+        reason = "Test expectations use unwrap and f64 literals are standard"
     )]
     fn validate_numeric_range_works() {
         // GIVEN: a value and range constraints
