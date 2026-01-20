@@ -42,12 +42,16 @@ impl TrustedVaults {
         )]
         match (&self.list, &self.map) {
             (Some(_), Some(_)) => Err(crate::ConfigError::ValidationFailed {
-                field: "trusted_vaults".to_owned(),
-                message: "cannot specify both list and map format".to_owned(),
+                field: "trusted_vaults".to_owned().into(),
+                message: "cannot specify both list and map format"
+                    .to_owned()
+                    .into(),
             }),
             (None, None) => Err(crate::ConfigError::ValidationFailed {
-                field: "trusted_vaults".to_owned(),
-                message: "must specify either list or map format".to_owned(),
+                field: "trusted_vaults".to_owned().into(),
+                message: "must specify either list or map format"
+                    .to_owned()
+                    .into(),
             }),
             _ => Ok(()),
         }

@@ -23,8 +23,8 @@ use std::borrow::Cow;
 /// use lithos_domain::ConfigError;
 ///
 /// let error = ConfigError::ValidationFailed {
-///     field: "vault_path".to_string(),
-///     message: "path cannot be empty".to_string(),
+///     field: "vault_path".to_string().into(),
+///     message: "path cannot be empty".to_string().into(),
 /// };
 /// assert!(error.to_string().contains("vault_path"));
 /// ```
@@ -37,27 +37,27 @@ pub enum ConfigError {
     )]
     DependencyViolation {
         /// Field that has unmet dependency.
-        field: String,
+        field: Box<str>,
         /// Field that is required.
-        depends_on: String,
+        depends_on: Box<str>,
     },
 
     /// Encryption-related error for sensitive fields.
     #[error("Encryption error for field {field}: {message}")]
     EncryptionError {
         /// Field that failed encryption/decryption.
-        field: String,
+        field: Box<str>,
         /// Detailed error message.
-        message: String,
+        message: Box<str>,
     },
 
     /// Invalid enum value for configuration field.
     #[error("Invalid enum value for {field}: {value} not in {allowed:?}")]
     InvalidEnumValue {
         /// Field with invalid enum value.
-        field: String,
+        field: Box<str>,
         /// Value that was provided.
-        value: String,
+        value: Box<str>,
         /// List of allowed values.
         allowed: Vec<String>,
     },
@@ -68,11 +68,11 @@ pub enum ConfigError {
     )]
     InvalidType {
         /// Field with type mismatch.
-        field: String,
+        field: Box<str>,
         /// Expected type name.
-        expected: String,
+        expected: Box<str>,
         /// Actual type encountered.
-        actual: String,
+        actual: Box<str>,
     },
 
     /// Configuration merge conflict between hierarchical levels.
@@ -81,18 +81,18 @@ pub enum ConfigError {
     )]
     MergeConflict {
         /// Field with merge conflict.
-        field: String,
+        field: Box<str>,
         /// Path to first configuration source.
-        path1: String,
+        path1: Box<str>,
         /// Path to second configuration source.
-        path2: String,
+        path2: Box<str>,
     },
 
     /// Required configuration field is missing.
     #[error("Required configuration field missing: {field}")]
     MissingRequiredField {
         /// Name of the missing field.
-        field: String,
+        field: Box<str>,
     },
 
     /// Configuration value out of valid range.
@@ -101,7 +101,7 @@ pub enum ConfigError {
     )]
     OutOfRange {
         /// Field with out-of-range value.
-        field: String,
+        field: Box<str>,
         /// Actual value provided.
         value: f64,
         /// Minimum allowed value (if any).
@@ -114,9 +114,9 @@ pub enum ConfigError {
     #[error("Configuration validation failed: {field} - {message}")]
     ValidationFailed {
         /// Field that failed validation.
-        field: String,
+        field: Box<str>,
         /// Detailed error message.
-        message: String,
+        message: Box<str>,
     },
 }
 
@@ -142,7 +142,7 @@ pub enum DomainError {
 
     /// Configuration error.
     #[error(transparent)]
-    Config(#[from] ConfigError),
+    Config(Box<ConfigError>),
 
     /// Duplicate property name.
     #[error("Duplicate property name: {0}")]
@@ -365,12 +365,19 @@ pub enum DomainError {
     )]
     VariableTypeMismatch {
         /// Variable name.
-        name: String,
+        name: Box<str>,
         /// Expected type name.
-        expected: String,
+        expected: Box<str>,
         /// Actual type encountered.
-        actual: String,
+        actual: Box<str>,
     },
+}
+
+impl From<ConfigError> for DomainError {
+    #[inline]
+    fn from(err: ConfigError) -> Self {
+        Self::Config(Box::new(err))
+    }
 }
 
 #[cfg(test)]
@@ -402,22 +409,22 @@ mod tests {
     #[rstest]
     #[case::validation(
         ConfigError::ValidationFailed {
-            field: "vault_path".to_owned(),
-            message: "cannot be empty".to_owned()
+            field: "vault_path".to_owned().into(),
+            message: "cannot be empty".to_owned().into()
         },
         &["vault_path", "cannot be empty"]
     )]
     #[case::missing_field(
         ConfigError::MissingRequiredField {
-            field: "templates_dir".to_owned()
+            field: "templates_dir".to_owned().into()
         },
         &["templates_dir", "missing"]
     )]
     #[case::invalid_type(
         ConfigError::InvalidType {
-            field: "log_level".to_owned(),
-            expected: "String".to_owned(),
-            actual: "Number".to_owned()
+            field: "log_level".to_owned().into(),
+            expected: "String".to_owned().into(),
+            actual: "Number".to_owned().into()
         },
         &["log_level", "String", "Number"]
     )]

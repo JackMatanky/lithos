@@ -24,6 +24,11 @@ pub enum AuthorizationResult {
     Denied(String),
 }
 
+/// Type alias for user permissions map.
+type PermissionMap = HashMap<(String, String), bool>;
+/// Type alias for authorization audit trail.
+type AuditTrail = Vec<AuthorizationAuditEntry>;
+
 /// Mock authorization service for testing CQRS security patterns
 ///
 /// # Architecture Compliance
@@ -44,9 +49,9 @@ pub enum AuthorizationResult {
 /// ```
 pub struct MockAuthorizationService {
     /// User permissions: (user_id, operation) -> allowed
-    permissions: Arc<RwLock<HashMap<(String, String), bool>>>,
+    permissions: Arc<RwLock<PermissionMap>>,
     /// Audit trail of authorization checks
-    audit_trail: Arc<RwLock<Vec<AuthorizationAuditEntry>>>,
+    audit_trail: Arc<RwLock<AuditTrail>>,
 }
 
 /// Entry in the authorization audit trail

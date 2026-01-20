@@ -71,31 +71,32 @@ impl VariableDefinition {
         s: &str,
         pattern: Option<&str>,
     ) -> Result<(), DomainError> {
-        if let Some(p) = pattern {
-            thread_local! {
-                static CACHE: std::cell::RefCell<std::collections::HashMap<String, regex::Regex>> =
-                    std::cell::RefCell::new(std::collections::HashMap::new());
+        let Some(p) = pattern else {
+            return Ok(());
+        };
+
+        thread_local! {
+            static CACHE: std::cell::RefCell<std::collections::HashMap<String, regex::Regex>> =
+                std::cell::RefCell::new(std::collections::HashMap::new());
+        }
+
+        let is_match = CACHE.with(|cache| -> Result<bool, DomainError> {
+            let mut cache = cache.borrow_mut();
+            if let Some(re) = cache.get(p) {
+                return Ok(re.is_match(s));
             }
 
-            let is_match =
-                CACHE.with(|cache| -> Result<bool, DomainError> {
-                    let mut cache = cache.borrow_mut();
-                    if let Some(re) = cache.get(p) {
-                        Ok(re.is_match(s))
-                    } else {
-                        let re = regex::Regex::new(p).map_err(|e| {
-                            DomainError::InvalidRegex(e.to_string())
-                        })?;
-                        let is_match = re.is_match(s);
-                        cache.insert(p.to_owned(), re);
-                        Ok(is_match)
-                    }
-                })?;
-            if !is_match {
-                return Err(DomainError::ValidationFailed(format!(
-                    "String does not match pattern: {p}"
-                )));
-            }
+            let re = regex::Regex::new(p)
+                .map_err(|e| DomainError::InvalidRegex(e.to_string()))?;
+            let res = re.is_match(s);
+            cache.insert(p.to_owned(), re);
+            Ok(res)
+        })?;
+
+        if !is_match {
+            return Err(DomainError::ValidationFailed(format!(
+                "String does not match pattern: {p}"
+            )));
         }
         Ok(())
     }

@@ -199,13 +199,29 @@ impl Default for MockMetricsCollector {
     }
 }
 
+/// Type alias for traces map.
+type TraceMap = HashMap<String, Vec<TraceEntry>>;
+
 /// Mock trace collector for CQRS operations
 ///
 /// # Architecture Compliance
 /// Tracks execution traces for correlation testing across command/query boundaries.
 pub struct MockTraceCollector {
     /// Trace entries: correlation_id -> trace details
-    traces: Arc<RwLock<HashMap<String, Vec<TraceEntry>>>>,
+    traces: Arc<RwLock<TraceMap>>,
+}
+
+/// Parameters for adding a trace entry.
+#[derive(Debug)]
+pub struct TraceEntryParams {
+    /// Operation type (Command, Query, Event)
+    pub operation_type: String,
+    /// Operation name
+    pub operation_name: String,
+    /// Duration
+    pub duration: Option<Duration>,
+    /// Additional context
+    pub context: HashMap<String, String>,
 }
 
 /// A single trace entry
@@ -242,17 +258,14 @@ impl MockTraceCollector {
     pub async fn add_entry(
         &self,
         correlation_id: &str,
-        operation_type: impl Into<String>,
-        operation_name: impl Into<String>,
-        duration: Option<Duration>,
-        context: HashMap<String, String>,
+        params: TraceEntryParams,
     ) {
         let entry = TraceEntry {
-            operation_type: operation_type.into(),
-            operation_name: operation_name.into(),
+            operation_type: params.operation_type,
+            operation_name: params.operation_name,
             timestamp: chrono::Utc::now(),
-            duration,
-            context,
+            duration: params.duration,
+            context: params.context,
         };
 
         if let Some(entries) = self.traces.write().await.get_mut(correlation_id)
@@ -375,14 +388,24 @@ mod tests {
         collector
             .add_entry(
                 "trace-1",
-                "Command",
-                "CreateOrder",
-                Some(Duration::from_millis(50)),
-                HashMap::new(),
+                TraceEntryParams {
+                    operation_type: "Command".to_owned(),
+                    operation_name: "CreateOrder".to_owned(),
+                    duration: Some(Duration::from_millis(50)),
+                    context: HashMap::new(),
+                },
             )
             .await;
         collector
-            .add_entry("trace-1", "Event", "OrderCreated", None, HashMap::new())
+            .add_entry(
+                "trace-1",
+                TraceEntryParams {
+                    operation_type: "Event".to_owned(),
+                    operation_name: "OrderCreated".to_owned(),
+                    duration: None,
+                    context: HashMap::new(),
+                },
+            )
             .await;
 
         let trace = collector.get_trace("trace-1").await.unwrap();
@@ -399,17 +422,35 @@ mod tests {
         collector
             .add_entry(
                 "trace-1",
-                "Command",
-                "CreateOrder",
-                Some(Duration::from_millis(50)),
-                HashMap::new(),
+                TraceEntryParams {
+                    operation_type: "Command".to_owned(),
+                    operation_name: "CreateOrder".to_owned(),
+                    duration: Some(Duration::from_millis(50)),
+                    context: HashMap::new(),
+                },
             )
             .await;
         collector
-            .add_entry("trace-1", "Event", "OrderCreated", None, HashMap::new())
+            .add_entry(
+                "trace-1",
+                TraceEntryParams {
+                    operation_type: "Event".to_owned(),
+                    operation_name: "OrderCreated".to_owned(),
+                    duration: None,
+                    context: HashMap::new(),
+                },
+            )
             .await;
         collector
-            .add_entry("trace-1", "Event", "OrderShipped", None, HashMap::new())
+            .add_entry(
+                "trace-1",
+                TraceEntryParams {
+                    operation_type: "Event".to_owned(),
+                    operation_name: "OrderShipped".to_owned(),
+                    duration: None,
+                    context: HashMap::new(),
+                },
+            )
             .await;
 
         let result = collector

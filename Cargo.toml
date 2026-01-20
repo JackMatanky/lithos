@@ -72,10 +72,14 @@ unsafe_code = "forbid"
 missing_docs = "deny"
 
 [workspace.lints.clippy]
-blanket_clippy_restriction_lints = "allow"
+# --- Category Groups ---
 pedantic = { level = "warn", priority = -1 }
 restriction = { level = "warn", priority = -1 }
-# Exceptions to restriction group (common opinionated lints to ignore)
+correctness = { level = "deny", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+
+# --- Allow Overrides (Exceptions to Pedantic/Restriction) ---
+blanket_clippy_restriction_lints = "allow"
 unseparated_literal_suffix = "allow"
 implicit_return = "allow"
 question_mark_used = "allow"
@@ -93,10 +97,17 @@ absolute_paths = "allow"
 mod_module_files = "allow"
 pub_with_shorthand = "allow"
 
-correctness = { level = "deny", priority = -1 }
-suspicious = { level = "deny", priority = -1 }
+# --- Deny Overrides (Strict Quality Gates) ---
 cognitive_complexity = "deny"
 too_many_lines = "deny"
+too_many_arguments = "deny"
+type_complexity = "deny"
+excessive_nesting = "deny"
+struct_excessive_bools = "deny"
+fn_params_excessive_bools = "deny"
+large_enum_variant = "deny"
+result_large_err = "deny"
+large_types_passed_by_value = "deny"
 unwrap_used = "deny"
 expect_used = "deny"
 todo = "deny"

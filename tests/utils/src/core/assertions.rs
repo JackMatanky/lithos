@@ -15,10 +15,10 @@ use std::fmt;
 /// Custom assertion error with detailed context.
 #[derive(Debug, Clone)]
 pub struct AssertionError {
-    pub message: String,
-    pub expected: String,
-    pub actual: String,
-    pub context: Vec<String>,
+    pub message: Box<str>,
+    pub expected: Box<str>,
+    pub actual: Box<str>,
+    pub context: Vec<Box<str>>,
 }
 
 impl fmt::Display for AssertionError {
@@ -62,9 +62,9 @@ macro_rules! assert_eq_detailed {
             (expected_val, actual_val) => {
                 if expected_val != actual_val {
                     let error = $crate::core::assertions::AssertionError {
-                        message: $message.to_string(),
-                        expected: format!("{:?}", expected_val),
-                        actual: format!("{:?}", actual_val),
+                        message: $message.to_string().into(),
+                        expected: format!("{:?}", expected_val).into(),
+                        actual: format!("{:?}", actual_val).into(),
                         context: vec![],
                     };
                     panic!("{}", error);
@@ -198,10 +198,10 @@ pub mod structural {
             Ok(())
         } else {
             Err(AssertionError {
-                message: "Structural comparison failed".to_string(),
-                expected: format!("{:?}", expected),
-                actual: format!("{:?}", actual),
-                context: vec!["Deep structural comparison".to_string()],
+                message: "Structural comparison failed".to_owned().into(),
+                expected: format!("{:?}", expected).into(),
+                actual: format!("{:?}", actual).into(),
+                context: vec!["Deep structural comparison".to_owned().into()],
             })
         }
     }
@@ -243,10 +243,11 @@ pub mod domain {
         } else {
             Err(AssertionError {
                 message: "Collections do not contain the same items"
-                    .to_string(),
-                expected: format!("{:?}", expected_sorted),
-                actual: format!("{:?}", actual_sorted),
-                context: vec!["Order-independent comparison".to_string()],
+                    .to_owned()
+                    .into(),
+                expected: format!("{:?}", expected_sorted).into(),
+                actual: format!("{:?}", actual_sorted).into(),
+                context: vec!["Order-independent comparison".to_owned().into()],
             })
         }
     }
@@ -304,10 +305,10 @@ pub mod domain {
             Ok(())
         } else {
             Err(AssertionError {
-                message: "Value is not in expected range".to_string(),
-                expected: format!("{:?}..{:?}", range.start, range.end),
-                actual: format!("{:?}", value),
-                context: vec!["Range validation".to_string()],
+                message: "Value is not in expected range".to_owned().into(),
+                expected: format!("{:?}..{:?}", range.start, range.end).into(),
+                actual: format!("{:?}", value).into(),
+                context: vec!["Range validation".to_owned().into()],
             })
         }
     }

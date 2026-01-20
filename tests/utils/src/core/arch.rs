@@ -60,26 +60,29 @@ pub fn assert_no_prohibited_dependencies(
             continue;
         }
 
-        if let Some(node) = nodes.iter().find(|n| n["id"] == current_id)
-            && let Some(deps) = node["dependencies"].as_array()
-        {
-            for dep_id in deps {
-                let dep_id_str =
-                    dep_id.as_str().expect("Dependency ID is not a string");
+        let Some(node) = nodes.iter().find(|n| n["id"] == current_id) else {
+            continue;
+        };
+        let Some(deps) = node["dependencies"].as_array() else {
+            continue;
+        };
 
-                // Find the package name for this ID
-                if let Some(package) =
-                    packages.iter().find(|p| p["id"] == dep_id_str)
-                {
-                    let name = package["name"]
-                        .as_str()
-                        .expect("Package name is not a string");
-                    if prohibited.contains(&name) {
-                        found_prohibited.push(name.to_string());
-                    }
+        for dep_id in deps {
+            let dep_id_str =
+                dep_id.as_str().expect("Dependency ID is not a string");
+
+            // Find the package name for this ID
+            if let Some(package) =
+                packages.iter().find(|p| p["id"] == dep_id_str)
+            {
+                let name = package["name"]
+                    .as_str()
+                    .expect("Package name is not a string");
+                if prohibited.contains(&name) {
+                    found_prohibited.push(name.to_string());
                 }
-                stack.push(dep_id_str);
             }
+            stack.push(dep_id_str);
         }
     }
 
