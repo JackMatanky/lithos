@@ -1,22 +1,23 @@
 //! Note bounded context aggregate root.
 //!
 //! This module defines the Note aggregate root that composes subentities
-//! from other modules: Frontmatter, Links, Embeds, Tags, Heading, Task, and
-//! Section.
+//! from other modules: Frontmatter, Links, Tags, Heading, Task, and Section.
 //!
 //! # Business Rules
 //! - Note IDs use UUID v7 for stable, time-ordered identity.
 //! - All file paths must be vault-relative and validated against path
 //!   traversal.
-//! - Validation follows a three-phase pipeline: Syntactic → Orchestration →
+//! - Validation follows a three-phase pipeline: Syntactic -> Orchestration ->
 //!   Semantic.
+//! - Links are value objects owned by the Note aggregate; the parent
+//!   relationship is implicit through containment.
 
 use uuid::Uuid;
 
 use super::{
     events::{NoteCreated, NoteEvents},
     frontmatter::Frontmatter,
-    link::Link,
+    link::{Link, LinkType},
     structure::{Heading, Section},
     tag::Tag,
     task::Task,
@@ -30,6 +31,12 @@ use crate::{errors::DomainError, validation::validate_vault_path};
 /// - `path` is vault-relative, non-empty, ends with `.md`, no traversal.
 /// - All subentities are consistent (e.g., link targets non-empty).
 /// - Entities are immutable after construction.
+///
+/// # Link Ownership
+/// Links are value objects owned by this aggregate. The parent relationship
+/// is implicit through containment - there is no `source_note_id` stored in
+/// each link. This follows DDD aggregate patterns where ownership is
+/// structural, not duplicated data.
 ///
 /// # Examples
 /// ```
@@ -49,10 +56,8 @@ pub struct Note {
     path: Box<str>,
     /// YAML metadata.
     frontmatter: Option<Frontmatter>,
-    /// Outgoing links.
+    /// All links (wiki-links, markdown links, and embeds).
     links: Vec<Link>,
-    /// Embedded files.
-    embeds: Vec<Link>,
     /// Hierarchical tags.
     tags: Vec<Tag>,
     /// Markdown headings.
@@ -67,29 +72,6 @@ pub struct Note {
 }
 
 impl Note {
-    /// Adds an embed to the note, ensuring aggregate consistency.
-    ///
-    /// # Examples
-    /// ```
-    /// # use lithos_domain::{Note, Link, EmbedType};
-    /// # use uuid::Uuid;
-    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// let embed = Link::new_embed(
-    ///     Uuid::nil(),
-    ///     "img.png".to_string(),
-    ///     EmbedType::Image,
-    ///     0,
-    /// )
-    /// .unwrap();
-    /// note.add_embed(embed);
-    /// assert_eq!(note.embeds().len(), 1);
-    /// ```
-    #[inline]
-    pub fn add_embed(&mut self, mut embed: Link) {
-        embed.set_source_note_id(self.id);
-        self.embeds.push(embed);
-    }
-
     /// Adds a domain event to the pending events collection.
     #[inline]
     pub fn add_event(&mut self, event: NoteEvents) {
@@ -111,22 +93,30 @@ impl Note {
         self.headings.push(heading);
     }
 
-    /// Adds a link to the note, ensuring aggregate consistency.
+    /// Adds a link to the note.
+    ///
+    /// This method accepts any link type (wiki-link, markdown link, or embed).
+    /// The link becomes owned by this note aggregate.
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::{Note, Link};
+    /// # use lithos_domain::{Note, Link, LinkTarget};
     /// # use uuid::Uuid;
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// let link =
-    ///     Link::new_wikilink(Uuid::nil(), "target.md".to_string(), None, 0)
-    ///         .unwrap();
+    /// let link = Link::new_wikilink(
+    ///     LinkTarget::Unresolved {
+    ///         raw: "target.md".into(),
+    ///     },
+    ///     None,
+    ///     None,
+    ///     0,
+    /// )
+    /// .unwrap();
     /// note.add_link(link);
     /// assert_eq!(note.links().len(), 1);
     /// ```
     #[inline]
-    pub fn add_link(&mut self, mut link: Link) {
-        link.set_source_note_id(self.id);
+    pub fn add_link(&mut self, link: Link) {
         self.links.push(link);
     }
 
@@ -177,11 +167,30 @@ impl Note {
         self.tasks.push(task);
     }
 
-    /// Returns the embedded files in this note.
+    /// Returns all embeds in this note.
+    ///
+    /// This is a convenience method that filters links by type.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Link, LinkTarget, EmbedType};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// let embed = Link::new_embed(
+    ///     LinkTarget::Unresolved {
+    ///         raw: "img.png".into(),
+    ///     },
+    ///     EmbedType::Image,
+    ///     None,
+    ///     0,
+    /// )
+    /// .unwrap();
+    /// note.add_link(embed);
+    /// assert_eq!(note.embeds().count(), 1);
+    /// ```
     #[inline]
-    #[must_use]
-    pub fn embeds(&self) -> &[Link] {
-        &self.embeds
+    pub fn embeds(&self) -> impl Iterator<Item = &Link> {
+        self.links.iter().filter(|l| l.is_embed())
     }
 
     /// Returns a reference to the note's frontmatter, if present.
@@ -205,11 +214,35 @@ impl Note {
         self.id
     }
 
-    /// Returns the outgoing links from this note.
+    /// Returns all links in this note (wiki-links, markdown links, and embeds).
     #[inline]
     #[must_use]
     pub fn links(&self) -> &[Link] {
         &self.links
+    }
+
+    /// Returns all markdown-style links in this note.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Link, LinkTarget};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// let link = Link::new_markdown_link(
+    ///     LinkTarget::External {
+    ///         url: "https://example.com".into(),
+    ///     },
+    ///     Some("Example".to_string()),
+    ///     None,
+    ///     0,
+    /// )
+    /// .unwrap();
+    /// note.add_link(link);
+    /// assert_eq!(note.markdown_links().count(), 1);
+    /// ```
+    #[inline]
+    pub fn markdown_links(&self) -> impl Iterator<Item = &Link> {
+        self.links.iter().filter(|l| l.link_type() == LinkType::MdLink)
     }
 
     /// Creates a new note aggregate with the provided UUID and validated path.
@@ -238,7 +271,6 @@ impl Note {
             path: path_box,
             frontmatter: None,
             links: vec![],
-            embeds: vec![],
             tags: vec![],
             headings: vec![],
             tasks: vec![],
@@ -307,7 +339,7 @@ impl Note {
     ///
     /// # Errors
     /// Returns `DomainError::ValidationFailed` if cross-entity invariants are
-    /// violated.
+    /// violated (e.g., invalid link configurations).
     ///
     /// # Examples
     /// ```
@@ -320,22 +352,36 @@ impl Note {
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
         for link in &self.links {
-            if link.source_note_id() != self.id {
-                return Err(DomainError::ValidationFailed(
-                    "Link source note ID mismatch".to_owned(),
-                ));
-            }
-        }
-
-        for embed in &self.embeds {
-            if embed.source_note_id() != self.id {
-                return Err(DomainError::ValidationFailed(
-                    "Embed source note ID mismatch".to_owned(),
-                ));
-            }
+            link.validate().map_err(|e| {
+                DomainError::ValidationFailed(format!("Invalid link: {e}"))
+            })?;
         }
 
         Ok(())
+    }
+
+    /// Returns all wiki-style links in this note.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Link, LinkTarget};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// let link = Link::new_wikilink(
+    ///     LinkTarget::Unresolved {
+    ///         raw: "other-note".into(),
+    ///     },
+    ///     None,
+    ///     None,
+    ///     0,
+    /// )
+    /// .unwrap();
+    /// note.add_link(link);
+    /// assert_eq!(note.wikilinks().count(), 1);
+    /// ```
+    #[inline]
+    pub fn wikilinks(&self) -> impl Iterator<Item = &Link> {
+        self.links.iter().filter(|l| l.link_type() == LinkType::WikiLink)
     }
 }
 
@@ -352,7 +398,9 @@ mod tests {
 
     use super::*;
     use crate::note::{
-        frontmatter::FieldValue, link::EmbedType, task::TaskStatus,
+        frontmatter::FieldValue,
+        link::{EmbedType, LinkTarget},
+        task::TaskStatus,
     };
 
     mod new {
@@ -447,8 +495,15 @@ mod tests {
                     Heading::new(1, "Title".into(), 0).expect("Valid heading"),
                 ])
                 .links(vec![
-                    Link::new_wikilink(note_id, "target.md".into(), None, 0)
-                        .expect("Valid target"),
+                    Link::new_wikilink(
+                        LinkTarget::Unresolved {
+                            raw: "target.md".into(),
+                        },
+                        None,
+                        None,
+                        0,
+                    )
+                    .expect("Valid link"),
                 ])
                 .build();
 
@@ -456,58 +511,7 @@ mod tests {
             let result = note.validate();
 
             // THEN: validation succeeds
-            result.unwrap();
-        }
-
-        /// 3.1-UNIT-007: `returns_error_when_link_source_note_id_mismatch`.
-        /// Priority: P1.
-        #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn returns_error_when_link_source_note_id_mismatch() {
-            // GIVEN: a note with a link from a different source ID
-            let note_id = Uuid::now_v7();
-            let other_id = Uuid::now_v7();
-            let note = NoteBuilder::new()
-                .id(note_id)
-                .links(vec![
-                    Link::new_wikilink(other_id, "target.md".into(), None, 0)
-                        .expect("Valid target"),
-                ])
-                .build();
-
-            // WHEN: validating the aggregate
-            let result = note.validate();
-
-            // THEN: validation fails with a mismatch error
-            assert_err_kind!(result, DomainError::ValidationFailed(_));
-        }
-
-        /// 3.1-UNIT-008: `returns_error_when_embed_source_note_id_mismatch`.
-        /// Priority: P1.
-        #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        fn returns_error_when_embed_source_note_id_mismatch() {
-            // GIVEN: a note with an embed from a different source ID
-            let note_id = Uuid::now_v7();
-            let other_id = Uuid::now_v7();
-            let note = NoteBuilder::new()
-                .id(note_id)
-                .embeds(vec![
-                    Link::new_embed(
-                        other_id,
-                        "img.png".to_owned(),
-                        EmbedType::Image,
-                        0,
-                    )
-                    .expect("Valid target"),
-                ])
-                .build();
-
-            // WHEN: validating the aggregate
-            let result = note.validate();
-
-            // THEN: validation fails with a mismatch error
-            assert_err_kind!(result, DomainError::ValidationFailed(_));
+            result.expect("Validation should pass");
         }
     }
 
@@ -530,15 +534,28 @@ mod tests {
                 Task::new("Task".into(), TaskStatus::Incomplete, 0).unwrap(),
             );
             note.add_section(Section::new(None, "Body".into(), 0..4));
+
+            // Add a wikilink
             note.add_link(
-                Link::new_wikilink(Uuid::nil(), "link.md".into(), None, 0)
-                    .unwrap(),
+                Link::new_wikilink(
+                    LinkTarget::Unresolved {
+                        raw: "link.md".into(),
+                    },
+                    None,
+                    None,
+                    0,
+                )
+                .unwrap(),
             );
-            note.add_embed(
+
+            // Add an embed
+            note.add_link(
                 Link::new_embed(
-                    Uuid::nil(),
-                    "img.png".into(),
+                    LinkTarget::Unresolved {
+                        raw: "img.png".into(),
+                    },
                     EmbedType::Image,
+                    None,
                     0,
                 )
                 .unwrap(),
@@ -555,16 +572,78 @@ mod tests {
             assert_eq!(note.headings().len(), 1);
             assert_eq!(note.tasks().len(), 1);
             assert_eq!(note.sections().len(), 1);
-            assert_eq!(note.links().len(), 1);
-            assert_eq!(note.embeds().len(), 1);
+            assert_eq!(note.links().len(), 2); // unified links
+            assert_eq!(note.wikilinks().count(), 1);
+            assert_eq!(note.embeds().count(), 1);
             assert!(note.frontmatter().is_some());
+        }
 
-            // AND: link/embed source IDs were fixed to the aggregate ID
-            assert_eq!(note.links().first().unwrap().source_note_id(), note_id);
-            assert_eq!(
-                note.embeds().first().unwrap().source_note_id(),
-                note_id
+        /// 3.1-UNIT-010: `filtered_link_iterators_work`.
+        /// Priority: P1.
+        #[test]
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        fn filtered_link_iterators_work() {
+            // GIVEN: a note with various link types (2 wikilinks, 1 markdown, 1
+            // embed)
+            let mut note =
+                Note::new(Uuid::now_v7(), "note.md".to_owned()).unwrap();
+
+            note.add_link(
+                Link::new_wikilink(
+                    LinkTarget::Unresolved {
+                        raw: "wiki1.md".into(),
+                    },
+                    None,
+                    None,
+                    0,
+                )
+                .unwrap(),
             );
+            note.add_link(
+                Link::new_wikilink(
+                    LinkTarget::Unresolved {
+                        raw: "wiki2.md".into(),
+                    },
+                    None,
+                    None,
+                    10,
+                )
+                .unwrap(),
+            );
+            note.add_link(
+                Link::new_markdown_link(
+                    LinkTarget::External {
+                        url: "https://example.com".into(),
+                    },
+                    None,
+                    None,
+                    20,
+                )
+                .unwrap(),
+            );
+            note.add_link(
+                Link::new_embed(
+                    LinkTarget::Unresolved {
+                        raw: "img.png".into(),
+                    },
+                    EmbedType::Image,
+                    None,
+                    30,
+                )
+                .unwrap(),
+            );
+
+            // WHEN: using filtered iterators to query specific link types
+            let all_count = note.links().len();
+            let wiki_count = note.wikilinks().count();
+            let md_count = note.markdown_links().count();
+            let embed_count = note.embeds().count();
+
+            // THEN: each iterator returns the correct count for its type
+            assert_eq!(all_count, 4);
+            assert_eq!(wiki_count, 2);
+            assert_eq!(md_count, 1);
+            assert_eq!(embed_count, 1);
         }
     }
 
@@ -575,7 +654,6 @@ mod tests {
         path: Box<str> = "default.md".into(),
         frontmatter: Option<Frontmatter> = None,
         links: Vec<Link> = vec![],
-        embeds: Vec<Link> = vec![],
         tags: Vec<Tag> = vec![],
         headings: Vec<Heading> = vec![],
         tasks: Vec<Task> = vec![],
@@ -648,7 +726,6 @@ pub mod fixtures {
             path: "test/example.md".into(),
             frontmatter: Some(example_frontmatter()),
             links: vec![],
-            embeds: vec![],
             tags: vec![example_tag()],
             headings: vec![],
             tasks: vec![],

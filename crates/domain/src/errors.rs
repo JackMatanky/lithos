@@ -212,6 +212,10 @@ pub enum DomainError {
     #[error("Invalid heading level: {0} (must be 1-6)")]
     InvalidHeadingLevel(u8),
 
+    /// Invalid link configuration.
+    #[error("Invalid link configuration: {0}")]
+    InvalidLinkConfiguration(String),
+
     /// Invalid link type for operation.
     #[error("Invalid link type for operation")]
     InvalidLinkType,
