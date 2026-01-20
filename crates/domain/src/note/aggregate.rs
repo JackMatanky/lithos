@@ -1,7 +1,7 @@
 //! Note bounded context aggregate root.
 //!
 //! This module defines the Note aggregate root that composes subentities
-//! from other modules: Frontmatter, Links, Embeds, Tags, Headings, Tasks, and Sections.
+//! from other modules: Frontmatter, Links, Embeds, Tags, Heading, Task, and Section.
 //!
 //! # Business Rules
 //! - Note IDs use UUID v7 for stable, time-ordered identity.
@@ -65,6 +65,16 @@ pub struct Note {
 
 impl Note {
     /// Adds an embed to the note, ensuring aggregate consistency.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Link, EmbedType};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// let embed = Link::new_embed(Uuid::nil(), "img.png".to_string(), EmbedType::Image, 0).unwrap();
+    /// note.add_embed(embed);
+    /// assert_eq!(note.embeds().len(), 1);
+    /// ```
     #[inline]
     pub fn add_embed(&mut self, mut embed: Link) {
         embed.set_source_note_id(self.id);
@@ -78,12 +88,31 @@ impl Note {
     }
 
     /// Adds a heading to the note.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Heading};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// note.add_heading(Heading::new(1, "Title".to_string(), 0).unwrap());
+    /// assert_eq!(note.headings().len(), 1);
+    /// ```
     #[inline]
     pub fn add_heading(&mut self, heading: Heading) {
         self.headings.push(heading);
     }
 
     /// Adds a link to the note, ensuring aggregate consistency.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Link};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// let link = Link::new_wikilink(Uuid::nil(), "target.md".to_string(), None, 0).unwrap();
+    /// note.add_link(link);
+    /// assert_eq!(note.links().len(), 1);
+    /// ```
     #[inline]
     pub fn add_link(&mut self, mut link: Link) {
         link.set_source_note_id(self.id);
@@ -91,18 +120,46 @@ impl Note {
     }
 
     /// Adds a section to the note.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Section};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// note.add_section(Section::new(None, "content".to_string(), 0..7));
+    /// assert_eq!(note.sections().len(), 1);
+    /// ```
     #[inline]
     pub fn add_section(&mut self, section: Section) {
         self.sections.push(section);
     }
 
     /// Adds a tag to the note.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Tag};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// note.add_tag(Tag::parse("#work").unwrap());
+    /// assert_eq!(note.tags().len(), 1);
+    /// ```
     #[inline]
     pub fn add_tag(&mut self, tag: Tag) {
         self.tags.push(tag);
     }
 
     /// Adds a task to the note.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::{Note, Task, TaskStatus};
+    /// # use uuid::Uuid;
+    /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
+    /// let task = Task::new("todo".to_string(), TaskStatus::Incomplete, 0).unwrap();
+    /// note.add_task(task);
+    /// assert_eq!(note.tasks().len(), 1);
+    /// ```
     #[inline]
     pub fn add_task(&mut self, task: Task) {
         self.tasks.push(task);
@@ -160,8 +217,8 @@ impl Note {
     pub fn new(id: Uuid, path: String) -> Result<Self, DomainError> {
         validate_vault_path(&path, Some("md"))?;
 
+        let path_for_event = path.clone();
         let path_box: Box<str> = path.into();
-        let path_for_event = path_box.to_string();
 
         let mut note = Self {
             id,
@@ -237,6 +294,15 @@ impl Note {
     ///
     /// # Errors
     /// Returns `DomainError::ValidationFailed` if cross-entity invariants are violated.
+    ///
+    /// # Examples
+    /// ```
+    /// # use lithos_domain::Note;
+    /// # use uuid::Uuid;
+    /// let note_id = Uuid::now_v7();
+    /// let note = Note::new(note_id, "test.md".to_string()).unwrap();
+    /// note.validate().unwrap();
+    /// ```
     #[inline]
     pub fn validate(&self) -> Result<(), DomainError> {
         for link in &self.links {
@@ -262,9 +328,13 @@ impl Note {
 #[cfg(test)]
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Test module organization"
+    clippy::panic,
+    reason = "Test module organization and behavior verification patterns"
 )]
 mod tests {
+    // # LINT_DISABLE_REASON: Standard test utilities and behavioral verification patterns.
+    use lithos_test_utils::assert_err_kind;
+
     use super::*;
     use crate::note::{
         frontmatter::FieldValue, link::EmbedType, task::TaskStatus,
@@ -301,14 +371,13 @@ mod tests {
                     result.is_ok(),
                     "Expected path '{path}' to be valid"
                 ),
-                Err(e) => {
-                    let actual = result.unwrap_err();
-                    assert_eq!(
-                        std::mem::discriminant(&actual),
-                        std::mem::discriminant(&e),
-                        "Path '{path}' produced wrong error variant"
-                    );
+                Err(DomainError::EmptyPath) => {
+                    assert_err_kind!(result, DomainError::EmptyPath);
                 }
+                Err(DomainError::InvalidPath(_)) => {
+                    assert_err_kind!(result, DomainError::InvalidPath(_));
+                }
+                Err(e) => panic!("Unexpected error kind in matrix: {e:?}"),
             }
         }
 
@@ -386,7 +455,7 @@ mod tests {
             let result = note.validate();
 
             // THEN: validation fails with a mismatch error
-            assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
+            assert_err_kind!(result, DomainError::ValidationFailed(_));
         }
 
         /// 3.1-UNIT-008: `returns_error_when_embed_source_note_id_mismatch`.
@@ -414,7 +483,7 @@ mod tests {
             let result = note.validate();
 
             // THEN: validation fails with a mismatch error
-            assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
+            assert_err_kind!(result, DomainError::ValidationFailed(_));
         }
     }
 
