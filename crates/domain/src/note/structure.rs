@@ -1,8 +1,8 @@
 //! Document structure subentities for Note aggregate.
 //!
-//! Provides heading-based organization and section content management for notes.
-//! Headings (H1-H6) mark structural points in the document, while sections group
-//! content between headings.
+//! Provides heading-based organization and section content management for
+//! notes. Headings (H1-H6) mark structural points in the document, while
+//! sections group content between headings.
 
 use crate::errors::DomainError;
 
@@ -46,7 +46,8 @@ impl Heading {
     /// ```
     ///
     /// # Errors
-    /// Returns `DomainError::InvalidHeadingLevel` if `level` is not between 1 and 6.
+    /// Returns `DomainError::InvalidHeadingLevel` if `level` is not between 1
+    /// and 6.
     #[inline]
     pub fn new(
         level: u8,
@@ -96,7 +97,8 @@ impl Heading {
     reason = "pub(crate) used for internal builders and tests"
 )]
 pub struct Section {
-    /// Optional heading that starts this section (None for content before first heading).
+    /// Optional heading that starts this section (None for content before
+    /// first heading).
     pub(crate) heading: Option<Heading>,
     /// Section content text.
     pub(crate) content: Box<str>,
@@ -123,13 +125,13 @@ impl Section {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Section, Heading};
+    /// use lithos_domain::{Heading, Section};
     ///
     /// let range = 10..50;
     /// let section = Section::new(
     ///     Some(Heading::new(1, "Title".to_string(), 10).unwrap()),
     ///     "Content here...".to_string(),
-    ///     range.clone()
+    ///     range.clone(),
     /// );
     /// assert_eq!(section.range(), range);
     /// ```

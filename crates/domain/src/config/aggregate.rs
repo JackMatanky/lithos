@@ -5,12 +5,14 @@
 //! between global settings and vault-specific overrides.
 //!
 //! # Business Rules
-//! - **Precedence**: Vault-specific configuration always overrides global configuration.
-//! - **Defaults**: Sensible system defaults are applied when both global and vault
-//!   configurations are missing specific fields.
+//! - **Precedence**: Vault-specific configuration always overrides global
+//!   configuration.
+//! - **Defaults**: Sensible system defaults are applied when both global and
+//!   vault configurations are missing specific fields.
 //! - **Immutability**: Once built, the configuration is immutable and serves as
 //!   the "Source of Truth" for the current execution context.
-//! - **Validation**: All paths and enums are strictly validated during the build phase.
+//! - **Validation**: All paths and enums are strictly validated during the
+//!   build phase.
 
 use super::{
     events::{ConfigEvents, ConfigUpdated},
@@ -51,7 +53,8 @@ impl Config {
         self.pending_events.push(event);
     }
 
-    /// Build a new Config by combining optional Global and Vault configurations with business rules.
+    /// Build a new Config by combining optional Global and Vault configurations
+    /// with business rules.
     ///
     /// # Errors
     /// Returns `ConfigError::ValidationFailed` if `vault_path` is empty.
@@ -338,10 +341,12 @@ fn choose_value(vault: &str, global: &str, default: &str) -> String {
 #[cfg(test)]
 #[expect(
     clippy::panic,
-    reason = "Test safety boundary - panic is acceptable in test code for exhaustive match failures"
+    reason = "Test safety boundary - panic is acceptable in test code for \
+              exhaustive match failures"
 )]
 mod tests {
-    // # LINT_DISABLE_REASON: Standard test utilities and behavioral verification patterns.
+    // # LINT_DISABLE_REASON: Standard test utilities and behavioral
+    // verification patterns.
     use super::*;
 
     mod integrity {
@@ -396,7 +401,8 @@ mod tests {
             assert!(config.pending_events().is_empty());
         }
 
-        /// 3.3-UNIT-019: `merge_frontmatter_handles_various_input_combinations`.
+        /// 3.3-UNIT-019:
+        /// `merge_frontmatter_handles_various_input_combinations`.
         /// Priority: P1.
         #[test]
         fn merge_frontmatter_handles_various_input_combinations() {
@@ -464,7 +470,8 @@ mod tests {
                 if let Ok(config2) = result2 {
                     assert_eq!(
                         config, config2,
-                        "Merged configs with identical input must be equal (PartialEq)"
+                        "Merged configs with identical input must be equal \
+                         (PartialEq)"
                     );
                 }
             }
@@ -478,11 +485,13 @@ mod tests {
         /// Priority: P1.
         #[test]
         fn falls_back_to_defaults_when_inputs_are_empty() {
-            // GIVEN: configs with empty fields that should fall back to system defaults
+            // GIVEN: configs with empty fields that should fall back to system
+            // defaults
             let global = Global {
                 filesystem: global::Filesystem {
                     schema: Schema {
-                        schemas_dir: String::new(), // Empty - should use default
+                        schemas_dir: String::new(), /* Empty - should use
+                                                     * default */
                         property_bank_filename: String::new(),
                     },
                     template: Template {
@@ -497,7 +506,8 @@ mod tests {
                     title_key: String::new(),
                 },
                 logging: Logging {
-                    log_level: String::new(), // Empty - should use default "info"
+                    log_level: String::new(), /* Empty - should use default
+                                               * "info" */
                 },
                 trusted_vaults: None,
             };
@@ -591,7 +601,8 @@ mod tests {
             if let (Ok(merged1), Ok(merged2)) = (result1, result2) {
                 assert_eq!(
                     merged1, merged2,
-                    "Repeated merges with same input must yield identical output"
+                    "Repeated merges with same input must yield identical \
+                     output"
                 );
             }
         }
@@ -601,10 +612,12 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
+            reason = "Test expects merge to succeed, unwrap is appropriate \
+                      for test clarity"
         )]
         fn vault_values_take_precedence_over_global() {
-            // GIVEN: a global config with default settings and a vault config with custom overrides
+            // GIVEN: a global config with default settings and a vault config
+            // with custom overrides
             let global = sample_global_config();
             let vault = sample_vault_config();
 
@@ -718,17 +731,20 @@ mod tests {
                 None => {
                     assert!(
                         result.is_ok(),
-                        "Configuration with path='{path}' and level='{level}' should be valid, but failed: {result:?}"
+                        "Configuration with path='{path}' and level='{level}' \
+                         should be valid, but failed: {result:?}"
                     );
                     if let Ok(config) = result {
                         assert!(
                             config.validate().is_ok(),
-                            "Explicit validate() call should also pass for valid config"
+                            "Explicit validate() call should also pass for \
+                             valid config"
                         );
                     }
                 }
                 Some(field_name) => {
-                    // # LINT_DISABLE_REASON: Standard error matching pattern for Config validation.
+                    // # LINT_DISABLE_REASON: Standard error matching pattern
+                    // for Config validation.
                     match field_name {
                         "vault_path" => {
                             assert_err_kind!(
@@ -811,7 +827,7 @@ mod tests {
                     property_bank_filename: "property_bank.json".to_owned(),
                 },
                 template: Template {
-                    templates_dir: "custom_templates".to_owned(), // vault override
+                    templates_dir: "custom_templates".to_owned(), /* vault override */
                 },
                 cache_dir: ".cache".to_owned(),
             },

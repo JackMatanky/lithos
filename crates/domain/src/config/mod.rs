@@ -1,6 +1,7 @@
 //! Configuration bounded context.
 //!
-//! This module contains configuration domain entities, business logic, and events.
+//! This module contains configuration domain entities, business logic, and
+//! events.
 
 pub(crate) mod aggregate;
 pub(crate) mod events;

@@ -1,11 +1,13 @@
 //! Schema domain aggregates: Schema and `PropertyBank`.
 //!
-//! This module contains the primary aggregate roots for the Schema bounded context,
-//! providing a pure domain representation of schemas and a centralized property registry.
+//! This module contains the primary aggregate roots for the Schema bounded
+//! context, providing a pure domain representation of schemas and a centralized
+//! property registry.
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "Core domain logic and naming convention where Schema/PropertyBank prefixes are descriptive"
+    reason = "Core domain logic and naming convention where \
+              Schema/PropertyBank prefixes are descriptive"
 )]
 
 use std::{
@@ -314,8 +316,9 @@ impl PropertyBank {
 
     /// Decodes a `$ref` path to a Property.
     ///
-    /// This method performs a key lookup for a property. Format-specific parsing
-    /// (e.g., handling "#/properties/") must be handled by the adapters.
+    /// This method performs a key lookup for a property. Format-specific
+    /// parsing (e.g., handling "#/properties/") must be handled by the
+    /// adapters.
     ///
     /// # Errors
     /// Returns `PropertyNotFound` if key does not exist.
@@ -414,9 +417,9 @@ impl PropertyBank {
     /// # Examples
     ///
     /// ```
-    /// use lithos_domain::PropertyBank;
-    /// use lithos_domain::{Property, PropertyName};
-    /// use lithos_domain::{PropertySpec, BoolSpec};
+    /// use lithos_domain::{
+    ///     BoolSpec, Property, PropertyBank, PropertyName, PropertySpec,
+    /// };
     /// use uuid::Uuid;
     ///
     /// let mut bank = PropertyBank::new();

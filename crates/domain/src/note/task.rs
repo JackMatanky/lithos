@@ -44,17 +44,15 @@ impl Task {
     /// ```
     /// use lithos_domain::{Task, TaskStatus};
     ///
-    /// let task = Task::new(
-    ///     "Buy milk".to_string(),
-    ///     TaskStatus::Incomplete,
-    ///     50
-    /// ).unwrap();
+    /// let task =
+    ///     Task::new("Buy milk".to_string(), TaskStatus::Incomplete, 50).unwrap();
     /// assert_eq!(task.text(), "Buy milk");
     /// assert_eq!(task.status(), TaskStatus::Incomplete);
     /// ```
     ///
     /// # Errors
-    /// Returns `DomainError::ValidationFailed` if the task text is empty or contains only whitespace.
+    /// Returns `DomainError::ValidationFailed` if the task text is empty or
+    /// contains only whitespace.
     #[inline]
     pub fn new(
         text: String,

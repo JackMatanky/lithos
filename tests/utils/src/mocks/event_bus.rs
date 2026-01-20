@@ -98,7 +98,7 @@ where
 /// # Examples
 ///
 /// ```rust
-/// use lithos_test_utils::mocks::event_bus::{MockEventBus, EventBusPort};
+/// use lithos_test_utils::mocks::event_bus::{EventBusPort, MockEventBus};
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -274,8 +274,8 @@ where
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method linting.
-// # LINT_DISABLE_REASON: Options tried: manual Result propagation.
+// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method
+// linting. # LINT_DISABLE_REASON: Options tried: manual Result propagation.
 // # LINT_DISABLE_REASON: Justification: keep tests concise.
 #[allow(clippy::disallowed_methods)]
 mod tests {

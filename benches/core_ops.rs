@@ -12,7 +12,8 @@
 
 // # LINT_DISABLE_REASON: Benchmarks do not require public documentation
 // | Options tried: Adding docs to every test function
-// | Justification: Benchmarks are self-documenting; mandatory docs add noise without value.
+// | Justification: Benchmarks are self-documenting; mandatory docs add noise
+// without value.
 #![allow(
     missing_docs,
     reason = "Benchmarks do not require public documentation"
@@ -44,9 +45,11 @@ async fn bench_publish_event(
     bus: Arc<dyn EventBusPort<TestDomainEvent>>,
     event: TestDomainEvent,
 ) {
-    // # LINT_DISABLE_REASON: Intentionally ignoring result for benchmarking publication latency.
-    // # LINT_DISABLE_REASON: Options tried: .expect() (disallowed), .unwrap() (disallowed).
-    // # LINT_DISABLE_REASON: Justification: Benchmarking focuses on execution time; result handling is secondary here.
+    // # LINT_DISABLE_REASON: Intentionally ignoring result for benchmarking
+    // publication latency. # LINT_DISABLE_REASON: Options tried: .expect()
+    // (disallowed), .unwrap() (disallowed). # LINT_DISABLE_REASON:
+    // Justification: Benchmarking focuses on execution time; result handling is
+    // secondary here.
     #[expect(
         clippy::let_underscore_must_use,
         clippy::let_underscore_untyped,
@@ -74,7 +77,8 @@ fn event_bus_benchmarks(c: &mut Criterion) {
             let event = TestDomainEvent {
                 id: black_box("test-event".to_owned()),
             };
-            // # LINT_DISABLE_REASON: Using Arc::clone for clarity in benchmark setup.
+            // # LINT_DISABLE_REASON: Using Arc::clone for clarity in benchmark
+            // setup.
             bench_publish_event(Arc::clone(&bus), event)
         });
     });

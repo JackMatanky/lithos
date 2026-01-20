@@ -1,8 +1,9 @@
 //! # CQRS Testing Framework
 //!
-//! This module provides comprehensive testing utilities for CQRS (Command Query Responsibility Segregation)
-//! patterns, supporting command handler testing, query handler testing, event sourcing aggregates,
-//! and eventual consistency validation.
+//! This module provides comprehensive testing utilities for CQRS (Command Query
+//! Responsibility Segregation) patterns, supporting command handler testing,
+//! query handler testing, event sourcing aggregates, and eventual consistency
+//! validation.
 //!
 //! ## Architecture Alignment
 //!
@@ -105,7 +106,8 @@ pub trait Entity: Send + Sync + Clone + Debug {
 /// Port trait for command-side repositories
 // # LINT_DISABLE_REASON: Mockall generated code uses unwrap/expect internally.
 // # LINT_DISABLE_REASON: Options tried: manual mocks.
-// # LINT_DISABLE_REASON: Justification: standard mocking library used in test-only code.
+// # LINT_DISABLE_REASON: Justification: standard mocking library used in
+// test-only code.
 #[allow(clippy::disallowed_methods)]
 #[mockall::automock]
 #[async_trait]
@@ -126,7 +128,8 @@ pub trait RepositoryPort<E: Entity + 'static>: Send + Sync {
 /// Port trait for query-side data stores
 // # LINT_DISABLE_REASON: Mockall generated code uses unwrap/expect internally.
 // # LINT_DISABLE_REASON: Options tried: manual mocks.
-// # LINT_DISABLE_REASON: Justification: standard mocking library used in test-only code.
+// # LINT_DISABLE_REASON: Justification: standard mocking library used in
+// test-only code.
 #[allow(clippy::disallowed_methods)]
 #[mockall::automock]
 #[async_trait]
@@ -234,14 +237,21 @@ impl<E: Entity + 'static, T: Send + Sync + 'static> Default
 /// use lithos_test_utils::cqrs::TestFramework;
 ///
 /// #[derive(Debug, Clone, PartialEq)]
-/// enum UserEvent { Created(String) }
-/// struct CreateUser { name: String }
+/// enum UserEvent {
+///     Created(String),
+/// }
+/// struct CreateUser {
+///     name: String,
+/// }
 ///
-/// let framework: TestFramework<(), CreateUser, UserEvent> = TestFramework::new();
+/// let framework: TestFramework<(), CreateUser, UserEvent> =
+///     TestFramework::new();
 ///
 /// framework
 ///     .given(vec![])
-///     .when(CreateUser { name: "Alice".into() })
+///     .when(CreateUser {
+///         name: "Alice".into(),
+///     })
 ///     .execute(|_history, cmd| vec![UserEvent::Created(cmd.name)])
 ///     .then_expect_events(vec![UserEvent::Created("Alice".into())]);
 /// ```
@@ -413,14 +423,15 @@ impl<E: Clone + Debug + PartialEq> Default for EventVerifier<E> {
 
 /// Eventual consistency testing utilities for write/read model synchronization.
 ///
-/// Provides polling-based wait mechanisms to avoid flaky `sleep()` calls in tests
-/// that depend on asynchronous projections or background indexing.
+/// Provides polling-based wait mechanisms to avoid flaky `sleep()` calls in
+/// tests that depend on asynchronous projections or background indexing.
 ///
 /// # Examples
 ///
 /// ```rust
-/// use lithos_test_utils::cqrs::EventualConsistencyTester;
 /// use std::sync::Arc;
+///
+/// use lithos_test_utils::cqrs::EventualConsistencyTester;
 /// use tokio::sync::Mutex;
 ///
 /// # #[tokio::main]
@@ -436,10 +447,15 @@ impl<E: Clone + Debug + PartialEq> Default for EventVerifier<E> {
 /// });
 ///
 /// // Wait until condition is met
-/// tester.wait_for_condition(|| {
-///     let f = Arc::clone(&flag);
-///     async move { *f.lock().await }
-/// }, tokio::time::Duration::from_millis(200)).await?;
+/// tester
+///     .wait_for_condition(
+///         || {
+///             let f = Arc::clone(&flag);
+///             async move { *f.lock().await }
+///         },
+///         tokio::time::Duration::from_millis(200),
+///     )
+///     .await?;
 /// # Ok(())
 /// # }
 /// ```
@@ -527,7 +543,8 @@ impl EventualConsistencyTester {
         }
     }
 
-    /// Verify race condition prevention by ensuring operations complete in order
+    /// Verify race condition prevention by ensuring operations complete in
+    /// order
     pub async fn verify_ordering<F1, F2, Fut1, Fut2>(
         &self,
         first_op: F1,
@@ -596,8 +613,9 @@ impl Default for EventualConsistencyTester {
 /// # Examples
 ///
 /// ```rust
-/// use lithos_test_utils::cqrs::SagaTester;
 /// use std::sync::Arc;
+///
+/// use lithos_test_utils::cqrs::SagaTester;
 ///
 /// # #[tokio::main]
 /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -682,7 +700,8 @@ impl SagaTester {
                     .collect();
 
                 return Err(CqrsTestError::ConsistencyTimeout(format!(
-                    "Not all participants updated within {timeout:?}. Pending: {pending:?}"
+                    "Not all participants updated within {timeout:?}. \
+                     Pending: {pending:?}"
                 )));
             }
 
@@ -713,7 +732,8 @@ impl SagaTester {
             Ok(())
         } else {
             Err(CqrsTestError::EventVerificationFailed(format!(
-                "Event sequence mismatch. Expected: {expected:?}, Actual: {actual_strs:?}"
+                "Event sequence mismatch. Expected: {expected:?}, Actual: \
+                 {actual_strs:?}"
             )))
         }
     }
@@ -732,9 +752,10 @@ impl Default for SagaTester {
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Mock verification and assertions in tests trigger disallowed-method and expect_used lints.
-// # LINT_DISABLE_REASON: Options tried: manual Result matching.
-// # LINT_DISABLE_REASON: Justification: test code clarity and standard practice.
+// # LINT_DISABLE_REASON: Mock verification and assertions in tests trigger
+// disallowed-method and expect_used lints. # LINT_DISABLE_REASON: Options
+// tried: manual Result matching. # LINT_DISABLE_REASON: Justification: test
+// code clarity and standard practice.
 #[allow(clippy::disallowed_methods, clippy::expect_used)]
 mod tests {
     use super::*;

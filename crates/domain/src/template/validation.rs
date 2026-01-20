@@ -31,7 +31,8 @@ pub fn validate_structure(
 
     if open_count != close_count {
         return Err(DomainError::ValidationFailed(format!(
-            "Unbalanced template placeholders: {open_count} opening, {close_count} closing"
+            "Unbalanced template placeholders: {open_count} opening, \
+             {close_count} closing"
         )));
     }
     Ok(())

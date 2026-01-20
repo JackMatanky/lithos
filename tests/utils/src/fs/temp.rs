@@ -1,11 +1,13 @@
 //! Temporary directory and file utilities for testing.
 //!
-//! This module provides RAII-managed temporary directories and files with automatic cleanup,
-//! cross-platform path utilities, and centralized test output management.
+//! This module provides RAII-managed temporary directories and files with
+//! automatic cleanup, cross-platform path utilities, and centralized test
+//! output management.
 //!
 //! # Safety Invariants
 //!
-//! - All temporary resources are automatically cleaned up on drop, even on panic
+//! - All temporary resources are automatically cleaned up on drop, even on
+//!   panic
 //! - Paths are always absolute and normalized for cross-platform compatibility
 //! - Unique naming prevents conflicts in parallel test execution
 
@@ -21,8 +23,9 @@ use tempfile::{Builder, TempDir as TempfileTempDir, tempdir};
 
 /// Returns the project root directory managed by Figment.
 ///
-/// According to project Rule 82, all absolute paths should be managed via Figment.
-/// This helper provides a centralized way to determine the base path for test operations.
+/// According to project Rule 82, all absolute paths should be managed via
+/// Figment. This helper provides a centralized way to determine the base path
+/// for test operations.
 pub fn project_root() -> PathBuf {
     Figment::new()
         .merge(Env::prefixed("LITHOS_"))
@@ -32,8 +35,9 @@ pub fn project_root() -> PathBuf {
 
 /// RAII-managed temporary directory with automatic cleanup.
 ///
-/// Provides a temporary directory that is automatically deleted when the `TempDir`
-/// instance goes out of scope, ensuring no leftover test artifacts even if tests panic.
+/// Provides a temporary directory that is automatically deleted when the
+/// `TempDir` instance goes out of scope, ensuring no leftover test artifacts
+/// even if tests panic.
 ///
 /// # Example
 ///
@@ -57,7 +61,8 @@ pub struct TempDir {
 impl TempDir {
     /// Creates a new temporary directory with a unique name.
     ///
-    /// The directory name includes a timestamp and random suffix for parallel test safety.
+    /// The directory name includes a timestamp and random suffix for parallel
+    /// test safety.
     ///
     /// # Errors
     ///
@@ -148,7 +153,8 @@ pub mod path_utils {
         path
     }
 
-    /// Ensures a path is absolute, resolving relative paths against the project root.
+    /// Ensures a path is absolute, resolving relative paths against the project
+    /// root.
     ///
     /// According to Rule 82, absolute paths should be managed via Figment.
     ///
@@ -168,7 +174,8 @@ pub mod path_utils {
 
     /// Normalizes path separators for cross-platform compatibility.
     ///
-    /// On Windows, converts backslashes to forward slashes for consistent handling.
+    /// On Windows, converts backslashes to forward slashes for consistent
+    /// handling.
     pub fn normalize_separators<P: AsRef<Path>>(path: P) -> PathBuf {
         let path_str = path.as_ref().to_string_lossy();
         #[cfg(target_os = "windows")]
@@ -182,8 +189,8 @@ pub mod path_utils {
 
 /// Centralized test output management.
 ///
-/// Provides a single configurable directory for all test artifacts with automatic
-/// per-test subdirectory creation and cleanup policies.
+/// Provides a single configurable directory for all test artifacts with
+/// automatic per-test subdirectory creation and cleanup policies.
 #[derive(Debug)]
 pub struct TestOutput {
     base_dir: PathBuf,

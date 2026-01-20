@@ -64,7 +64,8 @@ pub enum ConfigError {
 
     /// Invalid configuration value type.
     #[error(
-        "Invalid configuration value type for {field}: expected {expected}, got {actual}"
+        "Invalid configuration value type for {field}: expected {expected}, \
+         got {actual}"
     )]
     InvalidType {
         /// Field with type mismatch.
@@ -77,7 +78,8 @@ pub enum ConfigError {
 
     /// Configuration merge conflict between hierarchical levels.
     #[error(
-        "Configuration merge conflict: {field} has incompatible types at {path1} and {path2}"
+        "Configuration merge conflict: {field} has incompatible types at \
+         {path1} and {path2}"
     )]
     MergeConflict {
         /// Field with merge conflict.
@@ -97,7 +99,8 @@ pub enum ConfigError {
 
     /// Configuration value out of valid range.
     #[error(
-        "Configuration value out of range for {field}: {value} not in {min:?}..{max:?}"
+        "Configuration value out of range for {field}: {value} not in \
+         {min:?}..{max:?}"
     )]
     OutOfRange {
         /// Field with out-of-range value.

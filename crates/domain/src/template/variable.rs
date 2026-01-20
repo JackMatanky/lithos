@@ -62,7 +62,8 @@ pub enum VariableDefinition {
 
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Function ordering optimized for logical flow over strict alphabetical order"
+    reason = "Function ordering optimized for logical flow over strict \
+              alphabetical order"
 )]
 impl VariableDefinition {
     /// Checks string pattern constraints.

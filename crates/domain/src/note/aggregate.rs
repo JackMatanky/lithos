@@ -1,12 +1,15 @@
 //! Note bounded context aggregate root.
 //!
 //! This module defines the Note aggregate root that composes subentities
-//! from other modules: Frontmatter, Links, Embeds, Tags, Heading, Task, and Section.
+//! from other modules: Frontmatter, Links, Embeds, Tags, Heading, Task, and
+//! Section.
 //!
 //! # Business Rules
 //! - Note IDs use UUID v7 for stable, time-ordered identity.
-//! - All file paths must be vault-relative and validated against path traversal.
-//! - Validation follows a three-phase pipeline: Syntactic → Orchestration → Semantic.
+//! - All file paths must be vault-relative and validated against path
+//!   traversal.
+//! - Validation follows a three-phase pipeline: Syntactic → Orchestration →
+//!   Semantic.
 
 use uuid::Uuid;
 
@@ -71,7 +74,13 @@ impl Note {
     /// # use lithos_domain::{Note, Link, EmbedType};
     /// # use uuid::Uuid;
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// let embed = Link::new_embed(Uuid::nil(), "img.png".to_string(), EmbedType::Image, 0).unwrap();
+    /// let embed = Link::new_embed(
+    ///     Uuid::nil(),
+    ///     "img.png".to_string(),
+    ///     EmbedType::Image,
+    ///     0,
+    /// )
+    /// .unwrap();
     /// note.add_embed(embed);
     /// assert_eq!(note.embeds().len(), 1);
     /// ```
@@ -109,7 +118,9 @@ impl Note {
     /// # use lithos_domain::{Note, Link};
     /// # use uuid::Uuid;
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// let link = Link::new_wikilink(Uuid::nil(), "target.md".to_string(), None, 0).unwrap();
+    /// let link =
+    ///     Link::new_wikilink(Uuid::nil(), "target.md".to_string(), None, 0)
+    ///         .unwrap();
     /// note.add_link(link);
     /// assert_eq!(note.links().len(), 1);
     /// ```
@@ -156,7 +167,8 @@ impl Note {
     /// # use lithos_domain::{Note, Task, TaskStatus};
     /// # use uuid::Uuid;
     /// let mut note = Note::new(Uuid::now_v7(), "note.md".to_string()).unwrap();
-    /// let task = Task::new("todo".to_string(), TaskStatus::Incomplete, 0).unwrap();
+    /// let task =
+    ///     Task::new("todo".to_string(), TaskStatus::Incomplete, 0).unwrap();
     /// note.add_task(task);
     /// assert_eq!(note.tasks().len(), 1);
     /// ```
@@ -204,7 +216,8 @@ impl Note {
     ///
     /// # Errors
     /// Returns `DomainError::EmptyPath` if path is empty.
-    /// Returns `DomainError::InvalidPath` if path is absolute, missing `.md` extension, or contains `..`.
+    /// Returns `DomainError::InvalidPath` if path is absolute, missing `.md`
+    /// extension, or contains `..`.
     ///
     /// # Examples
     /// ```
@@ -293,7 +306,8 @@ impl Note {
     /// Validates the note's internal consistency.
     ///
     /// # Errors
-    /// Returns `DomainError::ValidationFailed` if cross-entity invariants are violated.
+    /// Returns `DomainError::ValidationFailed` if cross-entity invariants are
+    /// violated.
     ///
     /// # Examples
     /// ```
@@ -332,7 +346,8 @@ impl Note {
     reason = "Test module organization and behavior verification patterns"
 )]
 mod tests {
-    // # LINT_DISABLE_REASON: Standard test utilities and behavioral verification patterns.
+    // # LINT_DISABLE_REASON: Standard test utilities and behavioral
+    // verification patterns.
     use lithos_test_utils::assert_err_kind;
 
     use super::*;
@@ -350,9 +365,18 @@ mod tests {
         /// Priority: P0.
         #[rstest]
         #[case::empty("", Err(DomainError::EmptyPath))]
-        #[case::absolute("/absolute/path.md", Err(DomainError::InvalidPath("Path must be relative".into())))]
-        #[case::traversal("../etc/passwd", Err(DomainError::InvalidPath("Path traversal not allowed".into())))]
-        #[case::missing_extension("projects/lithos", Err(DomainError::InvalidPath("Path must end with .md".into())))]
+        #[case::absolute(
+            "/absolute/path.md",
+            Err(DomainError::InvalidPath("Path must be relative".into()))
+        )]
+        #[case::traversal(
+            "../etc/passwd",
+            Err(DomainError::InvalidPath("Path traversal not allowed".into()))
+        )]
+        #[case::missing_extension(
+            "projects/lithos",
+            Err(DomainError::InvalidPath("Path must end with .md".into()))
+        )]
         #[case::valid("valid.md", Ok(()))]
         #[case::nested_valid("folder/sub/note.md", Ok(()))]
         fn path_validation_matrix(
@@ -576,7 +600,8 @@ pub mod fixtures {
     /// Test fixture: Create example frontmatter with realistic field values.
     ///
     /// # Panics
-    /// Panics if the hardcoded date string is invalid or frontmatter construction fails.
+    /// Panics if the hardcoded date string is invalid or frontmatter
+    /// construction fails.
     #[expect(
         clippy::disallowed_methods,
         reason = "Test fixture - unwrap/expect acceptable in test code"

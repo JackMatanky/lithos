@@ -1,23 +1,26 @@
 //! Architecture testing utilities for enforcing project-wide boundaries.
 //!
-//! This module provides helpers to verify that crates adhere to architectural rules,
-//! such as domain purity (no I/O or external dependencies in the domain crate).
+//! This module provides helpers to verify that crates adhere to architectural
+//! rules, such as domain purity (no I/O or external dependencies in the domain
+//! crate).
 
 use std::process::Command;
 
 use serde_json::Value;
 
-/// Asserts that a specific crate does not depend on any of the prohibited crates,
-/// including transitive dependencies.
+/// Asserts that a specific crate does not depend on any of the prohibited
+/// crates, including transitive dependencies.
 ///
-/// This check uses `cargo metadata` to analyze the full dependency graph of the workspace.
+/// This check uses `cargo metadata` to analyze the full dependency graph of the
+/// workspace.
 ///
 /// # Panics
 ///
 /// Panics if any prohibited dependency is found or if `cargo metadata` fails.
-// # LINT_DISABLE_REASON: Architecture tests use cargo metadata which requires expect() for parsing.
-// # LINT_DISABLE_REASON: Options tried: manual Result propagation.
-// # LINT_DISABLE_REASON: Justification: this is test-only code where panics are preferred over silent failures.
+// # LINT_DISABLE_REASON: Architecture tests use cargo metadata which requires
+// expect() for parsing. # LINT_DISABLE_REASON: Options tried: manual Result
+// propagation. # LINT_DISABLE_REASON: Justification: this is test-only code
+// where panics are preferred over silent failures.
 #[allow(clippy::expect_used, clippy::disallowed_methods)]
 pub fn assert_no_prohibited_dependencies(
     crate_name: &str,
@@ -90,7 +93,8 @@ pub fn assert_no_prohibited_dependencies(
         found_prohibited.sort();
         found_prohibited.dedup();
         panic!(
-            "Architectural Boundary Violation: Crate '{}' (or its dependencies) is prohibited from depending on: {:?}. Found: {:?}",
+            "Architectural Boundary Violation: Crate '{}' (or its \
+             dependencies) is prohibited from depending on: {:?}. Found: {:?}",
             crate_name, prohibited, found_prohibited
         );
     }
@@ -104,9 +108,8 @@ mod tests {
     fn architecture_check_detects_prohibited_dependencies() {
         // test-utils depends on insta, so this should panic if we prohibit it
         // but for now we just verify the check runs.
-        assert_no_prohibited_dependencies(
-            "lithos-test-utils",
-            &["non-existent-crate"],
-        );
+        assert_no_prohibited_dependencies("lithos-test-utils", &[
+            "non-existent-crate",
+        ]);
     }
 }

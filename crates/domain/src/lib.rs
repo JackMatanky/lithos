@@ -1,10 +1,12 @@
 //! Lithos Domain Crate.
 //!
-//! This crate contains the pure business logic, domain entities, and port definitions
-//! for the Lithos system. It has no dependencies on external I/O or frameworks.
+//! This crate contains the pure business logic, domain entities, and port
+//! definitions for the Lithos system. It has no dependencies on external I/O or
+//! frameworks.
 //!
 //! # Architecture
-//! - **Bounded Contexts**: Config, Note, Schema, Template (each owns models, events)
+//! - **Bounded Contexts**: Config, Note, Schema, Template (each owns models,
+//!   events)
 //! - **Ports**: Trait interfaces for adapters (hexagonal architecture)
 //! - **Errors**: Domain-specific error types (shared across contexts)
 //! - **Validation**: Cross-context validation utilities (internal only)
@@ -29,7 +31,8 @@ pub(crate) mod validation;
 
 // Re-export commonly used types for convenience.
 // This provides a simplified public API for external crates without requiring
-// deep module path knowledge (e.g., `lithos_domain::Config` vs `lithos_domain::config::Config`).
+// deep module path knowledge (e.g., `lithos_domain::Config` vs
+// `lithos_domain::config::Config`).
 
 // Config context re-exports
 pub use config::{

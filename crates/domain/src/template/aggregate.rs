@@ -64,11 +64,13 @@ pub struct Template {
 
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Function ordering optimized for logical flow over strict alphabetical order"
+    reason = "Function ordering optimized for logical flow over strict \
+              alphabetical order"
 )]
 #[expect(
     clippy::pattern_type_mismatch,
-    reason = "Matching on reference to enum with owned variants for borrow checker compliance"
+    reason = "Matching on reference to enum with owned variants for borrow \
+              checker compliance"
 )]
 impl Template {
     /// Adds a domain event to the pending events collection.
@@ -192,7 +194,8 @@ impl Template {
     /// Creates a new template aggregate with validation.
     ///
     /// # Errors
-    /// Returns `DomainError` if validation fails (name format, size limits, etc).
+    /// Returns `DomainError` if validation fails (name format, size limits,
+    /// etc).
     ///
     /// # Examples
     /// ```
@@ -576,12 +579,9 @@ mod tests {
         let base = Template::new(
             "base".to_owned(),
             "Base: {{v}}".to_owned(),
-            [(
-                "v".to_owned(),
-                VariableDefinition::Boolean {
-                    default: None,
-                },
-            )]
+            [("v".to_owned(), VariableDefinition::Boolean {
+                default: None,
+            })]
             .into_iter()
             .collect(),
             None,

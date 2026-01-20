@@ -3,7 +3,8 @@
 // # LINT_DISABLE_REASON: Justification: Test code clarity.
 #![expect(
     clippy::disallowed_methods,
-    reason = "Tests use disallowed methods for setup and assertions for clarity"
+    reason = "Tests use disallowed methods for setup and assertions for \
+              clarity"
 )]
 
 use std::{

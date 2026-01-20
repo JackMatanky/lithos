@@ -1,7 +1,8 @@
 //! Real observability testing using a custom tracing subscriber.
 //!
-//! This module provides a `TestTracingSubscriber` that captures actual `tracing` events
-//! and spans emitted by production code, allowing for assertions on logs and traces.
+//! This module provides a `TestTracingSubscriber` that captures actual
+//! `tracing` events and spans emitted by production code, allowing for
+//! assertions on logs and traces.
 
 use std::sync::{Arc, Mutex};
 
@@ -112,7 +113,7 @@ impl<'a> tracing::field::Visit for FieldVisitor<'a> {
 ///
 /// ```rust
 /// use lithos_test_utils::obs::tracing::init_tracing;
-/// use tracing::{info, span, Level};
+/// use tracing::{Level, info, span};
 ///
 /// let handle = init_tracing();
 ///
@@ -129,18 +130,20 @@ pub struct TracingHandle {
 
 impl TracingHandle {
     /// Returns all captured events.
-    // # LINT_DISABLE_REASON: Mutex poisoning in tests is handled by unwrap as it signifies a fatal test error.
-    // # LINT_DISABLE_REASON: Options tried: manual error handling.
-    // # LINT_DISABLE_REASON: Justification: simplify test assertion code.
+    // # LINT_DISABLE_REASON: Mutex poisoning in tests is handled by unwrap as
+    // it signifies a fatal test error. # LINT_DISABLE_REASON: Options
+    // tried: manual error handling. # LINT_DISABLE_REASON: Justification:
+    // simplify test assertion code.
     #[allow(clippy::disallowed_methods)]
     pub fn events(&self) -> Vec<CapturedEvent> {
         self.state.lock().unwrap().events.clone()
     }
 
     /// Returns all captured spans.
-    // # LINT_DISABLE_REASON: Mutex poisoning in tests is handled by unwrap as it signifies a fatal test error.
-    // # LINT_DISABLE_REASON: Options tried: manual error handling.
-    // # LINT_DISABLE_REASON: Justification: simplify test assertion code.
+    // # LINT_DISABLE_REASON: Mutex poisoning in tests is handled by unwrap as
+    // it signifies a fatal test error. # LINT_DISABLE_REASON: Options
+    // tried: manual error handling. # LINT_DISABLE_REASON: Justification:
+    // simplify test assertion code.
     #[allow(clippy::disallowed_methods)]
     pub fn spans(&self) -> Vec<CapturedSpan> {
         self.state.lock().unwrap().spans.clone()
@@ -171,8 +174,9 @@ impl TracingHandle {
 
 /// Initializes a tracing subscriber for the current test.
 ///
-/// Returns a `TracingHandle` that can be used to query captured events and spans.
-/// The subscriber is automatically uninstalled when the handle is dropped.
+/// Returns a `TracingHandle` that can be used to query captured events and
+/// spans. The subscriber is automatically uninstalled when the handle is
+/// dropped.
 pub fn init_tracing() -> TracingHandle {
     let state = Arc::new(Mutex::new(SharedState::default()));
     let layer = TestLayer {

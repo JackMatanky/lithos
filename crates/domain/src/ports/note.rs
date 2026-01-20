@@ -1,7 +1,7 @@
 //! Note bounded context ports for CQRS operations.
 //!
-//! This module defines the command and query trait interfaces for the Note aggregate.
-//! These are shells for future implementation by adapters.
+//! This module defines the command and query trait interfaces for the Note
+//! aggregate. These are shells for future implementation by adapters.
 
 use async_trait::async_trait;
 use uuid::Uuid;

@@ -1,25 +1,29 @@
 //! `Graph` domain service for inheritance resolution.
 //!
-//! Provides topological sorting and cycle detection for schema inheritance graphs.
+//! Provides topological sorting and cycle detection for schema inheritance
+//! graphs.
 
 use std::collections::{HashMap, HashSet};
 
 use super::aggregate::SchemaName;
 use crate::errors::DomainError;
 
-/// Domain Service: Validates acyclic schema inheritance and determines resolution order.
+/// Domain Service: Validates acyclic schema inheritance and determines
+/// resolution order.
 ///
-/// Uses topological sorting to ensure parent schemas are resolved before child schemas.
-/// Detects circular inheritance dependencies.
+/// Uses topological sorting to ensure parent schemas are resolved before child
+/// schemas. Detects circular inheritance dependencies.
 ///
 /// # Examples
 ///
 /// ```
-/// use lithos_domain::SchemaGraph;
-/// use lithos_domain::SchemaName;
+/// use lithos_domain::{SchemaGraph, SchemaName};
 ///
 /// let mut graph = SchemaGraph::new();
-/// graph.add_node("child".try_into().unwrap(), Some("parent".try_into().unwrap()));
+/// graph.add_node(
+///     "child".try_into().unwrap(),
+///     Some("parent".try_into().unwrap()),
+/// );
 /// graph.add_node("parent".try_into().unwrap(), None);
 ///
 /// let order = graph.resolve_order().unwrap();
@@ -159,9 +163,18 @@ mod tests {
             /// 3.3-UNIT-018: `schema_graph_detects_arbitrary_cycles`.
             /// Priority: P0.
             #[test]
-            #[expect(clippy::indexing_slicing, reason = "Test logic uses indices known to be in bounds")]
-            #[expect(clippy::integer_division_remainder_used, reason = "Test logic uses modulo for cycling")]
-            #[expect(clippy::arithmetic_side_effects, reason = "Test logic uses safe arithmetic")]
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "Test logic uses indices known to be in bounds"
+            )]
+            #[expect(
+                clippy::integer_division_remainder_used,
+                reason = "Test logic uses modulo for cycling"
+            )]
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "Test logic uses safe arithmetic"
+            )]
             fn schema_graph_detects_arbitrary_cycles(
                 names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 2..10)
             ) {
@@ -186,8 +199,14 @@ mod tests {
             /// 3.3-UNIT-019: `schema_graph_accepts_arbitrary_lineage`.
             /// Priority: P1.
             #[test]
-            #[expect(clippy::indexing_slicing, reason = "Test logic uses indices known to be in bounds")]
-            #[expect(clippy::arithmetic_side_effects, reason = "Test logic uses safe arithmetic")]
+            #[expect(
+                clippy::indexing_slicing,
+                reason = "Test logic uses indices known to be in bounds"
+            )]
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "Test logic uses safe arithmetic"
+            )]
             fn schema_graph_accepts_arbitrary_lineage(
                 names in prop::collection::vec("[a-zA-Z0-9]{3,10}", 1..10)
             ) {
@@ -248,9 +267,9 @@ mod tests {
         let order = graph.resolve_order().unwrap();
 
         // THEN: it should return parent before child
-        assert_eq_detailed!(
-            order,
-            vec!["parent".try_into().unwrap(), "child".try_into().unwrap()]
-        );
+        assert_eq_detailed!(order, vec![
+            "parent".try_into().unwrap(),
+            "child".try_into().unwrap()
+        ]);
     }
 }

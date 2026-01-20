@@ -90,7 +90,8 @@ impl PayloadAssertion {
             Ok(())
         } else {
             Err(EventTestError::new(format!(
-                "Payload mismatch. Expected {expected_value:?}, got {actual_value:?}"
+                "Payload mismatch. Expected {expected_value:?}, got \
+                 {actual_value:?}"
             )))
         }
     }
@@ -120,7 +121,8 @@ impl SequenceAssertion {
                 && record.sequence <= previous_sequence
             {
                 return Err(EventTestError::new(format!(
-                    "Sequence {current} must be greater than {previous_sequence}",
+                    "Sequence {current} must be greater than \
+                     {previous_sequence}",
                     current = record.sequence
                 )));
             }
@@ -144,7 +146,8 @@ impl TimingAssertion {
                 && record.timestamp < previous_timestamp
             {
                 return Err(EventTestError::new(format!(
-                    "Timestamp {current:?} must not be earlier than {previous_timestamp:?}",
+                    "Timestamp {current:?} must not be earlier than \
+                     {previous_timestamp:?}",
                     current = record.timestamp
                 )));
             }
@@ -240,8 +243,8 @@ impl<E> EventTestResult<E> {
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method linting.
-// # LINT_DISABLE_REASON: Options tried: manual Result propagation.
+// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method
+// linting. # LINT_DISABLE_REASON: Options tried: manual Result propagation.
 // # LINT_DISABLE_REASON: Justification: maintain clear test intent.
 #[allow(clippy::disallowed_methods)]
 mod tests {
@@ -311,20 +314,12 @@ mod tests {
     #[test]
     fn sequence_assertion_detects_out_of_order() {
         let records = vec![
-            EventRecord::with_timestamp(
-                1,
-                fixed_timestamp(0),
-                TestEvent {
-                    id: 1,
-                },
-            ),
-            EventRecord::with_timestamp(
-                1,
-                fixed_timestamp(1),
-                TestEvent {
-                    id: 2,
-                },
-            ),
+            EventRecord::with_timestamp(1, fixed_timestamp(0), TestEvent {
+                id: 1,
+            }),
+            EventRecord::with_timestamp(1, fixed_timestamp(1), TestEvent {
+                id: 2,
+            }),
         ];
         let result = SequenceAssertion::verify_increasing(&records);
 
@@ -334,20 +329,12 @@ mod tests {
     #[test]
     fn sequence_assertion_accepts_increasing_sequences() {
         let records = vec![
-            EventRecord::with_timestamp(
-                1,
-                fixed_timestamp(0),
-                TestEvent {
-                    id: 1,
-                },
-            ),
-            EventRecord::with_timestamp(
-                2,
-                fixed_timestamp(1),
-                TestEvent {
-                    id: 2,
-                },
-            ),
+            EventRecord::with_timestamp(1, fixed_timestamp(0), TestEvent {
+                id: 1,
+            }),
+            EventRecord::with_timestamp(2, fixed_timestamp(1), TestEvent {
+                id: 2,
+            }),
         ];
         let result = SequenceAssertion::verify_increasing(&records);
 
@@ -357,20 +344,12 @@ mod tests {
     #[test]
     fn timing_assertion_rejects_backwards_timestamps() {
         let records = vec![
-            EventRecord::with_timestamp(
-                1,
-                fixed_timestamp(10),
-                TestEvent {
-                    id: 1,
-                },
-            ),
-            EventRecord::with_timestamp(
-                2,
-                fixed_timestamp(5),
-                TestEvent {
-                    id: 2,
-                },
-            ),
+            EventRecord::with_timestamp(1, fixed_timestamp(10), TestEvent {
+                id: 1,
+            }),
+            EventRecord::with_timestamp(2, fixed_timestamp(5), TestEvent {
+                id: 2,
+            }),
         ];
         let result = TimingAssertion::verify_non_decreasing(&records);
 
@@ -380,20 +359,12 @@ mod tests {
     #[test]
     fn timing_assertion_enforces_max_span() {
         let records = vec![
-            EventRecord::with_timestamp(
-                1,
-                fixed_timestamp(0),
-                TestEvent {
-                    id: 1,
-                },
-            ),
-            EventRecord::with_timestamp(
-                2,
-                fixed_timestamp(120),
-                TestEvent {
-                    id: 2,
-                },
-            ),
+            EventRecord::with_timestamp(1, fixed_timestamp(0), TestEvent {
+                id: 1,
+            }),
+            EventRecord::with_timestamp(2, fixed_timestamp(120), TestEvent {
+                id: 2,
+            }),
         ];
         let result =
             TimingAssertion::verify_max_span(&records, Duration::seconds(30));

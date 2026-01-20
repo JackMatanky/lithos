@@ -1,13 +1,15 @@
 //! Custom assertion helpers for domain-specific testing.
 //!
-//! This module provides custom assertion macros and helpers that extend the standard
-//! testing assertions with domain-specific validations, async support, and rich error reporting.
+//! This module provides custom assertion macros and helpers that extend the
+//! standard testing assertions with domain-specific validations, async support,
+//! and rich error reporting.
 //!
 //! # Features
 //!
 //! - **Custom Derive Macros**: Automatic assertion generation for domain types
 //! - **Async Assertions**: Timeout-based assertions for async operations
-//! - **Structural Comparisons**: Deep equality checks for nested data structures
+//! - **Structural Comparisons**: Deep equality checks for nested data
+//!   structures
 //! - **Rich Error Reporting**: Field-level diffs and context information
 
 use std::fmt;
@@ -76,8 +78,8 @@ macro_rules! assert_eq_detailed {
 
 /// Assert that an async operation completes within a timeout.
 ///
-/// This macro waits for an async operation to complete and fails if it takes longer
-/// than the specified timeout.
+/// This macro waits for an async operation to complete and fails if it takes
+/// longer than the specified timeout.
 ///
 /// # Example
 ///
@@ -92,7 +94,8 @@ macro_rules! assert_eq_detailed {
 ///     42
 /// }
 ///
-/// let result = assert_async_completed!(slow_operation(), Duration::from_millis(100));
+/// let result =
+///     assert_async_completed!(slow_operation(), Duration::from_millis(100));
 /// assert_eq!(result, 42);
 /// # }
 /// ```
@@ -115,15 +118,19 @@ macro_rules! assert_async_completed {
 
 /// Assert that a condition becomes true within a timeout.
 ///
-/// This macro repeatedly checks a condition until it becomes true or the timeout expires.
+/// This macro repeatedly checks a condition until it becomes true or the
+/// timeout expires.
 ///
 /// # Example
 ///
 /// ```rust
+/// use std::sync::{
+///     Arc,
+///     atomic::{AtomicBool, Ordering},
+/// };
+///
 /// use lithos_test_utils::assert_eventually;
 /// use tokio::time::Duration;
-/// use std::sync::atomic::{AtomicBool, Ordering};
-/// use std::sync::Arc;
 ///
 /// #[tokio::test]
 /// async fn eventual_assertion_waits_for_condition_to_become_true() {
@@ -135,7 +142,10 @@ macro_rules! assert_async_completed {
 ///         flag_clone.store(true, Ordering::Relaxed);
 ///     });
 ///
-///     assert_eventually!(|| flag.load(Ordering::Relaxed), Duration::from_secs(1));
+///     assert_eventually!(
+///         || flag.load(Ordering::Relaxed),
+///         Duration::from_secs(1)
+///     );
 /// }
 /// ```
 #[macro_export]
@@ -184,8 +194,14 @@ pub mod structural {
     ///     age: u32,
     /// }
     ///
-    /// let p1 = Person { name: "Alice".to_string(), age: 30 };
-    /// let p2 = Person { name: "Bob".to_string(), age: 30 };
+    /// let p1 = Person {
+    ///     name: "Alice".to_string(),
+    ///     age: 30,
+    /// };
+    /// let p2 = Person {
+    ///     name: "Bob".to_string(),
+    ///     age: 30,
+    /// };
     ///
     /// let diff = compare_structural(&p1, &p2).unwrap_err();
     /// println!("{}", diff);
@@ -209,7 +225,8 @@ pub mod structural {
 
 /// Domain-specific assertion helpers.
 ///
-/// Provides assertion functions tailored for common domain patterns in the Lithos project.
+/// Provides assertion functions tailored for common domain patterns in the
+/// Lithos project.
 pub mod domain {
     use super::*;
 
@@ -260,7 +277,10 @@ pub mod domain {
     /// use lithos_test_utils::assert_err_kind;
     ///
     /// #[derive(Debug)]
-    /// enum MyError { NotFound, Invalid }
+    /// enum MyError {
+    ///     NotFound,
+    ///     Invalid,
+    /// }
     /// let result: Result<(), MyError> = Err(MyError::NotFound);
     /// assert_err_kind!(result, MyError::NotFound);
     /// ```
@@ -315,9 +335,10 @@ pub mod domain {
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method linting.
-// # LINT_DISABLE_REASON: Options tried: explicit matches/guarded Result handling.
-// # LINT_DISABLE_REASON: Justification: keep tests readable without unwrap/expect.
+// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method
+// linting. # LINT_DISABLE_REASON: Options tried: explicit matches/guarded
+// Result handling. # LINT_DISABLE_REASON: Justification: keep tests readable
+// without unwrap/expect.
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use tokio::time::Duration;

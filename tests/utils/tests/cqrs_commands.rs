@@ -1,7 +1,8 @@
 //! # Command Handler Testing Examples
 //!
-//! Demonstrates ADR 0009 Decision 1: Command handler testing with mock repositories,
-//! event verification, validation logic, and error scenario testing.
+//! Demonstrates ADR 0009 Decision 1: Command handler testing with mock
+//! repositories, event verification, validation logic, and error scenario
+//! testing.
 
 #![allow(clippy::disallowed_methods)]
 

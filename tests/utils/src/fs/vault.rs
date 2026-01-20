@@ -1,8 +1,9 @@
 //! Test Vault utility for integration testing of vault operations.
 //!
-//! This module provides a high-level `TestVault` struct that handles the creation
-//! and management of a Lithos vault in a temporary directory, including standard
-//! configurations and helper methods for adding notes and metadata.
+//! This module provides a high-level `TestVault` struct that handles the
+//! creation and management of a Lithos vault in a temporary directory,
+//! including standard configurations and helper methods for adding notes and
+//! metadata.
 
 use std::{
     fs,
@@ -19,14 +20,16 @@ use crate::fs::temp::TempDir;
 /// # Examples
 ///
 /// ```rust
-/// use lithos_test_utils::TestVault;
 /// use std::fs;
+///
+/// use lithos_test_utils::TestVault;
 ///
 /// # fn main() -> std::io::Result<()> {
 /// let vault = TestVault::new()?;
 ///
 /// // Add notes with relative paths
-/// let note_path = vault.add_note("Work/Project.md", "# Project\nStatus: Active")?;
+/// let note_path =
+///     vault.add_note("Work/Project.md", "# Project\nStatus: Active")?;
 /// assert!(note_path.exists());
 ///
 /// // Add raw binary files
@@ -107,16 +110,18 @@ version = "0.1.0"
         self.root.join(".lithos")
     }
 
-    /// Returns a PathBuf for a file relative to the vault root without creating it.
+    /// Returns a PathBuf for a file relative to the vault root without creating
+    /// it.
     pub fn relative_path(&self, path: impl AsRef<Path>) -> PathBuf {
         self.root.join(path)
     }
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: TestVault initialization and assertions in tests use unwrap for conciseness.
-// # LINT_DISABLE_REASON: Options tried: manual Result propagation.
-// # LINT_DISABLE_REASON: Justification: standard practice in test code.
+// # LINT_DISABLE_REASON: TestVault initialization and assertions in tests use
+// unwrap for conciseness. # LINT_DISABLE_REASON: Options tried: manual Result
+// propagation. # LINT_DISABLE_REASON: Justification: standard practice in test
+// code.
 #[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;

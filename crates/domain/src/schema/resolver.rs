@@ -1,7 +1,8 @@
 //! `Resolver` domain service for schema resolution.
 //!
-//! Resolves raw schemas into fully resolved Schema entities by merging parent properties,
-//! applying excludes, and resolving $ref pointers through the `PropertyBank`.
+//! Resolves raw schemas into fully resolved Schema entities by merging parent
+//! properties, applying excludes, and resolving $ref pointers through the
+//! `PropertyBank`.
 
 use std::collections::{HashMap, HashSet};
 
@@ -55,7 +56,8 @@ impl Resolver {
 
     /// Resolve a `RawSchema` into a fully resolved Schema.
     ///
-    /// Merges properties from parent, applies excludes, and resolves references.
+    /// Merges properties from parent, applies excludes, and resolves
+    /// references.
     ///
     /// # Arguments
     /// * `raw` - The raw schema definition.
