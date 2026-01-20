@@ -15,10 +15,6 @@ use super::{
 /// for a vault operation.
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
 pub struct Config {
     /// Vault metadata with versioning and naming.
     vault_metadata: vault::Metadata,
@@ -32,20 +28,6 @@ pub struct Config {
     frontmatter: Frontmatter,
     /// Domain events pending emission.
     pending_events: Vec<ConfigEvents>,
-}
-
-impl Default for Config {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            frontmatter: Frontmatter::default(),
-            global_filesystem: global::Filesystem::default(),
-            logging: Logging::default(),
-            pending_events: vec![],
-            vault_filesystem: vault::Filesystem::default(),
-            vault_metadata: vault::Metadata::default(),
-        }
-    }
 }
 
 impl Config {
@@ -312,6 +294,20 @@ impl Config {
     }
 }
 
+impl Default for Config {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            frontmatter: Frontmatter::default(),
+            global_filesystem: global::Filesystem::default(),
+            logging: Logging::default(),
+            pending_events: vec![],
+            vault_filesystem: vault::Filesystem::default(),
+            vault_metadata: vault::Metadata::default(),
+        }
+    }
+}
+
 /// Choose value with precedence: vault > global > default.
 #[inline]
 #[must_use]
@@ -331,48 +327,157 @@ fn choose_value(vault: &str, global: &str, default: &str) -> String {
     reason = "Test safety boundary - panic is acceptable in test code for exhaustive match failures"
 )]
 mod tests {
-
     use super::*;
 
-    #[cfg(test)]
-    mod proptests {
-        use proptest::prelude::*;
-
+    mod integrity {
         use super::*;
 
-        // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
-        // Priority: P2.
-        proptest! {
-            #[test]
-            fn merge_handles_various_path_lengths(
-                vault_path in "[a-zA-Z0-9/_-]{1,200}",
-                templates_dir in "[a-zA-Z0-9/_-]{0,100}"
-            ) {
-                // GIVEN a global config and generated vault path/template overrides
-                let global = sample_global_config();
-                let vault_config = Vault {
-                    filesystem: vault::Filesystem {
-                        schema: Schema::default(),
-                        template: Template {
-                            templates_dir: templates_dir.clone(),
-                        },
-                        cache_dir: ".cache".to_owned(),
-                    },
-                    frontmatter: None,
-                    logging: None,
-                };
+        /// 3.3-UNIT-020: `build_handles_missing_global`.
+        /// Priority: P1.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test setup uses unwrap for clarity"
+        )]
+        fn build_handles_missing_global() {
+            // GIVEN: no global configuration
+            let vault = Vault {
+                filesystem: vault::Filesystem::default(),
+                frontmatter: None,
+                logging: None,
+            };
 
-                // WHEN building a config from the generated inputs
-                let result = Config::build(Some(&global), &vault_path, vault_config);
+            // WHEN: building the config
+            let result = Config::build(None, "/vault", vault);
 
-                // THEN empty paths fail and valid paths preserve metadata
-                if vault_path.is_empty() {
-                    prop_assert!(result.is_err(), "Empty vault_path should fail");
-                } else {
-                    prop_assert!(result.is_ok(), "Valid paths should merge successfully");
-                    if let Ok(config) = result {
-                        prop_assert_eq!(config.vault_metadata().vault_path.as_str(), vault_path);
-                    }
+            // THEN: it succeeds and applies defaults
+            let config = result.unwrap();
+            assert_eq!(config.vault_metadata().vault_path, "/vault");
+            assert_eq!(
+                config.global_filesystem().schema.schemas_dir,
+                "schemas"
+            );
+        }
+
+        /// 3.3-UNIT-021: `config_manages_domain_events`.
+        /// Priority: P1.
+        #[test]
+        fn config_manages_domain_events() {
+            // GIVEN: a configuration aggregate
+            let mut config = Config::default();
+            let _initial_events = config.take_events(); // clear construction events
+            assert!(config.pending_events().is_empty());
+
+            // WHEN: adding a domain event
+            let event = ConfigEvents::ConfigUpdated(ConfigUpdated::new(
+                "test".to_owned(),
+                0,
+            ));
+            config.add_event(event);
+
+            // THEN: it is recorded and can be taken
+            assert_eq!(config.pending_events().len(), 1);
+            assert_eq!(config.take_events().len(), 1);
+            assert!(config.pending_events().is_empty());
+        }
+
+        /// 3.3-UNIT-019: `merge_frontmatter_handles_various_input_combinations`.
+        /// Priority: P1.
+        #[test]
+        fn merge_frontmatter_handles_various_input_combinations() {
+            // GIVEN: combinations of global and vault frontmatter configs
+            let g = Frontmatter {
+                title_key: "gt".to_owned(),
+                ..Frontmatter::default()
+            };
+            let v = Frontmatter {
+                title_key: "vt".to_owned(),
+                ..Frontmatter::default()
+            };
+
+            // THEN: vault takes precedence
+            assert_eq!(
+                Config::merge_frontmatter(Some(&g), Some(&v)).title_key,
+                "vt"
+            );
+            // AND: global used if vault missing
+            assert_eq!(
+                Config::merge_frontmatter(Some(&g), None).title_key,
+                "gt"
+            );
+            // AND: defaults used if both missing
+            assert_eq!(
+                Config::merge_frontmatter(None, None).title_key,
+                "title"
+            );
+        }
+
+        /// 3.3-UNIT-018: `merge_performance_meets_target`.
+        /// Priority: P2.
+        #[test]
+        fn merge_performance_meets_target() {
+            // GIVEN: valid global and vault configs
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+
+            // WHEN: performing 1000 merge operations
+            let start = std::time::Instant::now();
+            for _ in 0i32..1000i32 {
+                debug_assert!(
+                    Config::build(Some(&global), "/vault", vault.clone())
+                        .is_ok()
+                );
+            }
+            let total_duration = start.elapsed();
+            let avg_duration = total_duration / 1000;
+
+            // THEN: average merge time meets the performance target
+            assert!(
+                avg_duration < std::time::Duration::from_micros(100),
+                "Config::build performance degraded: {}μs per operation (target: <100μs)",
+                avg_duration.as_micros()
+            );
+        }
+
+        /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
+        /// Priority: P3.
+        #[test]
+        fn supports_clone_debug_and_partial_eq() {
+            // GIVEN: a merged configuration built from valid fixtures
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+
+            // WHEN: building the configuration
+            let result1 = Config::build(Some(&global), "/vault", vault.clone());
+            assert!(
+                result1.is_ok(),
+                "First merge for trait verification failed: {result1:?}"
+            );
+
+            // THEN: debug/clone/eq traits behave as expected
+            if let Ok(config) = result1 {
+                let debug_str = format!("{config:?}");
+                assert!(
+                    !debug_str.is_empty(),
+                    "Debug derivation should produce non-empty string"
+                );
+
+                let cloned = config.clone();
+                assert_eq!(
+                    config, cloned,
+                    "Cloned config must be equal to original"
+                );
+
+                let result2 = Config::build(Some(&global), "/vault", vault);
+                assert!(
+                    result2.is_ok(),
+                    "Second merge for trait verification failed"
+                );
+                if let Ok(config2) = result2 {
+                    assert_eq!(
+                        config, config2,
+                        "Merged configs with identical input must be equal (PartialEq)"
+                    );
                 }
             }
         }
@@ -380,45 +485,6 @@ mod tests {
 
     mod merge {
         use super::*;
-
-        /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
-        /// Priority: P0.
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
-        )]
-        fn vault_values_take_precedence_over_global() {
-            // GIVEN: a global config with default settings and a vault config with custom overrides
-            let global = sample_global_config();
-            let vault = sample_vault_config();
-
-            // WHEN: merging vault and global configs
-            let merged = Config::build(Some(&global), "/vault", vault)
-                .expect("Config build should succeed with valid sample data");
-
-            // THEN: vault values override global defaults
-            assert_eq!(
-                merged.vault_filesystem().template.templates_dir,
-                "custom_templates",
-                "Vault filesystem should have custom templates"
-            );
-            assert_eq!(
-                merged.logging().log_level,
-                "debug",
-                "Log level should override global"
-            );
-            assert_eq!(
-                merged.frontmatter().file_class_key,
-                "type",
-                "File class key should override global"
-            );
-            assert_eq!(
-                merged.frontmatter().date_created_key,
-                "created",
-                "Date created key should override global"
-            );
-        }
 
         /// 3.3-UNIT-014: `falls_back_to_defaults_when_inputs_are_empty`.
         /// Priority: P1.
@@ -541,6 +607,89 @@ mod tests {
                 );
             }
         }
+
+        /// 3.3-UNIT-013: `vault_values_take_precedence_over_global`.
+        /// Priority: P0.
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test expects merge to succeed, unwrap is appropriate for test clarity"
+        )]
+        fn vault_values_take_precedence_over_global() {
+            // GIVEN: a global config with default settings and a vault config with custom overrides
+            let global = sample_global_config();
+            let vault = sample_vault_config();
+
+            // WHEN: merging vault and global configs
+            let merged = Config::build(Some(&global), "/vault", vault)
+                .expect("Config build should succeed with valid sample data");
+
+            // THEN: vault values override global defaults
+            assert_eq!(
+                merged.vault_filesystem().template.templates_dir,
+                "custom_templates",
+                "Vault filesystem should have custom templates"
+            );
+            assert_eq!(
+                merged.logging().log_level,
+                "debug",
+                "Log level should override global"
+            );
+            assert_eq!(
+                merged.frontmatter().file_class_key,
+                "type",
+                "File class key should override global"
+            );
+            assert_eq!(
+                merged.frontmatter().date_created_key,
+                "created",
+                "Date created key should override global"
+            );
+        }
+    }
+
+    #[cfg(test)]
+    mod proptests {
+        use proptest::prelude::*;
+
+        use super::*;
+
+        // 3.3-UNIT-012: `merge_handles_various_path_lengths`.
+        // Priority: P2.
+        proptest! {
+            #[test]
+            fn merge_handles_various_path_lengths(
+                vault_path in "[a-zA-Z0-9/_-]{1,200}",
+                templates_dir in "[a-zA-Z0-9/_-]{0,100}"
+            ) {
+                // GIVEN a global config and generated vault path/template overrides
+                let global = sample_global_config();
+                let vault_config = Vault {
+                    filesystem: vault::Filesystem {
+                        schema: Schema::default(),
+                        template: Template {
+                            templates_dir: templates_dir.clone(),
+                        },
+                        cache_dir: ".cache".to_owned(),
+                    },
+                    frontmatter: None,
+                    logging: None,
+                };
+
+                // WHEN building a config from the generated inputs
+                let result = Config::build(Some(&global), &vault_path, vault_config);
+
+                // THEN empty paths fail and valid paths preserve metadata
+                if vault_path.is_empty() {
+                    prop_assert!(result.is_err(), "Empty vault_path should fail");
+                } else {
+                    prop_assert!(result.is_ok(), "Valid paths should merge successfully");
+                    if let Ok(config) = result {
+                        prop_assert_eq!(config.vault_metadata().vault_path.as_str(), vault_path);
+                    }
+                }
+            }
+        }
     }
 
     mod validate {
@@ -622,160 +771,6 @@ mod tests {
                     }
                 }
             }
-        }
-    }
-
-    mod integrity {
-        use super::*;
-
-        /// 3.3-UNIT-017: `supports_clone_debug_and_partial_eq`.
-        /// Priority: P3.
-        #[test]
-        fn supports_clone_debug_and_partial_eq() {
-            // GIVEN: a merged configuration built from valid fixtures
-            let global = sample_global_config();
-            let vault = sample_vault_config();
-
-            // WHEN: building the configuration
-            let result1 = Config::build(Some(&global), "/vault", vault.clone());
-            assert!(
-                result1.is_ok(),
-                "First merge for trait verification failed: {result1:?}"
-            );
-
-            // THEN: debug/clone/eq traits behave as expected
-            if let Ok(config) = result1 {
-                let debug_str = format!("{config:?}");
-                assert!(
-                    !debug_str.is_empty(),
-                    "Debug derivation should produce non-empty string"
-                );
-
-                let cloned = config.clone();
-                assert_eq!(
-                    config, cloned,
-                    "Cloned config must be equal to original"
-                );
-
-                let result2 = Config::build(Some(&global), "/vault", vault);
-                assert!(
-                    result2.is_ok(),
-                    "Second merge for trait verification failed"
-                );
-                if let Ok(config2) = result2 {
-                    assert_eq!(
-                        config, config2,
-                        "Merged configs with identical input must be equal (PartialEq)"
-                    );
-                }
-            }
-        }
-
-        /// 3.3-UNIT-018: `merge_performance_meets_target`.
-        /// Priority: P2.
-        #[test]
-        fn merge_performance_meets_target() {
-            // GIVEN: valid global and vault configs
-            let global = sample_global_config();
-            let vault = sample_vault_config();
-
-            // WHEN: performing 1000 merge operations
-            let start = std::time::Instant::now();
-            for _ in 0i32..1000i32 {
-                debug_assert!(
-                    Config::build(Some(&global), "/vault", vault.clone())
-                        .is_ok()
-                );
-            }
-            let total_duration = start.elapsed();
-            let avg_duration = total_duration / 1000;
-
-            // THEN: average merge time meets the performance target
-            assert!(
-                avg_duration < std::time::Duration::from_micros(100),
-                "Config::build performance degraded: {}μs per operation (target: <100μs)",
-                avg_duration.as_micros()
-            );
-        }
-
-        /// 3.3-UNIT-019: `merge_frontmatter_handles_various_input_combinations`.
-        /// Priority: P1.
-        #[test]
-        fn merge_frontmatter_handles_various_input_combinations() {
-            // GIVEN: combinations of global and vault frontmatter configs
-            let g = Frontmatter {
-                title_key: "gt".to_owned(),
-                ..Frontmatter::default()
-            };
-            let v = Frontmatter {
-                title_key: "vt".to_owned(),
-                ..Frontmatter::default()
-            };
-
-            // THEN: vault takes precedence
-            assert_eq!(
-                Config::merge_frontmatter(Some(&g), Some(&v)).title_key,
-                "vt"
-            );
-            // AND: global used if vault missing
-            assert_eq!(
-                Config::merge_frontmatter(Some(&g), None).title_key,
-                "gt"
-            );
-            // AND: defaults used if both missing
-            assert_eq!(
-                Config::merge_frontmatter(None, None).title_key,
-                "title"
-            );
-        }
-
-        /// 3.3-UNIT-020: `build_handles_missing_global`.
-        /// Priority: P1.
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
-        )]
-        fn build_handles_missing_global() {
-            // GIVEN: no global configuration
-            let vault = Vault {
-                filesystem: vault::Filesystem::default(),
-                frontmatter: None,
-                logging: None,
-            };
-
-            // WHEN: building the config
-            let result = Config::build(None, "/vault", vault);
-
-            // THEN: it succeeds and applies defaults
-            let config = result.unwrap();
-            assert_eq!(config.vault_metadata().vault_path, "/vault");
-            assert_eq!(
-                config.global_filesystem().schema.schemas_dir,
-                "schemas"
-            );
-        }
-
-        /// 3.3-UNIT-021: `config_manages_domain_events`.
-        /// Priority: P1.
-        #[test]
-        fn config_manages_domain_events() {
-            // GIVEN: a configuration aggregate
-            let mut config = Config::default();
-            let _initial_events = config.take_events(); // clear construction events
-            assert!(config.pending_events().is_empty());
-
-            // WHEN: adding a domain event
-            let event = ConfigEvents::ConfigUpdated(ConfigUpdated::new(
-                "test".to_owned(),
-                0,
-            ));
-            config.add_event(event);
-
-            // THEN: it is recorded and can be taken
-            assert_eq!(config.pending_events().len(), 1);
-            assert_eq!(config.take_events().len(), 1);
-            assert!(config.pending_events().is_empty());
         }
     }
 

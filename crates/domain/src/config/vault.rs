@@ -5,16 +5,48 @@
 
 use super::types::{Frontmatter, Logging, Schema, Template};
 
-/// Vault metadata with schema versioning and naming.
+impl Default for Filesystem {
+    #[inline]
+    fn default() -> Self {
+        Self {
+            cache_dir: ".cache".to_owned(),
+            schema: Schema::default(),
+            template: Template::default(),
+        }
+    }
+}
+
+/// Vault filesystem configuration (vault-scoped).
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub struct Metadata {
-    /// Human-readable name for the vault (defaults to directory basename).
-    pub name: Option<String>,
-    /// Schema version for the vault (defaults to binary version).
-    pub schema_version: Option<String>,
-    /// Root path to the vault (absolute path required).
-    pub vault_path: String,
+pub struct Filesystem {
+    /// Cache directory for vault.
+    pub cache_dir: String,
+    /// Schema configuration for vault.
+    pub schema: Schema,
+    /// Template configuration for vault.
+    pub template: Template,
+}
+
+impl Filesystem {
+    /// Validate vault filesystem configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ConfigError::ValidationFailed` if `cache_dir` is empty or
+    /// if schema/template validation fails.
+    #[inline]
+    pub fn validate(&self) -> Result<(), crate::ConfigError> {
+        self.schema.validate()?;
+        self.template.validate()?;
+        if self.cache_dir.is_empty() {
+            return Err(crate::ConfigError::ValidationFailed {
+                field: "cache_dir".to_owned().into(),
+                message: "cache directory cannot be empty".to_owned().into(),
+            });
+        }
+        Ok(())
+    }
 }
 
 impl Default for Metadata {
@@ -26,6 +58,18 @@ impl Default for Metadata {
             vault_path: String::new(),
         }
     }
+}
+
+/// Vault metadata with schema versioning and naming.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[non_exhaustive]
+pub struct Metadata {
+    /// Human-readable name for the vault (defaults to directory basename).
+    pub name: Option<String>,
+    /// Schema version for the vault (defaults to binary version).
+    pub schema_version: Option<String>,
+    /// Root path to the vault (absolute path required).
+    pub vault_path: String,
 }
 
 impl Metadata {
@@ -98,50 +142,6 @@ impl Metadata {
     }
 }
 
-/// Vault filesystem configuration (vault-scoped).
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-#[non_exhaustive]
-pub struct Filesystem {
-    /// Cache directory for vault.
-    pub cache_dir: String,
-    /// Schema configuration for vault.
-    pub schema: Schema,
-    /// Template configuration for vault.
-    pub template: Template,
-}
-
-impl Default for Filesystem {
-    #[inline]
-    fn default() -> Self {
-        Self {
-            cache_dir: ".cache".to_owned(),
-            schema: Schema::default(),
-            template: Template::default(),
-        }
-    }
-}
-
-impl Filesystem {
-    /// Validate vault filesystem configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ConfigError::ValidationFailed` if `cache_dir` is empty or
-    /// if schema/template validation fails.
-    #[inline]
-    pub fn validate(&self) -> Result<(), crate::ConfigError> {
-        self.schema.validate()?;
-        self.template.validate()?;
-        if self.cache_dir.is_empty() {
-            return Err(crate::ConfigError::ValidationFailed {
-                field: "cache_dir".to_owned().into(),
-                message: "cache directory cannot be empty".to_owned().into(),
-            });
-        }
-        Ok(())
-    }
-}
-
 /// Vault-specific configuration (highest precedence).
 ///
 /// # Business Rules
@@ -190,40 +190,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_empty_vault_path() {
-        // GIVEN: an empty vault path
-        let vault_path = "";
-
-        // WHEN: validating the vault path
-        let result = Metadata::validate_vault_path(vault_path);
-
-        // THEN: validation fails with a required field error
-        assert!(
-            result.is_err(),
-            "Expected validation failure for empty vault_path"
-        );
-    }
-
-    #[test]
-    fn rejects_empty_cache_dir() {
-        // GIVEN: a filesystem with empty cache_dir
-        let filesystem = Filesystem {
-            cache_dir: String::new(),
-            schema: super::Schema::default(),
-            template: super::Template::default(),
-        };
-
-        // WHEN: validating the filesystem configuration
-        let result = filesystem.validate();
-
-        // THEN: validation fails for cache_dir
-        assert!(
-            result.is_err(),
-            "Expected validation failure for empty cache_dir"
-        );
-    }
-
-    #[test]
     fn filesystem_validate_passes_with_defaults() {
         // GIVEN: default filesystem config
         let filesystem = Filesystem::default();
@@ -250,5 +216,39 @@ mod tests {
 
         // THEN: it fails
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_empty_cache_dir() {
+        // GIVEN: a filesystem with empty cache_dir
+        let filesystem = Filesystem {
+            cache_dir: String::new(),
+            schema: super::Schema::default(),
+            template: super::Template::default(),
+        };
+
+        // WHEN: validating the filesystem configuration
+        let result = filesystem.validate();
+
+        // THEN: validation fails for cache_dir
+        assert!(
+            result.is_err(),
+            "Expected validation failure for empty cache_dir"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_vault_path() {
+        // GIVEN: an empty vault path
+        let vault_path = "";
+
+        // WHEN: validating the vault path
+        let result = Metadata::validate_vault_path(vault_path);
+
+        // THEN: validation fails with a required field error
+        assert!(
+            result.is_err(),
+            "Expected validation failure for empty vault_path"
+        );
     }
 }

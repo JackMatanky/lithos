@@ -17,21 +17,15 @@
 
 #![allow(clippy::pub_use, reason = "Simplified public API for external crates")]
 
-// Bounded Contexts (Internal module structure hidden from public API)
+// Internal and External Modules
 pub(crate) mod config;
+pub mod errors;
 pub(crate) mod note;
+pub(crate) mod patterns;
+pub mod ports;
 pub(crate) mod schema;
 pub(crate) mod template;
-
-// Cross-cutting concerns
-pub mod errors;
-pub mod ports;
-
-// Internal validation utilities (not part of public API)
 pub(crate) mod validation;
-
-// Shared validation patterns (not part of public API)
-pub(crate) mod patterns;
 
 // Re-export commonly used types for convenience.
 // This provides a simplified public API for external crates without requiring

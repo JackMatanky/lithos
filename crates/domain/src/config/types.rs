@@ -49,6 +49,46 @@ pub enum SettingValue {
     String(String),
 }
 
+/// Convert bool to `Value::Boolean` variant.
+impl From<bool> for SettingValue {
+    #[inline]
+    fn from(value: bool) -> Self {
+        Self::Boolean(value)
+    }
+}
+
+/// Convert f64 to `Value::Number` variant.
+impl From<f64> for SettingValue {
+    #[inline]
+    fn from(value: f64) -> Self {
+        Self::Number(value)
+    }
+}
+
+/// Convert `HashMap`<String, `SettingValue`> to `SettingValue::Object` variant.
+impl From<HashMap<String, SettingValue>> for SettingValue {
+    #[inline]
+    fn from(value: HashMap<String, SettingValue>) -> Self {
+        Self::Object(value)
+    }
+}
+
+/// Convert String to `Value::String` variant.
+impl From<String> for SettingValue {
+    #[inline]
+    fn from(value: String) -> Self {
+        Self::String(value)
+    }
+}
+
+/// Convert Vec<ConfigValue> to `Value::Array` variant.
+impl From<Vec<SettingValue>> for SettingValue {
+    #[inline]
+    fn from(value: Vec<SettingValue>) -> Self {
+        Self::Array(value)
+    }
+}
+
 impl std::fmt::Debug for SettingValue {
     #[inline]
     #[expect(
@@ -66,46 +106,6 @@ impl std::fmt::Debug for SettingValue {
             Self::Object(map) => f.debug_tuple("Object").field(map).finish(),
             Self::String(s) => f.debug_tuple("String").field(s).finish(),
         }
-    }
-}
-
-/// Convert String to `Value::String` variant.
-impl From<String> for SettingValue {
-    #[inline]
-    fn from(value: String) -> Self {
-        Self::String(value)
-    }
-}
-
-/// Convert f64 to `Value::Number` variant.
-impl From<f64> for SettingValue {
-    #[inline]
-    fn from(value: f64) -> Self {
-        Self::Number(value)
-    }
-}
-
-/// Convert bool to `Value::Boolean` variant.
-impl From<bool> for SettingValue {
-    #[inline]
-    fn from(value: bool) -> Self {
-        Self::Boolean(value)
-    }
-}
-
-/// Convert Vec<ConfigValue> to `Value::Array` variant.
-impl From<Vec<SettingValue>> for SettingValue {
-    #[inline]
-    fn from(value: Vec<SettingValue>) -> Self {
-        Self::Array(value)
-    }
-}
-
-/// Convert `HashMap`<String, `SettingValue`> to `SettingValue::Object` variant.
-impl From<HashMap<String, SettingValue>> for SettingValue {
-    #[inline]
-    fn from(value: HashMap<String, SettingValue>) -> Self {
-        Self::Object(value)
     }
 }
 
@@ -330,39 +330,23 @@ impl Template {
 mod tests {
     use super::{Frontmatter, Logging, Schema, SettingValue, Template};
 
-    /// 3.3-UNIT-022: `converts_from_string`.
-    /// Priority: P3.
+    /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
+    /// Priority: P1.
     #[test]
-    fn converts_from_string() {
-        // GIVEN a string value for configuration
-        let input = "test".to_owned();
+    fn constructs_valid_property_bank_path() {
+        // GIVEN schema configuration with explicit paths
+        let schema = Schema {
+            schemas_dir: "schemas".to_owned(),
+            property_bank_filename: "props.json".to_owned(),
+        };
 
-        // WHEN converting into a SettingValue
-        let value = SettingValue::from(input.clone());
+        // WHEN deriving the property bank path
+        let path = schema.property_bank_path();
 
-        // THEN the string variant is produced
+        // THEN the path is composed from schema settings
         assert_eq!(
-            value,
-            SettingValue::String(input),
-            "Conversion from String to SettingValue failed"
-        );
-    }
-
-    /// 3.3-UNIT-023: `converts_from_f64`.
-    /// Priority: P3.
-    #[test]
-    fn converts_from_f64() {
-        // GIVEN a floating point value for configuration
-        let input = 42.5f64;
-
-        // WHEN converting into a SettingValue
-        let value = SettingValue::from(input);
-
-        // THEN the number variant is produced
-        assert_eq!(
-            value,
-            SettingValue::Number(42.5f64),
-            "Conversion from f64 to SettingValue failed"
+            path, "schemas/props.json",
+            "property_bank_path logic works"
         );
     }
 
@@ -384,19 +368,83 @@ mod tests {
         );
     }
 
-    /// 3.3-UNIT-025: `stores_opaque_encrypted_bytes`.
-    /// Priority: P1.
+    /// 3.3-UNIT-023: `converts_from_f64`.
+    /// Priority: P3.
     #[test]
-    fn stores_opaque_encrypted_bytes() {
-        // GIVEN encrypted data
-        let raw = vec![1, 2, 3, 4];
+    fn converts_from_f64() {
+        // GIVEN a floating point value for configuration
+        let input = 42.5f64;
 
-        // WHEN creating an encrypted config value
-        let value = SettingValue::Encrypted(raw.clone());
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(input);
 
-        // THEN debug output must not reveal raw bytes
-        let debug = format!("{value:?}");
-        assert!(debug.contains("***"), "Expected masked debug output");
+        // THEN the number variant is produced
+        assert_eq!(
+            value,
+            SettingValue::Number(42.5f64),
+            "Conversion from f64 to SettingValue failed"
+        );
+    }
+
+    /// 3.3-UNIT-032: `converts_from_hashmap_of_values`.
+    /// Priority: P3.
+    #[test]
+    fn converts_from_hashmap_of_values() {
+        // GIVEN a hashmap of configuration values
+        let mut map = std::collections::HashMap::new();
+        map.insert(
+            "key1".to_owned(),
+            SettingValue::String("value1".to_owned()),
+        );
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(map.clone());
+
+        // THEN the object variant is produced
+        assert_eq!(
+            value,
+            SettingValue::Object(map),
+            "From<HashMap<String, SettingValue>> conversion failed"
+        );
+    }
+
+    /// 3.3-UNIT-022: `converts_from_string`.
+    /// Priority: P3.
+    #[test]
+    fn converts_from_string() {
+        // GIVEN a string value for configuration
+        let input = "test".to_owned();
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(input.clone());
+
+        // THEN the string variant is produced
+        assert_eq!(
+            value,
+            SettingValue::String(input),
+            "Conversion from String to SettingValue failed"
+        );
+    }
+
+    /// 3.3-UNIT-031: `converts_from_vector_of_values`.
+    /// Priority: P3.
+    #[test]
+    fn converts_from_vector_of_values() {
+        // GIVEN a vector of configuration values
+        let array = vec![
+            SettingValue::String("item1".to_owned()),
+            SettingValue::Number(42.0),
+        ];
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(array.clone());
+
+        // THEN the array variant is produced
+        assert_eq!(
+            value,
+            SettingValue::Array(array),
+            "From<Vec<SettingValue>> conversion failed"
+        );
     }
 
     /// 3.3-UNIT-026: `frontmatter_validate_rejects_empty_keys`.
@@ -433,6 +481,79 @@ mod tests {
             result,
             Err(crate::ConfigError::InvalidEnumValue { .. })
         ));
+    }
+
+    /// 3.3-UNIT-033: `masks_encrypted_variant_in_debug_logs`.
+    /// Priority: P1.
+    #[test]
+    fn masks_encrypted_variant_in_debug_logs() {
+        // GIVEN an encrypted configuration value
+        let val = SettingValue::Encrypted(vec![1, 2, 3]);
+
+        // WHEN formatting for debug output
+        let debug_str = format!("{val:?}");
+
+        // THEN the raw bytes are masked
+        assert!(
+            !debug_str.contains("1, 2, 3"),
+            "Debug output must not contain raw encrypted bytes"
+        );
+        assert!(
+            debug_str.contains("***"),
+            "Debug output must contain mask characters"
+        );
+    }
+
+    /// 3.3-UNIT-035: `preserves_frontmatter_key_mappings`.
+    /// Priority: P1.
+    #[test]
+    fn preserves_frontmatter_key_mappings() {
+        // GIVEN explicit frontmatter mappings
+        let config = Frontmatter {
+            alias_key: "aliases".to_owned(),
+            date_created_key: "created".to_owned(),
+            date_modified_key: "modified".to_owned(),
+            file_class_key: "type".to_owned(),
+            title_key: "title".to_owned(),
+        };
+
+        // WHEN accessing the key mappings
+        let file_class = &config.file_class_key;
+        let title = &config.title_key;
+
+        // THEN the mappings match the configured values
+        assert_eq!(file_class, "type", "file_class_key mapping mismatch");
+        assert_eq!(title, "title", "title_key mapping mismatch");
+    }
+
+    /// 3.3-UNIT-036: `rejects_empty_templates_dir`.
+    /// Priority: P0.
+    #[test]
+    fn rejects_empty_templates_dir() {
+        // GIVEN a template config with an empty templates_dir
+        let template = Template {
+            templates_dir: String::new(),
+        };
+
+        // WHEN validating the template configuration
+        let result = template.validate();
+
+        // THEN the validation fails with the templates_dir field
+        assert!(
+            result.is_err(),
+            "Expected validation failure for empty templates_dir"
+        );
+        if let Err(crate::ConfigError::ValidationFailed {
+            field,
+            ..
+        }) = result
+        {
+            assert_eq!(
+                field.as_ref(),
+                "templates_dir",
+                "Expected templates_dir validation failure"
+            );
+        }
     }
 
     /// 3.3-UNIT-028: `schema_validate_rejects_empty_paths`.
@@ -495,139 +616,18 @@ mod tests {
         );
     }
 
-    /// 3.3-UNIT-031: `converts_from_vector_of_values`.
-    /// Priority: P3.
-    #[test]
-    fn converts_from_vector_of_values() {
-        // GIVEN a vector of configuration values
-        let array = vec![
-            SettingValue::String("item1".to_owned()),
-            SettingValue::Number(42.0),
-        ];
-
-        // WHEN converting into a SettingValue
-        let value = SettingValue::from(array.clone());
-
-        // THEN the array variant is produced
-        assert_eq!(
-            value,
-            SettingValue::Array(array),
-            "From<Vec<SettingValue>> conversion failed"
-        );
-    }
-
-    /// 3.3-UNIT-032: `converts_from_hashmap_of_values`.
-    /// Priority: P3.
-    #[test]
-    fn converts_from_hashmap_of_values() {
-        // GIVEN a hashmap of configuration values
-        let mut map = std::collections::HashMap::new();
-        map.insert(
-            "key1".to_owned(),
-            SettingValue::String("value1".to_owned()),
-        );
-
-        // WHEN converting into a SettingValue
-        let value = SettingValue::from(map.clone());
-
-        // THEN the object variant is produced
-        assert_eq!(
-            value,
-            SettingValue::Object(map),
-            "From<HashMap<String, SettingValue>> conversion failed"
-        );
-    }
-
-    /// 3.3-UNIT-033: `masks_encrypted_variant_in_debug_logs`.
+    /// 3.3-UNIT-025: `stores_opaque_encrypted_bytes`.
     /// Priority: P1.
     #[test]
-    fn masks_encrypted_variant_in_debug_logs() {
-        // GIVEN an encrypted configuration value
-        let val = SettingValue::Encrypted(vec![1, 2, 3]);
+    fn stores_opaque_encrypted_bytes() {
+        // GIVEN encrypted data
+        let raw = vec![1, 2, 3, 4];
 
-        // WHEN formatting for debug output
-        let debug_str = format!("{val:?}");
+        // WHEN creating an encrypted config value
+        let value = SettingValue::Encrypted(raw.clone());
 
-        // THEN the raw bytes are masked
-        assert!(
-            !debug_str.contains("1, 2, 3"),
-            "Debug output must not contain raw encrypted bytes"
-        );
-        assert!(
-            debug_str.contains("***"),
-            "Debug output must contain mask characters"
-        );
-    }
-
-    /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
-    /// Priority: P1.
-    #[test]
-    fn constructs_valid_property_bank_path() {
-        // GIVEN schema configuration with explicit paths
-        let schema = Schema {
-            schemas_dir: "schemas".to_owned(),
-            property_bank_filename: "props.json".to_owned(),
-        };
-
-        // WHEN deriving the property bank path
-        let path = schema.property_bank_path();
-
-        // THEN the path is composed from schema settings
-        assert_eq!(
-            path, "schemas/props.json",
-            "property_bank_path logic works"
-        );
-    }
-
-    /// 3.3-UNIT-035: `preserves_frontmatter_key_mappings`.
-    /// Priority: P1.
-    #[test]
-    fn preserves_frontmatter_key_mappings() {
-        // GIVEN explicit frontmatter mappings
-        let config = Frontmatter {
-            alias_key: "aliases".to_owned(),
-            date_created_key: "created".to_owned(),
-            date_modified_key: "modified".to_owned(),
-            file_class_key: "type".to_owned(),
-            title_key: "title".to_owned(),
-        };
-
-        // WHEN accessing the key mappings
-        let file_class = &config.file_class_key;
-        let title = &config.title_key;
-
-        // THEN the mappings match the configured values
-        assert_eq!(file_class, "type", "file_class_key mapping mismatch");
-        assert_eq!(title, "title", "title_key mapping mismatch");
-    }
-
-    /// 3.3-UNIT-036: `rejects_empty_templates_dir`.
-    /// Priority: P0.
-    #[test]
-    fn rejects_empty_templates_dir() {
-        // GIVEN a template config with an empty templates_dir
-        let template = Template {
-            templates_dir: String::new(),
-        };
-
-        // WHEN validating the template configuration
-        let result = template.validate();
-
-        // THEN the validation fails with the templates_dir field
-        assert!(
-            result.is_err(),
-            "Expected validation failure for empty templates_dir"
-        );
-        if let Err(crate::ConfigError::ValidationFailed {
-            field,
-            ..
-        }) = result
-        {
-            assert_eq!(
-                field.as_ref(),
-                "templates_dir",
-                "Expected templates_dir validation failure"
-            );
-        }
+        // THEN debug output must not reveal raw bytes
+        let debug = format!("{value:?}");
+        assert!(debug.contains("***"), "Expected masked debug output");
     }
 }

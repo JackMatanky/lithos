@@ -16,10 +16,6 @@ use crate::errors::DomainError;
     clippy::field_scoped_visibility_modifiers,
     reason = "pub(crate) used for internal builders and tests"
 )]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical ordering: level and text define the heading, position is metadata"
-)]
 pub struct Heading {
     /// Heading level (1-6, corresponding to # through ######).
     pub(crate) level: u8,
@@ -98,10 +94,6 @@ impl Heading {
 #[expect(
     clippy::field_scoped_visibility_modifiers,
     reason = "pub(crate) used for internal builders and tests"
-)]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
 )]
 pub struct Section {
     /// Optional heading that starts this section (None for content before first heading).
