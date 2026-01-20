@@ -1,6 +1,6 @@
 # Story 3.6: Review Epic 3 Test Suite
 
-Status: ready-for-dev
+Status: review
 
 <!-- This story file contains COMPREHENSIVE context to prevent developer mistakes, omissions, and disasters -->
 
