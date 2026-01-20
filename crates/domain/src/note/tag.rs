@@ -153,6 +153,8 @@ mod tests {
     use super::*;
 
     mod parse {
+        use rstest::rstest;
+
         use super::*;
 
         #[test]
@@ -165,89 +167,49 @@ mod tests {
             assert_eq!(tag.segments(), &["work".into(), "project".into()]);
         }
 
-        #[test]
-        fn succeeds_for_valid_simple_tag() {
-            // GIVEN: a valid simple tag string
-            let input = "#personal";
-
+        /// 3.2-UNIT-001: Tag Parsing Matrix.
+        /// Priority: P0.
+        #[rstest]
+        #[case::simple("#personal", Ok(vec!["personal"]))]
+        #[case::hierarchical("#work/project/urgent", Ok(vec!["work", "project", "urgent"]))]
+        #[case::missing_hash(
+            "invalid",
+            Err(DomainError::InvalidTag("Tag must start with #".to_owned()))
+        )]
+        #[case::only_hash("#", Err(DomainError::InvalidTag("Tag cannot be empty".to_owned())))]
+        #[case::empty_segments(
+            "#work//urgent",
+            Err(DomainError::EmptyTagSegment)
+        )]
+        #[case::invalid_chars(
+            "#work project",
+            Err(DomainError::InvalidTag("Invalid tag segment 'work project': only alphanumeric, underscore, and hyphen allowed".to_owned()))
+        )]
+        fn tag_parsing_matrix(
+            #[case] input: &str,
+            #[case] expected: Result<Vec<&str>, DomainError>,
+        ) {
+            // GIVEN: a tag string from the parsing matrix
             // WHEN: parsing the tag
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup phase - test fixture creation"
-            )]
-            let result = Tag::parse(input).unwrap();
-
-            // THEN: it has the correct path and segments
-            assert_eq!(result.as_str(), "personal");
-            assert_eq!(result.segments(), &["personal".into()]);
-        }
-
-        #[test]
-        fn succeeds_for_valid_hierarchical_tag() {
-            // GIVEN: a valid hierarchical tag string
-            let input = "#work/project/urgent";
-
-            // WHEN: parsing the tag
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup phase - test fixture creation"
-            )]
-            let result = Tag::parse(input).unwrap();
-
-            // THEN: it has the correct path and segments
-            assert_eq!(result.as_str(), "work/project/urgent");
-            assert_eq!(
-                result.segments(),
-                &["work".into(), "project".into(), "urgent".into()]
-            );
-        }
-
-        #[test]
-        fn returns_error_when_missing_hash_prefix() {
-            // GIVEN: a tag string missing the # prefix
-            let input = "invalid";
-
-            // WHEN: parsing
             let result = Tag::parse(input);
 
-            // THEN: it returns an InvalidTag error
-            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
-        }
-
-        #[test]
-        fn returns_error_when_tag_is_only_hash() {
-            // GIVEN: a tag string that is just #
-            let input = "#";
-
-            // WHEN: parsing
-            let result = Tag::parse(input);
-
-            // THEN: it returns an InvalidTag error
-            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
-        }
-
-        #[test]
-        fn returns_error_for_empty_segments() {
-            // GIVEN: a tag string with double slashes
-            let input = "#work//urgent";
-
-            // WHEN: parsing
-            let result = Tag::parse(input);
-
-            // THEN: it returns an EmptyTagSegment error
-            assert!(matches!(result, Err(DomainError::EmptyTagSegment)));
-        }
-
-        #[test]
-        fn returns_error_for_invalid_characters() {
-            // GIVEN: a tag string with invalid characters (space)
-            let input = "#work project";
-
-            // WHEN: parsing
-            let result = Tag::parse(input);
-
-            // THEN: it returns an InvalidTag error
-            assert!(matches!(result, Err(DomainError::InvalidTag(_))));
+            // THEN: the result matches the expected outcome
+            match expected {
+                Ok(segments) => {
+                    let tag = result.unwrap();
+                    let actual_segments: Vec<&str> =
+                        tag.segments().iter().map(AsRef::as_ref).collect();
+                    assert_eq!(actual_segments, segments);
+                }
+                Err(e) => {
+                    let actual = result.unwrap_err();
+                    assert_eq!(
+                        std::mem::discriminant(&actual),
+                        std::mem::discriminant(&e),
+                        "Tag '{input}' produced wrong error variant"
+                    );
+                }
+            }
         }
     }
 
