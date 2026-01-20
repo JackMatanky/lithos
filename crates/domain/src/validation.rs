@@ -9,8 +9,10 @@
 //!
 //! # Design Principles
 //! - **Pure Functions:** All validation is deterministic with no side effects
-//! - **Single Responsibility:** Each function performs a specific validation check
-//! - **Standardized Structure:** High-level validators decompose into specialized private helpers
+//! - **Single Responsibility:** Each function performs a specific validation
+//!   check
+//! - **Standardized Structure:** High-level validators decompose into
+//!   specialized private helpers
 //! - **Simple Parameters:** Functions take simple types for easy usage
 
 use std::{borrow::Cow, sync::LazyLock};
@@ -87,7 +89,8 @@ fn check_windows_separator(byte: u8) -> bool {
 
 /// Validates a vault-relative path according to hexagonal architecture rules.
 ///
-/// Bundles common path rules: non-empty, relative, no-traversal, optional extension.
+/// Bundles common path rules: non-empty, relative, no-traversal, optional
+/// extension.
 #[inline]
 pub(crate) fn validate_vault_path(
     path: &str,

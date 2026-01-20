@@ -55,7 +55,8 @@ struct DfsContext<'context> {
 
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Function ordering optimized for logical flow over strict alphabetical order"
+    reason = "Function ordering optimized for logical flow over strict \
+              alphabetical order"
 )]
 impl Composition {
     fn check_template_dependencies(
@@ -153,7 +154,8 @@ impl Composition {
     ///
     /// # Errors
     /// Returns `DomainError::VariableNotFound` if override key missing in base.
-    /// Returns `DomainError::VariableTypeMismatch` if override value incompatible.
+    /// Returns `DomainError::VariableTypeMismatch` if override value
+    /// incompatible.
     #[inline]
     #[expect(clippy::iter_over_hash_type, reason = "Validation only")]
     pub fn validate(&self, base: &Template) -> Result<(), DomainError> {
@@ -283,15 +285,12 @@ mod tests {
     fn validate_rejects_variable_type_mismatch() {
         // GIVEN: a base template with a string variable
         let mut variables = HashMap::new();
-        variables.insert(
-            "title".to_owned(),
-            VariableDefinition::String {
-                default: None,
-                max_length: None,
-                min_length: None,
-                pattern: None,
-            },
-        );
+        variables.insert("title".to_owned(), VariableDefinition::String {
+            default: None,
+            max_length: None,
+            min_length: None,
+            pattern: None,
+        });
         let base = Template::new(
             "base".to_owned(),
             "Hello {{title}}".to_owned(),

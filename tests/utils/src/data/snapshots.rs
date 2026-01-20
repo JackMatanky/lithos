@@ -89,9 +89,9 @@ mod tests {
 
         with_standard_redactions(|| {
             // We can't easily assert on the internal state of insta settings
-            // but we can try to use a dummy assert if we were running in a real test.
-            // For now, we just ensure it doesn't panic and we will manually verify
-            // the implementation.
+            // but we can try to use a dummy assert if we were running in a real
+            // test. For now, we just ensure it doesn't panic and we
+            // will manually verify the implementation.
         });
     }
 }

@@ -1,11 +1,13 @@
 //! Test fixtures and factory framework for generating test data.
 //!
-//! This module provides standardized test fixtures using rstest, type-safe builder patterns for
-//! complex object construction, fake data generation, and serialization helpers.
+//! This module provides standardized test fixtures using rstest, type-safe
+//! builder patterns for complex object construction, fake data generation, and
+//! serialization helpers.
 //!
 //! # Features
 //!
-//! - **Type-safe Builders**: Macro-based builders for robust object construction
+//! - **Type-safe Builders**: Macro-based builders for robust object
+//!   construction
 //! - **Fake Data Generation**: Realistic test data with configurable scenarios
 //! - **Serialization Helpers**: JSON/binary persistence testing utilities
 
@@ -17,8 +19,8 @@ use serde::{Deserialize, Serialize};
 
 /// Macro to generate a type-safe test builder for a struct.
 ///
-/// This replaces the brittle generic Builder with a robust, type-safe implementation
-/// that provides fluent API and sensible defaults.
+/// This replaces the brittle generic Builder with a robust, type-safe
+/// implementation that provides fluent API and sensible defaults.
 ///
 /// # Example
 ///
@@ -203,7 +205,8 @@ impl SerializationHelper {
             .map_err(|e| format!("JSON deserialization failed: {e}"))?;
         if &from_json != original {
             return Err(format!(
-                "JSON round-trip failed: expected {original:?}, got {from_json:?}"
+                "JSON round-trip failed: expected {original:?}, got \
+                 {from_json:?}"
             ));
         }
 
@@ -214,7 +217,8 @@ impl SerializationHelper {
             .map_err(|e| format!("Binary deserialization failed: {e}"))?;
         if &from_binary != original {
             return Err(format!(
-                "Binary round-trip failed: expected {original:?}, got {from_binary:?}"
+                "Binary round-trip failed: expected {original:?}, got \
+                 {from_binary:?}"
             ));
         }
 

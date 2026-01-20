@@ -9,7 +9,8 @@ use std::collections::HashMap;
 ///
 /// # Invariants
 /// - All variants must be serializable with serde.
-/// - Encrypted variant contains opaque bytes (adapter handles encryption/decryption).
+/// - Encrypted variant contains opaque bytes (adapter handles
+///   encryption/decryption).
 /// - Array and Object variants allow nested configuration structures.
 ///
 /// # Examples
@@ -39,7 +40,8 @@ pub enum SettingValue {
     Array(Vec<SettingValue>),
     /// Boolean configuration value.
     Boolean(bool),
-    /// Encrypted field data (opaque bytes, adapter handles encryption/decryption).
+    /// Encrypted field data (opaque bytes, adapter handles
+    /// encryption/decryption).
     Encrypted(Vec<u8>),
     /// Numeric configuration value (f64 for flexibility).
     Number(f64),
@@ -93,7 +95,9 @@ impl std::fmt::Debug for SettingValue {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics are preferred here for clarity, and pattern_type_mismatch is overly pedantic for this Debug implementation."
+        reason = "Match ergonomics are preferred here for clarity, and \
+                  pattern_type_mismatch is overly pedantic for this Debug \
+                  implementation."
     )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -200,7 +204,8 @@ impl Logging {
     ///
     /// # Errors
     ///
-    /// Returns `ConfigError::InvalidEnumValue` if `log_level` is not one of: debug, info, warn, error.
+    /// Returns `ConfigError::InvalidEnumValue` if `log_level` is not one of:
+    /// debug, info, warn, error.
     ///
     /// # Examples
     /// ```
@@ -246,7 +251,8 @@ impl Default for Schema {
 }
 
 impl Schema {
-    /// Get the full path to the property bank file (`schemas_dir/property_bank_filename`).
+    /// Get the full path to the property bank file
+    /// (`schemas_dir/property_bank_filename`).
     ///
     /// The property bank is always stored in the schemas directory.
     ///
@@ -268,7 +274,8 @@ impl Schema {
     ///
     /// # Errors
     ///
-    /// Returns `ConfigError::ValidationFailed` if `schemas_dir` or `property_bank_filename` is empty.
+    /// Returns `ConfigError::ValidationFailed` if `schemas_dir` or
+    /// `property_bank_filename` is empty.
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         if self.schemas_dir.is_empty() {

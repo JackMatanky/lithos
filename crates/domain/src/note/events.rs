@@ -14,7 +14,8 @@ use uuid::Uuid;
 /// use uuid::Uuid;
 ///
 /// let id = Uuid::now_v7();
-/// let event = NoteCreated::new(id, "projects/lithos.md".to_string(), 1234567890);
+/// let event =
+///     NoteCreated::new(id, "projects/lithos.md".to_string(), 1234567890);
 /// assert_eq!(event.id, id);
 /// assert_eq!(event.path, "projects/lithos.md");
 /// ```
@@ -44,12 +45,13 @@ impl NoteCreated {
 
 /// Frontmatter validated domain event.
 ///
-/// Published when frontmatter has been validated against schema in the application layer,
-/// allowing other systems to react to validated metadata.
+/// Published when frontmatter has been validated against schema in the
+/// application layer, allowing other systems to react to validated metadata.
 ///
 /// # Emission Point
-/// This event is emitted by the application layer after schema compliance validation,
-/// NOT by the domain layer. The domain layer only validates structural consistency.
+/// This event is emitted by the application layer after schema compliance
+/// validation, NOT by the domain layer. The domain layer only validates
+/// structural consistency.
 ///
 /// # Examples
 /// ```

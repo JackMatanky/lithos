@@ -1,7 +1,8 @@
 //! Global configuration structures.
 //!
 //! This module contains configuration types that are specific to global-level
-//! configuration, including filesystem settings, trusted vaults, and global defaults.
+//! configuration, including filesystem settings, trusted vaults, and global
+//! defaults.
 
 use std::collections::HashMap;
 
@@ -23,7 +24,8 @@ impl Filesystem {
     ///
     /// # Errors
     ///
-    /// Returns `ConfigError::ValidationFailed` if schema or template validation fails.
+    /// Returns `ConfigError::ValidationFailed` if schema or template validation
+    /// fails.
     #[inline]
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         self.schema.validate()?;
@@ -78,8 +80,8 @@ impl TrustedVaults {
     ///
     /// # Errors
     ///
-    /// Returns `ConfigError::ValidationFailed` if both list and map are specified,
-    /// or if neither is specified.
+    /// Returns `ConfigError::ValidationFailed` if both list and map are
+    /// specified, or if neither is specified.
     ///
     /// # Examples
     /// ```ignore

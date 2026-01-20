@@ -1,13 +1,15 @@
 //! Frontmatter domain entities and business logic.
 //!
-//! This module defines the structure and behavior of Note frontmatter (YAML metadata).
-//! It provides type-safe accessors and coercion logic for common frontmatter patterns.
+//! This module defines the structure and behavior of Note frontmatter (YAML
+//! metadata). It provides type-safe accessors and coercion logic for common
+//! frontmatter patterns.
 //!
 //! # Architecture Decision
 //!
-//! This module uses the same pattern as `serde_json::Value` for runtime type inspection.
-//! The `FieldValue` enum supports unknown-type scenarios (inspect then extract) while
-//! the `FromFieldValue` trait enables known-type scenarios (schema-driven extraction).
+//! This module uses the same pattern as `serde_json::Value` for runtime type
+//! inspection. The `FieldValue` enum supports unknown-type scenarios (inspect
+//! then extract) while the `FromFieldValue` trait enables known-type scenarios
+//! (schema-driven extraction).
 
 use std::collections::HashMap;
 
@@ -29,8 +31,9 @@ pub struct Frontmatter {
 
 /// Possible values in a frontmatter field.
 ///
-/// This enum represents the runtime type of a value parsed from YAML frontmatter.
-/// It mirrors the design of `serde_json::Value` to support dynamic typing scenarios.
+/// This enum represents the runtime type of a value parsed from YAML
+/// frontmatter. It mirrors the design of `serde_json::Value` to support dynamic
+/// typing scenarios.
 ///
 /// # Usage Patterns
 ///
@@ -88,7 +91,9 @@ impl FieldValue {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics RFC 2005: self is &FieldValue, pattern binds &Vec automatically. This is idiomatic Rust (see serde_json::Value)"
+        reason = "Match ergonomics RFC 2005: self is &FieldValue, pattern \
+                  binds &Vec automatically. This is idiomatic Rust (see \
+                  serde_json::Value)"
     )]
     pub fn as_array(&self) -> Option<&[Self]> {
         match self {
@@ -117,7 +122,8 @@ impl FieldValue {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: self is &FieldValue, pattern binds &bool, dereferenced to bool. Idiomatic Rust."
+        reason = "Match ergonomics: self is &FieldValue, pattern binds &bool, \
+                  dereferenced to bool. Idiomatic Rust."
     )]
     pub fn as_bool(&self) -> Option<bool> {
         match self {
@@ -134,8 +140,8 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
+    /// use chrono::{DateTime, TimeZone, Utc};
     /// use lithos_domain::FieldValue;
-    /// use chrono::{DateTime, Utc, TimeZone};
     ///
     /// let date = Utc.with_ymd_and_hms(2024, 1, 15, 0, 0, 0).unwrap();
     /// let val = FieldValue::Date(date);
@@ -145,7 +151,8 @@ impl FieldValue {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: DateTime is Copy, so &DateTime is dereferenced to DateTime. Idiomatic."
+        reason = "Match ergonomics: DateTime is Copy, so &DateTime is \
+                  dereferenced to DateTime. Idiomatic."
     )]
     pub fn as_date(&self) -> Option<DateTime<Utc>> {
         match self {
@@ -171,7 +178,8 @@ impl FieldValue {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: f64 is Copy, so &f64 is dereferenced to f64. Idiomatic."
+        reason = "Match ergonomics: f64 is Copy, so &f64 is dereferenced to \
+                  f64. Idiomatic."
     )]
     pub fn as_number(&self) -> Option<f64> {
         match self {
@@ -188,8 +196,9 @@ impl FieldValue {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::FieldValue;
     /// use std::collections::HashMap;
+    ///
+    /// use lithos_domain::FieldValue;
     ///
     /// let mut obj = HashMap::new();
     /// obj.insert("key".to_string(), FieldValue::String("value".to_string()));
@@ -200,7 +209,8 @@ impl FieldValue {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics RFC 2005: self is &FieldValue, pattern binds &HashMap automatically. Matches serde_json::Value."
+        reason = "Match ergonomics RFC 2005: self is &FieldValue, pattern \
+                  binds &HashMap automatically. Matches serde_json::Value."
     )]
     pub fn as_object(&self) -> Option<&HashMap<String, Self>> {
         match self {
@@ -226,7 +236,8 @@ impl FieldValue {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: self is &FieldValue, pattern binds &String, coerced to &str. Idiomatic Rust."
+        reason = "Match ergonomics: self is &FieldValue, pattern binds \
+                  &String, coerced to &str. Idiomatic Rust."
     )]
     pub fn as_str(&self) -> Option<&str> {
         match self {
@@ -298,16 +309,17 @@ impl FieldValue {
 ///
 /// # Design Rationale
 ///
-/// This trait exists for **known-type scenarios** where schema validation has already
-/// determined the expected type. For **unknown-type scenarios**, use the `FieldValue`
-/// methods (`is_*()`, `as_*()`) directly.
+/// This trait exists for **known-type scenarios** where schema validation has
+/// already determined the expected type. For **unknown-type scenarios**, use
+/// the `FieldValue` methods (`is_*()`, `as_*()`) directly.
 ///
 /// # Examples
 ///
 /// **Known Type (Schema-Driven):**
 /// ```
-/// use lithos_domain::{Frontmatter, FieldValue};
 /// use std::collections::HashMap;
+///
+/// use lithos_domain::{FieldValue, Frontmatter};
 ///
 /// let mut fields = HashMap::new();
 /// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
@@ -320,8 +332,9 @@ impl FieldValue {
 ///
 /// **Unknown Type (Runtime Inspection):**
 /// ```
-/// use lithos_domain::{Frontmatter, FieldValue};
 /// use std::collections::HashMap;
+///
+/// use lithos_domain::{FieldValue, Frontmatter};
 ///
 /// let mut fields = HashMap::new();
 /// fields.insert("mystery".to_string(), FieldValue::Number(42.0));
@@ -388,7 +401,8 @@ impl FromFieldValue for Vec<String> {
 impl Frontmatter {
     /// Extracts the aliases field from frontmatter using the configured key.
     ///
-    /// Returns a vector of alias strings. Supports both single strings and arrays.
+    /// Returns a vector of alias strings. Supports both single strings and
+    /// arrays.
     ///
     /// # Examples
     /// ```
@@ -411,7 +425,8 @@ impl Frontmatter {
             .unwrap_or_default()
     }
 
-    /// Extracts the `file_class` field from frontmatter using the configured key.
+    /// Extracts the `file_class` field from frontmatter using the configured
+    /// key.
     ///
     /// # Examples
     /// ```
@@ -441,11 +456,13 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
+    /// use lithos_domain::{FieldValue, Frontmatter};
+    ///
     /// let mut fields = HashMap::new();
-    /// fields.insert("title".to_string(), FieldValue::String("My Note".to_string()));
+    /// fields
+    ///     .insert("title".to_string(), FieldValue::String("My Note".to_string()));
     /// let fm = Frontmatter::new(fields).unwrap();
     ///
     /// let value = fm.get("title");
@@ -464,8 +481,9 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
+    ///
+    /// use lithos_domain::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("priority".to_string(), FieldValue::Number(5.0));
@@ -484,8 +502,9 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
+    ///
+    /// use lithos_domain::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("published".to_string(), FieldValue::Boolean(true));
@@ -504,9 +523,10 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
-    /// use chrono::{DateTime, Utc, TimeZone};
+    ///
+    /// use chrono::{DateTime, TimeZone, Utc};
+    /// use lithos_domain::{FieldValue, Frontmatter};
     ///
     /// let date = Utc.with_ymd_and_hms(2024, 1, 15, 0, 0, 0).unwrap();
     /// let mut fields = HashMap::new();
@@ -525,8 +545,9 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
+    ///
+    /// use lithos_domain::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("rating".to_string(), FieldValue::Number(4.5));
@@ -542,12 +563,14 @@ impl Frontmatter {
 
     /// Gets a string field value.
     ///
-    /// Returns a reference to avoid allocation. Use `.map(ToOwned::to_owned)` if you need an owned `String`.
+    /// Returns a reference to avoid allocation. Use `.map(ToOwned::to_owned)`
+    /// if you need an owned `String`.
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
+    ///
+    /// use lithos_domain::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
@@ -569,17 +592,24 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
+    ///
+    /// use lithos_domain::{FieldValue, Frontmatter};
     ///
     /// // Array case
     /// let mut fields = HashMap::new();
-    /// fields.insert("tags".to_string(), FieldValue::Array(vec![
-    ///     FieldValue::String("rust".to_string()),
-    ///     FieldValue::String("programming".to_string()),
-    /// ]));
+    /// fields.insert(
+    ///     "tags".to_string(),
+    ///     FieldValue::Array(vec![
+    ///         FieldValue::String("rust".to_string()),
+    ///         FieldValue::String("programming".to_string()),
+    ///     ]),
+    /// );
     /// let fm = Frontmatter::new(fields).unwrap();
-    /// assert_eq!(fm.get_string_array("tags"), Some(vec!["rust".to_string(), "programming".to_string()]));
+    /// assert_eq!(
+    ///     fm.get_string_array("tags"),
+    ///     Some(vec!["rust".to_string(), "programming".to_string()])
+    /// );
     ///
     /// // Single string case
     /// let mut fields2 = HashMap::new();
@@ -606,8 +636,9 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
+    ///
+    /// use lithos_domain::{FieldValue, Frontmatter};
     ///
     /// let mut fields = HashMap::new();
     /// fields.insert("title".to_string(), FieldValue::String("Hello".to_string()));
@@ -629,11 +660,13 @@ impl Frontmatter {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Frontmatter, FieldValue};
     /// use std::collections::HashMap;
     ///
+    /// use lithos_domain::{FieldValue, Frontmatter};
+    ///
     /// let mut fields = HashMap::new();
-    /// fields.insert("title".to_string(), FieldValue::String("My Note".to_string()));
+    /// fields
+    ///     .insert("title".to_string(), FieldValue::String("My Note".to_string()));
     /// let fm = Frontmatter::new(fields).unwrap();
     /// assert!(fm.has("title"));
     /// ```
@@ -722,7 +755,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test fixture creation, unwrap is appropriate for test clarity"
+        reason = "Test fixture creation, unwrap is appropriate for test \
+                  clarity"
     )]
     fn has_method_detects_field_presence() {
         // GIVEN: frontmatter with a title field

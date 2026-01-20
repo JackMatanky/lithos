@@ -2,7 +2,8 @@
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "Core domain logic and naming convention where Property prefix is descriptive"
+    reason = "Core domain logic and naming convention where Property prefix \
+              is descriptive"
 )]
 
 use std::fmt::{Debug, Display};
@@ -201,8 +202,9 @@ impl Property {
 
     /// Validate a value against this property's specification.
     ///
-    /// This method uses `serde_json::Value` as a universal Intermediate Representation (IR)
-    /// for metadata values, allowing validation of data loaded from JSON, YAML, or TOML.
+    /// This method uses `serde_json::Value` as a universal Intermediate
+    /// Representation (IR) for metadata values, allowing validation of data
+    /// loaded from JSON, YAML, or TOML.
     ///
     /// # Errors
     /// Returns `DomainError` if validation fails.

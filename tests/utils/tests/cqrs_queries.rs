@@ -1,7 +1,8 @@
 //! # Query Handler Testing Examples
 //!
-//! Demonstrates ADR 0009 Decision 2: Query handler testing with stubbed data stores,
-//! result transformation testing, performance validation, and caching verification.
+//! Demonstrates ADR 0009 Decision 2: Query handler testing with stubbed data
+//! stores, result transformation testing, performance validation, and caching
+//! verification.
 
 #![allow(clippy::disallowed_methods)]
 

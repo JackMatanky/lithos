@@ -135,7 +135,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Link, LinkType, EmbedType};
+    /// use lithos_domain::{EmbedType, Link, LinkType};
     /// use uuid::Uuid;
     ///
     /// let source_id = Uuid::now_v7();
@@ -143,8 +143,9 @@ impl Link {
     ///     source_id,
     ///     "diagram.png".to_string(),
     ///     EmbedType::Image,
-    ///     200
-    /// ).unwrap();
+    ///     200,
+    /// )
+    /// .unwrap();
     /// assert_eq!(embed.target_path(), "diagram.png");
     /// assert_eq!(embed.link_type(), &LinkType::Embed);
     /// assert_eq!(embed.embed_type(), Some(EmbedType::Image));
@@ -182,8 +183,9 @@ impl Link {
     ///     source_id,
     ///     "doc.html".to_string(),
     ///     Some("Link".to_string()),
-    ///     75
-    /// ).unwrap();
+    ///     75,
+    /// )
+    /// .unwrap();
     /// assert_eq!(link.target_path(), "doc.html");
     /// ```
     ///
@@ -219,8 +221,9 @@ impl Link {
     ///     source_id,
     ///     "target.md".to_string(),
     ///     Some("Alias".to_string()),
-    ///     100
-    /// ).unwrap();
+    ///     100,
+    /// )
+    /// .unwrap();
     /// assert_eq!(link.target_path(), "target.md");
     /// assert_eq!(link.alias(), Some("Alias"));
     /// assert_eq!(link.link_type(), &LinkType::WikiLink);

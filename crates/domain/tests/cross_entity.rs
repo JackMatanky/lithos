@@ -5,7 +5,8 @@
 // # LINT_DISABLE_REASON: Justification: Test code clarity.
 #![expect(
     clippy::disallowed_methods,
-    reason = "Integration tests use unwrap for setup and assertions for clarity"
+    reason = "Integration tests use unwrap for setup and assertions for \
+              clarity"
 )]
 
 use std::collections::HashMap;
@@ -51,7 +52,8 @@ mod tests {
         assert_eq!(aliases, vec!["Alias 1".to_owned()]);
     }
 
-    /// 3.6-INT-002: `frontmatter_falls_back_to_defaults_when_config_keys_missing`.
+    /// 3.6-INT-002:
+    /// `frontmatter_falls_back_to_defaults_when_config_keys_missing`.
     /// Priority: P2.
     #[test]
     fn frontmatter_falls_back_to_defaults_when_config_keys_missing() {

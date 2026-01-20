@@ -2,7 +2,8 @@
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "RawSchema and RawProperty follow naming conventions for input types"
+    reason = "RawSchema and RawProperty follow naming conventions for input \
+              types"
 )]
 
 use std::collections::HashSet;

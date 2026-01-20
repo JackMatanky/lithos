@@ -15,9 +15,10 @@ pub fn standard_criterion() -> Criterion {
 
 /// Helper to create a multi-threaded Tokio runtime for benchmarking.
 pub fn create_benchmark_runtime() -> tokio::runtime::Runtime {
-    // # LINT_DISABLE_REASON: Benchmarks use expect() for runtime initialization.
-    // # LINT_DISABLE_REASON: Options tried: propagating errors.
-    // # LINT_DISABLE_REASON: Justification: If runtime fails, benchmark cannot proceed; panic is acceptable here.
+    // # LINT_DISABLE_REASON: Benchmarks use expect() for runtime
+    // initialization. # LINT_DISABLE_REASON: Options tried: propagating
+    // errors. # LINT_DISABLE_REASON: Justification: If runtime fails,
+    // benchmark cannot proceed; panic is acceptable here.
     #[expect(
         clippy::expect_used,
         clippy::disallowed_methods,

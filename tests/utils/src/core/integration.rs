@@ -1,7 +1,7 @@
 //! Common utilities and fixtures for integration tests.
 //!
-//! Provides shared setup functions, test data fixtures, and mocking infrastructure
-//! for cross-module integration testing.
+//! Provides shared setup functions, test data fixtures, and mocking
+//! infrastructure for cross-module integration testing.
 //!
 //! # Implementation Status
 //!

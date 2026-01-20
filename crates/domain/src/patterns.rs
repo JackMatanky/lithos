@@ -11,8 +11,10 @@
 //! # Available Patterns
 //!
 //! ## Domain-Specific Patterns (Currently Used)
-//! - **`ALPHANUMERIC_NAME`**: Name validation for schemas, properties, and templates
-//! - **`IDENTIFIER_NAME`**: Variable name validation (programming identifier style)
+//! - **`ALPHANUMERIC_NAME`**: Name validation for schemas, properties, and
+//!   templates
+//! - **`IDENTIFIER_NAME`**: Variable name validation (programming identifier
+//!   style)
 //!
 //! ## General Patterns (Future Use)
 //! - Email validation

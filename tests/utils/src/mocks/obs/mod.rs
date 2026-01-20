@@ -1,12 +1,13 @@
 //! # CQRS Observability Testing Utilities
 //!
-//! This module provides testing utilities for CQRS-specific observability patterns,
-//! including event tracing, command/query metrics validation, and execution correlation.
+//! This module provides testing utilities for CQRS-specific observability
+//! patterns, including event tracing, command/query metrics validation, and
+//! execution correlation.
 //!
 //! ## Architecture Compliance
 //!
-//! Implements ADR 0009 Decision 6: Observability testing patterns for CQRS-specific
-//! tracing (event publishing, command/query execution metrics).
+//! Implements ADR 0009 Decision 6: Observability testing patterns for
+//! CQRS-specific tracing (event publishing, command/query execution metrics).
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
@@ -27,7 +28,9 @@ use crate::cqrs::{CqrsTestError, CqrsTestResult};
 /// # async fn main() {
 /// let metrics = MockMetricsCollector::new();
 ///
-/// metrics.record_command("CreateOrder", Duration::from_millis(50), true).await;
+/// metrics
+///     .record_command("CreateOrder", Duration::from_millis(50), true)
+///     .await;
 ///
 /// let stats = metrics.command_stats("CreateOrder").await;
 /// assert_eq!(stats.total_calls, 1);
@@ -205,7 +208,8 @@ type TraceMap = HashMap<String, Vec<TraceEntry>>;
 /// Mock trace collector for CQRS operations
 ///
 /// # Architecture Compliance
-/// Tracks execution traces for correlation testing across command/query boundaries.
+/// Tracks execution traces for correlation testing across command/query
+/// boundaries.
 pub struct MockTraceCollector {
     /// Trace entries: correlation_id -> trace details
     traces: Arc<RwLock<TraceMap>>,
@@ -386,26 +390,20 @@ mod tests {
 
         collector.start_trace("trace-1").await;
         collector
-            .add_entry(
-                "trace-1",
-                TraceEntryParams {
-                    operation_type: "Command".to_owned(),
-                    operation_name: "CreateOrder".to_owned(),
-                    duration: Some(Duration::from_millis(50)),
-                    context: HashMap::new(),
-                },
-            )
+            .add_entry("trace-1", TraceEntryParams {
+                operation_type: "Command".to_owned(),
+                operation_name: "CreateOrder".to_owned(),
+                duration: Some(Duration::from_millis(50)),
+                context: HashMap::new(),
+            })
             .await;
         collector
-            .add_entry(
-                "trace-1",
-                TraceEntryParams {
-                    operation_type: "Event".to_owned(),
-                    operation_name: "OrderCreated".to_owned(),
-                    duration: None,
-                    context: HashMap::new(),
-                },
-            )
+            .add_entry("trace-1", TraceEntryParams {
+                operation_type: "Event".to_owned(),
+                operation_name: "OrderCreated".to_owned(),
+                duration: None,
+                context: HashMap::new(),
+            })
             .await;
 
         let trace = collector.get_trace("trace-1").await.unwrap();
@@ -420,52 +418,43 @@ mod tests {
 
         collector.start_trace("trace-1").await;
         collector
-            .add_entry(
-                "trace-1",
-                TraceEntryParams {
-                    operation_type: "Command".to_owned(),
-                    operation_name: "CreateOrder".to_owned(),
-                    duration: Some(Duration::from_millis(50)),
-                    context: HashMap::new(),
-                },
-            )
+            .add_entry("trace-1", TraceEntryParams {
+                operation_type: "Command".to_owned(),
+                operation_name: "CreateOrder".to_owned(),
+                duration: Some(Duration::from_millis(50)),
+                context: HashMap::new(),
+            })
             .await;
         collector
-            .add_entry(
-                "trace-1",
-                TraceEntryParams {
-                    operation_type: "Event".to_owned(),
-                    operation_name: "OrderCreated".to_owned(),
-                    duration: None,
-                    context: HashMap::new(),
-                },
-            )
+            .add_entry("trace-1", TraceEntryParams {
+                operation_type: "Event".to_owned(),
+                operation_name: "OrderCreated".to_owned(),
+                duration: None,
+                context: HashMap::new(),
+            })
             .await;
         collector
-            .add_entry(
-                "trace-1",
-                TraceEntryParams {
-                    operation_type: "Event".to_owned(),
-                    operation_name: "OrderShipped".to_owned(),
-                    duration: None,
-                    context: HashMap::new(),
-                },
-            )
+            .add_entry("trace-1", TraceEntryParams {
+                operation_type: "Event".to_owned(),
+                operation_name: "OrderShipped".to_owned(),
+                duration: None,
+                context: HashMap::new(),
+            })
             .await;
 
         let result = collector
-            .verify_command_event_flow(
-                "trace-1",
-                &["OrderCreated", "OrderShipped"],
-            )
+            .verify_command_event_flow("trace-1", &[
+                "OrderCreated",
+                "OrderShipped",
+            ])
             .await;
         assert!(result.is_ok());
 
         let wrong_result = collector
-            .verify_command_event_flow(
-                "trace-1",
-                &["OrderShipped", "OrderCreated"],
-            )
+            .verify_command_event_flow("trace-1", &[
+                "OrderShipped",
+                "OrderCreated",
+            ])
             .await;
         assert!(wrong_result.is_err());
     }

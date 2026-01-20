@@ -1,7 +1,8 @@
 //! # Lithos Test Utilities
 //!
-//! This crate provides standardized testing utilities and patterns for the Lithos project,
-//! organized into logical modules for scalability and ease of discovery.
+//! This crate provides standardized testing utilities and patterns for the
+//! Lithos project, organized into logical modules for scalability and ease of
+//! discovery.
 
 pub mod core;
 pub mod cqrs;
@@ -61,5 +62,5 @@ pub use crate::mocks::{
     },
 };
 
-// The async_test macro is automatically exported at crate root via #[macro_export]
-// in the async_utils module.
+// The async_test macro is automatically exported at crate root via
+// #[macro_export] in the async_utils module.

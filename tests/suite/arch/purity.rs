@@ -13,10 +13,9 @@ mod tests {
         // GIVEN: the domain crate dependency graph
 
         // WHEN: checking for prohibited dependencies
-        assert_no_prohibited_dependencies(
-            "lithos-domain",
-            &["redb", "tokio-fs"],
-        );
+        assert_no_prohibited_dependencies("lithos-domain", &[
+            "redb", "tokio-fs",
+        ]);
 
         // THEN: the domain crate remains storage and I/O free
     }

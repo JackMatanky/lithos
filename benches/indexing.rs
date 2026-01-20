@@ -6,12 +6,14 @@
 //! - Metadata query latency: < 100ms
 
 // # LINT_DISABLE_REASON: Benchmarks use thread::sleep to simulate work.
-// # LINT_DISABLE_REASON: Options tried: tokio::time::sleep (requires runtime in iter).
-// # LINT_DISABLE_REASON: Justification: Simulating CPU work in a synchronous benchmark loop.
+// # LINT_DISABLE_REASON: Options tried: tokio::time::sleep (requires runtime in
+// iter). # LINT_DISABLE_REASON: Justification: Simulating CPU work in a
+// synchronous benchmark loop.
 #![expect(
     clippy::disallowed_methods,
     missing_docs,
-    reason = "Benchmarks use thread::sleep to simulate work and do not require public docs"
+    reason = "Benchmarks use thread::sleep to simulate work and do not \
+              require public docs"
 )]
 
 use criterion::{Criterion, criterion_group, criterion_main};

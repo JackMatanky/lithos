@@ -43,7 +43,11 @@ impl Tag {
     ///
     /// let tag = Tag::parse("#work/project/urgent").unwrap();
     /// assert_eq!(tag.as_str(), "work/project/urgent");
-    /// assert_eq!(tag.segments(), &[ "work".into(), "project".into(), "urgent".into() ]);
+    /// assert_eq!(tag.segments(), &[
+    ///     "work".into(),
+    ///     "project".into(),
+    ///     "urgent".into()
+    /// ]);
     ///
     /// let simple_tag = Tag::parse("#personal").unwrap();
     /// assert_eq!(simple_tag.as_str(), "personal");
@@ -52,9 +56,11 @@ impl Tag {
     ///
     /// # Errors
     /// - Returns `DomainError::InvalidTag` if the input doesn't start with `#`.
-    /// - Returns `DomainError::InvalidTag` if the tag is empty after removing `#`.
+    /// - Returns `DomainError::InvalidTag` if the tag is empty after removing
+    ///   `#`.
     /// - Returns `DomainError::EmptyTagSegment` if any segment is empty.
-    /// - Returns `DomainError::InvalidTag` if any segment contains invalid characters.
+    /// - Returns `DomainError::InvalidTag` if any segment contains invalid
+    ///   characters.
     #[inline]
     pub fn parse(input: &str) -> Result<Self, DomainError> {
         let tag_path = extract_tag_path(input)?;
@@ -105,7 +111,8 @@ fn extract_tag_path(input: &str) -> Result<&str, DomainError> {
 /// Splits a tag path into segments and validates no empty segments exist.
 ///
 /// # Errors
-/// - Returns `DomainError::EmptyTagSegment` if any segment is empty (double slashes).
+/// - Returns `DomainError::EmptyTagSegment` if any segment is empty (double
+///   slashes).
 #[inline]
 fn split_tag_segments(tag_path: &str) -> Result<Vec<&str>, DomainError> {
     let segments: Vec<&str> = tag_path.split('/').collect();
@@ -123,13 +130,15 @@ fn split_tag_segments(tag_path: &str) -> Result<Vec<&str>, DomainError> {
 /// Allowed characters: alphanumeric, underscore (`_`), hyphen (`-`).
 ///
 /// # Errors
-/// - Returns `DomainError::InvalidTag` if any segment contains invalid characters.
+/// - Returns `DomainError::InvalidTag` if any segment contains invalid
+///   characters.
 #[inline]
 fn validate_tag_segments(segments: &[&str]) -> Result<(), DomainError> {
     for segment in segments {
         if !is_valid_tag_segment(segment) {
             return Err(DomainError::InvalidTag(format!(
-                "Invalid tag segment '{segment}': only alphanumeric, underscore, and hyphen allowed"
+                "Invalid tag segment '{segment}': only alphanumeric, \
+                 underscore, and hyphen allowed"
             )));
         }
     }
@@ -150,7 +159,8 @@ fn is_valid_tag_segment(segment: &str) -> bool {
     reason = "Unit tests use unwrap for readability"
 )]
 mod tests {
-    // # LINT_DISABLE_REASON: Standard test utilities and behavioral verification patterns.
+    // # LINT_DISABLE_REASON: Standard test utilities and behavioral
+    // verification patterns.
     use super::*;
 
     mod parse {
@@ -172,19 +182,29 @@ mod tests {
         /// Priority: P0.
         #[rstest]
         #[case::simple("#personal", Ok(vec!["personal"]))]
-        #[case::hierarchical("#work/project/urgent", Ok(vec!["work", "project", "urgent"]))]
+        #[case::hierarchical(
+            "#work/project/urgent",
+            Ok(vec!["work", "project", "urgent"])
+        )]
         #[case::missing_hash(
             "invalid",
             Err(DomainError::InvalidTag("Tag must start with #".to_owned()))
         )]
-        #[case::only_hash("#", Err(DomainError::InvalidTag("Tag cannot be empty".to_owned())))]
+        #[case::only_hash(
+            "#",
+            Err(DomainError::InvalidTag("Tag cannot be empty".to_owned()))
+        )]
         #[case::empty_segments(
             "#work//urgent",
             Err(DomainError::EmptyTagSegment)
         )]
         #[case::invalid_chars(
             "#work project",
-            Err(DomainError::InvalidTag("Invalid tag segment 'work project': only alphanumeric, underscore, and hyphen allowed".to_owned()))
+            Err(DomainError::InvalidTag(
+                "Invalid tag segment 'work project': only alphanumeric, \
+                 underscore, and hyphen allowed"
+                    .to_owned(),
+            ))
         )]
         fn tag_parsing_matrix(
             #[case] input: &str,

@@ -1,24 +1,29 @@
 //! Integration tests for cross-module API contract testing.
 //!
-//! Tests API contracts between bounded contexts to ensure hexagonal architecture boundaries are maintained.
+//! Tests API contracts between bounded contexts to ensure hexagonal
+//! architecture boundaries are maintained.
 
 use std::sync::Arc;
 
 use lithos_test_utils::{EventBusPort, MockEventBus};
 
-// Placeholder domain event for testing - replace with actual DomainEvent when defined
+// Placeholder domain event for testing - replace with actual DomainEvent when
+// defined
 #[derive(Debug, Clone, PartialEq)]
 struct TestDomainEvent {
     id: String,
 }
 
 #[cfg(test)]
-// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method linting.
-// # LINT_DISABLE_REASON: Options tried: explicit matches/guarded Result handling, custom assertion helpers.
-// # LINT_DISABLE_REASON: Justification: Test assertions require assert! macro for readability and standard test patterns.
+// # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method
+// linting. # LINT_DISABLE_REASON: Options tried: explicit matches/guarded
+// Result handling, custom assertion helpers. # LINT_DISABLE_REASON:
+// Justification: Test assertions require assert! macro for readability and
+// standard test patterns.
 #[expect(
     clippy::disallowed_methods,
-    reason = "Test assertions use assert! macro which is disallowed in production but required for tests"
+    reason = "Test assertions use assert! macro which is disallowed in \
+              production but required for tests"
 )]
 mod tests {
     use super::*;
@@ -80,7 +85,8 @@ mod tests {
         let result2 = bus.publish_data(event2).await;
         assert!(
             result2.is_ok(),
-            "Error handling contract should be maintained across multiple operations"
+            "Error handling contract should be maintained across multiple \
+             operations"
         );
 
         // THEN: both events are captured without silent failures

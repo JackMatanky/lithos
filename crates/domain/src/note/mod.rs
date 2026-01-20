@@ -1,7 +1,7 @@
 //! Note bounded context module.
 //!
-//! This module contains all entities, value objects, and logic related to the Note aggregate
-//! and its subentities in the domain layer.
+//! This module contains all entities, value objects, and logic related to the
+//! Note aggregate and its subentities in the domain layer.
 
 /// Core Note aggregate root and main entities.
 pub(crate) mod aggregate;

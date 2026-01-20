@@ -2,7 +2,8 @@
 
 #![allow(
     clippy::module_name_repetitions,
-    reason = "Core domain logic and naming convention where Spec suffix is descriptive"
+    reason = "Core domain logic and naming convention where Spec suffix is \
+              descriptive"
 )]
 
 use std::{
@@ -89,8 +90,9 @@ impl PropertySpec {
 
     /// Validate a value against this spec's constraints.
     ///
-    /// This method uses `serde_json::Value` as a universal Intermediate Representation (IR)
-    /// for metadata values, allowing validation of data loaded from JSON, YAML, or TOML.
+    /// This method uses `serde_json::Value` as a universal Intermediate
+    /// Representation (IR) for metadata values, allowing validation of data
+    /// loaded from JSON, YAML, or TOML.
     ///
     /// # Errors
     /// Returns `DomainError` if validation fails.
@@ -104,7 +106,8 @@ impl PropertySpec {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: self is &PropertySpec, variants bind implicitly. Consistent with frontmatter pattern."
+        reason = "Match ergonomics: self is &PropertySpec, variants bind \
+                  implicitly. Consistent with frontmatter pattern."
     )]
     pub fn validate(
         &self,
@@ -169,7 +172,8 @@ impl PropertySpec {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: self is &PropertySpec, variants bind implicitly. Consistent with frontmatter pattern."
+        reason = "Match ergonomics: self is &PropertySpec, variants bind \
+                  implicitly. Consistent with frontmatter pattern."
     )]
     pub fn validate_spec(&self) -> Result<(), DomainError> {
         match self {
@@ -357,7 +361,8 @@ impl NumberSpec {
 
     fn validate_step(&self, value: f64) -> Result<(), DomainError> {
         if let Some(step) = self.step {
-            // Note: step positivity is guaranteed by check_step() in validate_spec
+            // Note: step positivity is guaranteed by check_step() in
+            // validate_spec
             let base = self.min.unwrap_or(0.0f64);
             validation::validate_numeric_step(value, base, step)?;
         }
@@ -442,7 +447,8 @@ impl StringSpec {
 
     fn validate_pattern(&self, value: &str) -> Result<(), DomainError> {
         if let Some(pattern) = self.pattern.as_ref() {
-            // Note: pattern compilation is guaranteed by check_pattern() in validate_spec
+            // Note: pattern compilation is guaranteed by check_pattern() in
+            // validate_spec
             let re = get_cached_regex(pattern)?;
             if !re.is_match(value) {
                 return Err(DomainError::ValidationFailed(format!(
@@ -478,7 +484,8 @@ fn get_cached_regex(pattern: &str) -> Result<regex::Regex, DomainError> {
     reason = "Unit tests use unwrap/expect for simplicity"
 )]
 mod tests {
-    // # LINT_DISABLE_REASON: Standard test utilities and behavioral verification patterns.
+    // # LINT_DISABLE_REASON: Standard test utilities and behavioral
+    // verification patterns.
     use lithos_test_utils::assert_err_kind;
     use rstest::rstest;
 
@@ -537,27 +544,49 @@ mod tests {
     /// 3.3-UNIT-012: Number Specification Validation Matrix.
     /// Priority: P1.
     #[rstest]
-    #[case::in_range(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
-      5.0f64,
-      Ok(()))]
-    #[case::at_min(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
-      0.0f64,
-      Ok(()))]
-    #[case::at_max(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
-      10.0f64,
-      Ok(()))]
-    #[case::below_min(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
-      -1.0f64,
-      Err(DomainError::NumberOutOfRange { value: -1.0f64, min: Some(0.0f64), max: Some(10.0f64) }))]
-    #[case::above_max(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
-      11.0f64,
-      Err(DomainError::NumberOutOfRange { value: 11.0f64, min: Some(0.0f64), max: Some(10.0f64) }))]
-    #[case::valid_step(NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() },
-      5.5f64,
-      Ok(()))]
-    #[case::invalid_step(NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() },
-      5.2f64,
-      Err(DomainError::InvalidStepValue { value: 5.2f64, step: 0.5f64 }))]
+    #[case::in_range(
+        NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+        5.0f64,
+        Ok(())
+    )]
+    #[case::at_min(
+        NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+        0.0f64,
+        Ok(())
+    )]
+    #[case::at_max(
+        NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+        10.0f64,
+        Ok(())
+    )]
+    #[case::below_min(
+        NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+        -1.0f64,
+        Err(DomainError::NumberOutOfRange {
+            value: -1.0f64,
+            min: Some(0.0f64),
+            max: Some(10.0f64)
+        })
+    )]
+    #[case::above_max(
+        NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+        11.0f64,
+        Err(DomainError::NumberOutOfRange {
+            value: 11.0f64,
+            min: Some(0.0f64),
+            max: Some(10.0f64)
+        })
+    )]
+    #[case::valid_step(
+        NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() },
+        5.5f64,
+        Ok(())
+    )]
+    #[case::invalid_step(
+        NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() },
+        5.2f64,
+        Err(DomainError::InvalidStepValue { value: 5.2f64, step: 0.5f64 })
+    )]
     fn number_spec_validation_matrix(
         #[case] spec: NumberSpec,
         #[case] value: f64,
@@ -575,9 +604,11 @@ mod tests {
     #[rstest]
     #[case::in_dir("notes/my_note.md", "notes/", Ok(()))]
     #[case::out_dir(
-      "other/note.md",
-      "notes/",
-      Err(DomainError::InvalidDirectoryPath("File other/note.md must be in directory notes/".to_owned()))
+        "other/note.md",
+        "notes/",
+        Err(DomainError::InvalidDirectoryPath(
+            "File other/note.md must be in directory notes/".to_owned(),
+        ))
     )]
     fn file_spec_validation_matrix(
         #[case] path: &str,
@@ -682,7 +713,8 @@ mod tests {
         assert_eq!(s.spec_type(), PropertySpecType::String);
         assert_eq!(n.spec_type(), PropertySpecType::Number);
 
-        // AND: validate dispatches to inner spec (tested via successful bool parse)
+        // AND: validate dispatches to inner spec (tested via successful bool
+        // parse)
         b.validate(&serde_json::json!(true)).unwrap();
     }
 }
