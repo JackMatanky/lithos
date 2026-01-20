@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Epic 3: Domain Models Documentation
+
+- Documented Note, Schema, Config, and Template bounded contexts with validation and contracts.
+- Added Epic 3 domain entity inventory and documentation templates.
+- Added guidance on evolution rules, anti-patterns, and cookbook examples.
+
 ### Added - Epic 1: Development Environment & Foundation (Rust Conversion)
 
 **Workspace & Infrastructure:**
