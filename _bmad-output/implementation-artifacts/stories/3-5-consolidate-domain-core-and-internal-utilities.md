@@ -69,9 +69,9 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 
 **Phase 2A: Validation Consolidation (HIGH PRIORITY - Essential Sameness)**
 - [x] Create `crates/domain/src/validation.rs` with path, name, numeric, string validation utilities
-- [x] Refactor `models/note/core.rs` to use shared path validation (-65 lines)
-- [x] Refactor `models/schema/core.rs` (SchemaName format validation with `^[a-zA-Z0-9_-]+$`)
-- [x] Refactor `models/schema/property.rs` (PropertyName format validation with `^[a-zA-Z0-9_-]+$`)
+- [x] Refactor `note/aggregate.rs` to use shared path validation (-65 lines)
+- [x] Refactor `schema/aggregate.rs` (SchemaName format validation with `^[a-zA-Z0-9_-]+$`)
+- [x] Refactor `schema/property.rs` (PropertyName format validation with `^[a-zA-Z0-9_-]+$`)
 - [x] **DECISION:** Template/Variable name validation - KEEP SEPARATE (bounded context ownership, different validation semantics)
 - [x] **DECISION:** Property_spec numeric/string validation - KEEP SEPARATE (domain-specific error types: NumberOutOfRange, StringTooLong, etc.)
 - [x] **DECISION:** Template/variable validation - KEEP SEPARATE (different error semantics, reserved words, different regex patterns)
@@ -80,8 +80,8 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 
 **Phase 2B: Domain-Wide Standardization (HIGH PRIORITY - Readability)**
 - [x] **Regex Pattern Standardization:**
-  - [x] Convert `OnceLock<Regex>` → `LazyLock<Regex>` in `models/schema/core.rs`
-  - [x] Convert `OnceLock<Regex>` → `LazyLock<Regex>` in `models/schema/property.rs`
+  - [x] Convert `OnceLock<Regex>` → `LazyLock<Regex>` in `schema/aggregate.rs`
+  - [x] Convert `OnceLock<Regex>` → `LazyLock<Regex>` in `schema/property.rs`
   - [x] Template already uses `LazyLock` pattern (no change needed)
   - [x] **KEPT** `property_spec.rs` Mutex cache (cross-thread sharing - different requirement)
   - [x] **KEPT** `template/variable.rs` thread_local cache (hot path - different requirement)
@@ -116,7 +116,7 @@ So that the codebase remains DRY, maintainable, and architectural boundaries are
 
 **Subtasks:**
 - [x] **3.5.1:** Create new directory structure (config/, note/, schema/, template/)
-- [x] **3.5.2:** Move models/config.rs → config/mod.rs
+- [x] **3.5.2:** Move config.rs → config/mod.rs
 - [x] **3.5.14:** Update lib.rs module declarations (replace `pub mod models;` with `pub(crate) mod config;`, `pub(crate) mod note;`, etc. to minimize public API surface)
 - [x] **3.5.15:** Update all imports across codebase (domain internal, app, adapters, tests)
 - [x] **3.5.16:** Rename `DomainEvent` enums to context-specific plural names (`NoteEvents`, `SchemaEvents`, `TemplateEvents`)
@@ -351,20 +351,20 @@ static NAME_RE: LazyLock<Regex> = LazyLock::new(|| {
 - `crates/domain/src/config/aggregate.rs` - Added event handling (pending_events, take_events) to Config aggregate
 - `crates/domain/src/config/events.rs` - Added ConfigEvents enum wrapper
 - `crates/domain/src/config/mod.rs` - Structural adjustments for bounded context organization
-- `crates/domain/src/note/core.rs` - Refactored to use shared `validate_vault_path()` (-65 lines), renamed to `NoteEvents`
+- `crates/domain/src/note/aggregate.rs` - Refactored to use shared `validate_vault_path()` (-65 lines), renamed to `NoteEvents`
 - `crates/domain/src/note/frontmatter.rs` - Visibility and structural standardization
 - `crates/domain/src/ports/mod.rs` - Visibility adjustments for hexagonal compliance
 - `crates/domain/src/schema/aggregate.rs` - Standardized construction, renamed to `SchemaEvents`
 - `crates/domain/src/schema/property.rs` - Standardization of regex patterns and validation
 - `crates/domain/src/schema/resolver.rs` - Path updates for context restructuring
-- `crates/domain/src/template/core.rs` - Renamed to `TemplateEvents`, standardized patterns and semantic errors
+- `crates/domain/src/template/aggregate.rs` - Renamed to `TemplateEvents`, standardized patterns and semantic errors
 - `crates/domain/src/template/composition.rs` - Updates for context restructuring
 - `benches/schema_benchmarks.rs` - Path updates for context restructuring
 
 ## Change Log
 - **2026-01-19 17:00:** Created `crates/domain/src/validation.rs` with comprehensive shared utilities
 - **2026-01-19 17:15:** Added 23 comprehensive unit tests for validation module
-- **2026-01-19 17:30:** Refactored `models/note/core.rs` to use shared path validation (removed 65 lines)
+- **2026-01-19 17:30:** Refactored `note/aggregate.rs` to use shared path validation (removed 65 lines)
 - **2026-01-19 17:45:** Code quality review - fixed clippy warnings, improved Windows path detection
 - **2026-01-19 17:50:** Added edge case tests for Windows backslash paths
 - **2026-01-19 18:30:** Verified full domain restructuring into bounded contexts (config, note, schema, template).

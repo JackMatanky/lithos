@@ -48,7 +48,7 @@ pub use config::{
         Template as TemplateConfig,
     },
     vault::{
-        Filesystem as VaultFilesystem, Metadata as VaultMetadata,
+        Filesystem as VaultFilesystemConfig, Metadata as VaultMetadataConfig,
         Vault as VaultConfig,
     },
 };

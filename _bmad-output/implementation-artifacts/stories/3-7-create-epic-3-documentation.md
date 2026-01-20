@@ -35,12 +35,12 @@ So that developers understand the domain language and can work effectively with 
 
 5. **Given** Epic 3 domain models are implemented
    **When** I review the source code
-   **Then** all files in the domain (`crates/domain/src/models/`) are reviewed thoroughly to ensure full and proper use of doc comments with doc tests and that every relevant component has a well written doc comment.
+   **Then** all files in the domain (`crates/domain/src/`) are reviewed thoroughly to ensure full and proper use of doc comments with doc tests and that every relevant component has a well written doc comment.
 
 ## Tasks / Subtasks
 
 ### Task 1: Audit and Improve Inline Domain Documentation (Doc Comments & Doc Tests)
-- [x] Thoroughly review all files in `crates/domain/src/models/` for full and proper use of doc comments (`///`).
+- [x] Thoroughly review all files in `crates/domain/src/` for full and proper use of doc comments (`///`).
 - [x] Ensure every relevant component (structs, enums, traits, public methods) has a well-written, accurate, and precise doc comment.
 - [x] Add or improve doc tests to provide runnable examples and verify invariants.
 - [x] Ensure doc comments serve as the primary source of truth for developer-level understanding of individual components.
@@ -52,10 +52,10 @@ So that developers understand the domain language and can work effectively with 
 - [x] **ADR Mapping**: Cross-reference documented domain behaviors with the relevant ADRs (Architecture Decision Records) to provide historical context.
 
 ### Task 3: Analyze Epic 3 Domain Models for Documentation Scope
-- [x] Read all files in `crates/domain/src/models/note/` directory to understand Note bounded context: Note aggregate, Frontmatter, Link, Embed, Tag, Heading, Task, Section entities and their validation rules, business logic
-- [x] Read all files in `crates/domain/src/models/schema/` directory to understand Schema bounded context: Schema aggregate, Property, PropertyBank, PropertySpec trait and implementations (StringSpec, NumberSpec, etc.), inheritance resolution, trait-based generic design
-- [x] Read all files in `crates/domain/src/models/config/` directory to understand Config bounded context: Config entity with phantom types, ConfigValue, ConfigPath, ValidationRule, hierarchical merging, encryption boundary
-- [x] Read all files in `crates/domain/src/models/template/` directory to understand Template bounded context: Template aggregate, VariableDefinition, TemplateComposition, MiniJinja compatibility, domain purity (no syntax validation)
+- [x] Read all files in `crates/domain/src/note/` directory to understand Note bounded context: Note aggregate, Frontmatter, Link, Embed, Tag, Heading, Task, Section entities and their validation rules, business logic
+- [x] Read all files in `crates/domain/src/schema/` directory to understand Schema bounded context: Schema aggregate, Property, PropertyBank, PropertySpec trait and implementations (StringSpec, NumberSpec, etc.), inheritance resolution, trait-based generic design
+- [x] Read all files in `crates/domain/src/config/` directory to understand Config bounded context: Config entity with phantom types, ConfigValue, ConfigPath, ValidationRule, hierarchical merging, encryption boundary
+- [x] Read all files in `crates/domain/src/template/` directory to understand Template bounded context: Template aggregate, VariableDefinition, TemplateComposition, MiniJinja compatibility, domain purity (no syntax validation)
 - [x] Analyze inter-entity relationships: Note ↔ Config (defaults), Note ↔ Schema (validation), Template ↔ Schema (variable constraints), Template ↔ Config (execution settings)
 - [x] Document evolution patterns: adding fields/subentities, modifying validation rules, trait evolution, phantom type changes, backward compatibility requirements
 - [x] Create inventory document `_bmad-output/documentation-inventory/epic3-domain-entities.md` listing all entities with file locations, purposes, key methods, validation requirements

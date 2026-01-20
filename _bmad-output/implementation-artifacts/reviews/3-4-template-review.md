@@ -2,7 +2,7 @@
 
 **Quality Score**: 84/100 (A - Good)
 **Review Date**: 2026-01-18
-**Review Scope**: single (crates/domain/src/models/template.rs)
+**Review Scope**: single (crates/domain/src/template.rs)
 **Reviewer**: BMad TEA Agent (Test Architect)
 
 ---

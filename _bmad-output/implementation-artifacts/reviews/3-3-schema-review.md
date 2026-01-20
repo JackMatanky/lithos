@@ -94,7 +94,7 @@ No additional recommendations. Test quality is excellent. ✅
 ## Best Practices Found
 
 ### 1. Deterministic Identity Hashing
-**Location**: `crates/domain/src/models/property.rs:122`
+**Location**: `crates/domain/src/property.rs:122`
 **Pattern**: Blake3 Identity Guard
 **Why This Is Good**:
 The use of Blake3 hashing on canonical JSON ensures that property IDs are absolutely stable across different environments and runs. This is a critical pattern for deduplication in the `PropertyBank`.
@@ -105,7 +105,7 @@ The use of Blake3 hashing on canonical JSON ensures that property IDs are absolu
 
 ### File Metadata
 
-- **File Path**: `crates/domain/src/models/schema.rs` and `property.rs`
+- **File Path**: `crates/domain/src/schema.rs` and `property.rs`
 - **File Size**: 1528 combined lines
 - **Test Framework**: Nextest / Rust standard
 - **Language**: Rust

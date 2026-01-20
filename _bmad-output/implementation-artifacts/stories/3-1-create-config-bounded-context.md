@@ -68,7 +68,7 @@ So that configuration changes are validated and the domain enforces configuratio
 - [x] **Quality Assurance Subtask:** Run `mise run lint`, fix ALL linter errors/warnings, #[allow] MUST NOT be used unless all other options have been exhausted, in which case provide full justification of why it could not be fixed otherwise
 
 ### Task 2: Implement Config Domain Entities (GREEN Phase - AC: 1-3)
-- [x] Create file `crates/domain/src/models/config.rs` and implement Config entities with merging logic
+- [x] Create file `crates/domain/src/config.rs` and implement Config entities with merging logic
 - [x] **DOMAIN BUSINESS LOGIC:** Config defines structure, validation, AND merging precedence (Vault > Global)
  - [x] **SEPARATE LEVELS:** Define Vault and Global structs for each configuration level (aliased as VaultConfig/GlobalConfig)
  - [x] Define Vault struct: `#[derive(Debug, Clone, PartialEq)] pub struct Vault { pub filesystem: FileSystem, pub frontmatter: Frontmatter, pub log_level: String }` (aliased as VaultConfig in lib.rs)
@@ -139,11 +139,11 @@ So that configuration changes are validated and the domain enforces configuratio
   - `Schema` struct (schemas_dir, property_bank_filename) - schema configuration
   - `Template` struct (templates_dir) - template configuration
   - `Logging` struct (log_level) - logging configuration with validation
-- [ ] **STRUCT REFACTOR:** Split `FileSystem` into `GlobalFilesystem` + `VaultFilesystem` using embedded structs
-- [ ] **VAULT METADATA:** Add `VaultMetadata` struct with optional `schema_version` + `name` (defaults to binary version + directory basename)
+- [ ] **STRUCT REFACTOR:** Split `FileSystem` into `GlobalFilesystem` + `VaultFilesystemConfig` using embedded structs
+- [ ] **VAULT METADATA:** Add `VaultMetadataConfig` struct with optional `schema_version` + `name` (defaults to binary version + directory basename)
 - [ ] **TRUSTED VAULTS:** Add `TrustedVaults` struct supporting list OR map format with validation
 - [ ] **GLOBAL FILESYSTEM:** Add `GlobalFilesystem` embedding `Schema` + `Template` (global library)
-- [ ] **VAULT FILESYSTEM:** Add `VaultFilesystem` embedding `Schema` + `Template` + `cache_dir` (vault-scoped)
+- [ ] **VAULT FILESYSTEM:** Add `VaultFilesystemConfig` embedding `Schema` + `Template` + `cache_dir` (vault-scoped)
 - [ ] **DEFAULTS STRATEGY:** Use direct string literals in Default impls - eliminate redundant defaults constants (simpler, no duplication)
 - [ ] **REMOVE DEFAULTS MODULE:** Delete the existing `mod defaults` block - no longer needed with direct literals
 - [ ] **MERGE LOGIC:** Update `Config::build()` to handle optional vault overrides and new struct layout
@@ -460,10 +460,17 @@ fn bench_config_merge(c: &mut Criterion) {
 crates/domain/src/
 ├── config/                   # Config bounded context
 │   ├── mod.rs               # Config module exports
-│   ├── core.rs              # Config entities, structs, and business logic
+│   ├── aggregate.rs         # Config entities, structs, and business logic
+│   ├── global.rs            # Global filesystem + trusted vaults
+│   ├── vault.rs             # Vault filesystem + metadata
+│   ├── types.rs             # Shared config value types
 │   └── events.rs            # ConfigUpdated domain event
 ├── lib.rs                   # Public API surface with aliases
 ├── ports/
+│   ├── mod.rs               # Port trait declarations
+│   └── config.rs            # ConfigCommand/ConfigQuery traits
+└── errors.rs                # Domain errors (includes ConfigError)
+```
 │   ├── mod.rs               # Port trait declarations
 │   └── config.rs            # ConfigCommand/ConfigQuery traits
 └── errors.rs                # Domain errors (includes ConfigError)
@@ -623,7 +630,7 @@ impl Template {
 **5. Embedded Struct Usage**
 ```rust
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct VaultFilesystem {
+pub struct VaultFilesystemConfig {
     pub schema: Schema,            // schemas_dir, property_bank_filename
     pub template: Template,        // templates_dir
     pub cache_dir: String,         // Vault-specific only
@@ -637,7 +644,7 @@ pub struct GlobalFilesystem {
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Vault {
-    pub filesystem: VaultFilesystem,
+    pub filesystem: VaultFilesystemConfig,
     pub frontmatter: Option<Frontmatter>,
     pub logging: Option<Logging>,   // Optional override
 }
@@ -653,7 +660,7 @@ pub struct Global {
 
 **6. Validation Modularization**
 ```rust
-impl VaultFilesystem {
+impl VaultFilesystemConfig {
     pub fn validate(&self) -> Result<(), ConfigError> {
         self.schema.validate()?;
         self.template.validate()?;
@@ -774,7 +781,7 @@ impl Config {
     /// Build configuration with Global → Vault precedence (optional global config)
     pub fn build(global: Option<&Global>, vault_path: &str, vault_config: Vault) -> Result<Self, ConfigError> {
         // Step 1: Set vault metadata defaults
-        let vault_metadata = VaultMetadata {
+        let vault_metadata = VaultMetadataConfig {
             schema_version: vault_config.vault.schema_version.unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string()),
             name: vault_config.vault.name.or_else(|| Path::new(vault_path).file_name().and_then(|n| n.to_str()).map(|s| s.to_string())),
         };
@@ -799,7 +806,7 @@ impl Config {
     }
 }
 
-fn merge_filesystem(global_fs: Option<&GlobalFilesystem>, vault_fs: &VaultFilesystem, vault_path: &str) -> FileSystem {
+fn merge_filesystem(global_fs: Option<&GlobalFilesystem>, vault_fs: &VaultFilesystemConfig, vault_path: &str) -> FileSystem {
     // Schema configuration (vault overrides global)
     let schema = Schema {
         schemas_dir: vault_fs.schema.schemas_dir.clone(),
@@ -949,11 +956,11 @@ No debugging required - TDD approach worked flawlessly with RED-GREEN-REFACTOR c
 **Post-Implementation Refactoring Summary (2025):**
    - ✅ **Modularized Architecture**: Split monolithic `core.rs` (1500+ lines) into focused modules:
      - `aggregate.rs`: Main Config struct and business logic (750+ lines)
-     - `global.rs`: GlobalFilesystem, TrustedVaults, Global structs (102 lines)
-     - `vault.rs`: VaultFilesystem, VaultMetadata, Vault structs (149 lines)
+     - `global.rs`: Filesystem, TrustedVaults, Global structs (102 lines)
+     - `vault.rs`: Filesystem, Metadata, Vault structs (149 lines)
      - `types.rs`: Shared SettingValue, Frontmatter, Logging, Schema, Template (310 lines)
      - `mod.rs`: Module exports and organization
-   - ✅ **Separated Concerns**: GlobalFilesystem and VaultFilesystem kept separate (no merging) since they serve different purposes (global library vs vault-specific)
+   - ✅ **Separated Concerns**: GlobalFilesystem and VaultFilesystemConfig kept separate (no merging) since they serve different purposes (global library vs vault-specific)
    - ✅ **Validation Distribution**: Moved validation logic to appropriate structs:
      - VaultMetadata validates vault_path
      - VaultFilesystem validates cache_dir, schema, template

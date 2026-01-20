@@ -92,8 +92,8 @@
 - **AC Validation**: All 8 Story ACs must have at least one P0/P1 test scenario.
 - **Circular Check**: 100% of inheritance paths must pass cycle detection.
 - **ID Stability**: Property IDs must remain stable across different execution environments.
-- **Coverage**: 90%+ code coverage for `models/schema/` (domain logic).
-- **Complexity**: All functions in `models/schema/` must have cognitive complexity < 25.
+- **Coverage**: 90%+ code coverage for `schema/` (domain logic).
+- **Complexity**: All functions in `schema/` must have cognitive complexity < 25.
 
 ---
 

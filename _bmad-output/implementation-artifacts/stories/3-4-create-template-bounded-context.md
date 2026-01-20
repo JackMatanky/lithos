@@ -47,7 +47,7 @@ So that template structure and business rules are properly validated at the doma
 - [x] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement Template Core Entities (GREEN Phase - AC: 1-3)
-- [x] Create file `crates/domain/src/models/template.rs` and implement all Template entities in single file (Note: implemented in subfolder `models/template/` as per later decision)
+- [x] Create file `crates/domain/src/template/aggregate.rs` and implement all Template entities in single file (Note: implemented in subfolder `template/` as per later decision)
 - [x] Define Template struct: `#[derive(Debug, Clone, PartialEq)] pub struct Template` with fields `pub id: Uuid`, `pub name: String`, `pub content: String`, `pub variables: HashMap<String, VariableDefinition>`, `pub extends: Option<String>`, `pub metadata: TemplateMetadata`
 - [x] Implement Template::new() constructor that validates name format (regex `^[a-zA-Z0-9_-]+$`), variable name conflicts, composition cycles, returns `Result<Self, TemplateError>`
 - [x] Implement Template::validate() method checking variable definitions match HashMap, no circular references in extends, returns `Result<(), TemplateError>`
@@ -621,20 +621,25 @@ fn bench_template_composition(c: &mut Criterion) {
 
 ### File Structure Requirements
 
-**Single File Structure (Split at 1000+ Lines):**
+**Implemented Structure (Bounded Context Organization):**
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
-├── models/
+├── template/                 # Template bounded context
 │   ├── mod.rs               # Module declarations
-│   └── template.rs          # All Template entities, variables, composition logic
+│   ├── aggregate.rs         # Template aggregate + validation
+│   ├── composition.rs       # Composition logic
+│   ├── variable.rs          # Variable definitions
+│   ├── validation.rs        # Content/structure validation helpers
+│   ├── syntax.rs            # Placeholder syntax
+│   └── events.rs            # Template events
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
 │   └── template.rs          # TemplateCommand/TemplateQuery traits (shells)
 └── errors.rs                # Domain errors (EXTENDED with template errors)
 ```
 
-**Splitting Guideline:** Start with single file. Split when >1000 lines into template_core.rs, template_variables.rs, template_composition.rs.
+**Splitting Guideline:** Start with single file. Split when >1000 lines into template_aggregate.rs, template_variable.rs, template_composition.rs.
 
 **Implementation Decision:**
 Use **subfolder organization** for Template bounded context due to complexity of validation logic, composition system, and MiniJinja compatibility requirements.
@@ -864,18 +869,18 @@ Claude 3.5 Sonnet (via Amelia Persona)
 - Added `TemplateCreated` domain event emission and pending events tracking.
 - Defined `TemplateCommand` and `TemplateQuery` ports.
 - Achieved 100% test pass rate (90 tests total).
-- Renamed `template.rs` to `core.rs` within `models/template/` to avoid module inception clippy warnings.
+- Renamed `template.rs` to `aggregate.rs` within `template/` to avoid module inception clippy warnings.
 - NOTE: MiniJinja syntax validation skipped as per domain-only scope constraint (adapter layer responsibility).
 
 ### File List
 
 ```
 - crates/domain/src/lib.rs (Updated re-exports)
-- crates/domain/src/models/mod.rs (Updated module declaration)
-- crates/domain/src/models/template/mod.rs (New)
-- crates/domain/src/models/template/core.rs (New - renamed from template.rs)
-- crates/domain/src/models/template/composition.rs (New)
-- crates/domain/src/models/template/variable.rs (New)
-- crates/domain/src/models/template/validation.rs (New - placeholder)
+- crates/domain/src/template/mod.rs (Updated module declaration)
+- crates/domain/src/template/mod.rs (New)
+- crates/domain/src/template/aggregate.rs (New - renamed from template.rs)
+- crates/domain/src/template/composition.rs (New)
+- crates/domain/src/template/variable.rs (New)
+- crates/domain/src/template/validation.rs (New - placeholder)
 - crates/domain/src/ports/template.rs (Updated)
 ```
