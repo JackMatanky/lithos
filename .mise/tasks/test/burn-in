@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+#MISE description="Run tests repeatedly to detect flaky failures (Burn-In)"
+#MISE alias="tb"
+#MISE depends=["fmt", "build"]
+#USAGE arg "[iterations]" help="Number of iterations to run (default: 10)"
+#USAGE arg "[task]" help="The mise task to run (default: test)"
+
+set -euo pipefail
+
+#######################################
+# Print formatted burn-in iteration header.
+# Arguments:
+#   Current iteration number
+#   Total iterations
+# Outputs:
+#   Writes formatted header to stdout
+#######################################
+print_iteration_header() {
+    local current=$1
+    local total=$2
+
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🔥 Iteration ${current}/${total}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+}
+
+#######################################
+# Execute a single burn-in iteration.
+# Arguments:
+#   Task name to run
+# Returns:
+#   0 if successful, 1 if task failed
+#######################################
+run_single_iteration() {
+    local task=$1
+    mise run "${task}"
+}
+
+#######################################
+# Execute burn-in loop for specified iterations.
+# Arguments:
+#   Number of iterations
+#   Task name to run
+# Outputs:
+#   Writes progress to stdout
+# Returns:
+#   0 if all iterations pass, exits 1 on first failure
+#######################################
+run_burn_in_loop() {
+    local iterations=$1
+    local task=$2
+
+    for i in $(seq 1 "${iterations}"); do
+        print_iteration_header "${i}" "${iterations}"
+
+        if ! run_single_iteration "${task}"; then
+            echo "❌ Burn-in FAILED on iteration ${i}" >&2
+            exit 1
+        fi
+    done
+}
+
+#######################################
+# Main entry point.
+# Globals:
+#   usage_iterations - Set by usage spec (default: 10)
+#   usage_task - Set by usage spec (default: test)
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
+main() {
+    local iterations="${usage_iterations:-10}"
+    local task="${usage_task:-test}"
+
+    echo "🔥 Starting burn-in loop for 'mise run ${task}' (${iterations} iterations)..."
+
+    run_burn_in_loop "${iterations}" "${task}"
+
+    echo "✅ Burn-in complete - no flaky tests detected in ${iterations} runs."
+}
+
+main "$@"

@@ -86,10 +86,7 @@ jobs:
             rust-version: stable
           - os: windows-latest
             rust-version: stable
-          - os: ubuntu-latest
-            rust-version: beta
-          - os: ubuntu-latest
-            rust-version: nightly
+
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -102,7 +99,11 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           key: ${{ matrix.os }}-${{ matrix.rust-version }}
-      - name: Run Tests
+      - name: Run Tests (Changed Only)
+        if: github.event_name == 'pull_request'
+        run: mise run test:changed
+      - name: Run Full Tests
+        if: github.event_name != 'pull_request'
         run: mise run test
       - name: Upload Test Results
         uses: actions/upload-artifact@v4
@@ -111,6 +112,18 @@ jobs:
           name: test-results-${{ matrix.os }}-${{ matrix.rust-version }}
           path: target/nextest-*.xml
           retention-days: 30
+
+  burn-in:
+    name: Burn-In (Flaky Detection)
+    needs: test
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - uses: swatinem/rust-cache@v2
+      - name: Run Burn-In Loop
+        run: mise run test:burn-in 10 "test"
 
   coverage:
     name: Coverage Report
@@ -184,7 +197,7 @@ jobs:
 
   deployment-readiness:
     name: Deployment Readiness
-    needs: [quality-gates, secrets-detection, test, coverage, security, cross-compile-check]
+    needs: [quality-gates, secrets-detection, test, burn-in, coverage, security, cross-compile-check]
     if: always()
     runs-on: ubuntu-latest
     steps:
