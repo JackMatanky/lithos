@@ -537,13 +537,27 @@ mod tests {
     /// 3.3-UNIT-012: Number Specification Validation Matrix.
     /// Priority: P1.
     #[rstest]
-    #[case::in_range(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, 5.0f64, Ok(()))]
-    #[case::at_min(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, 0.0f64, Ok(()))]
-    #[case::at_max(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, 10.0f64, Ok(()))]
-    #[case::below_min(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, -1.0f64, Err(DomainError::NumberOutOfRange { value: -1.0f64, min: Some(0.0f64), max: Some(10.0f64) }))]
-    #[case::above_max(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None }, 11.0f64, Err(DomainError::NumberOutOfRange { value: 11.0f64, min: Some(0.0f64), max: Some(10.0f64) }))]
-    #[case::valid_step(NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() }, 5.5f64, Ok(()))]
-    #[case::invalid_step(NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() }, 5.2f64, Err(DomainError::InvalidStepValue { value: 5.2f64, step: 0.5f64 }))]
+    #[case::in_range(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+      5.0f64,
+      Ok(()))]
+    #[case::at_min(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+      0.0f64,
+      Ok(()))]
+    #[case::at_max(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+      10.0f64,
+      Ok(()))]
+    #[case::below_min(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+      -1.0f64,
+      Err(DomainError::NumberOutOfRange { value: -1.0f64, min: Some(0.0f64), max: Some(10.0f64) }))]
+    #[case::above_max(NumberSpec { min: Some(0.0f64), max: Some(10.0f64), step: None },
+      11.0f64,
+      Err(DomainError::NumberOutOfRange { value: 11.0f64, min: Some(0.0f64), max: Some(10.0f64) }))]
+    #[case::valid_step(NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() },
+      5.5f64,
+      Ok(()))]
+    #[case::invalid_step(NumberSpec { min: Some(0.0f64), step: Some(0.5f64), ..Default::default() },
+      5.2f64,
+      Err(DomainError::InvalidStepValue { value: 5.2f64, step: 0.5f64 }))]
     fn number_spec_validation_matrix(
         #[case] spec: NumberSpec,
         #[case] value: f64,
@@ -560,7 +574,11 @@ mod tests {
     /// Priority: P1.
     #[rstest]
     #[case::in_dir("notes/my_note.md", "notes/", Ok(()))]
-    #[case::out_dir("other/note.md", "notes/", Err(DomainError::InvalidDirectoryPath("other/note.md must be in directory notes/".to_owned())))]
+    #[case::out_dir(
+      "other/note.md",
+      "notes/",
+      Err(DomainError::InvalidDirectoryPath("File other/note.md must be in directory notes/".to_owned()))
+    )]
     fn file_spec_validation_matrix(
         #[case] path: &str,
         #[case] dir: &str,
@@ -576,19 +594,7 @@ mod tests {
         let result = spec.validate(&path.to_owned());
 
         // THEN: the result matches the expectation
-        match expected {
-            Ok(()) => {
-                assert!(result.is_ok(), "Expected path '{path}' to be valid");
-            }
-            Err(e) => {
-                let actual = result.unwrap_err();
-                assert_eq!(
-                    std::mem::discriminant(&actual),
-                    std::mem::discriminant(&e),
-                    "Path '{path}' produced wrong error variant"
-                );
-            }
-        }
+        assert_eq!(result, expected);
     }
 
     #[test]
