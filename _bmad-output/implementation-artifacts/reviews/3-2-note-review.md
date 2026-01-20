@@ -2,7 +2,7 @@
 
 **Quality Score**: 100/100 (Platinum - Mastery)
 **Review Date**: 2026-01-16 (Consolidated Final)
-**Review Scope**: `crates/domain/src/models/` (`note.rs`, `frontmatter.rs`, `tag.rs`, etc.)
+**Review Scope**: `crates/domain/src/` (`note.rs`, `frontmatter.rs`, `tag.rs`, etc.)
 **Reviewer**: Murat, Master Test Architect 🧪
 
 ---

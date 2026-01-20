@@ -32,7 +32,7 @@ Implement the Template domain model with comprehensive validation and compositio
 
 ### Unit Tests (12 tests)
 
-**File:** `crates/domain/src/models/template.rs` (557 lines)
+**File:** `crates/domain/src/template.rs` (557 lines)
 
 - ✅ **Test:** `creates_valid_template_successfully`
   - **Status:** RED - Returns `ValidationFailed("Not implemented")`
@@ -83,7 +83,7 @@ N/A - Using internal `fixtures` module in `template.rs` for domain tests.
 
 ### Template Fixtures
 
-**File:** `crates/domain/src/models/template.rs`
+**File:** `crates/domain/src/template.rs`
 
 **Fixtures:**
 
@@ -110,7 +110,7 @@ N/A - Backend domain logic only.
 
 ### Test: Creates Valid Template
 
-**File:** `crates/domain/src/models/template.rs`
+**File:** `crates/domain/src/template.rs`
 
 **Tasks to make this test pass:**
 
@@ -124,7 +124,7 @@ N/A - Backend domain logic only.
 
 ### Test: Cycle Detection & Depth Limits
 
-**File:** `crates/domain/src/models/template.rs`
+**File:** `crates/domain/src/template.rs`
 
 **Tasks to make this test pass:**
 
@@ -174,7 +174,7 @@ mise run test:coverage
 ## Next Steps
 
 1. **Share this checklist and failing tests** with the dev workflow (manual handoff).
-2. **Begin implementation** in `crates/domain/src/models/template.rs`.
+2. **Begin implementation** in `crates/domain/src/template.rs`.
 3. **Implement CQRS logic** in adapters following the defined ports.
 4. **Emit TemplateCreated event** upon successful creation.
 

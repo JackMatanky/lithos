@@ -4,11 +4,11 @@
 
 | Entity | File | Purpose | Key Methods | Validation Rules |
 | --- | --- | --- | --- | --- |
-| Note | crates/domain/src/note/aggregate.rs | Aggregate root for Obsidian notes with subentities and domain events. | `new`, `add_link`, `add_embed`, `add_heading`, `add_tag`, `add_task`, `add_section`, `validate` | Vault-relative path (non-empty, relative, .md extension, no traversal), link/embed source IDs must match note ID. |
+| Note | crates/domain/src/note/aggregate.rs | Aggregate root for Obsidian notes with subentities and domain events. | `new`, `add_link`, `add_heading`, `add_tag`, `add_task`, `add_section`, `validate` | Vault-relative path (non-empty, relative, .md extension, no traversal), link/embed targets must be non-empty, embeds cannot have anchors, external links cannot use block anchors. |
 | Frontmatter | crates/domain/src/note/frontmatter.rs | YAML metadata container and typed accessors. | `new`, `get`, `get_as`, `get_string_array`, `title`, `file_class`, `aliases` | Field coercion respects type constraints; relies on config keys for lookup. |
 | FieldValue | crates/domain/src/note/frontmatter.rs | Typed runtime representation of frontmatter values. | `as_*`, `is_*` accessors | Variant type checks enforce correct conversions. |
 | FromFieldValue | crates/domain/src/note/frontmatter.rs | Trait for typed extraction from `FieldValue`. | `from_value` | Type-specific conversion (string/bool/number/date/array). |
-| Link | crates/domain/src/note/link.rs | Link/Embed value object with positioning and alias. | `new_wikilink`, `new_markdown_link`, `new_embed`, `target_path`, `alias` | Target path must be non-empty. |
+| Link | crates/domain/src/note/link.rs | Link/Embed value object with style, anchors, and embed metadata. | `new_wikilink`, `new_markdown_link`, `new_embed`, `target`, `alias`, `anchor`, `style`, `embed_type` | Target path must be non-empty; embeds cannot have anchors; external links cannot use block anchors. |
 | LinkType | crates/domain/src/note/link.rs | Enum for link styles. | N/A | N/A |
 | EmbedType | crates/domain/src/note/link.rs | Enum for embed media types. | N/A | N/A |
 | Tag | crates/domain/src/note/tag.rs | Hierarchical tag with segments. | `parse`, `segments`, `as_str` | Must start with `#`, no empty segments, segments match `^[a-zA-Z0-9_-]+$`. |

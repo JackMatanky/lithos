@@ -85,8 +85,8 @@ impl Metadata {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::VaultMetadata;
-    /// let metadata = VaultMetadata::new("/vaults/work".to_string());
+    /// # use lithos_domain::VaultMetadataConfig;
+    /// let metadata = VaultMetadataConfig::new("/vaults/work".to_string());
     /// assert_eq!(metadata.vault_path, "/vaults/work");
     /// ```
     #[inline]
@@ -122,8 +122,8 @@ impl Metadata {
     ///
     /// # Examples
     /// ```
-    /// # use lithos_domain::VaultMetadata;
-    /// VaultMetadata::validate_vault_path("/vault").unwrap();
+    /// # use lithos_domain::VaultMetadataConfig;
+    /// VaultMetadataConfig::validate_vault_path("/vault").unwrap();
     /// ```
     #[inline]
     pub fn validate_vault_path(

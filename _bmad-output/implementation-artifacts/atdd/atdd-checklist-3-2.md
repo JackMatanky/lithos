@@ -32,7 +32,7 @@ As a developer working with note data, I want a comprehensive Note aggregate wit
 
 ### Unit Tests (15 tests)
 
-**File:** `crates/domain/src/models/note.rs`
+**File:** `crates/domain/src/note.rs`
 
 - ✅ **Test:** `rejects_empty_path`
   - **Status:** RED - unimplemented!
@@ -74,7 +74,7 @@ As a developer working with note data, I want a comprehensive Note aggregate wit
 
 ### Note Fixtures
 
-**File:** `crates/domain/src/models/note.rs` (mod fixtures)
+**File:** `crates/domain/src/note.rs` (mod fixtures)
 
 **Exports:**
 
@@ -87,14 +87,14 @@ As a developer working with note data, I want a comprehensive Note aggregate wit
 ## Implementation Checklist
 
 ### Test: rejects_path_traversal
-**File:** `crates/domain/src/models/note.rs`
+**File:** `crates/domain/src/note.rs`
 - [ ] Implement `Note::new` with strict path validation logic.
 - [ ] Use `std::path::Component` to identify and reject `ParentDir` (`..`) components.
 - [ ] Ensure path is normalized before checking.
 - [ ] Run test: `cargo test models::note::tests::note::rejects_path_traversal`
 
 ### Test: parses_hierarchical_tag_successfully
-**File:** `crates/domain/src/models/note.rs`
+**File:** `crates/domain/src/note.rs`
 - [ ] Implement `Tag::parse` splitting by `/`.
 - [ ] Validate segments against `^[a-zA-Z0-9_-]+$`.
 - [ ] Construct `Tag` with full path and segments vector.
@@ -120,7 +120,7 @@ RUST_BACKTRACE=1 cargo test models::note::tests::note::rejects_path_traversal
 
 - ✅ All tests written and failing (unimplemented!)
 - ✅ DomainError variants added to errors.rs
-- ✅ Consolidated model created in models/note.rs
+- ✅ Consolidated model created in note/aggregate.rs
 - ✅ Implementation checklist created
 
 ---

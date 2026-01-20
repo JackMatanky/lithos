@@ -166,8 +166,13 @@ lithos/
 │   ├── domain/           # Core business models & logic
 │   │   ├── Cargo.toml
 │   │   └── src/
-│   │       ├── models/   # Entities, value objects
-│   │       └── ports/    # Traits/interfaces for external dependencies
+│   │       ├── config/    # Config bounded context
+│   │       ├── note/      # Note bounded context
+│   │       ├── schema/    # Schema bounded context
+│   │       ├── template/  # Template bounded context
+│   │       ├── ports/     # Traits/interfaces for external dependencies
+│   │       ├── errors.rs  # Domain errors
+│   │       └── validation.rs # Shared validation utilities
 │   ├── app/              # Application services & orchestrators
 │   │   ├── Cargo.toml    # Depends on domain
 │   │   └── src/
@@ -396,7 +401,7 @@ lithos/
 
 **File Structure Standards:**
 
-- **Domain Crate:** `src/models/`, `src/ports/`, `src/services/` (for pure domain services)
+- **Domain Crate:** `src/`, `src/ports/`, `src/services/` (for pure domain services)
 - **App Crate:** `src/commands/`, `src/queries/`, `src/vault/`, `src/schema/`, `src/template/`
 - **Adapters Crate:** `src/api/`, `src/spi/`, `src/dto/`
 - **CLI Crate:** `src/main.rs` only, all logic in other crates
@@ -666,13 +671,44 @@ lithos/
 │   ├── domain/                   # THE INVIOLATE CORE (Logic only, No I/O)
 │   │   ├── src/
 │   │   │   ├── lib.rs            # Prelude & Common Types
-│   │   │   ├── models/           # Unified Aggregate Models
+│   │   │   ├── config/           # Config bounded context
 │   │   │   │   ├── mod.rs
-│   │   │   │   ├── identity.rs   # UUID v7 (Time-ordered keys)
-│   │   │   │   ├── config.rs     # Configuration management
-│   │   │   │   ├── note.rs       # Note Aggregate + Frontmatter, Links, Embeds, Tags, Headings, Tasks, Sections
-│   │   │   │   ├── schema.rs     # Schema + PropertyBank + PropertySpec Aggregate
-│   │   │   │   └── template.rs   # Template Syntax & Design models
+│   │   │   │   ├── aggregate.rs  # Config aggregate + validation
+│   │   │   │   ├── global.rs     # Global filesystem + trusted vaults
+│   │   │   │   ├── vault.rs      # Vault filesystem + metadata
+│   │   │   │   ├── types.rs      # Shared config value types
+│   │   │   │   └── events.rs     # Config events
+│   │   │   ├── note/             # Note bounded context
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── aggregate.rs  # Note aggregate + subentities
+│   │   │   │   ├── frontmatter.rs
+│   │   │   │   ├── link.rs
+│   │   │   │   ├── structure.rs
+│   │   │   │   ├── tag.rs
+│   │   │   │   ├── task.rs
+│   │   │   │   └── events.rs
+│   │   │   ├── schema/           # Schema bounded context
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── aggregate.rs  # Schema aggregate + value objects
+│   │   │   │   ├── graph.rs
+│   │   │   │   ├── resolver.rs
+│   │   │   │   ├── property.rs
+│   │   │   │   ├── property_bank.rs
+│   │   │   │   ├── property_spec.rs
+│   │   │   │   ├── raw.rs
+│   │   │   │   ├── patterns.rs
+│   │   │   │   └── events.rs
+│   │   │   ├── template/         # Template bounded context
+│   │   │   │   ├── mod.rs
+│   │   │   │   ├── aggregate.rs  # Template aggregate + validation
+│   │   │   │   ├── composition.rs
+│   │   │   │   ├── variable.rs
+│   │   │   │   ├── validation.rs
+│   │   │   │   ├── syntax.rs
+│   │   │   │   └── events.rs
+│   │   │   ├── errors.rs         # Domain errors
+│   │   │   ├── patterns.rs       # Shared regex patterns
+│   │   │   └── validation.rs     # Shared validation utilities
 │   │   │   ├── ports/            # HEXAGONAL INTERFACES (API/SPI)
 │   │   │   │   ├── mod.rs
 │   │   │   │   ├── api/          # DRIVING PORTS
@@ -769,9 +805,9 @@ lithos/
 
 **Feature/Epic Mapping:**
 
-- **Knowledge Graph (FR20-FR25):** `app/queries/`, `adapters/spi/storage/`, `domain/models/note.rs` (Links/Embeds/Tags).
-- **Schema & Compliance (FR8-FR14):** `domain/models/schema.rs`, `app/compliance/`, `adapters/spi/schema/`.
-- **Template Design (FR1-FR7, FR9):** `domain/models/template.rs`, `app/template/`.
+- **Knowledge Graph (FR20-FR25):** `app/queries/`, `adapters/spi/storage/`, `domain/note/aggregate.rs` (Links/Embeds/Tags).
+- **Schema & Compliance (FR8-FR14):** `domain/schema/aggregate.rs`, `app/compliance/`, `adapters/spi/schema/`.
+- **Template Design (FR1-FR7, FR9):** `domain/template/aggregate.rs`, `app/template/`.
 - **Interactive CLI (FR41-FR47):** `adapters/api/cli/`, `domain/ports/api/ui.rs`.
 
 **Cross-Cutting Concerns:**
@@ -944,19 +980,19 @@ Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to es
 
 | ID       | Requirement              | Primary Module/Path               | Architectural Strategy                       |
 | :------- | :----------------------- | :-------------------------------- | :------------------------------------------- |
-| **FR1**  | Modular templates        | `domain/models/template.rs`       | Recursive composition model.                 |
+| **FR1**  | Modular templates        | `domain/template/aggregate.rs`       | Recursive composition model.                 |
 | **FR2**  | Interactive prompts      | `domain/ports/api/ui.rs`          | Abstracted UI traits.                        |
 | **FR3**  | Complex composition      | `app/template/composer.rs`        | Orchestrates section-by-section flow.        |
 | **FR4**  | Date functions           | `adapters/spi/template/`          | MiniJinja custom functions.                  |
 | **FR5**  | Dynamic commands         | `adapters/spi/template/`          | Whitespace control & shell hooks.            |
 | **FR6**  | User functions           | `adapters/spi/config/`            | Discovered scripts registered to engine.     |
 | **FR7**  | Advanced hooks           | `app/template/composer.rs`        | Lifecycle events on Hybrid Bus.              |
-| **FR8**  | Metadata schemas         | `domain/models/schema.rs`         | Unified aggregate for property specs.        |
+| **FR8**  | Metadata schemas         | `domain/schema/aggregate.rs`         | Unified aggregate for property specs.        |
 | **FR9**  | **Schema-Driven Design** | `app/template/designer.rs`        | Schema properties dictate UI prompts.        |
 | **FR10** | Note validation          | `app/compliance/engine.rs`        | Semantic check between Note and Schema.      |
 | **FR11** | Enum-driven suggesters   | `app/template/designer.rs`        | Schema enums passed to UI Port.              |
 | **FR12** | Directory filters        | `adapters/spi/schema/`            | Constraints applied to file pickers.         |
-| **FR13** | Date formatting          | `domain/models/schema.rs`         | Format logic in PropertySpec.                |
+| **FR13** | Date formatting          | `domain/schema/aggregate.rs`         | Format logic in PropertySpec.                |
 | **FR14** | Schema inheritance       | `adapters/spi/schema/resolver.rs` | Dereferences `$ref` and processes `extends`. |
 | **FR15** | Free-text prompts        | `adapters/api/cli/`               | Implements UI Port via standard input.       |
 | **FR16** | Single-choice lists      | `adapters/api/cli/`               | Implements UI Port via fuzzy-select.         |
@@ -968,7 +1004,7 @@ Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to es
 | **FR22** | Link resolution          | `app/services/resolver.rs`        | Logical resolution via aliases.              |
 | **FR23** | Metadata queries         | `app/queries/`                    | Snapshots from RedbSnapshot.                 |
 | **FR24** | Vault consistency        | `app/indexer/`                    | Single-writer transactions.                  |
-| **FR25** | Large vault scale        | `domain/models/note.rs`           | Zero-copy rkyv::Archive.                     |
+| **FR25** | Large vault scale        | `domain/note/aggregate.rs`           | Zero-copy rkyv::Archive.                     |
 | **FR26** | Template packs           | `adapters/spi/fs/`                | Discovery logic for Git-cloned packs.        |
 | **FR27** | Manage schemas           | `adapters/api/cli/`               | CLI subcommands for schema registry.         |
 | **FR28** | App preferences          | `adapters/spi/config/`            | Figment provider hierarchy.                  |
@@ -989,7 +1025,7 @@ Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to es
 | **FR43** | Status & Config view     | `adapters/api/cli/`               | Maps status to Config snapshot.              |
 | **FR44** | CLI Vault Ops            | `app/commands/`                   | Maps CLI intent to Indexer mailbox.          |
 | **FR45** | Format destinations      | `app/commands/`                   | Config-driven output routing.                |
-| **FR46** | Configure CLI behavior   | `domain/models/`                  | UI preference models.                        |
+| **FR46** | Configure CLI behavior   | `domain/`                  | UI preference models.                        |
 | **FR47** | Single-word commands     | `adapters/api/cli/`               | Default fuzzy-pickers for shortcuts.         |
 | **FR48** | Actionable errors        | `domain/errors.rs`                | High-fidelity miette diagnostics.            |
 | **FR49** | Rollback failure         | `app/indexer/`                    | Atomic storage transactions.                 |

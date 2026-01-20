@@ -16,11 +16,15 @@
 
 use super::{
     events::{ConfigEvents, ConfigUpdated},
-    global,
-    global::Global,
-    types::{Frontmatter, Logging, Schema, Template},
-    vault,
-    vault::Vault,
+    global::{Filesystem as GlobalFilesystemConfig, Global as GlobalConfig},
+    types::{
+        Frontmatter as FrontmatterConfig, Logging as LoggingConfig,
+        Schema as SchemaConfig, Template as TemplateConfig,
+    },
+    vault::{
+        Filesystem as VaultFilesystemConfig, Metadata as VaultMetadataConfig,
+        Vault as VaultConfig,
+    },
 };
 
 /// Merged configuration result from global and vault configurations.
@@ -33,15 +37,15 @@ use super::{
 #[non_exhaustive]
 pub struct Config {
     /// Vault metadata with versioning and naming.
-    vault_metadata: vault::Metadata,
+    vault_metadata: VaultMetadataConfig,
     /// Merged logging configuration.
-    logging: Logging,
+    logging: LoggingConfig,
     /// Global filesystem configuration.
-    global_filesystem: global::Filesystem,
+    global_filesystem: GlobalFilesystemConfig,
     /// Vault filesystem configuration.
-    vault_filesystem: vault::Filesystem,
+    vault_filesystem: VaultFilesystemConfig,
     /// Merged frontmatter configuration.
-    frontmatter: Frontmatter,
+    frontmatter: FrontmatterConfig,
     /// Domain events pending emission.
     pending_events: Vec<ConfigEvents>,
 }
@@ -70,20 +74,20 @@ impl Config {
     /// ```
     #[inline]
     pub fn build(
-        global: Option<&Global>,
+        global: Option<&GlobalConfig>,
         vault_path: &str,
-        vault: Vault,
+        vault: VaultConfig,
     ) -> Result<Self, crate::ConfigError> {
         // Pre-validate required Vault Path
-        vault::Metadata::validate_vault_path(vault_path)?;
+        VaultMetadataConfig::validate_vault_path(vault_path)?;
 
         // Step 2: Set vault metadata defaults
-        let vault_metadata = vault::Metadata::new(vault_path.to_owned());
+        let vault_metadata = VaultMetadataConfig::new(vault_path.to_owned());
 
         // Step 3: Set filesystem configurations with defaults applied
         let global_filesystem = global
-            .map(|g| global::Filesystem {
-                schema: Schema {
+            .map(|g| GlobalFilesystemConfig {
+                schema: SchemaConfig {
                     schemas_dir: if g.filesystem.schema.schemas_dir.is_empty() {
                         "schemas".to_owned()
                     } else {
@@ -100,7 +104,7 @@ impl Config {
                         g.filesystem.schema.property_bank_filename.clone()
                     },
                 },
-                template: Template {
+                template: TemplateConfig {
                     templates_dir: if g
                         .filesystem
                         .template
@@ -115,8 +119,8 @@ impl Config {
             })
             .unwrap_or_default();
 
-        let vault_filesystem = vault::Filesystem {
-            schema: Schema {
+        let vault_filesystem = VaultFilesystemConfig {
+            schema: SchemaConfig {
                 schemas_dir: if vault.filesystem.schema.schemas_dir.is_empty() {
                     "schemas".to_owned()
                 } else {
@@ -133,7 +137,7 @@ impl Config {
                     vault.filesystem.schema.property_bank_filename
                 },
             },
-            template: Template {
+            template: TemplateConfig {
                 templates_dir: if vault
                     .filesystem
                     .template
@@ -187,32 +191,32 @@ impl Config {
     /// Returns the merged frontmatter configuration.
     #[inline]
     #[must_use]
-    pub const fn frontmatter(&self) -> &Frontmatter {
+    pub const fn frontmatter(&self) -> &FrontmatterConfig {
         &self.frontmatter
     }
 
     /// Returns the global filesystem configuration.
     #[inline]
     #[must_use]
-    pub const fn global_filesystem(&self) -> &global::Filesystem {
+    pub const fn global_filesystem(&self) -> &GlobalFilesystemConfig {
         &self.global_filesystem
     }
 
     /// Returns the merged logging configuration.
     #[inline]
     #[must_use]
-    pub const fn logging(&self) -> &Logging {
+    pub const fn logging(&self) -> &LoggingConfig {
         &self.logging
     }
 
     /// Merge frontmatter configurations applying defaults where needed.
     pub(crate) fn merge_frontmatter(
-        global: Option<&Frontmatter>,
-        vault: Option<&Frontmatter>,
-    ) -> Frontmatter {
-        let defaults = Frontmatter::default();
+        global: Option<&FrontmatterConfig>,
+        vault: Option<&FrontmatterConfig>,
+    ) -> FrontmatterConfig {
+        let defaults = FrontmatterConfig::default();
 
-        Frontmatter {
+        FrontmatterConfig {
             alias_key: choose_value(
                 vault.map_or("", |v| &v.alias_key),
                 global.map_or("", |g| &g.alias_key),
@@ -243,15 +247,15 @@ impl Config {
 
     /// Merge logging configurations applying defaults where needed.
     pub(crate) fn merge_logging(
-        global: Option<&Logging>,
-        vault: Option<&Logging>,
-    ) -> Logging {
+        global: Option<&LoggingConfig>,
+        vault: Option<&LoggingConfig>,
+    ) -> LoggingConfig {
         let log_level = choose_value(
             vault.map_or("", |v| &v.log_level),
             global.map_or("", |g| &g.log_level),
             "info",
         );
-        Logging {
+        LoggingConfig {
             log_level,
         }
     }
@@ -299,14 +303,14 @@ impl Config {
     /// Returns the vault filesystem configuration.
     #[inline]
     #[must_use]
-    pub const fn vault_filesystem(&self) -> &vault::Filesystem {
+    pub const fn vault_filesystem(&self) -> &VaultFilesystemConfig {
         &self.vault_filesystem
     }
 
     /// Returns the vault metadata.
     #[inline]
     #[must_use]
-    pub const fn vault_metadata(&self) -> &vault::Metadata {
+    pub const fn vault_metadata(&self) -> &VaultMetadataConfig {
         &self.vault_metadata
     }
 }
@@ -315,12 +319,12 @@ impl Default for Config {
     #[inline]
     fn default() -> Self {
         Self {
-            frontmatter: Frontmatter::default(),
-            global_filesystem: global::Filesystem::default(),
-            logging: Logging::default(),
+            frontmatter: FrontmatterConfig::default(),
+            global_filesystem: GlobalFilesystemConfig::default(),
+            logging: LoggingConfig::default(),
             pending_events: vec![],
-            vault_filesystem: vault::Filesystem::default(),
-            vault_metadata: vault::Metadata::default(),
+            vault_filesystem: VaultFilesystemConfig::default(),
+            vault_metadata: VaultMetadataConfig::default(),
         }
     }
 }
@@ -361,8 +365,8 @@ mod tests {
         )]
         fn build_handles_missing_global() {
             // GIVEN: no global configuration
-            let vault = Vault {
-                filesystem: vault::Filesystem::default(),
+            let vault = VaultConfig {
+                filesystem: VaultFilesystemConfig::default(),
                 frontmatter: None,
                 logging: None,
             };
@@ -407,13 +411,13 @@ mod tests {
         #[test]
         fn merge_frontmatter_handles_various_input_combinations() {
             // GIVEN: combinations of global and vault frontmatter configs
-            let g = Frontmatter {
+            let g = FrontmatterConfig {
                 title_key: "gt".to_owned(),
-                ..Frontmatter::default()
+                ..FrontmatterConfig::default()
             };
-            let v = Frontmatter {
+            let v = FrontmatterConfig {
                 title_key: "vt".to_owned(),
-                ..Frontmatter::default()
+                ..FrontmatterConfig::default()
             };
 
             // THEN: vault takes precedence
@@ -487,38 +491,38 @@ mod tests {
         fn falls_back_to_defaults_when_inputs_are_empty() {
             // GIVEN: configs with empty fields that should fall back to system
             // defaults
-            let global = Global {
-                filesystem: global::Filesystem {
-                    schema: Schema {
+            let global = GlobalConfig {
+                filesystem: GlobalFilesystemConfig {
+                    schema: SchemaConfig {
                         schemas_dir: String::new(), /* Empty - should use
                                                      * default */
                         property_bank_filename: String::new(),
                     },
-                    template: Template {
+                    template: TemplateConfig {
                         templates_dir: String::new(),
                     },
                 },
-                frontmatter: Frontmatter {
+                frontmatter: FrontmatterConfig {
                     alias_key: String::new(),
                     date_created_key: String::new(),
                     date_modified_key: String::new(),
                     file_class_key: String::new(),
                     title_key: String::new(),
                 },
-                logging: Logging {
+                logging: LoggingConfig {
                     log_level: String::new(), /* Empty - should use default
                                                * "info" */
                 },
                 trusted_vaults: None,
             };
 
-            let vault = Vault {
-                filesystem: vault::Filesystem {
-                    schema: Schema {
+            let vault = VaultConfig {
+                filesystem: VaultFilesystemConfig {
+                    schema: SchemaConfig {
                         schemas_dir: String::new(),
                         property_bank_filename: String::new(),
                     },
-                    template: Template {
+                    template: TemplateConfig {
                         templates_dir: String::new(),
                     },
                     cache_dir: String::new(),
@@ -544,39 +548,42 @@ mod tests {
                     ".cache",
                     "Should fall back to default cache_dir"
                 );
+                let default_filesystem = VaultFilesystemConfig::default();
+                let default_frontmatter = FrontmatterConfig::default();
+                let default_logging = LoggingConfig::default();
                 assert_eq!(
                     config.vault_filesystem().template.templates_dir,
-                    "templates",
+                    default_filesystem.template.templates_dir,
                     "Should fall back to default templates_dir"
                 );
                 assert_eq!(
                     config.vault_filesystem().schema.schemas_dir,
-                    "schemas",
+                    default_filesystem.schema.schemas_dir,
                     "Should fall back to default schemas_dir"
                 );
                 assert_eq!(
                     config.vault_filesystem().schema.property_bank_filename,
-                    "property_bank.json",
+                    default_filesystem.schema.property_bank_filename,
                     "Should fall back to default property_bank_filename"
                 );
                 assert_eq!(
                     config.logging().log_level,
-                    "info",
+                    default_logging.log_level,
                     "Should fall back to default log_level"
                 );
                 assert_eq!(
                     config.frontmatter().file_class_key,
-                    "file_class",
+                    default_frontmatter.file_class_key,
                     "Should fall back to default file_class_key"
                 );
                 assert_eq!(
                     config.frontmatter().title_key,
-                    "title",
+                    default_frontmatter.title_key,
                     "Should fall back to default title_key"
                 );
                 assert_eq!(
                     config.frontmatter().alias_key,
-                    "aliases",
+                    default_frontmatter.alias_key,
                     "Should fall back to default alias_key"
                 );
             }
@@ -664,10 +671,10 @@ mod tests {
             ) {
                 // GIVEN a global config and generated vault path/template overrides
                 let global = sample_global_config();
-                let vault_config = Vault {
-                    filesystem: vault::Filesystem {
-                        schema: Schema::default(),
-                        template: Template {
+                let vault_config = VaultConfig {
+                    filesystem: VaultFilesystemConfig {
+                        schema: SchemaConfig::default(),
+                        template: TemplateConfig {
                             templates_dir: templates_dir.clone(),
                         },
                         cache_dir: ".cache".to_owned(),
@@ -711,14 +718,14 @@ mod tests {
         ) {
             // GIVEN: a vault config with specific field values
             let global = sample_global_config();
-            let vault = Vault {
-                filesystem: vault::Filesystem {
-                    schema: Schema::default(),
-                    template: Template::default(),
+            let vault = VaultConfig {
+                filesystem: VaultFilesystemConfig {
+                    schema: SchemaConfig::default(),
+                    template: TemplateConfig::default(),
                     cache_dir: ".cache".to_owned(),
                 },
                 frontmatter: None,
-                logging: Some(Logging {
+                logging: Some(LoggingConfig {
                     log_level: level.to_owned(),
                 }),
             };
@@ -793,25 +800,25 @@ mod tests {
     }
 
     /// Test fixture: Create sample global configuration with system defaults.
-    fn sample_global_config() -> Global {
-        Global {
-            filesystem: global::Filesystem {
-                schema: Schema {
+    fn sample_global_config() -> GlobalConfig {
+        GlobalConfig {
+            filesystem: GlobalFilesystemConfig {
+                schema: SchemaConfig {
                     schemas_dir: "schemas".to_owned(),
                     property_bank_filename: "property_bank.json".to_owned(),
                 },
-                template: Template {
+                template: TemplateConfig {
                     templates_dir: "templates".to_owned(),
                 },
             },
-            frontmatter: Frontmatter {
+            frontmatter: FrontmatterConfig {
                 alias_key: "aliases".to_owned(),
                 date_created_key: "date_created".to_owned(),
                 date_modified_key: "date_modified".to_owned(),
                 file_class_key: "file_class".to_owned(),
                 title_key: "title".to_owned(),
             },
-            logging: Logging {
+            logging: LoggingConfig {
                 log_level: "info".to_owned(),
             },
             trusted_vaults: None,
@@ -819,26 +826,26 @@ mod tests {
     }
 
     /// Test fixture: Create sample vault configuration with user overrides.
-    fn sample_vault_config() -> Vault {
-        Vault {
-            filesystem: vault::Filesystem {
-                schema: Schema {
+    fn sample_vault_config() -> VaultConfig {
+        VaultConfig {
+            filesystem: VaultFilesystemConfig {
+                schema: SchemaConfig {
                     schemas_dir: "schemas".to_owned(), // same as global
                     property_bank_filename: "property_bank.json".to_owned(),
                 },
-                template: Template {
+                template: TemplateConfig {
                     templates_dir: "custom_templates".to_owned(), /* vault override */
                 },
                 cache_dir: ".cache".to_owned(),
             },
-            frontmatter: Some(Frontmatter {
+            frontmatter: Some(FrontmatterConfig {
                 alias_key: "aliases".to_owned(),
                 date_created_key: "created".to_owned(), // vault override
                 date_modified_key: "modified".to_owned(), // vault override
                 file_class_key: "type".to_owned(),      // vault override
                 title_key: "title".to_owned(),
             }),
-            logging: Some(Logging {
+            logging: Some(LoggingConfig {
                 log_level: "debug".to_owned(), // vault override
             }),
         }

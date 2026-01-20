@@ -75,7 +75,7 @@ So that schemas can define reusable property definitions with rich validation co
 - [x] Write failing unit tests for PropertyBank registry (registration, idempotency, deduplication, lookup methods)
 - [x] Write failing unit tests for Schema aggregate (inheritance resolution, validation, circular detection)
 - [x] Write failing integration tests for $ref resolution system (Note: Handled via SchemaResolver and PropertyBank unit tests)
-- [x] Write failing property-based tests for ID generation collisions and validation boundaries (Handled via proptests in property.rs and schema.rs)
+- [x] Write failing property-based tests for ID generation collisions and validation boundaries (Handled via proptests in property.rs and aggregate.rs)
 - [x] Write failing domain event tests (SchemaCreated, PropertyBankUpdated)
 - [x] Write failing performance tests (Benchmarked via criterion in Story 3.3 final tasks)
 - [x] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
@@ -169,7 +169,7 @@ So that schemas can define reusable property definitions with rich validation co
 
 - [x] Extract `SchemaGraph` service into dedicated `graph.rs` module
 - [x] Extract `SchemaResolver` service into dedicated `resolver.rs` module
-- [x] Rename `schema.rs` to `core.rs` containing core entities (SchemaName, DomainEvent, RawSchema, Schema)
+- [x] Rename `schema.rs` to `aggregate.rs` containing core entities (SchemaName, RawSchema, Schema)
 - [x] Update all import statements throughout codebase for new modular structure
 - [x] Update module declarations and public API exports
 - [x] Verify all tests pass with new structure
@@ -1139,23 +1139,21 @@ pub mod fixtures {
 
 ### File Structure Requirements
 
-**Domain Layer Organization:**
+**Implemented Structure (Bounded Context Organization):**
 
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
-├── models/
-│   ├── mod.rs               # Module declarations
-│   ├── schema/              # Schema bounded context subfolder
-│   │   ├── mod.rs           # Module declarations for schema context
-│   │   ├── core.rs          # Core entities: SchemaName, DomainEvent, RawSchema, Schema
-│   │   ├── graph.rs         # SchemaGraph service for inheritance resolution
-│   │   ├── resolver.rs      # SchemaResolver service for schema resolution
-│   │   ├── property.rs      # Property entity and value objects
-│   │   ├── property_bank.rs # PropertyBank registry and deduplication
-│   │   ├── property_spec.rs # PropertySpec trait and implementations
-│   │   └── patterns.rs      # Predefined regex patterns
-│   └── ...
+├── schema/                 # Schema bounded context subfolder
+│   ├── mod.rs               # Module declarations for schema context
+│   ├── aggregate.rs         # Core entities: SchemaName, RawSchema, Schema
+│   ├── graph.rs             # SchemaGraph service for inheritance resolution
+│   ├── resolver.rs          # SchemaResolver service for schema resolution
+│   ├── property.rs          # Property entity and value objects
+│   ├── property_bank.rs     # PropertyBank registry and deduplication
+│   ├── property_spec.rs     # PropertySpec trait and implementations
+│   ├── patterns.rs          # Predefined regex patterns
+│   └── events.rs            # Schema domain events
 ├── ports/
 │   ├── mod.rs
 │   └── schema.rs            # SchemaCommand/SchemaQuery traits (shells)
@@ -1165,7 +1163,7 @@ crates/domain/src/
 **Implementation Decision:**
 The Schema bounded context is organized in a dedicated `schema/` subfolder with focused modules for better maintainability:
 
-- **core.rs**: Fundamental domain entities and value objects
+- **aggregate.rs**: Fundamental domain entities and value objects
 - **graph.rs**: Inheritance graph management and topological sorting
 - **resolver.rs**: Schema resolution logic and property merging
 - **property*.rs**: Property-related entities and specifications
@@ -1230,7 +1228,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 - Workspace structure exists with domain/app/adapters/cli crates
 - **Story 3.1 completed**: Note bounded context implemented with all subentities
 - Domain crate has `DomainError` enum (needs extension for schema errors)
-- `models/note/` subfolder pattern established in Story 3.1
+- `note/` subfolder pattern established in Story 3.1
 - Epic 2 (test patterns) ready for domain testing
 - Epic 3 in progress: Note done, Schema next, then Config and Template
 
@@ -1244,7 +1242,7 @@ pub fn new(...) -> Result<Self, DomainError> { }
 
 **Pattern Consistency from Story 3.1:**
 
-- Subfolder organization for bounded contexts (`models/note/`, now `models/schema/`)
+- Subfolder organization for bounded contexts (`note/`, now `schema/`)
 - Immutable domain entities with semantic validation
 - `pub(crate)` visibility by default
 - Comprehensive error types with `thiserror`
@@ -1547,9 +1545,9 @@ This story will leverage the test utilities being developed in Epic 2:
 
 - `crates/domain/src/errors.rs` (Updated with schema errors)
 - `crates/domain/src/events.rs` (Updated with schema events)
-- `crates/domain/src/models/mod.rs` (Updated)
-- `crates/domain/src/models/property.rs` (Property and specs)
-- `crates/domain/src/models/schema.rs` (Schema and bank)
+- `crates/domain/src/mod.rs` (Updated)
+- `crates/domain/src/property.rs` (Property and specs)
+- `crates/domain/src/schema/aggregate.rs` (Schema and bank)
 - `crates/domain/src/ports/schema.rs` (CQRS ports)
 - `crates/domain/src/lib.rs` (Public re-exports)
 
@@ -1557,13 +1555,13 @@ This story will leverage the test utilities being developed in Epic 2:
 ```
 Expected files to be created (9 TDD tasks for 3-2, 7 TDD tasks for 3-1):
 - crates/domain/src/errors.rs (UPDATED with schema error variants)
-- crates/domain/src/models/mod.rs (UPDATED with schema module declaration)
-- crates/domain/src/models/schema/mod.rs (re-exports all schema entities)
-- crates/domain/src/models/schema/schema.rs (Schema aggregate root - Task 4)
-- crates/domain/src/models/schema/property_bank.rs (PropertyBank singleton - Task 3)
-- crates/domain/src/models/schema/property.rs (Property entity - Task 2)
-- crates/domain/src/models/schema/property_spec.rs (PropertySpec variants - Task 1)
-- crates/domain/src/models/schema/patterns.rs (Predefined regex patterns - Task 7)
+- crates/domain/src/mod.rs (UPDATED with schema module declaration)
+- crates/domain/src/schema/mod.rs (re-exports all schema entities)
+- crates/domain/src/schema/aggregate.rs (Schema aggregate root - Task 4)
+- crates/domain/src/schema/property_bank.rs (PropertyBank singleton - Task 3)
+- crates/domain/src/schema/property.rs (Property entity - Task 2)
+- crates/domain/src/schema/property_spec.rs (PropertySpec variants - Task 1)
+- crates/domain/src/schema/patterns.rs (Predefined regex patterns - Task 7)
 - crates/domain/src/lib.rs (UPDATED with public re-exports)
 - crates/domain/Cargo.toml (UPDATED with blake3 dependency)
 - benches/schema_benchmarks.rs (performance benchmarks - Task 6)

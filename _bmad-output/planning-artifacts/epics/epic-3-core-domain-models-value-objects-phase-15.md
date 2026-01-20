@@ -281,4 +281,4 @@ So that developers understand the domain language and can work effectively with 
 
 **Given** Epic 3 domain models are implemented
 **When** I review the source code
-**Then** all files in the domain (`crates/domain/src/models/`) are reviewed thoroughly to ensure full and proper use of doc comments with doc tests and that every relevant component has a well written doc comment.
+**Then** all files in the domain (`crates/domain/src/`) are reviewed thoroughly to ensure full and proper use of doc comments with doc tests and that every relevant component has a well written doc comment.

@@ -48,7 +48,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - [x] Run `mise run test` with `time mise run test` to measure total execution time and record individual test category times (unit, integration, property tests)
 - [x] **DOC-TEST ANALYSIS:** Audit existing public API documentation for missing or broken doc-tests, ensuring all public domain models have at least one executable example
 - [x] Open the generated HTML coverage report and analyze coverage percentage for each bounded context: Note domain entities, Schema domain entities, Config domain entities, Template domain entities
-- [x] Perform hexagonal compliance check for domain tests: verify `crates/domain/src/models/*/tests.rs` modules have ZERO external dependencies (no tokio, no adapters, no app layer imports) and use `#[cfg(test)]` attribute
+- [x] Perform hexagonal compliance check for domain tests: verify `crates/domain/src/*/tests.rs` modules have ZERO external dependencies (no tokio, no adapters, no app layer imports) and use `#[cfg(test)]` attribute
 - [x] Perform hexagonal compliance check for adapter/integration tests: verify adapter layer tests are in `tests/` directory or `adapters/*/tests/` modules and properly mock external dependencies
 - [x] Review test file organization: check that domain entities have inline `#[cfg(test)] mod tests` modules and integration tests are in `crates/domain/tests/` directory
 - [x] Identify specific coverage gaps in critical areas: list uncovered lines in validation logic, error paths, edge cases, boundary conditions for each bounded context
@@ -368,10 +368,10 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 crates/
 ├── domain/
 │   ├── src/
-│   │   ├── note.rs           # #[cfg(test)] mod tests {}
-│   │   ├── schema.rs         # #[cfg(test)] mod tests {}
-│   │   ├── config.rs         # #[cfg(test)] mod tests {}
-│   │   ├── template.rs       # #[cfg(test)] mod tests {}
+│   │   ├── note/             # #[cfg(test)] mod tests {}
+│   │   ├── schema/           # #[cfg(test)] mod tests {}
+│   │   ├── config/           # #[cfg(test)] mod tests {}
+│   │   ├── template/         # #[cfg(test)] mod tests {}
 │   │   └── lib.rs
 │   ├── tests/
 │   │   ├── integration_tests.rs    # Cross-entity integration
@@ -379,6 +379,7 @@ crates/
 │   └── benches/
 │       └── domain_benchmarks.rs    # Performance tests
 ```
+
 
 **Test Utility Modules:**
 - `test_utils.rs`: Shared fixtures, factories, and helper functions

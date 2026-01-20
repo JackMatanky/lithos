@@ -116,7 +116,7 @@
 ## Quality Gate Criteria
 
 - **Pass Rate:** 100% P0, 100% Security tests.
-- **Coverage:** >85% for `crates/domain/src/models/note/`.
+- **Coverage:** >85% for `crates/domain/src/note/`.
 - **Perf:** Must pass `mise run bench` with no regressions.
 
 ## Next Steps

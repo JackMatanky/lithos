@@ -42,9 +42,9 @@ The Note bounded context models Obsidian notes as immutable aggregates with rich
 The domain layer validates structural and semantic rules at construction time (e.g., path validity, non-empty headings), while orchestration layers apply schema-driven validation and vault-wide consistency rules. Note aggregates emit domain events for downstream processing such as indexing and compliance.
 
 ### Structure
-- **Note aggregate**: `id`, `path`, `frontmatter`, `links`, `embeds`, `tags`, `headings`, `tasks`, `sections`, `pending_events`.
+- **Note aggregate**: `id`, `path`, `frontmatter`, `links` (includes embeds), `tags`, `headings`, `tasks`, `sections`, `pending_events`.
 - **Frontmatter**: `HashMap<String, FieldValue>` with typed accessors and `FromFieldValue` for schema-driven extraction.
-- **Link**: `source_note_id`, `target_path`, `alias`, `link_type`, `embed_type`, `position`.
+- **Link**: `target` (`Resolved`, `Unresolved`, `External`), `anchor`, `position`, `alias`, `style` (wiki/markdown), `embed_type` (optional).
 - **Tag**: `full_path`, `segments` (hierarchical).
 - **Heading**: `level`, `text`, `position`.
 - **Section**: `heading`, `content`, `range`.
@@ -55,7 +55,7 @@ The domain layer validates structural and semantic rules at construction time (e
 ### Rust-Specific Patterns Used
 - **UUID v7 identity** for time-ordered note IDs.
 - **Memory optimization** with `Box<str>` for immutable strings.
-- **Enums for type safety** (`LinkType`, `EmbedType`, `TaskStatus`).
+- **Enums for type safety** (`Style`, `EmbedType`, `TaskStatus`).
 - **Error handling** via `DomainError` for validation failures.
 
 ### Validation Rules
@@ -63,19 +63,19 @@ The domain layer validates structural and semantic rules at construction time (e
 - Heading levels must be 1-6; heading text cannot be empty.
 - Tag strings require `#` prefix, no empty segments, and regex `^[a-zA-Z0-9_-]+$`.
 - Task text must be non-empty.
-- Link/embed targets must be non-empty; source IDs must match aggregate ID.
+- Link/embed targets must be non-empty; embeds cannot have anchors; external links cannot use block anchors.
 - Frontmatter values must match expected types when accessed via `FromFieldValue`.
 - FieldValue date validation expects ISO 8601 formatting.
 
 ### Business Logic
 - Constructs emit `NoteCreated` domain events.
-- `add_link`/`add_embed` enforce aggregate source ID consistency.
-- `validate` ensures link/embed source IDs match the aggregate.
+- `add_link` accepts all link types; ownership is enforced by aggregate containment.
+- `validate` enforces link invariants (embeds have no anchors; external links avoid block refs).
 
 ### Relationships
 - **Note ↔ Config**: frontmatter key lookups and defaults rely on config.
 - **Note ↔ Schema**: frontmatter and metadata validated against schema definitions.
-- **Internal composition**: links, embeds, tags, headings, tasks, sections.
+- **Internal composition**: links (embeds use `embed_type`), tags, headings, tasks, sections.
 
 ### Evolution Guidelines
 - Add fields/subentities with defaults and migration notes.
@@ -86,8 +86,7 @@ The domain layer validates structural and semantic rules at construction time (e
 ```
 [Note Aggregate]
   |-- Frontmatter
-  |-- Links ----> LinkType/EmbedType
-  |-- Embeds --> LinkType/EmbedType
+  |-- Links ----> Style/EmbedType
   |-- Tags
   |-- Headings
   |-- Tasks ----> TaskStatus
@@ -159,13 +158,13 @@ Configuration is validated during construction, and path/log-level correctness i
 
 ### Structure
 - **Config aggregate**: merged configuration (`frontmatter`, `logging`, filesystem settings, metadata).
-- **Global**: default configuration and trusted vaults.
-- **Vault**: vault-specific overrides.
-- **Metadata**: vault name, schema version, vault path.
-- **Filesystem**: schema/template directories and cache directory.
-- **Frontmatter**: key mapping for metadata.
-- **Logging**: log-level constraints.
-- **SettingValue**: polymorphic value for config fields.
+- **GlobalConfig**: default configuration and trusted vaults.
+- **VaultConfig**: vault-specific overrides.
+- **VaultMetadataConfig**: vault name, schema version, vault path.
+- **GlobalFilesystemConfig/VaultFilesystemConfig**: schema/template directories and cache directory.
+- **FrontmatterConfig**: key mapping for metadata.
+- **LoggingConfig**: log-level constraints.
+- **ConfigValue**: polymorphic value for config fields.
 - **Events**: `ConfigUpdated`, `ConfigEvents`.
 - **Ports**: `crates/domain/src/ports/config.rs` defines CQRS command/query interfaces.
 
@@ -202,10 +201,10 @@ Configuration is validated during construction, and path/log-level correctness i
 ### Overview
 The Template bounded context models reusable templates and variable constraints. It captures template content, variable definitions, composition rules, and placeholder syntax while keeping syntax validation minimal and domain-pure.
 
-Template validation is limited to structural placeholder balance and size constraints. MiniJinja-specific syntax validation is explicitly handled outside the domain layer.
+Template validation is limited to placeholder balance, content size, variable name checks, and composition depth. MiniJinja-specific syntax validation is explicitly handled outside the domain layer.
 
 ### Structure
-- **Template aggregate**: `id`, `name`, `content`, `syntax`, `variables`, `extends`, `metadata`, `pending_events`.
+- **Template aggregate**: `id`, `name`, `content`, `syntax`, `variables`, `extends`, `metadata`, `pending_events` (validates name, size, structure, variable names).
 - **VariableDefinition**: typed constraints (string/number/date/file/boolean).
 - **PlaceholderSyntax**: prefix/suffix wrapping.
 - **Composition**: base template, sections, includes, variable overrides.

@@ -167,7 +167,7 @@ Following the adversarial audit and final remediation, the test suite now achiev
 
 ### Remediation Details
 1. **Structural Integrity**: Added dedicated unit test modules to `tag.rs`, `structure.rs`, and `task.rs`.
-2. **Organization**: Refactored `note.rs` tests into functional sub-modules (`new`, `validate`).
+2. **Organization**: Refactored `note/aggregate.rs` tests into functional sub-modules (`new`, `validate`).
 3. **Security Fuzzing**: Implemented comprehensive `proptest!` for path traversal and tag validation.
 4. **Maintainability**: Integrated `NoteBuilder` using the `test_builder!` macro.
 5. **Virtual Time**: Fixed the `time_test!` macro and verified sequential UUID v7 verification.
@@ -693,56 +693,18 @@ fn bench_note_creation(c: &mut Criterion) {
 
 ### File Structure Requirements
 
-**Directory Layout Options:**
-
-**Single File Structure (Split at 1000+ Lines):**
+**Implemented Structure (Bounded Context Organization):**
 ```
 crates/domain/src/
 ├── lib.rs                    # Public API surface, re-exports
-├── models/
-│   ├── mod.rs               # Module declarations
-│   └── note.rs              # All Note entities, subentities, and validation
-├── ports/
-│   ├── mod.rs               # Port trait declarations
-│   └── note.rs              # NoteCommand/NoteQuery traits (shells)
-└── errors.rs                # Domain errors (EXTENDED with note errors)
-```
-
-**Splitting Guideline:** Start with single file. Split when >1000 lines into logical modules (e.g., note_frontmatter.rs, note_links.rs).
-```
-├── ports/
-│   ├── mod.rs               # Port trait declarations
-│   └── repository.rs        # Future NoteRepositoryPort trait (not in this story)
-└── errors.rs                # Domain error types
-```
-
-**Option 2: Single File (For Simpler Implementations):**
-```
-crates/domain/src/
-├── lib.rs                    # Public API surface, re-exports
-├── models/
-│   ├── mod.rs               # Module declarations
-│   └── note.rs              # Note aggregate + all subentities in one file
-├── ports/
-│   ├── mod.rs               # Port trait declarations
-│   └── repository.rs        # Future NoteRepositoryPort trait (not in this story)
-└── errors.rs                # Domain error types
-```
-
-**Implemented Structure (Subfolder Organization):**
-```
-crates/domain/src/
-├── lib.rs                    # Public API surface, re-exports
-├── models/
-│   ├── mod.rs               # Module declarations
-│   └── note/                # Note bounded context subfolder
-│       ├── mod.rs           # Note context module declarations
-│       ├── frontmatter.rs   # Frontmatter value objects and logic
-│       ├── link.rs          # Link subentity for Note aggregate
-│       ├── note.rs          # Note aggregate root
-│       ├── structure.rs     # Heading and Section subentities
-│       ├── tag.rs           # Tag subentity
-│       └── task.rs          # Task subentity
+├── note/                     # Note bounded context
+│   ├── mod.rs           # Note context module declarations
+│   ├── frontmatter.rs   # Frontmatter value objects and logic
+│   ├── link.rs          # Link subentity for Note aggregate
+│   ├── aggregate.rs     # Note aggregate root
+│   ├── structure.rs     # Heading and Section subentities
+│   ├── tag.rs           # Tag subentity
+│   └── task.rs          # Task subentity
 ├── ports/
 │   ├── mod.rs               # Port trait declarations
 │   └── note.rs              # NoteCommand/NoteQuery traits
@@ -860,7 +822,7 @@ crates/domain/src/
 
 **Implementation:**
 
-**Path Validation Decomposition** (`note.rs`):
+**Path Validation Decomposition** (`note/aggregate.rs`):
 - `validate_vault_path()` - orchestrator calling helpers
 - `validate_path_not_empty()` - checks for empty path
 - `validate_path_is_relative()` - detects Unix and Windows absolute paths
@@ -964,7 +926,7 @@ crates/domain/src/
 - Follows same pattern as Link/Embed unification
 
 **Implementation:**
-- Created `models/structure.rs` containing both `Heading` and `Section`
+- Created `note/structure.rs` containing both `Heading` and `Section`
 - Updated imports: `use models::structure::{Heading, Section}`
 - Removed separate `heading.rs` and `section.rs` files
 - Clear visual separation with section comments in file
@@ -1006,7 +968,7 @@ crates/domain/src/
 **Current Status:** Code review remediation complete. All critical false completion claims addressed. Domain layer is production-ready, architecturally sound, and serves as exemplary model for future bounded contexts. Code is clean, well-tested, and properly documented with comprehensive architecture decisions.
 
 **Files from ATDD (pre-existing):**
-- `crates/domain/src/models/note.rs` - RED phase tests (20 tests)
+- `crates/domain/src/note/aggregate.rs` - RED phase tests (20 tests)
 - `crates/domain/src/errors.rs` - DomainError variants already existed
 
 ---
@@ -1025,10 +987,10 @@ Adversarial code review identified critical false completion claims in Story 3.2
 ### Files Modified
 1. `crates/domain/src/events.rs` - Renamed NoteFrontmatterValidated → FrontmatterValidated
 2. `crates/domain/src/lib.rs` - Updated event exports
-3. `crates/domain/src/models/note.rs` - Added event emission infrastructure
-4. `crates/domain/src/models/structure.rs` - Added #[expect] for test unwraps
-5. `crates/domain/src/models/tag.rs` - Added #[expect] for test unwraps
-6. `crates/domain/src/models/task.rs` - Added #[expect] for test unwraps
+3. `crates/domain/src/note/aggregate.rs` - Added event emission infrastructure
+4. `crates/domain/src/structure.rs` - Added #[expect] for test unwraps
+5. `crates/domain/src/tag.rs` - Added #[expect] for test unwraps
+6. `crates/domain/src/task.rs` - Added #[expect] for test unwraps
 7. `crates/domain/src/ports/note.rs` - Added #[async_trait] to all port methods
 
 ### Changes Implemented

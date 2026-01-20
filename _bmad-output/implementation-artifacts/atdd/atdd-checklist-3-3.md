@@ -34,7 +34,7 @@ As a developer defining metadata schemas, I want a complete schema domain with P
 
 ### Unit Tests (11 tests)
 
-**File:** `crates/domain/src/models/schema.rs`
+**File:** `crates/domain/src/schema.rs`
 
 - ✅ **Test:** `detects_circular_inheritance`
   - **Status:** RED - unimplemented!
@@ -76,7 +76,7 @@ As a developer defining metadata schemas, I want a complete schema domain with P
 
 ### Schema Fixtures
 
-**File:** `crates/domain/src/models/schema.rs` (mod fixtures)
+**File:** `crates/domain/src/schema.rs` (mod fixtures)
 
 **Exports:**
 
@@ -88,19 +88,19 @@ As a developer defining metadata schemas, I want a complete schema domain with P
 ## Implementation Checklist
 
 ### Test: id_is_deterministic_using_blake3
-**File:** `crates/domain/src/models/property.rs`
+**File:** `crates/domain/src/property.rs`
 - [x] Implement `Property::compute_id` using `blake3`.
 - [x] Ensure name and spec debug representation are hashed.
 - [x] Run test: `cargo test models::property::tests::property::id_is_deterministic_using_blake3`
 
 ### Test: detects_circular_inheritance
-**File:** `crates/domain/src/models/schema.rs`
+**File:** `crates/domain/src/schema.rs`
 - [x] Implement DFS-based cycle detection in `Schema::new`.
 - [x] Use `visited` set to track inheritance chain (Note: unit test uses direct check, aggregate check in app layer).
 - [x] Run test: `cargo test models::schema::tests::schema::detects_circular_inheritance`
 
 ### Test: validates_regex_patterns_safely
-**File:** `crates/domain/src/models/property.rs`
+**File:** `crates/domain/src/property.rs`
 - [x] Implement regex compilation check in `StringSpec::validate`.
 - [x] Use `regex` crate for safe compilation.
 - [x] Run test: `cargo test models::property::tests::property::validates_regex_patterns_safely`
