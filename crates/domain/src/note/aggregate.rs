@@ -17,7 +17,7 @@ use uuid::Uuid;
 use super::{
     events::{NoteCreated, NoteEvents},
     frontmatter::Frontmatter,
-    link::{Link, LinkType},
+    link::{Link, Style as LinkStyle},
     structure::{Heading, Section},
     tag::Tag,
     task::Task,
@@ -221,7 +221,7 @@ impl Note {
         &self.links
     }
 
-    /// Returns all markdown-style links in this note.
+    /// Returns all markdown-style links in this note (excluding embeds).
     ///
     /// # Examples
     /// ```
@@ -242,7 +242,9 @@ impl Note {
     /// ```
     #[inline]
     pub fn markdown_links(&self) -> impl Iterator<Item = &Link> {
-        self.links.iter().filter(|l| l.link_type() == LinkType::MdLink)
+        self.links
+            .iter()
+            .filter(|l| l.style() == LinkStyle::MdLink && !l.is_embed())
     }
 
     /// Creates a new note aggregate with the provided UUID and validated path.
@@ -360,7 +362,7 @@ impl Note {
         Ok(())
     }
 
-    /// Returns all wiki-style links in this note.
+    /// Returns all wiki-style links in this note (excluding embeds).
     ///
     /// # Examples
     /// ```
@@ -381,7 +383,9 @@ impl Note {
     /// ```
     #[inline]
     pub fn wikilinks(&self) -> impl Iterator<Item = &Link> {
-        self.links.iter().filter(|l| l.link_type() == LinkType::WikiLink)
+        self.links
+            .iter()
+            .filter(|l| l.style() == LinkStyle::WikiLink && !l.is_embed())
     }
 }
 
@@ -399,7 +403,7 @@ mod tests {
     use super::*;
     use crate::note::{
         frontmatter::FieldValue,
-        link::{EmbedType, LinkTarget},
+        link::{EmbedType, Target as LinkTarget},
         task::TaskStatus,
     };
 

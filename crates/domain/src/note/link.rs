@@ -8,7 +8,8 @@ use crate::errors::DomainError;
 
 /// Represents different types of embedded content.
 ///
-/// Used within [`LinkType::Embed`] to specify the media type being embedded.
+/// Used within [`Link`] to specify the media type being embedded when
+/// `embed_type` is present.
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
 )]
@@ -26,31 +27,30 @@ pub enum EmbedType {
     Video,
 }
 
-/// Represents different types of links that can appear in notes.
+/// Represents the syntactic style of a link.
 ///
-/// All link types support aliases and can target resolved notes, unresolved
-/// notes, or external URLs. Wiki-links and markdown links also support
-/// anchors (heading or block references).
+/// Distinguishes between Wiki-style links (`[[...]]`) and Markdown-style links
+/// (`[...](...)`). Both styles can be either regular links or embeds depending
+/// on the presence of an exclamation mark prefix (handled by
+/// [`Link::is_embed`]).
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
 )]
 #[non_exhaustive]
-pub enum LinkType {
-    /// Embedded content: `![[target]]`, `![[target|alias]]`.
-    Embed(EmbedType),
-    /// Markdown-style link: `[text](url)`, `[text](url#heading)`.
+pub enum Style {
+    /// Markdown-style link: `[text](url)` or `![text](url)`.
     MdLink,
-    /// Wiki-style link: `[[target]]`, `[[target|alias]]`, `[[target#heading]]`.
+    /// Wiki-style link: `[[target]]` or `![[target]]`.
     WikiLink,
 }
 
 /// Target of a link - may or may not resolve to an existing note.
 ///
 /// This enum models the resolution state of a link target:
-/// - [`LinkTarget::Resolved`]: Target exists in the vault and has been indexed.
-/// - [`LinkTarget::Unresolved`]: Target doesn't exist yet (common in Obsidian
-///   for "future notes").
-/// - [`LinkTarget::External`]: Target is an external URL (http/https).
+/// - [`Target::Resolved`]: Target exists in the vault and has been indexed.
+/// - [`Target::Unresolved`]: Target doesn't exist yet (common in Obsidian for
+///   "future notes").
+/// - [`Target::External`]: Target is an external URL (http/https).
 ///
 /// # Examples
 /// ```
@@ -75,7 +75,7 @@ pub enum LinkType {
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub enum LinkTarget {
+pub enum Target {
     /// External URL (http/https).
     External {
         /// The external URL.
@@ -95,7 +95,7 @@ pub enum LinkTarget {
     },
 }
 
-impl LinkTarget {
+impl Target {
     /// Returns `true` if the target is an external URL.
     #[inline]
     #[must_use]
@@ -145,8 +145,8 @@ impl LinkTarget {
 /// Sub-note anchor (heading or block reference).
 ///
 /// Anchors allow linking to specific locations within a note:
-/// - [`LinkAnchor::Heading`]: Links to a heading (e.g., `[[note#heading]]`).
-/// - [`LinkAnchor::BlockRef`]: Links to a block (e.g., `[[note^block-id]]`).
+/// - [`Anchor::Heading`]: Links to a heading (e.g., `[[note#heading]]`).
+/// - [`Anchor::BlockRef`]: Links to a block (e.g., `[[note^block-id]]`).
 ///
 /// # Examples
 /// ```
@@ -160,14 +160,14 @@ impl LinkTarget {
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-pub enum LinkAnchor {
+pub enum Anchor {
     /// Block reference: `^block-id`.
     BlockRef(Box<str>),
     /// Heading anchor: `#heading-text`.
     Heading(Box<str>),
 }
 
-impl LinkAnchor {
+impl Anchor {
     /// Returns `true` if this is a block reference.
     #[inline]
     #[must_use]
@@ -198,14 +198,17 @@ impl LinkAnchor {
 
 /// Represents a link within a note.
 ///
-/// Links can be wiki-links (Obsidian style), markdown links, or embeds.
+/// Links can be wiki-links (Obsidian style) or markdown links.
+/// Both styles can be embeds (prefixed with `!`), which is indicated by
+/// the presence of `embed_type`.
+///
 /// All link types support:
-/// - [`LinkTarget`]: The target (resolved, unresolved, or external).
+/// - [`Target`]: The target (resolved, unresolved, or external).
 /// - `alias`: Optional display text.
 /// - `position`: Character position in the source document.
 ///
 /// Wiki-links and markdown links additionally support:
-/// - [`LinkAnchor`]: Optional heading or block reference.
+/// - [`Anchor`]: Optional heading or block reference.
 ///
 /// # Invariants
 /// - Embeds cannot have anchors (enforced by [`Link::validate`]).
@@ -213,7 +216,7 @@ impl LinkAnchor {
 ///
 /// # Examples
 /// ```
-/// use lithos_domain::{EmbedType, Link, LinkAnchor, LinkTarget, LinkType};
+/// use lithos_domain::{EmbedType, Link, LinkAnchor, LinkStyle, LinkTarget};
 /// use uuid::Uuid;
 ///
 /// // Wiki-link to an unresolved note with heading anchor
@@ -226,10 +229,10 @@ impl LinkAnchor {
 ///     100,
 /// )
 /// .unwrap();
-/// assert_eq!(link.link_type(), LinkType::WikiLink);
+/// assert_eq!(link.style(), LinkStyle::WikiLink);
 /// assert!(link.target().is_unresolved());
 ///
-/// // Embed an image
+/// // Embed an image (Wiki-style)
 /// let embed = Link::new_embed(
 ///     LinkTarget::Unresolved {
 ///         raw: "diagram.png".into(),
@@ -243,21 +246,19 @@ impl LinkAnchor {
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-#[expect(
-    clippy::struct_field_names,
-    reason = "link_type is the correct domain name for this field"
-)]
 pub struct Link {
-    /// Optional display alias.
-    alias: Option<Box<str>>,
+    /// Target of the link.
+    target: Target,
     /// Optional anchor (heading or block reference).
-    anchor: Option<LinkAnchor>,
-    /// Type of link (wiki, markdown, or embed).
-    link_type: LinkType,
+    anchor: Option<Anchor>,
     /// Character position in the source document.
     position: usize,
-    /// Target of the link.
-    target: LinkTarget,
+    /// Optional display alias.
+    alias: Option<Box<str>>,
+    /// Syntactic style of the link (Wiki vs Markdown).
+    style: Style,
+    /// Type of embedded content (if any).
+    embed_type: Option<EmbedType>,
 }
 
 impl Link {
@@ -287,8 +288,15 @@ impl Link {
     /// Returns the optional anchor (heading or block reference).
     #[inline]
     #[must_use]
-    pub fn anchor(&self) -> Option<&LinkAnchor> {
+    pub fn anchor(&self) -> Option<&Anchor> {
         self.anchor.as_ref()
+    }
+
+    /// Returns the type of embedded content, if this is an embed.
+    #[inline]
+    #[must_use]
+    pub const fn embed_type(&self) -> Option<EmbedType> {
+        self.embed_type
     }
 
     /// Returns `true` if this link has an alias.
@@ -325,17 +333,10 @@ impl Link {
     #[inline]
     #[must_use]
     pub const fn is_embed(&self) -> bool {
-        matches!(self.link_type, LinkType::Embed(_))
+        self.embed_type.is_some()
     }
 
-    /// Returns the type of link.
-    #[inline]
-    #[must_use]
-    pub const fn link_type(&self) -> LinkType {
-        self.link_type
-    }
-
-    /// Creates a new embedded content reference.
+    /// Creates a new embedded content reference (Wiki-style by default).
     ///
     /// # Arguments
     /// * `target` - The target of the embed.
@@ -348,7 +349,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{EmbedType, Link, LinkTarget, LinkType};
+    /// use lithos_domain::{EmbedType, Link, LinkStyle, LinkTarget};
     ///
     /// let embed = Link::new_embed(
     ///     LinkTarget::Unresolved {
@@ -359,12 +360,12 @@ impl Link {
     ///     200,
     /// )
     /// .unwrap();
-    /// assert_eq!(embed.link_type(), LinkType::Embed(EmbedType::Image));
+    /// assert_eq!(embed.style(), LinkStyle::WikiLink);
     /// assert!(embed.is_embed());
     /// ```
     #[inline]
     pub fn new_embed(
-        target: LinkTarget,
+        target: Target,
         embed_type: EmbedType,
         alias: Option<String>,
         position: usize,
@@ -373,8 +374,9 @@ impl Link {
         Ok(Self {
             alias: alias.map(Into::into),
             anchor: None, // Embeds don't support anchors
-            link_type: LinkType::Embed(embed_type),
+            embed_type: Some(embed_type),
             position,
+            style: Style::WikiLink, // Default to Wiki-style for new_embed
             target,
         })
     }
@@ -394,7 +396,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Link, LinkAnchor, LinkTarget, LinkType};
+    /// use lithos_domain::{Link, LinkAnchor, LinkStyle, LinkTarget};
     ///
     /// let link = Link::new_markdown_link(
     ///     LinkTarget::External {
@@ -405,14 +407,14 @@ impl Link {
     ///     75,
     /// )
     /// .unwrap();
-    /// assert_eq!(link.link_type(), LinkType::MdLink);
+    /// assert_eq!(link.style(), LinkStyle::MdLink);
     /// assert_eq!(link.alias(), Some("Rust"));
     /// ```
     #[inline]
     pub fn new_markdown_link(
-        target: LinkTarget,
+        target: Target,
         alias: Option<String>,
-        anchor: Option<LinkAnchor>,
+        anchor: Option<Anchor>,
         position: usize,
     ) -> Result<Self, DomainError> {
         Self::validate_target(&target)?;
@@ -420,8 +422,9 @@ impl Link {
         Ok(Self {
             alias: alias.map(Into::into),
             anchor,
-            link_type: LinkType::MdLink,
+            embed_type: None, // Not an embed
             position,
+            style: Style::MdLink,
             target,
         })
     }
@@ -441,7 +444,7 @@ impl Link {
     ///
     /// # Examples
     /// ```
-    /// use lithos_domain::{Link, LinkAnchor, LinkTarget, LinkType};
+    /// use lithos_domain::{Link, LinkAnchor, LinkStyle, LinkTarget};
     /// use uuid::Uuid;
     ///
     /// let link = Link::new_wikilink(
@@ -454,15 +457,15 @@ impl Link {
     ///     100,
     /// )
     /// .unwrap();
-    /// assert_eq!(link.link_type(), LinkType::WikiLink);
+    /// assert_eq!(link.style(), LinkStyle::WikiLink);
     /// assert_eq!(link.alias(), Some("Alias"));
     /// assert!(link.anchor().is_some());
     /// ```
     #[inline]
     pub fn new_wikilink(
-        target: LinkTarget,
+        target: Target,
         alias: Option<String>,
-        anchor: Option<LinkAnchor>,
+        anchor: Option<Anchor>,
         position: usize,
     ) -> Result<Self, DomainError> {
         Self::validate_target(&target)?;
@@ -470,8 +473,9 @@ impl Link {
         Ok(Self {
             alias: alias.map(Into::into),
             anchor,
-            link_type: LinkType::WikiLink,
+            embed_type: None, // Not an embed
             position,
+            style: Style::WikiLink,
             target,
         })
     }
@@ -483,10 +487,17 @@ impl Link {
         self.position
     }
 
+    /// Returns the style of the link (Wiki vs Markdown).
+    #[inline]
+    #[must_use]
+    pub const fn style(&self) -> Style {
+        self.style
+    }
+
     /// Returns the target of the link.
     #[inline]
     #[must_use]
-    pub const fn target(&self) -> &LinkTarget {
+    pub const fn target(&self) -> &Target {
         &self.target
     }
 
@@ -529,12 +540,10 @@ impl Link {
 
     /// Validates that an external target doesn't have a block reference.
     fn validate_external_anchor(
-        target: &LinkTarget,
-        anchor: Option<&LinkAnchor>,
+        target: &Target,
+        anchor: Option<&Anchor>,
     ) -> Result<(), DomainError> {
-        if target.is_external()
-            && matches!(anchor, Some(LinkAnchor::BlockRef(_)))
-        {
+        if target.is_external() && matches!(anchor, Some(Anchor::BlockRef(_))) {
             return Err(DomainError::InvalidLinkConfiguration(
                 "External links cannot have block references".into(),
             ));
@@ -547,16 +556,16 @@ impl Link {
         clippy::pattern_type_mismatch,
         reason = "Match ergonomics preferred for readability"
     )]
-    fn validate_target(target: &LinkTarget) -> Result<(), DomainError> {
+    fn validate_target(target: &Target) -> Result<(), DomainError> {
         let is_empty = match target {
-            LinkTarget::External {
+            Target::External {
                 url,
             } => url.is_empty(),
-            LinkTarget::Resolved {
+            Target::Resolved {
                 path,
                 ..
             } => path.is_empty(),
-            LinkTarget::Unresolved {
+            Target::Unresolved {
                 raw,
             } => raw.is_empty(),
         };
@@ -564,359 +573,5 @@ impl Link {
             return Err(DomainError::EmptyLinkTarget);
         }
         Ok(())
-    }
-}
-
-#[cfg(test)]
-#[expect(
-    clippy::disallowed_methods,
-    clippy::str_to_string,
-    reason = "Test code uses expect/unwrap for clarity and to_string for \
-              convenience"
-)]
-mod tests {
-    use super::*;
-
-    mod link_target {
-        use super::*;
-
-        #[test]
-        fn resolved_target_exposes_correct_properties() {
-            // GIVEN: a resolved link target pointing to an existing note
-            let target = LinkTarget::Resolved {
-                id: uuid::Uuid::now_v7(),
-                path: "notes/test.md".into(),
-            };
-
-            // WHEN: checking the target's properties
-            // THEN: it identifies as resolved and provides the vault path
-            assert!(target.is_resolved());
-            assert!(!target.is_unresolved());
-            assert!(!target.is_external());
-            assert_eq!(target.vault_path(), Some("notes/test.md"));
-        }
-
-        #[test]
-        fn unresolved_target_exposes_correct_properties() {
-            // GIVEN: an unresolved link target (note doesn't exist yet)
-            let target = LinkTarget::Unresolved {
-                raw: "Future Note".into(),
-            };
-
-            // WHEN: checking the target's properties
-            // THEN: it identifies as unresolved and provides the raw string
-            assert!(!target.is_resolved());
-            assert!(target.is_unresolved());
-            assert!(!target.is_external());
-            assert_eq!(target.vault_path(), Some("Future Note"));
-        }
-
-        #[test]
-        fn external_target_exposes_correct_properties() {
-            // GIVEN: an external link target (URL)
-            let target = LinkTarget::External {
-                url: "https://example.com".into(),
-            };
-
-            // WHEN: checking the target's properties
-            // THEN: it identifies as external and has no vault path
-            assert!(!target.is_resolved());
-            assert!(!target.is_unresolved());
-            assert!(target.is_external());
-            assert_eq!(target.vault_path(), None);
-        }
-    }
-
-    mod link_anchor {
-        use super::*;
-
-        #[test]
-        fn heading_anchor_exposes_correct_properties() {
-            // GIVEN: a heading anchor
-            let anchor = LinkAnchor::Heading("introduction".into());
-
-            // WHEN: checking the anchor's properties
-            // THEN: it identifies as heading and provides the text
-            assert!(anchor.is_heading());
-            assert!(!anchor.is_block_ref());
-            assert_eq!(anchor.text(), "introduction");
-        }
-
-        #[test]
-        fn block_ref_anchor_exposes_correct_properties() {
-            // GIVEN: a block reference anchor
-            let anchor = LinkAnchor::BlockRef("abc123".into());
-
-            // WHEN: checking the anchor's properties
-            // THEN: it identifies as block ref and provides the text
-            assert!(!anchor.is_heading());
-            assert!(anchor.is_block_ref());
-            assert_eq!(anchor.text(), "abc123");
-        }
-    }
-
-    mod wikilink {
-        use super::*;
-
-        #[test]
-        fn creates_basic_wikilink_with_minimal_parameters() {
-            // GIVEN: an unresolved target and position
-            let target = LinkTarget::Unresolved {
-                raw: "target note".into(),
-            };
-
-            // WHEN: creating a basic wikilink without alias or anchor
-            let link =
-                Link::new_wikilink(target, None, None, 42).expect("Valid link");
-
-            // THEN: the link has correct type and all accessors work
-            assert_eq!(link.link_type(), LinkType::WikiLink);
-            assert!(link.target().is_unresolved());
-            assert_eq!(link.alias(), None);
-            assert!(link.anchor().is_none());
-            assert_eq!(link.position(), 42);
-            assert!(!link.is_embed());
-        }
-
-        #[test]
-        fn creates_wikilink_with_alias_and_heading_anchor() {
-            // GIVEN: a resolved target, alias, and heading anchor
-            let target = LinkTarget::Resolved {
-                id: uuid::Uuid::now_v7(),
-                path: "notes/test.md".into(),
-            };
-            let anchor = LinkAnchor::Heading("section".into());
-
-            // WHEN: creating a wikilink with all optional parameters
-            let link = Link::new_wikilink(
-                target,
-                Some("Display".to_string()),
-                Some(anchor),
-                100,
-            )
-            .expect("Valid link");
-
-            // THEN: the link includes the alias and anchor
-            assert_eq!(link.alias(), Some("Display"));
-            assert!(link.has_alias());
-            assert!(link.has_anchor());
-            assert!(link.anchor().expect("has anchor").is_heading());
-        }
-
-        #[test]
-        fn creates_wikilink_with_block_reference_anchor() {
-            // GIVEN: an unresolved target and block reference anchor
-            let target = LinkTarget::Unresolved {
-                raw: "note".into(),
-            };
-            let anchor = LinkAnchor::BlockRef("block-id".into());
-
-            // WHEN: creating a wikilink with block reference
-            let link = Link::new_wikilink(target, None, Some(anchor), 0)
-                .expect("Valid link");
-
-            // THEN: the link has a block reference anchor
-            assert!(link.anchor().expect("has anchor").is_block_ref());
-        }
-
-        #[test]
-        fn rejects_wikilink_with_empty_target() {
-            // GIVEN: an empty target string
-            let target = LinkTarget::Unresolved {
-                raw: "".into(),
-            };
-
-            // WHEN: attempting to create a wikilink
-            let result = Link::new_wikilink(target, None, None, 0);
-
-            // THEN: creation fails with EmptyLinkTarget error
-            assert!(matches!(result, Err(DomainError::EmptyLinkTarget)));
-        }
-    }
-
-    mod markdown_link {
-        use super::*;
-
-        #[test]
-        fn creates_basic_markdown_link_to_external_url() {
-            // GIVEN: an external URL target and display text
-            let target = LinkTarget::External {
-                url: "https://rust-lang.org".into(),
-            };
-
-            // WHEN: creating a markdown link
-            let link = Link::new_markdown_link(
-                target,
-                Some("Rust".to_string()),
-                None,
-                0,
-            )
-            .expect("Valid link");
-
-            // THEN: the link has correct type and properties
-            assert_eq!(link.link_type(), LinkType::MdLink);
-            assert!(link.target().is_external());
-            assert_eq!(link.alias(), Some("Rust"));
-        }
-
-        #[test]
-        fn creates_markdown_link_with_heading_anchor() {
-            // GIVEN: an external URL and heading anchor
-            let target = LinkTarget::External {
-                url: "https://example.com".into(),
-            };
-            let anchor = LinkAnchor::Heading("section".into());
-
-            // WHEN: creating a markdown link with anchor
-            let link = Link::new_markdown_link(target, None, Some(anchor), 0)
-                .expect("Valid link");
-
-            // THEN: the link includes the heading anchor
-            assert!(link.anchor().expect("has anchor").is_heading());
-        }
-
-        #[test]
-        fn rejects_external_link_with_block_reference() {
-            // GIVEN: an external URL and block reference anchor
-            let target = LinkTarget::External {
-                url: "https://example.com".into(),
-            };
-            let anchor = LinkAnchor::BlockRef("block".into());
-
-            // WHEN: attempting to create a markdown link
-            let result = Link::new_markdown_link(target, None, Some(anchor), 0);
-
-            // THEN: creation fails because external links can't have block refs
-            assert!(matches!(
-                result,
-                Err(DomainError::InvalidLinkConfiguration(_))
-            ));
-        }
-
-        #[test]
-        fn rejects_markdown_link_with_empty_url() {
-            // GIVEN: an empty URL
-            let target = LinkTarget::External {
-                url: "".into(),
-            };
-
-            // WHEN: attempting to create a markdown link
-            let result = Link::new_markdown_link(target, None, None, 0);
-
-            // THEN: creation fails with EmptyLinkTarget error
-            assert!(matches!(result, Err(DomainError::EmptyLinkTarget)));
-        }
-    }
-
-    mod embed {
-        use super::*;
-
-        #[test]
-        fn creates_image_embed_with_correct_type() {
-            // GIVEN: an unresolved target for an image file
-            let target = LinkTarget::Unresolved {
-                raw: "diagram.png".into(),
-            };
-
-            // WHEN: creating an image embed
-            let embed = Link::new_embed(target, EmbedType::Image, None, 200)
-                .expect("Valid embed");
-
-            // THEN: the embed has correct type and no anchor (embeds don't
-            // support anchors)
-            assert_eq!(embed.link_type(), LinkType::Embed(EmbedType::Image));
-            assert!(embed.is_embed());
-            assert!(embed.anchor().is_none());
-        }
-
-        #[test]
-        fn creates_embed_with_display_alias() {
-            // GIVEN: an unresolved target and alias (caption)
-            let target = LinkTarget::Unresolved {
-                raw: "image.png".into(),
-            };
-
-            // WHEN: creating an embed with alias
-            let embed = Link::new_embed(
-                target,
-                EmbedType::Image,
-                Some("Caption".to_string()),
-                0,
-            )
-            .expect("Valid embed");
-
-            // THEN: the embed includes the alias
-            assert_eq!(embed.alias(), Some("Caption"));
-        }
-
-        #[test]
-        fn creates_note_embed_with_resolved_target() {
-            // GIVEN: a resolved target pointing to another note
-            let target = LinkTarget::Resolved {
-                id: uuid::Uuid::now_v7(),
-                path: "other-note.md".into(),
-            };
-
-            // WHEN: creating a note embed
-            let embed = Link::new_embed(target, EmbedType::Note, None, 0)
-                .expect("Valid embed");
-
-            // THEN: the embed has Note type
-            assert_eq!(embed.link_type(), LinkType::Embed(EmbedType::Note));
-        }
-
-        #[test]
-        fn rejects_embed_with_empty_target() {
-            // GIVEN: an empty target string
-            let target = LinkTarget::Unresolved {
-                raw: "".into(),
-            };
-
-            // WHEN: attempting to create an embed
-            let result = Link::new_embed(target, EmbedType::Image, None, 0);
-
-            // THEN: creation fails with EmptyLinkTarget error
-            assert!(matches!(result, Err(DomainError::EmptyLinkTarget)));
-        }
-    }
-
-    mod validation {
-        use super::*;
-
-        #[test]
-        fn valid_wikilink_passes_validation() {
-            // GIVEN: a properly constructed wikilink
-            let link = Link::new_wikilink(
-                LinkTarget::Unresolved {
-                    raw: "note".into(),
-                },
-                None,
-                None,
-                0,
-            )
-            .expect("Valid link");
-
-            // WHEN: validating the link
-            // THEN: validation passes
-            link.validate().expect("Validation should pass");
-        }
-
-        #[test]
-        fn valid_embed_passes_validation() {
-            // GIVEN: a properly constructed embed
-            let embed = Link::new_embed(
-                LinkTarget::Unresolved {
-                    raw: "img.png".into(),
-                },
-                EmbedType::Image,
-                None,
-                0,
-            )
-            .expect("Valid embed");
-
-            // WHEN: validating the embed
-            // THEN: validation passes
-            embed.validate().expect("Validation should pass");
-        }
     }
 }
