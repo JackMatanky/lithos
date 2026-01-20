@@ -64,13 +64,9 @@ pub struct Template {
 
 #[expect(
     clippy::arbitrary_source_item_ordering,
-    reason = "Function ordering optimized for logical flow over strict \
-              alphabetical order"
-)]
-#[expect(
     clippy::pattern_type_mismatch,
-    reason = "Matching on reference to enum with owned variants for borrow \
-              checker compliance"
+    reason = "Function ordering optimized for logical flow; matching on \
+              reference to enum avoids borrow checker friction"
 )]
 impl Template {
     /// Adds a domain event to the pending events collection.

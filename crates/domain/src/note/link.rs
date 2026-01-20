@@ -44,11 +44,9 @@ pub enum EmbedType {
 #[non_exhaustive]
 #[expect(
     clippy::field_scoped_visibility_modifiers,
-    reason = "pub(crate) used for internal builders and tests"
-)]
-#[expect(
     clippy::struct_field_names,
-    reason = "link_type is the correct domain name"
+    reason = "pub(crate) used for internal builders and tests; link_type is \
+              the correct domain name"
 )]
 pub struct Link {
     /// UUID of the note containing this link.
