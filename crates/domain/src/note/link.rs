@@ -69,6 +69,23 @@ pub struct Link {
     pub(crate) position: usize,
 }
 
+/// Parameters for creating a Link.
+#[derive(Debug)]
+pub(crate) struct LinkParams {
+    /// Optional display alias.
+    pub alias: Option<String>,
+    /// Type of embedded content.
+    pub embed_type: Option<EmbedType>,
+    /// Type of link.
+    pub link_type: LinkType,
+    /// Character position in source.
+    pub position: usize,
+    /// UUID of the note containing this link.
+    pub source_note_id: uuid::Uuid,
+    /// Path to the target note/file (vault-relative).
+    pub target_path: Box<str>,
+}
+
 impl Link {
     /// Returns the optional display alias.
     #[inline]
@@ -79,21 +96,14 @@ impl Link {
 
     /// Creates a Link instance with the given parameters.
     #[inline]
-    fn create_link(
-        source_note_id: uuid::Uuid,
-        target_path: Box<str>,
-        alias: Option<String>,
-        link_type: LinkType,
-        embed_type: Option<EmbedType>,
-        position: usize,
-    ) -> Self {
+    fn create_link(params: LinkParams) -> Self {
         Self {
-            source_note_id,
-            target_path,
-            alias: alias.map(std::convert::Into::into),
-            link_type,
-            embed_type,
-            position,
+            source_note_id: params.source_note_id,
+            target_path: params.target_path,
+            alias: params.alias.map(std::convert::Into::into),
+            link_type: params.link_type,
+            embed_type: params.embed_type,
+            position: params.position,
         }
     }
 
@@ -154,14 +164,14 @@ impl Link {
         position: usize,
     ) -> Result<Self, DomainError> {
         let target_path = Self::validate_path(target_path)?;
-        Ok(Self::create_link(
+        Ok(Self::create_link(LinkParams {
+            alias: None,
+            embed_type: Some(embed_type),
+            link_type: LinkType::Embed,
+            position,
             source_note_id,
             target_path,
-            None, // Embeds don't have aliases
-            LinkType::Embed,
-            Some(embed_type),
-            position,
-        ))
+        }))
     }
 
     /// Creates a new markdown-style link.
@@ -191,14 +201,14 @@ impl Link {
         position: usize,
     ) -> Result<Self, DomainError> {
         let target_path = Self::validate_path(target_path)?;
-        Ok(Self::create_link(
+        Ok(Self::create_link(LinkParams {
+            alias,
+            embed_type: None,
+            link_type: LinkType::MdLink,
+            position,
             source_note_id,
             target_path,
-            alias,
-            LinkType::MdLink,
-            None,
-            position,
-        ))
+        }))
     }
 
     /// Creates a new wiki-link.
@@ -230,14 +240,14 @@ impl Link {
         position: usize,
     ) -> Result<Self, DomainError> {
         let target_path = Self::validate_path(target_path)?;
-        Ok(Self::create_link(
+        Ok(Self::create_link(LinkParams {
+            alias,
+            embed_type: None,
+            link_type: LinkType::WikiLink,
+            position,
             source_note_id,
             target_path,
-            alias,
-            LinkType::WikiLink,
-            None,
-            position,
-        ))
+        }))
     }
 
     /// Returns the character position in the source document.

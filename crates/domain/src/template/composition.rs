@@ -46,6 +46,13 @@ pub struct Composition {
     pub variable_overrides: HashMap<String, serde_json::Value>,
 }
 
+/// Internal context for DFS cycle detection.
+struct DfsContext<'context> {
+    stack: &'context mut HashSet<String>,
+    templates: &'context HashMap<String, Template>,
+    visited: &'context mut HashSet<String>,
+}
+
 #[expect(
     clippy::arbitrary_source_item_ordering,
     reason = "Function ordering optimized for logical flow over strict alphabetical order"
@@ -55,14 +62,12 @@ impl Composition {
         &self,
         template: &Template,
         depth: usize,
-        templates: &HashMap<String, Template>,
-        visited: &mut HashSet<String>,
-        stack: &mut HashSet<String>,
+        ctx: &mut DfsContext<'_>,
         current_name: &str,
     ) -> Result<(), DomainError> {
         if let Some(parent_name) = template.extends() {
             #[expect(clippy::arithmetic_side_effects, reason = "DFS logic")]
-            self.dfs_check(parent_name, depth + 1, templates, visited, stack)?;
+            self.dfs_check(parent_name, depth + 1, ctx)?;
         }
 
         if current_name == self.base_template {
@@ -71,7 +76,7 @@ impl Composition {
                     clippy::arithmetic_side_effects,
                     reason = "DFS logic"
                 )]
-                self.dfs_check(include, depth + 1, templates, visited, stack)?;
+                self.dfs_check(include, depth + 1, ctx)?;
             }
         }
         Ok(())
@@ -81,32 +86,28 @@ impl Composition {
         &self,
         current_name: &str,
         depth: usize,
-        templates: &HashMap<String, Template>,
-        visited: &mut HashSet<String>,
-        stack: &mut HashSet<String>,
+        ctx: &mut DfsContext<'_>,
     ) -> Result<(), DomainError> {
         Self::validate_depth_within_limit(depth)?;
-        Self::validate_not_in_stack(current_name, stack)?;
+        Self::validate_not_in_stack(current_name, ctx.stack)?;
 
-        if visited.contains(current_name) {
+        if ctx.visited.contains(current_name) {
             return Ok(());
         }
 
-        visited.insert(current_name.to_owned());
-        stack.insert(current_name.to_owned());
+        ctx.visited.insert(current_name.to_owned());
+        ctx.stack.insert(current_name.to_owned());
 
-        if let Some(template) = templates.get(current_name) {
+        if let Some(template) = ctx.templates.get(current_name) {
             self.check_template_dependencies(
                 template,
                 depth,
-                templates,
-                visited,
-                stack,
+                ctx,
                 current_name,
             )?;
         }
 
-        stack.remove(current_name);
+        ctx.stack.remove(current_name);
         Ok(())
     }
 
@@ -122,14 +123,13 @@ impl Composition {
     ) -> Result<(), DomainError> {
         let mut visited = HashSet::new();
         let mut stack = HashSet::new();
-
-        self.dfs_check(
-            &self.base_template,
-            0,
+        let mut ctx = DfsContext {
             templates,
-            &mut visited,
-            &mut stack,
-        )
+            visited: &mut visited,
+            stack: &mut stack,
+        };
+
+        self.dfs_check(&self.base_template, 0, &mut ctx)
     }
 
     fn validate_depth_within_limit(depth: usize) -> Result<(), DomainError> {
@@ -169,9 +169,9 @@ impl Composition {
                 } = e
                 {
                     DomainError::VariableTypeMismatch {
-                        name: name.clone(),
-                        expected,
-                        actual: format!("{value:?}"),
+                        name: name.clone().into(),
+                        expected: expected.into(),
+                        actual: format!("{value:?}").into(),
                     }
                 } else {
                     e

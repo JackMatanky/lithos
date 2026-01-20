@@ -609,7 +609,8 @@ mod tests {
                             ..
                         } => {
                             assert_eq!(
-                                field, field_name,
+                                field.as_ref(),
+                                field_name,
                                 "Error reported for wrong field"
                             );
                         }

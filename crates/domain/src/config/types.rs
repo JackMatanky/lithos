@@ -168,8 +168,8 @@ impl Frontmatter {
         for (name, value) in fields {
             if value.is_empty() {
                 return Err(crate::ConfigError::ValidationFailed {
-                    field: name.to_owned(),
-                    message: format!("{name} cannot be empty"),
+                    field: name.to_owned().into(),
+                    message: format!("{name} cannot be empty").into(),
                 });
             }
         }
@@ -213,8 +213,8 @@ impl Logging {
         let valid_levels = ["debug", "info", "warn", "error"];
         if !valid_levels.contains(&self.log_level.as_str()) {
             return Err(crate::ConfigError::InvalidEnumValue {
-                field: "log_level".to_owned(),
-                value: self.log_level.clone(),
+                field: "log_level".to_owned().into(),
+                value: self.log_level.clone().into(),
                 allowed: valid_levels
                     .iter()
                     .map(std::string::ToString::to_string)
@@ -273,14 +273,16 @@ impl Schema {
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         if self.schemas_dir.is_empty() {
             return Err(crate::ConfigError::ValidationFailed {
-                field: "schemas_dir".to_owned(),
-                message: "schemas directory cannot be empty".to_owned(),
+                field: "schemas_dir".to_owned().into(),
+                message: "schemas directory cannot be empty".to_owned().into(),
             });
         }
         if self.property_bank_filename.is_empty() {
             return Err(crate::ConfigError::ValidationFailed {
-                field: "property_bank_filename".to_owned(),
-                message: "property bank filename cannot be empty".to_owned(),
+                field: "property_bank_filename".to_owned().into(),
+                message: "property bank filename cannot be empty"
+                    .to_owned()
+                    .into(),
             });
         }
         Ok(())
@@ -314,8 +316,10 @@ impl Template {
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         if self.templates_dir.is_empty() {
             return Err(crate::ConfigError::ValidationFailed {
-                field: "templates_dir".to_owned(),
-                message: "templates directory cannot be empty".to_owned(),
+                field: "templates_dir".to_owned().into(),
+                message: "templates directory cannot be empty"
+                    .to_owned()
+                    .into(),
             });
         }
         Ok(())
@@ -620,7 +624,8 @@ mod tests {
         }) = result
         {
             assert_eq!(
-                field, "templates_dir",
+                field.as_ref(),
+                "templates_dir",
                 "Expected templates_dir validation failure"
             );
         }

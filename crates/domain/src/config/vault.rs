@@ -64,8 +64,8 @@ impl Metadata {
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         if self.vault_path.is_empty() {
             return Err(crate::ConfigError::ValidationFailed {
-                field: "vault_path".to_owned(),
-                message: "vault path cannot be empty".to_owned(),
+                field: "vault_path".to_owned().into(),
+                message: "vault path cannot be empty".to_owned().into(),
             });
         }
         Ok(())
@@ -87,9 +87,10 @@ impl Metadata {
     ) -> Result<(), crate::ConfigError> {
         if vault_path.is_empty() {
             return Err(crate::ConfigError::ValidationFailed {
-                field: "vault_path".to_owned(),
+                field: "vault_path".to_owned().into(),
                 message: "vault path cannot be empty (required field)"
-                    .to_owned(),
+                    .to_owned()
+                    .into(),
             });
         }
 
@@ -133,8 +134,8 @@ impl Filesystem {
         self.template.validate()?;
         if self.cache_dir.is_empty() {
             return Err(crate::ConfigError::ValidationFailed {
-                field: "cache_dir".to_owned(),
-                message: "cache directory cannot be empty".to_owned(),
+                field: "cache_dir".to_owned().into(),
+                message: "cache directory cannot be empty".to_owned().into(),
             });
         }
         Ok(())
