@@ -50,10 +50,6 @@ pub enum EmbedType {
     clippy::struct_field_names,
     reason = "link_type is the correct domain name"
 )]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
 pub struct Link {
     /// UUID of the note containing this link.
     pub(crate) source_note_id: uuid::Uuid,
@@ -72,18 +68,18 @@ pub struct Link {
 /// Parameters for creating a Link.
 #[derive(Debug)]
 pub(crate) struct LinkParams {
-    /// Optional display alias.
-    pub alias: Option<String>,
-    /// Type of embedded content.
-    pub embed_type: Option<EmbedType>,
-    /// Type of link.
-    pub link_type: LinkType,
-    /// Character position in source.
-    pub position: usize,
     /// UUID of the note containing this link.
     pub source_note_id: uuid::Uuid,
     /// Path to the target note/file (vault-relative).
     pub target_path: Box<str>,
+    /// Optional display alias.
+    pub alias: Option<String>,
+    /// Type of link.
+    pub link_type: LinkType,
+    /// Type of embedded content.
+    pub embed_type: Option<EmbedType>,
+    /// Character position in source.
+    pub position: usize,
 }
 
 impl Link {
@@ -165,12 +161,12 @@ impl Link {
     ) -> Result<Self, DomainError> {
         let target_path = Self::validate_path(target_path)?;
         Ok(Self::create_link(LinkParams {
-            alias: None,
-            embed_type: Some(embed_type),
-            link_type: LinkType::Embed,
-            position,
             source_note_id,
             target_path,
+            alias: None,
+            link_type: LinkType::Embed,
+            embed_type: Some(embed_type),
+            position,
         }))
     }
 
@@ -202,12 +198,12 @@ impl Link {
     ) -> Result<Self, DomainError> {
         let target_path = Self::validate_path(target_path)?;
         Ok(Self::create_link(LinkParams {
-            alias,
-            embed_type: None,
-            link_type: LinkType::MdLink,
-            position,
             source_note_id,
             target_path,
+            alias,
+            link_type: LinkType::MdLink,
+            embed_type: None,
+            position,
         }))
     }
 
@@ -241,12 +237,12 @@ impl Link {
     ) -> Result<Self, DomainError> {
         let target_path = Self::validate_path(target_path)?;
         Ok(Self::create_link(LinkParams {
-            alias,
-            embed_type: None,
-            link_type: LinkType::WikiLink,
-            position,
             source_note_id,
             target_path,
+            alias,
+            link_type: LinkType::WikiLink,
+            embed_type: None,
+            position,
         }))
     }
 

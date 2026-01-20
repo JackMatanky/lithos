@@ -2,6 +2,14 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Domain events that can be emitted by the Config aggregate.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum ConfigEvents {
+    /// Configuration was updated.
+    ConfigUpdated(ConfigUpdated),
+}
+
 /// Configuration updated domain event.
 ///
 /// This event is published when configuration changes occur, allowing
@@ -36,17 +44,26 @@ impl ConfigUpdated {
     }
 }
 
-/// Domain events that can be emitted by the Config aggregate.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum ConfigEvents {
-    /// Configuration was updated.
-    ConfigUpdated(ConfigUpdated),
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn config_updated_event_is_deserializable() {
+        // GIVEN: JSON for a configuration updated event
+        let json = r#"{"source":"vault","timestamp":1234567890}"#;
+
+        // WHEN: deserializing into ConfigUpdated
+        let result: Result<ConfigUpdated, _> = serde_json::from_str(json);
+
+        // THEN: deserialization succeeds and preserves fields
+        assert!(result.is_ok(), "should deserialize successfully");
+
+        if let Ok(event) = result {
+            assert_eq!(event.timestamp, 1_234_567_890);
+            assert_eq!(event.source, "vault");
+        }
+    }
 
     #[test]
     fn config_updated_event_is_send_and_sync() {
@@ -75,23 +92,6 @@ mod tests {
         if let Ok(json) = result {
             assert!(json.contains("vault"));
             assert!(json.contains("1234567890"));
-        }
-    }
-
-    #[test]
-    fn config_updated_event_is_deserializable() {
-        // GIVEN: JSON for a configuration updated event
-        let json = r#"{"source":"vault","timestamp":1234567890}"#;
-
-        // WHEN: deserializing into ConfigUpdated
-        let result: Result<ConfigUpdated, _> = serde_json::from_str(json);
-
-        // THEN: deserialization succeeds and preserves fields
-        assert!(result.is_ok(), "should deserialize successfully");
-
-        if let Ok(event) = result {
-            assert_eq!(event.timestamp, 1_234_567_890);
-            assert_eq!(event.source, "vault");
         }
     }
 }

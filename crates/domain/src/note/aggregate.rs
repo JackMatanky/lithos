@@ -39,10 +39,6 @@ use crate::{errors::DomainError, validation::validate_vault_path};
 /// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
 pub struct Note {
     /// UUID v7 identity (time-ordered).
     id: Uuid,

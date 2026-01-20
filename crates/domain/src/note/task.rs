@@ -28,10 +28,6 @@ pub enum TaskStatus {
     clippy::field_scoped_visibility_modifiers,
     reason = "pub(crate) used for internal builders and tests"
 )]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Logical grouping preferred over alphabetical for domain models"
-)]
 pub struct Task {
     /// Task description text.
     pub(crate) text: Box<str>,

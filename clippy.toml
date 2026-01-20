@@ -28,6 +28,10 @@ msrv = "1.92"
 doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv", "CLI", "JSON", "TOML", "YAML"]
 disallowed-names = ["foo", "bar", "baz", "quux", "tmp"]
 
+# Source Ordering
+source-item-ordering = ["enum", "impl", "module", "trait"]
+# module-items-ordered-within-groupings = "all"
+
 # Test Restrictions (unwrap/expect allowed in tests for simplicity)
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true

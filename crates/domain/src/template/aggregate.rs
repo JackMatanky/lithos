@@ -42,10 +42,6 @@ const RESERVED_WORDS: &[&str] = &[
 /// Aggregate root representing a reusable template.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
-#[expect(
-    clippy::arbitrary_source_item_ordering,
-    reason = "Meaningful logical ordering of aggregate fields"
-)]
 pub struct Template {
     /// UUID v7 identity.
     id: Uuid,

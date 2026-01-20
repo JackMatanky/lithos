@@ -48,9 +48,9 @@ pub struct Composition {
 
 /// Internal context for DFS cycle detection.
 struct DfsContext<'context> {
-    stack: &'context mut HashSet<String>,
     templates: &'context HashMap<String, Template>,
     visited: &'context mut HashSet<String>,
+    stack: &'context mut HashSet<String>,
 }
 
 #[expect(
