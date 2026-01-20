@@ -4,7 +4,8 @@ To maintain the efficiency and quality of the Epic 3 test suite, follow these gu
 
 ## 1. Maintenance Cost Monitoring
 - Target: Test maintenance should consume <20% of feature development time.
-- Tracking: Record time spent updating existing tests during refactors in the Dev Agent Record.
+- Tracking: Record maintenance updates in `docs/test-maintenance-log.md` with time spent and affected areas.
+- Review Cadence: Update the log at story close and review monthly for drift trends.
 - Change Impact Analysis: Before refactoring a domain aggregate, identify all dependent tests (unit, integration, and doc-tests).
 
 ## 2. Test Quality Standards (Task 7 compliance)
@@ -20,7 +21,8 @@ To maintain the efficiency and quality of the Epic 3 test suite, follow these gu
 - Tools: Use `mise run test:coverage` to verify impact of changes.
 
 ## 4. Redundancy Elimination
-- Use `lithos-test-utils` for shared fixtures and factories.
+- Keep domain-specific fixtures co-located with their unit tests under `#[cfg(test)]` to avoid circular dependencies.
+- Use `tests/common/mod.rs` for integration fixtures shared across tests.
 - Avoid duplicating test scenarios across unit and integration suites. Unit tests cover branches; integration tests cover entity interactions.
 
 ## 5. Performance Gates

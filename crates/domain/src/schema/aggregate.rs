@@ -487,21 +487,11 @@ impl PropertyBank {
 pub mod fixtures {
     use uuid::Uuid;
 
-    use super::{
-        super::property::{Property, fixtures::PropertyBuilder},
-        SchemaName,
-    };
+    use super::SchemaName;
 
     /// Fixed UUID for deterministic tests.
     pub const TEST_SCHEMA_ID: Uuid =
         Uuid::from_u128(0x018C_0000_0000_7000_8000_0000_0002);
-
-    /// Example property for testing.
-    #[inline]
-    #[must_use]
-    pub fn example_property() -> Property {
-        PropertyBuilder::new().name("status").required(true).build()
-    }
 
     /// Example schema name for testing.
     ///
