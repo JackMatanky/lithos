@@ -763,24 +763,24 @@ crates/domain/src/
 **Rationale:**
 - In Obsidian, embeds use identical syntax to links but with `!` prefix: `[[target]]` vs `![[target]]`
 - Conceptually, embeds ARE links with special rendering behavior - they reference content and have aliases
+- The only difference is the `!` prefix, not a fundamental type distinction
 - Unifying the model eliminates code duplication and follows domain-driven design principles
-- The `LinkType` enum now includes both link and embed variants for type safety
 
 **Implementation:**
-- `LinkType` enum focused on link syntax types: `WikiLink`, `MdLink`, `Embed`
+- `Style` enum for syntax types: `WikiLink`, `MdLink` (renamed from `LinkType`)
 - `EmbedType` enum for embed content types: `Audio`, `Image`, `Note`, `Pdf`, `Video`
-- `Link` struct includes optional `embed_type` field for `Embed` links
-- `Link::new_embed()` constructor takes `EmbedType` parameter
-- `Link::is_embed()` helper method to distinguish embed links
+- `Link` struct includes optional `embed_type: Option<EmbedType>` field
+- `Link::new_embed()` constructor takes `EmbedType` parameter and sets `embed_type`
+- `Link::is_embed()` returns `self.embed_type.is_some()`
 - Single validation logic for both links and embeds using `EmptyLinkTarget` error
 - Removed separate `Embed` struct and `embed.rs` module
 
 **Benefits:**
-- ✅ **Separation of Concerns**: `LinkType` handles syntax, `EmbedType` handles content types
+- ✅ **Separation of Concerns**: `Style` handles syntax, `EmbedType` handles content types
 - ✅ **Focused Responsibilities**: Each enum has a single, clear purpose
 - ✅ **Reduced Code Duplication**: Eliminated ~88 lines of duplicate code
 - ✅ **Conceptual Accuracy**: Follows Obsidian's model where embeds are specialized links
-- ✅ **Type Safety**: Separate enums provide compile-time distinction
+- ✅ **Type Safety**: Optional embed type prevents invalid combinations
 - ✅ **Consistent API**: Single `Link` struct handles both links and embeds
 - ✅ **Maintainability**: Single codebase for link/embed logic
 
@@ -916,24 +916,27 @@ crates/domain/src/
 **Implementation:**
 
 *New Types:*
-- `LinkTarget` enum: `External { url }` | `Resolved { id, path }` | `Unresolved { raw }` - models resolution state
-- `LinkAnchor` enum: `BlockRef(str)` | `Heading(str)` - sub-note targeting
-- `LinkType` enum: `Embed(EmbedType)` | `MdLink` | `WikiLink` - embed type moved inside variant
+- `Target` enum: `External { url }` | `Resolved { id, path }` | `Unresolved { raw }` - models resolution state
+- `Anchor` enum: `BlockRef(str)` | `Heading(str)` - sub-note targeting
+- `Style` enum: `MdLink` | `WikiLink` - syntax style (renamed from `LinkType`)
+- `EmbedType` enum: preserved for content types when `embed_type` is present
 
 *Link Struct Changes:*
 - Removed `source_note_id` - parent relationship implicit via aggregate ownership
-- Added `target: LinkTarget` - replaces `target_path: Box<str>`
-- Added `anchor: Option<LinkAnchor>` - supports `#heading` and `^block-id`
-- `embed_type` moved into `LinkType::Embed(EmbedType)` variant for type safety
+- Added `target: Target` - replaces `target_path: Box<str>`
+- Added `anchor: Option<Anchor>` - supports `#heading` and `^block-id`
+- Added `embed_type: Option<EmbedType>` - presence indicates embed status (orthogonal to syntax)
+- Renamed `link_type` to `style: Style` - captures Wiki vs Markdown syntax
 
 *Note Aggregate Changes:*
 - Unified `links` and `embeds` into single `Vec<Link>` field
 - Removed `add_embed()` method - use `add_link()` for all link types
 - Added filter iterators: `wikilinks()`, `markdown_links()`, `embeds()`
+- `wikilinks()` and `markdown_links()` exclude embeds by default
 - Removed `source_note_id` validation (ownership is structural)
 
 *New Exports:*
-- `LinkTarget`, `LinkAnchor` added to `lib.rs` public API
+- `Anchor`, `Style`, `Target` defined internally, re-exported as `LinkAnchor`, `LinkStyle`, `LinkTarget`
 
 **Validation Rules:**
 - Embeds cannot have anchors (enforced at construction)
@@ -941,8 +944,8 @@ crates/domain/src/
 - Empty targets rejected for all link types
 
 **Benefits:**
-- ✅ **Resolution State Explicit**: `LinkTarget::Unresolved` models links to non-existent notes
-- ✅ **Type Safety**: `LinkType::Embed(EmbedType)` ensures embed type always present for embeds
+- ✅ **Resolution State Explicit**: `Target::Unresolved` models links to non-existent notes
+- ✅ **Orthogonality**: Separation of Syntax (`Style`) and Behavior (`embed_type`)
 - ✅ **DDD Compliance**: Aggregate ownership implicit through containment, no redundant IDs
 - ✅ **Obsidian Parity**: Supports anchors, block refs, and unresolved links like Obsidian/Oxide
 - ✅ **Unified Collection**: All links in one `Vec<Link>`, filtered on demand
