@@ -6,6 +6,8 @@ use lithos_test_utils::arch::assert_no_prohibited_dependencies;
 mod tests {
     use super::*;
 
+    /// 3.6-ARCH-001: `domain_purity`.
+    /// Priority: P0.
     #[test]
     fn domain_purity() {
         // GIVEN: the domain crate dependency graph

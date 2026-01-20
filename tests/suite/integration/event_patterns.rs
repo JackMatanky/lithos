@@ -44,7 +44,8 @@ mod tests {
     mod event_test_framework {
         use super::*;
 
-        /// Confirms Given/When/Then scenarios return expected events.
+        /// 3.6-INT-008: `returns_expected_events_for_given_history`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn returns_expected_events_for_given_history() {
             // GIVEN: an account history with one event
@@ -64,7 +65,8 @@ mod tests {
     mod data_plane {
         use super::*;
 
-        /// Ensures published events reach a data-plane subscriber.
+        /// 3.6-INT-009: `delivers_published_event_to_subscriber`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn delivers_published_event_to_subscriber() {
             // GIVEN: a data-plane subscription ready to receive events
@@ -86,7 +88,8 @@ mod tests {
             );
         }
 
-        /// Captures published records for assertions against stored payloads.
+        /// 3.6-INT-010: `captures_published_events_for_assertion`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn captures_published_events_for_assertion() {
             // GIVEN: a data-plane subscription that records published events
@@ -118,7 +121,8 @@ mod tests {
             );
         }
 
-        /// Verifies recorded data plane events keep increasing sequences.
+        /// 3.6-INT-011: `maintains_event_sequence_ordering`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn maintains_event_sequence_ordering() {
             // GIVEN: a data-plane event bus with sequencing enabled
@@ -147,7 +151,8 @@ mod tests {
             );
         }
 
-        /// Validates payload equality with the domain event contract helper.
+        /// 3.6-INT-012: `verifies_payload_integrity_with_contract_helper`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn verifies_payload_integrity_with_contract_helper() {
             // GIVEN: a data-plane bus that records published payloads
@@ -191,7 +196,8 @@ mod tests {
     mod control_plane {
         use super::*;
 
-        /// Confirms control-plane broadcasts reach subscribed listeners.
+        /// 3.6-INT-013: `broadcasts_control_events_to_subscribers`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn broadcasts_control_events_to_subscribers() {
             // GIVEN: a control-plane subscriber on the event bus
@@ -225,7 +231,8 @@ mod tests {
                 .map_err(|error| format!("malformed event payload: {error}"))
         }
 
-        /// Ensures malformed events are handled without panics.
+        /// 3.6-INT-014: `reports_malformed_event_payloads`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn reports_malformed_event_payloads() {
             // GIVEN: a malformed payload that violates the event schema
@@ -238,7 +245,8 @@ mod tests {
             assert!(result.is_err(), "expected malformed event error");
         }
 
-        /// Ensures subscriber lifecycle allows only one data-plane receiver.
+        /// 3.6-INT-015: `enforces_single_data_plane_subscription`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn enforces_single_data_plane_subscription() {
             // GIVEN: a mock bus configured for a single data-plane receiver
@@ -261,7 +269,8 @@ mod tests {
     mod event_flow {
         use super::*;
 
-        /// Validates end-to-end event flow across planes.
+        /// 3.6-INT-016: `relays_events_from_data_to_control_plane`.
+        /// Priority: P1.
         #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
         async fn relays_events_from_data_to_control_plane() -> Result<(), String>
         {

@@ -279,6 +279,8 @@ mod tests {
 
         use super::*;
 
+        /// 3.1-UNIT-001: `returns_error_when_path_is_empty`.
+        /// Priority: P0.
         #[test]
         fn returns_error_when_path_is_empty() {
             // GIVEN: an empty vault path
@@ -291,6 +293,8 @@ mod tests {
             assert!(matches!(result, Err(DomainError::EmptyPath)));
         }
 
+        /// 3.1-UNIT-002: `returns_error_when_path_is_absolute`.
+        /// Priority: P0.
         #[test]
         fn returns_error_when_path_is_absolute() {
             // GIVEN: an absolute vault path
@@ -303,6 +307,8 @@ mod tests {
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
+        /// 3.1-UNIT-003: `returns_error_when_path_contains_traversal`.
+        /// Priority: P0.
         #[test]
         fn returns_error_when_path_contains_traversal() {
             // GIVEN: a vault path with traversal
@@ -315,6 +321,8 @@ mod tests {
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
+        /// 3.1-UNIT-004: `returns_error_when_path_missing_md_extension`.
+        /// Priority: P0.
         #[test]
         fn returns_error_when_path_missing_md_extension() {
             // GIVEN: a path without a markdown extension
@@ -327,6 +335,8 @@ mod tests {
             assert!(matches!(result, Err(DomainError::InvalidPath(_))));
         }
 
+        /// 3.1-UNIT-005: `generates_sequential_uuids`.
+        /// Priority: P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test fixture creation")]
         fn generates_sequential_uuids() {
@@ -352,6 +362,8 @@ mod tests {
     mod validate {
         use super::*;
 
+        /// 3.1-UNIT-006: `succeeds_when_all_entities_are_valid`.
+        /// Priority: P0.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn succeeds_when_all_entities_are_valid() {
@@ -377,6 +389,8 @@ mod tests {
             result.unwrap();
         }
 
+        /// 3.1-UNIT-007: `returns_error_when_link_source_note_id_mismatch`.
+        /// Priority: P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn returns_error_when_link_source_note_id_mismatch() {
@@ -398,6 +412,8 @@ mod tests {
             assert!(matches!(result, Err(DomainError::ValidationFailed(_))));
         }
 
+        /// 3.1-UNIT-008: `returns_error_when_embed_source_note_id_mismatch`.
+        /// Priority: P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn returns_error_when_embed_source_note_id_mismatch() {
@@ -428,6 +444,8 @@ mod tests {
     mod accessors {
         use super::*;
 
+        /// 3.1-UNIT-009: `mutators_update_aggregate_state`.
+        /// Priority: P1.
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
         fn mutators_update_aggregate_state() {

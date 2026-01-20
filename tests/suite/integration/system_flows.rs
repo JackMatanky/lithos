@@ -23,12 +23,8 @@ struct TestDomainEvent {
 mod tests {
     use super::*;
 
-    /// Test that event bus contract is maintained between app and adapters layers.
-    ///
-    /// This test verifies the API contract for the `EventBusPort` trait implementation,
-    /// ensuring that the hexagonal architecture boundary between app and adapter layers
-    /// maintains proper interface compliance. It demonstrates cross-module testing patterns
-    /// by validating that adapter implementations fulfill port contracts expected by the app layer.
+    /// 3.6-INT-005: `maintains_event_bus_api_contract_across_boundaries`.
+    /// Priority: P1.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn maintains_event_bus_api_contract_across_boundaries() {
         // GIVEN: an adapter event bus wired through the port trait
@@ -59,16 +55,8 @@ mod tests {
         }
     }
 
-    /// Test error propagation across boundaries in integration scenarios.
-    ///
-    /// Verifies that the port interface properly handles and propagates errors
-    /// through the hexagonal architecture boundary. Tests that error contracts
-    /// are maintained between app and adapter layers.
-    ///
-    /// # Note
-    /// This test validates the error handling contract by attempting operations
-    /// that exercise error paths. Once `MockEventBus` supports failure injection,
-    /// this test should be enhanced to verify specific error types.
+    /// 3.6-INT-006: `propagates_errors_across_module_boundaries`.
+    /// Priority: P1.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn propagates_errors_across_module_boundaries() {
         // GIVEN: an event bus with capacity for multiple events
@@ -105,15 +93,8 @@ mod tests {
         );
     }
 
-    /// Test performance validation for integration scenarios.
-    ///
-    /// Ensures that integration operations complete within acceptable time bounds.
-    /// Integration tests are expected to be 2-3x slower than unit tests due to
-    /// setup overhead, but should still be performant for CI/CD pipelines.
-    ///
-    /// # Performance Baseline
-    /// This test establishes a performance baseline for cross-module operations.
-    /// Current baseline: <50ms for batch operations across hexagonal boundaries.
+    /// 3.6-INT-007: `validates_integration_performance_meets_baseline`.
+    /// Priority: P2.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn validates_integration_performance_meets_baseline() {
         // GIVEN: a mock event bus sized for batch publishing

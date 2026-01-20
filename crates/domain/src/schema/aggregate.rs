@@ -589,6 +589,8 @@ mod tests {
         assert!(matches!(res, Err(DomainError::DuplicatePropertyName(_))));
     }
 
+    /// 3.2-UNIT-010: `schema_accessors_return_expected_values`.
+    /// Priority: P1.
     #[test]
     fn schema_accessors_return_expected_values() {
         // GIVEN: a schema with properties
@@ -613,6 +615,8 @@ mod tests {
         assert_eq!(schema.pending_events().len(), 1);
     }
 
+    /// 3.2-UNIT-011: `property_bank_accessors_cover_ids_and_names`.
+    /// Priority: P1.
     #[test]
     fn property_bank_accessors_cover_ids_and_names() {
         // GIVEN: a property bank with an inserted property

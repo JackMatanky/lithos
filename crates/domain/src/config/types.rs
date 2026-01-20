@@ -326,6 +326,8 @@ impl Template {
 mod tests {
     use super::{Frontmatter, Logging, Schema, SettingValue, Template};
 
+    /// 3.3-UNIT-022: `converts_from_string`.
+    /// Priority: P3.
     #[test]
     fn converts_from_string() {
         // GIVEN a string value for configuration
@@ -342,6 +344,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-023: `converts_from_f64`.
+    /// Priority: P3.
     #[test]
     fn converts_from_f64() {
         // GIVEN a floating point value for configuration
@@ -358,6 +362,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-024: `converts_from_bool`.
+    /// Priority: P3.
     #[test]
     fn converts_from_bool() {
         // GIVEN a boolean configuration value
@@ -374,6 +380,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-025: `stores_opaque_encrypted_bytes`.
+    /// Priority: P1.
     #[test]
     fn stores_opaque_encrypted_bytes() {
         // GIVEN encrypted data
@@ -387,6 +395,8 @@ mod tests {
         assert!(debug.contains("***"), "Expected masked debug output");
     }
 
+    /// 3.3-UNIT-026: `frontmatter_validate_rejects_empty_keys`.
+    /// Priority: P0.
     #[test]
     fn frontmatter_validate_rejects_empty_keys() {
         // GIVEN frontmatter with empty key
@@ -402,6 +412,8 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// 3.3-UNIT-027: `logging_rejects_invalid_levels`.
+    /// Priority: P0.
     #[test]
     fn logging_rejects_invalid_levels() {
         // GIVEN an invalid log level
@@ -419,6 +431,8 @@ mod tests {
         ));
     }
 
+    /// 3.3-UNIT-028: `schema_validate_rejects_empty_paths`.
+    /// Priority: P0.
     #[test]
     fn schema_validate_rejects_empty_paths() {
         // GIVEN schema config with empty fields
@@ -434,6 +448,8 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// 3.3-UNIT-029: `stores_nested_arrays`.
+    /// Priority: P2.
     #[test]
     fn stores_nested_arrays() {
         // GIVEN nested configuration values
@@ -453,6 +469,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-030: `stores_nested_objects`.
+    /// Priority: P2.
     #[test]
     fn stores_nested_objects() {
         // GIVEN nested configuration values in a map
@@ -473,6 +491,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-031: `converts_from_vector_of_values`.
+    /// Priority: P3.
     #[test]
     fn converts_from_vector_of_values() {
         // GIVEN a vector of configuration values
@@ -492,6 +512,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-032: `converts_from_hashmap_of_values`.
+    /// Priority: P3.
     #[test]
     fn converts_from_hashmap_of_values() {
         // GIVEN a hashmap of configuration values
@@ -512,6 +534,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-033: `masks_encrypted_variant_in_debug_logs`.
+    /// Priority: P1.
     #[test]
     fn masks_encrypted_variant_in_debug_logs() {
         // GIVEN an encrypted configuration value
@@ -531,6 +555,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-034: `constructs_valid_property_bank_path`.
+    /// Priority: P1.
     #[test]
     fn constructs_valid_property_bank_path() {
         // GIVEN schema configuration with explicit paths
@@ -549,6 +575,8 @@ mod tests {
         );
     }
 
+    /// 3.3-UNIT-035: `preserves_frontmatter_key_mappings`.
+    /// Priority: P1.
     #[test]
     fn preserves_frontmatter_key_mappings() {
         // GIVEN explicit frontmatter mappings
@@ -569,6 +597,8 @@ mod tests {
         assert_eq!(title, "title", "title_key mapping mismatch");
     }
 
+    /// 3.3-UNIT-036: `rejects_empty_templates_dir`.
+    /// Priority: P0.
     #[test]
     fn rejects_empty_templates_dir() {
         // GIVEN a template config with an empty templates_dir

@@ -217,6 +217,8 @@ mod tests {
     use super::*;
     use crate::{VariableDefinition, template::Metadata};
 
+    /// 3.4-UNIT-028: `should_detect_circular_composition`.
+    /// Priority: P0.
     #[test]
     fn should_detect_circular_composition() {
         // GIVEN a template that extends itself
@@ -245,6 +247,8 @@ mod tests {
         assert!(matches!(result, Err(DomainError::CircularComposition(_))));
     }
 
+    /// 3.4-UNIT-029: `should_detect_circular_include`.
+    /// Priority: P0.
     #[test]
     fn should_detect_circular_include() {
         // GIVEN a base template with a self-include
@@ -273,19 +277,8 @@ mod tests {
         assert!(matches!(result, Err(DomainError::CircularComposition(_))));
     }
 
-    #[test]
-    fn insertion_positions_round_trip() {
-        // GIVEN an insertion position
-        let insertion = InsertionPosition::AfterVariable("title".to_owned());
-
-        // WHEN matching on the insertion position
-        let matches_variant =
-            matches!(insertion, InsertionPosition::AfterVariable(_));
-
-        // THEN the expected variant is preserved
-        assert!(matches_variant);
-    }
-
+    /// 3.4-UNIT-030: `validate_rejects_variable_type_mismatch`.
+    /// Priority: P1.
     #[test]
     fn validate_rejects_variable_type_mismatch() {
         // GIVEN: a base template with a string variable
