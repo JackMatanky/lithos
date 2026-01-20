@@ -13,7 +13,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 - [x] Project Roadmap and Milestone definition (Story 1.9).
 - [x] Establish async testing patterns and infrastructure (Epic 2).
 - [x] Create comprehensive Developer Testing Guide.
-- [ ] Implement fundamental domain models (Note, Frontmatter, Schema) - Epic 3.
+- [x] Implement fundamental domain models (Note, Frontmatter, Schema) - Epic 3.
 **Success Metrics:** Hexagonal boundaries enforced at compile-time; 80%+ test coverage.
 
 ### Milestone 2: Persistence & Configuration

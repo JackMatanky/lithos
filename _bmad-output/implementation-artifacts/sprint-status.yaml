@@ -65,7 +65,7 @@ development_status:
     3-4-create-template-bounded-context: "done"
     3-5-consolidate-domain-core-and-internal-utilities: "done"
     3-6-review-epic-3-test-suite: "done"
-    3-7-create-epic-3-documentation: "ready-for-dev"
+    3-7-create-epic-3-documentation: "review"
     epic-3-retrospective: "optional"
 
     epic-4: "in-progress"
