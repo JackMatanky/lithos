@@ -95,8 +95,20 @@ absolute_paths = "allow"
 mod_module_files = "allow"
 pub_with_shorthand = "allow"
 
-# --- Deny Overrides (Strict Quality Gates) ---
+
+# --- Warn Overrides (Best Practices) ---
+as_conversions = "warn"
+cast_possible_truncation = "warn"
+cast_sign_loss = "warn"
+cast_precision_loss = "warn"
+missing_inline_in_public_items = "warn"
+else_if_without_else = "warn"
 allow_attributes_without_reason = "deny"
+as_underscore = "deny"
+as_pointer_underscore = "deny"
+undocumented_unsafe_blocks = "deny"
+panic_in_result_fn = "deny"
+exit = "deny"
 print_stdout = "deny"
 shadow_unrelated = "deny"
 cognitive_complexity = "deny"
