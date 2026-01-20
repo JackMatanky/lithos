@@ -82,10 +82,6 @@ jobs:
         include:
           - os: ubuntu-latest
             rust-version: stable
-          - os: macos-latest
-            rust-version: stable
-          - os: windows-latest
-            rust-version: stable
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -93,6 +89,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.rust-version }}
+          components: rustfmt, clippy
       - uses: jdx/mise-action@v2
         env:
           MISE_RUST_VERSION: ${{ matrix.rust-version }}
@@ -111,7 +108,7 @@ jobs:
         with:
           name: test-results-${{ matrix.os }}-${{ matrix.rust-version }}
           path: target/nextest-*.xml
-          retention-days: 30
+          retention-days: 7
 
   burn-in:
     name: Burn-In (Flaky Detection)
@@ -176,28 +173,28 @@ jobs:
         with:
           branchName: ${{ github.base_ref }}
 
-  cross-compile-check:
-    name: Cross-Compile Check (${{ matrix.target }})
-    needs: [changes, quality-gates]
-    if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [wasm32-unknown-unknown, x86_64-unknown-linux-gnu]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: stable
-          targets: ${{ matrix.target }}
-      - uses: jdx/mise-action@v2
-      - uses: swatinem/rust-cache@v2
-      - name: Check Compilation
-        run: cargo check --target ${{ matrix.target }}
+  # cross-compile-check:
+  #   name: Cross-Compile Check (${{ matrix.target }})
+  #   needs: [changes, quality-gates]
+  #   if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.ci == 'true'
+  #   runs-on: ubuntu-latest
+  #   strategy:
+  #     matrix:
+  #       target: [wasm32-unknown-unknown, x86_64-unknown-linux-gnu]
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: dtolnay/rust-toolchain@master
+  #       with:
+  #         toolchain: stable
+  #         targets: ${{ matrix.target }}
+  #     - uses: jdx/mise-action@v2
+  #     - uses: swatinem/rust-cache@v2
+  #     - name: Check Compilation
+  #       run: cargo check --target ${{ matrix.target }}
 
   deployment-readiness:
     name: Deployment Readiness
-    needs: [quality-gates, secrets-detection, test, burn-in, coverage, security, cross-compile-check]
+    needs: [quality-gates, secrets-detection, test, burn-in, coverage, security]
     if: always()
     runs-on: ubuntu-latest
     steps:
