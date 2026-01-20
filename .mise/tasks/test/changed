@@ -1,0 +1,172 @@
+#!/usr/bin/env bash
+#MISE description="Run tests only for crates affected by changes"
+#MISE alias="tc"
+#USAGE arg "[base_ref]" help="The git ref to compare against (default: origin/main or HEAD~1)"
+
+set -euo pipefail
+
+#######################################
+# Determine the git reference to compare against.
+# Arguments:
+#   Optional base ref from user
+# Outputs:
+#   Echoes the resolved base ref
+#######################################
+determine_base_ref() {
+    local base_ref=$1
+
+    if [[ -n "${base_ref}" ]]; then
+        echo "${base_ref}"
+        return
+    fi
+
+    if git rev-parse --verify origin/main >/dev/null 2>&1; then
+        echo "origin/main"
+    else
+        echo "HEAD~1"
+    fi
+}
+
+#######################################
+# Get list of changed files relative to base ref.
+# Arguments:
+#   Base ref to compare against
+# Outputs:
+#   Echoes list of changed file paths
+#######################################
+get_changed_files() {
+    local base_ref=$1
+    git diff --name-only "${base_ref}"...HEAD 2>/dev/null || \
+        git diff --name-only "${base_ref}" 2>/dev/null || \
+        true
+}
+
+#######################################
+# Extract unique crate names from changed file paths.
+# Arguments:
+#   Newline-separated list of file paths
+# Outputs:
+#   Echoes unique crate names
+#######################################
+extract_changed_crates() {
+    local changed_files=$1
+    echo "${changed_files}" | \
+        grep -E '^(crates|tests)/' | \
+        cut -d'/' -f2 | \
+        sort -u || \
+        true
+}
+
+#######################################
+# Run tests for a workspace crate.
+# Arguments:
+#   Crate short name (e.g., "domain", "cli")
+# Outputs:
+#   Writes progress to stdout
+#######################################
+run_tests_for_crate() {
+    local crate=$1
+
+    if [[ ! -d "crates/${crate}" ]]; then
+        return 1
+    fi
+
+    echo "🏃 Running unit tests for crate '${crate}'..."
+    mise run test:unit --package "${crate}"
+}
+
+#######################################
+# Run tests for the test suite directory.
+# Arguments:
+#   Suite name (e.g., "suite", "utils")
+# Outputs:
+#   Writes progress to stdout
+# Returns:
+#   0 on success, exits on "utils" (full test needed)
+#######################################
+run_tests_for_suite() {
+    local suite=$1
+
+    case "${suite}" in
+        suite)
+            echo "🏃 Running E2E and integration suites..."
+            mise run test:e2e
+            mise run test:integration
+            ;;
+        utils)
+            echo "🏃 Test utils changed - running full suite to ensure no regressions..."
+            mise run test
+            exit 0
+            ;;
+        *)
+            echo "⚠️  Unknown test suite: ${suite}" >&2
+            return 1
+            ;;
+    esac
+}
+
+#######################################
+# Process a single changed crate.
+# Arguments:
+#   Crate name
+# Outputs:
+#   Writes progress to stdout
+#######################################
+process_changed_crate() {
+    local crate=$1
+
+    echo "🧪 Processing ${crate}..."
+
+    if [[ -d "crates/${crate}" ]]; then
+        run_tests_for_crate "${crate}"
+    elif [[ -d "tests/${crate}" ]]; then
+        run_tests_for_suite "${crate}"
+    else
+        echo "⚠️  Unknown crate location: ${crate}" >&2
+    fi
+}
+
+#######################################
+# Main entry point.
+# Globals:
+#   usage_base_ref - Set by usage spec (default: empty)
+# Arguments:
+#   $@
+# Outputs:
+#   None
+#######################################
+main() {
+    local base_ref
+    base_ref=$(determine_base_ref "${usage_base_ref:-}")
+
+    echo "🔍 Detecting changed crates relative to ${base_ref}..."
+
+    local changed_files
+    changed_files=$(get_changed_files "${base_ref}")
+
+    if [[ -z "${changed_files}" ]]; then
+        echo "✅ No changes detected."
+        exit 0
+    fi
+
+    local changed_crates
+    changed_crates=$(extract_changed_crates "${changed_files}")
+
+    if [[ -z "${changed_crates}" ]]; then
+        echo "ℹ️  No crate-specific changes detected (only root docs or config)."
+        echo "Running full test suite as fallback..."
+        mise run test
+        exit 0
+    fi
+
+    echo "📦 Affected crates: ${changed_crates}"
+
+    while IFS= read -r crate; do
+        [[ -z "${crate}" ]] && continue
+        process_changed_crate "${crate}"
+    done <<< "${changed_crates}"
+
+    echo "✅ Affected tests complete."
+}
+
+main "$@"
