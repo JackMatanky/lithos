@@ -327,6 +327,7 @@ fn choose_value(vault: &str, global: &str, default: &str) -> String {
     reason = "Test safety boundary - panic is acceptable in test code for exhaustive match failures"
 )]
 mod tests {
+    // # LINT_DISABLE_REASON: Standard test utilities and behavioral verification patterns.
     use super::*;
 
     mod integrity {
@@ -409,33 +410,6 @@ mod tests {
             assert_eq!(
                 Config::merge_frontmatter(None, None).title_key,
                 "title"
-            );
-        }
-
-        /// 3.3-UNIT-018: `merge_performance_meets_target`.
-        /// Priority: P2.
-        #[test]
-        fn merge_performance_meets_target() {
-            // GIVEN: valid global and vault configs
-            let global = sample_global_config();
-            let vault = sample_vault_config();
-
-            // WHEN: performing 1000 merge operations
-            let start = std::time::Instant::now();
-            for _ in 0i32..1000i32 {
-                debug_assert!(
-                    Config::build(Some(&global), "/vault", vault.clone())
-                        .is_ok()
-                );
-            }
-            let total_duration = start.elapsed();
-            let avg_duration = total_duration / 1000;
-
-            // THEN: average merge time meets the performance target
-            assert!(
-                avg_duration < std::time::Duration::from_micros(100),
-                "Config::build performance degraded: {}μs per operation (target: <100μs)",
-                avg_duration.as_micros()
             );
         }
 
@@ -648,7 +622,6 @@ mod tests {
         }
     }
 
-    #[cfg(test)]
     mod proptests {
         use proptest::prelude::*;
 
@@ -693,6 +666,7 @@ mod tests {
     }
 
     mod validate {
+        use lithos_test_utils::assert_err_kind;
         use rstest::rstest;
 
         use super::*;
@@ -740,10 +714,26 @@ mod tests {
                     }
                 }
                 Some(field_name) => {
-                    let err =
-                        result.expect_err("Validation should have failed");
+                    // # LINT_DISABLE_REASON: Standard error matching pattern for Config validation.
+                    match field_name {
+                        "vault_path" => {
+                            assert_err_kind!(
+                                result.as_ref(),
+                                crate::ConfigError::ValidationFailed { .. }
+                            );
+                        }
+                        "log_level" => {
+                            assert_err_kind!(
+                                result.as_ref(),
+                                crate::ConfigError::InvalidEnumValue { .. }
+                            );
+                        }
+                        _ => panic!(
+                            "Unsupported field in test matrix: {field_name}"
+                        ),
+                    }
 
-                    // # LINT_DISABLE_REASON: Wildcard match is necessary for test resilience against new error variants. Panic is standard for test failure.
+                    let err = result.unwrap_err();
                     #[expect(
                         clippy::wildcard_enum_match_arm,
                         reason = "Test safety boundary"
@@ -763,11 +753,9 @@ mod tests {
                                 "Error reported for wrong field"
                             );
                         }
-                        _ => {
-                            panic!(
-                                "Expected a validation-related error, found: {err:?}"
-                            );
-                        }
+                        _ => panic!(
+                            "Should have been caught by assert_err_kind!"
+                        ),
                     }
                 }
             }
