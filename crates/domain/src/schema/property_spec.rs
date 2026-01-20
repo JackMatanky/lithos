@@ -478,6 +478,8 @@ fn get_cached_regex(pattern: &str) -> Result<regex::Regex, DomainError> {
     reason = "Unit tests use unwrap/expect for simplicity"
 )]
 mod tests {
+    // # LINT_DISABLE_REASON: Standard test utilities and behavioral verification patterns.
+    use lithos_test_utils::assert_err_kind;
     use rstest::rstest;
 
     use super::*;
@@ -503,7 +505,7 @@ mod tests {
     #[case::regex_mismatch(
         StringSpec { pattern: Some(r"^\d+$".to_owned()), ..Default::default() },
         "abc",
-        Err(DomainError::ValidationFailed("abc does not match pattern ^\\d+$".to_owned()))
+        Err(DomainError::ValidationFailed("Value abc does not match pattern ^\\d+$".to_owned()))
     )]
     #[case::length_match(
         StringSpec { min_length: Some(2), max_length: Some(5), ..Default::default() },
@@ -529,19 +531,7 @@ mod tests {
         let result = spec.validate(&value.to_owned());
 
         // THEN: the result matches the expectation
-        match expected {
-            Ok(()) => {
-                assert!(result.is_ok(), "Expected value '{value}' to be valid");
-            }
-            Err(e) => {
-                let actual = result.unwrap_err();
-                assert_eq!(
-                    std::mem::discriminant(&actual),
-                    std::mem::discriminant(&e),
-                    "Value '{value}' produced wrong error variant"
-                );
-            }
-        }
+        assert_eq!(result, expected);
     }
 
     /// 3.3-UNIT-012: Number Specification Validation Matrix.
@@ -563,19 +553,7 @@ mod tests {
         let result = spec.validate(&value);
 
         // THEN: the result matches the expectation
-        match expected {
-            Ok(()) => {
-                assert!(result.is_ok(), "Expected value '{value}' to be valid");
-            }
-            Err(e) => {
-                let actual = result.unwrap_err();
-                assert_eq!(
-                    std::mem::discriminant(&actual),
-                    std::mem::discriminant(&e),
-                    "Value '{value}' produced wrong error variant"
-                );
-            }
-        }
+        assert_eq!(result, expected);
     }
 
     /// 3.3-UNIT-013: File Specification Validation Matrix.
@@ -660,7 +638,8 @@ mod tests {
         spec.validate(&"2024-01-15T14:30:00Z".to_owned()).unwrap();
 
         // AND: rejects invalid dates
-        assert!(spec.validate(&"not-a-date".to_owned()).is_err());
+        let result = spec.validate(&"not-a-date".to_owned());
+        assert_err_kind!(result, DomainError::InvalidDateFormat(_));
     }
 
     #[test]
@@ -673,7 +652,8 @@ mod tests {
         };
 
         // THEN: it fails spec validation
-        assert!(invalid.validate_spec().is_err());
+        let result = invalid.validate_spec();
+        assert_err_kind!(result, DomainError::ValidationFailed(_));
 
         // AND: valid specs pass
         let valid = NumberSpec {
