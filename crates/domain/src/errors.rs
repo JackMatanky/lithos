@@ -123,6 +123,74 @@ pub enum ConfigError {
     },
 }
 
+/// File loader domain errors.
+///
+/// # Invariants
+/// - Errors must include file path context.
+/// - Error messages are descriptive and actionable.
+#[derive(Debug, thiserror::Error, Clone, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum FileLoaderError {
+    /// File content is empty.
+    #[error("File {path} is empty")]
+    EmptyFile {
+        /// File path provided to the loader.
+        path: Box<str>,
+    },
+
+    /// Invalid file content.
+    #[error("Invalid file content for {path}: {message}")]
+    InvalidContent {
+        /// File path provided to the loader.
+        path: Box<str>,
+        /// Validation failure message.
+        message: Box<str>,
+    },
+
+    /// Invalid file path.
+    #[error("Invalid file path {path}: {message}")]
+    InvalidPath {
+        /// File path provided to the loader.
+        path: Box<str>,
+        /// Validation failure message.
+        message: Box<str>,
+    },
+
+    /// IO error when reading file contents.
+    #[error("Failed to read file {path}: {message}")]
+    Io {
+        /// File path provided to the loader.
+        path: Box<str>,
+        /// IO error message.
+        message: Box<str>,
+    },
+
+    /// File size limit exceeded.
+    #[error(
+        "File {path} exceeds size limit ({actual_bytes} > {max_bytes}): \
+         {message}"
+    )]
+    SizeLimitExceeded {
+        /// File path provided to the loader.
+        path: Box<str>,
+        /// Maximum allowed size in bytes.
+        max_bytes: u64,
+        /// Actual size in bytes.
+        actual_bytes: u64,
+        /// Validation failure message.
+        message: Box<str>,
+    },
+
+    /// Unsupported file format.
+    #[error("Unsupported file format for {path}: extension '{extension}'")]
+    UnsupportedFormat {
+        /// File path provided to the loader.
+        path: Box<str>,
+        /// File extension provided.
+        extension: Box<str>,
+    },
+}
+
 /// General domain errors.
 ///
 /// # Invariants.
@@ -404,6 +472,40 @@ mod tests {
     }
 
     #[test]
+    fn file_loader_error_is_send_and_sync() {
+        // GIVEN: the FileLoaderError type
+        fn is_send_sync<T: Send + Sync>() {}
+
+        // WHEN: checking Send + Sync bounds
+        // THEN: it satisfies the bounds
+        is_send_sync::<FileLoaderError>();
+    }
+
+    #[test]
+    fn file_loader_error_includes_path_and_context() {
+        let error = FileLoaderError::UnsupportedFormat {
+            path: "config.ini".into(),
+            extension: "ini".into(),
+        };
+
+        let message = error.to_string();
+
+        assert!(message.contains("config.ini"));
+        assert!(message.contains("ini"));
+    }
+
+    #[test]
+    fn empty_file_error_mentions_path() {
+        let error = FileLoaderError::EmptyFile {
+            path: "config.toml".into(),
+        };
+
+        let message = error.to_string();
+
+        assert!(message.contains("config.toml"));
+    }
+
+    #[test]
     fn domain_error_is_send_and_sync() {
         // GIVEN: the DomainError type
         fn is_send_sync<T: Send + Sync>() {}
@@ -538,6 +640,44 @@ mod tests {
             ConfigError::ValidationFailed {
                 field: "f".into(),
                 message: "m".into(),
+            },
+        ];
+
+        // WHEN: formatting them as strings
+        // THEN: they all produce non-empty messages
+        for err in errors {
+            assert!(!err.to_string().is_empty());
+        }
+    }
+
+    #[test]
+    fn file_loader_error_display_is_comprehensive() {
+        // GIVEN: all file loader error variants
+        let errors = vec![
+            FileLoaderError::UnsupportedFormat {
+                path: "p".into(),
+                extension: "ext".into(),
+            },
+            FileLoaderError::InvalidPath {
+                path: "p".into(),
+                message: "m".into(),
+            },
+            FileLoaderError::Io {
+                path: "p".into(),
+                message: "m".into(),
+            },
+            FileLoaderError::InvalidContent {
+                path: "p".into(),
+                message: "m".into(),
+            },
+            FileLoaderError::SizeLimitExceeded {
+                path: "p".into(),
+                max_bytes: 1,
+                actual_bytes: 2,
+                message: "m".into(),
+            },
+            FileLoaderError::EmptyFile {
+                path: "p".into(),
             },
         ];
 

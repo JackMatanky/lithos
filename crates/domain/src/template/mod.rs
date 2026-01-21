@@ -13,7 +13,13 @@ pub(crate) mod validation;
 /// Variable definition and type-safe validation.
 pub(crate) mod variable;
 
-pub use aggregate::{Metadata, Template};
-pub use composition::{Composition, InsertionPosition, Section};
+// --- Public API & Re-exports ---
+
+pub use aggregate::{Metadata as TemplateMetadata, Template};
+pub use composition::{
+    Composition as TemplateComposition, InsertionPosition,
+    Section as TemplateSection,
+};
+pub use events::{TemplateCreated, TemplateEvents};
 pub use syntax::PlaceholderSyntax;
 pub use variable::VariableDefinition;

@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     errors::DomainError,
-    template::{Composition, Template},
+    template::{Template, TemplateComposition},
 };
 
 /// Command port for template-related write operations.
@@ -45,7 +45,7 @@ pub trait Query: Send + Sync {
     /// Resolves a template composition.
     async fn resolve(
         &self,
-        composition: Composition,
+        composition: TemplateComposition,
     ) -> Result<Template, DomainError>;
 }
 

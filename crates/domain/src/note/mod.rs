@@ -19,5 +19,15 @@ pub(crate) mod tag;
 /// Task subentity for Note aggregate.
 pub(crate) mod task;
 
-// Re-export main types for internal use and lib.rs re-exports
+// --- Public API & Re-exports ---
+
 pub use aggregate::Note;
+pub use events::{FrontmatterValidated, NoteCreated, NoteEvents};
+pub use frontmatter::{FieldValue, FromFieldValue, Frontmatter};
+pub use link::{
+    Anchor as LinkAnchor, EmbedType, Link, Style as LinkStyle,
+    Target as LinkTarget,
+};
+pub use structure::{Heading, Section};
+pub use tag::Tag;
+pub use task::{Task, TaskStatus};

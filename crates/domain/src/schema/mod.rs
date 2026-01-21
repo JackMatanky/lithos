@@ -11,8 +11,15 @@ pub(crate) mod property_spec;
 pub(crate) mod raw;
 pub(crate) mod resolver;
 
-// Re-export main types for convenience
+// --- Public API & Re-exports ---
+
 pub use aggregate::{PropertyBank, Schema, SchemaName};
-pub use events::SchemaEvents;
+pub use events::{PropertyBankUpdated, SchemaCreated, SchemaEvents};
 pub use graph::Graph as SchemaGraph;
+pub use property::{Property, PropertyName};
+pub use property_spec::{
+    BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec, PropertySpecTrait,
+    PropertySpecType, StringSpec,
+};
+pub use raw::{RawProperty, RawPropertyInline, RawPropertyRef, RawSchema};
 pub use resolver::Resolver as SchemaResolver;
