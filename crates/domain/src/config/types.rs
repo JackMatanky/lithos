@@ -40,9 +40,13 @@ pub enum SettingValue {
     Array(Vec<SettingValue>),
     /// Boolean configuration value.
     Boolean(bool),
+    /// Date/time configuration value.
+    Date(chrono::DateTime<chrono::Utc>),
     /// Encrypted field data (opaque bytes, adapter handles
     /// encryption/decryption).
     Encrypted(Vec<u8>),
+    /// Null configuration value.
+    Null,
     /// Numeric configuration value (f64 for flexibility).
     Number(f64),
     /// Nested object configuration.
@@ -64,6 +68,14 @@ impl From<f64> for SettingValue {
     #[inline]
     fn from(value: f64) -> Self {
         Self::Number(value)
+    }
+}
+
+/// Convert `DateTime<Utc>` to `Value::Date` variant.
+impl From<chrono::DateTime<chrono::Utc>> for SettingValue {
+    #[inline]
+    fn from(value: chrono::DateTime<chrono::Utc>) -> Self {
+        Self::Date(value)
     }
 }
 
@@ -103,9 +115,11 @@ impl std::fmt::Debug for SettingValue {
         match self {
             Self::Array(arr) => f.debug_tuple("Array").field(arr).finish(),
             Self::Boolean(b) => f.debug_tuple("Boolean").field(b).finish(),
+            Self::Date(d) => f.debug_tuple("Date").field(d).finish(),
             Self::Encrypted(_) => {
                 f.debug_tuple("Encrypted").field(&"***").finish()
             }
+            Self::Null => f.debug_tuple("Null").finish(),
             Self::Number(n) => f.debug_tuple("Number").field(n).finish(),
             Self::Object(map) => f.debug_tuple("Object").field(map).finish(),
             Self::String(s) => f.debug_tuple("String").field(s).finish(),
@@ -391,6 +405,35 @@ mod tests {
             SettingValue::Number(42.5f64),
             "Conversion from f64 to SettingValue failed"
         );
+    }
+
+    /// 3.3-UNIT-037: `converts_from_datetime`.
+    /// Priority: P3.
+    #[test]
+    fn converts_from_datetime() {
+        // GIVEN a datetime value
+        let input = chrono::Utc::now();
+
+        // WHEN converting into a SettingValue
+        let value = SettingValue::from(input);
+
+        // THEN the date variant is produced
+        assert_eq!(
+            value,
+            SettingValue::Date(input),
+            "Conversion from DateTime to SettingValue failed"
+        );
+    }
+
+    /// 3.3-UNIT-038: `stores_null_value`.
+    /// Priority: P3.
+    #[test]
+    fn stores_null_value() {
+        // GIVEN a null variant
+        let value = SettingValue::Null;
+
+        // THEN it debug formats correctly
+        assert_eq!(format!("{value:?}"), "Null");
     }
 
     /// 3.3-UNIT-032: `converts_from_hashmap_of_values`.
