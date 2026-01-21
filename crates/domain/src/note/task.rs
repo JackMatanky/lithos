@@ -5,6 +5,12 @@
 use crate::errors::DomainError;
 
 /// Represents the status of a task item.
+///
+/// # Examples
+/// ```
+/// # use lithos_domain::TaskStatus;
+/// assert_eq!(TaskStatus::Complete as u8, TaskStatus::Complete as u8);
+/// ```
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
 )]

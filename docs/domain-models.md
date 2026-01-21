@@ -94,6 +94,12 @@ The domain layer validates structural and semantic rules at construction time (e
   |-- Events ---> NoteEvents
 ```
 
+### Contract Diagram
+```
+[Note] -> (Config) -> Frontmatter defaults
+[Note] -> (Schema) -> Frontmatter validation
+```
+
 ## Schema Bounded Context
 
 ### Overview
@@ -149,6 +155,12 @@ This context supports advanced schema composition (extends/excludes), property b
       +--> [RawProperty] ------------+--> [PropertySpec]
 ```
 
+### Contract Diagram
+```
+[Schema] -> (Template) -> Variable constraints
+[Schema] -> (Note) -> Frontmatter validation
+```
+
 ## Config Bounded Context
 
 ### Overview
@@ -162,9 +174,10 @@ Configuration is validated during construction, and path/log-level correctness i
 - **VaultConfig**: vault-specific overrides.
 - **VaultMetadataConfig**: vault name, schema version, vault path.
 - **GlobalFilesystemConfig/VaultFilesystemConfig**: schema/template directories and cache directory.
+- **TrustedVaults**: allowlist for vault paths (list or map format).
 - **FrontmatterConfig**: key mapping for metadata.
 - **LoggingConfig**: log-level constraints.
-- **ConfigValue**: polymorphic value for config fields.
+- **SettingValue**: polymorphic value for config fields.
 - **Events**: `ConfigUpdated`, `ConfigEvents`.
 - **Ports**: `crates/domain/src/ports/config.rs` defines CQRS command/query interfaces.
 
@@ -178,18 +191,26 @@ Configuration is validated during construction, and path/log-level correctness i
 - Log levels limited to debug/info/warn/error.
 - Frontmatter keys must be non-empty.
 - Filesystem paths must be non-empty.
-- Trusted vaults must use either list or map format (not both).
+- Trusted vaults must use either list or map format (not both or neither).
 - Cache directory must be non-empty.
 
 ### Business Logic
 - `Config::build` merges global and vault configs with vault precedence.
 - Defaults applied for empty or missing fields.
+- `TrustedVaults` enforces a single format (list or map) per config.
 - Emits `ConfigUpdated` after merge.
 
 ### Relationships
 - **Config ↔ Note**: frontmatter key lookup and defaults.
 - **Config ↔ Template**: template directory and rendering defaults.
 - **Config ↔ Schema**: schema directories and property bank location.
+- **Config ↔ TrustedVaults**: allowlist enforcement for vault selection.
+
+### Contract Diagram
+```
+[Config] -> (TrustedVaults) -> vault allowlist enforcement
+[Config] -> (Template/Schema) -> directory defaults
+```
 
 ### Evolution Guidelines
 - Add new config fields with defaults and migration notes.
@@ -235,6 +256,12 @@ Template validation is limited to placeholder balance, content size, variable na
 ### Relationships
 - **Template ↔ Schema**: variable definitions may mirror schema property constraints.
 - **Template ↔ Config**: rendering parameters and template directories controlled by config.
+
+### Contract Diagram
+```
+[Template] -> (Schema) -> variable constraints
+[Template] -> (Config) -> rendering defaults
+```
 
 ### Evolution Guidelines
 - Add variable variants with defaults and backward compatibility.
