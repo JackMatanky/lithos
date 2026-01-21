@@ -42,11 +42,11 @@ pub fn project_root() -> PathBuf {
 /// # Example
 ///
 /// ```rust
-/// use lithos_test_utils::TempDir;
+/// use lithos_test_utils::FileTempDir;
 ///
 /// # #[test]
 /// fn test_with_temp_dir() {
-///     let temp_dir = TempDir::new().unwrap();
+///     let temp_dir = FileTempDir::new().unwrap();
 ///     let file_path = temp_dir.path().join("test.txt");
 ///     std::fs::write(&file_path, "test data").unwrap();
 ///     assert!(file_path.exists());

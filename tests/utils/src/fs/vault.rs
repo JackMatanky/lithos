@@ -22,10 +22,10 @@ use crate::fs::temp::TempDir;
 /// ```rust
 /// use std::fs;
 ///
-/// use lithos_test_utils::TestVault;
+/// use lithos_test_utils::FileTestVault;
 ///
 /// # fn main() -> std::io::Result<()> {
-/// let vault = TestVault::new()?;
+/// let vault = FileTestVault::new()?;
 ///
 /// // Add notes with relative paths
 /// let note_path =
