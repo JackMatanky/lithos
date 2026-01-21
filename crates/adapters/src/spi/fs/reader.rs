@@ -15,18 +15,18 @@ const DEFAULT_MAX_FILE_SIZE_BYTES: u64 = 10 * 1024 * 1024;
 /// - Security checks run before format parsing.
 /// - Returned content is valid UTF-8.
 #[derive(Debug, Clone)]
-pub struct FileReader {
+pub struct Reader {
     max_file_size_bytes: u64,
 }
 
-impl Default for FileReader {
+impl Default for Reader {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FileReader {
+impl Reader {
     fn decode_utf8(
         bytes: Vec<u8>,
         path: &Path,
@@ -35,17 +35,17 @@ impl FileReader {
             .map_err(|err| Self::invalid_content_error(path, err.to_string()))
     }
 
-    fn detect_format(path: &Path, content: &str) -> Option<FileFormat> {
+    fn detect_format(path: &Path, content: &str) -> Option<Format> {
         path.extension()
             .and_then(|ext| ext.to_str())
-            .and_then(FileFormat::from_extension)
-            .or_else(|| FileFormat::from_content(content))
+            .and_then(Format::from_extension)
+            .or_else(|| Format::from_content(content))
     }
 
     fn detect_format_or_error(
         path: &Path,
         content: &str,
-    ) -> Result<FileFormat, FileLoaderError> {
+    ) -> Result<Format, FileLoaderError> {
         let extension = path.extension().and_then(|ext| ext.to_str());
         Self::detect_format(path, content)
             .ok_or_else(|| Self::unsupported_format_error(path, extension))
@@ -252,7 +252,7 @@ impl FileReader {
 
     async fn validate_format(
         content: &str,
-        format: FileFormat,
+        format: Format,
         path: &Path,
     ) -> Result<(), FileLoaderError> {
         let path_string = path.display().to_string();
@@ -276,7 +276,7 @@ impl FileReader {
 }
 
 #[async_trait]
-impl FileReaderPort for FileReader {
+impl FileReaderPort for Reader {
     #[inline]
     async fn read(&self, path: &Path) -> Result<String, FileLoaderError> {
         Self::ensure_safe_path(path)?;
@@ -299,13 +299,13 @@ impl FileReaderPort for FileReader {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FileFormat {
+enum Format {
     Json,
     Toml,
     Yaml,
 }
 
-impl FileFormat {
+impl Format {
     fn from_content(content: &str) -> Option<Self> {
         let trimmed = content.trim_start();
         Self::from_json_marker(trimmed)
@@ -348,9 +348,9 @@ impl FileFormat {
 
     fn parse(self, content: &str, path: &str) -> Result<(), FileLoaderError> {
         match self {
-            Self::Json => FileReader::parse_json(content, path),
-            Self::Toml => FileReader::parse_toml(content, path),
-            Self::Yaml => FileReader::parse_yaml(content, path),
+            Self::Json => Reader::parse_json(content, path),
+            Self::Toml => Reader::parse_toml(content, path),
+            Self::Yaml => Reader::parse_yaml(content, path),
         }
     }
 }
@@ -418,26 +418,23 @@ mod tests {
     #[test]
     fn detect_format_by_content_falls_back_to_markers() {
         assert_eq!(
-            FileFormat::from_content("{ \"key\": true }"),
-            Some(FileFormat::Json)
+            Format::from_content("{ \"key\": true }"),
+            Some(Format::Json)
         );
+        assert_eq!(Format::from_content("---\nkey: value"), Some(Format::Yaml));
         assert_eq!(
-            FileFormat::from_content("---\nkey: value"),
-            Some(FileFormat::Yaml)
-        );
-        assert_eq!(
-            FileFormat::from_content("[section]\nkey = 1"),
-            Some(FileFormat::Toml)
+            Format::from_content("[section]\nkey = 1"),
+            Some(Format::Toml)
         );
     }
 
     #[test]
     fn detect_format_by_extension_prefers_known_values() {
-        assert_eq!(FileFormat::from_extension("toml"), Some(FileFormat::Toml));
-        assert_eq!(FileFormat::from_extension("json"), Some(FileFormat::Json));
-        assert_eq!(FileFormat::from_extension("yaml"), Some(FileFormat::Yaml));
-        assert_eq!(FileFormat::from_extension("yml"), Some(FileFormat::Yaml));
-        assert_eq!(FileFormat::from_extension("ini"), None);
+        assert_eq!(Format::from_extension("toml"), Some(Format::Toml));
+        assert_eq!(Format::from_extension("json"), Some(Format::Json));
+        assert_eq!(Format::from_extension("yaml"), Some(Format::Yaml));
+        assert_eq!(Format::from_extension("yml"), Some(Format::Yaml));
+        assert_eq!(Format::from_extension("ini"), None);
     }
 
     #[test]
@@ -445,21 +442,18 @@ mod tests {
         let path = PathBuf::from("config.json");
         let content = "[section]\nkey = 1";
 
-        assert_eq!(
-            FileReader::detect_format(&path, content),
-            Some(FileFormat::Json)
-        );
+        assert_eq!(Reader::detect_format(&path, content), Some(Format::Json));
     }
 
     #[test]
     fn detect_format_returns_none_for_unknown_content() {
-        assert_eq!(FileFormat::from_content(""), None);
-        assert_eq!(FileFormat::from_content("not sure"), None);
+        assert_eq!(Format::from_content(""), None);
+        assert_eq!(Format::from_content("not sure"), None);
     }
 
     #[test]
     fn file_reader_default_uses_standard_limits() {
-        let reader = FileReader::default();
+        let reader = Reader::default();
         assert_eq!(reader.max_file_size_bytes, DEFAULT_MAX_FILE_SIZE_BYTES);
     }
 
@@ -474,26 +468,26 @@ mod tests {
     proptest! {
         #[test]
         fn detect_format_by_extension_is_case_insensitive(ext in "(TOML|toml|Json|JSON|yaml|YAML|yml|YML)") {
-            let format = FileFormat::from_extension(&ext).expect("Valid extension");
+            let format = Format::from_extension(&ext).expect("Valid extension");
             if ext.eq_ignore_ascii_case("toml") {
-                prop_assert_eq!(format, FileFormat::Toml);
+                prop_assert_eq!(format, Format::Toml);
             } else if ext.eq_ignore_ascii_case("json") {
-                prop_assert_eq!(format, FileFormat::Json);
+                prop_assert_eq!(format, Format::Json);
             } else {
-                prop_assert_eq!(format, FileFormat::Yaml);
+                prop_assert_eq!(format, Format::Yaml);
             }
         }
 
         #[test]
         fn reject_absolute_path_always_fails(path in "/[a-z0-9/]+") {
             let p = PathBuf::from(path);
-            prop_assert!(FileReader::reject_absolute_path(&p).is_err());
+            prop_assert!(Reader::reject_absolute_path(&p).is_err());
         }
 
         #[test]
         fn reject_parent_traversal_always_fails(path in "[a-z0-9/]*/\\.\\./[a-z0-9/]*") {
             let p = PathBuf::from(path);
-            prop_assert!(FileReader::reject_parent_traversal(&p).is_err());
+            prop_assert!(Reader::reject_parent_traversal(&p).is_err());
         }
     }
 
@@ -508,7 +502,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let result = adapter.read(&file_path).await;
 
             result.unwrap_err();
@@ -525,7 +519,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let result = adapter.read(&file_path).await;
 
             result.unwrap_err();
@@ -542,7 +536,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let result = adapter.read(&file_path).await;
 
             result.unwrap_err();
@@ -559,7 +553,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let result = adapter.read(&file_path).await;
 
             result.unwrap_err();
@@ -577,7 +571,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let result = adapter.read(&file_path).await;
 
             result.unwrap_err();
@@ -594,7 +588,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let result = adapter.read(&file_path).await;
 
             result.unwrap_err();
@@ -612,7 +606,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::with_max_size(4);
+            let adapter = Reader::with_max_size(4);
             let result = adapter.read(&file_path).await;
 
             result.unwrap_err();
@@ -629,7 +623,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let result = adapter.read(&file_path).await;
 
             result.unwrap_err();
@@ -646,7 +640,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let content =
                 adapter.read(&file_path).await.unwrap_or_else(|err| {
                     panic!("expected file load to succeed: {err}");
@@ -666,7 +660,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let content =
                 adapter.read(&file_path).await.unwrap_or_else(|err| {
                     panic!("expected file load to succeed: {err}");
@@ -686,7 +680,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let content =
                 adapter.read(&file_path).await.unwrap_or_else(|err| {
                     panic!("expected file load to succeed: {err}");
@@ -706,7 +700,7 @@ mod tests {
                 panic!("write error: {err}");
             }
 
-            let adapter = FileReader::new();
+            let adapter = Reader::new();
             let content =
                 adapter.read(&file_path).await.unwrap_or_else(|err| {
                     panic!("expected file load to succeed: {err}");
