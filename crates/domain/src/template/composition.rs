@@ -217,7 +217,7 @@ pub enum InsertionPosition {
 )]
 mod tests {
     use super::*;
-    use crate::{VariableDefinition, template::Metadata};
+    use crate::{VariableDefinition, template::TemplateMetadata};
 
     /// 3.4-UNIT-028: `should_detect_circular_composition`.
     /// Priority: P0.
@@ -230,7 +230,7 @@ mod tests {
             "content".to_owned(),
             HashMap::new(),
             Some("A".to_owned()),
-            Metadata::default(),
+            TemplateMetadata::default(),
         )
         .expect("Valid template setup");
         templates.insert("A".to_owned(), base);
@@ -260,7 +260,7 @@ mod tests {
             "content".to_owned(),
             HashMap::new(),
             None,
-            Metadata::default(),
+            TemplateMetadata::default(),
         )
         .expect("Valid template setup");
         templates.insert("A".to_owned(), base);
@@ -296,7 +296,7 @@ mod tests {
             "Hello {{title}}".to_owned(),
             variables,
             None,
-            Metadata::default(),
+            TemplateMetadata::default(),
         )
         .unwrap();
 

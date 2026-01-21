@@ -29,66 +29,41 @@ pub(crate) mod schema;
 pub(crate) mod template;
 pub(crate) mod validation;
 
-// Re-export commonly used types for convenience.
+// --- Re-exports ---
 // This provides a simplified public API for external crates without requiring
-// deep module path knowledge (e.g., `lithos_domain::Config` vs
-// `lithos_domain::config::Config`).
+// deep module path knowledge.
 
 // Config context re-exports
 pub use config::{
-    aggregate::Config,
-    events::{ConfigEvents, ConfigUpdated},
-    global::{
-        Filesystem as GlobalFilesystemConfig, Global as GlobalConfig,
-        TrustedVaults as TrustedVaultsConfig,
-    },
-    types::{
-        Frontmatter as FrontmatterConfig, Logging as LoggingConfig,
-        Schema as SchemaConfig, SettingValue as ConfigValue,
-        Template as TemplateConfig,
-    },
-    vault::{
-        Filesystem as VaultFilesystemConfig, Metadata as VaultMetadataConfig,
-        Vault as VaultConfig,
-    },
+    Config, ConfigEvents, ConfigUpdated, ConfigValue, FrontmatterConfig,
+    GlobalConfig, GlobalFilesystemConfig, LoggingConfig, SchemaConfig,
+    TemplateConfig, TrustedVaultsConfig, VaultConfig, VaultFilesystemConfig,
+    VaultMetadataConfig,
 };
-pub use errors::{ConfigError, DomainError};
+// Error re-exports
+pub use errors::{ConfigError, DomainError, FileLoaderError};
 // Note context re-exports
 pub use note::{
-    Note,
-    events::{FrontmatterValidated, NoteCreated, NoteEvents},
-    frontmatter::{FieldValue, FromFieldValue, Frontmatter},
-    link::{
-        Anchor as LinkAnchor, EmbedType, Link, Style as LinkStyle,
-        Target as LinkTarget,
-    },
-    structure::{Heading, Section},
-    tag::Tag,
-    task::{Task, TaskStatus},
+    EmbedType, FieldValue, FromFieldValue, Frontmatter, FrontmatterValidated,
+    Heading, Link, LinkAnchor, LinkStyle, LinkTarget, Note, NoteCreated,
+    NoteEvents, Section, Tag, Task, TaskStatus,
 };
 // Port re-exports
 pub use ports::{
-    config::{Command as ConfigCommand, Query as ConfigQuery},
-    note::{Command as NoteCommand, Query as NoteQuery},
-    schema::{Command as SchemaCommand, Query as SchemaQuery},
-    template::{Command as TemplateCommand, Query as TemplateQuery},
+    ConfigCommand, ConfigQuery, FileReaderPort, NoteCommand, NoteQuery,
+    SchemaCommand, SchemaQuery, TemplateCommand, TemplateQuery,
 };
 // Schema context re-exports
 pub use schema::{
-    PropertyBank, Schema, SchemaEvents, SchemaGraph, SchemaName,
-    SchemaResolver,
-    events::{PropertyBankUpdated, SchemaCreated},
-    property::{Property, PropertyName},
-    property_spec::{
-        BoolSpec, DateSpec, FileSpec, NumberSpec, PropertySpec,
-        PropertySpecTrait, PropertySpecType, StringSpec,
-    },
-    raw::{RawProperty, RawPropertyInline, RawPropertyRef, RawSchema},
+    BoolSpec, DateSpec, FileSpec, NumberSpec, Property, PropertyBank,
+    PropertyBankUpdated, PropertyName, PropertySpec, PropertySpecTrait,
+    PropertySpecType, RawProperty, RawPropertyInline, RawPropertyRef,
+    RawSchema, Schema, SchemaCreated, SchemaEvents, SchemaGraph, SchemaName,
+    SchemaResolver, StringSpec,
 };
 // Template context re-exports
 pub use template::{
-    Composition as TemplateComposition, InsertionPosition,
-    Metadata as TemplateMetadata, PlaceholderSyntax,
-    Section as TemplateSection, Template, VariableDefinition,
-    events::{TemplateCreated, TemplateEvents},
+    InsertionPosition, PlaceholderSyntax, Template, TemplateComposition,
+    TemplateCreated, TemplateEvents, TemplateMetadata, TemplateSection,
+    VariableDefinition,
 };
