@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 
 use lithos_test_utils::{
-    TestVault,
+    FileTestVault,
     data::fixtures::{
         FakeData, Fixture, Scenario, combine, test_config, test_user,
     },
@@ -12,7 +12,7 @@ use lithos_test_utils::{
 /// Place integration-only fixtures here to avoid compiling helper modules
 /// as standalone test crates.
 pub struct IntegrationFixtures {
-    pub vault: TestVault,
+    pub vault: FileTestVault,
     pub user: std::collections::HashMap<String, String>,
     pub config: std::collections::HashMap<String, String>,
 }
@@ -20,7 +20,7 @@ pub struct IntegrationFixtures {
 impl IntegrationFixtures {
     pub fn new() -> Self {
         Self {
-            vault: TestVault::new().expect("Should create test vault"),
+            vault: FileTestVault::new().expect("Should create test vault"),
             user: test_user(),
             config: test_config(),
         }

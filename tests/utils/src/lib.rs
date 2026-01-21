@@ -45,10 +45,10 @@ pub use crate::data::{
     },
     snapshots::with_standard_redactions,
 };
-// Filesystem utilities
+// Filesystem utilities (exported with File prefix)
 pub use crate::fs::{
-    temp::{TempDir, TestOutput, generate_unique_name, path_utils},
-    vault::TestVault,
+    FileTempDir, FileTestOutput, FileTestVault, generate_unique_name,
+    path_utils,
 };
 // Mocks and External Systems
 pub use crate::mocks::{

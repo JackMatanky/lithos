@@ -83,8 +83,8 @@ fn cli_executes_successfully() {
 #[test]
 fn cli_prints_help() {
     // GIVEN: a test vault exists for the CLI to reference
-    let _vault =
-        lithos_test_utils::TestVault::new().expect("Should create test vault");
+    let _vault = lithos_test_utils::FileTestVault::new()
+        .expect("Should create test vault");
     let mut cmd = Command::new(lithos_binary());
 
     // WHEN: the user requests CLI help output
