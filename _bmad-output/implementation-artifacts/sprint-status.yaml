@@ -58,7 +58,7 @@ development_status:
     2-9-create-developer-testing-documentation-guide: "done"
     epic-2-retrospective: "done"
 
-    epic-3: "in-progress"
+    epic-3: "done"
     3-1-create-config-bounded-context: "done"
     3-2-create-note-bounded-context: "done"
     3-3-create-schema-bounded-context: "done"
@@ -66,7 +66,7 @@ development_status:
     3-5-consolidate-domain-core-and-internal-utilities: "done"
     3-6-review-epic-3-test-suite: "done"
     3-7-create-epic-3-documentation: "done"
-    epic-3-retrospective: "optional"
+    epic-3-retrospective: "done"
 
     epic-4: "in-progress"
     4-1-create-unified-file-loading-interface: "ready-for-dev"
