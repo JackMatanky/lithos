@@ -210,8 +210,7 @@ crates/adapters/tests/
 - **Error Scenarios**: Mock support for all parsing error conditions
 
 **Story 4-1 Critical Context:**
-- **Interface Compliance**: Mocks must implement FileLoaderPort/FileLoaderAdapter traits
-- **Async Contracts**: Mock async method signatures matching real implementations
+- **Interface Compliance**: Mocks must implement FileReaderPort/FileReaderAdapter traits- **Async Contracts**: Mock async method signatures matching real implementations
 
 ### Git Intelligence Summary
 Recent commits show focus on mise task configuration and testing infrastructure:
