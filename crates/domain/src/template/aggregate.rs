@@ -432,6 +432,13 @@ impl Template {
 }
 
 /// Metadata for template management.
+///
+/// # Examples
+/// ```
+/// # use lithos_domain::TemplateMetadata;
+/// let metadata = TemplateMetadata::default();
+/// assert!(metadata.tags.is_empty());
+/// ```
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Metadata {
