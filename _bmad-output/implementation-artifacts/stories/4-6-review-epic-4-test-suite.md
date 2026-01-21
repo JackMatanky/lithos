@@ -144,8 +144,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 - **Performance Testing**: Parsing speed validation and optimization
 
 **Story 4-1 Critical Context:**
-- **Interface Testing**: Contract testing for FileLoaderPort and FileLoaderAdapter
-- **Error Handling**: Comprehensive error type testing and propagation
+- **Interface Testing**: Contract testing for FileReaderPort and FileReaderAdapter- **Error Handling**: Comprehensive error type testing and propagation
 
 ### Epic 2 Test Infrastructure Integration
 **Planned Integration with Epic 2 Test Utils:**

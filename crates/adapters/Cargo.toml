@@ -26,6 +26,14 @@ miette.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 uuid.workspace = true
+toml.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+
+[dev-dependencies]
+lithos-test-utils = { path = "../../tests/utils" }
+proptest.workspace = true
+tokio = { workspace = true, features = ["full"] }
 
 [lints]
 workspace = true

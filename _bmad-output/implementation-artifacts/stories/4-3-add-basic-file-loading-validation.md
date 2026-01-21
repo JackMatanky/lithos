@@ -220,14 +220,14 @@ crates/adapters/tests/
 
 ### Previous Story Intelligence
 **Story 4-2 Critical Context:**
-- **Parsing Infrastructure**: FileLoaderAdapter with format detection and parsing
+- **Parsing Infrastructure**: FileReaderAdapter with format detection and parsing
 - **Error Types**: FileLoaderError enum established for loading failures
 - **Performance Baseline**: <100μs target for detection + parsing
 - **Integration Points**: This story extends adapter with validation
 - **Testing Patterns**: TDD framework established for adapter testing
 
 **Story 4-1 Critical Context:**
-- **Interface Contract**: FileLoaderPort defines loading contract
+- **Interface Contract**: FileReaderPort defines loading contract
 - **Error Hierarchy**: FileLoaderError base types for extension
 - **Mock Infrastructure**: Mock implementations for testing
 - **Hexagonal Boundaries**: Validation must stay in adapter layer

@@ -3,6 +3,11 @@
 //! This crate contains the infrastructure implementations (SPI) for
 //! persistence, filesystem access, and other external services.
 
+pub mod spi;
+
+/// Re-exported adapter for file reading.
+pub type FileReaderAdapter = crate::spi::fs::FileReaderAdapter;
+
 #[cfg(test)]
 mod tests {
     #[test]

@@ -178,7 +178,7 @@ Use versions from Cargo.toml workspace dependencies.
 crates/domain/src/
 ├── ports/
 │   └── spi/
-│       └── loader.rs             # FileLoaderPort trait (from Story 4.1)
+│       └── fs.rs                 # FileReaderPort trait (from Story 4.1)
 ├── errors.rs                     # FileLoaderError enum (extended)
 └── lib.rs                        # Public API re-exports
 
@@ -201,13 +201,11 @@ benches/
 - **Domain**: Error types and port traits only
 - **Adapters**: All parsing implementations and format detection logic
 - **Tests**: Inline `#[cfg(test)]` for unit tests, separate files for integration
-- **Naming**: Consistent `loader` prefix for all file-related components
-- **Modularity**: One format parser per module section for maintainability
+- **Naming**: Consistent `reader` prefix for all file-related components- **Modularity**: One format parser per module section for maintainability
 
 ### Testing Requirements
 - **Unit Tests**: Format detection logic, error mapping, individual parser validation
-- **Integration Tests**: End-to-end parsing with FileLoaderAdapter
-- **Property-Based Tests**: Fuzzing for malformed input detection
+- **Integration Tests**: End-to-end parsing with FileReaderAdapter- **Property-Based Tests**: Fuzzing for malformed input detection
 - **Performance Tests**: Benchmark parsing speed for different file sizes
 - **Coverage Target**: 90%+ for all parsing and detection logic
 - **Test Fixtures**: Sample valid/invalid files for TOML, JSON, YAML formats
@@ -215,7 +213,7 @@ benches/
 
 ### Previous Story Intelligence
 **Story 4-1 Critical Context:**
-- **Unified Interface**: FileLoaderPort and FileLoaderAdapter established in Story 4.1
+- **Unified Interface**: FileReaderPort and FileReaderAdapter established in Story 4.1
 - **Error Hierarchy**: FileLoaderError enum defined with basic variants
 - **Architecture Patterns**: Hexagonal boundaries established for file loading
 - **Testing Foundations**: TDD framework established with domain tests first
