@@ -26,9 +26,8 @@ miette.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 uuid.workspace = true
-toml.workspace = true
-serde_json.workspace = true
-serde_yaml.workspace = true
+# Note: toml, serde_json, serde_yaml moved to Story 4.2 (LoadingStrategy)
+# Story 4.1 scope: file reading + format detection only, NOT parsing
 
 [dev-dependencies]
 lithos-test-utils = { path = "../../tests/utils" }
