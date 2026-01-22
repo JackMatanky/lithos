@@ -1,7 +1,9 @@
 # Epic 5: Configuration Management System **[PHASE 1.5]**
+
 Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
+
 - Figment-based hierarchical config per ADR 0005 using Epic 4 loading foundation
 - ConfigPort and mocks created in this epic
 - Sample config files based on JSON schema (lithos-specific)
@@ -152,6 +154,7 @@ So that I can understand configuration options and get started quickly with vali
 **Then** configurations load successfully and demonstrate expected behavior
 
 ## Story 5.7: Configuration Error Recovery and Rollback
+
 As a user who has made configuration mistakes, I want the system to provide clear error messages and recovery options, so that I can fix configuration issues without losing my work.
 **Acceptance Criteria:**
 **Given** configuration validation fails

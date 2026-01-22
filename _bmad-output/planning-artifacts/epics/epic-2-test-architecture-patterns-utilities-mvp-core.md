@@ -3,6 +3,7 @@
 Developers have comprehensive testing patterns for async code, event-driven systems, and CQRS, plus centralized test utilities for artifacts, temporary directories, and mise task orchestration that ensure 80%+ coverage and catch integration issues early.
 **FRs covered:** NFR16 (test coverage), Architecture requirements (testing strategy)
 **Implementation Notes:**
+
 - Test patterns: async (tokio::test), event-driven, CQRS command/query separation
 - Centralized test utilities: artifact output locations, tmp directory management, test helper functions
 - mise.toml test tasks: test, test:unit, test:integration, test:coverage, test:watch, test:benchmark
@@ -19,6 +20,7 @@ So that async tests are reliable, race-condition free, and properly isolated.
 **Given** I have researched async testing best practices in Rust
 **When** I review the async testing infrastructure
 **Then** standardized patterns are established for:
+
 - `#[tokio::test]` macro usage with proper runtime setup
 - `spawn_blocking` for CPU-intensive operations in tests
 - `CancellationToken` for graceful test shutdown
@@ -27,6 +29,7 @@ So that async tests are reliable, race-condition free, and properly isolated.
 **Given** async testing patterns are established
 **When** I write an async unit test
 **Then** the test follows the established patterns:
+
 - Proper `#[tokio::test]` attribute usage
 - No blocking operations without `spawn_blocking`
 - Proper error handling for async operations
@@ -39,6 +42,7 @@ So that async tests are reliable, race-condition free, and properly isolated.
 **Given** I have researched tokio testing ecosystem
 **When** I check test dependencies
 **Then** optimal crates are selected:
+
 - `tokio::test` for basic async testing
 - `tokio::time::timeout` for preventing hanging tests
 - Proper test runtime configuration
@@ -54,6 +58,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 **Given** I have researched event-driven testing patterns
 **When** I review the event testing infrastructure
 **Then** patterns are established for:
+
 - Event publishing and subscription testing
 - Event payload verification
 - Event ordering and timing verification
@@ -62,6 +67,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 **Given** event-driven testing patterns are established
 **When** I test an event publisher
 **Then** the test verifies:
+
 - Correct events are published
 - Event payloads contain expected data
 - Events are published at the correct time
@@ -70,6 +76,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 **Given** event-driven testing patterns are established
 **When** I test an event subscriber
 **Then** the test verifies:
+
 - Subscriber receives expected events
 - Event handling logic executes correctly
 - Subscriber handles malformed events gracefully
@@ -78,6 +85,7 @@ So that event-driven code is thoroughly tested with proper isolation and verific
 **Given** I have researched event testing in domain-driven design
 **When** I check the patterns
 **Then** they follow DDD testing best practices:
+
 - Event sourcing verification patterns
 - Event storming validation
 - Domain event contract testing
@@ -94,6 +102,7 @@ So that command side and query side code are tested in isolation with proper ver
 **Given** I have researched CQRS testing patterns
 **When** I review the CQRS testing infrastructure
 **Then** patterns are established for:
+
 - Command handler testing (write side)
 - Query handler testing (read side)
 - Command/query separation verification
@@ -102,6 +111,7 @@ So that command side and query side code are tested in isolation with proper ver
 **Given** CQRS testing patterns are established
 **When** I test a command handler
 **Then** the test verifies:
+
 - Command validation logic
 - State changes are applied correctly
 - Domain events are published
@@ -110,6 +120,7 @@ So that command side and query side code are tested in isolation with proper ver
 **Given** CQRS testing patterns are established
 **When** I test a query handler
 **Then** the test verifies:
+
 - Query execution returns correct data
 - Query performance meets requirements
 - Query isolation from write operations
@@ -118,6 +129,7 @@ So that command side and query side code are tested in isolation with proper ver
 **Given** I have researched CQRS testing in Rust ecosystems
 **When** I check the implementation
 **Then** it addresses common CQRS testing challenges:
+
 - Testing eventual consistency
 - Mocking read model updates
 - Verifying command/query separation
@@ -134,6 +146,7 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
 **Given** I have researched test utility patterns in large Rust projects
 **When** I review the centralized test utilities
 **Then** utilities are provided for:
+
 - Temporary directory creation and cleanup
 - Test artifact output management
 - Test data fixtures and factories
@@ -142,6 +155,7 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
 **Given** centralized test utilities exist
 **When** I write a test needing temporary files
 **Then** I can use standardized temporary directory utilities:
+
 - Automatic cleanup after test completion
 - Cross-platform path handling
 - Unique directory names to avoid conflicts
@@ -150,6 +164,7 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
 **Given** centralized test utilities exist
 **When** I write a test needing test data
 **Then** I can use standardized fixture utilities:
+
 - Domain object factories with valid defaults
 - Sample data generation for various scenarios
 - Serialization helpers for complex objects
@@ -158,6 +173,7 @@ So that tests are consistent, maintainable, and don't duplicate utility code.
 **Given** I have researched test isolation best practices
 **When** I check the utilities
 **Then** they ensure proper test isolation:
+
 - No shared state between tests
 - Proper cleanup of resources
 - Database/transaction isolation for integration tests
@@ -174,6 +190,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 **Given** I have researched mise task orchestration for Rust projects
 **When** I review the mise.toml test tasks
 **Then** comprehensive test tasks are configured:
+
 - `mise run test` - Run all tests with optimal parallelization
 - `mise run test:unit` - Domain layer unit tests only
 - `mise run test:integration` - Cross-crate integration tests
@@ -183,6 +200,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 **Given** mise test tasks are configured
 **When** I run `mise run test`
 **Then** tests execute with:
+
 - Optimal parallelization for speed
 - Proper output formatting
 - Clear success/failure indication
@@ -191,6 +209,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 **Given** mise test tasks are configured
 **When** I run `mise run test:coverage`
 **Then** coverage report is generated:
+
 - HTML report for browser viewing
 - Coverage percentage calculation
 - File-by-file coverage breakdown
@@ -198,11 +217,7 @@ So that I can efficiently run tests, check coverage, and maintain code quality d
 
 **Given** I have researched continuous testing workflows
 **When** I check the mise configuration
-**Then** tasks support modern development workflows:
-    - Watch mode for automatic test re-running
-    - Fast feedback for TDD cycles
-    - Integration with IDEs and editors
-    - Remote development environment support
+**Then** tasks support modern development workflows: - Watch mode for automatic test re-running - Fast feedback for TDD cycles - Integration with IDEs and editors - Remote development environment support
 
 ## Story 2.6: Establish Integration Testing Patterns and Infrastructure
 
@@ -215,6 +230,7 @@ So that integration issues are caught early with proper isolation and mocking.
 **Given** I have researched integration testing patterns in large Rust projects
 **When** I review the integration testing infrastructure
 **Then** patterns are established for:
+
 - Cross-module API contract testing
 - Database state management in integration tests
 - External service mocking for isolated testing
@@ -223,6 +239,7 @@ So that integration issues are caught early with proper isolation and mocking.
 **Given** integration testing patterns are established
 **When** I test interactions between bounded contexts
 **Then** the test verifies:
+
 - API contracts between modules are maintained
 - Data flows correctly across boundaries
 - Error handling works end-to-end
@@ -235,6 +252,7 @@ So that integration issues are caught early with proper isolation and mocking.
 **Given** I have researched integration testing best practices
 **When** I check the test setup
 **Then** integration tests:
+
 - Run in isolated environments (test containers if needed)
 - Use realistic test data without production dependencies
 - Execute in parallel where possible
@@ -251,6 +269,7 @@ So that performance is monitored and regressions are caught early.
 **Given** I have researched benchmarking in Rust ecosystems
 **When** I review the benchmarking infrastructure
 **Then** patterns are established for:
+
 - criterion.rs integration for micro-benchmarks
 - Performance regression detection
 - Benchmark result storage and comparison
@@ -259,6 +278,7 @@ So that performance is monitored and regressions are caught early.
 **Given** benchmarking patterns are established
 **When** I create a performance benchmark
 **Then** the benchmark:
+
 - Uses criterion for statistical accuracy
 - Measures relevant performance metrics
 - Includes baseline comparisons
@@ -267,6 +287,7 @@ So that performance is monitored and regressions are caught early.
 **Given** performance tests are running
 **When** I check for regressions
 **Then** the system:
+
 - Compares against historical baselines
 - Alerts on significant performance drops
 - Provides detailed performance reports
@@ -275,6 +296,7 @@ So that performance is monitored and regressions are caught early.
 **Given** I have researched performance testing best practices
 **When** I check the implementation
 **Then** it addresses common performance testing challenges:
+
 - Warm-up periods for JIT optimization
 - Statistical significance in measurements
 - Environment consistency across runs
@@ -291,6 +313,7 @@ So that tests remain efficient, meaningful, and avoid vanity metrics.
 **Given** the test suite review is initiated
 **When** I audit unit, integration, doc, and benchmark tests
 **Then** the review verifies clarity and intent using test descriptions as a quality gate:
+
 - Each test name reads like a sentence describing behavior and setup
 - Each test or module includes a brief intent comment when non-obvious
 - Issue numbers are secondary metadata, not the test name
@@ -299,6 +322,7 @@ So that tests remain efficient, meaningful, and avoid vanity metrics.
 **Given** I review test structure and organization
 **When** I inspect module layout
 **Then** tests follow Rust conventions for scope and intent:
+
 - Unit tests colocated with code and focused on implementation details
 - Integration tests live under `tests/` and validate public API behavior
 - Doc tests are used for public API examples and kept minimal
@@ -307,6 +331,7 @@ So that tests remain efficient, meaningful, and avoid vanity metrics.
 **Given** I assess test efficiency and signal quality
 **When** I evaluate assertions and coverage
 **Then** tests avoid vanity metrics and maximize signal:
+
 - One behavior per test, with minimal assertions
 - Coverage requirements tied to defect prevention or risk areas
 - Tests demonstrate real invariants, not just line coverage
@@ -315,6 +340,7 @@ So that tests remain efficient, meaningful, and avoid vanity metrics.
 **Given** I check for flakiness and determinism
 **When** I review async and integration tests
 **Then** tests are reproducible and stable:
+
 - Async tests use timeouts and avoid blocking in async contexts
 - Randomness, UUIDs, and timestamps are fixed or redacted
 - Any flaky tests are tagged and scheduled for refactor/removal
@@ -322,6 +348,7 @@ So that tests remain efficient, meaningful, and avoid vanity metrics.
 **Given** snapshot testing is used
 **When** I review snapshot tests
 **Then** snapshots are small, named, and meaningful:
+
 - Large blobs avoided; targeted snapshots only
 - Simple scalar assertions use `assert_eq!` instead of snapshots
 - Unstable fields are redacted for consistency
@@ -337,6 +364,7 @@ So that I can apply the approved patterns consistently and avoid ambiguity.
 **Given** I need to understand Lithos testing standards
 **When** I open the developer testing guide
 **Then** it documents:
+
 - Hexagonal testing hierarchy (domain, integration, E2E)
 - Async test requirements and timeouts
 - Event-driven and CQRS testing patterns
@@ -345,6 +373,7 @@ So that I can apply the approved patterns consistently and avoid ambiguity.
 **Given** I need to run tests locally or in CI
 **When** I follow the guide
 **Then** it provides:
+
 - `mise run` commands for unit, integration, coverage, and benchmarks
 - `nextest` usage and doc test requirements
 - Coverage expectations and tarpaulin usage
@@ -352,6 +381,7 @@ So that I can apply the approved patterns consistently and avoid ambiguity.
 **Given** I am authoring new tests
 **When** I follow the guidance
 **Then** the guide includes:
+
 - Naming and description conventions (clarity checks)
 - Deterministic fixture rules (fixed UUIDs/timestamps)
 - Snapshot testing rules and redaction guidance

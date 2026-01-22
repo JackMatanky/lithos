@@ -9,7 +9,7 @@ use crate::errors::FileLoaderError;
 /// Supported configuration file formats.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FileFormat {
+pub enum Format {
     /// JSON format (.json).
     Json,
     /// TOML format (.toml).
@@ -31,18 +31,18 @@ pub enum FileFormat {
               change; struct literal construction is ergonomic and preferred"
 )]
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FileContent {
+pub struct Content {
     /// The UTF-8 validated file content.
     pub content: String,
     /// Optional format detected from extension or content analysis.
-    pub format: Option<FileFormat>,
+    pub format: Option<Format>,
 }
 
-impl FileContent {
+impl Content {
     /// Creates new file content with optional format.
     #[must_use]
     #[inline]
-    pub const fn new(content: String, format: Option<FileFormat>) -> Self {
+    pub const fn new(content: String, format: Option<Format>) -> Self {
         Self {
             content,
             format,
@@ -63,10 +63,10 @@ impl FileContent {
 /// struct FsReader;
 ///
 /// #[async_trait]
-/// impl FileReader for FsReader {
-///     async fn read(&self, path: &Path) -> Result<FileContent, FileLoaderError> {
+/// impl Reader for FsReader {
+///     async fn read(&self, path: &Path) -> Result<Content, FileLoaderError> {
 ///         // Adapter implementation
-///         Ok(FileContent::new(
+///         Ok(Content::new(
 ///             std::fs::read_to_string(path)?,
 ///             detect_format(path),
 ///         ))
@@ -74,12 +74,12 @@ impl FileContent {
 /// }
 /// ```
 #[async_trait]
-pub trait FileReader: Send + Sync {
+pub trait Reader: Send + Sync {
     /// Read file content as UTF-8 text with optional format detection.
     ///
     /// # Errors
     /// Returns `FileLoaderError` when file loading or validation fails.
-    async fn read(&self, path: &Path) -> Result<FileContent, FileLoaderError>;
+    async fn read(&self, path: &Path) -> Result<Content, FileLoaderError>;
 }
 
 #[cfg(test)]
@@ -88,13 +88,13 @@ mod tests {
 
     #[test]
     fn file_reader_port_is_object_safe() {
-        fn _assert_object_safe(_: &dyn FileReader) {}
+        fn _assert_object_safe(_: &dyn Reader) {}
     }
 
     #[test]
     fn file_reader_port_is_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
 
-        assert_send_sync::<Box<dyn FileReader>>();
+        assert_send_sync::<Box<dyn Reader>>();
     }
 }

@@ -1,7 +1,9 @@
 # Epic 7: Event Bus & Orchestration Infrastructure **[PHASE 1.5]**
+
 System has a robust event-driven architecture enabling loose coupling between services and supporting concurrent operations without god-objects.
 **FRs covered:** Architecture requirements (event-driven, CQRS foundation)
 **Implementation Notes:**
+
 - Hybrid Event Bus (MPSC/Broadcast/Watch per ADR 0007)
 - Event payload schema design and validation
 - Event persistence for debugging and recovery

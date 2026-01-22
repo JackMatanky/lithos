@@ -49,11 +49,11 @@ pub use note::{
     NoteEvents, Section, Tag, Task, TaskStatus,
 };
 // File loading re-exports
-pub use ports::spi::fs::{FileContent, FileFormat};
+pub use ports::spi::{FileContent, FileFormat, FileReaderPort};
 // Port re-exports
 pub use ports::{
-    ConfigCommand, ConfigQuery, FileReaderPort, NoteCommand, NoteQuery,
-    SchemaCommand, SchemaQuery, TemplateCommand, TemplateQuery,
+    ConfigCommand, ConfigQuery, NoteCommand, NoteQuery, SchemaCommand,
+    SchemaQuery, TemplateCommand, TemplateQuery,
 };
 // Schema context re-exports
 pub use schema::{

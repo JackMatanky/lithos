@@ -3,6 +3,7 @@
 Developers have a fully configured development environment with quality gates, testing infrastructure, and task orchestration that enforces architectural standards.
 **FRs covered:** Architecture requirements (tooling, quality gates)
 **Implementation Notes:**
+
 - Cargo workspace structure (4 crates: domain, app, adapters, cli)
 - mise.toml with task orchestration (test, bench, coverage, watch, etc.)
 - pre-commit-config.yaml with stringent quality gates
@@ -24,6 +25,7 @@ So that the project has clear separation between domain, application, infrastruc
 **Given** a new Rust project directory
 **When** I run the workspace initialization commands
 **Then** a Cargo workspace is created with the following structure:
+
 ```
 lithos/
 ├── Cargo.toml (workspace configuration)
@@ -38,6 +40,7 @@ lithos/
 **Given** the Cargo workspace structure exists
 **When** I check the crate dependencies
 **Then** the dependencies follow hexagonal boundaries:
+
 - domain crate has no external dependencies
 - app crate depends only on domain
 - adapters crate depends on domain + external crates
@@ -58,6 +61,7 @@ So that code quality standards are enforced and poor code is caught early.
 **Given** pre-commit framework is configured
 **When** I check .pre-commit-config.yaml
 **Then** the hooks include these stringent quality gates:
+
 - `clippy` with all configured lints
 - `rustfmt` with import sorting verification
 - `cargo test` for unit tests
@@ -66,6 +70,7 @@ So that code quality standards are enforced and poor code is caught early.
 **Given** I have researched pre-commit best practices for Rust projects
 **When** I review the configuration
 **Then** the hooks follow these best practices:
+
 - Hooks run in parallel where possible for speed
 - Hooks fail fast on critical issues
 - Hooks include clear error messages for failures
@@ -90,6 +95,7 @@ So that I can efficiently run tests, benchmarks, formatting, and other developme
 **Given** mise is installed in the project
 **When** I run `mise run --list` or check mise.toml
 **Then** the following tasks are available:
+
 - `mise run test` - Run all tests
 - `mise run test:unit` - Domain layer unit tests only
 - `mise run test:integration` - Cross-crate integration tests
@@ -103,6 +109,7 @@ So that I can efficiently run tests, benchmarks, formatting, and other developme
 **Given** I have researched Rust project best practices for task orchestration
 **When** I review the mise.toml configuration
 **Then** tasks follow these best practices:
+
 - Tool versions are pinned (Rust 1.92+, clippy, rustfmt versions)
 - Tasks use proper shell escaping for cross-platform compatibility
 - Tasks include helpful descriptions and usage examples
@@ -123,6 +130,7 @@ So that functions remain maintainable and complex logic is broken down appropria
 **Given** I have researched clippy best practices for cognitive complexity
 **When** I review clippy.toml configuration
 **Then** cognitive complexity limits are set to:
+
 - `cognitive-complexity-threshold = 15` (warn level)
 - `too-many-lines-threshold = 100` (function length limit)
 - Deny level complexity threshold configured
@@ -130,6 +138,7 @@ So that functions remain maintainable and complex logic is broken down appropria
 **Given** I have researched anti-pattern prevention in Rust
 **When** I check the clippy configuration
 **Then** these anti-patterns are denied:
+
 - `clippy::unwrap_used` - No unwrap in production code
 - `clippy::expect_used` - No expect in production code
 - `clippy::todo` - No TODO comments in production code
@@ -155,6 +164,7 @@ So that code style is uniform and readable across the codebase.
 **Given** I have researched rustfmt best practices for large Rust projects
 **When** I review rustfmt.toml configuration
 **Then** import sorting is configured with:
+
 - `imports_granularity = "Crate"` - Group imports by crate
 - `group_imports = "StdExternalCrate"` - Standard library, external crates, then internal
 - Consistent indentation and line width settings
@@ -170,6 +180,7 @@ So that code style is uniform and readable across the codebase.
 **Given** I have researched formatting standards for Rust ecosystems
 **When** I check the configuration
 **Then** settings align with Rust community standards for:
+
 - Maximum line width (typically 100-120 characters)
 - Brace style consistency
 - Comment formatting
@@ -186,6 +197,7 @@ So that vulnerabilities and incompatible licenses are caught before they become 
 **Given** I have researched cargo-deny best practices for Rust projects
 **When** I review deny.toml configuration
 **Then** the following checks are enabled:
+
 - `advisories` - Security vulnerability scanning
 - `licenses` - License compatibility checking
 - `bans` - Forbidden dependency detection
@@ -202,6 +214,7 @@ So that vulnerabilities and incompatible licenses are caught before they become 
 **Given** I have researched license compatibility for open source projects
 **When** I check the license configuration
 **Then** acceptable licenses include common permissive licenses:
+
 - MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause
 - GPL licenses excluded for compatibility
 - Copyleft licenses flagged for review
@@ -217,6 +230,7 @@ So that architectural decisions are well-reasoned, documented, and validated.
 **Given** the ADR directory exists with documents 0001-0007
 **When** I review the ADR review process
 **Then** a clear process is documented for:
+
 - When to create an ADR (architectural decisions affecting multiple epics)
 - ADR template and required sections
 - Review and approval process
@@ -225,6 +239,7 @@ So that architectural decisions are well-reasoned, documented, and validated.
 **Given** ADRs 0001-0007 exist
 **When** I validate them against the established template
 **Then** all ADRs follow the proper format:
+
 - Status (Accepted/Rejected/Pending)
 - Context and problem description
 - Considered alternatives
@@ -238,6 +253,7 @@ So that architectural decisions are well-reasoned, documented, and validated.
 **Given** I have researched ADR best practices
 **When** I review the process
 **Then** it follows industry standards:
+
 - MADR (Markdown Architectural Decision Records) format
 - Clear decision drivers and constraints
 - Stakeholder involvement in decisions
@@ -254,6 +270,7 @@ So that I can quickly understand what lithos is and how to get started.
 **Given** README.md is created
 **When** I review the content structure
 **Then** it includes these essential sections:
+
 - Project description and what makes it special
 - Key features and capabilities
 - Quick start installation instructions
@@ -265,6 +282,7 @@ So that I can quickly understand what lithos is and how to get started.
 **Given** I have researched README best practices for open source Rust projects
 **When** I check the README format
 **Then** it follows best practices:
+
 - Clear badges for CI status, coverage, version
 - Table of contents for long documents
 - Code examples that are tested and runnable
@@ -290,6 +308,7 @@ So that project progress, timelines, and dependencies are clearly communicated.
 **Given** I have analyzed the complete project scope from all epics
 **When** I review the roadmap structure
 **Then** the roadmap includes:
+
 - Epic-level milestones with completion criteria
 - Story dependencies and critical path identification
 - Timeline estimates with realistic delivery dates
@@ -299,6 +318,7 @@ So that project progress, timelines, and dependencies are clearly communicated.
 **Given** the roadmap is established
 **When** stakeholders review project progress
 **Then** they can clearly see:
+
 - What has been completed (baseline from Epics 1-8)
 - What is currently in progress
 - What remains to be done (Epics 9-15)
@@ -308,6 +328,7 @@ So that project progress, timelines, and dependencies are clearly communicated.
 **Given** milestones are defined
 **When** I check milestone criteria
 **Then** each milestone has:
+
 - SMART objectives (Specific, Measurable, Achievable, Relevant, Time-bound)
 - Clear deliverables and acceptance criteria
 - Resource requirements identified
@@ -317,6 +338,7 @@ So that project progress, timelines, and dependencies are clearly communicated.
 **Given** the roadmap is maintained
 **When** project changes occur
 **Then** the roadmap includes:
+
 - Change control process for scope adjustments
 - Regular review cycles (monthly) for timeline updates
 - Communication protocols for stakeholder updates
@@ -331,41 +353,49 @@ So that code quality is guaranteed and regressions are caught early in the devel
 **Acceptance Criteria:**
 
 **Multi-Stage Pipeline Architecture:**
+
 - **Given** CI/CD best practices research for Rust projects
 - **When** reviewing .github/workflows/ci.yml
 - **Then** pipeline includes separated stages: quality gates, testing, security, performance, deployment readiness
 
 **Comprehensive Quality Assurance:**
+
 - **Given** pipeline executes comprehensive quality checks
 - **When** PRs are submitted or pushes occur
 - **Then** all quality gates pass: formatting, linting, testing, security scanning, ADR validation, performance benchmarks
 
 **Optimization and Performance:**
+
 - **Given** CI optimization techniques for Rust projects
 - **When** measuring pipeline performance
 - **Then** builds complete within target times with effective caching, parallel execution, and incremental builds
 
 **Matrix Testing and Compatibility:**
+
 - **Given** Rust ecosystem compatibility requirements
 - **When** testing across environments
 - **Then** matrix builds cover multiple Rust versions, operating systems, and feature combinations
 
 **Artifact Management and Reporting:**
+
 - **Given** CI/CD artifact and reporting best practices
 - **When** builds complete
 - **Then** comprehensive artifacts uploaded: test results, coverage reports, security scans, performance metrics, build artifacts
 
 **Security and Compliance:**
+
 - **Given** security scanning integration requirements
 - **When** CI pipeline executes
 - **Then** automated security checks include: dependency vulnerabilities, secrets detection, license compliance, code quality metrics
 
 **Branch Protection and Automation:**
+
 - **Given** GitHub branch protection best practices
 - **When** configuring repository settings
 - **Then** branch protection requires CI checks, status checks configured, auto-merge policies established
 
 **Monitoring and Alerting:**
+
 - **Given** CI/CD monitoring requirements
 - **When** pipeline issues occur
 - **Then** notifications configured for failures, performance regressions, security vulnerabilities
