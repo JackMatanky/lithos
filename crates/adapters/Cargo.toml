@@ -36,6 +36,7 @@ lithos-test-utils = { path = "../../tests/utils" }
 proptest.workspace = true
 rstest.workspace = true
 tokio = { workspace = true, features = ["full"] }
+tempfile.workspace = true
 
 [lints]
 workspace = true
