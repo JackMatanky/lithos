@@ -41,33 +41,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use thiserror::Error;
-
-/// Path validation error types.
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
-#[non_exhaustive]
-pub enum PathValidationError {
-    /// Path is absolute when only relative paths are allowed.
-    #[error("Absolute path not allowed: {0}")]
-    AbsolutePathError(String),
-
-    /// I/O error during symlink resolution.
-    #[error("I/O error during symlink resolution: {0}")]
-    IoError(String),
-
-    /// Path contains `..` components attempting traversal outside allowed
-    /// directory.
-    #[error("Path traversal detected: path contains '..' components")]
-    PathTraversalError,
-
-    /// Path accesses restricted or hidden files.
-    #[error("Restricted path access denied: {0}")]
-    RestrictedPathError(String),
-
-    /// Symlink target escapes the configured root directory.
-    #[error("Symlink escape detected: target is outside root boundary")]
-    SymlinkEscapeError,
-}
+use super::super::errors::PathValidationError;
 
 /// Path validator with configurable security modes.
 ///
