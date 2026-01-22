@@ -128,14 +128,15 @@ Story 4.2 implements secure path validation utilities following strict TDD princ
 ✅ **All Tasks Complete** (2026-01-22)
 
 **Implementation Summary:**
-- Created `crates/adapters/src/spi/fs/validator.rs` with full security validation
+- Created `crates/adapters/src/spi/fs/validator.rs` with high-performance security validation
 - Implemented `Validator` with two modes:
   - **Flexible**: Allows external symlinks (dotfiles), enforces input traversal checks
-  - **Strict**: Enforces root boundary, rejects escaping symlinks
-- Validation checks: path traversal (`..`), absolute paths, hidden files (`.git`, `.env`, etc.)
+  - **Strict**: Enforces root boundary, rejects escaping symlinks (optimized with pre-canonicalized root)
+- Validation checks: Single-pass traversal (`..`), absolute paths, and hidden files (`.git`, `.env`, etc.)
 - Async symlink resolution using `tokio::fs::canonicalize` (no blocking I/O)
 - Zero-allocation path validation returning `Cow<'_, Path>`
-- Comprehensive error types via `thiserror` with rich context
+- Centralized error types in `crates/adapters/src/spi/errors.rs` for consistency
+- Introduced `fixtures::Workspace` for clean, reusable test infrastructure
 
 **Test Coverage:**
 - 52 unit tests organized in submodules (all passing)
@@ -159,25 +160,30 @@ Story 4.2 implements secure path validation utilities following strict TDD princ
 
 **Technical Decisions:**
 - Used `let chain` pattern for idiomatic Rust (requires edition 2024)
-- Applied `#[non_exhaustive]` to PathValidationError for future extensibility
-- Added `#[inline]` hints for small factory methods
-- Allowed `clippy::pattern_type_mismatch` with reason for match ergonomics
+- Applied `#[non_exhaustive]` to public enums for future extensibility
+- Added `#[inline]` hints for optimized small methods
+- Centralized `PathValidationError` in `spi/errors.rs` for unified SPI error surface
+- Refactored `ValidationMode` to internal `Mode` enum with public alias
+- Implemented `fixtures::Workspace` test utility to streamline workspace management
+- Optimized `Strict` mode by pre-canonicalizing root during construction
+- Consolidated validation logic into single-pass component iteration
 
 ## File List
 
 ### New Files
-- `crates/adapters/src/spi/fs/validator.rs` - Path validation utilities with comprehensive unit tests (677 lines total: 351 implementation + 326 tests)
+- `crates/adapters/src/spi/fs/validator.rs` - High-performance path validation utilities (818 lines total: 286 implementation + 532 tests/fixtures)
 
 ### Modified Files
 - `crates/adapters/src/spi/fs/mod.rs` - Added validator module export
+- `crates/adapters/src/spi/errors.rs` - Centralized `PathValidationError` types
 - `crates/adapters/Cargo.toml` - Added tempfile dev dependency
 
 ## Change Log
 - **2026-01-22**: Implemented secure path validation utilities (Story 4.2)
   - Created Validator with Strict/Flexible modes for path security
+  - Optimized performance via pre-canonicalization and single-pass iteration
+  - Centralized error types in `spi/errors.rs` for hexagonal compliance
   - Added comprehensive test suite (52 unit tests + 6 doctests = 58 total)
-  - Tests organized by domain: constructor, path_traversal, absolute_paths, restricted_files, symlink_strict, symlink_flexible, valid_paths, platform_specific
-  - Implemented async-safe symlink resolution using tokio::fs
-  - Zero-allocation validation using Cow<'_, Path>
+  - Introduced `fixtures::Workspace` to simplify test management
   - All quality gates passed (fmt, lint, verify, pre-commit hooks)
-  - Commits: 000d043d (initial impl), e8c535f3 (test reorganization)
+  - Commits: 000d043d, e8c535f3, a9ebe1f1, a63c46b3, b097d48b, 9b516bda, d14a5d11
