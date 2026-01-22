@@ -138,18 +138,24 @@ Story 4.2 implements secure path validation utilities following strict TDD princ
 - Comprehensive error types via `thiserror` with rich context
 
 **Test Coverage:**
-- 22 integration tests (all passing)
-- 5 unit tests (all passing)
+- 52 unit tests organized in submodules (all passing)
+  - constructor: Validator creation tests
+  - path_traversal: .. and parent directory attacks
+  - absolute_paths: Unix/Windows absolute path handling
+  - restricted_files: Hidden file (.git, .env, .ssh) detection
+  - symlink_strict: Strict mode symlink validation
+  - symlink_flexible: Flexible mode external symlink handling
+  - valid_paths: Normal path acceptance and Cow optimization
+  - platform_specific: Cross-platform separator handling
 - 6 doctests (all passing)
-- Platform-specific tests for Windows/Unix path handling
-- Symlink security tests (strict/flexible modes, loop detection)
+- Total: 58 tests providing comprehensive security coverage
 
 **Quality Gates:**
-- ✅ All tests pass (57 total across adapters crate)
+- ✅ All tests pass (58 total for path validation: 52 unit + 6 doc)
 - ✅ `mise run fmt` - formatting complete
-- ✅ `mise run lint` - no warnings
+- ✅ `mise run lint` - no warnings (clippy with `-D warnings`)
 - ✅ `mise run verify` - full quality gates passed
-- ✅ Clippy strict mode (`-D warnings`) - clean
+- ✅ Pre-commit hooks - all passed
 
 **Technical Decisions:**
 - Used `let chain` pattern for idiomatic Rust (requires edition 2024)
@@ -160,8 +166,7 @@ Story 4.2 implements secure path validation utilities following strict TDD princ
 ## File List
 
 ### New Files
-- `crates/adapters/src/spi/fs/validator.rs` - Path validation utilities (351 lines)
-- `crates/adapters/tests/spi_fs_validator_tests.rs` - Integration tests (337 lines)
+- `crates/adapters/src/spi/fs/validator.rs` - Path validation utilities with comprehensive unit tests (677 lines total: 351 implementation + 326 tests)
 
 ### Modified Files
 - `crates/adapters/src/spi/fs/mod.rs` - Added validator module export
@@ -170,7 +175,9 @@ Story 4.2 implements secure path validation utilities following strict TDD princ
 ## Change Log
 - **2026-01-22**: Implemented secure path validation utilities (Story 4.2)
   - Created Validator with Strict/Flexible modes for path security
-  - Added comprehensive test suite (22 integration + 5 unit + 6 doc tests)
+  - Added comprehensive test suite (52 unit tests + 6 doctests = 58 total)
+  - Tests organized by domain: constructor, path_traversal, absolute_paths, restricted_files, symlink_strict, symlink_flexible, valid_paths, platform_specific
   - Implemented async-safe symlink resolution using tokio::fs
   - Zero-allocation validation using Cow<'_, Path>
-  - All quality gates passed (fmt, lint, verify)
+  - All quality gates passed (fmt, lint, verify, pre-commit hooks)
+  - Commits: 000d043d (initial impl), e8c535f3 (test reorganization)
