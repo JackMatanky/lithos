@@ -10,6 +10,31 @@
 //! - **Strategy Pattern**: Each format (TOML/JSON/YAML) has its own parser
 //! - **Auto-Detection**: `Dispatcher` selects parser by file extension
 //! - **Rich Errors**: Parse errors include file path, line numbers, and context
+//! - **Zero-Cost Abstraction**: `Dispatcher` is a unit struct (zero runtime
+//!   overhead)
+//!
+//! # Current Scope
+//!
+//! This module focuses exclusively on **structured configuration formats**:
+//! - TOML for primary configuration
+//! - JSON for interoperability
+//! - YAML for schema definitions
+//!
+//! # Future Extensibility
+//!
+//! Future epics (vault indexing, content processing) may require detection and
+//! handling of additional file types (markdown, images, PDFs, etc.). When that
+//! time comes, consider:
+//!
+//! - MIME type detection via `infer` crate (magic byte analysis)
+//! - Extension-based fallback via `mime_guess` crate
+//! - `FileType` enum to represent all supported vault content types
+//! - Keep structured data parsers (this module) separate from binary/text
+//!   detection
+//!
+//! The current design intentionally stays lean and focused on the immediate
+//! need (config/schema loading) while remaining extensible via additional
+//! modules in `adapters/spi/fs/` when vault indexing requirements emerge.
 //!
 //! # Usage
 //!
@@ -34,79 +59,33 @@ use serde::de::DeserializeOwned;
 
 use super::errors::ParseError;
 
-/// Parser strategy enum for different config file formats.
-///
-/// Uses enum dispatch instead of trait objects for better type safety and
-/// performance.
-#[expect(
-    clippy::exhaustive_enums,
-    reason = "Known set of supported configuration formats"
-)]
-#[derive(Debug, Clone, PartialEq)]
-pub enum ParserStrategy {
-    /// JSON parser.
-    Json(Json),
-    /// TOML parser.
-    Toml(Toml),
-    /// YAML parser.
-    Yaml(Yaml),
-}
-
-impl ParserStrategy {
-    /// Check if this parser can handle the given file path.
-    #[inline]
-    #[must_use]
-    pub fn can_parse(&self, path: &Path) -> bool {
-        match *self {
-            Self::Json(_) => Json::can_parse(path),
-            Self::Toml(_) => Toml::can_parse(path),
-            Self::Yaml(_) => Yaml::can_parse(path),
-        }
-    }
-
-    /// Check if this parser matches the given format string.
-    #[inline]
-    #[must_use]
-    pub fn matches_format(&self, format: &str) -> bool {
-        match *self {
-            Self::Json(_) => format.eq_ignore_ascii_case("json"),
-            Self::Toml(_) => format.eq_ignore_ascii_case("toml"),
-            Self::Yaml(_) => format.eq_ignore_ascii_case("yaml"),
-        }
-    }
-
-    /// Parse content string into type T.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ParseError` if parsing fails.
-    #[inline]
-    pub fn parse<T: DeserializeOwned>(
-        &self,
-        path: &Path,
-        content: &str,
-    ) -> Result<T, ParseError> {
-        match *self {
-            Self::Json(_) => Json::parse(path, content),
-            Self::Toml(_) => Toml::parse(path, content),
-            Self::Yaml(_) => Yaml::parse(path, content),
-        }
-    }
-}
-
 /// TOML parser strategy.
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Toml;
 
 impl Toml {
-    /// Check if this parser can handle the given file path.
+    /// Check if this parser can handle the given file path by extension.
     #[inline]
     #[must_use]
     pub fn can_parse(path: &Path) -> bool {
         path.extension()
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
+    }
+
+    /// Detect if content looks like TOML format.
+    ///
+    /// Checks for TOML-specific patterns:
+    /// - Contains `[table]` headers
+    /// - Contains `key = value` assignments without colons
+    #[inline]
+    #[must_use]
+    pub fn detect(content: &str) -> bool {
+        let trimmed = content.trim_start();
+        // TOML: contains [ (table) or = (key-value) without : (YAML has :)
+        trimmed.contains('[')
+            || (trimmed.contains('=') && !trimmed.contains(':'))
     }
 
     /// Parse content string into type T.
@@ -149,13 +128,25 @@ impl Toml {
 pub struct Json;
 
 impl Json {
-    /// Check if this parser can handle the given file path.
+    /// Check if this parser can handle the given file path by extension.
     #[inline]
     #[must_use]
     pub fn can_parse(path: &Path) -> bool {
         path.extension()
             .and_then(|ext| ext.to_str())
             .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    }
+
+    /// Detect if content looks like JSON format.
+    ///
+    /// Checks for JSON-specific patterns:
+    /// - Starts with `{` (object)
+    /// - Starts with `[` (array)
+    #[inline]
+    #[must_use]
+    pub fn detect(content: &str) -> bool {
+        let trimmed = content.trim_start();
+        trimmed.starts_with('{') || trimmed.starts_with('[')
     }
 
     /// Parse content string into type T.
@@ -183,13 +174,28 @@ impl Json {
 pub struct Yaml;
 
 impl Yaml {
-    /// Check if this parser can handle the given file path.
+    /// Check if this parser can handle the given file path by extension.
     #[inline]
     #[must_use]
     pub fn can_parse(path: &Path) -> bool {
         path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
             ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml")
         })
+    }
+
+    /// Detect if content looks like YAML format.
+    ///
+    /// Checks for YAML-specific patterns:
+    /// - Starts with `---` (document separator)
+    /// - Contains `key: value` patterns without `=` (TOML has `=`)
+    #[inline]
+    #[must_use]
+    pub fn detect(content: &str) -> bool {
+        let trimmed = content.trim_start();
+        // YAML: contains --- (document separator) or key: patterns without =
+        // (TOML has =)
+        trimmed.starts_with("---")
+            || (trimmed.contains(':') && !trimmed.contains('='))
     }
 
     /// Parse content string into type T.
@@ -217,39 +223,37 @@ impl Yaml {
     }
 }
 
-/// Auto-detecting file parser.
+/// Auto-detecting file parser for structured configuration formats.
 ///
 /// Dispatches to the appropriate parser based on file extension or content
 /// analysis. Supports TOML, JSON, and YAML formats.
 ///
+/// # Design Philosophy
+///
+/// - **Zero-sized type**: No runtime state, pure dispatch logic
+/// - **Enum dispatch**: Uses compile-time polymorphism (no vtables)
+/// - **Extension first**: Leverages `std::path::Path` for fast extension checks
+/// - **Content fallback**: Heuristic detection for extensionless files
+///
 /// Format detection follows this priority:
 /// 1. File extension (fastest)
-/// 2. Content analysis fallback (for files without extensions or correction)
-#[derive(Debug, Clone)]
+/// 2. Content analysis fallback (for files without extensions)
+///
+/// # Future Extensibility
+///
+/// This type remains `#[non_exhaustive]` to allow future addition of methods
+/// for vault file type detection (markdown, images, PDFs) without breaking
+/// changes. The zero-sized design means adding methods has no cost.
+#[derive(Debug, Clone, Default)]
 #[non_exhaustive]
-pub struct Dispatcher {
-    parsers: Vec<ParserStrategy>,
-}
-
-impl Default for Dispatcher {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
-}
+pub struct Dispatcher;
 
 impl Dispatcher {
-    /// Create a new dispatcher with all format strategies.
+    /// Create a new dispatcher.
     #[must_use]
     #[inline]
-    pub fn new() -> Self {
-        Self {
-            parsers: vec![
-                ParserStrategy::Json(Json),
-                ParserStrategy::Toml(Toml),
-                ParserStrategy::Yaml(Yaml),
-            ],
-        }
+    pub const fn new() -> Self {
+        Self
     }
 
     /// Parse file content with automatic format detection.
@@ -276,33 +280,38 @@ impl Dispatcher {
         path: &Path,
         content: &str,
     ) -> Result<T, ParseError> {
-        let mut candidates = Vec::new();
-
-        // First priority: extension-based detection
-        for parser in &self.parsers {
-            if parser.can_parse(path) {
-                candidates.push(parser);
-                break; // Only one parser per extension
-            }
+        // First priority: Try extension-based detection
+        if Json::can_parse(path)
+            && let Ok(result) = Json::parse(path, content)
+        {
+            return Ok(result);
+        }
+        if Toml::can_parse(path)
+            && let Ok(result) = Toml::parse(path, content)
+        {
+            return Ok(result);
+        }
+        if Yaml::can_parse(path)
+            && let Ok(result) = Yaml::parse(path, content)
+        {
+            return Ok(result);
         }
 
-        // Second priority: content-based detection
-        if let Some(format) = detect_format_from_content(content) {
-            for parser in &self.parsers {
-                if parser.matches_format(format)
-                    && !candidates.contains(&parser)
-                {
-                    candidates.push(parser);
-                }
-            }
+        // Second priority: Try content-based detection
+        if Json::detect(content)
+            && let Ok(result) = Json::parse(path, content)
+        {
+            return Ok(result);
         }
-
-        // Try each candidate parser
-        for parser in candidates {
-            if let Ok(result) = parser.parse(path, content) {
-                return Ok(result);
-            }
-            // Try next candidate on error
+        if Yaml::detect(content)
+            && let Ok(result) = Yaml::parse(path, content)
+        {
+            return Ok(result);
+        }
+        if Toml::detect(content)
+            && let Ok(result) = Toml::parse(path, content)
+        {
+            return Ok(result);
         }
 
         Err(ParseError::UnsupportedFormat {
@@ -310,37 +319,6 @@ impl Dispatcher {
             supported: vec!["toml", "json", "yaml", "yml"],
         })
     }
-}
-
-/// Detect file format from content analysis.
-///
-/// Returns the likely format based on content patterns.
-/// Used as fallback when extension-based detection fails.
-#[must_use]
-fn detect_format_from_content(content: &str) -> Option<&'static str> {
-    let trimmed = content.trim_start();
-
-    // JSON: starts with { or [
-    if trimmed.starts_with('{') || trimmed.starts_with('[') {
-        return Some("json");
-    }
-
-    // YAML: contains --- (document separator) or key: patterns without = (TOML
-    // has =)
-    if trimmed.starts_with("---")
-        || (trimmed.contains(':') && !trimmed.contains('='))
-    {
-        return Some("yaml");
-    }
-
-    // TOML: contains [ (table) or = (key-value) without : (YAML has :)
-    if trimmed.contains('[')
-        || (trimmed.contains('=') && !trimmed.contains(':'))
-    {
-        return Some("toml");
-    }
-
-    None
 }
 
 #[cfg(test)]
