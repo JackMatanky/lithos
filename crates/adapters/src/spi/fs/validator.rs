@@ -341,6 +341,8 @@ mod tests {
         use super::*;
 
         #[test]
+        // VAL-001: Create flexible validator for config files (allows dotfile
+        // symlinks)
         fn creates_flexible_validator() {
             let validator = Validator::new_flexible();
             assert!(matches!(validator.mode, Mode::Flexible));
@@ -348,6 +350,8 @@ mod tests {
 
         #[test]
         #[expect(clippy::unreachable, reason = "Explicit check for test mode")]
+        // VAL-002: Create strict validator with root boundary enforcement (P0:
+        // Security-critical)
         fn creates_strict_validator_with_root() {
             let root = PathBuf::from(".");
             let validator = Validator::new_strict(root);
@@ -366,6 +370,7 @@ mod tests {
         use super::*;
 
         #[test]
+        // VAL-003: Reject .. path traversal attacks (P0: Security-critical)
         fn rejects_double_dot_traversal() {
             let validator = Validator::new_flexible();
             let result = validator.validate("../../etc/passwd");
@@ -376,6 +381,8 @@ mod tests {
         }
 
         #[test]
+        // VAL-004: Reject single .. parent directory traversal (P0:
+        // Security-critical)
         fn rejects_single_parent_traversal() {
             let validator = Validator::new_flexible();
             let result = validator.validate("../config.toml");
@@ -386,6 +393,8 @@ mod tests {
         }
 
         #[test]
+        // VAL-005: Reject .. traversal embedded in valid path (P0:
+        // Security-critical)
         fn rejects_mid_path_traversal() {
             let validator = Validator::new_flexible();
             let result = validator.validate("valid/../../etc/passwd");
@@ -400,6 +409,8 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses expect for Result validation"
         )]
+        // VAL-006: Treat encoded characters as literal (no path traversal
+        // bypass)
         fn handles_encoded_characters_as_literal() {
             let validator = Validator::new_flexible();
             validator.validate("safe%2Ffile").expect("should be valid");
@@ -410,6 +421,8 @@ mod tests {
         use super::*;
 
         #[test]
+        // VAL-007: Reject Unix absolute paths to prevent jail escapes (P0:
+        // Security-critical)
         fn rejects_unix_absolute_path() {
             let validator = Validator::new_flexible();
             let result = validator.validate("/etc/hosts");
@@ -421,6 +434,8 @@ mod tests {
 
         #[test]
         #[cfg(target_os = "windows")]
+        // VAL-008: Reject Windows absolute paths to prevent jail escapes (P0:
+        // Security-critical)
         fn rejects_windows_absolute_path() {
             let validator = Validator::new_flexible();
             let result = validator.validate("C:\\Windows\\System32");
@@ -435,6 +450,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses expect for Result validation"
         )]
+        // VAL-009: Accept relative paths as safe for vault operations
         fn accepts_relative_path() {
             let validator = Validator::new_flexible();
             validator.validate("config/lithos.toml").expect("should be valid");
@@ -445,6 +461,7 @@ mod tests {
         use super::*;
 
         #[test]
+        // VAL-010: Reject .git directory access (P0: Security-critical)
         fn rejects_git_config() {
             let validator = Validator::new_flexible();
             let result = validator.validate(".git/config");
@@ -455,6 +472,7 @@ mod tests {
         }
 
         #[test]
+        // VAL-011: Reject .env file access (P0: Security-critical)
         fn rejects_env_file() {
             let validator = Validator::new_flexible();
             let result = validator.validate(".env");
@@ -465,6 +483,7 @@ mod tests {
         }
 
         #[test]
+        // VAL-012: Reject nested hidden files (P0: Security-critical)
         fn rejects_nested_hidden_file() {
             let validator = Validator::new_flexible();
             let result = validator.validate("config/.env");
@@ -475,6 +494,7 @@ mod tests {
         }
 
         #[test]
+        // VAL-013: Reject SSH key access (P0: Security-critical)
         fn rejects_ssh_keys() {
             let validator = Validator::new_flexible();
             let result = validator.validate(".ssh/id_rsa");
@@ -489,6 +509,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses expect for Result validation"
         )]
+        // VAL-014: Accept normal files without dot prefix
         fn accepts_normal_file() {
             let validator = Validator::new_flexible();
             validator.validate("notes/daily.md").expect("should be valid");
@@ -503,6 +524,8 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test setup uses expect and std::fs for setup"
         )]
+        // VAL-015: Reject symlinks escaping root boundary (P0:
+        // Security-critical)
         async fn rejects_escaped_symlink() {
             let ws = Workspace::new();
 
@@ -529,6 +552,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses Result validation"
         )]
+        // VAL-016: Accept symlinks within root boundary
         async fn accepts_internal_symlink() {
             let ws = Workspace::new();
             let target = ws.create_file("target.txt", "internal content");
@@ -546,6 +570,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test setup uses expect and std::fs for setup"
         )]
+        // VAL-017: Detect and reject symlink loops
         async fn detects_symlink_loop() {
             let ws = Workspace::new();
             let link_a = ws.root.join("link_a");
@@ -576,6 +601,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test setup uses expect and std::fs for setup"
         )]
+        // VAL-018: Allow external symlinks in flexible mode (for dotfiles)
         async fn allows_external_symlink() {
             let ws = Workspace::new();
 
@@ -599,6 +625,8 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses Result validation"
         )]
+        // VAL-019: Enforce traversal checks on input path even in flexible mode
+        // (P0: Security-critical)
         async fn still_checks_input_traversal() {
             let validator = Validator::new_flexible();
             let result =
@@ -618,6 +646,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses expect for Result validation"
         )]
+        // VAL-020: Accept simple filenames as valid paths
         fn accepts_simple_filename() {
             let validator = Validator::new_flexible();
             validator.validate("config.toml").expect("should be valid");
@@ -628,6 +657,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses expect for Result validation"
         )]
+        // VAL-021: Accept nested directory paths
         fn accepts_nested_path() {
             let validator = Validator::new_flexible();
             validator
@@ -640,6 +670,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses expect for Result validation"
         )]
+        // VAL-022: Return Cow<Path> for zero-allocation validation
         fn returns_cow_path() {
             let validator = Validator::new_flexible();
             let result = validator.validate("config.toml");
@@ -653,6 +684,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses expect for Result validation"
         )]
+        // VAL-023: Preserve valid paths through normalization
         fn normalization_preserves_valid_paths() {
             let validator = Validator::new_flexible();
             validator.validate("./config.toml").expect("should be valid");
@@ -667,6 +699,7 @@ mod tests {
             clippy::disallowed_methods,
             reason = "Test uses expect for Result validation"
         )]
+        // VAL-024: Handle platform-specific path separators correctly
         fn handles_platform_separators() {
             let validator = Validator::new_flexible();
             #[cfg(unix)]
