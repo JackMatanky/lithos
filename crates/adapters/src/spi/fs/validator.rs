@@ -344,7 +344,11 @@ mod tests {
         // VAL-001: Create flexible validator for config files (allows dotfile
         // symlinks)
         fn creates_flexible_validator() {
+            // GIVEN a flexible validation configuration
+            // WHEN a validator is created
             let validator = Validator::new_flexible();
+
+            // THEN it uses Flexible mode
             assert!(matches!(validator.mode, Mode::Flexible));
         }
 
@@ -353,8 +357,13 @@ mod tests {
         // VAL-002: Create strict validator with root boundary enforcement (P0:
         // Security-critical)
         fn creates_strict_validator_with_root() {
+            // GIVEN a root directory path
             let root = PathBuf::from(".");
+
+            // WHEN a strict validator is created
             let validator = Validator::new_strict(root);
+
+            // THEN it uses Strict mode and canonicalizes the root
             match validator.mode {
                 Mode::Strict {
                     root: r,
@@ -367,37 +376,24 @@ mod tests {
     }
 
     mod path_traversal {
+        use rstest::rstest;
+
         use super::*;
 
-        #[test]
-        // VAL-003: Reject .. path traversal attacks (P0: Security-critical)
-        fn rejects_double_dot_traversal() {
-            let validator = Validator::new_flexible();
-            let result = validator.validate("../../etc/passwd");
-            assert!(matches!(
-                result,
-                Err(PathValidationError::PathTraversalError)
-            ));
-        }
-
-        #[test]
-        // VAL-004: Reject single .. parent directory traversal (P0:
+        #[rstest]
+        #[case::double_dot("../../etc/passwd")]
+        #[case::single_parent("../config.toml")]
+        #[case::mid_path("valid/../../etc/passwd")]
+        // VAL-003, VAL-004, VAL-005: Reject path traversal attacks (P0:
         // Security-critical)
-        fn rejects_single_parent_traversal() {
+        fn rejects_path_traversal(#[case] input: &str) {
+            // GIVEN a path containing traversal components (..)
             let validator = Validator::new_flexible();
-            let result = validator.validate("../config.toml");
-            assert!(matches!(
-                result,
-                Err(PathValidationError::PathTraversalError)
-            ));
-        }
 
-        #[test]
-        // VAL-005: Reject .. traversal embedded in valid path (P0:
-        // Security-critical)
-        fn rejects_mid_path_traversal() {
-            let validator = Validator::new_flexible();
-            let result = validator.validate("valid/../../etc/passwd");
+            // WHEN the path is validated
+            let result = validator.validate(input);
+
+            // THEN it returns a PathTraversalError
             assert!(matches!(
                 result,
                 Err(PathValidationError::PathTraversalError)
@@ -412,33 +408,36 @@ mod tests {
         // VAL-006: Treat encoded characters as literal (no path traversal
         // bypass)
         fn handles_encoded_characters_as_literal() {
+            // GIVEN a path with URL-encoded characters
             let validator = Validator::new_flexible();
+
+            // WHEN the path is validated
+            // THEN it is treated literally and accepted if safe
             validator.validate("safe%2Ffile").expect("should be valid");
         }
     }
 
     mod absolute_paths {
+        use rstest::rstest;
+
         use super::*;
 
-        #[test]
-        // VAL-007: Reject Unix absolute paths to prevent jail escapes (P0:
+        #[rstest]
+        #[case::unix("/etc/hosts")]
+        #[cfg_attr(
+            target_os = "windows",
+            case::windows("C:\\Windows\\System32")
+        )]
+        // VAL-007, VAL-008: Reject absolute paths to prevent jail escapes (P0:
         // Security-critical)
-        fn rejects_unix_absolute_path() {
+        fn rejects_absolute_path(#[case] input: &str) {
+            // GIVEN an absolute path
             let validator = Validator::new_flexible();
-            let result = validator.validate("/etc/hosts");
-            assert!(matches!(
-                result,
-                Err(PathValidationError::AbsolutePathError(_))
-            ));
-        }
 
-        #[test]
-        #[cfg(target_os = "windows")]
-        // VAL-008: Reject Windows absolute paths to prevent jail escapes (P0:
-        // Security-critical)
-        fn rejects_windows_absolute_path() {
-            let validator = Validator::new_flexible();
-            let result = validator.validate("C:\\Windows\\System32");
+            // WHEN the path is validated
+            let result = validator.validate(input);
+
+            // THEN it returns an AbsolutePathError
             assert!(matches!(
                 result,
                 Err(PathValidationError::AbsolutePathError(_))
@@ -452,52 +451,35 @@ mod tests {
         )]
         // VAL-009: Accept relative paths as safe for vault operations
         fn accepts_relative_path() {
+            // GIVEN a relative path
             let validator = Validator::new_flexible();
+
+            // WHEN the path is validated
+            // THEN it is accepted as a safe relative path
             validator.validate("config/lithos.toml").expect("should be valid");
         }
     }
 
     mod restricted_files {
+        use rstest::rstest;
+
         use super::*;
 
-        #[test]
-        // VAL-010: Reject .git directory access (P0: Security-critical)
-        fn rejects_git_config() {
+        #[rstest]
+        #[case::git(".git/config")]
+        #[case::env(".env")]
+        #[case::nested_env("config/.env")]
+        #[case::ssh(".ssh/id_rsa")]
+        // VAL-010, VAL-011, VAL-012, VAL-013: Reject hidden/sensitive files
+        // (P0: Security-critical)
+        fn rejects_restricted_files(#[case] input: &str) {
+            // GIVEN a path to a restricted (hidden) file
             let validator = Validator::new_flexible();
-            let result = validator.validate(".git/config");
-            assert!(matches!(
-                result,
-                Err(PathValidationError::RestrictedPathError(_))
-            ));
-        }
 
-        #[test]
-        // VAL-011: Reject .env file access (P0: Security-critical)
-        fn rejects_env_file() {
-            let validator = Validator::new_flexible();
-            let result = validator.validate(".env");
-            assert!(matches!(
-                result,
-                Err(PathValidationError::RestrictedPathError(_))
-            ));
-        }
+            // WHEN the path is validated
+            let result = validator.validate(input);
 
-        #[test]
-        // VAL-012: Reject nested hidden files (P0: Security-critical)
-        fn rejects_nested_hidden_file() {
-            let validator = Validator::new_flexible();
-            let result = validator.validate("config/.env");
-            assert!(matches!(
-                result,
-                Err(PathValidationError::RestrictedPathError(_))
-            ));
-        }
-
-        #[test]
-        // VAL-013: Reject SSH key access (P0: Security-critical)
-        fn rejects_ssh_keys() {
-            let validator = Validator::new_flexible();
-            let result = validator.validate(".ssh/id_rsa");
+            // THEN it returns a RestrictedPathError
             assert!(matches!(
                 result,
                 Err(PathValidationError::RestrictedPathError(_))
@@ -511,7 +493,11 @@ mod tests {
         )]
         // VAL-014: Accept normal files without dot prefix
         fn accepts_normal_file() {
+            // GIVEN a normal file path
             let validator = Validator::new_flexible();
+
+            // WHEN the path is validated
+            // THEN it is accepted
             validator.validate("notes/daily.md").expect("should be valid");
         }
     }
@@ -527,9 +513,8 @@ mod tests {
         // VAL-015: Reject symlinks escaping root boundary (P0:
         // Security-critical)
         async fn rejects_escaped_symlink() {
+            // GIVEN a strict validator and a symlink pointing outside the root
             let ws = Workspace::new();
-
-            // Create symlink pointing outside root
             let outside_target = std::env::temp_dir().join("outside.txt");
             std::fs::write(&outside_target, "outside content")
                 .expect("test setup failed");
@@ -538,8 +523,11 @@ mod tests {
                 ws.create_symlink("escaped_link", &outside_target);
 
             let validator = Validator::new_strict(ws.root.clone());
+
+            // WHEN the symlink is resolved
             let result = validator.resolve_safe_symlink(&symlink_path).await;
 
+            // THEN it returns a SymlinkEscapeError
             assert!(matches!(
                 result,
                 Err(PathValidationError::SymlinkEscapeError)
@@ -554,11 +542,15 @@ mod tests {
         )]
         // VAL-016: Accept symlinks within root boundary
         async fn accepts_internal_symlink() {
+            // GIVEN a strict validator and a symlink pointing inside the root
             let ws = Workspace::new();
             let target = ws.create_file("target.txt", "internal content");
             let symlink_path = ws.create_symlink("internal_link", &target);
 
             let validator = Validator::new_strict(ws.root.clone());
+
+            // WHEN the symlink is resolved
+            // THEN it succeeds
             validator
                 .resolve_safe_symlink(&symlink_path)
                 .await
@@ -572,6 +564,7 @@ mod tests {
         )]
         // VAL-017: Detect and reject symlink loops
         async fn detects_symlink_loop() {
+            // GIVEN a strict validator and a symlink loop
             let ws = Workspace::new();
             let link_a = ws.root.join("link_a");
             let link_b = ws.root.join("link_b");
@@ -588,7 +581,11 @@ mod tests {
             }
 
             let validator = Validator::new_strict(ws.root.clone());
+
+            // WHEN the symlink is resolved
             let result = validator.resolve_safe_symlink(&link_a).await;
+
+            // THEN it returns an IoError (loop detected)
             assert!(matches!(result, Err(PathValidationError::IoError(_))));
         }
     }
@@ -603,6 +600,8 @@ mod tests {
         )]
         // VAL-018: Allow external symlinks in flexible mode (for dotfiles)
         async fn allows_external_symlink() {
+            // GIVEN a flexible validator and a symlink pointing outside the
+            // root
             let ws = Workspace::new();
 
             let outside_target = std::env::temp_dir().join("dotfile.toml");
@@ -613,6 +612,9 @@ mod tests {
                 ws.create_symlink("dotfile_link", &outside_target);
 
             let validator = Validator::new_flexible();
+
+            // WHEN the symlink is resolved
+            // THEN it succeeds (Flexible mode allows external links)
             validator
                 .resolve_safe_symlink(&symlink_path)
                 .await
@@ -628,9 +630,14 @@ mod tests {
         // VAL-019: Enforce traversal checks on input path even in flexible mode
         // (P0: Security-critical)
         async fn still_checks_input_traversal() {
+            // GIVEN a flexible validator and an input path with traversal
             let validator = Validator::new_flexible();
+
+            // WHEN the symlink is resolved
             let result =
                 validator.resolve_safe_symlink("../../../dotfile").await;
+
+            // THEN it returns a PathTraversalError (checks input path first)
             assert!(matches!(
                 result,
                 Err(PathValidationError::PathTraversalError)
@@ -639,30 +646,28 @@ mod tests {
     }
 
     mod valid_paths {
+        use rstest::rstest;
+
         use super::*;
 
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for Result validation"
-        )]
-        // VAL-020: Accept simple filenames as valid paths
-        fn accepts_simple_filename() {
+        #[rstest]
+        #[case::simple("config.toml")]
+        #[case::nested("notes/2024/january/daily.md")]
+        #[case::dot_relative("./config.toml")]
+        // VAL-020, VAL-021, VAL-023: Accept safe paths
+        fn accepts_valid_paths(#[case] input: &str) {
+            // GIVEN a safe relative path
             let validator = Validator::new_flexible();
-            validator.validate("config.toml").expect("should be valid");
-        }
 
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for Result validation"
-        )]
-        // VAL-021: Accept nested directory paths
-        fn accepts_nested_path() {
-            let validator = Validator::new_flexible();
-            validator
-                .validate("notes/2024/january/daily.md")
-                .expect("should be valid");
+            // WHEN the path is validated
+            // THEN it succeeds
+            let result = validator.validate(input);
+            assert!(
+                result.is_ok(),
+                "should be valid: {}, got {:?}",
+                input,
+                result.err()
+            );
         }
 
         #[test]
@@ -672,22 +677,16 @@ mod tests {
         )]
         // VAL-022: Return Cow<Path> for zero-allocation validation
         fn returns_cow_path() {
+            // GIVEN a safe path
             let validator = Validator::new_flexible();
+
+            // WHEN the path is validated
             let result = validator.validate("config.toml");
             let validated_path = result.expect("should be valid");
+
+            // THEN it returns a Cow::Borrowed path (zero allocation)
             assert!(matches!(validated_path, Cow::Borrowed(_)));
             assert_eq!(validated_path.as_ref(), Path::new("config.toml"));
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for Result validation"
-        )]
-        // VAL-023: Preserve valid paths through normalization
-        fn normalization_preserves_valid_paths() {
-            let validator = Validator::new_flexible();
-            validator.validate("./config.toml").expect("should be valid");
         }
     }
 
@@ -701,11 +700,15 @@ mod tests {
         )]
         // VAL-024: Handle platform-specific path separators correctly
         fn handles_platform_separators() {
+            // GIVEN a path using platform-specific separators
             let validator = Validator::new_flexible();
             #[cfg(unix)]
             let path = "config/notes/file.md";
             #[cfg(windows)]
             let path = "config\\notes\\file.md";
+
+            // WHEN the path is validated
+            // THEN it is correctly handled
             validator.validate(path).expect("should be valid");
         }
     }
