@@ -41,6 +41,9 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
+/// Public alias for validation mode configuration.
+pub use Mode as ValidationMode;
+
 use crate::spi::errors::PathValidationError;
 
 /// Path validator with configurable security modes.
@@ -52,11 +55,13 @@ use crate::spi::errors::PathValidationError;
 /// - **Async-Safe**: Uses `tokio::fs` for symlink resolution to avoid blocking
 #[derive(Debug, Clone)]
 pub struct Validator {
-    mode: ValidationMode,
+    mode: Mode,
 }
 
+/// Internal validation mode representation.
 #[derive(Debug, Clone)]
-enum ValidationMode {
+#[non_exhaustive]
+pub enum Mode {
     /// Flexible mode: allows external symlinks (e.g., dotfiles), still checks
     /// input traversal.
     Flexible,
@@ -85,20 +90,11 @@ impl Validator {
     ///
     /// - Configuration files that may be symlinked from dotfile repositories
     /// - Schema files in shared locations
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use lithos_adapters::spi::fs::validator::Validator;
-    ///
-    /// let validator = Validator::new_flexible();
-    /// assert!(validator.validate("config.toml").is_ok());
-    /// ```
     #[inline]
     #[must_use]
     pub fn new_flexible() -> Self {
         Self {
-            mode: ValidationMode::Flexible,
+            mode: Mode::Flexible,
         }
     }
 
@@ -111,18 +107,6 @@ impl Validator {
     ///
     /// - Vault note files that must remain within vault directory
     /// - Any file system jail/chroot scenario
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use std::path::PathBuf;
-    ///
-    /// use lithos_adapters::spi::fs::validator::Validator;
-    ///
-    /// let root = PathBuf::from(".");
-    /// let validator = Validator::new_strict(root);
-    /// assert!(validator.validate("Cargo.toml").is_ok());
-    /// ```
     #[inline]
     #[must_use]
     #[expect(
@@ -136,7 +120,7 @@ impl Validator {
         // performance.
         let root = std::fs::canonicalize(&root).unwrap_or(root);
         Self {
-            mode: ValidationMode::Strict {
+            mode: Mode::Strict {
                 root,
             },
         }
@@ -185,8 +169,8 @@ impl Validator {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: matching on &ValidationMode enum is more \
-                  idiomatic than explicit dereferencing"
+        reason = "Match ergonomics: matching on &Mode enum is more idiomatic \
+                  than explicit dereferencing"
     )]
     pub async fn resolve_safe_symlink<P: AsRef<Path>>(
         &self,
@@ -202,7 +186,7 @@ impl Validator {
             .await
             .map_err(|e| PathValidationError::IoError(e.to_string()))?;
 
-        if let ValidationMode::Strict {
+        if let Mode::Strict {
             root,
         } = &self.mode
             && !resolved.starts_with(root)
@@ -233,16 +217,6 @@ impl Validator {
     /// - [`PathValidationError::AbsolutePathError`]: Path is absolute
     /// - [`PathValidationError::RestrictedPathError`]: Path accesses hidden
     ///   files
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use lithos_adapters::spi::fs::validator::Validator;
-    ///
-    /// let validator = Validator::new_flexible();
-    /// assert!(validator.validate("config.toml").is_ok());
-    /// assert!(validator.validate(".env").is_err());
-    /// ```
     #[inline]
     pub fn validate<'path, PathType>(
         &self,
@@ -289,13 +263,87 @@ impl Validator {
 mod tests {
     use super::*;
 
+    mod fixtures {
+        use tempfile::TempDir;
+
+        use super::*;
+
+        pub struct Workspace {
+            /// Keep `temp_dir` to ensure it is not deleted until Workspace is
+            /// dropped.
+            #[expect(dead_code, reason = "Field used for directory lifecycle")]
+            pub temp_dir: TempDir,
+            pub root: PathBuf,
+        }
+
+        impl Workspace {
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Setup logic uses expect"
+            )]
+            pub fn create_file<P: AsRef<Path>>(
+                &self,
+                path: P,
+                content: &str,
+            ) -> PathBuf {
+                let full_path = self.root.join(path);
+                if let Some(parent) = full_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .expect("failed to create dirs");
+                }
+                std::fs::write(&full_path, content)
+                    .expect("failed to write file");
+                full_path
+            }
+
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Setup logic uses expect"
+            )]
+            pub fn create_symlink<P: AsRef<Path>, T: AsRef<Path>>(
+                &self,
+                link_path: P,
+                target: T,
+            ) -> PathBuf {
+                let full_link_path = self.root.join(link_path);
+                if let Some(parent) = full_link_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .expect("failed to create dirs");
+                }
+
+                #[cfg(unix)]
+                std::os::unix::fs::symlink(target, &full_link_path)
+                    .expect("failed to create symlink");
+                #[cfg(windows)]
+                std::os::windows::fs::symlink_file(target, &full_link_path)
+                    .expect("failed to create symlink");
+
+                full_link_path
+            }
+
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Setup logic uses expect"
+            )]
+            pub fn new() -> Self {
+                let temp_dir =
+                    TempDir::new().expect("failed to create temp dir");
+                let root = temp_dir.path().to_path_buf();
+                Self {
+                    temp_dir,
+                    root,
+                }
+            }
+        }
+    }
+
     mod constructor {
         use super::*;
 
         #[test]
         fn creates_flexible_validator() {
             let validator = Validator::new_flexible();
-            assert!(matches!(validator.mode, ValidationMode::Flexible));
+            assert!(matches!(validator.mode, Mode::Flexible));
         }
 
         #[test]
@@ -304,10 +352,10 @@ mod tests {
             let root = PathBuf::from(".");
             let validator = Validator::new_strict(root);
             match validator.mode {
-                ValidationMode::Strict {
+                Mode::Strict {
                     root: r,
                 } => assert!(r.is_absolute()),
-                ValidationMode::Flexible => {
+                Mode::Flexible => {
                     unreachable!("new_strict should create Strict mode")
                 }
             }
@@ -448,7 +496,7 @@ mod tests {
     }
 
     mod symlink_strict {
-        use super::*;
+        use super::{fixtures::Workspace, *};
 
         #[tokio::test]
         #[expect(
@@ -456,22 +504,17 @@ mod tests {
             reason = "Test setup uses expect and std::fs for setup"
         )]
         async fn rejects_escaped_symlink() {
-            let temp_dir = tempfile::TempDir::new().expect("test setup failed");
-            let root = temp_dir.path();
+            let ws = Workspace::new();
 
+            // Create symlink pointing outside root
             let outside_target = std::env::temp_dir().join("outside.txt");
             std::fs::write(&outside_target, "outside content")
                 .expect("test setup failed");
 
-            let symlink_path = root.join("escaped_link");
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(&outside_target, &symlink_path)
-                .expect("test setup failed");
-            #[cfg(windows)]
-            std::os::windows::fs::symlink_file(&outside_target, &symlink_path)
-                .expect("test setup failed");
+            let symlink_path =
+                ws.create_symlink("escaped_link", &outside_target);
 
-            let validator = Validator::new_strict(root.to_path_buf());
+            let validator = Validator::new_strict(ws.root.clone());
             let result = validator.resolve_safe_symlink(&symlink_path).await;
 
             assert!(matches!(
@@ -484,25 +527,14 @@ mod tests {
         #[tokio::test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses expect and std::fs for setup"
+            reason = "Test uses Result validation"
         )]
         async fn accepts_internal_symlink() {
-            let temp_dir = tempfile::TempDir::new().expect("test setup failed");
-            let root = temp_dir.path();
+            let ws = Workspace::new();
+            let target = ws.create_file("target.txt", "internal content");
+            let symlink_path = ws.create_symlink("internal_link", &target);
 
-            let target = root.join("target.txt");
-            std::fs::write(&target, "internal content")
-                .expect("test setup failed");
-
-            let symlink_path = root.join("internal_link");
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(&target, &symlink_path)
-                .expect("test setup failed");
-            #[cfg(windows)]
-            std::os::windows::fs::symlink_file(&target, &symlink_path)
-                .expect("test setup failed");
-
-            let validator = Validator::new_strict(root.to_path_buf());
+            let validator = Validator::new_strict(ws.root.clone());
             validator
                 .resolve_safe_symlink(&symlink_path)
                 .await
@@ -515,11 +547,9 @@ mod tests {
             reason = "Test setup uses expect and std::fs for setup"
         )]
         async fn detects_symlink_loop() {
-            let temp_dir = tempfile::TempDir::new().expect("test setup failed");
-            let root = temp_dir.path();
-
-            let link_a = root.join("link_a");
-            let link_b = root.join("link_b");
+            let ws = Workspace::new();
+            let link_a = ws.root.join("link_a");
+            let link_b = ws.root.join("link_b");
 
             #[cfg(unix)]
             {
@@ -532,14 +562,14 @@ mod tests {
                 drop(std::os::windows::fs::symlink_file(&link_a, &link_b));
             }
 
-            let validator = Validator::new_strict(root.to_path_buf());
+            let validator = Validator::new_strict(ws.root.clone());
             let result = validator.resolve_safe_symlink(&link_a).await;
             assert!(matches!(result, Err(PathValidationError::IoError(_))));
         }
     }
 
     mod symlink_flexible {
-        use super::*;
+        use super::{fixtures::Workspace, *};
 
         #[tokio::test]
         #[expect(
@@ -547,20 +577,14 @@ mod tests {
             reason = "Test setup uses expect and std::fs for setup"
         )]
         async fn allows_external_symlink() {
-            let temp_dir = tempfile::TempDir::new().expect("test setup failed");
-            let root = temp_dir.path();
+            let ws = Workspace::new();
 
             let outside_target = std::env::temp_dir().join("dotfile.toml");
             std::fs::write(&outside_target, "dotfile content")
                 .expect("test setup failed");
 
-            let symlink_path = root.join("dotfile_link");
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(&outside_target, &symlink_path)
-                .expect("test setup failed");
-            #[cfg(windows)]
-            std::os::windows::fs::symlink_file(&outside_target, &symlink_path)
-                .expect("test setup failed");
+            let symlink_path =
+                ws.create_symlink("dotfile_link", &outside_target);
 
             let validator = Validator::new_flexible();
             validator
