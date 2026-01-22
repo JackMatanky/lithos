@@ -3,6 +3,7 @@
 System has unified file loading strategies for different configuration formats that enable consistent parsing and validation across the application.
 **FRs covered:** Architecture requirements (file loading infrastructure)
 **Implementation Notes:**
+
 - Unified loading strategy for TOML, JSON, YAML files
 - File format detection and parsing
 - Basic validation infrastructure

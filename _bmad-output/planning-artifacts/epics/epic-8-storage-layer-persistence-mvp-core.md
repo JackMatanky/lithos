@@ -1,7 +1,9 @@
 # Epic 8: Storage Layer & Persistence **[MVP CORE]**
+
 System has zero-copy persistent storage with ACID transactions using Redb + rkyv that supports high-performance queries and maintains data consistency.
 **FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 0002)
 **Implementation Notes:**
+
 - Redb + rkyv per ADR 0002 (no SQLite - decision already made)
 - Storage schema design review against Epic 9-10 query requirements
 - Unit of Work pattern for transactional consistency
@@ -192,6 +194,7 @@ So that storage interactions can be tested in isolation without database setup.
 **Then** they simulate realistic storage behavior for comprehensive testing
 
 ## Story 8.10: Storage Error Recovery and Data Integrity
+
 As a user experiencing storage issues, I want the system to handle corruption, crashes, and recovery gracefully, so that my vault data remains safe and recoverable.
 **Acceptance Criteria:**
 **Given** storage corruption is detected

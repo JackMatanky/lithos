@@ -1,7 +1,9 @@
 # Epic 9: Vault File System Integration & Indexing Engine **[MVP CORE]**
+
 Users can index large vaults (1000+ files) in <2 seconds with incremental updates, reliable crash-free operation, and persistent storage.
 **FRs covered:** FR20, FR24, FR25
 **Implementation Notes:**
+
 - VaultReaderPort, VaultWriterPort, VaultScannerPort, MarkdownPort and mocks created
 - pulldown-cmark for markdown parsing (adapter layer per ADR 0004)
 - Sample vault notes from docs/refs/obsidian/ as test fixtures
@@ -298,6 +300,7 @@ So that vault interactions can be tested in isolation without filesystem access.
 **Then** they simulate realistic vault behavior for comprehensive testing
 
 ## Story 9.13: Performance Benchmarking for Vault Indexing (NFR2 Validation)
+
 As a performance engineer, I want comprehensive benchmarks for vault indexing operations, so that NFR2 (<2s for 1000+ files) is validated and monitored.
 **Acceptance Criteria:**
 **Given** vault indexing system is implemented
@@ -313,6 +316,7 @@ As a performance engineer, I want comprehensive benchmarks for vault indexing op
 **And** scaling characteristics are documented
 
 ## Story 9.14: Vault Operation Monitoring and Health Checks
+
 As a system administrator, I want continuous monitoring of vault operations, so that performance issues and failures are detected before they impact users.
 **Acceptance Criteria:**
 **Given** vault indexing is running
@@ -328,6 +332,7 @@ As a system administrator, I want continuous monitoring of vault operations, so 
 **And** they log detailed diagnostic information
 
 ## Story 9.15: Redb Storage Performance Regression Testing
+
 As a performance engineer, I want automated regression tests for Redb storage operations, so that the architectural choice of Redb + rkyv remains optimal and performance degradation is caught immediately.
 **Acceptance Criteria:**
 **Given** Redb storage implementation

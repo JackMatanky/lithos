@@ -3,6 +3,7 @@
 Users can define metadata schemas with field types, inheritance, and validation that provide input parameters for templates and enforce vault consistency.
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14
 **Implementation Notes:**
+
 - SchemaPort and mocks created in this epic
 - Sample schema files created from docs/schemas/ JSON examples using Epic 4 loading foundation
 - Schema validation (syntactic in adapter, semantic in domain)

@@ -1,7 +1,9 @@
 # Epic 10: Query Service & Knowledge Graph **[MVP CORE]**
+
 Users can perform fast lookups by filename, path, or schema keys, resolve wiki-links and aliases, and query metadata from other notes for template use.
 **FRs covered:** FR21, FR22, FR23
 **Implementation Notes:**
+
 - QueryPort and mocks created in this epic
 - CQRS read side (Epic 9 is write side)
 - Performance benchmarking stories for NFR1 validation (<500ms queries)
@@ -238,6 +240,7 @@ So that query interactions can be tested in isolation.
 **Then** they simulate realistic query behavior for comprehensive testing
 
 ## Story 10.12: Performance Benchmarking for Query Operations
+
 As a performance engineer, I want benchmarks for query operations to ensure fast lookups and efficient caching, so that query performance supports template execution requirements.
 **Acceptance Criteria:**
 **Given** query service is implemented

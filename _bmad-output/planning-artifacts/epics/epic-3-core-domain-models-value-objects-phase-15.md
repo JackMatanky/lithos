@@ -3,6 +3,7 @@
 Developers have a clear, shared domain language with rich domain models that embody business rules and validation logic, with domain events and CQRS ports for future adapter implementation.
 **FRs covered:** Architecture requirements (DDD domain models)
 **Implementation Notes:**
+
 - Core stable models: Config (Vault/Global merging), Schema (with PropertyBank), Note (aggregate), Template
 - Models informed by Obsidian structures and Go implementation lessons learned
 - Hexagonal architecture: Domain contains business logic, adapters handle I/O
@@ -70,6 +71,7 @@ So that the domain accurately represents the rich structure of notes in Obsidian
 **Given** I have researched Obsidian note structures and wiki-link patterns
 **When** I review the Note bounded context
 **Then** the Note aggregate includes these subentities:
+
 - Note (main entity with identity and metadata)
 - Frontmatter (YAML metadata with fields and Config integration)
 - Links (wiki-links, aliases, and references)
@@ -110,6 +112,7 @@ So that schemas can define reusable property definitions with rich validation co
 **Given** I have researched schema domain patterns for metadata validation systems
 **When** I review the Schema bounded context
 **Then** it includes these domain models:
+
 - Schema entity (Name, Extends, Excludes, Properties[], ResolvedProperties[])
 - PropertyBank entity (singleton registry of reusable Property definitions)
 - Property entity (ID, Name, Required, Array, Spec)
@@ -130,6 +133,7 @@ So that schemas can define reusable property definitions with rich validation co
 **Given** PropertySpec variants are defined
 **When** I review type-specific constraints
 **Then** each variant supports appropriate validation:
+
 - StringSpec: enum values and regex patterns
 - NumberSpec: min/max/step constraints
 - BoolSpec: marker type (no constraints)
@@ -259,6 +263,7 @@ So that developers understand the domain language and can work effectively with 
 **Given** all Epic 3 domain models are implemented
 **When** I create documentation
 **Then** it includes developer-focused content:
+
 - Domain entity relationships and bounded contexts
 - Semantic validation rules for each entity
 - Domain events and their purposes

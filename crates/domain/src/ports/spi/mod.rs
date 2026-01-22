@@ -2,4 +2,7 @@
 
 pub mod fs;
 
-pub use fs::FileReader as FileReaderPort;
+// Re-export with File prefix for public API
+pub use fs::{
+    Content as FileContent, Format as FileFormat, Reader as FileReaderPort,
+};
