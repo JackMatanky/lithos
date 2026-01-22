@@ -1,8 +1,5 @@
 //! Service provider interface ports.
-
-pub mod fs;
-
-// Re-export with File prefix for public API
-pub use fs::{
-    Content as FileContent, Format as FileFormat, Reader as FileReaderPort,
-};
+//!
+//! Reserved for future infrastructure ports (e.g., storage, external APIs).
+//! Note: File parsing is an infrastructure utility in the adapters layer,
+//! not a domain port. See `crates/adapters/src/spi/parsers.rs`.
