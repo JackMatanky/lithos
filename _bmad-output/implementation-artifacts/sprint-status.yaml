@@ -70,12 +70,10 @@ development_status:
 
     epic-4: "in-progress"
     4-1-create-unified-file-loading-interface: "review"
-    4-2-implement-format-detection-parsing: "ready-for-dev"
-    4-3-add-basic-file-loading-validation: "ready-for-dev"
-    4-4-create-loading-strategy-mocks: "ready-for-dev"
-    4-5-adversarial-refactor-of-epic-4-foundation: "ready-for-dev"
-    4-6-review-epic-4-test-suite: "ready-for-dev"
-    4-7-documentation-audit: "ready-for-dev"
+    4-2-implement-path-validation-utilities: "ready-for-dev"
+    4-3-adversarial-refactor-of-epic-4-foundation: "ready-for-dev"
+    4-4-review-epic-4-test-suite: "ready-for-dev"
+    4-5-documentation-audit: "ready-for-dev"
     epic-4-retrospective: "optional"
 
     epic-5: "backlog"
