@@ -3,10 +3,10 @@
 //! This module contains infrastructure utilities for implementing domain ports.
 
 pub mod errors;
-pub mod parsers;
+pub mod fs;
 
-// Re-export parser types with descriptive names
-pub use parsers::{
+// Re-export parser types with descriptive names for convenience
+pub use fs::parsers::{
     Dispatcher as ParserDispatcher, Json as JsonParser, Toml as TomlParser,
     Yaml as YamlParser,
 };

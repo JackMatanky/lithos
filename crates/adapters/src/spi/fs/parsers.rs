@@ -57,7 +57,7 @@ use std::path::Path;
 
 use serde::de::DeserializeOwned;
 
-use super::errors::ParseError;
+use crate::spi::errors::ParseError;
 
 /// TOML parser strategy.
 #[derive(Debug, Clone, Default, PartialEq)]
