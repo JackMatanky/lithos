@@ -317,17 +317,41 @@ Reviewed Epic 3 story files (3-1, 3-5) to adopt proven TDD patterns:
 
 ### Completion Notes List
 
-- Architectural Pivot: Replaced generic FileReaderPort with Parser Strategy pattern in adapters/spi.
-- Implementation: Created ParserStrategy, Dispatcher, and ParseError for TOML/JSON/YAML handling.
-- Testing: Verified all parsing logic with comprehensive unit tests (100% coverage of new modules).
-- Quality: Fixed all linter errors and verified clean build.
+- Architectural Pivot: Replaced generic FileReaderPort with Parser Strategy pattern in adapters/spi/fs.
+- Implementation: Created Json/Toml/Yaml parsers with detection methods, zero-sized Dispatcher, and ParseError for TOML/JSON/YAML handling.
+- Testing: Verified all parsing logic with comprehensive unit tests (28 unit tests, all passing).
+- Quality: Fixed all linter errors and verified clean build (zero warnings).
 - Post-Review Fixes: Added content analysis fallback, corrected task completion status, synchronized ACs with pivot scope.
+- Refactoring: Simplified to zero-cost abstraction (unit struct Dispatcher), moved detection logic to parser structs.
+- File Organization: Moved parsers to spi/fs/ per Epic 4 specification, kept errors.rs general in spi/.
 
 ### File List
 
-Expected files to be created:
-- crates/adapters/src/spi/parsers.rs (Parser strategies and Dispatcher)
-- crates/adapters/src/spi/errors.rs (ParseError implementation)
-- crates/adapters/src/spi/mod.rs (re-exports)
-- crates/adapters/src/lib.rs (crate exports)
-- crates/adapters/Cargo.toml (dependencies)
+Files created:
+- crates/adapters/src/spi/fs/parsers.rs (Parser strategies with detect() methods and Dispatcher)
+- crates/adapters/src/spi/fs/mod.rs (Filesystem utilities module)
+- crates/adapters/src/spi/errors.rs (ParseError implementation - general SPI errors)
+- crates/adapters/src/spi/mod.rs (SPI module re-exports)
+- crates/adapters/src/lib.rs (Crate public API exports)
+- crates/adapters/Cargo.toml (Updated with toml/serde_json/serde_yaml dependencies)
+
+### Code Review Summary
+
+**Review Date:** 2026-01-22
+**Reviewer:** Claude (Adversarial Senior Developer persona)
+**Issues Found:** 1 High, 2 Medium
+**Issues Fixed:** All
+
+**High Severity:**
+- ✅ Content analysis fallback missing (AC2) - Added detect() methods to each parser
+
+**Medium Severity:**
+- ✅ Task completion integrity - Corrected struck-through task status
+- ✅ Story documentation drift - Removed ACs moved to Story 4.2
+
+**Refactoring Improvements:**
+- ✅ Simplified Dispatcher to zero-sized unit struct (zero runtime cost)
+- ✅ Added detect() methods to Json/Toml/Yaml structs (Single Responsibility)
+- ✅ Removed ParserStrategy enum indirection (cleaner design)
+- ✅ Fixed file organization per Epic 4 spec (parsers in spi/fs/)
+- ✅ All 28 tests passing, zero clippy warnings

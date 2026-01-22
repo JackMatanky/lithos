@@ -1,6 +1,6 @@
 # Story 4.2: implement-path-validation-utilities
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation completed. Quality standards enforced. -->
 
@@ -47,50 +47,50 @@ So that I can prevent path traversal and enforce security rules without duplicat
 ## Tasks / Subtasks (TDD Framework: Red-Green-Refactor)
 
 ### Task 1: Define Test Cases (RED Phase - AC: All)
-- [ ] Write failing unit tests for path traversal (`..`) rejection
-- [ ] Write failing unit tests for absolute path rejection
-- [ ] Write failing unit tests for restricted (hidden) file detection
-- [ ] Write failing async unit tests for **Strict** symlink resolution security (escaped link rejection)
-- [ ] Write failing async unit tests for **Flexible** symlink resolution (external link acceptance)
-- [ ] Write failing unit tests for valid path acceptance
-- [ ] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
+- [x] Write failing unit tests for path traversal (`..`) rejection
+- [x] Write failing unit tests for absolute path rejection
+- [x] Write failing unit tests for restricted (hidden) file detection
+- [x] Write failing async unit tests for **Strict** symlink resolution security (escaped link rejection)
+- [x] Write failing async unit tests for **Flexible** symlink resolution (external link acceptance)
+- [x] Write failing unit tests for valid path acceptance
+- [x] **TDD REQUIREMENT:** All tests MUST fail initially (RED phase complete when tests fail as expected)
 
 ### Task 2: Implement Path Validation Utilities (GREEN Phase - AC: All)
-- [ ] Implement `adapters/src/spi/fs/validator.rs` module structure
-- [ ] Implement `Validator` struct pattern
-  - [ ] internal configuration (strict vs flexible modes)
-  - [ ] `new_flexible()` factory method
-  - [ ] `new_strict(root: PathBuf)` factory method
-- [ ] Implement validation logic
-  - [ ] traversal + absolute check (Synchronous)
-  - [ ] restricted/hidden file check (Synchronous)
-  - [ ] symlink loop verification
-- [ ] Implement `resolve_safe_symlink` method
+- [x] Implement `adapters/src/spi/fs/validator.rs` module structure
+- [x] Implement `Validator` struct pattern
+  - [x] internal configuration (strict vs flexible modes)
+  - [x] `new_flexible()` factory method
+  - [x] `new_strict(root: PathBuf)` factory method
+- [x] Implement validation logic
+  - [x] traversal + absolute check (Synchronous)
+  - [x] restricted/hidden file check (Synchronous)
+  - [x] symlink loop verification
+- [x] Implement `resolve_safe_symlink` method
   - **CRITICAL:** Must use `tokio::fs::read_link` or `tokio::fs::canonicalize`.
   - **CRITICAL:** Do NOT use `std::fs` to avoid blocking the runtime.
-- [ ] Update return types to use `Cow<'a, Path>` to avoid unnecessary allocations
-- [ ] Define `PathValidationError` enum in the same module using `thiserror`
-- [ ] **TDD REQUIREMENT:** Make all validation tests pass (GREEN phase complete when all tests pass)
+- [x] Update return types to use `Cow<'a, Path>` to avoid unnecessary allocations
+- [x] Define `PathValidationError` enum in the same module using `thiserror`
+- [x] **TDD REQUIREMENT:** Make all validation tests pass (GREEN phase complete when all tests pass)
 
 ### Task 3: Refactor for Quality (REFACTOR Phase - AC: All)
-- [ ] Ensure `PathValidationError` implements `thiserror::Error` for proper context
-- [ ] Optimize string checking to avoid unnecessary allocations (use `AsRef<Path>` and components iteration)
-- [ ] Ensure all public functions have proper doc comments
-- [ ] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
+- [x] Ensure `PathValidationError` implements `thiserror::Error` for proper context
+- [x] Optimize string checking to avoid unnecessary allocations (use `AsRef<Path>` and components iteration)
+- [x] Ensure all public functions have proper doc comments
+- [x] **TDD REQUIREMENT:** All tests still pass after refactoring (no regressions)
 
 ### Task 4: Comprehensive Documentation (REFACTOR Phase - AC: All)
-- [ ] Add module-level documentation `//!` explaining security guarantees and "Strict vs Flexible" modes
-- [ ] Add example usage in doc comments for all public functions
-- [ ] Ensure doctests run and pass
-- [ ] **TDD REQUIREMENT:** `cargo test --doc` passes successfully
+- [x] Add module-level documentation `//!` explaining security guarantees and "Strict vs Flexible" modes
+- [x] Add example usage in doc comments for all public functions
+- [x] Ensure doctests run and pass
+- [x] **TDD REQUIREMENT:** `cargo test --doc` passes successfully
 
 ### Task 5: Quality Assurance and Commit (MANDATORY FINAL TASK)
-- [ ] **TDD VALIDATION:** Confirm all tests pass
-- [ ] Run `mise run fmt`
-- [ ] Run `mise run lint`
-- [ ] Run `mise run verify`
-- [ ] **CRITICAL:** Fix ALL linter warnings
-- [ ] Commit with conventional commit message: `feat(adapters): implement secure path validation utilities`
+- [x] **TDD VALIDATION:** Confirm all tests pass
+- [x] Run `mise run fmt`
+- [x] Run `mise run lint`
+- [x] Run `mise run verify`
+- [x] **CRITICAL:** Fix ALL linter warnings
+- [x] Commit with conventional commit message: `feat(adapters): implement secure path validation utilities`
 
 ## Dev Notes
 
@@ -115,3 +115,62 @@ This story implements the security foundation for all file-based adapters. Inste
 - Epic 4: `_bmad-output/planning-artifacts/epics/epic-4-file-loading-strategy-foundation-mvp-core.md`
 - Project Context: `_bmad-output/project-context.md`
 - ADR 0015: `docs/adr/0015-file-loading-port-boundary.md`
+
+## Dev Agent Record
+
+### Implementation Plan
+Story 4.2 implements secure path validation utilities following strict TDD principles:
+- RED phase: Created 22 comprehensive failing tests covering all security scenarios
+- GREEN phase: Implemented minimal Validator with Strict/Flexible modes
+- REFACTOR phase: Optimized for zero-allocation Cow<Path>, fixed all clippy warnings
+
+### Completion Notes
+✅ **All Tasks Complete** (2026-01-22)
+
+**Implementation Summary:**
+- Created `crates/adapters/src/spi/fs/validator.rs` with full security validation
+- Implemented `Validator` with two modes:
+  - **Flexible**: Allows external symlinks (dotfiles), enforces input traversal checks
+  - **Strict**: Enforces root boundary, rejects escaping symlinks
+- Validation checks: path traversal (`..`), absolute paths, hidden files (`.git`, `.env`, etc.)
+- Async symlink resolution using `tokio::fs::canonicalize` (no blocking I/O)
+- Zero-allocation path validation returning `Cow<'_, Path>`
+- Comprehensive error types via `thiserror` with rich context
+
+**Test Coverage:**
+- 22 integration tests (all passing)
+- 5 unit tests (all passing)
+- 6 doctests (all passing)
+- Platform-specific tests for Windows/Unix path handling
+- Symlink security tests (strict/flexible modes, loop detection)
+
+**Quality Gates:**
+- ✅ All tests pass (57 total across adapters crate)
+- ✅ `mise run fmt` - formatting complete
+- ✅ `mise run lint` - no warnings
+- ✅ `mise run verify` - full quality gates passed
+- ✅ Clippy strict mode (`-D warnings`) - clean
+
+**Technical Decisions:**
+- Used `let chain` pattern for idiomatic Rust (requires edition 2024)
+- Applied `#[non_exhaustive]` to PathValidationError for future extensibility
+- Added `#[inline]` hints for small factory methods
+- Allowed `clippy::pattern_type_mismatch` with reason for match ergonomics
+
+## File List
+
+### New Files
+- `crates/adapters/src/spi/fs/validator.rs` - Path validation utilities (351 lines)
+- `crates/adapters/tests/spi_fs_validator_tests.rs` - Integration tests (337 lines)
+
+### Modified Files
+- `crates/adapters/src/spi/fs/mod.rs` - Added validator module export
+- `crates/adapters/Cargo.toml` - Added tempfile dev dependency
+
+## Change Log
+- **2026-01-22**: Implemented secure path validation utilities (Story 4.2)
+  - Created Validator with Strict/Flexible modes for path security
+  - Added comprehensive test suite (22 integration + 5 unit + 6 doc tests)
+  - Implemented async-safe symlink resolution using tokio::fs
+  - Zero-allocation validation using Cow<'_, Path>
+  - All quality gates passed (fmt, lint, verify)
