@@ -269,113 +269,274 @@ impl Dispatcher {
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
 
-    #[test]
-    fn toml_recognizes_toml_extension() {
-        assert!(Toml::can_parse(Path::new("config.toml")));
-        assert!(Toml::can_parse(Path::new("config.TOML")));
-        assert!(!Toml::can_parse(Path::new("config.json")));
-    }
-
-    #[test]
-    fn json_recognizes_json_extension() {
-        assert!(Json::can_parse(Path::new("config.json")));
-        assert!(Json::can_parse(Path::new("config.JSON")));
-        assert!(!Json::can_parse(Path::new("config.toml")));
-    }
-
-    #[test]
-    fn yaml_recognizes_yaml_extensions() {
-        assert!(Yaml::can_parse(Path::new("config.yaml")));
-        assert!(Yaml::can_parse(Path::new("config.yml")));
-        assert!(Yaml::can_parse(Path::new("config.YAML")));
-        assert!(!Yaml::can_parse(Path::new("config.toml")));
-    }
-
-    #[test]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "Test setup uses unwrap for clarity"
-    )]
-    fn dispatcher_dispatches_to_correct_parser() {
-        let dispatcher = Dispatcher::new();
-
-        // JSON
-        let json_content = r#"{"name": "test", "value": 42}"#;
-        let json_res: Result<serde_json::Value, _> =
-            dispatcher.parse(Path::new("test.json"), json_content);
-        let _: serde_json::Value = json_res.unwrap();
-
-        // TOML
-        let toml_content = "
-name = \"test\"
-value = 42
-";
-        let toml_res: Result<toml::Value, _> =
-            dispatcher.parse(Path::new("test.toml"), toml_content);
-        let _: toml::Value = toml_res.unwrap();
-
-        // YAML
-        let yaml_content = "
-name: test
-value: 42
-";
-        let yaml_res: Result<serde_yaml::Value, _> =
-            dispatcher.parse(Path::new("test.yaml"), yaml_content);
-        let _: serde_yaml::Value = yaml_res.unwrap();
-    }
-
-    #[test]
-    fn dispatcher_rejects_unsupported_format() {
-        let dispatcher = Dispatcher::new();
-        let result =
-            dispatcher.parse::<serde_json::Value>(Path::new("test.xml"), "");
-
-        assert!(matches!(result, Err(ParseError::UnsupportedFormat { .. })));
-    }
-
-    #[test]
-    fn toml_provides_error_context() {
-        let invalid_toml = "
-name = 'unclosed string
-value = 42
-";
-        let result =
-            Toml::parse::<toml::Value>(Path::new("test.toml"), invalid_toml);
-
-        assert!(result.is_err());
-        if let Err(ParseError::Toml {
-            message,
-            ..
-        }) = result
-        {
-            assert!(message.contains("string"));
-        }
-    }
-
-    #[test]
-    fn json_provides_line_and_column() {
-        let invalid_json = r#"
+    /// Test fixtures for reusable content.
+    mod fixtures {
+        pub(crate) const VALID_JSON: &str = r#"{"name": "test", "value": 42}"#;
+        pub(crate) const VALID_TOML: &str = "name = \"test\"\nvalue = 42";
+        pub(crate) const VALID_YAML: &str = "name: test\nvalue: 42";
+        pub(crate) const INVALID_TOML: &str =
+            "name = 'unclosed string\nvalue = 42";
+        pub(crate) const INVALID_JSON: &str = r#"
 {
   "name": "test",
   "value": 42,
 }
 "#;
-        let result = Json::parse::<serde_json::Value>(
-            Path::new("test.json"),
-            invalid_json,
-        );
+    }
 
-        assert!(result.is_err());
-        if let Err(ParseError::Json {
-            line,
-            column,
-            ..
-        }) = result
-        {
-            assert!(line.is_some());
-            assert!(column.is_some());
+    mod extensions {
+        use rstest::rstest;
+
+        use super::*;
+
+        // [4.1-U-01] TOML extension detection
+        #[rstest]
+        #[case::standard("config.toml")]
+        #[case::caps("config.TOML")]
+        #[case::mixed("Config.Toml")]
+        fn should_recognize_valid_toml_extensions(#[case] path: &str) {
+            // GIVEN a path with a valid TOML extension variant
+            let path = Path::new(path);
+
+            // WHEN checking if the Toml parser can handle it
+            let result = Toml::can_parse(path);
+
+            // THEN it should return true
+            assert!(result, "Should recognize {} as TOML", path.display());
+        }
+
+        // [4.1-U-01] TOML extension rejection
+        #[test]
+        fn should_reject_invalid_toml_extensions() {
+            // GIVEN a path with a non-TOML extension (json)
+            let path = Path::new("config.json");
+
+            // WHEN checking if the Toml parser can handle it
+            let result = Toml::can_parse(path);
+
+            // THEN it should return false
+            assert!(!result, "Should not recognize JSON as TOML");
+        }
+
+        // [4.1-U-02] JSON extension detection
+        #[rstest]
+        #[case::standard("config.json")]
+        #[case::caps("config.JSON")]
+        #[case::mixed("Config.Json")]
+        fn should_recognize_valid_json_extensions(#[case] path: &str) {
+            // GIVEN a path with a valid JSON extension variant
+            let path = Path::new(path);
+
+            // WHEN checking if the Json parser can handle it
+            let result = Json::can_parse(path);
+
+            // THEN it should return true
+            assert!(result, "Should recognize {} as JSON", path.display());
+        }
+
+        // [4.1-U-02] JSON extension rejection
+        #[test]
+        fn should_reject_invalid_json_extensions() {
+            // GIVEN a path with a non-JSON extension (toml)
+            let path = Path::new("config.toml");
+
+            // WHEN checking if the Json parser can handle it
+            let result = Json::can_parse(path);
+
+            // THEN it should return false
+            assert!(!result, "Should not recognize TOML as JSON");
+        }
+
+        // [4.1-U-03] YAML extension detection
+        #[rstest]
+        #[case::standard_yaml("config.yaml")]
+        #[case::standard_yml("config.yml")]
+        #[case::caps("config.YAML")]
+        #[case::mixed("Config.Yml")]
+        fn should_recognize_valid_yaml_extensions(#[case] path: &str) {
+            // GIVEN a path with a valid YAML extension variant
+            let path = Path::new(path);
+
+            // WHEN checking if the Yaml parser can handle it
+            let result = Yaml::can_parse(path);
+
+            // THEN it should return true
+            assert!(result, "Should recognize {} as YAML", path.display());
+        }
+
+        // [4.1-U-03] YAML extension rejection
+        #[test]
+        fn should_reject_invalid_yaml_extensions() {
+            // GIVEN a path with a non-YAML extension (toml)
+            let path = Path::new("config.toml");
+
+            // WHEN checking if the Yaml parser can handle it
+            let result = Yaml::can_parse(path);
+
+            // THEN it should return false
+            assert!(!result, "Should not recognize TOML as YAML");
+        }
+    }
+
+    mod dispatch {
+        use super::*;
+
+        // [4.1-U-04] Dispatcher JSON
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            clippy::indexing_slicing,
+            reason = "Test setup uses unwrap for clarity and assertions are \
+                      performed on known JSON structure"
+        )]
+        fn should_dispatch_json_correctly() {
+            // GIVEN a dispatcher, valid JSON content, and a .json path
+            let dispatcher = Dispatcher::new();
+            let content = fixtures::VALID_JSON;
+            let path = Path::new("test.json");
+
+            // WHEN parsing the content via the dispatcher
+            let result: Result<serde_json::Value, _> =
+                dispatcher.parse(path, content);
+
+            // THEN it should successfully parse the JSON
+            assert!(result.is_ok(), "Should parse JSON successfully");
+            let value = result.unwrap();
+            assert_eq!(value["name"], "test");
+        }
+
+        // [4.1-U-05] Dispatcher TOML
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            clippy::indexing_slicing,
+            reason = "Test setup uses unwrap for clarity and assertions are \
+                      performed on known TOML structure"
+        )]
+        fn should_dispatch_toml_correctly() {
+            // GIVEN a dispatcher, valid TOML content, and a .toml path
+            let dispatcher = Dispatcher::new();
+            let content = fixtures::VALID_TOML;
+            let path = Path::new("test.toml");
+
+            // WHEN parsing the content via the dispatcher
+            let result: Result<toml::Value, _> =
+                dispatcher.parse(path, content);
+
+            // THEN it should successfully parse the TOML
+            assert!(result.is_ok(), "Should parse TOML successfully");
+            let value = result.unwrap();
+            assert_eq!(value["name"].as_str(), Some("test"));
+        }
+
+        // [4.1-U-06] Dispatcher YAML
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            clippy::indexing_slicing,
+            reason = "Test setup uses unwrap for clarity and assertions are \
+                      performed on known YAML structure"
+        )]
+        fn should_dispatch_yaml_correctly() {
+            // GIVEN a dispatcher, valid YAML content, and a .yaml path
+            let dispatcher = Dispatcher::new();
+            let content = fixtures::VALID_YAML;
+            let path = Path::new("test.yaml");
+
+            // WHEN parsing the content via the dispatcher
+            let result: Result<serde_yaml::Value, _> =
+                dispatcher.parse(path, content);
+
+            // THEN it should successfully parse the YAML
+            assert!(result.is_ok(), "Should parse YAML successfully");
+            let value = result.unwrap();
+            assert_eq!(value["name"].as_str(), Some("test"));
+        }
+
+        // [4.1-U-07] Dispatcher Unsupported Format
+        #[test]
+        fn should_reject_unsupported_format() {
+            // GIVEN a dispatcher and a path with an unsupported extension
+            // (.xml)
+            let dispatcher = Dispatcher::new();
+            let path = Path::new("test.xml");
+
+            // WHEN attempting to parse content
+            let result = dispatcher.parse::<serde_json::Value>(path, "");
+
+            // THEN it should return an UnsupportedFormat error
+            assert!(
+                matches!(result, Err(ParseError::UnsupportedFormat { .. })),
+                "Should return UnsupportedFormat error"
+            );
+        }
+    }
+
+    mod errors {
+        use super::*;
+
+        // [4.1-U-08] TOML Error Context
+        #[test]
+        #[expect(
+            clippy::panic,
+            reason = "Panic used to fail test on unexpected error variant"
+        )]
+        fn should_provide_toml_error_context() {
+            // GIVEN invalid TOML content with an unclosed string
+            let invalid_toml = fixtures::INVALID_TOML;
+            let path = Path::new("test.toml");
+
+            // WHEN attempting to parse it
+            let result = Toml::parse::<toml::Value>(path, invalid_toml);
+
+            // THEN it should return a Toml error containing context about the
+            // string issue
+            assert!(result.is_err());
+            if let Err(ParseError::Toml {
+                message,
+                ..
+            }) = result
+            {
+                assert!(
+                    message.contains("string"),
+                    "Error message should mention string issue"
+                );
+            } else {
+                panic!("Expected ParseError::Toml");
+            }
+        }
+
+        // [4.1-U-09] JSON Error Context
+        #[test]
+        #[expect(
+            clippy::panic,
+            reason = "Panic used to fail test on unexpected error variant"
+        )]
+        fn should_provide_json_error_context() {
+            // GIVEN invalid JSON content with a trailing comma
+            let invalid_json = fixtures::INVALID_JSON;
+            let path = Path::new("test.json");
+
+            // WHEN attempting to parse it
+            let result = Json::parse::<serde_json::Value>(path, invalid_json);
+
+            // THEN it should return a Json error with line and column
+            // information
+            assert!(result.is_err());
+            if let Err(ParseError::Json {
+                line,
+                column,
+                ..
+            }) = result
+            {
+                assert!(line.is_some(), "Should provide line number");
+                assert!(column.is_some(), "Should provide column number");
+            } else {
+                panic!("Expected ParseError::Json");
+            }
         }
     }
 }
