@@ -80,50 +80,73 @@ pub enum ParseError {
 mod tests {
     use super::*;
 
+    // [4.1-U-10] Thread Safety
     #[test]
-    fn parse_error_is_send_and_sync() {
+    fn should_be_send_and_sync() {
+        // Given a generic function that requires Send + Sync
         fn assert_send_sync<T: Send + Sync>() {}
+
+        // Then ParseError should satisfy these bounds (compilation check)
         assert_send_sync::<ParseError>();
     }
 
+    // [4.1-U-11] TOML Error Display
     #[test]
-    fn toml_error_display_includes_context() {
+    fn should_include_context_in_toml_error() {
+        // Given a TOML error with specific line and column info
         let error = ParseError::Toml {
             path: PathBuf::from("config.toml"),
             message: "unexpected token".to_owned(),
             line: Some(10),
             column: Some(5),
         };
+
+        // When displaying the error as a string
         let display = error.to_string();
-        assert!(display.contains("config.toml"));
-        assert!(display.contains("unexpected token"));
-        assert!(display.contains("10"));
+
+        // Then the output should contain the filename, message, and line number
+        assert!(display.contains("config.toml"), "Should contain filename");
+        assert!(display.contains("unexpected token"), "Should contain message");
+        assert!(display.contains("10"), "Should contain line number");
     }
 
+    // [4.1-U-12] JSON Error Display
     #[test]
-    fn json_error_display_includes_context() {
+    fn should_include_context_in_json_error() {
+        // Given a JSON error with specific line and column info
         let error = ParseError::Json {
             path: PathBuf::from("data.json"),
             message: "trailing comma".to_owned(),
             line: Some(42),
             column: Some(8),
         };
+
+        // When displaying the error as a string
         let display = error.to_string();
-        assert!(display.contains("data.json"));
-        assert!(display.contains("trailing comma"));
-        assert!(display.contains("42"));
+
+        // Then the output should contain the filename, message, and line number
+        assert!(display.contains("data.json"), "Should contain filename");
+        assert!(display.contains("trailing comma"), "Should contain message");
+        assert!(display.contains("42"), "Should contain line number");
     }
 
+    // [4.1-U-13] Unsupported Format Error Display
     #[test]
-    fn unsupported_format_lists_supported_extensions() {
+    fn should_list_supported_extensions_in_error() {
+        // Given an unsupported format error
         let error = ParseError::UnsupportedFormat {
             path: PathBuf::from("config.xml"),
             supported: vec!["toml", "json", "yaml"],
         };
+
+        // When displaying the error as a string
         let display = error.to_string();
-        assert!(display.contains("config.xml"));
-        assert!(display.contains("toml"));
-        assert!(display.contains("json"));
-        assert!(display.contains("yaml"));
+
+        // Then the output should contain the filename and list of supported
+        // extensions
+        assert!(display.contains("config.xml"), "Should contain filename");
+        assert!(display.contains("toml"), "Should list toml");
+        assert!(display.contains("json"), "Should list json");
+        assert!(display.contains("yaml"), "Should list yaml");
     }
 }
