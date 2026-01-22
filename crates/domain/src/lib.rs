@@ -48,8 +48,6 @@ pub use note::{
     Heading, Link, LinkAnchor, LinkStyle, LinkTarget, Note, NoteCreated,
     NoteEvents, Section, Tag, Task, TaskStatus,
 };
-// File loading re-exports
-pub use ports::spi::{FileContent, FileFormat, FileReaderPort};
 // Port re-exports
 pub use ports::{
     ConfigCommand, ConfigQuery, NoteCommand, NoteQuery, SchemaCommand,
