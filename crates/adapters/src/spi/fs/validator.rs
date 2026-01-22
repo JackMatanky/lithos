@@ -49,7 +49,7 @@ use thiserror::Error;
 pub enum PathValidationError {
     /// Path is absolute when only relative paths are allowed.
     #[error("Absolute path not allowed: {0}")]
-    AbsolutePath(String),
+    AbsolutePathError(String),
 
     /// I/O error during symlink resolution.
     #[error("I/O error during symlink resolution: {0}")]
@@ -58,15 +58,15 @@ pub enum PathValidationError {
     /// Path contains `..` components attempting traversal outside allowed
     /// directory.
     #[error("Path traversal detected: path contains '..' components")]
-    PathTraversal,
+    PathTraversalError,
 
     /// Path accesses restricted or hidden files.
     #[error("Restricted path access denied: {0}")]
-    RestrictedPath(String),
+    RestrictedPathError(String),
 
     /// Symlink target escapes the configured root directory.
     #[error("Symlink escape detected: target is outside root boundary")]
-    SymlinkEscape,
+    SymlinkEscapeError,
 }
 
 /// Path validator with configurable security modes.
@@ -105,6 +105,18 @@ enum ValidationMode {
 }
 
 impl Validator {
+    /// Internal helper for traversal checks.
+    fn check_traversal(path: &Path) -> Result<(), PathValidationError> {
+        // Reject path traversal (..)
+        for component in path.components() {
+            if component == Component::ParentDir {
+                return Err(PathValidationError::PathTraversalError);
+            }
+        }
+
+        Ok(())
+    }
+
     /// Creates a flexible validator that allows external symlinks.
     ///
     /// # Use Cases
@@ -193,9 +205,10 @@ impl Validator {
     ///
     /// # Errors
     ///
-    /// - [`PathValidationError::SymlinkEscape`]: Symlink target outside root
-    ///   (strict mode)
+    /// - [`PathValidationError::SymlinkEscapeError`]: Symlink target outside
+    ///   root (strict mode)
     /// - [`PathValidationError::IoError`]: I/O error during resolution
+    /// - [`PathValidationError::PathTraversalError`]: Input path contains `..`
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
@@ -208,6 +221,12 @@ impl Validator {
     ) -> Result<PathBuf, PathValidationError> {
         let path_ref = path.as_ref();
 
+        // AC 6: Enforce traversal checks on the input path
+        // We allow absolute paths for the input to resolution as they may
+        // have been pre-resolved by the adapter, but strict mode will
+        // still catch escaping targets.
+        Self::check_traversal(path_ref)?;
+
         // Use tokio::fs::canonicalize for async symlink resolution
         let resolved = tokio::fs::canonicalize(path_ref)
             .await
@@ -215,7 +234,7 @@ impl Validator {
 
         match &self.mode {
             ValidationMode::Flexible => {
-                // Flexible mode: allow any resolved path
+                // Flexible mode: allow any resolved path (allows dotfiles)
                 Ok(resolved)
             }
             ValidationMode::Strict {
@@ -229,7 +248,7 @@ impl Validator {
                 if resolved.starts_with(&canonical_root) {
                     Ok(resolved)
                 } else {
-                    Err(PathValidationError::SymlinkEscape)
+                    Err(PathValidationError::SymlinkEscapeError)
                 }
             }
         }
@@ -251,9 +270,10 @@ impl Validator {
     ///
     /// # Errors
     ///
-    /// - [`PathValidationError::PathTraversal`]: Path contains `..` components
-    /// - [`PathValidationError::AbsolutePath`]: Path is absolute
-    /// - [`PathValidationError::RestrictedPath`]: Path accesses
+    /// - [`PathValidationError::PathTraversalError`]: Path contains `..`
+    ///   components
+    /// - [`PathValidationError::AbsolutePathError`]: Path is absolute
+    /// - [`PathValidationError::RestrictedPathError`]: Path accesses
     ///   hidden/sensitive files
     ///
     /// # Example
@@ -284,17 +304,13 @@ impl Validator {
 
         // Check 1: Reject absolute paths
         if path_ref.is_absolute() {
-            return Err(PathValidationError::AbsolutePath(
+            return Err(PathValidationError::AbsolutePathError(
                 path_ref.display().to_string(),
             ));
         }
 
         // Check 2: Reject path traversal (..)
-        for component in path_ref.components() {
-            if component == Component::ParentDir {
-                return Err(PathValidationError::PathTraversal);
-            }
-        }
+        Self::check_traversal(path_ref)?;
 
         // Check 3: Reject restricted/hidden files
         for component in path_ref.components() {
@@ -302,7 +318,7 @@ impl Validator {
                 && let Some(name) = os_str.to_str()
                 && name.starts_with('.')
             {
-                return Err(PathValidationError::RestrictedPath(
+                return Err(PathValidationError::RestrictedPathError(
                     path_ref.display().to_string(),
                 ));
             }
@@ -354,7 +370,10 @@ mod tests {
             let result = validator.validate("../../etc/passwd");
 
             assert!(result.is_err(), "Should reject path with .. components");
-            assert!(matches!(result, Err(PathValidationError::PathTraversal)));
+            assert!(matches!(
+                result,
+                Err(PathValidationError::PathTraversalError)
+            ));
         }
 
         #[test]
@@ -363,7 +382,10 @@ mod tests {
             let result = validator.validate("../config.toml");
 
             assert!(result.is_err(), "Should reject single .. traversal");
-            assert!(matches!(result, Err(PathValidationError::PathTraversal)));
+            assert!(matches!(
+                result,
+                Err(PathValidationError::PathTraversalError)
+            ));
         }
 
         #[test]
@@ -372,7 +394,10 @@ mod tests {
             let result = validator.validate("valid/../../etc/passwd");
 
             assert!(result.is_err(), "Should reject .. in middle of path");
-            assert!(matches!(result, Err(PathValidationError::PathTraversal)));
+            assert!(matches!(
+                result,
+                Err(PathValidationError::PathTraversalError)
+            ));
         }
 
         #[test]
@@ -401,7 +426,7 @@ mod tests {
             assert!(result.is_err(), "Should reject Unix absolute path");
             assert!(matches!(
                 result,
-                Err(PathValidationError::AbsolutePath(_))
+                Err(PathValidationError::AbsolutePathError(_))
             ));
         }
 
@@ -414,7 +439,7 @@ mod tests {
             assert!(result.is_err(), "Should reject Windows absolute path");
             assert!(matches!(
                 result,
-                Err(PathValidationError::AbsolutePath(_))
+                Err(PathValidationError::AbsolutePathError(_))
             ));
         }
 
@@ -427,7 +452,7 @@ mod tests {
             assert!(result.is_err(), "Should reject UNC path");
             assert!(matches!(
                 result,
-                Err(PathValidationError::AbsolutePath(_))
+                Err(PathValidationError::AbsolutePathError(_))
             ));
         }
 
@@ -451,7 +476,7 @@ mod tests {
             assert!(result.is_err(), "Should reject .git directory access");
             assert!(matches!(
                 result,
-                Err(PathValidationError::RestrictedPath(_))
+                Err(PathValidationError::RestrictedPathError(_))
             ));
         }
 
@@ -463,7 +488,7 @@ mod tests {
             assert!(result.is_err(), "Should reject .env file");
             assert!(matches!(
                 result,
-                Err(PathValidationError::RestrictedPath(_))
+                Err(PathValidationError::RestrictedPathError(_))
             ));
         }
 
@@ -475,7 +500,7 @@ mod tests {
             assert!(result.is_err(), "Should reject nested hidden file");
             assert!(matches!(
                 result,
-                Err(PathValidationError::RestrictedPath(_))
+                Err(PathValidationError::RestrictedPathError(_))
             ));
         }
 
@@ -487,7 +512,7 @@ mod tests {
             assert!(result.is_err(), "Should reject SSH key access");
             assert!(matches!(
                 result,
-                Err(PathValidationError::RestrictedPath(_))
+                Err(PathValidationError::RestrictedPathError(_))
             ));
         }
 
@@ -529,7 +554,10 @@ mod tests {
             let result = validator.resolve_safe_symlink(&symlink_path).await;
 
             assert!(result.is_err(), "Should reject symlink escaping root");
-            assert!(matches!(result, Err(PathValidationError::SymlinkEscape)));
+            assert!(matches!(
+                result,
+                Err(PathValidationError::SymlinkEscapeError)
+            ));
 
             // Cleanup - ignore errors as test is complete
             drop(std::fs::remove_file(&outside_target));
@@ -640,13 +668,18 @@ mod tests {
         )]
         async fn still_checks_input_traversal() {
             let validator = Validator::new_flexible();
-            let result = validator.validate("../../../dotfile");
+            // Input path with traversal
+            let result =
+                validator.resolve_safe_symlink("../../../dotfile").await;
 
             assert!(
                 result.is_err(),
-                "Flexible mode still rejects traversal in input"
+                "Flexible mode still rejects traversal in input path"
             );
-            assert!(matches!(result, Err(PathValidationError::PathTraversal)));
+            assert!(matches!(
+                result,
+                Err(PathValidationError::PathTraversalError)
+            ));
         }
     }
 
