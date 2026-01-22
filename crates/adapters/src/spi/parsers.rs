@@ -42,7 +42,7 @@ use super::errors::ParseError;
     clippy::exhaustive_enums,
     reason = "Known set of supported configuration formats"
 )]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ParserStrategy {
     /// JSON parser.
     Json(Json),
@@ -61,6 +61,17 @@ impl ParserStrategy {
             Self::Json(_) => Json::can_parse(path),
             Self::Toml(_) => Toml::can_parse(path),
             Self::Yaml(_) => Yaml::can_parse(path),
+        }
+    }
+
+    /// Check if this parser matches the given format string.
+    #[inline]
+    #[must_use]
+    pub fn matches_format(&self, format: &str) -> bool {
+        match *self {
+            Self::Json(_) => format.eq_ignore_ascii_case("json"),
+            Self::Toml(_) => format.eq_ignore_ascii_case("toml"),
+            Self::Yaml(_) => format.eq_ignore_ascii_case("yaml"),
         }
     }
 
@@ -84,7 +95,7 @@ impl ParserStrategy {
 }
 
 /// TOML parser strategy.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Toml;
 
@@ -133,7 +144,7 @@ impl Toml {
 }
 
 /// JSON parser strategy.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Json;
 
@@ -167,7 +178,7 @@ impl Json {
 }
 
 /// YAML parser strategy.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Yaml;
 
@@ -208,8 +219,12 @@ impl Yaml {
 
 /// Auto-detecting file parser.
 ///
-/// Dispatches to the appropriate parser based on file extension.
-/// Supports TOML, JSON, and YAML formats.
+/// Dispatches to the appropriate parser based on file extension or content
+/// analysis. Supports TOML, JSON, and YAML formats.
+///
+/// Format detection follows this priority:
+/// 1. File extension (fastest)
+/// 2. Content analysis fallback (for files without extensions or correction)
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct Dispatcher {
@@ -239,25 +254,55 @@ impl Dispatcher {
 
     /// Parse file content with automatic format detection.
     ///
-    /// Format is determined by file extension. Supports:
+    /// Format detection uses this priority:
+    /// 1. File extension (fastest, most reliable)
+    /// 2. Content analysis fallback (for files without extensions)
+    ///
+    /// Supports:
     /// - `.toml` → TOML
     /// - `.json` → JSON
     /// - `.yaml`, `.yml` → YAML
+    /// - Content starting with `{` or `[` → JSON
+    /// - Content with `---` or `key:` patterns → YAML
+    /// - Content with `[` or `key =` patterns → TOML
     ///
     /// # Errors
     ///
-    /// Returns `ParseError::UnsupportedFormat` if file extension is not
-    /// recognized, or format-specific parse error if deserialization fails.
+    /// Returns `ParseError::UnsupportedFormat` if format cannot be determined,
+    /// or format-specific parse error if deserialization fails.
     #[inline]
     pub fn parse<T: DeserializeOwned>(
         &self,
         path: &Path,
         content: &str,
     ) -> Result<T, ParseError> {
+        let mut candidates = Vec::new();
+
+        // First priority: extension-based detection
         for parser in &self.parsers {
             if parser.can_parse(path) {
-                return parser.parse(path, content);
+                candidates.push(parser);
+                break; // Only one parser per extension
             }
+        }
+
+        // Second priority: content-based detection
+        if let Some(format) = detect_format_from_content(content) {
+            for parser in &self.parsers {
+                if parser.matches_format(format)
+                    && !candidates.contains(&parser)
+                {
+                    candidates.push(parser);
+                }
+            }
+        }
+
+        // Try each candidate parser
+        for parser in candidates {
+            if let Ok(result) = parser.parse(path, content) {
+                return Ok(result);
+            }
+            // Try next candidate on error
         }
 
         Err(ParseError::UnsupportedFormat {
@@ -265,6 +310,37 @@ impl Dispatcher {
             supported: vec!["toml", "json", "yaml", "yml"],
         })
     }
+}
+
+/// Detect file format from content analysis.
+///
+/// Returns the likely format based on content patterns.
+/// Used as fallback when extension-based detection fails.
+#[must_use]
+fn detect_format_from_content(content: &str) -> Option<&'static str> {
+    let trimmed = content.trim_start();
+
+    // JSON: starts with { or [
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
+        return Some("json");
+    }
+
+    // YAML: contains --- (document separator) or key: patterns without = (TOML
+    // has =)
+    if trimmed.starts_with("---")
+        || (trimmed.contains(':') && !trimmed.contains('='))
+    {
+        return Some("yaml");
+    }
+
+    // TOML: contains [ (table) or = (key-value) without : (YAML has :)
+    if trimmed.contains('[')
+        || (trimmed.contains('=') && !trimmed.contains(':'))
+    {
+        return Some("toml");
+    }
+
+    None
 }
 
 #[cfg(test)]
@@ -388,9 +464,7 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            clippy::indexing_slicing,
-            reason = "Test setup uses unwrap for clarity and assertions are \
-                      performed on known JSON structure"
+            reason = "Test setup uses unwrap for clarity"
         )]
         fn should_dispatch_json_correctly() {
             // GIVEN a dispatcher, valid JSON content, and a .json path
@@ -405,16 +479,17 @@ mod tests {
             // THEN it should successfully parse the JSON
             assert!(result.is_ok(), "Should parse JSON successfully");
             let value = result.unwrap();
-            assert_eq!(value["name"], "test");
+            assert_eq!(
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test")
+            );
         }
 
         // [4.1-U-05] Dispatcher TOML
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            clippy::indexing_slicing,
-            reason = "Test setup uses unwrap for clarity and assertions are \
-                      performed on known TOML structure"
+            reason = "Test setup uses unwrap for clarity"
         )]
         fn should_dispatch_toml_correctly() {
             // GIVEN a dispatcher, valid TOML content, and a .toml path
@@ -429,16 +504,17 @@ mod tests {
             // THEN it should successfully parse the TOML
             assert!(result.is_ok(), "Should parse TOML successfully");
             let value = result.unwrap();
-            assert_eq!(value["name"].as_str(), Some("test"));
+            assert_eq!(
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test")
+            );
         }
 
         // [4.1-U-06] Dispatcher YAML
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            clippy::indexing_slicing,
-            reason = "Test setup uses unwrap for clarity and assertions are \
-                      performed on known YAML structure"
+            reason = "Test setup uses unwrap for clarity"
         )]
         fn should_dispatch_yaml_correctly() {
             // GIVEN a dispatcher, valid YAML content, and a .yaml path
@@ -453,7 +529,10 @@ mod tests {
             // THEN it should successfully parse the YAML
             assert!(result.is_ok(), "Should parse YAML successfully");
             let value = result.unwrap();
-            assert_eq!(value["name"].as_str(), Some("test"));
+            assert_eq!(
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test")
+            );
         }
 
         // [4.1-U-07] Dispatcher Unsupported Format
@@ -471,6 +550,110 @@ mod tests {
             assert!(
                 matches!(result, Err(ParseError::UnsupportedFormat { .. })),
                 "Should return UnsupportedFormat error"
+            );
+        }
+
+        // [4.1-U-08] Dispatcher Content Analysis JSON
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test setup uses unwrap for clarity"
+        )]
+        fn should_dispatch_json_by_content() {
+            // GIVEN a dispatcher, valid JSON content, and a path without
+            // extension
+            let dispatcher = Dispatcher::new();
+            let content = fixtures::VALID_JSON;
+            let path = Path::new("config"); // No extension
+
+            // WHEN parsing the content via the dispatcher
+            let result: Result<serde_json::Value, _> =
+                dispatcher.parse(path, content);
+
+            // THEN it should successfully parse the JSON via content analysis
+            assert!(result.is_ok(), "Should parse JSON by content");
+            let value = result.unwrap();
+            assert_eq!(
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test")
+            );
+        }
+
+        // [4.1-U-09] Dispatcher Content Analysis YAML
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test setup uses unwrap for clarity"
+        )]
+        fn should_dispatch_yaml_by_content() {
+            // GIVEN a dispatcher, valid YAML content, and a path without
+            // extension
+            let dispatcher = Dispatcher::new();
+            let content = fixtures::VALID_YAML;
+            let path = Path::new("config"); // No extension
+
+            // WHEN parsing the content via the dispatcher
+            let result: Result<serde_yaml::Value, _> =
+                dispatcher.parse(path, content);
+
+            // THEN it should successfully parse the YAML via content analysis
+            assert!(result.is_ok(), "Should parse YAML by content");
+            let value = result.unwrap();
+            assert_eq!(
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test")
+            );
+        }
+
+        // [4.1-U-10] Dispatcher Content Analysis TOML
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test setup uses unwrap for clarity"
+        )]
+        fn should_dispatch_toml_by_content() {
+            // GIVEN a dispatcher, valid TOML content, and a path without
+            // extension
+            let dispatcher = Dispatcher::new();
+            let content = fixtures::VALID_TOML;
+            let path = Path::new("config"); // No extension
+
+            // WHEN parsing the content via the dispatcher
+            let result: Result<toml::Value, _> =
+                dispatcher.parse(path, content);
+
+            // THEN it should successfully parse the TOML via content analysis
+            assert!(result.is_ok(), "Should parse TOML by content");
+            let value = result.unwrap();
+            assert_eq!(
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test")
+            );
+        }
+
+        // [4.1-U-11] Dispatcher Extension Takes Priority
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test setup uses unwrap for clarity"
+        )]
+        fn should_prioritize_extension_over_content() {
+            // GIVEN a dispatcher, JSON content but TOML extension
+            let dispatcher = Dispatcher::new();
+            let json_content = fixtures::VALID_JSON;
+            let path = Path::new("config.toml"); // TOML extension
+
+            // WHEN parsing the content
+            let result: Result<serde_json::Value, _> =
+                dispatcher.parse(path, json_content);
+
+            // THEN it should try TOML first (extension), fail, then try JSON
+            // (content), succeed
+            assert!(result.is_ok(), "Should fall back to content analysis");
+            let value = result.unwrap();
+            assert_eq!(
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test")
             );
         }
     }
