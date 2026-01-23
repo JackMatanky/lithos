@@ -124,7 +124,10 @@ impl Target {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics preferred for readability"
+        reason = "Matching on &Target enum with non-Copy Box<str> fields \
+                  (path, raw, url). Cannot dereference without moving \
+                  non-Copy fields. Pattern matching on &self with field \
+                  binding is idiomatic for returning borrowed str."
     )]
     pub fn vault_path(&self) -> Option<&str> {
         match self {
@@ -187,7 +190,9 @@ impl Anchor {
     #[must_use]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics preferred for readability"
+        reason = "Matching on &Anchor enum with non-Copy Box<str> fields. \
+                  Cannot dereference without moving. Pattern binding in match \
+                  arms is idiomatic for returning &str."
     )]
     pub fn text(&self) -> &str {
         match self {

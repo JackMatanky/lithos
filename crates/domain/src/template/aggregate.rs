@@ -322,20 +322,28 @@ impl Template {
             if after {
                 #[expect(
                     clippy::arithmetic_side_effects,
-                    reason = "Index logic"
+                    reason = "String index arithmetic: pos from find() + \
+                              placeholder.len() guaranteed valid. Addition \
+                              cannot overflow as both values are within \
+                              string bounds."
                 )]
                 let insert_pos = pos + placeholder.len();
                 content.insert(insert_pos, '\n');
                 #[expect(
                     clippy::arithmetic_side_effects,
-                    reason = "Index logic"
+                    reason = "String index arithmetic: insert_pos + 1 \
+                              guaranteed valid—insert() just added newline at \
+                              insert_pos, so +1 is safe next char position."
                 )]
                 content.insert_str(insert_pos + 1, section_content);
             } else {
                 content.insert_str(pos, section_content);
                 #[expect(
                     clippy::arithmetic_side_effects,
-                    reason = "Index logic"
+                    reason = "String index arithmetic: pos + \
+                              section_content.len() guaranteed \
+                              valid—insert_str() just added section_content \
+                              at pos, so sum is safe position."
                 )]
                 content.insert(pos + section_content.len(), '\n');
             }
@@ -384,7 +392,12 @@ impl Template {
         Ok(())
     }
 
-    #[expect(clippy::iter_over_hash_type, reason = "Validation only")]
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Validation checks all variable definitions for correctness. \
+                  HashMap iteration order is irrelevant—all entries must pass \
+                  validation regardless of order."
+    )]
     fn validate_variable_definitions(
         variables: &HashMap<String, VariableDefinition>,
     ) -> Result<(), DomainError> {

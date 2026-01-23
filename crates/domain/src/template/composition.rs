@@ -67,7 +67,12 @@ impl Composition {
         current_name: &str,
     ) -> Result<(), DomainError> {
         if let Some(parent_name) = template.extends() {
-            #[expect(clippy::arithmetic_side_effects, reason = "DFS logic")]
+            #[expect(
+                clippy::arithmetic_side_effects,
+                reason = "DFS depth tracking: depth + 1 cannot overflow. Max \
+                          recursion depth is validated (MAX_COMPOSITION_DEPTH \
+                          = 10), so depth stays bounded and safe."
+            )]
             self.dfs_check(parent_name, depth + 1, ctx)?;
         }
 
@@ -75,7 +80,10 @@ impl Composition {
             for include in &self.includes {
                 #[expect(
                     clippy::arithmetic_side_effects,
-                    reason = "DFS logic"
+                    reason = "DFS depth tracking: depth + 1 cannot overflow. \
+                              Max recursion depth is validated \
+                              (MAX_COMPOSITION_DEPTH = 10), so depth stays \
+                              bounded and safe."
                 )]
                 self.dfs_check(include, depth + 1, ctx)?;
             }
@@ -157,7 +165,12 @@ impl Composition {
     /// Returns `DomainError::VariableTypeMismatch` if override value
     /// incompatible.
     #[inline]
-    #[expect(clippy::iter_over_hash_type, reason = "Validation only")]
+    #[expect(
+        clippy::iter_over_hash_type,
+        reason = "Validation checks all variable overrides against base \
+                  template definitions. HashMap iteration order is \
+                  irrelevant—all entries must be validated."
+    )]
     pub fn validate(&self, base: &Template) -> Result<(), DomainError> {
         for (name, value) in &self.variable_overrides {
             let def = base
