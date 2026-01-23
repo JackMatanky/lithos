@@ -281,35 +281,46 @@ impl Dispatcher {
         path: &Path,
         content: &str,
     ) -> Result<T, ParseError> {
+        let mut tried_json = false;
+        let mut tried_toml = false;
+        let mut tried_yaml = false;
+
         // First priority: Try extension-based detection
-        if Json::can_parse(path)
-            && let Ok(result) = Json::parse(path, content)
-        {
-            return Ok(result);
+        if Json::can_parse(path) {
+            tried_json = true;
+            if let Ok(result) = Json::parse(path, content) {
+                return Ok(result);
+            }
         }
-        if Toml::can_parse(path)
-            && let Ok(result) = Toml::parse(path, content)
-        {
-            return Ok(result);
+        if Toml::can_parse(path) {
+            tried_toml = true;
+            if let Ok(result) = Toml::parse(path, content) {
+                return Ok(result);
+            }
         }
-        if Yaml::can_parse(path)
-            && let Ok(result) = Yaml::parse(path, content)
-        {
-            return Ok(result);
+        if Yaml::can_parse(path) {
+            tried_yaml = true;
+            if let Ok(result) = Yaml::parse(path, content) {
+                return Ok(result);
+            }
         }
 
-        // Second priority: Try content-based detection
-        if Json::detect(content)
+        // Second priority: Try content-based detection (skip already tried
+        // formats)
+        if !tried_json
+            && Json::detect(content)
             && let Ok(result) = Json::parse(path, content)
         {
             return Ok(result);
         }
-        if Yaml::detect(content)
+        if !tried_yaml
+            && Yaml::detect(content)
             && let Ok(result) = Yaml::parse(path, content)
         {
             return Ok(result);
         }
-        if Toml::detect(content)
+        if !tried_toml
+            && Toml::detect(content)
             && let Ok(result) = Toml::parse(path, content)
         {
             return Ok(result);

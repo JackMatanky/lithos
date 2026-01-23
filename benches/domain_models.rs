@@ -1,3 +1,27 @@
+//! # Domain Models Benchmarks
+//!
+//! Performance benchmarks for core domain model operations.
+//!
+//! This module measures the execution time of fundamental domain operations
+//! to ensure they remain fast and scalable for large vaults.
+//!
+//! ## Operations Benchmarked
+//!
+//! - **Note Creation**: Measures time to instantiate `Note` aggregates with
+//!   path validation and UUID assignment.
+//! - **Tag Parsing**: Benchmarks parsing of tag strings into `Tag` values.
+//!
+//! ## Performance Invariants
+//!
+//! - Note creation: <1ms per operation
+//! - Tag parsing: <0.5ms per operation
+//!
+//! ## Regression Monitoring
+//!
+//! Benchmarks run in CI with thresholds:
+//! - >5% degradation triggers warning
+//! - >10% degradation blocks release
+
 #![expect(
     clippy::disallowed_methods,
     reason = "Benchmarks use Result::unwrap() during setup and measurement \

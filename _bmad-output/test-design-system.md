@@ -9,7 +9,7 @@ section: "Testing & Quality"
 
 # System-Level Test Design
 
-This document outlines the high-level test strategy and architectural decisions for the Lithos project. For detailed implementation and usage, see [Lithos Test Guide](../docs/test_guide.md).
+This document outlines the high-level test strategy and architectural decisions for the Lithos project. For detailed implementation and usage, see [Lithos Test Developer Guide](./test-developer-guide.md).
 
 ## Testability Assessment
 
