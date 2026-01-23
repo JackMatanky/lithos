@@ -31,6 +31,7 @@ lithos/
 ├── _bmad-output/
 │   ├── planning-artifacts/
 │   │   ├── discovery/            # Project brief and corresponding elicitation summary
+│   │   ├── epics/                # Epic definitions and user stories
 │   │   ├── architecture/         # Sharded architecture documentation
 │   │   │   ├── index.md          # Main navigation and table of contents
 │   │   │   └── [9 section files]  # Focused architectural documentation
