@@ -9,12 +9,16 @@
 //! - Errors are `Send + Sync` for use across async boundaries
 //! - Errors include file paths, line numbers, and actionable messages
 
-use std::path::PathBuf;
-
 /// Errors that can occur during config file parsing.
 ///
 /// These errors provide rich context including file paths, line numbers,
 /// and format-specific error details to aid debugging.
+///
+/// # Memory Layout
+///
+/// Error context is boxed to keep the enum small (~24 bytes on 64-bit).
+/// This prevents `Result<T, ParseError>` from bloating function signatures
+/// with large error payloads (which is critical for hot parsing paths).
 #[non_exhaustive]
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
@@ -24,10 +28,10 @@ pub enum ParseError {
          {column:?}"
     )]
     Json {
-        /// File path where error occurred.
-        path: PathBuf,
-        /// Error message from parser.
-        message: String,
+        /// File path where error occurred (boxed to reduce enum size).
+        path: Box<std::path::Path>,
+        /// Error message from parser (boxed to reduce enum size).
+        message: Box<str>,
         /// Line number where error occurred.
         line: Option<usize>,
         /// Column number where error occurred.
@@ -40,10 +44,10 @@ pub enum ParseError {
          {column:?}"
     )]
     Toml {
-        /// File path where error occurred.
-        path: PathBuf,
-        /// Error message from parser.
-        message: String,
+        /// File path where error occurred (boxed to reduce enum size).
+        path: Box<std::path::Path>,
+        /// Error message from parser (boxed to reduce enum size).
+        message: Box<str>,
         /// Line number where error occurred.
         line: Option<usize>,
         /// Column number where error occurred.
@@ -53,8 +57,8 @@ pub enum ParseError {
     /// Unsupported file format.
     #[error("Unsupported format for {path:?}: expected one of {supported:?}")]
     UnsupportedFormat {
-        /// File path with unsupported extension.
-        path: PathBuf,
+        /// File path with unsupported extension (boxed to reduce enum size).
+        path: Box<std::path::Path>,
         /// List of supported extensions.
         supported: Vec<&'static str>,
     },
@@ -65,10 +69,10 @@ pub enum ParseError {
          {column:?}"
     )]
     Yaml {
-        /// File path where error occurred.
-        path: PathBuf,
-        /// Error message from parser.
-        message: String,
+        /// File path where error occurred (boxed to reduce enum size).
+        path: Box<std::path::Path>,
+        /// Error message from parser (boxed to reduce enum size).
+        message: Box<str>,
         /// Line number where error occurred.
         line: Option<usize>,
         /// Column number where error occurred.
@@ -78,6 +82,8 @@ pub enum ParseError {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     // [4.1-U-10] Thread Safety
@@ -90,13 +96,29 @@ mod tests {
         assert_send_sync::<ParseError>();
     }
 
+    // [4.3-R-01] Memory Layout - ParseError must stay compact
+    #[test]
+    fn parse_error_must_respect_large_error_threshold() {
+        // Given the large-error-threshold from clippy.toml (128 bytes)
+        const THRESHOLD: usize = 128;
+        let size = std::mem::size_of::<ParseError>();
+
+        // Then ParseError should not exceed this threshold
+        assert!(
+            size <= THRESHOLD,
+            "ParseError is {size} bytes, exceeds clippy.toml \
+             large-error-threshold of {THRESHOLD} bytes. Consider boxing \
+             large variants."
+        );
+    }
+
     // [4.1-U-11] TOML Error Display
     #[test]
     fn should_include_context_in_toml_error() {
         // Given a TOML error with specific line and column info
         let error = ParseError::Toml {
-            path: PathBuf::from("config.toml"),
-            message: "unexpected token".to_owned(),
+            path: PathBuf::from("config.toml").into_boxed_path(),
+            message: "unexpected token".into(),
             line: Some(10),
             column: Some(5),
         };
@@ -115,8 +137,8 @@ mod tests {
     fn should_include_context_in_json_error() {
         // Given a JSON error with specific line and column info
         let error = ParseError::Json {
-            path: PathBuf::from("data.json"),
-            message: "trailing comma".to_owned(),
+            path: PathBuf::from("data.json").into_boxed_path(),
+            message: "trailing comma".into(),
             line: Some(42),
             column: Some(8),
         };
@@ -135,7 +157,7 @@ mod tests {
     fn should_list_supported_extensions_in_error() {
         // Given an unsupported format error
         let error = ParseError::UnsupportedFormat {
-            path: PathBuf::from("config.xml"),
+            path: PathBuf::from("config.xml").into_boxed_path(),
             supported: vec!["toml", "json", "yaml"],
         };
 
@@ -155,6 +177,22 @@ mod tests {
     fn should_path_validation_be_send_and_sync() {
         fn assert_send_sync<T: Send + Sync>() {}
         assert_send_sync::<PathValidationError>();
+    }
+
+    // [4.3-R-02] Memory Layout - PathValidationError must stay compact
+    #[test]
+    fn path_validation_error_must_respect_large_error_threshold() {
+        // Given the large-error-threshold from clippy.toml (128 bytes)
+        const THRESHOLD: usize = 128;
+        let size = std::mem::size_of::<PathValidationError>();
+
+        // Then PathValidationError should not exceed this threshold
+        assert!(
+            size <= THRESHOLD,
+            "PathValidationError is {size} bytes, exceeds clippy.toml \
+             large-error-threshold of {THRESHOLD} bytes. Consider boxing \
+             large variants."
+        );
     }
 }
 

@@ -95,8 +95,9 @@ impl Toml {
     /// Returns `ParseError` if parsing fails.
     #[expect(
         clippy::string_slice,
-        reason = "TOML spans are byte offsets guaranteed to be on char \
-                  boundaries"
+        reason = "TOML parser guarantees span byte offsets fall on UTF-8 char \
+                  boundaries. String slicing is safe here and avoids \
+                  allocation overhead for error context extraction."
     )]
     #[inline]
     pub fn parse<T: DeserializeOwned>(
@@ -113,8 +114,8 @@ impl Toml {
             });
 
             ParseError::Toml {
-                path: path.to_path_buf(),
-                message: e.message().to_owned(),
+                path: path.into(),
+                message: e.message().into(),
                 line,
                 column,
             }
@@ -160,8 +161,8 @@ impl Json {
         content: &str,
     ) -> Result<T, ParseError> {
         serde_json::from_str(content).map_err(|e| ParseError::Json {
-            path: path.to_path_buf(),
-            message: e.to_string(),
+            path: path.into(),
+            message: e.to_string().into(),
             line: Some(e.line()),
             column: Some(e.column()),
         })
@@ -214,8 +215,8 @@ impl Yaml {
             });
 
             ParseError::Yaml {
-                path: path.to_path_buf(),
-                message: e.to_string(),
+                path: path.into(),
+                message: e.to_string().into(),
                 line,
                 column,
             }
@@ -315,7 +316,7 @@ impl Dispatcher {
         }
 
         Err(ParseError::UnsupportedFormat {
-            path: path.to_path_buf(),
+            path: path.into(),
             supported: vec!["toml", "json", "yaml", "yml"],
         })
     }
@@ -442,7 +443,8 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
+            reason = "Test assertions intentionally use unwrap() for clear \
+                      failure messages. See clippy.toml allow-unwrap-in-tests."
         )]
         fn should_dispatch_json_correctly() {
             // GIVEN a dispatcher, valid JSON content, and a .json path
@@ -467,7 +469,8 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
+            reason = "Test assertions intentionally use unwrap() for clear \
+                      failure messages. See clippy.toml allow-unwrap-in-tests."
         )]
         fn should_dispatch_toml_correctly() {
             // GIVEN a dispatcher, valid TOML content, and a .toml path
@@ -492,7 +495,8 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
+            reason = "Test assertions intentionally use unwrap() for clear \
+                      failure messages. See clippy.toml allow-unwrap-in-tests."
         )]
         fn should_dispatch_yaml_correctly() {
             // GIVEN a dispatcher, valid YAML content, and a .yaml path
@@ -535,7 +539,8 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
+            reason = "Test assertions intentionally use unwrap() for clear \
+                      failure messages. See clippy.toml allow-unwrap-in-tests."
         )]
         fn should_dispatch_json_by_content() {
             // GIVEN a dispatcher, valid JSON content, and a path without
@@ -561,7 +566,8 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
+            reason = "Test assertions intentionally use unwrap() for clear \
+                      failure messages. See clippy.toml allow-unwrap-in-tests."
         )]
         fn should_dispatch_yaml_by_content() {
             // GIVEN a dispatcher, valid YAML content, and a path without
@@ -587,7 +593,8 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
+            reason = "Test assertions intentionally use unwrap() for clear \
+                      failure messages. See clippy.toml allow-unwrap-in-tests."
         )]
         fn should_dispatch_toml_by_content() {
             // GIVEN a dispatcher, valid TOML content, and a path without
@@ -613,7 +620,8 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
+            reason = "Test assertions intentionally use unwrap() for clear \
+                      failure messages. See clippy.toml allow-unwrap-in-tests."
         )]
         fn should_prioritize_extension_over_content() {
             // GIVEN a dispatcher, JSON content but TOML extension
@@ -643,7 +651,9 @@ mod tests {
         #[test]
         #[expect(
             clippy::panic,
-            reason = "Panic used to fail test on unexpected error variant"
+            reason = "panic!() used to fail test immediately if wrong error \
+                      variant received. This is intentional test-only \
+                      behavior for explicit failure messaging."
         )]
         fn should_provide_toml_error_context() {
             // GIVEN invalid TOML content with an unclosed string
@@ -674,7 +684,9 @@ mod tests {
         #[test]
         #[expect(
             clippy::panic,
-            reason = "Panic used to fail test on unexpected error variant"
+            reason = "panic!() used to fail test immediately if wrong error \
+                      variant received. This is intentional test-only \
+                      behavior for explicit failure messaging."
         )]
         fn should_provide_json_error_context() {
             // GIVEN invalid JSON content with a trailing comma
