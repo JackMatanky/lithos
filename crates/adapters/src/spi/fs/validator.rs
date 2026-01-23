@@ -425,18 +425,21 @@ mod tests {
 
         #[test]
         #[expect(clippy::disallowed_methods, reason = "Test setup")]
-        #[expect(clippy::pattern_type_mismatch, reason = "Test assertion")]
+        #[expect(
+            clippy::pattern_type_mismatch,
+            reason = "PathBuf field in enum cannot be moved from reference"
+        )]
         fn creates_strict_validator_with_root() {
             let root = std::env::current_dir().expect("cwd").join("test_root");
             let validator = Validator::new_strict(root);
 
             match &validator.mode {
                 Mode::Strict {
-                    root: r,
+                    root: validator_root,
                 } => assert!(
-                    r.is_absolute(),
+                    validator_root.is_absolute(),
                     "Expected absolute root, found {}",
-                    r.display()
+                    validator_root.display()
                 ),
                 #[expect(clippy::panic, reason = "Test validates invariant")]
                 Mode::Flexible => {
