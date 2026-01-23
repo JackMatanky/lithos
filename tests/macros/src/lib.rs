@@ -13,8 +13,8 @@ pub fn derive_test_factory(input: TokenStream) -> TokenStream {
     let name = &input.ident;
     let factory_name = quote::format_ident!("{}Factory", name);
 
-    let fields = if let Data::Struct(data) = &input.data {
-        if let Fields::Named(fields) = &data.fields {
+    let fields = if let Data::Struct(ref data) = input.data {
+        if let Fields::Named(ref fields) = data.fields {
             &fields.named
         } else {
             return quote! { compile_error!("TestFactory only supports named fields"); }.into();
