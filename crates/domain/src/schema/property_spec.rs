@@ -106,8 +106,9 @@ impl PropertySpec {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: self is &PropertySpec, variants bind \
-                  implicitly. Consistent with frontmatter pattern."
+        reason = "Matching on &PropertySpec enum with non-Copy inner specs. \
+                  Pattern binding on &self is the idiomatic way to delegate \
+                  validation to inner types without moving non-Copy fields."
     )]
     pub fn validate(
         &self,
@@ -172,8 +173,10 @@ impl PropertySpec {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: self is &PropertySpec, variants bind \
-                  implicitly. Consistent with frontmatter pattern."
+        reason = "Matching on &PropertySpec enum with non-Copy inner specs. \
+                  Pattern binding on &self is the idiomatic way to delegate \
+                  spec validation to inner types without moving non-Copy \
+                  fields."
     )]
     pub fn validate_spec(&self) -> Result<(), DomainError> {
         match self {
