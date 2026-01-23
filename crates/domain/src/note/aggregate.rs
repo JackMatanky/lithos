@@ -520,7 +520,11 @@ mod tests {
             let result = note.validate();
 
             // THEN: validation succeeds
-            result.expect("Validation should pass");
+            assert!(
+                result.is_ok(),
+                "Validation should pass, but failed with: {:?}",
+                result.err()
+            );
         }
     }
 

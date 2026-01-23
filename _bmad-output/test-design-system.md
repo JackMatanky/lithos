@@ -80,6 +80,15 @@ A test is considered "Production Ready" only if it meets these five criteria:
   - 80%+ coverage target enforced by `tarpaulin`.
   - Architecture tests (`tests/arch/`) to enforce hexagonal boundaries.
 
+## Test Data Strategy
+
+Lithos uses a tiered approach to test data to ensure reproducibility and scale:
+
+1. **Inline Fixtures**: For unit tests, data is defined directly in the test body or a local `setup` function.
+2. **Deterministic Randomness**: Using `proptest` with fixed seeds for complex edge-case discovery.
+3. **Reference Vaults**: Located in `docs/refs/obsidian/`, these provide a standard "Golden Set" of markdown files for integration and E2E testing.
+4. **Isolated Contexts**: Every test that touches the filesystem MUST use `IsolatedTestContext` to prevent cross-test interference.
+
 ## Test Environment Requirements
 
 - **Local:** `mise` managed toolchain (Rust 1.92+, pre-commit hooks).

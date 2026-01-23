@@ -495,6 +495,64 @@ fn returns_validation_error_for_invalid_input() {
 }
 ```
 
+### Workflow for Fixing Clippy Lints
+
+The preferred workflow for handling clippy violations in tests is:
+
+1. **Run clippy**: `mise run lint` (or `cargo clippy --workspace --tests`)
+2. **Read the diagnostic**: Clippy often provides the exact code change needed.
+3. **Apply the suggestion**: Use `cargo clippy --fix` for simple lint fixes.
+4. **Refactor for complexity**: If the lint flags complexity or argument counts, extract helper functions or use the builder pattern as shown above.
+5. **Verify**: Run `mise run verify` to ensure all quality gates pass.
+
+### Additional Common Fixes
+
+#### 7. Panic in Result-returning Function
+
+**Problem:** Using `panic!`, `unwrap`, or `expect` in a function that returns `Result`.
+
+```rust
+fn validate_input(input: &str) -> Result<(), Error> {
+    if input.is_empty() {
+        panic!("Input cannot be empty"); // clippy::panic_in_result_fn flagged
+    }
+    Ok(())
+}
+```
+
+**Solution:** Return an `Err` variant instead of panicking.
+
+```rust
+// ✅ FIXED: Return Err
+fn validate_input(input: &str) -> Result<(), Error> {
+    if input.is_empty() {
+        return Err(Error::EmptyInput);
+    }
+    Ok(())
+}
+```
+
+#### 8. Large Enum Variant
+
+**Problem:** One variant of an enum is much larger than others, causing memory inefficiency.
+
+```rust
+enum DomainEvent {
+    Started,
+    NoteIndexed(Note), // If Note is very large, this variant is flagged
+}
+```
+
+**Solution:** Box the large variant data.
+
+```rust
+// ✅ FIXED: Box the large data
+enum DomainEvent {
+    Started,
+    NoteIndexed(Box<Note>),
+}
+```
+
 ### unwrapping in Tests
 
 - **Setup Phase**: Using `unwrap()` or `expect()` is acceptable in the _Arrange_ phase of a test. If the setup fails, the test should panic immediately as the prerequisite state wasn't met.
