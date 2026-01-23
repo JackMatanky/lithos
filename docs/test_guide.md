@@ -35,19 +35,25 @@ Lithos leverages a modern Rust testing stack to ensure speed and reliability.
 Lithos follows a hexagonal testing strategy to ensure coverage across all layers of the architecture while maintaining fast execution. We distinguish between three primary sets of tests:
 
 ### Unit Tests
+
 Tests that go in the **same module** as the tested unit. This allows visibility over private functions and parent `use` declarations.
+
 - **Focus**: Implementation details, edge-cases, and internal logic.
 - **Tools**: `cargo test`, `proptest`.
 - **Rule**: KISS (Keep It Simple, Stupid). Test one state and one behavior.
 
 ### Integration Tests
+
 Tests that live in the `tests/` directory. They are external to the library and can only test the **public API**.
+
 - **Focus**: Verifying that multiple parts of the system work together correctly.
 - **Tools**: `nextest`, `mockall`.
 - **Note**: External states and side-effects are permitted here.
 
 ### Doc Tests
+
 Executable examples within the source code using `///`.
+
 - **Focus**: Happy paths and general public API usage.
 - **Orchestration**: Run via `mise run test:unit`.
 
@@ -61,13 +67,16 @@ Executable examples within the source code using `///`.
 ## 4. Safety Invariants
 
 ### Async Testing
+
 Lithos is built on Tokio. All async tests must follow these safety invariants:
+
 - **Runtime Flavor**: Use `#[tokio::test(flavor = "multi_thread", worker_threads = 2)]` (or `async_test!`) to surface race conditions.
 - **Blocking Limit**: NEVER block an async thread for >10ms. Use `spawn_blocking_test` for `std::fs` or heavy CPU tasks.
 - **Timeouts**: Always wrap async operations with a timeout (e.g., `with_timeout(Duration::from_secs(5), ...)`).
 - **Throttling**: Use `tokio::sync::Semaphore` to limit concurrent I/O during test execution.
 
 ### Determinism
+
 - **Virtual Clock**: Use `time_test!` macro to control `tokio::time::pause()` and `advance`.
 - **Fixed Seeds**: Use deterministic seeds for any randomness or UUID generation in fixtures.
 - **Snapshot Redactions**: Always redact UUIDs and Timestamps using global regex filters in `insta`.
@@ -87,13 +96,15 @@ Tests are the first place people look to understand how your code works. They mu
 We follow a **Verb-First** and **Module-Per-Function** organization pattern.
 
 #### The Naming Formula
+
 A good test name reveals: `unit_of_work` + `expected_behavior` + `state_under_test`.
 
-*   ✅ `returns_error_when_vault_path_is_invalid`
-*   ✅ `maintains_event_bus_api_contract_across_boundaries`
-*   ❌ `test_note_1` (non-descriptive)
+- ✅ `returns_error_when_vault_path_is_invalid`
+- ✅ `maintains_event_bus_api_contract_across_boundaries`
+- ❌ `test_note_1` (non-descriptive)
 
 #### Module Organization
+
 For complex units, group related tests into sub-modules named after the function being tested. This improves IDE navigation and provides structured test output (e.g., `process_note::should_fail_when_limit_exceeded`).
 
 ```rust
@@ -130,14 +141,14 @@ mod tests {
     ```
 
 4.  **Explicit Failure Messages**: All `assert!` and `assert_eq!` calls should include formatted context. For `Ok` scenarios, always include the `Err` case in the message or use `eprintln` to aid debugging:
-    *   `assert!(res.is_ok(), "Expected success, got error: {:?}", res.err());`
+    - `assert!(res.is_ok(), "Expected success, got error: {:?}", res.err());`
 5.  **Matches over Equality**: When asserting on complex enums where you only care about the variant, use `matches!`. This avoids excessive boilerplate and keeps tests focused on one behavior.
-    *   `assert!(matches!(err, DomainError::Validation(_)), "Expected validation error, found: {:?}", err);`
+    - `assert!(matches!(err, DomainError::Validation(_)), "Expected validation error, found: {:?}", err);`
 
 ### Attributes & Metadata
 
 - `#[ignore = "reason"]`: Use for tests that are not yet fully implemented or depend on external environment setup.
-- `#[should_panic]`: Use only when panic is the *intended* and *documented* behavior of the API. Prefer returning `Result` over panicking.
+- `#[should_panic]`: Use only when panic is the _intended_ and _documented_ behavior of the API. Prefer returning `Result` over panicking.
 - `#[cfg(test)]`: Use to wrap test-only modules or mock implementations to exclude them from the production binary.
 
 ### Advanced Verification
@@ -151,13 +162,13 @@ mod tests {
 
 Snapshots are for visual or structural correctness (CLI output, ASTs, complex JSON/YAML).
 
-*   **YAML Snapshots**: Use the `yaml` feature for human-readable diffs in git.
-*   **Named Snapshots**: Always provide a name: `assert_yaml_snapshot!("note_v1", metadata);`.
-*   **Redactions**: Always redact unstable fields (UUIDs, timestamps) to ensure snapshots remain deterministic.
-*   **What NOT to snapshot**:
-    *   Simple types or primitives (use `assert_eq!`).
-    *   Critical path logic (use precise unit tests).
-    *   External resources (use mocks).
+- **YAML Snapshots**: Use the `yaml` feature for human-readable diffs in git.
+- **Named Snapshots**: Always provide a name: `assert_yaml_snapshot!("note_v1", metadata);`.
+- **Redactions**: Always redact unstable fields (UUIDs, timestamps) to ensure snapshots remain deterministic.
+- **What NOT to snapshot**:
+  - Simple types or primitives (use `assert_eq!`).
+  - Critical path logic (use precise unit tests).
+  - External resources (use mocks).
 
 ## 6. Doc-Tests (Executable Examples)
 
@@ -167,9 +178,9 @@ Doc-tests turn your `/// # Examples` into compiler-verified tests.
 - **Duplication is OK**: It is acceptable to duplicate logic between doc-tests and unit tests if it improves documentation clarity.
 - **Hide Boilerplate**: Use `#` at the start of a line to hide setup code (like imports) from the generated documentation while keeping it in the executable test.
 - **Attributes**:
-    - `no_run`: Compiles the example but doesn't execute it (ideal for side-effect heavy code).
-    - `compile_fail`: Verifies that the code *cannot* compile (ideal for demonstrating incorrect API usage).
-    - `should_panic`: Tells the compiler that this example block will panic.
+  - `no_run`: Compiles the example but doesn't execute it (ideal for side-effect heavy code).
+  - `compile_fail`: Verifies that the code _cannot_ compile (ideal for demonstrating incorrect API usage).
+  - `should_panic`: Tells the compiler that this example block will panic.
 
 ## 7. Streamlining with `lithos-test-utils`
 
@@ -179,7 +190,9 @@ The `lithos-test-utils` crate is the "Core OS" for testing in Lithos.
 > **Executable Source of Truth**: The examples below are simplified for quick reference. For the full, compiler-verified API documentation and advanced usage, run `mise run test:unit -p test-utils` or view the rustdoc for the relevant component in `tests/utils/src/`.
 
 ### Filesystem & Vaults
+
 Quickly spin up realistic environments for file-based operations.
+
 ```rust
 let vault = TestVault::new()
     .with_note("Work/Project.md", "# Project\nStatus: Active")
@@ -191,7 +204,9 @@ let context = IsolatedTestContext::new("my_test");
 ```
 
 ### Async & Time Control
+
 Streamline async setup and eliminate flakiness in time-sensitive code.
+
 ```rust
 time_test!(async fn validates_cache_expiry() {
     cache.set("key", "val", Duration::from_secs(60)).await;
@@ -201,7 +216,9 @@ time_test!(async fn validates_cache_expiry() {
 ```
 
 ### CQRS & Event Verification
+
 Declarative verification of complex business flows and eventual consistency.
+
 ```rust
 tester.given(initial_events)
     .when(command)
@@ -212,7 +229,7 @@ tester.given(initial_events)
 
 Lithos maintains strict quality gates even for test code. While tests have more latitude than business logic, they must still be modular and readable.
 
-### #expect vs #allow
+### `#expect` vs `#allow`
 
 - **Use `#[expect(...)]`**: For intentional lint violations that are necessary for the test (e.g., using `unwrap` in a setup block or creating a complex fixture that exceeds cognitive complexity limits). This tells the compiler "I know this violates a rule, but it's intentional."
 - **Use `#[allow(...)]`**: Primarily for generated code (e.g., `automock`) where the developer doesn't control the output. Avoid using `allow` for hand-written test logic.

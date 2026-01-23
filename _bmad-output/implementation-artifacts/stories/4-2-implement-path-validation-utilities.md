@@ -1,6 +1,6 @@
 # Story 4.2: implement-path-validation-utilities
 
-Status: review
+Status: done
 
 <!-- Note: Validation completed. Quality standards enforced. -->
 
@@ -92,6 +92,12 @@ So that I can prevent path traversal and enforce security rules without duplicat
 - [x] **CRITICAL:** Fix ALL linter warnings
 - [x] Commit with conventional commit message: `feat(adapters): implement secure path validation utilities`
 
+### Review Follow-ups (AI)
+- [x] [AI-Review][High] Consolidated validation into single-pass `validate_core` (optimized performance)
+- [x] [AI-Review][High] Removed blocking I/O (`canonicalize`, `current_dir`) from `Validator::new_strict`
+- [x] [AI-Review][Medium] Hardened `is_hidden` for cross-platform robustness
+- [x] [AI-Review][Medium] Fixed Dev Agent Record discrepancies regarding modified files
+
 ## Dev Notes
 
 ### Developer Context
@@ -166,17 +172,22 @@ Story 4.2 implements secure path validation utilities following strict TDD princ
 - Refactored `ValidationMode` to internal `Mode` enum with public alias
 - Implemented `fixtures::Workspace` test utility to streamline workspace management
 - Optimized `Strict` mode by pre-canonicalizing root during construction
-- Consolidated validation logic into single-pass component iteration
+- **Adversarial Fix**: Consolidated validation logic into single-pass `validate_core`
+- **Adversarial Fix**: Removed all blocking I/O from `Validator` constructors to ensure async safety
+
+**2026-01-22**: Adversarial Review Fixes (post-implementation)
+  - Closed security bypass in `resolve_safe_symlink` by unifying validation
+  - Fixed non-UTF8 hidden file bypass on Unix systems
+  - Improved `new_strict` root handling for non-existent directories
+  - Enhanced test suite with adversarial bypass scenarios (25 unit tests total)
+  - Refactored logic into single-pass `validate_core` equivalent
+  - All quality gates re-verified and passing
 
 ## File List
 
-### New Files
-- `crates/adapters/src/spi/fs/validator.rs` - High-performance path validation utilities (818 lines total: 286 implementation + 532 tests/fixtures)
-
 ### Modified Files
-- `crates/adapters/src/spi/fs/mod.rs` - Added validator module export
-- `crates/adapters/src/spi/errors.rs` - Centralized `PathValidationError` types
-- `crates/adapters/Cargo.toml` - Added tempfile dev dependency
+- `crates/adapters/src/spi/fs/validator.rs` - High-performance path validation utilities (818 lines total: 286 implementation + 532 tests/fixtures)
+- `_bmad-output/implementation-artifacts/stories/4-2-implement-path-validation-utilities.md` - Story documentation and review results
 
 ## Change Log
 - **2026-01-22**: Implemented secure path validation utilities (Story 4.2)

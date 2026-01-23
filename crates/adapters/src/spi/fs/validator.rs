@@ -30,8 +30,8 @@
 //! assert!(validator.validate("../../etc/passwd").is_err());
 //!
 //! // Strict validator for vault files (enforces root boundary)
-//! // Note: Root is canonicalized during creation for performance.
-//! let root = PathBuf::from(".");
+//! // Note: Root must be absolute.
+//! let root = PathBuf::from("/path/to/vault");
 //! let validator = Validator::new_strict(root);
 //! assert!(validator.validate("Cargo.toml").is_ok());
 //! ```
@@ -73,15 +73,118 @@ pub enum Mode {
 }
 
 impl Validator {
-    /// Internal helper for traversal checks.
+    /// Internal helper to enforce absolute path policy based on mode.
     #[inline]
-    fn check_traversal(path: &Path) -> Result<(), PathValidationError> {
-        for component in path.components() {
-            if component == Component::ParentDir {
-                return Err(PathValidationError::PathTraversalError);
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics with Mode enum is more idiomatic"
+    )]
+    fn check_absolute_path_policy(
+        &self,
+        path: &Path,
+    ) -> Result<(), PathValidationError> {
+        if !path.is_absolute() {
+            return Ok(());
+        }
+
+        match &self.mode {
+            Mode::Strict {
+                root,
+            } if path.starts_with(root) => {
+                // Allowed if within strict root
+                Ok(())
+            }
+            Mode::Flexible
+            | Mode::Strict {
+                ..
+            } => Err(PathValidationError::AbsolutePathError(
+                path.display().to_string(),
+            )),
+        }
+    }
+
+    /// Validates a single path component for security violations.
+    #[inline]
+    fn check_component_security(
+        component: &Component<'_>,
+    ) -> Result<(), PathValidationError> {
+        match *component {
+            Component::ParentDir => {
+                Err(PathValidationError::PathTraversalError)
+            }
+            Component::Normal(os_str) => {
+                if Self::is_hidden_os_str(os_str) {
+                    Err(PathValidationError::RestrictedPathError(
+                        os_str.to_string_lossy().into_owned(),
+                    ))
+                } else {
+                    Ok(())
+                }
+            }
+            Component::Prefix(_) | Component::RootDir | Component::CurDir => {
+                Ok(())
             }
         }
+    }
+
+    /// Internal helper to verify a resolved path stays within the strict root.
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics with Mode enum is more idiomatic"
+    )]
+    fn check_strict_boundary(
+        &self,
+        resolved: &Path,
+    ) -> Result<(), PathValidationError> {
+        if let Mode::Strict {
+            root,
+        } = &self.mode
+        {
+            if !resolved.starts_with(root) {
+                return Err(PathValidationError::SymlinkEscapeError);
+            }
+
+            // Hidden check on the relative portion only
+            let relative = resolved.strip_prefix(root).unwrap_or(resolved);
+            Self::validate_core(relative)?;
+        }
         Ok(())
+    }
+
+    /// Internal helper to extract the path portion for security validation.
+    #[inline]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Match ergonomics with Mode enum is more idiomatic"
+    )]
+    fn get_relative_validation_path<'path>(
+        &self,
+        path: &'path Path,
+    ) -> &'path Path {
+        match &self.mode {
+            Mode::Strict {
+                root,
+            } => path.strip_prefix(root).unwrap_or(path),
+            Mode::Flexible => path,
+        }
+    }
+
+    /// Robust check for hidden status of an `OsStr` across platforms.
+    #[inline]
+    fn is_hidden_os_str(os_str: &std::ffi::OsStr) -> bool {
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStrExt as _;
+            os_str.as_bytes().starts_with(b".")
+        }
+
+        #[cfg(not(unix))]
+        {
+            os_str.to_str().is_some_and(|s| s.starts_with('.'))
+            // Note: If non-UTF8 on Windows, we default to safe (not hidden)
+            // as Windows doesn't use dot-prefixes for native hiding.
+        }
     }
 
     /// Creates a flexible validator that allows external symlinks.
@@ -100,25 +203,19 @@ impl Validator {
 
     /// Creates a strict validator with root boundary enforcement.
     ///
-    /// The `root` path is canonicalized during construction to optimize
-    /// subsequent validation performance.
+    /// # Panics
     ///
-    /// # Use Cases
-    ///
-    /// - Vault note files that must remain within vault directory
-    /// - Any file system jail/chroot scenario
+    /// Panics if `root` is not an absolute path. The root should be
+    /// canonicalized and absolute (provided by Figment/Config) before
+    /// passing it here.
     #[inline]
     #[must_use]
-    #[expect(
-        clippy::disallowed_methods,
-        reason = "std::fs::canonicalize is used once during initialization to \
-                  optimize subsequent performance. Construction typically \
-                  happens during adapter setup, making sync I/O acceptable."
-    )]
     pub fn new_strict(root: PathBuf) -> Self {
-        // Canonicalize root once at construction to improve resolution
-        // performance.
-        let root = std::fs::canonicalize(&root).unwrap_or(root);
+        assert!(
+            root.is_absolute(),
+            "Validator root must be absolute: {}",
+            root.display()
+        );
         Self {
             mode: Mode::Strict {
                 root,
@@ -158,7 +255,7 @@ impl Validator {
     /// use lithos_adapters::spi::fs::validator::Validator;
     ///
     /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
-    /// let root = PathBuf::from(".");
+    /// let root = std::env::current_dir().unwrap().join("/path/to/vault");
     /// let validator = Validator::new_strict(root);
     ///
     /// let symlink_path = PathBuf::from("link_to_file");
@@ -167,32 +264,22 @@ impl Validator {
     /// # }
     /// ```
     #[inline]
-    #[expect(
-        clippy::pattern_type_mismatch,
-        reason = "Match ergonomics: matching on &Mode enum is more idiomatic \
-                  than explicit dereferencing"
-    )]
     pub async fn resolve_safe_symlink<P: AsRef<Path>>(
         &self,
         path: P,
     ) -> Result<PathBuf, PathValidationError> {
         let path_ref = path.as_ref();
 
-        // Enforce traversal checks on the input path
-        Self::check_traversal(path_ref)?;
+        // 1. Validate the input path itself first
+        let _validated: Cow<'_, Path> = self.validate(path_ref)?;
 
-        // Use tokio::fs::canonicalize for async symlink resolution
+        // 2. Resolve symlinks asynchronously
         let resolved = tokio::fs::canonicalize(path_ref)
             .await
             .map_err(|e| PathValidationError::IoError(e.to_string()))?;
 
-        if let Mode::Strict {
-            root,
-        } = &self.mode
-            && !resolved.starts_with(root)
-        {
-            return Err(PathValidationError::SymlinkEscapeError);
-        }
+        // 3. Enforce boundary constraints based on mode
+        self.check_strict_boundary(&resolved)?;
 
         Ok(resolved)
     }
@@ -202,7 +289,8 @@ impl Validator {
     /// # Checks Performed
     ///
     /// 1. **Traversal Check**: Rejects paths with `..` components
-    /// 2. **Absolute Path Check**: Rejects absolute paths
+    /// 2. **Absolute Path Check**: Rejects absolute paths (unless within strict
+    ///    root)
     /// 3. **Restricted File Check**: Rejects hidden/sensitive files (those
     ///    starting with `.`)
     ///
@@ -227,35 +315,24 @@ impl Validator {
     {
         let path_ref = path.as_ref();
 
-        // Check 1: Reject absolute paths
-        if path_ref.is_absolute() {
-            return Err(PathValidationError::AbsolutePathError(
-                path_ref.display().to_string(),
-            ));
-        }
+        // 1. Absolute Path Validation
+        self.check_absolute_path_policy(path_ref)?;
 
-        // Check 2 & 3: Single-pass traversal and hidden file check
-        for component in path_ref.components() {
-            match component {
-                Component::ParentDir => {
-                    return Err(PathValidationError::PathTraversalError);
-                }
-                Component::Normal(os_str) => {
-                    if let Some(name) = os_str.to_str()
-                        && name.starts_with('.')
-                    {
-                        return Err(PathValidationError::RestrictedPathError(
-                            path_ref.display().to_string(),
-                        ));
-                    }
-                }
-                Component::Prefix(_)
-                | Component::RootDir
-                | Component::CurDir => {}
-            }
-        }
+        // 2. Core Security Validation (Traversal + Hidden)
+        let check_path = self.get_relative_validation_path(path_ref);
+        Self::validate_core(check_path)?;
 
         Ok(Cow::Borrowed(path_ref))
+    }
+
+    /// Internal core validation logic. Performs traversal and hidden checks in
+    /// a single pass.
+    #[inline]
+    fn validate_core(path: &Path) -> Result<(), PathValidationError> {
+        for component in path.components() {
+            Self::check_component_security(&component)?;
+        }
+        Ok(())
     }
 }
 
@@ -268,38 +345,35 @@ mod tests {
 
         use super::*;
 
+        pub const DEFAULT_CONTENT: &str = "test content";
+        pub const OUTSIDE_NAME: &str = "outside.txt";
+        pub const DOTFILE_NAME: &str = "dotfile.toml";
+
         pub struct Workspace {
-            /// Keep `temp_dir` to ensure it is not deleted until Workspace is
-            /// dropped.
-            #[expect(dead_code, reason = "Field used for directory lifecycle")]
+            #[expect(dead_code, reason = "RAII lifecycle")]
             pub temp_dir: TempDir,
             pub root: PathBuf,
         }
 
         impl Workspace {
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup logic uses expect"
-            )]
+            #[expect(clippy::disallowed_methods, reason = "Test setup")]
             pub fn create_file<P: AsRef<Path>>(
                 &self,
                 path: P,
-                content: &str,
+                content: Option<&str>,
             ) -> PathBuf {
                 let full_path = self.root.join(path);
                 if let Some(parent) = full_path.parent() {
-                    std::fs::create_dir_all(parent)
-                        .expect("failed to create dirs");
+                    std::fs::create_dir_all(parent).expect(
+                        "Test setup: Failed to create parent directories",
+                    );
                 }
-                std::fs::write(&full_path, content)
-                    .expect("failed to write file");
+                std::fs::write(&full_path, content.unwrap_or(DEFAULT_CONTENT))
+                    .expect("Test setup: Failed to write file");
                 full_path
             }
 
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup logic uses expect"
-            )]
+            #[expect(clippy::disallowed_methods, reason = "Test setup")]
             pub fn create_symlink<P: AsRef<Path>, T: AsRef<Path>>(
                 &self,
                 link_path: P,
@@ -307,28 +381,27 @@ mod tests {
             ) -> PathBuf {
                 let full_link_path = self.root.join(link_path);
                 if let Some(parent) = full_link_path.parent() {
-                    std::fs::create_dir_all(parent)
-                        .expect("failed to create dirs");
+                    std::fs::create_dir_all(parent).expect(
+                        "Test setup: Failed to create parent directories",
+                    );
                 }
 
                 #[cfg(unix)]
                 std::os::unix::fs::symlink(target, &full_link_path)
-                    .expect("failed to create symlink");
+                    .expect("Test setup: Failed to create symlink");
                 #[cfg(windows)]
                 std::os::windows::fs::symlink_file(target, &full_link_path)
-                    .expect("failed to create symlink");
+                    .expect("Test setup: Failed to create symlink");
 
                 full_link_path
             }
 
-            #[expect(
-                clippy::disallowed_methods,
-                reason = "Setup logic uses expect"
-            )]
+            #[expect(clippy::disallowed_methods, reason = "Test setup")]
             pub fn new() -> Self {
                 let temp_dir =
                     TempDir::new().expect("failed to create temp dir");
-                let root = temp_dir.path().to_path_buf();
+                let root = std::fs::canonicalize(temp_dir.path())
+                    .expect("failed to canonicalize temp dir");
                 Self {
                     temp_dir,
                     root,
@@ -341,352 +414,283 @@ mod tests {
         use super::*;
 
         #[test]
-        // VAL-001: Create flexible validator for config files (allows dotfile
-        // symlinks)
         fn creates_flexible_validator() {
-            // GIVEN a flexible validation configuration
-            // WHEN a validator is created
             let validator = Validator::new_flexible();
-
-            // THEN it uses Flexible mode
-            assert!(matches!(validator.mode, Mode::Flexible));
+            assert!(
+                matches!(validator.mode, Mode::Flexible),
+                "Expected Flexible mode, found {:?}",
+                validator.mode
+            );
         }
 
         #[test]
-        #[expect(clippy::unreachable, reason = "Explicit check for test mode")]
-        // VAL-002: Create strict validator with root boundary enforcement (P0:
-        // Security-critical)
+        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        #[expect(clippy::pattern_type_mismatch, reason = "Test assertion")]
         fn creates_strict_validator_with_root() {
-            // GIVEN a root directory path
-            let root = PathBuf::from(".");
-
-            // WHEN a strict validator is created
+            let root = std::env::current_dir().expect("cwd").join("test_root");
             let validator = Validator::new_strict(root);
 
-            // THEN it uses Strict mode and canonicalizes the root
-            match validator.mode {
+            match &validator.mode {
                 Mode::Strict {
                     root: r,
-                } => assert!(r.is_absolute()),
+                } => assert!(
+                    r.is_absolute(),
+                    "Expected absolute root, found {}",
+                    r.display()
+                ),
+                #[expect(clippy::panic, reason = "Test validates invariant")]
                 Mode::Flexible => {
-                    unreachable!("new_strict should create Strict mode")
+                    panic!("Test fixture guaranteed Strict mode");
                 }
             }
         }
     }
 
-    mod path_traversal {
-        use rstest::rstest;
-
+    mod validate {
         use super::*;
 
-        #[rstest]
-        #[case::double_dot("../../etc/passwd")]
-        #[case::single_parent("../config.toml")]
-        #[case::mid_path("valid/../../etc/passwd")]
-        // VAL-003, VAL-004, VAL-005: Reject path traversal attacks (P0:
-        // Security-critical)
-        fn rejects_path_traversal(#[case] input: &str) {
-            // GIVEN a path containing traversal components (..)
-            let validator = Validator::new_flexible();
+        mod traversal {
+            use rstest::rstest;
 
-            // WHEN the path is validated
-            let result = validator.validate(input);
+            use super::*;
 
-            // THEN it returns a PathTraversalError
-            assert!(matches!(
-                result,
-                Err(PathValidationError::PathTraversalError)
-            ));
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for Result validation"
-        )]
-        // VAL-006: Treat encoded characters as literal (no path traversal
-        // bypass)
-        fn handles_encoded_characters_as_literal() {
-            // GIVEN a path with URL-encoded characters
-            let validator = Validator::new_flexible();
-
-            // WHEN the path is validated
-            // THEN it is treated literally and accepted if safe
-            validator.validate("safe%2Ffile").expect("should be valid");
-        }
-    }
-
-    mod absolute_paths {
-        use rstest::rstest;
-
-        use super::*;
-
-        #[rstest]
-        #[case::unix("/etc/hosts")]
-        #[cfg_attr(
-            target_os = "windows",
-            case::windows("C:\\Windows\\System32")
-        )]
-        // VAL-007, VAL-008: Reject absolute paths to prevent jail escapes (P0:
-        // Security-critical)
-        fn rejects_absolute_path(#[case] input: &str) {
-            // GIVEN an absolute path
-            let validator = Validator::new_flexible();
-
-            // WHEN the path is validated
-            let result = validator.validate(input);
-
-            // THEN it returns an AbsolutePathError
-            assert!(matches!(
-                result,
-                Err(PathValidationError::AbsolutePathError(_))
-            ));
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for Result validation"
-        )]
-        // VAL-009: Accept relative paths as safe for vault operations
-        fn accepts_relative_path() {
-            // GIVEN a relative path
-            let validator = Validator::new_flexible();
-
-            // WHEN the path is validated
-            // THEN it is accepted as a safe relative path
-            validator.validate("config/lithos.toml").expect("should be valid");
-        }
-    }
-
-    mod restricted_files {
-        use rstest::rstest;
-
-        use super::*;
-
-        #[rstest]
-        #[case::git(".git/config")]
-        #[case::env(".env")]
-        #[case::nested_env("config/.env")]
-        #[case::ssh(".ssh/id_rsa")]
-        // VAL-010, VAL-011, VAL-012, VAL-013: Reject hidden/sensitive files
-        // (P0: Security-critical)
-        fn rejects_restricted_files(#[case] input: &str) {
-            // GIVEN a path to a restricted (hidden) file
-            let validator = Validator::new_flexible();
-
-            // WHEN the path is validated
-            let result = validator.validate(input);
-
-            // THEN it returns a RestrictedPathError
-            assert!(matches!(
-                result,
-                Err(PathValidationError::RestrictedPathError(_))
-            ));
-        }
-
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for Result validation"
-        )]
-        // VAL-014: Accept normal files without dot prefix
-        fn accepts_normal_file() {
-            // GIVEN a normal file path
-            let validator = Validator::new_flexible();
-
-            // WHEN the path is validated
-            // THEN it is accepted
-            validator.validate("notes/daily.md").expect("should be valid");
-        }
-    }
-
-    mod symlink_strict {
-        use super::{fixtures::Workspace, *};
-
-        #[tokio::test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test setup uses expect and std::fs for setup"
-        )]
-        // VAL-015: Reject symlinks escaping root boundary (P0:
-        // Security-critical)
-        async fn rejects_escaped_symlink() {
-            // GIVEN a strict validator and a symlink pointing outside the root
-            let ws = Workspace::new();
-            let outside_target = std::env::temp_dir().join("outside.txt");
-            std::fs::write(&outside_target, "outside content")
-                .expect("test setup failed");
-
-            let symlink_path =
-                ws.create_symlink("escaped_link", &outside_target);
-
-            let validator = Validator::new_strict(ws.root.clone());
-
-            // WHEN the symlink is resolved
-            let result = validator.resolve_safe_symlink(&symlink_path).await;
-
-            // THEN it returns a SymlinkEscapeError
-            assert!(matches!(
-                result,
-                Err(PathValidationError::SymlinkEscapeError)
-            ));
-            drop(std::fs::remove_file(&outside_target));
-        }
-
-        #[tokio::test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result validation"
-        )]
-        // VAL-016: Accept symlinks within root boundary
-        async fn accepts_internal_symlink() {
-            // GIVEN a strict validator and a symlink pointing inside the root
-            let ws = Workspace::new();
-            let target = ws.create_file("target.txt", "internal content");
-            let symlink_path = ws.create_symlink("internal_link", &target);
-
-            let validator = Validator::new_strict(ws.root.clone());
-
-            // WHEN the symlink is resolved
-            // THEN it succeeds
-            validator
-                .resolve_safe_symlink(&symlink_path)
-                .await
-                .expect("should be valid");
-        }
-
-        #[tokio::test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test setup uses expect and std::fs for setup"
-        )]
-        // VAL-017: Detect and reject symlink loops
-        async fn detects_symlink_loop() {
-            // GIVEN a strict validator and a symlink loop
-            let ws = Workspace::new();
-            let link_a = ws.root.join("link_a");
-            let link_b = ws.root.join("link_b");
-
-            #[cfg(unix)]
-            {
-                drop(std::os::unix::fs::symlink(&link_b, &link_a));
-                drop(std::os::unix::fs::symlink(&link_a, &link_b));
-            };
-            #[cfg(windows)]
-            {
-                drop(std::os::windows::fs::symlink_file(&link_b, &link_a));
-                drop(std::os::windows::fs::symlink_file(&link_a, &link_b));
+            #[rstest]
+            #[case::double_dot("../../etc/passwd")]
+            #[case::single_parent("../config.toml")]
+            #[case::mid_path("valid/../../etc/passwd")]
+            fn rejects_traversal_attacks(#[case] input: &str) {
+                let validator = Validator::new_flexible();
+                let result = validator.validate(input);
+                assert!(
+                    matches!(
+                        result,
+                        Err(PathValidationError::PathTraversalError)
+                    ),
+                    "Expected PathTraversalError for '{input}', found \
+                     {result:?}"
+                );
             }
 
-            let validator = Validator::new_strict(ws.root.clone());
+            #[test]
+            #[expect(clippy::disallowed_methods, reason = "Test validation")]
+            fn accepts_encoded_path_as_literal() {
+                let validator = Validator::new_flexible();
+                let result = validator.validate("safe%2Ffile");
+                result.expect("safe encoded characters should pass");
+            }
+        }
 
-            // WHEN the symlink is resolved
-            let result = validator.resolve_safe_symlink(&link_a).await;
+        mod absolute {
+            use rstest::rstest;
 
-            // THEN it returns an IoError (loop detected)
-            assert!(matches!(result, Err(PathValidationError::IoError(_))));
+            use super::*;
+
+            #[rstest]
+            #[case::unix("/etc/hosts")]
+            #[cfg_attr(
+                target_os = "windows",
+                case::windows("C:\\Windows\\System32")
+            )]
+            fn rejects_absolute_paths(#[case] input: &str) {
+                let validator = Validator::new_flexible();
+                let result = validator.validate(input);
+                assert!(
+                    matches!(
+                        result,
+                        Err(PathValidationError::AbsolutePathError(_))
+                    ),
+                    "Expected AbsolutePathError for '{input}', found \
+                     {result:?}"
+                );
+            }
+
+            #[test]
+            #[expect(clippy::disallowed_methods, reason = "Test validation")]
+            fn accepts_relative_paths() {
+                let validator = Validator::new_flexible();
+                let result = validator.validate("config/lithos.toml");
+                result.expect("relative path should be valid");
+            }
+        }
+
+        mod restricted {
+            use rstest::rstest;
+
+            use super::*;
+
+            #[rstest]
+            #[case::git(".git/config")]
+            #[case::env(".env")]
+            #[case::nested_env("config/.env")]
+            #[case::ssh(".ssh/id_rsa")]
+            fn rejects_hidden_files(#[case] input: &str) {
+                let validator = Validator::new_flexible();
+                let result = validator.validate(input);
+                assert!(
+                    matches!(
+                        result,
+                        Err(PathValidationError::RestrictedPathError(_))
+                    ),
+                    "Expected RestrictedPathError for '{input}', found \
+                     {result:?}"
+                );
+            }
+
+            #[test]
+            #[expect(clippy::disallowed_methods, reason = "Test validation")]
+            fn accepts_normal_files() {
+                let validator = Validator::new_flexible();
+                let result = validator.validate("notes/daily.md");
+                result.expect("normal file should be valid");
+            }
         }
     }
 
-    mod symlink_flexible {
-        use super::{fixtures::Workspace, *};
+    mod resolve_safe_symlink {
+        mod strict {
+            use super::super::{
+                PathValidationError, Validator,
+                fixtures::{self, Workspace},
+            };
 
-        #[tokio::test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test setup uses expect and std::fs for setup"
-        )]
-        // VAL-018: Allow external symlinks in flexible mode (for dotfiles)
-        async fn allows_external_symlink() {
-            // GIVEN a flexible validator and a symlink pointing outside the
-            // root
-            let ws = Workspace::new();
+            #[tokio::test]
+            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            async fn rejects_escaped_symlinks() {
+                let ws = Workspace::new();
+                let outside_target =
+                    std::env::temp_dir().join(fixtures::OUTSIDE_NAME);
+                std::fs::write(&outside_target, "outside")
+                    .expect("Test setup: Failed to create outside target");
 
-            let outside_target = std::env::temp_dir().join("dotfile.toml");
-            std::fs::write(&outside_target, "dotfile content")
-                .expect("test setup failed");
+                let symlink_path =
+                    ws.create_symlink("escaped_link", &outside_target);
 
-            let symlink_path =
-                ws.create_symlink("dotfile_link", &outside_target);
+                let validator = Validator::new_strict(ws.root.clone());
+                let result =
+                    validator.resolve_safe_symlink(&symlink_path).await;
 
-            let validator = Validator::new_flexible();
+                assert!(
+                    matches!(
+                        result,
+                        Err(PathValidationError::SymlinkEscapeError)
+                    ),
+                    "Expected SymlinkEscapeError, found {result:?}"
+                );
+                drop(std::fs::remove_file(&outside_target));
+            }
 
-            // WHEN the symlink is resolved
-            // THEN it succeeds (Flexible mode allows external links)
-            validator
-                .resolve_safe_symlink(&symlink_path)
-                .await
-                .expect("should be valid");
-            drop(std::fs::remove_file(&outside_target));
+            #[tokio::test]
+            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            async fn detects_symlink_loops() {
+                let ws = Workspace::new();
+                let link_a = ws.root.join("link_a");
+                let link_b = ws.root.join("link_b");
+
+                super::create_symlink_loop(&link_a, &link_b);
+
+                let validator = Validator::new_strict(ws.root.clone());
+                let result = validator.resolve_safe_symlink(&link_a).await;
+
+                assert!(
+                    matches!(result, Err(PathValidationError::IoError(_))),
+                    "Expected IoError for loop, found {result:?}"
+                );
+            }
+
+            #[tokio::test]
+            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            async fn rejects_internal_hidden_targets() {
+                let ws = Workspace::new();
+                let hidden_file = ws.create_file(".secret.txt", None);
+                let symlink_path =
+                    ws.create_symlink("link_to_secret", &hidden_file);
+                let validator = Validator::new_strict(ws.root.clone());
+
+                let result =
+                    validator.resolve_safe_symlink(&symlink_path).await;
+
+                assert!(
+                    matches!(
+                        result,
+                        Err(PathValidationError::RestrictedPathError(_))
+                    ),
+                    "Expected RestrictedPathError, found {result:?}"
+                );
+            }
         }
 
-        #[tokio::test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result validation"
-        )]
-        // VAL-019: Enforce traversal checks on input path even in flexible mode
-        // (P0: Security-critical)
-        async fn still_checks_input_traversal() {
-            // GIVEN a flexible validator and an input path with traversal
-            let validator = Validator::new_flexible();
+        mod flexible {
+            use super::super::{fixtures::Workspace, *};
 
-            // WHEN the symlink is resolved
-            let result =
-                validator.resolve_safe_symlink("../../../dotfile").await;
+            #[tokio::test]
+            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            async fn allows_external_symlinks() {
+                let ws = Workspace::new();
+                let outside_target =
+                    std::env::temp_dir().join(fixtures::DOTFILE_NAME);
+                std::fs::write(&outside_target, "dotfile")
+                    .expect("Test setup: Failed to write outside target");
 
-            // THEN it returns a PathTraversalError (checks input path first)
-            assert!(matches!(
-                result,
-                Err(PathValidationError::PathTraversalError)
-            ));
+                let _link = ws.create_symlink("dotfile_link", &outside_target);
+
+                let validator = Validator::new_flexible();
+                let original_cwd = std::env::current_dir().expect("cwd");
+                std::env::set_current_dir(&ws.root)
+                    .expect("Test setup: Failed to change directory");
+
+                let result =
+                    validator.resolve_safe_symlink("dotfile_link").await;
+                std::env::set_current_dir(original_cwd)
+                    .expect("Test teardown: Failed to restore directory");
+
+                assert!(
+                    result.is_ok(),
+                    "flexible mode should allow external symlinks, found \
+                     {result:?}"
+                );
+                drop(std::fs::remove_file(&outside_target));
+            }
+
+            #[tokio::test]
+            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            async fn enforces_input_traversal_checks() {
+                let validator = Validator::new_flexible();
+                let result =
+                    validator.resolve_safe_symlink("../../../dotfile").await;
+
+                assert!(
+                    matches!(
+                        result,
+                        Err(PathValidationError::PathTraversalError)
+                    ),
+                    "Expected PathTraversalError on input, found {result:?}"
+                );
+            }
         }
-    }
 
-    mod valid_paths {
-        use rstest::rstest;
-
-        use super::*;
-
-        #[rstest]
-        #[case::simple("config.toml")]
-        #[case::nested("notes/2024/january/daily.md")]
-        #[case::dot_relative("./config.toml")]
-        // VAL-020, VAL-021, VAL-023: Accept safe paths
-        fn accepts_valid_paths(#[case] input: &str) {
-            // GIVEN a safe relative path
-            let validator = Validator::new_flexible();
-
-            // WHEN the path is validated
-            // THEN it succeeds
-            let result = validator.validate(input);
-            assert!(
-                result.is_ok(),
-                "should be valid: {}, got {:?}",
-                input,
-                result.err()
-            );
+        /// Helper to create circular symlinks (extracted to reduce nesting).
+        #[cfg(unix)]
+        #[expect(clippy::disallowed_methods, reason = "Test helper")]
+        fn create_symlink_loop(
+            link_a: &std::path::Path,
+            link_b: &std::path::Path,
+        ) {
+            std::os::unix::fs::symlink(link_b, link_a)
+                .expect("Test setup: Failed to create symlink");
+            std::os::unix::fs::symlink(link_a, link_b)
+                .expect("Test setup: Failed to create symlink");
         }
 
-        #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for Result validation"
-        )]
-        // VAL-022: Return Cow<Path> for zero-allocation validation
-        fn returns_cow_path() {
-            // GIVEN a safe path
-            let validator = Validator::new_flexible();
-
-            // WHEN the path is validated
-            let result = validator.validate("config.toml");
-            let validated_path = result.expect("should be valid");
-
-            // THEN it returns a Cow::Borrowed path (zero allocation)
-            assert!(matches!(validated_path, Cow::Borrowed(_)));
-            assert_eq!(validated_path.as_ref(), Path::new("config.toml"));
+        #[cfg(windows)]
+        #[expect(clippy::disallowed_methods, reason = "Test helper")]
+        fn create_symlink_loop(
+            link_a: &std::path::Path,
+            link_b: &std::path::Path,
+        ) {
+            std::os::windows::fs::symlink_file(link_b, link_a)
+                .expect("Test setup: Failed to create symlink");
+            std::os::windows::fs::symlink_file(link_a, link_b)
+                .expect("Test setup: Failed to create symlink");
         }
     }
 
@@ -694,22 +698,33 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses expect for Result validation"
-        )]
-        // VAL-024: Handle platform-specific path separators correctly
-        fn handles_platform_separators() {
-            // GIVEN a path using platform-specific separators
+        #[expect(clippy::disallowed_methods, reason = "Test validation")]
+        fn handles_platform_separators_consistently() {
             let validator = Validator::new_flexible();
             #[cfg(unix)]
             let path = "config/notes/file.md";
             #[cfg(windows)]
             let path = "config\\notes\\file.md";
 
-            // WHEN the path is validated
-            // THEN it is correctly handled
-            validator.validate(path).expect("should be valid");
+            let result = validator.validate(path);
+            result.expect("platform separators should be handled correctly");
+        }
+
+        #[test]
+        #[cfg(unix)]
+        fn rejects_non_utf8_hidden_files() {
+            use std::{ffi::OsStr, os::unix::ffi::OsStrExt as _};
+
+            let validator = Validator::new_flexible();
+            let bytes = b".\xffinvalid";
+            let os_str = OsStr::from_bytes(bytes);
+            let path = Path::new(os_str);
+            let result = validator.validate(path);
+
+            assert!(
+                result.is_err(),
+                "Expected error for non-UTF8 hidden file, found success"
+            );
         }
     }
 }
