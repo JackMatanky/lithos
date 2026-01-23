@@ -155,7 +155,20 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### Clippy as Guardrail
 - **Cognitive Complexity:** Hard limit of **25 (deny)**. Max function length of **100 lines (deny)**.
 - **Anti-Pattern Deny:** Prohibit `clippy::unwrap_used`, `clippy::expect_used`, `clippy::todo`, `clippy::panic`, `clippy::unimplemented`, and `clippy::dbg_macro` in production code.
-- **Audit Trail Mandate**: Disabling a lint requires: `// # LINT_DISABLE_REASON: [Reason] | Options tried: [List] | Justification: [Why]`.
+- **Lint Suppression Policy:**
+    - **Prefer `#[expect(...)]` over `#[allow(...)]`**: `expect` documents intentional violations; `allow` is only for generated code.
+    - **Template for Clear Reasons:** Every `#[expect]` MUST explain WHAT constraint exists, WHY it prevents compliance, and HOW this is idiomatic:
+      ```rust
+      #[expect(
+          lint_name,
+          reason = "[WHAT constraint]. [WHY unavoidable]. [HOW this is idiomatic]."
+      )]
+      ```
+    - **Examples:**
+        - Pattern Type Mismatch: `"Enum has mixed Copy (bool/f64) and non-Copy (String) fields. Cannot dereference without moving non-Copy types. Matching on &self is idiomatic."`
+        - Test Setup: `"Test fixture uses Result::unwrap() on parse_config() for clear failure messages. Acceptable in test-only code paths."`
+        - Float Arithmetic: `"Numeric validation requires epsilon comparison (const EPSILON: f64 = 1e-10) for floating-point precision."`
+    - **Consolidate Consecutive Expects:** Combine multiple `#[expect(...)]` attributes into one with unified reason when they apply to the same item.
 
 #### Process & Orchestration
 - **Mise-First Formatting:** Formatting and linting MUST be run through `mise run verify` to ensure the exact toolchain versions from `mise.toml` are used.
@@ -176,4 +189,4 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - Update when technology stack changes.
 - Review quarterly for outdated rules.
 
-Last Updated: 2026-01-12
+Last Updated: 2026-01-23
