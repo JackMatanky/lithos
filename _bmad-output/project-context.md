@@ -1,16 +1,16 @@
 ---
 project_name: 'lithos'
 user_name: 'Jack'
-date: '2026-01-12'
+date: '2026-01-23'
 sections_completed: ['technology_stack', 'architectural_integrity', 'language_rules', 'framework_rules', 'testing_rules', 'quality_rules', 'workflow_rules', 'anti_patterns']
 status: 'complete'
-rule_count: 58
+rule_count: 68
 optimized_for_llm: true
 ---
 
 # Project Context for AI Agents
 
-_This file contains critical rules and patterns that AI agents must follow when implementing code in this project. Focus on unobvious details that agents might otherwise miss._
+_This file contains critical rules and patterns that AI agents must follow when implementing code in this project. Focus on unobvious details that agents might otherwise miss. Rules are mandatory unless marked as 'prefer' or 'avoid'. When rules conflict, choose the more restrictive option._
 
 ---
 
@@ -59,15 +59,15 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Architectural Integrity
 - **Hexagonal Boundary Enforcement:**
     - `crates/domain` must have NO external dependencies and NO I/O.
-    - All **Ports** MUST be defined as traits. Use `#[async_trait]` for all async trait definitions and implementations.
+    - All **Ports** MUST be defined as traits. Use #[async_trait] ONLY for traits containing async methods. Example: For a synchronous repository port, define trait methods without async_trait; for an async file system port, apply async_trait.
     - Use `pub(crate)` by default; reserve `pub` strictly for the crate's public interface.
 - **CQRS & Event Discipline:**
-    - Separate **Command** (Write) and **Query** (Read) models. Query models must be optimized for snapshots (Dumb DTOs) and never expose raw domain logic.
+    - Separate **Command** (Write) and **Query** (Read) models. Query models must be optimized for read performance (e.g., via zero-copy deserialization) and structured as simple Data Transfer Objects (DTOs) with no business logic—only fields and basic getters. Example: A NoteQueryDto has fields like id: Uuid and title: String, but no methods like validate() or calculate().
     - Use the **Hybrid Event Bus**: `mpsc` for Indexing (Reliable), `broadcast` for Signals (Control), and `watch` for snapshots (State/LSP).
 - **Unit of Work (Transactional Context):**
     - **Atomic Commands:** Every Command Handler MUST use a `UnitOfWork` to wrap persistence logic.
     - **Repository Access:** Repositories must be accessed via the `TransactionContext` to ensure they share the same Redb `WriteTransaction`.
-    - **Deferred Dispatch:** Domain events must be staged within the context and dispatched ONLY after a successful `commit()`. This prevents "phantom events" from failed transactions.
+    - **Deferred Dispatch:** Domain events must be staged within the context and dispatched ONLY after a successful commit(). This prevents "phantom events" from failed transactions. Staging means collecting events in a Vec or similar structure within the UnitOfWork. Dispatch occurs via the event bus only if commit() succeeds (no exceptions thrown). Example: In a NoteCreateCommand, stage a NoteCreated event in the context; dispatch it post-commit to avoid notifying subscribers of uncommitted changes.
 - **Dependency Injection:** Use constructor injection with `Arc<dyn Trait>` for app-level Port injection. Favor **Generics (`impl Trait`)** for internal adapter-level utility functions to maximize static dispatch performance.
 
 ### Language-Specific Rules (Rust)
@@ -79,12 +79,12 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Exhaustive Matching:** Use `match` for Enums with `#[non_exhaustive]` on domain types. Prohibit `_ => {}` catch-alls for domain logic to ensure new variants are handled.
 
 #### AI Pitfall Protections
-- **Path Protocol**: Use `PathBuf` (owned) or `&Path` (borrowed) for all file paths. NEVER use `String` for paths. Prohibit `std::env::current_dir` and `std::fs::canonicalize` in favor of Figment-managed absolute paths.
+- **Path Protocol**: Use `PathBuf` (owned) or `&Path` (borrowed) for all file paths. NEVER use `String` for paths. Strictly avoid std::env::current_dir and std::fs::canonicalize due to platform inconsistencies; always use Figment-managed absolute paths for reliability. Exception: In error recovery scenarios, use canonicalize only if Figment paths are invalid.
 - **Async Resource Safety:**
     - In `async` contexts, ONLY use `tokio::fs`. Use `spawn_blocking` for `std::fs` or heavy CPU tasks.
-    - **Concurrency Throttling:** Use `tokio::sync::Semaphore` to limit concurrent I/O (e.g., when indexing 10k+ files).
-- **Lock Discipline:** NEVER hold a `std::sync::MutexGuard` across an `.await`. If state must persist across awaits, use `tokio::sync::Mutex`.
-- **Numeric Safety:** Prohibit `as` casting; use `.try_into().expect("...")` or `.context("...")` to prevent silent truncation.
+    - **Concurrency Throttling:** Use tokio::sync::Semaphore to limit concurrent I/O, especially for large-scale operations (e.g., vault indexing). Set permits based on system limits, e.g., Semaphore::new(100) for file reads to avoid exceeding OS file descriptors.
+- **Lock Discipline:** NEVER hold a std::sync::MutexGuard across an .await, as it blocks the async runtime thread. If state must persist across awaits, use tokio::sync::Mutex, which is async-aware and releases locks during suspension.
+- **Numeric Safety:** Prohibit 'as' casting; use .try_into().context("...") to prevent silent truncation and handle errors gracefully. Avoid .expect() in production—propagate errors instead.
 
 #### Persistence & Performance
 - **rkyv Requirements:** Domain types for storage MUST derive `Archive`, `Serialize`, `Deserialize`, and `CheckBytes`.
@@ -101,37 +101,47 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### Framework-Specific Rules
 
 #### Tokio (Async Runtime & Safety)
-- **Executor Health:** NEVER block an async thread for >10ms. Use `tokio::task::spawn_blocking` for all `std::fs` operations, heavy CPU rendering, or `Redb` write transactions.
+- **Executor Health:** NEVER block an async thread for more than 10ms (Tokio's default fairness threshold) to maintain responsiveness. Use tokio::time::timeout or profiling to identify blocking calls like std::fs operations.
 - **Deadlock Prevention:** Strictly prohibit holding a `std::sync::MutexGuard` across an `.await`.
 - **Shutdown Resilience:** All actors must use `tokio::select!` to listen for a global `broadcast::Receiver` shutdown signal. On shutdown, actors MUST complete the current atomic transaction before exiting.
 - **Resource Throttling:** Use a `tokio::sync::Semaphore` to limit concurrent vault file reads to prevent exceeding OS file descriptor limits.
 
 #### Redb & rkyv (Persistence & Performance)
 - **Transaction Locality:** Wrap `Redb` transactions in a custom RAII guard. Ensure Write Transactions are opened ONLY after all data transformation (e.g., Markdown parsing) is complete to minimize lock contention.
-- **Read-Model Optimization:** Leverage `Redb`'s ability to return byte slices. Map these directly to `rkyv::CheckBytes` to verify and access data with **zero-copy** overhead.
+- **Read-Model Optimization:** Leverage `Redb`'s ability to return byte slices. Map these directly to `rkyv::CheckBytes` to verify and access data with zero-copy overhead. Example: let archived = rkyv::check_archived_root::<T>(&byte_slice).expect("validation failed"); let data = archived.deserialize(&mut rkyv::Infallible).unwrap();
 - **Corruption Recovery:** Implement a "Clean Slate" protocol. If `Redb` fails to open due to version mismatch or corruption, rename the old database and trigger a full vault re-index.
 - **Write Coordination:** Only the `IndexerActor` is authorized to open Write Transactions. All other services must request changes via the `MPSC` Data Plane.
 
 #### MiniJinja (Templating Engine)
-- **Template Lifecycle:** Compile templates **exactly once** at startup or upon file change. Store the compiled `Template` objects in an `Arc<Environment>`.
+- **Template Lifecycle:** Compile templates exactly once at startup or upon file change (detected via tokio::fs::watch or similar). Store compiled Template objects in an Arc<Environment> for sharing across requests.
 - **Recursive Safety:** Explicitly set a `max_template_depth` (e.g., 10) in the MiniJinja environment to prevent stack overflows.
 - **Error Fidelity:** Map MiniJinja `Error` objects to `miette` diagnostics, including line/column of the template source.
-- **Strict Undefineds:** Use `UndefinedBehavior::Strict`. Agents must ensure all variables required by a template are either provided or have a defined default.
+- **Strict Undefineds:** Use `UndefinedBehavior::Strict`. Template authors (agents) must ensure all variables are provided or have defaults in the MiniJinja context. Rendering code should fail fast on undefined variables.
 
 ### Testing Rules
 - **Hexagonal Testing Hierarchy:**
     - **Domain Tests:** Pure unit tests with zero dependencies. Focus on logic, math, and conversions.
-    - **Integration Tests:** Use `nextest` to run concurrent tests. Mock all `SPI` ports (Storage, Filesystem) to test the `app` layer in isolation.
+    - **Integration Tests:** Use `nextest` to run concurrent tests. Mock all SPI ports using a mocking framework (e.g., mockall) or manual implementations to test the app layer in isolation, ensuring no real I/O. Tools: nextest for concurrent execution, mockall for mocking SPI ports. Locations: Unit in crates/domain/src, Integration in crates/app/tests, E2E in tests/suite/e2e. Percentages: Unit 70%, Integration 20%, E2E 10%.
     - **E2E CLI Tests:** Use `assert_cmd` or similar to test the compiled binary against real temporary vaults.
+- **Authorized Entry Points:** All testing via Mise: Use 'mise run test' for all types, 'test:unit:<crate>' for specific crates, 'test:coverage' for tarpaulin reports, 'test:bench' for criterion. Example: 'mise run test:unit:domain'.
+- **Mandatory Tools:** nextest (runner), tarpaulin (coverage), insta (snapshots), pretty_assertions (diffs), criterion (benchmarks), proptest (property testing).
 - **Schema Validation Authority:** Use the JSON schemas in `docs/schemas/` (from the Go implementation) as the source of truth for backward compatibility tests of the Rust Schema Engine.
 - **Starter Kit Pipeline:**
     - **Conversion:** All `templater` scripts and templates (from `docs/refs/obsidian/`) must be converted to Lithos/MiniJinja template syntax before being promoted to test fixtures or starter kit assets.
     - **Sanitization:** ABSOLUTELY ALL personal information must be removed from sample files in `docs/refs/obsidian/` before they are used in tests or packaged.
     - **Asset Bundle:** The final starter kit must include a cohesive set of sanitized templates, Go-compatible JSON schemas, a validated `lithos.toml` config, and a standard directory structure.
-- **Async Testing:** ALWAYS use `#[tokio::test(flavor = "multi_thread")]` for integration tests to surface race conditions in the event bus or indexer.
+- **Async Testing:** ALWAYS use `#[tokio::test(flavor = "multi_thread")]` for integration tests to surface race conditions in the event bus or indexer. Safety invariants: Use timeouts (e.g., with_timeout), semaphore for I/O throttling. Block limit: >10ms requires spawn_blocking.
 - **Performance Benchmarking:** Use `criterion` for all NFR-critical paths (Indexing, Rendering). 10k-note vault benchmarks are mandatory for storage changes.
-- **Coverage Target:** Aim for **80%+ coverage** via `tarpaulin`. Focus on `app` and `domain` logic.
-- **Deterministic Testing:** Use fixed UUIDs and Timestamps in test fixtures to ensure reproducible results.
+- **Coverage Target:** Enforce 80%+ coverage via tarpaulin in CI pipelines. Focus coverage efforts on domain and app logic; ignore generated code.
+- **Deterministic Testing:** Use fixed UUIDs and Timestamps in test fixtures to ensure reproducible results. Use virtual clock (time_test! macro), fixed seeds for randomness, redactions in snapshots for UUIDs/timestamps.
+- **Test Authoring Standards:** Naming: Verb-first (e.g., returns_error_when_invalid). Organization: Module-per-function for complex units. Rules: One behavior/assertion per test, parameterized with rstest named cases. Attributes: #[ignore] for incomplete tests.
+- **Doc-Tests:** Mandatory for public domain models and utilities. Use as living documentation with executable examples. Run via 'mise run test:unit'.
+- **Linting in Tests:** Use #[expect(...)] for intentional violations (e.g., unwrap in setup); #[allow(...)] for generated code. Unwrap OK in Arrange phase, never in Assert.
+- **Common Pitfalls:** Avoid thread starvation (use spawn_blocking), race conditions (multi_thread flavor), flakiness (virtual clock), shared state (use IsolatedTestContext).
+- **Testability Assessment:** Controllability: Trait-based ports for mocking. Observability: Tracing/miette for inspection. Reliability: Workspace separation, Unit of Work for atomicity.
+- **Quality Gates:** Done criteria: Deterministic (0% flakiness), Isolated (no dependencies), Explicit (visible assertions), Fast (<10ms unit), Self-cleaning (RAII cleanup).
+- **NFR Testing:** Security: Validate encryption at SPI layer. Performance: Criterion benchmarks, regression testing. Reliability: Fault injection, clean slate recovery.
+- **Environment Requirements:** Local: Mise toolchains. CI: GitHub Actions multi-OS. Data: Sharded vaults for scaling tests.
 
 ### Code Quality & Style Rules
 
@@ -153,26 +163,26 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Import Grouping**: Strictly enforce `rustfmt`'s `group_imports = "StdExternalCrate"` to maintain a clear dependency hierarchy.
 
 #### Clippy as Guardrail
-- **Cognitive Complexity:** Hard limit of **25 (deny)**. Max function length of **100 lines (deny)**.
+- **Cognitive Complexity:** Enforce hard limit of 25 via clippy deny. Refactor by extracting functions if exceeded.
 - **Anti-Pattern Deny:** Prohibit `clippy::unwrap_used`, `clippy::expect_used`, `clippy::todo`, `clippy::panic`, `clippy::unimplemented`, and `clippy::dbg_macro` in production code.
 - **Lint Suppression Policy:**
-    - **Prefer `#[expect(...)]` over `#[allow(...)]`**: `expect` documents intentional violations; `allow` is only for generated code.
-    - **Template for Clear Reasons:** Every `#[expect]` MUST explain WHAT constraint exists, WHY it prevents compliance, and HOW this is idiomatic:
+    - Prefer `#[expect(...)]` over `#[allow(...)]` for intentional violations.
+    - Every `#[expect]` must explain the constraint, why unavoidable, and how idiomatic:
       ```rust
-      #[expect(
-          lint_name,
-          reason = "[WHAT constraint]. [WHY unavoidable]. [HOW this is idiomatic]."
-      )]
+      #[expect(lint_name, reason = "[WHAT constraint]. [WHY unavoidable]. [HOW idiomatic].")]
       ```
-    - **Examples:**
-        - Pattern Type Mismatch: `"Enum has mixed Copy (bool/f64) and non-Copy (String) fields. Cannot dereference without moving non-Copy types. Matching on &self is idiomatic."`
-        - Test Setup: `"Test fixture uses Result::unwrap() on parse_config() for clear failure messages. Acceptable in test-only code paths."`
-        - Float Arithmetic: `"Numeric validation requires epsilon comparison (const EPSILON: f64 = 1e-10) for floating-point precision."`
-    - **Consolidate Consecutive Expects:** Combine multiple `#[expect(...)]` attributes into one with unified reason when they apply to the same item.
+    - Examples:
+        - Pattern Type Mismatch: "Enum has mixed Copy/non-Copy fields. Cannot dereference without moving. Matching on &self is idiomatic."
+        - Test Setup: "Test fixture uses unwrap() for clear errors. Acceptable in tests."
+        - Float Arithmetic: "Validation requires epsilon comparison for precision."
+    - Consolidate multiple `#[expect]` on the same item into one with unified reason.
 
 #### Process & Orchestration
 - **Mise-First Formatting:** Formatting and linting MUST be run through `mise run verify` to ensure the exact toolchain versions from `mise.toml` are used.
 - **Pre-commit Integrity:** The `pre-commit` hook is the final authority. Agents must fix the code to pass the hook, never bypass it.
+
+### Conflicts and Exceptions
+- Rules are designed to be non-conflicting, but if a conflict arises (e.g., between performance needs and safety invariants), prioritize safety. Document any project-specific exceptions in this section.
 
 ---
 
