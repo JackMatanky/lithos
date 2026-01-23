@@ -38,13 +38,17 @@
 //!
 //! # Usage
 //!
-//! ```ignore
-//! use lithos_adapters::spi::parsers::Dispatcher;
-//! use lithos_domain::Global;
+//! ```
+//! use std::path::Path;
+//!
+//! use lithos_adapters::spi::fs::parsers::Dispatcher;
+//! use serde_json::Value;
 //!
 //! let dispatcher = Dispatcher::new();
-//! let content = tokio::fs::read_to_string("lithos.toml").await?;
-//! let config: Global = dispatcher.parse(Path::new("lithos.toml"), &content)?;
+//! let content = r#"name = "lithos""#;
+//! let config: Value = dispatcher.parse(Path::new("test.toml"), content)?;
+//! println!("{:?}", config);
+//! # Ok::<(), Box<dyn std::error::Error>>(())
 //! ```
 //!
 //! # Epic Dependencies
@@ -60,6 +64,15 @@ use serde::de::DeserializeOwned;
 use crate::spi::errors::ParseError;
 
 /// JSON parser strategy.
+///
+/// # Example
+///
+/// ```
+/// use lithos_adapters::spi::fs::parsers::Json;
+///
+/// let is_json = Json::detect("{\"name\": \"lithos\"}");
+/// assert!(is_json);
+/// ```
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Json;
@@ -106,6 +119,15 @@ impl Json {
 }
 
 /// TOML parser strategy.
+///
+/// # Example
+///
+/// ```
+/// use lithos_adapters::spi::fs::parsers::Toml;
+///
+/// let is_toml = Toml::detect("name = \"lithos\"");
+/// assert!(is_toml);
+/// ```
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Toml;
@@ -173,6 +195,15 @@ impl Toml {
 }
 
 /// YAML parser strategy.
+///
+/// # Example
+///
+/// ```
+/// use lithos_adapters::spi::fs::parsers::Yaml;
+///
+/// let is_yaml = Yaml::detect("name: lithos");
+/// assert!(is_yaml);
+/// ```
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Yaml;
