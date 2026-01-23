@@ -483,7 +483,8 @@ impl Default for Metadata {
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
-    reason = "Unit tests use unwrap/expect for readability"
+    reason = "Test module uses Result::expect() for ergonomic arrangement and \
+              assertions. Acceptable in test-only code paths."
 )]
 mod tests {
     use proptest::prelude::*;

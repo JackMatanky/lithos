@@ -226,7 +226,8 @@ pub enum InsertionPosition {
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
-    reason = "Test setup uses unwrap/expect for readability"
+    reason = "Test module uses Result::expect() for ergonomic arrangement and \
+              assertions. Acceptable in test-only code paths."
 )]
 mod tests {
     use super::*;

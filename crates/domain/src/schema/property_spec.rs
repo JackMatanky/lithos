@@ -484,7 +484,8 @@ fn get_cached_regex(pattern: &str) -> Result<regex::Regex, DomainError> {
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
-    reason = "Unit tests use unwrap/expect for simplicity"
+    reason = "Test module uses Result::expect() for ergonomic arrangement and \
+              assertions. Acceptable in test-only code paths."
 )]
 mod tests {
     // # LINT_DISABLE_REASON: Standard test utilities and behavioral
