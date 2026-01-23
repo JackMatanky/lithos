@@ -107,9 +107,10 @@ impl std::fmt::Debug for SettingValue {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics are preferred here for clarity, and \
-                  pattern_type_mismatch is overly pedantic for this Debug \
-                  implementation."
+        reason = "Matching on &SettingValue enum with mixed Copy (Boolean, \
+                  Number) and non-Copy (Array, Map, String) fields. Pattern \
+                  binding on &self is the idiomatic way to implement Debug \
+                  without moving non-Copy variants."
     )]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {

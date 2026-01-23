@@ -200,7 +200,9 @@ mod tests {
         // THEN: it succeeds
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test assertion uses unwrap for clarity"
+            reason = "Test uses Result::unwrap() on Filesystem::validate() \
+                      for clear failure messages. Acceptable in test-only \
+                      code paths."
         )]
         result.unwrap();
     }
