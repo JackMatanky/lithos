@@ -1,12 +1,74 @@
+---
+title: "Project Context Analysis"
+description: "Analysis of project requirements, constraints, and architectural context for Lithos"
+author: "Jack"
+date: "2026-01-23"
+last_updated: "2026-01-23"
+section: "Architecture Analysis"
+---
+
 # Project Context Analysis
 
 ## Requirements Overview
 
 **Functional Requirements:**
-The project has 50 functional requirements spanning template management (creation, execution, composition, date functions, dynamic commands, custom functions, advanced operations), schema management (definition, validation, inheritance, enums, file filtering, date formatting), interactive input (prompts, suggesters, multi-selection, help, progressive complexity), vault operations (indexing, searching, link resolution, metadata queries, consistency maintenance, large vault performance), configuration management, cross-environment compatibility, community features, security & privacy, command line interface (subcommands, help, status, operations, output formats, configuration, single-word commands), and error handling & recovery. These drive a hexagonal architecture with sophisticated template engines, comprehensive schema validation systems, rich CLI interaction patterns, and robust vault indexing capabilities. The requirements emphasize schema-driven development where schemas provide input parameters and validation rules, enabling modular template composition without manual coding, with extensive support for inheritance, enums, and complex validation.
+The project encompasses 50 functional requirements across several key areas:
+
+**Template Management (FR1-FR7):**
+- Modular template creation, execution, and composition
+- Date functions, dynamic commands, and custom user functions
+- Advanced template operations with hooks and complex commands
+
+**Schema Management (FR8-FR14):**
+- Schema definition, validation, and inheritance patterns
+- Interactive schema-driven templates with enums and file filtering
+- Date formatting and complex validation rules
+
+**Interactive Input (FR15-FR19):**
+- Rich prompts, suggesters, and multi-selection interfaces
+- Contextual help and progressive complexity modes
+
+**Vault Operations (FR20-FR25):**
+- Comprehensive indexing, searching, and link resolution
+- Metadata queries and large vault performance optimization
+- Vault consistency maintenance and cross-references
+
+**Additional Core Features:**
+- Configuration management, cross-environment compatibility
+- Community features, security/privacy controls
+- Rich command-line interface with subcommands and status reporting
+- Comprehensive error handling and recovery mechanisms
+
+These requirements drive a hexagonal architecture with sophisticated template engines, comprehensive schema validation systems, rich CLI interaction patterns, and robust vault indexing capabilities. The design emphasizes schema-driven development where schemas provide input parameters and validation rules, enabling modular template composition without manual coding.
 
 **Non-Functional Requirements:**
-Performance requirements are stringent - template operations under 500ms, vault indexing under 2 seconds for 1000+ files, memory usage under 500MB. Security requires encrypted configuration and audit logging. Scalability needs handle large vaults without degradation. Integration focuses on macOS/Linux cross-platform support with CLI-first design. Usability demands clear help, error recovery, and progressive complexity. Maintainability requires comprehensive testing and self-contained binaries. Compatibility ensures graceful handling of Obsidian vault changes and migration paths. Observability requires comprehensive logging and diagnostics. Reliability demands 99.9% uptime and zero crashes. Deployment requires fast updates with rollback capability.
+
+**Performance:**
+- Template operations: <500ms response time
+- Vault indexing: <2 seconds for 1000+ files
+- Memory usage: <500MB for typical operations
+
+**Security & Privacy:**
+- Encrypted configuration files for sensitive data
+- Comprehensive audit logging for template execution
+- Access controls and data protection measures
+
+**Scalability & Reliability:**
+- Handle large vaults (1000+ files) without performance degradation
+- 99.9% uptime with zero crashes in normal operation
+- Graceful error recovery and state preservation
+
+**Integration & Compatibility:**
+- macOS and Linux cross-platform support (primary targets)
+- CLI-first design with terminal environment optimization
+- Graceful handling of Obsidian vault structure changes
+- Migration path support for existing workflows
+
+**Usability & Maintainability:**
+- Clear help systems and progressive complexity disclosure
+- Comprehensive testing coverage and self-contained binaries
+- Fast deployment with rollback capabilities
+- Comprehensive logging and diagnostic capabilities
 
 **Scale & Complexity:**
 

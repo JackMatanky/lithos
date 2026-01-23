@@ -1,3 +1,12 @@
+---
+title: "Project Structure & Boundaries"
+description: "Complete project directory structure and architectural boundaries for Lithos"
+author: "Jack"
+date: "2026-01-23"
+last_updated: "2026-01-23"
+section: "Project Structure"
+---
+
 # Project Structure & Boundaries
 
 ## Complete Project Directory Structure
@@ -22,7 +31,9 @@ lithos/
 ├── _bmad-output/
 │   ├── planning-artifacts/
 │   │   ├── discovery/            # Project brief and corresponding elicitation summary
-│   │   ├── architecture.md       # This document
+│   │   ├── architecture/         # Sharded architecture documentation
+│   │   │   ├── index.md          # Main navigation and table of contents
+│   │   │   └── [9 section files]  # Focused architectural documentation
 │   │   ├── prd.md                # Product requirements (PRD)
 │   │   └── ux-design-specification.md  # UX Design Specification
 │   └── implementation-artifacts/

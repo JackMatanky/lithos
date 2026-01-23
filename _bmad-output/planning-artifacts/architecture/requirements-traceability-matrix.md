@@ -1,3 +1,12 @@
+---
+title: "Requirements Traceability Matrix"
+description: "Mapping of functional requirements to architectural components and design decisions"
+author: "Jack"
+date: "2026-01-23"
+last_updated: "2026-01-23"
+section: "Requirements Tracking"
+---
+
 # Requirements Traceability Matrix
 
 | ID       | Requirement              | Primary Module/Path               | Architectural Strategy                       |
