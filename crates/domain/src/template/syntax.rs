@@ -29,7 +29,12 @@ impl PlaceholderSyntax {
     /// Wraps a variable name with the defined delimiters.
     #[inline]
     #[must_use]
-    #[expect(clippy::arithmetic_side_effects, reason = "String capacity")]
+    #[expect(
+        clippy::arithmetic_side_effects,
+        reason = "String capacity arithmetic: sum of lengths of variable \
+                  name, prefix, and suffix cannot realistically overflow. All \
+                  components are within memory bounds."
+    )]
     pub fn wrap(&self, var_name: &str) -> String {
         let mut placeholder = String::with_capacity(
             var_name.len() + self.prefix.len() + self.suffix.len(),
