@@ -347,6 +347,15 @@ tasks:
 
 # Common Commands
 
-File Formatting: `golangci-lint fmt`
-
-File Linting: `golangci-lint run --fix`
+| Command                      | Action                                                                            |
+| :--------------------------- | :-------------------------------------------------------------------------------- |
+| `mise run test`              | Run all unit and integration tests (alias: `t`).                                  |
+| `mise run test:unit`         | Run all unit tests across the workspace using `nextest`.                          |
+| `mise run test:unit:<crate>` | Run unit tests for a specific crate (e.g., `test:unit:app`).                      |
+| `mise run test:integration`  | Run all integration tests across the workspace.                                   |
+| `mise run test:e2e`          | Run end-to-end tests using `cli_smoke` binary.                                    |
+| `mise run test:arch`         | Run architectural enforcement tests using `purity` binary.                        |
+| `mise run test:coverage`     | Generate code coverage reports using `tarpaulin`.                                 |
+| `mise run test:bench`        | Run all performance benchmarks using `criterion`.                                 |
+| `mise run test:watch`        | Watch mode: automatically run tests on file changes.                              |
+| `mise run verify`            | Full quality gate orchestration (fmt + lint + tests + adr:validate) (alias: `v`). |
