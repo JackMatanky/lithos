@@ -437,7 +437,12 @@ mod tests {
 
         #[test]
         fn creates_flexible_validator() {
+            // GIVEN the need for a flexible validator that allows external
+            // symlinks
             let validator = Validator::new_flexible();
+
+            // WHEN checking the validator mode
+            // THEN it should be configured with Flexible mode
             assert!(
                 matches!(validator.mode, Mode::Flexible),
                 "Expected Flexible mode, found {:?}",
@@ -456,9 +461,14 @@ mod tests {
                       2021)."
         )]
         fn creates_strict_validator_with_root() {
+            // GIVEN an absolute root path
             let root = std::env::current_dir().expect("cwd").join("test_root");
+
+            // WHEN creating a strict validator with the root
             let validator = Validator::new_strict(root);
 
+            // THEN it should be configured with Strict mode and an absolute
+            // root
             match &validator.mode {
                 Mode::Strict {
                     root: validator_root,
@@ -810,6 +820,27 @@ mod tests {
             assert!(
                 result.is_err(),
                 "Expected error for non-UTF8 hidden file, found success"
+            );
+        }
+
+        #[test]
+        #[cfg(unix)]
+        fn rejects_non_utf8_paths() {
+            use std::{ffi::OsStr, os::unix::ffi::OsStrExt as _};
+
+            let validator = Validator::new_flexible();
+            let bytes = b"invalid\xffutf8";
+            let os_str = OsStr::from_bytes(bytes);
+            let path = Path::new(os_str);
+            let result = validator.validate(path);
+
+            assert!(
+                matches!(
+                    result,
+                    Err(PathValidationError::InvalidPathEncoding(_))
+                ),
+                "Expected InvalidPathEncoding error for non-UTF8 path, found \
+                 {result:?}"
             );
         }
     }

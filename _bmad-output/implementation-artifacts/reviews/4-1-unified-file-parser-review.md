@@ -128,7 +128,7 @@ All clippy warnings have been addressed:
    // Before
    #[test]
    fn toml_recognizes_toml_extension() {
-       assert!(Toml::can_parse(Path::new("config.toml")));
+       assert!(Toml::is_supported(Path::new("config.toml")));
    }
 
    // After
@@ -138,7 +138,7 @@ All clippy warnings have been addressed:
        let path = Path::new("config.toml");
 
        // When checking if the Toml parser can handle it
-       let result = Toml::can_parse(path);
+       let result = Toml::is_supported(path);
 
        // Then it should return true
        assert!(result);
@@ -174,9 +174,9 @@ All clippy warnings have been addressed:
    // Before: Manual assertions
    #[test]
    fn yaml_recognizes_yaml_extensions() {
-       assert!(Yaml::can_parse(Path::new("config.yaml")));
-       assert!(Yaml::can_parse(Path::new("config.yml")));
-       assert!(Yaml::can_parse(Path::new("config.YAML")));
+       assert!(Yaml::is_supported(Path::new("config.yaml")));
+       assert!(Yaml::is_supported(Path::new("config.yml")));
+       assert!(Yaml::is_supported(Path::new("config.YAML")));
    }
 
    // After: Parameterized
@@ -186,7 +186,7 @@ All clippy warnings have been addressed:
    #[case::caps("config.YAML")]
    fn should_recognize_valid_yaml_extensions(#[case] path: &str) {
        let path = Path::new(path);
-       assert!(Yaml::can_parse(path));
+       assert!(Yaml::is_supported(path));
    }
    ```
 
