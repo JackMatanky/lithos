@@ -1,4 +1,15 @@
+---
+title: "System-Level Test Design"
+description: "High-level test strategy, architecture assessment, and design decisions for Lithos"
+author: "Jack"
+date: "2026-01-23"
+last_updated: "2026-01-23"
+section: "Testing & Quality"
+---
+
 # System-Level Test Design
+
+This document outlines the high-level test strategy and architectural decisions for the Lithos project. For detailed implementation and usage, see [Lithos Test Guide](../docs/test_guide.md).
 
 ## Testability Assessment
 
@@ -80,9 +91,31 @@ A test is considered "Production Ready" only if it meets these five criteria:
 - **Concern:** `rkyv` zero-copy buffers require careful lifetime management in the adapter layer. If leaked into the domain, it may complicate unit testing.
 - **Mitigation:** Ensure `rkyv` types are mapped to ergonomic domain entities in `adapters/spi/storage` before passing to the `app` layer.
 
-## Recommendations for Sprint 0
+## Current Implementation Status
 
-1. Initialize `crates/domain` with pure tests and NO external dependencies.
-2. Setup `mise` tasks for `test`, `coverage`, and `bench` immediately.
-3. Implement `MockStoragePort` and `MockVaultPort` early to unblock `app` layer development.
-4. Establish the `tests/arch` suite to prevent `app` -> `adapters` dependency leakage.
+- ✅ Hexagonal testing architecture (Unit/Integration/E2E split)
+- ✅ Test utilities crate with async helpers and fixtures
+- ✅ CI/CD pipeline with coverage reporting and quality gates
+- ✅ Domain purity testing and architectural boundary enforcement
+- 🔄 Performance benchmarking framework (in progress)
+- 🔄 Property-based testing expansion (in progress)
+
+## Implementation Details
+
+For detailed implementation guides, patterns, and examples, see [Lithos Test Guide](../docs/test_guide.md). Key implementation achievements include:
+
+### Test Infrastructure
+- **lithos-test-utils crate**: Centralized testing utilities with async helpers, time control, and fixture management
+- **Mise orchestration**: All testing workflows managed through `mise run` commands with proper environment setup
+- **Quality gates**: Automated linting, formatting, and coverage checks in CI/CD
+
+### Testing Patterns
+- **Hexagonal testing**: Separate test strategies for domain, application, infrastructure, and E2E layers
+- **Async testing**: Multi-threaded runtime with deterministic time control and proper error handling
+- **Fixture management**: Isolated test contexts and vault simulation for reliable testing
+
+### Coverage Goals
+- **Unit tests**: 70% coverage focusing on business logic and edge cases
+- **Integration tests**: 20% coverage for component interaction and contracts
+- **E2E tests**: 10% coverage for user journey validation
+- **Overall target**: 80%+ code coverage with performance benchmarking
