@@ -1,6 +1,6 @@
 # Story 4.5: Documentation Audit
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -71,15 +71,16 @@ dev.agent.yaml
 ### Completion Notes List
 - Audited module-level documentation: All modules in `crates/adapters/src/spi/fs/` have comprehensive `//!` comments explaining purpose and usage
 - Audited function/struct documentation: All public items have `///` comments with `# Examples` and `# Errors` where applicable
-- Added missing `# Examples` to Json::is_supported, Toml::is_supported, Yaml::is_supported, Dispatcher::new
+- Added missing `# Examples` to Json::is_supported, Toml::is_supported, Yaml::is_supported, Dispatcher::new, Json::parse, Toml::parse, Yaml::parse, Validator::new_flexible, Validator::new_strict, Validator::validate
 - Audited error enum documentation: ParseError and PathValidationError variants are documented with specific trigger conditions
-- Verified doctests: `cargo test --doc` passed all 121 doctests across adapters, domain, and test-utils (4 new examples added)
+- Verified doctests: `cargo test --doc` passed all 125 doctests across adapters, domain, and test-utils (8 new examples added)
 - Verified clippy completeness: No missing_docs warnings for spi/fs modules
-- Code changes: Added 4 doctest examples to parsers.rs
+- Code changes: Added 8 doctest examples to parsers.rs and validator.rs
 
 ### File List
 - crates/adapters/src/spi/fs/parsers.rs (added 4 doctest examples)
+- crates/adapters/src/spi/fs/validator.rs (added 4 doctest examples)
 
 ## Change Log
 
-- Documentation audit completed for Epic 4 SPI filesystem modules - added 4 missing doctest examples (Date: 2026-01-23)
+- Documentation audit completed for Epic 4 SPI filesystem modules - added 8 missing doctest examples (Date: 2026-01-23)

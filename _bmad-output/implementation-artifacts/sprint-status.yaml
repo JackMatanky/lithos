@@ -73,7 +73,7 @@ development_status:
     4-2-implement-path-validation-utilities: "done"
     4-3-adversarial-refactor-of-epic-4-foundation: "done"
     4-4-review-epic-4-test-suite: "done"
-    4-5-documentation-audit: "review"
+    4-5-documentation-audit: "done"
     epic-4-retrospective: "optional"
 
     epic-5: "backlog"
