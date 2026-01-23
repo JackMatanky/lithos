@@ -6,6 +6,7 @@
 #MISE outputs=["target/lint.stamp"]
 #USAGE flag "-v --verbose" help="Verbose output"
 #USAGE flag "-n --no-fix" help="Do not automatically apply lint fixes"
+#USAGE flag "-p --pedantic" help="Enable pedantic lints"
 
 set -euo pipefail
 
@@ -41,8 +42,12 @@ build_clippy_args() {
 #   Writes lint results to stdout/stderr
 #######################################
 run_clippy() {
+    local clippy_lint_args=("-D warnings")
+    if [[ "${usage_pedantic:-}" == "1" ]]; then
+        clippy_lint_args+=("-W clippy::pedantic")
+    fi
     echo "🔍 Running clippy lints (deny-level warnings)..."
-    cargo clippy "$@" -- -D warnings
+    cargo clippy "$@" -- "${clippy_lint_args[@]}"
 }
 
 #######################################
