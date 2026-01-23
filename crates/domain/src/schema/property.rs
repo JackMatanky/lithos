@@ -284,7 +284,9 @@ pub mod fixtures {
         #[must_use]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test builder setup expects valid inputs"
+            reason = "Test builder uses Result::expect() for creating \
+                      properties from hardcoded test data. Failures here \
+                      indicate logic errors in test setup."
         )]
         pub fn build(self) -> Property {
             let name = PropertyName::new(self.name).expect("Valid name");

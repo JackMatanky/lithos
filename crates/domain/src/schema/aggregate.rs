@@ -481,7 +481,9 @@ impl PropertyBank {
 #[expect(
     dead_code,
     clippy::disallowed_methods,
-    reason = "Test fixtures use expect for deterministic setup"
+    reason = "Test module uses Result::expect() for deterministic setup of \
+              fixtures. Unreachable code paths are acceptable in shared test \
+              utilities."
 )]
 /// Test fixtures for deterministic schema data.
 pub mod fixtures {
