@@ -695,7 +695,7 @@ impl SagaTester {
                 let participants = self.participants.read().await;
                 let pending: Vec<_> = participants
                     .iter()
-                    .filter(|(_, status)| !**status)
+                    .filter(|&(_, status)| !*status)
                     .map(|(name, _)| name.clone())
                     .collect();
 
