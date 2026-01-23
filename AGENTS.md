@@ -9,6 +9,13 @@ The following critical files are essential and **MUST** be reviewed before start
 - Architecture: _bmad-output/planning-artifacts/architecture.md
 - Product Requirements: _bmad-output/planning-artifacts/prd.md
 
+## Quick Start Guide
+
+1. **Activate an Agent**: Mention the agent name with "As [agent-name], ..." or use "*[agent-name]" to start. Example: "As dev, implement this feature."
+2. **Run a Workflow**: Use the task tool with subagent_type and prompt. Example: Call task tool with subagent_type="workflow-builder" and prompt describing the workflow needed.
+3. **Execute Common Tasks**: Use mise commands from the table below for testing, building, or quality checks.
+4. **Check Status**: Review workflow-status.yaml for current project phase before proceeding.
+
 ## Agents
 
 The following agents are available and the full definition **MUST** be reviewed when the agent is activated:
@@ -134,6 +141,14 @@ agents:
     fullDefinition: MUST open the source file from path
 ```
 
+## Agent Usage Guidelines
+
+- Select agents based on task complexity: Use specialized agents (e.g., dev for coding) for focused work; use bmad-master for orchestration.
+- Combine agents sequentially: E.g., architect for design, then dev for implementation.
+- Provide clear prompts: Include context, constraints, and expected outputs.
+- Use session_ids for continuity: When chaining agent calls, pass the same session_id to maintain state.
+- Fallback to bmad-master: If unsure which agent to use, start with bmad-master for guidance.
+
 ## Tasks
 
 ```yaml
@@ -149,24 +164,14 @@ tasks:
     howToUse: Tri-modal workflow for creating, editing, and validating BMAD Core compliant agents.
     fullBrief: MUST open the source file from path
   - id: create-module
-    path: _bmad/bmb/workflows/create-module/workflow.md
-    source: "[_bmad/bmb/workflows/create-module/workflow.md](_bmad/bmb/workflows/create-module/workflow.md)"
+    path: _bmad/bmb/workflows/module/workflow.md
+    source: "[_bmad/bmb/workflows/module/workflow.md](_bmad/bmb/workflows/module/workflow.md)"
     howToUse: Interactive workflow to build complete BMAD modules with agents and workflows.
     fullBrief: MUST open the source file from path
   - id: create-workflow
-    path: _bmad/bmb/workflows/create-workflow/workflow.md
-    source: "[_bmad/bmb/workflows/create-workflow/workflow.md](_bmad/bmb/workflows/create-workflow/workflow.md)"
+    path: _bmad/bmb/workflows/workflow/workflow.md
+    source: "[_bmad/bmb/workflows/workflow/workflow.md](_bmad/bmb/workflows/workflow/workflow.md)"
     howToUse: Create structured standalone workflows using markdown-based step architecture.
-    fullBrief: MUST open the source file from path
-  - id: edit-workflow
-    path: _bmad/bmb/workflows/edit-workflow/workflow.md
-    source: "[_bmad/bmb/workflows/edit-workflow/workflow.md](_bmad/bmb/workflows/edit-workflow/workflow.md)"
-    howToUse: Intelligent workflow editor that helps modify existing workflows.
-    fullBrief: MUST open the source file from path
-  - id: workflow-compliance
-    path: _bmad/bmb/workflows/workflow-compliance-check/workflow.md
-    source: "[_bmad/bmb/workflows/workflow-compliance-check/workflow.md](_bmad/bmb/workflows/workflow-compliance-check/workflow.md)"
-    howToUse: Systematic validation of workflows against BMAD standards.
     fullBrief: MUST open the source file from path
   - id: check-readiness
     path: _bmad/bmm/workflows/3-solutioning/check-implementation-readiness/workflow.md
@@ -229,8 +234,8 @@ tasks:
     howToUse: Create the next user story from epics+stories with context analysis.
     fullBrief: MUST open the source file from path
   - id: create-tech-spec
-    path: _bmad/bmm/workflows/bmad-quick-flow/create-tech-spec/workflow.md
-    source: "[_bmad/bmm/workflows/bmad-quick-flow/create-tech-spec/workflow.md](_bmad/bmm/workflows/bmad-quick-flow/create-tech-spec/workflow.md)"
+    path: _bmad/bmm/workflows/bmad-quick-flow/quick-spec/workflow.md
+    source: "[_bmad/bmm/workflows/bmad-quick-flow/quick-spec/workflow.md](_bmad/bmm/workflows/bmad-quick-flow/quick-spec/workflow.md)"
     howToUse: Produce implementation-ready tech specs through investigation.
     fullBrief: MUST open the source file from path
   - id: create-ux-design
@@ -345,6 +350,25 @@ tasks:
     fullBrief: MUST open the source file from path
 ```
 
+## Workflow Execution Tips
+
+- When using the Task tool, specify a subagent_type parameter to select which agent type to use.
+- Launch multiple agents concurrently whenever possible, to maximize performance; to do that, use a single message with multiple tool uses.
+- When the agent is done, it will return a single message back to you. The result returned by the agent is not visible to the user. To show the user the result, you should send a text message back to the user with a concise summary of the result.
+- Each agent invocation is stateless unless you provide a session_id. Your prompt should contain a highly detailed task description for the agent to perform autonomously and you should specify exactly what information the agent should return back to you in its final and only message to you.
+- The agent's outputs should generally be trusted.
+- Clearly tell the agent whether you expect it to write code or just to do research (search, file reads, web fetches, etc.), since it is not aware of the user's intent.
+- If the agent description mentions that it should be used proactively, then you should try your best to use it without the user having to ask for it first. Use your judgement.
+
+## Glossary of Terms
+
+- **BMAD Method**: A structured approach to software development using specialized AI agents and workflows for efficient task execution.
+- **Hexagonal Architecture**: A design pattern separating core business logic from external interfaces, ensuring testability and flexibility.
+- **Session ID**: A unique identifier used to maintain state across multiple agent invocations.
+- **Trimodal Workflows**: Workflows that handle creation, editing, and validation in a single framework.
+- **Task Orchestration**: The process of coordinating multiple agents and tools to complete complex tasks.
+- **Agent Persona**: The defined role, communication style, and capabilities of a BMAD agent.
+
 # Common Commands
 
 | Command                      | Action                                                                            |
@@ -359,3 +383,47 @@ tasks:
 | `mise run test:bench`        | Run all performance benchmarks using `criterion`.                                 |
 | `mise run test:watch`        | Watch mode: automatically run tests on file changes.                              |
 | `mise run verify`            | Full quality gate orchestration (fmt + lint + tests + adr:validate) (alias: `v`). |
+| `mise run quality`           | Run all quality gates (fmt, lint, adr:validate) (alias: `q`).                     |
+| `mise run lint`              | Run linting checks using clippy.                                                  |
+| `mise run fmt`               | Format code using rustfmt.                                                        |
+| `mise run deny`              | Check dependencies for security and license issues.                               |
+| `mise run clean`             | Clean build artifacts and temporary files.                                        |
+| `mise run clean:cargo`       | Clean only cargo build artifacts.                                                 |
+| `mise run clean:test`        | Clean only test output artifacts.                                                 |
+| `mise run clean:reports`     | Clean only coverage and JUnit reports.                                            |
+| `mise run build`             | Build the project binaries.                                                       |
+| `mise run doc`               | Generate and open project documentation.                                          |
+| `mise run dev-setup`         | Set up development environment and dependencies.                                  |
+| `mise run adr:validate`      | Validate ADR files for compliance.                                                |
+| `mise run adr:metrics`       | Generate metrics for ADR management.                                              |
+| `mise run ci`                | Simulate CI/CD pipeline.                                                          |
+| `mise run timing`            | Run verify with detailed timing information.                                      |
+| `mise run test:unit:domain`  | Run domain crate unit tests (alias: `tud`).                                       |
+| `mise run test:unit:app`     | Run app crate unit tests (alias: `tuap`).                                         |
+| `mise run test:unit:adapters`| Run adapters crate unit tests (alias: `tuad`).                                    |
+| `mise run test:unit:cli`     | Run CLI crate unit tests (alias: `tuc`).                                          |
+| `mise run test:bench:domain` | Run domain crate benchmarks (alias: `tbd`).                                       |
+| `mise run test:bench:app`    | Run app crate benchmarks (alias: `tbap`).                                         |
+| `mise run test:bench:adapters`| Run adapters crate benchmarks (alias: `tbad`).                                   |
+| `mise run test:bench:cli`    | Run CLI crate benchmarks (alias: `tbc`).                                          |
+
+## Troubleshooting and FAQ
+
+### Common Issues
+- **Agent Activation Fails**: Ensure the agent name matches exactly (case-sensitive). Check for typos in "As [agent-name]".
+- **Workflow Times Out**: Provide more specific prompts or break tasks into smaller steps. Use session_ids for stateful workflows.
+- **Mise Command Errors**: Verify mise.toml for correct tool versions. Run `mise run dev-setup` to install dependencies.
+- **Session Continuity Lost**: Always pass session_id in chained calls. Agents are stateless by default.
+
+### Frequently Asked Questions
+- **Q: Which agent should I use for code review?** A: Use `tea` for test architecture or `dev` for general coding tasks.
+- **Q: How do I add a new workflow?** A: Use `workflow-builder` agent to create and validate it.
+- **Q: What if no agent matches my task?** A: Start with `bmad-master` for orchestration guidance.
+- **Q: How to handle agent errors?** A: Check prompts for clarity; retry with more context or switch agents.
+
+## Links to Extended Documentation
+
+- [Workflow Specifications](../_bmad/bmb/workflows/) - Detailed workflow templates and standards.
+- [Agent Definitions](../_bmad/bmb/agents/) - Full agent personas and capabilities.
+- [Core Resources](../_bmad/core/) - Additional tools and configurations.
+- [Project Context](../_bmad-output/project-context.md) - Comprehensive rules for AI agents.

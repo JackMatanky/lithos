@@ -1,3 +1,12 @@
+---
+title: "Lithos Test Guide (Master Manual)"
+description: "Comprehensive reference for testing standards, patterns, and tools in the Lithos project"
+author: "Jack"
+date: "2026-01-23"
+last_updated: "2026-01-23"
+section: "Testing & Quality"
+---
+
 # Lithos Test Guide (Master Manual)
 
 This guide provides a comprehensive reference for testing standards, patterns, and tools in the Lithos project. For the full architectural strategy, see [\_bmad-output/test-design-system.md](../_bmad-output/test-design-system.md).
@@ -227,17 +236,287 @@ tester.given(initial_events)
 
 ## 8. Linting & Code Quality in Tests
 
-Lithos maintains strict quality gates even for test code. While tests have more latitude than business logic, they must still be modular and readable.
+Lithos maintains strict quality gates even for test code. While tests have more latitude than business logic, they must still be modular and readable. The goal is to **fix clippy issues properly** rather than suppress them with `#[expect(...)]` attributes.
 
-### `#expect` vs `#allow`
+### `#expect` vs `#allow` Guidelines
 
 - **Use `#[expect(...)]`**: For intentional lint violations that are necessary for the test (e.g., using `unwrap` in a setup block or creating a complex fixture that exceeds cognitive complexity limits). This tells the compiler "I know this violates a rule, but it's intentional."
 - **Use `#[allow(...)]`**: Primarily for generated code (e.g., `automock`) where the developer doesn't control the output. Avoid using `allow` for hand-written test logic.
+
+### Common Clippy Issues and How to Fix Them
+
+Instead of using `#[expect(...)]`, prioritize fixing the underlying issue. Here are common patterns and their solutions:
+
+#### 1. **Cognitive Complexity Too High**
+
+**Problem:** Functions exceed 15 cyclomatic complexity or 25 cognitive complexity.
+
+```rust
+#[test]  // clippy::cognitive_complexity flagged
+fn test_complex_business_logic() {
+    // 20+ conditional branches, loops, etc.
+    let result = complex_function(param1, param2, param3);
+    assert!(result.is_ok());
+}
+```
+
+**Solutions:**
+- **Extract helper functions:** Break complex tests into smaller, focused tests
+- **Use table-driven tests:** Parameterize common logic
+- **Split test scenarios:** One behavior per test function
+
+```rust
+// ✅ FIXED: Split into focused tests
+#[test]
+fn returns_ok_for_valid_inputs() {
+    let result = complex_function("valid", 42, true);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn returns_error_for_invalid_param1() {
+    let result = complex_function("invalid", 42, true);
+    assert!(matches!(result, Err(Error::InvalidParam(_))));
+}
+
+#[test]
+fn returns_error_for_zero_param2() {
+    let result = complex_function("valid", 0, true);
+    assert!(matches!(result, Err(Error::ZeroValue(_))));
+}
+
+// For complex setup, extract to helper function
+fn setup_complex_scenario() -> (Param1, Param2, Param3) {
+    // Complex setup logic here
+    ("scenario1", 100, false)
+}
+
+#[test]
+fn handles_complex_scenario_correctly() {
+    let (p1, p2, p3) = setup_complex_scenario();
+    let result = complex_function(p1, p2, p3);
+    assert!(result.is_ok());
+}
+```
+
+#### 2. **Too Many Arguments**
+
+**Problem:** Functions with more than 7 parameters.
+
+```rust
+#[test]  // clippy::too_many_arguments flagged
+fn test_with_many_params() {
+    let result = function_with_many_args(arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+    assert!(result.is_ok());
+}
+```
+
+**Solutions:**
+- **Use builder pattern:** Create a test builder struct
+- **Group related parameters:** Use tuples or small structs
+- **Extract fixture functions:** Pre-configure common parameter combinations
+
+```rust
+// ✅ FIXED: Builder pattern for test setup
+struct TestFixture {
+    arg1: Type1,
+    arg2: Type2,
+    arg3: Type3,
+    arg4: Type4,
+    arg5: Type5,
+    arg6: Type6,
+    arg7: Type7,
+    arg8: Type8,
+}
+
+impl TestFixture {
+    fn new() -> Self {
+        Self {
+            arg1: default_value(),
+            arg2: default_value(),
+            arg3: default_value(),
+            arg4: default_value(),
+            arg5: default_value(),
+            arg6: default_value(),
+            arg7: default_value(),
+            arg8: default_value(),
+        }
+    }
+
+    fn with_arg1(mut self, value: Type1) -> Self {
+        self.arg1 = value;
+        self
+    }
+}
+
+#[test]
+fn test_with_builder() {
+    let fixture = TestFixture::new()
+        .with_arg1(special_value());
+    let result = function_with_many_args(
+        fixture.arg1, fixture.arg2, fixture.arg3, fixture.arg4,
+        fixture.arg5, fixture.arg6, fixture.arg7, fixture.arg8
+    );
+    assert!(result.is_ok());
+}
+```
+
+#### 3. **Manual `assert!` Instead of Specific Macros**
+
+**Problem:** Using generic `assert!` when specific assertion macros exist.
+
+```rust
+#[test]  // clippy::manual_assert flagged
+fn test_result() {
+    let result = some_function();
+    assert!(result.is_ok());  // Too generic
+}
+```
+
+**Solutions:**
+- **Use Result assertions:** `assert!(result.is_ok())` → specific Result assertions
+- **Use type-specific assertions:** Leverage `pretty_assertions` for better diffs
+
+```rust
+// ✅ FIXED: Use specific assertions
+use pretty_assertions::assert_eq;
+
+#[test]
+fn test_result_success() {
+    let result = some_function();
+    assert!(result.is_ok(), "Expected success, got error: {:?}", result.err());
+}
+
+#[test]
+fn test_struct_equality() {
+    let actual = create_struct();
+    let expected = Struct { field1: "value", field2: 42 };
+    assert_eq!(actual, expected);  // pretty_assertions provides colorful diffs
+}
+```
+
+#### 4. **Unnecessary `collect()`**
+
+**Problem:** Using `collect()` when it's not needed.
+
+```rust
+#[test]  // clippy::needless_collect flagged
+fn test_iteration() {
+    let data = vec![1, 2, 3, 4, 5];
+    let result: Vec<_> = data.iter().filter(|x| *x > 3).collect();
+    assert_eq!(result.len(), 2);
+}
+```
+
+**Solutions:**
+- **Use iterator methods:** Replace `collect()` with direct iteration
+- **Use `count()` for counting:** When only length matters
+
+```rust
+// ✅ FIXED: Remove unnecessary collect
+#[test]
+fn test_iteration_count() {
+    let data = vec![1, 2, 3, 4, 5];
+    let count = data.iter().filter(|x| *x > 3).count();
+    assert_eq!(count, 2);
+}
+
+#[test]
+fn test_iteration_values() {
+    let data = vec![1, 2, 3, 4, 5];
+    let result: Vec<_> = data.iter().filter(|x| *x > 3).copied().collect();
+    assert_eq!(result, vec![4, 5]);
+}
+```
+
+#### 5. **Shadowing Variables**
+
+**Problem:** Shadowing variables makes code confusing.
+
+```rust
+#[test]  // clippy::shadow_unrelated flagged
+fn test_shadowing() {
+    let config = create_config();
+    let config = modify_config(config);  // Shadows original
+    assert!(config.is_modified);
+}
+```
+
+**Solutions:**
+- **Use different variable names:** Avoid shadowing entirely
+- **Use mut:** If modification is intended
+
+```rust
+// ✅ FIXED: Use mut or different names
+#[test]
+fn test_modification() {
+    let config = create_config();
+    let modified_config = modify_config(config);
+    assert!(modified_config.is_modified);
+}
+
+#[test]
+fn test_in_place_modification() {
+    let mut config = create_config();
+    config.modify_in_place();
+    assert!(config.is_modified);
+}
+```
+
+#### 6. **Missing Error Documentation**
+
+**Problem:** Functions that can fail don't document their error conditions.
+
+```rust
+#[test]  // clippy::missing_errors_doc flagged
+fn test_error_case() {
+    let result = function_that_can_fail();
+    assert!(result.is_err());
+}
+```
+
+**Solutions:**
+- **Document error conditions:** Add error documentation to the tested function
+- **Use proper error assertions:** Make error expectations explicit
+
+```rust
+// ✅ FIXED: Document error conditions in function under test
+/// # Errors
+/// Returns `Error::Validation` if input is invalid
+fn function_that_can_fail() -> Result<(), Error> {
+    // implementation
+}
+
+// Test becomes more specific
+#[test]
+fn returns_validation_error_for_invalid_input() {
+    let result = function_that_can_fail();
+    assert!(matches!(result, Err(Error::Validation(_))));
+}
+```
 
 ### unwrapping in Tests
 
 - **Setup Phase**: Using `unwrap()` or `expect()` is acceptable in the _Arrange_ phase of a test. If the setup fails, the test should panic immediately as the prerequisite state wasn't met.
 - **Assertion Phase**: ALWAYS use `Result` assertions or specialized macros. Never `unwrap()` a result you intend to verify; it hides the failure context and results in poor diagnostic output.
+
+```rust
+// ✅ GOOD: Unwrap in setup (fixture creation)
+#[test]
+fn processes_valid_note() {
+    let note = create_note("valid content").unwrap();  // OK in setup
+    let result = process_note(note).await;
+    assert!(result.is_ok());
+}
+
+// ❌ BAD: Unwrap in assertion
+#[test]
+fn handles_invalid_note() {
+    let result = process_note(invalid_note);
+    assert!(result.is_err());  // GOOD: Check the error
+    // Don't do: result.err().unwrap() - hides failure context
+}
+```
 
 ### Doc-Tests (Mandatory API Documentation)
 
