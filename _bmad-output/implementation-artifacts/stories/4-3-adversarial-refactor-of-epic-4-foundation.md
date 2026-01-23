@@ -1,6 +1,6 @@
 # Story 4.3: Adversarial Refactor of Epic 4 Foundation
 
-Status: review
+Status: done
 
 <!-- Note: Validation completed. Quality standards enforced. -->
 
@@ -92,6 +92,7 @@ Claude 3.7 Sonnet (Dev Agent - Amelia)
 - **Task 4 Complete:** Verified NO blocking `std::fs` calls in production paths. Only `tokio::fs::canonicalize` used in async `resolve_safe_symlink`. All `std::fs` calls confined to test fixtures (properly marked with `#[expect(clippy::disallowed_methods)]`). Confirmed zero `miette` usage in adapters layer (correctly deferred to CLI).
 - **Task 5 Complete:** Full test suite passes (51 tests). Zero regressions. Memory footprint reduced significantly: ParseError 88→24 bytes (73% reduction), Result types now efficient. Code remains manageable (1,663 LOC total). All ACs satisfied.
 - **Post-Story Enhancement:** Improved all clippy attribute reasons (28 total) throughout `crates/adapters/src/spi/fs/` for clarity and posterity. Reasons now explain WHY exceptions exist, what alternatives were considered, and reference clippy.toml config where applicable. Examples: string_slice safety explained via TOML parser guarantees, pattern_type_mismatch justified via match ergonomics, test-only disallowed_methods reference allow-expect-in-tests config.
+- **Code Review Fixes:** Addressed low-priority issues from adversarial review: optimized parser dispatch logic to prevent redundant format attempts, added UTF-8 path encoding validation for cross-platform consistency, and improved error handling with new InvalidPathEncoding variant. All 51 tests pass, clippy clean.
 
 ### File List
 - `crates/adapters/src/spi/fs/parsers.rs` (optimized error construction)
@@ -101,3 +102,4 @@ Claude 3.7 Sonnet (Dev Agent - Amelia)
 ### Change Log
 - **2026-01-23:** Adversarial refactor complete. Optimized error enum memory layout (ParseError 88→24 bytes), added size regression tests, verified pedantic clippy compliance, confirmed async I/O safety. Zero regressions, all 51 tests pass. Ready for code review.
 - **2026-01-23 (Enhancement):** Enhanced all 28 clippy attribute reasons in fs module for clarity and posterity. Reasons now include technical justification, safety guarantees, and config references (e.g., clippy.toml allow-expect-in-tests).
+- **2026-01-23 (Code Review):** Fixed low-priority issues: optimized parser dispatch, added UTF-8 path validation, improved error consistency. All tests pass.
