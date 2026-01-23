@@ -105,7 +105,13 @@ impl VariableDefinition {
     /// Gets default value as `serde_json::Value`.
     #[inline]
     #[must_use]
-    #[expect(clippy::pattern_type_mismatch, reason = "Enum reference matching")]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Mixed Copy (Boolean, Number) and non-Copy (String, Date, \
+                  File) enum fields. Cannot use `match *self` without moving \
+                  String/Date/File. Current pattern with `match self` is \
+                  idiomatic for enums with mixed field types."
+    )]
     pub fn get_default_value(&self) -> Option<serde_json::Value> {
         match self {
             Self::Boolean {
@@ -133,8 +139,16 @@ impl VariableDefinition {
     /// Checks if variable has a default value.
     #[inline]
     #[must_use]
-    #[expect(clippy::pattern_type_mismatch, reason = "Enum reference matching")]
-    #[expect(clippy::match_same_arms, reason = "Divergent types in arms")]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        clippy::match_same_arms,
+        reason = "Enum has mixed Copy (Boolean/Number: \
+                  Option<bool>/Option<f64>) and non-Copy (String/Date/File: \
+                  Option<String>) fields, requiring pattern matching on \
+                  &self. All arms return is_some() but cannot be \
+                  consolidated—each operates on different Option<T> types and \
+                  dereferencing would move non-Copy String fields."
+    )]
     pub fn has_default(&self) -> bool {
         match self {
             Self::Boolean {
@@ -208,7 +222,13 @@ impl VariableDefinition {
     /// definition.validate_value(&serde_json::json!("note")).unwrap();
     /// ```
     #[inline]
-    #[expect(clippy::pattern_type_mismatch, reason = "Enum reference matching")]
+    #[expect(
+        clippy::pattern_type_mismatch,
+        reason = "Enum variants have mixed Copy fields (min/max: Option<f64>) \
+                  and non-Copy fields (format/pattern: Option<String>). \
+                  Cannot dereference `self` without moving non-Copy String \
+                  fields. Matching on `&self` with field binding is idiomatic."
+    )]
     pub fn validate_value(
         &self,
         value: &serde_json::Value,

@@ -328,7 +328,9 @@ mod tests {
     #[expect(
         clippy::disallowed_methods,
         clippy::default_numeric_fallback,
-        reason = "Test expectations use unwrap and f64 literals are standard"
+        reason = "Test fixture uses Result::unwrap() for clear test failures. \
+                  Float literals (5.0, 10.0) default to f64 which is correct \
+                  type for numeric validation."
     )]
     fn validate_numeric_range_works() {
         // GIVEN: a value and range constraints
@@ -348,7 +350,9 @@ mod tests {
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test expectations use unwrap"
+        reason = "Test fixture uses Result::unwrap() on \
+                  validate_numeric_step() for clear failure messages. \
+                  Acceptable in test-only code paths."
     )]
     fn validate_numeric_step_works() {
         // GIVEN: a value, base, and step increment
@@ -365,7 +369,9 @@ mod tests {
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test expectations use unwrap"
+        reason = "Test fixture uses Result::unwrap() on \
+                  validate_string_length() for clear failure messages. \
+                  Acceptable in test-only code paths."
     )]
     fn validate_string_length_works() {
         // GIVEN: a string and length constraints

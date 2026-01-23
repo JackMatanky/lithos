@@ -452,14 +452,12 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test uses std::env::current_dir() which is disallowed \
-                      in production (use Figment). Acceptable for test setup."
-        )]
-        #[expect(
             clippy::pattern_type_mismatch,
-            reason = "Match ergonomics allow borrowing PathBuf from &Mode \
-                      without explicit ref patterns. Cleaner than \
-                      &Mode::Strict { root: ref r }."
+            reason = "Test setup requires std::env::current_dir() (disallowed \
+                      in production; use Figment config instead). Pattern \
+                      match on &Mode enum requires borrowing non-Copy PathBuf \
+                      field without explicit `ref` pattern (idiomatic Rust \
+                      2021)."
         )]
         fn creates_strict_validator_with_root() {
             let root = std::env::current_dir().expect("cwd").join("test_root");
