@@ -204,6 +204,10 @@ pub enum PathValidationError {
     #[error("Absolute path not allowed: {0}")]
     AbsolutePathError(String),
 
+    /// Path contains invalid encoding (non-UTF8).
+    #[error("Path contains invalid encoding: {0}")]
+    InvalidPathEncoding(String),
+
     /// I/O error during symlink resolution.
     #[error("I/O error during symlink resolution: {0}")]
     IoError(String),

@@ -1,6 +1,33 @@
-//! Lithos CLI Binary.
+//! # Lithos CLI Binary
 //!
-//! The entry point for the Lithos command-line interface.
+//! This binary provides the command-line interface for Lithos, a CLI-first
+//! templating and schema system for Obsidian vaults. It handles argument
+//! parsing, configuration loading, and delegates to application services.
+//!
+//! ## Architectural Invariants
+//!
+//! - **Rich Diagnostics**: Uses `miette` for high-fidelity error reporting with
+//!   source snippets and help messages.
+//! - **Async Resilience**: Implements a top-level `catch_unwind` or result
+//!   handler to prevent single template failures from crashing the process.
+//! - **Configuration Hierarchy**: Loads settings from global config, vault
+//!   config, and command-line overrides in precedence order.
+//!
+//! ## Usage
+//!
+//! Run the CLI with `--help` for available commands and options.
+//!
+//! ## Example
+//!
+//! ```bash
+//! lithos --version
+//! ```
+//!
+//! # Errors
+//!
+//! Returns an error if configuration loading fails, vault initialization
+//! encounters issues, or template processing errors occur. Errors are reported
+//! via `miette` with contextual information.
 
 // # LINT_DISABLE_REASON: Main entry point requires disallowed methods for
 // initialization | Options tried: None
@@ -12,6 +39,13 @@
 )]
 #[tokio::main]
 /// The main entry point for the Lithos application.
+///
+/// Initializes the CLI, parses arguments, and runs the application logic.
+/// Currently prints a greeting and exits successfully.
+///
+/// # Errors
+///
+/// Returns an error if initialization fails or unhandled exceptions occur.
 async fn main() -> miette::Result<()> {
     #[expect(
         clippy::let_underscore_untyped,

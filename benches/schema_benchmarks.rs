@@ -1,3 +1,30 @@
+//! # Schema Benchmarks
+//!
+//! Performance benchmarks for schema-related domain operations.
+//!
+//! This module measures the execution time of core schema operations to ensure
+//! they meet non-functional requirements for vault performance.
+//!
+//! ## Operations Benchmarked
+//!
+//! - **Property Creation**: Measures time to create `Property` instances with
+//!   validation and UUID generation.
+//! - **Schema Creation**: Benchmarks instantiation of `Schema` aggregates.
+//! - **Inheritance Resolution**: Tests performance of resolving schema
+//!   dependency order in a graph.
+//!
+//! ## Performance Invariants
+//!
+//! - Property creation: <1ms per operation
+//! - Schema creation: <1ms per operation
+//! - Inheritance resolution: <10ms for typical vault schemas (<100 nodes)
+//!
+//! ## Regression Monitoring
+//!
+//! Benchmarks run in CI with thresholds:
+//! - >5% degradation triggers warning
+//! - >10% degradation blocks release
+
 #![expect(
     clippy::disallowed_methods,
     reason = "Benchmarks use Result::unwrap() during setup and measurement \

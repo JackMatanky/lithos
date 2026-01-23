@@ -179,18 +179,7 @@ impl Validator {
     /// Robust check for hidden status of an `OsStr` across platforms.
     #[inline]
     fn is_hidden_os_str(os_str: &std::ffi::OsStr) -> bool {
-        #[cfg(unix)]
-        {
-            use std::os::unix::ffi::OsStrExt as _;
-            os_str.as_bytes().starts_with(b".")
-        }
-
-        #[cfg(not(unix))]
-        {
-            os_str.to_str().is_some_and(|s| s.starts_with('.'))
-            // Note: If non-UTF8 on Windows, we default to safe (not hidden)
-            // as Windows doesn't use dot-prefixes for native hiding.
-        }
+        os_str.to_str().is_some_and(|s| s.starts_with('.'))
     }
 
     /// Creates a flexible validator that allows external symlinks.
@@ -320,6 +309,13 @@ impl Validator {
         PathType: AsRef<Path> + ?Sized,
     {
         let path_ref = path.as_ref();
+
+        // 0. UTF-8 Encoding Validation
+        if path_ref.to_str().is_none() {
+            return Err(PathValidationError::InvalidPathEncoding(
+                path_ref.to_string_lossy().into_owned(),
+            ));
+        }
 
         // 1. Absolute Path Validation
         self.check_absolute_path_policy(path_ref)?;

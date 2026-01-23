@@ -1,5 +1,5 @@
 ---
-title: "Lithos Test Guide (Master Manual)"
+title: "Lithos Test Developer Guide (Master Manual)"
 description: "Comprehensive reference for testing standards, patterns, and tools in the Lithos project"
 author: "Jack"
 date: "2026-01-23"
@@ -7,9 +7,9 @@ last_updated: "2026-01-23"
 section: "Testing & Quality"
 ---
 
-# Lithos Test Guide (Master Manual)
+# Lithos Test Developer Guide (Master Manual)
 
-This guide provides a comprehensive reference for testing standards, patterns, and tools in the Lithos project. For the full architectural strategy, see [\_bmad-output/test-design-system.md](../_bmad-output/test-design-system.md).
+This guide provides a comprehensive reference for testing standards, patterns, and tools in the Lithos project. For the full architectural strategy, see [\_bmad-output/test-design-system.md](./test-design-system.md).
 
 ## 1. Authorized Entry Points (Mise)
 

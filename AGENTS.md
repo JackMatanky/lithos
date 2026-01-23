@@ -427,3 +427,7 @@ tasks:
 - [Agent Definitions](../_bmad/bmb/agents/) - Full agent personas and capabilities.
 - [Core Resources](../_bmad/core/) - Additional tools and configurations.
 - [Project Context](../_bmad-output/project-context.md) - Comprehensive rules for AI agents.
+
+## MCP Servers
+
+When you need to search docs, use `context7` tools.
