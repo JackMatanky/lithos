@@ -83,21 +83,36 @@ The domain layer validates structural and semantic rules at construction time (e
 - Deprecate fields before removal and supply migration paths.
 
 ### Architecture Diagram
-```
-[Note Aggregate]
-  |-- Frontmatter
-  |-- Links ----> Style/EmbedType
-  |-- Tags
-  |-- Headings
-  |-- Tasks ----> TaskStatus
-  |-- Sections
-  |-- Events ---> NoteEvents
+
+```mermaid
+graph TD
+    NA[Note Aggregate]
+    FM[Frontmatter]
+    LN[Links] --> ST[Style/EmbedType]
+    TG[Tags]
+    HD[Headings]
+    TK[Tasks] --> TS[TaskStatus]
+    SC[Sections]
+    EV[Events] --> NE[NoteEvents]
+
+    NA --> FM
+    NA --> LN
+    NA --> TG
+    NA --> HD
+    NA --> TK
+    NA --> SC
+    NA --> EV
 ```
 
 ### Contract Diagram
-```
-[Note] -> (Config) -> Frontmatter defaults
-[Note] -> (Schema) -> Frontmatter validation
+
+```mermaid
+flowchart LR
+    N[Note] --> C[Config]
+    C --> FD[Frontmatter defaults]
+
+    N --> S[Schema]
+    S --> FV[Frontmatter validation]
 ```
 
 ## Schema Bounded Context
@@ -148,17 +163,28 @@ This context supports advanced schema composition (extends/excludes), property b
 - Update inheritance carefully with cycle checks and deprecation notes.
 
 ### Architecture Diagram
-```
-[RawSchema] -> [SchemaGraph] -> [SchemaResolver] -> [Schema]
-      |                              |
-      |                              +--> [PropertyBank]
-      +--> [RawProperty] ------------+--> [PropertySpec]
+
+```mermaid
+flowchart TD
+    RS[RawSchema] --> SG[SchemaGraph]
+    SG --> SR[SchemaResolver]
+    SR --> S[Schema]
+
+    RS --> RP[RawProperty]
+    RP --> PB[PropertyBank]
+    SR --> PB
+    PB --> PS[PropertySpec]
 ```
 
 ### Contract Diagram
-```
-[Schema] -> (Template) -> Variable constraints
-[Schema] -> (Note) -> Frontmatter validation
+
+```mermaid
+flowchart LR
+    S[Schema] --> T[Template]
+    T --> VC[Variable constraints]
+
+    S --> N[Note]
+    N --> FV[Frontmatter validation]
 ```
 
 ## Config Bounded Context
@@ -207,9 +233,14 @@ Configuration is validated during construction, and path/log-level correctness i
 - **Config ↔ TrustedVaults**: allowlist enforcement for vault selection.
 
 ### Contract Diagram
-```
-[Config] -> (TrustedVaults) -> vault allowlist enforcement
-[Config] -> (Template/Schema) -> directory defaults
+
+```mermaid
+flowchart LR
+    C[Config] --> TV[TrustedVaults]
+    TV --> VA[vault allowlist enforcement]
+
+    C --> TS[Template/Schema]
+    TS --> DD[directory defaults]
 ```
 
 ### Evolution Guidelines
@@ -258,9 +289,14 @@ Template validation is limited to placeholder balance, content size, variable na
 - **Template ↔ Config**: rendering parameters and template directories controlled by config.
 
 ### Contract Diagram
-```
-[Template] -> (Schema) -> variable constraints
-[Template] -> (Config) -> rendering defaults
+
+```mermaid
+flowchart LR
+    T[Template] --> S[Schema]
+    S --> VC[variable constraints]
+
+    T --> C[Config]
+    C --> RD[rendering defaults]
 ```
 
 ### Evolution Guidelines
@@ -318,11 +354,14 @@ Template -> Config
 - Additive changes should provide defaults and optional behavior.
 
 ## Epic 3 Architecture Diagrams
-```
-[Note] <-----> [Schema]
-   |              |
-   v              v
- [Config] <----> [Template]
+
+```mermaid
+flowchart TD
+    N[Note] <--> S[Schema]
+    N --> C[Config]
+    S --> C
+    C <--> T[Template]
+    S --> T
 ```
 
 ## Domain Model Evolution Guidelines
