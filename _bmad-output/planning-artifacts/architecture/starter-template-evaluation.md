@@ -1,3 +1,12 @@
+---
+title: "Starter Template Evaluation"
+description: "Evaluation of starter templates and selection of workspace-based hexagonal architecture"
+author: "Jack"
+date: "2026-01-23"
+last_updated: "2026-01-23"
+section: "Architecture Evaluation"
+---
+
 # Starter Template Evaluation
 
 ## Primary Technology Domain

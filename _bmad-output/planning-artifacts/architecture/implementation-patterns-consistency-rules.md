@@ -1,3 +1,12 @@
+---
+title: "Implementation Patterns & Consistency Rules"
+description: "Development patterns, naming conventions, and consistency rules for Lithos implementation"
+author: "Jack"
+date: "2026-01-23"
+last_updated: "2026-01-23"
+section: "Implementation Standards"
+---
+
 # Implementation Patterns & Consistency Rules
 
 ## Pattern Categories Defined

@@ -1,3 +1,12 @@
+---
+title: "Core Architectural Decisions"
+description: "Key architectural decisions and technology choices for Lithos implementation"
+author: "Jack"
+date: "2026-01-23"
+last_updated: "2026-01-23"
+section: "Architecture Decisions"
+---
+
 # Core Architectural Decisions
 
 ## Decision Priority Analysis
