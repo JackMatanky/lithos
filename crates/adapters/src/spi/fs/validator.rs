@@ -77,7 +77,9 @@ impl Validator {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics with Mode enum is more idiomatic"
+        reason = "Match ergonomics allow borrowing PathBuf from &Mode without \
+                  explicit ref patterns. This is idiomatic Rust 2021 and \
+                  avoids verbose &Mode::Strict { root: ref r } syntax."
     )]
     fn check_absolute_path_policy(
         &self,
@@ -131,7 +133,9 @@ impl Validator {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics with Mode enum is more idiomatic"
+        reason = "Match ergonomics allow borrowing PathBuf from &Mode without \
+                  explicit ref patterns. This is idiomatic Rust 2021 and \
+                  avoids verbose &Mode::Strict { root: ref r } syntax."
     )]
     fn check_strict_boundary(
         &self,
@@ -156,7 +160,9 @@ impl Validator {
     #[inline]
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics with Mode enum is more idiomatic"
+        reason = "Match ergonomics allow borrowing PathBuf from &Mode without \
+                  explicit ref patterns. This is idiomatic Rust 2021 and \
+                  avoids verbose &Mode::Strict { root: ref r } syntax."
     )]
     fn get_relative_validation_path<'path>(
         &self,
@@ -350,13 +356,23 @@ mod tests {
         pub const DOTFILE_NAME: &str = "dotfile.toml";
 
         pub struct Workspace {
-            #[expect(dead_code, reason = "RAII lifecycle")]
+            #[expect(
+                dead_code,
+                reason = "TempDir never read but must be stored for RAII \
+                          lifecycle. Drop order ensures filesystem cleanup \
+                          after test completion."
+            )]
             pub temp_dir: TempDir,
             pub root: PathBuf,
         }
 
         impl Workspace {
-            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test fixture setup uses blocking std::fs for \
+                          simplicity. These operations are synchronous and \
+                          don't impact async test behavior."
+            )]
             pub fn create_file<P: AsRef<Path>>(
                 &self,
                 path: P,
@@ -373,7 +389,12 @@ mod tests {
                 full_path
             }
 
-            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test fixture setup uses blocking std::fs for \
+                          simplicity. These operations are synchronous and \
+                          don't impact async test behavior."
+            )]
             pub fn create_symlink<P: AsRef<Path>, T: AsRef<Path>>(
                 &self,
                 link_path: P,
@@ -396,7 +417,12 @@ mod tests {
                 full_link_path
             }
 
-            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test fixture setup uses blocking std::fs for \
+                          simplicity. These operations are synchronous and \
+                          don't impact async test behavior."
+            )]
             pub fn new() -> Self {
                 let temp_dir =
                     TempDir::new().expect("failed to create temp dir");
@@ -424,10 +450,16 @@ mod tests {
         }
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test setup")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test uses std::env::current_dir() which is disallowed \
+                      in production (use Figment). Acceptable for test setup."
+        )]
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "PathBuf field in enum cannot be moved from reference"
+            reason = "Match ergonomics allow borrowing PathBuf from &Mode \
+                      without explicit ref patterns. Cleaner than \
+                      &Mode::Strict { root: ref r }."
         )]
         fn creates_strict_validator_with_root() {
             let root = std::env::current_dir().expect("cwd").join("test_root");
@@ -441,7 +473,13 @@ mod tests {
                     "Expected absolute root, found {}",
                     validator_root.display()
                 ),
-                #[expect(clippy::panic, reason = "Test validates invariant")]
+                #[expect(
+                    clippy::panic,
+                    reason = "panic!() used to fail test immediately if \
+                              constructor created wrong mode. This is \
+                              intentional test-only behavior for explicit \
+                              invariant validation."
+                )]
                 Mode::Flexible => {
                     panic!("Test fixture guaranteed Strict mode");
                 }
@@ -475,7 +513,12 @@ mod tests {
             }
 
             #[test]
-            #[expect(clippy::disallowed_methods, reason = "Test validation")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test assertions use Result::expect() for clear \
+                          failure messages. See clippy.toml \
+                          allow-expect-in-tests."
+            )]
             fn accepts_encoded_path_as_literal() {
                 let validator = Validator::new_flexible();
                 let result = validator.validate("safe%2Ffile");
@@ -508,7 +551,12 @@ mod tests {
             }
 
             #[test]
-            #[expect(clippy::disallowed_methods, reason = "Test validation")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test assertions use Result::expect() for clear \
+                          failure messages. See clippy.toml \
+                          allow-expect-in-tests."
+            )]
             fn accepts_relative_paths() {
                 let validator = Validator::new_flexible();
                 let result = validator.validate("config/lithos.toml");
@@ -540,7 +588,12 @@ mod tests {
             }
 
             #[test]
-            #[expect(clippy::disallowed_methods, reason = "Test validation")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test assertions use Result::expect() for clear \
+                          failure messages. See clippy.toml \
+                          allow-expect-in-tests."
+            )]
             fn accepts_normal_files() {
                 let validator = Validator::new_flexible();
                 let result = validator.validate("notes/daily.md");
@@ -557,7 +610,12 @@ mod tests {
             };
 
             #[tokio::test]
-            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test fixture uses blocking std::fs for setup and \
+                          expect() for assertions. See clippy.toml \
+                          allow-expect-in-tests."
+            )]
             async fn rejects_escaped_symlinks() {
                 let ws = Workspace::new();
                 let outside_target =
@@ -583,7 +641,11 @@ mod tests {
             }
 
             #[tokio::test]
-            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test fixture uses blocking std::fs for setup. Async \
+                          test validates production tokio::fs behavior."
+            )]
             async fn detects_symlink_loops() {
                 let ws = Workspace::new();
                 let link_a = ws.root.join("link_a");
@@ -601,7 +663,11 @@ mod tests {
             }
 
             #[tokio::test]
-            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test fixture uses blocking std::fs for setup. Async \
+                          test validates production tokio::fs behavior."
+            )]
             async fn rejects_internal_hidden_targets() {
                 let ws = Workspace::new();
                 let hidden_file = ws.create_file(".secret.txt", None);
@@ -626,7 +692,12 @@ mod tests {
             use super::super::{fixtures::Workspace, *};
 
             #[tokio::test]
-            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test fixture uses blocking std::fs for setup and \
+                          std::env::current_dir for CWD manipulation. Async \
+                          test validates production tokio::fs behavior."
+            )]
             async fn allows_external_symlinks() {
                 let ws = Workspace::new();
                 let outside_target =
@@ -655,7 +726,11 @@ mod tests {
             }
 
             #[tokio::test]
-            #[expect(clippy::disallowed_methods, reason = "Test setup")]
+            #[expect(
+                clippy::disallowed_methods,
+                reason = "Test validates error handling, no fixture setup \
+                          needed. async test for consistency with module."
+            )]
             async fn enforces_input_traversal_checks() {
                 let validator = Validator::new_flexible();
                 let result =
@@ -673,7 +748,12 @@ mod tests {
 
         /// Helper to create circular symlinks (extracted to reduce nesting).
         #[cfg(unix)]
-        #[expect(clippy::disallowed_methods, reason = "Test helper")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test helper uses platform-specific std::os::unix::fs \
+                      for symlink creation. Blocking I/O acceptable for \
+                      fixture setup."
+        )]
         fn create_symlink_loop(
             link_a: &std::path::Path,
             link_b: &std::path::Path,
@@ -685,7 +765,12 @@ mod tests {
         }
 
         #[cfg(windows)]
-        #[expect(clippy::disallowed_methods, reason = "Test helper")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test helper uses platform-specific std::os::windows::fs \
+                      for symlink creation. Blocking I/O acceptable for \
+                      fixture setup."
+        )]
         fn create_symlink_loop(
             link_a: &std::path::Path,
             link_b: &std::path::Path,
@@ -701,7 +786,11 @@ mod tests {
         use super::*;
 
         #[test]
-        #[expect(clippy::disallowed_methods, reason = "Test validation")]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test assertions use Result::expect() for clear failure \
+                      messages. See clippy.toml allow-expect-in-tests."
+        )]
         fn handles_platform_separators_consistently() {
             let validator = Validator::new_flexible();
             #[cfg(unix)]
