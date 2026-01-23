@@ -112,6 +112,19 @@ impl Json {
 
     /// Parse content string into type T.
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use lithos_adapters::spi::fs::parsers::Json;
+    /// use serde_json::Value;
+    ///
+    /// let content = r#"{"name": "test"}"#;
+    /// let result = Json::parse::<Value>(Path::new("test.json"), content);
+    /// assert!(result.is_ok());
+    /// ```
+    ///
     /// # Errors
     ///
     /// Returns `ParseError` if parsing fails.
@@ -182,6 +195,19 @@ impl Toml {
     }
 
     /// Parse content string into type T.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use lithos_adapters::spi::fs::parsers::Toml;
+    /// use toml::Value;
+    ///
+    /// let content = "name = \"test\"";
+    /// let result = Toml::parse::<Value>(Path::new("test.toml"), content);
+    /// assert!(result.is_ok());
+    /// ```
     ///
     /// # Errors
     ///
@@ -274,6 +300,19 @@ impl Yaml {
     }
 
     /// Parse content string into type T.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use lithos_adapters::spi::fs::parsers::Yaml;
+    /// use serde_yaml::Value;
+    ///
+    /// let content = "name: test";
+    /// let result = Yaml::parse::<Value>(Path::new("test.yaml"), content);
+    /// assert!(result.is_ok());
+    /// ```
     ///
     /// # Errors
     ///

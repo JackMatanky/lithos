@@ -184,6 +184,15 @@ impl Validator {
 
     /// Creates a flexible validator that allows external symlinks.
     ///
+    /// # Example
+    ///
+    /// ```
+    /// use lithos_adapters::spi::fs::validator::Validator;
+    ///
+    /// let validator = Validator::new_flexible();
+    /// assert!(validator.validate("config.toml").is_ok());
+    /// ```
+    ///
     /// # Use Cases
     ///
     /// - Configuration files that may be symlinked from dotfile repositories
@@ -197,6 +206,17 @@ impl Validator {
     }
 
     /// Creates a strict validator with root boundary enforcement.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::path::PathBuf;
+    ///
+    /// use lithos_adapters::spi::fs::validator::Validator;
+    ///
+    /// let root = PathBuf::from("/path/to/vault");
+    /// let validator = Validator::new_strict(root);
+    /// ```
     ///
     /// # Panics
     ///
@@ -280,6 +300,16 @@ impl Validator {
     }
 
     /// Validates a path for security issues.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lithos_adapters::spi::fs::validator::Validator;
+    ///
+    /// let validator = Validator::new_flexible();
+    /// assert!(validator.validate("safe/path.txt").is_ok());
+    /// assert!(validator.validate("../../unsafe").is_err());
+    /// ```
     ///
     /// # Checks Performed
     ///
