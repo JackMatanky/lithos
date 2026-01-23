@@ -328,7 +328,9 @@ impl VariableDefinition {
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
-    reason = "Test code uses expect/unwrap for simplicity and determinism"
+    reason = "Test module uses Result::expect() for deterministic setup and \
+              validation of variable definitions. Unreachable paths are \
+              acceptable in domain unit tests."
 )]
 mod tests {
     use super::*;

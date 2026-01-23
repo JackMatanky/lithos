@@ -1,6 +1,8 @@
 #![expect(
     clippy::disallowed_methods,
-    reason = "Benchmarks use unwrap for simplicity in setup and iteration"
+    reason = "Benchmarks use Result::unwrap() during setup and measurement \
+              loops for uninterrupted iteration. Failures represent invalid \
+              state, not logic under test."
 )]
 
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
