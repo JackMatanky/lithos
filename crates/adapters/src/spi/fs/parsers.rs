@@ -59,33 +59,82 @@ use serde::de::DeserializeOwned;
 
 use crate::spi::errors::ParseError;
 
+/// JSON parser strategy.
+#[derive(Debug, Clone, Default, PartialEq)]
+#[non_exhaustive]
+pub struct Json;
+
+impl Json {
+    /// Detect if content looks like JSON format.
+    ///
+    /// Checks for JSON-specific patterns:
+    /// - Starts with `{` (object)
+    /// - Starts with `[` (array)
+    #[inline]
+    #[must_use]
+    pub fn detect(content: &str) -> bool {
+        let trimmed = content.trim_start();
+        trimmed.starts_with('{') || trimmed.starts_with('[')
+    }
+
+    /// Check if this parser can handle the given file path by extension.
+    #[inline]
+    #[must_use]
+    pub fn is_supported(path: &Path) -> bool {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
+    }
+
+    /// Parse content string into type T.
+    ///
+    /// # Errors
+    ///
+    /// Returns `ParseError` if parsing fails.
+    #[inline]
+    pub fn parse<T: DeserializeOwned>(
+        path: &Path,
+        content: &str,
+    ) -> Result<T, ParseError> {
+        serde_json::from_str(content).map_err(|e| ParseError::Json {
+            path: path.into(),
+            message: e.to_string().into(),
+            line: Some(e.line()),
+            column: Some(e.column()),
+        })
+    }
+}
+
 /// TOML parser strategy.
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Toml;
 
 impl Toml {
-    /// Check if this parser can handle the given file path by extension.
-    #[inline]
-    #[must_use]
-    pub fn can_parse(path: &Path) -> bool {
-        path.extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
-    }
-
     /// Detect if content looks like TOML format.
     ///
     /// Checks for TOML-specific patterns:
     /// - Contains `[table]` headers
     /// - Contains `key = value` assignments without colons
+    /// - Does not start with JSON markers
     #[inline]
     #[must_use]
     pub fn detect(content: &str) -> bool {
         let trimmed = content.trim_start();
         // TOML: contains [ (table) or = (key-value) without : (YAML has :)
-        trimmed.contains('[')
-            || (trimmed.contains('=') && !trimmed.contains(':'))
+        // Avoid false positives with JSON
+        !trimmed.starts_with('{')
+            && (trimmed.contains('[')
+                || (trimmed.contains('=') && !trimmed.contains(':')))
+    }
+
+    /// Check if this parser can handle the given file path by extension.
+    #[inline]
+    #[must_use]
+    pub fn is_supported(path: &Path) -> bool {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
     }
 
     /// Parse content string into type T.
@@ -123,80 +172,38 @@ impl Toml {
     }
 }
 
-/// JSON parser strategy.
-#[derive(Debug, Clone, Default, PartialEq)]
-#[non_exhaustive]
-pub struct Json;
-
-impl Json {
-    /// Check if this parser can handle the given file path by extension.
-    #[inline]
-    #[must_use]
-    pub fn can_parse(path: &Path) -> bool {
-        path.extension()
-            .and_then(|ext| ext.to_str())
-            .is_some_and(|ext| ext.eq_ignore_ascii_case("json"))
-    }
-
-    /// Detect if content looks like JSON format.
-    ///
-    /// Checks for JSON-specific patterns:
-    /// - Starts with `{` (object)
-    /// - Starts with `[` (array)
-    #[inline]
-    #[must_use]
-    pub fn detect(content: &str) -> bool {
-        let trimmed = content.trim_start();
-        trimmed.starts_with('{') || trimmed.starts_with('[')
-    }
-
-    /// Parse content string into type T.
-    ///
-    /// # Errors
-    ///
-    /// Returns `ParseError` if parsing fails.
-    #[inline]
-    pub fn parse<T: DeserializeOwned>(
-        path: &Path,
-        content: &str,
-    ) -> Result<T, ParseError> {
-        serde_json::from_str(content).map_err(|e| ParseError::Json {
-            path: path.into(),
-            message: e.to_string().into(),
-            line: Some(e.line()),
-            column: Some(e.column()),
-        })
-    }
-}
-
 /// YAML parser strategy.
 #[derive(Debug, Clone, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Yaml;
 
 impl Yaml {
-    /// Check if this parser can handle the given file path by extension.
-    #[inline]
-    #[must_use]
-    pub fn can_parse(path: &Path) -> bool {
-        path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
-            ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml")
-        })
-    }
-
     /// Detect if content looks like YAML format.
     ///
     /// Checks for YAML-specific patterns:
     /// - Starts with `---` (document separator)
     /// - Contains `key: value` patterns without `=` (TOML has `=`)
+    /// - Does not start with JSON markers
     #[inline]
     #[must_use]
     pub fn detect(content: &str) -> bool {
         let trimmed = content.trim_start();
         // YAML: contains --- (document separator) or key: patterns without =
         // (TOML has =)
-        trimmed.starts_with("---")
-            || (trimmed.contains(':') && !trimmed.contains('='))
+        // Avoid false positives with JSON
+        !trimmed.starts_with('{')
+            && !trimmed.starts_with('[')
+            && (trimmed.starts_with("---")
+                || (trimmed.contains(':') && !trimmed.contains('=')))
+    }
+
+    /// Check if this parser can handle the given file path by extension.
+    #[inline]
+    #[must_use]
+    pub fn is_supported(path: &Path) -> bool {
+        path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| {
+            ext.eq_ignore_ascii_case("yaml") || ext.eq_ignore_ascii_case("yml")
+        })
     }
 
     /// Parse content string into type T.
@@ -286,19 +293,19 @@ impl Dispatcher {
         let mut tried_yaml = false;
 
         // First priority: Try extension-based detection
-        if Json::can_parse(path) {
+        if Json::is_supported(path) {
             tried_json = true;
             if let Ok(result) = Json::parse(path, content) {
                 return Ok(result);
             }
         }
-        if Toml::can_parse(path) {
+        if Toml::is_supported(path) {
             tried_toml = true;
             if let Ok(result) = Toml::parse(path, content) {
                 return Ok(result);
             }
         }
-        if Yaml::can_parse(path) {
+        if Yaml::is_supported(path) {
             tried_yaml = true;
             if let Ok(result) = Yaml::parse(path, content) {
                 return Ok(result);
@@ -368,7 +375,7 @@ mod tests {
             let path = Path::new(path);
 
             // WHEN checking if the Toml parser can handle it
-            let result = Toml::can_parse(path);
+            let result = Toml::is_supported(path);
 
             // THEN it should return true
             assert!(result, "Should recognize {} as TOML", path.display());
@@ -381,7 +388,7 @@ mod tests {
             let path = Path::new("config.json");
 
             // WHEN checking if the Toml parser can handle it
-            let result = Toml::can_parse(path);
+            let result = Toml::is_supported(path);
 
             // THEN it should return false
             assert!(!result, "Should not recognize JSON as TOML");
@@ -397,7 +404,7 @@ mod tests {
             let path = Path::new(path);
 
             // WHEN checking if the Json parser can handle it
-            let result = Json::can_parse(path);
+            let result = Json::is_supported(path);
 
             // THEN it should return true
             assert!(result, "Should recognize {} as JSON", path.display());
@@ -410,7 +417,7 @@ mod tests {
             let path = Path::new("config.toml");
 
             // WHEN checking if the Json parser can handle it
-            let result = Json::can_parse(path);
+            let result = Json::is_supported(path);
 
             // THEN it should return false
             assert!(!result, "Should not recognize TOML as JSON");
@@ -427,7 +434,7 @@ mod tests {
             let path = Path::new(path);
 
             // WHEN checking if the Yaml parser can handle it
-            let result = Yaml::can_parse(path);
+            let result = Yaml::is_supported(path);
 
             // THEN it should return true
             assert!(result, "Should recognize {} as YAML", path.display());
@@ -440,7 +447,7 @@ mod tests {
             let path = Path::new("config.toml");
 
             // WHEN checking if the Yaml parser can handle it
-            let result = Yaml::can_parse(path);
+            let result = Yaml::is_supported(path);
 
             // THEN it should return false
             assert!(!result, "Should not recognize TOML as YAML");
@@ -721,6 +728,229 @@ mod tests {
             } else {
                 panic!("Expected ParseError::Json");
             }
+        }
+
+        // [4.1-U-18] YAML Error Context
+        #[test]
+        #[expect(
+            clippy::panic,
+            reason = "panic!() used to fail test immediately if wrong error \
+                      variant received. This is intentional test-only \
+                      behavior for explicit failure messaging."
+        )]
+        fn should_provide_yaml_error_context() {
+            // GIVEN invalid YAML content with invalid indentation
+            let invalid_yaml = "name: test\n  invalid: indent";
+            let path = Path::new("test.yaml");
+
+            // WHEN attempting to parse it
+            let result = Yaml::parse::<serde_yaml::Value>(path, invalid_yaml);
+
+            // THEN it should return a Yaml error with line and column
+            // information
+            assert!(result.is_err());
+            if let Err(ParseError::Yaml {
+                message,
+                line,
+                column,
+                ..
+            }) = result
+            {
+                assert!(line.is_some(), "Should provide line number");
+                assert!(column.is_some(), "Should provide column number");
+                assert!(
+                    message.to_lowercase().contains("indent")
+                        || message.contains("mapping"),
+                    "Error message should indicate indentation or mapping \
+                     issue"
+                );
+            } else {
+                panic!("Expected ParseError::Yaml");
+            }
+        }
+    }
+
+    mod detect {
+        use rstest::rstest;
+
+        use super::*;
+
+        // [4.1-U-12] TOML Content Detection
+        #[rstest]
+        #[case::table_header("[package]")]
+        #[case::key_value("name = \"test\"")]
+        #[case::both("[package]\nname = \"test\"")]
+        fn should_detect_valid_toml_content(#[case] content: &str) {
+            // GIVEN valid TOML content patterns
+            let trimmed = content.trim_start();
+
+            // WHEN checking if Toml can detect it
+            let result = Toml::detect(trimmed);
+
+            // THEN it should return true
+            assert!(result, "Should detect {content} as TOML");
+        }
+
+        // [4.1-U-12] TOML Content Rejection
+        #[rstest]
+        #[case::yaml_key_value("name: test")]
+        #[case::json_object("{\"name\": \"test\"}")]
+        #[case::plain_text("plain text")]
+        fn should_reject_non_toml_content(#[case] content: &str) {
+            // GIVEN non-TOML content
+            let trimmed = content.trim_start();
+
+            // WHEN checking if Toml can detect it
+            let result = Toml::detect(trimmed);
+
+            // THEN it should return false
+            assert!(!result, "Should not detect {content} as TOML");
+        }
+
+        // [4.1-U-13] JSON Content Detection
+        #[rstest]
+        #[case::object_start("{")]
+        #[case::array_start("[")]
+        #[case::full_object("{\"name\": \"test\"}")]
+        fn should_detect_valid_json_content(#[case] content: &str) {
+            // GIVEN valid JSON content patterns
+            let trimmed = content.trim_start();
+
+            // WHEN checking if Json can detect it
+            let result = Json::detect(trimmed);
+
+            // THEN it should return true
+            assert!(result, "Should detect {content} as JSON");
+        }
+
+        // [4.1-U-13] JSON Content Rejection
+        #[rstest]
+        #[case::yaml_key_value("name: test")]
+        #[case::toml_key_value("name = \"test\"")]
+        #[case::plain_text("plain text")]
+        fn should_reject_non_json_content(#[case] content: &str) {
+            // GIVEN non-JSON content
+            let trimmed = content.trim_start();
+
+            // WHEN checking if Json can detect it
+            let result = Json::detect(trimmed);
+
+            // THEN it should return false
+            assert!(!result, "Should not detect {content} as JSON");
+        }
+
+        // [4.1-U-14] YAML Content Detection
+        #[rstest]
+        #[case::document_separator("---")]
+        #[case::key_value("name: test")]
+        #[case::both("---\nname: test")]
+        fn should_detect_valid_yaml_content(#[case] content: &str) {
+            // GIVEN valid YAML content patterns
+            let trimmed = content.trim_start();
+
+            // WHEN checking if Yaml can detect it
+            let result = Yaml::detect(trimmed);
+
+            // THEN it should return true
+            assert!(result, "Should detect {content} as YAML");
+        }
+
+        // [4.1-U-14] YAML Content Rejection
+        #[rstest]
+        #[case::toml_key_value("name = \"test\"")]
+        #[case::json_object("{\"name\": \"test\"}")]
+        #[case::plain_text("plain text")]
+        fn should_reject_non_yaml_content(#[case] content: &str) {
+            // GIVEN non-YAML content
+            let trimmed = content.trim_start();
+
+            // WHEN checking if Yaml can detect it
+            let result = Yaml::detect(trimmed);
+
+            // THEN it should return false
+            assert!(!result, "Should not detect {content} as YAML");
+        }
+    }
+
+    mod edge_cases {
+        use rstest::rstest;
+
+        use super::*;
+
+        // [4.1-U-15] Empty Content Handling
+        #[rstest]
+        #[case::toml("toml")]
+        #[case::json("json")]
+        #[case::yaml("yaml")]
+        fn should_handle_empty_content_gracefully(#[case] format: &str) {
+            // GIVEN empty content and appropriate path
+            let content = "";
+            let path_str = format!("test.{format}");
+            let path = Path::new(&path_str);
+
+            // WHEN attempting to parse
+            let result =
+                Dispatcher::new().parse::<serde_json::Value>(path, content);
+
+            // THEN JSON fails, TOML/YAML succeed (empty is valid)
+            if format == "json" {
+                assert!(
+                    result.is_err(),
+                    "Empty content should fail to parse as {format}"
+                );
+            } else {
+                assert!(
+                    result.is_ok(),
+                    "Empty content should succeed to parse as {format}"
+                );
+            }
+        }
+
+        // [4.1-U-16] Malformed Content Error Context
+        #[rstest]
+        #[case::toml_invalid_key("invalid key = value", "toml")]
+        #[case::json_invalid_syntax("{\"name\": }", "json")]
+        #[case::yaml_invalid_indent("name:\n  - item\n- invalid", "yaml")]
+        fn should_provide_error_context_for_malformed_content(
+            #[case] content: &str,
+            #[case] ext: &str,
+        ) {
+            // GIVEN malformed content
+            let path_str = format!("test.{ext}");
+            let path = Path::new(&path_str);
+
+            // WHEN attempting to parse
+            let result =
+                Dispatcher::new().parse::<serde_json::Value>(path, content);
+
+            // THEN it should return an error with context
+            assert!(result.is_err(), "Malformed {ext} content should fail");
+        }
+
+        // [4.1-U-17] Mixed Line Endings
+        #[test]
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "Test unwrap for assertion. See clippy.toml \
+                      allow-unwrap-in-tests."
+        )]
+        fn should_handle_mixed_line_endings() {
+            // GIVEN TOML content with mixed line endings (\r\n and \n)
+            let mixed_endings =
+                "name = \"test\"\r\nversion = 1\nenabled = true";
+            let path = Path::new("test.toml");
+
+            // WHEN parsing the content
+            let result: Result<toml::Value, _> =
+                Dispatcher::new().parse(path, mixed_endings);
+
+            // THEN it should successfully parse despite mixed endings
+            assert!(result.is_ok(), "Should handle mixed line endings");
+            let value = result.unwrap();
+            assert_eq!(
+                value.get("name").and_then(|v| v.as_str()),
+                Some("test")
+            );
         }
     }
 }
