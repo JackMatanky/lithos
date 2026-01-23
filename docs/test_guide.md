@@ -553,35 +553,68 @@ enum DomainEvent {
 }
 ```
 
-### unwrapping in Tests
+#### 9. Improper use of `unwrap()` or `expect()` in Assertions
 
-- **Setup Phase**: Using `unwrap()` or `expect()` is acceptable in the _Arrange_ phase of a test. If the setup fails, the test should panic immediately as the prerequisite state wasn't met.
-- **Assertion Phase**: ALWAYS use `Result` assertions or specialized macros. Never `unwrap()` a result you intend to verify; it hides the failure context and results in poor diagnostic output.
+**Problem:** Using `unwrap()` or `expect()` on a Result that is the primary target of verification. This hides the actual error variant and produces poor diagnostic output when the test fails.
 
 ```rust
-// ✅ GOOD: Unwrap in setup (fixture creation)
 #[test]
-fn processes_valid_note() {
-    let note = create_note("valid content").unwrap();  // OK in setup
-    let result = process_note(note).await;
-    assert!(result.is_ok());
-}
-
-// ❌ BAD: Unwrap in assertion
-#[test]
-fn handles_invalid_note() {
-    let result = process_note(invalid_note);
-    assert!(result.is_err());  // GOOD: Check the error
-    // Don't do: result.err().unwrap() - hides failure context
+fn should_validate_successfully() {
+    let result = validate_something();
+    result.expect("Validation should pass"); // ❌ ANTI-PATTERN
 }
 ```
 
-### Doc-Tests (Mandatory API Documentation)
+**Solutions:**
+- **Use `assert!(result.is_ok())`**: For simple success verification.
+- **Include error context**: Provide the error in the assertion message for easier debugging.
+- **Use `matches!` for variants**: When verifying specific error types.
 
-Doc-tests are prescribed for all **public domain models** and **utility functions**.
+```rust
+// ✅ FIXED: Use explicit assertions with context
+#[test]
+fn should_validate_successfully() {
+    let result = validate_something();
+    assert!(
+        result.is_ok(),
+        "Validation should pass, but failed with: {:?}",
+        result.err()
+    );
+}
 
-- They serve as the "Living Documentation" for the codebase.
-- High-fidelity examples of how to use `lithos-test-utils` components must be implemented as doc-tests in the source code to ensure they are verified by `mise run test:unit` (which orchestrates both nextest and doc-tests).
+#[test]
+fn returns_specific_error_on_failure() {
+    let result = validate_something_invalid();
+    // ✅ FIXED: Use matches! for specific error verification
+    assert!(
+        matches!(result, Err(DomainError::InvalidInput(_))),
+        "Expected InvalidInput error, but got: {:?}",
+        result
+    );
+}
+```
+
+### unwrapping in Tests Guidelines
+
+To maintain high quality tests, follow this rule of thumb for `unwrap()` and `expect()`:
+
+1.  **Arrange (Setup) Phase**: `unwrap()` is **PERMITTED**. If setup fails, the test should panic immediately because the test prerequisites weren't met.
+2.  **Act Phase**: `unwrap()` is **FORBIDDEN**. The result of the action should be captured.
+3.  **Assert (Then) Phase**: `unwrap()` is **FORBIDDEN**. Use explicit `assert!` macros to verify outcomes.
+
+```rust
+#[test]
+fn processes_valid_note() {
+    // 1. ARRANGE: unwrap() is OK here
+    let note = create_test_note().unwrap();
+
+    // 2. ACT: capture the result
+    let result = process_note(note);
+
+    // 3. ASSERT: use assert! instead of unwrap()
+    assert!(result.is_ok(), "Process failed: {:?}", result.err());
+}
+```
 
 ## 9. Common Pitfalls
 

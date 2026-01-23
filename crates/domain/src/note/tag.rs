@@ -218,12 +218,24 @@ mod tests {
             // THEN: the result matches the expected outcome
             match expected {
                 Ok(segments) => {
-                    let tag = result.expect("Should be Ok");
+                    assert!(
+                        result.is_ok(),
+                        "Tag parsing should succeed for '{}', but got error: \
+                         {:?}",
+                        input,
+                        result.err()
+                    );
+                    let tag = result.unwrap();
                     let actual_segments: Vec<&str> =
                         tag.segments().iter().map(AsRef::as_ref).collect();
                     assert_eq!(actual_segments, segments);
                 }
                 Err(e) => {
+                    assert!(
+                        result.is_err(),
+                        "Tag parsing should fail for '{input}', but got \
+                         success"
+                    );
                     assert_eq!(result.unwrap_err(), e);
                 }
             }

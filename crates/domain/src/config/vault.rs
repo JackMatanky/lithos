@@ -198,13 +198,11 @@ mod tests {
         let result = filesystem.validate();
 
         // THEN: it succeeds
-        #[expect(
-            clippy::disallowed_methods,
-            reason = "Test uses Result::unwrap() on Filesystem::validate() \
-                      for clear failure messages. Acceptable in test-only \
-                      code paths."
-        )]
-        result.unwrap();
+        assert!(
+            result.is_ok(),
+            "Validation should succeed, but got: {:?}",
+            result.err()
+        );
     }
 
     #[test]

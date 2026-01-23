@@ -347,7 +347,11 @@ mod tests {
         let invalid_result = def.validate_value(&serde_json::json!("true"));
 
         // THEN: only the boolean value is accepted
-        valid_result.expect("Valid boolean");
+        assert!(
+            valid_result.is_ok(),
+            "Boolean value should be accepted, but got: {:?}",
+            valid_result.err()
+        );
         assert!(invalid_result.is_err());
     }
 
@@ -366,7 +370,11 @@ mod tests {
         let too_high = def.validate_value(&serde_json::json!(10.5f64));
 
         // THEN: range constraints are enforced
-        valid_result.expect("Valid number");
+        assert!(
+            valid_result.is_ok(),
+            "Number in range should be accepted, but got: {:?}",
+            valid_result.err()
+        );
         assert!(too_low.is_err());
         assert!(too_high.is_err());
     }
