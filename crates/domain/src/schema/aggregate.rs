@@ -636,7 +636,9 @@ mod tests {
         assert!(bank.get(id.to_string().as_str()).is_some());
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test assertion uses unwrap for clarity"
+            reason = "Test uses Result::unwrap() on PropertyBank::decode() \
+                      for clear failure messages. Acceptable in test-only \
+                      code paths."
         )]
         bank.decode(id.to_string().as_str()).unwrap();
         assert_eq!(bank.pending_events().len(), 1);

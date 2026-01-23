@@ -777,7 +777,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test setup uses unwrap for clarity"
+        reason = "Test uses Result::unwrap() on Frontmatter::new() for clear \
+                  failure messages. Acceptable in test-only code paths."
     )]
     fn accessors_handle_configured_keys() {
         // GIVEN: a custom config
@@ -808,7 +809,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test setup uses unwrap for clarity"
+        reason = "Test uses Result::unwrap() on Frontmatter::new() for clear \
+                  failure messages. Acceptable in test-only code paths."
     )]
     fn get_as_performs_type_conversion() {
         // GIVEN: frontmatter with various types
@@ -830,7 +832,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test setup uses unwrap for clarity"
+        reason = "Test uses Result::unwrap() on Frontmatter::new() for clear \
+                  failure messages. Acceptable in test-only code paths."
     )]
     fn get_string_array_handles_single_and_multiple() {
         // GIVEN: frontmatter with single string and array of strings
@@ -879,7 +882,8 @@ mod tests {
     #[test]
     #[expect(
         clippy::disallowed_methods,
-        reason = "Test setup uses unwrap for clarity"
+        reason = "Test uses Result::unwrap() on Frontmatter::new() for clear \
+                  failure messages. Acceptable in test-only code paths."
     )]
     fn get_typed_helpers_retrieve_values() {
         // GIVEN: frontmatter with various fields
