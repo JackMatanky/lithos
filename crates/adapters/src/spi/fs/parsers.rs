@@ -91,6 +91,17 @@ impl Json {
     }
 
     /// Check if this parser can handle the given file path by extension.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use lithos_adapters::spi::fs::parsers::Json;
+    ///
+    /// let path = Path::new("config.json");
+    /// assert!(Json::is_supported(path));
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_supported(path: &Path) -> bool {
@@ -151,6 +162,17 @@ impl Toml {
     }
 
     /// Check if this parser can handle the given file path by extension.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use lithos_adapters::spi::fs::parsers::Toml;
+    ///
+    /// let path = Path::new("config.toml");
+    /// assert!(Toml::is_supported(path));
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_supported(path: &Path) -> bool {
@@ -229,6 +251,20 @@ impl Yaml {
     }
 
     /// Check if this parser can handle the given file path by extension.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::path::Path;
+    ///
+    /// use lithos_adapters::spi::fs::parsers::Yaml;
+    ///
+    /// let path = Path::new("config.yaml");
+    /// assert!(Yaml::is_supported(path));
+    ///
+    /// let path_yml = Path::new("config.yml");
+    /// assert!(Yaml::is_supported(path_yml));
+    /// ```
     #[inline]
     #[must_use]
     pub fn is_supported(path: &Path) -> bool {
@@ -289,6 +325,15 @@ pub struct Dispatcher;
 
 impl Dispatcher {
     /// Create a new dispatcher.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use lithos_adapters::spi::fs::parsers::Dispatcher;
+    ///
+    /// let dispatcher = Dispatcher::new();
+    /// # let _ = dispatcher;
+    /// ```
     #[must_use]
     #[inline]
     pub const fn new() -> Self {
