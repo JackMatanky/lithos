@@ -559,7 +559,10 @@ impl Link {
     /// Validates that the target is not empty.
     #[expect(
         clippy::pattern_type_mismatch,
-        reason = "Match ergonomics preferred for readability"
+        reason = "Matching on &Target enum with non-Copy Box<str> fields \
+                  (path, raw, url). Cannot dereference without moving \
+                  non-Copy fields. Pattern matching on target reference with \
+                  field binding is idiomatic for validation."
     )]
     fn validate_target(target: &Target) -> Result<(), DomainError> {
         let is_empty = match target {
