@@ -361,7 +361,8 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test setup uses unwrap for clarity"
+            reason = "Test uses Result::unwrap() on Config::build() for clear \
+                      failure messages. Acceptable in test-only code paths."
         )]
         fn build_handles_missing_global() {
             // GIVEN: no global configuration
@@ -619,8 +620,10 @@ mod tests {
         #[test]
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test expects merge to succeed, unwrap is appropriate \
-                      for test clarity"
+            reason = "Test uses Result::expect() during aggregate \
+                      construction for clear failures. Building from \
+                      validated sample data is a safe invariant for this test \
+                      case."
         )]
         fn vault_values_take_precedence_over_global() {
             // GIVEN: a global config with default settings and a vault config
@@ -773,7 +776,11 @@ mod tests {
                     let err = result.unwrap_err();
                     #[expect(
                         clippy::wildcard_enum_match_arm,
-                        reason = "Test safety boundary"
+                        reason = "Test safety boundary: wildcards in \
+                                  exhaustive matches are prohibited in \
+                                  production to ensure new variants are \
+                                  handled, but acceptable here to fail tests \
+                                  on unexpected variants."
                     )]
                     match err {
                         crate::ConfigError::ValidationFailed {

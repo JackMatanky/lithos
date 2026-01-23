@@ -96,7 +96,10 @@ impl TrustedVaults {
     pub fn validate(&self) -> Result<(), crate::ConfigError> {
         #[expect(
             clippy::pattern_type_mismatch,
-            reason = "Pattern matching on Option types requires this structure"
+            reason = "Matching on tuple of references (&Option<T>, \
+                      &Option<U>) requires this structure to avoid moving \
+                      fields. Pattern binding on &self members is idiomatic \
+                      for validation of mutually exclusive fields."
         )]
         match (&self.list, &self.map) {
             (Some(_), Some(_)) => Err(crate::ConfigError::ValidationFailed {
@@ -134,7 +137,9 @@ mod tests {
         // THEN: validation succeeds
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test validation uses unwrap for clarity"
+            reason = "Test uses Result::unwrap() on TrustedVaults::validate() \
+                      for clear failure messages. Acceptable in test-only \
+                      code paths."
         )]
         result.unwrap();
     }
@@ -157,7 +162,9 @@ mod tests {
         // THEN: validation succeeds
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test validation uses unwrap for clarity"
+            reason = "Test uses Result::unwrap() on TrustedVaults::validate() \
+                      for clear failure messages. Acceptable in test-only \
+                      code paths."
         )]
         result.unwrap();
     }
@@ -173,7 +180,9 @@ mod tests {
         // THEN: it succeeds
         #[expect(
             clippy::disallowed_methods,
-            reason = "Test validation uses unwrap for clarity"
+            reason = "Test uses Result::unwrap() on Filesystem::validate() \
+                      for clear failure messages. Acceptable in test-only \
+                      code paths."
         )]
         result.unwrap();
     }

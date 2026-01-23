@@ -160,7 +160,8 @@ impl Section {
 #[cfg(test)]
 #[expect(
     clippy::disallowed_methods,
-    reason = "Unit tests use unwrap for readability"
+    reason = "Test module uses Result::unwrap() for ergonomic arrangement and \
+              assertions. Acceptable in test-only code paths."
 )]
 mod tests {
     use super::*;
