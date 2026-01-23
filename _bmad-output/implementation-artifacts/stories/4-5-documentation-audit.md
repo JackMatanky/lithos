@@ -1,6 +1,6 @@
 # Story 4.5: Documentation Audit
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -20,22 +20,22 @@ so that the codebase remains self-documenting, precise, and free of unnecessary 
 
 ## Tasks / Subtasks
 
-- [ ] **Audit Module Level Documentation**
-  - [ ] `crates/adapters/src/spi/fs/mod.rs` (if exists, or checks re-exports)
-  - [ ] `crates/adapters/src/spi/fs/parsers.rs` (Unified Parser Strategy)
-  - [ ] `crates/adapters/src/spi/fs/validator.rs` (Path Validation Utilities)
-  - [ ] `crates/adapters/src/spi/fs/utils.rs` (if applicable)
-- [ ] **Audit Function & Struct Documentation**
-  - [ ] Add `# Examples` to all public functions
-  - [ ] Add `# Errors` sections to all functions returning `Result`
-  - [ ] Ensure arguments and return values are described
-- [ ] **Audit Error Enum Documentation**
-  - [ ] Document `ParseError` variants
-  - [ ] Document `PathTraversalError` / `ValidationError` variants
-- [ ] **Verification**
-  - [ ] Run `cargo test --doc` to verify examples
-  - [ ] Run `cargo doc --no-deps --open` to visually inspect the output
-  - [ ] Run `cargo clippy -- -W missing_docs` or `#![warn(missing_docs)]` to verify completeness
+- [x] **Audit Module Level Documentation**
+  - [x] `crates/adapters/src/spi/fs/mod.rs` (if exists, or checks re-exports)
+  - [x] `crates/adapters/src/spi/fs/parsers.rs` (Unified Parser Strategy)
+  - [x] `crates/adapters/src/spi/fs/validator.rs` (Path Validation Utilities)
+  - [x] `crates/adapters/src/spi/fs/utils.rs` (if applicable)
+- [x] **Audit Function & Struct Documentation**
+  - [x] Add `# Examples` to all public functions
+  - [x] Add `# Errors` sections to all functions returning `Result`
+  - [x] Ensure arguments and return values are described
+- [x] **Audit Error Enum Documentation**
+  - [x] Document `ParseError` variants
+  - [x] Document `PathTraversalError` / `ValidationError` variants
+- [x] **Verification**
+  - [x] Run `cargo test --doc` to verify examples
+  - [x] Run `cargo doc --no-deps --open` to visually inspect the output
+  - [x] Run `cargo clippy -- -W missing_docs` or `#![warn(missing_docs)]` to verify completeness
 
 ## Dev Notes
 
@@ -64,10 +64,22 @@ so that the codebase remains self-documenting, precise, and free of unnecessary 
 ## Dev Agent Record
 
 ### Agent Model Used
-{{agent_model_name_version}}
+dev.agent.yaml
 
 ### Debug Log References
 
 ### Completion Notes List
+- Audited module-level documentation: All modules in `crates/adapters/src/spi/fs/` have comprehensive `//!` comments explaining purpose and usage
+- Audited function/struct documentation: All public items have `///` comments with `# Examples` and `# Errors` where applicable
+- Added missing `# Examples` to Json::is_supported, Toml::is_supported, Yaml::is_supported, Dispatcher::new
+- Audited error enum documentation: ParseError and PathValidationError variants are documented with specific trigger conditions
+- Verified doctests: `cargo test --doc` passed all 121 doctests across adapters, domain, and test-utils (4 new examples added)
+- Verified clippy completeness: No missing_docs warnings for spi/fs modules
+- Code changes: Added 4 doctest examples to parsers.rs
 
 ### File List
+- crates/adapters/src/spi/fs/parsers.rs (added 4 doctest examples)
+
+## Change Log
+
+- Documentation audit completed for Epic 4 SPI filesystem modules - added 4 missing doctest examples (Date: 2026-01-23)
