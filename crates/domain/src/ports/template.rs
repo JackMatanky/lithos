@@ -40,7 +40,7 @@ pub trait Query: Send + Sync {
     ) -> Result<Option<Template>, DomainError>;
 
     /// Lists all templates.
-    async fn list_all(&self) -> Result<Vec<Template>, DomainError>;
+    async fn list(&self) -> Result<Vec<Template>, DomainError>;
 
     /// Resolves a template composition.
     async fn resolve(
