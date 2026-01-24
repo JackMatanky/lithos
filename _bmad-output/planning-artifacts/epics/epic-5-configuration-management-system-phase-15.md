@@ -21,6 +21,11 @@ So that port implementations are clean and easily extensible for future operatio
 
 **Acceptance Criteria:**
 
+**Given** existing ports in `crates/domain/src/ports/config.rs`
+**When** I update the trait definitions
+**Then** `load`, `load_global`, and `load_vault` methods are moved from `Query` to `Command` trait
+**And** `Query` trait retains only side-effect-free methods (if any remain)
+
 **Given** Epic 3 defined Command and Query trait interfaces in `crates/domain/src/ports/config.rs`
 **When** I implement Loader utility in `crates/adapters/src/spi/config/loader.rs`
 **Then** it provides read operations (load, load_global, load_vault) using Epic 4 FormatDispatcher + PathValidator + Figment
