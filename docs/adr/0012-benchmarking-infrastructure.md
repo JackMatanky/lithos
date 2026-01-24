@@ -1,14 +1,15 @@
 # ADR 0012: Benchmarking Infrastructure and Performance Testing Patterns
 
-*   **Status**: Proposed
-*   **Date**: 2026-01-12
-*   **Stakeholders**: Development Team, Performance Team, Product Manager
+- **Status**: Proposed
+- **Date**: 2026-01-12
+- **Stakeholders**: Development Team, Performance Team, Product Manager
 
 ## Context
 
 Lithos has performance requirements (NFR2) that must be maintained as the codebase evolves. The project involves complex operations like vault indexing, schema resolution, template rendering, and storage queries that could have performance implications. Epic 2 includes benchmark task in mise, but lacks defined patterns for benchmarking and performance regression detection.
 
 Current challenges:
+
 - No standardized way to measure performance of core operations
 - Risk of performance regressions going undetected
 - Difficulty in optimizing hot paths without metrics
@@ -28,20 +29,24 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
 ## Alternatives Considered
 
 ### Alternative 1: Manual Timing with Instant
+
 - **Pros**: No external dependencies, simple
 - **Cons**: No statistical analysis, unreliable measurements, no regression detection
 
 ### Alternative 2: Built-in Benchmarking (unstable)
+
 - **Pros**: Standard library support
 - **Cons**: Unstable feature, limited functionality, not production-ready
 
 ### Alternative 3: Third-party Alternatives (e.g., bencher.dev)
+
 - **Pros**: Cloud-based regression tracking
 - **Cons**: External dependencies, potential vendor lock-in, less control
 
 ## Technical Validation
 
 ### Research Findings
+
 - Criterion.rs provides statistically significant measurements with automatic warm-up and outlier detection
 - Supports async benchmarking with tokio integration
 - HTML reports with trend analysis and comparison charts
@@ -50,6 +55,7 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
 - Can benchmark memory usage alongside timing
 
 ### Additional Research
+
 - **Criterion Ecosystem**: Latest version 0.8.1 (2026) with enhanced tokio async support and improved HTML reports. 3.2k stars, active maintenance. Integrates with `cargo bench`.
 - **Alternatives**: `iai` for cache-aware instruction counting, `bencher.dev` for cloud-based tracking (free tier available), `criterion2` (experimental fork with modern features), custom `std::time::Instant` for simple cases.
 - **Async Benchmarking**: Criterion's `async_executor` works with tokio. For complex async flows, use `criterion::BenchmarkGroup` with custom setup. v0.8.1 improves async stability.
@@ -57,11 +63,13 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
 - **Industry Adoption**: Used by projects like `tokio`, `serde`, `hyper`. Reduces performance regressions by 60% when integrated early (per Rust performance book). Latest versions include better CI integration.
 
 ### Compatibility & Performance
+
 - **Hexagonal Alignment**: Benchmarks core domain operations through public interfaces
 - **Performance Impact**: Benchmarks run separately from regular tests, minimal impact on development workflow
 - **CI Integration**: Criterion supports saving/loading baselines for automated regression detection
 
 ### Decision-Making Analysis
+
 - **Statistical Rigor vs Simplicity**: Criterion's analysis prevents false positives from noise, but requires understanding of p-values and confidence intervals.
 - **NFR Alignment**: For Lithos NFR2 (performance), set thresholds: <5% regression triggers alert, >10% blocks release.
 - **Async Complexity**: Lithos event-driven architecture needs async benchmarks. Criterion handles this better than alternatives.
@@ -70,19 +78,19 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
 
 ## Consequences
 
-*   **Positive**:
-    - Early detection of performance regressions (60% reduction per ecosystem studies)
-    - Data-driven optimization decisions based on statistical evidence
-    - Confidence in meeting NFR2 performance requirements through measurable validation
-    - Reusable patterns reduce future benchmarking setup by 50%
-    - HTML reports provide visual trend analysis for stakeholders
+- **Positive**:
+  - Early detection of performance regressions (60% reduction per ecosystem studies)
+  - Data-driven optimization decisions based on statistical evidence
+  - Confidence in meeting NFR2 performance requirements through measurable validation
+  - Reusable patterns reduce future benchmarking setup by 50%
+  - HTML reports provide visual trend analysis for stakeholders
 
-*   **Negative**:
-    - Additional complexity in CI pipeline configuration
-    - Benchmark execution time overhead (minutes vs seconds for unit tests)
-    - Learning curve for statistical interpretation of results and p-values
-    - Requires consistent benchmarking environment to avoid noise
-    - Potential for false alerts from environmental variance
+- **Negative**:
+  - Additional complexity in CI pipeline configuration
+  - Benchmark execution time overhead (minutes vs seconds for unit tests)
+  - Learning curve for statistical interpretation of results and p-values
+  - Requires consistent benchmarking environment to avoid noise
+  - Potential for false alerts from environmental variance
 
 ## Implementation Roadmap
 
@@ -103,6 +111,6 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
 
 ## Status Tracking
 
-*   **Proposed**: 2026-01-12
-*   **Accepted/Rejected**:
-*   **Implemented**:
+- **Proposed**: 2026-01-12
+- **Accepted/Rejected**:
+- **Implemented**:

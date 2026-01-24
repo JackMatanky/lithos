@@ -1,8 +1,8 @@
 # ADR 0010: Centralized Test Utilities and Infrastructure
 
-*   **Status**: Accepted
-*   **Date**: 2026-01-11
-*   **Stakeholders**: Jack (Developer)
+- **Status**: Accepted
+- **Date**: 2026-01-11
+- **Stakeholders**: Jack (Developer)
 
 ## Context
 
@@ -11,21 +11,25 @@ Lithos requires consistent, maintainable test infrastructure across its hexagona
 Research identified key testing utility categories:
 
 **Temporary Directory Management:**
+
 - Cross-platform temp file creation and cleanup
 - Test artifact isolation and conflict prevention
 - Automatic resource management
 
 **Test Fixtures and Factories:**
+
 - Domain object construction with valid defaults
 - Parameterized test data generation
 - Reusable test scenarios and edge cases
 
 **Assertion Helpers:**
+
 - Domain-specific assertion macros
 - Enhanced error reporting and debugging
 - Async assertion support
 
 **Test Isolation:**
+
 - Database transaction management
 - Process and resource isolation
 - Shared state prevention
@@ -37,7 +41,9 @@ The utilities must integrate with existing test patterns (Stories 2.1-2.3, ADR 0
 We will establish comprehensive centralized test utilities based on Rust ecosystem best practices and Lithos' architectural requirements:
 
 ### 1. Temporary Directory and File Utilities
+
 Implement cross-platform temp directory management with automatic cleanup using established Rust crates:
+
 - **tempdir/tempfile crates**: Foundation providing OS-specific temp directory handling with automatic cleanup
 - **Unique naming strategy**: Timestamp + random suffix to prevent test conflicts in parallel execution
 - **RAII cleanup patterns**: Drop implementations ensuring cleanup even on test panics
@@ -48,7 +54,9 @@ Implement cross-platform temp directory management with automatic cleanup using 
 - **Cleanup verification**: Utilities to ensure complete cleanup of test artifacts after execution
 
 ### 2. Test Fixtures and Factory Framework
+
 Create reusable test data generation and fixture management with modern Rust testing libraries:
+
 - **rstest integration**: Fixture injection with #[fixture] attributes and parameterized test matrices
 - **Builder pattern implementation**: Fluent APIs for complex domain object construction
 - **Fake data generation**: Integration with fake/faker crates for realistic test data
@@ -56,7 +64,9 @@ Create reusable test data generation and fixture management with modern Rust tes
 - **Fixture composition**: Mix-and-match fixtures for complex test scenarios
 
 ### 3. Custom Assertion Helpers
+
 Develop domain-specific assertion utilities with enhanced debugging capabilities:
+
 - **Custom derive macros**: #[derive(TestAssertions)] for automatic assertion generation
 - **Async assertion support**: Tokio-aware assertions with timeout handling for async operations
 - **Structural comparison utilities**: Deep equality checking for nested structs and collections
@@ -64,7 +74,9 @@ Develop domain-specific assertion utilities with enhanced debugging capabilities
 - **Domain-specific matchers**: Business logic assertions (e.g., valid state transitions)
 
 ### 4. Test Isolation Infrastructure
+
 Establish comprehensive test isolation patterns ensuring test independence and reliability:
+
 - **Database transaction wrappers**: Automatic rollback for SQL and NoSQL databases
 - **Process isolation utilities**: Separate process spawning for system-level isolation
 - **Resource management RAII**: Guaranteed cleanup of files, connections, and memory
@@ -72,7 +84,9 @@ Establish comprehensive test isolation patterns ensuring test independence and r
 - **Environment isolation**: Separate configuration and service instances per test
 
 ### 5. Integration Testing Utilities
+
 Support integration test organization and execution with production-like environments:
+
 - **Shared test utilities**: Common setup/teardown functions for service initialization
 - **Environment configuration**: Test database, cache, and external service mocking
 - **Performance benchmarking**: Criterion integration for automated performance regression detection
@@ -80,7 +94,9 @@ Support integration test organization and execution with production-like environ
 - **Load testing support**: Basic load generation for integration performance validation
 
 ### 6. Documentation and Maintenance Framework
+
 Provide comprehensive testing guidance and sustainable evolution strategies:
+
 - **Usage documentation**: Inline documentation with code examples and anti-patterns
 - **Maintenance procedures**: Clear guidelines for utility extension and breaking change management
 - **Performance monitoring**: Built-in metrics collection for utility performance tracking
@@ -88,7 +104,9 @@ Provide comprehensive testing guidance and sustainable evolution strategies:
 - **Community contribution**: Guidelines for team members to contribute new utilities
 
 ### 7. Test Output and Artifact Management
+
 Establish centralized test output management for reliable test execution and debugging:
+
 - **Single output directory**: All test artifacts (files, logs, dumps) written to configurable test output directory
 - **Test-specific subdirectories**: Automatic creation of per-test subdirectories to prevent conflicts
 - **Artifact naming conventions**: Consistent naming with timestamps and test identifiers
@@ -97,7 +115,9 @@ Establish centralized test output management for reliable test execution and deb
 - **CI/CD artifact collection**: Structured output for automated test result processing
 
 ### 8. Advanced Testing Capabilities
+
 Extend utilities for complex testing scenarios in large-scale applications:
+
 - **Property-based testing**: QuickCheck integration for edge case discovery
 - **Chaos engineering**: Controlled failure injection for resilience testing
 - **Contract testing**: API contract validation between services
@@ -107,62 +127,73 @@ Extend utilities for complex testing scenarios in large-scale applications:
 ## Alternatives Considered
 
 ### Alternative 1: Minimal Built-in Utilities Only
+
 - **Pros**: Simple implementation, no external dependencies
 - **Cons**: Limited functionality, code duplication across tests, inconsistent patterns
 
 ### Alternative 2: Third-Party Testing Framework Only
+
 - **Pros**: Comprehensive features, community support
 - **Cons**: Framework lock-in, potential over-abstraction, learning curve
 
 ### Alternative 3: Per-Crate Utilities
+
 - **Pros**: Localized control, tailored to specific needs
 - **Cons**: Duplication, maintenance overhead, inconsistent interfaces
 
 ### Alternative 4: Manual Test Organization
+
 - **Pros**: Maximum flexibility, direct control, minimal dependencies
 - **Cons**: Error-prone, inconsistent practices, maintenance burden, code duplication
 
 ### Alternative 5: External Testing Services
+
 - **Pros**: Hosted infrastructure, advanced features, managed maintenance
 - **Cons**: Vendor lock-in, cost, integration complexity, data privacy concerns
 
 ### Alternative 6: Language-Agnostic Utilities
+
 - **Pros**: Reusable across different languages, standardized approaches
 - **Cons**: May not leverage Rust-specific strengths, potential performance overhead
 
 ## Consequences
 
-*   **Positive**:
-  - Eliminates test code duplication across the codebase
-  - Ensures consistent testing patterns and practices
-  - Improves test reliability and maintainability through centralized output management
-  - Accelerates test development with reusable utilities
-  - Supports complex testing scenarios (async, CQRS, isolation)
-  - Provides clean test environments with automatic artifact cleanup
-  - Enables reliable parallel test execution without file conflicts
+- **Positive**:
 
-*   **Negative**:
-  - Additional dependency management for utility crates
-  - Learning curve for new team members
-  - Maintenance overhead for utility evolution
-  - Potential performance impact if utilities are not optimized
+* Eliminates test code duplication across the codebase
+* Ensures consistent testing patterns and practices
+* Improves test reliability and maintainability through centralized output management
+* Accelerates test development with reusable utilities
+* Supports complex testing scenarios (async, CQRS, isolation)
+* Provides clean test environments with automatic artifact cleanup
+* Enables reliable parallel test execution without file conflicts
 
-*   **Risks**:
-  - Utility bloat if not carefully scoped
-  - Breaking changes during utility evolution
-  - Performance bottlenecks in shared utilities
-  - Over-reliance on utilities masking test design issues
+- **Negative**:
 
-*   **Mitigation**:
-  - Clear utility scope and extension guidelines
-  - Comprehensive testing of utilities themselves
-  - Gradual adoption with backward compatibility
-  - Performance monitoring and optimization
-  - Regular utility audits and refactoring
+* Additional dependency management for utility crates
+* Learning curve for new team members
+* Maintenance overhead for utility evolution
+* Potential performance impact if utilities are not optimized
+
+- **Risks**:
+
+* Utility bloat if not carefully scoped
+* Breaking changes during utility evolution
+* Performance bottlenecks in shared utilities
+* Over-reliance on utilities masking test design issues
+
+- **Mitigation**:
+
+* Clear utility scope and extension guidelines
+* Comprehensive testing of utilities themselves
+* Gradual adoption with backward compatibility
+* Performance monitoring and optimization
+* Regular utility audits and refactoring
 
 ## Implementation Examples
 
 ### Temporary Directory Management
+
 ```rust
 #[test]
 fn test_file_processing_with_temp_dir() {
@@ -181,6 +212,7 @@ fn test_file_processing_with_temp_dir() {
 ```
 
 ### Test Output Directory Management
+
 ```rust
 #[test]
 fn test_with_centralized_output() {
@@ -203,6 +235,7 @@ fn test_with_centralized_output() {
 ```
 
 ### Test Fixtures with rstest
+
 ```rust
 #[fixture]
 fn test_user() -> User {
@@ -222,6 +255,7 @@ fn create_user_with_valid_data(#[from(test_user)] user: User) {
 ```
 
 ### Custom Assertion Helpers
+
 ```rust
 #[derive(TestAssertions)]
 struct Order {
@@ -243,6 +277,7 @@ fn order_status_transition_is_valid() {
 ```
 
 ### Database Transaction Isolation
+
 ```rust
 #[test]
 async fn test_user_creation_with_transaction() {
@@ -262,11 +297,13 @@ async fn test_user_creation_with_transaction() {
 ## Case Studies and Validation
 
 ### Real-World Implementation Success
+
 - **E-commerce Platform**: Centralized fixtures reduced test setup time by 60%, improved reliability
 - **Financial Services**: Custom assertions caught 80% of business logic regressions before production
 - **Social Media API**: Temporary directory utilities enabled reliable file upload testing across platforms
 
 ### Lithos-Specific Validation
+
 - **Hexagonal Architecture**: Utilities seamlessly support port/adapter testing patterns
 - **CQRS Integration**: Specialized utilities complement ADR 0009 testing framework
 - **Async Performance**: Tokio-compatible utilities maintain test execution speed
@@ -277,6 +314,7 @@ This comprehensive framework provides everything needed for robust, maintainable
 ## Technical Validation
 
 ### Research Alignment
+
 Selected utilities align with Rust testing ecosystem standards:
 
 **Temp Management**: tempdir/tempfile provide proven cross-platform solutions
@@ -285,6 +323,7 @@ Selected utilities align with Rust testing ecosystem standards:
 **Isolation**: RAII patterns and transaction wrappers ensure test independence
 
 ### Lithos Architecture Integration
+
 Utilities designed for seamless integration:
 
 **Hexagonal Architecture**: Port/adapter testing with mock utilities
@@ -293,6 +332,7 @@ Utilities designed for seamless integration:
 **Event-Driven**: Utilities supporting async event flow testing
 
 ### Performance and Reliability
+
 Utilities engineered for production testing:
 
 **Resource Efficiency**: Minimal overhead with RAII cleanup
@@ -302,6 +342,6 @@ Utilities engineered for production testing:
 
 ## Status Tracking
 
-*   **Proposed**: 2026-01-11
-*   **Accepted**: 2026-01-11
-*   **Implemented**: 2026-01-11
+- **Proposed**: 2026-01-11
+- **Accepted**: 2026-01-11
+- **Implemented**: 2026-01-11

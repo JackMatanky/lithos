@@ -1,12 +1,13 @@
 # ADR 0005: Hierarchical Configuration Management with Figment
 
-*   **Status**: Accepted
-*   **Date**: 2026-01-11
-*   **Stakeholders**: Jack (Developer), Architects
+- **Status**: Accepted
+- **Date**: 2026-01-11
+- **Stakeholders**: Jack (Developer), Architects
 
 ## Context
 
 Lithos requires a sophisticated, 6-layer hierarchical configuration structure to balance global defaults with fine-grained project and vault-specific overrides. The priority chain (from lowest to highest) is:
+
 1.  **Global Defaults**: Compiled into the binary (baked-in).
 2.  **User Config**: Standard OS location (e.g., `~/.config/lithos/config.toml`).
 3.  **Project Config**: Located at the root of the current project (`.lithos/config.toml`).
@@ -22,39 +23,43 @@ We will use **Figment** as the configuration management framework for Lithos Rus
 
 ### Comparison of Candidates
 
-| Feature | **config-rs** | **Figment** | **Serde + Custom Merging** |
-| :--- | :--- | :--- | :--- |
-| **Logic Pattern** | Sequential Builder | **Provider Pattern** | Manual Implementation |
-| **Merge Quality** | Good | **Excellent (Native nested merging)** | Perfect |
-| **Type Safety** | Moderate | **High (Type-safe providers)** | High |
-| **Error Feedback** | Basic | **Rich (Includes line/column metadata)** | Variable |
+| Feature            | **config-rs**      | **Figment**                              | **Serde + Custom Merging** |
+| :----------------- | :----------------- | :--------------------------------------- | :------------------------- |
+| **Logic Pattern**  | Sequential Builder | **Provider Pattern**                     | Manual Implementation      |
+| **Merge Quality**  | Good               | **Excellent (Native nested merging)**    | Perfect                    |
+| **Type Safety**    | Moderate           | **High (Type-safe providers)**           | High                       |
+| **Error Feedback** | Basic              | **Rich (Includes line/column metadata)** | Variable                   |
 
 ## Alternatives Considered
 
 ### config-rs
+
 Traditional linear builder pattern where each step overwrites global state. Harder to reason about "where" a specific value came from during debugging.
 
 ### Manual Serde Merging
+
 Requires significant boilerplate for every new field and is prone to errors in nested structure merging.
 
 ## Technical Validation
 
 ### Research Findings
+
 - **Provider Pattern**: Figment's provider pattern treats every source (file, env, flag) as a separate entity that "provides" data. This aligns with **ADR 0002** by reducing intermediate allocations.
 - **Vault Discovery**: We can implement the `Provider` trait for a `VaultDiscovery` struct to walk up the tree and find the `.lithos/` directory dynamically.
-- **Error Diagnostics**: Preserves line and column information, which is critical for telling the user *exactly* where their TOML is malformed.
+- **Error Diagnostics**: Preserves line and column information, which is critical for telling the user _exactly_ where their TOML is malformed.
 
 ### Compatibility & Performance
+
 - **Hexagonal Alignment**: The Figment loader is isolated in `adapters/spi/config`.
 - **Ecosystem**: Built by the Rocket team, significantly more maintained and idiomatic than older alternatives.
 
 ## Consequences
 
-*   **Positive**: Robust hierarchical merging, excellent error messages, easy "Vault Discovery" implementation, boilerplate reduction.
-*   **Negative**: Requires a custom provider bridge for `Clap` flags.
+- **Positive**: Robust hierarchical merging, excellent error messages, easy "Vault Discovery" implementation, boilerplate reduction.
+- **Negative**: Requires a custom provider bridge for `Clap` flags.
 
 ## Status Tracking
 
-*   **Proposed**: 2026-01-08
-*   **Accepted**: 2026-01-11
-*   **Implemented**: 2026-01-11
+- **Proposed**: 2026-01-08
+- **Accepted**: 2026-01-11
+- **Implemented**: 2026-01-11
