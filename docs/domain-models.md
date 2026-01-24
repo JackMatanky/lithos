@@ -1,11 +1,13 @@
 # Epic 3 Domain Models
 
 ## Overview
+
 Lithos divides Epic 3 domain modeling into four bounded contexts: Note, Schema, Config, and Template. Together they define the language for metadata-bearing notes, schema-driven validation, hierarchical configuration, and template composition while preserving domain purity and hexagonal boundaries.
 
 The domain layer stays I/O free and focuses on invariants, semantic validation, and event emission. Adapters interpret vault files and configuration formats, while application services orchestrate cross-context contracts such as schema validation for notes and variable validation for templates.
 
 ## Table of Contents
+
 - [Documentation Standards](#documentation-standards)
 - [Splitting Criteria](#splitting-criteria)
 - [Note Bounded Context](#note-bounded-context)
@@ -20,13 +22,16 @@ The domain layer stays I/O free and focuses on invariants, semantic validation, 
 - [ADR Mapping](#adr-mapping)
 
 ## Documentation Standards
+
 - Use the [domain entity template](domain-entity-template.md) for new entities.
 - Document invariants, validation rules, and # Errors behavior for public APIs.
 - Include doc-test examples for public structs, enums, traits, and methods.
 - Keep domain documentation focused on developer usage rather than end-user workflows.
 
 ## Splitting Criteria
+
 Split this document if any of the following occur:
+
 - Total line count exceeds 2000 lines.
 - A single bounded context section exceeds 500 lines.
 - Readability suffers due to frequent updates or excessive detail.
@@ -37,11 +42,13 @@ If split, create `docs/domain/overview.md` and individual context files under `d
 ## Note Bounded Context
 
 ### Overview
+
 The Note bounded context models Obsidian notes as immutable aggregates with rich subentities for metadata, structure, and embedded references. Notes are the primary domain entity and capture vault-relative paths, frontmatter metadata, tags, headings, tasks, and outbound references.
 
 The domain layer validates structural and semantic rules at construction time (e.g., path validity, non-empty headings), while orchestration layers apply schema-driven validation and vault-wide consistency rules. Note aggregates emit domain events for downstream processing such as indexing and compliance.
 
 ### Structure
+
 - **Note aggregate**: `id`, `path`, `frontmatter`, `links` (includes embeds), `tags`, `headings`, `tasks`, `sections`, `pending_events`.
 - **Frontmatter**: `HashMap<String, FieldValue>` with typed accessors and `FromFieldValue` for schema-driven extraction.
 - **Link**: `target` (`Resolved`, `Unresolved`, `External`), `anchor`, `position`, `alias`, `style` (wiki/markdown), `embed_type` (optional).
@@ -53,12 +60,14 @@ The domain layer validates structural and semantic rules at construction time (e
 - **Ports**: `crates/domain/src/ports/note.rs` defines CQRS command/query interfaces.
 
 ### Rust-Specific Patterns Used
+
 - **UUID v7 identity** for time-ordered note IDs.
 - **Memory optimization** with `Box<str>` for immutable strings.
 - **Enums for type safety** (`Style`, `EmbedType`, `TaskStatus`).
 - **Error handling** via `DomainError` for validation failures.
 
 ### Validation Rules
+
 - Vault paths are non-empty, relative, `.md` extension, no traversal.
 - Heading levels must be 1-6; heading text cannot be empty.
 - Tag strings require `#` prefix, no empty segments, and regex `^[a-zA-Z0-9_-]+$`.
@@ -68,16 +77,19 @@ The domain layer validates structural and semantic rules at construction time (e
 - FieldValue date validation expects ISO 8601 formatting.
 
 ### Business Logic
+
 - Constructs emit `NoteCreated` domain events.
 - `add_link` accepts all link types; ownership is enforced by aggregate containment.
 - `validate` enforces link invariants (embeds have no anchors; external links avoid block refs).
 
 ### Relationships
+
 - **Note ↔ Config**: frontmatter key lookups and defaults rely on config.
 - **Note ↔ Schema**: frontmatter and metadata validated against schema definitions.
 - **Internal composition**: links (embeds use `embed_type`), tags, headings, tasks, sections.
 
 ### Evolution Guidelines
+
 - Add fields/subentities with defaults and migration notes.
 - Modify validation rules with backward compatibility considerations.
 - Deprecate fields before removal and supply migration paths.
@@ -118,11 +130,13 @@ flowchart LR
 ## Schema Bounded Context
 
 ### Overview
+
 The Schema bounded context defines metadata validation contracts. Schemas describe property definitions, provide inheritance, and map reusable Property definitions through a PropertyBank. Raw schema definitions are resolved into fully merged Schema aggregates via domain services.
 
 This context supports advanced schema composition (extends/excludes), property banks for reuse, and deterministic resolution to support consistent validation across vaults and templates.
 
 ### Structure
+
 - **Schema aggregate**: `id`, `name`, `properties`, `pending_events`.
 - **SchemaName**: validated name value object.
 - **PropertyBank**: dual-indexed registry of properties by ID and name.
@@ -135,11 +149,13 @@ This context supports advanced schema composition (extends/excludes), property b
 - **Ports**: `crates/domain/src/ports/schema.rs` defines CQRS command/query interfaces.
 
 ### Rust-Specific Patterns Used
+
 - **Trait-based polymorphism** via `PropertySpecTrait`.
 - **Zero-cost abstraction** for property specs with enum dispatch.
 - **Deterministic ordering** for properties to ensure reproducible validation.
 
 ### Validation Rules
+
 - Schema names and property names must be non-empty, <= 64 chars, and match alphanumeric/underscore/dash regex.
 - Property specs enforce type-specific constraints (string length/enum/regex, number range/step, file directory restrictions, date format).
 - Inheritance graph must be acyclic; missing parents error.
@@ -147,17 +163,20 @@ This context supports advanced schema composition (extends/excludes), property b
 - Raw schema references must resolve via `PropertyBank` after adapter normalization.
 
 ### Business Logic
+
 - `Resolver` merges parent properties and applies excludes before resolving references.
 - `Graph` ensures parent schemas resolve before children.
 - Property bank emits update events on registration.
 
 ### Relationships
+
 - **Schema ↔ PropertyBank**: schema resolution uses the bank for reusable properties.
 - **Schema ↔ Schema**: inheritance via `extends` with `excludes`.
 - **PropertyBank ↔ PropertySpec**: validation and typing.
 - **Template ↔ Schema**: template variable constraints aligned to schema properties.
 
 ### Evolution Guidelines
+
 - Add new `PropertySpec` variants with backwards-compatible defaults.
 - Maintain stable property names; provide migration for renames.
 - Update inheritance carefully with cycle checks and deprecation notes.
@@ -190,11 +209,13 @@ flowchart LR
 ## Config Bounded Context
 
 ### Overview
+
 The Config bounded context models hierarchical configuration for global and vault-specific settings. It merges defaults with overrides and exposes a single immutable `Config` aggregate for application use.
 
 Configuration is validated during construction, and path/log-level correctness is enforced before use. Encryption boundaries live in adapters; the domain layer keeps encrypted bytes opaque.
 
 ### Structure
+
 - **Config aggregate**: merged configuration (`frontmatter`, `logging`, filesystem settings, metadata).
 - **GlobalConfig**: default configuration and trusted vaults.
 - **VaultConfig**: vault-specific overrides.
@@ -208,11 +229,13 @@ Configuration is validated during construction, and path/log-level correctness i
 - **Ports**: `crates/domain/src/ports/config.rs` defines CQRS command/query interfaces.
 
 ### Rust-Specific Patterns Used
+
 - **Immutable aggregate** after build.
 - **Enum-backed settings** with serialized variants.
 - **Option-driven overrides** for vault-specific config.
 
 ### Validation Rules
+
 - Vault path must be non-empty.
 - Log levels limited to debug/info/warn/error.
 - Frontmatter keys must be non-empty.
@@ -221,12 +244,14 @@ Configuration is validated during construction, and path/log-level correctness i
 - Cache directory must be non-empty.
 
 ### Business Logic
+
 - `Config::build` merges global and vault configs with vault precedence.
 - Defaults applied for empty or missing fields.
 - `TrustedVaults` enforces a single format (list or map) per config.
 - Emits `ConfigUpdated` after merge.
 
 ### Relationships
+
 - **Config ↔ Note**: frontmatter key lookup and defaults.
 - **Config ↔ Template**: template directory and rendering defaults.
 - **Config ↔ Schema**: schema directories and property bank location.
@@ -244,6 +269,7 @@ flowchart LR
 ```
 
 ### Evolution Guidelines
+
 - Add new config fields with defaults and migration notes.
 - Maintain backward compatibility for key names.
 - Treat encrypted values as opaque in domain.
@@ -251,11 +277,13 @@ flowchart LR
 ## Template Bounded Context
 
 ### Overview
+
 The Template bounded context models reusable templates and variable constraints. It captures template content, variable definitions, composition rules, and placeholder syntax while keeping syntax validation minimal and domain-pure.
 
 Template validation is limited to placeholder balance, content size, variable name checks, and composition depth. MiniJinja-specific syntax validation is explicitly handled outside the domain layer.
 
 ### Structure
+
 - **Template aggregate**: `id`, `name`, `content`, `syntax`, `variables`, `extends`, `metadata`, `pending_events` (validates name, size, structure, variable names).
 - **VariableDefinition**: typed constraints (string/number/date/file/boolean).
 - **PlaceholderSyntax**: prefix/suffix wrapping.
@@ -266,11 +294,13 @@ Template validation is limited to placeholder balance, content size, variable na
 - **Ports**: `crates/domain/src/ports/template.rs` defines CQRS command/query interfaces.
 
 ### Rust-Specific Patterns Used
+
 - **Enum-driven constraints** for variable types.
 - **Thread-local regex cache** for string pattern validation.
 - **Composition depth enforcement** to avoid recursion.
 
 ### Validation Rules
+
 - Template name non-empty, <= 64 chars, matches alphanumeric name regex.
 - Template content size <= 1MB.
 - Placeholder delimiters balanced.
@@ -280,11 +310,13 @@ Template validation is limited to placeholder balance, content size, variable na
 - File variables must be vault-relative and match allowed extensions.
 
 ### Business Logic
+
 - Template creation emits `TemplateCreated` event.
 - Composition applies sections relative to variables or at boundaries.
 - Variable definitions validate override values with type-specific rules.
 
 ### Relationships
+
 - **Template ↔ Schema**: variable definitions may mirror schema property constraints.
 - **Template ↔ Config**: rendering parameters and template directories controlled by config.
 
@@ -300,6 +332,7 @@ flowchart LR
 ```
 
 ### Evolution Guidelines
+
 - Add variable variants with defaults and backward compatibility.
 - Expand composition rules with migration notes for depth/constraints.
 - Keep syntax validation in adapters to preserve domain purity.
@@ -307,6 +340,7 @@ flowchart LR
 ## Bounded Context Contracts
 
 ### Note ↔ Config Contract
+
 - Config provides frontmatter key mapping and defaults used by Note accessors.
 - Config changes must not invalidate existing notes.
 - Vault-specific overrides should remain backward compatible.
@@ -319,6 +353,7 @@ Note -> Config
 ```
 
 ### Note ↔ Schema Contract
+
 - Schema validation performed in application layer using Schema definitions.
 - Schema evolution must preserve existing valid frontmatter values.
 
@@ -330,6 +365,7 @@ Note -> Schema
 ```
 
 ### Template ↔ Schema Contract
+
 - Template variable constraints align with schema property specs where applicable.
 - Schema changes require updates to template variable definitions.
 
@@ -340,6 +376,7 @@ Template -> Schema
 ```
 
 ### Template ↔ Config Contract
+
 - Config supplies template directories and runtime defaults.
 - Template rendering must honor config-level boundaries.
 
@@ -350,6 +387,7 @@ Template -> Config
 ```
 
 ### Contract Evolution Rules
+
 - Contract-breaking changes require migration notes and coordinated updates.
 - Additive changes should provide defaults and optional behavior.
 
@@ -365,6 +403,7 @@ flowchart TD
 ```
 
 ## Domain Model Evolution Guidelines
+
 - Add new fields as optional with defaults.
 - Document migrations before removing or renaming fields.
 - Keep validation changes backward compatible when possible.
@@ -373,21 +412,25 @@ flowchart TD
 ## Common Pitfalls & Anti-Patterns
 
 ### Note Context
+
 - Avoid I/O or vault parsing in domain entities; keep adapters responsible.
 - Do not allow empty or absolute paths in Note creation.
 - Do not bypass `validate_vault_path` or skip aggregate validation checks.
 
 ### Schema Context
+
 - Avoid bypassing `PropertyBank` uniqueness rules.
 - Do not allow cyclic schema inheritance.
 - Do not resolve `$ref` pointers without adapter normalization.
 
 ### Config Context
+
 - Avoid empty key values or undefined log levels.
 - Do not treat encrypted settings as plaintext in domain.
 - Do not merge vault/global configs without applying defaults.
 
 ### Template Context
+
 - Avoid template syntax validation in domain (leave to adapters).
 - Avoid unbounded composition depth.
 - Do not accept reserved words as variable names.
@@ -395,28 +438,33 @@ flowchart TD
 ## Cookbook Examples
 
 ### Adding a New Config Level
+
 1. Extend `Global`/`Vault` structs with the new config fields.
 2. Update `Config::build` merge logic with default fallback.
 3. Add validation in `types.rs` for new fields.
 4. Update documentation and config examples.
 
 ### Creating a Custom PropertySpec
+
 1. Add new variant to `PropertySpec` and `PropertySpecType`.
 2. Implement `PropertySpecTrait` for the new spec.
 3. Update validation matrix tests and documentation.
 
 ### Adding a New Config Key Mapping
+
 1. Add the key to `Frontmatter` in `crates/domain/src/config/types.rs`.
 2. Update defaults and validation to enforce non-empty values.
 3. Wire merge logic in `Config::merge_frontmatter`.
 4. Update documentation and inventory mappings.
 
 ### Creating a Custom VariableDefinition
+
 1. Add the variant to `VariableDefinition` and update validation.
 2. Extend template variable name checks if needed.
 3. Update template docs and examples to include the new variant.
 
 ## ADR Mapping
+
 - ADR 0002: Storage (Redb + rkyv)
 - ADR 0003: Template Engine (MiniJinja)
 - ADR 0005: Configuration Management (Figment)
