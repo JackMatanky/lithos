@@ -1,40 +1,58 @@
-//! Path validation utilities for secure file system operations.
+//! **Security-Critical Path Validation Utilities.**
 //!
-//! This module provides validation utilities to prevent path traversal attacks,
-//! restrict access to sensitive files, and safely handle symbolic links.
+//! This module provides path validation to prevent **path traversal attacks**,
+//! **arbitrary file access**, and **symlink escape vulnerabilities**.
+//!
+//! ⚠️ **SECURITY REQUIREMENT**: All file I/O operations in adapters MUST use
+//! these validation utilities before accessing the filesystem. Bypassing these
+//! checks creates critical security vulnerabilities.
 //!
 //! # Security Guarantees
 //!
 //! - **Path Traversal Prevention**: Rejects paths containing `..` components
-//! - **Absolute Path Rejection**: Ensures only relative paths are used
+//! - **Absolute Path Rejection**: Ensures only relative paths are used (unless
+//!   within strict root)
 //! - **Restricted File Protection**: Blocks access to hidden/sensitive files
+//!   (`.git`, `.env`, `.ssh`)
 //! - **Symlink Escape Detection**: Validates symlinks stay within root
-//!   boundaries
+//!   boundaries (strict mode)
 //!
-//! # Modes
+//! # Validation Modes
 //!
 //! - **Strict**: Enforces root boundary and rejects symlinks escaping the root
+//!   - Use for: Vault files, user-controlled content
+//!   - Example: `PathValidator::new_strict(vault_root)`
+//!
 //! - **Flexible**: Allows external symlinks (e.g., dotfiles) while still
-//!   checking input path for traversal
+//!   checking input traversal
+//!   - Use for: Configuration files, schema files
+//!   - Example: `PathValidator::new_flexible()`
 //!
 //! # Examples
 //!
 //! ```
 //! use std::path::PathBuf;
-//!
-//! use lithos_adapters::spi::fs::validator::Validator;
+//! use lithos_adapters::spi::fs::PathValidator; // Re-exported for ergonomics
 //!
 //! // Flexible validator for config files (allows dotfile symlinks)
-//! let validator = Validator::new_flexible();
+//! let validator = PathValidator::new_flexible();
 //! assert!(validator.validate("config/lithos.toml").is_ok());
-//! assert!(validator.validate("../../etc/passwd").is_err());
+//! assert!(validator.validate("../../etc/passwd").is_err()); // Traversal blocked
 //!
 //! // Strict validator for vault files (enforces root boundary)
-//! // Note: Root must be absolute.
-//! let root = PathBuf::from("/path/to/vault");
-//! let validator = Validator::new_strict(root);
-//! assert!(validator.validate("Cargo.toml").is_ok());
+//! // Note: Root must be absolute (provided by Figment config)
+//! let root = PathBuf::from("/absolute/path/to/vault");
+//! let validator = PathValidator::new_strict(root);
+//! assert!(validator.validate("notes/daily.md").is_ok());
 //! ```
+//!
+//! # Architecture Context
+//!
+//! This module is part of Epic 4 (File Loading Strategy Foundation), Story 4.2.
+//! It provides the security foundation for all file-based adapters:
+//! - `ConfigAdapter` (Flexible mode)
+//! - `SchemaAdapter` (Flexible mode)
+//! - `NoteAdapter` (Strict mode)
 
 use std::{
     borrow::Cow,

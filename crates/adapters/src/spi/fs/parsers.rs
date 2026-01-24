@@ -1,36 +1,39 @@
-//! File parsing strategies for TOML, JSON, and YAML.
+//! Structured data format parsing strategies for TOML, JSON, and YAML.
 //!
 //! This module provides the parser infrastructure for Epic 4 (File Loading
 //! Strategy Foundation). Parsers are used by adapters implementing domain ports
-//! (`ConfigQuery`, `SchemaQuery`, `TemplateQuery`) to deserialize files
-//! into domain types.
+//! (`ConfigQuery`, `SchemaQuery`, `TemplateQuery`) to deserialize structured
+//! configuration files into domain types.
 //!
 //! # Architecture
 //!
 //! - **Strategy Pattern**: Each format (TOML/JSON/YAML) has its own parser
-//! - **Auto-Detection**: `Dispatcher` selects parser by file extension
+//!   struct
+//! - **Auto-Detection**: `Dispatcher` (re-exported as `FormatDispatcher`)
+//!   selects parser by file extension
 //! - **Rich Errors**: Parse errors include file path, line numbers, and context
+//!   via `miette`-compatible types
 //! - **Zero-Cost Abstraction**: `Dispatcher` is a unit struct (zero runtime
-//!   overhead)
+//!   overhead, compile-time dispatch)
 //!
 //! # Current Scope
 //!
 //! This module focuses exclusively on **structured configuration formats**:
-//! - TOML for primary configuration
-//! - JSON for interoperability
-//! - YAML for schema definitions
+//! - **TOML** for primary configuration (`lithos.toml`, vault settings)
+//! - **JSON** for interoperability and data exchange
+//! - **YAML** for schema definitions and complex hierarchies
 //!
 //! # Future Extensibility
 //!
 //! Future epics (vault indexing, content processing) may require detection and
-//! handling of additional file types (markdown, images, PDFs, etc.). When that
+//! handling of additional file types (Markdown, images, PDFs, etc.). When that
 //! time comes, consider:
 //!
 //! - MIME type detection via `infer` crate (magic byte analysis)
 //! - Extension-based fallback via `mime_guess` crate
 //! - `FileType` enum to represent all supported vault content types
-//! - Keep structured data parsers (this module) separate from binary/text
-//!   detection
+//! - **Keep structured data parsers (this module) separate from binary/text
+//!   detection**
 //!
 //! The current design intentionally stays lean and focused on the immediate
 //! need (config/schema loading) while remaining extensible via additional
@@ -41,10 +44,10 @@
 //! ```
 //! use std::path::Path;
 //!
-//! use lithos_adapters::spi::fs::parsers::Dispatcher;
+//! use lithos_adapters::spi::fs::FormatDispatcher; // Re-exported for clarity
 //! use serde_json::Value;
 //!
-//! let dispatcher = Dispatcher::new();
+//! let dispatcher = FormatDispatcher::new();
 //! let content = r#"name = "lithos""#;
 //! let config: Value = dispatcher.parse(Path::new("test.toml"), content)?;
 //! println!("{:?}", config);
@@ -53,9 +56,10 @@
 //!
 //! # Epic Dependencies
 //!
-//! - **Epic 5** (Configuration): Loads `Global`, `Vault` configs
-//! - **Epic 6** (Schema): Loads `RawSchema`, `Property` definitions
-//! - **Epic 11** (Templates): Loads `Template` definitions
+//! - **Epic 5** (Configuration): Loads `Global`, `Vault` configs via TOML
+//! - **Epic 6** (Schema): Loads `RawSchema`, `Property` definitions via
+//!   YAML/JSON
+//! - **Epic 11** (Templates): Loads `Template` definitions via YAML
 
 use std::path::Path;
 
