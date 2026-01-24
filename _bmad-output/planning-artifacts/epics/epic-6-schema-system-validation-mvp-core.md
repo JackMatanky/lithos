@@ -22,17 +22,29 @@ So that schema loading, resolution, and caching are handled correctly behind cle
 **Acceptance Criteria:**
 
 **Given** existing ports in `crates/domain/src/ports/schema.rs`
-**When** I update the SchemaCommand trait
-**Then** it includes `load_all()` and `refresh(name)` methods (mutating state)
+**When** I update `SchemaCommand` trait
+**Then** `load_all()` signature is `async fn load_all(&self) -> Result<(), SchemaError>`
+**And** `refresh(name)` signature is `async fn refresh(&self, name: &str) -> Result<(), SchemaError>`
 **And** `validate_note` is removed (belongs in App layer)
 
-**Given** SchemaQuery trait
+**Given** `SchemaQuery` trait
 **When** I review methods
-**Then** `find_by_id`, `find_by_name`, and `list` remain read-only operations
+**Then** `get(name)` returns `Result<Option<Schema>, SchemaError>` to handle missing schemas gracefully
+**And** `list()` returns `Result<Vec<SchemaName>, SchemaError>`
+**And** SchemaQuery methods remain read-only and side-effect free
 
-**Given** updated ports
-**When** I implement SchemaLoader utility in `crates/adapters/src/schema/loader.rs`
-**Then** it coordinates file reading, decoding, and domain resolution
+**Given** `SchemaLoader` implementation
+**When** I design the architecture
+**Then** adapters coordinate between loaders/writers without refactoring I/O layer (extensibility behavior)
+
+**Given** `SchemaLoader` implementation
+**When** I implement the structure
+**Then** it holds a reference to `Box<dyn SchemaCache>` for decoupled storage logic
+**And** it initializes with a root path provided by `Config`
+
+**Given** `SchemaCommand` adapter
+**When** I implement error handling
+**Then** `SchemaError` includes specific variants for IO, parsing, resolution, and cache failures with context
 
 **Given** adapters are needed
 **When** I implement SchemaCommand and SchemaQuery adapters
@@ -50,14 +62,34 @@ So that complex schema hierarchies are correctly resolved into usable Schema agg
 
 **Acceptance Criteria:**
 
-**Given** I need to handle multiple formats (TOML, JSON, YAML)
-**When** I implement SchemaDecoder utility in `crates/adapters/src/schema/decoder.rs`
-**Then** it implements a strategy to normalize content into `RawSchema` using Epic 4 parsers
+**Given** `SchemaDecoder` implementation
+**When** I implement `decode_toml`
+**Then** it correctly maps TOML tables to `RawSchema` struct fields
+**And** it fails if required fields (name, properties) are missing
 
-**Given** schemas must be syntactically valid
+**Given** `SchemaDecoder` implementation
+**When** I implement `decode_yaml`
+**Then** it handles both `.yaml` and `.yml` extensions
+**And** maps YAML lists/dictionaries to `RawSchema`
+
+**Given** `SchemaDecoder` implementation
+**When** I implement `decode_json`
+**Then** it strictly enforces JSON syntax and maps to `RawSchema`
+
+**Given** syntactic validation requirement
 **When** I implement `crates/adapters/src/schema/validator.rs`
-**Then** it validates the structure of parsed content before domain resolution
-**And** provides helpful error messages with line/column context pointing to solutions
+**Then** it verifies that `extends` refers to a valid schema name pattern (alphanumeric)
+**And** checks that `properties` array is not empty if `extends` is missing
+**And** errors provide file path, line number, and column number via `miette::SourceSpan`
+
+**Given** `SchemaLoader` logic
+**When** I implement resolution loop
+**Then** it detects and reports circular dependencies (A extends B extends A) as a critical error
+**And** it continues processing other independent schemas even if one fails (resilience behavior)
+
+**Given** validation errors occur
+**When** I format error output
+**Then** messages are helpful, pointing the user to the exact line/column and suggesting possible solutions (UX behavior)
 
 **Given** RawSchemas are loaded
 **When** I use the domain `SchemaGraph` and `SchemaResolver` (from Epic 3)
@@ -75,25 +107,32 @@ So that all operations access the same reusable property definitions consistentl
 
 **Acceptance Criteria:**
 
-**Given** PropertyBank domain entity exists (Epic 3)
-**When** I implement Registry in `crates/adapters/src/schema/registry.rs`
-**Then** it wraps PropertyBank with singleton management
+**Given** `Registry` implementation
+**When** I design the internal structure
+**Then** `base: Arc<OnceLock<PropertyBank>>` holds the immutable bank loaded from disk
+**And** `overrides: Arc<RwLock<HashMap<String, Property>>>` holds runtime-defined properties
 
-**Given** configuration needs both read performance and mutability
-**When** I design the singleton implementation
-**Then** implement hybrid approach: `Arc<OnceLock<PropertyBank>>` for immutable loaded bank + `Arc<RwLock<T>>` for runtime overrides
+**Given** access patterns
+**When** I implement `lookup(key)`
+**Then** it checks `overrides` first (read lock), then falls back to `base` (no lock)
+**And** this strategy ensures zero-lock contention for standard properties
+
+**Given** initialization flow
+**When** `SchemaLoader::load_all()` completes
+**Then** it calls `Registry::init(bank)` which succeeds only once
+**And** subsequent calls return an error or are ignored
 
 **Given** CLI operations need consistent property access
 **When** I implement singleton instance method
 **Then** `Registry::global()` returns the same instance across all calls
 
+**Given** hot reloading will be needed
+**When** I design the singleton implementation
+**Then** Registry supports atomic updates using AtomicPtr swap pattern (concurrency behavior)
+
 **Given** performance is critical
 **When** I benchmark access
 **Then** singleton reads complete in <10ns (zero-lock path for base properties)
-
-**Given** Registry requires initialization
-**When** I integrate with SchemaLoader
-**Then** `load_all()` populates the registry from the `property_bank.json` file
 
 ## Story 6.4: Implement Decoupled Schema Caching
 
@@ -107,17 +146,19 @@ So that schema resolution is fast, persistent, and testable.
 **When** I implement caching architecture
 **Then** `SchemaCache` trait defines storage interface (get, put, invalidate) in `crates/adapters/src/schema/cache_trait.rs`
 
-**Given** persistence is needed
-**When** I implement `RedbSchemaCache` in `crates/adapters/src/schema/cache_redb.rs`
-**Then** it implements the trait using Redb serialization
+**Given** `RedbSchemaCache` adapter
+**When** I implement storage
+**Then** it uses a dedicated Redb table `schemas` with `String` (name) keys
+**And** values are rkyv-serialized `Schema` aggregates for zero-copy deserialization
 
-**Given** source files change
-**When** I implement integrity checking
-**Then** Blake3 hashes of source content are compared against cached entries
+**Given** cache invalidation logic
+**When** source file hash changes
+**Then** `get()` returns `CacheMiss` to trigger reload
+**And** `put()` overwrites the existing entry with new hash and schema data
 
-**Given** hash mismatch occurs
-**When** I request a schema
-**Then** the Loader triggers re-resolution and updates the cache
+**Given** unit testing requirement
+**When** I implement `MockSchemaCache`
+**Then** it stores schemas in a `HashMap` for fast, filesystem-free testing
 
 **Given** SchemaLoader uses cache
 **When** I design the integration
@@ -131,21 +172,24 @@ So that notes can be validated against their corresponding schemas.
 
 **Acceptance Criteria:**
 
-**Given** Note aggregate and Schema aggregate
-**When** I implement `crates/app/src/services/compliance.rs`
-**Then** it provides `validate_note(note, schema)` method
+**Given** `validate_note` method
+**When** checking a required string property
+**Then** it verifies the field exists in frontmatter and is a non-empty string
+**And** returns `ComplianceWarning::MissingField` if absent
 
-**Given** a note with frontmatter
-**When** I validate against a schema
-**Then** the service checks if frontmatter fields match Schema Property constraints
+**Given** `validate_note` method
+**When** checking a number property with range (min 1, max 10)
+**Then** it verifies the value is within bounds
+**And** returns `ComplianceWarning::ValueOutOfRange` if 11 is provided
 
 **Given** validation runs
 **When** discrepancies are found
 **Then** the service returns a list of warnings (does not block note usage)
 
-**Given** integration with SchemaQuery
-**When** I validate a note
-**Then** the service looks up the correct schema using the note's `fileClass`
+**Given** integration with `SchemaQuery`
+**When** note has `fileClass: "project"`
+**Then** service calls `query.get("project")`
+**And** if schema is missing, returns `ComplianceWarning::SchemaNotFound` (non-blocking)
 
 ## Story 6.6: Define Schema-Template Integration Contracts
 
@@ -155,9 +199,14 @@ So that templates can safely access schema-defined properties.
 
 **Acceptance Criteria:**
 
-**Given** schemas define properties
-**When** I define integration contracts
-**Then** templates can access property values by schema name and property name
+**Given** `SchemaTemplateContract` trait
+**When** I define the interface
+**Then** it exposes `get_variable_constraints(schema_name)` returning a map of variable rules
+**And** allows templates to validate user input against schema rules
+
+**Given** template rendering context
+**When** I implement variable lookup
+**Then** schema default values are available as fallback for missing frontmatter fields
 
 **Given** integration contracts exist
 **When** templates reference schema properties
