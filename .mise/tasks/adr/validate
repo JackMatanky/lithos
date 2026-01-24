@@ -23,9 +23,11 @@ validate_adr_metadata() {
         filename=$(basename "$adr")
         echo "  📄 Checking metadata in $filename..."
 
-        # Check for required metadata
         for meta in "Status" "Date" "Stakeholders"; do
-            if ! grep -q "\*   \*\*$meta\*\*:" "$adr"; then
+            # Pattern: start-of-line, bullet (* or -), optional space, **Meta**:
+            pattern="^\s*[*-]\s*\*\*${meta}\*\*:"
+
+            if ! grep -Eq "$pattern" "$adr"; then
                 echo "    ❌ Missing metadata: $meta"
                 EXIT_CODE=1
             fi
