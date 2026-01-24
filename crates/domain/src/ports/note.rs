@@ -87,7 +87,7 @@ pub trait Query: Send + Sync {
     ///
     /// # Errors
     /// Returns `DomainError` if query execution fails.
-    async fn list_all(&self) -> Result<Vec<Note>, DomainError>;
+    async fn list(&self) -> Result<Vec<Note>, DomainError>;
 }
 
 #[cfg(test)]

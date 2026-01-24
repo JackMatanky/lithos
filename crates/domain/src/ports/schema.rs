@@ -29,7 +29,7 @@ pub trait Query: Send + Sync {
     ) -> Result<Option<Schema>, DomainError>;
 
     /// List all available schemas.
-    async fn list_all(&self) -> Result<Vec<Schema>, DomainError>;
+    async fn list(&self) -> Result<Vec<Schema>, DomainError>;
 }
 
 #[cfg(test)]
