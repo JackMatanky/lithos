@@ -9,7 +9,7 @@ Users can index large vaults (1000+ files) in <2 seconds with incremental update
 - Sample vault notes from docs/refs/obsidian/ as test fixtures
 - Performance benchmarking stories for NFR2 validation (<2s for 1000+ files)
 - Observability/metrics for indexing performance
-- Integration with Epic 7 (event publishing) and Epic 9 (storage persistence)
+- Integration with Epic 8 (event publishing) and Epic 9 (storage persistence)
 
 ## Story 10.1: Implement Note CQRS Ports from Epic 3
 
@@ -228,7 +228,7 @@ So that other components are notified of indexing progress and completion.
 **Acceptance Criteria:**
 
 **Given** indexing operations occur
-**When** I integrate with Epic 7 event bus
+**When** I integrate with Epic 8 event bus
 **Then** indexing publishes NoteIndexed, VaultIndexingStarted, VaultIndexingCompleted events
 
 **Given** event publishing works

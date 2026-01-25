@@ -27,7 +27,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 **Goal:** High-performance indexing and metadata query service.
 - [ ] Actor-based indexing engine for incremental updates (Epic 10).
 - [ ] Metadata query service with wiki-link/alias resolution (FR22, FR23) - Epic 11.
-- [ ] Hybrid event bus (MPSC/Broadcast/Watch) (Epic 7).
+- [ ] Hybrid event bus (MPSC/Broadcast/Watch) (Epic 8).
 - [ ] Schema validation engine with inheritance (FR8, FR10, FR14) - Epic 6.
 **Success Metrics:** Indexing 1000+ files in < 2 seconds; < 50ms query response.
 

@@ -9,7 +9,7 @@ Users can perform fast lookups by filename, path, or schema keys, resolve wiki-l
 - Performance benchmarking stories for NFR1 validation (<500ms queries)
 - Observability/metrics for query performance
 - File class queries for schema-based filtering
-- Integration with Epic 9 storage and Epic 7 events
+- Integration with Epic 9 storage and Epic 8 events
 
 ## Story 11.1: Create Query Domain Interface and Port
 
@@ -144,7 +144,7 @@ So that query results stay current when index updates occur.
 **Acceptance Criteria:**
 
 **Given** I need cache invalidation
-**When** I integrate with Epic 7 events
+**When** I integrate with Epic 8 events
 **Then** query caches invalidate when NoteIndexed events are received
 
 **Given** event integration works
