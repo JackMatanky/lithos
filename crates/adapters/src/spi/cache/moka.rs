@@ -82,27 +82,14 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[tracing::instrument(skip(self), level = "debug")]
     #[inline]
-    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
-        let hit = self.inner.get(key).await;
+    async fn clear(&self) -> Result<(), CacheError> {
+        self.inner.invalidate_all();
         tracing::event!(
             tracing::Level::DEBUG,
             cache_layer = "memory",
-            operation = "get",
-            hit = hit.is_some()
-        );
-        Ok(hit)
-    }
-
-    #[tracing::instrument(skip(self, key, value), level = "debug")]
-    #[inline]
-    async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
-        self.inner.insert(key, value).await;
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "put"
+            operation = "clear"
         );
         Ok(())
     }
@@ -122,6 +109,32 @@ where
 
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
+        let hit = self.inner.get(key).await;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "get",
+            hit = hit.is_some()
+        );
+        Ok(hit)
+    }
+
+    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[inline]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        let exists = self.inner.contains_key(key);
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "has",
+            exists = exists
+        );
+        Ok(exists)
+    }
+
+    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[inline]
     async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
         let existed = self.delete(key).await?;
         tracing::event!(
@@ -131,6 +144,18 @@ where
             existed = existed
         );
         Ok(existed)
+    }
+
+    #[tracing::instrument(skip(self, key, value), level = "debug")]
+    #[inline]
+    async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
+        self.inner.insert(key, value).await;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "put"
+        );
+        Ok(())
     }
 }
 
@@ -306,6 +331,30 @@ mod tests {
 
         let existed_again = cache.delete(&"key".to_owned()).await.unwrap();
         assert!(!existed_again);
+    }
+
+    #[tokio::test]
+    async fn moka_trait_should_check_has() {
+        let cache = Cache::<String, String>::builder().build().unwrap();
+        assert!(!cache.has(&"key".to_owned()).await.unwrap());
+
+        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+        assert!(cache.has(&"key".to_owned()).await.unwrap());
+
+        cache.delete(&"key".to_owned()).await.unwrap();
+        assert!(!cache.has(&"key".to_owned()).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn moka_trait_should_clear_all_entries() {
+        let cache = Cache::<String, String>::builder().build().unwrap();
+        cache.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
+        cache.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
+
+        cache.clear().await.unwrap();
+
+        assert!(!cache.has(&"k1".to_owned()).await.unwrap());
+        assert!(!cache.has(&"k2".to_owned()).await.unwrap());
     }
 
     #[tokio::test]
