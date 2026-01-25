@@ -25,21 +25,24 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 **Given** the adapter must implement the trait
 **When** I implement `Cache<K, V>` for `MokaCache<K, V>`
 **Then** all trait methods satisfy the async trait bounds
-**And** `get()` returns `None` for cache misses, `Some(V)` for hits
-**And** `put()` stores values respecting TTL/TTI policies
+**And** `clear()` invalidates all entries in the Moka cache
 **And** `delete()` removes entries and returns true if key existed
+**And** `get()` returns `None` for cache misses, `Some(V)` for hits
+**And** `has()` checks existence without cloning the value
 **And** `invalidate()` delegates to `delete()` for semantic clarity
+**And** `put()` stores values respecting TTL/TTI policies
 
 **Given** observability is required per project standards
 **When** I instrument all public methods
-**Then** each method is decorated with `#[tracing::instrument(skip(self, value), level = "debug")]`
+**Then** each method is decorated with `#[tracing::instrument(skip(self, key, value), level = "debug")]`
+**And** `clear()` emits events with `cache_layer = "memory"`, `operation = "clear"`
+**And** `delete()` emits events with `cache_layer = "memory"`, `operation = "delete"`, `existed = true/false`
 **And** `get()` emits a `tracing::event!` with attributes:
-
 - `cache_layer = "memory"`
 - `operation = "get"`
 - `hit = true/false`
-  **And** `put()` emits events with `cache_layer = "memory"`, `operation = "put"`
-  **And** `delete()` emits events with `cache_layer = "memory"`, `operation = "delete"`, `existed = true/false`
+**And** `has()` emits events with `cache_layer = "memory"`, `operation = "has"`, `exists = true/false`
+**And** `put()` emits events with `cache_layer = "memory"`, `operation = "put"`
 
 **Given** Moka's TinyLFU policy must be utilized
 **When** I configure the cache
@@ -113,12 +116,16 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 3.4: Implement `put` method using `moka_cache.insert()`
   - [x] Subtask 3.5: Write failing test requiring `delete("key")` to return `true` if item existed
   - [x] Subtask 3.6: Implement `delete` using `moka_cache.remove()` and verify return value logic
-  - [x] Subtask 3.7: Write failing test requiring `invalidate("key")` to remove the item
-  - [x] Subtask 3.8: Implement `invalidate` by delegating to `delete`
-  - [x] Subtask 3.9: Write failing test verifying generic bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static`
-  - [x] Subtask 3.10: Apply trait bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` to the `MokaCache` struct and `Cache` implementation.
-  - [x] Subtask 3.11: Run `mise run test:unit:adapters moka_trait` and verify all operation tests pass (GREEN)
-  - [x] Subtask 3.12: Run `mise run lint` and fix all warnings/errors
+  - [x] Subtask 3.7: Write failing test requiring `has("key")` to check existence
+  - [x] Subtask 3.8: Implement `has` using `moka_cache.contains_key()`
+  - [x] Subtask 3.9: Write failing test requiring `clear()` to remove all items
+  - [x] Subtask 3.10: Implement `clear` using `moka_cache.invalidate_all()`
+  - [x] Subtask 3.11: Write failing test requiring `invalidate("key")` to remove the item
+  - [x] Subtask 3.12: Implement `invalidate` by delegating to `delete`
+  - [x] Subtask 3.13: Write failing test verifying generic bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static`
+  - [x] Subtask 3.14: Apply trait bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` to the `MokaCache` struct and `Cache` implementation.
+  - [x] Subtask 3.15: Run `mise run test:unit:adapters moka_trait` and verify all operation tests pass (GREEN)
+  - [x] Subtask 3.16: Run `mise run lint` and fix all warnings/errors
 
 ### Phase 4: Observability & Tracing
 - [x] Task 4: Implement tracing instrumentation and verify event emission
@@ -227,9 +234,10 @@ google/gemini-3-flash-preview
 - Refactored internal naming to `Cache` and `Builder` for module-level idiomatic purity.
 - Implemented `Default` for `Builder` with production defaults (10k capacity).
 - Finalized builder API: `MokaCache::builder() -> Builder` and `Builder::build() -> Result<MokaCache, CacheError>`.
-- Satisfied all strict clippy lints including item ordering.
+- Satisfied all strict clippy lints including alphabetical item ordering (`clear`, `delete`, `get`, `has`, `invalidate`, `put`).
 - Removed `Debug` bounds from `K` and `V` to align with port trait; added `skip` to `tracing::instrument`.
-- Instrumented `invalidate` with full tracing coverage.
+- Enabled shared ownership by deriving `Clone` for `Cache` and `Builder`.
+- Instrumented all methods (`clear`, `delete`, `get`, `has`, `invalidate`, `put`) with full tracing coverage.
 - Added explicit TinyLFU unit test in `tests` module.
 
 ### Completion Notes List

@@ -41,9 +41,12 @@ So that data persists across application restarts and multiple cache consumers c
 
 **Given** the trait must be implemented
 **When** I implement `Cache<K, V>` for `RedbCache<K, V>`
-**Then** `get()` deserializes the `CachedEntry<V>` and returns `Some(entry.value)` on hit
-**And** `put()` wraps the value in `CachedEntry` with current timestamp and empty metadata, then serializes
+**Then** `clear()` removes all entries from the isolated table
 **And** `delete()` removes the entry and returns true if it existed
+**And** `get()` deserializes the `CachedEntry<V>` and returns `Some(entry.value)` on hit
+**And** `has()` checks for entry existence without full deserialization
+**And** `invalidate()` delegates to `delete()` for semantic clarity
+**And** `put()` wraps the value in `CachedEntry` with current timestamp and empty metadata, then serializes
 **And** all operations use Redb read/write transactions
 
 **Given** serialization errors must be handled
@@ -149,12 +152,16 @@ So that data persists across application restarts and multiple cache consumers c
   - [ ] Subtask 4.1: Write failing test for `put` then `get` across instance drops
   - [ ] Subtask 4.2: Implement `put` using Redb write transaction
   - [ ] Subtask 4.3: Implement `get` using a Redb **read-only** transaction and `rkyv::access` for zero-copy deserialization of the `CachedEntry`.
-  - [ ] Subtask 4.4: Write failing test for `delete` returning existence status
-  - [ ] Subtask 4.5: Implement `delete` operation
-  - [ ] Subtask 4.6: Write failing test for `invalidate` functionality
-  - [ ] Subtask 4.7: Implement `invalidate`
-  - [ ] Subtask 4.8: Run `mise run test:unit:adapters redb_trait` and verify pass (GREEN)
-  - [ ] Subtask 4.9: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 4.4: Write failing test for `has` returning existence status
+  - [ ] Subtask 4.5: Implement `has` checking if key exists in table
+  - [ ] Subtask 4.6: Write failing test for `delete` returning existence status
+  - [ ] Subtask 4.7: Implement `delete` operation
+  - [ ] Subtask 4.8: Write failing test for `clear` removing all entries
+  - [ ] Subtask 4.9: Implement `clear` using Redb transaction to delete all rows in table
+  - [ ] Subtask 4.10: Write failing test for `invalidate` functionality
+  - [ ] Subtask 4.11: Implement `invalidate`
+  - [ ] Subtask 4.12: Run `mise run test:unit:adapters redb_trait` and verify pass (GREEN)
+  - [ ] Subtask 4.13: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
