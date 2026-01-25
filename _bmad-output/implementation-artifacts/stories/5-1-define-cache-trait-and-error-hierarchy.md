@@ -25,14 +25,18 @@ So that multiple cache backends can be swapped and automatically mocked for test
 
 **Given** cache consumers need standardized operations
 **When** I define `trait Cache<K, V>` in `spi/cache/mod.rs`
-**Then** it includes these async methods:
+**Then** it includes these async methods (ordered alphabetically):
 
-- `async fn get(&self, key: &K) -> Result<Option<V>, CacheError>` - retrieve value by key
-- `async fn put(&self, key: K, value: V) -> Result<(), CacheError>` - store key-value pair
+- `async fn clear(&self) -> Result<(), CacheError>` - remove all entries
 - `async fn delete(&self, key: &K) -> Result<bool, CacheError>` - remove entry (returns true if existed)
+- `async fn get(&self, key: &K) -> Result<Option<V>, CacheError>` - retrieve value by key
+- `async fn has(&self, key: &K) -> Result<bool, CacheError>` - check existence without cloning value
 - `async fn invalidate(&self, key: &K) -> Result<bool, CacheError>` - alias for delete (cache-specific terminology)
+- `async fn put(&self, key: K, value: V) -> Result<(), CacheError>` - store key-value pair
 
 **And** the trait is annotated with `#[async_trait]` for async support
+**And** `has` provides a default implementation using `get().is_some()`
+**And** `invalidate` provides a default implementation delegating to `delete()`
 
 **Given** type safety is critical
 **When** I define trait bounds
@@ -118,14 +122,18 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 3.2: Create minimal `Cache` trait with only `get` method to make test pass
   - [x] Subtask 3.3: Write failing test that requires `async fn put(&self, key: K, value: V) -> Result<(), CacheError>`
   - [x] Subtask 3.4: Add `put` method to trait to make test pass
-  - [x] Subtask 3.5: Write failing test that requires `async fn delete(&self, key: &K) -> Result<bool, CacheError>`
+  - [x] Subtask 3.5: Write failing test requiring `async fn delete(&self, key: &K) -> Result<bool, CacheError>`
   - [x] Subtask 3.6: Add `delete` method to trait to make test pass
-  - [x] Subtask 3.7: Write failing test that requires `async fn invalidate(&self, key: &K) -> Result<bool, CacheError>`
-  - [x] Subtask 3.8: Add `invalidate` method to trait to make test pass
-  - [x] Subtask 3.9: Write failing test that fails to compile due to async method in trait
-  - [x] Subtask 3.10: Add `#[async_trait]` annotation to make test pass
-  - [x] Subtask 3.11: Run `mise run test:unit:adapters cache_trait` and verify 100% pass rate
-  - [x] Subtask 3.12: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 4
+  - [x] Subtask 3.7: Write failing test requiring `async fn has(&self, key: &K) -> Result<bool, CacheError>`
+  - [x] Subtask 3.8: Add `has` method with default implementation
+  - [x] Subtask 3.9: Write failing test requiring `async fn clear(&self) -> Result<(), CacheError>`
+  - [x] Subtask 3.10: Add `clear` method to trait
+  - [x] Subtask 3.11: Write failing test that requires `async fn invalidate(&self, key: &K) -> Result<bool, CacheError>`
+  - [x] Subtask 3.12: Add `invalidate` method to trait with default implementation
+  - [x] Subtask 3.13: Write failing test that fails to compile due to async method in trait
+  - [x] Subtask 3.14: Add `#[async_trait]` annotation to make test pass
+  - [x] Subtask 3.15: Run `mise run test:unit:adapters cache_trait` and verify 100% pass rate
+  - [x] Subtask 3.16: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 4
 
 ### Phase 4: Type Safety and Trait Bounds (Test-Driven Development)
 - [x] Task 4: Make trait bounds tests pass (RED → GREEN)
@@ -325,9 +333,10 @@ None - Story implemented through systematic TDD following granular subtasks. Exh
 
 - Implemented `CacheError` in `crates/adapters/src/spi/errors.rs` with `IoError`, `SerializationError`, and `BackendError` variants.
 - Refactored `CacheError` to include structured context (`backend` name for `BackendError` and `type_name` for `SerializationError`) with boxed messages for ADR 0006 compliance and memory efficiency.
-- Defined `Cache<K, V>` trait in `crates/adapters/src/spi/cache/mod.rs` with a complete async interface.
+- Defined `Cache<K, V>` trait in `crates/adapters/src/spi/cache/mod.rs` with a complete async interface including `clear` and `has`.
+- Converted `has` into a default trait method using `get().is_some()`, allowing optimization by adapters.
 - Converted `invalidate` into a default trait method that aliases `delete`, ensuring consistent behavior across implementers and fulfilling AC requirements.
-- Resolved all alphabetical ordering violations in traits and implementations.
+- Resolved all alphabetical ordering violations in traits and implementations (`clear`, `delete`, `get`, `has`, `invalidate`, `put`).
 - Refactored all test assertions to use idiomatic `assert!(matches!(&result, ...))` patterns, eliminating `panic!` calls, verbose `match` blocks, and `clippy::panic` suppressions.
 - Resolved borrow checker issues in tests caused by partial moves during pattern matching.
 - Simplified `Cache` trait doc tests and updated `CacheError` examples to demonstrate new structured diagnostic format.

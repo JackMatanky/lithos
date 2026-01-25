@@ -43,10 +43,11 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 **And** both layers must succeed or neither is modified (consistency coordination)
 
 **Given** invalidation must affect both layers
-**When** I implement `delete()` and `invalidate()`
+**When** I implement `clear()`, `delete()` and `invalidate()`
 **Then** both memory and disk caches are invalidated
 **And** if either fails, the error is logged but both operations attempt to complete (best effort)
-**And** returns true if key existed in either layer
+**And** `delete`/`invalidate` returns true if key existed in either layer
+**And** `clear` ensures both layers are completely purged
 
 **Given** the coordinator must implement the trait
 **When** I implement `Cache<K, V>` for `CacheCoordinator<K, V>`
@@ -140,16 +141,20 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 5: Invalidation Logic
-- [ ] Task 5: Implement `delete` and `invalidate`
+### Phase 5: Invalidation & Lifecycle Logic
+- [ ] Task 5: Implement `clear`, `delete` and `invalidate`
   - [ ] Subtask 5.1: Write failing test verifying both layers are called in `delete`
   - [ ] Subtask 5.2: Implement `delete` calling both layers (consider `tokio::join!` for parallel invalidation) and returning `true` if either existed.
-  - [ ] Subtask 5.3: Write failing test for best-effort invalidation: verify both layers are attempted even if one fails
-  - [ ] Subtask 5.4: Implement error logging but continued execution for invalidation
-  - [ ] Subtask 5.5: Write failing test for `invalidate` delegating to `delete`
-  - [ ] Subtask 5.6: Implement `invalidate`
-  - [ ] Subtask 5.7: Run `mise run test:unit:adapters coordinator_delete` and verify pass (GREEN)
-  - [ ] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 5.3: Write failing test for `has`: check memory first, then disk if memory miss
+  - [ ] Subtask 5.4: Implement `has` orchestration
+  - [ ] Subtask 5.5: Write failing test verifying `clear` purges both layers
+  - [ ] Subtask 5.6: Implement `clear` using `tokio::join!` to purge both memory and disk
+  - [ ] Subtask 5.7: Write failing test for best-effort invalidation: verify both layers are attempted even if one fails
+  - [ ] Subtask 5.8: Implement error logging but continued execution for invalidation and clear
+  - [ ] Subtask 5.9: Write failing test for `invalidate` delegating to `delete`
+  - [ ] Subtask 5.10: Implement `invalidate`
+  - [ ] Subtask 5.11: Run `mise run test:unit:adapters coordinator_lifecycle` and verify pass (GREEN)
+  - [ ] Subtask 5.12: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
