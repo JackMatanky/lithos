@@ -9,8 +9,10 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - Singleton Registry pattern with `Arc<OnceLock<Config>>` for optimal CLI performance
 - Sample config files based on JSON schema (lithos-specific)
 - User documentation for configuration
-- **Architecture**: Domain ports exist (Epic 3), domain aggregate exists (Epic 3), adapters integrate Epic 4 utilities
-- **Adapter Structure**: `crates/adapters/src/spi/config/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs
+- **Architecture**: Domain ports exist (Epic 3), domain aggregate exists (Epic 3), adapters integrate Epic 4 utilities + Validator + Cache
+- **Syntactic Validation**: dedicated `validator.rs` for structural configuration validation before domain aggregate construction
+- **Caching Strategy**: Decoupled `ConfigCache` trait with Redb implementation to persist fully-merged `Config` aggregates for persistence and rollback
+- **Adapter Structure**: `crates/adapters/src/spi/config/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, validator.rs, cache.rs
 - **No CLI Integration**: Epic 5 delivers tested adapters without CLI wiring (deferred to future epic)
 
 ## Story 5.1: Implement Config Adapters with Embedded Utilities
@@ -24,7 +26,8 @@ So that port implementations are clean and easily extensible for future operatio
 **Given** existing ports in `crates/domain/src/ports/config.rs`
 **When** I update the trait definitions
 **Then** `load`, `load_global`, and `load_vault` methods are moved from `Query` to `Command` trait
-**And** `Query` trait retains only side-effect-free methods (if any remain)
+**And** `rollback()` method is added to the `Command` trait to restore state from the persistent cache
+**And** `Query` trait retains only side-effect-free methods (e.g., retrieving the merged `Config` aggregate)
 
 **Given** Epic 3 defined `Command` and `Query` trait interfaces in `crates/domain/src/ports/config.rs`
 **When** I implement `Loader` utility in `crates/adapters/src/spi/config/loader.rs`
@@ -40,7 +43,7 @@ So that port implementations are clean and easily extensible for future operatio
 
 **Given** `Loader` and `Writer` are implemented
 **When** I implement `Command` adapter in `crates/adapters/src/spi/config/command.rs`
-**Then** the `Command` adapter implements the `Command` trait by orchestrating the `Loader` (to read) and then updating the `Registry` (to store state).
+**Then** the `Command` adapter implements the `Command` trait by orchestrating the flow: `Loader` (Read) → `FormatDispatcher` (Parse) → `Validator` (Structural Check) → `Config::build()` (Domain Build) → `Cache` (Persist Result) → `Registry` (Update Memory).
 
 **Given** both adapters are implemented
 **When** I test integration
@@ -134,21 +137,22 @@ So that I can override settings at different levels (global, user, project, vaul
 **When** I implement file loading
 **Then** PathValidator::validate() checks path security before FormatDispatcher::parse() handles format detection
 
-## Story 5.4: Add Configuration Validation and Error Handling
+## Story 5.4: Implement Structural Configuration Validation
 
 As a user providing configuration,
-I want clear validation and helpful error messages,
-So that I can identify and fix configuration issues quickly.
+I want structural validation of the document layout,
+So that I am informed of missing sections before the application attempts to process logic.
 
 **Acceptance Criteria:**
 
-**Given** configuration is loaded via Loader
-**When** I validate config structure
-**Then** Epic 4 PathValidator checks path security and FormatDispatcher handles format parsing
+**Given** configuration source is parsed into generic data
+**When** I implement `crates/adapters/src/spi/config/validator.rs`
+**Then** it performs a structural check to ensure the document contains mandatory top-level sections (e.g., `[global]`, `[vault]`)
+**And** provides `miette`-compatible diagnostics for missing structural components.
 
-**Given** domain aggregate is built
+**Given** structural validation passes
 **When** I call `Config::build()`
-**Then** domain validation occurs for required fields (vault_path) and enum constraints (log_level)
+**Then** domain validation occurs for business rules, required fields (vault_path), and enum constraints (log_level)
 
 **Given** validation fails
 **When** I check error messages
@@ -208,7 +212,7 @@ So that I can fix configuration issues without losing my work.
 
 **Given** configuration changes cause system instability
 **When** I need to rollback
-**Then** the system can restore previous known-good configuration via Registry cache
+**Then** the system can restore the previous known-good configuration from the `ConfigCache` even after a process restart.
 
 **Given** rollback is needed
 **When** I implement recovery logic
