@@ -76,8 +76,8 @@ development_status:
     4-5-documentation-audit: "done"
     epic-4-retrospective: "done"
 
-    epic-5: "backlog"
-    5-1-define-cache-trait-and-error-hierarchy: "backlog"
+    epic-5: "in-progress"
+    5-1-define-cache-trait-and-error-hierarchy: "ready-for-dev"
     5-2-implement-moka-in-memory-cache-adapter: "backlog"
     5-3-implement-redb-persistent-cache-adapter-with-isolation: "backlog"
     5-4-implement-cache-coordinator-for-memory-disk-read-through-and-write-through: "backlog"
