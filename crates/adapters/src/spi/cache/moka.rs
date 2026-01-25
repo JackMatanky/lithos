@@ -27,10 +27,10 @@ use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 /// use lithos_adapters::spi::cache::{Cache, MokaCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let cache = MokaCache::build()
+/// let cache = MokaCache::builder()
 ///     .max_capacity(100)
 ///     .time_to_live(Duration::from_secs(60))
-///     .new()
+///     .build()
 ///     .unwrap();
 ///
 /// cache.put("key".to_string(), "value".to_string()).await.unwrap();
@@ -48,7 +48,7 @@ use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 /// # use lithos_adapters::spi::cache::MokaCache;
 /// # use lithos_adapters::spi::cache::Cache;
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let cache = MokaCache::build().max_capacity(10).new().unwrap();
+/// let cache = MokaCache::builder().max_capacity(10).build().unwrap();
 ///
 /// // Access a "hot" key many times
 /// for _ in 0..20 {
@@ -67,11 +67,11 @@ use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 /// assert!(cache.get(&"hot".to_string()).await.unwrap().is_some());
 /// # });
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Cache<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     inner: moka::future::Cache<K, V>,
 }
@@ -79,10 +79,10 @@ where
 #[async_trait]
 impl<K, V> CachePort<K, V> for Cache<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
-    #[tracing::instrument(skip(self), level = "debug")]
+    #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
         let hit = self.inner.get(key).await;
@@ -95,7 +95,7 @@ where
         Ok(hit)
     }
 
-    #[tracing::instrument(skip(self, value), level = "debug")]
+    #[tracing::instrument(skip(self, key, value), level = "debug")]
     #[inline]
     async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
         self.inner.insert(key, value).await;
@@ -107,7 +107,7 @@ where
         Ok(())
     }
 
-    #[tracing::instrument(skip(self), level = "debug")]
+    #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn delete(&self, key: &K) -> Result<bool, CacheError> {
         let existed = self.inner.remove(key).await.is_some();
@@ -120,31 +120,39 @@ where
         Ok(existed)
     }
 
+    #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
-        self.delete(key).await
+        let existed = self.delete(key).await?;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "invalidate",
+            existed = existed
+        );
+        Ok(existed)
     }
 }
 
 impl<K, V> Cache<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     /// Create a new builder for `MokaCache`.
     #[inline]
     #[must_use]
-    pub fn build() -> Builder<K, V> {
+    pub fn builder() -> Builder<K, V> {
         Builder::default()
     }
 }
 
 /// Builder for `MokaCache`.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Builder<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     max_capacity: usize,
     time_to_live: Option<Duration>,
@@ -155,8 +163,8 @@ where
 
 impl<K, V> Default for Builder<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     #[inline]
     fn default() -> Self {
@@ -172,16 +180,9 @@ where
 
 impl<K, V> Builder<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
-    /// Set maximum capacity.
-    #[inline]
-    pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
-        self.max_capacity = capacity;
-        self
-    }
-
     /// Build the `MokaCache`.
     ///
     /// # Errors
@@ -189,13 +190,7 @@ where
     /// Returns `CacheError::BackendError` if the configuration is invalid
     /// (e.g., `max_capacity` is 0).
     #[inline]
-    #[expect(
-        clippy::new_ret_no_self,
-        reason = "The name 'new' is used as the builder terminal method here \
-                  to indicate the final construction of the actual Cache \
-                  instance, as per project preference."
-    )]
-    pub fn new(&self) -> Result<Cache<K, V>, CacheError> {
+    pub fn build(&self) -> Result<Cache<K, V>, CacheError> {
         if self.max_capacity == 0 {
             return Err(CacheError::BackendError {
                 backend: "moka",
@@ -227,6 +222,13 @@ where
         })
     }
 
+    /// Set maximum capacity.
+    #[inline]
+    pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
+        self.max_capacity = capacity;
+        self
+    }
+
     /// Set time to idle.
     #[inline]
     pub fn time_to_idle(&mut self, duration: Duration) -> &mut Self {
@@ -249,45 +251,45 @@ mod tests {
     #[test]
     fn moka_config_should_return_builder_instance() {
         let _builder: Builder<String, String> =
-            Cache::<String, String>::build();
+            Cache::<String, String>::builder();
     }
 
     #[test]
     fn moka_config_should_allow_configuring_max_capacity() {
-        let mut builder = Cache::<String, String>::build();
+        let mut builder = Cache::<String, String>::builder();
         let _: &mut Builder<String, String> = builder.max_capacity(100usize);
     }
 
     #[test]
     fn moka_config_should_allow_configuring_ttl() {
-        let mut builder = Cache::<String, String>::build();
+        let mut builder = Cache::<String, String>::builder();
         let _: &mut Builder<String, String> =
             builder.time_to_live(Duration::from_secs(10u64));
     }
 
     #[test]
     fn moka_config_should_allow_configuring_tti() {
-        let mut builder = Cache::<String, String>::build();
+        let mut builder = Cache::<String, String>::builder();
         let _: &mut Builder<String, String> =
             builder.time_to_idle(Duration::from_secs(10u64));
     }
 
     #[test]
     fn moka_config_should_build_cache_instance() {
-        let cache = Cache::<String, String>::build().new();
+        let cache = Cache::<String, String>::builder().build();
         let _: Cache<String, String> = cache.expect("Failed to build cache");
     }
 
     #[tokio::test]
     async fn moka_trait_should_get_none_from_empty_cache() {
-        let cache = Cache::<String, String>::build().new().unwrap();
+        let cache = Cache::<String, String>::builder().build().unwrap();
         let result = cache.get(&"key".to_owned()).await.unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn moka_trait_should_put_and_get_value() {
-        let cache = Cache::<String, String>::build().new().unwrap();
+        let cache = Cache::<String, String>::builder().build().unwrap();
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
         let result = cache.get(&"key".to_owned()).await.unwrap();
         assert_eq!(result, Some("value".to_owned()));
@@ -295,7 +297,7 @@ mod tests {
 
     #[tokio::test]
     async fn moka_trait_should_delete_value() {
-        let cache = Cache::<String, String>::build().new().unwrap();
+        let cache = Cache::<String, String>::builder().build().unwrap();
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
         let existed = cache.delete(&"key".to_owned()).await.unwrap();
         assert!(existed);
@@ -309,7 +311,7 @@ mod tests {
     #[tokio::test]
     #[tracing_test::traced_test]
     async fn moka_tracing_should_emit_events_on_get() {
-        let cache = Cache::<String, String>::build().new().unwrap();
+        let cache = Cache::<String, String>::builder().build().unwrap();
         let _: Option<String> = cache.get(&"key".to_owned()).await.unwrap();
 
         assert!(logs_contain("operation=\"get\""));
@@ -319,7 +321,7 @@ mod tests {
     #[tokio::test]
     #[tracing_test::traced_test]
     async fn moka_tracing_should_emit_events_on_put() {
-        let cache = Cache::<String, String>::build().new().unwrap();
+        let cache = Cache::<String, String>::builder().build().unwrap();
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
         assert!(logs_contain("operation=\"put\""));
@@ -328,7 +330,7 @@ mod tests {
     #[tokio::test]
     #[tracing_test::traced_test]
     async fn moka_tracing_should_emit_events_on_delete() {
-        let cache = Cache::<String, String>::build().new().unwrap();
+        let cache = Cache::<String, String>::builder().build().unwrap();
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
         let _: bool = cache.delete(&"key".to_owned()).await.unwrap();
 
@@ -337,10 +339,21 @@ mod tests {
     }
 
     #[tokio::test]
+    #[tracing_test::traced_test]
+    async fn moka_tracing_should_emit_events_on_invalidate() {
+        let cache = Cache::<String, String>::builder().build().unwrap();
+        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+        let _: bool = cache.invalidate(&"key".to_owned()).await.unwrap();
+
+        assert!(logs_contain("operation=\"invalidate\""));
+        assert!(logs_contain("existed=true"));
+    }
+
+    #[tokio::test]
     async fn moka_eviction_should_respect_ttl() {
-        let cache = Cache::<String, String>::build()
+        let cache = Cache::<String, String>::builder()
             .time_to_live(Duration::from_millis(50u64))
-            .new()
+            .build()
             .unwrap();
 
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
@@ -355,9 +368,9 @@ mod tests {
 
     #[tokio::test]
     async fn moka_eviction_should_respect_tti() {
-        let cache = Cache::<String, String>::build()
+        let cache = Cache::<String, String>::builder()
             .time_to_idle(Duration::from_millis(100u64))
-            .new()
+            .build()
             .unwrap();
 
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
@@ -383,9 +396,9 @@ mod tests {
 
     #[tokio::test]
     async fn moka_eviction_should_respect_max_capacity() {
-        let cache = Cache::<String, String>::build()
+        let cache = Cache::<String, String>::builder()
             .max_capacity(10usize)
-            .new()
+            .build()
             .unwrap();
 
         for i in 0i32..100i32 {
@@ -409,6 +422,33 @@ mod tests {
         assert!(found <= 10i32 + 5i32, "Found too many items: {found}");
     }
 
+    #[tokio::test]
+    async fn moka_tinylfu_should_protect_hot_key() {
+        let cache = Cache::<String, String>::builder()
+            .max_capacity(10usize)
+            .build()
+            .unwrap();
+
+        // Access a "hot" key many times
+        for _ in 0i32..20i32 {
+            cache.put("hot".to_owned(), "value".to_owned()).await.unwrap();
+            let _: Option<String> = cache.get(&"hot".to_owned()).await.unwrap();
+        }
+
+        // Perform a "scan" that exceeds capacity
+        for i in 0i32..100i32 {
+            cache.put(format!("scan-{i}"), "val".to_owned()).await.unwrap();
+        }
+
+        // The "hot" key should still be present because of TinyLFU
+        // (Moka's eviction is eventual, so we wait a bit)
+        tokio::time::sleep(Duration::from_millis(100u64)).await;
+        assert!(
+            cache.get(&"hot".to_owned()).await.unwrap().is_some(),
+            "Hot key was evicted by scan pollution!"
+        );
+    }
+
     #[test]
     #[expect(
         clippy::panic,
@@ -417,7 +457,7 @@ mod tests {
     )]
     fn moka_config_should_return_error_for_zero_capacity() {
         let result =
-            Cache::<String, String>::build().max_capacity(0usize).new();
+            Cache::<String, String>::builder().max_capacity(0usize).build();
 
         assert!(result.is_err());
         match result.unwrap_err() {
