@@ -21,9 +21,9 @@ use regex::Regex;
 
 use crate::{errors::DomainError, patterns};
 
-// ============================================================================
-// Logic Helpers (Predicates)
-// ============================================================================
+// ----------------------------------------------------------- //
+//                        Logic Helpers                        //
+// ----------------------------------------------------------- //
 
 /// Checks if a string matches the alphanumeric name pattern.
 #[inline]
@@ -83,9 +83,9 @@ fn check_windows_separator(byte: u8) -> bool {
     byte == b'/' || byte == b'\\'
 }
 
-// ============================================================================
-// Domain Validators (Reusable Complex Logic)
-// ============================================================================
+// ----------------------------------------------------------- //
+//                      Domain Validators                      //
+// ----------------------------------------------------------- //
 
 /// Validates a vault-relative path according to hexagonal architecture rules.
 ///

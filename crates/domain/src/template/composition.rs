@@ -7,7 +7,12 @@ use crate::errors::DomainError;
 ///
 /// # Examples
 /// ```ignore
-/// # use lithos_domain::{InsertionPosition, Template, TemplateMetadata, TemplateSection};
+/// # use lithos_domain::{
+///     InsertionPosition,
+///     Template,
+///     TemplateMetadata,
+///     TemplateSection
+/// };
 /// # use lithos_domain::TemplateComposition;
 /// # use std::collections::HashMap;
 /// # fn run() -> Result<(), lithos_domain::DomainError> {
@@ -36,10 +41,10 @@ use crate::errors::DomainError;
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Composition {
-    /// Additional content sections to append.
-    pub additional_sections: Vec<Section>,
     /// Base template name.
     pub base_template: String,
+    /// Additional content sections to append.
+    pub additional_sections: Vec<Section>,
     /// Child templates to include.
     pub includes: Vec<String>,
     /// Variable overrides for base template.
@@ -201,10 +206,10 @@ impl Composition {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Section {
-    /// Section content.
-    pub content: String,
     /// Section name.
     pub name: String,
+    /// Section content.
+    pub content: String,
     /// Insertion point.
     pub position: InsertionPosition,
 }

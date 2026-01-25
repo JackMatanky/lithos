@@ -96,14 +96,14 @@ impl AsRef<str> for PropertyName {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Property {
-    /// Whether property accepts array of values.
-    array: bool,
     /// Unique identity (UUID v7).
     id: Uuid,
     /// Property name.
     name: PropertyName,
     /// Whether property is required.
     required: bool,
+    /// Whether property accepts array of values.
+    array: bool,
     /// Type-specific validation specification.
     spec: PropertySpec,
 }
@@ -164,10 +164,10 @@ impl Property {
         spec: PropertySpec,
     ) -> Result<Self, DomainError> {
         let property = Self {
-            array,
             id,
             name,
             required,
+            array,
             spec,
         };
         property.validate()?;

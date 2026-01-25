@@ -82,7 +82,13 @@ impl Template {
     ///
     /// # Examples
     /// ```ignore
-    /// # use lithos_domain::{Template, TemplateComposition, TemplateMetadata, TemplateSection, InsertionPosition};
+    /// # use lithos_domain::{
+    ///     Template,
+    ///     TemplateComposition,
+    ///     TemplateMetadata,
+    ///     TemplateSection,
+    ///     InsertionPosition
+    /// };
     /// # use std::collections::HashMap;
     /// # fn run() -> Result<(), lithos_domain::DomainError> {
     /// let base = Template::new(
@@ -455,27 +461,27 @@ impl Template {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Metadata {
-    /// Creation timestamp.
-    pub created_at: DateTime<Utc>,
     /// Template description.
     pub description: Option<String>,
-    /// Tags for categorization.
-    pub tags: Vec<String>,
-    /// Last modification timestamp.
-    pub updated_at: DateTime<Utc>,
     /// Template version.
     pub version: Option<String>,
+    /// Tags for categorization.
+    pub tags: Vec<String>,
+    /// Creation timestamp.
+    pub created_at: DateTime<Utc>,
+    /// Last modification timestamp.
+    pub updated_at: DateTime<Utc>,
 }
 
 impl Default for Metadata {
     #[inline]
     fn default() -> Self {
         Self {
-            created_at: Utc::now(),
             description: None,
-            tags: Vec::new(),
-            updated_at: Utc::now(),
             version: None,
+            tags: Vec::new(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
         }
     }
 }
@@ -570,7 +576,9 @@ mod tests {
     // Priority: P2.
     proptest! {
         #[test]
-        fn should_validate_template_name_format_across_edge_cases(name in valid_identifier()) {
+        fn should_validate_template_name_format_across_edge_cases(
+            name in valid_identifier()
+        ) {
             // GIVEN: a generated valid identifier
             let input = name;
 
