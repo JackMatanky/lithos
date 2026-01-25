@@ -1395,7 +1395,7 @@ fn detect_circular_inheritance(
 - Epic 6: Schema System (implements schema loading and resolution adapters)
 - Epic 9: Vault Indexing (validates notes against schemas)
 - Epic 10: Query Service (queries by schema-defined fields)
-- Epic 11: Template System (uses schemas for input parameters)
+- Epic 12: Template System (uses schemas for input parameters)
 
 **Inter-Bounded-Context Relationships:**
 

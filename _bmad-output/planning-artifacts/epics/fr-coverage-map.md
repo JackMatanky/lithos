@@ -2,8 +2,8 @@
 
 | Function Requirement | Epic                                                                         |
 | -------------------- | ---------------------------------------------------------------------------- |
-| FR1                  | Epic 11 (Modular templates with reusable sections)                           |
-| FR2                  | Epic 11 (Interactive template execution with prompts/suggesters)             |
+| FR1                  | Epic 12 (Modular templates with reusable sections)                           |
+| FR2                  | Epic 12 (Interactive template execution with prompts/suggesters)             |
 | FR3                  | Epic 13 (Complex template composition with error prevention)                 |
 | FR4                  | Epic 13 (Date formatting and manipulation functions)                         |
 | FR5                  | Post-MVP Phase 1.5 (Dynamic commands and whitespace control)                 |
@@ -16,8 +16,8 @@
 | FR12                 | Epic 6 (File filtering via schema directory constraints)                     |
 | FR13                 | Epic 6 (Date formatting via schema format strings)                           |
 | FR14                 | Epic 6 (Schema inheritance and extension)                                    |
-| FR15                 | Epic 11 (Free-text input through prompts)                                    |
-| FR16                 | Epic 11 (Single-choice suggesters)                                           |
+| FR15                 | Epic 12 (Free-text input through prompts)                                    |
+| FR16                 | Epic 12 (Single-choice suggesters)                                           |
 | FR17                 | Epic 13 (Multi-selection suggesters)                                         |
 | FR18                 | Post-MVP Phase 1.5 (Contextual help and guidance)                            |
 | FR19                 | Post-MVP Phase 1.5 (Progressive complexity modes)                            |

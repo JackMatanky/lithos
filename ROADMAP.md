@@ -33,7 +33,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 
 ### Milestone 4: Interactive Template System
 **Goal:** Core value - interactive, scriptable templating.
-- [ ] MiniJinja-based template engine implementation (Epic 11).
+- [ ] MiniJinja-based template engine implementation (Epic 12).
 - [ ] Interactive CLI prompts, suggesters, and multi-suggesters (FR15-FR17).
 - [ ] Modular template composition (FR1, FR3).
 - [ ] Clap-based CLI with subcommands and error diagnostics - Epic 14.

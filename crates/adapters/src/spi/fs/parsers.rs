@@ -59,7 +59,7 @@
 //! - **Epic 5** (Configuration): Loads `Global`, `Vault` configs via TOML
 //! - **Epic 6** (Schema): Loads `RawSchema`, `Property` definitions via
 //!   YAML/JSON
-//! - **Epic 11** (Templates): Loads `Template` definitions via YAML
+//! - **Epic 12** (Templates): Loads `Template` definitions via YAML
 
 use std::path::Path;
 
