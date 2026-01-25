@@ -77,7 +77,8 @@ impl VariableDefinition {
         };
 
         thread_local! {
-            static CACHE: std::cell::RefCell<std::collections::HashMap<String, regex::Regex>> =
+            static CACHE:
+                std::cell::RefCell<std::collections::HashMap<String, regex::Regex>> =
                 std::cell::RefCell::new(std::collections::HashMap::new());
         }
 

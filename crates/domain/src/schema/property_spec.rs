@@ -499,14 +499,23 @@ mod tests {
     /// Priority: P1.
     #[rstest]
     #[case::enum_match(
-        StringSpec { enum_values: Some(vec!["A".to_owned(), "B".to_owned()]), ..Default::default() },
+        StringSpec {
+            enum_values: Some(vec!["A".to_owned(), "B".to_owned()]),
+            ..Default::default()
+        },
         "A",
         Ok(())
     )]
     #[case::enum_mismatch(
-        StringSpec { enum_values: Some(vec!["A".to_owned(), "B".to_owned()]), ..Default::default() },
+        StringSpec {
+            enum_values: Some(vec!["A".to_owned(), "B".to_owned()]),
+            ..Default::default()
+        },
         "C",
-        Err(DomainError::InvalidEnumValue { value: "C".to_owned(), allowed: vec!["A".to_owned(), "B".to_owned()] })
+        Err(DomainError::InvalidEnumValue {
+            value: "C".to_owned(),
+            allowed: vec!["A".to_owned(), "B".to_owned()]
+        })
     )]
     #[case::regex_match(
         StringSpec { pattern: Some(r"^\d+$".to_owned()), ..Default::default() },

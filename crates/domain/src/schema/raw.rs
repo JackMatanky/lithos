@@ -40,15 +40,15 @@ use super::{
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawSchema {
-    /// Property names to exclude from parent schema.
-    #[serde(default)]
-    pub excludes: HashSet<PropertyName>,
-    /// Optional parent schema name for inheritance.
-    pub extends: Option<SchemaName>,
     /// Unique identity for the schema definition.
     pub id: Uuid,
     /// Unique schema name.
     pub name: SchemaName,
+    /// Optional parent schema name for inheritance.
+    pub extends: Option<SchemaName>,
+    /// Property names to exclude from parent schema.
+    #[serde(default)]
+    pub excludes: HashSet<PropertyName>,
     /// List of raw property definitions.
     pub properties: Vec<RawProperty>,
 }
@@ -65,10 +65,10 @@ impl RawSchema {
         properties: Vec<RawProperty>,
     ) -> Self {
         Self {
-            excludes,
-            extends,
             id,
             name,
+            extends,
+            excludes,
             properties,
         }
     }
@@ -98,9 +98,6 @@ pub struct RawPropertyRef {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct RawPropertyInline {
-    /// Whether property accepts array of values.
-    #[serde(default)]
-    pub array: bool,
     /// Unique identity assigned by adapter.
     pub id: Uuid,
     /// Property name.
@@ -108,6 +105,9 @@ pub struct RawPropertyInline {
     /// Whether property is required.
     #[serde(default)]
     pub required: bool,
+    /// Whether property accepts array of values.
+    #[serde(default)]
+    pub array: bool,
     /// Type-specific validation constraints.
     pub spec: PropertySpec,
 }

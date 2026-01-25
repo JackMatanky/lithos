@@ -145,11 +145,11 @@ pub struct Schema {
     id: Uuid,
     /// Unique schema name.
     name: SchemaName,
+    /// Fully resolved properties after inheritance.
+    properties: Vec<Property>,
     /// Domain events pending emission.
     #[serde(skip)]
     pending_events: Vec<SchemaEvents>,
-    /// Fully resolved properties after inheritance.
-    properties: Vec<Property>,
 }
 
 impl Schema {
