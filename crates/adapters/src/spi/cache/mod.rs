@@ -15,8 +15,17 @@
     )
 )]
 
+pub mod moka;
+
 use async_trait::async_trait;
 
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Re-exporting with prefixed names is intentional for clarity at \
+              the crate level while keeping internal implementation names \
+              concise."
+)]
+pub use self::moka::{Builder as MokaCacheBuilder, Cache as MokaCache};
 use crate::spi::errors::CacheError;
 
 /// Generic caching SPI for adapter-layer use.

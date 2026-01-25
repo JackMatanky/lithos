@@ -30,8 +30,10 @@ uuid.workspace = true
 toml.workspace = true
 serde_json.workspace = true
 serde_yaml.workspace = true
+moka = { version = "0.12", features = ["future"] }
 
 [dev-dependencies]
+tracing-test = "0.2"
 mockall = "0.13"
 lithos-test-utils = { path = "../../tests/utils" }
 proptest.workspace = true
