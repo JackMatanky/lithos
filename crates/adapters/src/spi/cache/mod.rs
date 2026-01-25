@@ -16,6 +16,7 @@
 )]
 
 pub mod moka;
+pub mod redb;
 
 use async_trait::async_trait;
 
