@@ -27,10 +27,10 @@ use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 /// use lithos_adapters::spi::cache::{Cache, MokaCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let cache = MokaCache::builder()
+/// let cache = MokaCache::build()
 ///     .max_capacity(100)
 ///     .time_to_live(Duration::from_secs(60))
-///     .build()
+///     .new()
 ///     .unwrap();
 ///
 /// cache.put("key".to_string(), "value".to_string()).await.unwrap();
@@ -48,7 +48,7 @@ use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 /// # use lithos_adapters::spi::cache::MokaCache;
 /// # use lithos_adapters::spi::cache::Cache;
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let cache = MokaCache::builder().max_capacity(10).build().unwrap();
+/// let cache = MokaCache::build().max_capacity(10).new().unwrap();
 ///
 /// // Access a "hot" key many times
 /// for _ in 0..20 {
@@ -134,8 +134,8 @@ where
     /// Create a new builder for `MokaCache`.
     #[inline]
     #[must_use]
-    pub fn builder() -> Builder<K, V> {
-        Builder::new()
+    pub fn build() -> Builder<K, V> {
+        Builder::default()
     }
 }
 
@@ -153,11 +153,35 @@ where
     _v: PhantomData<V>,
 }
 
+impl<K, V> Default for Builder<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+{
+    #[inline]
+    fn default() -> Self {
+        Self {
+            max_capacity: 10_000,
+            time_to_live: None,
+            time_to_idle: None,
+            _k: PhantomData,
+            _v: PhantomData,
+        }
+    }
+}
+
 impl<K, V> Builder<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
     V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
+    /// Set maximum capacity.
+    #[inline]
+    pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
+        self.max_capacity = capacity;
+        self
+    }
+
     /// Build the `MokaCache`.
     ///
     /// # Errors
@@ -165,7 +189,13 @@ where
     /// Returns `CacheError::BackendError` if the configuration is invalid
     /// (e.g., `max_capacity` is 0).
     #[inline]
-    pub fn build(&self) -> Result<Cache<K, V>, CacheError> {
+    #[expect(
+        clippy::new_ret_no_self,
+        reason = "The name 'new' is used as the builder terminal method here \
+                  to indicate the final construction of the actual Cache \
+                  instance, as per project preference."
+    )]
+    pub fn new(&self) -> Result<Cache<K, V>, CacheError> {
         if self.max_capacity == 0 {
             return Err(CacheError::BackendError {
                 backend: "moka",
@@ -197,24 +227,6 @@ where
         })
     }
 
-    /// Set maximum capacity.
-    #[inline]
-    pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
-        self.max_capacity = capacity;
-        self
-    }
-
-    #[inline]
-    fn new() -> Self {
-        Self {
-            max_capacity: 10_000,
-            time_to_live: None,
-            time_to_idle: None,
-            _k: PhantomData,
-            _v: PhantomData,
-        }
-    }
-
     /// Set time to idle.
     #[inline]
     pub fn time_to_idle(&mut self, duration: Duration) -> &mut Self {
@@ -237,45 +249,45 @@ mod tests {
     #[test]
     fn moka_config_should_return_builder_instance() {
         let _builder: Builder<String, String> =
-            Cache::<String, String>::builder();
+            Cache::<String, String>::build();
     }
 
     #[test]
     fn moka_config_should_allow_configuring_max_capacity() {
-        let mut builder = Cache::<String, String>::builder();
+        let mut builder = Cache::<String, String>::build();
         let _: &mut Builder<String, String> = builder.max_capacity(100usize);
     }
 
     #[test]
     fn moka_config_should_allow_configuring_ttl() {
-        let mut builder = Cache::<String, String>::builder();
+        let mut builder = Cache::<String, String>::build();
         let _: &mut Builder<String, String> =
             builder.time_to_live(Duration::from_secs(10u64));
     }
 
     #[test]
     fn moka_config_should_allow_configuring_tti() {
-        let mut builder = Cache::<String, String>::builder();
+        let mut builder = Cache::<String, String>::build();
         let _: &mut Builder<String, String> =
             builder.time_to_idle(Duration::from_secs(10u64));
     }
 
     #[test]
     fn moka_config_should_build_cache_instance() {
-        let cache = Cache::<String, String>::builder().build();
+        let cache = Cache::<String, String>::build().new();
         let _: Cache<String, String> = cache.expect("Failed to build cache");
     }
 
     #[tokio::test]
     async fn moka_trait_should_get_none_from_empty_cache() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
+        let cache = Cache::<String, String>::build().new().unwrap();
         let result = cache.get(&"key".to_owned()).await.unwrap();
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn moka_trait_should_put_and_get_value() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
+        let cache = Cache::<String, String>::build().new().unwrap();
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
         let result = cache.get(&"key".to_owned()).await.unwrap();
         assert_eq!(result, Some("value".to_owned()));
@@ -283,7 +295,7 @@ mod tests {
 
     #[tokio::test]
     async fn moka_trait_should_delete_value() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
+        let cache = Cache::<String, String>::build().new().unwrap();
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
         let existed = cache.delete(&"key".to_owned()).await.unwrap();
         assert!(existed);
@@ -297,7 +309,7 @@ mod tests {
     #[tokio::test]
     #[tracing_test::traced_test]
     async fn moka_tracing_should_emit_events_on_get() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
+        let cache = Cache::<String, String>::build().new().unwrap();
         let _: Option<String> = cache.get(&"key".to_owned()).await.unwrap();
 
         assert!(logs_contain("operation=\"get\""));
@@ -307,7 +319,7 @@ mod tests {
     #[tokio::test]
     #[tracing_test::traced_test]
     async fn moka_tracing_should_emit_events_on_put() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
+        let cache = Cache::<String, String>::build().new().unwrap();
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
         assert!(logs_contain("operation=\"put\""));
@@ -316,7 +328,7 @@ mod tests {
     #[tokio::test]
     #[tracing_test::traced_test]
     async fn moka_tracing_should_emit_events_on_delete() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
+        let cache = Cache::<String, String>::build().new().unwrap();
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
         let _: bool = cache.delete(&"key".to_owned()).await.unwrap();
 
@@ -326,9 +338,9 @@ mod tests {
 
     #[tokio::test]
     async fn moka_eviction_should_respect_ttl() {
-        let cache = Cache::<String, String>::builder()
+        let cache = Cache::<String, String>::build()
             .time_to_live(Duration::from_millis(50u64))
-            .build()
+            .new()
             .unwrap();
 
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
@@ -343,9 +355,9 @@ mod tests {
 
     #[tokio::test]
     async fn moka_eviction_should_respect_tti() {
-        let cache = Cache::<String, String>::builder()
+        let cache = Cache::<String, String>::build()
             .time_to_idle(Duration::from_millis(100u64))
-            .build()
+            .new()
             .unwrap();
 
         cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
@@ -371,9 +383,9 @@ mod tests {
 
     #[tokio::test]
     async fn moka_eviction_should_respect_max_capacity() {
-        let cache = Cache::<String, String>::builder()
+        let cache = Cache::<String, String>::build()
             .max_capacity(10usize)
-            .build()
+            .new()
             .unwrap();
 
         for i in 0i32..100i32 {
@@ -393,7 +405,8 @@ mod tests {
             }
         }
 
-        assert!(found <= 10i32 + 5i32, "Found too many items: {found}"); // Allow some slack for eventual eviction
+        // Allow some slack for eventual eviction
+        assert!(found <= 10i32 + 5i32, "Found too many items: {found}");
     }
 
     #[test]
@@ -404,7 +417,7 @@ mod tests {
     )]
     fn moka_config_should_return_error_for_zero_capacity() {
         let result =
-            Cache::<String, String>::builder().max_capacity(0usize).build();
+            Cache::<String, String>::build().max_capacity(0usize).new();
 
         assert!(result.is_err());
         match result.unwrap_err() {
