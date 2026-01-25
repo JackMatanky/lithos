@@ -1,52 +1,54 @@
 # FR Coverage Map
 
-- FR1 → Epic 11 (Modular templates with reusable sections)
-- FR2 → Epic 11 (Interactive template execution with prompts/suggesters)
-- FR3 → Epic 12 (Complex template composition with error prevention)
-- FR4 → Epic 12 (Date formatting and manipulation functions)
-- FR5 → Post-MVP Phase 1.5 (Dynamic commands and whitespace control)
-- FR6 → Post-MVP Phase 1.5 (Custom user functions)
-- FR7 → Post-MVP Phase 2a (Advanced template operations with hooks)
-- FR8 → Epic 6 (Define metadata schemas with field types)
-- FR9 → Epic 6 (Schema-driven templates with input parameters)
-- FR10 → Epic 6 (Validate notes against schemas)
-- FR11 → Epic 6 (Schema enums populate suggester options)
-- FR12 → Epic 6 (File filtering via schema directory constraints)
-- FR13 → Epic 6 (Date formatting via schema format strings)
-- FR14 → Epic 6 (Schema inheritance and extension)
-- FR15 → Epic 11 (Free-text input through prompts)
-- FR16 → Epic 11 (Single-choice suggesters)
-- FR17 → Epic 12 (Multi-selection suggesters)
-- FR18 → Post-MVP Phase 1.5 (Contextual help and guidance)
-- FR19 → Post-MVP Phase 1.5 (Progressive complexity modes)
-- FR20 → Epic 9 (Index and search notes across vaults)
-- FR21 → Epic 10 (Lookups by filename, path, schema keys)
-- FR22 → Epic 10 (Resolve wiki-links and aliases)
-- FR23 → Epic 10 (Query metadata from other notes)
-- FR24 → Epic 9 (Maintain vault consistency)
-- FR25 → Epic 9 (Handle large vaults without degradation)
-- FR26 → Epic 5 (Configure template packs via TOML)
-- FR27 → Epic 5 (Manage schema definitions via config)
-- FR28 → Epic 5 (Set application preferences via config)
-- FR29 → Post-MVP Phase 2c (Custom validation/linting rules)
-- FR30 → Epic 13 (Cross-platform execution consistency)
-- FR31 → Epic 13 (Access through terminal interfaces)
-- FR32 → Post-MVP Phase 3a (External editor/IDE integration)
-- FR33 → Post-MVP Phase 3a (Automated scripts/CI-CD support)
-- FR34 → Post-MVP Phase 3b (Share template packs via Git)
-- FR35 → Post-MVP Phase 3b (Discover community template packs)
-- FR36 → Post-MVP Phase 3b (Validate third-party templates)
-- FR37 → Post-MVP Phase 3b (Community contribution workflows)
-- FR38 → Post-MVP Phase 4 (Access control for vault data)
-- FR39 → Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 5
-- FR40 → Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 13
-- FR41 → Epic 13 (Execute commands with subcommands)
-- FR42 → Epic 13 (Comprehensive help and documentation)
-- FR43 → Epic 13 (View status and configuration)
-- FR44 → Epic 13 (Manage vault operations from CLI)
-- FR45 → Epic 13 (Run templates with output formats)
-- FR46 → Epic 13 (Configure CLI behavior)
-- FR47 → Epic 13 (Single-word command shortcuts)
-- FR48 → Epic 13 (Clear, actionable error messages)
-- FR49 → Epic 13 (Recover from failed executions with rollback)
-- FR50 → Epic 13 (Diagnose and troubleshoot issues)
+| Function Requirement | Epic                                                                         |
+| -------------------- | ---------------------------------------------------------------------------- |
+| FR1                  | Epic 11 (Modular templates with reusable sections)                           |
+| FR2                  | Epic 11 (Interactive template execution with prompts/suggesters)             |
+| FR3                  | Epic 12 (Complex template composition with error prevention)                 |
+| FR4                  | Epic 12 (Date formatting and manipulation functions)                         |
+| FR5                  | Post-MVP Phase 1.5 (Dynamic commands and whitespace control)                 |
+| FR6                  | Post-MVP Phase 1.5 (Custom user functions)                                   |
+| FR7                  | Post-MVP Phase 2a (Advanced template operations with hooks)                  |
+| FR8                  | Epic 6 (Define metadata schemas with field types)                            |
+| FR9                  | Epic 6 (Schema-driven templates with input parameters)                       |
+| FR10                 | Epic 6 (Validate notes against schemas)                                      |
+| FR11                 | Epic 6 (Schema enums populate suggester options)                             |
+| FR12                 | Epic 6 (File filtering via schema directory constraints)                     |
+| FR13                 | Epic 6 (Date formatting via schema format strings)                           |
+| FR14                 | Epic 6 (Schema inheritance and extension)                                    |
+| FR15                 | Epic 11 (Free-text input through prompts)                                    |
+| FR16                 | Epic 11 (Single-choice suggesters)                                           |
+| FR17                 | Epic 12 (Multi-selection suggesters)                                         |
+| FR18                 | Post-MVP Phase 1.5 (Contextual help and guidance)                            |
+| FR19                 | Post-MVP Phase 1.5 (Progressive complexity modes)                            |
+| FR20                 | Epic 9 (Index and search notes across vaults)                                |
+| FR21                 | Epic 10 (Lookups by filename, path, schema keys)                             |
+| FR22                 | Epic 10 (Resolve wiki-links and aliases)                                     |
+| FR23                 | Epic 10 (Query metadata from other notes)                                    |
+| FR24                 | Epic 9 (Maintain vault consistency)                                          |
+| FR25                 | Epic 9 (Handle large vaults without degradation)                             |
+| FR26                 | Epic 5 (Configure template packs via TOML)                                   |
+| FR27                 | Epic 5 (Manage schema definitions via config)                                |
+| FR28                 | Epic 5 (Set application preferences via config)                              |
+| FR29                 | Post-MVP Phase 2c (Custom validation/linting rules)                          |
+| FR30                 | Epic 13 (Cross-platform execution consistency)                               |
+| FR31                 | Epic 13 (Access through terminal interfaces)                                 |
+| FR32                 | Post-MVP Phase 3a (External editor/IDE integration)                          |
+| FR33                 | Post-MVP Phase 3a (Automated scripts/CI-CD support)                          |
+| FR34                 | Post-MVP Phase 3b (Share template packs via Git)                             |
+| FR35                 | Post-MVP Phase 3b (Discover community template packs)                        |
+| FR36                 | Post-MVP Phase 3b (Validate third-party templates)                           |
+| FR37                 | Post-MVP Phase 3b (Community contribution workflows)                         |
+| FR38                 | Post-MVP Phase 4 (Access control for vault data)                             |
+| FR39                 | Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 5 |
+| FR40                 | Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 13       |
+| FR41                 | Epic 13 (Execute commands with subcommands)                                  |
+| FR42                 | Epic 13 (Comprehensive help and documentation)                               |
+| FR43                 | Epic 13 (View status and configuration)                                      |
+| FR44                 | Epic 13 (Manage vault operations from CLI)                                   |
+| FR45                 | Epic 13 (Run templates with output formats)                                  |
+| FR46                 | Epic 13 (Configure CLI behavior)                                             |
+| FR47                 | Epic 13 (Single-word command shortcuts)                                      |
+| FR48                 | Epic 13 (Clear, actionable error messages)                                   |
+| FR49                 | Epic 13 (Recover from failed executions with rollback)                       |
+| FR50                 | Epic 13 (Diagnose and troubleshoot issues)                                   |
