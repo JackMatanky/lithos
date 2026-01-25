@@ -324,12 +324,17 @@ None - Story implemented through systematic TDD following granular subtasks. Exh
 ### Completion Notes List
 
 - Implemented `CacheError` in `crates/adapters/src/spi/errors.rs` with `IoError`, `SerializationError`, and `BackendError` variants.
+- Refactored `CacheError` to include structured context (`backend` name for `BackendError` and `type_name` for `SerializationError`) with boxed messages for ADR 0006 compliance and memory efficiency.
 - Defined `Cache<K, V>` trait in `crates/adapters/src/spi/cache/mod.rs` with a complete async interface.
+- Converted `invalidate` into a default trait method that aliases `delete`, ensuring consistent behavior across implementers and fulfilling AC requirements.
 - Resolved all alphabetical ordering violations in traits and implementations.
-- Refactored all test assertions to use `assert!(matches!(...))` or descriptive `assert!` patterns, eliminating `panic!` and constant assertions from hand-written code.
+- Refactored all test assertions to use idiomatic `assert!(matches!(&result, ...))` patterns, eliminating `panic!` calls, verbose `match` blocks, and `clippy::panic` suppressions.
+- Resolved borrow checker issues in tests caused by partial moves during pattern matching.
+- Simplified `Cache` trait doc tests and updated `CacheError` examples to demonstrate new structured diagnostic format.
 - Applied project-compliant `#![expect]` suppressions at the file level for `clippy::disallowed_methods` with the mandatory reason format `[WHAT]. [WHY]. [HOW].` to handle `mockall` expansion.
-- Passed full `mise run verify` quality gates with zero unique warnings in the adapters crate.
+- Passed full `mise run verify` and `pre-commit run --all-files` quality gates with zero unique warnings and 100% test success.
 - All 51 granular TDD subtasks verified as completed according to the master manual.
+
 
 ### File List
 
