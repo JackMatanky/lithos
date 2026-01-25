@@ -64,6 +64,7 @@
 use std::path::Path;
 
 use serde::de::DeserializeOwned;
+use tracing::{debug, error};
 
 use crate::spi::errors::ParseError;
 
@@ -415,18 +416,33 @@ impl Dispatcher {
         if Json::is_supported(path) {
             tried_json = true;
             if let Ok(result) = Json::parse(path, content) {
+                debug!(
+                  path = %path.display(),
+                  format = "JSON",
+                  "Parsed structured data file"
+                );
                 return Ok(result);
             }
         }
         if Toml::is_supported(path) {
             tried_toml = true;
             if let Ok(result) = Toml::parse(path, content) {
+                debug!(
+                  path = %path.display(),
+                  format = "TOML",
+                  "Parsed structured data file"
+                );
                 return Ok(result);
             }
         }
         if Yaml::is_supported(path) {
             tried_yaml = true;
             if let Ok(result) = Yaml::parse(path, content) {
+                debug!(
+                  path = %path.display(),
+                  format = "YAML",
+                  "Parsed structured data file"
+                );
                 return Ok(result);
             }
         }
@@ -437,20 +453,44 @@ impl Dispatcher {
             && Json::detect(content)
             && let Ok(result) = Json::parse(path, content)
         {
+            debug!(
+              path = %path.display(),
+              format = "JSON",
+              method = "content-detection",
+              "Parsed structured data file"
+            );
             return Ok(result);
         }
         if !tried_yaml
             && Yaml::detect(content)
             && let Ok(result) = Yaml::parse(path, content)
         {
+            debug!(
+              path = %path.display(),
+              format = "YAML",
+              method = "content-detection",
+              "Parsed structured data file"
+            );
             return Ok(result);
         }
         if !tried_toml
             && Toml::detect(content)
             && let Ok(result) = Toml::parse(path, content)
         {
+            debug!(
+              path = %path.display(),
+              format = "TOML",
+              method = "content-detection",
+              "Parsed structured data file"
+            );
             return Ok(result);
         }
+
+        error!(
+            path = %path.display(),
+            supported = ?vec!["toml", "json", "yaml", "yml"],
+            "Unsupported file format"
+        );
 
         Err(ParseError::UnsupportedFormat {
             path: path.into(),

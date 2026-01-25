@@ -3,9 +3,9 @@
 //! This module provides path validation to prevent **path traversal attacks**,
 //! **arbitrary file access**, and **symlink escape vulnerabilities**.
 //!
-//! ⚠️ **SECURITY REQUIREMENT**: All file I/O operations in adapters MUST use
-//! these validation utilities before accessing the filesystem. Bypassing these
-//! checks creates critical security vulnerabilities.
+//! **SECURITY REQUIREMENT**: All file I/O operations in adapters MUST use these
+//! validation utilities before accessing the filesystem. Bypassing these checks
+//! creates critical security vulnerabilities.
 //!
 //! # Security Guarantees
 //!
@@ -48,7 +48,7 @@
 //!
 //! # Architecture Context
 //!
-//! This module is part of Epic 4 (File Loading Strategy Foundation), Story 4.2.
+//! This module represents the file loading strategy foundation (epic 4).
 //! It provides the security foundation for all file-based adapters:
 //! - `ConfigAdapter` (Flexible mode)
 //! - `SchemaAdapter` (Flexible mode)
@@ -61,6 +61,7 @@ use std::{
 
 /// Public alias for validation mode configuration.
 pub use Mode as ValidationMode;
+use tracing::{debug, warn};
 
 use crate::spi::errors::PathValidationError;
 
@@ -130,10 +131,17 @@ impl Validator {
     ) -> Result<(), PathValidationError> {
         match *component {
             Component::ParentDir => {
+                warn!(
+                    "Path traversal attempt blocked: contains '..' component"
+                );
                 Err(PathValidationError::PathTraversalError)
             }
             Component::Normal(os_str) => {
                 if Self::is_hidden_os_str(os_str) {
+                    warn!(
+                        file = %os_str.to_string_lossy(),
+                        "Restricted path access blocked: hidden/sensitive file"
+                    );
                     Err(PathValidationError::RestrictedPathError(
                         os_str.to_string_lossy().into_owned(),
                     ))
@@ -371,6 +379,12 @@ impl Validator {
         // 2. Core Security Validation (Traversal + Hidden)
         let check_path = self.get_relative_validation_path(path_ref);
         Self::validate_core(check_path)?;
+
+        debug!(
+            path = %path_ref.display(),
+            mode = ?self.mode,
+            "Path validation succeeded"
+        );
 
         Ok(Cow::Borrowed(path_ref))
     }
