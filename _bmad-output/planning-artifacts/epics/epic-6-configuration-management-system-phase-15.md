@@ -114,7 +114,8 @@ So that I am informed of missing sections before the application attempts to pro
 
 **Given** configuration source is parsed into generic data by Figment
 **When** I implement `crates/adapters/src/spi/config/validator.rs`
-**Then** it performs a structural check to ensure the document contains mandatory top-level sections
+**Then** it performs a structural check to ensure the document contains mandatory top-level sections (e.g., `[global]`, `[vault]`)
+**And** provides `miette`-compatible diagnostics for missing structural components
 
 **Given** TOML files have required sections
 **When** I implement section validation
@@ -241,13 +242,20 @@ So that the entire application references a single merged Config instance with o
 
 **Given** configuration needs both read performance and mutability
 **When** I design the singleton implementation
-**Then** implement hybrid approach: `Arc<OnceLock<Config>>` for immutable merged config + optional `Arc<RwLock<T>>` for future mutable runtime state
-**And** initial implementation uses only OnceLock (defer RwLock until needed)
+**Then** implement hybrid approach: `Arc<OnceLock<Config>>` for immutable merged config + `Arc<RwLock<RuntimeState>>` for mutable runtime state
+**And** RuntimeState struct contains: `pending_events: Vec<ConfigEvents>` for event accumulation
+
+**Given** RuntimeState needs mutation
+**When** I implement event handling
+**Then** Registry provides `add_event(event: ConfigEvents)` method using RwLock write lock
+**And** Registry provides `drain_events() -> Vec<ConfigEvents>` method using RwLock write lock
+**And** event operations are rare compared to config reads (write lock acceptable)
 
 **Given** future hot reloading will be needed for LSP phase
 **When** I design the singleton implementation
-**Then** Registry reserves a private field for future `AtomicPtr<Config>` swap pattern
-**And** implementation note documents the upgrade path for hot reloading
+**Then** Registry supports atomic updates using AtomicPtr swap pattern for future extension
+**And** Registry reserves private field: `hot_reload: Option<AtomicPtr<Config>>` (initially None)
+**And** implementation includes method stub: `reload(new_config: Config) -> Result<(), ConfigError>` for future LSP integration
 
 **Given** Registry stores merged config
 **When** I validate singleton contents
@@ -396,6 +404,11 @@ So that I can fix configuration issues without losing my work.
 - Missing section name (e.g., "[vault]")
 - File path where error occurred
 - Suggested fix (e.g., "Add [vault] section to vault.toml")
+
+**Given** validation fails
+**When** I check error handling
+**Then** the system falls back to default values for invalid settings per `Config::build()` logic
+**And** fallback is logged via `tracing::warn!` with field name and default value used
 
 **Given** domain validation fails
 **When** Config::build() returns errors
