@@ -80,7 +80,7 @@ So that I understand how to use the generic primitives in domain-specific contex
 
 ### Task 1: Doc Comment Scaffolding & Audit
 - [ ] Subtask 1.1: Audit all public components in `spi/cache/` for missing documentation or outdated comments
-- [ ] Subtask 1.2: Identify missing `///` sections for `Cache` trait, `MokaCache`, `RedbCache`, `CacheCoordinator`, and `CacheError`
+- [ ] Subtask 1.2: Identify missing `///` sections for `Cache` trait, `MokaCache`, `RedbCache`, `Coordinator` (internal), `CacheCoordinator` (re-export), and `CacheError`
 - [ ] Subtask 1.3: Run `mise run lint` and verify documentation coverage warnings
 - [ ] Subtask 1.4: Run `mise run lint` and fix all clippy warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -113,8 +113,8 @@ So that I understand how to use the generic primitives in domain-specific contex
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Task 4: Coordinator & Orchestration Documentation
-- [ ] Subtask 4.1: Implement `CacheCoordinator` doc comments explaining Read-Through/Write-Through strategies
-- [ ] Subtask 4.2: Add runnable examples for composing the coordinator with Moka and Redb backends
+- [ ] Subtask 4.1: Implement `Coordinator` doc comments explaining Read-Through/Write-Through strategies; include a note about the public `CacheCoordinator` re-export for ergonomic use.
+- [ ] Subtask 4.2: Add runnable examples for composing the coordinator with Moka and Redb backends using the public `CacheCoordinator` type.
 - [ ] Subtask 4.3: Document metadata-based invalidation patterns with concrete code snippets
 - [ ] Subtask 4.4: Run `mise run test:unit:adapters --doc` and verify coordinator examples pass
 - [ ] Subtask 4.5: Run `mise run lint` and fix all warnings/errors
