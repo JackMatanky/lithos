@@ -4,7 +4,7 @@ Users have comprehensive documentation, starter templates, sample schemas, and m
 **FRs covered:** NFR13 (clear help), NFR20 (migration paths), NFR28 (installation success)
 **Implementation Notes:**
 
-- Consolidates documentation from Epics 4-12
+- Consolidates documentation from Epics 4-13
 - Starter kit from converted docs/refs/obsidian/ samples (sanitized)
 - Installation guide, quickstart, migration guides
 - API documentation for power users

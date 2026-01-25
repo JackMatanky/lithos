@@ -5,7 +5,7 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
 **Implementation Notes:**
 
 - Redb + rkyv per ADR 0002 (no SQLite - decision already made)
-- Storage schema design review against Epic 10-10 query requirements
+- Storage schema design review against Epic 11 query requirements
 - Unit of Work pattern for transactional consistency
 - Storage performance benchmarking (NFR2, NFR9 validation)
 - Storage backup and corruption recovery (clean slate protocol)
@@ -77,11 +77,11 @@ So that multiple storage operations are committed together or rolled back as a u
 
 As a developer optimizing data access,
 I want storage schema designed for query performance,
-So that Epic 10-10 queries can be executed efficiently against the storage layout.
+So that Epic 11 queries can be executed efficiently against the storage layout.
 
 **Acceptance Criteria:**
 
-**Given** Epic 10-10 query requirements are known
+**Given** Epic 11 query requirements are known
 **When** I design storage schema
 **Then** data layout optimizes for common query patterns (by path, by schema, etc.)
 
@@ -171,7 +171,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 
 **Given** performance benchmarks run
 **When** I analyze results
-**Then** storage layer meets all performance requirements before Epic 10-10 integration
+**Then** storage layer meets all performance requirements before Epic 11 integration
 
 ## Story 9.9: Create Storage Mocks for Testing
 

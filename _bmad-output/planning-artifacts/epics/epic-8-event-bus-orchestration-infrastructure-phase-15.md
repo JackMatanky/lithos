@@ -36,11 +36,11 @@ So that events can be published and subscribed to through well-defined contracts
 
 As a developer coordinating events across the system,
 I want complete domain event definitions,
-So that all events from Epics 3-6 are properly defined and coordinated.
+So that all events from Epics 3-7 are properly defined and coordinated.
 
 **Acceptance Criteria:**
 
-**Given** events are defined in Epics 3, 4, 5, 6
+**Given** events are defined in Epics 3, 4, 5, 6, 7
 **When** I consolidate all domain events
 **Then** complete event type definitions exist with consistent naming and payloads
 

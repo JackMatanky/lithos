@@ -4,7 +4,7 @@ Users can compose complex templates with date functions, multi-suggesters, and e
 **FRs covered:** FR3, FR4, FR17
 **Implementation Notes:**
 
-- Extends Epic 11 template system (not replacement)
+- Extends Epic 12 template system (not replacement)
 - Date formatting with chrono (Rust-native)
 - Template composition patterns
 - User documentation for advanced template features
