@@ -252,8 +252,8 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR27 → Epic 5 (Manage schema definitions via config)
 - FR28 → Epic 5 (Set application preferences via config)
 - FR29 → Post-MVP Phase 2c (Custom validation/linting rules)
-- FR30 → Epic 13 (Cross-platform execution consistency)
-- FR31 → Epic 13 (Access through terminal interfaces)
+- FR30 → Epic 14 (Cross-platform execution consistency)
+- FR31 → Epic 14 (Access through terminal interfaces)
 - FR32 → Post-MVP Phase 3a (External editor/IDE integration)
 - FR33 → Post-MVP Phase 3a (Automated scripts/CI-CD support)
 - FR34 → Post-MVP Phase 3b (Share template packs via Git)
@@ -262,17 +262,17 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR37 → Post-MVP Phase 3b (Community contribution workflows)
 - FR38 → Post-MVP Phase 4 (Access control for vault data)
 - FR39 → Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 5
-- FR40 → Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 13
-- FR41 → Epic 13 (Execute commands with subcommands)
-- FR42 → Epic 13 (Comprehensive help and documentation)
-- FR43 → Epic 13 (View status and configuration)
-- FR44 → Epic 13 (Manage vault operations from CLI)
-- FR45 → Epic 13 (Run templates with output formats)
-- FR46 → Epic 13 (Configure CLI behavior)
-- FR47 → Epic 13 (Single-word command shortcuts)
-- FR48 → Epic 13 (Clear, actionable error messages)
-- FR49 → Epic 13 (Recover from failed executions with rollback)
-- FR50 → Epic 13 (Diagnose and troubleshoot issues)
+- FR40 → Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 14
+- FR41 → Epic 14 (Execute commands with subcommands)
+- FR42 → Epic 14 (Comprehensive help and documentation)
+- FR43 → Epic 14 (View status and configuration)
+- FR44 → Epic 14 (Manage vault operations from CLI)
+- FR45 → Epic 14 (Run templates with output formats)
+- FR46 → Epic 14 (Configure CLI behavior)
+- FR47 → Epic 14 (Single-word command shortcuts)
+- FR48 → Epic 14 (Clear, actionable error messages)
+- FR49 → Epic 14 (Recover from failed executions with rollback)
+- FR50 → Epic 14 (Diagnose and troubleshoot issues)
 
 ## Epic 1: Development Environment & Tooling **[MVP CORE]**
 
@@ -2858,7 +2858,7 @@ As a user, I want clear instructions on how to use advanced template features li
 - **And** it documents the dry-run validation process.
 **References:** NFR13
 
-## Epic 13: CLI Interface & Error Handling
+## Epic 14: CLI Interface & Error Handling
 Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
 **FRs covered:** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR30, FR31
 **Implementation Notes:**
@@ -2869,7 +2869,7 @@ Users can execute lithos commands with intuitive CLI, comprehensive help, single
 - Observability/audit logging for FR40 (basic version)
 - User CLI documentation
 
-#### Story 13.1: [Adapters/API] Clap-based CLI Command Structure
+#### Story 14.1: [Adapters/API] Clap-based CLI Command Structure
 As a user, I want a well-structured CLI with subcommands for all major lithos operations, so that I can navigate and execute commands intuitively.
 **Acceptance Criteria:**
 - **Given** the clap crate for CLI parsing
@@ -2879,7 +2879,7 @@ As a user, I want a well-structured CLI with subcommands for all major lithos op
 - **And** global options like `--help`, `--version`, and `--verbose` are supported.
 **References:** FR41, FR42
 
-#### Story 13.2: [Adapters/API] Template Execution CLI Commands
+#### Story 14.2: [Adapters/API] Template Execution CLI Commands
 As a user, I want CLI commands to execute templates with various output options, so that I can create notes from the command line.
 **Acceptance Criteria:**
 - **Given** the `lithos template` subcommand
@@ -2889,7 +2889,7 @@ As a user, I want CLI commands to execute templates with various output options,
 - **And** output options like `--output <file>` and `--format <markdown|json>` are supported.
 **References:** FR45, FR47
 
-#### Story 13.3: [Adapters/API] Vault Management CLI Commands
+#### Story 14.3: [Adapters/API] Vault Management CLI Commands
 As a user, I want CLI commands to manage vault operations like indexing and searching, so that I can perform vault maintenance from the command line.
 **Acceptance Criteria:**
 - **Given** the `lithos vault` subcommand
@@ -2899,7 +2899,7 @@ As a user, I want CLI commands to manage vault operations like indexing and sear
 - **And** `lithos vault validate` checks schema compliance across the vault.
 **References:** FR44
 
-#### Story 13.4: [Adapters/API] Schema Management CLI Commands
+#### Story 14.4: [Adapters/API] Schema Management CLI Commands
 As a user, I want CLI commands to manage schemas and validate notes, so that I can maintain schema definitions from the command line.
 **Acceptance Criteria:**
 - **Given** the `lithos schema` subcommand
@@ -2909,7 +2909,7 @@ As a user, I want CLI commands to manage schemas and validate notes, so that I c
 - **And** `lithos schema create <name>` launches the schema creation workflow.
 **References:** FR43
 
-#### Story 13.5: [Adapters/API] Configuration CLI Commands
+#### Story 14.5: [Adapters/API] Configuration CLI Commands
 As a user, I want CLI commands to manage application configuration, so that I can set preferences and view current settings.
 **Acceptance Criteria:**
 - **Given** the `lithos config` subcommand
@@ -2919,7 +2919,7 @@ As a user, I want CLI commands to manage application configuration, so that I ca
 - **And** `lithos config reset` restores default configuration.
 **References:** FR46
 
-#### Story 13.6: [Adapters/API] Miette-based Error Diagnostics
+#### Story 14.6: [Adapters/API] Miette-based Error Diagnostics
 As a user, I want clear, actionable error messages when operations fail, so that I can understand and resolve issues quickly.
 **Acceptance Criteria:**
 - **Given** the miette crate for diagnostics
@@ -2929,7 +2929,7 @@ As a user, I want clear, actionable error messages when operations fail, so that
 - **And** validation errors highlight specific fields and provide correction hints.
 **References:** FR48
 
-#### Story 13.7: [Adapters/API] Comprehensive Help System
+#### Story 14.7: [Adapters/API] Comprehensive Help System
 As a user, I want comprehensive help and documentation accessible from the CLI, so that I can learn how to use lithos without leaving the terminal.
 **Acceptance Criteria:**
 - **Given** any lithos command
@@ -2939,7 +2939,7 @@ As a user, I want comprehensive help and documentation accessible from the CLI, 
 - **And** help text includes command-line examples and common use cases.
 **References:** FR42
 
-#### Story 13.8: [Adapters/API] Cross-Platform Terminal Support
+#### Story 14.8: [Adapters/API] Cross-Platform Terminal Support
 As a user, I want lithos to work consistently across operating systems, so that I can use it on macOS, Linux, and potentially Windows.
 **Acceptance Criteria:**
 - **Given** the terminal environment
@@ -2949,7 +2949,7 @@ As a user, I want lithos to work consistently across operating systems, so that 
 - **And** CLI behavior is consistent across supported platforms (macOS primary, Linux).
 **References:** FR30, FR31
 
-#### Story 13.9: [Adapters/SPI] Basic Audit Logging Infrastructure
+#### Story 14.9: [Adapters/SPI] Basic Audit Logging Infrastructure
 As an administrator, I want basic audit logging for template execution and critical operations, so that I can track system usage and troubleshoot issues.
 **Acceptance Criteria:**
 - **Given** template execution or vault operations
@@ -2959,7 +2959,7 @@ As an administrator, I want basic audit logging for template execution and criti
 - **And** log levels can be configured (error, warn, info, debug).
 **References:** FR40
 
-#### Story 13.10: [Adapters/API] Single-Word Command Shortcuts
+#### Story 14.10: [Adapters/API] Single-Word Command Shortcuts
 As a power user, I want single-word shortcuts for common operations, so that I can execute frequent commands quickly.
 **Acceptance Criteria:**
 - **Given** common lithos operations
@@ -2969,7 +2969,7 @@ As a power user, I want single-word shortcuts for common operations, so that I c
 - **And** shortcuts are documented in the help system.
 **References:** FR47
 
-#### Story 13.11: [Recovery] System-Wide Error Recovery Coordination
+#### Story 14.11: [Recovery] System-Wide Error Recovery Coordination
 As a user experiencing system-wide issues, I want coordinated error recovery across all components, so that complex operations can be safely rolled back and system state remains consistent.
 **Acceptance Criteria:**
 **Given** multi-epic operations fail
@@ -2984,7 +2984,7 @@ As a user experiencing system-wide issues, I want coordinated error recovery acr
 **And** it validates system integrity after recovery
 **And** it logs detailed recovery actions for troubleshooting
 
-#### Story 13.12: [Test] CLI Performance Benchmarking (NFR4 Validation)
+#### Story 14.12: [Test] CLI Performance Benchmarking (NFR4 Validation)
 As a performance engineer, I want CLI command performance benchmarks, so that NFR4 (instant feedback and help) is validated and maintained.
 **Acceptance Criteria:**
 **Given** CLI commands are implemented
@@ -2998,7 +2998,7 @@ As a performance engineer, I want CLI command performance benchmarks, so that NF
 **Then** performance benchmarks are part of CI/CD pipeline
 **And** startup time remains fast across all supported platforms
 
-### Story 13.13: Clap CLI Performance Regression Testing
+### Story 14.13: Clap CLI Performance Regression Testing
 As a performance engineer, I want automated regression tests for Clap CLI operations, so that the architectural choice of Clap remains optimal and CLI parsing stays under 50μs baseline.
 **Acceptance Criteria:**
 **Given** Clap CLI implementation
@@ -3008,20 +3008,20 @@ As a performance engineer, I want automated regression tests for Clap CLI operat
 **And** complex command structures maintain fast parsing
 **And** CLI benchmarks run in CI/CD for every CLI-related change
 
-#### Story 13.12: [Test] Epic 13 Test Suite Review & Optimization
+#### Story 14.12: [Test] Epic 14 Test Suite Review & Optimization
 As a developer, I want a comprehensive test suite for the CLI and error handling features, so that I can maintain the command-line interface with confidence.
 **Acceptance Criteria:**
-- **Given** the implementation of Epic 13
+- **Given** the implementation of Epic 14
 - **When** I run the test suite
 - **Then** it achieves 90%+ coverage for CLI parsing, error formatting, and platform detection.
 - **And** integration tests verify end-to-end CLI workflows.
 - **And** the suite validates that all commands produce consistent help output.
 **References:** NFR16
 
-#### Story 13.15: [Docs] Epic 13 CLI Documentation
+#### Story 14.15: [Docs] Epic 14 CLI Documentation
 As a user, I want comprehensive CLI documentation with examples and tutorials, so that I can master the command-line interface.
 **Acceptance Criteria:**
-- **Given** a completed Epic 13
+- **Given** a completed Epic 14
 - **When** I review the CLI documentation
 - **Then** it includes a command reference for all subcommands and options.
 - **And** it provides usage examples for common workflows.

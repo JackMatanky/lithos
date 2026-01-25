@@ -791,13 +791,13 @@ impl Template {
 **Enables Future Stories:**
 - **Epic 11**: Template execution and rendering (uses this domain model)
 - **Epic 6**: Schema integration (templates reference schemas for variable types)
-- **Epic 13**: CLI template commands (uses template domain for validation)
+- **Epic 14**: CLI template commands (uses template domain for validation)
 - **Epic 9**: Vault operations (templates used for note generation)
 
 **Integration Points:**
 - **Template Execution (Epic 11)**: Adapters render templates using MiniJinja
 - **Schema Integration (Epic 6)**: Template variables can reference schema types
-- **CLI Commands (Epic 13)**: Template validation before execution
+- **CLI Commands (Epic 14)**: Template validation before execution
 - **Vault Operations (Epic 9)**: Templates used to generate new notes
 
 ### Epic 2 Test Infrastructure Integration

@@ -36,7 +36,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 - [ ] MiniJinja-based template engine implementation (Epic 11).
 - [ ] Interactive CLI prompts, suggesters, and multi-suggesters (FR15-FR17).
 - [ ] Modular template composition (FR1, FR3).
-- [ ] Clap-based CLI with subcommands and error diagnostics - Epic 13.
+- [ ] Clap-based CLI with subcommands and error diagnostics - Epic 14.
 **Success Metrics:** Template creation time < 30 minutes; Execution < 500ms.
 
 ---
