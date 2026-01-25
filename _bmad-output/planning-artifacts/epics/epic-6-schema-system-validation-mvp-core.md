@@ -5,11 +5,11 @@ Users can define metadata schemas with field types, inheritance, and validation 
 **Implementation Notes:**
 
 - Schema adapters (Command/Query with embedded Loader/Writer) created in this epic
-- **SchemaDecoder Strategy**: Modularized decoding logic in `decoder.rs` to normalize TOML/JSON/YAML into `RawSchema`
+- **SchemaDecoder Strategy**: Modularized decoding logic in `decoder.rs` that normalizes the output of **FormatDispatcher** into a standard `RawSchema` aggregate, resolving format-specific syntax variations in property references ($refs).
 - **Syntactic Validation**: dedicated `validator.rs` for format-specific schema validation
 - **Port Updates**: Add `load`/`refresh` methods to SchemaCommand, ensure `validate_note` is NOT in ports (App service only)
-- **Architecture**: Domain models exist (Epic 3), adapters integrate Epic 4 utilities + Domain Resolver
-- **Adapter Structure**: `crates/adapters/src/schema/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, decoder.rs, cache.rs
+- **Architecture**: Domain models exist (Epic 3), adapters integrate Epic 4 PathValidator (security) and FormatDispatcher (data processing) + Domain Resolver.
+- **Adapter Structure**: `crates/adapters/src/spi/schema/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, decoder.rs, cache.rs
 - **Singleton Pattern**: Hybrid `Arc<OnceLock<PropertyBank>>` (immutable base) + `Arc<RwLock<T>>` (runtime overrides)
 - **Caching Strategy**: Decoupled `SchemaCache` trait with Redb implementation
 
@@ -25,7 +25,6 @@ So that schema loading, resolution, and caching are handled correctly behind cle
 **When** I update `SchemaCommand` trait
 **Then** `load_all()` signature is `async fn load_all(&self) -> Result<(), SchemaError>`
 **And** `refresh(name)` signature is `async fn refresh(&self, name: &str) -> Result<(), SchemaError>`
-**And** `validate_note` is removed (belongs in App layer)
 
 **Given** `SchemaQuery` trait
 **When** I review methods
@@ -42,6 +41,14 @@ So that schema loading, resolution, and caching are handled correctly behind cle
 **Then** it holds a reference to `Box<dyn SchemaCache>` for decoupled storage logic
 **And** it initializes with a root path provided by `Config`
 
+**Given** `SchemaLoader` implementation
+**When** I implement file loading
+**Then** it uses `PathValidator` (Strict or Flexible mode based on config) to ensure path security before attempting I/O.
+
+**Given** `SchemaLoader` has validated and read a file
+**When** it needs to deserialize the content
+**Then** it delegates the parsing to `FormatDispatcher` before passing the resulting data to the `SchemaDecoder` for normalization.
+
 **Given** `SchemaCommand` adapter
 **When** I implement error handling
 **Then** `SchemaError` includes specific variants for IO, parsing, resolution, and cache failures with context
@@ -51,7 +58,7 @@ So that schema loading, resolution, and caching are handled correctly behind cle
 **Then** they embed Loader/Writer/Cache utilities and implement the updated traits
 
 **Given** adapters are implemented
-**When** I export them in `crates/adapters/src/schema/mod.rs`
+**When** I export them in `crates/adapters/src/spi/schema/mod.rs`
 **Then** internal structs are re-exported with Schema prefix (SchemaQuery, SchemaCommand, SchemaLoader, SchemaDecoder)
 
 ## Story 6.2: Implement Schema Loading and Resolution Strategy
@@ -62,25 +69,30 @@ So that complex schema hierarchies are correctly resolved into usable Schema agg
 
 **Acceptance Criteria:**
 
-**Given** `SchemaDecoder` implementation
-**When** I implement `decode_toml`
-**Then** it correctly maps TOML tables to `RawSchema` struct fields
-**And** it fails if required fields (name, properties) are missing
+**Given** `SchemaCommand` adapter implements the domain port
+**When** it executes a load operation
+**Then** it orchestrates the flow: `SchemaLoader` (I/O) → `FormatDispatcher` (Parsing) → `SchemaDecoder` (Normalization)
 
-**Given** `SchemaDecoder` implementation
-**When** I implement `decode_yaml`
-**Then** it handles both `.yaml` and `.yml` extensions
-**And** maps YAML lists/dictionaries to `RawSchema`
+**Given** `SchemaDecoder` receives parsed data from `FormatDispatcher`
+**When** it normalizes the output into a `RawSchema`
+**Then** it resolves format-specific syntax variations for property references (`$refs`)
+**And** it enforces a unified internal representation for property definitions regardless of the source format's idiosyncratic nesting.
 
-**Given** `SchemaDecoder` implementation
-**When** I implement `decode_json`
-**Then** it strictly enforces JSON syntax and maps to `RawSchema`
+**Given** a schema uses inheritance or property references (`$refs`)
+**When** the `SchemaDecoder` processes the references
+**Then** it handles syntax variations (e.g., string-based vs. object-based refs) and normalizes them into standard domain reference types before domain aggregate construction.
 
-**Given** syntactic validation requirement
-**When** I implement `crates/adapters/src/schema/validator.rs`
-**Then** it verifies that `extends` refers to a valid schema name pattern (alphanumeric)
-**And** checks that `properties` array is not empty if `extends` is missing
-**And** errors provide file path, line number, and column number via `miette::SourceSpan`
+**Given** `SchemaCommand` requires valid source data
+**When** I implement syntactic validation in `crates/adapters/src/spi/schema/validator.rs`
+**Then** it performs a structural compliance check to ensure the document contains all mandatory schema keys (e.g., version, metadata) before domain objects are initialized.
+
+**Given** the normalized RawSchema
+**When** the adapter performs a schema compliance check
+**Then** it ensures that all property definitions follow the expected structural types (e.g., ensuring a Number spec doesn't contain String constraints).
+
+**Given** a syntactic or compliance failure
+**When** reporting errors
+**Then** it provides the file path, line number, and column number using `miette::SourceSpan` derived from the original source passed through the orchestration chain.
 
 **Given** `SchemaLoader` logic
 **When** I implement resolution loop
@@ -144,7 +156,7 @@ So that schema resolution is fast, persistent, and testable.
 
 **Given** caching requirements
 **When** I implement caching architecture
-**Then** `SchemaCache` trait defines storage interface (get, put, invalidate) in `crates/adapters/src/schema/cache_trait.rs`
+**Then** `SchemaCache` trait defines storage interface (get, put, invalidate) in `crates/adapters/src/spi/schema/cache_trait.rs`
 
 **Given** `RedbSchemaCache` adapter
 **When** I implement storage
@@ -278,7 +290,7 @@ So that I understand how loading, resolution, and caching interact.
 
 **Given** module structure
 **When** I create README
-**Then** `crates/adapters/src/schema/README.md` provides quick start examples
+**Then** `crates/adapters/src/spi/schema/README.md` provides quick start examples
 
 **Given** documentation exists
 **When** I review content
