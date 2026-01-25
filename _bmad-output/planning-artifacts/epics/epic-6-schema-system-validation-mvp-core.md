@@ -5,10 +5,10 @@ Users can define metadata schemas with field types, inheritance, and validation 
 **Implementation Notes:**
 
 - Schema adapters (Command/Query with embedded Loader/Writer) created in this epic
-- **SchemaDecoder Strategy**: Modularized decoding logic in `decoder.rs` that normalizes the output of **FormatDispatcher** into a standard `RawSchema` aggregate, resolving format-specific syntax variations in property references ($refs).
+- `Decoder` Strategy**: Modularized decoding logic in `decoder.rs` that normalizes the output of `FormatDispatcher` into a standard `RawSchema` aggregate, resolving format-specific syntax variations in property references ($refs).
 - **Syntactic Validation**: dedicated `validator.rs` for format-specific schema validation
-- **Port Updates**: Add `load`/`refresh` methods to SchemaCommand, ensure `validate_note` is NOT in ports (App service only)
-- **Architecture**: Domain models exist (Epic 3), adapters integrate Epic 4 PathValidator (security) and FormatDispatcher (data processing) + Domain Resolver.
+- **Port Updates**: Add `load`/`refresh` methods to `Command`, ensure `validate_note` is NOT in ports (App service only)
+- **Architecture**: Domain models exist (Epic 3), adapters integrate Epic 4 `PathValidator` (security) and `FormatDispatcher` (data processing) + Domain Resolver.
 - **Adapter Structure**: `crates/adapters/src/spi/schema/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, decoder.rs, cache.rs
 - **Singleton Pattern**: Hybrid `Arc<OnceLock<PropertyBank>>` (immutable base) + `Arc<RwLock<T>>` (runtime overrides)
 - **Caching Strategy**: Decoupled `SchemaCache` trait with Redb implementation
@@ -22,7 +22,7 @@ So that schema loading, resolution, and caching are handled correctly behind cle
 **Acceptance Criteria:**
 
 **Given** existing ports in `crates/domain/src/ports/schema.rs`
-**When** I update `SchemaCommand` trait
+**When** I update `Command` trait
 **Then** `load_all()` signature is `async fn load_all(&self) -> Result<(), SchemaError>`
 **And** `refresh(name)` signature is `async fn refresh(&self, name: &str) -> Result<(), SchemaError>`
 
@@ -30,36 +30,45 @@ So that schema loading, resolution, and caching are handled correctly behind cle
 **When** I review methods
 **Then** `get(name)` returns `Result<Option<Schema>, SchemaError>` to handle missing schemas gracefully
 **And** `list()` returns `Result<Vec<SchemaName>, SchemaError>`
-**And** SchemaQuery methods remain read-only and side-effect free
+**And** `Query` methods remain read-only and side-effect free
 
-**Given** `SchemaLoader` implementation
+**Given** `Loader` implementation
 **When** I design the architecture
 **Then** adapters coordinate between loaders/writers without refactoring I/O layer (extensibility behavior)
 
-**Given** `SchemaLoader` implementation
+**Given** `Loader` implementation
 **When** I implement the structure
 **Then** it holds a reference to `Box<dyn SchemaCache>` for decoupled storage logic
 **And** it initializes with a root path provided by `Config`
 
-**Given** `SchemaLoader` implementation
+**Given** `Loader` implementation
 **When** I implement file loading
 **Then** it uses `PathValidator` (Strict or Flexible mode based on config) to ensure path security before attempting I/O.
 
-**Given** `SchemaLoader` has validated and read a file
+**Given** `Loader` has validated and read a file
 **When** it needs to deserialize the content
-**Then** it delegates the parsing to `FormatDispatcher` before passing the resulting data to the `SchemaDecoder` for normalization.
+**Then** the `Command` adapter orchestrates the flow: it receives source text from `Loader`, delegates format parsing to `FormatDispatcher`, and passes the generic output to `Decoder` for normalization.
 
-**Given** `SchemaCommand` adapter
+**Given** `Command` adapter
 **When** I implement error handling
 **Then** `SchemaError` includes specific variants for IO, parsing, resolution, and cache failures with context
 
 **Given** adapters are needed
-**When** I implement SchemaCommand and SchemaQuery adapters
-**Then** they embed Loader/Writer/Cache utilities and implement the updated traits
+**When** I implement `Command` and `Query` adapters
+**Then** the `Command` adapter orchestrates the full resolution pipeline (`Loader`/`Dispatcher`/`Decoder`/`Cache`) using the `PropertyBankRegistry` singleton, while the `Query` adapter provides a high-performance read-path by retrieving self-contained, fully-resolved Schema aggregates from the `SchemaCache`.
+
+**Given** the requirement to persist schema changes
+**When** I implement `Writer`
+**Then** it provides write operations (e.g., save) using `PathValidator` for security and handles serialization of `RawSchema` into the target file format.
+
+**Given** a request for a resolved schema
+**When** `find_by_name(name)` is called on the `Query` adapter
+**Then** it performs a low-latency lookup in the `SchemaCache` (persistent store) to retrieve the domain `Schema` aggregate.
+**And** it does NOT trigger a re-resolution or filesystem reload, ensuring the query remains side-effect free.
 
 **Given** adapters are implemented
 **When** I export them in `crates/adapters/src/spi/schema/mod.rs`
-**Then** internal structs are re-exported with Schema prefix (SchemaQuery, SchemaCommand, SchemaLoader, SchemaDecoder)
+**Then** internal structs are re-exported with Schema prefix (`SchemaQuery`, `SchemaCommand`, `SchemaLoader`, `SchemaDecoder`)
 
 ## Story 6.2: Implement Schema Loading and Resolution Strategy
 
@@ -69,47 +78,47 @@ So that complex schema hierarchies are correctly resolved into usable Schema agg
 
 **Acceptance Criteria:**
 
-**Given** `SchemaCommand` adapter implements the domain port
+**Given** `Command` adapter implements the domain port
 **When** it executes a load operation
-**Then** it orchestrates the flow: `SchemaLoader` (I/O) → `FormatDispatcher` (Parsing) → `SchemaDecoder` (Normalization)
+**Then** it orchestrates the flow: `Loader` (I/O) → `FormatDispatcher` (Parsing) → `Decoder` (Normalization)
 
-**Given** `SchemaDecoder` receives parsed data from `FormatDispatcher`
+**Given** `Decoder` receives parsed data from `FormatDispatcher`
 **When** it normalizes the output into a `RawSchema`
 **Then** it resolves format-specific syntax variations for property references (`$refs`)
 **And** it enforces a unified internal representation for property definitions regardless of the source format's idiosyncratic nesting.
 
 **Given** a schema uses inheritance or property references (`$refs`)
-**When** the `SchemaDecoder` processes the references
+**When** the `Decoder` processes the references
 **Then** it handles syntax variations (e.g., string-based vs. object-based refs) and normalizes them into standard domain reference types before domain aggregate construction.
 
-**Given** `SchemaCommand` requires valid source data
+**Given** `Command` requires valid source data
 **When** I implement syntactic validation in `crates/adapters/src/spi/schema/validator.rs`
-**Then** it performs a structural compliance check to ensure the document contains all mandatory schema keys (e.g., version, metadata) before domain objects are initialized.
+**Then** it performs a structural compliance check to ensure the document contains all mandatory schema keys (e.g., version, metadata) before domain objects are initialized
 
-**Given** the normalized RawSchema
-**When** the adapter performs a schema compliance check
-**Then** it ensures that all property definitions follow the expected structural types (e.g., ensuring a Number spec doesn't contain String constraints).
+**Given** the normalized `RawSchema`
+**When** the adapter performs a **field-level compliance check** (e.g., cross-field constraint validation).
+**Then** it ensures that all property definitions follow the expected structural types (e.g., ensuring a Number spec doesn't contain String constraints)
 
 **Given** a syntactic or compliance failure
 **When** reporting errors
-**Then** it provides the file path, line number, and column number using `miette::SourceSpan` derived from the original source passed through the orchestration chain.
+**Then** it provides the file path, line number, and column number using `miette::SourceSpan` derived from the original source passed through the orchestration chain
 
-**Given** `SchemaLoader` logic
+**Given** `Loader` logic
 **When** I implement resolution loop
-**Then** it detects and reports circular dependencies (A extends B extends A) as a critical error
+**Then** the `Command` adapter utilizes the `SchemaGraph` (Domain) to detect circular dependencies, ensuring infrastructure utilities remain free of business logic
 **And** it continues processing other independent schemas even if one fails (resilience behavior)
 
 **Given** validation errors occur
 **When** I format error output
 **Then** messages are helpful, pointing the user to the exact line/column and suggesting possible solutions (UX behavior)
 
-**Given** RawSchemas are loaded
+**Given** `RawSchema`s are loaded
 **When** I use the domain `SchemaGraph` and `SchemaResolver` (from Epic 3)
 **Then** inheritance chains (extends/excludes) are resolved in topological order
 
 **Given** resolution is complete
 **When** I store results
-**Then** fully resolved `Schema` aggregates are passed to the Registry/Cache
+**Then** fully resolved `Schema` aggregates are persisted to the `SchemaCache`
 
 ## Story 6.3: Implement PropertyBank Singleton Registry
 
@@ -130,8 +139,7 @@ So that all operations access the same reusable property definitions consistentl
 **And** this strategy ensures zero-lock contention for standard properties
 
 **Given** initialization flow
-**When** `SchemaLoader::load_all()` completes
-**Then** it calls `Registry::init(bank)` which succeeds only once
+**Then** the `Command` adapter calls **PropertyBankRegistry::init(bank)** after successfully resolving the bank from disk.
 **And** subsequent calls return an error or are ignored
 
 **Given** CLI operations need consistent property access
@@ -172,9 +180,9 @@ So that schema resolution is fast, persistent, and testable.
 **When** I implement `MockSchemaCache`
 **Then** it stores schemas in a `HashMap` for fast, filesystem-free testing
 
-**Given** SchemaLoader uses cache
+**Given** the `Command` adapter orchestrates the resolution flow
 **When** I design the integration
-**Then** it accepts `Box<dyn SchemaCache>`, allowing Redb to be mocked in tests
+**Then** it manages the `Box<dyn SchemaCache>`, allowing it to check for existing entries before performing a full re-resolution using the `PropertyBankRegistry`
 
 ## Story 6.5: Implement Frontmatter Compliance Service
 
@@ -273,7 +281,7 @@ So that I can understand schema capabilities and use them as templates.
 **Then** it contains reusable common properties (title, tags, created_date)
 
 **Given** defaults are created
-**When** I test with SchemaLoader
+**When** I test with `Loader`
 **Then** all default files resolve correctly without errors
 
 ## Story 6.9: Document Schema Adapters
