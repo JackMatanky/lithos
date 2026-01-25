@@ -9,13 +9,13 @@
 | FR5                  | Post-MVP Phase 1.5 (Dynamic commands and whitespace control)                 |
 | FR6                  | Post-MVP Phase 1.5 (Custom user functions)                                   |
 | FR7                  | Post-MVP Phase 2a (Advanced template operations with hooks)                  |
-| FR8                  | Epic 6 (Define metadata schemas with field types)                            |
-| FR9                  | Epic 6 (Schema-driven templates with input parameters)                       |
-| FR10                 | Epic 6 (Validate notes against schemas)                                      |
-| FR11                 | Epic 6 (Schema enums populate suggester options)                             |
-| FR12                 | Epic 6 (File filtering via schema directory constraints)                     |
-| FR13                 | Epic 6 (Date formatting via schema format strings)                           |
-| FR14                 | Epic 6 (Schema inheritance and extension)                                    |
+| FR8                  | Epic 7 (Define metadata schemas with field types)                            |
+| FR9                  | Epic 7 (Schema-driven templates with input parameters)                       |
+| FR10                 | Epic 7 (Validate notes against schemas)                                      |
+| FR11                 | Epic 7 (Schema enums populate suggester options)                             |
+| FR12                 | Epic 7 (File filtering via schema directory constraints)                     |
+| FR13                 | Epic 7 (Date formatting via schema format strings)                           |
+| FR14                 | Epic 7 (Schema inheritance and extension)                                    |
 | FR15                 | Epic 12 (Free-text input through prompts)                                    |
 | FR16                 | Epic 12 (Single-choice suggesters)                                           |
 | FR17                 | Epic 13 (Multi-selection suggesters)                                         |

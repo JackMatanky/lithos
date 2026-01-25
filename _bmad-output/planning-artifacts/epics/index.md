@@ -34,7 +34,7 @@
   - [Epic 3: Core Domain Models & Value Objects [PHASE 1.5]](#epic-3-core-domain-models-value-objects-phase-15)
   - [Epic 4: File Loading Strategy Foundation [MVP CORE]](#epic-4-file-loading-strategy-foundation-mvp-core)
   - [Epic 5: Configuration Management System [PHASE 1.5]](#epic-5-configuration-management-system-phase-15)
-  - [Epic 6: Schema System & Validation [MVP CORE]](#epic-6-schema-system-validation-mvp-core)
+  - [Epic 7: Schema System & Validation [MVP CORE]](#epic-7-schema-system-validation-mvp-core)
   - [Epic 8: Event Bus & Orchestration Infrastructure [PHASE 1.5]](#epic-8-event-bus-orchestration-infrastructure-phase-15)
   - [Epic 9: Storage Layer & Persistence [MVP CORE]](#epic-9-storage-layer-persistence-mvp-core)
   - [Epic 10: Vault File System Integration & Indexing Engine [MVP CORE]](#epic-10-vault-file-system-integration-indexing-engine-mvp-core)

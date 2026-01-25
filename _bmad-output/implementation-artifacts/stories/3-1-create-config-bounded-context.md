@@ -117,7 +117,7 @@ So that configuration changes are validated and the domain enforces configuratio
 ### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
 - [x] Update domain crate lib.rs with Config module public exports
 - [x] Add comprehensive doc comments with hierarchical examples and validation rules
-- [x] Ensure integration points with future Epic 5 (configuration loading) and Epic 6 (schema validation)
+- [x] Ensure integration points with future Epic 5 (configuration loading) and Epic 7 (schema validation)
 - [x] Update Cargo.toml with required dependencies (serde for serialization, optional encryption crates)
 - [x] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
@@ -863,13 +863,13 @@ impl ConfigAdapter {
 
 **Enables Future Stories:**
 - **Epic 5**: Configuration loading and management (uses this domain model)
-- **Epic 6**: Schema validation (configuration drives schema loading)
+- **Epic 7**: Schema validation (configuration drives schema loading)
 - **Epic 10**: Vault operations (vault-specific configuration)
 - **Epic 11**: Query operations (configuration affects query behavior)
 
 **Integration Points:**
 - **Configuration Loading (Epic 5)**: Adapters load TOML files into Config domain model
-- **Schema System (Epic 6)**: Configuration specifies schema file locations and validation rules
+- **Schema System (Epic 7)**: Configuration specifies schema file locations and validation rules
 - **Template System (Epic 12)**: Configuration provides template pack locations and settings
 - **CLI (Epic 14)**: Configuration drives CLI behavior, help text, and command options
 

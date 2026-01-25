@@ -93,7 +93,7 @@ So that template structure and business rules are properly validated at the doma
 ### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
 - [x] Update domain crate lib.rs with Template module public exports
 - [x] Add comprehensive doc comments with template examples and validation rules
-- [x] Ensure integration points with Epic 12 (template execution) and Epic 6 (schema integration)
+- [x] Ensure integration points with Epic 12 (template execution) and Epic 7 (schema integration)
 - [x] Update Cargo.toml with required dependencies (serde for serialization, optional validation crates)
 - [x] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
@@ -790,13 +790,13 @@ impl Template {
 
 **Enables Future Stories:**
 - **Epic 12**: Template execution and rendering (uses this domain model)
-- **Epic 6**: Schema integration (templates reference schemas for variable types)
+- **Epic 7**: Schema integration (templates reference schemas for variable types)
 - **Epic 14**: CLI template commands (uses template domain for validation)
 - **Epic 10**: Vault operations (templates used for note generation)
 
 **Integration Points:**
 - **Template Execution (Epic 12)**: Adapters render templates using MiniJinja
-- **Schema Integration (Epic 6)**: Template variables can reference schema types
+- **Schema Integration (Epic 7)**: Template variables can reference schema types
 - **CLI Commands (Epic 14)**: Template validation before execution
 - **Vault Operations (Epic 10)**: Templates used to generate new notes
 

@@ -237,19 +237,19 @@ So that schemas can define reusable property definitions with rich validation co
 - Schemas use `$ref` pointers: `"$ref": "#/properties/title"`
 - PropertyBank resolves references to actual Property definitions
 - Domain models must support this reference system
-- Story 6.3 implements $ref resolution using PropertyBank lookup
+- Story 7.3 implements $ref resolution using PropertyBank lookup
 
 **PropertyBank $ref Integration:**
 
 ```rust
 impl PropertyBank {
     /// Decodes $ref path to Property
-    /// Used by schema loading (Story 6.5) for $ref resolution
+    /// Used by schema loading (Story 7.5) for $ref resolution
     pub fn decode(&self, ref_path: &str) -> Result<&Property, DomainError> {
         // Parse "#/properties/title" → "title"
         // Lookup by property name (not ID)
         // Return &Property for schema composition
-        unimplemented!("Implemented in Story 6.3")
+        unimplemented!("Implemented in Story 7.3")
     }
 }
 ```
@@ -1392,7 +1392,7 @@ fn detect_circular_inheritance(
 - Story 3.3: Config Bounded Context (configuration for schema loading)
 - Story 3.4: Template Bounded Context (templates reference schemas)
 - Epic 5: Configuration Management (load schemas from files)
-- Epic 6: Schema System (implements schema loading and resolution adapters)
+- Epic 7: Schema System (implements schema loading and resolution adapters)
 - Epic 10: Vault Indexing (validates notes against schemas)
 - Epic 11: Query Service (queries by schema-defined fields)
 - Epic 12: Template System (uses schemas for input parameters)
@@ -1514,12 +1514,12 @@ This story will leverage the test utilities being developed in Epic 2:
   - Documentation standards
   - Validation pipeline approach
 
-**Epic 6 Dependencies:**
+**Epic 7 Dependencies:**
 
-- [Source: _bmad-output/planning-artifacts/epics/epic-6-schema-system-validation-mvp-core.md#Story 6.2]
+- [Source: _bmad-output/planning-artifacts/epics/epic-7-schema-system-validation-mvp-core.md#Story 7.2]
   - PropertyBank $ref support requirement
   - JSON schema format compliance
-- [Source: _bmad-output/planning-artifacts/epics/epic-6-schema-system-validation-mvp-core.md#Story 6.3]
+- [Source: _bmad-output/planning-artifacts/epics/epic-7-schema-system-validation-mvp-core.md#Story 7.3]
   - $ref resolution system requirements
 
 ## Dev Agent Record

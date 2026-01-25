@@ -52,7 +52,7 @@ includedFiles:
   - epic-3-core-domain-models-value-objects-phase-15.md
   - epic-4-file-loading-strategy-foundation-mvp-core.md
   - epic-5-configuration-management-system-phase-15.md
-  - epic-6-schema-system-validation-mvp-core.md
+  - epic-7-schema-system-validation-mvp-core.md
   - epic-8-event-bus-orchestration-infrastructure-phase-15.md
   - epic-9-storage-layer-persistence-mvp-core.md
   - epic-10-vault-file-system-integration-indexing-engine-mvp-core.md
@@ -190,13 +190,13 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 | FR5 | Users can include dynamic commands and whitespace control in templates | Post-MVP Phase 1.5 | ✓ Covered |
 | FR6 | Users can define and use custom user functions within templates | Post-MVP Phase 1.5 | ✓ Covered |
 | FR7 | Users can execute advanced template operations with hooks and complex commands | Post-MVP Phase 2a | ✓ Covered |
-| FR8 | Users can define metadata schemas with field types (string, number, date, file, boolean) | Epic 6 | ✓ Covered |
-| FR9 | Users can create schema-driven templates where field properties provide input parameters | Epic 6 | ✓ Covered |
-| FR10 | Users can validate notes against schemas with clear error feedback | Epic 6 | ✓ Covered |
-| FR11 | Users can use schema enums to populate suggester options in templates | Epic 6 | ✓ Covered |
-| FR12 | Users can filter file selections using schema-defined directory constraints | Epic 6 | ✓ Covered |
-| FR13 | Users can format dates using schema-defined format strings | Epic 6 | ✓ Covered |
-| FR14 | Users can inherit and extend schema definitions between related types | Epic 6 | ✓ Covered |
+| FR8 | Users can define metadata schemas with field types (string, number, date, file, boolean) | Epic 7 | ✓ Covered |
+| FR9 | Users can create schema-driven templates where field properties provide input parameters | Epic 7 | ✓ Covered |
+| FR10 | Users can validate notes against schemas with clear error feedback | Epic 7 | ✓ Covered |
+| FR11 | Users can use schema enums to populate suggester options in templates | Epic 7 | ✓ Covered |
+| FR12 | Users can filter file selections using schema-defined directory constraints | Epic 7 | ✓ Covered |
+| FR13 | Users can format dates using schema-defined format strings | Epic 7 | ✓ Covered |
+| FR14 | Users can inherit and extend schema definitions between related types | Epic 7 | ✓ Covered |
 | FR15 | Users can provide free-text input through template prompts | Epic 12 | ✓ Covered |
 | FR16 | Users can select from single-choice lists using suggesters | Epic 12 | ✓ Covered |
 | FR17 | Users can select multiple items from lists using multi-suggesters | Epic 13 | ✓ Covered |
