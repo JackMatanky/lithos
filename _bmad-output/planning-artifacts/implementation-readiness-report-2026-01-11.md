@@ -54,7 +54,7 @@ includedFiles:
   - epic-5-configuration-management-system-phase-15.md
   - epic-6-schema-system-validation-mvp-core.md
   - epic-7-event-bus-orchestration-infrastructure-phase-15.md
-  - epic-8-storage-layer-persistence-mvp-core.md
+  - epic-9-storage-layer-persistence-mvp-core.md
   - epic-10-vault-file-system-integration-indexing-engine-mvp-core.md
   - epic-11-query-service-knowledge-graph-mvp-core.md
   - epic-12-basic-interactive-template-system-mvp-core.md
