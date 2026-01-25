@@ -59,7 +59,7 @@ includedFiles:
   - epic-10-query-service-knowledge-graph-mvp-core.md
   - epic-11-basic-interactive-template-system-mvp-core.md
   - epic-12-advanced-template-features-phase-15.md
-  - epic-13-cli-interface-error-handling.md
+  - epic-14-cli-interface-error-handling.md
   - epic-15-test-suite-review-optimization.md
   - epic-15-user-documentation-onboarding.md
 
@@ -212,8 +212,8 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 | FR27 | Users can manage schema definitions through configuration files | Epic 5 | ✓ Covered |
 | FR28 | Users can set application preferences via configuration | Epic 5 | ✓ Covered |
 | FR29 | Users can define custom validation rules and linting settings | Post-MVP Phase 2c | ✓ Covered |
-| FR30 | Users can execute templates consistently across operating systems | Epic 13 | ✓ Covered |
-| FR31 | Users can access templates through terminal interfaces | Epic 13 | ✓ Covered |
+| FR30 | Users can execute templates consistently across operating systems | Epic 14 | ✓ Covered |
+| FR31 | Users can access templates through terminal interfaces | Epic 14 | ✓ Covered |
 | FR32 | Users can integrate with external editors and IDEs | Post-MVP Phase 3a | ✓ Covered |
 | FR33 | Users can run templates in automated scripts and CI/CD pipelines | Post-MVP Phase 3a | ✓ Covered |
 | FR34 | Users can share and distribute template packs via Git repositories | Post-MVP Phase 3b | ✓ Covered |
@@ -222,17 +222,17 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 | FR37 | Users can contribute improvements to shared template ecosystems | Post-MVP Phase 3b | ✓ Covered |
 | FR38 | Users can control access to sensitive vault data and templates | Post-MVP Phase 4 | ✓ Covered |
 | FR39 | Users can encrypt sensitive configuration and schema files | Post-MVP Phase 4 / Epic 5 | ✓ Covered |
-| FR40 | Users can audit template execution and data access patterns | Post-MVP Phase 4 / Epic 13 | ✓ Covered |
-| FR41 | Users can execute lithos commands with subcommands for templates, schemas, and vaults | Epic 13 | ✓ Covered |
-| FR42 | Users can access comprehensive help and documentation from the CLI | Epic 13 | ✓ Covered |
-| FR43 | Users can view status and configuration of templates and schemas | Epic 13 | ✓ Covered |
-| FR44 | Users can manage vault operations from command line | Epic 13 | ✓ Covered |
-| FR45 | Users can run templates with various output formats and destinations | Epic 13 | ✓ Covered |
-| FR46 | Users can configure CLI behavior and preferences | Epic 13 | ✓ Covered |
-| FR47 | Users can execute most important commands with single words (e.g., `lithos new` opens fuzzy picker for template selection) | Epic 13 | ✓ Covered |
-| FR48 | Users can receive clear, actionable error messages when operations fail | Epic 13 | ✓ Covered |
-| FR49 | Users can recover from failed template executions with rollback capabilities | Epic 13 | ✓ Covered |
-| FR50 | Users can diagnose and troubleshoot configuration and schema issues | Epic 13 | ✓ Covered |
+| FR40 | Users can audit template execution and data access patterns | Post-MVP Phase 4 / Epic 14 | ✓ Covered |
+| FR41 | Users can execute lithos commands with subcommands for templates, schemas, and vaults | Epic 14 | ✓ Covered |
+| FR42 | Users can access comprehensive help and documentation from the CLI | Epic 14 | ✓ Covered |
+| FR43 | Users can view status and configuration of templates and schemas | Epic 14 | ✓ Covered |
+| FR44 | Users can manage vault operations from command line | Epic 14 | ✓ Covered |
+| FR45 | Users can run templates with various output formats and destinations | Epic 14 | ✓ Covered |
+| FR46 | Users can configure CLI behavior and preferences | Epic 14 | ✓ Covered |
+| FR47 | Users can execute most important commands with single words (e.g., `lithos new` opens fuzzy picker for template selection) | Epic 14 | ✓ Covered |
+| FR48 | Users can receive clear, actionable error messages when operations fail | Epic 14 | ✓ Covered |
+| FR49 | Users can recover from failed template executions with rollback capabilities | Epic 14 | ✓ Covered |
+| FR50 | Users can diagnose and troubleshoot configuration and schema issues | Epic 14 | ✓ Covered |
 
 ### Missing Requirements
 

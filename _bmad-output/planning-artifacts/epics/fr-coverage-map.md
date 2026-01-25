@@ -31,8 +31,8 @@
 | FR27                 | Epic 5 (Manage schema definitions via config)                                |
 | FR28                 | Epic 5 (Set application preferences via config)                              |
 | FR29                 | Post-MVP Phase 2c (Custom validation/linting rules)                          |
-| FR30                 | Epic 13 (Cross-platform execution consistency)                               |
-| FR31                 | Epic 13 (Access through terminal interfaces)                                 |
+| FR30                 | Epic 14 (Cross-platform execution consistency)                               |
+| FR31                 | Epic 14 (Access through terminal interfaces)                                 |
 | FR32                 | Post-MVP Phase 3a (External editor/IDE integration)                          |
 | FR33                 | Post-MVP Phase 3a (Automated scripts/CI-CD support)                          |
 | FR34                 | Post-MVP Phase 3b (Share template packs via Git)                             |
@@ -41,14 +41,14 @@
 | FR37                 | Post-MVP Phase 3b (Community contribution workflows)                         |
 | FR38                 | Post-MVP Phase 4 (Access control for vault data)                             |
 | FR39                 | Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 5 |
-| FR40                 | Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 13       |
-| FR41                 | Epic 13 (Execute commands with subcommands)                                  |
-| FR42                 | Epic 13 (Comprehensive help and documentation)                               |
-| FR43                 | Epic 13 (View status and configuration)                                      |
-| FR44                 | Epic 13 (Manage vault operations from CLI)                                   |
-| FR45                 | Epic 13 (Run templates with output formats)                                  |
-| FR46                 | Epic 13 (Configure CLI behavior)                                             |
-| FR47                 | Epic 13 (Single-word command shortcuts)                                      |
-| FR48                 | Epic 13 (Clear, actionable error messages)                                   |
-| FR49                 | Epic 13 (Recover from failed executions with rollback)                       |
-| FR50                 | Epic 13 (Diagnose and troubleshoot issues)                                   |
+| FR40                 | Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 14       |
+| FR41                 | Epic 14 (Execute commands with subcommands)                                  |
+| FR42                 | Epic 14 (Comprehensive help and documentation)                               |
+| FR43                 | Epic 14 (View status and configuration)                                      |
+| FR44                 | Epic 14 (Manage vault operations from CLI)                                   |
+| FR45                 | Epic 14 (Run templates with output formats)                                  |
+| FR46                 | Epic 14 (Configure CLI behavior)                                             |
+| FR47                 | Epic 14 (Single-word command shortcuts)                                      |
+| FR48                 | Epic 14 (Clear, actionable error messages)                                   |
+| FR49                 | Epic 14 (Recover from failed executions with rollback)                       |
+| FR50                 | Epic 14 (Diagnose and troubleshoot issues)                                   |
