@@ -1,4 +1,4 @@
-# Epic 6: Schema System & Validation **[MVP CORE]**
+# Epic 7: Schema System & Validation **[MVP CORE]**
 
 Users can define metadata schemas with field types, inheritance, and validation that provide input parameters for templates and enforce vault consistency.
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14
@@ -13,7 +13,7 @@ Users can define metadata schemas with field types, inheritance, and validation 
 - **Singleton Pattern**: Hybrid `Arc<OnceLock<PropertyBank>>` (immutable base) + `Arc<RwLock<T>>` (runtime overrides)
 - **Caching Strategy**: Decoupled `SchemaCache` trait with Redb implementation
 
-## Story 6.1: Update Schema Ports and Implement Adapters
+## Story 7.1: Update Schema Ports and Implement Adapters
 
 As a developer completing the schema bounded context,
 I want updated CQRS ports and robust adapters with embedded utilities,
@@ -70,7 +70,7 @@ So that schema loading, resolution, and caching are handled correctly behind cle
 **When** I export them in `crates/adapters/src/spi/schema/mod.rs`
 **Then** internal structs are re-exported with Schema prefix (`SchemaQuery`, `SchemaCommand`, `SchemaLoader`, `SchemaDecoder`)
 
-## Story 6.2: Implement Schema Loading and Resolution Strategy
+## Story 7.2: Implement Schema Loading and Resolution Strategy
 
 As a developer loading schema files,
 I want robust loading with format normalization and $ref resolution,
@@ -120,7 +120,7 @@ So that complex schema hierarchies are correctly resolved into usable Schema agg
 **When** I store results
 **Then** fully resolved `Schema` aggregates are persisted to the `SchemaCache`
 
-## Story 6.3: Implement PropertyBank Singleton Registry
+## Story 7.3: Implement PropertyBank Singleton Registry
 
 As a developer implementing the schema bounded context,
 I want a PropertyBankRegistry that provides singleton instance management,
@@ -154,7 +154,7 @@ So that all operations access the same reusable property definitions consistentl
 **When** I benchmark access
 **Then** singleton reads complete in <10ns (zero-lock path for base properties)
 
-## Story 6.4: Implement Decoupled Schema Caching
+## Story 7.4: Implement Decoupled Schema Caching
 
 As a developer optimizing performance,
 I want a decoupled caching architecture with Redb persistence,
@@ -184,7 +184,7 @@ So that schema resolution is fast, persistent, and testable.
 **When** I design the integration
 **Then** it manages the `Box<dyn SchemaCache>`, allowing it to check for existing entries before performing a full re-resolution using the `PropertyBankRegistry`
 
-## Story 6.5: Implement Frontmatter Compliance Service
+## Story 7.5: Implement Frontmatter Compliance Service
 
 As a developer ensuring vault consistency,
 I want a Frontmatter Compliance Service in the Application Layer,
@@ -211,7 +211,7 @@ So that notes can be validated against their corresponding schemas.
 **Then** service calls `query.get("project")`
 **And** if schema is missing, returns `ComplianceWarning::SchemaNotFound` (non-blocking)
 
-## Story 6.6: Define Schema-Template Integration Contracts
+## Story 7.6: Define Schema-Template Integration Contracts
 
 As a developer integrating schemas with templates,
 I want clear contracts for how schemas provide inputs to templates,
@@ -236,10 +236,10 @@ So that templates can safely access schema-defined properties.
 **When** I validate against Epic 12 template requirements
 **Then** all template input needs are satisfied by schema contracts
 
-## Story 6.7: Review Epic 6 Test Suite
+## Story 7.7: Review Epic 7 Test Suite
 
 As a senior developer conducting adversarial code review,
-I want to brutally critique and improve the Epic 6 test suite to its foundation,
+I want to brutally critique and improve the Epic 7 test suite to its foundation,
 So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
@@ -248,15 +248,15 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I reference the guide during review
 **Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
 
-**Given** all Epic 6 public components are implemented (Decoder, Loader, Registry, Cache)
+**Given** all Epic 7 public components are implemented (Decoder, Loader, Registry, Cache)
 **When** I verify test coverage
 **Then** all public functions, structs, and modules have corresponding unit tests
 
-**Given** all Epic 6 public APIs are documented
+**Given** all Epic 7 public APIs are documented
 **When** I verify doc test coverage
 **Then** all public components have runnable doc tests demonstrating usage
 
-**Given** all Epic 6 components are implemented with tests
+**Given** all Epic 7 components are implemented with tests
 **When** I conduct adversarial review
 **Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
 
@@ -270,7 +270,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 6 suite
+**Then** test execution completes in <30 seconds for the full Epic 7 suite
 
 **Given** I conduct brutal foundation critique
 **When** I assess test design
@@ -288,7 +288,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I test resolution
 **Then** integration tests verify multi-level inheritance matches expectations
 
-## Story 6.8: Create Default Schema Files
+## Story 7.8: Create Default Schema Files
 
 As a user creating schemas,
 I want default schema files demonstrating all features,
@@ -312,7 +312,7 @@ So that I can understand schema capabilities and use them as templates.
 **When** I test with `Loader`
 **Then** all default files resolve correctly without errors
 
-## Story 6.9: Document Schema Adapters
+## Story 7.9: Document Schema Adapters
 
 As a developer working with the schema system,
 I want comprehensive documentation for the adapter layer,
@@ -320,7 +320,7 @@ So that I understand how loading, resolution, and caching interact.
 
 **Acceptance Criteria:**
 
-**Given** Epic 6 implementation is complete
+**Given** Epic 7 implementation is complete
 **When** I create developer documentation
 **Then** `docs/adapters/schema-adapters.md` is created following the domain-models pattern
 

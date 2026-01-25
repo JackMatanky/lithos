@@ -211,7 +211,7 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - **Port Coupling**: Go had unnecessary complexity with separate SchemaLoaderPort and SchemaRegistryPort
 - **Rust Approach**: Simplify to single SchemaPort; automatic registration on load
 
-**Template System (Group 6 - Epic 6 Dependency):**
+**Template System (Group 6 - Epic 7 Dependency):**
 - **Template Struct Name Conflict**: Go had naming collision with text/template package
 - **Rust Approach**: Carefully namespace template domain models; leverage MiniJinja without conflicts
 
@@ -230,13 +230,13 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR5 → Post-MVP Phase 1.5 (Dynamic commands and whitespace control)
 - FR6 → Post-MVP Phase 1.5 (Custom user functions)
 - FR7 → Post-MVP Phase 2a (Advanced template operations with hooks)
-- FR8 → Epic 6 (Define metadata schemas with field types)
-- FR9 → Epic 6 (Schema-driven templates with input parameters)
-- FR10 → Epic 6 (Validate notes against schemas)
-- FR11 → Epic 6 (Schema enums populate suggester options)
-- FR12 → Epic 6 (File filtering via schema directory constraints)
-- FR13 → Epic 6 (Date formatting via schema format strings)
-- FR14 → Epic 6 (Schema inheritance and extension)
+- FR8 → Epic 7 (Define metadata schemas with field types)
+- FR9 → Epic 7 (Schema-driven templates with input parameters)
+- FR10 → Epic 7 (Validate notes against schemas)
+- FR11 → Epic 7 (Schema enums populate suggester options)
+- FR12 → Epic 7 (File filtering via schema directory constraints)
+- FR13 → Epic 7 (Date formatting via schema format strings)
+- FR14 → Epic 7 (Schema inheritance and extension)
 - FR15 → Epic 12 (Free-text input through prompts)
 - FR16 → Epic 12 (Single-choice suggesters)
 - FR17 → Epic 13 (Multi-selection suggesters)
@@ -946,7 +946,7 @@ System has unified file loading strategies for different configuration formats t
 - Unified loading strategy for TOML, JSON, YAML files
 - File format detection and parsing
 - Basic validation infrastructure
-- Enables both configuration (Epic 5) and schema (Epic 6) loading
+- Enables both configuration (Epic 5) and schema (Epic 7) loading
 
 ### Story 4.1: Create Unified File Loading Interface
 
@@ -1222,7 +1222,7 @@ So that I can understand and customize lithos behavior effectively.
 **Given** users read the documentation
 **When** they configure lithos
 **Then** they can successfully customize behavior without developer assistance
-## Epic 6: Schema System & Validation **[MVP CORE]**
+## Epic 7: Schema System & Validation **[MVP CORE]**
 
 Users can define metadata schemas with field types, inheritance, and validation that provide input parameters for templates and enforce vault consistency.
 **FRs covered:** FR8, FR9, FR10, FR11, FR12, FR13, FR14
@@ -1233,7 +1233,7 @@ Users can define metadata schemas with field types, inheritance, and validation 
 - Schema-template integration contracts defined
 - User documentation for schema creation
 
-### Story 6.1: Create Schema Domain Interface and Port
+### Story 7.1: Create Schema Domain Interface and Port
 
 As a developer implementing schema management,
 I want a clean domain interface for schema operations,
@@ -1253,7 +1253,7 @@ So that schemas can be loaded and validated through a well-defined contract foll
 **When** I validate the design
 **Then** it follows hexagonal principles with clear separation between domain and infrastructure
 
-### Story 6.2: Create Schema Property System
+### Story 7.2: Create Schema Property System
 
 As a developer defining schema properties,
 I want a complete property system with PropertyBank, Property, and PropertySpec variants,
@@ -1277,7 +1277,7 @@ So that schemas can define reusable property definitions with rich validation co
 **When** I validate against docs/schemas/ examples
 **Then** all property types from the JSON schemas are supported
 
-### Story 6.3: Implement Schema Loading with $ref Resolution
+### Story 7.3: Implement Schema Loading with $ref Resolution
 
 As a developer loading schema files,
 I want schema loading with proper $ref resolution,
@@ -1290,14 +1290,14 @@ So that schemas can reference shared properties from the PropertyBank.
 **Then** schemas are loaded from JSON files in docs/schemas/
 
 **Given** schemas contain $ref pointers
-**When** I resolve references using PropertyBank from Story 6.2
+**When** I resolve references using PropertyBank from Story 7.2
 **Then** $ref pointers are replaced with actual Property definitions
 
 **Given** schema loading is implemented
 **When** I load complex schemas like docs/schemas/pkm.json
 **Then** all $ref resolutions work correctly and schemas are fully expanded
 
-### Story 6.4: Implement Schema Inheritance Resolution
+### Story 7.4: Implement Schema Inheritance Resolution
 
 As a developer working with schema hierarchies,
 I want inheritance resolution for schema chains,
@@ -1317,7 +1317,7 @@ So that child schemas can extend and modify parent schemas.
 **When** I resolve docs/schemas/ inheritance examples
 **Then** multi-level inheritance works (e.g., task_child extends task extends base)
 
-### Story 6.5: Add Schema Validation and Error Handling
+### Story 7.5: Add Schema Validation and Error Handling
 
 As a developer validating schemas,
 I want comprehensive schema validation with clear error messages,
@@ -1337,7 +1337,7 @@ So that invalid schemas are caught early with actionable feedback.
 **When** I provide error messages
 **Then** errors include schema file path, line numbers, and suggested fixes
 
-### Story 6.6: Create Sample Schema Files
+### Story 7.6: Create Sample Schema Files
 
 As a user creating schemas,
 I want comprehensive sample schemas demonstrating all features,
@@ -1357,7 +1357,7 @@ So that I can understand schema capabilities and use them as templates.
 **When** I validate them
 **Then** all samples pass validation and demonstrate schema capabilities
 
-### Story 6.7: Define Schema-Template Integration Contracts
+### Story 7.7: Define Schema-Template Integration Contracts
 
 As a developer integrating schemas with templates,
 I want clear contracts for how schemas provide inputs to templates,
@@ -1377,15 +1377,15 @@ So that templates can safely access schema-defined properties.
 **When** I validate against Epic 12 template requirements
 **Then** all template input needs are satisfied by schema contracts
 
-### Story 6.8: Review Epic 6 Test Suite
+### Story 7.8: Review Epic 7 Test Suite
 
 As a developer maintaining the schema system,
-I want an efficient test suite for Epic 6 components,
+I want an efficient test suite for Epic 7 components,
 So that tests provide good coverage without redundancy or excessive execution time.
 
 **Acceptance Criteria:**
 
-**Given** all Epic 6 components are implemented with tests
+**Given** all Epic 7 components are implemented with tests
 **When** I review the test suite
 **Then** it achieves 90%+ coverage for schema components
 
@@ -1395,13 +1395,13 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 6 suite
+**Then** test execution completes in <30 seconds for the full Epic 7 suite
 
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Story 6.9: Document Schema System for Users
+### Story 7.9: Document Schema System for Users
 
 As a user creating schemas,
 I want comprehensive documentation for schema creation and usage,

@@ -185,7 +185,7 @@
 - **Port Coupling**: Go had unnecessary complexity with separate SchemaLoaderPort and SchemaRegistryPort
 - **Rust Approach**: Simplify to single SchemaPort; automatic registration on load
 
-**Template System (Group 6 - Epic 6 Dependency):**
+**Template System (Group 6 - Epic 7 Dependency):**
 - **Template Struct Name Conflict**: Go had naming collision with text/template package
 - **Rust Approach**: Carefully namespace template domain models; leverage MiniJinja without conflicts
 

@@ -28,7 +28,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 - [ ] Actor-based indexing engine for incremental updates (Epic 10).
 - [ ] Metadata query service with wiki-link/alias resolution (FR22, FR23) - Epic 11.
 - [ ] Hybrid event bus (MPSC/Broadcast/Watch) (Epic 8).
-- [ ] Schema validation engine with inheritance (FR8, FR10, FR14) - Epic 6.
+- [ ] Schema validation engine with inheritance (FR8, FR10, FR14) - Epic 7.
 **Success Metrics:** Indexing 1000+ files in < 2 seconds; < 50ms query response.
 
 ### Milestone 4: Interactive Template System
@@ -118,7 +118,7 @@ gantt
 
 ## Critical Path & Dependencies
 
-The project's critical path is driven by the **Vault Indexing Engine (Epic 10)**, which depends on the **Storage Foundation (Epic 9)** and **Schema Resolver (Epic 6)**.
+The project's critical path is driven by the **Vault Indexing Engine (Epic 10)**, which depends on the **Storage Foundation (Epic 9)** and **Schema Resolver (Epic 7)**.
 
 1. **Domain Foundation**: Epics 1-3 establish the types and testing patterns.
 2. **Infrastructure Blockers**: Epics 4, 5, 8 provide the data plane.

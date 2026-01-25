@@ -125,7 +125,7 @@ The initial plan forced all file reading to go through this single domain port, 
 We pivoted to implementing a **Parser Utility** (`ParserStrategy` enum + `Dispatcher`) in the `adapters/spi` layer. This utility handles the complexity of format detection and parsing but leaves the I/O to the specific adapters that need it. This simplifies the domain (removing the `fs` port) and makes the parsing logic reusable without binding it to a specific I/O implementation.
 
 ### Developer Context
-This story implements the foundational file loading infrastructure for the entire application, enabling consistent parsing of configuration files (TOML, JSON, YAML) across all components. It's part of Epic 4 (File Loading Strategy Foundation), which is critical for MVP core functionality as it enables configuration management (Epic 5) and schema loading (Epic 6).
+This story implements the foundational file loading infrastructure for the entire application, enabling consistent parsing of configuration files (TOML, JSON, YAML) across all components. It's part of Epic 4 (File Loading Strategy Foundation), which is critical for MVP core functionality as it enables configuration management (Epic 5) and schema loading (Epic 7).
 
 **Business Value:** Provides the technical foundation for all file-based configuration in the application, ensuring reliability and consistency in loading user configurations, schemas, and templates.
 
