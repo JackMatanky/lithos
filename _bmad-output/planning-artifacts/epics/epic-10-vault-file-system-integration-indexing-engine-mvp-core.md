@@ -1,4 +1,4 @@
-# Epic 9: Vault File System Integration & Indexing Engine **[MVP CORE]**
+# Epic 10: Vault File System Integration & Indexing Engine **[MVP CORE]**
 
 Users can index large vaults (1000+ files) in <2 seconds with incremental updates, reliable crash-free operation, and persistent storage.
 **FRs covered:** FR20, FR24, FR25
@@ -11,7 +11,7 @@ Users can index large vaults (1000+ files) in <2 seconds with incremental update
 - Observability/metrics for indexing performance
 - Integration with Epic 7 (event publishing) and Epic 8 (storage persistence)
 
-## Story 9.1: Implement Note CQRS Ports from Epic 3
+## Story 10.1: Implement Note CQRS Ports from Epic 3
 
 As a developer completing the note bounded context,
 I want to implement the NoteCommand and NoteQuery ports defined in Epic 3,
@@ -35,7 +35,7 @@ So that note operations follow CQRS separation with proper command/query handlin
 **When** I test integration
 **Then** commands and queries work together for complete note management and querying
 
-## Story 9.2: Create Vault Domain Interfaces and Ports
+## Story 10.2: Create Vault Domain Interfaces and Ports
 
 As a developer implementing vault operations,
 I want clean domain interfaces for vault access,
@@ -55,7 +55,7 @@ So that vault operations follow hexagonal architecture principles.
 **When** I validate the design
 **Then** they follow hexagonal principles with clear separation between domain and infrastructure
 
-## Story 9.3: Implement Vault File System Scanner
+## Story 10.3: Implement Vault File System Scanner
 
 As a developer scanning vault directories,
 I want efficient filesystem scanning with concurrent access handling,
@@ -75,7 +75,7 @@ So that vault files can be discovered and processed safely.
 **When** I monitor performance
 **Then** large vaults (1000+ files) are scanned efficiently
 
-## Story 9.4: Implement Markdown Parser for Frontmatter Extraction
+## Story 10.4: Implement Markdown Parser for Frontmatter Extraction
 
 As a developer parsing vault files,
 I want reliable frontmatter extraction from markdown,
@@ -95,7 +95,7 @@ So that note metadata can be indexed and queried.
 **When** I validate completeness
 **Then** all standard frontmatter fields are properly extracted
 
-## Story 9.5: Create Vault Indexing Engine with Incremental Updates
+## Story 10.5: Create Vault Indexing Engine with Incremental Updates
 
 As a developer building the indexing system,
 I want an indexing engine that supports incremental updates and rename detection,
@@ -155,7 +155,7 @@ So that only changed files are reprocessed and note identity is preserved across
 **Then** they can configure: rename_detection strategy, auto_accept_threshold, interactive_prompts, allow_content_hashing, frontmatter_signature_fields
 **And** they can disable rename detection entirely for performance-critical scenarios
 
-## Story 9.6: Add Indexing Performance Optimization and Monitoring
+## Story 10.6: Add Indexing Performance Optimization and Monitoring
 
 As a developer optimizing indexing performance,
 I want performance monitoring and optimization for NFR2 compliance,
@@ -179,7 +179,7 @@ So that vault indexing completes in <2 seconds for 1000+ files.
 **When** I validate bounds
 **Then** indexing stays within NFR9 500MB memory limit
 
-## Story 9.7: Implement Indexing Error Recovery and Crash Prevention
+## Story 10.7: Implement Indexing Error Recovery and Crash Prevention
 
 As a developer ensuring indexing reliability,
 I want error recovery and crash prevention mechanisms,
@@ -199,7 +199,7 @@ So that indexing failures don't corrupt the system or lose data.
 **When** I validate robustness
 **Then** indexing achieves zero crashes during normal vault operations (NFR25)
 
-## Story 9.8: Integrate Indexing with Storage Persistence
+## Story 10.8: Integrate Indexing with Storage Persistence
 
 As a developer coordinating indexing with storage,
 I want indexing results persisted to storage,
@@ -219,7 +219,7 @@ So that indexed data is available for queries and survives restarts.
 **When** I restart the system
 **Then** indexed data is available without re-indexing
 
-## Story 9.9: Implement Indexing Event Publishing
+## Story 10.9: Implement Indexing Event Publishing
 
 As a developer coordinating indexing with the event system,
 I want indexing to publish events for system coordination,
@@ -239,7 +239,7 @@ So that other components are notified of indexing progress and completion.
 **When** I validate integration
 **Then** other epics can subscribe to indexing events without tight coupling
 
-## Story 9.10: Implement Indexing State Persistence
+## Story 10.10: Implement Indexing State Persistence
 
 As a developer enabling resumable indexing,
 I want indexing state persisted for interruption recovery,
@@ -259,7 +259,7 @@ So that long-running indexing operations can resume after interruptions.
 **When** I validate reliability
 **Then** large vault indexing survives system interruptions gracefully
 
-## Story 9.11: Create Sample Vault Test Data
+## Story 10.11: Create Sample Vault Test Data
 
 As a developer testing indexing functionality,
 I want representative sample vault data,
@@ -279,7 +279,7 @@ So that indexing can be tested with realistic data volumes and patterns.
 **When** I benchmark performance
 **Then** test results are representative of real vault indexing performance
 
-## Story 9.12: Create Vault Operation Mocks for Testing
+## Story 10.12: Create Vault Operation Mocks for Testing
 
 As a developer testing vault-dependent code,
 I want comprehensive mocks for vault operations,
@@ -299,7 +299,7 @@ So that vault interactions can be tested in isolation without filesystem access.
 **When** I use mocks
 **Then** they simulate realistic vault behavior for comprehensive testing
 
-## Story 9.13: Performance Benchmarking for Vault Indexing (NFR2 Validation)
+## Story 10.13: Performance Benchmarking for Vault Indexing (NFR2 Validation)
 
 As a performance engineer, I want comprehensive benchmarks for vault indexing operations, so that NFR2 (<2s for 1000+ files) is validated and monitored.
 **Acceptance Criteria:**
@@ -315,7 +315,7 @@ As a performance engineer, I want comprehensive benchmarks for vault indexing op
 **And** performance regressions are detected
 **And** scaling characteristics are documented
 
-## Story 9.14: Vault Operation Monitoring and Health Checks
+## Story 10.14: Vault Operation Monitoring and Health Checks
 
 As a system administrator, I want continuous monitoring of vault operations, so that performance issues and failures are detected before they impact users.
 **Acceptance Criteria:**
@@ -331,7 +331,7 @@ As a system administrator, I want continuous monitoring of vault operations, so 
 **And** they trigger automatic recovery procedures
 **And** they log detailed diagnostic information
 
-## Story 9.15: Redb Storage Performance Regression Testing
+## Story 10.15: Redb Storage Performance Regression Testing
 
 As a performance engineer, I want automated regression tests for Redb storage operations, so that the architectural choice of Redb + rkyv remains optimal and performance degradation is caught immediately.
 **Acceptance Criteria:**
@@ -342,10 +342,10 @@ As a performance engineer, I want automated regression tests for Redb storage op
 **And** query performance regressions trigger alerts and investigation
 **And** storage benchmarks run in CI/CD pipeline for every change
 
-## Story 9.16: Review Epic 9 Test Suite
+## Story 10.16: Review Epic 10 Test Suite
 
 As a senior developer conducting adversarial code review,
-I want to brutally critique and improve the Epic 9 test suite to its foundation,
+I want to brutally critique and improve the Epic 10 test suite to its foundation,
 So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
@@ -354,15 +354,15 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I reference the guide during review
 **Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
 
-**Given** all Epic 9 public components are implemented
+**Given** all Epic 10 public components are implemented
 **When** I verify test coverage
 **Then** all public functions, structs, and modules have corresponding unit tests
 
-**Given** all Epic 9 public APIs are documented
+**Given** all Epic 10 public APIs are documented
 **When** I verify doc test coverage
 **Then** all public components have runnable doc tests demonstrating usage
 
-**Given** all Epic 9 components are implemented with tests
+**Given** all Epic 10 components are implemented with tests
 **When** I conduct adversarial review
 **Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
 
@@ -376,7 +376,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 9 suite
+**Then** test execution completes in <30 seconds for the full Epic 10 suite
 
 **Given** I conduct brutal foundation critique
 **When** I assess test design
@@ -386,7 +386,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
 
-## Story 9.17: Document Vault Indexing System for Developers
+## Story 10.17: Document Vault Indexing System for Developers
 
 As a developer working with vault operations,
 I want comprehensive developer documentation for indexing,

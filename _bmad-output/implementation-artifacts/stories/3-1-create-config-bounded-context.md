@@ -864,7 +864,7 @@ impl ConfigAdapter {
 **Enables Future Stories:**
 - **Epic 5**: Configuration loading and management (uses this domain model)
 - **Epic 6**: Schema validation (configuration drives schema loading)
-- **Epic 9**: Vault operations (vault-specific configuration)
+- **Epic 10**: Vault operations (vault-specific configuration)
 - **Epic 11**: Query operations (configuration affects query behavior)
 
 **Integration Points:**

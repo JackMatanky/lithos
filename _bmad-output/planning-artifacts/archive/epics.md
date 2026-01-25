@@ -242,12 +242,12 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR17 → Epic 13 (Multi-selection suggesters)
 - FR18 → Post-MVP Phase 1.5 (Contextual help and guidance)
 - FR19 → Post-MVP Phase 1.5 (Progressive complexity modes)
-- FR20 → Epic 9 (Index and search notes across vaults)
+- FR20 → Epic 10 (Index and search notes across vaults)
 - FR21 → Epic 11 (Lookups by filename, path, schema keys)
 - FR22 → Epic 11 (Resolve wiki-links and aliases)
 - FR23 → Epic 11 (Query metadata from other notes)
-- FR24 → Epic 9 (Maintain vault consistency)
-- FR25 → Epic 9 (Handle large vaults without degradation)
+- FR24 → Epic 10 (Maintain vault consistency)
+- FR25 → Epic 10 (Handle large vaults without degradation)
 - FR26 → Epic 5 (Configure template packs via TOML)
 - FR27 → Epic 5 (Manage schema definitions via config)
 - FR28 → Epic 5 (Set application preferences via config)
@@ -1682,7 +1682,7 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
 **FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 0002)
 **Implementation Notes:**
 - Redb + rkyv per ADR 0002 (no SQLite - decision already made)
-- Storage schema design review against Epic 9-10 query requirements
+- Storage schema design review against Epic 10-10 query requirements
 - Unit of Work pattern for transactional consistency
 - Storage performance benchmarking (NFR2, NFR9 validation)
 - Storage backup and corruption recovery (clean slate protocol)
@@ -1754,11 +1754,11 @@ So that multiple storage operations are committed together or rolled back as a u
 
 As a developer optimizing data access,
 I want storage schema designed for query performance,
-So that Epic 9-10 queries can be executed efficiently against the storage layout.
+So that Epic 10-10 queries can be executed efficiently against the storage layout.
 
 **Acceptance Criteria:**
 
-**Given** Epic 9-10 query requirements are known
+**Given** Epic 10-10 query requirements are known
 **When** I design storage schema
 **Then** data layout optimizes for common query patterns (by path, by schema, etc.)
 
@@ -1848,7 +1848,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 
 **Given** performance benchmarks run
 **When** I analyze results
-**Then** storage layer meets all performance requirements before Epic 9-10 integration
+**Then** storage layer meets all performance requirements before Epic 10-10 integration
 
 ### Story 8.9: Create Storage Mocks for Testing
 
@@ -1929,7 +1929,7 @@ So that storage can be properly used and maintained across the application.
 **When** other epics need storage integration
 **Then** they can implement proper storage usage without architectural review
 
-## Epic 9: Vault File System Integration & Indexing Engine **[MVP CORE]**
+## Epic 10: Vault File System Integration & Indexing Engine **[MVP CORE]**
 Users can index large vaults (1000+ files) in <2 seconds with incremental updates, reliable crash-free operation, and persistent storage.
 **FRs covered:** FR20, FR24, FR25
 **Implementation Notes:**
@@ -1940,7 +1940,7 @@ Users can index large vaults (1000+ files) in <2 seconds with incremental update
 - Observability/metrics for indexing performance
 - Integration with Epic 7 (event publishing) and Epic 8 (storage persistence)
 
-### Story 9.1: Create Vault Domain Interfaces and Ports
+### Story 10.1: Create Vault Domain Interfaces and Ports
 
 As a developer implementing vault operations,
 I want clean domain interfaces for vault access,
@@ -1960,7 +1960,7 @@ So that vault operations follow hexagonal architecture principles.
 **When** I validate the design
 **Then** they follow hexagonal principles with clear separation between domain and infrastructure
 
-### Story 9.2: Implement Vault File System Scanner
+### Story 10.2: Implement Vault File System Scanner
 
 As a developer scanning vault directories,
 I want efficient filesystem scanning with concurrent access handling,
@@ -1980,7 +1980,7 @@ So that vault files can be discovered and processed safely.
 **When** I monitor performance
 **Then** large vaults (1000+ files) are scanned efficiently
 
-### Story 9.3: Implement Markdown Parser for Frontmatter Extraction
+### Story 10.3: Implement Markdown Parser for Frontmatter Extraction
 
 As a developer parsing vault files,
 I want reliable frontmatter extraction from markdown,
@@ -2000,7 +2000,7 @@ So that note metadata can be indexed and queried.
 **When** I validate completeness
 **Then** all standard frontmatter fields are properly extracted
 
-### Story 9.4: Create Vault Indexing Engine with Incremental Updates
+### Story 10.4: Create Vault Indexing Engine with Incremental Updates
 
 As a developer building the indexing system,
 I want an indexing engine that supports incremental updates,
@@ -2020,7 +2020,7 @@ So that only changed files are reprocessed for efficiency.
 **When** I validate efficiency
 **Then** large vaults show significant performance improvement over full rebuilds
 
-### Story 9.5: Add Indexing Performance Optimization and Monitoring
+### Story 10.5: Add Indexing Performance Optimization and Monitoring
 
 As a developer optimizing indexing performance,
 I want performance monitoring and optimization for NFR2 compliance,
@@ -2044,7 +2044,7 @@ So that vault indexing completes in <2 seconds for 1000+ files.
 **When** I validate bounds
 **Then** indexing stays within NFR9 500MB memory limit
 
-### Story 9.6: Implement Indexing Error Recovery and Crash Prevention
+### Story 10.6: Implement Indexing Error Recovery and Crash Prevention
 
 As a developer ensuring indexing reliability,
 I want error recovery and crash prevention mechanisms,
@@ -2064,7 +2064,7 @@ So that indexing failures don't corrupt the system or lose data.
 **When** I validate robustness
 **Then** indexing achieves zero crashes during normal vault operations (NFR25)
 
-### Story 9.7: Integrate Indexing with Storage Persistence
+### Story 10.7: Integrate Indexing with Storage Persistence
 
 As a developer coordinating indexing with storage,
 I want indexing results persisted to storage,
@@ -2084,7 +2084,7 @@ So that indexed data is available for queries and survives restarts.
 **When** I restart the system
 **Then** indexed data is available without re-indexing
 
-### Story 9.8: Implement Indexing Event Publishing
+### Story 10.8: Implement Indexing Event Publishing
 
 As a developer coordinating indexing with the event system,
 I want indexing to publish events for system coordination,
@@ -2104,7 +2104,7 @@ So that other components are notified of indexing progress and completion.
 **When** I validate integration
 **Then** other epics can subscribe to indexing events without tight coupling
 
-### Story 9.9: Implement Indexing State Persistence
+### Story 10.9: Implement Indexing State Persistence
 
 As a developer enabling resumable indexing,
 I want indexing state persisted for interruption recovery,
@@ -2124,7 +2124,7 @@ So that long-running indexing operations can resume after interruptions.
 **When** I validate reliability
 **Then** large vault indexing survives system interruptions gracefully
 
-### Story 9.10: Create Sample Vault Test Data
+### Story 10.10: Create Sample Vault Test Data
 
 As a developer testing indexing functionality,
 I want representative sample vault data,
@@ -2144,7 +2144,7 @@ So that indexing can be tested with realistic data volumes and patterns.
 **When** I benchmark performance
 **Then** test results are representative of real vault indexing performance
 
-### Story 9.11: Create Vault Operation Mocks for Testing
+### Story 10.11: Create Vault Operation Mocks for Testing
 
 As a developer testing vault-dependent code,
 I want comprehensive mocks for vault operations,
@@ -2164,15 +2164,15 @@ So that vault interactions can be tested in isolation without filesystem access.
 **When** I use mocks
 **Then** they simulate realistic vault behavior for comprehensive testing
 
-### Story 9.12: Review Epic 9 Test Suite
+### Story 10.12: Review Epic 10 Test Suite
 
 As a developer maintaining the vault indexing system,
-I want an efficient test suite for Epic 9 components,
+I want an efficient test suite for Epic 10 components,
 So that tests provide good coverage without redundancy or excessive execution time.
 
 **Acceptance Criteria:**
 
-**Given** all Epic 9 components are implemented with tests
+**Given** all Epic 10 components are implemented with tests
 **When** I review the test suite
 **Then** it achieves 90%+ coverage for vault indexing components
 
@@ -2182,13 +2182,13 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 9 suite
+**Then** test execution completes in <30 seconds for the full Epic 10 suite
 
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Story 9.12: Performance Benchmarking for Vault Indexing (NFR2 Validation)
+### Story 10.12: Performance Benchmarking for Vault Indexing (NFR2 Validation)
 As a performance engineer, I want comprehensive benchmarks for vault indexing operations, so that NFR2 (<2s for 1000+ files) is validated and monitored.
 **Acceptance Criteria:**
 **Given** vault indexing system is implemented
@@ -2203,7 +2203,7 @@ As a performance engineer, I want comprehensive benchmarks for vault indexing op
 **And** performance regressions are detected
 **And** scaling characteristics are documented
 
-### Story 9.13: Vault Operation Monitoring and Health Checks
+### Story 10.13: Vault Operation Monitoring and Health Checks
 As a system administrator, I want continuous monitoring of vault operations, so that performance issues and failures are detected before they impact users.
 **Acceptance Criteria:**
 **Given** vault indexing is running
@@ -2218,7 +2218,7 @@ As a system administrator, I want continuous monitoring of vault operations, so 
 **And** they trigger automatic recovery procedures
 **And** they log detailed diagnostic information
 
-### Story 9.14: Redb Storage Performance Regression Testing
+### Story 10.14: Redb Storage Performance Regression Testing
 As a performance engineer, I want automated regression tests for Redb storage operations, so that the architectural choice of Redb + rkyv remains optimal and performance degradation is caught immediately.
 **Acceptance Criteria:**
 **Given** Redb storage implementation
@@ -2228,7 +2228,7 @@ As a performance engineer, I want automated regression tests for Redb storage op
 **And** query performance regressions trigger alerts and investigation
 **And** storage benchmarks run in CI/CD pipeline for every change
 
-### Story 9.14: Document Vault Indexing System for Developers
+### Story 10.14: Document Vault Indexing System for Developers
 
 As a developer working with vault operations,
 I want comprehensive developer documentation for indexing,
@@ -2253,7 +2253,7 @@ Users can perform fast lookups by filename, path, or schema keys, resolve wiki-l
 **FRs covered:** FR21, FR22, FR23
 **Implementation Notes:**
 - QueryPort and mocks created in this epic
-- CQRS read side (Epic 9 is write side)
+- CQRS read side (Epic 10 is write side)
 - Performance benchmarking stories for NFR1 validation (<500ms queries)
 - Observability/metrics for query performance
 - File class queries for schema-based filtering
@@ -2313,7 +2313,7 @@ So that I can quickly locate specific notes in the vault.
 
 **Given** basic queries work
 **When** I test with indexed data
-**Then** results are retrieved from Epic 9 indexed data
+**Then** results are retrieved from Epic 10 indexed data
 
 **Given** lookups are implemented
 **When** I validate performance
