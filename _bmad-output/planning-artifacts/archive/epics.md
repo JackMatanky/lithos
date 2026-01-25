@@ -248,9 +248,9 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR23 → Epic 11 (Query metadata from other notes)
 - FR24 → Epic 10 (Maintain vault consistency)
 - FR25 → Epic 10 (Handle large vaults without degradation)
-- FR26 → Epic 5 (Configure template packs via TOML)
-- FR27 → Epic 5 (Manage schema definitions via config)
-- FR28 → Epic 5 (Set application preferences via config)
+- FR26 → Epic 6 (Configure template packs via TOML)
+- FR27 → Epic 6 (Manage schema definitions via config)
+- FR28 → Epic 6 (Set application preferences via config)
 - FR29 → Post-MVP Phase 2c (Custom validation/linting rules)
 - FR30 → Epic 14 (Cross-platform execution consistency)
 - FR31 → Epic 14 (Access through terminal interfaces)
@@ -261,7 +261,7 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR36 → Post-MVP Phase 3b (Validate third-party templates)
 - FR37 → Post-MVP Phase 3b (Community contribution workflows)
 - FR38 → Post-MVP Phase 4 (Access control for vault data)
-- FR39 → Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 5
+- FR39 → Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 6
 - FR40 → Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 14
 - FR41 → Epic 14 (Execute commands with subcommands)
 - FR42 → Epic 14 (Comprehensive help and documentation)
@@ -946,7 +946,7 @@ System has unified file loading strategies for different configuration formats t
 - Unified loading strategy for TOML, JSON, YAML files
 - File format detection and parsing
 - Basic validation infrastructure
-- Enables both configuration (Epic 5) and schema (Epic 7) loading
+- Enables both configuration (Epic 6) and schema (Epic 7) loading
 
 ### Story 4.1: Create Unified File Loading Interface
 
@@ -1052,7 +1052,7 @@ So that tests provide good coverage without redundancy or excessive execution ti
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-## Epic 5: Configuration Management System **[PHASE 1.5]**
+## Epic 6: Configuration Management System **[PHASE 1.5]**
 Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
@@ -1061,7 +1061,7 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - Sample config files based on JSON schema (lithos-specific)
 - User documentation for configuration
 
-### Story 5.1: Create Config Domain Interface and Port
+### Story 6.1: Create Config Domain Interface and Port
 
 As a developer implementing configuration management,
 I want a clean domain interface for configuration loading,
@@ -1081,7 +1081,7 @@ So that configuration can be loaded through a well-defined contract following he
 **When** I validate the design
 **Then** it follows hexagonal principles with clear separation between domain and infrastructure
 
-### Story 5.2: Implement Hierarchical Configuration Loading
+### Story 6.2: Implement Hierarchical Configuration Loading
 
 As a user configuring lithos,
 I want hierarchical configuration that respects precedence rules,
@@ -1101,7 +1101,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **When** I validate TOML parsing
 **Then** complex nested structures are properly deserialized through Epic 4's format detection
 
-### Story 5.3: Add Configuration Validation and Error Handling
+### Story 6.3: Add Configuration Validation and Error Handling
 
 As a user providing configuration,
 I want clear validation and helpful error messages,
@@ -1121,7 +1121,7 @@ So that I can identify and fix configuration issues quickly.
 **When** I test error handling
 **Then** partial invalid configs provide clear guidance on what needs to be fixed
 
-### Story 5.4: Implement Configuration Versioning and Migration
+### Story 6.4: Implement Configuration Versioning and Migration
 
 As a developer maintaining lithos,
 I want configuration versioning and migration support,
@@ -1141,7 +1141,7 @@ So that configuration files can evolve safely across versions without breaking u
 **When** users upgrade
 **Then** clear error messages guide them through manual migration steps
 
-### Story 5.5: Create Sample Configuration Files
+### Story 6.5: Create Sample Configuration Files
 
 As a user getting started with lithos,
 I want sample configuration files based on a complete JSON schema,
@@ -1165,15 +1165,15 @@ So that I can understand configuration options and get started quickly with vali
 **When** they start lithos using Epic 4's file loading
 **Then** configurations load successfully and demonstrate expected behavior
 
-### Story 5.6: Review Epic 5 Test Suite
+### Story 6.6: Review Epic 6 Test Suite
 
 As a developer maintaining the configuration system,
-I want an efficient test suite for Epic 5 components,
+I want an efficient test suite for Epic 6 components,
 So that tests provide good coverage without redundancy or excessive execution time.
 
 **Acceptance Criteria:**
 
-**Given** all Epic 5 components are implemented with tests
+**Given** all Epic 6 components are implemented with tests
 **When** I review the test suite
 **Then** it achieves 90%+ coverage for configuration components
 
@@ -1183,13 +1183,13 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 5 suite
+**Then** test execution completes in <30 seconds for the full Epic 6 suite
 
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Story 5.6: Configuration Error Recovery and Rollback
+### Story 6.6: Configuration Error Recovery and Rollback
 As a user who has made configuration mistakes, I want the system to provide clear error messages and recovery options, so that I can fix configuration issues without losing my work.
 **Acceptance Criteria:**
 **Given** configuration validation fails
@@ -1203,7 +1203,7 @@ As a user who has made configuration mistakes, I want the system to provide clea
 **Then** the system can restore previous known-good configuration
 **And** configuration history is maintained for recovery
 
-### Story 5.7: Document Configuration System for Users
+### Story 6.7: Document Configuration System for Users
 
 As a user configuring lithos,
 I want comprehensive documentation for configuration options,

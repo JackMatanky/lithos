@@ -117,7 +117,7 @@ So that configuration changes are validated and the domain enforces configuratio
 ### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
 - [x] Update domain crate lib.rs with Config module public exports
 - [x] Add comprehensive doc comments with hierarchical examples and validation rules
-- [x] Ensure integration points with future Epic 5 (configuration loading) and Epic 7 (schema validation)
+- [x] Ensure integration points with future Epic 6 (configuration loading) and Epic 7 (schema validation)
 - [x] Update Cargo.toml with required dependencies (serde for serialization, optional encryption crates)
 - [x] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
@@ -687,7 +687,7 @@ Use **subfolder organization** for Config bounded context due to complexity of h
 
 **Singleton Pattern Selection:**
 - **Domain Layer**: Pure entities with no singleton (maintains architectural purity)
-- **Adapter Layer (Epic 5)**: Will implement `Arc<OnceLock<T>>` pattern for performance-critical data
+- **Adapter Layer (Epic 6)**: Will implement `Arc<OnceLock<T>>` pattern for performance-critical data
 - **Hybrid Approach**: Use `Arc<OnceLock<T>>` for LSP hot paths (PropertyBank, schemas) and `Arc<RwLock<T>>` for mutable configuration
 
 **Performance Rationale:**
@@ -735,7 +735,7 @@ Use **subfolder organization** for Config bounded context due to complexity of h
 - Workspace structure exists at `crates/domain/`, `crates/app/`, `crates/adapters/`, `crates/cli/`
 - Domain crate has basic error types and ports structure
 - Story 3.1 (Note) and 3.2 (Schema) completed - Config is the third domain model
-- Epic 5 will implement configuration loading using this domain model
+- Epic 6 will implement configuration loading using this domain model
 
 **Technology Stack (from project-context.md):**
 - **Rust 1.92+**: Memory safety, zero-cost abstractions
@@ -862,13 +862,13 @@ impl ConfigAdapter {
 - ✅ Story 3.2 ready (Schema bounded context for validation)
 
 **Enables Future Stories:**
-- **Epic 5**: Configuration loading and management (uses this domain model)
+- **Epic 6**: Configuration loading and management (uses this domain model)
 - **Epic 7**: Schema validation (configuration drives schema loading)
 - **Epic 10**: Vault operations (vault-specific configuration)
 - **Epic 11**: Query operations (configuration affects query behavior)
 
 **Integration Points:**
-- **Configuration Loading (Epic 5)**: Adapters load TOML files into Config domain model
+- **Configuration Loading (Epic 6)**: Adapters load TOML files into Config domain model
 - **Schema System (Epic 7)**: Configuration specifies schema file locations and validation rules
 - **Template System (Epic 12)**: Configuration provides template pack locations and settings
 - **CLI (Epic 14)**: Configuration drives CLI behavior, help text, and command options

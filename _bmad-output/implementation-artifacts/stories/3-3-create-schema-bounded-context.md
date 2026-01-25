@@ -1391,7 +1391,7 @@ fn detect_circular_inheritance(
 
 - Story 3.3: Config Bounded Context (configuration for schema loading)
 - Story 3.4: Template Bounded Context (templates reference schemas)
-- Epic 5: Configuration Management (load schemas from files)
+- Epic 6: Configuration Management (load schemas from files)
 - Epic 7: Schema System (implements schema loading and resolution adapters)
 - Epic 10: Vault Indexing (validates notes against schemas)
 - Epic 11: Query Service (queries by schema-defined fields)

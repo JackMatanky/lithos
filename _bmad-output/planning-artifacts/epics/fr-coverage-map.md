@@ -27,9 +27,9 @@
 | FR23                 | Epic 11 (Query metadata from other notes)                                    |
 | FR24                 | Epic 10 (Maintain vault consistency)                                          |
 | FR25                 | Epic 10 (Handle large vaults without degradation)                             |
-| FR26                 | Epic 5 (Configure template packs via TOML)                                   |
-| FR27                 | Epic 5 (Manage schema definitions via config)                                |
-| FR28                 | Epic 5 (Set application preferences via config)                              |
+| FR26                 | Epic 6 (Configure template packs via TOML)                                   |
+| FR27                 | Epic 6 (Manage schema definitions via config)                                |
+| FR28                 | Epic 6 (Set application preferences via config)                              |
 | FR29                 | Post-MVP Phase 2c (Custom validation/linting rules)                          |
 | FR30                 | Epic 14 (Cross-platform execution consistency)                               |
 | FR31                 | Epic 14 (Access through terminal interfaces)                                 |
@@ -40,7 +40,7 @@
 | FR36                 | Post-MVP Phase 3b (Validate third-party templates)                           |
 | FR37                 | Post-MVP Phase 3b (Community contribution workflows)                         |
 | FR38                 | Post-MVP Phase 4 (Access control for vault data)                             |
-| FR39                 | Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 5 |
+| FR39                 | Post-MVP Phase 4 (Encrypt sensitive configuration) - Basic version in Epic 6 |
 | FR40                 | Post-MVP Phase 4 (Audit template execution) - Basic version in Epic 14       |
 | FR41                 | Epic 14 (Execute commands with subcommands)                                  |
 | FR42                 | Epic 14 (Comprehensive help and documentation)                               |
