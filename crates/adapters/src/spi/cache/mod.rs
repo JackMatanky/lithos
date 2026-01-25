@@ -46,6 +46,7 @@ use crate::spi::errors::CacheError;
 /// # struct MemoryCache;
 /// # #[async_trait]
 /// # impl Cache<String, String> for MemoryCache {
+/// #     async fn clear(&self) -> Result<(), CacheError> { Ok(()) }
 /// #     async fn delete(&self, _k: &String) -> Result<bool, CacheError> { Ok(false) }
 /// #     async fn get(&self, _k: &String) -> Result<Option<String>, CacheError> { Ok(None) }
 /// #     async fn put(&self, _k: String, _v: String) -> Result<(), CacheError> { Ok(()) }
@@ -64,6 +65,12 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
+    /// Clear all entries from the cache.
+    ///
+    /// # Errors
+    /// Returns `CacheError` if the underlying storage fails.
+    async fn clear(&self) -> Result<(), CacheError>;
+
     /// Remove entry from cache.
     ///
     /// Returns `true` if the entry existed and was removed.
@@ -77,6 +84,18 @@ where
     /// # Errors
     /// Returns `CacheError` if the underlying storage fails.
     async fn get(&self, key: &K) -> Result<Option<V>, CacheError>;
+
+    /// Check if key exists in cache.
+    ///
+    /// This is a performance optimization to avoid cloning the value when only
+    /// existence needs to be verified.
+    ///
+    /// # Errors
+    /// Returns `CacheError` if the underlying storage fails.
+    #[inline]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        Ok(self.get(key).await?.is_some())
+    }
 
     /// Alias for `delete` (cache-specific terminology).
     ///
@@ -106,9 +125,13 @@ mod tests {
     #[expect(
         clippy::missing_trait_methods,
         reason = "Dummy intentionally uses default implementation for \
-                  invalidate to test trait-level aliasing behavior."
+                  invalidate/has to test trait-level behavior."
     )]
     impl Cache<String, String> for Dummy {
+        async fn clear(&self) -> Result<(), CacheError> {
+            Ok(())
+        }
+
         async fn delete(&self, _key: &String) -> Result<bool, CacheError> {
             Ok(false)
         }
@@ -154,6 +177,16 @@ mod tests {
         // Verified by Dummy implementation
     }
 
+    #[test]
+    fn should_have_has_method() {
+        // Verified by Dummy implementation
+    }
+
+    #[test]
+    fn should_have_clear_method() {
+        // Verified by Dummy implementation
+    }
+
     // [5.1-U-11] Cache Trait Bounds
     #[test]
     fn should_require_proper_trait_bounds() {
@@ -180,6 +213,22 @@ mod tests {
         mock.expect_get().returning(|_| Box::pin(async { Ok(None) }));
         let result = mock.get(&"key".to_owned()).await;
         assert!(result.is_ok(), "Mock get should return Ok");
+    }
+
+    #[tokio::test]
+    async fn mock_should_allow_has_expectation() {
+        let mut mock = MockCache::<String, String>::new();
+        mock.expect_has().returning(|_| Box::pin(async { Ok(true) }));
+        let result = mock.has(&"key".to_owned()).await;
+        assert!(result.is_ok(), "Mock has should return Ok");
+    }
+
+    #[tokio::test]
+    async fn mock_should_allow_clear_expectation() {
+        let mut mock = MockCache::<String, String>::new();
+        mock.expect_clear().returning(|| Box::pin(async { Ok(()) }));
+        let result = mock.clear().await;
+        assert!(result.is_ok(), "Mock clear should return Ok");
     }
 
     #[tokio::test]
