@@ -223,8 +223,8 @@ This document provides the complete epic and story breakdown for lithos, decompo
 
 ## FR Coverage Map
 
-- FR1 → Epic 11 (Modular templates with reusable sections)
-- FR2 → Epic 11 (Interactive template execution with prompts/suggesters)
+- FR1 → Epic 12 (Modular templates with reusable sections)
+- FR2 → Epic 12 (Interactive template execution with prompts/suggesters)
 - FR3 → Epic 13 (Complex template composition with error prevention)
 - FR4 → Epic 13 (Date formatting and manipulation functions)
 - FR5 → Post-MVP Phase 1.5 (Dynamic commands and whitespace control)
@@ -237,8 +237,8 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR12 → Epic 6 (File filtering via schema directory constraints)
 - FR13 → Epic 6 (Date formatting via schema format strings)
 - FR14 → Epic 6 (Schema inheritance and extension)
-- FR15 → Epic 11 (Free-text input through prompts)
-- FR16 → Epic 11 (Single-choice suggesters)
+- FR15 → Epic 12 (Free-text input through prompts)
+- FR16 → Epic 12 (Single-choice suggesters)
 - FR17 → Epic 13 (Multi-selection suggesters)
 - FR18 → Post-MVP Phase 1.5 (Contextual help and guidance)
 - FR19 → Post-MVP Phase 1.5 (Progressive complexity modes)
@@ -1374,7 +1374,7 @@ So that templates can safely access schema-defined properties.
 **Then** type-safe access is provided with validation
 
 **Given** contracts are defined
-**When** I validate against Epic 11 template requirements
+**When** I validate against Epic 12 template requirements
 **Then** all template input needs are satisfied by schema contracts
 
 ### Story 6.8: Review Epic 6 Test Suite
@@ -2546,7 +2546,7 @@ So that query functionality can be properly understood and used.
 **When** other components integrate
 **Then** they can use query service effectively and efficiently
 
-## Epic 11: Basic Interactive Template System **[MVP CORE]**
+## Epic 12: Basic Interactive Template System **[MVP CORE]**
 Users can create and execute modular templates with schema-driven interactive prompts that generate validated notes with essential template functions.
 **FRs covered:** FR1, FR2, FR9, FR15, FR16
 **Implementation Notes:**
@@ -2558,7 +2558,7 @@ Users can create and execute modular templates with schema-driven interactive pr
 - Performance benchmarking for NFR1 validation (<500ms execution)
 - May create ADR for interactive UI patterns
 
-#### Story 11.1: [Domain] Unified Prompt, Suggestion, and Source Models
+#### Story 12.1: [Domain] Unified Prompt, Suggestion, and Source Models
 As a developer, I want domain entities that represent template variables and suggestion sources, so that the elicitation logic supports both simple lists and complex key-value maps.
 **Acceptance Criteria:**
 - **Given** the `domain` crate
@@ -2568,7 +2568,7 @@ As a developer, I want domain entities that represent template variables and sug
 - **And** the `UIPort` trait is designed to return the complex `value` type.
 **References:** FR16, FR17
 
-#### Story 11.2: [Adapters/API] Basic Suggesters with List and Mapping Support
+#### Story 12.2: [Adapters/API] Basic Suggesters with List and Mapping Support
 As a template author, I want basic suggesters that can accept both simple arrays/lists and key-value mappings, so that I can create interactive templates without requiring schema definitions.
 **Acceptance Criteria:**
 - **Given** a template with a `suggest()` call
@@ -2579,7 +2579,7 @@ As a template author, I want basic suggesters that can accept both simple arrays
 - **And** the basic suggester works independently of schema definitions.
 **References:** FR16, FR17
 
-#### Story 11.3: [App] Schema-Driven Query Automation & Binding
+#### Story 12.3: [App] Schema-Driven Query Automation & Binding
 As a template author, I want the schema to automatically simplify my queries, so that I don't have to manually write folder-listing logic in every template.
 **Acceptance Criteria:**
 - **Given** a schema property with a `FileSpec` and a `directory` constraint
@@ -2589,7 +2589,7 @@ As a template author, I want the schema to automatically simplify my queries, so
 - **And** schema metadata (enums, descriptions) automatically enriches the prompt definitions.
 **References:** FR9, FR12, FR14
 
-#### Story 11.4: [App] Dynamic Context Resolution Service
+#### Story 12.4: [App] Dynamic Context Resolution Service
 As a user, I want my suggesters to be populated by both automated schema queries and explicit template queries, so that I can pick from up-to-date vault data.
 **Acceptance Criteria:**
 - **Given** a `PromptSession`
@@ -2599,7 +2599,7 @@ As a user, I want my suggesters to be populated by both automated schema queries
 - **And** it caches query results for the duration of the session to ensure performance.
 **References:** FR2, FR23
 
-#### Story 11.5: [App] Interactive Loop Orchestrator (Atomic Workflow)
+#### Story 12.5: [App] Interactive Loop Orchestrator (Atomic Workflow)
 As a user, I want the system to ensure my vault remains clean if I cancel a template execution, so that I don't have to manually delete partial or empty files.
 **Acceptance Criteria:**
 - **Given** an active elicitation session
@@ -2609,7 +2609,7 @@ As a user, I want the system to ensure my vault remains clean if I cancel a temp
 - **And** the orchestrator ensures the "Clean Slate" policy is respected across all execution steps.
 **References:** FR24, FR49
 
-#### Story 11.6: [Adapters/SPI] MiniJinja Variable Inspector & Extensions
+#### Story 12.6: [Adapters/SPI] MiniJinja Variable Inspector & Extensions
 As the system, I need to discover template requirements and provide a way for authors to trigger custom suggesters, so that the elicitation process is both automated and flexible.
 **Acceptance Criteria:**
 - **Given** a markdown template
@@ -2618,7 +2618,7 @@ As the system, I need to discover template requirements and provide a way for au
 - **And** it registers a `suggest(options)` global function in the MiniJinja environment that can trigger the `UIPort` with custom data.
 **References:** FR1, FR6
 
-#### Story 11.7: [Adapters/API] Fuzzy Picker with Key-Value Support
+#### Story 12.7: [Adapters/API] Fuzzy Picker with Key-Value Support
 As a user, I want a beautiful and responsive fuzzy-search interface in my terminal, so that I can find and select options quickly.
 **Acceptance Criteria:**
 - **Given** a list of `Suggestions` from the App layer
@@ -2628,7 +2628,7 @@ As a user, I want a beautiful and responsive fuzzy-search interface in my termin
 - **And** it correctly captures terminal interrupt signals and returns an `Abort` signal to the App layer.
 **References:** FR15, FR16
 
-#### Story 11.8: [Test] Obsidian Templater Template Conversion & Fixtures
+#### Story 12.8: [Test] Obsidian Templater Template Conversion & Fixtures
 As a developer, I want to use real-world Obsidian templates as test fixtures, so that I can verify Lithos provides a viable migration path for power users.
 **Acceptance Criteria:**
 - **Given** the templates in `docs/refs/obsidian/00_system/`
@@ -2637,7 +2637,7 @@ As a developer, I want to use real-world Obsidian templates as test fixtures, so
 - **And** the automated schema-derived queries must match the output of the original manual Javascript queries.
 **References:** NFR20
 
-#### Story 11.9: [Adapters/SPI] Chrono Date/Time Function Integration
+#### Story 12.9: [Adapters/SPI] Chrono Date/Time Function Integration
 As a template author, I want access to date/time functions using the existing chrono crate, so that I can format dates and perform date arithmetic without adding new dependencies.
 **Acceptance Criteria:**
 - **Given** the chrono crate is already in the tech stack
@@ -2647,7 +2647,7 @@ As a template author, I want access to date/time functions using the existing ch
 - **And** all functions are documented with examples in the standard library reference.
 **References:** FR4, ADR 0003
 
-#### Story 11.10: [Adapters/SPI] Convert Case String Function Integration
+#### Story 12.10: [Adapters/SPI] Convert Case String Function Integration
 As a template author, I want string case conversion functions using the convert_case crate, so that I can generate proper identifiers and titles without custom implementations.
 **Acceptance Criteria:**
 - **Given** the convert_case crate is available
@@ -2657,7 +2657,7 @@ As a template author, I want string case conversion functions using the convert_
 - **And** functions are documented with examples in the standard library reference.
 **References:** FR1
 
-#### Story 11.11: [Adapters/SPI] Slug Generation Function Integration
+#### Story 12.11: [Adapters/SPI] Slug Generation Function Integration
 As a template author, I want URL-friendly slug generation using the slug crate, so that I can create valid identifiers for file names and URLs.
 **Acceptance Criteria:**
 - **Given** a slug crate is available (str_slug or similar)
@@ -2667,7 +2667,7 @@ As a template author, I want URL-friendly slug generation using the slug crate, 
 - **And** the function is documented with examples in the standard library reference.
 **References:** FR1
 
-#### Story 11.12: [Adapters/SPI] Base64 Encoding Function Integration
+#### Story 12.12: [Adapters/SPI] Base64 Encoding Function Integration
 As a template author, I want base64 encoding/decoding functions using the base64 crate, so that I can encode binary data or create compact representations.
 **Acceptance Criteria:**
 - **Given** the base64 crate is available
@@ -2677,7 +2677,7 @@ As a template author, I want base64 encoding/decoding functions using the base64
 - **And** functions are documented with examples in the standard library reference.
 **References:** Additional utility functions
 
-#### Story 11.13: [Adapters/SPI] Random Value Generation Integration
+#### Story 12.13: [Adapters/SPI] Random Value Generation Integration
 As a template author, I want random value functions using the rand crate, so that I can generate random numbers, strings, or selections for testing and variety.
 **Acceptance Criteria:**
 - **Given** the rand crate is available
@@ -2687,7 +2687,7 @@ As a template author, I want random value functions using the rand crate, so tha
 - **And** functions are documented with examples in the standard library reference.
 **References:** Additional utility functions
 
-#### Story 11.14: [Adapters/SPI] UUID Generation Function Integration
+#### Story 12.14: [Adapters/SPI] UUID Generation Function Integration
 As a template author, I want UUID generation using the existing uuid crate, so that I can create unique identifiers for files and records.
 **Acceptance Criteria:**
 - **Given** the uuid crate is already in the tech stack
@@ -2697,17 +2697,17 @@ As a template author, I want UUID generation using the existing uuid crate, so t
 - **And** the function is documented with examples in the standard library reference.
 **References:** Additional utility functions
 
-#### Story 11.15: [Test] Epic 11 Test Suite Review & Optimization
+#### Story 12.15: [Test] Epic 12 Test Suite Review & Optimization
 As a developer, I want a comprehensive and efficient test suite for the interactive template system, so that I can maintain the code with confidence.
 **Acceptance Criteria:**
-- **Given** the implementation of Epic 11
+- **Given** the implementation of Epic 12
 - **When** I run the test suite
 - **Then** it achieves 90%+ coverage for the `PromptSession` state machine and `BindingService`.
 - **And** property-based tests verify that `Abort` signals never result in filesystem side-effects.
 - **And** the suite validates architectural boundaries (e.g. Domain has zero I/O).
 **References:** NFR16
 
-#### Story 11.16: Template System Resource Limits and Timeouts
+#### Story 12.16: Template System Resource Limits and Timeouts
 As a system administrator, I want template execution to be bounded by resource limits and timeouts, so that runaway templates cannot exhaust system resources or hang indefinitely.
 **Acceptance Criteria:**
 **Given** template execution starts
@@ -2722,7 +2722,7 @@ As a system administrator, I want template execution to be bounded by resource l
 **And** users receive actionable timeout messages
 **And** long-running operations provide progress indicators
 
-#### Story 11.17: Template System Fallback Strategies
+#### Story 12.17: Template System Fallback Strategies
 As a user experiencing template failures, I want automatic fallback mechanisms, so that template operations degrade gracefully rather than failing completely.
 **Acceptance Criteria:**
 **Given** advanced template features fail
@@ -2737,7 +2737,7 @@ As a user experiencing template failures, I want automatic fallback mechanisms, 
 **And** manual data entry remains possible
 **And** template completion is still achievable
 
-### Story 11.18: MiniJinja Template Performance Regression Testing
+### Story 12.18: MiniJinja Template Performance Regression Testing
 As a performance engineer, I want automated regression tests for MiniJinja template operations, so that the architectural choice of MiniJinja remains optimal and template execution stays under 500ms NFR1.
 **Acceptance Criteria:**
 **Given** MiniJinja template implementation
@@ -2747,10 +2747,10 @@ As a performance engineer, I want automated regression tests for MiniJinja templ
 **And** template compilation performance regressions trigger alerts
 **And** template benchmarks run in CI/CD for every template-related change
 
-#### Story 11.18: [Docs] Epic 11 User & Developer Documentation
+#### Story 12.18: [Docs] Epic 12 User & Developer Documentation
 As a user, I want clear instructions on how to create and use interactive templates with schema support, so that I can leverage the full power of the system.
 **Acceptance Criteria:**
-- **Given** a completed Epic 11
+- **Given** a completed Epic 12
 - **When** I review the documentation
 - **Then** it includes a guide on how schemas automate folder-picking queries.
 - **And** it provides examples for using the `suggest()` helper for ad-hoc terminal prompts.
@@ -2759,7 +2759,7 @@ As a user, I want clear instructions on how to create and use interactive templa
 - **And** it documents resource limits, timeouts, and fallback behaviors.
 **References:** NFR13
 **Acceptance Criteria:**
-- **Given** a completed Epic 11
+- **Given** a completed Epic 12
 - **When** I review the documentation
 - **Then** it includes a guide on how schemas automate folder-picking queries.
 - **And** it provides examples for using the `suggest()` helper for ad-hoc terminal prompts.

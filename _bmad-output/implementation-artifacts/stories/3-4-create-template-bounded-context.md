@@ -93,7 +93,7 @@ So that template structure and business rules are properly validated at the doma
 ### Task 6: Documentation and Integration (REFACTOR Phase - AC: All)
 - [x] Update domain crate lib.rs with Template module public exports
 - [x] Add comprehensive doc comments with template examples and validation rules
-- [x] Ensure integration points with Epic 11 (template execution) and Epic 6 (schema integration)
+- [x] Ensure integration points with Epic 12 (template execution) and Epic 6 (schema integration)
 - [x] Update Cargo.toml with required dependencies (serde for serialization, optional validation crates)
 - [x] **TDD REQUIREMENT:** All documentation examples compile and run successfully
 
@@ -679,7 +679,7 @@ Use **subfolder organization** for Template bounded context due to complexity of
 - Workspace structure exists at `crates/domain/`, `crates/app/`, `crates/adapters/`, `crates/cli/`
 - Domain crate has basic error types and ports structure
 - Stories 3.1 (Note), 3.2 (Schema), 3.3 (Config) completed - Template is the final domain model
-- Epic 11 will implement template execution using this domain model
+- Epic 12 will implement template execution using this domain model
 
 **Technology Stack (from project-context.md):**
 - **Rust 1.92+**: Memory safety, zero-cost abstractions
@@ -789,13 +789,13 @@ impl Template {
 - ✅ Epic 2 completed (test patterns established)
 
 **Enables Future Stories:**
-- **Epic 11**: Template execution and rendering (uses this domain model)
+- **Epic 12**: Template execution and rendering (uses this domain model)
 - **Epic 6**: Schema integration (templates reference schemas for variable types)
 - **Epic 14**: CLI template commands (uses template domain for validation)
 - **Epic 9**: Vault operations (templates used for note generation)
 
 **Integration Points:**
-- **Template Execution (Epic 11)**: Adapters render templates using MiniJinja
+- **Template Execution (Epic 12)**: Adapters render templates using MiniJinja
 - **Schema Integration (Epic 6)**: Template variables can reference schema types
 - **CLI Commands (Epic 14)**: Template validation before execution
 - **Vault Operations (Epic 9)**: Templates used to generate new notes

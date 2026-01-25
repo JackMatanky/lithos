@@ -870,7 +870,7 @@ impl ConfigAdapter {
 **Integration Points:**
 - **Configuration Loading (Epic 5)**: Adapters load TOML files into Config domain model
 - **Schema System (Epic 6)**: Configuration specifies schema file locations and validation rules
-- **Template System (Epic 11)**: Configuration provides template pack locations and settings
+- **Template System (Epic 12)**: Configuration provides template pack locations and settings
 - **CLI (Epic 14)**: Configuration drives CLI behavior, help text, and command options
 
 ### Epic 2 Test Infrastructure Integration

@@ -57,7 +57,7 @@ includedFiles:
   - epic-8-storage-layer-persistence-mvp-core.md
   - epic-9-vault-file-system-integration-indexing-engine-mvp-core.md
   - epic-10-query-service-knowledge-graph-mvp-core.md
-  - epic-11-basic-interactive-template-system-mvp-core.md
+  - epic-12-basic-interactive-template-system-mvp-core.md
   - epic-13-advanced-template-features-phase-15.md
   - epic-14-cli-interface-error-handling.md
   - epic-15-test-suite-review-optimization.md
@@ -183,8 +183,8 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 
 | FR Number | PRD Requirement | Epic Coverage | Status |
 | :--- | :--- | :--- | :--- |
-| FR1 | Users can create modular templates composed of reusable sections with variables | Epic 11 | ✓ Covered |
-| FR2 | Users can execute templates interactively with prompts, suggesters, and multi-suggesters | Epic 11 | ✓ Covered |
+| FR1 | Users can create modular templates composed of reusable sections with variables | Epic 12 | ✓ Covered |
+| FR2 | Users can execute templates interactively with prompts, suggesters, and multi-suggesters | Epic 12 | ✓ Covered |
 | FR3 | Users can compose complex templates from multiple sections with error prevention | Epic 13 | ✓ Covered |
 | FR4 | Users can apply date formatting and manipulation functions to template content | Epic 13 | ✓ Covered |
 | FR5 | Users can include dynamic commands and whitespace control in templates | Post-MVP Phase 1.5 | ✓ Covered |
@@ -197,8 +197,8 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 | FR12 | Users can filter file selections using schema-defined directory constraints | Epic 6 | ✓ Covered |
 | FR13 | Users can format dates using schema-defined format strings | Epic 6 | ✓ Covered |
 | FR14 | Users can inherit and extend schema definitions between related types | Epic 6 | ✓ Covered |
-| FR15 | Users can provide free-text input through template prompts | Epic 11 | ✓ Covered |
-| FR16 | Users can select from single-choice lists using suggesters | Epic 11 | ✓ Covered |
+| FR15 | Users can provide free-text input through template prompts | Epic 12 | ✓ Covered |
+| FR16 | Users can select from single-choice lists using suggesters | Epic 12 | ✓ Covered |
 | FR17 | Users can select multiple items from lists using multi-suggesters | Epic 13 | ✓ Covered |
 | FR18 | Users can receive contextual help and guidance during input | Post-MVP Phase 1.5 | ✓ Covered |
 | FR19 | Users can access progressive complexity modes for different expertise levels | Post-MVP Phase 1.5 | ✓ Covered |

@@ -233,7 +233,7 @@ So that templates can safely access schema-defined properties.
 **Then** type-safe access is provided with validation
 
 **Given** contracts are defined
-**When** I validate against Epic 11 template requirements
+**When** I validate against Epic 12 template requirements
 **Then** all template input needs are satisfied by schema contracts
 
 ## Story 6.7: Review Epic 6 Test Suite

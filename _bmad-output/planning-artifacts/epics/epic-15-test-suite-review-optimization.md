@@ -299,7 +299,7 @@ As a developer, I want comprehensive documentation of the complete testing strat
 
 As a test engineer, I want to investigate fuzz testing capabilities for the configuration and template engines, so that we can identify edge cases and stability issues that standard tests miss.
 **Acceptance Criteria:**
-- **Given** the configuration loader (Epic 5) and template engine (Epic 11)
+- **Given** the configuration loader (Epic 5) and template engine (Epic 12)
 - **When** I spike on fuzz testing tools (e.g. cargo-fuzz, bolero)
 - **Then** I identify the best tool for the codebase.
 - **And** I create a prototype fuzz target for the `ConfigLoader` to test robust error handling against malformed inputs.
