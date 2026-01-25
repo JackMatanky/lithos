@@ -151,6 +151,8 @@ So that I can verify throughput, latency, and memory usage meet requirements.
   - [ ] Subtask 5.2: Run `mise run lint` one final time
   - [ ] Subtask 5.3: Run `mise run fmt` and verify formatting
   - [ ] Subtask 5.4: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 5.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 5.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
