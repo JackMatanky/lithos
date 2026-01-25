@@ -4,6 +4,7 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
 
+- **Schema-First Approach**: Defaults and Schema are defined first (Story 5.1) to guide adapter implementation.
 - Figment-based hierarchical config per ADR 0005 using Epic 4 loading foundation
 - Config adapters (Command/Query with embedded Loader/Writer) created in this epic
 - Singleton Registry pattern with `Arc<OnceLock<Config>>` for optimal CLI performance
@@ -15,7 +16,35 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - **Adapter Structure**: `crates/adapters/src/spi/config/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, validator.rs, cache.rs
 - **No CLI Integration**: Epic 5 delivers tested adapters without CLI wiring (deferred to future epic)
 
-## Story 5.1: Implement Config Adapters with Embedded Utilities
+## Story 5.1: Create Default Configuration Files and Schema
+
+As a user getting started with lithos,
+I want default configuration files with proper schema validation,
+So that I can understand configuration options and customize settings confidently.
+
+**Acceptance Criteria:**
+
+**Given** I need to define configuration structure
+**When** I evaluate schema options
+**Then** I decide whether to extend `docs/schemas/lithos.schema.json` with config definitions or create a separate `docs/schemas/config.schema.json`
+
+**Given** configuration schema is defined
+**When** I create default config files in TOML format
+**Then** `global.toml` and `vault.toml` are created in `docs/defaults/` with all fields set to default values
+
+**Given** default config files use multiple formats
+**When** I provide format examples
+**Then** TOML (primary), JSON, and YAML versions are created showing the same default configuration
+
+**Given** default files exist
+**When** I validate against the schema
+**Then** all default configs pass schema validation and demonstrate proper structure
+
+**Given** default files use domain types
+**When** I verify against Domain models
+**Then** the structure maps correctly to the `Config` aggregate defined in Epic 3 (manual verification)
+
+## Story 5.2: Implement Config Adapters with Embedded Utilities
 
 As a developer completing the configuration bounded context,
 I want Command and Query adapters that embed specialized loader/writer utilities,
@@ -61,7 +90,11 @@ So that port implementations are clean and easily extensible for future operatio
 **When** I export them in `crates/adapters/src/spi/config/mod.rs`
 **Then** internal structs (`Query`, `Command`, `Loader`, `Writer`, `Registry`) are re-exported with Config prefix (`ConfigQuery`, `ConfigCommand`, `ConfigLoader`, `ConfigWriter`, `ConfigRegistry`)
 
-## Story 5.2: Implement Config Singleton Registry
+**Given** Story 5.1 provides default configuration files
+**When** I test the Loader against `docs/defaults/global.toml`
+**Then** it successfully loads and deserializes into the Domain Config structure
+
+## Story 5.3: Implement Config Singleton Registry
 
 As a developer implementing configuration management,
 I want a singleton registry for Config access,
@@ -93,11 +126,11 @@ So that the entire application references a single merged Config instance with o
 **When** I design the singleton implementation
 **Then** Registry supports atomic updates using AtomicPtr swap pattern for future extension
 
-**Given** Story 5.1 provides Loader adapter
+**Given** Story 5.2 provides Loader adapter
 **When** I integrate with Registry
 **Then** the `Command` adapter populates the config `Registry` singleton upon successful loading and construction of the `Config` aggregate.
 
-**Given** Story 5.3 provides Figment hierarchical loading
+**Given** Story 5.4 provides Figment hierarchical loading
 **When** I implement initialization
 **Then** Registry loads config via Loader with proper precedence (CLI > Env > Files > Defaults)
 
@@ -109,7 +142,7 @@ So that the entire application references a single merged Config instance with o
 **When** I export it in `crates/adapters/src/spi/config/mod.rs`
 **Then** internal struct `Registry` is re-exported as `ConfigRegistry`
 
-## Story 5.3: Implement Hierarchical Configuration Loading
+## Story 5.4: Implement Hierarchical Configuration Loading
 
 As a user configuring lithos,
 I want hierarchical configuration that respects precedence rules,
@@ -137,7 +170,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **When** I implement file loading
 **Then** PathValidator::validate() checks path security before FormatDispatcher::parse() handles format detection
 
-## Story 5.4: Implement Structural Configuration Validation
+## Story 5.5: Implement Structural Configuration Validation
 
 As a user providing configuration,
 I want structural validation of the document layout,
@@ -166,7 +199,7 @@ So that I am informed of missing sections before the application attempts to pro
 **When** I implement Loader error handling
 **Then** adapter converts Epic 4 errors to ConfigError with additional context
 
-## Story 5.5: Implement Configuration Versioning and Migration
+## Story 5.6: Implement Configuration Versioning and Migration
 
 As a developer maintaining lithos,
 I want configuration versioning and migration support,
@@ -190,7 +223,7 @@ So that configuration files can evolve safely across versions without breaking u
 **When** I validate version compatibility
 **Then** migration occurs transparently before domain validation
 
-## Story 5.6: Configuration Error Recovery and Rollback
+## Story 5.7: Configuration Error Recovery and Rollback
 
 As a user who has made configuration mistakes,
 I want the system to provide clear error messages and recovery options,
@@ -218,7 +251,7 @@ So that I can fix configuration issues without losing my work.
 **When** I implement recovery logic
 **Then** configuration history is maintained for recovery (optional future enhancement)
 
-## Story 5.7: Review Epic 5 Test Suite
+## Story 5.8: Review Epic 5 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 5 test suite to its foundation,
@@ -261,38 +294,6 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
-
-## Story 5.8: Create Default Configuration Files and Schema
-
-As a user getting started with lithos,
-I want default configuration files with proper schema validation,
-So that I can understand configuration options and customize settings confidently.
-
-**Acceptance Criteria:**
-
-**Given** I need to define configuration structure
-**When** I evaluate schema options
-**Then** I decide whether to extend `docs/schemas/lithos.schema.json` with config definitions or create a separate `docs/schemas/config.schema.json`
-
-**Given** configuration schema is defined
-**When** I create default config files in TOML format
-**Then** `global.toml` and `vault.toml` are created in `docs/defaults/` with all fields set to default values
-
-**Given** default config files use multiple formats
-**When** I provide format examples
-**Then** TOML (primary), JSON, and YAML versions are created showing the same default configuration
-
-**Given** default files exist
-**When** I validate against the schema
-**Then** all default configs pass schema validation and demonstrate proper structure
-
-**Given** users have default configs
-**When** they start lithos using Epic 4's file loading
-**Then** configurations load successfully via Loader using default values
-
-**Given** default files use domain types
-**When** I test defaults with Loader
-**Then** they deserialize correctly into Global and Vault domain models
 
 ## Story 5.9: Document Configuration System
 
