@@ -39,12 +39,11 @@ use crate::spi::errors::CacheError;
 /// # impl Cache<String, String> for MemoryCache {
 /// #     async fn delete(&self, _k: &String) -> Result<bool, CacheError> { Ok(false) }
 /// #     async fn get(&self, _k: &String) -> Result<Option<String>, CacheError> { Ok(None) }
-/// #     async fn invalidate(&self, _k: &String) -> Result<bool, CacheError> { Ok(false) }
 /// #     async fn put(&self, _k: String, _v: String) -> Result<(), CacheError> { Ok(()) }
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let cache = MemoryCache;
-/// let result = cache.get(&"key".to_string()).await?;
+/// let result: Option<String> = cache.get(&"key".to_string()).await?;
 /// assert!(result.is_none());
 /// # Ok::<(), CacheError>(())
 /// # }).unwrap();
@@ -76,7 +75,10 @@ where
     ///
     /// # Errors
     /// Returns `CacheError` if the underlying storage fails.
-    async fn invalidate(&self, key: &K) -> Result<bool, CacheError>;
+    #[inline]
+    async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
+        self.delete(key).await
+    }
 
     /// Store key-value pair.
     ///
@@ -92,6 +94,11 @@ mod tests {
     struct Dummy;
 
     #[async_trait]
+    #[expect(
+        clippy::missing_trait_methods,
+        reason = "Dummy intentionally uses default implementation for \
+                  invalidate to test trait-level aliasing behavior."
+    )]
     impl Cache<String, String> for Dummy {
         async fn delete(&self, _key: &String) -> Result<bool, CacheError> {
             Ok(false)
@@ -102,10 +109,6 @@ mod tests {
             _key: &String,
         ) -> Result<Option<String>, CacheError> {
             Ok(None)
-        }
-
-        async fn invalidate(&self, _key: &String) -> Result<bool, CacheError> {
-            Ok(false)
         }
 
         async fn put(
@@ -210,12 +213,6 @@ mod tests {
     }
 
     #[tokio::test]
-    #[expect(
-        clippy::panic,
-        reason = "Test assertion requires explicit failure for unrecoverable \
-                  contract violation. Unavoidable in complex match patterns. \
-                  Panic with descriptive message is idiomatic in tests."
-    )]
     async fn get_should_return_value_for_existing_key() {
         let mut mock = MockCache::<String, String>::new();
         mock.expect_get()
@@ -223,13 +220,10 @@ mod tests {
             .returning(|_| Box::pin(async { Ok(Some("value".to_owned())) }));
 
         let result = mock.get(&"exists".to_owned()).await;
-        match result {
-            Ok(Some(value)) => {
-                assert_eq!(value, "value", "Should return expected value");
-            }
-            Ok(None) => panic!("Expected Some(value), got None"),
-            Err(e) => panic!("Expected success, got error: {e:?}"),
-        }
+        assert!(
+            matches!(&result, Ok(Some(v)) if v == "value"),
+            "Expected Ok(Some('value')), got {result:?}"
+        );
     }
 
     #[tokio::test]
@@ -294,12 +288,6 @@ mod tests {
 
     // [5.1-U-14] Cache Error Handling
     #[tokio::test]
-    #[expect(
-        clippy::panic,
-        reason = "Test assertion requires explicit failure for unrecoverable \
-                  contract violation. Unavoidable in complex match patterns. \
-                  Panic with descriptive message is idiomatic in tests."
-    )]
     async fn get_should_propagate_io_error() {
         let mut mock = MockCache::<String, String>::new();
         mock.expect_get().returning(|_| {
@@ -309,63 +297,47 @@ mod tests {
         });
 
         let result = mock.get(&"key".to_owned()).await;
-        match result {
-            Err(CacheError::IoError(e)) => {
-                assert_eq!(
-                    e.to_string(),
-                    "io error",
-                    "Error message should match"
-                );
-            }
-            _ => panic!("Expected IoError, got {result:?}"),
-        }
+        assert!(
+            matches!(&result, Err(CacheError::IoError(e)) if e.to_string() == "io error"),
+            "Expected IoError with message 'io error', got {result:?}"
+        );
     }
 
     #[tokio::test]
-    #[expect(
-        clippy::panic,
-        reason = "Test assertion requires explicit failure for unrecoverable \
-                  contract violation. Unavoidable in complex match patterns. \
-                  Panic with descriptive message is idiomatic in tests."
-    )]
     async fn put_should_propagate_serialization_error() {
         let mut mock = MockCache::<String, String>::new();
         mock.expect_put().returning(|_, _| {
             Box::pin(async {
-                Err(CacheError::SerializationError("ser error".to_owned()))
+                Err(CacheError::SerializationError {
+                    type_name: "String",
+                    message: "ser error".into(),
+                })
             })
         });
 
         let result = mock.put("key".to_owned(), "value".to_owned()).await;
-        match result {
-            Err(CacheError::SerializationError(e)) => {
-                assert_eq!(e, "ser error", "Error message should match");
-            }
-            _ => panic!("Expected SerializationError, got {result:?}"),
-        }
+        assert!(
+            matches!(&result, Err(CacheError::SerializationError { type_name: "String", message }) if message.as_ref() == "ser error"),
+            "Expected SerializationError for String, got {result:?}"
+        );
     }
 
     #[tokio::test]
-    #[expect(
-        clippy::panic,
-        reason = "Test assertion requires explicit failure for unrecoverable \
-                  contract violation. Unavoidable in complex match patterns. \
-                  Panic with descriptive message is idiomatic in tests."
-    )]
     async fn delete_should_propagate_backend_error() {
         let mut mock = MockCache::<String, String>::new();
         mock.expect_delete().returning(|_| {
             Box::pin(async {
-                Err(CacheError::BackendError("backend error".to_owned()))
+                Err(CacheError::BackendError {
+                    backend: "moka",
+                    message: "backend error".into(),
+                })
             })
         });
 
         let result = mock.delete(&"key".to_owned()).await;
-        match result {
-            Err(CacheError::BackendError(e)) => {
-                assert_eq!(e, "backend error", "Error message should match");
-            }
-            _ => panic!("Expected BackendError, got {result:?}"),
-        }
+        assert!(
+            matches!(&result, Err(CacheError::BackendError { backend: "moka", message }) if message.as_ref() == "backend error"),
+            "Expected BackendError for moka, got {result:?}"
+        );
     }
 }
