@@ -38,7 +38,7 @@
   - [Epic 7: Event Bus & Orchestration Infrastructure [PHASE 1.5]](#epic-7-event-bus-orchestration-infrastructure-phase-15)
   - [Epic 8: Storage Layer & Persistence [MVP CORE]](#epic-8-storage-layer-persistence-mvp-core)
   - [Epic 9: Vault File System Integration & Indexing Engine [MVP CORE]](#epic-9-vault-file-system-integration-indexing-engine-mvp-core)
-  - [Epic 10: Query Service & Knowledge Graph [MVP CORE]](#epic-10-query-service-knowledge-graph-mvp-core)
+  - [Epic 11: Query Service & Knowledge Graph [MVP CORE]](#epic-11-query-service-knowledge-graph-mvp-core)
   - [Epic 12: Basic Interactive Template System [MVP CORE]](#epic-12-basic-interactive-template-system-mvp-core)
   - [Epic 13: Advanced Template Features [PHASE 1.5]](#epic-13-advanced-template-features-phase-15)
   - [Epic 14: CLI Interface & Error Handling](./epic-14-cli-interface-error-handling.md)
