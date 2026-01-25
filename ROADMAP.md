@@ -48,7 +48,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 - [ ] Essential Templater functions (file, frontmatter, date functions) - Epic 12.
 - [ ] Dynamic commands and whitespace control.
 - [ ] Beginner mode with guided template creation.
-- [ ] Installation guides and "Quick Start" tutorials (Epic 15).
+- [ ] Installation guides and "Quick Start" tutorials (Epic 16).
 **Success Metrics:** 90% parity with core Templater functions; Setup for new users in < 5 minutes.
 
 ---
