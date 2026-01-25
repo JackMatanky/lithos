@@ -87,19 +87,20 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 - [ ] Task 1: Initialize implementation file and verify module linkage
   - [ ] Subtask 1.1: Create empty file at `crates/adapters/src/spi/cache/coordinator.rs`
   - [ ] Subtask 1.2: Add `pub(crate) mod coordinator;` to `crates/adapters/src/spi/cache/mod.rs`
-  - [ ] Subtask 1.3: Write a unit test in `coordinator.rs` under `#[cfg(test)]` that fails to import `CacheCoordinator`
-  - [ ] Subtask 1.4: Run `mise run test:unit:adapters coordinator` and verify failure (RED)
-  - [ ] Subtask 1.5: Run `mise run lint` and ensure environment is clean
+  - [ ] Subtask 1.3: Write a unit test in `coordinator.rs` under `#[cfg(test)]` that fails to import `Coordinator`
+  - [ ] Subtask 1.4: Ensure `Coordinator` is re-exported as `CacheCoordinator` in `crates/adapters/src/spi/cache/mod.rs` (e.g., `pub use coordinator::Coordinator as CacheCoordinator;`)
+  - [ ] Subtask 1.5: Run `mise run test:unit:adapters coordinator` and verify failure (RED)
+  - [ ] Subtask 1.6: Run `mise run lint` and ensure environment is clean
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 2: Struct Definition & Initialization (Test-Driven)
-- [ ] Task 2: Implement CacheCoordinator and constructor
-  - [ ] Subtask 2.1: Write failing test for `CacheCoordinator::new(memory, disk)` requiring `Box<dyn Cache>` types
-  - [ ] Subtask 2.2: Implement `CacheCoordinator` struct with `memory` and `disk` fields
+### Phase 2: Struct Definition & Initialization
+- [ ] Task 2: Implement Coordinator and re-export as CacheCoordinator
+  - [ ] Subtask 2.1: Write failing test for `Coordinator::new(memory, disk)` requiring `Box<dyn Cache>` types
+  - [ ] Subtask 2.2: Implement `Coordinator<K, V>` struct with `memory` and `disk` fields; ensure bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` are applied.
   - [ ] Subtask 2.3: Implement `new` constructor
   - [ ] Subtask 2.4: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
   - [ ] Subtask 2.5: Run `mise run lint` and fix all warnings/errors
@@ -109,12 +110,12 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Read-Through Logic (Test-Driven)
+### Phase 3: Read-Through Logic
 - [ ] Task 3: Implement read-through `get` with backfill
   - [ ] Subtask 3.1: Write failing test verifying Memory Hit scenario: Mock Memory returns `Some`, verify Disk is NOT called
   - [ ] Subtask 3.2: Implement `get` logic for Memory Hit
   - [ ] Subtask 3.3: Write failing test for Memory Miss / Disk Hit: verify Disk is called and Memory `put` is triggered (backfill)
-  - [ ] Subtask 3.4: Implement backfill logic in `get`
+  - [ ] Subtask 3.4: Implement backfill logic in `get`: if memory misses and disk hits, asynchronously `put` value into memory; if backfill `put` fails, log error via `tracing::error!` but still return the value to the caller.
   - [ ] Subtask 3.5: Write failing test for Memory Miss / Disk Miss: verify both are called and result is `None`
   - [ ] Subtask 3.6: Complete `get` implementation
   - [ ] Subtask 3.7: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
@@ -125,12 +126,12 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Write-Through Logic (Test-Driven)
+### Phase 4: Write-Through Logic
 - [ ] Task 4: Implement write-through `put` with consistency
   - [ ] Subtask 4.1: Write failing test verifying Disk is written BEFORE Memory in `put`
   - [ ] Subtask 4.2: Implement sequential `put` logic
   - [ ] Subtask 4.3: Write failing test for Disk Write Failure: verify Memory is NOT written if Disk fails
-  - [ ] Subtask 4.4: Ensure `put` returns error immediately on Disk failure
+  - [ ] Subtask 4.4: Ensure `put` returns error immediately on Disk failure; wrap errors in `CacheError::BackendError` with context identifying the failing layer ("disk" or "memory").
   - [ ] Subtask 4.5: Run `mise run test:unit:adapters coordinator_put` and verify pass (GREEN)
   - [ ] Subtask 4.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -139,10 +140,10 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 5: Invalidation Logic (Test-Driven)
+### Phase 5: Invalidation Logic
 - [ ] Task 5: Implement `delete` and `invalidate`
   - [ ] Subtask 5.1: Write failing test verifying both layers are called in `delete`
-  - [ ] Subtask 5.2: Implement `delete` calling both layers and returning `true` if either existed
+  - [ ] Subtask 5.2: Implement `delete` calling both layers (consider `tokio::join!` for parallel invalidation) and returning `true` if either existed.
   - [ ] Subtask 5.3: Write failing test for best-effort invalidation: verify both layers are attempted even if one fails
   - [ ] Subtask 5.4: Implement error logging but continued execution for invalidation
   - [ ] Subtask 5.5: Write failing test for `invalidate` delegating to `delete`
@@ -155,7 +156,7 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 6: Observability & Tracing (Test-Driven)
+### Phase 6: Observability & Tracing
 - [ ] Task 6: Implement nested tracing and events
   - [ ] Subtask 6.1: Write failing test expecting `"coordinator"` span for all methods
   - [ ] Subtask 6.2: Add `#[tracing::instrument]` to coordinator implementation
@@ -169,9 +170,9 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 7: Documentation & Doc Testing (Test-Driven)
+### Phase 7: Documentation & Doc Testing
 - [ ] Task 7: Implement module documentation and executable examples
-  - [ ] Subtask 7.1: Write failing doc test showing composition of Moka and Redb adapters
+  - [ ] Subtask 7.1: Write failing doc test showing composition of Moka and Redb adapters into a `CacheCoordinator` (using the public re-export)
   - [ ] Subtask 7.2: Implement doc comments in `coordinator.rs` to make the doc test pass
   - [ ] Subtask 7.3: Add module-level docs explaining Read-Through/Write-Through strategies
   - [ ] Subtask 7.4: Run `mise run test:unit:adapters --doc` and verify all pass (GREEN)
@@ -199,7 +200,7 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 ## Dev Notes
 
 ### Architecture Compliance
-- **Hexagonal Architecture**: `CacheCoordinator` is a Domain Service (or Adapter depending on perspective, but acts as a decorator for Ports).
+- **Hexagonal Architecture**: `Coordinator` is a Domain Service (re-exported as `CacheCoordinator`) that acts as a decorator for Ports.
 - **Read-Through/Write-Through**: Standard caching patterns implemented to ensure data consistency between volatile and non-volatile layers.
 - **Async Safety**: Ensures that async methods correctly coordinate underlying async ports without blocking.
 

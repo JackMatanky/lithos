@@ -98,14 +98,14 @@ So that I can verify throughput, latency, and memory usage meet requirements.
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 2: Moka Performance Benchmarks (Test-Driven)
+### Phase 2: Moka Performance Benchmarks
 - [ ] Task 2: Implement Moka throughput and latency benchmarks
   - [ ] Subtask 2.1: Write failing benchmark for `MokaCache` `get()` and `put()`
   - [ ] Subtask 2.2: Implement standalone Moka benchmarks using `criterion::black_box`
   - [ ] Subtask 2.3: Write failing benchmark for concurrent Moka operations (100 tasks)
-  - [ ] Subtask 2.4: Implement concurrent benchmark using `tokio` runtime within criterion
+  - [ ] Subtask 2.4: Implement concurrent benchmark using `criterion::AsyncBencher` and a shared `tokio` runtime to coordinate 100 tasks performing mixed get/put (80/20 ratio).
   - [ ] Subtask 2.5: Write failing benchmark for TinyLFU scan resistance
-  - [ ] Subtask 2.6: Implement scan resistance benchmark simulating 10k sequential reads
+  - [ ] Subtask 2.6: Implement scan resistance benchmark: Setup 100 "hot" keys, access them to prime TinyLFU, then perform 10,000 sequential "scan" reads of unique keys; verify hit rate of the original 100 keys.
   - [ ] Subtask 2.7: Run `mise run test:bench:adapters` and verify Moka metrics are reported
   - [ ] Subtask 2.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -114,10 +114,10 @@ So that I can verify throughput, latency, and memory usage meet requirements.
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Redb Performance Benchmarks (Test-Driven)
+### Phase 3: Redb Performance Benchmarks
 - [ ] Task 3: Implement Redb persistence and initialization benchmarks
   - [ ] Subtask 3.1: Write failing benchmark for Redb initialization (open + table creation)
-  - [ ] Subtask 3.2: Implement Redb init benchmark with temporary file cleanup
+  - [ ] Subtask 3.2: Implement Redb init benchmark using `tempfile` for the database path to ensure isolation and automatic cleanup after each iteration.
   - [ ] Subtask 3.3: Write failing benchmark for Redb `get()` with `rkyv` zero-copy
   - [ ] Subtask 3.4: Implement Redb read benchmark verifying zero-copy performance
   - [ ] Subtask 3.5: Write failing benchmark for Redb `put()` transactions
@@ -130,12 +130,12 @@ So that I can verify throughput, latency, and memory usage meet requirements.
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Coordinator Benchmarks & Memory Usage (Test-Driven)
+### Phase 4: Coordinator Benchmarks & Memory Usage
 - [ ] Task 4: Implement Coordinator flow and memory usage benchmarks
   - [ ] Subtask 4.1: Write failing benchmark for `CacheCoordinator` read-through flow (memory miss/disk hit)
   - [ ] Subtask 4.2: Implement full coordinator flow benchmark
   - [ ] Subtask 4.3: Write failing benchmark for memory usage with 10,000 entries
-  - [ ] Subtask 4.4: Implement memory profiling benchmark (using `dhat` or similar if available, otherwise heap estimation)
+  - [ ] Subtask 4.4: Implement memory usage measurement: use `dhat` in a standalone profiling run or estimate heap usage by comparing `GlobalAlloc` stats before and after 10k entry insertion.
   - [ ] Subtask 4.5: Verify memory usage stays below 100MB for 10k 1KB entries
   - [ ] Subtask 4.6: Run `mise run test:bench:adapters` and verify Coordinator metrics
   - [ ] Subtask 4.7: Run `mise run lint` and fix all warnings/errors

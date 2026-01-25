@@ -110,11 +110,11 @@ So that data persists across application restarts and multiple cache consumers c
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 2: Schema & Serialization (Test-Driven)
+### Phase 2: Schema & Serialization
 - [ ] Task 2: Implement CachedEntry and rkyv integration
   - [ ] Subtask 2.1: Write failing test for `CachedEntry<V>` struct requiring `Archive`, `Serialize`, `Deserialize`
-  - [ ] Subtask 2.2: Implement `CachedEntry` with `value`, `timestamp`, `metadata` fields
-  - [ ] Subtask 2.3: Write failing test requiring `rkyv` round-trip for `CachedEntry`
+  - [ ] Subtask 2.2: Implement `CachedEntry<V>` with `value`, `timestamp`, `metadata` fields; ensure `V` is constrained by `rkyv::Archive + rkyv::Serialize<rkyv::ser::serializers::AllocSerializer<256>>`.
+  - [ ] Subtask 2.3: Define `rkyv` compatible `HashMap` or replacement for metadata to ensure serialization works out-of-the-box.
   - [ ] Subtask 2.4: Apply `rkyv` macros and verify serialization
   - [ ] Subtask 2.5: Write failing test for `SerializationError` mapping
   - [ ] Subtask 2.6: Implement error mapping for failed `rkyv` operations
@@ -126,13 +126,13 @@ So that data persists across application restarts and multiple cache consumers c
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Database & Table Management (Test-Driven)
+### Phase 3: Database & Table Management
 - [ ] Task 3: Implement Redb initialization and table isolation
   - [ ] Subtask 3.1: Write failing test for `RedbCache::new(db_path, table_name)`
   - [ ] Subtask 3.2: Implement `RedbCache` struct wrapping `Arc<redb::Database>`
   - [ ] Subtask 3.3: Write failing test verifying lazy table creation
-  - [ ] Subtask 3.4: Implement lazy table opening within operations
-  - [ ] Subtask 3.5: Write failing test for table isolation: write to "table1", ensure not in "table2"
+  - [ ] Subtask 3.4: Implement lazy table opening within operations using a `redb::TableDefinition<&[u8], &[u8]>` where keys and values are stored as serialized bytes.
+  - [ ] Subtask 3.5: Implement a helper to serialize the generic key `K` into a byte-stable representation (e.g., via `rkyv` or `ToString`) for Redb lookups.
   - [ ] Subtask 3.6: Verify multiple instances share the same `redb::Database` but different tables
   - [ ] Subtask 3.7: Write failing test for `IoError` mapping during DB open
   - [ ] Subtask 3.8: Implement I/O error mapping
@@ -144,11 +144,11 @@ So that data persists across application restarts and multiple cache consumers c
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Cache Trait Implementation (Test-Driven)
+### Phase 4: Cache Trait Implementation
 - [ ] Task 4: Implement core Cache operations with persistence
   - [ ] Subtask 4.1: Write failing test for `put` then `get` across instance drops
   - [ ] Subtask 4.2: Implement `put` using Redb write transaction
-  - [ ] Subtask 4.3: Implement `get` using Redb read transaction and `rkyv` zero-copy
+  - [ ] Subtask 4.3: Implement `get` using a Redb **read-only** transaction and `rkyv::access` for zero-copy deserialization of the `CachedEntry`.
   - [ ] Subtask 4.4: Write failing test for `delete` returning existence status
   - [ ] Subtask 4.5: Implement `delete` operation
   - [ ] Subtask 4.6: Write failing test for `invalidate` functionality
@@ -161,14 +161,14 @@ So that data persists across application restarts and multiple cache consumers c
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 5: Metadata & Extended Operations (Test-Driven)
+### Phase 5: Metadata & Extended Operations
 - [ ] Task 5: Implement metadata tracking and retrieval
   - [ ] Subtask 5.1: Write failing test for `put_with_metadata`
   - [ ] Subtask 5.2: Implement `put_with_metadata` storing custom HashMap
   - [ ] Subtask 5.3: Write failing test for `get_with_metadata`
   - [ ] Subtask 5.4: Implement `get_with_metadata` returning both value and metadata
   - [ ] Subtask 5.5: Write failing test verifying timestamp updates on every `put`
-  - [ ] Subtask 5.6: Ensure current Unix timestamp is stored in `CachedEntry`
+  - [ ] Subtask 5.6: Ensure current Unix timestamp (via `SystemTime::now().duration_since(UNIX_EPOCH)`) is stored in `CachedEntry` on every write.
   - [ ] Subtask 5.7: Run `mise run test:unit:adapters redb_metadata` and verify pass (GREEN)
   - [ ] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -177,7 +177,7 @@ So that data persists across application restarts and multiple cache consumers c
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 6: Observability & Tracing (Test-Driven)
+### Phase 6: Observability & Tracing
 - [ ] Task 6: Implement tracing spans for Redb transactions
   - [ ] Subtask 6.1: Write failing test expecting `"redb_transaction"` span for operations
   - [ ] Subtask 6.2: Add `#[tracing::instrument]` to all methods with required attributes
@@ -191,7 +191,7 @@ So that data persists across application restarts and multiple cache consumers c
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 7: Documentation & Doc Testing (Test-Driven)
+### Phase 7: Documentation & Doc Testing
 - [ ] Task 7: Implement module documentation and executable examples
   - [ ] Subtask 7.1: Write failing doc test for `RedbCache` with table isolation
   - [ ] Subtask 7.2: Add working doc test to module-level documentation

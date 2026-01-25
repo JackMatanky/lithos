@@ -113,9 +113,10 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 ### Task 1: Standard Compliance Audit
 - [ ] Subtask 1.1: Verify all unit tests are co-located in `#[cfg(test)]` modules (no separate `tests/` files for units)
-- [ ] Subtask 1.2: Audit `moka.rs`, `redb.rs`, `coordinator.rs`, and `errors.rs` for test co-location
+- [ ] Subtask 1.2: Audit all test names for "Verb-First" naming convention (e.g., `returns_error_when_...` vs `test_error`)
 - [ ] Subtask 1.3: Verify that `#[tokio::test(flavor = "multi_thread")]` is used in all concurrent test scenarios
-- [ ] Subtask 1.4: Run `mise run lint` and fix all clippy warnings/errors
+- [ ] Subtask 1.4: Conduct "Unwrap Audit": Ensure `unwrap()` and `expect()` are used ONLY in the **Arrange** phase; use explicit assertions in **Act** and **Assert** phases.
+- [ ] Subtask 1.5: Run `mise run lint` and fix all clippy warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -150,12 +151,13 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Task 4: Mock Usage & Orchestration Review
-- [ ] Subtask 4.1: Verify `MockCache` is used for ALL `CacheCoordinator` unit tests (strictly no concrete adapters)
-- [ ] Subtask 4.2: Replace any manual mocks or concrete adapters in coordinator tests with `automock` expectations
-- [ ] Subtask 4.3: Validate `put` write-through ordering: Disk FIRST, then Memory
-- [ ] Subtask 4.4: Verify `delete` invalidates both layers even if one layer returns an error (best effort)
-- [ ] Subtask 4.5: Run `mise run test:unit:adapters coordinator` and verify pass
-- [ ] Subtask 4.6: Run `mise run lint` and fix all warnings/errors
+- [ ] Subtask 4.1: Verify `MockCache` is used for ALL `Coordinator` unit tests (strictly no concrete adapters)
+- [ ] Subtask 4.2: Verify the public re-export name: ensure tests verify that `Coordinator` is correctly re-exported as `CacheCoordinator`.
+- [ ] Subtask 4.3: Replace any manual mocks or concrete adapters in coordinator tests with `automock` expectations
+- [ ] Subtask 4.4: Validate `put` write-through ordering: Disk FIRST, then Memory
+- [ ] Subtask 4.5: Verify `delete` invalidates both layers even if one layer returns an error (best effort)
+- [ ] Subtask 4.6: Run `mise run test:unit:adapters coordinator` and verify pass
+- [ ] Subtask 4.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`

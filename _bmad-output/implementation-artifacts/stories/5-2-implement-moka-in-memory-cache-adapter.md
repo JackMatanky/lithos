@@ -76,6 +76,11 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 
 ## TDD Tasks / Subtasks
 
+### Phase 0: Dependency Management
+- [ ] Task 0: Add required dependencies to `crates/adapters/Cargo.toml`
+  - [ ] Subtask 0.1: Add `moka = { version = "0.12", features = ["future"] }` to `[dependencies]`
+  - [ ] Subtask 0.2: Run `cargo check -p lithos-adapters` to verify dependency resolution
+
 ### Phase 1: Test Infrastructure and Scaffolding
 - [ ] Task 1: Initialize implementation file and verify module linkage
   - [ ] Subtask 1.1: Create empty file at `crates/adapters/src/spi/cache/moka.rs`
@@ -90,7 +95,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 2: Struct Definition & Configuration (Test-Driven)
+### Phase 2: Struct Definition & Configuration
 - [ ] Task 2: Implement minimal MokaCache and verify builder initialization
   - [ ] Subtask 2.1: Write failing test expecting `MokaCache::builder()` to return a builder instance
   - [ ] Subtask 2.2: Implement `MokaCache` and `MokaCacheBuilder` structs with minimal `builder()` method
@@ -101,7 +106,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [ ] Subtask 2.7: Write failing test requiring builder to have a `time_to_idle(Duration)` method
   - [ ] Subtask 2.8: Implement `time_to_idle` method in builder
   - [ ] Subtask 2.9: Write failing test expecting builder `.build()` to return `Result<MokaCache, CacheError>`
-  - [ ] Subtask 2.10: Implement `build()` by initializing an internal `moka::future::Cache` with configured parameters
+  - [ ] Subtask 2.10: Implement `build()` by initializing an internal `moka::future::Cache` with configured parameters; ensure defaults (e.g., 10,000 capacity, None for durations) are applied if builder methods were not called.
   - [ ] Subtask 2.11: Run `mise run test:unit:adapters moka_config` and verify all configuration tests pass (GREEN)
   - [ ] Subtask 2.12: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -110,7 +115,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Trait Implementation - Core Operations (Test-Driven)
+### Phase 3: Trait Implementation - Core Operations
 - [ ] Task 3: Implement Cache trait methods and verify basic storage
   - [ ] Subtask 3.1: Write failing test that implements `Cache<String, String>` for `MokaCache` and calls `get`
   - [ ] Subtask 3.2: Implement `get` method using `moka_cache.get()` and verify it returns `None` for new cache
@@ -121,7 +126,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [ ] Subtask 3.7: Write failing test requiring `invalidate("key")` to remove the item
   - [ ] Subtask 3.8: Implement `invalidate` by delegating to `delete`
   - [ ] Subtask 3.9: Write failing test verifying generic bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static`
-  - [ ] Subtask 3.10: Ensure implementation correctly handles generic types with specified bounds
+  - [ ] Subtask 3.10: Apply trait bounds `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` to the `MokaCache` struct and `Cache` implementation.
   - [ ] Subtask 3.11: Run `mise run test:unit:adapters moka_trait` and verify all operation tests pass (GREEN)
   - [ ] Subtask 3.12: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -130,7 +135,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Observability & Tracing (Test-Driven)
+### Phase 4: Observability & Tracing
 - [ ] Task 4: Implement tracing instrumentation and verify event emission
   - [ ] Subtask 4.1: Write failing test using `tracing-test` (or similar) to expect an instrumented span for `get()`
   - [ ] Subtask 4.2: Add `#[tracing::instrument(skip(self), level = "debug")]` to `get` method
@@ -148,14 +153,14 @@ So that frequently accessed data is served with sub-millisecond latency and all 
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 5: Eviction & Expiration (Test-Driven)
+### Phase 5: Eviction & Expiration
 - [ ] Task 5: Verify TTL/TTI and capacity eviction policies
   - [ ] Subtask 5.1: Write failing test for TTL: put item with 10ms TTL, wait 20ms, verify `get` returns `None`
   - [ ] Subtask 5.2: Ensure Moka initialization in `build()` correctly respects the builder's `time_to_live`
   - [ ] Subtask 5.3: Write failing test for TTI: put item, wait, get item (reset TTI), wait again, verify still exists
   - [ ] Subtask 5.4: Ensure builder's `time_to_idle` is correctly passed to Moka backend
   - [ ] Subtask 5.5: Write failing test for `max_capacity`: put 100 items into cache with capacity 10, verify size <= 10
-  - [ ] Subtask 5.6: Write failing test for TinyLFU: simulate a scan of many items, then verify a "hot" item was not evicted
+  - [ ] Subtask 5.6: Write failing test for TinyLFU: Access 'Hot Key' 20 times, then access 100 'Scan Keys' once each; verify 'Hot Key' is not evicted by the scan (Moka's TinyLFU behavior).
   - [ ] Subtask 5.7: Run `mise run test:unit:adapters moka_eviction` and verify pass (GREEN)
   - [ ] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -164,9 +169,9 @@ So that frequently accessed data is served with sub-millisecond latency and all 
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 6: Error Handling (Test-Driven)
+### Phase 6: Error Handling
 - [ ] Task 6: Map internal Moka states to CacheError
-  - [ ] Subtask 6.1: Write failing test that simulates an error condition (e.g., failed resource allocation if mockable)
+  - [ ] Subtask 6.1: Write failing test for error mapping: Implement a test case for `From<moka::Error> for CacheError` or simulate a backend failure in `build()` to verify `CacheError::BackendError` propagation.
   - [ ] Subtask 6.2: Ensure method returns `CacheError::BackendError` with descriptive message
   - [ ] Subtask 6.3: Run `mise run test:unit:adapters moka_errors` and verify pass (GREEN)
   - [ ] Subtask 6.4: Run `mise run lint` and fix all warnings/errors
@@ -176,7 +181,7 @@ So that frequently accessed data is served with sub-millisecond latency and all 
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 7: Documentation & Doc Testing (Test-Driven)
+### Phase 7: Documentation & Doc Testing
 - [ ] Task 7: Implement module documentation and executable examples
   - [ ] Subtask 7.1: Write failing doc test showing basic builder setup and `get`/`put` usage
   - [ ] Subtask 7.2: Implement doc comments in `moka.rs` to make the doc test pass
