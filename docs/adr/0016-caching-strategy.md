@@ -27,7 +27,23 @@ We need a unified caching strategy that:
 
 ## Decision
 
-[Pending Decision - This section reserved for final outcome]
+We will use **Moka** (full feature) for L1 in-memory caching, with **Redb** for L2 persistent storage.
+
+### Rationale
+
+1. **LSP-First Design**: While the MVP is CLI-focused, Phase 2b LSP requirements (per PRD) demand high-concurrency primitives that Moka provides natively. Designing for the future architecture now avoids costly migration.
+2. **Async Alignment**: Moka's first-class Tokio support integrates seamlessly with our async adapter architecture where all traits use `#[async_trait]` per ADR 0002.
+3. **TinyLFU Scan Resistance**: Critical for vault indexing scenarios where we scan 1000+ files (NFR2) but only need to cache "hot" schemas/templates. TinyLFU prevents one-time reads from flushing valuable cached data.
+4. **Binary Size Acceptable**: Benchmarking shows <200KB binary overhead, negligible compared to the ~10MB base Rust binary. CLI cold start remains <1ms per NFR requirements.
+5. **Production Proven**: Used by high-traffic Rust services (e.g., crates.io), reducing implementation risk.
+
+### Implementation Pattern
+
+- **L1 (Memory)**: `MokaCache` wrapper implementing `Cache<K, V>` trait from `adapters/spi/cache`
+- **L2 (Persistent)**: `RedbCache` wrapper implementing `Cache<K, V>` trait with rkyv serialization
+- **Coordinator**: `CacheCoordinator<K, V>` orchestrating L1→L2 read-through/write-through strategy
+- **Location**: `crates/adapters/src/spi/cache/` (generic SPI utility, following Epic 4 pattern)
+- **Error Handling**: `CacheError` enum in `crates/adapters/src/spi/errors.rs` (shared SPI errors)
 
 ## Alternatives Considered
 
@@ -137,5 +153,5 @@ None of the in-memory libraries handle disk persistence natively in a way that f
 ## Status Tracking
 
 - **Proposed**: 2026-01-25
-- **Accepted/Rejected**: [Date]
-- **Implemented**: [Date]
+- **Accepted**: 2026-01-25
+- **Implemented**: [Pending Epic 5 completion]
