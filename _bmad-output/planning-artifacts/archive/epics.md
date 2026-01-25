@@ -243,9 +243,9 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR18 → Post-MVP Phase 1.5 (Contextual help and guidance)
 - FR19 → Post-MVP Phase 1.5 (Progressive complexity modes)
 - FR20 → Epic 9 (Index and search notes across vaults)
-- FR21 → Epic 10 (Lookups by filename, path, schema keys)
-- FR22 → Epic 10 (Resolve wiki-links and aliases)
-- FR23 → Epic 10 (Query metadata from other notes)
+- FR21 → Epic 11 (Lookups by filename, path, schema keys)
+- FR22 → Epic 11 (Resolve wiki-links and aliases)
+- FR23 → Epic 11 (Query metadata from other notes)
 - FR24 → Epic 9 (Maintain vault consistency)
 - FR25 → Epic 9 (Handle large vaults without degradation)
 - FR26 → Epic 5 (Configure template packs via TOML)
@@ -2248,7 +2248,7 @@ So that vault indexing can be properly understood and maintained.
 **When** other components integrate
 **Then** they can work with indexed data effectively
 
-## Epic 10: Query Service & Knowledge Graph **[MVP CORE]**
+## Epic 11: Query Service & Knowledge Graph **[MVP CORE]**
 Users can perform fast lookups by filename, path, or schema keys, resolve wiki-links and aliases, and query metadata from other notes for template use.
 **FRs covered:** FR21, FR22, FR23
 **Implementation Notes:**
@@ -2259,7 +2259,7 @@ Users can perform fast lookups by filename, path, or schema keys, resolve wiki-l
 - File class queries for schema-based filtering
 - Integration with Epic 8 storage and Epic 7 events
 
-### Story 10.1: Create Query Domain Interface and Port
+### Story 11.1: Create Query Domain Interface and Port
 
 As a developer implementing query operations,
 I want clean domain interfaces for query access,
@@ -2279,7 +2279,7 @@ So that queries follow hexagonal architecture principles.
 **When** I validate the design
 **Then** it follows hexagonal principles with clear separation between domain and infrastructure
 
-### Story 10.2: Integrate Query Service with Storage Layer
+### Story 11.2: Integrate Query Service with Storage Layer
 
 As a developer coordinating queries with persistence,
 I want query service integrated with storage layer,
@@ -2299,7 +2299,7 @@ So that queries retrieve data from the persisted index efficiently.
 **When** I validate data consistency
 **Then** queries return data matching the indexed state
 
-### Story 10.3: Implement Basic Query Operations
+### Story 11.3: Implement Basic Query Operations
 
 As a user needing to find notes,
 I want basic lookup operations by filename and path,
@@ -2319,7 +2319,7 @@ So that I can quickly locate specific notes in the vault.
 **When** I validate performance
 **Then** basic queries complete within acceptable time limits
 
-### Story 10.4: Implement Schema-Based Query Filtering
+### Story 11.4: Implement Schema-Based Query Filtering
 
 As a user organizing notes by schema,
 I want to filter queries by schema keys and metadata,
@@ -2343,7 +2343,7 @@ So that I can find notes with specific properties or schemas (when schemas are u
 **When** they run queries
 **Then** filtering works through direct frontmatter field queries
 
-### Story 10.5: Implement File Class Query Operations
+### Story 11.5: Implement File Class Query Operations
 
 As a user categorizing notes by type,
 I want to query notes by fileClass for schema-based organization,
@@ -2363,7 +2363,7 @@ So that I can find all "contact" notes or "project" notes efficiently.
 **When** I validate performance
 **Then** fileClass queries are optimized for large result sets
 
-### Story 10.6: Add Wiki-Link and Alias Resolution
+### Story 11.6: Add Wiki-Link and Alias Resolution
 
 As a user working with interconnected notes,
 I want wiki-links and aliases resolved to actual note paths,
@@ -2383,7 +2383,7 @@ So that links work correctly across the knowledge graph.
 **When** I validate completeness
 **Then** all wiki-link and alias patterns are properly resolved
 
-### Story 10.7: Implement Query Cache Invalidation via Events
+### Story 11.7: Implement Query Cache Invalidation via Events
 
 As a developer maintaining query performance,
 I want cache invalidation through event system,
@@ -2403,7 +2403,7 @@ So that query results stay current when index updates occur.
 **When** I monitor performance
 **Then** cache hit rates remain high while data stays current
 
-### Story 10.8: Add Query Performance Optimization and Caching
+### Story 11.8: Add Query Performance Optimization and Caching
 
 As a developer optimizing query speed,
 I want performance optimization with intelligent caching,
@@ -2427,7 +2427,7 @@ So that queries complete in <500ms meeting NFR1 requirements.
 **When** I monitor metrics
 **Then** cache hit rates and query latencies are tracked
 
-### Story 10.9: Implement Query Result Formatting
+### Story 11.9: Implement Query Result Formatting
 
 As a user consuming query results,
 I want results formatted appropriately for different use cases,
@@ -2447,7 +2447,7 @@ So that query output can be used directly or displayed clearly.
 **When** I validate completeness
 **Then** all query types have appropriate default formatting
 
-### Story 10.10: Implement Advanced Query Composition
+### Story 11.10: Implement Advanced Query Composition
 
 As a power user needing complex searches,
 I want to compose multiple query conditions,
@@ -2467,7 +2467,7 @@ So that I can perform sophisticated searches across multiple criteria.
 **When** I validate performance
 **Then** complex queries still meet NFR1 timing requirements
 
-### Story 10.11: Create Query Operation Mocks for Testing
+### Story 11.11: Create Query Operation Mocks for Testing
 
 As a developer testing query-dependent code,
 I want comprehensive mocks for query operations,
@@ -2487,15 +2487,15 @@ So that query interactions can be tested in isolation.
 **When** I use mocks
 **Then** they simulate realistic query behavior for comprehensive testing
 
-### Story 10.12: Review Epic 10 Test Suite
+### Story 11.12: Review Epic 11 Test Suite
 
 As a developer maintaining the query service,
-I want an efficient test suite for Epic 10 components,
+I want an efficient test suite for Epic 11 components,
 So that tests provide good coverage without redundancy or excessive execution time.
 
 **Acceptance Criteria:**
 
-**Given** all Epic 10 components are implemented with tests
+**Given** all Epic 11 components are implemented with tests
 **When** I review the test suite
 **Then** it achieves 90%+ coverage for query service components
 
@@ -2505,13 +2505,13 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 10 suite
+**Then** test execution completes in <30 seconds for the full Epic 11 suite
 
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Story 10.12: Performance Benchmarking for Query Operations
+### Story 11.12: Performance Benchmarking for Query Operations
 As a performance engineer, I want benchmarks for query operations to ensure fast lookups and efficient caching, so that query performance supports template execution requirements.
 **Acceptance Criteria:**
 **Given** query service is implemented
@@ -2526,7 +2526,7 @@ As a performance engineer, I want benchmarks for query operations to ensure fast
 **And** query performance regressions are detected
 **And** memory usage for query caches stays within NFR9 bounds
 
-### Story 10.13: Document Query Service for Developers
+### Story 11.13: Document Query Service for Developers
 
 As a developer working with query operations,
 I want comprehensive developer documentation for the query service,
@@ -2771,7 +2771,7 @@ As a user, I want clear instructions on how to create and use interactive templa
 Users can compose complex templates with date functions, multi-suggesters, and error prevention for production-ready template workflows.
 **FRs covered:** FR3, FR4, FR17
 **Implementation Notes:**
-- Extends Epic 10 template system (not replacement)
+- Extends Epic 11 template system (not replacement)
 - Date formatting with chrono (Rust-native)
 - Template composition patterns
 - User documentation for advanced template features

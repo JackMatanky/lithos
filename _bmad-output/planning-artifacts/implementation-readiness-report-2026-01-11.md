@@ -56,7 +56,7 @@ includedFiles:
   - epic-7-event-bus-orchestration-infrastructure-phase-15.md
   - epic-8-storage-layer-persistence-mvp-core.md
   - epic-9-vault-file-system-integration-indexing-engine-mvp-core.md
-  - epic-10-query-service-knowledge-graph-mvp-core.md
+  - epic-11-query-service-knowledge-graph-mvp-core.md
   - epic-12-basic-interactive-template-system-mvp-core.md
   - epic-13-advanced-template-features-phase-15.md
   - epic-14-cli-interface-error-handling.md
@@ -203,9 +203,9 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 | FR18 | Users can receive contextual help and guidance during input | Post-MVP Phase 1.5 | ✓ Covered |
 | FR19 | Users can access progressive complexity modes for different expertise levels | Post-MVP Phase 1.5 | ✓ Covered |
 | FR20 | Users can index and search notes across entire vaults | Epic 9 | ✓ Covered |
-| FR21 | Users can perform lookups by filename, path, or schema-defined keys | Epic 10 | ✓ Covered |
-| FR22 | Users can resolve wiki-style links and aliases throughout vaults | Epic 10 | ✓ Covered |
-| FR23 | Users can query metadata fields from other notes for template use | Epic 10 | ✓ Covered |
+| FR21 | Users can perform lookups by filename, path, or schema-defined keys | Epic 11 | ✓ Covered |
+| FR22 | Users can resolve wiki-style links and aliases throughout vaults | Epic 11 | ✓ Covered |
+| FR23 | Users can query metadata fields from other notes for template use | Epic 11 | ✓ Covered |
 | FR24 | Users can maintain vault consistency across template operations | Epic 9 | ✓ Covered |
 | FR25 | Users can handle large vaults (1000+ files) without performance degradation | Epic 9 | ✓ Covered |
 | FR26 | Users can configure template packs using TOML files | Epic 5 | ✓ Covered |

@@ -865,7 +865,7 @@ impl ConfigAdapter {
 - **Epic 5**: Configuration loading and management (uses this domain model)
 - **Epic 6**: Schema validation (configuration drives schema loading)
 - **Epic 9**: Vault operations (vault-specific configuration)
-- **Epic 10**: Query operations (configuration affects query behavior)
+- **Epic 11**: Query operations (configuration affects query behavior)
 
 **Integration Points:**
 - **Configuration Loading (Epic 5)**: Adapters load TOML files into Config domain model
