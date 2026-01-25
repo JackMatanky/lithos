@@ -91,7 +91,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 - rkyv serialization round-trips correctly for complex types
 - Metadata is preserved across reads/writes
 
-## TDD Acceptance Criteria (Quality Gates)
+## Acceptance Criteria (Quality Gates)
 
 **Given** I am performing an adversarial review
 **When** I run `mise run verify`
@@ -109,84 +109,77 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **Then** every instance includes a valid reason according to Section 8 of the developer guide
 **And** no unnecessary `#[allow]` attributes exist
 
-## TDD Tasks / Subtasks
+## Tasks / Subtasks
 
-### Phase 1: Standard Compliance Audit
-- [ ] Task 1: Audit test suite against project standards
-  - [ ] Subtask 1.1: Write failing test verifying all unit tests are co-located in `#[cfg(test)]` modules (no separate `tests/` files for units)
-  - [ ] Subtask 1.2: Audit `moka.rs`, `redb.rs`, `coordinator.rs`, and `errors.rs` for test co-location
-  - [ ] Subtask 1.3: Write failing test that checks for `#[tokio::test(flavor = "multi_thread")]` in concurrent test scenarios
-  - [ ] Subtask 1.4: Verify all concurrent Read/Write tests use multi-threaded flavor
-  - [ ] Subtask 1.5: Run `mise run lint` and fix all clippy warnings/errors
+### Task 1: Standard Compliance Audit
+- [ ] Subtask 1.1: Verify all unit tests are co-located in `#[cfg(test)]` modules (no separate `tests/` files for units)
+- [ ] Subtask 1.2: Audit `moka.rs`, `redb.rs`, `coordinator.rs`, and `errors.rs` for test co-location
+- [ ] Subtask 1.3: Verify that `#[tokio::test(flavor = "multi_thread")]` is used in all concurrent test scenarios
+- [ ] Subtask 1.4: Run `mise run lint` and fix all clippy warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 2: Public Component & Coverage Review (Test-Driven)
-- [ ] Task 2: Verify all public components have behavior-validated tests
-  - [ ] Subtask 2.1: Write failing test that scans for public items without corresponding tests
-  - [ ] Subtask 2.2: Identify and add missing behavior tests for any public method in `Cache`, `MokaCache`, `RedbCache`, or `CacheCoordinator`
-  - [ ] Subtask 2.3: Write failing test verifying `CacheError` variants are all exercised in error propagation paths
-  - [ ] Subtask 2.4: Ensure 100% variant coverage for `CacheError` in unit tests
-  - [ ] Subtask 2.5: Run `mise run test:coverage` and identify any logic gaps in `spi/cache/`
-  - [ ] Subtask 2.6: Implement missing tests to cover identified logic gaps
-  - [ ] Subtask 2.7: Run `mise run lint` and fix all warnings/errors
+### Task 2: Public Component & Coverage Review
+- [ ] Subtask 2.1: Audit all public items in `spi/cache/` to ensure each has corresponding behavior-validated tests
+- [ ] Subtask 2.2: Add missing behavior tests for any public method in `Cache`, `MokaCache`, `RedbCache`, or `CacheCoordinator`
+- [ ] Subtask 2.3: Verify `CacheError` variants are all exercised in error propagation paths
+- [ ] Subtask 2.4: Ensure 100% variant coverage for `CacheError` in unit tests
+- [ ] Subtask 2.5: Run `mise run test:coverage` and identify any logic gaps in `spi/cache/`
+- [ ] Subtask 2.6: Implement missing tests to cover identified logic gaps
+- [ ] Subtask 2.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Adversarial Logic & Edge Case Verification (Test-Driven)
-- [ ] Task 3: Perform adversarial logic review and edge case expansion
-  - [ ] Subtask 3.1: Write failing test for `RedbCache` persistence using `IsolatedTestContext` to verify cross-restart survival
-  - [ ] Subtask 3.2: Implement logic-verifying tests that use mutation (e.g. changing expected values) to ensure tests fail
-  - [ ] Subtask 3.3: Write failing test for Redb table isolation: ensure writing to "table A" does not appear in "table B" even with same keys
-  - [ ] Subtask 3.4: Write failing test for `MokaCache` scan resistance: verify hot data is NOT evicted during high-volume sequential reads
-  - [ ] Subtask 3.5: Run `mise run test:unit:adapters` and verify all adversarial tests pass
-  - [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
+### Task 3: Adversarial Logic & Edge Case Verification
+- [ ] Subtask 3.1: Validate `RedbCache` persistence using `IsolatedTestContext` to verify cross-restart survival
+- [ ] Subtask 3.2: Perform manual code mutation (e.g. changing expected values or return types) to ensure existing tests fail
+- [ ] Subtask 3.3: Verify Redb table isolation: writing to "table A" must not affect "table B" even with identical keys
+- [ ] Subtask 3.4: Verify `MokaCache` scan resistance: hot data must NOT be evicted during high-volume sequential reads
+- [ ] Subtask 3.5: Run `mise run test:unit:adapters` and verify all adversarial scenarios are handled
+- [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Mock Usage & Orchestration Review (Test-Driven)
-- [ ] Task 4: Critique and improve mock-based orchestration tests
-  - [ ] Subtask 4.1: Write failing test verifying `MockCache` is used for ALL `CacheCoordinator` unit tests (no concrete adapters)
-  - [ ] Subtask 4.2: Replace any manual mocks or concrete adapters in coordinator tests with `automock` expectations
-  - [ ] Subtask 4.3: Write failing test verifying `put` write-through ordering: Disk FIRST, then Memory
-  - [ ] Subtask 4.4: Verify `delete` invalidates both layers even if one fails (best effort)
-  - [ ] Subtask 4.5: Run `mise run test:unit:adapters coordinator` and verify pass
-  - [ ] Subtask 4.6: Run `mise run lint` and fix all warnings/errors
+### Task 4: Mock Usage & Orchestration Review
+- [ ] Subtask 4.1: Verify `MockCache` is used for ALL `CacheCoordinator` unit tests (strictly no concrete adapters)
+- [ ] Subtask 4.2: Replace any manual mocks or concrete adapters in coordinator tests with `automock` expectations
+- [ ] Subtask 4.3: Validate `put` write-through ordering: Disk FIRST, then Memory
+- [ ] Subtask 4.4: Verify `delete` invalidates both layers even if one layer returns an error (best effort)
+- [ ] Subtask 4.5: Run `mise run test:unit:adapters coordinator` and verify pass
+- [ ] Subtask 4.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 5: Documentation & Example Validation (Test-Driven)
-- [ ] Task 5: Verify doc test coverage and example quality
-  - [ ] Subtask 5.1: Write failing test verifying all public traits and structs have runnable `# Examples`
-  - [ ] Subtask 5.2: Audit all `///` comments for adherence to `project-context.md` standards
-  - [ ] Subtask 5.3: Write failing test verifying every `Result`-returning function has an `# Errors` section
-  - [ ] Subtask 5.4: Add missing doc sections and verify via `cargo test --doc`
-  - [ ] Subtask 5.5: Run `mise run lint` and fix all warnings/errors
+### Task 5: Documentation & Example Validation
+- [ ] Subtask 5.1: Verify all public traits and structs have runnable `# Examples` in their doc comments
+- [ ] Subtask 5.2: Audit all `///` comments for adherence to `project-context.md` standards
+- [ ] Subtask 5.3: Ensure every `Result`-returning function has an `# Errors` section
+- [ ] Subtask 5.4: Add missing doc sections and verify via `cargo test --doc`
+- [ ] Subtask 5.5: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 6: Performance & Cleanliness Verification
-- [ ] Task 6: Verify suite performance and RAII hygiene
-  - [ ] Subtask 6.1: Write failing test verifying full Epic 5 suite executes in <30 seconds
-  - [ ] Subtask 6.2: Write failing test verifying no temporary database files are left behind after Redb tests
-  - [ ] Subtask 6.3: Ensure all tests use `IsolatedTestContext` or RAII guards for cleanup
-  - [ ] Subtask 6.4: Run `mise run timing` and verify execution speed
-  - [ ] Subtask 6.5: Run `mise run verify` one final time to confirm 100% quality gate pass
+### Task 6: Performance & Cleanliness Verification
+- [ ] Subtask 6.1: Verify full Epic 5 suite executes in <30 seconds
+- [ ] Subtask 6.2: Ensure no temporary database files or artifacts are left behind after test execution
+- [ ] Subtask 6.3: Confirm all tests use `IsolatedTestContext` or RAII guards for cleanup
+- [ ] Subtask 6.4: Run `mise run timing` and verify execution speed
+- [ ] Subtask 6.5: Run `mise run verify` one final time to confirm 100% quality gate pass
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -219,10 +212,6 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 - **Alignment**: Ensures Epic 5 meets the high quality bar set in Epics 1-4.
 - **Conflict Prevention**: Fixes any inconsistencies in test naming or organization established during rapid implementation.
 
-### TDD Methodology
-- **RED-GREEN-REFACTOR**: Applied to the review process itself - write tests that verify the *presence and quality* of other tests.
-- **Mise Orchestration**: Use `mise run timing`, `mise run test:coverage`, and `mise run verify` exclusively.
-
 ### References
 - [Source: _bmad-output/test-design-system.md]
 - [Source: _bmad-output/test-developer-guide.md]
@@ -239,7 +228,7 @@ Claude-3.5-Sonnet (2024-10-22)
 None - Story created through systematic analysis of artifacts and project context.
 
 ### Completion Notes List
-- Applied TDD-optimized methodology for test suite review.
+- Refactored to remove TDD framework language while maintaining granularity and clarity.
 - Preserved original Epic ACs for adversarial review.
 - Integrated mandatory linting workflows and mise orchestration.
 - Provided specific tasks for mutation testing, persistence validation, and RAII hygiene.
@@ -247,4 +236,4 @@ None - Story created through systematic analysis of artifacts and project contex
 
 ### File List
 - `crates/adapters/src/spi/cache/*.rs` - Audit targets.
-- `_bmad-output/implementation-artifacts/stories/5-6-review-epic-5-test-suite.md` - Generated story.
+- `_bmad-output/implementation-artifacts/stories/5-6-review-epic-5-test-suite.md` - Refactored story.
