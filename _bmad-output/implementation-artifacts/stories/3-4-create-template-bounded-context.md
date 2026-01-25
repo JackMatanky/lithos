@@ -792,13 +792,13 @@ impl Template {
 - **Epic 12**: Template execution and rendering (uses this domain model)
 - **Epic 6**: Schema integration (templates reference schemas for variable types)
 - **Epic 14**: CLI template commands (uses template domain for validation)
-- **Epic 9**: Vault operations (templates used for note generation)
+- **Epic 10**: Vault operations (templates used for note generation)
 
 **Integration Points:**
 - **Template Execution (Epic 12)**: Adapters render templates using MiniJinja
 - **Schema Integration (Epic 6)**: Template variables can reference schema types
 - **CLI Commands (Epic 14)**: Template validation before execution
-- **Vault Operations (Epic 9)**: Templates used to generate new notes
+- **Vault Operations (Epic 10)**: Templates used to generate new notes
 
 ### Epic 2 Test Infrastructure Integration
 **Planned Integration with Epic 2 Test Utils:**

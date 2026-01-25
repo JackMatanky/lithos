@@ -60,7 +60,7 @@ max_content_hash_candidates = 100
 
 **Implementation Architecture:**
 
-- **RenameDetector**: Core algorithm in app layer (Epic 9)
+- **RenameDetector**: Core algorithm in app layer (Epic 10)
 - **Confidence scoring**: F32-based system with configurable thresholds
 - **Event publishing**: NoteRenamed events for system coordination
 - **Performance monitoring**: Metrics collection for optimization
@@ -232,4 +232,4 @@ if cache.has_uuid(uuid) {
 
 - **Proposed**: 2026-01-15
 - **Accepted**: 2026-01-15
-- **Implemented**: TBD (Epic 9)
+- **Implemented**: TBD (Epic 10)

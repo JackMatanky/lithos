@@ -5,7 +5,7 @@ Users can perform fast lookups by filename, path, or schema keys, resolve wiki-l
 **Implementation Notes:**
 
 - QueryPort and mocks created in this epic
-- CQRS read side (Epic 9 is write side)
+- CQRS read side (Epic 10 is write side)
 - Performance benchmarking stories for NFR1 validation (<500ms queries)
 - Observability/metrics for query performance
 - File class queries for schema-based filtering
@@ -65,7 +65,7 @@ So that I can quickly locate specific notes in the vault.
 
 **Given** basic queries work
 **When** I test with indexed data
-**Then** results are retrieved from Epic 9 indexed data
+**Then** results are retrieved from Epic 10 indexed data
 
 **Given** lookups are implemented
 **When** I validate performance

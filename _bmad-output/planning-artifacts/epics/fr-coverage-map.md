@@ -21,12 +21,12 @@
 | FR17                 | Epic 13 (Multi-selection suggesters)                                         |
 | FR18                 | Post-MVP Phase 1.5 (Contextual help and guidance)                            |
 | FR19                 | Post-MVP Phase 1.5 (Progressive complexity modes)                            |
-| FR20                 | Epic 9 (Index and search notes across vaults)                                |
+| FR20                 | Epic 10 (Index and search notes across vaults)                                |
 | FR21                 | Epic 11 (Lookups by filename, path, schema keys)                             |
 | FR22                 | Epic 11 (Resolve wiki-links and aliases)                                     |
 | FR23                 | Epic 11 (Query metadata from other notes)                                    |
-| FR24                 | Epic 9 (Maintain vault consistency)                                          |
-| FR25                 | Epic 9 (Handle large vaults without degradation)                             |
+| FR24                 | Epic 10 (Maintain vault consistency)                                          |
+| FR25                 | Epic 10 (Handle large vaults without degradation)                             |
 | FR26                 | Epic 5 (Configure template packs via TOML)                                   |
 | FR27                 | Epic 5 (Manage schema definitions via config)                                |
 | FR28                 | Epic 5 (Set application preferences via config)                              |

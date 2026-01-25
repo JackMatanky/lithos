@@ -246,6 +246,6 @@ gantt
 ```
 
 ### Critical Path & Risks
-The project's critical path is driven by the **Vault Indexing Engine (Epic 9)**, which depends on the **Storage Foundation (Epic 8)**. Technical risks regarding Redb/rkyv complexity and async performance are mitigated through early technical spikes and continuous benchmarking.
+The project's critical path is driven by the **Vault Indexing Engine (Epic 10)**, which depends on the **Storage Foundation (Epic 8)**. Technical risks regarding Redb/rkyv complexity and async performance are mitigated through early technical spikes and continuous benchmarking.
 
 For the detailed roadmap including full success metrics and risk assessments, see [ROADMAP.md](ROADMAP.md).
