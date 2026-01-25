@@ -5,11 +5,11 @@ Development team has a validated, efficient test suite with no redundancy, full 
 **Implementation Notes:**
 
 - Final holistic review after all epic-level tests complete
-- Identify overlapping/redundant tests across Epics 4-12
+- Identify overlapping/redundant tests across Epics 4-14
 - Validate test suite efficiency and execution time
 - Ensure 80%+ coverage without bloat
 - Architectural boundary validation (hexagonal, CQRS, event-driven)
-- Note: Each epic 4-12 has its own test validation story; this is final optimization
+- Note: Each epic 4-14 has its own test validation story; this is final optimization
 
 ### Story 15.1: [Test] Comprehensive Test Coverage Analysis
 
@@ -124,15 +124,15 @@ As a development team, I want end-to-end tests that simulate real user scenarios
 
 As a project manager, I want a clear map of epic dependencies and risk assessments, so that we can prioritize implementation order and mitigate high-risk architectural decisions.
 **Acceptance Criteria:**
-**Given** all 15 epics are defined
+**Given** all 16 epics are defined
 **When** I create the dependency map
-**Then** it identifies critical path epics (1, 2, 4, 6, 8, 9, 10, 11)
+**Then** it identifies critical path epics (1, 2, 4, 5, 7, 9, 10, 11, 12)
 **And** it flags high-risk epics requiring early validation (hexagonal architecture, CQRS implementation)
 **And** it provides risk mitigation strategies for each high-risk epic
 
 **Given** the risk assessment is complete
 **When** I prioritize implementation
-**Then** foundation epics are implemented first (1, 2, 4)
+**Then** foundation epics are implemented first (1, 2, 4, 5)
 **And** high-risk integrations are validated early
 **And** MVP scope is clearly separated from post-MVP features
 
@@ -142,9 +142,9 @@ As a product manager, I want clear recommendations for reducing MVP scope if dev
 **Acceptance Criteria:**
 **Given** the full epic scope
 **When** I analyze MVP essentials
-**Then** core MVP includes Epics 1-4, 6, 8, 9, 11, 13 (basic functionality)
-**And** Phase 1.5 includes Epics 5, 7, 10, 12 (enhanced features)
-**And** Phase 2+ includes Epics 14, 15 and advanced features
+**Then** core MVP includes Epics 1-5, 7, 9, 10, 12, 14 (basic functionality)
+**And** Phase 1.5 includes Epics 6, 8, 11, 13 (enhanced features)
+**And** Phase 2+ includes Epics 15, 16 and advanced features
 **And** each phase delivers independently valuable increments
 
 **Given** MVP scope recommendations exist
