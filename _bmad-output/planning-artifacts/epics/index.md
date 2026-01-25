@@ -40,7 +40,7 @@
   - [Epic 9: Vault File System Integration & Indexing Engine [MVP CORE]](#epic-9-vault-file-system-integration-indexing-engine-mvp-core)
   - [Epic 10: Query Service & Knowledge Graph [MVP CORE]](#epic-10-query-service-knowledge-graph-mvp-core)
   - [Epic 11: Basic Interactive Template System [MVP CORE]](#epic-11-basic-interactive-template-system-mvp-core)
-  - [Epic 12: Advanced Template Features [PHASE 1.5]](#epic-12-advanced-template-features-phase-15)
+  - [Epic 13: Advanced Template Features [PHASE 1.5]](#epic-13-advanced-template-features-phase-15)
   - [Epic 14: CLI Interface & Error Handling](./epic-14-cli-interface-error-handling.md)
       - [Story 14.1: [Adapters/API] Clap-based CLI Command Structure](./epic-14-cli-interface-error-handling.md#story-141-adaptersapi-clap-based-cli-command-structure)
       - [Story 14.2: [Adapters/API] Template Execution CLI Commands](./epic-14-cli-interface-error-handling.md#story-142-adaptersapi-template-execution-cli-commands)
