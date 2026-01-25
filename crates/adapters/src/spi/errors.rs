@@ -218,16 +218,25 @@ mod tests {
     // [5.1-U-05] CacheError::SerializationError
     #[test]
     fn should_create_serialization_error() {
-        let error =
-            CacheError::SerializationError("failed to serialize".to_owned());
-        assert!(error.to_string().contains("failed to serialize"));
+        let error = CacheError::SerializationError {
+            type_name: "test_type",
+            message: "failed to serialize".into(),
+        };
+        let display = error.to_string();
+        assert!(display.contains("failed to serialize"));
+        assert!(display.contains("test_type"));
     }
 
     // [5.1-U-06] CacheError::BackendError
     #[test]
     fn should_create_backend_error() {
-        let error = CacheError::BackendError("moka eviction".to_owned());
-        assert!(error.to_string().contains("moka eviction"));
+        let error = CacheError::BackendError {
+            backend: "moka",
+            message: "eviction".into(),
+        };
+        let display = error.to_string();
+        assert!(display.contains("eviction"));
+        assert!(display.contains("moka"));
     }
 
     // [5.1-U-07] CacheError Thread Safety
@@ -275,21 +284,34 @@ pub enum PathValidationError {
 /// ```rust
 /// use lithos_adapters::spi::errors::CacheError;
 ///
-/// let error = CacheError::BackendError("connection refused".to_owned());
-/// assert!(error.to_string().contains("backend error"));
+/// let error = CacheError::BackendError {
+///     backend: "memory",
+///     message: "connection refused".into(),
+/// };
+/// assert!(error.to_string().contains("memory"));
 /// ```
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum CacheError {
     /// Backend-specific error.
-    #[error("Cache backend error: {0}")]
-    BackendError(String),
+    #[error("Cache backend ({backend}) error: {message}")]
+    BackendError {
+        /// The name of the backend (e.g., "moka", "redb").
+        backend: &'static str,
+        /// Descriptive error message.
+        message: Box<str>,
+    },
 
     /// I/O error during cache access.
     #[error("Cache I/O error: {0}")]
     IoError(#[from] std::io::Error),
 
     /// Serialization/deserialization failed.
-    #[error("Cache serialization error: {0}")]
-    SerializationError(String),
+    #[error("Cache serialization error for type {type_name}: {message}")]
+    SerializationError {
+        /// The name of the type being serialized.
+        type_name: &'static str,
+        /// Descriptive error message.
+        message: Box<str>,
+    },
 }
