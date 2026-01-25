@@ -194,6 +194,48 @@ mod tests {
              large variants."
         );
     }
+
+    // [5.1-U-01] CacheError Type Existence
+    #[test]
+    fn should_find_cache_error_type() {
+        // This test will fail to compile if CacheError is not defined
+        fn assert_type_exists<T>() {}
+        assert_type_exists::<CacheError>();
+    }
+
+    // [5.1-U-04] CacheError::IoError From std::io::Error
+    #[test]
+    fn should_create_io_error_from_std_io_error() {
+        let io_error =
+            std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
+        let error: CacheError = io_error.into();
+        assert!(
+            matches!(error, CacheError::IoError(_)),
+            "Expected IoError, but got {error:?}"
+        );
+    }
+
+    // [5.1-U-05] CacheError::SerializationError
+    #[test]
+    fn should_create_serialization_error() {
+        let error =
+            CacheError::SerializationError("failed to serialize".to_owned());
+        assert!(error.to_string().contains("failed to serialize"));
+    }
+
+    // [5.1-U-06] CacheError::BackendError
+    #[test]
+    fn should_create_backend_error() {
+        let error = CacheError::BackendError("moka eviction".to_owned());
+        assert!(error.to_string().contains("moka eviction"));
+    }
+
+    // [5.1-U-07] CacheError Thread Safety
+    #[test]
+    fn cache_error_should_be_send_and_sync() {
+        fn assert_send_sync<T: Send + Sync>() {}
+        assert_send_sync::<CacheError>();
+    }
 }
 
 /// Path validation error types.
@@ -224,4 +266,30 @@ pub enum PathValidationError {
     /// Symlink target escapes the configured root directory.
     #[error("Symlink escape detected: target is outside root boundary")]
     SymlinkEscapeError,
+}
+
+/// Errors that can occur during cache operations.
+///
+/// # Example
+///
+/// ```rust
+/// use lithos_adapters::spi::errors::CacheError;
+///
+/// let error = CacheError::BackendError("connection refused".to_owned());
+/// assert!(error.to_string().contains("backend error"));
+/// ```
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum CacheError {
+    /// Backend-specific error.
+    #[error("Cache backend error: {0}")]
+    BackendError(String),
+
+    /// I/O error during cache access.
+    #[error("Cache I/O error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    /// Serialization/deserialization failed.
+    #[error("Cache serialization error: {0}")]
+    SerializationError(String),
 }

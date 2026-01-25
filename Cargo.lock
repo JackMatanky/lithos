@@ -1004,6 +1004,7 @@ dependencies = [
  "lithos-test-utils",
  "miette",
  "minijinja",
+ "mockall",
  "proptest",
  "pulldown-cmark",
  "redb",

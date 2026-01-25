@@ -2,6 +2,7 @@
 //!
 //! This module contains infrastructure utilities for implementing domain ports.
 
+pub mod cache;
 pub mod errors;
 pub mod fs;
 
