@@ -1,6 +1,6 @@
 # Story 5.2: Implement Moka In-Memory Cache Adapter
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -169,13 +169,21 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 8.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 8.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
+### Phase 9: AI Review Follow-ups
+- [x] Task 9: Address findings from adversarial code review
+  - [x] Subtask 9.1: Remove `std::fmt::Debug` bounds from `MokaCache` and `Builder` to align with Port trait
+  - [x] Subtask 9.2: Rename builder methods to standard Rust idioms (`builder()` and `build()`)
+  - [x] Subtask 9.3: Add full instrumentation and events to `invalidate` method
+  - [x] Subtask 9.4: Add explicit unit test for TinyLFU scan resistance in `tests` module
+  - [x] Subtask 9.5: Update documentation and doc tests to reflect API changes
+
 ## Dev Notes
 
 ### Architecture Compliance
 - **Hexagonal Architecture**: `MokaCache` is an Adapter implementing the `Cache` Port in the adapters layer.
 - **Port/Adapter Pattern**: Follows `[Subject][Technology]Adapter` naming convention (`MokaCache` -> `CacheMokaAdapter` pattern simplified to `MokaCache` for ergonomics as allowed).
 - **Async Resource Safety**: Uses `moka::future::Cache` which is optimized for Tokio. Ensures no blocking I/O on async threads.
-- **Idiomatic Builder Pattern**: Inside `moka.rs`, the structs are named `Cache` and `Builder`. `MokaCache::build()` returns a `Builder`, and `Builder::new()` (or `Default`) finalizes the construction. They are re-exported as `MokaCache` and `MokaCacheBuilder` in the parent module.
+- **Idiomatic Builder Pattern**: Inside `moka.rs`, the structs are named `Cache` and `Builder`. `MokaCache::builder()` returns a `Builder`, and `Builder::build()` finalizes the construction. They are re-exported as `MokaCache` and `MokaCacheBuilder` in the parent module.
 
 ### Technical Requirements
 - **High Concurrency**: Leverage Moka's lock-free read operations and high-concurrency write design.
@@ -218,11 +226,14 @@ google/gemini-3-flash-preview
 ### Debug Log References
 - Refactored internal naming to `Cache` and `Builder` for module-level idiomatic purity.
 - Implemented `Default` for `Builder` with production defaults (10k capacity).
-- Finalized builder API: `MokaCache::build() -> Builder` and `Builder::new() -> Result<MokaCache, CacheError>`.
-- Satisfied all strict clippy lints including item ordering and documentation of `new_ret_no_self`.
+- Finalized builder API: `MokaCache::builder() -> Builder` and `Builder::build() -> Result<MokaCache, CacheError>`.
+- Satisfied all strict clippy lints including item ordering.
+- Removed `Debug` bounds from `K` and `V` to align with port trait; added `skip` to `tracing::instrument`.
+- Instrumented `invalidate` with full tracing coverage.
+- Added explicit TinyLFU unit test in `tests` module.
 
 ### Completion Notes List
-- Applied TDD-optimized methodology with 51+ atomic subtasks.
+- Applied TDD-optimized methodology with 56+ atomic subtasks.
 - Preserved original Epic ACs while refining implementation details for Rust idiomaticity.
 - Integrated linting requirements and mise orchestration.
 - Ensured co-located tests per Rust project standards.
@@ -231,3 +242,4 @@ google/gemini-3-flash-preview
 ### File List
 - `crates/adapters/src/spi/cache/moka.rs` - Implementation file.
 - `crates/adapters/src/spi/cache/mod.rs` - Module declaration and re-exports.
+- `_bmad-output/implementation-artifacts/stories/5-2-implement-moka-in-memory-cache-adapter.md` - Story file.
