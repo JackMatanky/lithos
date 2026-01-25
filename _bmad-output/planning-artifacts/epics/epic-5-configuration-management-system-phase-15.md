@@ -26,11 +26,13 @@ So that I can understand configuration options and customize settings confidentl
 
 **Given** I need to define configuration structure
 **When** I evaluate schema options
-**Then** I decide whether to extend `docs/schemas/lithos.schema.json` with config definitions or create a separate `docs/schemas/config.schema.json`
+**Then** I create a NEW dedicated, authoritative schema file at `docs/schemas/config.schema.json`
+**And** the schema enforces snake_case naming conventions to align with Rust and TOML standards
 
 **Given** configuration schema is defined
 **When** I create default config files in TOML format
 **Then** `global.toml` and `vault.toml` are created in `docs/defaults/` with all fields set to default values
+**And** these default files explicitly VALIDATE against the new `config.schema.json` definition to prove correctness
 
 **Given** default config files use multiple formats
 **When** I provide format examples
