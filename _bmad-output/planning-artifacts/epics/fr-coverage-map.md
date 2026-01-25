@@ -4,8 +4,8 @@
 | -------------------- | ---------------------------------------------------------------------------- |
 | FR1                  | Epic 11 (Modular templates with reusable sections)                           |
 | FR2                  | Epic 11 (Interactive template execution with prompts/suggesters)             |
-| FR3                  | Epic 12 (Complex template composition with error prevention)                 |
-| FR4                  | Epic 12 (Date formatting and manipulation functions)                         |
+| FR3                  | Epic 13 (Complex template composition with error prevention)                 |
+| FR4                  | Epic 13 (Date formatting and manipulation functions)                         |
 | FR5                  | Post-MVP Phase 1.5 (Dynamic commands and whitespace control)                 |
 | FR6                  | Post-MVP Phase 1.5 (Custom user functions)                                   |
 | FR7                  | Post-MVP Phase 2a (Advanced template operations with hooks)                  |
@@ -18,7 +18,7 @@
 | FR14                 | Epic 6 (Schema inheritance and extension)                                    |
 | FR15                 | Epic 11 (Free-text input through prompts)                                    |
 | FR16                 | Epic 11 (Single-choice suggesters)                                           |
-| FR17                 | Epic 12 (Multi-selection suggesters)                                         |
+| FR17                 | Epic 13 (Multi-selection suggesters)                                         |
 | FR18                 | Post-MVP Phase 1.5 (Contextual help and guidance)                            |
 | FR19                 | Post-MVP Phase 1.5 (Progressive complexity modes)                            |
 | FR20                 | Epic 9 (Index and search notes across vaults)                                |

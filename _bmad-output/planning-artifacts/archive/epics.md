@@ -225,8 +225,8 @@ This document provides the complete epic and story breakdown for lithos, decompo
 
 - FR1 → Epic 11 (Modular templates with reusable sections)
 - FR2 → Epic 11 (Interactive template execution with prompts/suggesters)
-- FR3 → Epic 12 (Complex template composition with error prevention)
-- FR4 → Epic 12 (Date formatting and manipulation functions)
+- FR3 → Epic 13 (Complex template composition with error prevention)
+- FR4 → Epic 13 (Date formatting and manipulation functions)
 - FR5 → Post-MVP Phase 1.5 (Dynamic commands and whitespace control)
 - FR6 → Post-MVP Phase 1.5 (Custom user functions)
 - FR7 → Post-MVP Phase 2a (Advanced template operations with hooks)
@@ -239,7 +239,7 @@ This document provides the complete epic and story breakdown for lithos, decompo
 - FR14 → Epic 6 (Schema inheritance and extension)
 - FR15 → Epic 11 (Free-text input through prompts)
 - FR16 → Epic 11 (Single-choice suggesters)
-- FR17 → Epic 12 (Multi-selection suggesters)
+- FR17 → Epic 13 (Multi-selection suggesters)
 - FR18 → Post-MVP Phase 1.5 (Contextual help and guidance)
 - FR19 → Post-MVP Phase 1.5 (Progressive complexity modes)
 - FR20 → Epic 9 (Index and search notes across vaults)
@@ -2767,7 +2767,7 @@ As a user, I want clear instructions on how to create and use interactive templa
 - **And** it lists all available standard library functions with usage examples.
 **References:** NFR13
 
-## Epic 12: Advanced Template Features **[PHASE 1.5]**
+## Epic 13: Advanced Template Features **[PHASE 1.5]**
 Users can compose complex templates with date functions, multi-suggesters, and error prevention for production-ready template workflows.
 **FRs covered:** FR3, FR4, FR17
 **Implementation Notes:**
@@ -2777,7 +2777,7 @@ Users can compose complex templates with date functions, multi-suggesters, and e
 - User documentation for advanced template features
 - Performance validation for complex templates
 
-#### Story 12.1: [Domain] Template Dependency & Recursion Models
+#### Story 13.1: [Domain] Template Dependency & Recursion Models
 As a developer, I want to represent template relationships in the domain, so that I can detect circular dependencies and missing files before execution.
 **Acceptance Criteria:**
 - **Given** the `domain` crate
@@ -2787,7 +2787,7 @@ As a developer, I want to represent template relationships in the domain, so tha
 - **And** rich domain errors are defined for `CircularDependency` and `MissingPartial`.
 **References:** FR3
 
-#### Story 12.2: [Domain] TemplateDate Value Object
+#### Story 13.2: [Domain] TemplateDate Value Object
 As a template author, I want a robust date domain model, so that I can perform reliable date math and formatting in my templates.
 **Acceptance Criteria:**
 - **Given** a date input
@@ -2797,7 +2797,7 @@ As a template author, I want a robust date domain model, so that I can perform r
 - **And** it is serializable for use in the template rendering context.
 **References:** FR4
 
-#### Story 12.3: [App] Template Composition "Dry Run" Orchestrator
+#### Story 13.3: [App] Template Composition "Dry Run" Orchestrator
 As a user, I want the system to verify my template structure before asking for input, so that I don't waste time on a session that will fail due to a missing file.
 **Acceptance Criteria:**
 - **Given** a template execution request
@@ -2807,7 +2807,7 @@ As a user, I want the system to verify my template structure before asking for i
 - **And** this check must pass before the first prompt is displayed to the user.
 **References:** FR3, FR48
 
-#### Story 12.4: [App] Context-Aware Format Sensing Service
+#### Story 13.4: [App] Context-Aware Format Sensing Service
 As a template author, I want the system to automatically format array variables based on their position in the file, so that my frontmatter remains valid YAML while my content remains readable markdown.
 **Acceptance Criteria:**
 - **Given** a rendering session
@@ -2817,7 +2817,7 @@ As a template author, I want the system to automatically format array variables 
 - **And** variables rendered outside the delimiters default to standard Markdown formatting.
 **References:** FR17, FR26
 
-#### Story 12.5: [Adapters/SPI] Chrono-based Natural Language Date Adapter
+#### Story 13.5: [Adapters/SPI] Chrono-based Natural Language Date Adapter
 As a user, I want to provide relative dates like "tomorrow" or "next Friday" in my prompts, so that I can create notes for future events easily.
 **Acceptance Criteria:**
 - **Given** a natural language string from a prompt
@@ -2827,7 +2827,7 @@ As a user, I want to provide relative dates like "tomorrow" or "next Friday" in 
 - **And** it provides a fallback to the current date if the input is ambiguous.
 **References:** FR4
 
-#### Story 12.6: [Adapters/API] Multi-Select Terminal UI
+#### Story 13.6: [Adapters/API] Multi-Select Terminal UI
 As a user, I want to select multiple items from a list using a fuzzy-searchable terminal picker, so that I can quickly populate array fields like tags or contacts.
 **Acceptance Criteria:**
 - **Given** a list of suggestions
@@ -2837,20 +2837,20 @@ As a user, I want to select multiple items from a list using a fuzzy-searchable 
 - **And** it returns a collection of the internal `values` for the selected items.
 **References:** FR17
 
-#### Story 12.7: [Test] Epic 12 Test Suite Review & Optimization
+#### Story 13.7: [Test] Epic 13 Test Suite Review & Optimization
 As a developer, I want a comprehensive and efficient test suite for the advanced template features, so that I can maintain the code with confidence.
 **Acceptance Criteria:**
-- **Given** the implementation of Epic 12
+- **Given** the implementation of Epic 13
 - **When** I run the test suite
 - **Then** it achieves 90%+ coverage for the `TemplateGraph`, `TemplateDate`, and composition services.
 - **And** property-based tests verify that circular dependency detection works for complex template hierarchies.
 - **And** the suite validates that date operations handle edge cases (leap years, timezone boundaries).
 **References:** NFR16
 
-#### Story 12.8: [Docs] Epic 12 User & Developer Documentation
+#### Story 13.8: [Docs] Epic 13 User & Developer Documentation
 As a user, I want clear instructions on how to use advanced template features like composition and date functions, so that I can create sophisticated template workflows.
 **Acceptance Criteria:**
-- **Given** a completed Epic 12
+- **Given** a completed Epic 13
 - **When** I review the documentation
 - **Then** it includes examples of template composition with includes and cycles.
 - **And** it provides natural language date parsing examples.
