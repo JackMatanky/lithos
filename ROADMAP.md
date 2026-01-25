@@ -19,7 +19,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 ### Milestone 2: Persistence & Configuration
 **Goal:** ACID storage and hierarchical configuration.
 - [ ] Multi-strategy file loading with error recovery (Epic 4).
-- [ ] Redb + rkyv persistence with zero-copy deserialization (Epic 8).
+- [ ] Redb + rkyv persistence with zero-copy deserialization (Epic 9).
 - [ ] Hierarchical configuration management - Epic 5.
 **Success Metrics:** Zero-copy boundaries verified via architecture tests; < 100ms config load.
 
@@ -118,7 +118,7 @@ gantt
 
 ## Critical Path & Dependencies
 
-The project's critical path is driven by the **Vault Indexing Engine (Epic 10)**, which depends on the **Storage Foundation (Epic 8)** and **Schema Resolver (Epic 6)**.
+The project's critical path is driven by the **Vault Indexing Engine (Epic 10)**, which depends on the **Storage Foundation (Epic 9)** and **Schema Resolver (Epic 6)**.
 
 1. **Domain Foundation**: Epics 1-3 establish the types and testing patterns.
 2. **Infrastructure Blockers**: Epics 4, 5, 8 provide the data plane.
@@ -131,7 +131,7 @@ The project's critical path is driven by the **Vault Indexing Engine (Epic 10)**
 
 | Risk | Severity | Impact Area | Mitigation Strategy |
 | --- | --- | --- | --- |
-| **Redb/rkyv complexity** | High | Persistence | Early technical spikes in Epic 8; use integration tests to verify zero-copy boundaries. |
+| **Redb/rkyv complexity** | High | Persistence | Early technical spikes in Epic 9; use integration tests to verify zero-copy boundaries. |
 | **Large vault performance** | High | Indexing | Continuous benchmarking (NFR1-4) in Milestone 3; use Criterion for regression tracking. |
 | **LSP Implementation** | Medium | Intelligence | Leverage Tree-sitter for robust parsing; follow LSP specification strictly. |
 | **Async/Concurrency bugs** | Medium | Event Bus | Implement ADR 0007 (tiered planes) early; use `tokio-test` and tracing. |

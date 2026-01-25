@@ -1677,7 +1677,7 @@ So that other epics can properly publish and subscribe to events.
 **When** other epics implement event integration
 **Then** they follow consistent patterns without architectural review
 
-## Epic 8: Storage Layer & Persistence **[MVP CORE]**
+## Epic 9: Storage Layer & Persistence **[MVP CORE]**
 System has zero-copy persistent storage with ACID transactions using Redb + rkyv that supports high-performance queries and maintains data consistency.
 **FRs covered:** Architecture requirements (Redb + rkyv storage per ADR 0002)
 **Implementation Notes:**
@@ -1690,7 +1690,7 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
 - Storage port mocks for testing
 - May create ADR for storage schema patterns if needed
 
-### Story 8.1: Create Storage Domain Interface and Ports
+### Story 9.1: Create Storage Domain Interface and Ports
 
 As a developer implementing data persistence,
 I want clean domain interfaces for storage operations,
@@ -1710,7 +1710,7 @@ So that data can be stored and retrieved through well-defined contracts followin
 **When** I validate the design
 **Then** they follow hexagonal principles with clear separation between domain and infrastructure
 
-### Story 8.2: Implement Redb + rkyv Storage Foundation
+### Story 9.2: Implement Redb + rkyv Storage Foundation
 
 As a developer needing high-performance persistence,
 I want Redb + rkyv implementation with memory bounds,
@@ -1730,7 +1730,7 @@ So that data is stored efficiently with zero-copy deserialization and controlled
 **When** I monitor memory usage
 **Then** operations stay within NFR9 bounds (500MB limit)
 
-### Story 8.3: Add Unit of Work Pattern for Transactions
+### Story 9.3: Add Unit of Work Pattern for Transactions
 
 As a developer ensuring data consistency,
 I want Unit of Work pattern for atomic operations,
@@ -1750,7 +1750,7 @@ So that multiple storage operations are committed together or rolled back as a u
 **When** errors occur mid-transaction
 **Then** automatic rollback preserves data consistency
 
-### Story 8.4: Implement Storage Schema Design with Query Requirements
+### Story 9.4: Implement Storage Schema Design with Query Requirements
 
 As a developer optimizing data access,
 I want storage schema designed for query performance,
@@ -1770,7 +1770,7 @@ So that Epic 10-10 queries can be executed efficiently against the storage layou
 **When** I benchmark query performance
 **Then** operations meet NFR1 requirements (<500ms for queries)
 
-### Story 8.5: Add Storage Validation and Error Handling
+### Story 9.5: Add Storage Validation and Error Handling
 
 As a developer ensuring storage reliability,
 I want comprehensive validation and error recovery,
@@ -1790,7 +1790,7 @@ So that storage corruption is detected and recovered gracefully.
 **When** I handle them
 **Then** clear error messages guide recovery without data loss
 
-### Story 8.6: Implement Storage Backup and Corruption Recovery
+### Story 9.6: Implement Storage Backup and Corruption Recovery
 
 As a developer protecting against data loss,
 I want backup and recovery mechanisms,
@@ -1810,7 +1810,7 @@ So that storage corruption can be recovered without losing vault data.
 **When** I test disaster scenarios
 **Then** data can be recovered with minimal downtime
 
-### Story 8.7: Implement Storage Schema Migration and Evolution
+### Story 9.7: Implement Storage Schema Migration and Evolution
 
 As a developer updating storage requirements,
 I want schema evolution capabilities,
@@ -1830,7 +1830,7 @@ So that storage format can change safely across versions without data loss.
 **When** I validate compatibility
 **Then** rollbacks are possible if migration fails
 
-### Story 8.8: Implement Storage Performance Benchmarking
+### Story 9.8: Implement Storage Performance Benchmarking
 
 As a developer validating performance requirements,
 I want comprehensive storage benchmarking,
@@ -1850,7 +1850,7 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 **When** I analyze results
 **Then** storage layer meets all performance requirements before Epic 10-10 integration
 
-### Story 8.9: Create Storage Mocks for Testing
+### Story 9.9: Create Storage Mocks for Testing
 
 As a developer testing storage-dependent code,
 I want comprehensive storage mocks,
@@ -1870,7 +1870,7 @@ So that storage interactions can be tested in isolation without database setup.
 **When** I use mocks
 **Then** they simulate realistic storage behavior for comprehensive testing
 
-### Story 8.10: Storage Error Recovery and Data Integrity
+### Story 9.10: Storage Error Recovery and Data Integrity
 As a user experiencing storage issues, I want the system to handle corruption, crashes, and recovery gracefully, so that my vault data remains safe and recoverable.
 **Acceptance Criteria:**
 **Given** storage corruption is detected
@@ -1885,15 +1885,15 @@ As a user experiencing storage issues, I want the system to handle corruption, c
 **And** failed operations are properly rolled back
 **And** system state remains valid after recovery
 
-### Story 8.11: Review Epic 8 Test Suite
+### Story 9.11: Review Epic 9 Test Suite
 
 As a developer maintaining the storage system,
-I want an efficient test suite for Epic 8 components,
+I want an efficient test suite for Epic 9 components,
 So that tests provide good coverage without redundancy or excessive execution time.
 
 **Acceptance Criteria:**
 
-**Given** all Epic 8 components are implemented with tests
+**Given** all Epic 9 components are implemented with tests
 **When** I review the test suite
 **Then** it achieves 90%+ coverage for storage components
 
@@ -1903,13 +1903,13 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 8 suite
+**Then** test execution completes in <30 seconds for the full Epic 9 suite
 
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Story 8.12: Document Storage System for Developers
+### Story 9.12: Document Storage System for Developers
 
 As a developer working with data persistence,
 I want comprehensive developer documentation for storage operations,
@@ -1938,7 +1938,7 @@ Users can index large vaults (1000+ files) in <2 seconds with incremental update
 - Sample vault notes from docs/refs/obsidian/ as test fixtures
 - Performance benchmarking stories for NFR2 validation (<2s for 1000+ files)
 - Observability/metrics for indexing performance
-- Integration with Epic 7 (event publishing) and Epic 8 (storage persistence)
+- Integration with Epic 7 (event publishing) and Epic 9 (storage persistence)
 
 ### Story 10.1: Create Vault Domain Interfaces and Ports
 
@@ -2073,7 +2073,7 @@ So that indexed data is available for queries and survives restarts.
 **Acceptance Criteria:**
 
 **Given** indexing produces results
-**When** I integrate with Epic 8 storage
+**When** I integrate with Epic 9 storage
 **Then** indexed data is persisted using storage ports
 
 **Given** storage integration works
@@ -2257,7 +2257,7 @@ Users can perform fast lookups by filename, path, or schema keys, resolve wiki-l
 - Performance benchmarking stories for NFR1 validation (<500ms queries)
 - Observability/metrics for query performance
 - File class queries for schema-based filtering
-- Integration with Epic 8 storage and Epic 7 events
+- Integration with Epic 9 storage and Epic 7 events
 
 ### Story 11.1: Create Query Domain Interface and Port
 
@@ -2288,7 +2288,7 @@ So that queries retrieve data from the persisted index efficiently.
 **Acceptance Criteria:**
 
 **Given** I need storage integration
-**When** I connect with Epic 8 storage
+**When** I connect with Epic 9 storage
 **Then** queries use storage ports for data retrieval
 
 **Given** storage integration works

@@ -7,7 +7,7 @@
 //!
 //! This module provides a **framework** for integration testing infrastructure.
 //! Full implementation requires:
-//! - Database setup when persistence layer is implemented (Epic 8)
+//! - Database setup when persistence layer is implemented (Epic 9)
 //! - Testcontainers when rustls-pemfile dependency is maintained
 //! - Additional mock services as bounded contexts are developed
 

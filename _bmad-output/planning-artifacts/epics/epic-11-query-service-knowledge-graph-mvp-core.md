@@ -9,7 +9,7 @@ Users can perform fast lookups by filename, path, or schema keys, resolve wiki-l
 - Performance benchmarking stories for NFR1 validation (<500ms queries)
 - Observability/metrics for query performance
 - File class queries for schema-based filtering
-- Integration with Epic 8 storage and Epic 7 events
+- Integration with Epic 9 storage and Epic 7 events
 
 ## Story 11.1: Create Query Domain Interface and Port
 
@@ -40,7 +40,7 @@ So that queries retrieve data from the persisted index efficiently.
 **Acceptance Criteria:**
 
 **Given** I need storage integration
-**When** I connect with Epic 8 storage
+**When** I connect with Epic 9 storage
 **Then** queries use storage ports for data retrieval
 
 **Given** storage integration works
