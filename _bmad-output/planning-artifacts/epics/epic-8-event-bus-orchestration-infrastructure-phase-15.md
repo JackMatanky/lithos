@@ -1,4 +1,4 @@
-# Epic 7: Event Bus & Orchestration Infrastructure **[PHASE 1.5]**
+# Epic 8: Event Bus & Orchestration Infrastructure **[PHASE 1.5]**
 
 System has a robust event-driven architecture enabling loose coupling between services and supporting concurrent operations without god-objects.
 **FRs covered:** Architecture requirements (event-driven, CQRS foundation)
@@ -12,7 +12,7 @@ System has a robust event-driven architecture enabling loose coupling between se
 - Prevents god-object orchestrators (Go lesson learned)
 - May create ADR for event patterns if architectural decisions made
 
-## Story 7.1: Create Event Bus Domain Interface and Port
+## Story 8.1: Create Event Bus Domain Interface and Port
 
 As a developer implementing event-driven architecture,
 I want a clean domain interface for event operations,
@@ -32,7 +32,7 @@ So that events can be published and subscribed to through well-defined contracts
 **When** I validate the design
 **Then** it follows hexagonal principles with async event handling
 
-## Story 7.2: Define Complete Domain Event Types
+## Story 8.2: Define Complete Domain Event Types
 
 As a developer coordinating events across the system,
 I want complete domain event definitions,
@@ -52,7 +52,7 @@ So that all events from Epics 3-6 are properly defined and coordinated.
 **When** I check for completeness
 **Then** all system events are defined (ConfigurationLoaded, SchemaLoaded, NoteIndexed, etc.)
 
-## Story 7.3: Implement MPSC Data Plane
+## Story 8.3: Implement MPSC Data Plane
 
 As a developer needing reliable event delivery,
 I want MPSC data plane for indexing operations,
@@ -72,7 +72,7 @@ So that events are delivered reliably without loss in the indexing pipeline.
 **When** I monitor performance
 **Then** bounded channels prevent memory issues during indexing
 
-## Story 7.4: Implement Broadcast Control Plane
+## Story 8.4: Implement Broadcast Control Plane
 
 As a developer needing global signaling,
 I want broadcast control plane for system signals,
@@ -92,7 +92,7 @@ So that shutdown and global notifications work across all components.
 **When** I broadcast shutdown signal
 **Then** graceful shutdown happens across all components
 
-## Story 7.5: Implement Watch State Plane
+## Story 8.5: Implement Watch State Plane
 
 As a developer needing state synchronization,
 I want watch state plane for LSP integration,
@@ -112,7 +112,7 @@ So that real-time state changes are communicated to IDE integrations.
 **When** I change vault state
 **Then** watch notifications enable sub-50ms IDE responsiveness
 
-## Story 7.6: Implement Event Publishing and Subscription
+## Story 8.6: Implement Event Publishing and Subscription
 
 As a developer using the event system,
 I want complete publish/subscribe functionality,
@@ -132,7 +132,7 @@ So that components can publish events and subscribe to relevant notifications.
 **When** I test end-to-end
 **Then** events flow from publishers to subscribers correctly
 
-## Story 7.7: Add Event Payload Validation and Error Handling
+## Story 8.7: Add Event Payload Validation and Error Handling
 
 As a developer ensuring event integrity,
 I want event payload validation and error handling,
@@ -152,7 +152,7 @@ So that malformed events are caught and handled gracefully.
 **When** I process them
 **Then** system continues operating with degraded functionality for bad events
 
-## Story 7.8: Implement Event Persistence for Debugging
+## Story 8.8: Implement Event Persistence for Debugging
 
 As a developer debugging event flows,
 I want event persistence capabilities,
@@ -172,7 +172,7 @@ So that event history can be inspected for troubleshooting and system analysis.
 **When** I check performance impact
 **Then** persistence adds minimal overhead to normal operations
 
-## Story 7.9: Define Event Bus Integration Contracts
+## Story 8.9: Define Event Bus Integration Contracts
 
 As a developer integrating with the event system,
 I want clear integration contracts,
@@ -192,7 +192,7 @@ So that other epics know how to publish and subscribe to events.
 **When** I validate system integration
 **Then** all epics properly integrate with the event bus
 
-## Story 7.10: Create Event Bus Mocks for Testing
+## Story 8.10: Create Event Bus Mocks for Testing
 
 As a developer testing event-driven code,
 I want comprehensive event bus mocks,
@@ -212,10 +212,10 @@ So that event interactions can be tested in isolation.
 **When** I use mocks
 **Then** they simulate real event bus behavior for comprehensive testing
 
-## Story 7.11: Review Epic 7 Test Suite
+## Story 8.11: Review Epic 8 Test Suite
 
 As a senior developer conducting adversarial code review,
-I want to brutally critique and improve the Epic 7 test suite to its foundation,
+I want to brutally critique and improve the Epic 8 test suite to its foundation,
 So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
@@ -224,15 +224,15 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I reference the guide during review
 **Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
 
-**Given** all Epic 7 public components are implemented
+**Given** all Epic 8 public components are implemented
 **When** I verify test coverage
 **Then** all public functions, structs, and modules have corresponding unit tests
 
-**Given** all Epic 7 public APIs are documented
+**Given** all Epic 8 public APIs are documented
 **When** I verify doc test coverage
 **Then** all public components have runnable doc tests demonstrating usage
 
-**Given** all Epic 7 components are implemented with tests
+**Given** all Epic 8 components are implemented with tests
 **When** I conduct adversarial review
 **Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
 
@@ -246,7 +246,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 7 suite
+**Then** test execution completes in <30 seconds for the full Epic 8 suite
 
 **Given** I conduct brutal foundation critique
 **When** I assess test design
@@ -256,7 +256,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
 
-## Story 7.12: Document Event Bus Integration for Developers
+## Story 8.12: Document Event Bus Integration for Developers
 
 As a developer integrating with the event system,
 I want comprehensive developer documentation for event bus usage,

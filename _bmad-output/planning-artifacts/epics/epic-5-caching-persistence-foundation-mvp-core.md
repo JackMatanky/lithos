@@ -2,7 +2,7 @@
 
 ## Overview
 
-Establish the unified multi-layer caching architecture required by the `lithos` service. This epic implements the SPI (Service Provider Interface) traits, the L1 (Memory)/L2 (Disk) coordinator, and the concrete implementations for Moka and Redb. This foundation is a prerequisite for Rate Limiting (Epic 6) and Session Management (Epic 7).
+Establish the unified multi-layer caching architecture required by the `lithos` service. This epic implements the SPI (Service Provider Interface) traits, the L1 (Memory)/L2 (Disk) coordinator, and the concrete implementations for Moka and Redb. This foundation is a prerequisite for Rate Limiting (Epic 6) and Session Management (Epic 8).
 
 ## Implementation Notes
 

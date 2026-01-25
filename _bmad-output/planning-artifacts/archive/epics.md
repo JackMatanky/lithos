@@ -1421,7 +1421,7 @@ So that I can effectively define and use schemas in lithos.
 **When** they create schemas
 **Then** they can define valid schemas without developer assistance
 
-## Epic 7: Event Bus & Orchestration Infrastructure **[PHASE 1.5]**
+## Epic 8: Event Bus & Orchestration Infrastructure **[PHASE 1.5]**
 System has a robust event-driven architecture enabling loose coupling between services and supporting concurrent operations without god-objects.
 **FRs covered:** Architecture requirements (event-driven, CQRS foundation)
 **Implementation Notes:**
@@ -1433,7 +1433,7 @@ System has a robust event-driven architecture enabling loose coupling between se
 - Prevents god-object orchestrators (Go lesson learned)
 - May create ADR for event patterns if architectural decisions made
 
-### Story 7.1: Create Event Bus Domain Interface and Port
+### Story 8.1: Create Event Bus Domain Interface and Port
 
 As a developer implementing event-driven architecture,
 I want a clean domain interface for event operations,
@@ -1453,7 +1453,7 @@ So that events can be published and subscribed to through well-defined contracts
 **When** I validate the design
 **Then** it follows hexagonal principles with async event handling
 
-### Story 7.2: Define Complete Domain Event Types
+### Story 8.2: Define Complete Domain Event Types
 
 As a developer coordinating events across the system,
 I want complete domain event definitions,
@@ -1473,7 +1473,7 @@ So that all events from Epics 3-6 are properly defined and coordinated.
 **When** I check for completeness
 **Then** all system events are defined (ConfigurationLoaded, SchemaLoaded, NoteIndexed, etc.)
 
-### Story 7.3: Implement MPSC Data Plane
+### Story 8.3: Implement MPSC Data Plane
 
 As a developer needing reliable event delivery,
 I want MPSC data plane for indexing operations,
@@ -1493,7 +1493,7 @@ So that events are delivered reliably without loss in the indexing pipeline.
 **When** I monitor performance
 **Then** bounded channels prevent memory issues during indexing
 
-### Story 7.4: Implement Broadcast Control Plane
+### Story 8.4: Implement Broadcast Control Plane
 
 As a developer needing global signaling,
 I want broadcast control plane for system signals,
@@ -1513,7 +1513,7 @@ So that shutdown and global notifications work across all components.
 **When** I broadcast shutdown signal
 **Then** graceful shutdown happens across all components
 
-### Story 7.5: Implement Watch State Plane
+### Story 8.5: Implement Watch State Plane
 
 As a developer needing state synchronization,
 I want watch state plane for LSP integration,
@@ -1533,7 +1533,7 @@ So that real-time state changes are communicated to IDE integrations.
 **When** I change vault state
 **Then** watch notifications enable sub-50ms IDE responsiveness
 
-### Story 7.6: Implement Event Publishing and Subscription
+### Story 8.6: Implement Event Publishing and Subscription
 
 As a developer using the event system,
 I want complete publish/subscribe functionality,
@@ -1553,7 +1553,7 @@ So that components can publish events and subscribe to relevant notifications.
 **When** I test end-to-end
 **Then** events flow from publishers to subscribers correctly
 
-### Story 7.7: Add Event Payload Validation and Error Handling
+### Story 8.7: Add Event Payload Validation and Error Handling
 
 As a developer ensuring event integrity,
 I want event payload validation and error handling,
@@ -1573,7 +1573,7 @@ So that malformed events are caught and handled gracefully.
 **When** I process them
 **Then** system continues operating with degraded functionality for bad events
 
-### Story 7.8: Implement Event Persistence for Debugging
+### Story 8.8: Implement Event Persistence for Debugging
 
 As a developer debugging event flows,
 I want event persistence capabilities,
@@ -1593,7 +1593,7 @@ So that event history can be inspected for troubleshooting and system analysis.
 **When** I check performance impact
 **Then** persistence adds minimal overhead to normal operations
 
-### Story 7.9: Define Event Bus Integration Contracts
+### Story 8.9: Define Event Bus Integration Contracts
 
 As a developer integrating with the event system,
 I want clear integration contracts,
@@ -1613,7 +1613,7 @@ So that other epics know how to publish and subscribe to events.
 **When** I validate system integration
 **Then** all epics properly integrate with the event bus
 
-### Story 7.10: Create Event Bus Mocks for Testing
+### Story 8.10: Create Event Bus Mocks for Testing
 
 As a developer testing event-driven code,
 I want comprehensive event bus mocks,
@@ -1633,15 +1633,15 @@ So that event interactions can be tested in isolation.
 **When** I use mocks
 **Then** they simulate real event bus behavior for comprehensive testing
 
-### Story 7.11: Review Epic 7 Test Suite
+### Story 8.11: Review Epic 8 Test Suite
 
 As a developer maintaining the event system,
-I want an efficient test suite for Epic 7 components,
+I want an efficient test suite for Epic 8 components,
 So that tests provide good coverage without redundancy or excessive execution time.
 
 **Acceptance Criteria:**
 
-**Given** all Epic 7 components are implemented with tests
+**Given** all Epic 8 components are implemented with tests
 **When** I review the test suite
 **Then** it achieves 90%+ coverage for event system components
 
@@ -1651,13 +1651,13 @@ So that tests provide good coverage without redundancy or excessive execution ti
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 7 suite
+**Then** test execution completes in <30 seconds for the full Epic 8 suite
 
 **Given** test suite is reviewed
 **When** I check maintainability
 **Then** test code follows same quality standards as production code
 
-### Story 7.12: Document Event Bus Integration for Developers
+### Story 8.12: Document Event Bus Integration for Developers
 
 As a developer integrating with the event system,
 I want comprehensive developer documentation for event bus usage,
@@ -1938,7 +1938,7 @@ Users can index large vaults (1000+ files) in <2 seconds with incremental update
 - Sample vault notes from docs/refs/obsidian/ as test fixtures
 - Performance benchmarking stories for NFR2 validation (<2s for 1000+ files)
 - Observability/metrics for indexing performance
-- Integration with Epic 7 (event publishing) and Epic 9 (storage persistence)
+- Integration with Epic 8 (event publishing) and Epic 9 (storage persistence)
 
 ### Story 10.1: Create Vault Domain Interfaces and Ports
 
@@ -2093,7 +2093,7 @@ So that other components are notified of indexing progress and completion.
 **Acceptance Criteria:**
 
 **Given** indexing operations occur
-**When** I integrate with Epic 7 event bus
+**When** I integrate with Epic 8 event bus
 **Then** indexing publishes NoteIndexed, VaultIndexingStarted, VaultIndexingCompleted events
 
 **Given** event publishing works
@@ -2257,7 +2257,7 @@ Users can perform fast lookups by filename, path, or schema keys, resolve wiki-l
 - Performance benchmarking stories for NFR1 validation (<500ms queries)
 - Observability/metrics for query performance
 - File class queries for schema-based filtering
-- Integration with Epic 9 storage and Epic 7 events
+- Integration with Epic 9 storage and Epic 8 events
 
 ### Story 11.1: Create Query Domain Interface and Port
 
@@ -2392,7 +2392,7 @@ So that query results stay current when index updates occur.
 **Acceptance Criteria:**
 
 **Given** I need cache invalidation
-**When** I integrate with Epic 7 events
+**When** I integrate with Epic 8 events
 **Then** query caches invalidate when NoteIndexed events are received
 
 **Given** event integration works
