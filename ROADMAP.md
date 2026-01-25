@@ -20,7 +20,7 @@ This roadmap outlines the phased development of Lithos, from its core Rust found
 **Goal:** ACID storage and hierarchical configuration.
 - [ ] Multi-strategy file loading with error recovery (Epic 4).
 - [ ] Redb + rkyv persistence with zero-copy deserialization (Epic 9).
-- [ ] Hierarchical configuration management - Epic 5.
+- [ ] Hierarchical configuration management - Epic 6.
 **Success Metrics:** Zero-copy boundaries verified via architecture tests; < 100ms config load.
 
 ### Milestone 3: Vault Indexing & Intelligence

@@ -56,7 +56,7 @@
 //!
 //! # Epic Dependencies
 //!
-//! - **Epic 5** (Configuration): Loads `Global`, `Vault` configs via TOML
+//! - **Epic 6** (Configuration): Loads `Global`, `Vault` configs via TOML
 //! - **Epic 7** (Schema): Loads `RawSchema`, `Property` definitions via
 //!   YAML/JSON
 //! - **Epic 12** (Templates): Loads `Template` definitions via YAML

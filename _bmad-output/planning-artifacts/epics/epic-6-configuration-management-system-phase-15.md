@@ -1,10 +1,10 @@
-# Epic 5: Configuration Management System **[PHASE 1.5]**
+# Epic 6: Configuration Management System **[PHASE 1.5]**
 
 Users can configure lithos through hierarchical TOML files with validation, supporting template packs and schema definitions.
 **FRs covered:** FR26, FR27, FR28
 **Implementation Notes:**
 
-- **Schema-First Approach**: Defaults and Schema are defined first (Story 5.1) to guide adapter implementation.
+- **Schema-First Approach**: Defaults and Schema are defined first (Story 6.1) to guide adapter implementation.
 - Figment-based hierarchical config per ADR 0005 using Epic 4 loading foundation
 - Config adapters (Command/Query with embedded Loader/Writer) created in this epic
 - Singleton Registry pattern with `Arc<OnceLock<Config>>` for optimal CLI performance
@@ -14,9 +14,9 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - **Syntactic Validation**: dedicated `validator.rs` for structural configuration validation before domain aggregate construction
 - **Caching Strategy**: Decoupled `ConfigCache` trait with Redb implementation to persist fully-merged `Config` aggregates for persistence and rollback
 - **Adapter Structure**: `crates/adapters/src/spi/config/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, validator.rs, cache.rs
-- **No CLI Integration**: Epic 5 delivers tested adapters without CLI wiring (deferred to future epic)
+- **No CLI Integration**: Epic 6 delivers tested adapters without CLI wiring (deferred to future epic)
 
-## Story 5.1: Create Default Configuration Files and Schema
+## Story 6.1: Create Default Configuration Files and Schema
 
 As a user getting started with lithos,
 I want default configuration files with proper schema validation,
@@ -46,7 +46,7 @@ So that I can understand configuration options and customize settings confidentl
 **When** I verify against Domain models
 **Then** the structure maps correctly to the `Config` aggregate defined in Epic 3 (manual verification)
 
-## Story 5.2: Implement Config Adapters with Embedded Utilities
+## Story 6.2: Implement Config Adapters with Embedded Utilities
 
 As a developer completing the configuration bounded context,
 I want Command and Query adapters that embed specialized loader/writer utilities,
@@ -92,11 +92,11 @@ So that port implementations are clean and easily extensible for future operatio
 **When** I export them in `crates/adapters/src/spi/config/mod.rs`
 **Then** internal structs (`Query`, `Command`, `Loader`, `Writer`, `Registry`) are re-exported with Config prefix (`ConfigQuery`, `ConfigCommand`, `ConfigLoader`, `ConfigWriter`, `ConfigRegistry`)
 
-**Given** Story 5.1 provides default configuration files
+**Given** Story 6.1 provides default configuration files
 **When** I test the Loader against `docs/defaults/global.toml`
 **Then** it successfully loads and deserializes into the Domain Config structure
 
-## Story 5.3: Implement Config Singleton Registry
+## Story 6.3: Implement Config Singleton Registry
 
 As a developer implementing configuration management,
 I want a singleton registry for Config access,
@@ -128,11 +128,11 @@ So that the entire application references a single merged Config instance with o
 **When** I design the singleton implementation
 **Then** Registry supports atomic updates using AtomicPtr swap pattern for future extension
 
-**Given** Story 5.2 provides Loader adapter
+**Given** Story 6.2 provides Loader adapter
 **When** I integrate with Registry
 **Then** the `Command` adapter populates the config `Registry` singleton upon successful loading and construction of the `Config` aggregate.
 
-**Given** Story 5.4 provides Figment hierarchical loading
+**Given** Story 6.4 provides Figment hierarchical loading
 **When** I implement initialization
 **Then** Registry loads config via Loader with proper precedence (CLI > Env > Files > Defaults)
 
@@ -144,7 +144,7 @@ So that the entire application references a single merged Config instance with o
 **When** I export it in `crates/adapters/src/spi/config/mod.rs`
 **Then** internal struct `Registry` is re-exported as `ConfigRegistry`
 
-## Story 5.4: Implement Hierarchical Configuration Loading
+## Story 6.4: Implement Hierarchical Configuration Loading
 
 As a user configuring lithos,
 I want hierarchical configuration that respects precedence rules,
@@ -172,7 +172,7 @@ So that I can override settings at different levels (global, user, project, vaul
 **When** I implement file loading
 **Then** PathValidator::validate() checks path security before FormatDispatcher::parse() handles format detection
 
-## Story 5.5: Implement Structural Configuration Validation
+## Story 6.5: Implement Structural Configuration Validation
 
 As a user providing configuration,
 I want structural validation of the document layout,
@@ -201,7 +201,7 @@ So that I am informed of missing sections before the application attempts to pro
 **When** I implement Loader error handling
 **Then** adapter converts Epic 4 errors to ConfigError with additional context
 
-## Story 5.6: Implement Configuration Versioning and Migration
+## Story 6.6: Implement Configuration Versioning and Migration
 
 As a developer maintaining lithos,
 I want configuration versioning and migration support,
@@ -225,7 +225,7 @@ So that configuration files can evolve safely across versions without breaking u
 **When** I validate version compatibility
 **Then** migration occurs transparently before domain validation
 
-## Story 5.7: Configuration Error Recovery and Rollback
+## Story 6.7: Configuration Error Recovery and Rollback
 
 As a user who has made configuration mistakes,
 I want the system to provide clear error messages and recovery options,
@@ -253,10 +253,10 @@ So that I can fix configuration issues without losing my work.
 **When** I implement recovery logic
 **Then** configuration history is maintained for recovery (optional future enhancement)
 
-## Story 5.8: Review Epic 5 Test Suite
+## Story 6.8: Review Epic 6 Test Suite
 
 As a senior developer conducting adversarial code review,
-I want to brutally critique and improve the Epic 5 test suite to its foundation,
+I want to brutally critique and improve the Epic 6 test suite to its foundation,
 So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
@@ -265,15 +265,15 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I reference the guide during review
 **Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
 
-**Given** all Epic 5 public components are implemented
+**Given** all Epic 6 public components are implemented
 **When** I verify test coverage
 **Then** all public functions, structs, and modules have corresponding unit tests
 
-**Given** all Epic 5 public APIs are documented
+**Given** all Epic 6 public APIs are documented
 **When** I verify doc test coverage
 **Then** all public components have runnable doc tests demonstrating usage
 
-**Given** all Epic 5 components are implemented with tests
+**Given** all Epic 6 components are implemented with tests
 **When** I conduct adversarial review
 **Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
 
@@ -287,7 +287,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Given** tests are executed
 **When** I measure performance
-**Then** test execution completes in <30 seconds for the full Epic 5 suite
+**Then** test execution completes in <30 seconds for the full Epic 6 suite
 
 **Given** I conduct brutal foundation critique
 **When** I assess test design
@@ -297,7 +297,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
 
-## Story 5.9: Document Configuration System
+## Story 6.9: Document Configuration System
 
 As a user configuring lithos,
 I want comprehensive documentation for configuration options,
@@ -305,15 +305,15 @@ So that I can understand and customize lithos behavior effectively.
 
 **Acceptance Criteria:**
 
-**Given** all Epic 5 code is implemented
+**Given** all Epic 6 code is implemented
 **When** I review all doc comments
 **Then** they are accurate, precise, and follow project standards from project-context.md
 
-**Given** all Epic 5 public components are documented
+**Given** all Epic 6 public components are documented
 **When** I verify doc comments
 **Then** all public structs, enums, traits, and functions have proper `///` documentation
 
-**Given** all Epic 5 public APIs are documented
+**Given** all Epic 6 public APIs are documented
 **When** I verify doc tests
 **Then** all public components include `# Examples` sections with runnable code snippets
 
@@ -325,7 +325,7 @@ So that I can understand and customize lithos behavior effectively.
 **When** I check completeness
 **Then** it covers hierarchical loading, validation rules, and troubleshooting
 
-**Given** Epic 5 adapters are implemented
+**Given** Epic 6 adapters are implemented
 **When** I create developer documentation
 **Then** `docs/config-adapters.md` is created following the pattern from `docs/domain-models.md` (Epic 3) for comprehensive epic-level documentation
 
@@ -333,7 +333,7 @@ So that I can understand and customize lithos behavior effectively.
 **When** I validate completeness
 **Then** it covers adapter architecture, composition pattern, Epic 4 integration, singleton Registry, and extension guidelines
 
-**Given** Epic 5 module structure is finalized
+**Given** Epic 6 module structure is finalized
 **When** I create module-level documentation
 **Then** `crates/adapters/src/spi/config/README.md` is created with module structure, file purposes, and quick start examples
 

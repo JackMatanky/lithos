@@ -208,9 +208,9 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 | FR23 | Users can query metadata fields from other notes for template use | Epic 11 | ✓ Covered |
 | FR24 | Users can maintain vault consistency across template operations | Epic 10 | ✓ Covered |
 | FR25 | Users can handle large vaults (1000+ files) without performance degradation | Epic 10 | ✓ Covered |
-| FR26 | Users can configure template packs using TOML files | Epic 5 | ✓ Covered |
-| FR27 | Users can manage schema definitions through configuration files | Epic 5 | ✓ Covered |
-| FR28 | Users can set application preferences via configuration | Epic 5 | ✓ Covered |
+| FR26 | Users can configure template packs using TOML files | Epic 6 | ✓ Covered |
+| FR27 | Users can manage schema definitions through configuration files | Epic 6 | ✓ Covered |
+| FR28 | Users can set application preferences via configuration | Epic 6 | ✓ Covered |
 | FR29 | Users can define custom validation rules and linting settings | Post-MVP Phase 2c | ✓ Covered |
 | FR30 | Users can execute templates consistently across operating systems | Epic 14 | ✓ Covered |
 | FR31 | Users can access templates through terminal interfaces | Epic 14 | ✓ Covered |
@@ -221,7 +221,7 @@ The PRD is exceptionally thorough, with 50 specific Functional Requirements and 
 | FR36 | Users can validate third-party templates against schemas | Post-MVP Phase 3b | ✓ Covered |
 | FR37 | Users can contribute improvements to shared template ecosystems | Post-MVP Phase 3b | ✓ Covered |
 | FR38 | Users can control access to sensitive vault data and templates | Post-MVP Phase 4 | ✓ Covered |
-| FR39 | Users can encrypt sensitive configuration and schema files | Post-MVP Phase 4 / Epic 5 | ✓ Covered |
+| FR39 | Users can encrypt sensitive configuration and schema files | Post-MVP Phase 4 / Epic 6 | ✓ Covered |
 | FR40 | Users can audit template execution and data access patterns | Post-MVP Phase 4 / Epic 14 | ✓ Covered |
 | FR41 | Users can execute lithos commands with subcommands for templates, schemas, and vaults | Epic 14 | ✓ Covered |
 | FR42 | Users can access comprehensive help and documentation from the CLI | Epic 14 | ✓ Covered |
