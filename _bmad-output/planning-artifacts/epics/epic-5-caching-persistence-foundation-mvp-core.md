@@ -25,27 +25,30 @@ So that multiple cache backends can be swapped and automatically mocked for test
 **Given** the adapter layer needs shared error types
 **When** I define the `CacheError` enum in `spi/errors.rs` deriving `thiserror::Error`
 **Then** it includes variants for common failure modes:
+
 - `IoError(#[from] std::io::Error)` for file system failures
 - `SerializationError(String)` for rkyv serialization/deserialization failures
 - `BackendError(String)` for cache-specific errors (Moka eviction, Redb transaction failures)
-**And** all variants implement `Send + Sync` to support async contexts
-**And** error messages follow ADR 0006 (actionable diagnostics with context)
+  **And** all variants implement `Send + Sync` to support async contexts
+  **And** error messages follow ADR 0006 (actionable diagnostics with context)
 
 **Given** cache consumers need standardized operations
 **When** I define `trait Cache<K, V>` in `spi/cache/mod.rs`
 **Then** it includes these async methods:
+
 - `async fn get(&self, key: &K) -> Result<Option<V>, CacheError>` - retrieve value by key
 - `async fn put(&self, key: K, value: V) -> Result<(), CacheError>` - store key-value pair
 - `async fn delete(&self, key: &K) -> Result<bool, CacheError>` - remove entry (returns true if existed)
 - `async fn invalidate(&self, key: &K) -> Result<bool, CacheError>` - alias for delete (cache-specific terminology)
-**And** the trait is annotated with `#[async_trait]` for async support
+  **And** the trait is annotated with `#[async_trait]` for async support
 
 **Given** type safety is critical
 **When** I define trait bounds
 **Then** the trait requires:
+
 - `K: Clone + Eq + Hash + Send + Sync + 'static` for hashable, thread-safe keys
 - `V: Clone + Send + Sync + 'static` for thread-safe values
-**And** documentation explains when `V: rkyv::Archive + rkyv::Serialize + rkyv::Deserialize` is needed (for RedbCache)
+  **And** documentation explains when `V: rkyv::Archive + rkyv::Serialize + rkyv::Deserialize` is needed (for RedbCache)
 
 **Given** testing requires mock implementations
 **When** I annotate the trait with `#[mockall::automock]`
@@ -56,6 +59,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
 **Given** the trait contract must be clear
 **When** I write module-level documentation
 **Then** it explains:
+
 - Purpose: Generic caching SPI for adapter-layer use
 - Consumers: Schema adapters, Config adapters, Query adapters
 - Implementations: MokaCache (memory layer), RedbCache (disk layer), Coordinator (memory+disk)
@@ -72,10 +76,11 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 **Given** the `moka` crate dependency is added to `adapters/Cargo.toml`
 **When** I implement the `MokaCache<K, V>` struct in `spi/cache/moka.rs`
 **Then** it wraps `moka::future::Cache<K, V>` with configuration options:
+
 - `max_capacity: usize` - maximum number of entries
 - `time_to_live: Option<Duration>` - TTL for automatic expiration
 - `time_to_idle: Option<Duration>` - TTI for idle eviction
-**And** the struct provides a builder pattern for configuration
+  **And** the struct provides a builder pattern for configuration
 
 **Given** the adapter must implement the trait
 **When** I implement `Cache<K, V>` for `MokaCache<K, V>`
@@ -89,11 +94,12 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 **When** I instrument all public methods
 **Then** each method is decorated with `#[tracing::instrument(skip(self, value), level = "debug")]`
 **And** `get()` emits a `tracing::event!` with attributes:
+
 - `cache_layer = "memory"`
 - `operation = "get"`
 - `hit = true/false`
-**And** `put()` emits events with `cache_layer = "memory"`, `operation = "put"`
-**And** `delete()` emits events with `cache_layer = "memory"`, `operation = "delete"`, `existed = true/false`
+  **And** `put()` emits events with `cache_layer = "memory"`, `operation = "put"`
+  **And** `delete()` emits events with `cache_layer = "memory"`, `operation = "delete"`, `existed = true/false`
 
 **Given** Moka's TinyLFU policy must be utilized
 **When** I configure the cache
@@ -115,9 +121,10 @@ So that data persists across application restarts and multiple cache consumers c
 **Given** the `redb` and `rkyv` dependencies are added
 **When** I implement the `RedbCache<K, V>` struct in `spi/cache/redb.rs`
 **Then** it wraps a Redb database with configuration:
+
 - `db: Arc<redb::Database>` - shared database instance
 - `table_name: String` - isolated table for this cache instance
-**And** constructor `new(db_path: PathBuf, table_name: &str)` creates the database and opens the table
+  **And** constructor `new(db_path: PathBuf, table_name: &str)` creates the database and opens the table
 
 **Given** multiple cache consumers need isolation
 **When** I implement table management
@@ -129,11 +136,12 @@ So that data persists across application restarts and multiple cache consumers c
 **Given** persistence requires metadata tracking
 **When** I implement the storage schema
 **Then** values are stored as `CachedEntry<V>` struct containing:
+
 - `value: V` - the actual cached data
 - `timestamp: u64` - Unix timestamp (seconds since epoch) of last write
 - `metadata: HashMap<String, String>` - extensible key-value pairs for consumer-specific data (e.g., file hash, version)
-**And** `CachedEntry<V>` derives `rkyv::Archive`, `rkyv::Serialize`, `rkyv::Deserialize`
-**And** the entire struct is rkyv-serialized for zero-copy deserialization per ADR 0002
+  **And** `CachedEntry<V>` derives `rkyv::Archive`, `rkyv::Serialize`, `rkyv::Deserialize`
+  **And** the entire struct is rkyv-serialized for zero-copy deserialization per ADR 0002
 
 **Given** the trait must be implemented
 **When** I implement `Cache<K, V>` for `RedbCache<K, V>`
@@ -154,9 +162,10 @@ So that data persists across application restarts and multiple cache consumers c
 **Given** observability is required
 **When** I instrument all methods
 **Then** database transactions are wrapped in `tracing` spans:
+
 - Span name: `"redb_transaction"`
 - Attributes: `table_name`, `operation`, `key` (if serializable)
-**And** successful operations emit events with `cache_layer = "disk"`
+  **And** successful operations emit events with `cache_layer = "disk"`
 
 **Given** consumers need access to metadata
 **When** I provide utility methods
@@ -174,13 +183,15 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 **Given** coordinated caching requires both layers
 **When** I implement `CacheCoordinator<K, V>` in `spi/cache/coordinator.rs`
 **Then** it wraps:
+
 - `memory: Box<dyn Cache<K, V>>` - fast in-memory cache (typically MokaCache)
 - `disk: Box<dyn Cache<K, V>>` - persistent disk cache (typically RedbCache)
-**And** constructor `new(memory: Box<dyn Cache<K, V>>, disk: Box<dyn Cache<K, V>>)` accepts pre-configured caches
+  **And** constructor `new(memory: Box<dyn Cache<K, V>>, disk: Box<dyn Cache<K, V>>)` accepts pre-configured caches
 
 **Given** read-through caching must be implemented
 **When** I implement `get()` for the coordinator
 **Then** the flow is:
+
 1. Check memory cache
 2. If memory hit: Return value immediately, emit `tracing::event!` at `Level::DEBUG` with "Memory Hit"
 3. If memory miss: Check disk cache
@@ -190,11 +201,12 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 **Given** write-through caching must ensure consistency
 **When** I implement `put()` for the coordinator
 **Then** the flow is:
+
 1. Write to disk first (persistence)
 2. If disk write succeeds: Write to memory (in-memory cache)
 3. If disk write fails: Return error WITHOUT writing to memory (prevent inconsistency)
 4. Emit `tracing::event!` at `Level::DEBUG` with "Cache Write" including key (if serializable)
-**And** both layers must succeed or neither is modified (consistency coordination)
+   **And** both layers must succeed or neither is modified (consistency coordination)
 
 **Given** invalidation must affect both layers
 **When** I implement `delete()` and `invalidate()`
@@ -223,6 +235,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 **Given** benchmarking infrastructure exists per ADR 0012
 **When** I create `benches/cache_benchmarks.rs` in the adapters crate
 **Then** it includes benchmark suites for:
+
 - `MokaCache` standalone operations
 - `RedbCache` standalone operations
 - `CacheCoordinator` full memory+disk flow
@@ -230,34 +243,38 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 **Given** throughput is critical for LSP scenarios
 **When** I benchmark `MokaCache` concurrent operations
 **Then** the benchmark:
+
 - Spawns 100 concurrent tasks performing mixed get/put operations
 - Runs 1000 operations per second
 - Measures p50, p95, p99 latency
 - Reports ops/sec throughput
-**And** p99 latency is <5ms for get() operations
-**And** p99 latency is <10ms for put() operations
+  **And** p99 latency is <5ms for get() operations
+  **And** p99 latency is <10ms for put() operations
 
 **Given** cold start performance matters for CLI
 **When** I benchmark `RedbCache` initialization
 **Then** the benchmark:
+
 - Measures database open + table creation time
 - Measures first read after cold start
-**And** database open completes in <10ms
+  **And** database open completes in <10ms
 
 **Given** memory usage must stay within bounds
 **When** I benchmark `CacheCoordinator` with large datasets
 **Then** the benchmark:
+
 - Caches 10,000 entries of typical size (e.g., 1KB each)
 - Measures peak memory usage for memory + disk layers combined
-**And** memory usage stays below 100MB (memory layer typically capped at 50MB, disk layer is file-backed)
+  **And** memory usage stays below 100MB (memory layer typically capped at 50MB, disk layer is file-backed)
 
 **Given** scan resistance is a key Moka feature
 **When** I benchmark scan scenarios
 **Then** the benchmark:
+
 - Performs 10,000 sequential reads (simulating vault scan)
 - Followed by 1,000 random reads from a small "hot set"
 - Measures cache hit rate for the hot set
-**And** TinyLFU policy maintains >80% hit rate for hot data despite scan pollution
+  **And** TinyLFU policy maintains >80% hit rate for hot data despite scan pollution
 
 **Given** results must be tracked over time
 **When** benchmarks are run
@@ -290,6 +307,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **Given** all Epic 5 components are implemented with tests
 **When** I conduct adversarial review
 **Then** I identify and eliminate:
+
 - False positives (tests that pass but don't validate behavior)
 - Redundant tests (duplicate coverage)
 - Inadequate edge case coverage (error paths, boundary conditions)
@@ -315,6 +333,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **Given** I conduct brutal foundation critique
 **When** I assess test design
 **Then** I verify:
+
 - Tests use proper fixtures (test data builders, sample types)
 - Tests avoid flaky behavior (no timing dependencies, no hard-coded sleep)
 - Test intent is clear (descriptive names, Given/When/Then structure in comments)
@@ -332,16 +351,18 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **Given** documentation quality is critical
 **When** I review all doc comments
 **Then** every public component has:
+
 - Precise `///` doc comments explaining purpose and behavior
 - Well-written doc tests in `# Examples` sections
 - Error cases documented with `# Errors` sections where applicable
 - Panic conditions documented with `# Panics` sections where applicable
-**And** doc tests demonstrate realistic usage patterns
-**And** doc comments follow project standards from `project-context.md`
+  **And** doc tests demonstrate realistic usage patterns
+  **And** doc comments follow project standards from `project-context.md`
 
 **Given** RedbCache persistence must be validated
 **When** I test persistence behavior
 **Then** integration tests verify:
+
 - Value survives process restart (create cache, write, drop, recreate, read)
 - rkyv serialization round-trips correctly for complex types
 - Metadata is preserved across reads/writes
@@ -362,16 +383,18 @@ So that I understand how to use the generic primitives in domain-specific contex
 **Given** all Epic 5 public components are documented
 **When** I verify doc comments
 **Then** all public traits, structs, enums, functions, and methods have:
+
 - Clear `///` doc comments explaining their purpose
 - `# Examples` sections with runnable, well-written doc tests
 - `# Errors` sections documenting error conditions where applicable
 - `# Panics` sections documenting panic conditions where applicable
-**And** doc tests demonstrate realistic usage patterns
-**And** doc tests compile and pass via `cargo test --doc`
+  **And** doc tests demonstrate realistic usage patterns
+  **And** doc tests compile and pass via `cargo test --doc`
 
 **Given** the Cache SPI is implemented
 **When** I create `crates/adapters/src/spi/cache/README.md`
 **Then** it includes:
+
 - **Overview**: Purpose of the Cache SPI as generic infrastructure
 - **Trait Contract**: Explanation of `Cache<K, V>` methods and semantics
 - **Implementations**: MokaCache (memory), RedbCache (disk), Coordinator (memory+disk)
@@ -383,6 +406,7 @@ So that I understand how to use the generic primitives in domain-specific contex
 **Given** developers need architectural context
 **When** I create `docs/spi/cache-foundation.md`
 **Then** it explains:
+
 - **Memory/Disk Architecture**: Why we use two-level caching (speed vs persistence)
 - **When to Use What**:
   - MokaCache alone: Temporary session data, template execution caching
@@ -395,6 +419,7 @@ So that I understand how to use the generic primitives in domain-specific contex
 **Given** examples must be runnable
 **When** I include code examples in documentation
 **Then** they compile and demonstrate:
+
 - Creating a MokaCache with TTL configuration
 - Creating a RedbCache with table isolation
 - Composing a Coordinator with both layers
