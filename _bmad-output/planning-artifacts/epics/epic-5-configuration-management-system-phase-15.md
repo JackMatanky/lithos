@@ -16,7 +16,7 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 ## Story 5.1: Implement Config Adapters with Embedded Utilities
 
 As a developer completing the configuration bounded context,
-I want ConfigCommand and ConfigQuery adapters that embed specialized loader/writer utilities,
+I want Command and Query adapters that embed specialized loader/writer utilities,
 So that port implementations are clean and easily extensible for future operations.
 
 **Acceptance Criteria:**
@@ -26,25 +26,25 @@ So that port implementations are clean and easily extensible for future operatio
 **Then** `load`, `load_global`, and `load_vault` methods are moved from `Query` to `Command` trait
 **And** `Query` trait retains only side-effect-free methods (if any remain)
 
-**Given** Epic 3 defined Command and Query trait interfaces in `crates/domain/src/ports/config.rs`
-**When** I implement Loader utility in `crates/adapters/src/spi/config/loader.rs`
+**Given** Epic 3 defined `Command` and `Query` trait interfaces in `crates/domain/src/ports/config.rs`
+**When** I implement `Loader` utility in `crates/adapters/src/spi/config/loader.rs`
 **Then** it provides read operations (load, load_global, load_vault) using Epic 4 FormatDispatcher + PathValidator + Figment
 
-**Given** Loader is implemented
-**When** I implement Query adapter in `crates/adapters/src/spi/config/query.rs`
-**Then** it implements Query trait by delegating to embedded Loader instance
+**Given** `Registry` is implemented
+**When** I implement `Query` adapter in `crates/adapters/src/spi/config/query.rs`
+**Then** it implements the `Query` trait by delegating to the `Registry` singleton for high-performance, side-effect-free reads.
 
 **Given** I need write operations
 **When** I implement Writer utility in `crates/adapters/src/spi/config/writer.rs`
 **Then** it provides write operations (save_global, save_vault) using Epic 4 PathValidator + tokio::fs
 
-**Given** Writer is implemented
-**When** I implement Command adapter in `crates/adapters/src/spi/config/command.rs`
-**Then** it implements Command trait by delegating to embedded Writer instance
+**Given** `Loader` and `Writer` are implemented
+**When** I implement `Command` adapter in `crates/adapters/src/spi/config/command.rs`
+**Then** the `Command` adapter implements the `Command` trait by orchestrating the `Loader` (to read) and then updating the `Registry` (to store state).
 
 **Given** both adapters are implemented
 **When** I test integration
-**Then** Command and Query work together for complete configuration management
+**Then** `Command` and `Query` work together for complete configuration management
 
 **Given** future extensions are needed (e.g., update_value, lookup_value)
 **When** I add methods to Command/Query traits
@@ -52,11 +52,11 @@ So that port implementations are clean and easily extensible for future operatio
 
 **Given** Epic 4 provides FS utilities
 **When** I implement Loader and Writer
-**Then** both use FormatDispatcher::parse() for format detection and PathValidator::validate() for path security
+**Then** the `Loader` uses FormatDispatcher::parse() for format detection and the `Writer` uses format-specific serialization (e.g., `toml::to_string`) to ensure output matches the source format.
 
 **Given** adapters are implemented
 **When** I export them in `crates/adapters/src/spi/config/mod.rs`
-**Then** internal structs (Query, Command, Loader, Writer) are re-exported with Config prefix (ConfigQuery, ConfigCommand, ConfigLoader, ConfigWriter)
+**Then** internal structs (`Query`, `Command`, `Loader`, `Writer`, `Registry`) are re-exported with Config prefix (`ConfigQuery`, `ConfigCommand`, `ConfigLoader`, `ConfigWriter`, `ConfigRegistry`)
 
 ## Story 5.2: Implement Config Singleton Registry
 
@@ -92,7 +92,7 @@ So that the entire application references a single merged Config instance with o
 
 **Given** Story 5.1 provides Loader adapter
 **When** I integrate with Registry
-**Then** Loader populates the singleton on application startup via `Config::build()`
+**Then** the `Command` adapter populates the config `Registry` singleton upon successful loading and construction of the `Config` aggregate.
 
 **Given** Story 5.3 provides Figment hierarchical loading
 **When** I implement initialization
@@ -104,7 +104,7 @@ So that the entire application references a single merged Config instance with o
 
 **Given** Registry is implemented
 **When** I export it in `crates/adapters/src/spi/config/mod.rs`
-**Then** internal struct Registry is re-exported as ConfigRegistry
+**Then** internal struct `Registry` is re-exported as `ConfigRegistry`
 
 ## Story 5.3: Implement Hierarchical Configuration Loading
 
@@ -116,7 +116,7 @@ So that I can override settings at different levels (global, user, project, vaul
 
 **Given** Epic 4 provides unified structured file loading (TOML, JSON, YAML) via FormatDispatcher
 **When** I implement hierarchical config using Figment per ADR 0005 in Loader
-**Then** configuration loads with proper precedence: CLI > Environment > Config files > Defaults
+**Then** configuration loads with proper precedence: **Simulated CLI Args (for testing parity)** > Environment > Config files > Defaults, ensuring the logic is ready for future CLI wiring.
 
 **Given** hierarchical loading is implemented
 **When** I test precedence
@@ -128,7 +128,7 @@ So that I can override settings at different levels (global, user, project, vaul
 
 **Given** Figment provides hierarchical merging
 **When** I implement Loader.load_global() and Loader.load_vault()
-**Then** Figment merges CLI args, environment variables, and file sources with correct precedence
+**Then** Figment merges **simulated CLI arguments (for testing parity)**, environment variables, and file sources with correct precedence, ensuring the adapter logic is ready for future binary integration.
 
 **Given** Loader uses Epic 4 utilities
 **When** I implement file loading
