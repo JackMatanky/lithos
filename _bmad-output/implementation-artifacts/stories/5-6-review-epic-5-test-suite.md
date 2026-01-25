@@ -180,6 +180,8 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 - [ ] Subtask 6.3: Confirm all tests use `IsolatedTestContext` or RAII guards for cleanup
 - [ ] Subtask 6.4: Run `mise run timing` and verify execution speed
 - [ ] Subtask 6.5: Run `mise run verify` one final time to confirm 100% quality gate pass
+- [ ] Subtask 6.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+- [ ] Subtask 6.7: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`

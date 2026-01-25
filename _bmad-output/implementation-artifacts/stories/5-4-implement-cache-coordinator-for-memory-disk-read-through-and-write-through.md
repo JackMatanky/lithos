@@ -188,6 +188,8 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
   - [ ] Subtask 8.2: Run `mise run fmt` and verify formatting compliance
   - [ ] Subtask 8.3: Run `mise run lint` one final time
   - [ ] Subtask 8.4: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 8.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 8.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
