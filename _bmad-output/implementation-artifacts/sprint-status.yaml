@@ -79,7 +79,7 @@ development_status:
     epic-5: "in-progress"
     5-1-define-cache-trait-and-error-hierarchy: "done"
     5-2-implement-moka-in-memory-cache-adapter: "done"
-    5-3-implement-redb-persistent-cache-adapter-with-isolation: "ready-for-dev"
+    5-3-implement-redb-persistent-cache-adapter-with-isolation: "in-progress"
     5-4-implement-cache-coordinator-for-memory-disk-read-through-and-write-through: "ready-for-dev"
     5-5-implement-performance-benchmarking-suite: "ready-for-dev"
     5-6-review-epic-5-test-suite: "ready-for-dev"

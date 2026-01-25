@@ -100,13 +100,13 @@ So that data persists across application restarts and multiple cache consumers c
 ## TDD Tasks / Subtasks
 
 ### Phase 1: Test Infrastructure and Scaffolding
-- [ ] Task 1: Initialize implementation file and verify module linkage
-  - [ ] Subtask 1.1: Create empty file at `crates/adapters/src/spi/cache/redb.rs`
-  - [ ] Subtask 1.2: Add `pub(crate) mod redb;` to `crates/adapters/src/spi/cache/mod.rs`
-  - [ ] Subtask 1.3: Write a unit test in `redb.rs` under `#[cfg(test)]` that fails to import `RedbCache`
-  - [ ] Subtask 1.4: Write failing test that fails to find `CachedEntry` type
-  - [ ] Subtask 1.5: Run `mise run test:unit:adapters redb` and verify failures (RED)
-  - [ ] Subtask 1.6: Run `mise run lint` and ensure environment is clean
+- [x] Task 1: Initialize implementation file and verify module linkage
+  - [x] Subtask 1.1: Create empty file at `crates/adapters/src/spi/cache/redb.rs`
+  - [x] Subtask 1.2: Add `pub(crate) mod redb;` to `crates/adapters/src/spi/cache/mod.rs`
+  - [x] Subtask 1.3: Write a unit test in `redb.rs` under `#[cfg(test)]` that fails to import `RedbCache`
+  - [x] Subtask 1.4: Write failing test that fails to find `CachedEntry` type
+  - [x] Subtask 1.5: Run `mise run test:unit:adapters redb` and verify failures (RED)
+  - [x] Subtask 1.6: Run `mise run lint` and ensure environment is clean
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -114,15 +114,15 @@ So that data persists across application restarts and multiple cache consumers c
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 2: Schema & Serialization
-- [ ] Task 2: Implement CachedEntry and rkyv integration
-  - [ ] Subtask 2.1: Write failing test for `CachedEntry<V>` struct requiring `Archive`, `Serialize`, `Deserialize`
-  - [ ] Subtask 2.2: Implement `CachedEntry<V>` with `value`, `timestamp`, `metadata` fields; ensure `V` is constrained by `rkyv::Archive + rkyv::Serialize<rkyv::ser::serializers::AllocSerializer<256>>`.
-  - [ ] Subtask 2.3: Define `rkyv` compatible `HashMap` or replacement for metadata to ensure serialization works out-of-the-box.
-  - [ ] Subtask 2.4: Apply `rkyv` macros and verify serialization
-  - [ ] Subtask 2.5: Write failing test for `SerializationError` mapping
-  - [ ] Subtask 2.6: Implement error mapping for failed `rkyv` operations
-  - [ ] Subtask 2.7: Run `mise run test:unit:adapters redb_serialization` and verify pass (GREEN)
-  - [ ] Subtask 2.8: Run `mise run lint` and fix all warnings/errors
+- [x] Task 2: Implement CachedEntry and rkyv integration
+  - [x] Subtask 2.1: Write failing test for `CachedEntry<V>` struct requiring `Archive`, `Serialize`, `Deserialize`
+  - [x] Subtask 2.2: Implement `CachedEntry<V>` with `value`, `timestamp`, `metadata` fields; ensure `V` is constrained by `rkyv::Archive + rkyv::Serialize<rkyv::ser::serializers::AllocSerializer<256>>`.
+  - [x] Subtask 2.3: Define `rkyv` compatible `HashMap` or replacement for metadata to ensure serialization works out-of-the-box.
+  - [x] Subtask 2.4: Apply `rkyv` macros and verify serialization
+  - [x] Subtask 2.5: Write failing test for `SerializationError` mapping
+  - [x] Subtask 2.6: Implement error mapping for failed `rkyv` operations
+  - [x] Subtask 2.7: Run `mise run test:unit:adapters redb_serialization` and verify pass (GREEN)
+  - [x] Subtask 2.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -130,17 +130,17 @@ So that data persists across application restarts and multiple cache consumers c
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 3: Database & Table Management
-- [ ] Task 3: Implement Redb initialization and table isolation
-  - [ ] Subtask 3.1: Write failing test for `RedbCache::new(db_path, table_name)`
-  - [ ] Subtask 3.2: Implement `RedbCache` struct wrapping `Arc<redb::Database>`
-  - [ ] Subtask 3.3: Write failing test verifying lazy table creation
-  - [ ] Subtask 3.4: Implement lazy table opening within operations using a `redb::TableDefinition<&[u8], &[u8]>` where keys and values are stored as serialized bytes.
-  - [ ] Subtask 3.5: Implement a helper to serialize the generic key `K` into a byte-stable representation (e.g., via `rkyv` or `ToString`) for Redb lookups.
-  - [ ] Subtask 3.6: Verify multiple instances share the same `redb::Database` but different tables
-  - [ ] Subtask 3.7: Write failing test for `IoError` mapping during DB open
-  - [ ] Subtask 3.8: Implement I/O error mapping
-  - [ ] Subtask 3.9: Run `mise run test:unit:adapters redb_init` and verify pass (GREEN)
-  - [ ] Subtask 3.10: Run `mise run lint` and fix all warnings/errors
+- [x] Task 3: Implement Redb initialization and table isolation
+  - [x] Subtask 3.1: Write failing test for `RedbCache::new(db_path, table_name)`
+  - [x] Subtask 3.2: Implement `RedbCache` struct wrapping `Arc<redb::Database>`
+  - [x] Subtask 3.3: Write failing test verifying lazy table creation
+  - [x] Subtask 3.4: Implement lazy table opening within operations using a `redb::TableDefinition<&[u8], &[u8]>` where keys and values are stored as serialized bytes.
+  - [x] Subtask 3.5: Implement a helper to serialize the generic key `K` into a byte-stable representation (e.g., via `rkyv` or `ToString`) for Redb lookups.
+  - [x] Subtask 3.6: Verify multiple instances share the same `redb::Database` but different tables
+  - [x] Subtask 3.7: Write failing test for `IoError` mapping during DB open
+  - [x] Subtask 3.8: Implement I/O error mapping
+  - [x] Subtask 3.9: Run `mise run test:unit:adapters redb_init` and verify pass (GREEN)
+  - [x] Subtask 3.10: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -148,20 +148,20 @@ So that data persists across application restarts and multiple cache consumers c
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 4: Cache Trait Implementation
-- [ ] Task 4: Implement core Cache operations with persistence
-  - [ ] Subtask 4.1: Write failing test for `put` then `get` across instance drops
-  - [ ] Subtask 4.2: Implement `put` using Redb write transaction
-  - [ ] Subtask 4.3: Implement `get` using a Redb **read-only** transaction and `rkyv::access` for zero-copy deserialization of the `CachedEntry`.
-  - [ ] Subtask 4.4: Write failing test for `has` returning existence status
-  - [ ] Subtask 4.5: Implement `has` checking if key exists in table
-  - [ ] Subtask 4.6: Write failing test for `delete` returning existence status
-  - [ ] Subtask 4.7: Implement `delete` operation
-  - [ ] Subtask 4.8: Write failing test for `clear` removing all entries
-  - [ ] Subtask 4.9: Implement `clear` using Redb transaction to delete all rows in table
-  - [ ] Subtask 4.10: Write failing test for `invalidate` functionality
-  - [ ] Subtask 4.11: Implement `invalidate`
-  - [ ] Subtask 4.12: Run `mise run test:unit:adapters redb_trait` and verify pass (GREEN)
-  - [ ] Subtask 4.13: Run `mise run lint` and fix all warnings/errors
+- [x] Task 4: Implement core Cache operations with persistence
+  - [x] Subtask 4.1: Write failing test for `put` then `get` across instance drops
+  - [x] Subtask 4.2: Implement `put` using Redb write transaction
+  - [x] Subtask 4.3: Implement `get` using a Redb **read-only** transaction and `rkyv::access` for zero-copy deserialization of the `CachedEntry`.
+  - [x] Subtask 4.4: Write failing test for `has` returning existence status
+  - [x] Subtask 4.5: Implement `has` checking if key exists in table
+  - [x] Subtask 4.6: Write failing test for `delete` returning existence status
+  - [x] Subtask 4.7: Implement `delete` operation
+  - [x] Subtask 4.8: Write failing test for `clear` removing all entries
+  - [x] Subtask 4.9: Implement `clear` using Redb transaction to delete all rows in table
+  - [x] Subtask 4.10: Write failing test for `invalidate` functionality
+  - [x] Subtask 4.11: Implement `invalidate`
+  - [x] Subtask 4.12: Run `mise run test:unit:adapters redb_trait` and verify pass (GREEN)
+  - [x] Subtask 4.13: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -169,15 +169,15 @@ So that data persists across application restarts and multiple cache consumers c
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 5: Metadata & Extended Operations
-- [ ] Task 5: Implement metadata tracking and retrieval
-  - [ ] Subtask 5.1: Write failing test for `put_with_metadata`
-  - [ ] Subtask 5.2: Implement `put_with_metadata` storing custom HashMap
-  - [ ] Subtask 5.3: Write failing test for `get_with_metadata`
-  - [ ] Subtask 5.4: Implement `get_with_metadata` returning both value and metadata
-  - [ ] Subtask 5.5: Write failing test verifying timestamp updates on every `put`
-  - [ ] Subtask 5.6: Ensure current Unix timestamp (via `SystemTime::now().duration_since(UNIX_EPOCH)`) is stored in `CachedEntry` on every write.
-  - [ ] Subtask 5.7: Run `mise run test:unit:adapters redb_metadata` and verify pass (GREEN)
-  - [ ] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
+- [x] Task 5: Implement metadata tracking and retrieval
+  - [x] Subtask 5.1: Write failing test for `put_with_metadata`
+  - [x] Subtask 5.2: Implement `put_with_metadata` storing custom HashMap
+  - [x] Subtask 5.3: Write failing test for `get_with_metadata`
+  - [x] Subtask 5.4: Implement `get_with_metadata` returning both value and metadata
+  - [x] Subtask 5.5: Write failing test verifying timestamp updates on every `put`
+  - [x] Subtask 5.6: Ensure current Unix timestamp (via `SystemTime::now().duration_since(UNIX_EPOCH)`) is stored in `CachedEntry` on every write.
+  - [x] Subtask 5.7: Run `mise run test:unit:adapters redb_metadata` and verify pass (GREEN)
+  - [x] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -185,13 +185,13 @@ So that data persists across application restarts and multiple cache consumers c
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 6: Observability & Tracing
-- [ ] Task 6: Implement tracing spans for Redb transactions
-  - [ ] Subtask 6.1: Write failing test expecting `"redb_transaction"` span for operations
-  - [ ] Subtask 6.2: Add `#[tracing::instrument]` to all methods with required attributes
-  - [ ] Subtask 6.3: Write failing test expecting `cache_layer = "disk"` events
-  - [ ] Subtask 6.4: Add events to `get`, `put`, and `delete`
-  - [ ] Subtask 6.5: Run `mise run test:unit:adapters redb_tracing` and verify pass (GREEN)
-  - [ ] Subtask 6.6: Run `mise run lint` and fix all warnings/errors
+- [x] Task 6: Implement tracing spans for Redb transactions
+  - [x] Subtask 6.1: Write failing test expecting `"redb_transaction"` span for operations
+  - [x] Subtask 6.2: Add `#[tracing::instrument]` to all methods with required attributes
+  - [x] Subtask 6.3: Write failing test expecting `cache_layer = "disk"` events
+  - [x] Subtask 6.4: Add events to `get`, `put`, and `delete`
+  - [x] Subtask 6.5: Run `mise run test:unit:adapters redb_tracing` and verify pass (GREEN)
+  - [x] Subtask 6.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -199,13 +199,13 @@ So that data persists across application restarts and multiple cache consumers c
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 7: Documentation & Doc Testing
-- [ ] Task 7: Implement module documentation and executable examples
-  - [ ] Subtask 7.1: Write failing doc test for `RedbCache` with table isolation
-  - [ ] Subtask 7.2: Add working doc test to module-level documentation
-  - [ ] Subtask 7.3: Write failing doc test for metadata operations
-  - [ ] Subtask 7.4: Add metadata example to `RedbCache` docs
-  - [ ] Subtask 7.5: Run `mise run test:unit:adapters --doc` and verify all pass (GREEN)
-  - [ ] Subtask 7.6: Run `mise run lint` and fix all warnings/errors
+- [x] Task 7: Implement module documentation and executable examples
+  - [x] Subtask 7.1: Write failing doc test for `RedbCache` with table isolation
+  - [x] Subtask 7.2: Add working doc test to module-level documentation
+  - [x] Subtask 7.3: Write failing doc test for metadata operations
+  - [x] Subtask 7.4: Add metadata example to `RedbCache` docs
+  - [x] Subtask 7.5: Run `mise run test:unit:adapters --doc` and verify all pass (GREEN)
+  - [x] Subtask 7.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
