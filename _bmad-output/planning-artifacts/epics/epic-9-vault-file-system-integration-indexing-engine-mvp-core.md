@@ -350,9 +350,17 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Acceptance Criteria:**
 
-**Given** docs/testing/developer-guide.md provides testing standards and tools
+**Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
 **When** I reference the guide during review
-**Then** I validate compliance with Lithos testing hierarchy, async patterns, and utilities
+**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+
+**Given** all Epic 9 public components are implemented
+**When** I verify test coverage
+**Then** all public functions, structs, and modules have corresponding unit tests
+
+**Given** all Epic 9 public APIs are documented
+**When** I verify doc test coverage
+**Then** all public components have runnable doc tests demonstrating usage
 
 **Given** all Epic 9 components are implemented with tests
 **When** I conduct adversarial review

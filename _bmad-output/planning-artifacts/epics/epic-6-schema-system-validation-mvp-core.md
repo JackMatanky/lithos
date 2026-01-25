@@ -244,13 +244,41 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 **Acceptance Criteria:**
 
-**Given** docs/testing/developer-guide.md
-**When** I review tests
-**Then** I ensure compliance with async patterns and fixture usage
+**Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
+**When** I reference the guide during review
+**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
 
-**Given** all public components (Decoder, Loader, Registry, Cache)
-**When** I verify coverage
-**Then** unit tests exist for every public method
+**Given** all Epic 6 public components are implemented (Decoder, Loader, Registry, Cache)
+**When** I verify test coverage
+**Then** all public functions, structs, and modules have corresponding unit tests
+
+**Given** all Epic 6 public APIs are documented
+**When** I verify doc test coverage
+**Then** all public components have runnable doc tests demonstrating usage
+
+**Given** all Epic 6 components are implemented with tests
+**When** I conduct adversarial review
+**Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
+
+**Given** I take adversarial position against the test suite
+**When** I critique test quality
+**Then** I assess if tests actually validate business requirements vs implementation details
+
+**Given** the test suite is implemented
+**When** I review for redundancy
+**Then** I eliminate duplicate test cases and consolidate overlapping coverage
+
+**Given** tests are executed
+**When** I measure performance
+**Then** test execution completes in <30 seconds for the full Epic 6 suite
+
+**Given** I conduct brutal foundation critique
+**When** I assess test design
+**Then** I verify tests use proper fixtures, avoid flaky behavior, and maintain clear intent
+
+**Given** test suite is reviewed
+**When** I check maintainability
+**Then** test code follows same quality standards as production code with proper documentation
 
 **Given** format strategies (TOML/JSON/YAML)
 **When** I test Decoder

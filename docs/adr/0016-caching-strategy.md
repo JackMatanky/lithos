@@ -1,4 +1,4 @@
-# ADR 0014: Caching Strategy & Implementation Patterns
+# ADR 0016: Caching Strategy & Implementation Patterns
 
 - **Status**: Proposed
 - **Date**: 2026-01-25

@@ -87,12 +87,49 @@ As a user, I want to select multiple items from a list using a fuzzy-searchable 
 As a developer, I want a comprehensive and efficient test suite for the advanced template features, so that I can maintain the code with confidence.
 **Acceptance Criteria:**
 
-- **Given** the implementation of Epic 12
-- **When** I run the test suite
-- **Then** it achieves 90%+ coverage for the `TemplateGraph`, `TemplateDate`, and composition services.
-- **And** property-based tests verify that circular dependency detection works for complex template hierarchies.
-- **And** the suite validates that date operations handle edge cases (leap years, timezone boundaries).
-  **References:** NFR16
+**Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards and tools
+**When** I reference the guide during review
+**Then** I validate compliance with Lithos testing hierarchy, async patterns, fixtures, and utilities
+
+**Given** all Epic 12 public components are implemented
+**When** I verify test coverage
+**Then** all public functions, structs, and modules have corresponding unit tests
+
+**Given** all Epic 12 public APIs are documented
+**When** I verify doc test coverage
+**Then** all public components have runnable doc tests demonstrating usage
+
+**Given** all Epic 12 components are implemented with tests
+**When** I conduct adversarial review
+**Then** I identify and eliminate false positives, redundant tests, and inadequate edge case coverage
+
+**Given** I take adversarial position against the test suite
+**When** I critique test quality
+**Then** I assess if tests actually validate business requirements vs implementation details
+
+**Given** the test suite is implemented
+**When** I review for redundancy
+**Then** I eliminate duplicate test cases and consolidate overlapping coverage
+
+**Given** tests are executed
+**When** I measure performance
+**Then** test execution completes in <30 seconds for the full Epic 12 suite
+
+**Given** I conduct brutal foundation critique
+**When** I assess test design
+**Then** I verify tests use proper fixtures, avoid flaky behavior, and maintain clear intent
+
+**Given** test suite is reviewed
+**When** I check maintainability
+**Then** test code follows same quality standards as production code with proper documentation
+
+**Given** the implementation of Epic 12
+**When** I run the test suite
+**Then** it achieves 90%+ coverage for the `TemplateGraph`, `TemplateDate`, and composition services.
+**And** property-based tests verify that circular dependency detection works for complex template hierarchies.
+**And** the suite validates that date operations handle edge cases (leap years, timezone boundaries).
+
+**References:** NFR16
 
 ### Story 12.8: [Docs] Epic 12 User & Developer Documentation
 
