@@ -1,4 +1,4 @@
-# Story 5.5: Implement Performance Benchmarking Suite
+# Story 5.6: Implement Performance Benchmarking Suite
 
 Status: ready-for-dev
 
@@ -193,7 +193,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 - [Source: project-context.md#Performance-Benchmarking]
 - [Source: ADR 0012: Benchmarking Strategy]
 - [Source: PRD Performance Requirements]
-- [Source: Story 5.2, 5.3, 5.4 for implementation details]
+- [Source: Story 5.2, 5.3, 5.5 for implementation details]
 
 ## Dev Agent Record
 

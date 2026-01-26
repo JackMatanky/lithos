@@ -1,4 +1,4 @@
-# Story 5.6: Review Epic 5 Test Suite
+# Story 5.7: Review Epic 5 Test Suite
 
 Status: ready-for-dev
 
@@ -221,7 +221,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 - [Source: _bmad-output/test-developer-guide.md]
 - [Source: project-context.md#Testing-Rules]
 - [Source: ADR 0010: Centralized Test Utilities]
-- [Source: Story 5.1 - 5.5]
+- [Source: Story 5.1 - 5.6]
 
 ## Dev Agent Record
 

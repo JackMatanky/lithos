@@ -179,7 +179,40 @@ So that data persists across application restarts and multiple cache consumers c
 **Then** `get_with_metadata(&self, key: &K) -> Result<Option<(V, HashMap<String, String>)>, CacheError>` returns value and metadata
 **And** `put_with_metadata(&self, key: K, value: V, metadata: HashMap<String, String>)` stores custom metadata
 
-## Story 5.4: Implement Cache Coordinator for Memory/Disk Read-Through and Write-Through
+## Story 5.4: Refactor Cache for Modularity and CQRS
+
+As a system architect optimizing for modularity and scalability,
+I want to refactor the cache implementations to use the Handle/Inner pattern and separate Reader/Writer traits,
+So that the codebase is more maintainable, supports zero-copy operations more effectively, and adheres to CQRS principles.
+
+**Acceptance Criteria:**
+
+**Given** the need for better modularity
+**When** I implement the `CacheCodec` trait in `deserializer.rs`
+**Then** it provides a unified interface for serialization/deserialization
+**And** `RkyvCodec` implements this trait for zero-copy Redb storage
+
+**Given** the need for a common builder interface
+**When** I create `builder.rs`
+**Then** it defines a `CacheBuilder` trait with a `build()` method
+**And** both Moka and Redb provide builders implementing this trait
+
+**Given** the Handle/Inner pattern is required
+**When** I refactor `MokaCache` and `RedbCache`
+**Then** the implementation is split into `Inner` structs (state) and Handles (interface)
+**And** Handles are cheaply cloneable `Arc` wrappers
+
+**Given** CQRS principles
+**When** I implement separate `Reader` and `Writer` handles
+**Then** consumers can request read-only or write-only access to the cache
+**And** the `CacheCoordinator` uses these separate handles for orchestration
+
+**Given** the refactor must maintain quality
+**When** I follow strict TDD
+**Then** tests are written before implementation for each phase
+**And** zero-copy verification ensures `rkyv` is used correctly in the new structure
+
+## Story 5.5: Implement Cache Coordinator for Memory/Disk Read-Through and Write-Through
 
 As a system architect ensuring consistency,
 I want a `CacheCoordinator` struct that orchestrates memory and disk cache access,
@@ -233,7 +266,7 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 **Then** spans nest correctly: `coordinator` → `memory operation` → `disk operation`
 **And** each span includes `cache_layer`, `operation`, and `result` attributes
 
-## Story 5.5: Implement Performance Benchmarking Suite
+## Story 5.6: Implement Performance Benchmarking Suite
 
 As a performance engineer validating cache performance,
 I want comprehensive benchmarks using `criterion`,
@@ -294,7 +327,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 **Then** criterion generates statistical reports comparing against baseline
 **And** reports are saved to `target/criterion/` for CI integration
 
-## Story 5.6: Review Epic 5 Test Suite
+## Story 5.7: Review Epic 5 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 5 test suite to its foundation,
@@ -381,7 +414,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 - rkyv serialization round-trips correctly for complex types
 - Metadata is preserved across reads/writes
 
-## Story 5.7: Document Cache System Foundation
+## Story 5.8: Document Cache System Foundation
 
 As a developer integrating caching in adapter implementations,
 I want clear documentation for the Cache SPI with concrete examples and comprehensive doc comments,
