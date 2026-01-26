@@ -56,62 +56,69 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ## TDD Tasks / Subtasks
 
-### Phase 1: CacheCodec Implementation
-- [ ] Task 1: Define `CacheCodec` trait and `RkyvCodec` implementation
+### Phase 1: CacheCodec Implementation (Serialization Abstraction)
+- [ ] Task 1: Define `CacheCodec` trait and implementations in `deserializer.rs`
   - [ ] Subtask 1.1: Create `crates/adapters/src/spi/cache/deserializer.rs`
   - [ ] Subtask 1.2: Add `pub(crate) mod deserializer;` to `mod.rs`
-  - [ ] Subtask 1.3: Write failing tests for `CacheCodec` trait operations
-  - [ ] Subtask 1.4: Implement `CacheCodec` trait
-  - [ ] Subtask 1.5: Implement `RkyvCodec` for Redb support
-  - [ ] Subtask 1.6: Run `mise run test:unit:adapters deserializer` and verify pass (GREEN)
-  - [ ] Subtask 1.7: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 1.3: Define `trait CacheCodec<K, V>` with methods for `encode_key`, `encode_value`, and `decode_value`
+  - [ ] Subtask 1.4: Define `RkyvCodec` struct and encapsulate the 20+ lines of `rkyv` trait bounds here
+  - [ ] Subtask 1.5: Define `IdentityCodec` for Moka (no-op serialization for in-memory objects)
+  - [ ] Subtask 1.6: Write failing tests in `deserializer.rs` for `RkyvCodec` round-trip serialization
+  - [ ] Subtask 1.7: Implement `RkyvCodec` logic using `rkyv::api::high`
+  - [ ] Subtask 1.8: Implement `decode_value` using `rkyv::access` to preserve zero-copy potential
+  - [ ] Subtask 1.9: Run `mise run test:unit:adapters deserializer` (GREEN)
+  - [ ] Subtask 1.10: Run `mise run lint` and verify documentation for the codec trait
 
 ### Phase 2: Unified Builder Interface
-- [ ] Task 2: Implement `CacheBuilder` trait and concrete builders
+- [ ] Task 2: Implement `CacheBuilder` trait and specialized builders in `builder.rs`
   - [ ] Subtask 2.1: Create `crates/adapters/src/spi/cache/builder.rs`
   - [ ] Subtask 2.2: Add `pub mod builder;` to `mod.rs`
-  - [ ] Subtask 2.3: Write failing tests for `CacheBuilder::build()` interface
-  - [ ] Subtask 2.4: Implement `CacheBuilder` trait
-  - [ ] Subtask 2.5: Implement Moka and Redb builders following the trait
-  - [ ] Subtask 2.6: Run `mise run test:unit:adapters builder` and verify pass (GREEN)
-  - [ ] Subtask 2.7: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 2.3: Define `trait CacheBuilder` with an associated `Output` type and a `build(self)` method
+  - [ ] Subtask 2.4: Implement `MokaBuilder` in `builder.rs` (supporting TTL, TTI, Capacity)
+  - [ ] Subtask 2.5: Implement `RedbBuilder` in `builder.rs` (supporting Path, TableName, Durability)
+  - [ ] Subtask 2.6: Write failing tests ensuring `RedbBuilder` can initialize a database and table
+  - [ ] Subtask 2.7: Implement builder logic to return specialized Reader/Writer handles
+  - [ ] Subtask 2.8: Run `mise run test:unit:adapters builder` (GREEN)
 
-### Phase 3: Inner State Implementation
-- [ ] Task 3: Implement `Inner` structs for Moka and Redb
-  - [ ] Subtask 3.1: Define `MokaInner` in `moka.rs` (move existing state there)
-  - [ ] Subtask 3.2: Define `RedbInner` in `redb.rs` (move existing state there)
-  - [ ] Subtask 3.3: Write failing unit tests for `Inner` structs
-  - [ ] Subtask 3.4: Implement logic within `Inner` structs
-  - [ ] Subtask 3.5: Run `mise run test:unit:adapters` and verify `Inner` logic (GREEN)
+### Phase 3: Inner State Implementation (Encapsulation)
+- [ ] Task 3: Implement `Inner` structs to hold shared database/cache state
+  - [ ] Subtask 3.1: Define `RedbInner<K, V, C>` in `redb.rs` as `pub(crate)`
+  - [ ] Subtask 3.2: Move `Arc<redb::Database>` and `table_name` into `RedbInner`
+  - [ ] Subtask 3.3: Implement a `run_blocking` helper on `RedbInner` to unify `spawn_blocking` and span management
+  - [ ] Subtask 3.4: Define `MokaInner<K, V>` in `moka.rs` wrapping the `moka` cache instance
+  - [ ] Subtask 3.5: Write failing tests for `RedbInner` transaction isolation
+  - [ ] Subtask 3.6: Implement transaction logic within `RedbInner` (GREEN)
 
-### Phase 4: Reader and Writer Handles (CQRS)
-- [ ] Task 4: Implement separate handles for both backends
-  - [ ] Subtask 4.1: Define `CacheReader` and `CacheWriter` traits if not already present
-  - [ ] Subtask 4.2: Implement `MokaReader` and `MokaWriter` as `Arc<MokaInner>` wrappers
-  - [ ] Subtask 4.3: Implement `RedbReader` and `RedbWriter` as `Arc<RedbInner>` wrappers
-  - [ ] Subtask 4.4: Write failing tests verifying CQRS separation
-  - [ ] Subtask 4.5: Run `mise run test:unit:adapters` and verify handles (GREEN)
+### Phase 4: Reader and Writer Handles (CQRS Split)
+- [ ] Task 4: Implement distinct handles that share the same `Inner` state
+  - [ ] Subtask 4.1: Create `RedbReader<K, V, C = RkyvCodec>` and `RedbWriter<K, V, C = RkyvCodec>`
+  - [ ] Subtask 4.2: Implement `CacheReader` for `RedbReader` using zero-copy `rkyv::access`
+  - [ ] Subtask 4.3: Implement `CacheWriter` for `RedbWriter`
+  - [ ] Subtask 4.4: Repeat for `MokaReader` and `MokaWriter`
+  - [ ] Subtask 4.5: Write failing tests verifying that a `Reader` cannot be cast to a `Writer`
+  - [ ] Subtask 4.6: Implement handle instantiation in builders (GREEN)
 
-### Phase 5: Redb Refactor Completion
-- [ ] Task 5: Finalize `redb.rs` refactor
-  - [ ] Subtask 5.1: Update `RedbCache` to be a handle-based implementation
-  - [ ] Subtask 5.2: Ensure all previous tests pass with the new structure
-  - [ ] Subtask 5.3: Verify zero-copy performance remains intact
-  - [ ] Subtask 5.4: Run `mise run test:unit:adapters redb` and verify (GREEN)
+### Phase 5: Redb Refactor Completion & Zero-Copy Verification
+- [ ] Task 5: Finalize `redb.rs` and verify performance constraints
+  - [ ] Subtask 5.1: Clean up `redb.rs` to remove the old monolithic `Cache` struct
+  - [ ] Subtask 5.2: Implement `pub type RedbCache<K, V> = (RedbReader<K, V>, RedbWriter<K, V>)` alias if needed, or similar friendly naming
+  - [ ] Subtask 5.3: Add a specific "Zero-Copy Probe" test to verify no allocations occur during `RedbReader::get`
+  - [ ] Subtask 5.4: Verify `Durability` settings are correctly passed from Builder to Inner
+  - [ ] Subtask 5.5: Run `mise run test:unit:adapters redb` (GREEN)
 
 ### Phase 6: Moka Refactor Completion
 - [ ] Task 6: Finalize `moka.rs` refactor
-  - [ ] Subtask 6.1: Update `MokaCache` to be a handle-based implementation
-  - [ ] Subtask 6.2: Ensure all previous tests pass with the new structure
-  - [ ] Subtask 6.3: Run `mise run test:unit:adapters moka` and verify (GREEN)
+  - [ ] Subtask 6.1: Remove old monolithic `MokaCache` implementation
+  - [ ] Subtask 6.2: Ensure `MokaReader/Writer` handles are correctly re-exported
+  - [ ] Subtask 6.3: Run `mise run test:unit:adapters moka` (GREEN)
 
-### Phase 7: Integration & Final Review
-- [ ] Task 7: Integrate with Coordinator and conduct final review
-  - [ ] Subtask 7.1: Update `CacheCoordinator` to use the new handle-based backends
-  - [ ] Subtask 7.2: Conduct final TDD review of the entire refactored suite
-  - [ ] Subtask 7.3: Run `mise run verify` to ensure all quality gates pass
-  - [ ] Subtask 7.4: Run `pre-commit run --all-files` (NEVER use `--no-verify`)
-  - [ ] Subtask 7.5: Commit changes with a descriptive message
+### Phase 7: Coordinator Integration & Final Review
+- [ ] Task 7: Update Coordinator and project-wide verification
+  - [ ] Subtask 7.1: Update `CacheCoordinator` to accept `Arc<dyn CacheReader>` and `Arc<dyn CacheWriter>` components
+  - [ ] Subtask 7.2: Verify that `CacheCoordinator` correctly orchestrates backfill (DiskReader -> MemoryWriter)
+  - [ ] Subtask 7.3: Perform a final "Trait Bound Audit" to ensure `redb.rs` is free of `rkyv` boilerplate
+  - [ ] Subtask 7.4: Run `mise run verify` and `pre-commit run --all-files`
+  - [ ] Subtask 7.5: Stage and commit all changes with a descriptive conventional commit message
 
 ## Dev Notes
 
