@@ -28,7 +28,11 @@ pub type MetadataMap = HashMap<String, String>;
 pub type CacheResult<V> = Result<Option<(V, MetadataMap)>, CacheError>;
 
 /// A wrapper for cached values with persistence metadata.
-#[allow(clippy::exhaustive_structs)]
+#[expect(
+    clippy::exhaustive_structs,
+    reason = "CachedEntry is an internal DTO for storage and its fields are \
+              determined by the rkyv serialization requirements."
+)]
 #[derive(Archive, Serialize, Deserialize, CheckBytes)]
 #[bytecheck(crate = rkyv::bytecheck)]
 #[non_exhaustive]
@@ -60,7 +64,12 @@ pub struct CachedEntry<V> {
 /// assert_eq!(result, Some("value".to_owned()));
 /// # });
 /// ```
-#[allow(clippy::module_name_repetitions)]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "The prefix Redb is necessary to distinguish this persistent \
+              cache from other implementations like MokaCache in the same \
+              namespace."
+)]
 #[allow(dead_code)]
 pub struct RedbCache<K, V> {
     db: Arc<redb::Database>,
@@ -78,6 +87,34 @@ impl<K, V> std::fmt::Debug for RedbCache<K, V> {
 }
 
 impl<K, V> RedbCache<K, V> {
+    /// Create a new `RedbCache` instance.
+    ///
+    /// # Errors
+    /// Returns `CacheError` if the database cannot be opened.
+    #[inline]
+    pub fn new<P: AsRef<Path>>(
+        db_path: P,
+        table_name: &str,
+    ) -> Result<Self, CacheError> {
+        let db = redb::Database::create(db_path).map_err(|e| {
+            error!(backend = "redb", ?e, "Failed to open database");
+            CacheError::BackendError {
+                backend: "redb",
+                message: format!("Failed to open database: {e}").into(),
+            }
+        })?;
+
+        let leaked_name: &'static str =
+            Box::leak(table_name.to_owned().into_boxed_str());
+        let table_definition = TableDefinition::new(leaked_name);
+
+        Ok(Self {
+            db: Arc::new(db),
+            table_definition,
+            _marker: std::marker::PhantomData,
+        })
+    }
+
     /// Retrieve value and metadata by key.
     ///
     /// # Errors
@@ -174,25 +211,23 @@ impl<K, V> RedbCache<K, V> {
                 }
             })?;
 
-            let exists_result = read_txn
-                .open_table(table_definition)
-                .map_err(|e| {
-                    error!(backend = "redb", ?e, "Failed to open table");
-                    CacheError::BackendError {
-                        backend: "redb",
-                        message: format!("Failed to open table: {e}").into(),
-                    }
-                })?
-                .get(key_bytes.as_slice())
-                .map_err(|e| {
-                    error!(backend = "redb", ?e, "Failed to get entry");
-                    CacheError::BackendError {
-                        backend: "redb",
-                        message: format!("Failed to get entry: {e}").into(),
-                    }
-                })?;
+            let table = read_txn.open_table(table_definition).map_err(|e| {
+                error!(backend = "redb", ?e, "Failed to open table");
+                CacheError::BackendError {
+                    backend: "redb",
+                    message: format!("Failed to open table: {e}").into(),
+                }
+            })?;
 
-            if let Some(guard) = exists_result {
+            let result = table.get(key_bytes.as_slice()).map_err(|e| {
+                error!(backend = "redb", ?e, "Failed to get entry");
+                CacheError::BackendError {
+                    backend: "redb",
+                    message: format!("Failed to get entry: {e}").into(),
+                }
+            })?;
+
+            if let Some(guard) = result {
                 let bytes = guard.value();
                 let mut aligned = AlignedVec::<16>::new();
                 aligned.extend_from_slice(bytes);
@@ -240,34 +275,6 @@ impl<K, V> RedbCache<K, V> {
                 message: format!("Blocking task failed: {e}").into(),
             }
         })?
-    }
-
-    /// Create a new `RedbCache` instance.
-    ///
-    /// # Errors
-    /// Returns `CacheError` if the database cannot be opened.
-    #[inline]
-    pub fn new<P: AsRef<Path>>(
-        db_path: P,
-        table_name: &str,
-    ) -> Result<Self, CacheError> {
-        let db = redb::Database::create(db_path).map_err(|e| {
-            error!(backend = "redb", ?e, "Failed to open database");
-            CacheError::BackendError {
-                backend: "redb",
-                message: format!("Failed to open database: {e}").into(),
-            }
-        })?;
-
-        let leaked_name: &'static str =
-            Box::leak(table_name.to_owned().into_boxed_str());
-        let table_definition = TableDefinition::new(leaked_name);
-
-        Ok(Self {
-            db: Arc::new(db),
-            table_definition,
-            _marker: std::marker::PhantomData,
-        })
     }
 
     /// Store value with custom metadata.
@@ -363,23 +370,28 @@ impl<K, V> RedbCache<K, V> {
                 }
             })?;
 
-            _ = write_txn
-                .open_table(table_definition)
-                .map_err(|e| {
-                    error!(backend = "redb", ?e, "Failed to open table");
-                    CacheError::BackendError {
-                        backend: "redb",
-                        message: format!("Failed to open table: {e}").into(),
-                    }
-                })?
-                .insert(key_bytes.as_slice(), value_bytes.as_slice())
-                .map_err(|e| {
-                    error!(backend = "redb", ?e, "Failed to insert entry");
-                    CacheError::BackendError {
-                        backend: "redb",
-                        message: format!("Failed to insert entry: {e}").into(),
-                    }
-                })?;
+            {
+                let mut table =
+                    write_txn.open_table(table_definition).map_err(|e| {
+                        error!(backend = "redb", ?e, "Failed to open table");
+                        CacheError::BackendError {
+                            backend: "redb",
+                            message: format!("Failed to open table: {e}")
+                                .into(),
+                        }
+                    })?;
+
+                table
+                    .insert(key_bytes.as_slice(), value_bytes.as_slice())
+                    .map_err(|e| {
+                        error!(backend = "redb", ?e, "Failed to insert entry");
+                        CacheError::BackendError {
+                            backend: "redb",
+                            message: format!("Failed to insert entry: {e}")
+                                .into(),
+                        }
+                    })?;
+            }
 
             write_txn.commit().map_err(|e| {
                 error!(
@@ -480,21 +492,25 @@ where
                 }
             })?;
 
-            _ = write_txn.delete_table(table_definition).map_err(|e| {
-                error!(backend = "redb", ?e, "Failed to delete table");
-                CacheError::BackendError {
-                    backend: "redb",
-                    message: format!("Failed to delete table: {e}").into(),
-                }
-            })?;
+            {
+                // clearing a table by deleting and recreating it
+                _ = write_txn.delete_table(table_definition).map_err(|e| {
+                    error!(backend = "redb", ?e, "Failed to delete table");
+                    CacheError::BackendError {
+                        backend: "redb",
+                        message: format!("Failed to delete table: {e}").into(),
+                    }
+                })?;
 
-            _ = write_txn.open_table(table_definition).map_err(|e| {
-                error!(backend = "redb", ?e, "Failed to recreate table");
-                CacheError::BackendError {
-                    backend: "redb",
-                    message: format!("Failed to recreate table: {e}").into(),
-                }
-            })?;
+                _ = write_txn.open_table(table_definition).map_err(|e| {
+                    error!(backend = "redb", ?e, "Failed to recreate table");
+                    CacheError::BackendError {
+                        backend: "redb",
+                        message: format!("Failed to recreate table: {e}")
+                            .into(),
+                    }
+                })?;
+            }
 
             write_txn.commit().map_err(|e| {
                 error!(
@@ -560,24 +576,29 @@ where
                 }
             })?;
 
-            let existed = write_txn
-                .open_table(table_definition)
-                .map_err(|e| {
-                    error!(backend = "redb", ?e, "Failed to open table");
-                    CacheError::BackendError {
-                        backend: "redb",
-                        message: format!("Failed to open table: {e}").into(),
-                    }
-                })?
-                .remove(key_bytes.as_slice())
-                .map_err(|e| {
-                    error!(backend = "redb", ?e, "Failed to remove entry");
-                    CacheError::BackendError {
-                        backend: "redb",
-                        message: format!("Failed to remove entry: {e}").into(),
-                    }
-                })?
-                .is_some();
+            let existed = {
+                let mut table =
+                    write_txn.open_table(table_definition).map_err(|e| {
+                        error!(backend = "redb", ?e, "Failed to open table");
+                        CacheError::BackendError {
+                            backend: "redb",
+                            message: format!("Failed to open table: {e}")
+                                .into(),
+                        }
+                    })?;
+
+                table
+                    .remove(key_bytes.as_slice())
+                    .map_err(|e| {
+                        error!(backend = "redb", ?e, "Failed to remove entry");
+                        CacheError::BackendError {
+                            backend: "redb",
+                            message: format!("Failed to remove entry: {e}")
+                                .into(),
+                        }
+                    })?
+                    .is_some()
+            };
 
             write_txn.commit().map_err(|e| {
                 error!(
@@ -709,211 +730,245 @@ mod tests {
     #[bytecheck(crate = rkyv::bytecheck)]
     struct TestValue(String);
 
-    #[test]
-    fn cached_entry_should_implement_rkyv_traits() {
-        let entry = CachedEntry {
-            value: TestValue("test".to_owned()),
-            timestamp: 123_456_789,
-            metadata: HashMap::from([("key".to_owned(), "value".to_owned())]),
-        };
+    mod serialization {
+        use super::*;
 
-        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&entry)
-            .expect("failed to serialize");
+        #[test]
+        fn cached_entry_should_implement_rkyv_traits() {
+            let entry = CachedEntry {
+                value: TestValue("test".to_owned()),
+                timestamp: 123_456_789,
+                metadata: HashMap::from([(
+                    "key".to_owned(),
+                    "value".to_owned(),
+                )]),
+            };
 
-        let archived = rkyv::access::<
-            Archived<CachedEntry<TestValue>>,
-            rkyv::rancor::Error,
-        >(&bytes)
-        .expect("failed to access");
+            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&entry)
+                .expect("failed to serialize");
 
-        assert_eq!(archived.timestamp, 123_456_789);
-        assert_eq!(archived.value.0, "test");
-        assert_eq!(archived.metadata.len(), 1);
-    }
+            let archived = rkyv::access::<
+                Archived<CachedEntry<TestValue>>,
+                rkyv::rancor::Error,
+            >(&bytes)
+            .expect("failed to access");
 
-    #[test]
-    fn should_initialize_redb_cache() {
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("cache.redb");
-
-        let cache = RedbCache::<String, TestValue>::new(db_path, "test_table");
-        cache.unwrap();
-    }
-
-    #[test]
-    fn should_support_multiple_tables_in_same_db() {
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("multi_table.redb");
-
-        let cache1 = RedbCache::<String, TestValue>::new(&db_path, "table1")
-            .expect("failed to create cache1");
-        let db = Arc::clone(&cache1.db);
-
-        let _cache2 = RedbCache::<String, TestValue>::with_db(db, "table2");
-
-        assert!(db_path.exists());
-    }
-
-    #[test]
-    fn should_map_io_error_during_init() {
-        use std::fs::File;
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("read_only.redb");
-
-        File::create(&db_path).expect("failed to create file");
-        let mut perms = std::fs::metadata(&db_path)
-            .expect("failed to get metadata")
-            .permissions();
-        perms.set_readonly(true);
-        std::fs::set_permissions(&db_path, perms)
-            .expect("failed to set permissions");
-
-        let cache = RedbCache::<String, TestValue>::new(db_path, "test_table");
-
-        assert!(cache.is_err());
-        let err = cache.expect_err("should have error");
-        assert!(matches!(err, CacheError::BackendError {
-            backend: "redb",
-            ..
-        }));
-    }
-
-    #[tokio::test]
-    async fn should_persist_data_across_instances() {
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("persist.redb");
-
-        let key = "key".to_owned();
-        let value = TestValue("persistent".to_owned());
-
-        {
-            let cache = RedbCache::<String, TestValue>::new(&db_path, "table")
-                .expect("failed to create cache");
-            cache.put(key.clone(), value.clone()).await.expect("put failed");
-        } // cache dropped here
-
-        {
-            let cache = RedbCache::<String, TestValue>::new(&db_path, "table")
-                .expect("failed to reload cache");
-            let result = cache.get(&key).await.expect("get failed");
-            assert_eq!(result, Some(value));
+            assert_eq!(archived.timestamp, 123_456_789);
+            assert_eq!(archived.value.0, "test");
+            assert_eq!(archived.metadata.len(), 1);
         }
     }
 
-    #[tokio::test]
-    async fn should_correctly_report_existence() {
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("has.redb");
-        let cache = RedbCache::<String, TestValue>::new(db_path, "table")
-            .expect("init failed");
+    mod initialization {
+        use super::*;
 
-        let key = "exists".to_owned();
-        cache
-            .put(key.clone(), TestValue("yes".to_owned()))
-            .await
-            .expect("put failed");
+        #[test]
+        fn should_initialize_redb_cache() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("cache.redb");
 
-        assert!(cache.has(&key).await.expect("has failed"));
-        assert!(!cache.has(&"missing".to_owned()).await.expect("has failed"));
+            let cache =
+                RedbCache::<String, TestValue>::new(db_path, "test_table");
+            cache.unwrap();
+        }
+
+        #[test]
+        fn should_support_multiple_tables_in_same_db() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("multi_table.redb");
+
+            let cache1 =
+                RedbCache::<String, TestValue>::new(&db_path, "table1")
+                    .expect("failed to create cache1");
+            let db = Arc::clone(&cache1.db);
+
+            let _cache2 = RedbCache::<String, TestValue>::with_db(db, "table2");
+
+            assert!(db_path.exists());
+        }
+
+        #[test]
+        fn should_map_io_error_during_init() {
+            use std::fs::File;
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("read_only.redb");
+
+            File::create(&db_path).expect("failed to create file");
+            let mut perms = std::fs::metadata(&db_path)
+                .expect("failed to get metadata")
+                .permissions();
+            perms.set_readonly(true);
+            std::fs::set_permissions(&db_path, perms)
+                .expect("failed to set permissions");
+
+            let cache =
+                RedbCache::<String, TestValue>::new(db_path, "test_table");
+
+            assert!(cache.is_err());
+            let err = cache.expect_err("should have error");
+            assert!(matches!(err, CacheError::BackendError {
+                backend: "redb",
+                ..
+            }));
+        }
     }
 
-    #[tokio::test]
-    async fn should_clear_all_entries() {
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("clear.redb");
-        let cache = RedbCache::<String, TestValue>::new(db_path, "table")
-            .expect("init failed");
+    mod core_ops {
+        use super::*;
 
-        cache
-            .put("k1".to_owned(), TestValue("v1".to_owned()))
-            .await
-            .expect("put failed");
-        cache
-            .put("k2".to_owned(), TestValue("v2".to_owned()))
-            .await
-            .expect("put failed");
+        #[tokio::test]
+        async fn should_persist_data_across_instances() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("persist.redb");
 
-        cache.clear().await.expect("clear failed");
+            let key = "key".to_owned();
+            let value = TestValue("persistent".to_owned());
 
-        assert!(!cache.has(&"k1".to_owned()).await.expect("has failed"));
-        assert!(!cache.has(&"k2".to_owned()).await.expect("has failed"));
+            {
+                let cache =
+                    RedbCache::<String, TestValue>::new(&db_path, "table")
+                        .expect("failed to create cache");
+                cache
+                    .put(key.clone(), value.clone())
+                    .await
+                    .expect("put failed");
+            } // cache dropped here
+
+            {
+                let cache =
+                    RedbCache::<String, TestValue>::new(&db_path, "table")
+                        .expect("failed to reload cache");
+                let result = cache.get(&key).await.expect("get failed");
+                assert_eq!(result, Some(value));
+            }
+        }
+
+        #[tokio::test]
+        async fn should_correctly_report_existence() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("has.redb");
+            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .expect("init failed");
+
+            let key = "exists".to_owned();
+            cache
+                .put(key.clone(), TestValue("yes".to_owned()))
+                .await
+                .expect("put failed");
+
+            assert!(cache.has(&key).await.expect("has failed"));
+            assert!(
+                !cache.has(&"missing".to_owned()).await.expect("has failed")
+            );
+        }
+
+        #[tokio::test]
+        async fn should_clear_all_entries() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("clear.redb");
+            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .expect("init failed");
+
+            cache
+                .put("k1".to_owned(), TestValue("v1".to_owned()))
+                .await
+                .expect("put failed");
+            cache
+                .put("k2".to_owned(), TestValue("v2".to_owned()))
+                .await
+                .expect("put failed");
+
+            cache.clear().await.expect("clear failed");
+
+            assert!(!cache.has(&"k1".to_owned()).await.expect("has failed"));
+            assert!(!cache.has(&"k2".to_owned()).await.expect("has failed"));
+        }
     }
 
-    #[tokio::test]
-    async fn should_support_metadata() {
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("metadata.redb");
-        let cache = RedbCache::<String, TestValue>::new(db_path, "table")
-            .expect("init failed");
+    mod metadata {
+        use super::*;
 
-        let key = "key".to_owned();
-        let value = TestValue("value".to_owned());
-        let metadata =
-            HashMap::from([("version".to_owned(), "1.0".to_owned())]);
+        #[tokio::test]
+        async fn should_support_metadata() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("metadata.redb");
+            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .expect("init failed");
 
-        cache
-            .put_with_metadata(key.clone(), value.clone(), metadata.clone())
-            .await
-            .expect("put failed");
+            let key = "key".to_owned();
+            let value = TestValue("value".to_owned());
+            let metadata =
+                HashMap::from([("version".to_owned(), "1.0".to_owned())]);
 
-        let result = cache.get_with_metadata(&key).await.expect("get failed");
-        assert!(result.is_some());
-        let (v, m) = result.expect("should have result");
-        assert_eq!(v, value);
-        assert_eq!(m, metadata);
+            cache
+                .put_with_metadata(key.clone(), value.clone(), metadata.clone())
+                .await
+                .expect("put failed");
+
+            let result =
+                cache.get_with_metadata(&key).await.expect("get failed");
+            assert!(result.is_some());
+            let (v, m) = result.expect("should have result");
+            assert_eq!(v, value);
+            assert_eq!(m, metadata);
+        }
+
+        #[tokio::test]
+        async fn should_update_timestamp_on_put() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("timestamp.redb");
+            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .expect("init failed");
+
+            let key = "key".to_owned();
+
+            cache
+                .put(key.clone(), TestValue("v1".to_owned()))
+                .await
+                .expect("put failed");
+            let _res1 = cache
+                .get_with_metadata(&key)
+                .await
+                .expect("get failed")
+                .expect("should have result");
+
+            // Wait a bit to ensure timestamp changes
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+            cache
+                .put(key.clone(), TestValue("v2".to_owned()))
+                .await
+                .expect("put failed");
+            let res2 = cache
+                .get_with_metadata(&key)
+                .await
+                .expect("get failed")
+                .expect("should have result");
+
+            assert_eq!(res2.0, TestValue("v2".to_owned()));
+            assert!(res2.1.is_empty());
+        }
     }
 
-    #[tokio::test]
-    async fn should_update_timestamp_on_put() {
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("timestamp.redb");
-        let cache = RedbCache::<String, TestValue>::new(db_path, "table")
-            .expect("init failed");
+    mod observability {
+        use super::*;
 
-        let key = "key".to_owned();
+        #[tokio::test]
+        #[traced_test]
+        async fn should_emit_tracing_info() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("tracing.redb");
+            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .expect("init failed");
 
-        cache
-            .put(key.clone(), TestValue("v1".to_owned()))
-            .await
-            .expect("put failed");
-        let _res1 = cache
-            .get_with_metadata(&key)
-            .await
-            .expect("get failed")
-            .expect("should have result");
+            let key = "key".to_owned();
+            cache
+                .put(key.clone(), TestValue("v1".to_owned()))
+                .await
+                .expect("put failed");
 
-        // Wait a bit to ensure timestamp changes
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-
-        cache
-            .put(key.clone(), TestValue("v2".to_owned()))
-            .await
-            .expect("put failed");
-        let res2 = cache
-            .get_with_metadata(&key)
-            .await
-            .expect("get failed")
-            .expect("should have result");
-
-        assert_eq!(res2.0, TestValue("v2".to_owned()));
-        assert!(res2.1.is_empty());
-    }
-
-    #[tokio::test]
-    #[traced_test]
-    async fn should_emit_tracing_info() {
-        let dir = tempdir().expect("failed to create temp dir");
-        let db_path = dir.path().join("tracing.redb");
-        let cache = RedbCache::<String, TestValue>::new(db_path, "table")
-            .expect("init failed");
-
-        let key = "key".to_owned();
-        cache
-            .put(key.clone(), TestValue("v1".to_owned()))
-            .await
-            .expect("put failed");
-
-        // Smoke test: verify it doesn't panic and logs are produced
-        // Manual verification of stdout confirms instrumentation is working
+            // Smoke test: verify it doesn't panic and logs are produced
+            // Manual verification of stdout confirms instrumentation is working
+        }
     }
 }
