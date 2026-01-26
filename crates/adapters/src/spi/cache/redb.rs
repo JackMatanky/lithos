@@ -49,6 +49,112 @@ pub struct Entry<V> {
     pub metadata: MetadataMap,
 }
 
+/// Read-only handle for Redb cache.
+///
+/// This handle provides read-only access to the cache following CQRS
+/// principles.
+#[derive(Debug, Clone)]
+pub struct Reader<K, V, C = crate::spi::cache::deserializer::RkyvCodec>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    _marker: std::marker::PhantomData<(K, V, C)>,
+}
+
+/// Write-only handle for Redb cache.
+///
+/// This handle provides write-only access to the cache following CQRS
+/// principles.
+#[derive(Debug, Clone)]
+pub struct Writer<K, V, C = crate::spi::cache::deserializer::RkyvCodec>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    _marker: std::marker::PhantomData<(K, V, C)>,
+}
+
+/// Builder for Redb cache.
+#[derive(Debug, Clone)]
+pub struct Builder<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    path: Option<std::path::PathBuf>,
+    table_name: Option<String>,
+    _marker: std::marker::PhantomData<(K, V)>,
+}
+
+impl<K, V> Builder<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    /// Build a Reader handle independently.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError` if the database cannot be initialized.
+    #[inline]
+    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
+        // Stub implementation - will be filled in Phase 4
+        Ok(Reader {
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    /// Build a Writer handle independently.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError` if the database cannot be initialized.
+    #[inline]
+    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
+        // Stub implementation - will be filled in Phase 4
+        Ok(Writer {
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    /// Create a new builder.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            path: None,
+            table_name: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Set the database path.
+    #[inline]
+    pub fn path<P: AsRef<std::path::Path>>(&mut self, path: P) -> &mut Self {
+        self.path = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    /// Set the table name.
+    #[inline]
+    pub fn table_name(&mut self, name: &str) -> &mut Self {
+        self.table_name = Some(name.to_owned());
+        self
+    }
+}
+
+impl<K, V> Default for Builder<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A persistent cache implementation using Redb.
 ///
 /// # Example
@@ -641,6 +747,42 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    mod redb_api {
+        use tempfile::tempdir;
+
+        use super::*;
+
+        #[tokio::test]
+        async fn builder_creates_reader_independently() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("reader.redb");
+
+            let result = Builder::<String, String>::new()
+                .path(db_path)
+                .table_name("test")
+                .build_reader();
+
+            assert!(result.is_ok());
+            let reader = result.unwrap();
+            let _: Reader<String, String> = reader;
+        }
+
+        #[tokio::test]
+        async fn builder_creates_writer_independently() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("writer.redb");
+
+            let result = Builder::<String, String>::new()
+                .path(db_path)
+                .table_name("test")
+                .build_writer();
+
+            assert!(result.is_ok());
+            let writer = result.unwrap();
+            let _: Writer<String, String> = writer;
+        }
+    }
 
     mod core_ops {
         use tempfile::tempdir;
