@@ -50,8 +50,11 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 **And** `clear` ensures both layers are completely purged
 
 **Given** the coordinator must implement the trait
-**When** I implement `Cache<K, V>` for `CacheCoordinator<K, V>`
+**When** I implement `CacheReader<K, V>` and `CacheWriter<K, V>` for `CacheCoordinator<K, V>`
 **Then** all trait methods are satisfied
+**And** `CacheReader::get()` handles read-through logic (Memory -> Disk fallback)
+**And** `CacheWriter::put()` handles write-through logic (Disk -> Memory sequential)
+**And** `CacheCoordinator` also implements the blanket `Cache<K, V>` trait
 **And** errors from underlying caches are propagated with layer context
 
 **Given** observability is critical for debugging
@@ -63,7 +66,7 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 
 **Given** I need a multi-layer cache coordinator
 **When** I run `mise run test:unit:adapters coordinator`
-**Then** all tests pass using `MockCache` to verify orchestration logic
+**Then** all tests pass using `MockCacheReader` and `MockCacheWriter` to verify orchestration logic
 **And** "Memory Hit" scenario avoids calling Disk layer entirely
 **And** "Memory Miss / Disk Hit" scenario verifies memory backfill occurs
 **And** "Write-Through" scenario verifies Disk is written before Memory
@@ -111,14 +114,14 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Read-Through Logic
+### Phase 3: Read-Through Logic (CacheReader Implementation)
 - [ ] Task 3: Implement read-through `get` with backfill
-  - [ ] Subtask 3.1: Write failing test verifying Memory Hit scenario: Mock Memory returns `Some`, verify Disk is NOT called
-  - [ ] Subtask 3.2: Implement `get` logic for Memory Hit
-  - [ ] Subtask 3.3: Write failing test for Memory Miss / Disk Hit: verify Disk is called and Memory `put` is triggered (backfill)
+  - [ ] Subtask 3.1: Write failing test verifying Memory Hit scenario: Mock MemoryReader returns `Some`, verify DiskReader is NOT called
+  - [ ] Subtask 3.2: Implement `CacheReader::get` logic for Memory Hit
+  - [ ] Subtask 3.3: Write failing test for Memory Miss / Disk Hit: verify DiskReader is called and MemoryWriter `put` is triggered (backfill)
   - [ ] Subtask 3.4: Implement backfill logic in `get`: if memory misses and disk hits, asynchronously `put` value into memory; if backfill `put` fails, log error via `tracing::error!` but still return the value to the caller.
   - [ ] Subtask 3.5: Write failing test for Memory Miss / Disk Miss: verify both are called and result is `None`
-  - [ ] Subtask 3.6: Complete `get` implementation
+  - [ ] Subtask 3.6: Complete `CacheReader` implementation
   - [ ] Subtask 3.7: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
   - [ ] Subtask 3.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -127,11 +130,11 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Write-Through Logic
+### Phase 4: Write-Through Logic (CacheWriter Implementation)
 - [ ] Task 4: Implement write-through `put` with consistency
-  - [ ] Subtask 4.1: Write failing test verifying Disk is written BEFORE Memory in `put`
-  - [ ] Subtask 4.2: Implement sequential `put` logic
-  - [ ] Subtask 4.3: Write failing test for Disk Write Failure: verify Memory is NOT written if Disk fails
+  - [ ] Subtask 4.1: Write failing test verifying DiskWriter is written BEFORE MemoryWriter in `put`
+  - [ ] Subtask 4.2: Implement sequential `CacheWriter::put` logic
+  - [ ] Subtask 4.3: Write failing test for Disk Write Failure: verify MemoryWriter is NOT written if DiskWriter fails
   - [ ] Subtask 4.4: Ensure `put` returns error immediately on Disk failure; wrap errors in `CacheError::BackendError` with context identifying the failing layer ("disk" or "memory").
   - [ ] Subtask 4.5: Run `mise run test:unit:adapters coordinator_put` and verify pass (GREEN)
   - [ ] Subtask 4.6: Run `mise run lint` and fix all warnings/errors
