@@ -34,7 +34,7 @@ pub use self::moka::{Builder as MokaCacheBuilder, Cache as MokaCache};
               concise."
 )]
 pub use self::redb::{
-    Cache as RedbCache, Entry as RedbEntry, MetadataResult as RedbResult,
+    Cache as RedbCache, Entry as CacheEntry, MetadataResult as CacheResult,
 };
 use crate::spi::errors::CacheError;
 
