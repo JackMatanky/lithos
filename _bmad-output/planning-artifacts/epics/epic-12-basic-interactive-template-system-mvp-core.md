@@ -49,17 +49,99 @@ As a template author, I want the schema to automatically simplify my queries, so
 - **And** schema metadata (enums, descriptions) automatically enriches the prompt definitions.
   **References:** FR9, FR12, FR14
 
-### Story 12.4: [App] Dynamic Context Resolution Service
+### Story 12.4: [App] Schema-Driven Template Features & Dynamic Context Resolution
 
-As a user, I want my suggesters to be populated by both automated schema queries and explicit template queries, so that I can pick from up-to-date vault data.
+As a user, I want my suggesters populated by automated schema queries and templates to leverage schema constraints,
+So that I can pick from up-to-date vault data with schema-driven filtering and validation.
+
 **Acceptance Criteria:**
 
-- **Given** a `PromptSession`
-- **When** the resolution service runs
-- **Then** it executes all required vault queries (both schema-derived and template-explicit) before prompting the user.
-- **And** it handles map-like results where keys and values differ (e.g. Note Title vs. File Path).
-- **And** it caches query results for the duration of the session to ensure performance.
-  **References:** FR2, FR23
+### **Schema-to-Suggester Mapping:**
+
+**Given** a template variable is bound to a schema property
+**When** property has PropertySpec::File with constraints
+**Then** FileSpec.directory constraint auto-generates folder query
+**And** FileSpec.file_class constraint filters to notes matching schema name
+**And** example: `file_class: "task_project"` → only shows notes with `fileClass: "task_project"`
+**And** example: `directory: "(41_personal|42_education)/"` → only shows notes in matching directories
+
+**Given** a schema property has PropertySpec::String with enum
+**When** template variable is bound to this property
+**Then** enum values auto-populate suggester options
+**And** example: `enum: ["to_do", "in_progress", "done"]` → suggester shows these 3 options
+**And** user can only select from enum list (validated)
+
+**Given** schema properties define validation constraints
+**When** template prompts for user input
+**Then** constraints are enforced during input collection
+**And** number properties enforce min/max bounds during input
+**And** date properties enforce format during input
+**And** pattern constraints provide validation feedback
+
+### **Dynamic Context Resolution:**
+
+**Given** a `PromptSession`
+**When** the resolution service runs
+**Then** it identifies all required vault queries (schema-derived + template-explicit)
+**And** it executes queries in parallel before prompting user
+**And** it caches query results for session duration (performance)
+
+**Given** schema-derived queries
+**When** resolution service processes property bindings
+**Then** FileSpec properties generate "List Files" queries automatically
+**And** queries include directory filters and file_class filters
+**And** results are pre-fetched before first prompt
+
+**Given** query results with display vs value distinction
+**When** resolution service formats results
+**Then** it handles map-like results (e.g., Note Title vs. File Path)
+**And** suggester displays human-readable text (title)
+**And** template receives machine-usable value (file path)
+
+### **Default Value Propagation:**
+
+**Given** schema property has default value (future enhancement - not in current PropertySpec)
+**When** template variable is bound to this property
+**Then** default value is available in template context (placeholder for future)
+**And** missing frontmatter fields use schema defaults (placeholder for future)
+
+### **Type-Safe Validation:**
+
+**Given** template variable is bound to schema property
+**When** user provides input
+**Then** input is validated against PropertySpec constraints
+**And** string pattern validation runs before accepting input
+**And** number range validation runs before accepting input
+**And** enum validation ensures value is in allowed list
+**And** validation errors display helpful messages with retry option
+
+### **Schema-Template Contract:**
+
+**Given** templates need to query schema constraints
+**When** template rendering occurs
+**Then** SchemaQuery port provides schema metadata access
+**And** template can query property constraints for variables
+**And** template can check if property is required, array, etc.
+**And** BindingService (Story 12.3) handles schema lookup and variable binding
+
+### **Integration with BindingService (Story 12.3):**
+
+**Given** BindingService binds variables to schema properties
+**When** template declares variable with schema reference
+**Then** BindingService looks up property from SchemaQuery
+**And** extracts constraints (enum, directory, file_class, etc.)
+**And** generates appropriate prompt configuration (suggester vs text input)
+**And** raises miette warning if variable not found in schema (allows proceeding as string prompt)
+
+### **Fallback Behavior:**
+
+**Given** schema-driven features are unavailable (schema not found, schema load error)
+**When** template requires user input
+**Then** system falls back to basic prompt() function (free text input)
+**And** user is informed of degraded operation mode ("Schema not found, using manual input")
+**And** template completion remains achievable without schema
+
+  **References:** FR2, FR9, FR11, FR12, FR14, FR23
 
 ### Story 12.5: [App] Interactive Loop Orchestrator (Atomic Workflow)
 
