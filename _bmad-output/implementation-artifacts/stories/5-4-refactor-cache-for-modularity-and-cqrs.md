@@ -57,65 +57,52 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ## TDD Tasks / Subtasks
 
-### Phase 1: Moka Split-Handle Refactor (CQRS Foundation)
-- [ ] Task 1: Refactor Moka to split handles immediately
-  - [ ] Subtask 1.1: [TDD] Write `moka_builder::builds_split_handles_with_custom_capacity` (failing)
-  - [ ] Subtask 1.2: Define `pub struct MokaReader<K, V>` and `pub struct MokaWriter<K, V>` in `moka.rs`
-  - [ ] Subtask 1.3: Define `pub(crate) struct MokaInner<K, V>` to hold the `moka::future::Cache`
-  - [ ] Subtask 1.4: Implement `CacheReaderPort` for `MokaReader` (get/has)
-  - [ ] Subtask 1.5: Implement `CacheWriterPort` for `MokaWriter` (put/delete/clear)
-  - [ ] Subtask 1.6: Update `MokaBuilder::build()` to return `(MokaReader<K, V>, MokaWriter<K, V>)`
-  - [ ] Subtask 1.7: Remove the unified `MokaCache` struct entirely to enforce CQRS
-  - [ ] Subtask 1.8: Run `mise run test:unit:adapters moka` (GREEN)
-  - [ ] Subtask 1.9: Run `mise run lint` and fix all warnings/errors
+### Phase 1: Serialization Abstraction (`deserializer.rs`)
+- [ ] Task 1: Define `Codec` and implementations
+  - [ ] Subtask 1.1: Create `crates/adapters/src/spi/cache/deserializer.rs` and register in `mod.rs`
+  - [ ] Subtask 1.2: [TDD] Write `round_trip::preserves_metadata_and_value` (failing)
+  - [ ] Subtask 1.3: Define `trait Codec<K, V>` with `encode_key`, `encode_value`, and `decode_value`
+  - [ ] Subtask 1.4: Re-export `Codec` as `CacheCodec` in `mod.rs`
+  - [ ] Subtask 1.5: Define `RkyvCodec` struct and implement `Codec`
+  - [ ] Subtask 1.6: [TDD] Write `rkyv_codec::returns_error_on_corrupted_bytes` (failing)
+  - [ ] Subtask 1.7: Implement `RkyvCodec` using `rkyv::api::high` and `rkyv::access`
+  - [ ] Subtask 1.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
+  - [ ] Subtask 1.9: Run `mise run test:unit:adapters deserializer` (GREEN)
+  - [ ] Subtask 1.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 2: Serialization Abstraction (`deserializer.rs`)
-- [ ] Task 2: Define `Codec` and implementations
-  - [ ] Subtask 2.1: Create `crates/adapters/src/spi/cache/deserializer.rs` and register in `mod.rs`
-  - [ ] Subtask 2.2: [TDD] Write `round_trip::preserves_metadata_and_value` (failing)
-  - [ ] Subtask 2.3: Define `trait Codec<K, V>` with `encode_key`, `encode_value`, and `decode_value`
-  - [ ] Subtask 2.4: Re-export `Codec` as `CacheCodec` in `mod.rs`
-  - [ ] Subtask 2.5: Define `RkyvCodec` struct and implement `Codec`
-  - [ ] Subtask 2.6: [TDD] Write `rkyv_codec::returns_error_on_corrupted_bytes` (failing)
-  - [ ] Subtask 2.7: Implement `RkyvCodec` using `rkyv::api::high` and `rkyv::access`
-  - [ ] Subtask 2.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
-  - [ ] Subtask 2.9: Run `mise run test:unit:adapters deserializer` (GREEN)
-  - [ ] Subtask 2.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-
-### Phase 2: Moka Builder Refactor
-- [ ] Task 2: Refactor existing `MokaBuilder`
+### Phase 2: Moka Split-Handle Refactor
+- [ ] Task 2: Refactor Moka to split handles
   - [ ] Subtask 2.1: [TDD] Write `moka_builder::builds_split_handles_with_custom_capacity` (failing)
-  - [ ] Subtask 2.2: Refactor `MokaBuilder` in `moka.rs` to return `(MokaReader<K, V>, MokaWriter<K, V>)` instead of monolithic `Cache`
-  - [ ] Subtask 2.3: Ensure fluent methods (`max_capacity`, `time_to_live`, `time_to_idle`) remain intact
-  - [ ] Subtask 2.4: Add `tracing::instrument` to `build()` if missing
-  - [ ] Subtask 2.5: Run `mise run test:unit:adapters builder` (GREEN)
-  - [ ] Subtask 2.6: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 2.2: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` in `moka.rs` (wrapping `Arc<Inner>`)
+  - [ ] Subtask 2.3: Implement `CacheReaderPort` for `Reader` (get/has)
+  - [ ] Subtask 2.4: Implement `CacheWriterPort` for `Writer` (put/delete/clear)
+  - [ ] Subtask 2.5: Update `Builder::build()` to return `(Reader<K, V>, Writer<K, V>)`
+  - [ ] Subtask 2.6: Re-export `Builder` as `MokaBuilder`, `Reader` as `MokaReader`, and `Writer` as `MokaWriter` in `mod.rs`
+  - [ ] Subtask 2.7: Remove the unified `MokaCache` struct entirely
+  - [ ] Subtask 2.8: Run `mise run test:unit:adapters moka` (GREEN)
+  - [ ] Subtask 2.9: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Redb Builder Implementation
-- [ ] Task 3: Implement `RedbBuilder`
+### Phase 3: Redb Builder & Handle Stubs
+- [ ] Task 3: Implement `Builder` and Handle Stubs
   - [ ] Subtask 3.1: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.2: Define `pub struct RedbBuilder<K, V>` in `redb.rs`
-  - [ ] Subtask 3.3: Implement fluent methods for `path`, `table_name`, `durability`
-  - [ ] Subtask 3.4: [TDD] Write `redb_builder::initializes_db_with_correct_table` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.5: Implement `build()` method (returning monolithic `RedbCache` temporarily, then split handles in Phase 6)
-  - [ ] Subtask 3.6: Add `tracing::instrument` to `build()`
-  - [ ] Subtask 3.7: Run `mise run test:unit:adapters builder` (GREEN)
-  - [ ] Subtask 3.8: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 3.2: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` stubs in `redb.rs`
+  - [ ] Subtask 3.3: Define `pub struct Builder<K, V>` in `redb.rs`
+  - [ ] Subtask 3.4: Implement fluent methods for `path`, `table_name`, `durability`
+  - [ ] Subtask 3.5: Implement `build()` method returning `(Reader, Writer)` (stubs for now)
+  - [ ] Subtask 3.6: Re-export `Builder` as `RedbBuilder`, `Reader` as `RedbReader`, and `Writer` as `RedbWriter` in `mod.rs`
+  - [ ] Subtask 3.7: Add `tracing::instrument` to `build()`
+  - [ ] Subtask 3.8: Run `mise run test:unit:adapters builder` (GREEN)
+  - [ ] Subtask 3.9: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -154,18 +141,16 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 6: Reader and Writer Handles (CQRS Split)
-- [ ] Task 6: Implement `Reader` and `Writer` handles
-  - [ ] Subtask 6.1: Define `pub struct Reader<K, V, C>` and `pub struct Writer<K, V, C>` locally in `redb.rs` and `moka.rs`
-  - [ ] Subtask 6.2: Re-export as `RedbReader/RedbWriter` and `MokaReader/MokaWriter` in `mod.rs`
-  - [ ] Subtask 6.3: [TDD] Write `cqrs::prevents_reader_access_to_port_writer_methods` (failing)
-  - [ ] Subtask 6.4: Implement `CacheReaderPort` for `Reader` handles with instrumentation
-  - [ ] Subtask 6.5: Implement `CacheWriterPort` for `Writer` handles with instrumentation
-  - [ ] Subtask 6.6: [TDD] Write `redb_reader::returns_entry_view_without_allocating` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 6.7: Implement `EntryView` for true zero-copy retrieval using `AccessGuard`
-  - [ ] Subtask 6.8: Update `RedbBuilder::build()` and `MokaBuilder::build()` to return `(Reader, Writer)` tuple
-  - [ ] Subtask 6.9: Run `mise run test:unit:adapters` (GREEN)
-  - [ ] Subtask 6.10: Run `mise run lint` and fix all warnings/errors
+### Phase 6: Redb Handle Logic (Zero-Copy)
+- [ ] Task 6: Implement logic for `Reader` and `Writer`
+  - [ ] Subtask 6.1: Update `Reader` and `Writer` to wrap `Arc<RedbInner>`
+  - [ ] Subtask 6.2: [TDD] Write `cqrs::prevents_reader_access_to_port_writer_methods` (failing)
+  - [ ] Subtask 6.3: Implement `CacheReaderPort` for `Reader` using `inner.read()`
+  - [ ] Subtask 6.4: Implement `CacheWriterPort` for `Writer` using `inner.write()`
+  - [ ] Subtask 6.5: [TDD] Write `redb_reader::returns_entry_view_without_allocating` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 6.6: Implement `EntryView` for true zero-copy retrieval using `AccessGuard`
+  - [ ] Subtask 6.7: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 6.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -175,7 +160,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 ### Phase 7: API Transparency & Friendly Names
 - [ ] Task 7: Implement default type parameters and aliases
   - [ ] Subtask 7.1: Update `Reader/Writer` handles to use `C = RkyvCodec` default in `redb.rs`
-  - [ ] Subtask 7.2: Define `pub type RedbCache<K, V> = (RedbReader<K, V>, RedbWriter<K, V>)` aliases in `mod.rs`
+  - [ ] Subtask 7.2: Verify re-exports in `mod.rs` (`pub use redb::{Reader as RedbReader, Writer as RedbWriter}`)
   - [ ] Subtask 7.3: [TDD] Write `api::allows_usage_without_specifying_codec` (failing)
   - [ ] Subtask 7.4: Implement re-exports to hide `Inner` and `Executor` from the public SPI
   - [ ] Subtask 7.5: Run `mise run test:unit:adapters` (GREEN)
