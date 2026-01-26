@@ -25,19 +25,19 @@ use rkyv::{
 };
 use tracing::{error, info, info_span};
 
-use crate::spi::{cache::Cache, errors::CacheError};
+use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 
 /// Type alias for the metadata map.
 pub type MetadataMap = HashMap<String, String>;
 
 /// Type alias for cache retrieval results with metadata.
-pub type CacheResult<V> = Result<Option<(V, MetadataMap)>, CacheError>;
+pub type MetadataResult<V> = Result<Option<(V, MetadataMap)>, CacheError>;
 
 /// A wrapper for cached values with persistence metadata.
 #[derive(Archive, Serialize, Deserialize, CheckBytes)]
 #[bytecheck(crate = rkyv::bytecheck)]
 #[non_exhaustive]
-pub struct CachedEntry<V> {
+pub struct Entry<V> {
     /// The actual cached value.
     pub value: V,
     /// Unix timestamp of when the entry was created/updated.
@@ -51,7 +51,7 @@ pub struct CachedEntry<V> {
 /// # Example
 ///
 /// ```rust
-/// use lithos_adapters::spi::cache::{Cache, redb::RedbCache};
+/// use lithos_adapters::spi::cache::{Cache, RedbCache};
 /// use tempfile::tempdir;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -65,19 +65,13 @@ pub struct CachedEntry<V> {
 /// assert_eq!(result, Some("value".to_owned()));
 /// # });
 /// ```
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "The prefix Redb is necessary to distinguish this persistent \
-              cache from other implementations like MokaCache in the same \
-              namespace."
-)]
-pub struct RedbCache<K, V> {
+pub struct Cache<K, V> {
     db: Arc<redb::Database>,
     table_name: Arc<str>,
     _marker: std::marker::PhantomData<(K, V)>,
 }
 
-impl<K, V> std::fmt::Debug for RedbCache<K, V> {
+impl<K, V> std::fmt::Debug for Cache<K, V> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RedbCache")
@@ -86,7 +80,7 @@ impl<K, V> std::fmt::Debug for RedbCache<K, V> {
     }
 }
 
-impl<K, V> RedbCache<K, V> {
+impl<K, V> Cache<K, V> {
     #[inline]
     fn begin_read(
         db: &redb::Database,
@@ -238,7 +232,7 @@ impl<K, V> RedbCache<K, V> {
     }
 }
 
-impl<K, V> RedbCache<K, V>
+impl<K, V> Cache<K, V>
 where
     K: std::fmt::Debug
         + for<'ser> Serialize<
@@ -265,30 +259,30 @@ where
     >,
 {
     #[inline]
-    fn deserialize_entry(bytes: &[u8]) -> Result<CachedEntry<V>, CacheError> {
+    fn deserialize_entry(bytes: &[u8]) -> Result<Entry<V>, CacheError> {
         let mut aligned = AlignedVec::<16>::new();
         aligned.extend_from_slice(bytes);
 
-        let archived = rkyv::access::<
-            Archived<CachedEntry<V>>,
-            rkyv::rancor::Error,
-        >(&aligned)
-        .map_err(|e| {
-            error!(?e, "Failed to access archived entry");
-            CacheError::SerializationError {
-                type_name: std::any::type_name::<CachedEntry<V>>(),
-                message: format!("Failed to access archived entry: {e}").into(),
-            }
-        })?;
+        let archived =
+            rkyv::access::<Archived<Entry<V>>, rkyv::rancor::Error>(&aligned)
+                .map_err(|e| {
+                error!(?e, "Failed to access archived entry");
+                CacheError::SerializationError {
+                    type_name: std::any::type_name::<Entry<V>>(),
+                    message: format!("Failed to access archived entry: {e}")
+                        .into(),
+                }
+            })?;
 
-        rkyv::deserialize::<CachedEntry<V>, rkyv::rancor::Error>(archived)
-            .map_err(|e| {
+        rkyv::deserialize::<Entry<V>, rkyv::rancor::Error>(archived).map_err(
+            |e| {
                 error!(?e, "Failed to deserialize entry");
                 CacheError::SerializationError {
-                    type_name: std::any::type_name::<CachedEntry<V>>(),
+                    type_name: std::any::type_name::<Entry<V>>(),
                     message: format!("Failed to deserialize entry: {e}").into(),
                 }
-            })
+            },
+        )
     }
 
     /// Retrieve value and metadata by key.
@@ -305,7 +299,7 @@ where
         )
     )]
     #[inline]
-    pub async fn get_with_metadata(&self, key: &K) -> CacheResult<V>
+    pub async fn get_with_metadata(&self, key: &K) -> MetadataResult<V>
     where
         K: Clone + Send + Sync + 'static,
         V: Clone + Send + Sync + 'static,
@@ -368,7 +362,7 @@ where
         V: Clone + Send + Sync + 'static,
     {
         let key_bytes = Self::serialize_key(&key)?;
-        let entry = CachedEntry {
+        let entry = Entry {
             value,
             timestamp: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
@@ -412,13 +406,13 @@ where
     }
 
     #[inline]
-    fn serialize_entry(entry: &CachedEntry<V>) -> Result<Vec<u8>, CacheError> {
+    fn serialize_entry(entry: &Entry<V>) -> Result<Vec<u8>, CacheError> {
         rkyv::to_bytes::<rkyv::rancor::Error>(entry)
             .map(|bytes| bytes.to_vec())
             .map_err(|e| {
                 error!(?e, "Failed to serialize entry");
                 CacheError::SerializationError {
-                    type_name: std::any::type_name::<CachedEntry<V>>(),
+                    type_name: std::any::type_name::<Entry<V>>(),
                     message: format!("Failed to serialize entry: {e}").into(),
                 }
             })
@@ -439,7 +433,7 @@ where
 }
 
 #[async_trait]
-impl<K, V> Cache<K, V> for RedbCache<K, V>
+impl<K, V> CachePort<K, V> for Cache<K, V>
 where
     K: std::fmt::Debug
         + Clone
@@ -619,7 +613,7 @@ mod tests {
         async fn should_clear_all_entries() {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("clear.redb");
-            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+            let cache = Cache::<String, TestValue>::new(db_path, "table")
                 .await
                 .expect("init failed");
 
@@ -644,7 +638,7 @@ mod tests {
         async fn should_correctly_report_existence() {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("has.redb");
-            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+            let cache = Cache::<String, TestValue>::new(db_path, "table")
                 .await
                 .expect("init failed");
 
@@ -670,14 +664,14 @@ mod tests {
             let value = TestValue("persistent".to_owned());
 
             // First instance: write data
-            let cache1 = RedbCache::<String, TestValue>::new(&db_path, "table")
+            let cache1 = Cache::<String, TestValue>::new(&db_path, "table")
                 .await
                 .expect("failed to create cache");
             cache1.put(key.clone(), value.clone()).await.expect("put failed");
             drop(cache1); // Explicit drop to close database
 
             // Second instance: read data
-            let cache2 = RedbCache::<String, TestValue>::new(&db_path, "table")
+            let cache2 = Cache::<String, TestValue>::new(&db_path, "table")
                 .await
                 .expect("failed to reload cache");
             let result = cache2.get(&key).await.expect("get failed");
@@ -697,8 +691,7 @@ mod tests {
             let db_path = dir.path().join("cache.redb");
 
             let cache =
-                RedbCache::<String, TestValue>::new(db_path, "test_table")
-                    .await;
+                Cache::<String, TestValue>::new(db_path, "test_table").await;
             cache.unwrap();
         }
 
@@ -717,8 +710,7 @@ mod tests {
                 .expect("failed to set permissions");
 
             let cache =
-                RedbCache::<String, TestValue>::new(db_path, "test_table")
-                    .await;
+                Cache::<String, TestValue>::new(db_path, "test_table").await;
 
             assert!(cache.is_err());
             let err = cache.expect_err("should have error");
@@ -733,13 +725,12 @@ mod tests {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("multi_table.redb");
 
-            let cache1 =
-                RedbCache::<String, TestValue>::new(&db_path, "table1")
-                    .await
-                    .expect("failed to create cache1");
+            let cache1 = Cache::<String, TestValue>::new(&db_path, "table1")
+                .await
+                .expect("failed to create cache1");
             let db = Arc::clone(&cache1.db);
 
-            let _cache2 = RedbCache::<String, TestValue>::with_db(db, "table2");
+            let _cache2 = Cache::<String, TestValue>::with_db(db, "table2");
 
             assert!(db_path.exists());
         }
@@ -756,7 +747,7 @@ mod tests {
         async fn should_support_metadata() {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("metadata.redb");
-            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+            let cache = Cache::<String, TestValue>::new(db_path, "table")
                 .await
                 .expect("init failed");
 
@@ -782,7 +773,7 @@ mod tests {
         async fn should_update_timestamp_on_put() {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("timestamp.redb");
-            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+            let cache = Cache::<String, TestValue>::new(db_path, "table")
                 .await
                 .expect("init failed");
 
@@ -826,7 +817,7 @@ mod tests {
         async fn should_emit_tracing_info() {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("tracing.redb");
-            let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+            let cache = Cache::<String, TestValue>::new(db_path, "table")
                 .await
                 .expect("init failed");
 
@@ -850,7 +841,7 @@ mod tests {
 
         #[test]
         fn cached_entry_should_implement_rkyv_traits() {
-            let entry = CachedEntry {
+            let entry = Entry {
                 value: TestValue("test".to_owned()),
                 timestamp: 123_456_789,
                 metadata: HashMap::from([(
@@ -863,7 +854,7 @@ mod tests {
                 .expect("failed to serialize");
 
             let archived = rkyv::access::<
-                Archived<CachedEntry<TestValue>>,
+                Archived<Entry<TestValue>>,
                 rkyv::rancor::Error,
             >(&bytes)
             .expect("failed to access");

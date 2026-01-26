@@ -27,6 +27,15 @@ use async_trait::async_trait;
               concise."
 )]
 pub use self::moka::{Builder as MokaCacheBuilder, Cache as MokaCache};
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Re-exporting with prefixed names is intentional for clarity at \
+              the crate level while keeping internal implementation names \
+              concise."
+)]
+pub use self::redb::{
+    Cache as RedbCache, Entry as RedbEntry, MetadataResult as RedbResult,
+};
 use crate::spi::errors::CacheError;
 
 /// Generic caching SPI for adapter-layer use.
