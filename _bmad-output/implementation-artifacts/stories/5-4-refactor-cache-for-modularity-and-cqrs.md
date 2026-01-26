@@ -74,35 +74,29 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 2: Unified Construction (`builder.rs`)
-- [ ] Task 2: Implement `Builder` and specialized builders
-  - [ ] Subtask 2.1: Create `crates/adapters/src/spi/cache/builder.rs` and register in `mod.rs`
-  - [ ] Subtask 2.2: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 2.3: Define `trait Builder` with associated `Reader` and `Writer` types
-  - [ ] Subtask 2.4: Re-export `Builder` as `CacheBuilder` in `mod.rs`
-  - [ ] Subtask 2.5: Implement `MokaBuilder` with fluent methods for `max_capacity`, `ttl`, `tti`
-  - [ ] Subtask 2.6: [TDD] Write `redb_builder::initializes_db_with_correct_table` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 2.7: Implement `RedbBuilder` supporting `path`, `table`, and `Durability`
-  - [ ] Subtask 2.8: Ensure all builders have `tracing::instrument` on `build()`
-  - [ ] Subtask 2.9: Run `mise run test:unit:adapters builder` (GREEN)
-  - [ ] Subtask 2.10: Run `mise run lint` and fix all warnings/errors
+### Phase 2: Concrete Builders (Construction)
+- [ ] Task 2: Implement concrete Builder structs
+  - [ ] Subtask 2.1: [TDD] Write `moka_builder::builds_cache_with_custom_capacity` (failing)
+  - [ ] Subtask 2.2: Implement `MokaBuilder` in `moka.rs` with fluent methods for `max_capacity`, `ttl`, `tti`
+  - [ ] Subtask 2.3: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 2.4: Implement `RedbBuilder` in `redb.rs` supporting `path`, `table`, and `Durability`
+  - [ ] Subtask 2.5: Ensure all builders have `tracing::instrument` on `build()`
+  - [ ] Subtask 2.6: Run `mise run test:unit:adapters builder` (GREEN)
+  - [ ] Subtask 2.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Redb Storage Components (`redb.rs`)
-- [ ] Task 3: Implement `DatabaseManager` and `Executor`
+### Phase 3: Redb Async/Sync Bridge (`redb.rs`)
+- [ ] Task 3: Implement `Executor` utility
   - [ ] Subtask 3.1: Import `CacheReader` and `CacheWriter` as `CacheReaderPort` and `CacheWriterPort`
-  - [ ] Subtask 3.2: [TDD] Write `database_manager::shares_same_instance_across_clones` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.3: Implement `DatabaseManager` to encapsulate `Arc<redb::Database>` with error logging
-  - [ ] Subtask 3.4: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.5: Implement `Executor` to wrap `tokio::task::spawn_blocking` and instrument with `info_span` and `tracing::error!` mapping
-  - [ ] Subtask 3.6: [TDD] Write `table_handler::prevents_table_name_collisions` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.7: Implement `TableHandler` to encapsulate `TableDefinition` logic
-  - [ ] Subtask 3.8: Run `mise run test:unit:adapters redb` (GREEN)
-  - [ ] Subtask 3.9: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 3.2: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 3.3: Implement `Executor` struct to wrap `tokio::task::spawn_blocking`
+  - [ ] Subtask 3.4: Instrument `Executor` with `info_span` nesting and `tracing::error!` mapping for all transactions
+  - [ ] Subtask 3.5: Run `mise run test:unit:adapters redb` (GREEN)
+  - [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -112,7 +106,37 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 ### Phase 4: Inner State & Encapsulation
 - [ ] Task 4: Implement `Inner` structs and shareable state
   - [ ] Subtask 4.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` and `moka.rs`
-  - [ ] Subtask 4.2: Move `DatabaseManager`, `Executor`, and `TableHandler` into `RedbInner`
+  - [ ] Subtask 4.2: Update `RedbInner` to hold `Arc<redb::Database>`, `Executor`, `TableDefinition`, and `Codec`
+  - [ ] Subtask 4.3: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 4.4: Implement write batching logic in `Inner` with `tracing` instrumentation
+  - [ ] Subtask 4.5: Ensure `Inner` structs are non-clonable and only accessed via `Arc`
+  - [ ] Subtask 4.6: Implement shared helpers for logging backend-specific stats (e.g., table size)
+  - [ ] Subtask 4.7: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 4.8: Run `mise run lint` and fix all warnings/errors
+    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
+    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
+    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
+    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
+    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+
+### Phase 3: Redb Async/Sync Bridge (`redb.rs`)
+- [ ] Task 3: Implement `Executor` utility
+  - [ ] Subtask 3.1: Import `CacheReader` and `CacheWriter` as `CacheReaderPort` and `CacheWriterPort`
+  - [ ] Subtask 3.2: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 3.3: Implement `Executor` struct to wrap `tokio::task::spawn_blocking`
+  - [ ] Subtask 3.4: Instrument `Executor` with `info_span` nesting and `tracing::error!` mapping for all transactions
+  - [ ] Subtask 3.5: Run `mise run test:unit:adapters redb` (GREEN)
+  - [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
+    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
+    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
+    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
+    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
+    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+
+### Phase 4: Inner State & Encapsulation
+- [ ] Task 4: Implement `Inner` structs and shareable state
+  - [ ] Subtask 4.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` and `moka.rs`
+  - [ ] Subtask 4.2: Update `RedbInner` to hold `Arc<redb::Database>`, `Executor`, `TableDefinition`, and `Codec`
   - [ ] Subtask 4.3: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
   - [ ] Subtask 4.4: Implement write batching logic in `Inner` with `tracing` instrumentation
   - [ ] Subtask 4.5: Ensure `Inner` structs are non-clonable and only accessed via `Arc`
@@ -187,6 +211,26 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ## Dev Notes
+
+### Research-Backed Implementation Details
+
+#### Performance & NFR Optimizations
+- **Zero-Copy Pipeline**: Research into `redb::AccessGuard` and `rkyv::access` confirms we can bypass O(n) heap allocations. `RedbReader` will return an `EntryView` holding the database guard, allowing the application to read complex cached objects directly from the OS page cache (memory map).
+- **Durability Tuning**: To meet ASR-01 and ASR-02, we will implement `Durability::None` as the cache default. This bypasses the `fsync` bottleneck (disk flush), leveraging OS-level write buffering to increase throughput by 10x–100x while maintaining persistence across process restarts.
+- **Transaction Batching**: The `Inner` core is designed to support the grouping of multiple `put` operations into single `WriteTransaction` calls via the `Executor`, significantly reducing lock contention.
+
+#### Modular Backend Components (Redb Engine)
+- **`Executor`**: A private utility that "swallows" the async/sync friction. It encapsulates `tokio::task::spawn_blocking`, manages nested `info_span` instrumentation for transactions, and centralizes `CacheError` mapping.
+- **`Inner<K, V, C>`**: The private, non-clonable core aggregator. It holds the `Arc<redb::Database>`, `Executor`, `TableDefinition`, and the `Codec`. It is the single source of truth for the database connection, hidden from the public API.
+
+#### Capability-Based CQRS Handles
+- **`Reader<K, V, C>`**: Restricts access to `get` and `has`. Implements `CacheReaderPort`.
+- **`Writer<K, V, C>`**: Restricts access to `put`, `delete`, and `clear`. Implements `CacheWriterPort`.
+- **Type Aliasing**: To keep the SPI lean, these are re-exported as `RedbReader/Writer` and `MokaReader/Writer` with `C = RkyvCodec` as the default type parameter.
+
+#### Implementation Flows (Redb)
+- **Read Path**: `Executor` runs `spawn_blocking` -> `Inner` starts Read Transaction -> `TableDefinition` retrieves value -> `Codec::decode_value` validates bytes -> `EntryView` returns the pointer.
+- **Write Path**: `Executor` runs `spawn_blocking` -> `Inner` starts Write Transaction -> `Codec::encode_value` generates bytes -> `TableDefinition` inserts -> Transaction commits with requested Durability.
 
 ### Architecture Compliance
 - **Handle/Inner Pattern**: Follows standard Rust patterns for cheaply cloneable state handles.
