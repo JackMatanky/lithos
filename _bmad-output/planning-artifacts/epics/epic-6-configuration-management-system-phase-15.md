@@ -524,6 +524,13 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **And** doc tests demonstrate realistic usage patterns
 **And** doc comments follow project standards from `project-context.md`
 
+**Given** tests are written
+**When** I review test documentation
+**Then** all tests include BDD-style comments (GIVEN-WHEN-THEN)
+**And** test names clearly describe behavior being tested
+**And** any developer can understand test purpose without reading implementation
+**And** BDD comments explain business context, not just technical steps
+
 ## Story 6.10: Document Configuration System
 
 As a user configuring lithos,
