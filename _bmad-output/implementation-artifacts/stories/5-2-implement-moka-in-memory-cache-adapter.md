@@ -31,7 +31,6 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 **And** `CacheWriter::delete()` removes entries and returns true if key existed
 **And** `CacheWriter::invalidate()` delegates to `delete()` for semantic clarity
 **And** `CacheWriter::put()` stores values respecting TTL/TTI policies
-**And** `MokaCache` also implements the blanket `Cache<K, V>` trait
 
 **Given** observability is required per project standards
 **When** I instrument all public methods
@@ -180,9 +179,8 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 ### Phase 10: CQRS Refactor (Architectural Integrity)
 - [x] Task 10: Implement split traits for MokaCache
   - [x] Subtask 10.1: Update `moka.rs` to implement `CacheReader` and `CacheWriter` separately
-  - [x] Subtask 10.2: Implement blanket `Cache` trait for `MokaCache`
-  - [x] Subtask 10.3: Update doc tests to use split trait imports
-  - [x] Subtask 10.4: Verify all tests pass with split traits
+  - [x] Subtask 10.2: Update doc tests to use split trait imports
+  - [x] Subtask 10.3: Verify all tests pass with split traits
 
 ## Dev Notes
 

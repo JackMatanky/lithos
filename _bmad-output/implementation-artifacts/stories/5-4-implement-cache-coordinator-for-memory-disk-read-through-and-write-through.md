@@ -16,10 +16,12 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 **When** I implement `CacheCoordinator<K, V>` in `spi/cache/coordinator.rs`
 **Then** it wraps:
 
-- `memory: Box<dyn Cache<K, V>>` - fast in-memory cache (typically MokaCache)
-- `disk: Box<dyn Cache<K, V>>` - persistent disk cache (typically RedbCache)
+- `memory_reader: Arc<dyn CacheReader<K, V>>`
+- `memory_writer: Arc<dyn CacheWriter<K, V>>`
+- `disk_reader: Arc<dyn CacheReader<K, V>>`
+- `disk_writer: Arc<dyn CacheWriter<K, V>>`
 
-**And** constructor `new(memory: Box<dyn Cache<K, V>>, disk: Box<dyn Cache<K, V>>)` accepts pre-configured caches
+**And** constructor `new(...)` accepts these components
 
 **Given** read-through caching must be implemented
 **When** I implement `get()` for the coordinator
@@ -49,12 +51,11 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 **And** `delete`/`invalidate` returns true if key existed in either layer
 **And** `clear` ensures both layers are completely purged
 
-**Given** the coordinator must implement the trait
+**Given** the coordinator must implement the traits
 **When** I implement `CacheReader<K, V>` and `CacheWriter<K, V>` for `CacheCoordinator<K, V>`
 **Then** all trait methods are satisfied
 **And** `CacheReader::get()` handles read-through logic (Memory -> Disk fallback)
 **And** `CacheWriter::put()` handles write-through logic (Disk -> Memory sequential)
-**And** `CacheCoordinator` also implements the blanket `Cache<K, V>` trait
 **And** errors from underlying caches are propagated with layer context
 
 **Given** observability is critical for debugging

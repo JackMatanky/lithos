@@ -16,10 +16,7 @@ use std::{marker::PhantomData, time::Duration};
 use async_trait::async_trait;
 
 use crate::spi::{
-    cache::{
-        Cache as CachePort, CacheReader as CacheReaderPort,
-        CacheWriter as CacheWriterPort,
-    },
+    cache::{CacheReader as CacheReaderPort, CacheWriter as CacheWriterPort},
     errors::CacheError,
 };
 
@@ -169,14 +166,6 @@ where
         );
         Ok(())
     }
-}
-
-#[async_trait]
-impl<K, V> CachePort<K, V> for Cache<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
 }
 
 impl<K, V> Cache<K, V>

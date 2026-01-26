@@ -1,8 +1,8 @@
 //! Generic caching SPI for adapter-layer use.
 //!
-//! This module defines the `Cache` trait and its associated error types,
-//! following hexagonal architecture principles where the cache serves as a
-//! Service Provider Interface (SPI) for other adapters.
+//! This module defines the `CacheReader` and `CacheWriter` traits and their
+//! associated error types, following hexagonal architecture principles where
+//! the cache serves as a Service Provider Interface (SPI) for other adapters.
 
 #![cfg_attr(
     test,
@@ -42,6 +42,25 @@ use crate::spi::errors::CacheError;
 ///
 /// Follows CQRS principles by separating read-only operations from
 /// state-changing commands.
+///
+/// # Example
+///
+/// ```rust
+/// # use async_trait::async_trait;
+/// # use lithos_adapters::spi::cache::CacheReader;
+/// # use lithos_adapters::spi::errors::CacheError;
+/// # struct MemoryReader;
+/// # #[async_trait]
+/// # impl CacheReader<String, String> for MemoryReader {
+/// #     async fn get(&self, _k: &String) -> Result<Option<String>, CacheError> { Ok(None) }
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let reader: &dyn CacheReader<String, String> = &MemoryReader;
+/// let result = reader.get(&"key".to_string()).await?;
+/// assert!(result.is_none());
+/// # Ok::<(), CacheError>(())
+/// # }).unwrap();
+/// ```
 #[async_trait]
 #[cfg_attr(test, mockall::automock)]
 #[expect(
@@ -78,6 +97,26 @@ where
 ///
 /// Follows CQRS principles by separating state-changing commands from
 /// read-only operations.
+///
+/// # Example
+///
+/// ```rust
+/// # use async_trait::async_trait;
+/// # use lithos_adapters::spi::cache::CacheWriter;
+/// # use lithos_adapters::spi::errors::CacheError;
+/// # struct MemoryWriter;
+/// # #[async_trait]
+/// # impl CacheWriter<String, String> for MemoryWriter {
+/// #     async fn clear(&self) -> Result<(), CacheError> { Ok(()) }
+/// #     async fn delete(&self, _k: &String) -> Result<bool, CacheError> { Ok(false) }
+/// #     async fn put(&self, _k: String, _v: String) -> Result<(), CacheError> { Ok(()) }
+/// # }
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let writer: &dyn CacheWriter<String, String> = &MemoryWriter;
+/// writer.put("key".to_string(), "value".to_string()).await?;
+/// # Ok::<(), CacheError>(())
+/// # }).unwrap();
+/// ```
 #[async_trait]
 #[cfg_attr(test, mockall::automock)]
 #[expect(
@@ -121,52 +160,6 @@ where
     /// # Errors
     /// Returns `CacheError` if the underlying storage fails.
     async fn put(&self, key: K, value: V) -> Result<(), CacheError>;
-}
-
-/// Unified caching SPI for adapter-layer use.
-///
-/// Combines `CacheReader` and `CacheWriter` for components requiring full
-/// cache access.
-///
-/// # Implementations
-/// - `MokaCache`: In-memory cache using the `moka` library.
-/// - `RedbCache`: Persistent cache using the `redb` KV store. Note: For
-///   persistent caches, values MUST also implement `rkyv` traits:
-///   `rkyv::Archive + rkyv::Serialize + rkyv::Deserialize`.
-/// - `Coordinator`: A multi-tier cache combining memory and disk storage.
-///
-/// # Example
-///
-/// ```rust
-/// # use async_trait::async_trait;
-/// # use lithos_adapters::spi::cache::{Cache, CacheReader, CacheWriter};
-/// # use lithos_adapters::spi::errors::CacheError;
-/// # struct MemoryCache;
-/// # #[async_trait]
-/// # impl CacheReader<String, String> for MemoryCache {
-/// #     async fn get(&self, _k: &String) -> Result<Option<String>, CacheError> { Ok(None) }
-/// # }
-/// # #[async_trait]
-/// # impl CacheWriter<String, String> for MemoryCache {
-/// #     async fn clear(&self) -> Result<(), CacheError> { Ok(()) }
-/// #     async fn delete(&self, _k: &String) -> Result<bool, CacheError> { Ok(false) }
-/// #     async fn put(&self, _k: String, _v: String) -> Result<(), CacheError> { Ok(()) }
-/// # }
-/// # #[async_trait]
-/// # impl Cache<String, String> for MemoryCache {}
-/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let cache: &dyn Cache<String, String> = &MemoryCache;
-/// let result: Option<String> = cache.get(&"key".to_string()).await?;
-/// assert!(result.is_none());
-/// # Ok::<(), CacheError>(())
-/// # }).unwrap();
-/// ```
-#[async_trait]
-pub trait Cache<K, V>: CacheReader<K, V> + CacheWriter<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
 }
 
 #[cfg(test)]
@@ -223,18 +216,13 @@ mod tests {
             }
         }
 
-        #[async_trait]
-        impl Cache<String, String> for Dummy {}
-
         // [5.1-U-02] Cache Trait Existence
         #[test]
         fn should_find_cache_traits() {
             fn assert_is_reader<T: CacheReader<String, String>>() {}
             fn assert_is_writer<T: CacheWriter<String, String>>() {}
-            fn assert_is_cache<T: Cache<String, String>>() {}
             assert_is_reader::<Dummy>();
             assert_is_writer::<Dummy>();
-            assert_is_cache::<Dummy>();
         }
 
         // [5.1-U-08] CacheWriter::put Method
