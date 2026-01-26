@@ -19,12 +19,13 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 **Given** the need for a common builder interface
 **When** I create `builder.rs`
-**Then** it defines a `CacheBuilder` trait with a `build()` method
-**And** both Moka and Redb provide builders implementing this trait
+**Then** I implement concrete, fluent builders for each backend (`MokaBuilder`, `RedbBuilder`)
+**And** they handle backend-specific configuration (TTL vs Durability) without a leaky shared trait
 
 **Given** the Handle/Inner pattern is required
 **When** I refactor `MokaCache` and `RedbCache`
 **Then** the implementation is split into `Inner` structs (state) and Handles (interface)
+**And** `RedbInner` encapsulates the `Executor` for async/sync bridging
 **And** Handles are cheaply cloneable `Arc` wrappers
 
 **Given** CQRS principles
@@ -74,13 +75,13 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 2: Concrete Builders (Construction)
-- [ ] Task 2: Implement concrete Builder structs
+### Phase 2: Moka Builder Implementation
+- [ ] Task 2: Implement `MokaBuilder`
   - [ ] Subtask 2.1: [TDD] Write `moka_builder::builds_cache_with_custom_capacity` (failing)
-  - [ ] Subtask 2.2: Implement `MokaBuilder` in `moka.rs` with fluent methods for `max_capacity`, `ttl`, `tti`
-  - [ ] Subtask 2.3: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 2.4: Implement `RedbBuilder` in `redb.rs` supporting `path`, `table`, and `Durability`
-  - [ ] Subtask 2.5: Ensure all builders have `tracing::instrument` on `build()`
+  - [ ] Subtask 2.2: Define `pub struct MokaBuilder<K, V>` in `moka.rs`
+  - [ ] Subtask 2.3: Implement fluent methods for `max_capacity`, `time_to_live`, `time_to_idle`
+  - [ ] Subtask 2.4: Implement `build()` method (returning monolithic `MokaCache` temporarily)
+  - [ ] Subtask 2.5: Add `tracing::instrument` to `build()`
   - [ ] Subtask 2.6: Run `mise run test:unit:adapters builder` (GREEN)
   - [ ] Subtask 2.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -89,29 +90,31 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Redb Async/Sync Bridge (`redb.rs`)
-- [ ] Task 3: Implement `Executor` utility
-  - [ ] Subtask 3.1: Import `CacheReader` and `CacheWriter` as `CacheReaderPort` and `CacheWriterPort`
-  - [ ] Subtask 3.2: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.3: Implement `Executor` struct to wrap `tokio::task::spawn_blocking`
-  - [ ] Subtask 3.4: Instrument `Executor` with `info_span` nesting and `tracing::error!` mapping for all transactions
-  - [ ] Subtask 3.5: Run `mise run test:unit:adapters redb` (GREEN)
-  - [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
+### Phase 3: Redb Builder Implementation
+- [ ] Task 3: Implement `RedbBuilder`
+  - [ ] Subtask 3.1: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 3.2: Define `pub struct RedbBuilder<K, V>` in `redb.rs`
+  - [ ] Subtask 3.3: Implement fluent methods for `path`, `table_name`, `durability`
+  - [ ] Subtask 3.4: [TDD] Write `redb_builder::initializes_db_with_correct_table` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 3.5: Implement `build()` method (returning monolithic `RedbCache` temporarily)
+  - [ ] Subtask 3.6: Add `tracing::instrument` to `build()`
+  - [ ] Subtask 3.7: Run `mise run test:unit:adapters builder` (GREEN)
+  - [ ] Subtask 3.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Inner State & Encapsulation
-- [ ] Task 4: Implement `Inner` structs and shareable state
-  - [ ] Subtask 4.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` and `moka.rs`
-  - [ ] Subtask 4.2: Update `RedbInner` to hold `Arc<redb::Database>`, `Executor`, `TableDefinition`, and `Codec`
-  - [ ] Subtask 4.3: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 4.4: Implement write batching logic in `Inner` with `tracing` instrumentation
-  - [ ] Subtask 4.5: Ensure `Inner` structs are non-clonable and only accessed via `Arc`
-  - [ ] Subtask 4.6: Implement shared helpers for logging backend-specific stats (e.g., table size)
-  - [ ] Subtask 4.7: Run `mise run test:unit:adapters` (GREEN)
+### Phase 4: Redb Async/Sync Bridge (`Executor`)
+- [ ] Task 4: Implement `Executor` utility
+  - [ ] Subtask 4.1: Import `CacheReader` and `CacheWriter` as `CacheReaderPort` and `CacheWriterPort`
+  - [ ] Subtask 4.2: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 4.3: Define `pub(crate) struct Executor` in `redb.rs` (no generics needed)
+  - [ ] Subtask 4.4: Implement `spawn<F, R>(&self, span: Span, f: F) -> Result<R, CacheError>` where `F: FnOnce() -> Result<R, redb::Error> + Send + 'static`
+  - [ ] Subtask 4.5: Ensure `spawn` enters the provided span and catches Tokio JoinErrors
+  - [ ] Subtask 4.6: Implement error mapping helper `map_redb_error` that converts `redb::Error` to `CacheError::BackendError` or `IoError`
+  - [ ] Subtask 4.7: Run `mise run test:unit:adapters redb` (GREEN)
   - [ ] Subtask 4.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -119,39 +122,25 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Redb Async/Sync Bridge (`redb.rs`)
-- [ ] Task 3: Implement `Executor` utility
-  - [ ] Subtask 3.1: Import `CacheReader` and `CacheWriter` as `CacheReaderPort` and `CacheWriterPort`
-  - [ ] Subtask 3.2: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.3: Implement `Executor` struct to wrap `tokio::task::spawn_blocking`
-  - [ ] Subtask 3.4: Instrument `Executor` with `info_span` nesting and `tracing::error!` mapping for all transactions
-  - [ ] Subtask 3.5: Run `mise run test:unit:adapters redb` (GREEN)
-  - [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
+### Phase 5: Inner State & Encapsulation
+- [ ] Task 5: Implement `Inner` structs and shareable state
+  - [ ] Subtask 5.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` and `moka.rs`
+  - [ ] Subtask 5.2: Update `RedbInner` to hold `Arc<redb::Database>`, `Executor`, `TableDefinition<'static, [u8], [u8]>`, and `Codec`
+  - [ ] Subtask 5.3: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 5.4: Implement `write<F>(&self, f: F)` method on `RedbInner` that uses `Executor` to run a write transaction
+  - [ ] Subtask 5.5: Implement `read<F, R>(&self, f: F) -> Result<R, CacheError>` on `RedbInner` that uses `Executor` to run a read transaction
+  - [ ] Subtask 5.6: Ensure `Inner` structs are non-clonable (enforcing `Arc` usage)
+  - [ ] Subtask 5.7: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Inner State & Encapsulation
-- [ ] Task 4: Implement `Inner` structs and shareable state
-  - [ ] Subtask 4.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` and `moka.rs`
-  - [ ] Subtask 4.2: Update `RedbInner` to hold `Arc<redb::Database>`, `Executor`, `TableDefinition`, and `Codec`
-  - [ ] Subtask 4.3: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 4.4: Implement write batching logic in `Inner` with `tracing` instrumentation
-  - [ ] Subtask 4.5: Ensure `Inner` structs are non-clonable and only accessed via `Arc`
-  - [ ] Subtask 4.6: Implement shared helpers for logging backend-specific stats (e.g., table size)
-  - [ ] Subtask 4.7: Run `mise run test:unit:adapters` (GREEN)
-  - [ ] Subtask 4.8: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-
-### Phase 5: Reader and Writer Handles (CQRS Split)
-- [ ] Task 5: Implement `Reader` and `Writer` handles
-  - [ ] Subtask 5.1: Define `pub struct Reader<K, V, C>` and `pub struct Writer<K, V, C>` locally in `redb.rs` and `moka.rs`
+### Phase 6: Reader and Writer Handles (CQRS Split)
+- [ ] Task 6: Implement `Reader` and `Writer` handles
+  - [ ] Subtask 6.1: Define `pub struct Reader<K, V, C>` and `pub struct Writer<K, V, C>` locally in `redb.rs` and `moka.rs`
   - [ ] Subtask 5.2: Re-export as `RedbReader/RedbWriter` and `MokaReader/MokaWriter` in `mod.rs`
   - [ ] Subtask 5.3: [TDD] Write `cqrs::prevents_reader_access_to_port_writer_methods` (failing)
   - [ ] Subtask 5.4: Implement `CacheReaderPort` for `Reader` handles with instrumentation
