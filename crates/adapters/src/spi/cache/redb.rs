@@ -26,7 +26,7 @@ use rkyv::{
 use tracing::{error, info, info_span};
 
 use crate::spi::{
-    cache::{CacheReader as CacheReaderPort, CacheWriter as CacheWriterPort},
+    cache::{CacheReader, CacheWriter},
     errors::CacheError,
 };
 
@@ -436,7 +436,7 @@ where
 }
 
 #[async_trait]
-impl<K, V> CacheReaderPort<K, V> for Cache<K, V>
+impl<K, V> CacheReader<K, V> for Cache<K, V>
 where
     K: std::fmt::Debug
         + Clone
@@ -517,7 +517,7 @@ where
 }
 
 #[async_trait]
-impl<K, V> CacheWriterPort<K, V> for Cache<K, V>
+impl<K, V> CacheWriter<K, V> for Cache<K, V>
 where
     K: std::fmt::Debug
         + Clone
