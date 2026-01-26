@@ -69,14 +69,14 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 1.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
   - [ ] Subtask 1.9: Run `mise run test:unit:adapters deserializer` (GREEN)
   - [ ] Subtask 1.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
+  - [ ] Subtask 1.11: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 1.12: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 1.13: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 1.11: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 1.12: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 1.13: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 2: Moka Split-Handle Refactor
 - [ ] Task 2: Refactor Moka to split handles
@@ -88,14 +88,14 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 2.6: Remove the unified `MokaCache` struct entirely
   - [ ] Subtask 2.7: Run `mise run test:unit:adapters moka` (GREEN)
   - [ ] Subtask 2.8: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 2.9: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 2.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 2.11: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 2.9: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 2.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 2.11: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 3: Redb Builder & Handle Stubs
 - [ ] Task 3: Implement `RedbBuilder` and Handle Stubs
@@ -120,8 +120,8 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 - [ ] Task 2: Refactor Moka to split handles
   - [ ] Subtask 2.1: [TDD] Write `moka_builder::builds_split_handles_with_custom_capacity` (failing)
   - [ ] Subtask 2.2: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` in `moka.rs` (wrapping `Arc<Inner>`)
-  - [ ] Subtask 2.3: Implement `CacheReaderPort` for `Reader` (get/has)
-  - [ ] Subtask 2.4: Implement `CacheWriterPort` for `Writer` (put/delete/clear)
+  - [ ] Subtask 2.3: Implement `CacheReader` for `Reader` (get/has)
+  - [ ] Subtask 2.4: Implement `CacheWriter` for `Writer` (put/delete/clear)
   - [ ] Subtask 2.5: Update `Builder::build()` to return `(Reader<K, V>, Writer<K, V>)`
   - [ ] Subtask 2.6: Re-export `Builder` as `MokaBuilder`, `Reader` as `MokaReader`, and `Writer` as `MokaWriter` in `mod.rs`
   - [ ] Subtask 2.7: Remove the unified `MokaCache` struct entirely
@@ -158,10 +158,9 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ### Phase 4: Redb Async/Sync Bridge (`Executor`)
 - [ ] Task 4: Implement `Executor` utility
-  - [ ] Subtask 4.1: Import `CacheReader` and `CacheWriter` as `CacheReaderPort` and `CacheWriterPort`
-  - [ ] Subtask 4.2: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 4.3: Define `pub(crate) struct Executor` in `redb.rs` (no generics needed)
-  - [ ] Subtask 4.4: Implement `spawn<F, R>(&self, span: Span, f: F) -> Result<R, CacheError>` where `F: FnOnce() -> Result<R, redb::Error> + Send + 'static`
+  - [ ] Subtask 4.1: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 4.2: Define `pub(crate) struct Executor` in `redb.rs` (no generics needed)
+  - [ ] Subtask 4.3: Implement `spawn<F, R>(&self, span: Span, f: F) -> Result<R, CacheError>` where `F: FnOnce() -> Result<R, redb::Error> + Send + 'static`
   - [ ] Subtask 4.5: Ensure `spawn` enters the provided span and catches Tokio JoinErrors
   - [ ] Subtask 4.6: Implement error mapping helper `map_redb_error` that converts `redb::Error` to `CacheError::BackendError` or `IoError`
   - [ ] Subtask 4.7: Run `mise run test:unit:adapters redb` (GREEN)
