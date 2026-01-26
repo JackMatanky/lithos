@@ -11,43 +11,73 @@
 set -euo pipefail
 
 #######################################
-# Build arguments for clippy.
+# Add fix-related arguments to clippy.
 # Globals:
 #   usage_no_fix
-#   usage_verbose
 # Arguments:
 #   Reference to an array for arguments
-# Outputs:
-#   None
 #######################################
-build_clippy_args() {
-    local -n ref_args=$1
-    ref_args+=("--all-targets" "--all-features")
-
-    # Default to fixing unless --no-fix is passed
-    if [[ "${usage_no_fix:-}" != "1" ]]; then
-        ref_args+=("--fix" "--allow-dirty" "--allow-staged")
-    fi
-
-    if [[ "${usage_verbose:-}" == "1" ]]; then
-        ref_args+=("--verbose")
-    fi
+add_fix_args() {
+  # shellcheck disable=SC2178
+  local -n ref_args=$1
+  if [[ "${usage_no_fix:-}" != "1" ]]; then
+    ref_args+=("--fix" "--allow-dirty" "--allow-staged")
+  fi
 }
 
 #######################################
-# Run clippy lints on the workspace.
+# Add verbose flag to clippy arguments if requested.
+# Globals:
+#   usage_verbose
 # Arguments:
-#   Arguments for cargo clippy
-# Outputs:
-#   Writes lint results to stdout/stderr
+#   Reference to an array for arguments
 #######################################
-run_clippy() {
-    local clippy_lint_args=("-D warnings")
-    if [[ "${usage_pedantic:-}" == "1" ]]; then
-        clippy_lint_args+=("-W clippy::pedantic")
-    fi
-    echo "🔍 Running clippy lints (deny-level warnings)..."
-    cargo clippy "$@" -- "${clippy_lint_args[@]}"
+add_verbose_args() {
+  # shellcheck disable=SC2178
+  local -n ref_args=$1
+  if [[ "${usage_verbose:-}" == "1" ]]; then
+    ref_args+=("--verbose")
+  fi
+}
+
+#######################################
+# Add lint level arguments to clippy.
+# Globals:
+#   usage_pedantic
+# Arguments:
+#   Reference to an array for arguments
+#######################################
+add_lint_level_args() {
+  # shellcheck disable=SC2178
+  local -n ref_args=$1
+  ref_args+=("-D" "warnings")
+
+  if [[ "${usage_pedantic:-}" == "1" ]]; then
+    ref_args+=("-W" "clippy::pedantic")
+  fi
+}
+
+#######################################
+# Build all clippy-related arguments.
+# Globals:
+#   usage_no_fix
+#   usage_verbose
+#   usage_pedantic
+# Arguments:
+#   $1: Reference to an array for cargo-level arguments
+#   $2: Reference to an array for lint-level arguments
+#######################################
+build_args() {
+  # shellcheck disable=SC2178
+  local -n ref_cargo_args=$1
+  # shellcheck disable=SC2178,SC2034
+  local -n ref_lint_args=$2
+
+  ref_cargo_args+=("--all-targets" "--all-features")
+  add_fix_args ref_cargo_args
+  add_verbose_args ref_cargo_args
+
+  add_lint_level_args ref_lint_args
 }
 
 #######################################
@@ -58,25 +88,31 @@ run_clippy() {
 #   None
 #######################################
 create_stamp_file() {
-    mkdir -p target
-    touch target/lint.stamp
+  mkdir -p target
+  touch target/lint.stamp
 }
 
 #######################################
-# Main entry point.
+# Main execution flow for the lint task.
+# Orchestrates argument building, clippy execution, and caching.
 # Globals:
 #   None
 # Arguments:
-#   $@
+#   $@: Raw arguments from command line (unused in this version)
 # Outputs:
 #   None
 #######################################
 main() {
-    local args=()
-    build_clippy_args args
-    run_clippy "${args[@]}"
-    create_stamp_file
-    echo "✅ Linting complete"
+  local cargo_args=()
+  local lint_args=()
+
+  build_args cargo_args lint_args
+
+  echo "🔍 Running clippy lints (deny-level warnings)..."
+  cargo clippy "${cargo_args[@]}" -- "${lint_args[@]}"
+
+  create_stamp_file
+  echo "✅ Linting complete"
 }
 
 main "$@"
