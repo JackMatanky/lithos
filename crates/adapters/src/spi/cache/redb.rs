@@ -18,7 +18,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use redb::{ReadableDatabase as _, TableDefinition, TableHandle as _};
+use redb::{ReadableDatabase as _, TableDefinition};
 use rkyv::{
     Archive, Archived, Deserialize, Serialize, bytecheck::CheckBytes,
     util::AlignedVec,
@@ -58,7 +58,7 @@ pub struct CachedEntry<V> {
 /// let dir = tempdir().unwrap();
 /// let db_path = dir.path().join("cache.redb");
 ///
-/// let cache = RedbCache::new(db_path, "my_table").unwrap();
+/// let cache = RedbCache::new(db_path, "my_table").await.unwrap();
 /// cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
 ///
 /// let result: Option<String> = cache.get(&"key".to_owned()).await.unwrap();
@@ -73,7 +73,7 @@ pub struct CachedEntry<V> {
 )]
 pub struct RedbCache<K, V> {
     db: Arc<redb::Database>,
-    table_definition: TableDefinition<'static, &'static [u8], &'static [u8]>,
+    table_name: Arc<str>,
     _marker: std::marker::PhantomData<(K, V)>,
 }
 
@@ -81,7 +81,7 @@ impl<K, V> std::fmt::Debug for RedbCache<K, V> {
     #[inline]
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("RedbCache")
-            .field("table", &self.table_definition.name())
+            .field("table", &self.table_name)
             .finish_non_exhaustive()
     }
 }
@@ -115,18 +115,157 @@ impl<K, V> RedbCache<K, V> {
         })
     }
 
+    /// Create a new `RedbCache` instance.
+    ///
+    /// # Errors
+    /// Returns `CacheError` if the database cannot be opened.
     #[inline]
-    fn deserialize_entry(bytes: &[u8]) -> Result<CachedEntry<V>, CacheError>
+    pub async fn new<P: AsRef<Path>>(
+        db_path: P,
+        table_name: &str,
+    ) -> Result<Self, CacheError> {
+        let path = db_path.as_ref().to_path_buf();
+        let db = tokio::task::spawn_blocking(move || {
+            redb::Database::create(path).map_err(|e| {
+                error!(backend = "redb", ?e, "Failed to open database");
+                CacheError::BackendError {
+                    backend: "redb",
+                    message: format!("Failed to open database: {e}").into(),
+                }
+            })
+        })
+        .await
+        .map_err(|e| {
+            error!(?e, "Blocking task for database creation failed");
+            CacheError::BackendError {
+                backend: "tokio",
+                message: format!("Database task failed: {e}").into(),
+            }
+        })??;
+
+        Ok(Self {
+            db: Arc::new(db),
+            table_name: Arc::from(table_name),
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    /// Execute a blocking read operation in a separate task.
+    async fn run_blocking_read<F, R>(
+        &self,
+        operation: &'static str,
+        f: F,
+    ) -> Result<R, CacheError>
     where
-        V: Archive,
-        Archived<V>: rkyv::Deserialize<
-                V,
-                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
-            >,
-        for<'validation> Archived<V>: CheckBytes<
-            rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
-        >,
+        F: FnOnce(&redb::ReadTransaction) -> Result<R, CacheError>
+            + Send
+            + 'static,
+        R: Send + 'static,
     {
+        let db = Arc::clone(&self.db);
+        let table_name = Arc::clone(&self.table_name);
+        tokio::task::spawn_blocking(move || {
+            let _span = info_span!(
+                "redb_transaction",
+                %operation,
+                %table_name
+            )
+            .entered();
+            let txn = Self::begin_read(&db)?;
+            f(&txn)
+        })
+        .await
+        .map_err(|e| {
+            error!(?e, "Blocking task failed");
+            CacheError::BackendError {
+                backend: "tokio",
+                message: format!("Blocking task failed: {e}").into(),
+            }
+        })?
+    }
+
+    /// Execute a blocking write operation in a separate task.
+    async fn run_blocking_write<F, R>(
+        &self,
+        operation: &'static str,
+        f: F,
+    ) -> Result<R, CacheError>
+    where
+        F: FnOnce(&redb::WriteTransaction) -> Result<R, CacheError>
+            + Send
+            + 'static,
+        R: Send + 'static,
+    {
+        let db = Arc::clone(&self.db);
+        let table_name = Arc::clone(&self.table_name);
+        tokio::task::spawn_blocking(move || {
+            let _span = info_span!(
+                "redb_transaction",
+                %operation,
+                %table_name
+            )
+            .entered();
+            let txn = Self::begin_write(&db)?;
+            let result = f(&txn)?;
+            txn.commit().map_err(|e| {
+                error!(backend = "redb", ?e, "Failed to commit transaction");
+                CacheError::BackendError {
+                    backend: "redb",
+                    message: format!("Failed to commit: {e}").into(),
+                }
+            })?;
+            Ok(result)
+        })
+        .await
+        .map_err(|e| {
+            error!(?e, "Blocking task failed");
+            CacheError::BackendError {
+                backend: "tokio",
+                message: format!("Blocking task failed: {e}").into(),
+            }
+        })?
+    }
+
+    /// Create a new `RedbCache` instance sharing an existing database.
+    #[inline]
+    #[must_use]
+    pub fn with_db(db: Arc<redb::Database>, table_name: &str) -> Self {
+        Self {
+            db,
+            table_name: Arc::from(table_name),
+            _marker: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<K, V> RedbCache<K, V>
+where
+    K: std::fmt::Debug
+        + for<'ser> Serialize<
+            rkyv::api::high::HighSerializer<
+                rkyv::util::AlignedVec,
+                rkyv::ser::allocator::ArenaHandle<'ser>,
+                rkyv::rancor::Error,
+            >,
+        >,
+    V: Archive,
+    V: for<'ser> Serialize<
+        rkyv::api::high::HighSerializer<
+            rkyv::util::AlignedVec,
+            rkyv::ser::allocator::ArenaHandle<'ser>,
+            rkyv::rancor::Error,
+        >,
+    >,
+    Archived<V>: rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+    for<'validation> Archived<V>: CheckBytes<
+        rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
+    >,
+{
+    #[inline]
+    fn deserialize_entry(bytes: &[u8]) -> Result<CachedEntry<V>, CacheError> {
         let mut aligned = AlignedVec::<16>::new();
         aligned.extend_from_slice(bytes);
 
@@ -157,46 +296,26 @@ impl<K, V> RedbCache<K, V> {
     /// # Errors
     /// Returns `CacheError` if retrieval or deserialization fails.
     #[tracing::instrument(
-        skip(self, key),
+        skip(self),
         fields(
-            table_name = %self.table_definition.name(),
+            table_name = %self.table_name,
             operation = "get_with_metadata",
-            cache_layer = "disk"
+            cache_layer = "disk",
+            key = ?key
         )
     )]
     #[inline]
     pub async fn get_with_metadata(&self, key: &K) -> CacheResult<V>
     where
         K: Clone + Send + Sync + 'static,
-        K: for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
-                rkyv::util::AlignedVec,
-                rkyv::ser::allocator::ArenaHandle<'ser>,
-                rkyv::rancor::Error,
-            >,
-        >,
         V: Clone + Send + Sync + 'static,
-        V: Archive,
-        V: for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
-                rkyv::util::AlignedVec,
-                rkyv::ser::allocator::ArenaHandle<'ser>,
-                rkyv::rancor::Error,
-            >,
-        >,
-        Archived<V>: rkyv::Deserialize<
-                V,
-                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
-            >,
-        for<'validation> Archived<V>: CheckBytes<
-            rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
-        >,
     {
         let key_bytes = Self::serialize_key(key)?;
-        let table_definition = self.table_definition;
+        let table_name = Arc::clone(&self.table_name);
 
         self.run_blocking_read("read", move |txn| {
-            let table = txn.open_table(table_definition).map_err(|e| {
+            let table_def = TableDefinition::<&[u8], &[u8]>::new(&table_name);
+            let table = txn.open_table(table_def).map_err(|e| {
                 error!(backend = "redb", ?e, "Failed to open table");
                 CacheError::BackendError {
                     backend: "redb",
@@ -224,44 +343,17 @@ impl<K, V> RedbCache<K, V> {
         .await
     }
 
-    /// Create a new `RedbCache` instance.
-    ///
-    /// # Errors
-    /// Returns `CacheError` if the database cannot be opened.
-    #[inline]
-    pub fn new<P: AsRef<Path>>(
-        db_path: P,
-        table_name: &str,
-    ) -> Result<Self, CacheError> {
-        let db = redb::Database::create(db_path).map_err(|e| {
-            error!(backend = "redb", ?e, "Failed to open database");
-            CacheError::BackendError {
-                backend: "redb",
-                message: format!("Failed to open database: {e}").into(),
-            }
-        })?;
-
-        let leaked_name: &'static str =
-            Box::leak(table_name.to_owned().into_boxed_str());
-        let table_definition = TableDefinition::new(leaked_name);
-
-        Ok(Self {
-            db: Arc::new(db),
-            table_definition,
-            _marker: std::marker::PhantomData,
-        })
-    }
-
     /// Store value with custom metadata.
     ///
     /// # Errors
     /// Returns `CacheError` if serialization or storage fails.
     #[tracing::instrument(
-        skip(self, key, value, metadata),
+        skip(self, value, metadata),
         fields(
-            table_name = %self.table_definition.name(),
+            table_name = %self.table_name,
             operation = "put_with_metadata",
-            cache_layer = "disk"
+            cache_layer = "disk",
+            key = ?key
         )
     )]
     #[inline]
@@ -273,22 +365,7 @@ impl<K, V> RedbCache<K, V> {
     ) -> Result<(), CacheError>
     where
         K: Clone + Send + Sync + 'static,
-        K: for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
-                rkyv::util::AlignedVec,
-                rkyv::ser::allocator::ArenaHandle<'ser>,
-                rkyv::rancor::Error,
-            >,
-        >,
         V: Clone + Send + Sync + 'static,
-        V: Archive,
-        V: for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
-                rkyv::util::AlignedVec,
-                rkyv::ser::allocator::ArenaHandle<'ser>,
-                rkyv::rancor::Error,
-            >,
-        >,
     {
         let key_bytes = Self::serialize_key(&key)?;
         let entry = CachedEntry {
@@ -306,10 +383,11 @@ impl<K, V> RedbCache<K, V> {
             metadata,
         };
         let value_bytes = Self::serialize_entry(&entry)?;
-        let table_definition = self.table_definition;
+        let table_name = Arc::clone(&self.table_name);
 
         self.run_blocking_write("write", move |txn| {
-            let mut table = txn.open_table(table_definition).map_err(|e| {
+            let table_def = TableDefinition::<&[u8], &[u8]>::new(&table_name);
+            let mut table = txn.open_table(table_def).map_err(|e| {
                 error!(backend = "redb", ?e, "Failed to open table");
                 CacheError::BackendError {
                     backend: "redb",
@@ -333,82 +411,8 @@ impl<K, V> RedbCache<K, V> {
         .await
     }
 
-    /// Execute a blocking read operation in a separate task.
-    async fn run_blocking_read<F, R>(
-        &self,
-        operation: &'static str,
-        f: F,
-    ) -> Result<R, CacheError>
-    where
-        F: FnOnce(&redb::ReadTransaction) -> Result<R, CacheError>
-            + Send
-            + 'static,
-        R: Send + 'static,
-    {
-        let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
-            let _span = info_span!("redb_transaction", operation).entered();
-            let txn = Self::begin_read(&db)?;
-            f(&txn)
-        })
-        .await
-        .map_err(|e| {
-            error!(?e, "Blocking task failed");
-            CacheError::BackendError {
-                backend: "tokio",
-                message: format!("Blocking task failed: {e}").into(),
-            }
-        })?
-    }
-
-    /// Execute a blocking write operation in a separate task.
-    async fn run_blocking_write<F, R>(
-        &self,
-        operation: &'static str,
-        f: F,
-    ) -> Result<R, CacheError>
-    where
-        F: FnOnce(&redb::WriteTransaction) -> Result<R, CacheError>
-            + Send
-            + 'static,
-        R: Send + 'static,
-    {
-        let db = Arc::clone(&self.db);
-        tokio::task::spawn_blocking(move || {
-            let _span = info_span!("redb_transaction", operation).entered();
-            let txn = Self::begin_write(&db)?;
-            let result = f(&txn)?;
-            txn.commit().map_err(|e| {
-                error!(backend = "redb", ?e, "Failed to commit transaction");
-                CacheError::BackendError {
-                    backend: "redb",
-                    message: format!("Failed to commit: {e}").into(),
-                }
-            })?;
-            Ok(result)
-        })
-        .await
-        .map_err(|e| {
-            error!(?e, "Blocking task failed");
-            CacheError::BackendError {
-                backend: "tokio",
-                message: format!("Blocking task failed: {e}").into(),
-            }
-        })?
-    }
-
     #[inline]
-    fn serialize_entry(entry: &CachedEntry<V>) -> Result<Vec<u8>, CacheError>
-    where
-        V: Archive,
-        V: for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
-                rkyv::util::AlignedVec,
-                rkyv::ser::allocator::ArenaHandle<'ser>,
-                rkyv::rancor::Error,
-            >,
-        >,
-    {
+    fn serialize_entry(entry: &CachedEntry<V>) -> Result<Vec<u8>, CacheError> {
         rkyv::to_bytes::<rkyv::rancor::Error>(entry)
             .map(|bytes| bytes.to_vec())
             .map_err(|e| {
@@ -421,16 +425,7 @@ impl<K, V> RedbCache<K, V> {
     }
 
     #[inline]
-    fn serialize_key(key: &K) -> Result<Vec<u8>, CacheError>
-    where
-        K: for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
-                rkyv::util::AlignedVec,
-                rkyv::ser::allocator::ArenaHandle<'ser>,
-                rkyv::rancor::Error,
-            >,
-        >,
-    {
+    fn serialize_key(key: &K) -> Result<Vec<u8>, CacheError> {
         rkyv::to_bytes::<rkyv::rancor::Error>(key)
             .map(|bytes| bytes.to_vec())
             .map_err(|e| {
@@ -441,34 +436,25 @@ impl<K, V> RedbCache<K, V> {
                 }
             })
     }
-
-    /// Create a new `RedbCache` instance sharing an existing database.
-    #[inline]
-    #[must_use]
-    pub fn with_db(db: Arc<redb::Database>, table_name: &str) -> Self {
-        let leaked_name: &'static str =
-            Box::leak(table_name.to_owned().into_boxed_str());
-        let table_definition = TableDefinition::new(leaked_name);
-
-        Self {
-            db,
-            table_definition,
-            _marker: std::marker::PhantomData,
-        }
-    }
 }
 
 #[async_trait]
 impl<K, V> Cache<K, V> for RedbCache<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    K: for<'ser> Serialize<
-        rkyv::api::high::HighSerializer<
-            rkyv::util::AlignedVec,
-            rkyv::ser::allocator::ArenaHandle<'ser>,
-            rkyv::rancor::Error,
+    K: std::fmt::Debug
+        + Clone
+        + Eq
+        + std::hash::Hash
+        + Send
+        + Sync
+        + 'static
+        + for<'ser> Serialize<
+            rkyv::api::high::HighSerializer<
+                rkyv::util::AlignedVec,
+                rkyv::ser::allocator::ArenaHandle<'ser>,
+                rkyv::rancor::Error,
+            >,
         >,
-    >,
     V: Clone + Send + Sync + 'static,
     V: Archive,
     V: for<'ser> Serialize<
@@ -489,17 +475,18 @@ where
     #[tracing::instrument(
         skip(self),
         fields(
-            table_name = %self.table_definition.name(),
+            table_name = %self.table_name,
             operation = "clear",
             cache_layer = "disk"
         )
     )]
     #[inline]
     async fn clear(&self) -> Result<(), CacheError> {
-        let table_definition = self.table_definition;
+        let table_name = Arc::clone(&self.table_name);
 
         self.run_blocking_write("write", move |txn| {
-            _ = txn.delete_table(table_definition).map_err(|e| {
+            let table_def = TableDefinition::<&[u8], &[u8]>::new(&table_name);
+            _ = txn.delete_table(table_def).map_err(|e| {
                 error!(backend = "redb", ?e, "Failed to delete table");
                 CacheError::BackendError {
                     backend: "redb",
@@ -507,7 +494,7 @@ where
                 }
             })?;
 
-            _ = txn.open_table(table_definition).map_err(|e| {
+            _ = txn.open_table(table_def).map_err(|e| {
                 error!(backend = "redb", ?e, "Failed to recreate table");
                 CacheError::BackendError {
                     backend: "redb",
@@ -522,20 +509,22 @@ where
     }
 
     #[tracing::instrument(
-        skip(self, key),
+        skip(self),
         fields(
-            table_name = %self.table_definition.name(),
+            table_name = %self.table_name,
             operation = "delete",
-            cache_layer = "disk"
+            cache_layer = "disk",
+            key = ?key
         )
     )]
     #[inline]
     async fn delete(&self, key: &K) -> Result<bool, CacheError> {
         let key_bytes = Self::serialize_key(key)?;
-        let table_definition = self.table_definition;
+        let table_name = Arc::clone(&self.table_name);
 
         self.run_blocking_write("write", move |txn| {
-            let mut table = txn.open_table(table_definition).map_err(|e| {
+            let table_def = TableDefinition::<&[u8], &[u8]>::new(&table_name);
+            let mut table = txn.open_table(table_def).map_err(|e| {
                 error!(backend = "redb", ?e, "Failed to open table");
                 CacheError::BackendError {
                     backend: "redb",
@@ -566,20 +555,22 @@ where
     }
 
     #[tracing::instrument(
-        skip(self, key),
+        skip(self),
         fields(
-            table_name = %self.table_definition.name(),
+            table_name = %self.table_name,
             operation = "has",
-            cache_layer = "disk"
+            cache_layer = "disk",
+            key = ?key
         )
     )]
     #[inline]
     async fn has(&self, key: &K) -> Result<bool, CacheError> {
         let key_bytes = Self::serialize_key(key)?;
-        let table_definition = self.table_definition;
+        let table_name = Arc::clone(&self.table_name);
 
         self.run_blocking_read("read", move |txn| {
-            let table = txn.open_table(table_definition).map_err(|e| {
+            let table_def = TableDefinition::<&[u8], &[u8]>::new(&table_name);
+            let table = txn.open_table(table_def).map_err(|e| {
                 error!(backend = "redb", ?e, "Failed to open table");
                 CacheError::BackendError {
                     backend: "redb",
@@ -629,6 +620,7 @@ mod tests {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("clear.redb");
             let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .await
                 .expect("init failed");
 
             cache
@@ -653,6 +645,7 @@ mod tests {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("has.redb");
             let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .await
                 .expect("init failed");
 
             let key = "exists".to_owned();
@@ -678,12 +671,14 @@ mod tests {
 
             // First instance: write data
             let cache1 = RedbCache::<String, TestValue>::new(&db_path, "table")
+                .await
                 .expect("failed to create cache");
             cache1.put(key.clone(), value.clone()).await.expect("put failed");
             drop(cache1); // Explicit drop to close database
 
             // Second instance: read data
             let cache2 = RedbCache::<String, TestValue>::new(&db_path, "table")
+                .await
                 .expect("failed to reload cache");
             let result = cache2.get(&key).await.expect("get failed");
             assert_eq!(result, Some(value));
@@ -696,18 +691,19 @@ mod tests {
 
         use super::*;
 
-        #[test]
-        fn should_initialize_redb_cache() {
+        #[tokio::test]
+        async fn should_initialize_redb_cache() {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("cache.redb");
 
             let cache =
-                RedbCache::<String, TestValue>::new(db_path, "test_table");
+                RedbCache::<String, TestValue>::new(db_path, "test_table")
+                    .await;
             cache.unwrap();
         }
 
-        #[test]
-        fn should_map_io_error_during_init() {
+        #[tokio::test]
+        async fn should_map_io_error_during_init() {
             use std::fs::File;
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("read_only.redb");
@@ -721,7 +717,8 @@ mod tests {
                 .expect("failed to set permissions");
 
             let cache =
-                RedbCache::<String, TestValue>::new(db_path, "test_table");
+                RedbCache::<String, TestValue>::new(db_path, "test_table")
+                    .await;
 
             assert!(cache.is_err());
             let err = cache.expect_err("should have error");
@@ -731,13 +728,14 @@ mod tests {
             }));
         }
 
-        #[test]
-        fn should_support_multiple_tables_in_same_db() {
+        #[tokio::test]
+        async fn should_support_multiple_tables_in_same_db() {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("multi_table.redb");
 
             let cache1 =
                 RedbCache::<String, TestValue>::new(&db_path, "table1")
+                    .await
                     .expect("failed to create cache1");
             let db = Arc::clone(&cache1.db);
 
@@ -759,6 +757,7 @@ mod tests {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("metadata.redb");
             let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .await
                 .expect("init failed");
 
             let key = "key".to_owned();
@@ -784,6 +783,7 @@ mod tests {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("timestamp.redb");
             let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .await
                 .expect("init failed");
 
             let key = "key".to_owned();
@@ -827,6 +827,7 @@ mod tests {
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("tracing.redb");
             let cache = RedbCache::<String, TestValue>::new(db_path, "table")
+                .await
                 .expect("init failed");
 
             let key = "key".to_owned();
