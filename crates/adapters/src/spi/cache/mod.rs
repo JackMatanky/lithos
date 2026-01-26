@@ -15,10 +15,16 @@
     )
 )]
 
+pub mod deserializer;
 pub mod moka;
 pub mod redb;
 
 use async_trait::async_trait;
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Re-exporting with Cache prefix for clarity at crate level"
+)]
+pub use deserializer::Codec as CacheCodec;
 
 #[expect(
     clippy::module_name_repetitions,
