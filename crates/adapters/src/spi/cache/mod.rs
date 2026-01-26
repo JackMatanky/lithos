@@ -32,6 +32,10 @@ pub use deserializer::Codec as CacheCodec;
               the crate level while keeping internal implementation names \
               concise."
 )]
+#[expect(
+    deprecated,
+    reason = "Temporary backwards compatibility during Phase 2-7 refactor"
+)]
 pub use self::moka::{Builder as MokaCacheBuilder, Cache as MokaCache};
 #[expect(
     clippy::module_name_repetitions,
