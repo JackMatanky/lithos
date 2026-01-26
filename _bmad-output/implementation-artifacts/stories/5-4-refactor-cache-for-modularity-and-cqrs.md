@@ -82,24 +82,25 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 2.9: Run `mise run test:unit:adapters builder` (GREEN)
 
 ### Phase 3: Redb Storage Components (`redb.rs`)
-- [ ] Task 3: Implement `DatabaseManager` and `TransactionExecutor`
+- [ ] Task 3: Implement `DatabaseManager` and `Executor`
   - [ ] Subtask 3.1: Import `CacheReader` and `CacheWriter` as `CacheReaderPort` and `CacheWriterPort`
   - [ ] Subtask 3.2: [TDD] Write `database_manager::should_share_same_instance_across_clones` (failing)
   - [ ] Subtask 3.3: Implement `DatabaseManager` to encapsulate `Arc<redb::Database>` with error logging
-  - [ ] Subtask 3.4: [TDD] Write `transaction_executor::should_map_redb_error_to_cache_error` (failing)
-  - [ ] Subtask 3.5: Implement `TransactionExecutor` to wrap `tokio::task::spawn_blocking` and instrument with `info_span` and `tracing::error!` mapping
-  - [ ] Subtask 3.6: [TDD] Write `table_handle::should_prevent_table_name_collisions` (failing)
-  - [ ] Subtask 3.7: Implement `TableHandle` to encapsulate `TableDefinition` logic
+  - [ ] Subtask 3.4: [TDD] Write `executor::should_map_redb_error_to_cache_error` (failing)
+  - [ ] Subtask 3.5: Implement `Executor` to wrap `tokio::task::spawn_blocking` and instrument with `info_span` and `tracing::error!` mapping
+  - [ ] Subtask 3.6: [TDD] Write `table_handler::should_prevent_table_name_collisions` (failing)
+  - [ ] Subtask 3.7: Implement `TableHandler` to encapsulate `TableDefinition` logic
   - [ ] Subtask 3.8: Run `mise run test:unit:adapters redb` (GREEN)
 
 ### Phase 4: Inner State & Encapsulation
 - [ ] Task 4: Implement `Inner` structs and shareable state
   - [ ] Subtask 4.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` and `moka.rs`
-  - [ ] Subtask 4.2: [TDD] Write `redb_inner::should_batch_multiple_writes_in_single_transaction` (failing)
-  - [ ] Subtask 4.3: Implement write batching logic in `Inner` with `tracing` instrumentation
-  - [ ] Subtask 4.4: Ensure `Inner` structs are non-clonable and only accessed via `Arc`
-  - [ ] Subtask 4.5: Implement shared helpers for logging backend-specific stats (e.g., table size)
-  - [ ] Subtask 4.6: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 4.2: Move `DatabaseManager`, `Executor`, and `TableHandler` into `RedbInner`
+  - [ ] Subtask 4.3: [TDD] Write `redb_inner::should_batch_multiple_writes_in_single_transaction` (failing)
+  - [ ] Subtask 4.4: Implement write batching logic in `Inner` with `tracing` instrumentation
+  - [ ] Subtask 4.5: Ensure `Inner` structs are non-clonable and only accessed via `Arc`
+  - [ ] Subtask 4.6: Implement shared helpers for logging backend-specific stats (e.g., table size)
+  - [ ] Subtask 4.7: Run `mise run test:unit:adapters` (GREEN)
 
 ### Phase 5: Reader and Writer Handles (CQRS Split)
 - [ ] Task 5: Implement `Reader` and `Writer` handles
@@ -117,7 +118,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 6.1: Update `Reader/Writer` handles to use `C = RkyvCodec` default in `redb.rs`
   - [ ] Subtask 6.2: Define `pub type RedbCache<K, V> = (RedbReader<K, V>, RedbWriter<K, V>)` aliases in `mod.rs`
   - [ ] Subtask 6.3: [TDD] Write `api::should_allow_usage_without_specifying_codec` (failing)
-  - [ ] Subtask 6.4: Implement re-exports to hide `Inner` and `TransactionExecutor` from the public SPI
+  - [ ] Subtask 6.4: Implement re-exports to hide `Inner` and `Executor` from the public SPI
   - [ ] Subtask 6.5: Run `mise run test:unit:adapters` (GREEN)
 
 ### Phase 7: Final Refactor & NFR Verification
