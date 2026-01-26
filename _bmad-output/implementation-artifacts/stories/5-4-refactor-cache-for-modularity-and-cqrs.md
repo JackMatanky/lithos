@@ -68,17 +68,16 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 1.6: [TDD] Write `rkyv_codec::returns_error_on_corrupted_bytes` (failing)
   - [x] Subtask 1.7: Implement `RkyvCodec` using `rkyv::api::high` and `rkyv::access`
   - [x] Subtask 1.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
-  - [ ] Subtask 1.9: **Refactor Types**: Move `Entry<V>` and `MetadataMap` from `redb.rs` to `deserializer.rs` to allow the Codec to handle them generically
-  - [x] Subtask 1.10: Run `mise run test:unit:adapters deserializer` (GREEN)
-  - [x] Subtask 1.11: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
+  - [x] Subtask 1.9: Run `mise run test:unit:adapters deserializer` (GREEN)
+  - [x] Subtask 1.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [x] Subtask 1.12: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [x] Subtask 1.13: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [x] Subtask 1.14: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+  - [x] Subtask 1.11: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 1.12: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 1.13: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 2: Moka Split-Handle Refactor
 - [x] Task 2: Refactor Moka to split handles
