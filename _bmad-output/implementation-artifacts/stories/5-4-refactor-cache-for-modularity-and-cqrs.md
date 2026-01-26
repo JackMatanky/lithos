@@ -127,14 +127,22 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ### Phase 5: Inner State & Encapsulation
 - [ ] Task 5: Implement `Inner` structs and shareable state
-  - [ ] Subtask 5.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` and `moka.rs`
-  - [ ] Subtask 5.2: Update `RedbInner` to hold `Arc<redb::Database>`, `Executor`, `TableDefinition<'static, [u8], [u8]>`, and `Codec`
-  - [ ] Subtask 5.3: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 5.4: Implement `write<F>(&self, f: F)` method on `RedbInner` that uses `Executor` to run a write transaction
-  - [ ] Subtask 5.5: Implement `read<F, R>(&self, f: F) -> Result<R, CacheError>` on `RedbInner` that uses `Executor` to run a read transaction
-  - [ ] Subtask 5.6: Ensure `Inner` structs are non-clonable (enforcing `Arc` usage)
-  - [ ] Subtask 5.7: Run `mise run test:unit:adapters` (GREEN)
-  - [ ] Subtask 5.8: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 5.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` (generic over Codec)
+  - [ ] Subtask 5.2: Add fields: `db: Arc<redb::Database>`, `executor: Executor`, `table: TableDefinition<'static, [u8], [u8]>`, `codec: C`
+  - [ ] Subtask 5.3: Implement `Inner::new(...)` constructor
+  - [ ] Subtask 5.4: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 5.5: Implement `write<F, T>(&self, f: F) -> Result<T, CacheError>` helper method
+    - Use `self.executor.spawn()` to run the closure
+    - Begin write transaction via `self.db.begin_write()`
+    - Commit transaction at end of closure
+    - Map all errors using `Executor::map_redb_error`
+  - [ ] Subtask 5.6: Implement `read<F, T>(&self, f: F) -> Result<T, CacheError>` helper method
+    - Use `self.executor.spawn()`
+    - Begin read transaction
+    - No commit needed
+  - [ ] Subtask 5.7: Ensure `Inner` structs are non-clonable (enforcing `Arc` usage for sharing)
+  - [ ] Subtask 5.8: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 5.9: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
