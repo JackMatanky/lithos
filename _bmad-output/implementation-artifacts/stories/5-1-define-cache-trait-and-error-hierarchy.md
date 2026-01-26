@@ -37,7 +37,6 @@ So that multiple cache backends can be swapped and automatically mocked for test
 - `async fn invalidate(&self, key: &K) -> Result<bool, CacheError>` - alias for delete
 - `async fn put(&self, key: K, value: V) -> Result<(), CacheError>` - store key-value pair
 
-**And** a blanket `trait Cache<K, V>: CacheReader<K, V> + CacheWriter<K, V> {}` is provided for unified access
 **And** both traits are annotated with `#[async_trait]` for async support
 **And** `has` provides a default implementation using `get().is_some()`
 **And** `invalidate` provides a default implementation delegating to `delete()`
@@ -213,12 +212,11 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 8.10: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 9
 
 ### Phase 10: CQRS Refactor (Architectural Integrity)
-- [ ] Task 10: Split Cache trait into Reader and Writer (CQRS Alignment)
-  - [ ] Subtask 10.1: Update `crates/adapters/src/spi/cache/mod.rs` to define `CacheReader` and `CacheWriter`
-  - [ ] Subtask 10.2: Implement blanket `Cache` trait combining both
-  - [ ] Subtask 10.3: Update unit tests in `mod.rs` to use split mocks (`MockCacheReader`, `MockCacheWriter`)
-  - [ ] Subtask 10.4: Verify all tests pass with split traits
-  - [ ] Subtask 10.5: Run `mise run verify` to ensure zero quality gate regressions
+- [x] Task 10: Split Cache trait into Reader and Writer (CQRS Alignment)
+  - [x] Subtask 10.1: Update `crates/adapters/src/spi/cache/mod.rs` to define `CacheReader` and `CacheWriter`
+  - [x] Subtask 10.2: Update unit tests in `mod.rs` to use split mocks (`MockCacheReader`, `MockCacheWriter`)
+  - [x] Subtask 10.3: Verify all tests pass with split traits
+  - [x] Subtask 10.4: Run `mise run verify` to ensure zero quality gate regressions
 
 ## Dev Notes
 

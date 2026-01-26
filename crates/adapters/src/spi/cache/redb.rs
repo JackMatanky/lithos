@@ -26,10 +26,7 @@ use rkyv::{
 use tracing::{error, info, info_span};
 
 use crate::spi::{
-    cache::{
-        Cache as CachePort, CacheReader as CacheReaderPort,
-        CacheWriter as CacheWriterPort,
-    },
+    cache::{CacheReader as CacheReaderPort, CacheWriter as CacheWriterPort},
     errors::CacheError,
 };
 
@@ -639,42 +636,6 @@ where
     async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
         self.put_with_metadata(key, value, HashMap::new()).await
     }
-}
-
-#[async_trait]
-impl<K, V> CachePort<K, V> for Cache<K, V>
-where
-    K: std::fmt::Debug
-        + Clone
-        + Eq
-        + std::hash::Hash
-        + Send
-        + Sync
-        + 'static
-        + for<'ser> Serialize<
-            rkyv::api::high::HighSerializer<
-                rkyv::util::AlignedVec,
-                rkyv::ser::allocator::ArenaHandle<'ser>,
-                rkyv::rancor::Error,
-            >,
-        >,
-    V: Clone + Send + Sync + 'static,
-    V: Archive,
-    V: for<'ser> Serialize<
-        rkyv::api::high::HighSerializer<
-            rkyv::util::AlignedVec,
-            rkyv::ser::allocator::ArenaHandle<'ser>,
-            rkyv::rancor::Error,
-        >,
-    >,
-    Archived<V>: rkyv::Deserialize<
-            V,
-            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
-        >,
-    for<'validation> Archived<V>: CheckBytes<
-        rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
-    >,
-{
 }
 
 #[cfg(test)]
