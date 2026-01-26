@@ -15,7 +15,13 @@ use std::{marker::PhantomData, time::Duration};
 
 use async_trait::async_trait;
 
-use crate::spi::{cache::Cache as CachePort, errors::CacheError};
+use crate::spi::{
+    cache::{
+        Cache as CachePort, CacheReader as CacheReaderPort,
+        CacheWriter as CacheWriterPort,
+    },
+    errors::CacheError,
+};
 
 /// In-memory cache using the `moka` library.
 ///
@@ -24,7 +30,7 @@ use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 /// ```rust
 /// use std::time::Duration;
 ///
-/// use lithos_adapters::spi::cache::{Cache, MokaCache};
+/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, MokaCache};
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let cache = MokaCache::builder()
@@ -45,8 +51,7 @@ use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 /// by sequential scans (e.g., during vault indexing).
 ///
 /// ```rust
-/// # use lithos_adapters::spi::cache::MokaCache;
-/// # use lithos_adapters::spi::cache::Cache;
+/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, MokaCache};
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let cache = MokaCache::builder().max_capacity(10).build().unwrap();
 ///
@@ -77,7 +82,40 @@ where
 }
 
 #[async_trait]
-impl<K, V> CachePort<K, V> for Cache<K, V>
+impl<K, V> CacheReaderPort<K, V> for Cache<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[inline]
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
+        let hit = self.inner.get(key).await;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "get",
+            hit = hit.is_some()
+        );
+        Ok(hit)
+    }
+
+    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[inline]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        let exists = self.inner.contains_key(key);
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "has",
+            exists = exists
+        );
+        Ok(exists)
+    }
+}
+
+#[async_trait]
+impl<K, V> CacheWriterPort<K, V> for Cache<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
@@ -109,32 +147,6 @@ where
 
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
-    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
-        let hit = self.inner.get(key).await;
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "get",
-            hit = hit.is_some()
-        );
-        Ok(hit)
-    }
-
-    #[tracing::instrument(skip(self, key), level = "debug")]
-    #[inline]
-    async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        let exists = self.inner.contains_key(key);
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "has",
-            exists = exists
-        );
-        Ok(exists)
-    }
-
-    #[tracing::instrument(skip(self, key), level = "debug")]
-    #[inline]
     async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
         let existed = self.delete(key).await?;
         tracing::event!(
@@ -157,6 +169,14 @@ where
         );
         Ok(())
     }
+}
+
+#[async_trait]
+impl<K, V> CachePort<K, V> for Cache<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
 }
 
 impl<K, V> Cache<K, V>
