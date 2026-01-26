@@ -18,12 +18,12 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 **And** `RkyvCodec` implements this trait for zero-copy Redb storage
 
 **Given** the need for a common builder interface
-**When** I create `builder.rs`
-**Then** I implement concrete, fluent builders for each backend (`MokaBuilder`, `RedbBuilder`)
-**And** they handle backend-specific configuration (TTL vs Durability) without a leaky shared trait
+**When** I create concrete, fluent builders for each backend (`MokaBuilder`, `RedbBuilder`)
+**Then** they handle backend-specific configuration (TTL vs Durability) without a leaky shared trait
+**And** builders return `(Reader, Writer)` tuples instead of monolithic cache structs
 
 **Given** the Handle/Inner pattern is required
-**When** I refactor `MokaCache` and `RedbCache`
+**When** I refactor the unified `Cache<K, V>` structs in `moka.rs` and `redb.rs`
 **Then** the implementation is split into `Inner` structs (state) and Handles (interface)
 **And** `RedbInner` encapsulates the `Executor` for async/sync bridging
 **And** Handles are cheaply cloneable `Arc` wrappers
@@ -81,30 +81,31 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 ### Phase 2: Moka Split-Handle Refactor
 - [ ] Task 2: Refactor Moka to split handles
   - [ ] Subtask 2.1: [TDD] Write `moka_builder::builds_split_handles_with_custom_capacity` (failing)
-  - [ ] Subtask 2.2: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` in `moka.rs` (wrapping `Arc<Inner>`)
-  - [ ] Subtask 2.3: Implement `CacheReader` for `Reader` (get/has)
-  - [ ] Subtask 2.4: Implement `CacheWriter` for `Writer` (put/delete/clear)
-  - [ ] Subtask 2.5: Update `Builder::build()` to return `(Reader<K, V>, Writer<K, V>)`
-  - [ ] Subtask 2.6: Re-export `Builder` as `MokaBuilder`, `Reader` as `MokaReader`, and `Writer` as `MokaWriter` in `mod.rs`
-  - [ ] Subtask 2.7: Remove the unified `MokaCache` struct entirely
-  - [ ] Subtask 2.8: Run `mise run test:unit:adapters moka` (GREEN)
-  - [ ] Subtask 2.9: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 2.2: Define `pub struct Inner<K, V>` in `moka.rs` containing the `moka::future::Cache<K, V>` and `IdentityCodec`
+  - [ ] Subtask 2.3: Define `pub struct Reader<K, V, C = IdentityCodec>` and `pub struct Writer<K, V, C = IdentityCodec>` in `moka.rs` (wrapping `Arc<Inner<K, V>>`)
+  - [ ] Subtask 2.4: Implement `CacheReader` for `Reader` (get/has)
+  - [ ] Subtask 2.5: Implement `CacheWriter` for `Writer` (put/delete/clear)
+  - [ ] Subtask 2.6: Update `Builder::build()` to return `Result<(Reader<K, V>, Writer<K, V>), CacheError>` tuple
+  - [ ] Subtask 2.7: Re-export `Builder` as `MokaBuilder`, `Reader` as `MokaReader`, and `Writer` as `MokaWriter` in `mod.rs`
+  - [ ] Subtask 2.8: Remove the unified `Cache<K, V>` struct that implements both CacheReader and CacheWriter
+  - [ ] Subtask 2.9: Run `mise run test:unit:adapters moka` (GREEN)
+  - [ ] Subtask 2.10: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 2.10: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 2.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 2.12: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+  - [ ] Subtask 2.11: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 2.12: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 2.13: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 3: Redb Split-Handle Skeleton (Architecture First)
 - [ ] Task 3: Establish Redb API boundary
-  - [ ] Subtask 3.1: Define `pub struct Reader<K, V, C>` and `pub struct Writer<K, V, C>` stubs in `redb.rs`
+  - [ ] Subtask 3.1: Define `pub struct Reader<K, V, C = RkyvCodec>` and `pub struct Writer<K, V, C = RkyvCodec>` stubs in `redb.rs` with default codec parameter
   - [ ] Subtask 3.2: [TDD] Write `redb_api::builder_returns_split_handles` (failing)
-  - [ ] Subtask 3.3: Implement `Builder` struct returning `(Reader, Writer)` tuple (stubs)
+  - [ ] Subtask 3.3: Implement `Builder` struct returning `Result<(Reader<K, V, C>, Writer<K, V, C>), CacheError>` tuple (stubs)
   - [ ] Subtask 3.4: Re-export `Builder` as `RedbBuilder`, `Reader` as `RedbReader`, and `Writer` as `RedbWriter` in `mod.rs`
-  - [ ] Subtask 3.5: Delete the monolithic `RedbCache` struct to prevent usage
+  - [ ] Subtask 3.5: Delete the unified `Cache<K, V>` struct that implements both CacheReader and CacheWriter to prevent usage during refactor
   - [ ] Subtask 3.6: Run `mise run test:unit:adapters redb` (GREEN - minimal compile check)
   - [ ] Subtask 3.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -120,10 +121,11 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 - [ ] Task 4: Implement `RedbBuilder` configuration logic
   - [ ] Subtask 4.1: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
   - [ ] Subtask 4.2: Implement fluent methods for `path`, `table_name`, `durability` on `Builder`
-  - [ ] Subtask 4.3: [TDD] Write `redb_builder::initializes_db_with_correct_table` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 4.4: Add `tracing::instrument` to `build()`
-  - [ ] Subtask 4.5: Run `mise run test:unit:adapters builder` (GREEN)
-  - [ ] Subtask 4.6: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 4.3: Ensure `Builder::build()` returns `Result<(Reader<K, V, C>, Writer<K, V, C>), CacheError>` tuple with both handles sharing the same `Arc<Inner>`
+  - [ ] Subtask 4.4: [TDD] Write `redb_builder::initializes_db_with_correct_table` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 4.5: Add `tracing::instrument` to `build()`
+  - [ ] Subtask 4.6: Run `mise run test:unit:adapters builder` (GREEN)
+  - [ ] Subtask 4.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -148,15 +150,17 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 ### Phase 6: Inner State & Encapsulation
 - [ ] Task 6: Implement `Inner` structs and shareable state
   - [ ] Subtask 6.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` (generic over Codec)
-  - [ ] Subtask 6.2: Add fields: `db: Arc<redb::Database>`, `executor: Executor`, `table: TableDefinition<'static, [u8], [u8]>`, `codec: C`
+  - [ ] Subtask 6.2: Add fields: `db: Arc<redb::Database>`, `executor: Executor`, `table_name: Arc<str>`, `codec: C` (note: `TableDefinition` is reconstructed per transaction, not stored)
   - [ ] Subtask 6.3: Implement `Inner::new(...)` constructor
   - [ ] Subtask 6.4: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 6.5: Implement `write<F, T>(&self, f: F) -> Result<T, CacheError>` helper method
+  - [ ] Subtask 6.5: Implement `write<F, T>(&self, f: F) -> Result<T, CacheError>` helper method where `F: FnOnce(&WriteTransaction, TableDefinition<'static, [u8], [u8]>) -> Result<T, redb::Error>`
+    - Reconstruct `TableDefinition` from `self.table_name`
     - Use `self.executor.spawn()` to run the closure
     - Begin write transaction via `self.db.begin_write()`
     - Commit transaction at end of closure
     - Map all errors using `Executor::map_redb_error`
-  - [ ] Subtask 6.6: Implement `read<F, T>(&self, f: F) -> Result<T, CacheError>` helper method
+  - [ ] Subtask 6.6: Implement `read<F, T>(&self, f: F) -> Result<T, CacheError>` helper method where `F: FnOnce(&ReadTransaction, TableDefinition<'static, [u8], [u8]>) -> Result<T, redb::Error>`
+    - Reconstruct `TableDefinition` from `self.table_name`
     - Use `self.executor.spawn()`
     - Begin read transaction
     - No commit needed
@@ -171,14 +175,15 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ### Phase 7: Redb Handle Logic (Zero-Copy)
 - [ ] Task 7: Implement logic for `Reader` and `Writer`
-  - [ ] Subtask 7.1: Update `Reader` and `Writer` to wrap `Arc<Inner>` (populate the stubs from Phase 3)
-  - [ ] Subtask 7.2: [TDD] Write `cqrs::prevents_reader_access_to_port_writer_methods` (failing)
+  - [ ] Subtask 7.1: Update `Reader` and `Writer` to wrap `Arc<Inner<K, V, C>>` (populate the stubs from Phase 3)
+  - [ ] Subtask 7.2: [TDD] Write `cqrs::prevents_reader_access_to_writer_methods` (failing - compile-time verification that Reader doesn't implement CacheWriter)
   - [ ] Subtask 7.3: Implement `CacheReader` for `Reader` using `inner.read()`
   - [ ] Subtask 7.4: Implement `CacheWriter` for `Writer` using `inner.write()`
   - [ ] Subtask 7.5: [TDD] Write `redb_reader::returns_entry_view_without_allocating` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 7.6: Implement `EntryView` for true zero-copy retrieval using `AccessGuard`
-  - [ ] Subtask 7.7: Run `mise run test:unit:adapters` (GREEN)
-  - [ ] Subtask 7.8: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 7.6: Define `pub struct EntryView<'guard, V>` that wraps `AccessGuard<'guard, [u8]>` for zero-copy retrieval
+  - [ ] Subtask 7.7: Implement `EntryView` to provide zero-copy access to archived data using `rkyv::access` without deserialization in the hot path
+  - [ ] Subtask 7.8: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 7.9: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -187,12 +192,18 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ### Phase 8: API Transparency & Friendly Names
 - [ ] Task 8: Implement default type parameters and aliases
-  - [ ] Subtask 8.1: Update `Reader/Writer` handles to use `C = RkyvCodec` default in `redb.rs`
-  - [ ] Subtask 8.2: Verify re-exports in `mod.rs` (`pub use redb::{Reader as RedbReader, Writer as RedbWriter}`)
-  - [ ] Subtask 8.3: [TDD] Write `api::allows_usage_without_specifying_codec` (failing)
-  - [ ] Subtask 8.4: Implement re-exports to hide `Inner` and `Executor` from the public SPI
-  - [ ] Subtask 8.5: Run `mise run test:unit:adapters` (GREEN)
-  - [ ] Subtask 8.6: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 8.1: Update `Reader/Writer` handles to use `C = RkyvCodec` default in `redb.rs` (already done in Phase 3)
+  - [ ] Subtask 8.2: Remove deprecated exports from `mod.rs`:
+    - Remove `pub use self::moka::{Builder as MokaCacheBuilder, Cache as MokaCache}`
+    - Remove `pub use self::redb::{Cache as RedbCache, ...}`
+  - [ ] Subtask 8.3: Add new exports to `mod.rs`:
+    - `pub use self::moka::{Builder as MokaBuilder, Reader as MokaReader, Writer as MokaWriter}`
+    - `pub use self::redb::{Builder as RedbBuilder, Reader as RedbReader, Writer as RedbWriter}`
+  - [ ] Subtask 8.4: Keep existing `Entry as CacheEntry` and `Outcome as CacheResult` exports (these remain unchanged)
+  - [ ] Subtask 8.5: Ensure `Inner` and `Executor` remain `pub(crate)` and are not re-exported (hidden from public SPI)
+  - [ ] Subtask 8.6: [TDD] Write `api::allows_usage_without_specifying_codec` (failing)
+  - [ ] Subtask 8.7: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 8.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -201,7 +212,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ### Phase 9: Final Refactor & NFR Verification
 - [ ] Task 9: Complete refactor with performance and observability audit
-  - [ ] Subtask 9.1: Remove all legacy monolithic code from `redb.rs` and `moka.rs`
+  - [ ] Subtask 9.1: Remove unified `Cache<K, V>` struct implementations from `redb.rs` and `moka.rs` after Reader/Writer handles are complete and tested
   - [ ] Subtask 9.2: [TDD] Write `observability::emits_nested_spans_for_transactions` (failing)
   - [ ] Subtask 9.3: Verify nested spans using `TestTracingSubscriber` across all new components
   - [ ] Subtask 9.4: [TDD] Write `nfr::zero_copy_probe::verifies_direct_pointer_access` (failing)
@@ -218,11 +229,15 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 - [ ] Task 10: Comprehensive project verification
   - [ ] Subtask 10.1: Perform a final "Trait Bound Audit" ensuring zero `rkyv` noise in backend files
   - [ ] Subtask 10.2: Verify that `RedbReader` and `RedbWriter` correctly use `tracing` for all I/O
-  - [ ] Subtask 10.3: Run `mise run fmt` and verify formatting compliance
-  - [ ] Subtask 10.4: Run `mise run lint` one final time
-  - [ ] Subtask 10.5: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 10.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 10.7: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+  - [ ] Subtask 10.3: Verify API compatibility with Story 5.5 (CacheCoordinator) requirements:
+    - Confirm `MokaReader`, `MokaWriter`, `RedbReader`, `RedbWriter` all implement respective trait ports (`CacheReader`, `CacheWriter`)
+    - Confirm handles can be wrapped in `Arc<dyn CacheReader<K, V>>` and `Arc<dyn CacheWriter<K, V>>`
+    - Document in module-level docs how to construct coordinator-compatible handles
+  - [ ] Subtask 10.4: Run `mise run fmt` and verify formatting compliance
+  - [ ] Subtask 10.5: Run `mise run lint` one final time
+  - [ ] Subtask 10.6: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 10.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 10.8: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -238,14 +253,22 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 - **Durability Tuning**: To meet ASR-01 and ASR-02, we will implement `Durability::None` as the cache default. This bypasses the `fsync` bottleneck (disk flush), leveraging OS-level write buffering to increase throughput by 10x–100x while maintaining persistence across process restarts.
 - **Transaction Batching**: The `Inner` core is designed to support the grouping of multiple `put` operations into single `WriteTransaction` calls via the `Executor`, significantly reducing lock contention.
 
-#### Modular Backend Components (Redb Engine)
-- **`Executor`**: A private utility that "swallows" the async/sync friction. It encapsulates `tokio::task::spawn_blocking`, manages nested `info_span` instrumentation for transactions, and centralizes `CacheError` mapping.
-- **`Inner<K, V, C>`**: The private, non-clonable core aggregator. It holds the `Arc<redb::Database>`, `Executor`, `TableDefinition`, and the `Codec`. It is the single source of truth for the database connection, hidden from the public API.
+#### Modular Backend Components
+- **Moka Backend**:
+  - **`Inner<K, V>`**: Wraps `moka::future::Cache<K, V>` with `IdentityCodec` for no-op serialization
+  - **`Reader<K, V, C = IdentityCodec>`** and **`Writer<K, V, C = IdentityCodec>`**: CQRS handles with codec type parameter for API uniformity
+- **Redb Backend**:
+  - **`Executor`**: A private utility that "swallows" the async/sync friction. It encapsulates `tokio::task::spawn_blocking`, manages nested `info_span` instrumentation for transactions, and centralizes `CacheError` mapping.
+  - **`Inner<K, V, C>`**: The private, non-clonable core aggregator. It holds the `Arc<redb::Database>`, `Executor`, `table_name: Arc<str>` (reconstructs `TableDefinition` per transaction), and the `Codec`. It is the single source of truth for the database connection, hidden from the public API.
 
 #### Capability-Based CQRS Handles
-- **`Reader<K, V, C>`**: Restricts access to `get` and `has`. Implements `CacheReaderPort`.
-- **`Writer<K, V, C>`**: Restricts access to `put`, `delete`, and `clear`. Implements `CacheWriterPort`.
-- **Type Aliasing**: To keep the SPI lean, these are re-exported as `RedbReader/Writer` and `MokaReader/Writer` with `C = RkyvCodec` as the default type parameter.
+- **Moka Handles**:
+  - **`Reader<K, V, C = IdentityCodec>`**: Restricts access to `get` and `has`. Implements `CacheReader`.
+  - **`Writer<K, V, C = IdentityCodec>`**: Restricts access to `put`, `delete`, and `clear`. Implements `CacheWriter`.
+- **Redb Handles**:
+  - **`Reader<K, V, C = RkyvCodec>`**: Restricts access to `get` and `has`. Implements `CacheReader`.
+  - **`Writer<K, V, C = RkyvCodec>`**: Restricts access to `put`, `delete`, and `clear`. Implements `CacheWriter`.
+- **Type Aliasing**: To keep the SPI lean, these are re-exported as `MokaReader/Writer` and `RedbReader/Writer` with codec defaults.
 
 #### Implementation Flows (Redb)
 - **Read Path**: `Executor` runs `spawn_blocking` -> `Inner` starts Read Transaction -> `TableDefinition` retrieves value -> `Codec::decode_value` validates bytes -> `EntryView` returns the pointer.
@@ -259,6 +282,10 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 ### Technical Requirements
 - **Zero-Copy**: Must maintain `rkyv` zero-copy benefits through the `CacheCodec` abstraction.
 - **Thread Safety**: All handles and inner states must remain `Send + Sync`.
+- **Codec Strategy**:
+  - **Moka (in-memory)**: Uses `IdentityCodec` for no-op pass-through since values are already in memory and don't require serialization.
+  - **Redb (persistent)**: Uses `RkyvCodec` for zero-copy serialization/deserialization with `rkyv`.
+  - Both backends use the same `Codec<K, V>` trait for API uniformity, enabling potential future codec implementations.
 
 ### References
 - [Source: project-context.md#Handle-Inner-Pattern]
