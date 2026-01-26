@@ -14,7 +14,8 @@ So that cache hits are served fast from memory, misses fall back to disk, and co
 
 **Given** coordinated caching requires both layers
 **When** I implement `CacheCoordinator<K, V>` in `spi/cache/coordinator.rs`
-**Then** it wraps:
+**Then** it leverages the modular `Reader` and `Writer` handles from Story 5.4
+**And** it wraps:
 
 - `memory_reader: Arc<dyn CacheReader<K, V>>`
 - `memory_writer: Arc<dyn CacheWriter<K, V>>`

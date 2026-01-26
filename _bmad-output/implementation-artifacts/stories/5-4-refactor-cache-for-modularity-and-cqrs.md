@@ -30,7 +30,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 **Given** CQRS principles
 **When** I implement separate `Reader` and `Writer` handles
 **Then** consumers can request read-only or write-only access to the cache
-**And** the `CacheCoordinator` uses these separate handles for orchestration
+**And** the handles are compatible with multi-layer coordination requirements
 
 **Given** the refactor must maintain quality
 **When** I follow strict TDD
@@ -124,14 +124,12 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 7.4: Verify `Durability::None` configuration actually impacts performance in a micro-benchmark
   - [ ] Subtask 7.5: Run `mise run verify` (GREEN)
 
-### Phase 8: Coordinator Integration & Final Test Review
-- [ ] Task 8: Update Coordinator and conduct project-wide verification
-  - [ ] Subtask 8.1: Update `CacheCoordinator` to use the separate Reader/Writer handles
-  - [ ] Subtask 8.2: [TDD] Write failing tests for coordinator "Backfill" (L2 Reader -> L1 Writer)
-  - [ ] Subtask 8.3: Implement backfill orchestration using the new CQRS handles
-  - [ ] Subtask 8.4: Perform a final "Trait Bound Audit" ensuring zero `rkyv` noise in `redb.rs`
-  - [ ] Subtask 8.5: Run `mise run verify` and `pre-commit run --all-files`
-  - [ ] Subtask 8.6: Stage and commit all changes with a descriptive conventional commit message
+### Phase 8: Final Review & Quality Gate
+- [ ] Task 8: Comprehensive project verification
+  - [ ] Subtask 8.1: Perform a final "Trait Bound Audit" ensuring zero `rkyv` noise in `redb.rs`
+  - [ ] Subtask 8.2: Verify that `Reader` and `Writer` handles are ready for coordination (implementing necessary trait bounds)
+  - [ ] Subtask 8.3: Run `mise run verify` and `pre-commit run --all-files`
+  - [ ] Subtask 8.4: Stage and commit all changes with a descriptive conventional commit message
 
 ## Dev Notes
 
