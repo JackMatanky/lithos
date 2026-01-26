@@ -80,10 +80,6 @@ impl Executor {
     ///
     /// Returns `CacheError` if the task panics or the operation fails.
     #[inline]
-    #[expect(
-        dead_code,
-        reason = "Used in Phase 6 for Inner read/write helpers"
-    )]
     async fn spawn<F, R>(
         &self,
         span: tracing::Span,
@@ -120,27 +116,74 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    #[expect(
-        dead_code,
-        reason = "Used in Phase 6/7 for read/write operations"
-    )]
     db: Arc<redb::Database>,
-    #[expect(
-        dead_code,
-        reason = "Used in Phase 6/7 for read/write operations"
-    )]
     executor: Executor,
-    #[expect(
-        dead_code,
-        reason = "Used in Phase 6/7 for read/write operations"
-    )]
     table_name: Arc<str>,
     #[expect(
         dead_code,
-        reason = "Used in Phase 6/7 for read/write operations"
+        reason = "Codec will be used in future for custom serialization \
+                  strategies"
     )]
     codec: C,
     _marker: std::marker::PhantomData<(K, V)>,
+}
+
+impl<K, V, C> Inner<K, V, C>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    /// Execute a read operation.
+    #[inline]
+    #[expect(
+        dead_code,
+        reason = "Used in Phase 7 for CacheReader trait implementation"
+    )]
+    async fn read<F, R>(&self, f: F) -> Result<R, CacheError>
+    where
+        F: FnOnce(&redb::ReadTransaction, &str) -> Result<R, redb::Error>
+            + Send
+            + 'static,
+        R: Send + 'static,
+    {
+        let db = Arc::clone(&self.db);
+        let table_name = Arc::clone(&self.table_name);
+        let span = info_span!("redb_read", table = %table_name);
+
+        self.executor
+            .spawn(span, move || {
+                let txn = db.begin_read()?;
+                f(&txn, &table_name)
+            })
+            .await
+    }
+
+    /// Execute a write operation.
+    #[inline]
+    #[expect(
+        dead_code,
+        reason = "Used in Phase 7 for CacheWriter trait implementation"
+    )]
+    async fn write<F, R>(&self, f: F) -> Result<R, CacheError>
+    where
+        F: FnOnce(&redb::WriteTransaction, &str) -> Result<R, redb::Error>
+            + Send
+            + 'static,
+        R: Send + 'static,
+    {
+        let db = Arc::clone(&self.db);
+        let table_name = Arc::clone(&self.table_name);
+        let span = info_span!("redb_write", table = %table_name);
+
+        self.executor
+            .spawn(span, move || {
+                let txn = db.begin_write()?;
+                let result = f(&txn, &table_name)?;
+                txn.commit()?;
+                Ok(result)
+            })
+            .await
+    }
 }
 
 /// Read-only handle for Redb cache.
