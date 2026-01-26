@@ -95,7 +95,132 @@ So that note metadata can be indexed and queried.
 **When** I validate completeness
 **Then** all standard frontmatter fields are properly extracted
 
-## Story 10.5: Create Vault Indexing Engine with Incremental Updates
+## Story 10.5: Implement Frontmatter Validation Service
+
+As a user editing notes,
+I want frontmatter validated against schemas with clear warnings,
+So that I know if my metadata is incorrect without blocking note usage.
+
+**Acceptance Criteria:**
+
+### **Service Location (Application Layer):**
+
+**Given** frontmatter validation is application-layer orchestration
+**When** I create the service
+**Then** implement in `crates/app/src/services/frontmatter_validator.rs`
+**And** it is NOT an adapter (does not implement port trait)
+**And** it orchestrates domain logic and adapters (SchemaQuery, Note validation)
+
+**Given** service dependencies
+**When** I design the service
+**Then** it depends on `SchemaQuery` port (Epic 7) for schema lookup
+**And** it uses `Note` and `Frontmatter` domain aggregates (Epic 3)
+**And** it uses `Property` and `PropertySpec` for constraint validation (Epic 3)
+
+### **Validation Logic:**
+
+**Given** FrontmatterValidator.validate(note: &Note) method
+**When** I implement validation
+**Then** extract `fileClass` from note.frontmatter.fields
+**And** if no `fileClass`, return Ok(vec![]) (no schema defined, no validation)
+**And** call `schema_query.get(fileClass)` → Option<Schema>
+**And** if schema not found, return `Ok(vec![ComplianceWarning::SchemaNotFound(fileClass)])`
+**And** if schema found, validate all properties against schema
+
+**Given** property validation
+**When** I check each schema property
+**Then** for required properties: verify field exists in frontmatter
+**And** if missing, add `ComplianceWarning::MissingField { property, schema }`
+**And** for present properties: validate type and constraints
+
+**Given** type validation
+**When** I check property type
+**Then** for PropertySpec::String: verify frontmatter value is string
+**And** for PropertySpec::Number: verify frontmatter value is number
+**And** for PropertySpec::Bool: verify frontmatter value is bool
+**And** for PropertySpec::Date: verify frontmatter value is valid date string
+**And** for PropertySpec::File: verify frontmatter value is string (file reference)
+**And** if type mismatch, add `ComplianceWarning::TypeError { property, expected, actual }`
+
+**Given** constraint validation (string)
+**When** PropertySpec::String has constraints
+**Then** if `enum` is set: verify value is in allowed list
+**And** if `pattern` is set: verify value matches regex
+**And** if violation, add `ComplianceWarning::ConstraintViolation { property, constraint, value }`
+
+**Given** constraint validation (number)
+**When** PropertySpec::Number has constraints
+**Then** if `min` is set: verify value >= min
+**And** if `max` is set: verify value <= max
+**And** if `step` is set: verify (value - min) % step == 0 (if min exists)
+**And** if violation, add `ComplianceWarning::ValueOutOfRange { property, value, min, max }`
+
+**Given** array property validation
+**When** property has `array: true`
+**Then** verify frontmatter value is YAML array (Vec<Value>)
+**And** validate each array element against PropertySpec
+**And** if any element violates constraints, add warning for that index
+
+### **ComplianceWarning Types:**
+
+**Given** validation returns warnings (not errors)
+**When** I define warning types
+**Then** create enum in `crates/app/src/services/compliance_warning.rs`:
+```rust
+pub enum ComplianceWarning {
+    SchemaNotFound { file_class: String },
+    MissingField { property: String, schema: String },
+    TypeError { property: String, expected: String, actual: String },
+    ConstraintViolation { property: String, constraint: String, value: String },
+    ValueOutOfRange { property: String, value: String, min: Option<f64>, max: Option<f64> },
+}
+```
+
+**Given** warnings are non-blocking
+**When** validation returns warnings
+**Then** note usage continues (not rejected)
+**And** warnings can be surfaced to user (CLI, LSP future)
+**And** warnings stored in index metadata (for later query)
+
+### **Integration with Indexing:**
+
+**Given** NoteIndexer (Story 10.5) processes notes
+**When** I integrate frontmatter validation
+**Then** after parsing frontmatter (Story 10.4), call `FrontmatterValidator::validate(note)`
+**And** store warnings in indexed note metadata
+**And** log warnings at debug level: "Note {path} has {count} frontmatter warnings"
+**And** indexing continues regardless of warnings (non-blocking)
+
+### **Error Handling:**
+
+**Given** validation operations
+**When** I handle errors
+**Then** SchemaQuery errors are converted to warnings (e.g., SchemaNotFound)
+**And** regex compilation errors in pattern constraints are logged + skipped (config error)
+**And** unexpected errors (e.g., schema cache failure) are logged but don't block validation
+
+### **Testing:**
+
+**Given** FrontmatterValidator is implemented
+**When** I write unit tests
+**Then** test schema not found (fileClass undefined) → no warnings
+**And** test schema not found (fileClass="unknown") → SchemaNotFound warning
+**And** test required field missing → MissingField warning
+**And** test type mismatch (string expected, number provided) → TypeError warning
+**And** test enum violation (value not in list) → ConstraintViolation warning
+**And** test pattern violation (regex mismatch) → ConstraintViolation warning
+**And** test number out of range (value > max) → ValueOutOfRange warning
+**And** test array property validation (each element checked)
+**And** test valid note (all constraints satisfied) → no warnings
+**And** use `example_vault` schemas + notes as test fixtures
+
+**Given** integration with indexing
+**When** I test end-to-end
+**Then** index note with invalid frontmatter → warnings stored in index
+**And** query note → warnings accessible via index metadata
+**And** note still usable despite warnings
+
+## Story 10.6: Create Vault Indexing Engine with Incremental Updates
 
 As a developer building the indexing system,
 I want an indexing engine that supports incremental updates and rename detection,
@@ -155,7 +280,7 @@ So that only changed files are reprocessed and note identity is preserved across
 **Then** they can configure: rename_detection strategy, auto_accept_threshold, interactive_prompts, allow_content_hashing, frontmatter_signature_fields
 **And** they can disable rename detection entirely for performance-critical scenarios
 
-## Story 10.6: Add Indexing Performance Optimization and Monitoring
+## Story 10.7: Add Indexing Performance Optimization and Monitoring
 
 As a developer optimizing indexing performance,
 I want performance monitoring and optimization for NFR2 compliance,
@@ -179,7 +304,7 @@ So that vault indexing completes in <2 seconds for 1000+ files.
 **When** I validate bounds
 **Then** indexing stays within NFR9 500MB memory limit
 
-## Story 10.7: Implement Indexing Error Recovery and Crash Prevention
+## Story 10.8: Implement Indexing Error Recovery and Crash Prevention
 
 As a developer ensuring indexing reliability,
 I want error recovery and crash prevention mechanisms,
@@ -199,7 +324,7 @@ So that indexing failures don't corrupt the system or lose data.
 **When** I validate robustness
 **Then** indexing achieves zero crashes during normal vault operations (NFR25)
 
-## Story 10.8: Integrate Indexing with Storage Persistence
+## Story 10.9: Integrate Indexing with Storage Persistence
 
 As a developer coordinating indexing with storage,
 I want indexing results persisted to storage,
@@ -219,7 +344,7 @@ So that indexed data is available for queries and survives restarts.
 **When** I restart the system
 **Then** indexed data is available without re-indexing
 
-## Story 10.9: Implement Indexing Event Publishing
+## Story 10.10: Implement Indexing Event Publishing
 
 As a developer coordinating indexing with the event system,
 I want indexing to publish events for system coordination,
@@ -239,7 +364,7 @@ So that other components are notified of indexing progress and completion.
 **When** I validate integration
 **Then** other epics can subscribe to indexing events without tight coupling
 
-## Story 10.10: Implement Indexing State Persistence
+## Story 10.11: Implement Indexing State Persistence
 
 As a developer enabling resumable indexing,
 I want indexing state persisted for interruption recovery,
@@ -259,7 +384,7 @@ So that long-running indexing operations can resume after interruptions.
 **When** I validate reliability
 **Then** large vault indexing survives system interruptions gracefully
 
-## Story 10.11: Create Sample Vault Test Data
+## Story 10.12: Create Sample Vault Test Data
 
 As a developer testing indexing functionality,
 I want representative sample vault data,
@@ -279,7 +404,7 @@ So that indexing can be tested with realistic data volumes and patterns.
 **When** I benchmark performance
 **Then** test results are representative of real vault indexing performance
 
-## Story 10.12: Create Vault Operation Mocks for Testing
+## Story 10.13: Create Vault Operation Mocks for Testing
 
 As a developer testing vault-dependent code,
 I want comprehensive mocks for vault operations,
@@ -299,7 +424,7 @@ So that vault interactions can be tested in isolation without filesystem access.
 **When** I use mocks
 **Then** they simulate realistic vault behavior for comprehensive testing
 
-## Story 10.13: Performance Benchmarking for Vault Indexing (NFR2 Validation)
+## Story 10.14: Performance Benchmarking for Vault Indexing (NFR2 Validation)
 
 As a performance engineer, I want comprehensive benchmarks for vault indexing operations, so that NFR2 (<2s for 1000+ files) is validated and monitored.
 **Acceptance Criteria:**
@@ -315,7 +440,7 @@ As a performance engineer, I want comprehensive benchmarks for vault indexing op
 **And** performance regressions are detected
 **And** scaling characteristics are documented
 
-## Story 10.14: Vault Operation Monitoring and Health Checks
+## Story 10.15: Vault Operation Monitoring and Health Checks
 
 As a system administrator, I want continuous monitoring of vault operations, so that performance issues and failures are detected before they impact users.
 **Acceptance Criteria:**
@@ -331,7 +456,7 @@ As a system administrator, I want continuous monitoring of vault operations, so 
 **And** they trigger automatic recovery procedures
 **And** they log detailed diagnostic information
 
-## Story 10.15: Redb Storage Performance Regression Testing
+## Story 10.16: Redb Storage Performance Regression Testing
 
 As a performance engineer, I want automated regression tests for Redb storage operations, so that the architectural choice of Redb + rkyv remains optimal and performance degradation is caught immediately.
 **Acceptance Criteria:**
@@ -342,7 +467,7 @@ As a performance engineer, I want automated regression tests for Redb storage op
 **And** query performance regressions trigger alerts and investigation
 **And** storage benchmarks run in CI/CD pipeline for every change
 
-## Story 10.16: Review Epic 10 Test Suite
+## Story 10.17: Review Epic 10 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 10 test suite to its foundation,
@@ -386,7 +511,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
 
-## Story 10.17: Document Vault Indexing System for Developers
+## Story 10.18: Document Vault Indexing System for Developers
 
 As a developer working with vault operations,
 I want comprehensive developer documentation for indexing,
