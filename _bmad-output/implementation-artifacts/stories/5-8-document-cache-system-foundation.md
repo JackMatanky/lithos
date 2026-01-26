@@ -1,4 +1,4 @@
-# Story 5.7: Document Cache System Foundation
+# Story 5.8: Document Cache System Foundation
 
 Status: ready-for-dev
 
@@ -177,7 +177,7 @@ So that I understand how to use the generic primitives in domain-specific contex
 ### References
 - [Source: project-context.md#Documentation-as-Agent-Glue]
 - [Source: project-context.md#Doc-Tests]
-- [Source: Story 5.1 - 5.6]
+- [Source: Story 5.1 - 5.7]
 
 ## Dev Agent Record
 
