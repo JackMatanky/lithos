@@ -31,7 +31,7 @@ use crate::spi::{cache::Cache as CachePort, errors::CacheError};
 pub type MetadataMap = HashMap<String, String>;
 
 /// Type alias for cache retrieval results with metadata.
-pub type MetadataResult<V> = Result<Option<(V, MetadataMap)>, CacheError>;
+pub type Outcome<V> = Result<Option<(V, MetadataMap)>, CacheError>;
 
 /// A wrapper for cached values with persistence metadata.
 #[derive(Archive, Serialize, Deserialize, CheckBytes)]
@@ -299,7 +299,7 @@ where
         )
     )]
     #[inline]
-    pub async fn get_with_metadata(&self, key: &K) -> MetadataResult<V>
+    pub async fn get_with_metadata(&self, key: &K) -> Outcome<V>
     where
         K: Clone + Send + Sync + 'static,
         V: Clone + Send + Sync + 'static,
