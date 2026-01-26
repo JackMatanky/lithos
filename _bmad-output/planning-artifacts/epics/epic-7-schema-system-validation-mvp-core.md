@@ -14,18 +14,18 @@ Users can define metadata schemas with field types, inheritance, and validation 
 - **Validator**: JSON Schema + semantic validation against vault-schema.schema.json
 - **SchemaResolver**: Handles inheritance (extends/excludes) + circular dependency detection
 - **Singleton Pattern**: `Arc<OnceLock<PropertyBank>>` (immutable) + `Arc<RwLock<HashMap>>` (runtime overrides)
-- **Caching Strategy**: Decoupled `SchemaCache` trait with Redb implementation (Epic 5)
+- **Caching Strategy**: CQRS-split cache traits (CacheQuery/CacheCommand) with Redb implementation (Epic 5)
 - **Adapter Structure**: `crates/adapters/src/spi/schema/` contains query.rs, command.rs, loader.rs, decoder.rs, validator.rs, cache.rs, registry.rs
 - **Note:** Frontmatter validation moved to Epic 10.6 (application layer)
 - **Note:** Schema-template integration moved to Epic 12.4 (template system)
 
 ---
 
-## Story 7.1: Create Default Schema Files & Fix vault-schema.schema.json
+## Story 7.1: Fix vault-schema.schema.json for User Format
 
 As a developer setting up Epic 7,
-I want corrected vault-schema.schema.json and comprehensive example vault,
-So that validation matches user format and provides starter kit + test fixtures.
+I want corrected vault-schema.schema.json that validates user schema format,
+So that validation matches user format expectations.
 
 **Acceptance Criteria:**
 
@@ -80,6 +80,16 @@ So that validation matches user format and provides starter kit + test fixtures.
 **Then** DELETE `docs/schemas/lithos.schema.json`
 **And** CREATE `example_vault/.lithos/schemas/vault-schema.schema.json`
 **And** remove internal domain concepts (Property.id, PropertySpec, resolved_properties)
+
+---
+
+## Story 7.2: Create example_vault with Default Schemas
+
+As a developer setting up Epic 7,
+I want comprehensive example vault with all default schemas,
+So that I have starter kit + test fixtures.
+
+**Acceptance Criteria:**
 
 ### **Example Vault Structure:**
 
@@ -156,7 +166,7 @@ example_vault/
 
 ---
 
-## Story 7.2: Implement SchemaLoader with PathValidator
+## Story 7.3: Implement SchemaLoader with PathValidator
 
 As a developer loading schema files,
 I want robust file loading with security validation,
@@ -232,7 +242,7 @@ So that schema files are safely read from disk before processing.
 
 ---
 
-## Story 7.3: Implement Decoder (Format Normalization)
+## Story 7.4: Implement Decoder (Format Normalization)
 
 As a developer transforming schema files,
 I want format normalization from user object format to domain array format,
@@ -379,7 +389,7 @@ RawSchema {
 
 ---
 
-## Story 7.4: Implement Validator (JSON Schema + Semantic Validation)
+## Story 7.5: Implement Validator (JSON Schema + Semantic Validation)
 
 As a developer ensuring schema correctness,
 I want syntactic and semantic validation of user schemas,
@@ -489,7 +499,7 @@ So that invalid schemas are rejected early with clear error messages.
 
 ---
 
-## Story 7.5: Implement SchemaResolver (Circular Check + Inheritance)
+## Story 7.6: Implement SchemaResolver (Circular Check + Inheritance)
 
 As a developer resolving schema inheritance,
 I want schemas resolved in topological order with parent property merging,
@@ -595,7 +605,7 @@ So that complex inheritance chains produce correct final schemas.
 
 ---
 
-## Story 7.6: Implement SchemaCache (Epic 5 Integration)
+## Story 7.7: Implement SchemaCache (Epic 5 Integration)
 
 As a developer optimizing schema loading,
 I want persistent caching of resolved schemas,
@@ -715,7 +725,7 @@ pub trait SchemaCache: Send + Sync {
 
 ---
 
-## Story 7.7: Implement PropertyBank Singleton Registry
+## Story 7.8: Implement PropertyBank Singleton Registry
 
 As a developer managing reusable properties,
 I want PropertyBank singleton with fast access and runtime overrides,
@@ -820,7 +830,7 @@ pub struct PropertyBankRegistry {
 
 ---
 
-## Story 7.8: Implement Schema Command Adapters
+## Story 7.9: Implement Schema Command Adapters
 
 As a developer coordinating schema operations,
 I want Command and Query adapters orchestrating all schema utilities,
@@ -984,13 +994,22 @@ pub use registry::PropertyBankRegistry;
 
 ---
 
-## Story 7.9: Review Epic 7 Test Suite
+## Story 7.10: Review Epic 7 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 7 test suite to its foundation,
 So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
+
+### **Test Suite Review:**
+
+**Given** tests are written
+**When** I review test documentation
+**Then** all tests include BDD-style comments (GIVEN-WHEN-THEN)
+**And** test names clearly describe behavior being tested
+**And** any developer can understand test purpose without reading implementation
+**And** BDD comments explain business context, not just technical steps
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards
 **When** I reference the guide during review
@@ -1043,7 +1062,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 
 ---
 
-## Story 7.10: Document Schema System
+## Story 7.11: Document Schema System
 
 As a developer working with the schema system,
 I want comprehensive documentation for the adapter layer and user guidance,
