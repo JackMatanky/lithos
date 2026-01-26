@@ -984,15 +984,13 @@ pub use registry::PropertyBankRegistry;
 
 ---
 
-## Story 7.9: Review Epic 7 Test Suite & Documentation
+## Story 7.9: Review Epic 7 Test Suite
 
 As a senior developer conducting adversarial code review,
-I want to brutally critique and improve the Epic 7 test suite and documentation to its foundation,
-So that tests are comprehensive, maintainable, documentation is clear, and the system catches real-world issues before production deployment.
+I want to brutally critique and improve the Epic 7 test suite to its foundation,
+So that tests are comprehensive, maintainable, and catch real-world issues before production deployment.
 
 **Acceptance Criteria:**
-
-### **Test Suite Review:**
 
 **Given** `_bmad-output/test-design-system.md` and `_bmad-output/test-developer-guide.md` provide testing standards
 **When** I reference the guide during review
@@ -1043,7 +1041,17 @@ So that tests are comprehensive, maintainable, documentation is clear, and the s
 **And** test concurrent access (multiple threads)
 **And** benchmark: <10ns for base lookup, <50ns for override lookup
 
-### **Documentation Creation:**
+---
+
+## Story 7.10: Document Schema System
+
+As a developer working with the schema system,
+I want comprehensive documentation for the adapter layer and user guidance,
+So that I understand how loading, resolution, and caching interact, and users can create schemas effectively.
+
+**Acceptance Criteria:**
+
+### **Developer Documentation:**
 
 **Given** Epic 7 implementation is complete
 **When** I create developer documentation
