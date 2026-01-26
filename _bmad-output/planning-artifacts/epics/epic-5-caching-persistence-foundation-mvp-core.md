@@ -215,56 +215,48 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 ## Story 5.5: Implement Cache Coordinator for Memory/Disk Read-Through and Write-Through
 
 As a system architect ensuring consistency,
-I want a `CacheCoordinator` struct that orchestrates memory and disk cache access,
-So that cache hits are served fast from memory, misses fall back to disk, and consistency is guaranteed.
+I want a `CacheCoordinator` split into Reader and Writer handles that orchestrates memory and disk access,
+So that cache hits are served fast, consistency is guaranteed, and the system follows strict CQRS principles.
 
 **Acceptance Criteria:**
 
 **Given** coordinated caching requires both layers
-**When** I implement `CacheCoordinator<K, V>` in `spi/cache/coordinator.rs`
-**Then** it wraps:
+**When** I implement `CoordinatorInner<K, V>` in `spi/cache/coordinator.rs`
+**Then** it leverages the modular `Reader` and `Writer` handles from Story 5.4
+**And** it encapsulates:
+- `memory_reader: Arc<dyn CacheReaderPort<K, V>>`
+- `memory_writer: Arc<dyn CacheWriterPort<K, V>>`
+- `disk_reader: Arc<dyn CacheReaderPort<K, V>>`
+- `disk_writer: Arc<dyn CacheWriterPort<K, V>>`
 
-- `memory: Box<dyn Cache<K, V>>` - fast in-memory cache (typically MokaCache)
-- `disk: Box<dyn Cache<K, V>>` - persistent disk cache (typically RedbCache)
+**Given** the need for CQRS consistency
+**When** I implement `CacheCoordinatorReader` and `CacheCoordinatorWriter`
+**Then** they share the `CoordinatorInner` state via `Arc`
+**And** the `Reader` handle only implements `CacheReaderPort`
+**And** the `Writer` handle only implements `CacheWriterPort`
 
-**And** constructor `new(memory: Box<dyn Cache<K, V>>, disk: Box<dyn Cache<K, V>>)` accepts pre-configured caches
-
-**Given** read-through caching must be implemented
-**When** I implement `get()` for the coordinator
-**Then** the flow is:
-
-1. Check memory cache
-2. If memory hit: Return value immediately, emit `tracing::event!` at `Level::DEBUG` with "Memory Hit"
-3. If memory miss: Check disk cache
-4. If disk hit: Backfill memory with the value, emit `tracing::event!` at `Level::INFO` with "Memory Miss / Disk Hit", return value
-5. If disk miss: Emit `tracing::event!` at `Level::INFO` with "Disk Miss", return None
+**Given** read-through caching must be high-performance
+**When** a "Memory Miss / Disk Hit" occurs in `Reader::get()`
+**Then** the coordinator triggers an **asynchronous backfill** to memory
+**And** the backfill is decoupled from the return path using an internal channel
+**And** `get()` returns the value to the caller immediately without waiting for the memory write
 
 **Given** write-through caching must ensure consistency
 **When** I implement `put()` for the coordinator
 **Then** the flow is:
-
 1. Write to disk first (persistence)
 2. If disk write succeeds: Write to memory (in-memory cache)
 3. If disk write fails: Return error WITHOUT writing to memory (prevent inconsistency)
-4. Emit `tracing::event!` at `Level::DEBUG` with "Cache Write" including key (if serializable)
-
-**And** both layers must succeed or neither is modified (consistency coordination)
 
 **Given** invalidation must affect both layers
 **When** I implement `delete()` and `invalidate()`
-**Then** both memory and disk caches are invalidated
-**And** if either fails, the error is logged but both operations attempt to complete (best effort)
-**And** returns true if key existed in either layer
-
-**Given** the coordinator must implement the trait
-**When** I implement `Cache<K, V>` for `CacheCoordinator<K, V>`
-**Then** all trait methods are satisfied
-**And** errors from underlying caches are propagated with layer context
+**Then** both memory and disk caches are invalidated in parallel (best effort)
+**And** the `Writer` handle manages this coordination logic
 
 **Given** observability is critical for debugging
 **When** I trace coordinator operations
 **Then** spans nest correctly: `coordinator` → `memory operation` → `disk operation`
-**And** each span includes `cache_layer`, `operation`, and `result` attributes
+**And** backfill events are emitted with `operation = "backfill"` and `status = "triggered"`
 
 ## Story 5.6: Implement Performance Benchmarking Suite
 
