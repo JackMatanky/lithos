@@ -26,7 +26,7 @@ use rkyv::{
 use tracing::{error, info, info_span};
 
 use crate::spi::{
-    cache::{CacheReader, CacheWriter},
+    cache::{CacheReader, CacheWriter, deserializer::RkyvCodec},
     errors::CacheError,
 };
 
@@ -49,17 +49,50 @@ pub struct Entry<V> {
     pub metadata: MetadataMap,
 }
 
+/// Inner state for Redb cache.
+///
+/// This struct holds the database connection and codec, wrapped by
+/// Reader/Writer handles. It's not directly clonable to enforce the use of Arc
+/// for sharing.
+#[derive(Debug)]
+pub(crate) struct Inner<K, V, C>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    #[expect(
+        dead_code,
+        reason = "Used in Phase 7 for CacheReader/CacheWriter implementation"
+    )]
+    db: Arc<redb::Database>,
+    #[expect(
+        dead_code,
+        reason = "Used in Phase 7 for CacheReader/CacheWriter implementation"
+    )]
+    table_name: Arc<str>,
+    #[expect(
+        dead_code,
+        reason = "Used in Phase 7 for CacheReader/CacheWriter implementation"
+    )]
+    codec: C,
+    _marker: std::marker::PhantomData<(K, V)>,
+}
+
 /// Read-only handle for Redb cache.
 ///
 /// This handle provides read-only access to the cache following CQRS
 /// principles.
 #[derive(Debug, Clone)]
-pub struct Reader<K, V, C = crate::spi::cache::deserializer::RkyvCodec>
+pub struct Reader<K, V, C = RkyvCodec>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    _marker: std::marker::PhantomData<(K, V, C)>,
+    #[expect(
+        dead_code,
+        reason = "Used in Phase 7 for CacheReader implementation"
+    )]
+    inner: Arc<Inner<K, V, C>>,
 }
 
 /// Write-only handle for Redb cache.
@@ -67,12 +100,16 @@ where
 /// This handle provides write-only access to the cache following CQRS
 /// principles.
 #[derive(Debug, Clone)]
-pub struct Writer<K, V, C = crate::spi::cache::deserializer::RkyvCodec>
+pub struct Writer<K, V, C = RkyvCodec>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    _marker: std::marker::PhantomData<(K, V, C)>,
+    #[expect(
+        dead_code,
+        reason = "Used in Phase 7 for CacheWriter implementation"
+    )]
+    inner: Arc<Inner<K, V, C>>,
 }
 
 /// Builder for Redb cache.
@@ -87,11 +124,55 @@ where
     _marker: std::marker::PhantomData<(K, V)>,
 }
 
+/// Type alias for the Inner state with default codec.
+type RedbInner<K, V> = Arc<Inner<K, V, RkyvCodec>>;
+
 impl<K, V> Builder<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
+    /// Internal helper to build the Inner state.
+    #[inline]
+    fn build_inner(&self) -> Result<RedbInner<K, V>, CacheError> {
+        let path =
+            self.path.as_ref().ok_or_else(|| CacheError::BackendError {
+                backend: "redb",
+                message: "Database path is required".into(),
+            })?;
+
+        let table_name = self.table_name.as_ref().ok_or_else(|| {
+            CacheError::BackendError {
+                backend: "redb",
+                message: "Table name is required".into(),
+            }
+        })?;
+
+        // Validate path is not a directory
+        if path.is_dir() {
+            return Err(CacheError::BackendError {
+                backend: "redb",
+                message: format!("Path is a directory: {}", path.display())
+                    .into(),
+            });
+        }
+
+        let db = redb::Database::create(path).map_err(|e| {
+            error!(backend = "redb", ?e, "Failed to open database");
+            CacheError::BackendError {
+                backend: "redb",
+                message: format!("Failed to open database: {e}").into(),
+            }
+        })?;
+
+        Ok(Arc::new(Inner {
+            db: Arc::new(db),
+            table_name: Arc::from(table_name.as_str()),
+            codec: RkyvCodec,
+            _marker: std::marker::PhantomData,
+        }))
+    }
+
     /// Build a Reader handle independently.
     ///
     /// # Errors
@@ -99,9 +180,9 @@ where
     /// Returns `CacheError` if the database cannot be initialized.
     #[inline]
     pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
-        // Stub implementation - will be filled in Phase 4
+        let inner = self.build_inner()?;
         Ok(Reader {
-            _marker: std::marker::PhantomData,
+            inner,
         })
     }
 
@@ -112,9 +193,9 @@ where
     /// Returns `CacheError` if the database cannot be initialized.
     #[inline]
     pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
-        // Stub implementation - will be filled in Phase 4
+        let inner = self.build_inner()?;
         Ok(Writer {
-            _marker: std::marker::PhantomData,
+            inner,
         })
     }
 
@@ -781,6 +862,42 @@ mod tests {
             assert!(result.is_ok());
             let writer = result.unwrap();
             let _: Writer<String, String> = writer;
+        }
+    }
+
+    mod redb_builder {
+        use tempfile::tempdir;
+
+        use super::*;
+
+        #[test]
+        fn fails_when_path_is_directory() {
+            let dir = tempdir().expect("failed to create temp dir");
+
+            let result = Builder::<String, String>::new()
+                .path(dir.path())
+                .table_name("test")
+                .build_reader();
+
+            assert!(result.is_err());
+            assert!(matches!(
+                result.unwrap_err(),
+                CacheError::BackendError { .. }
+            ));
+        }
+
+        #[test]
+        fn initializes_db_with_correct_table() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("init.redb");
+
+            let result = Builder::<String, String>::new()
+                .path(&db_path)
+                .table_name("my_table")
+                .build_reader();
+
+            result.unwrap();
+            assert!(db_path.exists());
         }
     }
 
