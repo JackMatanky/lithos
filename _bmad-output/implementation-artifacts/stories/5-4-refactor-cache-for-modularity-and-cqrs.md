@@ -74,6 +74,9 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 1.11: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 1.12: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 1.13: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 2: Moka Split-Handle Refactor
 - [ ] Task 2: Refactor Moka to split handles
@@ -86,6 +89,9 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 2.7: Remove the unified `MokaCache` struct entirely
   - [ ] Subtask 2.8: Run `mise run test:unit:adapters moka` (GREEN)
   - [ ] Subtask 2.9: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 2.10: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 2.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 2.12: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -103,6 +109,9 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 3.7: Add `tracing::instrument` to `build()`
   - [ ] Subtask 3.8: Run `mise run test:unit:adapters builder` (GREEN)
   - [ ] Subtask 3.9: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 3.10: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 3.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 3.12: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
