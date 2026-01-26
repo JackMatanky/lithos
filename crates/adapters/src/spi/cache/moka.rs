@@ -282,256 +282,285 @@ where
 mod tests {
     use super::*;
 
-    #[test]
-    fn moka_config_should_return_builder_instance() {
-        let _builder: Builder<String, String> =
-            Cache::<String, String>::builder();
-    }
+    mod initialization {
+        use super::*;
 
-    #[test]
-    fn moka_config_should_allow_configuring_max_capacity() {
-        let mut builder = Cache::<String, String>::builder();
-        let _: &mut Builder<String, String> = builder.max_capacity(100usize);
-    }
-
-    #[test]
-    fn moka_config_should_allow_configuring_ttl() {
-        let mut builder = Cache::<String, String>::builder();
-        let _: &mut Builder<String, String> =
-            builder.time_to_live(Duration::from_secs(10u64));
-    }
-
-    #[test]
-    fn moka_config_should_allow_configuring_tti() {
-        let mut builder = Cache::<String, String>::builder();
-        let _: &mut Builder<String, String> =
-            builder.time_to_idle(Duration::from_secs(10u64));
-    }
-
-    #[test]
-    fn moka_config_should_build_cache_instance() {
-        let cache = Cache::<String, String>::builder().build();
-        let _: Cache<String, String> = cache.expect("Failed to build cache");
-    }
-
-    #[tokio::test]
-    async fn moka_trait_should_get_none_from_empty_cache() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        let result = cache.get(&"key".to_owned()).await.unwrap();
-        assert!(result.is_none());
-    }
-
-    #[tokio::test]
-    async fn moka_trait_should_put_and_get_value() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
-        let result = cache.get(&"key".to_owned()).await.unwrap();
-        assert_eq!(result, Some("value".to_owned()));
-    }
-
-    #[tokio::test]
-    async fn moka_trait_should_delete_value() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
-        let existed = cache.delete(&"key".to_owned()).await.unwrap();
-        assert!(existed);
-        let result = cache.get(&"key".to_owned()).await.unwrap();
-        assert!(result.is_none());
-
-        let existed_again = cache.delete(&"key".to_owned()).await.unwrap();
-        assert!(!existed_again);
-    }
-
-    #[tokio::test]
-    async fn moka_trait_should_check_has() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        assert!(!cache.has(&"key".to_owned()).await.unwrap());
-
-        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
-        assert!(cache.has(&"key".to_owned()).await.unwrap());
-
-        cache.delete(&"key".to_owned()).await.unwrap();
-        assert!(!cache.has(&"key".to_owned()).await.unwrap());
-    }
-
-    #[tokio::test]
-    async fn moka_trait_should_clear_all_entries() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        cache.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
-        cache.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
-
-        cache.clear().await.unwrap();
-
-        assert!(!cache.has(&"k1".to_owned()).await.unwrap());
-        assert!(!cache.has(&"k2".to_owned()).await.unwrap());
-    }
-
-    #[tokio::test]
-    #[tracing_test::traced_test]
-    async fn moka_tracing_should_emit_events_on_get() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        let _: Option<String> = cache.get(&"key".to_owned()).await.unwrap();
-
-        assert!(logs_contain("operation=\"get\""));
-        assert!(logs_contain("hit=false"));
-    }
-
-    #[tokio::test]
-    #[tracing_test::traced_test]
-    async fn moka_tracing_should_emit_events_on_put() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
-
-        assert!(logs_contain("operation=\"put\""));
-    }
-
-    #[tokio::test]
-    #[tracing_test::traced_test]
-    async fn moka_tracing_should_emit_events_on_delete() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
-        let _: bool = cache.delete(&"key".to_owned()).await.unwrap();
-
-        assert!(logs_contain("operation=\"delete\""));
-        assert!(logs_contain("existed=true"));
-    }
-
-    #[tokio::test]
-    #[tracing_test::traced_test]
-    async fn moka_tracing_should_emit_events_on_invalidate() {
-        let cache = Cache::<String, String>::builder().build().unwrap();
-        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
-        let _: bool = cache.invalidate(&"key".to_owned()).await.unwrap();
-
-        assert!(logs_contain("operation=\"invalidate\""));
-        assert!(logs_contain("existed=true"));
-    }
-
-    #[tokio::test]
-    async fn moka_eviction_should_respect_ttl() {
-        let cache = Cache::<String, String>::builder()
-            .time_to_live(Duration::from_millis(50u64))
-            .build()
-            .unwrap();
-
-        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
-        assert_eq!(
-            cache.get(&"key".to_owned()).await.unwrap(),
-            Some("value".to_owned())
-        );
-
-        tokio::time::sleep(Duration::from_millis(100u64)).await;
-        assert_eq!(cache.get(&"key".to_owned()).await.unwrap(), None);
-    }
-
-    #[tokio::test]
-    async fn moka_eviction_should_respect_tti() {
-        let cache = Cache::<String, String>::builder()
-            .time_to_idle(Duration::from_millis(100u64))
-            .build()
-            .unwrap();
-
-        cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
-
-        tokio::time::sleep(Duration::from_millis(60u64)).await;
-        // Access it to reset TTI
-        assert_eq!(
-            cache.get(&"key".to_owned()).await.unwrap(),
-            Some("value".to_owned())
-        );
-
-        tokio::time::sleep(Duration::from_millis(60u64)).await;
-        // Should still be there because TTI was reset at 60ms
-        assert_eq!(
-            cache.get(&"key".to_owned()).await.unwrap(),
-            Some("value".to_owned())
-        );
-
-        tokio::time::sleep(Duration::from_millis(150u64)).await;
-        // Now it should be gone
-        assert_eq!(cache.get(&"key".to_owned()).await.unwrap(), None);
-    }
-
-    #[tokio::test]
-    async fn moka_eviction_should_respect_max_capacity() {
-        let cache = Cache::<String, String>::builder()
-            .max_capacity(10usize)
-            .build()
-            .unwrap();
-
-        for i in 0i32..100i32 {
-            cache.put(format!("key{i}"), format!("value{i}")).await.unwrap();
+        #[test]
+        fn should_return_builder_instance() {
+            let _builder: Builder<String, String> =
+                Cache::<String, String>::builder();
         }
 
-        // Moka's eviction is eventual, but after some time/ops it should stay
-        // within limits We can't strictly check exact size without an
-        // entry count method which isn't in our trait but we can check
-        // that NOT all 100 are there.
-        tokio::time::sleep(Duration::from_millis(100u64)).await;
+        #[test]
+        fn should_allow_configuring_max_capacity() {
+            let mut builder = Cache::<String, String>::builder();
+            let _: &mut Builder<String, String> =
+                builder.max_capacity(100usize);
+        }
 
-        let mut found = 0i32;
-        for i in 0i32..100i32 {
-            if cache.get(&format!("key{i}")).await.unwrap().is_some() {
-                found += 1i32;
+        #[test]
+        fn should_allow_configuring_ttl() {
+            let mut builder = Cache::<String, String>::builder();
+            let _: &mut Builder<String, String> =
+                builder.time_to_live(Duration::from_secs(10u64));
+        }
+
+        #[test]
+        fn should_allow_configuring_tti() {
+            let mut builder = Cache::<String, String>::builder();
+            let _: &mut Builder<String, String> =
+                builder.time_to_idle(Duration::from_secs(10u64));
+        }
+
+        #[test]
+        fn should_build_cache_instance() {
+            let cache = Cache::<String, String>::builder().build();
+            let _: Cache<String, String> =
+                cache.expect("Failed to build cache");
+        }
+
+        #[test]
+        #[expect(
+            clippy::panic,
+            reason = "Panic is used in tests to fail fast when expectations \
+                      are not met."
+        )]
+        fn should_return_error_for_zero_capacity() {
+            let result =
+                Cache::<String, String>::builder().max_capacity(0usize).build();
+
+            assert!(result.is_err());
+            match result.unwrap_err() {
+                CacheError::BackendError {
+                    backend,
+                    message,
+                } => {
+                    assert_eq!(backend, "moka");
+                    assert!(message.contains("capacity"));
+                }
+                CacheError::IoError(_)
+                | CacheError::SerializationError {
+                    ..
+                } => {
+                    panic!("Expected BackendError")
+                }
             }
         }
-
-        // Allow some slack for eventual eviction
-        assert!(found <= 10i32 + 5i32, "Found too many items: {found}");
     }
 
-    #[tokio::test]
-    async fn moka_tinylfu_should_protect_hot_key() {
-        let cache = Cache::<String, String>::builder()
-            .max_capacity(10usize)
-            .build()
-            .unwrap();
+    mod core_ops {
+        use super::*;
 
-        // Access a "hot" key many times
-        for _ in 0i32..20i32 {
-            cache.put("hot".to_owned(), "value".to_owned()).await.unwrap();
-            let _: Option<String> = cache.get(&"hot".to_owned()).await.unwrap();
+        #[tokio::test]
+        async fn should_get_none_from_empty_cache() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            let result = cache.get(&"key".to_owned()).await.unwrap();
+            assert!(result.is_none());
         }
 
-        // Perform a "scan" that exceeds capacity
-        for i in 0i32..100i32 {
-            cache.put(format!("scan-{i}"), "val".to_owned()).await.unwrap();
+        #[tokio::test]
+        async fn should_put_and_get_value() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+            let result = cache.get(&"key".to_owned()).await.unwrap();
+            assert_eq!(result, Some("value".to_owned()));
         }
 
-        // The "hot" key should still be present because of TinyLFU
-        // (Moka's eviction is eventual, so we wait a bit)
-        tokio::time::sleep(Duration::from_millis(100u64)).await;
-        assert!(
-            cache.get(&"hot".to_owned()).await.unwrap().is_some(),
-            "Hot key was evicted by scan pollution!"
-        );
+        #[tokio::test]
+        async fn should_delete_value() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+            let existed = cache.delete(&"key".to_owned()).await.unwrap();
+            assert!(existed);
+            let result = cache.get(&"key".to_owned()).await.unwrap();
+            assert!(result.is_none());
+
+            let existed_again = cache.delete(&"key".to_owned()).await.unwrap();
+            assert!(!existed_again);
+        }
+
+        #[tokio::test]
+        async fn should_check_has() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            assert!(!cache.has(&"key".to_owned()).await.unwrap());
+
+            cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+            assert!(cache.has(&"key".to_owned()).await.unwrap());
+
+            cache.delete(&"key".to_owned()).await.unwrap();
+            assert!(!cache.has(&"key".to_owned()).await.unwrap());
+        }
+
+        #[tokio::test]
+        async fn should_clear_all_entries() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            cache.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
+            cache.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
+
+            cache.clear().await.unwrap();
+
+            assert!(!cache.has(&"k1".to_owned()).await.unwrap());
+            assert!(!cache.has(&"k2".to_owned()).await.unwrap());
+        }
     }
 
-    #[test]
-    #[expect(
-        clippy::panic,
-        reason = "Panic is used in tests to fail fast when expectations are \
-                  not met."
-    )]
-    fn moka_config_should_return_error_for_zero_capacity() {
-        let result =
-            Cache::<String, String>::builder().max_capacity(0usize).build();
+    mod observability {
+        use tracing_test::traced_test;
 
-        assert!(result.is_err());
-        match result.unwrap_err() {
-            CacheError::BackendError {
-                backend,
-                message,
-            } => {
-                assert_eq!(backend, "moka");
-                assert!(message.contains("capacity"));
+        use super::*;
+
+        #[tokio::test]
+        #[traced_test]
+        async fn should_emit_events_on_get() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            let _: Option<String> = cache.get(&"key".to_owned()).await.unwrap();
+
+            assert!(logs_contain("operation=\"get\""));
+            assert!(logs_contain("hit=false"));
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn should_emit_events_on_put() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+
+            assert!(logs_contain("operation=\"put\""));
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn should_emit_events_on_delete() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+            let _: bool = cache.delete(&"key".to_owned()).await.unwrap();
+
+            assert!(logs_contain("operation=\"delete\""));
+            assert!(logs_contain("existed=true"));
+        }
+
+        #[tokio::test]
+        #[traced_test]
+        async fn should_emit_events_on_invalidate() {
+            let cache = Cache::<String, String>::builder().build().unwrap();
+            cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+            let _: bool = cache.invalidate(&"key".to_owned()).await.unwrap();
+
+            assert!(logs_contain("operation=\"invalidate\""));
+            assert!(logs_contain("existed=true"));
+        }
+    }
+
+    mod eviction {
+        use super::*;
+
+        #[tokio::test]
+        async fn should_respect_ttl() {
+            let cache = Cache::<String, String>::builder()
+                .time_to_live(Duration::from_millis(50u64))
+                .build()
+                .unwrap();
+
+            cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+            assert_eq!(
+                cache.get(&"key".to_owned()).await.unwrap(),
+                Some("value".to_owned())
+            );
+
+            tokio::time::sleep(Duration::from_millis(100u64)).await;
+            assert_eq!(cache.get(&"key".to_owned()).await.unwrap(), None);
+        }
+
+        #[tokio::test]
+        async fn should_respect_tti() {
+            let cache = Cache::<String, String>::builder()
+                .time_to_idle(Duration::from_millis(100u64))
+                .build()
+                .unwrap();
+
+            cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+
+            tokio::time::sleep(Duration::from_millis(60u64)).await;
+            // Access it to reset TTI
+            assert_eq!(
+                cache.get(&"key".to_owned()).await.unwrap(),
+                Some("value".to_owned())
+            );
+
+            tokio::time::sleep(Duration::from_millis(60u64)).await;
+            // Should still be there because TTI was reset at 60ms
+            assert_eq!(
+                cache.get(&"key".to_owned()).await.unwrap(),
+                Some("value".to_owned())
+            );
+
+            tokio::time::sleep(Duration::from_millis(150u64)).await;
+            // Now it should be gone
+            assert_eq!(cache.get(&"key".to_owned()).await.unwrap(), None);
+        }
+
+        #[tokio::test]
+        #[expect(
+            clippy::excessive_nesting,
+            reason = "Test logic requires multiple loops and async blocks \
+                      which trigger this lint in the test suite."
+        )]
+        async fn should_respect_max_capacity() {
+            let cache = Cache::<String, String>::builder()
+                .max_capacity(10usize)
+                .build()
+                .unwrap();
+
+            for i in 0i32..100i32 {
+                cache
+                    .put(format!("key{i}"), format!("value{i}"))
+                    .await
+                    .unwrap();
             }
-            CacheError::IoError(_)
-            | CacheError::SerializationError {
-                ..
-            } => {
-                panic!("Expected BackendError")
+
+            // Moka's eviction is eventual, but after some time/ops it should
+            // stay within limits We can't strictly check exact size
+            // without an entry count method which isn't in our trait but
+            // we can check that NOT all 100 are there.
+            tokio::time::sleep(Duration::from_millis(100u64)).await;
+
+            let mut found = 0i32;
+            for i in 0i32..100i32 {
+                if cache.get(&format!("key{i}")).await.unwrap().is_some() {
+                    found += 1i32;
+                }
             }
+
+            // Allow some slack for eventual eviction
+            assert!(found <= 10i32 + 5i32, "Found too many items: {found}");
+        }
+
+        #[tokio::test]
+        async fn tinylfu_should_protect_hot_key() {
+            let cache = Cache::<String, String>::builder()
+                .max_capacity(10usize)
+                .build()
+                .unwrap();
+
+            // Access a "hot" key many times
+            for _ in 0i32..20i32 {
+                cache.put("hot".to_owned(), "value".to_owned()).await.unwrap();
+                let _: Option<String> =
+                    cache.get(&"hot".to_owned()).await.unwrap();
+            }
+
+            // Perform a "scan" that exceeds capacity
+            for i in 0i32..100i32 {
+                cache.put(format!("scan-{i}"), "val".to_owned()).await.unwrap();
+            }
+
+            // The "hot" key should still be present because of TinyLFU
+            // (Moka's eviction is eventual, so we wait a bit)
+            tokio::time::sleep(Duration::from_millis(100u64)).await;
+            assert!(
+                cache.get(&"hot".to_owned()).await.unwrap().is_some(),
+                "Hot key was evicted by scan pollution!"
+            );
         }
     }
 }
