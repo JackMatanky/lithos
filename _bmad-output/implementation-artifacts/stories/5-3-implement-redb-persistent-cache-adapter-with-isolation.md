@@ -40,13 +40,15 @@ So that data persists across application restarts and multiple cache consumers c
 **And** the entire struct is rkyv-serialized for zero-copy deserialization per ADR 0002
 
 **Given** the trait must be implemented
-**When** I implement `Cache<K, V>` for `RedbCache<K, V>`
-**Then** `clear()` removes all entries from the isolated table
-**And** `delete()` removes the entry and returns true if it existed
-**And** `get()` deserializes the `CachedEntry<V>` and returns `Some(entry.value)` on hit
-**And** `has()` checks for entry existence without full deserialization
-**And** `invalidate()` delegates to `delete()` for semantic clarity
-**And** `put()` wraps the value in `CachedEntry` with current timestamp and empty metadata, then serializes
+**When** I implement `CacheReader<K, V>` and `CacheWriter<K, V>` for `RedbCache<K, V>`
+**Then** all trait methods satisfy the async trait bounds
+**And** `CacheReader::get()` deserializes the `CachedEntry<V>` and returns `Some(entry.value)` on hit
+**And** `CacheReader::has()` checks for entry existence without full deserialization
+**And** `CacheWriter::clear()` removes all entries from the isolated table
+**And** `CacheWriter::delete()` removes the entry and returns true if it existed
+**And** `CacheWriter::invalidate()` delegates to `delete()` for semantic clarity
+**And** `CacheWriter::put()` wraps the value in `CachedEntry` with current timestamp and empty metadata, then serializes
+**And** `RedbCache` also implements the blanket `Cache<K, V>` trait
 **And** all operations use Redb read/write transactions
 
 **Given** serialization errors must be handled
@@ -220,6 +222,13 @@ So that data persists across application restarts and multiple cache consumers c
   - [x] Subtask 8.4: Run `mise run verify` to ensure all Lithos quality gates are satisfied
   - [x] Subtask 8.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 8.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+
+### Phase 10: CQRS Refactor (Architectural Integrity)
+- [x] Task 10: Implement split traits for RedbCache
+  - [x] Subtask 10.1: Update `redb.rs` to implement `CacheReader` and `CacheWriter` separately
+  - [x] Subtask 10.2: Implement blanket `Cache` trait for `RedbCache`
+  - [x] Subtask 10.3: Update doc tests to use split trait imports
+  - [x] Subtask 10.4: Verify all tests pass with split traits
 
 ## Dev Notes
 
@@ -402,6 +411,13 @@ gemini-3-flash-preview (2026-01-26)
   - [x] Subtask 8.4: Run `mise run verify` to ensure all Lithos quality gates are satisfied
   - [x] Subtask 8.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 8.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+
+### Phase 10: CQRS Refactor (Architectural Integrity)
+- [x] Task 10: Implement split traits for RedbCache
+  - [x] Subtask 10.1: Update `redb.rs` to implement `CacheReader` and `CacheWriter` separately
+  - [x] Subtask 10.2: Implement blanket `Cache` trait for `RedbCache`
+  - [x] Subtask 10.3: Update doc tests to use split trait imports
+  - [x] Subtask 10.4: Verify all tests pass with split traits
 
 ## Dev Notes
 
