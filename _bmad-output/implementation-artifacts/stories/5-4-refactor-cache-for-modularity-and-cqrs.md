@@ -57,18 +57,35 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ## TDD Tasks / Subtasks
 
-### Phase 1: Serialization Abstraction (`deserializer.rs`)
-- [ ] Task 1: Define `Codec` and implementations
-  - [ ] Subtask 1.1: Create `crates/adapters/src/spi/cache/deserializer.rs` and register in `mod.rs`
-  - [ ] Subtask 1.2: [TDD] Write `round_trip::preserves_metadata_and_value` (failing)
-  - [ ] Subtask 1.3: Define `trait Codec<K, V>` with `encode_key`, `encode_value`, and `decode_value`
-  - [ ] Subtask 1.4: Re-export `Codec` as `CacheCodec` in `mod.rs`
-  - [ ] Subtask 1.5: Define `RkyvCodec` struct and implement `Codec`
-  - [ ] Subtask 1.6: [TDD] Write `rkyv_codec::returns_error_on_corrupted_bytes` (failing)
-  - [ ] Subtask 1.7: Implement `RkyvCodec` using `rkyv::api::high` and `rkyv::access`
-  - [ ] Subtask 1.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
-  - [ ] Subtask 1.9: Run `mise run test:unit:adapters deserializer` (GREEN)
-  - [ ] Subtask 1.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
+### Phase 1: Moka Split-Handle Refactor (CQRS Foundation)
+- [ ] Task 1: Refactor Moka to split handles immediately
+  - [ ] Subtask 1.1: [TDD] Write `moka_builder::builds_split_handles_with_custom_capacity` (failing)
+  - [ ] Subtask 1.2: Define `pub struct MokaReader<K, V>` and `pub struct MokaWriter<K, V>` in `moka.rs`
+  - [ ] Subtask 1.3: Define `pub(crate) struct MokaInner<K, V>` to hold the `moka::future::Cache`
+  - [ ] Subtask 1.4: Implement `CacheReaderPort` for `MokaReader` (get/has)
+  - [ ] Subtask 1.5: Implement `CacheWriterPort` for `MokaWriter` (put/delete/clear)
+  - [ ] Subtask 1.6: Update `MokaBuilder::build()` to return `(MokaReader<K, V>, MokaWriter<K, V>)`
+  - [ ] Subtask 1.7: Remove the unified `MokaCache` struct entirely to enforce CQRS
+  - [ ] Subtask 1.8: Run `mise run test:unit:adapters moka` (GREEN)
+  - [ ] Subtask 1.9: Run `mise run lint` and fix all warnings/errors
+    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
+    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
+    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
+    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
+    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+
+### Phase 2: Serialization Abstraction (`deserializer.rs`)
+- [ ] Task 2: Define `Codec` and implementations
+  - [ ] Subtask 2.1: Create `crates/adapters/src/spi/cache/deserializer.rs` and register in `mod.rs`
+  - [ ] Subtask 2.2: [TDD] Write `round_trip::preserves_metadata_and_value` (failing)
+  - [ ] Subtask 2.3: Define `trait Codec<K, V>` with `encode_key`, `encode_value`, and `decode_value`
+  - [ ] Subtask 2.4: Re-export `Codec` as `CacheCodec` in `mod.rs`
+  - [ ] Subtask 2.5: Define `RkyvCodec` struct and implement `Codec`
+  - [ ] Subtask 2.6: [TDD] Write `rkyv_codec::returns_error_on_corrupted_bytes` (failing)
+  - [ ] Subtask 2.7: Implement `RkyvCodec` using `rkyv::api::high` and `rkyv::access`
+  - [ ] Subtask 2.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
+  - [ ] Subtask 2.9: Run `mise run test:unit:adapters deserializer` (GREEN)
+  - [ ] Subtask 2.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
