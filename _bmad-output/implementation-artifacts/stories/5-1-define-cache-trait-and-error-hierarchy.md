@@ -24,23 +24,27 @@ So that multiple cache backends can be swapped and automatically mocked for test
 **And** error messages follow ADR 0006 (actionable diagnostics with context)
 
 **Given** cache consumers need standardized operations
-**When** I define `trait Cache<K, V>` in `spi/cache/mod.rs`
-**Then** it includes these async methods (ordered alphabetically):
+**When** I define `CacheReader<K, V>` and `CacheWriter<K, V>` traits in `spi/cache/mod.rs`
+**Then** `CacheReader` includes these async methods:
+
+- `async fn get(&self, key: &K) -> Result<Option<V>, CacheError>` - retrieve value by key
+- `async fn has(&self, key: &K) -> Result<bool, CacheError>` - check existence without cloning value
+
+**And** `CacheWriter` includes these async methods:
 
 - `async fn clear(&self) -> Result<(), CacheError>` - remove all entries
 - `async fn delete(&self, key: &K) -> Result<bool, CacheError>` - remove entry (returns true if existed)
-- `async fn get(&self, key: &K) -> Result<Option<V>, CacheError>` - retrieve value by key
-- `async fn has(&self, key: &K) -> Result<bool, CacheError>` - check existence without cloning value
-- `async fn invalidate(&self, key: &K) -> Result<bool, CacheError>` - alias for delete (cache-specific terminology)
+- `async fn invalidate(&self, key: &K) -> Result<bool, CacheError>` - alias for delete
 - `async fn put(&self, key: K, value: V) -> Result<(), CacheError>` - store key-value pair
 
-**And** the trait is annotated with `#[async_trait]` for async support
+**And** a blanket `trait Cache<K, V>: CacheReader<K, V> + CacheWriter<K, V> {}` is provided for unified access
+**And** both traits are annotated with `#[async_trait]` for async support
 **And** `has` provides a default implementation using `get().is_some()`
 **And** `invalidate` provides a default implementation delegating to `delete()`
 
 **Given** type safety is critical
 **When** I define trait bounds
-**Then** the trait requires:
+**Then** both traits require:
 
 - `K: Clone + Eq + Hash + Send + Sync + 'static` for hashable, thread-safe keys
 - `V: Clone + Send + Sync + 'static` for thread-safe values
@@ -48,10 +52,10 @@ So that multiple cache backends can be swapped and automatically mocked for test
 **And** documentation explains when `V: rkyv::Archive + rkyv::Serialize + rkyv::Deserialize` is needed (for RedbCache)
 
 **Given** testing requires mock implementations
-**When** I annotate the trait with `#[mockall::automock]`
-**Then** a `MockCache<K, V>` struct is automatically generated at compile time
-**And** the mock allows setting expectations on method calls (no manual mocks required)
-**And** documentation includes example test using `MockCache` with expectations
+**When** I annotate the traits with `#[mockall::automock]`
+**Then** `MockCacheReader<K, V>` and `MockCacheWriter<K, V>` structs are automatically generated at compile time
+**And** the mocks allow setting expectations on method calls (no manual mocks required)
+**And** documentation includes example test using mocks with expectations
 
 **Given** the trait contract must be clear
 **When** I write module-level documentation
@@ -80,7 +84,7 @@ So that multiple cache backends can be swapped and automatically mocked for test
 
 **Given** I need automatic mock generation verification
 **When** I run `mise run test:unit:adapters cache_mock`
-**Then** `MockCache<K, V>` is automatically generated and compiles
+**Then** `MockCacheReader<K, V>` and `MockCacheWriter<K, V>` are automatically generated and compile
 **And** mock expectations can be set for all trait methods
 **And** mock usage tests pass without manual mocking
 
@@ -208,16 +212,13 @@ So that multiple cache backends can be swapped and automatically mocked for test
   - [x] Subtask 8.9: Run `mise run test:unit:adapters --doc` and verify 100% pass rate
   - [x] Subtask 8.10: Run `mise run lint` and fix all clippy warnings/errors before proceeding to Phase 9
 
-### Phase 9: Coverage and Quality Gates
-- [x] Task 9: Verify comprehensive coverage and quality
-  - [x] Subtask 9.1: Run `mise run test:coverage` and verify all public components are tested
-  - [x] Subtask 9.2: Run `mise run lint` and verify zero warnings
-  - [x] Subtask 9.3: Run `mise run fmt` and verify proper formatting
-  - [x] Subtask 9.4: Run `mise run test:unit:adapters` one final time and verify all tests pass
-  - [x] Subtask 9.5: Generate coverage report and confirm TDD-driven implementation quality
-  - [x] Subtask 9.6: Run `mise run verify` to ensure all quality gates pass before story completion
-  - [x] Subtask 9.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [x] Subtask 9.8: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+### Phase 10: CQRS Refactor (Architectural Integrity)
+- [ ] Task 10: Split Cache trait into Reader and Writer (CQRS Alignment)
+  - [ ] Subtask 10.1: Update `crates/adapters/src/spi/cache/mod.rs` to define `CacheReader` and `CacheWriter`
+  - [ ] Subtask 10.2: Implement blanket `Cache` trait combining both
+  - [ ] Subtask 10.3: Update unit tests in `mod.rs` to use split mocks (`MockCacheReader`, `MockCacheWriter`)
+  - [ ] Subtask 10.4: Verify all tests pass with split traits
+  - [ ] Subtask 10.5: Run `mise run verify` to ensure zero quality gate regressions
 
 ## Dev Notes
 

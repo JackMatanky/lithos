@@ -25,7 +25,13 @@ use rkyv::{
 };
 use tracing::{error, info, info_span};
 
-use crate::spi::{cache::Cache as CachePort, errors::CacheError};
+use crate::spi::{
+    cache::{
+        Cache as CachePort, CacheReader as CacheReaderPort,
+        CacheWriter as CacheWriterPort,
+    },
+    errors::CacheError,
+};
 
 /// Type alias for the metadata map.
 pub type MetadataMap = HashMap<String, String>;
@@ -51,7 +57,7 @@ pub struct Entry<V> {
 /// # Example
 ///
 /// ```rust
-/// use lithos_adapters::spi::cache::{Cache, RedbCache};
+/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, RedbCache};
 /// use tempfile::tempdir;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
@@ -433,7 +439,88 @@ where
 }
 
 #[async_trait]
-impl<K, V> CachePort<K, V> for Cache<K, V>
+impl<K, V> CacheReaderPort<K, V> for Cache<K, V>
+where
+    K: std::fmt::Debug
+        + Clone
+        + Eq
+        + std::hash::Hash
+        + Send
+        + Sync
+        + 'static
+        + for<'ser> Serialize<
+            rkyv::api::high::HighSerializer<
+                rkyv::util::AlignedVec,
+                rkyv::ser::allocator::ArenaHandle<'ser>,
+                rkyv::rancor::Error,
+            >,
+        >,
+    V: Clone + Send + Sync + 'static,
+    V: Archive,
+    V: for<'ser> Serialize<
+        rkyv::api::high::HighSerializer<
+            rkyv::util::AlignedVec,
+            rkyv::ser::allocator::ArenaHandle<'ser>,
+            rkyv::rancor::Error,
+        >,
+    >,
+    Archived<V>: rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+    for<'validation> Archived<V>: CheckBytes<
+        rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
+    >,
+{
+    #[inline]
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
+        Ok(self.get_with_metadata(key).await?.map(|(v, _)| v))
+    }
+
+    #[tracing::instrument(
+        skip(self),
+        fields(
+            table_name = %self.table_name,
+            operation = "has",
+            cache_layer = "disk",
+            key = ?key
+        )
+    )]
+    #[inline]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        let key_bytes = Self::serialize_key(key)?;
+        let table_name = Arc::clone(&self.table_name);
+
+        self.run_blocking_read("read", move |txn| {
+            let table_def = TableDefinition::<&[u8], &[u8]>::new(&table_name);
+            let table = txn.open_table(table_def).map_err(|e| {
+                error!(backend = "redb", ?e, "Failed to open table");
+                CacheError::BackendError {
+                    backend: "redb",
+                    message: format!("Failed to open table: {e}").into(),
+                }
+            })?;
+
+            let exists = table
+                .get(key_bytes.as_slice())
+                .map_err(|e| {
+                    error!(backend = "redb", ?e, "Failed to check entry");
+                    CacheError::BackendError {
+                        backend: "redb",
+                        message: format!("Failed to check entry: {e}").into(),
+                    }
+                })?
+                .is_some();
+
+            info!(cache_layer = "disk", ?exists, "Has complete");
+            Ok(exists)
+        })
+        .await
+    }
+}
+
+#[async_trait]
+impl<K, V> CacheWriterPort<K, V> for Cache<K, V>
 where
     K: std::fmt::Debug
         + Clone
@@ -544,52 +631,6 @@ where
     }
 
     #[inline]
-    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
-        Ok(self.get_with_metadata(key).await?.map(|(v, _)| v))
-    }
-
-    #[tracing::instrument(
-        skip(self),
-        fields(
-            table_name = %self.table_name,
-            operation = "has",
-            cache_layer = "disk",
-            key = ?key
-        )
-    )]
-    #[inline]
-    async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        let key_bytes = Self::serialize_key(key)?;
-        let table_name = Arc::clone(&self.table_name);
-
-        self.run_blocking_read("read", move |txn| {
-            let table_def = TableDefinition::<&[u8], &[u8]>::new(&table_name);
-            let table = txn.open_table(table_def).map_err(|e| {
-                error!(backend = "redb", ?e, "Failed to open table");
-                CacheError::BackendError {
-                    backend: "redb",
-                    message: format!("Failed to open table: {e}").into(),
-                }
-            })?;
-
-            let exists = table
-                .get(key_bytes.as_slice())
-                .map_err(|e| {
-                    error!(backend = "redb", ?e, "Failed to check entry");
-                    CacheError::BackendError {
-                        backend: "redb",
-                        message: format!("Failed to check entry: {e}").into(),
-                    }
-                })?
-                .is_some();
-
-            info!(cache_layer = "disk", ?exists, "Has complete");
-            Ok(exists)
-        })
-        .await
-    }
-
-    #[inline]
     async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
         self.delete(key).await
     }
@@ -598,6 +639,42 @@ where
     async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
         self.put_with_metadata(key, value, HashMap::new()).await
     }
+}
+
+#[async_trait]
+impl<K, V> CachePort<K, V> for Cache<K, V>
+where
+    K: std::fmt::Debug
+        + Clone
+        + Eq
+        + std::hash::Hash
+        + Send
+        + Sync
+        + 'static
+        + for<'ser> Serialize<
+            rkyv::api::high::HighSerializer<
+                rkyv::util::AlignedVec,
+                rkyv::ser::allocator::ArenaHandle<'ser>,
+                rkyv::rancor::Error,
+            >,
+        >,
+    V: Clone + Send + Sync + 'static,
+    V: Archive,
+    V: for<'ser> Serialize<
+        rkyv::api::high::HighSerializer<
+            rkyv::util::AlignedVec,
+            rkyv::ser::allocator::ArenaHandle<'ser>,
+            rkyv::rancor::Error,
+        >,
+    >,
+    Archived<V>: rkyv::Deserialize<
+            V,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+    for<'validation> Archived<V>: CheckBytes<
+        rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
+    >,
+{
 }
 
 #[cfg(test)]

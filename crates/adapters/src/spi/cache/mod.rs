@@ -38,39 +38,55 @@ pub use self::redb::{
 };
 use crate::spi::errors::CacheError;
 
-/// Generic caching SPI for adapter-layer use.
+/// Cache reader SPI for adapter-layer use.
 ///
-/// # Implementations
-/// - `MokaCache`: In-memory cache using the `moka` library.
-/// - `RedbCache`: Persistent cache using the `redb` KV store. Note: For
-///   persistent caches, values MUST also implement `rkyv` traits:
-///   `rkyv::Archive + rkyv::Serialize + rkyv::Deserialize`.
-/// - `Coordinator`: A multi-tier cache combining memory and disk storage.
-///
-/// # Example
-///
-/// ```rust
-/// # use async_trait::async_trait;
-/// # use lithos_adapters::spi::cache::Cache;
-/// # use lithos_adapters::spi::errors::CacheError;
-/// # struct MemoryCache;
-/// # #[async_trait]
-/// # impl Cache<String, String> for MemoryCache {
-/// #     async fn clear(&self) -> Result<(), CacheError> { Ok(()) }
-/// #     async fn delete(&self, _k: &String) -> Result<bool, CacheError> { Ok(false) }
-/// #     async fn get(&self, _k: &String) -> Result<Option<String>, CacheError> { Ok(None) }
-/// #     async fn put(&self, _k: String, _v: String) -> Result<(), CacheError> { Ok(()) }
-/// # }
-/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let cache = MemoryCache;
-/// let result: Option<String> = cache.get(&"key".to_string()).await?;
-/// assert!(result.is_none());
-/// # Ok::<(), CacheError>(())
-/// # }).unwrap();
-/// ```
+/// Follows CQRS principles by separating read-only operations from
+/// state-changing commands.
 #[async_trait]
 #[cfg_attr(test, mockall::automock)]
-pub trait Cache<K, V>
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Prefixed names (CacheReader) are preferred for clarity in SPI \
+              traits to distinguish from other Reader/Writer types in the \
+              system."
+)]
+pub trait CacheReader<K, V>: Send + Sync
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    /// Retrieve value by key.
+    ///
+    /// # Errors
+    /// Returns `CacheError` if the underlying storage fails.
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError>;
+
+    /// Check if key exists in cache.
+    ///
+    /// This is a performance optimization to avoid cloning the value when only
+    /// existence needs to be verified.
+    ///
+    /// # Errors
+    /// Returns `CacheError` if the underlying storage fails.
+    #[inline]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        Ok(self.get(key).await?.is_some())
+    }
+}
+
+/// Cache writer SPI for adapter-layer use.
+///
+/// Follows CQRS principles by separating state-changing commands from
+/// read-only operations.
+#[async_trait]
+#[cfg_attr(test, mockall::automock)]
+#[expect(
+    clippy::module_name_repetitions,
+    reason = "Prefixed names (CacheWriter) are preferred for clarity in SPI \
+              traits to distinguish from other Reader/Writer types in the \
+              system."
+)]
+pub trait CacheWriter<K, V>: Send + Sync
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
@@ -89,24 +105,6 @@ where
     /// Returns `CacheError` if the underlying storage fails.
     async fn delete(&self, key: &K) -> Result<bool, CacheError>;
 
-    /// Retrieve value by key.
-    ///
-    /// # Errors
-    /// Returns `CacheError` if the underlying storage fails.
-    async fn get(&self, key: &K) -> Result<Option<V>, CacheError>;
-
-    /// Check if key exists in cache.
-    ///
-    /// This is a performance optimization to avoid cloning the value when only
-    /// existence needs to be verified.
-    ///
-    /// # Errors
-    /// Returns `CacheError` if the underlying storage fails.
-    #[inline]
-    async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        Ok(self.get(key).await?.is_some())
-    }
-
     /// Alias for `delete` (cache-specific terminology).
     ///
     /// Returns `true` if the entry existed and was removed.
@@ -123,6 +121,18 @@ where
     /// # Errors
     /// Returns `CacheError` if the underlying storage fails.
     async fn put(&self, key: K, value: V) -> Result<(), CacheError>;
+}
+
+/// Unified caching SPI for adapter-layer use.
+///
+/// Combines `CacheReader` and `CacheWriter` for components requiring full
+/// cache access.
+#[async_trait]
+pub trait Cache<K, V>: CacheReader<K, V> + CacheWriter<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
 }
 
 #[cfg(test)]
@@ -143,23 +153,31 @@ mod tests {
         #[async_trait]
         #[expect(
             clippy::missing_trait_methods,
-            reason = "Dummy intentionally uses default implementation for \
-                      invalidate/has to test trait-level behavior."
+            reason = "Dummy intentionally uses default implementation for has \
+                      to test trait-level behavior."
         )]
-        impl Cache<String, String> for Dummy {
+        impl CacheReader<String, String> for Dummy {
+            async fn get(
+                &self,
+                _key: &String,
+            ) -> Result<Option<String>, CacheError> {
+                Ok(None)
+            }
+        }
+
+        #[async_trait]
+        #[expect(
+            clippy::missing_trait_methods,
+            reason = "Dummy intentionally uses default implementation for \
+                      invalidate to test trait-level behavior."
+        )]
+        impl CacheWriter<String, String> for Dummy {
             async fn clear(&self) -> Result<(), CacheError> {
                 Ok(())
             }
 
             async fn delete(&self, _key: &String) -> Result<bool, CacheError> {
                 Ok(false)
-            }
-
-            async fn get(
-                &self,
-                _key: &String,
-            ) -> Result<Option<String>, CacheError> {
-                Ok(None)
             }
 
             async fn put(
@@ -171,26 +189,33 @@ mod tests {
             }
         }
 
+        #[async_trait]
+        impl Cache<String, String> for Dummy {}
+
         // [5.1-U-02] Cache Trait Existence
         #[test]
-        fn should_find_cache_trait() {
+        fn should_find_cache_traits() {
+            fn assert_is_reader<T: CacheReader<String, String>>() {}
+            fn assert_is_writer<T: CacheWriter<String, String>>() {}
             fn assert_is_cache<T: Cache<String, String>>() {}
+            assert_is_reader::<Dummy>();
+            assert_is_writer::<Dummy>();
             assert_is_cache::<Dummy>();
         }
 
-        // [5.1-U-08] Cache::put Method
+        // [5.1-U-08] CacheWriter::put Method
         #[test]
         fn should_have_put_method() {
             // Verified by Dummy implementation
         }
 
-        // [5.1-U-09] Cache::delete Method
+        // [5.1-U-09] CacheWriter::delete Method
         #[test]
         fn should_have_delete_method() {
             // Verified by Dummy implementation
         }
 
-        // [5.1-U-10] Cache::invalidate Method
+        // [5.1-U-10] CacheWriter::invalidate Method
         #[test]
         fn should_have_invalidate_method() {
             // Verified by Dummy implementation
@@ -209,14 +234,22 @@ mod tests {
         // [5.1-U-11] Cache Trait Bounds
         #[test]
         fn should_require_proper_trait_bounds() {
-            fn assert_bounds<K, V, C>()
+            fn assert_reader_bounds<K, V, C>()
             where
                 K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
                 V: Clone + Send + Sync + 'static,
-                C: Cache<K, V>,
+                C: CacheReader<K, V>,
             {
             }
-            assert_bounds::<String, String, Dummy>();
+            fn assert_writer_bounds<K, V, C>()
+            where
+                K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+                V: Clone + Send + Sync + 'static,
+                C: CacheWriter<K, V>,
+            {
+            }
+            assert_reader_bounds::<String, String, Dummy>();
+            assert_writer_bounds::<String, String, Dummy>();
         }
     }
 
@@ -226,13 +259,14 @@ mod tests {
         // [5.1-U-03] MockCache Existence
         #[test]
         fn should_find_mock_cache() {
-            let _mock = MockCache::<String, String>::new();
+            let _reader = MockCacheReader::<String, String>::new();
+            let _writer = MockCacheWriter::<String, String>::new();
         }
 
         // [5.1-U-12] MockCache Expectations
         #[tokio::test]
         async fn mock_should_allow_get_expectation() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheReader::<String, String>::new();
             mock.expect_get().returning(|_| Box::pin(async { Ok(None) }));
             let result = mock.get(&"key".to_owned()).await;
             assert!(result.is_ok(), "Mock get should return Ok");
@@ -240,7 +274,7 @@ mod tests {
 
         #[tokio::test]
         async fn mock_should_allow_has_expectation() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheReader::<String, String>::new();
             mock.expect_has().returning(|_| Box::pin(async { Ok(true) }));
             let result = mock.has(&"key".to_owned()).await;
             assert!(result.is_ok(), "Mock has should return Ok");
@@ -248,7 +282,7 @@ mod tests {
 
         #[tokio::test]
         async fn mock_should_allow_clear_expectation() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_clear().returning(|| Box::pin(async { Ok(()) }));
             let result = mock.clear().await;
             assert!(result.is_ok(), "Mock clear should return Ok");
@@ -256,7 +290,7 @@ mod tests {
 
         #[tokio::test]
         async fn mock_should_allow_put_expectation() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_put().returning(|_, _| Box::pin(async { Ok(()) }));
             let result = mock.put("key".to_owned(), "value".to_owned()).await;
             assert!(result.is_ok(), "Mock put should return Ok");
@@ -264,7 +298,7 @@ mod tests {
 
         #[tokio::test]
         async fn mock_should_allow_delete_expectation() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_delete().returning(|_| Box::pin(async { Ok(true) }));
             let result = mock.delete(&"key".to_owned()).await;
             assert!(result.is_ok(), "Mock delete should return Ok");
@@ -272,7 +306,7 @@ mod tests {
 
         #[tokio::test]
         async fn mock_should_allow_invalidate_expectation() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_invalidate()
                 .returning(|_| Box::pin(async { Ok(true) }));
             let result = mock.invalidate(&"key".to_owned()).await;
@@ -286,7 +320,7 @@ mod tests {
         // [5.1-U-13] Cache Contract Behavior
         #[tokio::test]
         async fn get_should_return_none_for_missing_key() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheReader::<String, String>::new();
             mock.expect_get()
                 .with(mockall::predicate::eq("missing".to_owned()))
                 .returning(|_| Box::pin(async { Ok(None) }));
@@ -300,7 +334,7 @@ mod tests {
 
         #[tokio::test]
         async fn get_should_return_value_for_existing_key() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheReader::<String, String>::new();
             mock.expect_get()
                 .with(mockall::predicate::eq("exists".to_owned()))
                 .returning(|_| {
@@ -316,7 +350,7 @@ mod tests {
 
         #[tokio::test]
         async fn put_should_succeed() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_put()
                 .with(
                     mockall::predicate::eq("key".to_owned()),
@@ -334,7 +368,7 @@ mod tests {
 
         #[tokio::test]
         async fn delete_should_return_false_for_missing_key() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_delete()
                 .with(mockall::predicate::eq("missing".to_owned()))
                 .returning(|_| Box::pin(async { Ok(false) }));
@@ -348,7 +382,7 @@ mod tests {
 
         #[tokio::test]
         async fn delete_should_return_true_for_existing_key() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_delete()
                 .with(mockall::predicate::eq("exists".to_owned()))
                 .returning(|_| Box::pin(async { Ok(true) }));
@@ -362,7 +396,7 @@ mod tests {
 
         #[tokio::test]
         async fn invalidate_should_behave_like_delete() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_invalidate()
                 .with(mockall::predicate::eq("key".to_owned()))
                 .returning(|_| Box::pin(async { Ok(true) }));
@@ -381,7 +415,7 @@ mod tests {
         // [5.1-U-14] Cache Error Handling
         #[tokio::test]
         async fn get_should_propagate_io_error() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheReader::<String, String>::new();
             mock.expect_get().returning(|_| {
                 Box::pin(async {
                     Err(CacheError::IoError(std::io::Error::other("io error")))
@@ -400,7 +434,7 @@ mod tests {
 
         #[tokio::test]
         async fn put_should_propagate_serialization_error() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_put().returning(|_, _| {
                 Box::pin(async {
                     Err(CacheError::SerializationError {
@@ -426,7 +460,7 @@ mod tests {
 
         #[tokio::test]
         async fn delete_should_propagate_backend_error() {
-            let mut mock = MockCache::<String, String>::new();
+            let mut mock = MockCacheWriter::<String, String>::new();
             mock.expect_delete().returning(|_| {
                 Box::pin(async {
                     Err(CacheError::BackendError {
