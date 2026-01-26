@@ -33,10 +33,9 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 
 **Given** write-through caching must ensure consistency
 **When** I implement `put()` for the coordinator
-**Then** the flow is:
-1. Write to disk first (persistence)
-2. If disk write succeeds: Write to memory (in-memory cache)
-3. If disk write fails: Return error WITHOUT writing to memory (prevent inconsistency)
+**Then** it MUST write to the disk layer first to ensure persistence
+**And** it MUST only write to the memory layer if the disk write succeeds
+**And** it MUST return an error and PREVENT writing to memory if the disk write fails (ensuring cache consistency)
 
 **Given** invalidation must affect both layers
 **When** I implement `delete()` and `invalidate()`
@@ -117,14 +116,14 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Read-Through Logic (CacheReader Implementation)
-- [ ] Task 4: Implement read-through `get` with event-driven backfill
+### Phase 4: Read-Through Logic (CQRS Reader)
+- [ ] Task 4: Implement read-through `get` with decoupled async backfill
   - [ ] Subtask 4.1: [TDD] Write `get::returns_memory_hit_immediately` (failing)
-  - [ ] Subtask 4.2: Implement `get` logic for memory hit (no disk call)
+  - [ ] Subtask 4.2: Implement `get` logic to return immediately on memory hit (avoiding disk call)
   - [ ] Subtask 4.3: [TDD] Write `get::returns_disk_hit_and_triggers_backfill` (failing)
-  - [ ] Subtask 4.4: Implement `get` logic for memory miss: call disk -> send backfill event -> return
+  - [ ] Subtask 4.4: Implement logic to check disk on memory miss and send (K, V) to the `mpsc` channel on disk hit for background memory update
   - [ ] Subtask 4.5: [TDD] Write `get::returns_none_on_total_miss` (failing)
-  - [ ] Subtask 4.6: Implement `has` orchestration (check memory then disk)
+  - [ ] Subtask 4.6: Implement `has` orchestration checking memory then disk
   - [ ] Subtask 4.7: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
   - [ ] Subtask 4.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -133,14 +132,14 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 5: Write-Through Logic (CacheWriter Implementation)
-- [ ] Task 5: Implement write-through `put` and invalidation
+### Phase 5: Write-Through Logic (CQRS Writer)
+- [ ] Task 5: Implement write-through `put` and parallel invalidation
   - [ ] Subtask 5.1: [TDD] Write `put::writes_to_disk_before_memory` (failing)
-  - [ ] Subtask 5.2: Implement sequential `put` logic (Disk success -> Memory)
+  - [ ] Subtask 5.2: Implement sequential write logic ensuring Disk layer is persisted before updating Memory
   - [ ] Subtask 5.3: [TDD] Write `put::aborts_memory_write_on_disk_failure` (failing)
-  - [ ] Subtask 5.4: Ensure `put` returns `BackendError` identifying the failing layer
+  - [ ] Subtask 5.4: Ensure `put` returns an error immediately and skips memory write if disk fails (maintaining consistency)
   - [ ] Subtask 5.5: [TDD] Write `delete::invalidates_both_layers_in_parallel` (failing)
-  - [ ] Subtask 5.6: Implement `delete` and `clear` using `tokio::join!` or `try_join!` for parallel cleanup
+  - [ ] Subtask 5.6: Implement `delete` and `clear` using `tokio::join!` to minimize invalidation latency
   - [ ] Subtask 5.7: [TDD] Write `invalidate::delegates_to_delete` (failing)
   - [ ] Subtask 5.8: Run `mise run test:unit:adapters coordinator_put` and verify pass (GREEN)
   - [ ] Subtask 5.9: Run `mise run lint` and fix all warnings/errors
@@ -187,18 +186,34 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 
 ## Dev Notes
 
+### Implementation Flows
+
+#### Read-Through Flow (CoordinatorReader::get)
+1.  Check memory cache via `memory_reader`.
+2.  **Memory Hit**: Return value immediately; emit `tracing::event!` at `Level::DEBUG`.
+3.  **Memory Miss**: Check disk cache via `disk_reader`.
+4.  **Disk Hit**:
+    *   Trigger **Asynchronous Backfill** (send `(K, V)` to internal `mpsc` channel).
+    *   Emit `tracing::event!` at `Level::INFO` with "Memory Miss / Disk Hit".
+    *   Return value immediately to caller.
+5.  **Disk Miss**: Emit `tracing::event!` at `Level::INFO` with "Disk Miss"; return `None`.
+
+#### Write-Through Flow (CoordinatorWriter::put)
+1.  Attempt write to disk via `disk_writer` (ensures persistence first).
+2.  **Disk Success**: Attempt write to memory via `memory_writer`.
+3.  **Disk Failure**: Return error immediately; **DO NOT** write to memory (prevents cache inconsistency).
+4.  Emit `tracing::event!` at `Level::DEBUG` with "Cache Write".
+
 ### Architecture Compliance
-- **Hexagonal Architecture**: `Coordinator` is a Domain Service (re-exported as `CacheCoordinatorReader/Writer`) that acts as a decorator for Ports.
-- **Read-Through/Write-Through**: Standard caching patterns implemented to ensure data consistency between volatile and non-volatile layers.
-- **Async Safety**: Ensures that async methods correctly coordinate underlying async ports without blocking.
-- **CQRS Enforcement**: The coordinator is the final authority enforcing split access at the service layer.
+- **CQRS Enforcement**: The coordinator is fully split into Reader and Writer components.
+- **Event-Driven Backfill**: Prevents memory-write latency from affecting read performance.
+- **Hexagonal Architecture**: `Coordinator` handles act as Decorators for the underlying SPI Ports.
 - **Async Resource Safety**: Uses `mpsc` channels rather than spawning raw tasks to prevent resource leakage.
 
 ### Technical Requirements
-- **Mock-Driven Testing**: Orchestration logic MUST be verified using `MockCacheReaderPort` and `MockCacheWriterPort` to avoid dependency on concrete implementations.
-- **Consistency**: The coordinator is the primary authority for ensuring memory and disk layers remain synchronized.
-- **Error Handling**: Must distinguish between transient memory errors and persistent disk errors when possible.
+- **Mock-Driven Testing**: Orchestration logic MUST be verified using `MockCacheReaderPort` and `MockCacheWriterPort`.
 - **Zero-Blocking**: Ensure the backfill task does not block the return path of the Reader.
+- **Error Handling**: Must distinguish between transient memory errors and persistent disk errors when possible.
 
 ### Library Dependencies
 - **async-trait**: For trait implementation.

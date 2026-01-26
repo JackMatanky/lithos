@@ -214,9 +214,9 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
 
 ## Story 5.5: Implement Cache Coordinator for Memory/Disk Read-Through and Write-Through
 
-As a system architect ensuring consistency,
-I want a `CacheCoordinator` split into Reader and Writer handles that orchestrates memory and disk access,
-So that cache hits are served fast, consistency is guaranteed, and the system follows strict CQRS principles.
+As a system architect ensuring consistency and extreme performance,
+I want a `CacheCoordinator` split into Reader and Writer handles that orchestrates memory and disk cache access,
+So that cache hits are served fast, consistency is guaranteed, and the system follows strict CQRS principles with decoupled background backfill.
 
 **Acceptance Criteria:**
 
@@ -232,26 +232,34 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 **Given** the need for CQRS consistency
 **When** I implement `CacheCoordinatorReader` and `CacheCoordinatorWriter`
 **Then** they share the `CoordinatorInner` state via `Arc`
-**And** the `Reader` handle only implements `CacheReaderPort`
-**And** the `Writer` handle only implements `CacheWriterPort`
+**And** the `Reader` handle ONLY implements the `CacheReaderPort` trait
+**And** the `Writer` handle ONLY implements the `CacheWriterPort` trait
 
 **Given** read-through caching must be high-performance
-**When** a "Memory Miss / Disk Hit" occurs in `Reader::get()`
-**Then** the coordinator triggers an **asynchronous backfill** to memory
-**And** the backfill is decoupled from the return path using an internal channel
-**And** `get()` returns the value to the caller immediately without waiting for the memory write
+**When** I implement `get()` for the coordinator reader
+**Then** the flow is:
+1. Check memory cache via `memory_reader`.
+2. **Memory Hit**: Return value immediately; emit `tracing::event!` at `Level::DEBUG` with "Memory Hit".
+3. **Memory Miss**: Check disk cache via `disk_reader`.
+4. **Disk Hit**:
+    - Trigger an **Asynchronous Backfill** to memory via an internal `mpsc` channel.
+    - Emit `tracing::event!` at `Level::INFO` with "Memory Miss / Disk Hit".
+    - Return the disk value to the caller IMMEDIATELY without waiting for the memory write to complete.
+5. **Disk Miss**: Emit `tracing::event!` at `Level::INFO` with "Disk Miss"; return `None`.
 
 **Given** write-through caching must ensure consistency
-**When** I implement `put()` for the coordinator
+**When** I implement `put()` for the coordinator writer
 **Then** the flow is:
-1. Write to disk first (persistence)
-2. If disk write succeeds: Write to memory (in-memory cache)
-3. If disk write fails: Return error WITHOUT writing to memory (prevent inconsistency)
+1. Attempt write to disk via `disk_writer` to ensure persistence first.
+2. **Disk Success**: Proceed to write the value to the memory layer via `memory_writer`.
+3. **Disk Failure**: Return the error immediately and PREVENT writing to memory (ensuring the cache does not contain data that failed to persist).
+4. Emit `tracing::event!` at `Level::DEBUG` with "Cache Write" including key (if serializable).
 
 **Given** invalidation must affect both layers
-**When** I implement `delete()` and `invalidate()`
-**Then** both memory and disk caches are invalidated in parallel (best effort)
-**And** the `Writer` handle manages this coordination logic
+**When** I implement `delete()`, `invalidate()`, and `clear()`
+**Then** the operations are coordinated across both memory and disk layers.
+**And** for `delete` and `clear`, both layers are invalidated in parallel (best effort) using `tokio::join!` to minimize latency.
+**And** `delete`/`invalidate` returns true if the key existed in either layer.
 
 **Given** observability is critical for debugging
 **When** I trace coordinator operations
