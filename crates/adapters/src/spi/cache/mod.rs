@@ -127,6 +127,40 @@ where
 ///
 /// Combines `CacheReader` and `CacheWriter` for components requiring full
 /// cache access.
+///
+/// # Implementations
+/// - `MokaCache`: In-memory cache using the `moka` library.
+/// - `RedbCache`: Persistent cache using the `redb` KV store. Note: For
+///   persistent caches, values MUST also implement `rkyv` traits:
+///   `rkyv::Archive + rkyv::Serialize + rkyv::Deserialize`.
+/// - `Coordinator`: A multi-tier cache combining memory and disk storage.
+///
+/// # Example
+///
+/// ```rust
+/// # use async_trait::async_trait;
+/// # use lithos_adapters::spi::cache::{Cache, CacheReader, CacheWriter};
+/// # use lithos_adapters::spi::errors::CacheError;
+/// # struct MemoryCache;
+/// # #[async_trait]
+/// # impl CacheReader<String, String> for MemoryCache {
+/// #     async fn get(&self, _k: &String) -> Result<Option<String>, CacheError> { Ok(None) }
+/// # }
+/// # #[async_trait]
+/// # impl CacheWriter<String, String> for MemoryCache {
+/// #     async fn clear(&self) -> Result<(), CacheError> { Ok(()) }
+/// #     async fn delete(&self, _k: &String) -> Result<bool, CacheError> { Ok(false) }
+/// #     async fn put(&self, _k: String, _v: String) -> Result<(), CacheError> { Ok(()) }
+/// # }
+/// # #[async_trait]
+/// # impl Cache<String, String> for MemoryCache {}
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let cache: &dyn Cache<String, String> = &MemoryCache;
+/// let result: Option<String> = cache.get(&"key".to_string()).await?;
+/// assert!(result.is_none());
+/// # Ok::<(), CacheError>(())
+/// # }).unwrap();
+/// ```
 #[async_trait]
 pub trait Cache<K, V>: CacheReader<K, V> + CacheWriter<K, V>
 where
