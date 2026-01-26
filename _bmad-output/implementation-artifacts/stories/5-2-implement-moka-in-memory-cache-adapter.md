@@ -23,14 +23,15 @@ So that frequently accessed data is served with sub-millisecond latency and all 
 **And** the struct provides a builder pattern for configuration
 
 **Given** the adapter must implement the trait
-**When** I implement `Cache<K, V>` for `MokaCache<K, V>`
+**When** I implement `CacheReader<K, V>` and `CacheWriter<K, V>` for `MokaCache<K, V>`
 **Then** all trait methods satisfy the async trait bounds
-**And** `clear()` invalidates all entries in the Moka cache
-**And** `delete()` removes entries and returns true if key existed
-**And** `get()` returns `None` for cache misses, `Some(V)` for hits
-**And** `has()` checks existence without cloning the value
-**And** `invalidate()` delegates to `delete()` for semantic clarity
-**And** `put()` stores values respecting TTL/TTI policies
+**And** `CacheReader::get()` returns `None` for cache misses, `Some(V)` for hits
+**And** `CacheReader::has()` checks existence without cloning the value
+**And** `CacheWriter::clear()` invalidates all entries in the Moka cache
+**And** `CacheWriter::delete()` removes entries and returns true if key existed
+**And** `CacheWriter::invalidate()` delegates to `delete()` for semantic clarity
+**And** `CacheWriter::put()` stores values respecting TTL/TTI policies
+**And** `MokaCache` also implements the blanket `Cache<K, V>` trait
 
 **Given** observability is required per project standards
 **When** I instrument all public methods
@@ -176,13 +177,12 @@ So that frequently accessed data is served with sub-millisecond latency and all 
   - [x] Subtask 8.5: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 8.6: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
-### Phase 9: AI Review Follow-ups
-- [x] Task 9: Address findings from adversarial code review
-  - [x] Subtask 9.1: Remove `std::fmt::Debug` bounds from `MokaCache` and `Builder` to align with Port trait
-  - [x] Subtask 9.2: Rename builder methods to standard Rust idioms (`builder()` and `build()`)
-  - [x] Subtask 9.3: Add full instrumentation and events to `invalidate` method
-  - [x] Subtask 9.4: Add explicit unit test for TinyLFU scan resistance in `tests` module
-  - [x] Subtask 9.5: Update documentation and doc tests to reflect API changes
+### Phase 10: CQRS Refactor (Architectural Integrity)
+- [x] Task 10: Implement split traits for MokaCache
+  - [x] Subtask 10.1: Update `moka.rs` to implement `CacheReader` and `CacheWriter` separately
+  - [x] Subtask 10.2: Implement blanket `Cache` trait for `MokaCache`
+  - [x] Subtask 10.3: Update doc tests to use split trait imports
+  - [x] Subtask 10.4: Verify all tests pass with split traits
 
 ## Dev Notes
 
