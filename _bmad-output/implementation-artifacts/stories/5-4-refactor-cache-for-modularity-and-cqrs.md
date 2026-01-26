@@ -69,52 +69,14 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 1.8: Define `IdentityCodec` for in-memory caches (no-op pass-through)
   - [ ] Subtask 1.9: Run `mise run test:unit:adapters deserializer` (GREEN)
   - [ ] Subtask 1.10: Run `mise run lint`, fix all warnings/errors, and verify no `rkyv` bounds leak into the public trait
+    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
+    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
+    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
+    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
+    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
   - [ ] Subtask 1.11: Run `mise run verify` to ensure all Lithos quality gates are satisfied
   - [ ] Subtask 1.12: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [ ] Subtask 1.13: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-
-### Phase 2: Moka Split-Handle Refactor
-- [ ] Task 2: Refactor Moka to split handles
-  - [ ] Subtask 2.1: [TDD] Write `moka_builder::builds_split_handles_with_custom_capacity` (failing)
-  - [ ] Subtask 2.2: Define `pub struct MokaReader<K, V>` and `pub struct MokaWriter<K, V>` in `moka.rs` wrapping `Arc<Inner>`
-  - [ ] Subtask 2.3: Implement `CacheReaderPort` for `MokaReader` (get/has)
-  - [ ] Subtask 2.4: Implement `CacheWriterPort` for `MokaWriter` (put/delete/clear)
-  - [ ] Subtask 2.5: Update `MokaBuilder::build()` to return `(MokaReader<K, V>, MokaWriter<K, V>)`
-  - [ ] Subtask 2.6: Remove the unified `MokaCache` struct entirely
-  - [ ] Subtask 2.7: Run `mise run test:unit:adapters moka` (GREEN)
-  - [ ] Subtask 2.8: Run `mise run lint` and fix all warnings/errors
-  - [ ] Subtask 2.9: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 2.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 2.11: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-
-### Phase 3: Redb Builder & Handle Stubs
-- [ ] Task 3: Implement `RedbBuilder` and Handle Stubs
-  - [ ] Subtask 3.1: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.2: Define `pub struct RedbReader<K, V>` and `pub struct RedbWriter<K, V>` stubs in `redb.rs`
-  - [ ] Subtask 3.3: Define `pub struct RedbBuilder<K, V>` in `redb.rs`
-  - [ ] Subtask 3.4: Implement fluent methods for `path`, `table_name`, `durability`
-  - [ ] Subtask 3.5: Implement `build()` method returning `(RedbReader, RedbWriter)` (stubs for now)
-  - [ ] Subtask 3.6: Add `tracing::instrument` to `build()`
-  - [ ] Subtask 3.7: Run `mise run test:unit:adapters builder` (GREEN)
-  - [ ] Subtask 3.8: Run `mise run lint` and fix all warnings/errors
-  - [ ] Subtask 3.9: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 3.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 3.11: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 2: Moka Split-Handle Refactor
 - [ ] Task 2: Refactor Moka to split handles
@@ -127,128 +89,140 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [ ] Subtask 2.7: Remove the unified `MokaCache` struct entirely
   - [ ] Subtask 2.8: Run `mise run test:unit:adapters moka` (GREEN)
   - [ ] Subtask 2.9: Run `mise run lint` and fix all warnings/errors
+    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
+    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
+    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
+    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
+    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
   - [ ] Subtask 2.10: Run `mise run verify` to ensure all Lithos quality gates are satisfied
   - [ ] Subtask 2.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [ ] Subtask 2.12: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+
+### Phase 3: Redb Split-Handle Skeleton (Architecture First)
+- [ ] Task 3: Establish Redb API boundary
+  - [ ] Subtask 3.1: Define `pub struct Reader<K, V, C>` and `pub struct Writer<K, V, C>` stubs in `redb.rs`
+  - [ ] Subtask 3.2: [TDD] Write `redb_api::builder_returns_split_handles` (failing)
+  - [ ] Subtask 3.3: Implement `Builder` struct returning `(Reader, Writer)` tuple (stubs)
+  - [ ] Subtask 3.4: Re-export `Builder` as `RedbBuilder`, `Reader` as `RedbReader`, and `Writer` as `RedbWriter` in `mod.rs`
+  - [ ] Subtask 3.5: Delete the monolithic `RedbCache` struct to prevent usage
+  - [ ] Subtask 3.6: Run `mise run test:unit:adapters redb` (GREEN - minimal compile check)
+  - [ ] Subtask 3.7: Run `mise run lint` and fix all warnings/errors
+    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
+    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
+    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
+    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
+    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 3.8: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 3.9: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 3.10: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+
+### Phase 4: Redb Builder Logic
+- [ ] Task 4: Implement `RedbBuilder` configuration logic
+  - [ ] Subtask 4.1: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 4.2: Implement fluent methods for `path`, `table_name`, `durability` on `Builder`
+  - [ ] Subtask 4.3: [TDD] Write `redb_builder::initializes_db_with_correct_table` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 4.4: Add `tracing::instrument` to `build()`
+  - [ ] Subtask 4.5: Run `mise run test:unit:adapters builder` (GREEN)
+  - [ ] Subtask 4.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 3: Redb Builder & Handle Stubs
-- [ ] Task 3: Implement `Builder` and Handle Stubs
-  - [ ] Subtask 3.1: [TDD] Write `redb_builder::fails_when_path_is_directory` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 3.2: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` stubs in `redb.rs`
-  - [ ] Subtask 3.3: Define `pub struct Builder<K, V>` in `redb.rs`
-  - [ ] Subtask 3.4: Implement fluent methods for `path`, `table_name`, `durability`
-  - [ ] Subtask 3.5: Implement `build()` method returning `(Reader, Writer)` (stubs for now)
-  - [ ] Subtask 3.6: Re-export `Builder` as `RedbBuilder`, `Reader` as `RedbReader`, and `Writer` as `RedbWriter` in `mod.rs`
-  - [ ] Subtask 3.7: Add `tracing::instrument` to `build()`
-  - [ ] Subtask 3.8: Run `mise run test:unit:adapters builder` (GREEN)
-  - [ ] Subtask 3.9: Run `mise run lint` and fix all warnings/errors
-  - [ ] Subtask 3.10: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 3.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 3.12: Stage and commit all files created, deleted, or modified during this phase with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+### Phase 5: Redb Async/Sync Bridge (`Executor`)
+- [ ] Task 5: Implement `Executor` utility
+  - [ ] Subtask 5.1: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 5.2: Define `pub(crate) struct Executor` in `redb.rs` (no generics needed)
+  - [ ] Subtask 5.3: Implement `spawn<F, R>(&self, span: Span, f: F) -> Result<R, CacheError>` where `F: FnOnce() -> Result<R, redb::Error> + Send + 'static`
+  - [ ] Subtask 5.4: Ensure `spawn` enters the provided span and catches Tokio JoinErrors
+  - [ ] Subtask 5.5: Implement error mapping helper `map_redb_error` that converts `redb::Error` to `CacheError::BackendError` or `IoError`
+  - [ ] Subtask 5.6: Run `mise run test:unit:adapters redb` (GREEN)
+  - [ ] Subtask 5.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 4: Redb Async/Sync Bridge (`Executor`)
-- [ ] Task 4: Implement `Executor` utility
-  - [ ] Subtask 4.1: [TDD] Write `executor::maps_redb_error_to_cache_error` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 4.2: Define `pub(crate) struct Executor` in `redb.rs` (no generics needed)
-  - [ ] Subtask 4.3: Implement `spawn<F, R>(&self, span: Span, f: F) -> Result<R, CacheError>` where `F: FnOnce() -> Result<R, redb::Error> + Send + 'static`
-  - [ ] Subtask 4.5: Ensure `spawn` enters the provided span and catches Tokio JoinErrors
-  - [ ] Subtask 4.6: Implement error mapping helper `map_redb_error` that converts `redb::Error` to `CacheError::BackendError` or `IoError`
-  - [ ] Subtask 4.7: Run `mise run test:unit:adapters redb` (GREEN)
-  - [ ] Subtask 4.8: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-
-### Phase 5: Inner State & Encapsulation
-- [ ] Task 5: Implement `Inner` structs and shareable state
-  - [ ] Subtask 5.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` (generic over Codec)
-  - [ ] Subtask 5.2: Add fields: `db: Arc<redb::Database>`, `executor: Executor`, `table: TableDefinition<'static, [u8], [u8]>`, `codec: C`
-  - [ ] Subtask 5.3: Implement `Inner::new(...)` constructor
-  - [ ] Subtask 5.4: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 5.5: Implement `write<F, T>(&self, f: F) -> Result<T, CacheError>` helper method
+### Phase 6: Inner State & Encapsulation
+- [ ] Task 6: Implement `Inner` structs and shareable state
+  - [ ] Subtask 6.1: Define `pub(crate) struct Inner<K, V, C>` locally in `redb.rs` (generic over Codec)
+  - [ ] Subtask 6.2: Add fields: `db: Arc<redb::Database>`, `executor: Executor`, `table: TableDefinition<'static, [u8], [u8]>`, `codec: C`
+  - [ ] Subtask 6.3: Implement `Inner::new(...)` constructor
+  - [ ] Subtask 6.4: [TDD] Write `redb_inner::batches_multiple_writes_in_single_transaction` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 6.5: Implement `write<F, T>(&self, f: F) -> Result<T, CacheError>` helper method
     - Use `self.executor.spawn()` to run the closure
     - Begin write transaction via `self.db.begin_write()`
     - Commit transaction at end of closure
     - Map all errors using `Executor::map_redb_error`
-  - [ ] Subtask 5.6: Implement `read<F, T>(&self, f: F) -> Result<T, CacheError>` helper method
+  - [ ] Subtask 6.6: Implement `read<F, T>(&self, f: F) -> Result<T, CacheError>` helper method
     - Use `self.executor.spawn()`
     - Begin read transaction
     - No commit needed
-  - [ ] Subtask 5.7: Ensure `Inner` structs are non-clonable (enforcing `Arc` usage for sharing)
-  - [ ] Subtask 5.8: Run `mise run test:unit:adapters` (GREEN)
-  - [ ] Subtask 5.9: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 6.7: Ensure `Inner` structs are non-clonable (enforcing `Arc` usage for sharing)
+  - [ ] Subtask 6.8: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 6.9: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 6: Redb Handle Logic (Zero-Copy)
-- [ ] Task 6: Implement logic for `Reader` and `Writer`
-  - [ ] Subtask 6.1: Update `Reader` and `Writer` to wrap `Arc<RedbInner>`
-  - [ ] Subtask 6.2: [TDD] Write `cqrs::prevents_reader_access_to_port_writer_methods` (failing)
-  - [ ] Subtask 6.3: Implement `CacheReaderPort` for `Reader` using `inner.read()`
-  - [ ] Subtask 6.4: Implement `CacheWriterPort` for `Writer` using `inner.write()`
-  - [ ] Subtask 6.5: [TDD] Write `redb_reader::returns_entry_view_without_allocating` (failing, use `IsolatedTestContext`)
-  - [ ] Subtask 6.6: Implement `EntryView` for true zero-copy retrieval using `AccessGuard`
-  - [ ] Subtask 6.7: Run `mise run test:unit:adapters` (GREEN)
-  - [ ] Subtask 6.8: Run `mise run lint` and fix all warnings/errors
+### Phase 7: Redb Handle Logic (Zero-Copy)
+- [ ] Task 7: Implement logic for `Reader` and `Writer`
+  - [ ] Subtask 7.1: Update `Reader` and `Writer` to wrap `Arc<Inner>` (populate the stubs from Phase 3)
+  - [ ] Subtask 7.2: [TDD] Write `cqrs::prevents_reader_access_to_port_writer_methods` (failing)
+  - [ ] Subtask 7.3: Implement `CacheReader` for `Reader` using `inner.read()`
+  - [ ] Subtask 7.4: Implement `CacheWriter` for `Writer` using `inner.write()`
+  - [ ] Subtask 7.5: [TDD] Write `redb_reader::returns_entry_view_without_allocating` (failing, use `IsolatedTestContext`)
+  - [ ] Subtask 7.6: Implement `EntryView` for true zero-copy retrieval using `AccessGuard`
+  - [ ] Subtask 7.7: Run `mise run test:unit:adapters` (GREEN)
+  - [ ] Subtask 7.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 7: API Transparency & Friendly Names
-- [ ] Task 7: Implement default type parameters and aliases
-  - [ ] Subtask 7.1: Update `Reader/Writer` handles to use `C = RkyvCodec` default in `redb.rs`
-  - [ ] Subtask 7.2: Verify re-exports in `mod.rs` (`pub use redb::{Reader as RedbReader, Writer as RedbWriter}`)
-  - [ ] Subtask 7.3: [TDD] Write `api::allows_usage_without_specifying_codec` (failing)
-  - [ ] Subtask 7.4: Implement re-exports to hide `Inner` and `Executor` from the public SPI
-  - [ ] Subtask 7.5: Run `mise run test:unit:adapters` (GREEN)
-  - [ ] Subtask 7.6: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-
-### Phase 8: Final Refactor & NFR Verification
-- [ ] Task 8: Complete refactor with performance and observability audit
-  - [ ] Subtask 8.1: Remove all legacy monolithic code from `redb.rs` and `moka.rs`
-  - [ ] Subtask 8.2: [TDD] Write `observability::emits_nested_spans_for_transactions` (failing)
-  - [ ] Subtask 8.3: Verify nested spans using `TestTracingSubscriber` across all new components
-  - [ ] Subtask 8.4: [TDD] Write `nfr::zero_copy_probe::verifies_direct_pointer_access` (failing)
-  - [ ] Subtask 8.5: Verify no heap allocations occur in the read hot-path
+### Phase 8: API Transparency & Friendly Names
+- [ ] Task 8: Implement default type parameters and aliases
+  - [ ] Subtask 8.1: Update `Reader/Writer` handles to use `C = RkyvCodec` default in `redb.rs`
+  - [ ] Subtask 8.2: Verify re-exports in `mod.rs` (`pub use redb::{Reader as RedbReader, Writer as RedbWriter}`)
+  - [ ] Subtask 8.3: [TDD] Write `api::allows_usage_without_specifying_codec` (failing)
+  - [ ] Subtask 8.4: Implement re-exports to hide `Inner` and `Executor` from the public SPI
+  - [ ] Subtask 8.5: Run `mise run test:unit:adapters` (GREEN)
   - [ ] Subtask 8.6: Run `mise run lint` and fix all warnings/errors
-  - [ ] Subtask 8.7: Run `mise run verify` (GREEN)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
-### Phase 9: Final Review & Quality Gate
-- [ ] Task 9: Comprehensive project verification
-  - [ ] Subtask 9.1: Perform a final "Trait Bound Audit" ensuring zero `rkyv` noise in backend files
-  - [ ] Subtask 9.2: Verify that `RedbReader` and `RedbWriter` correctly use `tracing` for all I/O
-  - [ ] Subtask 9.3: Run `mise run fmt` and verify formatting compliance
-  - [ ] Subtask 9.4: Run `mise run lint` one final time
-  - [ ] Subtask 9.5: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 9.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 9.7: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+### Phase 9: Final Refactor & NFR Verification
+- [ ] Task 9: Complete refactor with performance and observability audit
+  - [ ] Subtask 9.1: Remove all legacy monolithic code from `redb.rs` and `moka.rs`
+  - [ ] Subtask 9.2: [TDD] Write `observability::emits_nested_spans_for_transactions` (failing)
+  - [ ] Subtask 9.3: Verify nested spans using `TestTracingSubscriber` across all new components
+  - [ ] Subtask 9.4: [TDD] Write `nfr::zero_copy_probe::verifies_direct_pointer_access` (failing)
+  - [ ] Subtask 9.5: Verify no heap allocations occur in the read hot-path
+  - [ ] Subtask 9.6: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 9.7: Run `mise run verify` (GREEN)
+    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
+    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
+    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
+    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
+    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+
+### Phase 10: Final Review & Quality Gate
+- [ ] Task 10: Comprehensive project verification
+  - [ ] Subtask 10.1: Perform a final "Trait Bound Audit" ensuring zero `rkyv` noise in backend files
+  - [ ] Subtask 10.2: Verify that `RedbReader` and `RedbWriter` correctly use `tracing` for all I/O
+  - [ ] Subtask 10.3: Run `mise run fmt` and verify formatting compliance
+  - [ ] Subtask 10.4: Run `mise run lint` one final time
+  - [ ] Subtask 10.5: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 10.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 10.7: Stage and commit all files created, deleted, or modified during the story implementation with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
