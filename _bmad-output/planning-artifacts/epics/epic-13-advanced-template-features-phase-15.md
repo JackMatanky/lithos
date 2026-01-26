@@ -129,6 +129,13 @@ As a developer, I want a comprehensive and efficient test suite for the advanced
 **And** property-based tests verify that circular dependency detection works for complex template hierarchies.
 **And** the suite validates that date operations handle edge cases (leap years, timezone boundaries).
 
+**Given** tests are written
+**When** I review test documentation
+**Then** all tests include BDD-style comments (GIVEN-WHEN-THEN)
+**And** test names clearly describe behavior being tested
+**And** any developer can understand test purpose without reading implementation
+**And** BDD comments explain business context, not just technical steps
+
 **References:** NFR16
 
 ### Story 13.8: [Docs] Epic 13 User & Developer Documentation

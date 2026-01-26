@@ -223,6 +223,13 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **And** integration tests verify end-to-end CLI workflows
 **And** the suite validates that all commands produce consistent help output
 
+**Given** tests are written
+**When** I review test documentation
+**Then** all tests include BDD-style comments (GIVEN-WHEN-THEN)
+**And** test names clearly describe behavior being tested
+**And** any developer can understand test purpose without reading implementation
+**And** BDD comments explain business context, not just technical steps
+
 **References:** NFR16
 
 ### Story 14.15: Epic 14 CLI Documentation

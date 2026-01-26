@@ -299,6 +299,13 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
 
+**Given** tests are written
+**When** I review test documentation
+**Then** all tests include BDD-style comments (GIVEN-WHEN-THEN)
+**And** test names clearly describe behavior being tested
+**And** any developer can understand test purpose without reading implementation
+**And** BDD comments explain business context, not just technical steps
+
 ## Story 11.14: Document Query Service for Developers
 
 As a developer working with query operations,

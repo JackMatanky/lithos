@@ -414,6 +414,13 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 - rkyv serialization round-trips correctly for complex types
 - Metadata is preserved across reads/writes
 
+**Given** tests are written
+**When** I review test documentation
+**Then** all tests include BDD-style comments (GIVEN-WHEN-THEN)
+**And** test names clearly describe behavior being tested
+**And** any developer can understand test purpose without reading implementation
+**And** BDD comments explain business context, not just technical steps
+
 ## Story 5.8: Document Cache System Foundation
 
 As a developer integrating caching in adapter implementations,

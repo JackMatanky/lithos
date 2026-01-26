@@ -354,6 +354,13 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **When** I check maintainability
 **Then** test code follows same quality standards as production code with proper documentation
 
+**Given** tests are written
+**When** I review test documentation
+**Then** all tests include BDD-style comments (GIVEN-WHEN-THEN)
+**And** test names clearly describe behavior being tested
+**And** any developer can understand test purpose without reading implementation
+**And** BDD comments explain business context, not just technical steps
+
 **References:** NFR16
 
 ### Story 12.19: Epic 12 User and Developer Documentation
