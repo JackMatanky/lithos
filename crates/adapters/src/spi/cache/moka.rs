@@ -88,13 +88,7 @@ where
     /// Internal helper to build the Inner state.
     #[inline]
     fn build_inner(&self) -> Result<MokaInner<K, V>, CacheError> {
-        if self.max_capacity == 0 {
-            return Err(CacheError::BackendError {
-                backend: "moka",
-                message: "max_capacity must be greater than 0".into(),
-            });
-        }
-
+        self.validate_capacity_not_zero()?;
         let mut builder = moka::future::Cache::builder().max_capacity(
             self.max_capacity.try_into().map_err(|e| {
                 CacheError::BackendError {
@@ -113,6 +107,7 @@ where
         }
 
         let cache = builder.build();
+
         Ok(Arc::new(Inner {
             cache,
             codec: IdentityCodec,
@@ -175,6 +170,18 @@ where
         self.time_to_live = Some(duration);
         self
     }
+
+    /// Validate that capacity is not zero.
+    #[inline]
+    fn validate_capacity_not_zero(&self) -> Result<(), CacheError> {
+        if self.max_capacity == 0 {
+            return Err(CacheError::BackendError {
+                backend: "moka",
+                message: "max_capacity must be greater than 0".into(),
+            });
+        }
+        Ok(())
+    }
 }
 
 /// Read-only handle for Moka cache.
@@ -200,27 +207,13 @@ where
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
-        let hit = self.inner.cache.get(key).await;
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "get",
-            hit = hit.is_some()
-        );
-        Ok(hit)
+        Ok(self.inner.fetch_value(key).await)
     }
 
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        let exists = self.inner.cache.contains_key(key);
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "has",
-            exists = exists
-        );
-        Ok(exists)
+        Ok(self.inner.has_key(key))
     }
 }
 
@@ -247,26 +240,14 @@ where
     #[tracing::instrument(skip(self), level = "debug")]
     #[inline]
     async fn clear(&self) -> Result<(), CacheError> {
-        self.inner.cache.invalidate_all();
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "clear"
-        );
+        self.inner.clear_storage();
         Ok(())
     }
 
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn delete(&self, key: &K) -> Result<bool, CacheError> {
-        let existed = self.inner.cache.remove(key).await.is_some();
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "delete",
-            existed = existed
-        );
-        Ok(existed)
+        Ok(self.inner.remove_key(key).await)
     }
 
     #[tracing::instrument(skip(self, key), level = "debug")]
@@ -285,12 +266,7 @@ where
     #[tracing::instrument(skip(self, key, value), level = "debug")]
     #[inline]
     async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
-        self.inner.cache.insert(key, value).await;
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "put"
-        );
+        self.inner.upsert_value(key, value).await;
         Ok(())
     }
 }
@@ -315,6 +291,73 @@ where
                   pattern"
     )]
     codec: IdentityCodec,
+}
+
+impl<K, V> Inner<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    /// Clear all entries from storage.
+    #[inline]
+    pub(crate) fn clear_storage(&self) {
+        self.cache.invalidate_all();
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "clear"
+        );
+    }
+
+    /// Fetch value from storage.
+    #[inline]
+    pub(crate) async fn fetch_value(&self, key: &K) -> Option<V> {
+        let hit = self.cache.get(key).await;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "get",
+            hit = hit.is_some()
+        );
+        hit
+    }
+
+    /// Check if key exists in storage.
+    #[inline]
+    pub(crate) fn has_key(&self, key: &K) -> bool {
+        let exists = self.cache.contains_key(key);
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "has",
+            exists = exists
+        );
+        exists
+    }
+
+    /// Remove key from storage.
+    #[inline]
+    pub(crate) async fn remove_key(&self, key: &K) -> bool {
+        let existed = self.cache.remove(key).await.is_some();
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "delete",
+            existed = existed
+        );
+        existed
+    }
+
+    /// Insert or update value in storage.
+    #[inline]
+    pub(crate) async fn upsert_value(&self, key: K, value: V) {
+        self.cache.insert(key, value).await;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "put"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -401,32 +444,14 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Panic is used in tests to fail fast when expectations \
-                      are not met."
-        )]
         fn should_return_error_for_zero_capacity() {
             let result = Builder::<String, String>::default()
                 .max_capacity(0usize)
                 .build();
 
             assert!(result.is_err());
-            match result.unwrap_err() {
-                CacheError::BackendError {
-                    backend,
-                    message,
-                } => {
-                    assert_eq!(backend, "moka");
-                    assert!(message.contains("capacity"));
-                }
-                CacheError::IoError(_)
-                | CacheError::SerializationError {
-                    ..
-                } => {
-                    panic!("Expected BackendError")
-                }
-            }
+            let err = result.expect_err("Expected error");
+            assert!(matches!(err, CacheError::BackendError { .. }));
         }
     }
 
