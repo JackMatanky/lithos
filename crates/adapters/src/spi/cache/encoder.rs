@@ -23,11 +23,17 @@ pub trait Codec<K, V>: Send + Sync {
         encoded: &'view [u8],
     ) -> Result<&'view Self::Archived, CacheError>;
 
+    /// Decode a key from bytes retrieved from storage.
+    ///
+    /// # Errors
+    /// Returns `CacheError::SerializationError` if decoding fails.
+    fn decode_key(&self, encoded: &[u8]) -> Result<K, CacheError>;
+
     /// Decode a value from bytes retrieved from storage.
     ///
     /// # Errors
     /// Returns `CacheError::SerializationError` if decoding fails.
-    fn decode(&self, encoded: &[u8]) -> Result<V, CacheError>;
+    fn decode_value(&self, encoded: &[u8]) -> Result<V, CacheError>;
 
     /// Encode a key into bytes for storage.
     ///
@@ -53,12 +59,20 @@ pub struct RkyvCodec;
 impl<K, V> Codec<K, V> for RkyvCodec
 where
     K: std::fmt::Debug
+        + rkyv::Archive
         + for<'ser> rkyv::Serialize<
             rkyv::api::high::HighSerializer<
                 rkyv::util::AlignedVec,
                 rkyv::ser::allocator::ArenaHandle<'ser>,
                 rkyv::rancor::Error,
             >,
+        >,
+    rkyv::Archived<K>: rkyv::Deserialize<
+            K,
+            rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+        >,
+    for<'validation> rkyv::Archived<K>: rkyv::bytecheck::CheckBytes<
+            rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
         >,
     V: rkyv::Archive,
     V: for<'ser> rkyv::Serialize<
@@ -93,7 +107,30 @@ where
     }
 
     #[inline]
-    fn decode(&self, encoded: &[u8]) -> Result<V, CacheError> {
+    fn decode_key(&self, encoded: &[u8]) -> Result<K, CacheError> {
+        use rkyv::util::AlignedVec;
+
+        let mut aligned = AlignedVec::<16>::new();
+        aligned.extend_from_slice(encoded);
+
+        let archived =
+            rkyv::access::<rkyv::Archived<K>, rkyv::rancor::Error>(&aligned)
+                .map_err(|e| CacheError::SerializationError {
+                    type_name: std::any::type_name::<K>(),
+                    message: format!("Failed to access archived key: {e}")
+                        .into(),
+                })?;
+
+        rkyv::deserialize::<K, rkyv::rancor::Error>(archived).map_err(|e| {
+            CacheError::SerializationError {
+                type_name: std::any::type_name::<K>(),
+                message: format!("Failed to deserialize key: {e}").into(),
+            }
+        })
+    }
+
+    #[inline]
+    fn decode_value(&self, encoded: &[u8]) -> Result<V, CacheError> {
         let archived = <Self as Codec<K, V>>::access(self, encoded)?;
 
         rkyv::deserialize::<V, rkyv::rancor::Error>(archived).map_err(|e| {
@@ -171,13 +208,20 @@ mod tests {
                 .expect("encode_value failed");
 
             let decoded: TestMetadata =
-                <RkyvCodec as Codec<String, TestMetadata>>::decode(
+                <RkyvCodec as Codec<String, TestMetadata>>::decode_value(
                     &codec,
                     &value_bytes,
                 )
-                .expect("decode failed");
+                .expect("decode_value failed");
+
+            let decoded_key: String =
+                <RkyvCodec as Codec<String, TestMetadata>>::decode_key(
+                    &codec, &key_bytes,
+                )
+                .expect("decode_key failed");
 
             assert_eq!(decoded, original);
+            assert_eq!(decoded_key, key);
             assert!(!key_bytes.is_empty());
         }
     }
@@ -208,11 +252,12 @@ mod tests {
             let corrupted = vec![0xFF, 0xFF, 0xFF, 0xFF];
 
             let result: Result<String, CacheError> =
-                <RkyvCodec as Codec<String, String>>::decode(
+                <RkyvCodec as Codec<String, String>>::decode_value(
                     &codec, &corrupted,
                 );
 
             assert!(result.is_err());
+
             assert!(matches!(
                 result.unwrap_err(),
                 CacheError::SerializationError { .. }

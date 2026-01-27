@@ -56,6 +56,7 @@ use crate::spi::errors::CacheError;
 /// # #[async_trait]
 /// # impl CacheReader<String, String> for MemoryReader {
 /// #     async fn get(&self, _k: &String) -> Result<Option<String>, CacheError> { Ok(None) }
+/// #     async fn keys(&self) -> Result<Vec<String>, CacheError> { Ok(Vec::new()) }
 /// # }
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let reader: &dyn CacheReader<String, String> = &MemoryReader;
@@ -94,6 +95,15 @@ where
     async fn has(&self, key: &K) -> Result<bool, CacheError> {
         Ok(self.get(key).await?.is_some())
     }
+
+    /// Retrieve all keys currently present in the cache.
+    ///
+    /// # Warning
+    /// This is an O(n) operation and may be expensive for large caches.
+    ///
+    /// # Errors
+    /// Returns `CacheError` if the underlying storage fails.
+    async fn keys(&self) -> Result<Vec<K>, CacheError>;
 }
 
 /// Cache writer SPI for adapter-layer use.
@@ -192,6 +202,10 @@ mod tests {
                 _key: &String,
             ) -> Result<Option<String>, CacheError> {
                 Ok(None)
+            }
+
+            async fn keys(&self) -> Result<Vec<String>, CacheError> {
+                Ok(Vec::new())
             }
         }
 
