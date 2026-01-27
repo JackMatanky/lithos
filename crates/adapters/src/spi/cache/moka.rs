@@ -66,8 +66,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `CacheError::BackendError` if the configuration is invalid
-    /// (e.g., `max_capacity` is 0).
+    /// Returns `CacheError::BackendError` if the configuration is invalid.
     #[inline]
     pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
         let inner = self.build_inner()?;
@@ -88,16 +87,9 @@ where
     /// Internal helper to build the Inner state.
     #[inline]
     fn build_inner(&self) -> Result<MokaInner<K, V>, CacheError> {
-        self.validate_capacity_not_zero()?;
+        let capacity = Self::validate_capacity(self.max_capacity)?;
 
-        let mut builder = moka::future::Cache::builder().max_capacity(
-            self.max_capacity.try_into().map_err(|e| {
-                CacheError::BackendError {
-                    backend: "moka",
-                    message: format!("Invalid max_capacity: {e}").into(),
-                }
-            })?,
-        );
+        let mut builder = moka::future::Cache::builder().max_capacity(capacity);
 
         if let Some(ttl) = self.time_to_live {
             builder = builder.time_to_live(ttl);
@@ -122,8 +114,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `CacheError::BackendError` if the configuration is invalid
-    /// (e.g., `max_capacity` is 0).
+    /// Returns `CacheError::BackendError` if the configuration is invalid.
     #[inline]
     pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
         let inner = self.build_inner()?;
@@ -140,8 +131,7 @@ where
     ///
     /// # Errors
     ///
-    /// Returns `CacheError::BackendError` if the configuration is invalid
-    /// (e.g., `max_capacity` is 0).
+    /// Returns `CacheError::BackendError` if the configuration is invalid.
     #[inline]
     pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
         let inner = self.build_inner()?;
@@ -154,6 +144,11 @@ where
     /// Set maximum capacity.
     #[inline]
     pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
+        // Validate capacity early to act as the owner of this constraint.
+        // The definitive validation still happens in build_inner.
+        if let Err(e) = Self::validate_capacity(capacity) {
+            tracing::warn!(?e, "Invalid capacity provided to max_capacity");
+        }
         self.max_capacity = capacity;
         self
     }
@@ -172,16 +167,19 @@ where
         self
     }
 
-    /// Validate that capacity is not zero.
+    /// Validate the given capacity and return the converted value.
     #[inline]
-    fn validate_capacity_not_zero(&self) -> Result<(), CacheError> {
-        if self.max_capacity == 0 {
+    fn validate_capacity(capacity: usize) -> Result<u64, CacheError> {
+        if capacity == 0 {
             return Err(CacheError::BackendError {
                 backend: "moka",
                 message: "max_capacity must be greater than 0".into(),
             });
         }
-        Ok(())
+        capacity.try_into().map_err(|e| CacheError::BackendError {
+            backend: "moka",
+            message: format!("Invalid max_capacity: {e}").into(),
+        })
     }
 }
 
@@ -409,31 +407,23 @@ mod tests {
         }
 
         #[test]
-        #[expect(
-            clippy::panic,
-            reason = "Panic is used in tests to fail fast when expectations \
-                      are not met."
-        )]
         fn should_return_error_for_zero_capacity() {
             let result = Builder::<String, String>::default()
                 .max_capacity(0usize)
                 .build();
 
             assert!(result.is_err());
-            match result.unwrap_err() {
-                CacheError::BackendError {
-                    backend,
-                    message,
-                } => {
-                    assert_eq!(backend, "moka");
-                    assert!(message.contains("capacity"));
-                }
-                CacheError::IoError(_)
-                | CacheError::SerializationError {
-                    ..
-                } => {
-                    panic!("Expected BackendError")
-                }
+            let err = result.unwrap_err();
+            assert!(matches!(err, CacheError::BackendError {
+                backend: "moka",
+                ..
+            }));
+            if let CacheError::BackendError {
+                message,
+                ..
+            } = err
+            {
+                assert!(message.contains("capacity"));
             }
         }
     }
