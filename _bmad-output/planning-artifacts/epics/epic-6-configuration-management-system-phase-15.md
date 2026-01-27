@@ -15,8 +15,9 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - **Sample config files** based on JSON schema (lithos-specific)
 - **Architecture**: Domain ports exist (Epic 3), domain aggregate exists (Epic 3), adapters integrate Epic 4 utilities + Epic 5 caching
 - **Syntactic Validation**: Dedicated `validator.rs` for structural configuration validation before domain aggregate construction
-- **Caching Strategy**: Uses Epic 5 `RedbReader`/`RedbWriter` to persist fully-merged `Config` aggregates for persistence and rollback
-- **Adapter Structure**: `crates/adapters/src/spi/config/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, validator.rs, cache.rs
+- **Caching Strategy**: Uses Epic 5 `CacheCoordinator` with multi-layer (Moka + Redb) read-through/write-through for optimal performance
+- **CQRS Separation**: ConfigQueryAdapter (reads) and ConfigCommandAdapter (writes) enforce architectural boundaries per architecture.md
+- **Adapter Structure**: `crates/adapters/src/spi/config/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, validator.rs, cache.rs (with ConfigQueryAdapter and ConfigCommandAdapter)
 - **No CLI Integration**: Epic 6 delivers tested adapters without CLI wiring (deferred to future epic)
 - **ADR References**: ADR 0005 (Figment hierarchical config)
 
@@ -147,27 +148,45 @@ So that I am informed of missing sections before the application attempts to pro
 **Then** tests verify detection of: missing sections, invalid types, malformed TOML
 **And** tests verify error messages include exact file/line/column information
 
-## Story 6.4: Implement ConfigCache using Epic 5 Persistence
+## Story 6.4: Implement ConfigCache using Epic 5 Multi-Layer Coordinator
 
 As a developer requiring configuration persistence and rollback,
-I want ConfigCache implemented using Epic 5 Redb adapter,
-So that configurations survive process restarts and support rollback.
+I want ConfigCache implemented using Epic 5 CacheCoordinator with CQRS separation,
+So that configurations survive process restarts, support rollback, and provide fast reads from memory cache.
 
 **Acceptance Criteria:**
 
-**Given** Epic 5 provides `RedbBuilder`, `RedbReader`, `RedbWriter` for disk persistence
-**When** I implement ConfigCache in `crates/adapters/src/spi/config/cache.rs`
-**Then** it uses `RedbBuilder::new().path(db_path).table_name("config").build()` to create reader/writer pair
-**And** constructor `new(db_path: PathBuf)` returns `(RedbReader<String, Config>, RedbWriter<String, Config>)` tuple
-**And** ConfigCache wraps the reader/writer pair with domain-specific methods
+**Given** Epic 5 provides `CacheCoordinatorBuilder` for multi-layer caching with read-through/write-through
+**When** I implement ConfigQueryAdapter in `crates/adapters/src/spi/config/cache.rs`
+**Then** it uses `CacheCoordinatorBuilder` with:
+- Memory layer: `MokaBuilder::new().max_capacity(10).time_to_live(Duration::from_secs(300)).build()`
+- Disk layer: `RedbBuilder::new().path(db_path).table_name("config").build()`
+- Coordinator: `.build_reader()` for CQRS query side (reads only)
+**And** constructor `ConfigQueryAdapter::new(db_path: PathBuf)` returns `Result<Self, ConfigError>`
+**And** memory cache holds last 10 configs with 5-minute TTL to optimize CLI startup and repeated reads
 
-**Given** ConfigCache needs to store snapshots
-**When** I implement snapshot methods
+**Given** CQRS requires separate command adapter per architecture.md lines 836-837
+**When** I implement ConfigCommandAdapter in `crates/adapters/src/spi/config/cache.rs`
+**Then** it uses same `CacheCoordinatorBuilder` configuration
+**And** `.build_writer()` creates CQRS command side (writes only)
+**And** constructor `ConfigCommandAdapter::new(db_path: PathBuf)` returns `Result<Self, ConfigError>`
+**And** writes go to disk first (persistence), then memory (cache consistency)
+
+**Given** ConfigQueryAdapter provides read operations
+**When** I implement query methods
 **Then** it provides:
-- `save_snapshot(config: &Config, metadata: SnapshotMetadata) -> Result<(), ConfigError>`
 - `get_latest() -> Result<Option<(Config, SnapshotMetadata)>, ConfigError>`
 - `get_by_timestamp(timestamp: u64) -> Result<Option<(Config, SnapshotMetadata)>, ConfigError>`
 - `list_snapshots() -> Result<Vec<SnapshotMetadata>, ConfigError>`
+**And** reads hit memory cache first (<1μs), fall back to disk on miss (~100μs)
+**And** disk hits trigger async backfill to memory via Epic 5 coordinator
+
+**Given** ConfigCommandAdapter provides write operations
+**When** I implement command methods
+**Then** it provides:
+- `save_snapshot(config: &Config, metadata: SnapshotMetadata) -> Result<(), ConfigError>`
+- `delete_snapshot(timestamp: u64) -> Result<bool, ConfigError>`
+**And** writes persist to disk first, then update memory cache for consistency
 
 **Given** rollback requires metadata
 **When** I define SnapshotMetadata struct
@@ -185,15 +204,22 @@ So that configurations survive process restarts and support rollback.
 **And** Epic 5 `Entry<Config>` structure: `{ value: Config, timestamp: u64, metadata: HashMap<String, String> }`
 
 **Given** snapshot history must be managed
-**When** I implement retention logic
+**When** I implement retention logic in ConfigCommandAdapter
 **Then** cache retains last 10 snapshots (configurable via constant)
 **And** `save_snapshot()` automatically evicts oldest snapshot when limit exceeded
 **And** eviction uses timestamp-based ordering (oldest first)
 
-**Given** rollback must be fast
-**When** I implement get_latest()
-**Then** it retrieves most recent snapshot by finding highest timestamp key
+**Given** rollback must be fast per NFR4 (<100ms CLI responsiveness)
+**When** I implement ConfigQueryAdapter::get_latest()
+**Then** memory cache hit completes in <1μs (no disk I/O)
+**And** disk cache miss triggers async backfill to memory via Epic 5 coordinator
 **And** deserialization uses Epic 5 rkyv zero-copy per ADR 0002
+
+**Given** CQRS separation prevents mixing read/write concerns
+**When** I verify adapter boundaries
+**Then** ConfigQueryAdapter has NO write methods (read-only)
+**And** ConfigCommandAdapter has NO read methods (write-only)
+**And** both adapters can be injected independently per hexagonal architecture
 
 **Given** cache operations may fail
 **When** I handle errors
@@ -203,7 +229,13 @@ So that configurations survive process restarts and support rollback.
 **Given** observability is required
 **When** I instrument cache operations
 **Then** all methods use `#[tracing::instrument(skip(self, config), level = "debug")]`
-**And** events include attributes: operation, snapshot_count, timestamp
+**And** events include attributes: operation, snapshot_count, timestamp, cache_hit (query adapter only)
+
+**Given** performance must meet NFR targets
+**When** I test cache performance
+**Then** memory cache hits complete in <1μs (NFR4 CLI responsiveness)
+**And** disk cache misses complete in <100μs (Redb read latency)
+**And** cache hit rate >90% for repeated config reads during CLI session
 
 ## Story 6.5: Implement Config Singleton Registry
 

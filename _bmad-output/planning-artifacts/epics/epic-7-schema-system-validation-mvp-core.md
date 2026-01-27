@@ -14,8 +14,9 @@ Users can define metadata schemas with field types, inheritance, and validation 
 - **Validator**: JSON Schema + semantic validation against vault-schema.schema.json
 - **SchemaResolver**: Handles inheritance (extends/excludes) + circular dependency detection
 - **Singleton Pattern**: `Arc<OnceLock<PropertyBank>>` (immutable) + `Arc<RwLock<HashMap>>` (runtime overrides)
-- **Caching Strategy**: CQRS-split cache traits (CacheQuery/CacheCommand) with Redb implementation (Epic 5)
-- **Adapter Structure**: `crates/adapters/src/spi/schema/` contains query.rs, command.rs, loader.rs, decoder.rs, validator.rs, cache.rs, registry.rs
+- **Caching Strategy**: Epic 5 `CacheCoordinator` with multi-layer (Moka + Redb) read-through/write-through for schema resolution performance
+- **CQRS Separation**: SchemaQueryAdapter (reads) and SchemaCommandAdapter (writes) enforce architectural boundaries per architecture.md
+- **Adapter Structure**: `crates/adapters/src/spi/schema/` contains query.rs, command.rs, loader.rs, decoder.rs, validator.rs, cache.rs (with SchemaQueryAdapter and SchemaCommandAdapter), registry.rs
 - **Note:** Frontmatter validation moved to Epic 10.6 (application layer)
 - **Note:** Schema-template integration moved to Epic 12.4 (template system)
 
@@ -335,46 +336,83 @@ So that complex inheritance chains produce correct final schemas.
 
 ---
 
-## Story 7.7: Implement SchemaCache (Epic 5 Integration)
+## Story 7.7: Implement SchemaCache with Multi-Layer Coordinator (Epic 5 Integration)
 
 As a developer optimizing schema loading,
-I want persistent caching of resolved schemas,
-So that schema resolution is fast and survives restarts.
+I want persistent caching of resolved schemas with CQRS separation,
+So that schema resolution is fast, survives restarts, and supports high-frequency template rendering.
 
 **Acceptance Criteria:**
 
-**Given** I need decoupled caching abstraction
-**When** I create SchemaCache trait in `crates/adapters/src/spi/schema/cache.rs`
-**Then** it defines operations: get, put, invalidate, clear
-**And** it is Send + Sync for thread-safe usage
+**Given** Epic 5 provides `CacheCoordinator` for multi-layer caching with read-through/write-through
+**When** I implement SchemaQueryAdapter in `crates/adapters/src/spi/schema/cache.rs`
+**Then** it uses `CacheCoordinatorBuilder` with:
+- Memory layer: `MokaBuilder::new().max_capacity(100).time_to_live(Duration::from_secs(600)).build()`
+- Disk layer: `RedbBuilder::new().path(db_path).table_name("schemas").build()`
+- Coordinator: `.build_reader()` for CQRS query side (reads only)
+**And** constructor `SchemaQueryAdapter::new(db_path: PathBuf)` returns `Result<Self, SchemaError>`
+**And** memory cache holds up to 100 schemas with 10-minute TTL to optimize template rendering
 
-**Given** RedbSchemaCache provides persistence
-**When** I implement Redb-backed cache using Epic 5 `RedbBuilder`
-**Then** it uses `RedbBuilder::new().path(db_path).table_name("schemas").build()` to create reader/writer pair
-**And** keys are schema names (String), values are Schema aggregates
-**And** values use rkyv serialization via Epic 5 `Entry<Schema>` wrapper (zero-copy deserialization per ADR 0002)
-**And** metadata stored via `RedbWriter::put_with_metadata()`: timestamp, source_hash (SHA256 of file content)
+**Given** CQRS requires separate command adapter per architecture.md
+**When** I implement SchemaCommandAdapter in `crates/adapters/src/spi/schema/cache.rs`
+**Then** it uses same `CacheCoordinatorBuilder` configuration
+**And** `.build_writer()` creates CQRS command side (writes only)
+**And** constructor `SchemaCommandAdapter::new(db_path: PathBuf)` returns `Result<Self, SchemaError>`
+**And** writes go to disk first (persistence), then memory (cache consistency)
 
-**Given** cache invalidation is needed
-**When** source files change
-**Then** compare cached hash vs current file hash
-**And** return cache miss if hashes differ (triggers reload)
+**Given** SchemaQueryAdapter provides read operations
+**When** I implement query methods
+**Then** it provides:
+- `get_schema(name: &str) -> Result<Option<(Schema, SchemaMetadata)>, SchemaError>`
+- `list_schemas() -> Result<Vec<String>, SchemaError>`
+**And** reads hit memory cache first (<1μs), fall back to disk on miss (~100μs)
+**And** disk hits trigger async backfill to memory via Epic 5 coordinator
 
-**Given** MockSchemaCache enables testing
-**When** I create in-memory mock
-**Then** it uses HashMap<String, Schema> for fast, filesystem-free testing
-**And** implements same SchemaCache trait
+**Given** SchemaCommandAdapter provides write operations
+**When** I implement command methods
+**Then** it provides:
+- `cache_schema(name: String, schema: Schema, metadata: SchemaMetadata) -> Result<(), SchemaError>`
+- `invalidate_schema(name: &str) -> Result<bool, SchemaError>`
+- `clear_cache() -> Result<(), SchemaError>`
+**And** writes persist to disk first, then update memory cache for consistency
 
-**Given** Command adapter integrates cache
-**When** I orchestrate loading
-**Then** check cache first (with hash validation)
+**Given** SchemaMetadata tracks source hash for invalidation
+**When** I define SchemaMetadata struct
+**Then** it contains:
+- `timestamp: u64` - Unix timestamp of schema resolution
+- `source_hash: String` - SHA-256 of source .schema.json file content
+**And** SchemaMetadata derives `rkyv::Archive`, `rkyv::Serialize`, `rkyv::Deserialize`
+**And** metadata stored via Epic 5 `Entry<Schema>` wrapper for zero-copy deserialization per ADR 0002
+
+**Given** cache invalidation is needed when source files change
+**When** schema loading checks cache
+**Then** compare cached SchemaMetadata.source_hash vs current file hash
+**And** if hashes differ, call SchemaCommandAdapter::invalidate_schema() and reload
+**And** hash validation prevents stale schemas from being used
+
+**Given** CQRS separation prevents mixing read/write concerns
+**When** I verify adapter boundaries
+**Then** SchemaQueryAdapter has NO write methods (read-only)
+**And** SchemaCommandAdapter has NO read methods (write-only)
+**And** both adapters can be injected independently per hexagonal architecture
+
+**Given** Command adapter integrates both cache adapters
+**When** I orchestrate schema loading in CommandAdapter
+**Then** use SchemaQueryAdapter.get_schema() to check cache first (with hash validation)
 **And** if cache hit with valid hash, skip file loading + resolution
-**And** if cache miss, load → decode → validate → resolve → cache.put()
+**And** if cache miss, load → decode → validate → resolve → SchemaCommandAdapter.cache_schema()
 
-**Given** cache performance is critical
+**Given** cache performance is critical for template rendering (NFR1 <500ms queries)
 **When** I measure operations
-**Then** cached schema retrieval <1ms (Redb read + rkyv deserialize)
+**Then** memory cache hit completes in <1μs (no disk I/O)
+**And** disk cache miss completes in <100μs (Redb read + rkyv zero-copy deserialize)
 **And** cache persists across restarts (Redb file on disk)
+
+**Given** schemas are read-heavy during template rendering
+**When** I analyze access patterns
+**Then** same schema may be read 100+ times during vault template rendering
+**And** memory cache hit rate >95% after initial load (10-minute TTL)
+**And** coordinator async backfill prevents read latency from memory write speeds
 
 **Given** cache errors are non-fatal
 **When** cache operations fail
@@ -384,8 +422,9 @@ So that schema resolution is fast and survives restarts.
 **When** I write unit tests
 **Then** test cache hit (skip full pipeline)
 **And** test cache miss (trigger full pipeline)
-**And** test hash invalidation (file changed)
-**And** test persistence (restart → cache available)
+**And** test hash invalidation (file changed → SchemaCommandAdapter.invalidate_schema())
+**And** test persistence (restart → SchemaQueryAdapter.get_schema() succeeds)
+**And** test CQRS separation (query adapter cannot write, command adapter cannot read)
 
 ---
 

@@ -31,10 +31,15 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
 - **Location**: Continue building in existing `crates/adapters/src/spi/cache/` directory (no new `storage/` directory needed)
 - **Implementation Approach**: Extend Epic 5 cache module with storage-specific table builders, not a separate storage layer
 - **Storage Tables** (all share same `.lithos/storage.redb` database file):
-  - `notes` table: PathBuf → `Entry<Note>` (main entity storage)
-  - `schema_index` table: SchemaName → `Entry<Vec<PathBuf>>` (fileClass queries)
-  - `alias_index` table: Alias → `Entry<PathBuf>` (wiki-link resolution)
-  - `metadata_index` table: (FieldName, FieldValue) → `Entry<Vec<PathBuf>>` (metadata queries)
+  - `notes` table: PathBuf → `Entry<Note>` (main entity storage) - **Direct Redb only** (random access pattern, no benefit from memory cache)
+  - `schema_index` table: SchemaName → `Entry<Vec<PathBuf>>` (fileClass queries) - **Use CacheCoordinator** (frequent reads during queries)
+  - `alias_index` table: Alias → `Entry<PathBuf>` (wiki-link resolution) - **Use CacheCoordinator** (frequent wiki-link lookups)
+  - `metadata_index` table: (FieldName, FieldValue) → `Entry<Vec<PathBuf>>` (metadata queries) - **Use CacheCoordinator** (frequent metadata filtering)
+  - `vault_state` table: Key → `Entry<Value>` (global state) - **Use CacheCoordinator** (read on every operation)
+- **Cache Strategy per Table**:
+  - **Notes table**: Single-layer Redb only (random access, low cache hit rate)
+  - **Index tables**: Multi-layer coordinator (Moka + Redb) for high-frequency reads
+  - **CQRS separation**: Query/Command adapters per table with `.build_reader()` / `.build_writer()`
 - **Epic 5 Entry Wrapper**: All values wrapped in `Entry<V>` struct providing `{ value: V, timestamp: u64, metadata: HashMap<String, String> }`
 - **Error Handling**: Reuses Epic 5 `CacheError` enum with existing variants (IoError, SerializationError, BackendError)
 - **Backup Strategy**: Periodic snapshots to `.lithos/backups/` with configurable retention
@@ -270,12 +275,22 @@ So that Epic 11 queries can be executed efficiently against the storage layout.
 **And** TransactionContext ensures indexes never become stale or inconsistent
 **And** index update failures rollback entire transaction
 
+**Given** index tables benefit from memory caching (high read frequency)
+**When** I implement index table builders
+**Then** `schema_index`, `alias_index`, `metadata_index` tables use Epic 5 `CacheCoordinator`:
+- Memory layer: `MokaBuilder` with appropriate capacity per table
+- Disk layer: `RedbBuilder` with table-specific name
+- CQRS split: Separate QueryAdapter (`.build_reader()`) and CommandAdapter (`.build_writer()`)
+**And** `notes` table uses direct `RedbBuilder` (random access, no cache benefit)
+**And** memory cache improves index lookup latency from ~100μs (disk) to <1μs (memory hit)
+
 **Given** schema design is complete
 **When** I benchmark query performance with 1000+ notes
-**Then** path lookups complete in <1ms (cache hit) or <10ms (cache miss)
-**And** fileClass queries complete in <50ms for typical result sets
-**And** metadata queries complete in <500ms meeting NFR1 requirements
+**Then** path lookups complete in <1ms (notes table direct read)
+**And** fileClass queries complete in <50ms (schema_index memory cache hit + notes table reads)
+**And** metadata queries complete in <500ms meeting NFR1 requirements (metadata_index cache + notes reads)
 **And** full vault iteration completes in <2 seconds meeting NFR2 requirements
+**And** index cache hit rate >90% after initial vault load
 
 ## Story 9.5: Add Storage Validation and Error Handling
 
