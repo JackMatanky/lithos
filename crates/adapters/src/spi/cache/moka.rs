@@ -375,112 +375,131 @@ where
 mod tests {
     use super::*;
 
-    mod builder {
+    mod fixtures {
         use super::*;
+        pub type Handles = (Reader<String, String>, Writer<String, String>);
 
+        pub fn builder() -> Builder<String, String> {
+            Builder::default()
+        }
+
+        pub fn handles(capacity: usize) -> Handles {
+            Builder::default().max_capacity(capacity).build().unwrap()
+        }
+    }
+
+    mod builder {
+        use super::{fixtures::*, *};
+
+        /// [5.4-U-03] P0: Test independent handle creation.
         #[test]
         fn builds_reader_independently() {
-            // GIVEN: a Moka builder with custom capacity
-            let result = Builder::<String, String>::default()
-                .max_capacity(50)
-                .build_reader();
+            // GIVEN: a Moka builder
+            let mut builder = builder();
 
-            // WHEN: the reader is built
-            assert!(result.is_ok());
-            let reader = result.unwrap();
+            // WHEN: the reader is built independently
+            let result = builder.max_capacity(50).build_reader();
 
             // THEN: the handle is correct and independent
+            assert!(result.is_ok());
+            let reader = result.unwrap();
             let _: Reader<String, String> = reader;
         }
 
+        /// [5.4-U-03] P0: Test independent handle creation.
         #[test]
         fn builds_writer_independently() {
-            // GIVEN: a Moka builder with custom capacity
-            let result = Builder::<String, String>::default()
-                .max_capacity(50)
-                .build_writer();
+            // GIVEN: a Moka builder
+            let mut builder = builder();
 
-            // WHEN: the writer is built
-            assert!(result.is_ok());
-            let writer = result.unwrap();
+            // WHEN: the writer is built independently
+            let result = builder.max_capacity(50).build_writer();
 
             // THEN: the handle is correct and independent
+            assert!(result.is_ok());
+            let writer = result.unwrap();
             let _: Writer<String, String> = writer;
         }
 
+        /// [5.4-U-03] P1: Test combined handle creation.
         #[test]
         fn builds_split_handles_with_custom_capacity() {
             // GIVEN: a Moka builder
-            let result =
-                Builder::<String, String>::default().max_capacity(50).build();
+            let mut builder = builder();
 
             // WHEN: both handles are built together
-            assert!(result.is_ok());
-            let (reader, writer) = result.unwrap();
+            let result = builder.max_capacity(50).build();
 
             // THEN: two distinct handles are produced
+            assert!(result.is_ok());
+            let (reader, writer) = result.unwrap();
             let _: Reader<String, String> = reader;
             let _: Writer<String, String> = writer;
         }
     }
 
     mod initialization {
-        use super::*;
+        use super::{fixtures::*, *};
 
+        /// [5.4-U-03] P2: Test builder defaults.
         #[test]
         fn should_return_builder_instance() {
             // GIVEN: nothing
             // WHEN: default is called
-            let _builder: Builder<String, String> =
-                Builder::<String, String>::default();
+            let _builder = builder();
             // THEN: it succeeds
         }
 
+        /// [5.4-U-03] P2: Test max capacity configuration.
         #[test]
         fn should_allow_configuring_max_capacity() {
             // GIVEN: a builder
-            let mut builder = Builder::<String, String>::default();
+            let mut builder = builder();
             // WHEN: capacity is set
             let _: &mut Builder<String, String> =
                 builder.max_capacity(100usize);
             // THEN: it succeeds
         }
 
+        /// [5.4-U-03] P2: Test TTL configuration.
         #[test]
         fn should_allow_configuring_ttl() {
             // GIVEN: a builder
-            let mut builder = Builder::<String, String>::default();
+            let mut builder = builder();
             // WHEN: ttl is set
             let _: &mut Builder<String, String> =
                 builder.time_to_live(Duration::from_secs(10u64));
             // THEN: it succeeds
         }
 
+        /// [5.4-U-03] P2: Test TTI configuration.
         #[test]
         fn should_allow_configuring_tti() {
             // GIVEN: a builder
-            let mut builder = Builder::<String, String>::default();
+            let mut builder = builder();
             // WHEN: tti is set
             let _: &mut Builder<String, String> =
                 builder.time_to_idle(Duration::from_secs(10u64));
             // THEN: it succeeds
         }
 
+        /// [5.4-U-03] P1: Test successful handle production.
         #[test]
         fn should_build_cache_instance() {
             // GIVEN: a builder
+            let builder = builder();
             // WHEN: build is called
-            let result = Builder::<String, String>::default().build();
+            let result = builder.build();
             // THEN: it produces handles
             let (_reader, _writer) = result.expect("Failed to build cache");
         }
 
+        /// [5.4-U-03] P1: Edge Case - zero capacity.
         #[test]
         fn should_return_error_for_zero_capacity() {
             // GIVEN: a builder with zero capacity
-            let result = Builder::<String, String>::default()
-                .max_capacity(0usize)
-                .build();
+            let mut builder = builder();
+            let result = builder.max_capacity(0usize).build();
 
             // WHEN: building is attempted
             // THEN: a BackendError is returned
@@ -501,24 +520,24 @@ mod tests {
     }
 
     mod core_ops {
-        use super::*;
+        use super::{fixtures::*, *};
 
+        /// [5.4-U-08] P0: Test basic read operations.
         #[tokio::test]
         async fn should_get_none_from_empty_cache() {
             // GIVEN: an empty cache
-            let (reader, _writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (reader, _writer) = handles(50);
             // WHEN: retrieving a missing key
             let result = reader.get(&"key".to_owned()).await.unwrap();
             // THEN: None is returned
             assert!(result.is_none());
         }
 
+        /// [5.4-U-08] P0: Test basic write/read operations.
         #[tokio::test]
         async fn should_put_and_get_value() {
             // GIVEN: a cache and a value
-            let (reader, writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (reader, writer) = handles(50);
             // WHEN: putting and then getting the value
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             let result = reader.get(&"key".to_owned()).await.unwrap();
@@ -526,11 +545,11 @@ mod tests {
             assert_eq!(result, Some("value".to_owned()));
         }
 
+        /// [5.4-U-08] P0: Test delete operation.
         #[tokio::test]
         async fn should_delete_value() {
             // GIVEN: a cache with a value
-            let (reader, writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (reader, writer) = handles(50);
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
             // WHEN: deleting the value
@@ -544,11 +563,11 @@ mod tests {
             assert!(!existed_again);
         }
 
+        /// [5.4-U-08] P1: Test existence check.
         #[tokio::test]
         async fn should_check_has() {
             // GIVEN: a cache
-            let (reader, writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (reader, writer) = handles(50);
             assert!(!reader.has(&"key".to_owned()).await.unwrap());
 
             // WHEN: putting a value
@@ -560,11 +579,11 @@ mod tests {
             assert!(!reader.has(&"key".to_owned()).await.unwrap());
         }
 
+        /// [5.4-U-08] P1: Test clear operation.
         #[tokio::test]
         async fn should_clear_all_entries() {
             // GIVEN: a cache with multiple values
-            let (reader, writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (reader, writer) = handles(50);
             writer.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
             writer.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
 
@@ -576,11 +595,11 @@ mod tests {
             assert!(!reader.has(&"k2".to_owned()).await.unwrap());
         }
 
+        /// [5.4-U-08] P1: Test key retrieval.
         #[tokio::test]
         async fn should_return_all_keys() {
             // GIVEN: a cache with values
-            let (reader, writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (reader, writer) = handles(50);
             writer.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
             writer.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
 
@@ -598,14 +617,14 @@ mod tests {
     mod observability {
         use tracing_test::traced_test;
 
-        use super::*;
+        use super::{fixtures::*, *};
 
+        /// [5.4-U-11] P1: Test tracing events for GET.
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_get() {
             // GIVEN: a cache
-            let (reader, _writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (reader, _writer) = handles(50);
             // WHEN: get is called
             let _: Option<String> =
                 reader.get(&"key".to_owned()).await.unwrap();
@@ -615,12 +634,12 @@ mod tests {
             assert!(logs_contain("hit=false"));
         }
 
+        /// [5.4-U-11] P1: Test tracing events for PUT.
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_put() {
             // GIVEN: a cache
-            let (_reader, writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (_reader, writer) = handles(50);
             // WHEN: put is called
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
@@ -628,12 +647,12 @@ mod tests {
             assert!(logs_contain("operation=\"put\""));
         }
 
+        /// [5.4-U-11] P1: Test tracing events for DELETE.
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_delete() {
             // GIVEN: a cache with a value
-            let (_reader, writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (_reader, writer) = handles(50);
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             // WHEN: delete is called
             let _: bool = writer.delete(&"key".to_owned()).await.unwrap();
@@ -643,12 +662,12 @@ mod tests {
             assert!(logs_contain("existed=true"));
         }
 
+        /// [5.4-U-11] P1: Test tracing events for INVALIDATE.
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_invalidate() {
             // GIVEN: a cache with a value
-            let (reader, writer) =
-                Builder::<String, String>::default().build().unwrap();
+            let (reader, writer) = handles(50);
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
             // WHEN: invalidate is called
@@ -663,8 +682,9 @@ mod tests {
     }
 
     mod eviction {
-        use super::*;
+        use super::{fixtures::*, *};
 
+        /// [5.4-U-08] P0: Test TTL-based eviction.
         #[tokio::test]
         async fn should_respect_ttl() {
             // GIVEN: a cache with a short TTL
@@ -689,6 +709,7 @@ mod tests {
             assert_eq!(reader.get(&"key".to_owned()).await.unwrap(), None);
         }
 
+        /// [5.4-U-08] P0: Test TTI-based eviction.
         #[tokio::test]
         async fn should_respect_tti() {
             // GIVEN: a cache with short TTI
@@ -723,13 +744,11 @@ mod tests {
             assert_eq!(reader.get(&"key".to_owned()).await.unwrap(), None);
         }
 
+        /// [5.4-U-08] P1: Test capacity-based eviction.
         #[tokio::test]
         async fn should_respect_max_capacity() {
             // GIVEN: a cache with small capacity
-            let (reader, writer) = Builder::<String, String>::default()
-                .max_capacity(10usize)
-                .build()
-                .unwrap();
+            let (reader, writer) = handles(10);
 
             // WHEN: filling past capacity
             for i in 0i32..100i32 {
@@ -762,13 +781,11 @@ mod tests {
             count
         }
 
+        /// [5.4-U-08] P1: Test `TinyLFU` protection.
         #[tokio::test]
         async fn tinylfu_should_protect_hot_key() {
             // GIVEN: a cache with small capacity
-            let (reader, writer) = Builder::<String, String>::default()
-                .max_capacity(10usize)
-                .build()
-                .unwrap();
+            let (reader, writer) = handles(10);
 
             // WHEN: a key is accessed frequently
             for _ in 0i32..20i32 {
