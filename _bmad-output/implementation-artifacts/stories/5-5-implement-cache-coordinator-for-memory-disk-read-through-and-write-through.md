@@ -245,16 +245,31 @@ Gemini 3 Flash Preview
 ### Debug Log References
 None - Refactored during implementation to align with project builder patterns and address clippy feedback.
 
+### Architectural Decisions & Rationale
+
+1.  **Lean Composition (Removed `Inner` Struct)**:
+    *   **Change**: Eliminated the `Inner<K, V>` struct. The `Reader` and `Writer` handles now hold their respective SPI ports (`Arc<dyn CacheReader/Writer>`) directly.
+    *   **Rationale**: The `Inner` pattern added a redundant layer of indirection (double `Arc` dereferencing). Since the ports are already `Arc` pointers, wrapping them in another `Arc<Inner>` provided no benefit for sharing state and increased complexity.
+2.  **Encapsulated Backfill (`BackfillQueue`)**:
+    *   **Change**: Introduced a specialized `BackfillQueue` component to encapsulate `tokio::mpsc` channel management, background worker spawning, and non-blocking `trigger` logic.
+    *   **Rationale**: This separates the "how" of asynchronous backfilling from the "when" of the coordination logic. It keeps the `Reader` handle focused purely on the Read-Through strategy.
+3.  **Decomposed Builder Construction**:
+    *   **Change**: Refactored the `Builder` to support independent `build_reader` and `build_writer` methods in addition to the joint `build()`.
+    *   **Rationale**: Supports systems that only require one side of the CQRS split (e.g., a read-only query service), preventing the need to mock or provide unnecessary ports.
+4.  **Strict Field Hygiene**:
+    *   **Change**: Renamed `Reader` fields from `memory_reader`/`disk_reader` to `memory`/`disk`.
+    *   **Rationale**: Resolved `clippy::struct_field_names` which triggers when field names repeat the struct name (e.g. `Reader::memory_reader`).
+
 ### Completion Notes List
 - Implemented `CacheCoordinator` with full CQRS support (split Reader/Writer handles).
-- Implemented Read-Through logic with decoupled asynchronous backfill to memory.
+- Implemented Read-Through logic with decoupled asynchronous backfill to memory via `BackfillQueue`.
 - Implemented Write-Through logic (Disk then Memory) to ensure persistence consistency.
 - Implemented Parallel Invalidation for both layers using `tokio::join!`.
 - Refactored `Builder` to support independent `build_reader` and `build_writer` methods, aligning with Moka and Redb adapters.
-- Consolidated test fixtures into a reusable module.
-- Addressed all clippy warnings, including excessive nesting and non-binding `let` issues.
+- Implemented `clone_from` for all clonable structs to satisfy Lithos quality gates (`missing_trait_methods`).
+- Sorted all implementation blocks alphabetically for maintainability.
 - Verified 100% logic coverage and passing quality gates via `mise run verify`.
 
 ### File List
-- `crates/adapters/src/spi/cache/coordinator.rs` - Implementation file.
-- `crates/adapters/src/spi/cache/mod.rs` - Module declaration.
+- `crates/adapters/src/spi/cache/coordinator.rs` - Primary implementation.
+- `crates/adapters/src/spi/cache/mod.rs` - Re-exports for public API.
