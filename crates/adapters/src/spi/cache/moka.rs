@@ -46,9 +46,9 @@ where
     V: Clone + Send + Sync + 'static,
 {
     max_capacity: usize,
+    shared_inner: Arc<OnceLock<MokaInner<K, V>>>,
     time_to_idle: Option<Duration>,
     time_to_live: Option<Duration>,
-    shared_inner: Arc<OnceLock<MokaInner<K, V>>>,
     _k: PhantomData<K>,
     _v: PhantomData<V>,
 }
@@ -62,9 +62,9 @@ where
     fn default() -> Self {
         Self {
             max_capacity: 10_000,
+            shared_inner: Arc::new(OnceLock::new()),
             time_to_idle: None,
             time_to_live: None,
-            shared_inner: Arc::new(OnceLock::new()),
             _k: PhantomData,
             _v: PhantomData,
         }
@@ -143,13 +143,13 @@ where
     /// Internal helper to obtain the shared inner state.
     fn get_or_init_inner(&self) -> Result<MokaInner<K, V>, CacheError> {
         if let Some(inner) = self.shared_inner.get() {
-            return Ok(Arc::clone(inner));
+            return Ok(inner.clone());
         }
 
         let inner = self.inner_builder()?;
         // Try to set it. If someone else set it first, that's fine, we'll
         // return whatever is there.
-        _ = self.shared_inner.set(Arc::clone(&inner));
+        _ = self.shared_inner.set(inner.clone());
         Ok(inner)
     }
 
@@ -168,11 +168,7 @@ where
             builder = builder.time_to_idle(tti);
         }
 
-        let cache = builder.build();
-
-        Ok(Arc::new(Inner {
-            cache,
-        }))
+        Ok(builder.build())
     }
 
     /// Build a Reader handle.
@@ -185,9 +181,9 @@ where
     /// Returns `CacheError::BackendError` if the configuration is invalid.
     #[inline]
     pub fn reader(&self) -> Result<Reader<K, V>, CacheError> {
-        let inner = self.get_or_init_inner()?;
+        let cache = self.get_or_init_inner()?;
         Ok(Reader {
-            inner,
+            cache,
         })
     }
 
@@ -201,9 +197,9 @@ where
     /// Returns `CacheError::BackendError` if the configuration is invalid.
     #[inline]
     pub fn writer(&self) -> Result<Writer<K, V>, CacheError> {
-        let inner = self.get_or_init_inner()?;
+        let cache = self.get_or_init_inner()?;
         Ok(Writer {
-            inner,
+            cache,
         })
     }
 }
@@ -229,7 +225,7 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    inner: Arc<Inner<K, V>>,
+    cache: moka::future::Cache<K, V>,
 }
 
 #[async_trait]
@@ -241,7 +237,7 @@ where
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
-        let hit = self.inner.cache.get(key).await;
+        let hit = self.cache.get(key).await;
         tracing::event!(
             tracing::Level::DEBUG,
             cache_layer = "memory",
@@ -254,7 +250,7 @@ where
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        let exists = self.inner.cache.contains_key(key);
+        let exists = self.cache.contains_key(key);
         tracing::event!(
             tracing::Level::DEBUG,
             cache_layer = "memory",
@@ -268,7 +264,7 @@ where
     #[inline]
     async fn keys(&self) -> Result<Vec<K>, CacheError> {
         let keys: Vec<K> =
-            self.inner.cache.iter().map(|(key, _)| (*key).clone()).collect();
+            self.cache.iter().map(|(key, _)| (*key).clone()).collect();
         tracing::event!(
             tracing::Level::DEBUG,
             cache_layer = "memory",
@@ -299,7 +295,7 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    inner: Arc<Inner<K, V>>,
+    cache: moka::future::Cache<K, V>,
 }
 
 #[async_trait]
@@ -311,7 +307,7 @@ where
     #[tracing::instrument(skip(self), level = "debug")]
     #[inline]
     async fn clear(&self) -> Result<(), CacheError> {
-        self.inner.cache.invalidate_all();
+        self.cache.invalidate_all();
         tracing::event!(
             tracing::Level::DEBUG,
             cache_layer = "memory",
@@ -323,7 +319,7 @@ where
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn delete(&self, key: &K) -> Result<bool, CacheError> {
-        let existed = self.inner.cache.remove(key).await.is_some();
+        let existed = self.cache.remove(key).await.is_some();
         tracing::event!(
             tracing::Level::DEBUG,
             cache_layer = "memory",
@@ -349,7 +345,7 @@ where
     #[tracing::instrument(skip(self, key, value), level = "debug")]
     #[inline]
     async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
-        self.inner.cache.insert(key, value).await;
+        self.cache.insert(key, value).await;
         tracing::event!(
             tracing::Level::DEBUG,
             cache_layer = "memory",
@@ -360,20 +356,7 @@ where
 }
 
 /// Type alias for the Inner state of Moka cache.
-pub(crate) type MokaInner<K, V> = Arc<Inner<K, V>>;
-
-/// Inner state for Moka cache.
-///
-/// This struct holds the actual Moka cache and is wrapped by Reader/Writer
-/// handles. It's not directly clonable to enforce the use of Arc for sharing.
-#[derive(Debug)]
-pub(crate) struct Inner<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    cache: moka::future::Cache<K, V>,
-}
+pub(crate) type MokaInner<K, V> = moka::future::Cache<K, V>;
 
 #[cfg(test)]
 mod tests {
