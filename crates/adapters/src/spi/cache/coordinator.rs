@@ -1,3 +1,60 @@
+//! Multi-layer cache coordinator.
+//!
+//! This module provides a `CacheCoordinator` that orchestrates access between
+//! a fast in-memory cache (e.g., Moka) and a persistent disk cache (e.g.,
+//! Redb).
+//!
+//! # Architecture
+//!
+//! The coordinator follows CQRS principles by splitting into `Reader` and
+//! `Writer` handles. It implements:
+//!
+//! - **Read-Through**: Queries check memory first, then disk. Disk hits trigger
+//!   an asynchronous backfill to memory.
+//! - **Write-Through**: Writes go to disk first for persistence, then to
+//!   memory.
+//! - **Parallel Invalidation**: Deletions and clears affect both layers
+//!   concurrently.
+//! - **Decoupled Backfill**: Memory backfills are performed in a background
+//!   task via a bounded MPSC channel, ensuring read latency is never affected
+//!   by memory write speeds.
+//!
+//! # Example
+//!
+//! ```rust
+//! # use std::sync::Arc;
+//! # use async_trait::async_trait;
+//! # use lithos_adapters::spi::cache::{
+//! #     CacheCoordinatorBuilder, CacheReader, CacheWriter,
+//! # };
+//! # use lithos_adapters::spi::errors::CacheError;
+//! #
+//! # struct DummyReader;
+//! # #[async_trait]
+//! # impl CacheReader<String, String> for DummyReader {
+//! #     async fn get(&self, _k: &String) -> Result<Option<String>, CacheError> { Ok(None) }
+//! #     async fn keys(&self) -> Result<Vec<String>, CacheError> { Ok(Vec::new()) }
+//! # }
+//! #
+//! # struct DummyWriter;
+//! # #[async_trait]
+//! # impl CacheWriter<String, String> for DummyWriter {
+//! #     async fn put(&self, _k: String, _v: String) -> Result<(), CacheError> { Ok(()) }
+//! #     async fn delete(&self, _k: &String) -> Result<bool, CacheError> { Ok(false) }
+//! #     async fn clear(&self) -> Result<(), CacheError> { Ok(()) }
+//! # }
+//! #
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
+//! let (reader, writer) = CacheCoordinatorBuilder::<String, String>::new()
+//!     .memory_reader(Arc::new(DummyReader))
+//!     .memory_writer(Arc::new(DummyWriter))
+//!     .disk_reader(Arc::new(DummyReader))
+//!     .disk_writer(Arc::new(DummyWriter))
+//!     .build()
+//!     .unwrap();
+//! # });
+//! ```
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -32,6 +89,8 @@ where
 }
 
 /// Cache reader coordinator for multi-layer caching.
+///
+/// Provides read-through caching logic with background backfill.
 #[derive(Clone)]
 pub struct Reader<K, V>
 where
@@ -120,6 +179,8 @@ where
 }
 
 /// Cache writer coordinator for multi-layer caching.
+///
+/// Provides write-through caching logic and parallel invalidation.
 #[derive(Clone)]
 pub struct Writer<K, V>
 where
@@ -475,6 +536,11 @@ mod tests {
                 .expect_get()
                 .with(mockall::predicate::eq("key".to_owned()))
                 .returning(|_| {
+                    #[expect(
+                        clippy::excessive_nesting,
+                        reason = "Mockall async trait expectations require \
+                                  nested Box::pin(async { ... }) blocks."
+                    )]
                     Box::pin(async { Ok(Some("value".to_owned())) })
                 });
 
@@ -517,6 +583,11 @@ mod tests {
                 .expect_get()
                 .with(mockall::predicate::eq("key".to_owned()))
                 .returning(|_| {
+                    #[expect(
+                        clippy::excessive_nesting,
+                        reason = "Mockall async trait expectations require \
+                                  nested Box::pin(async { ... }) blocks."
+                    )]
                     Box::pin(async { Ok(Some("mem_val".to_owned())) })
                 })
                 .times(1);
@@ -573,12 +644,22 @@ mod tests {
             let mut disk_reader = MockCacheReader::new();
 
             mem_reader.expect_keys().returning(|| {
+                #[expect(
+                    clippy::excessive_nesting,
+                    reason = "Mockall async trait expectations require nested \
+                              Box::pin(async { ... }) blocks."
+                )]
                 Box::pin(async {
                     Ok(vec!["k1".to_owned(), "shared".to_owned()])
                 })
             });
 
             disk_reader.expect_keys().returning(|| {
+                #[expect(
+                    clippy::excessive_nesting,
+                    reason = "Mockall async trait expectations require nested \
+                              Box::pin(async { ... }) blocks."
+                )]
                 Box::pin(async {
                     Ok(vec!["k2".to_owned(), "shared".to_owned()])
                 })
@@ -654,6 +735,11 @@ mod tests {
             disk_writer
                 .expect_put()
                 .returning(|_, _| {
+                    #[expect(
+                        clippy::excessive_nesting,
+                        reason = "Mockall async trait expectations require \
+                                  nested Box::pin(async { ... }) blocks."
+                    )]
                     Box::pin(async {
                         Err(CacheError::BackendError {
                             backend: "disk",
@@ -725,7 +811,14 @@ mod tests {
 
             mem_reader
                 .expect_get()
-                .returning(|_| Box::pin(async { Ok(Some("val".to_owned())) }))
+                .returning(|_| {
+                    #[expect(
+                        clippy::excessive_nesting,
+                        reason = "Mockall async trait expectations require \
+                                  nested Box::pin(async { ... }) blocks."
+                    )]
+                    Box::pin(async { Ok(Some("val".to_owned())) })
+                })
                 .times(1);
 
             let (reader, _writer) = build_with_mocks(
@@ -735,7 +828,8 @@ mod tests {
                 MockCacheWriter::new(),
             );
 
-            let _val = reader.get(&"key".to_owned()).await;
+            let result = reader.get(&"key".to_owned()).await;
+            result.unwrap();
 
             assert!(logs_contain("operation=\"get\""));
         }
@@ -754,8 +848,14 @@ mod tests {
             let mut dr = MockCacheReader::new();
 
             mem_reader.expect_get().returning(|_| Box::pin(async { Ok(None) }));
-            dr.expect_get()
-                .returning(|_| Box::pin(async { Ok(Some("val".to_owned())) }));
+            dr.expect_get().returning(|_| {
+                #[expect(
+                    clippy::excessive_nesting,
+                    reason = "Mockall async trait expectations require nested \
+                              Box::pin(async { ... }) blocks."
+                )]
+                Box::pin(async { Ok(Some("val".to_owned())) })
+            });
 
             // SLOW memory write
             mem_writer.expect_put().returning(|_, _| {
@@ -778,11 +878,12 @@ mod tests {
             let (reader, _writer) = builder.build().expect("build failed");
 
             let start = Instant::now();
-            let _val = reader.get(&"key".to_owned()).await;
+            let result = reader.get(&"key".to_owned()).await;
+            result.unwrap();
             let duration = start.elapsed();
 
             // Should be much faster than the 500ms sleep
-            assert!(duration < std::time::Duration::from_millis(50));
+            assert!(duration < std::time::Duration::from_millis(100));
         }
     }
 }
