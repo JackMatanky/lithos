@@ -260,11 +260,34 @@ None - Refactored during implementation to align with project builder patterns a
     *   **Change**: Renamed fields in both `Reader` and `Writer` handles from `memory_reader`/`disk_reader` and `memory_writer`/`disk_writer` to simply `memory` and `disk`.
     *   **Rationale**: Resolved `clippy::struct_field_names` and ensured consistent API ergonomics across CQRS handles. Struct field names that repeat the struct's name are considered redundant in Rust.
 
-### Event-Driven Backfill Research (Submission Handle Pattern)
+### Event-Driven Backfill Research & Architectural Analysis
 
-To achieve strict CQRS and decouple the `Reader` from the `CacheWriter` trait, research was conducted on the **Submission Handle** pattern (inspired by the `Executor` pattern).
+To achieve strict CQRS and decouple the `Reader` from the `CacheWriter` trait, extensive research was conducted on event-driven backfill strategies. The goal was to find a solution that aligns with Lithos' principles of lean, performant, and idiomatic Rust.
 
-#### **Proposed Signatures for `backfiller.rs`**
+#### **1. Alternatives Evaluated**
+
+| Strategy | Mechanism | Pros | Cons |
+| :--- | :--- | :--- | :--- |
+| **Submission Handle** | MPSC Sink + Worker | Lowest overhead, O(1) submission, static dispatch, type-safe. | Requires new internal component. |
+| **Functional Callback** | `Arc<dyn Fn(K, V)>` | Simple implementation, zero new traits. | Dynamic dispatch, cannot enforce non-blocking behavior. |
+| **Strategy Trait** | `Arc<dyn CacheMissHandler>` | Highly extensible, easy to mock. | Double indirection, trait proliferation. |
+| **Middleware Wrapper** | Decorator pattern | Architecturally pure, reusable. | High pointer chasing, complex composition. |
+| **System Event Bus** | Global Broadcast | Maximum isolation, observability. | Higher latency, risk of circularity. |
+
+#### **2. Selected Solution: Submission Handle Pattern**
+
+Inspired by high-performance submission/execution splits (like the `redb` adapter's `Executor`), this pattern transforms the "side-effect" of backfilling into a "data submission" requirement.
+
+**Architectural Rationale:**
+- **CQRS Integrity**: The `Reader` becomes a "pure" component that only interacts with data sinks. It possesses no capability to invoke commands on the memory cache.
+- **Latency Guarantee**: Using `mpsc::Sender::try_send` ensures that `Reader::get` latency remains constant even if the background backfill is under heavy backpressure or the memory writer is slow.
+- **Complexity Management**: By using a **Deferred Registry** pattern in the `Builder`, we can initialize the channel pair early but only spawn the background task once the `memory_writer` is provided during the final `build()` call.
+
+#### **3. Proposed Refactor: `backfiller.rs`**
+
+The complexity of channel management and worker lifecycles warrants a dedicated component to keep `coordinator.rs` focused on Fallback Strategy logic.
+
+**Proposed Signatures:**
 
 ```rust
 /// Submission handle for triggering background backfills.
@@ -292,11 +315,10 @@ impl<K, V> BackfillWorker<K, V> {
 pub fn new<K, V>(capacity: usize) -> (BackfillHandle<K, V>, BackfillWorker<K, V>);
 ```
 
-#### **Rationale for Future Refactor to `backfiller.rs`**
-1.  **Strict CQRS Enforcement**: The `Reader` only depends on a `BackfillHandle` (a data sink) rather than a `CacheWriter` (a command implementation).
-2.  **Leaner Coordinator**: Removes channel plumbing and task management from `coordinator.rs`, leaving it focused on coordination strategy.
-3.  **Encapsulation**: Centralizes asynchronous background logic, error handling, and drop-policies in a single dedicated component.
-4.  **Builder Simplification**: `build_reader` creates the pair and hands the `Handle` to the reader. `build` starts the `Worker` once the writer is available.
+**Refactor Benefits:**
+1.  **Cleaner Coordinator**: `Reader` struct simplifies to: `pub struct Reader { memory: Arc, disk: Arc, backfill: BackfillHandle }`.
+2.  **Resource Safety**: The `Worker` is consumed upon starting, preventing double-spawn bugs and ensuring clean task termination.
+3.  **Independence**: `build_reader()` can hand out a `BackfillHandle` even if a writer is never built; the handle simply becomes a no-op once the dropped worker's channel closes.
 
 ### Completion Notes List
 - Implemented `CacheCoordinator` with full CQRS support (split Reader/Writer handles).
