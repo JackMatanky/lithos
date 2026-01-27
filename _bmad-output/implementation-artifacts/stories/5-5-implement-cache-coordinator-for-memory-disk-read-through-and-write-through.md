@@ -92,6 +92,8 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 1.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 1.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 2: Struct Definition & Shared State (CQRS Handles)
 - [ ] Task 2: Implement `Inner`, handles, and Builder
@@ -99,17 +101,19 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [ ] Subtask 2.2: Define `struct Inner<K, V>` holding the four split ports from Story 5.4
   - [ ] Subtask 2.3: [TDD] Verify `Reader` and `Writer` handles carry correct `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` bounds
   - [ ] Subtask 2.4: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` as `Arc<Inner>` wrappers
-  - [ ] Subtask 2.4: Define `pub struct Builder<K, V>` for fluent coordinator construction
-  - [ ] Subtask 2.5: Implement `Builder::new()` and methods to set the four cache ports
-  - [ ] Subtask 2.6: Implement `Builder::build()` that returns `(ReaderCoordinator, WriterCoordinator)`
-  - [ ] Subtask 2.7: Ensure `Inner` is non-clonable and private to the module
-  - [ ] Subtask 2.8: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
-  - [ ] Subtask 2.7: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 2.5: Define `pub struct Builder<K, V>` for fluent coordinator construction
+  - [ ] Subtask 2.6: Implement `Builder::new()` and methods to set the four cache ports
+  - [ ] Subtask 2.7: Implement `Builder::build()` that returns `(ReaderCoordinator, WriterCoordinator)`
+  - [ ] Subtask 2.8: Ensure `Inner` is non-clonable and private to the module
+  - [ ] Subtask 2.9: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
+  - [ ] Subtask 2.10: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 2.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 2.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 3: Event-Driven Backfill Infrastructure
 - [ ] Task 3: Implement internal backfill communication
@@ -124,6 +128,8 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 3.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 3.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 4: Read-Through Logic (CQRS Reader)
 - [ ] Task 4: Implement read-through `get` with decoupled async backfill
@@ -142,6 +148,8 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 4.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 4.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 5: Write-Through Logic (CQRS Writer)
 - [ ] Task 5: Implement write-through `put` and parallel invalidation
@@ -159,6 +167,8 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 5.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 5.11: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 6: Observability & NFR Verification
 - [ ] Task 6: Finalize nested tracing and performance verification
@@ -173,6 +183,8 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 6.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 6.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 7: Documentation & Doc Testing
 - [ ] Task 7: Implement module documentation and executable examples
@@ -186,6 +198,8 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
     - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
+  - [ ] Subtask 7.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 7.7: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 8: Final Quality Gate
 - [ ] Task 8: Comprehensive project verification
@@ -193,7 +207,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [ ] Subtask 8.2: Run `mise run fmt` and verify formatting compliance
   - [ ] Subtask 8.3: Run `mise run verify` to ensure all Lithos quality gates are satisfied
   - [ ] Subtask 8.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 8.5: Stage and commit all changes with a descriptive conventional commit style message
+  - [ ] Subtask 8.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ## Dev Notes
 
