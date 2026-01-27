@@ -27,7 +27,7 @@ Users can create and execute modular templates with schema-driven interactive pr
   - NumberSpec with min/max → validated number input
   - FileSpec with directory → file picker from Epic 11 query
   - DateSpec → date input with format validation
-- **Location**: 
+- **Location**:
   - `crates/domain/src/template/` - domain models (Template aggregate, Suggestion, ElicitationSource)
   - `crates/app/src/services/template/` - TemplateExecutor, BindingService, PromptSession
   - `crates/adapters/src/api/ui/` - Dialoguer implementation of UIPort
