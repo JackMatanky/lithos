@@ -580,7 +580,7 @@ So that I can understand and customize lithos behavior effectively.
 - Adapter architecture (Command/Query pattern)
 - Composition pattern (Loader/Writer/Validator/Cache/Registry)
 - Epic 4 integration (FormatDispatcher, PathValidator)
-- Epic 5 integration (RedbCache for ConfigCache)
+- Epic 5 integration (RedbBuilder/RedbReader/RedbWriter for ConfigCache)
 - Singleton Registry design and zero-lock reads
 - Figment hierarchical loading (provider pattern)
 - Extension guidelines (adding new config fields, migration functions)
