@@ -158,7 +158,7 @@ where
     /// Returns `CacheError` if the database cannot be initialized.
     #[inline]
     pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
-        let inner = self.build_inner()?;
+        let inner = self.inner_builder()?;
         let reader = Reader {
             inner: Arc::clone(&inner),
         };
@@ -168,9 +168,35 @@ where
         Ok((reader, writer))
     }
 
+    /// Build a Reader handle independently.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError` if the database cannot be initialized.
+    #[inline]
+    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
+        let inner = self.inner_builder()?;
+        Ok(Reader {
+            inner,
+        })
+    }
+
+    /// Build a Writer handle independently.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError` if the database cannot be initialized.
+    #[inline]
+    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
+        let inner = self.inner_builder()?;
+        Ok(Writer {
+            inner,
+        })
+    }
+
     /// Internal helper to build the Inner state.
     #[inline]
-    fn build_inner(&self) -> Result<RedbInner<K, V>, CacheError> {
+    fn inner_builder(&self) -> Result<RedbInner<K, V>, CacheError> {
         let path =
             self.path.as_ref().ok_or_else(|| CacheError::BackendError {
                 backend: "redb",
@@ -208,32 +234,6 @@ where
             codec: RkyvCodec,
             _marker: std::marker::PhantomData,
         }))
-    }
-
-    /// Build a Reader handle independently.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError` if the database cannot be initialized.
-    #[inline]
-    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
-        let inner = self.build_inner()?;
-        Ok(Reader {
-            inner,
-        })
-    }
-
-    /// Build a Writer handle independently.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError` if the database cannot be initialized.
-    #[inline]
-    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
-        let inner = self.build_inner()?;
-        Ok(Writer {
-            inner,
-        })
     }
 }
 
