@@ -607,7 +607,7 @@ impl Executor {
 mod tests {
     use super::*;
 
-    mod redb_api {
+    mod api {
         use tempfile::tempdir;
 
         use super::*;
@@ -792,7 +792,7 @@ mod tests {
         }
     }
 
-    mod redb_builder {
+    mod builder {
         use tempfile::tempdir;
 
         use super::*;

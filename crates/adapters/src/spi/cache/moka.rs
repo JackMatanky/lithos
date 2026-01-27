@@ -321,7 +321,7 @@ where
 mod tests {
     use super::*;
 
-    mod moka_builder {
+    mod builder {
         use super::*;
 
         #[test]
