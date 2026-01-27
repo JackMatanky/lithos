@@ -9,29 +9,33 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
 ## Implementation Notes
 
 - **Storage Technology**: Redb + rkyv per ADR 0002 (no SQLite - architectural decision already made)
-- **Zero-Copy Deserialization**: rkyv enables direct memory mapping without deserialization overhead
+- **Zero-Copy Deserialization**: rkyv enables direct memory mapping without deserialization overhead via `Codec::access()`
 - **ACID Transactions**: Redb provides MVCC concurrency and transaction isolation
-- **CQRS Pattern**: Storage ports split into CacheWriterPort (commands) and CacheReaderPort (queries) for clarity
+- **CQRS Pattern**: Storage uses Epic 5 `CacheReader`/`CacheWriter` traits for read/write separation
 - **Unit of Work Pattern**: TransactionContext manages atomic multi-table operations with rollback
 - **Clean Slate Protocol**: Storage corruption triggers full rebuild from vault markdown files
 - **Integration Points**:
-  - Epic 5: Reuses RedbCache foundation (same Redb database, different tables)
+  - Epic 5: Uses existing `RedbBuilder`, `RedbReader`, `RedbWriter` infrastructure from `crates/adapters/src/spi/cache/`
+  - Epic 5: Leverages `RkyvCodec` for serialization with `Entry<V>` wrapper (value + timestamp + metadata)
+  - Epic 5: Shares same Redb database file, different table names for isolation
   - Epic 8: Listens to NoteIndexed events for storage updates
   - Epic 10: Receives indexed note data to persist
-  - Epic 11: Provides query read path via CacheReaderPort
+  - Epic 11: Provides query read path via `CacheReader` trait
 - **Storage Schema Design**: Optimized for Epic 11 query patterns (by path, by schema, by fileClass)
 - **Performance Targets**:
   - NFR2: Full vault indexing (1000 notes) completes in <2 seconds
   - NFR9: Storage operations stay within 500MB memory budget
   - Write operations: <10ms per note
-  - Read operations: <1ms cache hit, <10ms cache miss
-- **Location**: `crates/adapters/src/spi/storage/` contains ports, redb implementation, mocks
-- **Storage Tables**:
-  - `notes` table: PathBuf → Arc<Note> (main entity storage)
-  - `schema_index` table: SchemaName → Vec<PathBuf> (fileClass queries)
-  - `alias_index` table: Alias → PathBuf (wiki-link resolution)
-  - `metadata_index` table: (FieldName, FieldValue) → Vec<PathBuf> (metadata queries)
-- **Error Handling**: StorageError enum with variants for Corruption, TransactionFailed, SchemaConflict, OutOfMemory
+  - Read operations: <1ms cache hit (via `with_view` zero-copy), <10ms cache miss
+- **Location**: Continue building in existing `crates/adapters/src/spi/cache/` directory (no new `storage/` directory needed)
+- **Implementation Approach**: Extend Epic 5 cache module with storage-specific table builders, not a separate storage layer
+- **Storage Tables** (all share same `.lithos/storage.redb` database file):
+  - `notes` table: PathBuf → `Entry<Note>` (main entity storage)
+  - `schema_index` table: SchemaName → `Entry<Vec<PathBuf>>` (fileClass queries)
+  - `alias_index` table: Alias → `Entry<PathBuf>` (wiki-link resolution)
+  - `metadata_index` table: (FieldName, FieldValue) → `Entry<Vec<PathBuf>>` (metadata queries)
+- **Epic 5 Entry Wrapper**: All values wrapped in `Entry<V>` struct providing `{ value: V, timestamp: u64, metadata: HashMap<String, String> }`
+- **Error Handling**: Reuses Epic 5 `CacheError` enum with existing variants (IoError, SerializationError, BackendError)
 - **Backup Strategy**: Periodic snapshots to `.lithos/backups/` with configurable retention
 - **Migration Strategy**: Schema versioning with forward/backward compatibility checks
 - **May Create**: ADR for storage schema patterns if design decisions need documentation
@@ -95,7 +99,8 @@ So that data is stored efficiently with zero-copy deserialization and controlled
 **Acceptance Criteria:**
 
 **Given** Epic 5 provides RedbCache infrastructure
-**When** I implement storage foundation in `crates/adapters/src/spi/storage/redb_storage.rs`
+**When** I extend Epic 5 cache module with storage tables
+**Then** new table-specific builders are added to `crates/adapters/src/spi/cache/` (e.g., `notes.rs`, `indexes.rs`)
 **Then** it reuses same Redb database instance from Epic 5 with separate table namespaces
 **And** `notes` table uses `redb::TableDefinition<&str, &[u8]>` for path → serialized Note mapping
 
@@ -150,7 +155,7 @@ So that multiple storage operations are committed together or rolled back as a u
 **Acceptance Criteria:**
 
 **Given** I need transactional consistency for multi-table writes
-**When** I implement Unit of Work pattern in `crates/adapters/src/spi/storage/transaction.rs`
+**When** I implement Unit of Work pattern in `crates/adapters/src/spi/cache/transaction.rs` (extending Epic 5 cache module)
 **Then** `TransactionContext` struct wraps Redb `WriteTransaction` with domain-level operations
 **And** transaction provides atomic writes across notes, schema_index, alias_index, metadata_index tables
 
@@ -199,7 +204,7 @@ So that Epic 11 queries can be executed efficiently against the storage layout.
 **Acceptance Criteria:**
 
 **Given** Epic 11 requires multiple query access patterns
-**When** I design storage schema in `crates/adapters/src/spi/storage/schema.rs`
+**When** I design storage schema in `crates/adapters/src/spi/cache/schema.rs` (extending Epic 5 cache module)
 **Then** four tables support different query patterns:
 - **notes table**: `PathBuf (String) → Arc<Note> (rkyv bytes)` - primary entity storage
 - **schema_index table**: `SchemaName (String) → Vec<PathBuf> (rkyv bytes)` - fileClass queries (FR21)
@@ -258,7 +263,7 @@ So that storage corruption is detected and recovered gracefully.
 **Acceptance Criteria:**
 
 **Given** rkyv provides checksum validation
-**When** I implement read operations in `crates/adapters/src/spi/storage/validator.rs`
+**When** I implement read operations with validation in `crates/adapters/src/spi/cache/validator.rs` (extending Epic 5 cache module)
 **Then** `rkyv::check_archived_root::<T>(bytes)` validates data integrity before access
 **And** corrupted bytes trigger `StorageError::Corruption` with diagnostic context (table, key, checksum)
 **And** validation failures prevent unsafe memory access
@@ -276,7 +281,7 @@ So that storage corruption is detected and recovered gracefully.
 **And** validation prevents persisting invalid state
 
 **Given** corruption is detected during read operations
-**When** I implement recovery in `crates/adapters/src/spi/storage/recovery.rs`
+**When** I implement recovery in `crates/adapters/src/spi/cache/recovery.rs` (extending Epic 5 cache module)
 **Then** clean slate protocol triggers automatic rebuild from vault markdown files
 **And** recovery process scans `.lithos/backups/` for recent snapshot before full rebuild
 **And** recovery preserves user data (vault files) while recreating corrupted indexes
@@ -318,7 +323,7 @@ So that storage corruption can be recovered without losing vault data.
 **Acceptance Criteria:**
 
 **Given** storage database can become corrupted
-**When** I implement backup strategy in `crates/adapters/src/spi/storage/backup.rs`
+**When** I implement backup strategy in `crates/adapters/src/spi/cache/backup.rs` (extending Epic 5 cache module)
 **Then** periodic snapshots are created in `.lithos/backups/storage-{timestamp}.redb`
 **And** backups are triggered every 100 write transactions or daily (whichever comes first)
 **And** backup creation uses Redb's atomic snapshot feature without blocking operations
@@ -374,7 +379,7 @@ So that storage format can change safely across versions without data loss.
 **Acceptance Criteria:**
 
 **Given** storage schema will evolve across lithos versions
-**When** I implement migration framework in `crates/adapters/src/spi/storage/migrations.rs`
+**When** I implement migration framework in `crates/adapters/src/spi/cache/migrations.rs` (extending Epic 5 cache module)
 **Then** `SchemaVersion` metadata is stored in dedicated `_metadata` table
 **And** current schema version is `const STORAGE_SCHEMA_V1: u32 = 1` for MVP
 **And** version check occurs on database open before any operations
@@ -486,61 +491,64 @@ So that NFR2 (2s vault indexing) and NFR9 (500MB memory) are validated at the st
 **And** NFR9 (500MB memory) is validated under peak load
 **And** performance regressions are caught before integration
 
-## Story 9.9: Create Storage Mocks for Testing
+## Story 9.9: Reuse Epic 5 Mocks for Storage Testing
 
 As a developer testing storage-dependent code,
-I want comprehensive storage mocks,
-So that storage interactions can be tested in isolation without database setup.
+I want to reuse existing Epic 5 mocks,
+So that storage interactions can be tested without creating duplicate test infrastructure.
 
 **Acceptance Criteria:**
 
-**Given** Epic 11 query service needs testable storage
-**When** I create storage mocks in `crates/domain/src/ports/storage/mocks.rs`
-**Then** `MockCacheWriter` implements `CacheWriterPort` with in-memory HashMap backend
-**And** `MockCacheReader` implements `CacheReaderPort` with in-memory HashMap backend
-**And** mocks are thread-safe using `Arc<RwLock<HashMap<PathBuf, Arc<T>>>>`
+**Given** Epic 5 provides `MockCacheReader<K, V>` and `MockCacheWriter<K, V>` via mockall
+**When** I write storage tests
+**Then** I reuse existing mocks: `MockCacheReader<PathBuf, Note>` for notes table
+**And** I use `MockCacheReader<String, Vec<PathBuf>>` for schema_index table
+**And** I use `MockCacheReader<String, PathBuf>` for alias_index table
+**And** no custom storage mocks are needed
 
-**Given** mocks must track method calls for verification
-**When** I implement call tracking
-**Then** mocks record method invocations: `insert_calls: Vec<(PathBuf, Arc<T>)>`
-**And** test code can assert: `assert_eq!(mock.insert_calls.len(), 3)`
-**And** call tracking helps verify integration behavior in tests
+**Given** Epic 5 mocks support mockall expectations
+**When** I write test expectations
+**Then** `mock.expect_get()` validates read operations
+**And** `mock.expect_put()` validates write operations
+**And** `mock.expect_delete()` validates deletion operations
+**And** mockall automatically tracks method calls for verification
 
-**Given** mocks must simulate realistic behavior
-**When** I implement mock operations
-**Then** `MockCacheWriter::insert()` stores data in HashMap and records call
-**And** `MockCacheReader::get_by_path()` retrieves data from HashMap
-**And** mocks support query operations (list_by_schema, query_metadata) via filtering
+**Given** Epic 5 mocks simulate realistic behavior
+**When** I implement test scenarios
+**Then** mocks return configured values via `.returning()` closures
+**And** mocks simulate errors via `CacheError` return values
+**And** mocks support both success and failure scenarios
 
 **Given** mocks need error simulation for resilience testing
-**When** I implement error injection
-**Then** mocks support `set_error_mode(StorageError)` to trigger failures
-**And** error mode simulates: `Corruption`, `TransactionFailed`, `OutOfSpace`
+**When** I configure error expectations
+**Then** mocks return `Err(CacheError::IoError)` for I/O failures
+**And** mocks return `Err(CacheError::SerializationError)` for rkyv failures
+**And** mocks return `Err(CacheError::BackendError)` for Redb failures
 **And** error simulation validates error handling in Epic 10/11 integration
 
 **Given** mocks are used in unit tests
 **When** I write storage-dependent tests
-**Then** tests verify correct storage operations without real Redb database
+**Then** tests verify correct cache operations without real Redb database
 **And** tests run faster (<30 seconds for full suite) without disk I/O
 **And** tests are deterministic (no timing-dependent behavior)
 
-**Given** Epic 10 indexing uses storage mocks
+**Given** Epic 10 indexing uses cache mocks
 **When** I test indexing logic
-**Then** mocks verify: indexer calls `batch_insert()` with correct note entities
-**And** mocks verify: indexer updates schema_index and alias_index correctly
-**And** mock call tracking validates indexing workflow without database
+**Then** `MockCacheWriter` verifies indexer calls `put()` with correct note entities
+**And** mocks verify indexer updates schema_index and alias_index correctly
+**And** mockall call tracking validates indexing workflow without database
 
-**Given** Epic 11 queries use storage mocks
+**Given** Epic 11 queries use cache mocks
 **When** I test query logic
-**Then** mocks verify: query service calls correct CacheReaderPort methods
+**Then** `MockCacheReader` verifies query service calls correct `get()` methods
 **And** mocks provide test data for query filtering tests
 **And** mock responses validate query result transformation logic
 
 **Given** integration tests need realistic storage
 **When** I implement test fixtures
-**Then** mocks provide `with_test_data()` constructor preloaded with sample notes
-**And** fixtures include: notes with/without schemas, duplicate aliases, complex metadata
-**And** fixtures enable comprehensive integration testing without Redb setup
+**Then** fixtures use Epic 5's `MokaCache` for fast in-memory testing (no Redb file creation)
+**And** fixtures preload sample notes with/without schemas, duplicate aliases, complex metadata
+**And** fixtures enable comprehensive integration testing without database setup
 
 ## Story 9.10: Storage Error Recovery and Data Integrity
 
