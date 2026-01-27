@@ -158,8 +158,8 @@ where
         };
 
         let writer = Writer {
-            memory_writer,
-            disk_writer,
+            memory: memory_writer,
+            disk: disk_writer,
         };
 
         Ok((reader, writer))
@@ -225,8 +225,8 @@ where
         })?;
 
         Ok(Writer {
-            memory_writer,
-            disk_writer,
+            memory: memory_writer,
+            disk: disk_writer,
         })
     }
 
@@ -374,8 +374,8 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
     V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
-    memory_writer: Arc<dyn CacheWriter<K, V>>,
-    disk_writer: Arc<dyn CacheWriter<K, V>>,
+    memory: Arc<dyn CacheWriter<K, V>>,
+    disk: Arc<dyn CacheWriter<K, V>>,
 }
 
 #[async_trait]
@@ -388,7 +388,7 @@ where
     async fn clear(&self) -> Result<(), CacheError> {
         // Parallel invalidation
         let (mem_res, disk_res) =
-            tokio::join!(self.memory_writer.clear(), self.disk_writer.clear());
+            tokio::join!(self.memory.clear(), self.disk.clear());
 
         mem_res?;
         disk_res?;
@@ -398,10 +398,8 @@ where
     #[instrument(skip(self), fields(operation = "delete"))]
     async fn delete(&self, key: &K) -> Result<bool, CacheError> {
         // Parallel invalidation
-        let (mem_res, disk_res) = tokio::join!(
-            self.memory_writer.delete(key),
-            self.disk_writer.delete(key)
-        );
+        let (mem_res, disk_res) =
+            tokio::join!(self.memory.delete(key), self.disk.delete(key));
 
         let mem_deleted = mem_res?;
         let disk_deleted = disk_res?;
@@ -417,10 +415,10 @@ where
     #[instrument(skip(self, value), fields(operation = "put"))]
     async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
         // 1. Write to disk first to ensure persistence
-        self.disk_writer.put(key.clone(), value.clone()).await?;
+        self.disk.put(key.clone(), value.clone()).await?;
 
         // 2. Only write to memory if disk write succeeds
-        self.memory_writer.put(key, value).await?;
+        self.memory.put(key, value).await?;
 
         debug!("Cache Write success (Disk then Memory)");
         Ok(())
@@ -435,15 +433,15 @@ where
     #[inline]
     fn clone(&self) -> Self {
         Self {
-            memory_writer: Arc::clone(&self.memory_writer),
-            disk_writer: Arc::clone(&self.disk_writer),
+            memory: Arc::clone(&self.memory),
+            disk: Arc::clone(&self.disk),
         }
     }
 
     #[inline]
     fn clone_from(&mut self, source: &Self) {
-        self.memory_writer = Arc::clone(&source.memory_writer);
-        self.disk_writer = Arc::clone(&source.disk_writer);
+        self.memory = Arc::clone(&source.memory);
+        self.disk = Arc::clone(&source.disk);
     }
 }
 
@@ -598,7 +596,7 @@ mod tests {
             let (reader, writer) = builder.build().unwrap();
 
             assert!(Arc::ptr_eq(&reader.memory, &mr));
-            assert!(Arc::ptr_eq(&writer.memory_writer, &mw));
+            assert!(Arc::ptr_eq(&writer.memory, &mw));
         }
 
         #[tokio::test]

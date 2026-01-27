@@ -257,8 +257,8 @@ None - Refactored during implementation to align with project builder patterns a
     *   **Change**: Refactored the `Builder` to support independent `build_reader` and `build_writer` methods in addition to the joint `build()`.
     *   **Rationale**: Supports systems that only require one side of the CQRS split (e.g., a read-only query service), preventing the need to mock or provide unnecessary ports.
 4.  **Strict Field Hygiene**:
-    *   **Change**: Renamed `Reader` fields from `memory_reader`/`disk_reader` to `memory`/`disk`.
-    *   **Rationale**: Resolved `clippy::struct_field_names` which triggers when field names repeat the struct name (e.g. `Reader::memory_reader`).
+    *   **Change**: Renamed fields in both `Reader` and `Writer` handles from `memory_reader`/`disk_reader` and `memory_writer`/`disk_writer` to simply `memory` and `disk`.
+    *   **Rationale**: Resolved `clippy::struct_field_names` and ensured consistent API ergonomics across CQRS handles. Struct field names that repeat the struct's name are considered redundant in Rust.
 
 ### Completion Notes List
 - Implemented `CacheCoordinator` with full CQRS support (split Reader/Writer handles).
