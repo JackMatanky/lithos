@@ -15,7 +15,7 @@ Users can configure lithos through hierarchical TOML files with validation, supp
 - **Sample config files** based on JSON schema (lithos-specific)
 - **Architecture**: Domain ports exist (Epic 3), domain aggregate exists (Epic 3), adapters integrate Epic 4 utilities + Epic 5 caching
 - **Syntactic Validation**: Dedicated `validator.rs` for structural configuration validation before domain aggregate construction
-- **Caching Strategy**: Uses Epic 5 `RedbCache` to persist fully-merged `Config` aggregates for persistence and rollback
+- **Caching Strategy**: Uses Epic 5 `RedbReader`/`RedbWriter` to persist fully-merged `Config` aggregates for persistence and rollback
 - **Adapter Structure**: `crates/adapters/src/spi/config/` contains query.rs, command.rs, loader.rs, writer.rs, registry.rs, validator.rs, cache.rs
 - **No CLI Integration**: Epic 6 delivers tested adapters without CLI wiring (deferred to future epic)
 - **ADR References**: ADR 0005 (Figment hierarchical config)
@@ -155,10 +155,11 @@ So that configurations survive process restarts and support rollback.
 
 **Acceptance Criteria:**
 
-**Given** Epic 5 provides RedbCache for disk persistence
+**Given** Epic 5 provides `RedbBuilder`, `RedbReader`, `RedbWriter` for disk persistence
 **When** I implement ConfigCache in `crates/adapters/src/spi/config/cache.rs`
-**Then** it wraps `RedbCache<String, Config>` with table name "config"
-**And** constructor `new(db_path: PathBuf)` initializes the cache with Redb database
+**Then** it uses `RedbBuilder::new().path(db_path).table_name("config").build()` to create reader/writer pair
+**And** constructor `new(db_path: PathBuf)` returns `(RedbReader<String, Config>, RedbWriter<String, Config>)` tuple
+**And** ConfigCache wraps the reader/writer pair with domain-specific methods
 
 **Given** ConfigCache needs to store snapshots
 **When** I implement snapshot methods
@@ -177,10 +178,11 @@ So that configurations survive process restarts and support rollback.
 - `source_files: Vec<PathBuf>` - list of config files that were loaded
 **And** SnapshotMetadata derives `rkyv::Archive`, `rkyv::Serialize`, `rkyv::Deserialize`
 
-**Given** Epic 5 RedbCache stores metadata via CachedEntry
+**Given** Epic 5 `redb::Entry<V>` wraps values with metadata (timestamp, metadata HashMap)
 **When** I save snapshots
 **Then** snapshot key is formatted as `"snapshot_{timestamp}"`
-**And** Epic 5 CachedEntry.metadata HashMap stores: version, source_hash, source_files (JSON serialized)
+**And** `RedbWriter::put_with_metadata()` stores Config with metadata HashMap: version, source_hash, source_files (JSON serialized)
+**And** Epic 5 `Entry<Config>` structure: `{ value: Config, timestamp: u64, metadata: HashMap<String, String> }`
 
 **Given** snapshot history must be managed
 **When** I implement retention logic
