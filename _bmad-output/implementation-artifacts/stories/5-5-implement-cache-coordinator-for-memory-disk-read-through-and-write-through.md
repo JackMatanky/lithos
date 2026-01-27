@@ -260,6 +260,44 @@ None - Refactored during implementation to align with project builder patterns a
     *   **Change**: Renamed fields in both `Reader` and `Writer` handles from `memory_reader`/`disk_reader` and `memory_writer`/`disk_writer` to simply `memory` and `disk`.
     *   **Rationale**: Resolved `clippy::struct_field_names` and ensured consistent API ergonomics across CQRS handles. Struct field names that repeat the struct's name are considered redundant in Rust.
 
+### Event-Driven Backfill Research (Submission Handle Pattern)
+
+To achieve strict CQRS and decouple the `Reader` from the `CacheWriter` trait, research was conducted on the **Submission Handle** pattern (inspired by the `Executor` pattern).
+
+#### **Proposed Signatures for `backfiller.rs`**
+
+```rust
+/// Submission handle for triggering background backfills.
+/// Agnostic of the writer implementation.
+pub struct BackfillHandle<K, V> {
+    tx: mpsc::Sender<BackfillRequest<K, V>>,
+}
+
+impl<K, V> BackfillHandle<K, V> {
+    /// Non-blocking submission of a backfill request using try_send.
+    pub fn trigger(&self, key: K, value: V) { ... }
+}
+
+/// Lifecycle-managed worker that processes requests.
+pub struct BackfillWorker<K, V> {
+    rx: mpsc::Receiver<BackfillRequest<K, V>>,
+}
+
+impl<K, V> BackfillWorker<K, V> {
+    /// Starts the background task. Consumes the worker to ensure single-start.
+    pub fn start(self, writer: Arc<dyn CacheWriter<K, V>>) { ... }
+}
+
+/// Factory to create the handle/worker pair.
+pub fn new<K, V>(capacity: usize) -> (BackfillHandle<K, V>, BackfillWorker<K, V>);
+```
+
+#### **Rationale for Future Refactor to `backfiller.rs`**
+1.  **Strict CQRS Enforcement**: The `Reader` only depends on a `BackfillHandle` (a data sink) rather than a `CacheWriter` (a command implementation).
+2.  **Leaner Coordinator**: Removes channel plumbing and task management from `coordinator.rs`, leaving it focused on coordination strategy.
+3.  **Encapsulation**: Centralizes asynchronous background logic, error handling, and drop-policies in a single dedicated component.
+4.  **Builder Simplification**: `build_reader` creates the pair and hands the `Handle` to the reader. `build` starts the `Worker` once the writer is available.
+
 ### Completion Notes List
 - Implemented `CacheCoordinator` with full CQRS support (split Reader/Writer handles).
 - Implemented Read-Through logic with decoupled asynchronous backfill to memory via `BackfillQueue`.
