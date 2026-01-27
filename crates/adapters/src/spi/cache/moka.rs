@@ -59,6 +59,60 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
+    /// Set maximum capacity.
+    #[inline]
+    pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
+        // Validate capacity early to act as the owner of this constraint.
+        // The definitive validation still happens in inner_builder.
+        if let Err(e) = Self::validate_capacity(capacity) {
+            tracing::warn!(?e, "Invalid capacity provided to max_capacity");
+        }
+        self.max_capacity = capacity;
+        self
+    }
+
+    /// Create a new builder with default settings.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set time to idle.
+    #[inline]
+    pub fn time_to_idle(&mut self, duration: Duration) -> &mut Self {
+        self.time_to_idle = Some(duration);
+        self
+    }
+
+    /// Set time to live.
+    #[inline]
+    pub fn time_to_live(&mut self, duration: Duration) -> &mut Self {
+        self.time_to_live = Some(duration);
+        self
+    }
+
+    /// Validate the given capacity and return the converted value.
+    #[inline]
+    fn validate_capacity(capacity: usize) -> Result<u64, CacheError> {
+        if capacity == 0 {
+            return Err(CacheError::BackendError {
+                backend: "moka",
+                message: "max_capacity must be greater than 0".into(),
+            });
+        }
+        capacity.try_into().map_err(|e| CacheError::BackendError {
+            backend: "moka",
+            message: format!("Invalid max_capacity: {e}").into(),
+        })
+    }
+}
+
+impl<K, V> Builder<K, V>
+where
+    K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
     /// Build split Reader/Writer handles for the Moka cache.
     ///
     /// Returns a tuple of (Reader, Writer) handles that share the same
@@ -139,47 +193,6 @@ where
             cache,
             codec: IdentityCodec,
         }))
-    }
-
-    /// Set maximum capacity.
-    #[inline]
-    pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
-        // Validate capacity early to act as the owner of this constraint.
-        // The definitive validation still happens in inner_builder.
-        if let Err(e) = Self::validate_capacity(capacity) {
-            tracing::warn!(?e, "Invalid capacity provided to max_capacity");
-        }
-        self.max_capacity = capacity;
-        self
-    }
-
-    /// Set time to idle.
-    #[inline]
-    pub fn time_to_idle(&mut self, duration: Duration) -> &mut Self {
-        self.time_to_idle = Some(duration);
-        self
-    }
-
-    /// Set time to live.
-    #[inline]
-    pub fn time_to_live(&mut self, duration: Duration) -> &mut Self {
-        self.time_to_live = Some(duration);
-        self
-    }
-
-    /// Validate the given capacity and return the converted value.
-    #[inline]
-    fn validate_capacity(capacity: usize) -> Result<u64, CacheError> {
-        if capacity == 0 {
-            return Err(CacheError::BackendError {
-                backend: "moka",
-                message: "max_capacity must be greater than 0".into(),
-            });
-        }
-        capacity.try_into().map_err(|e| CacheError::BackendError {
-            backend: "moka",
-            message: format!("Invalid max_capacity: {e}").into(),
-        })
     }
 }
 
