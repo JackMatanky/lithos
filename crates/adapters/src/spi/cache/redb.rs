@@ -325,12 +325,14 @@ where
 /// # let dir = tempfile::tempdir().unwrap();
 /// # let db_path = dir.path().join("test.redb");
 /// // Initialize with writer and perform a dummy operation to create table
-/// let (_, writer) = RedbBuilder::<String, String>::new()
-///     .path(&db_path)
-///     .table_name("test")
-///     .build()
-///     .unwrap();
-/// writer.clear().await.unwrap();
+/// {
+///     let (_, writer) = RedbBuilder::<String, String>::new()
+///         .path(&db_path)
+///         .table_name("test")
+///         .build()
+///         .unwrap();
+///     writer.clear().await.unwrap();
+/// }
 ///
 /// let reader = RedbBuilder::<String, String>::new()
 ///     .path(db_path)
