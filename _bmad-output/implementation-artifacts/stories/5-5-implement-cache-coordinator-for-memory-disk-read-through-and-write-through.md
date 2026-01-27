@@ -374,6 +374,7 @@ pub fn new<K, V>(capacity: usize) -> HandleWorkerPair<K, V>;
 - **Implemented Submission Handle Pattern**: Decoupled the `Reader` from the `CacheWriter` trait by introducing a `Handle` submission sink and a background `Worker` in `backfiller.rs`.
 - **Enforced CQRS Discipline**: Added comprehensive documentation to `coordinator.rs` explaining the architectural necessity of `build_reader()` vs `build_writer()` for Hexagonal/CQRS boundary enforcement.
 - **Improved Observability**: Integrated structured tracing events for backfill lifecycle (triggered, started, success, error, dropped, stopped).
+- **Refactored Test Suite**: Organized `backfiller.rs` tests into descriptive submodules (`initialization`, `submission`, `execution`) and applied BDD-style GIVEN-WHEN-THEN documentation to all test cases.
 - **Quality Verified**: Resolved all complex linting issues (ordering, type complexity, naming) and achieved 100% logic coverage verified via `mise run verify` and doc tests.
 - Implemented `clone_from` for all clonable structs to satisfy Lithos quality gates (`missing_trait_methods`).
 - Sorted all implementation blocks alphabetically for maintainability.
