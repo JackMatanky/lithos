@@ -87,8 +87,8 @@ development_status:
     5-8-document-cache-system-foundation: "ready-for-dev"
     epic-5-retrospective: "optional"
 
-    epic-6: "backlog"
-    6-1-create-default-configuration-files-schema: "backlog"
+    epic-6: "in-progress"
+    6-1-create-default-configuration-files-schema: "ready-for-dev"
     6-2-implement-config-adapters-with-embedded-utilities: "backlog"
     6-3-implement-config-singleton-registry: "backlog"
     6-4-implement-hierarchical-configuration-loading: "backlog"

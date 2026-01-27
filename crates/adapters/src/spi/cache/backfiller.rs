@@ -30,16 +30,16 @@ use crate::spi::cache::CacheWriter;
 /// ```
 pub struct Handle<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     tx: mpsc::Sender<Request<K, V>>,
 }
 
 impl<K, V> Handle<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     /// Non-blocking submission of a backfill request.
     ///
@@ -81,8 +81,8 @@ where
 
 impl<K, V> Clone for Handle<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     #[inline]
     fn clone(&self) -> Self {
@@ -103,16 +103,16 @@ where
 /// for executing the actual `put` operations on the fast cache layer.
 pub struct Worker<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     rx: mpsc::Receiver<Request<K, V>>,
 }
 
 impl<K, V> Worker<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     /// Starts the background task with the provided writer.
     ///
@@ -161,12 +161,7 @@ where
                         "Failed to backfill key"
                     );
                 } else {
-                    debug!(
-                        operation = "backfill",
-                        status = "success",
-                        ?request.key,
-                        "Backfill completed"
-                    );
+                    debug!(operation = "backfill", status = "success");
                 }
             }
 
@@ -200,8 +195,8 @@ pub type HandleWorkerPair<K, V> = (Handle<K, V>, Worker<K, V>);
 #[must_use]
 pub fn new<K, V>(capacity: usize) -> HandleWorkerPair<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(capacity);
     (

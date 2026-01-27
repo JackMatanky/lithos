@@ -267,7 +267,7 @@ So that only changed files are reprocessed and note identity is preserved across
 **Given** rename detection completes
 **When** I update storage persistence
 **Then** the original UUID is preserved for detected renames
-**And** the path_index mapping is updated to reflect the new path
+**And** the notes table is updated to reflect the new path
 **And** NoteRenamed event is published with old_path, new_path, and uuid
 
 **Given** rename detection performance is measured
