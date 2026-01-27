@@ -69,7 +69,7 @@ where
     /// Returns `CacheError::BackendError` if the configuration is invalid.
     #[inline]
     pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
-        let inner = self.build_inner()?;
+        let inner = self.inner_builder()?;
 
         let reader = Reader {
             inner: Arc::clone(&inner),
@@ -84,9 +84,43 @@ where
         Ok((reader, writer))
     }
 
+    /// Build a Reader handle independently.
+    ///
+    /// Creates a new cache and returns only a Reader handle. This is
+    /// efficient when only read access is needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::BackendError` if the configuration is invalid.
+    #[inline]
+    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
+        let inner = self.inner_builder()?;
+        Ok(Reader {
+            inner,
+            _codec: PhantomData,
+        })
+    }
+
+    /// Build a Writer handle independently.
+    ///
+    /// Creates a new cache and returns only a Writer handle. This is
+    /// efficient when only write access is needed.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::BackendError` if the configuration is invalid.
+    #[inline]
+    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
+        let inner = self.inner_builder()?;
+        Ok(Writer {
+            inner,
+            _codec: PhantomData,
+        })
+    }
+
     /// Internal helper to build the Inner state.
     #[inline]
-    fn build_inner(&self) -> Result<MokaInner<K, V>, CacheError> {
+    fn inner_builder(&self) -> Result<MokaInner<K, V>, CacheError> {
         let capacity = Self::validate_capacity(self.max_capacity)?;
 
         let mut builder = moka::future::Cache::builder().max_capacity(capacity);
@@ -107,45 +141,11 @@ where
         }))
     }
 
-    /// Build a Reader handle independently.
-    ///
-    /// Creates a new cache and returns only a Reader handle. This is
-    /// efficient when only read access is needed.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError::BackendError` if the configuration is invalid.
-    #[inline]
-    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
-        let inner = self.build_inner()?;
-        Ok(Reader {
-            inner,
-            _codec: PhantomData,
-        })
-    }
-
-    /// Build a Writer handle independently.
-    ///
-    /// Creates a new cache and returns only a Writer handle. This is
-    /// efficient when only write access is needed.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError::BackendError` if the configuration is invalid.
-    #[inline]
-    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
-        let inner = self.build_inner()?;
-        Ok(Writer {
-            inner,
-            _codec: PhantomData,
-        })
-    }
-
     /// Set maximum capacity.
     #[inline]
     pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
         // Validate capacity early to act as the owner of this constraint.
-        // The definitive validation still happens in build_inner.
+        // The definitive validation still happens in inner_builder.
         if let Err(e) = Self::validate_capacity(capacity) {
             tracing::warn!(?e, "Invalid capacity provided to max_capacity");
         }
