@@ -13,20 +13,21 @@ use crate::spi::errors::CacheError;
 pub trait Codec<K, V>: Send + Sync {
     /// The archived representation of the value for zero-copy access.
     type Archived: ?Sized;
+
     /// Provide zero-copy access to the archived value.
     ///
     /// # Errors
     /// Returns `CacheError::SerializationError` if access or validation fails.
-    fn access_view<'view>(
+    fn access<'view>(
         &self,
-        bytes: &'view [u8],
+        encoded: &'view [u8],
     ) -> Result<&'view Self::Archived, CacheError>;
 
     /// Decode a value from bytes retrieved from storage.
     ///
     /// # Errors
     /// Returns `CacheError::SerializationError` if decoding fails.
-    fn decode_value(&self, bytes: &[u8]) -> Result<V, CacheError>;
+    fn decode(&self, encoded: &[u8]) -> Result<V, CacheError>;
 
     /// Encode a key into bytes for storage.
     ///
@@ -78,12 +79,12 @@ where
     type Archived = rkyv::Archived<V>;
 
     #[inline]
-    fn access_view<'view>(
+    fn access<'view>(
         &self,
-        bytes: &'view [u8],
+        encoded: &'view [u8],
     ) -> Result<&'view Self::Archived, CacheError> {
         // Validation with bytecheck
-        rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(bytes).map_err(
+        rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(encoded).map_err(
             |e| CacheError::SerializationError {
                 type_name: std::any::type_name::<V>(),
                 message: format!("Failed to access archived value: {e}").into(),
@@ -92,8 +93,8 @@ where
     }
 
     #[inline]
-    fn decode_value(&self, bytes: &[u8]) -> Result<V, CacheError> {
-        let archived = <Self as Codec<K, V>>::access_view(self, bytes)?;
+    fn decode(&self, encoded: &[u8]) -> Result<V, CacheError> {
+        let archived = <Self as Codec<K, V>>::access(self, encoded)?;
 
         rkyv::deserialize::<V, rkyv::rancor::Error>(archived).map_err(|e| {
             CacheError::SerializationError {
@@ -170,11 +171,11 @@ mod tests {
                 .expect("encode_value failed");
 
             let decoded: TestMetadata =
-                <RkyvCodec as Codec<String, TestMetadata>>::decode_value(
+                <RkyvCodec as Codec<String, TestMetadata>>::decode(
                     &codec,
                     &value_bytes,
                 )
-                .expect("decode_value failed");
+                .expect("decode failed");
 
             assert_eq!(decoded, original);
             assert!(!key_bytes.is_empty());
@@ -189,15 +190,14 @@ mod tests {
             let codec: RkyvCodec = RkyvCodec;
             let original = "zero-copy data".to_owned();
 
-            let bytes = <RkyvCodec as Codec<String, String>>::encode_value(
+            let encoded = <RkyvCodec as Codec<String, String>>::encode_value(
                 &codec, &original,
             )
             .unwrap();
 
-            let archived = <RkyvCodec as Codec<String, String>>::access_view(
-                &codec, &bytes,
-            )
-            .expect("access_view failed");
+            let archived =
+                <RkyvCodec as Codec<String, String>>::access(&codec, &encoded)
+                    .expect("access failed");
 
             assert_eq!(archived.as_str(), original.as_str());
         }
@@ -205,12 +205,11 @@ mod tests {
         #[test]
         fn returns_error_on_corrupted_bytes() {
             let codec: RkyvCodec = RkyvCodec;
-            let corrupted_bytes = vec![0xFF, 0xFF, 0xFF, 0xFF];
+            let corrupted = vec![0xFF, 0xFF, 0xFF, 0xFF];
 
             let result: Result<String, CacheError> =
-                <RkyvCodec as Codec<String, String>>::decode_value(
-                    &codec,
-                    &corrupted_bytes,
+                <RkyvCodec as Codec<String, String>>::decode(
+                    &codec, &corrupted,
                 );
 
             assert!(result.is_err());
