@@ -476,20 +476,27 @@ where
 
 /// A persistent cache implementation using Redb.
 ///
+/// **DEPRECATED**: Use `Builder` to create `Reader` and `Writer` handles
+/// instead.
+///
 /// # Example
 ///
 /// ```rust
-/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, RedbCache};
+/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, RedbBuilder};
 /// use tempfile::tempdir;
 ///
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// let dir = tempdir().unwrap();
 /// let db_path = dir.path().join("cache.redb");
 ///
-/// let cache = RedbCache::new(db_path, "my_table").await.unwrap();
-/// cache.put("key".to_owned(), "value".to_owned()).await.unwrap();
+/// let (reader, writer) = RedbBuilder::new()
+///     .path(&db_path)
+///     .table_name("my_table")
+///     .build()
+///     .unwrap();
+/// writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 ///
-/// let result: Option<String> = cache.get(&"key".to_owned()).await.unwrap();
+/// let result: Option<String> = reader.get(&"key".to_owned()).await.unwrap();
 /// assert_eq!(result, Some("value".to_owned()));
 /// # });
 /// ```

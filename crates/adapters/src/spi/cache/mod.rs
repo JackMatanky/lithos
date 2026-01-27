@@ -28,23 +28,16 @@ pub use deserializer::Codec as CacheCodec;
 
 #[expect(
     clippy::module_name_repetitions,
-    reason = "Re-exporting with prefixed names is intentional for clarity at \
-              the crate level while keeping internal implementation names \
-              concise."
+    reason = "CacheEntry is the standard name for cache metadata wrapper"
 )]
-#[expect(
-    deprecated,
-    reason = "Temporary backwards compatibility during Phase 2-7 refactor"
-)]
-pub use self::moka::{Builder as MokaCacheBuilder, Cache as MokaCache};
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Re-exporting with prefixed names is intentional for clarity at \
-              the crate level while keeping internal implementation names \
-              concise."
-)]
-pub use self::redb::{
-    Cache as RedbCache, Entry as CacheEntry, Outcome as CacheResult,
+pub use self::redb::Entry as CacheEntry;
+pub use self::{
+    moka::{
+        Builder as MokaBuilder, Reader as MokaReader, Writer as MokaWriter,
+    },
+    redb::{
+        Builder as RedbBuilder, Reader as RedbReader, Writer as RedbWriter,
+    },
 };
 use crate::spi::errors::CacheError;
 
