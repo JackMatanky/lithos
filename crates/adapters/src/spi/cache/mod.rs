@@ -22,39 +22,34 @@ pub mod moka;
 pub mod redb;
 
 use async_trait::async_trait;
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Re-exporting with Cache prefix for clarity at crate level"
-)]
-pub use encoder::Codec as CacheCodec;
-pub use encoder::Codec as CacheCodec;
-
+pub use backfiller::{
+    Handle as BackfillHandle, Worker as BackfillWorker, new as new_backfiller,
+};
 #[expect(
     clippy::module_name_repetitions,
     reason = "Coordinator components are re-exported with descriptive names"
 )]
-pub use self::coordinator::{
+pub use coordinator::{
     Builder as CacheCoordinatorBuilder, Reader as ReaderCoordinator,
     ReaderWriterPair, Writer as WriterCoordinator,
 };
 #[expect(
     clippy::module_name_repetitions,
+    reason = "Re-exporting with Cache prefix for clarity at crate level"
+)]
+pub use encoder::Codec as CacheCodec;
+pub use moka::{
+    Builder as MokaBuilder, Reader as MokaReader, Writer as MokaWriter,
+};
+pub use redb::{
+    Builder as RedbBuilder, Reader as RedbReader, Writer as RedbWriter,
+};
+
+#[expect(
+    clippy::module_name_repetitions,
     reason = "CacheEntry is the standard name for cache metadata wrapper"
 )]
 pub use self::redb::Entry as CacheEntry;
-pub use self::{
-    backfiller::{Handle as BackfillHandle, Worker as BackfillWorker},
-    coordinator::{
-        Builder as CacheCoordinatorBuilder, Reader as ReaderCoordinator,
-        ReaderWriterPair, Writer as WriterCoordinator,
-    },
-    moka::{
-        Builder as MokaBuilder, Reader as MokaReader, Writer as MokaWriter,
-    },
-    redb::{
-        Builder as RedbBuilder, Reader as RedbReader, Writer as RedbWriter,
-    },
-};
 use crate::spi::errors::CacheError;
 
 /// Cache reader SPI for adapter-layer use.

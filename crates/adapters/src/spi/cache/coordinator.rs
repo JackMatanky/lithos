@@ -79,10 +79,9 @@
 //!     .build()?;
 //!
 //! // ✅ CQRS Query Side (reads only):
-//! // Note: memory_writer is still needed for backfill functionality
+//! // Note: memory_writer is no longer needed for backfill functionality
 //! let query_cache = CacheCoordinatorBuilder::new()
 //!     .memory_reader(Arc::new(mem_reader))
-//!     .memory_writer(Arc::new(mem_writer.clone())) // Needed for backfill
 //!     .disk_reader(Arc::new(disk_reader))
 //!     .build_reader()?; // Returns Reader only
 //!
@@ -106,11 +105,10 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use tokio::sync::mpsc;
 use tracing::{debug, info, instrument};
 
 use crate::spi::{
-    cache::{CacheReader, CacheWriter},
+    cache::{BackfillHandle, CacheReader, CacheWriter, backfiller},
     errors::CacheError,
 };
 
@@ -173,20 +171,6 @@ where
             }
         })?;
 
-        let memory = self.memory_reader.clone().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "coordinator",
-                message: "memory_reader is required".into(),
-            }
-        })?;
-
-        let disk = self.disk_reader.clone().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "coordinator",
-                message: "disk_reader is required".into(),
-            }
-        })?;
-
         let disk_writer = self.disk_writer.clone().ok_or_else(|| {
             CacheError::BackendError {
                 backend: "coordinator",
@@ -194,16 +178,10 @@ where
             }
         })?;
 
-        let backfill = BackfillQueue::init(
-            Arc::clone(&memory_writer),
-            self.backfill_capacity,
-        );
+        let (handle, worker) = backfiller::new(self.backfill_capacity);
+        worker.start(Arc::clone(&memory_writer));
 
-        let reader = Reader {
-            memory,
-            disk,
-            backfill,
-        };
+        let reader = self.build_reader_with_handle(handle)?;
 
         let writer = Writer {
             memory: memory_writer,
@@ -216,10 +194,19 @@ where
     /// Build a Reader handle independently.
     ///
     /// # Errors
-    /// Returns `CacheError::BackendError` if `memory_reader`, `disk_reader`,
-    /// or `memory_writer` (for backfill) is missing.
+    /// Returns `CacheError::BackendError` if `memory_reader` or `disk_reader`
+    /// is missing.
     #[inline]
     pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
+        let (handle, _) = backfiller::new(self.backfill_capacity);
+        self.build_reader_with_handle(handle)
+    }
+
+    /// Helper to build a Reader handle with a specific backfill handle.
+    fn build_reader_with_handle(
+        &self,
+        backfill: BackfillHandle<K, V>,
+    ) -> Result<Reader<K, V>, CacheError> {
         let memory = self.memory_reader.clone().ok_or_else(|| {
             CacheError::BackendError {
                 backend: "coordinator",
@@ -233,16 +220,6 @@ where
                 message: "disk_reader is required for Reader".into(),
             }
         })?;
-
-        let memory_writer = self.memory_writer.clone().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "coordinator",
-                message: "memory_writer is required for Reader backfill".into(),
-            }
-        })?;
-
-        let backfill =
-            BackfillQueue::init(memory_writer, self.backfill_capacity);
 
         Ok(Reader {
             memory,
@@ -337,7 +314,7 @@ where
 {
     memory: Arc<dyn CacheReader<K, V>>,
     disk: Arc<dyn CacheReader<K, V>>,
-    backfill: BackfillQueue<K, V>,
+    backfill: BackfillHandle<K, V>,
 }
 
 #[async_trait]
@@ -493,96 +470,6 @@ where
     }
 }
 
-/// Manages the background backfill of entries from disk to memory.
-struct BackfillQueue<K, V> {
-    tx: mpsc::Sender<BackfillRequest<K, V>>,
-}
-
-/// Internal request type for backfill.
-struct BackfillRequest<K, V> {
-    key: K,
-    value: V,
-}
-
-impl<K, V> BackfillQueue<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
-{
-    /// Initialize the backfill queue and spawn the worker task.
-    fn init(
-        memory_writer: Arc<dyn CacheWriter<K, V>>,
-        capacity: usize,
-    ) -> Self {
-        let (tx, rx) = mpsc::channel(capacity);
-        Self::spawn_worker(memory_writer, rx);
-        Self {
-            tx,
-        }
-    }
-
-    /// Spawn the background worker that processes backfill requests.
-    fn spawn_worker(
-        memory_writer: Arc<dyn CacheWriter<K, V>>,
-        mut rx: mpsc::Receiver<BackfillRequest<K, V>>,
-    ) {
-        tokio::spawn(async move {
-            while let Some(request) = rx.recv().await {
-                let result =
-                    memory_writer.put(request.key, request.value).await;
-                if let Err(e) = result {
-                    info!(error = ?e, "Async backfill failed");
-                }
-            }
-        });
-    }
-
-    /// Trigger a backfill for the given key and value.
-    ///
-    /// Uses a non-blocking `try_send` to ensure read latency is never
-    /// affected.
-    fn trigger(&self, key: K, value: V) {
-        let request = BackfillRequest {
-            key,
-            value,
-        };
-
-        match self.tx.try_send(request) {
-            Ok(()) => {
-                debug!(operation = "backfill", status = "triggered");
-            }
-            Err(mpsc::error::TrySendError::Full(_)) => {
-                info!(
-                    operation = "backfill",
-                    status = "dropped",
-                    reason = "channel full"
-                );
-            }
-            Err(mpsc::error::TrySendError::Closed(_)) => {
-                info!(
-                    operation = "backfill",
-                    status = "dropped",
-                    reason = "channel closed"
-                );
-            }
-        }
-    }
-}
-
-impl<K, V> Clone for BackfillQueue<K, V> {
-    #[inline]
-    fn clone(&self) -> Self {
-        Self {
-            tx: self.tx.clone(),
-        }
-    }
-
-    #[inline]
-    fn clone_from(&mut self, source: &Self) {
-        self.tx.clone_from(&source.tx);
-    }
-}
-
 #[cfg(test)]
 #[expect(
     clippy::excessive_nesting,
@@ -655,6 +542,18 @@ mod tests {
                 .memory_writer(Arc::new(MockCacheWriter::new()))
                 .disk_reader(Arc::new(MockCacheReader::new()))
                 .disk_writer(Arc::new(MockCacheWriter::new()));
+
+            let reader =
+                builder.build_reader().expect("Failed to build reader");
+            let _: Reader<String, String> = reader;
+        }
+
+        #[tokio::test]
+        async fn builds_reader_without_memory_writer() {
+            let mut builder = Builder::<String, String>::new();
+            builder
+                .memory_reader(Arc::new(MockCacheReader::new()))
+                .disk_reader(Arc::new(MockCacheReader::new()));
 
             let reader =
                 builder.build_reader().expect("Failed to build reader");
