@@ -90,7 +90,7 @@ So that the codebase is more maintainable, supports zero-copy operations more ef
   - [x] Subtask 2.7: Implement `Builder::build_writer() -> Result<Writer<K, V>, CacheError>` that creates `Arc<Inner>` and returns Writer
   - [x] Subtask 2.8: [Optional] Add `Builder::build_both() -> Result<(Reader<K, V>, Writer<K, V>), CacheError>` convenience method that creates shared `Arc<Inner>`
   - [x] Subtask 2.9: Re-export `Builder` as `MokaBuilder`, `Reader` as `MokaReader`, and `Writer` as `MokaWriter` in `mod.rs`
-  - [ ] Subtask 2.10: Remove the unified `Cache<K, V>` struct that implements both CacheReader and CacheWriter
+  - [x] Subtask 2.10: Remove the unified `Cache<K, V>` struct that implements both CacheReader and CacheWriter
   - [x] Subtask 2.11: Run `mise run test:unit:adapters moka` (GREEN)
   - [x] Subtask 2.12: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality

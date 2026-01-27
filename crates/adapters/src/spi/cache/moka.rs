@@ -175,12 +175,10 @@ where
 ///
 /// New code:
 /// ```rust
-/// use lithos_adapters::spi::cache::{
-///     CacheReader, CacheWriter,
-///     moka::{Cache, Reader, Writer},
-/// };
+/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, MokaBuilder};
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let (reader, writer) = Cache::<String, String>::builder().build().unwrap();
+/// let (reader, writer) =
+///     MokaBuilder::<String, String>::default().build().unwrap();
 /// writer.put("key".to_string(), "value".to_string()).await.unwrap();
 /// let val = reader.get(&"key".to_string()).await.unwrap();
 /// assert_eq!(val, Some("value".to_string()));
@@ -193,10 +191,12 @@ where
 /// by sequential scans (e.g., during vault indexing).
 ///
 /// ```rust
-/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, moka::Cache};
+/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, MokaBuilder};
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let (reader, writer) =
-///     Cache::<String, String>::builder().max_capacity(10).build().unwrap();
+/// let (reader, writer) = MokaBuilder::<String, String>::default()
+///     .max_capacity(10)
+///     .build()
+///     .unwrap();
 ///
 /// // Access a "hot" key many times
 /// for _ in 0..20 {
@@ -214,44 +214,11 @@ where
 /// assert!(reader.get(&"hot".to_string()).await.unwrap().is_some());
 /// # });
 /// ```
-#[derive(Debug, Clone)]
-#[deprecated(
-    since = "0.1.0",
-    note = "Use Reader and Writer handles instead for CQRS compliance"
-)]
-pub struct Cache<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    _marker: PhantomData<(K, V)>,
-}
-
-#[expect(
-    deprecated,
-    reason = "Cache struct is deprecated but must remain for backwards \
-              compatibility during migration. It only provides a builder() \
-              method that returns the new Builder API."
-)]
-impl<K, V> Cache<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    /// Create a new builder for Moka cache.
-    ///
-    /// Returns a builder that constructs split Reader/Writer handles.
-    #[inline]
-    #[must_use]
-    pub fn builder() -> Builder<K, V> {
-        Builder::default()
-    }
-}
-
+///
 /// Type alias for the tuple returned by Moka builder.
 pub type BuildResult<K, V> = Result<(Reader<K, V>, Writer<K, V>), CacheError>;
 
-/// Builder for `MokaCache`.
+/// Builder for Moka cache.
 #[derive(Debug, Clone)]
 pub struct Builder<K, V>
 where
@@ -406,11 +373,6 @@ where
 }
 
 #[cfg(test)]
-#[expect(
-    deprecated,
-    reason = "Tests use deprecated Cache struct for backwards compatibility \
-              verification"
-)]
 mod tests {
     use super::*;
 
@@ -463,33 +425,33 @@ mod tests {
         #[test]
         fn should_return_builder_instance() {
             let _builder: Builder<String, String> =
-                Cache::<String, String>::builder();
+                Builder::<String, String>::default();
         }
 
         #[test]
         fn should_allow_configuring_max_capacity() {
-            let mut builder = Cache::<String, String>::builder();
+            let mut builder = Builder::<String, String>::default();
             let _: &mut Builder<String, String> =
                 builder.max_capacity(100usize);
         }
 
         #[test]
         fn should_allow_configuring_ttl() {
-            let mut builder = Cache::<String, String>::builder();
+            let mut builder = Builder::<String, String>::default();
             let _: &mut Builder<String, String> =
                 builder.time_to_live(Duration::from_secs(10u64));
         }
 
         #[test]
         fn should_allow_configuring_tti() {
-            let mut builder = Cache::<String, String>::builder();
+            let mut builder = Builder::<String, String>::default();
             let _: &mut Builder<String, String> =
                 builder.time_to_idle(Duration::from_secs(10u64));
         }
 
         #[test]
         fn should_build_cache_instance() {
-            let result = Cache::<String, String>::builder().build();
+            let result = Builder::<String, String>::default().build();
             let (_reader, _writer) = result.expect("Failed to build cache");
         }
 
@@ -500,8 +462,9 @@ mod tests {
                       are not met."
         )]
         fn should_return_error_for_zero_capacity() {
-            let result =
-                Cache::<String, String>::builder().max_capacity(0usize).build();
+            let result = Builder::<String, String>::default()
+                .max_capacity(0usize)
+                .build();
 
             assert!(result.is_err());
             match result.unwrap_err() {
@@ -528,7 +491,7 @@ mod tests {
         #[tokio::test]
         async fn should_get_none_from_empty_cache() {
             let (reader, _writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             let result = reader.get(&"key".to_owned()).await.unwrap();
             assert!(result.is_none());
         }
@@ -536,7 +499,7 @@ mod tests {
         #[tokio::test]
         async fn should_put_and_get_value() {
             let (reader, writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             let result = reader.get(&"key".to_owned()).await.unwrap();
             assert_eq!(result, Some("value".to_owned()));
@@ -545,7 +508,7 @@ mod tests {
         #[tokio::test]
         async fn should_delete_value() {
             let (reader, writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             let existed = writer.delete(&"key".to_owned()).await.unwrap();
             assert!(existed);
@@ -559,7 +522,7 @@ mod tests {
         #[tokio::test]
         async fn should_check_has() {
             let (reader, writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             assert!(!reader.has(&"key".to_owned()).await.unwrap());
 
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
@@ -572,7 +535,7 @@ mod tests {
         #[tokio::test]
         async fn should_clear_all_entries() {
             let (reader, writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             writer.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
             writer.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
 
@@ -592,7 +555,7 @@ mod tests {
         #[traced_test]
         async fn should_emit_events_on_get() {
             let (reader, _writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             let _: Option<String> =
                 reader.get(&"key".to_owned()).await.unwrap();
 
@@ -604,7 +567,7 @@ mod tests {
         #[traced_test]
         async fn should_emit_events_on_put() {
             let (_reader, writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
             assert!(logs_contain("operation=\"put\""));
@@ -614,7 +577,7 @@ mod tests {
         #[traced_test]
         async fn should_emit_events_on_delete() {
             let (_reader, writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             let _: bool = writer.delete(&"key".to_owned()).await.unwrap();
 
@@ -626,7 +589,7 @@ mod tests {
         #[traced_test]
         async fn should_emit_events_on_invalidate() {
             let (_reader, writer) =
-                Cache::<String, String>::builder().build().unwrap();
+                Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             let _: bool = writer.invalidate(&"key".to_owned()).await.unwrap();
 
@@ -640,7 +603,7 @@ mod tests {
 
         #[tokio::test]
         async fn should_respect_ttl() {
-            let (reader, writer) = Cache::<String, String>::builder()
+            let (reader, writer) = Builder::<String, String>::default()
                 .time_to_live(Duration::from_millis(50u64))
                 .build()
                 .unwrap();
@@ -657,7 +620,7 @@ mod tests {
 
         #[tokio::test]
         async fn should_respect_tti() {
-            let (reader, writer) = Cache::<String, String>::builder()
+            let (reader, writer) = Builder::<String, String>::default()
                 .time_to_idle(Duration::from_millis(100u64))
                 .build()
                 .unwrap();
@@ -690,7 +653,7 @@ mod tests {
                       which trigger this lint in the test suite."
         )]
         async fn should_respect_max_capacity() {
-            let (reader, writer) = Cache::<String, String>::builder()
+            let (reader, writer) = Builder::<String, String>::default()
                 .max_capacity(10usize)
                 .build()
                 .unwrap();
@@ -721,7 +684,7 @@ mod tests {
 
         #[tokio::test]
         async fn tinylfu_should_protect_hot_key() {
-            let (reader, writer) = Cache::<String, String>::builder()
+            let (reader, writer) = Builder::<String, String>::default()
                 .max_capacity(10usize)
                 .build()
                 .unwrap();
