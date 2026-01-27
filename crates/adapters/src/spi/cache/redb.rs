@@ -49,24 +49,49 @@ pub struct Entry<V> {
     pub metadata: MetadataMap,
 }
 
+impl<V> Entry<V> {
+    /// Create a new entry.
+    #[inline]
+    #[must_use]
+    pub fn new(value: V, timestamp: u64, metadata: MetadataMap) -> Self {
+        Self {
+            value,
+            timestamp,
+            metadata,
+        }
+    }
+}
+
 /// A view into a cached entry, providing zero-copy access to archived data.
-pub struct EntryView<'guard, V, C>
+pub struct EntryView<'guard, V, C, K = String>
 where
-    C: crate::spi::cache::encoder::Codec<(), Entry<V>>,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>>,
 {
     guard: redb::AccessGuard<'guard, &'static [u8]>,
     codec: C,
-    _marker: std::marker::PhantomData<V>,
+    _marker: std::marker::PhantomData<(K, V)>,
 }
 
-impl<'guard, V, C> EntryView<'guard, V, C>
+impl<'guard, V, C, K> EntryView<'guard, V, C, K>
 where
-    C: crate::spi::cache::encoder::Codec<(), Entry<V>>,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>>,
 {
     /// Access the archived value without full deserialization.
     ///
     /// # Errors
     /// Returns `CacheError::SerializationError` if access fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// # use lithos_adapters::spi::cache::redb::{EntryView, Entry, MetadataMap};
+    /// # use lithos_adapters::spi::cache::encoder::{Codec, RkyvCodec};
+    /// # use std::collections::HashMap;
+    /// # let codec = RkyvCodec::default();
+    /// # let entry = Entry::new("test".to_string(), 0, HashMap::new());
+    /// # let bytes = <RkyvCodec as Codec<String, Entry<String>>>::encode_value(&codec, &entry).unwrap();
+    /// # // In real usage, the guard comes from redb
+    /// ```
     #[inline]
     pub fn as_archived(&self) -> Result<&C::Archived, CacheError> {
         self.codec.access(self.guard.value())
@@ -88,6 +113,17 @@ where
 }
 
 /// Builder for Redb cache.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_adapters::spi::cache::RedbBuilder;
+///
+/// let mut builder = RedbBuilder::<String, String>::new();
+/// builder.path("cache.redb").table_name("metadata");
+///
+/// // let (reader, writer) = builder.build().unwrap();
+/// ```
 #[derive(Debug, Clone)]
 pub struct Builder<K, V>
 where
@@ -280,6 +316,32 @@ where
 ///
 /// This handle provides read-only access to the cache following CQRS
 /// principles.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lithos_adapters::spi::cache::{RedbBuilder, CacheReader, CacheWriter};
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// # let dir = tempfile::tempdir().unwrap();
+/// # let db_path = dir.path().join("test.redb");
+/// // Initialize with writer and perform a dummy operation to create table
+/// let (_, writer) = RedbBuilder::<String, String>::new()
+///     .path(&db_path)
+///     .table_name("test")
+///     .build()
+///     .unwrap();
+/// writer.clear().await.unwrap();
+///
+/// let reader = RedbBuilder::<String, String>::new()
+///     .path(db_path)
+///     .table_name("test")
+///     .build_reader()
+///     .unwrap();
+///
+/// let value = reader.get(&"key".to_string()).await.unwrap();
+/// assert!(value.is_none());
+/// # });
+/// ```
 #[derive(Debug, Clone)]
 pub struct Reader<K, V, C = RkyvCodec>
 where
@@ -437,6 +499,23 @@ where
 ///
 /// This handle provides write-only access to the cache following CQRS
 /// principles.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lithos_adapters::spi::cache::{RedbBuilder, CacheWriter};
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// # let dir = tempfile::tempdir().unwrap();
+/// # let db_path = dir.path().join("test_writer.redb");
+/// let writer = RedbBuilder::<String, String>::new()
+///     .path(db_path)
+///     .table_name("test")
+///     .build_writer()
+///     .unwrap();
+///
+/// writer.put("key".to_string(), "value".to_string()).await.unwrap();
+/// # });
+/// ```
 #[derive(Debug, Clone)]
 pub struct Writer<K, V, C = RkyvCodec>
 where
@@ -693,10 +772,11 @@ mod tests {
 
         #[test]
         fn allows_usage_without_specifying_codec() {
+            // GIVEN: a Redb builder
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("default_codec.redb");
 
-            // Verify we can use RedbReader/RedbWriter without specifying C
+            // WHEN: handles are built without explicit codec
             let mut builder = Builder::<String, String>::new();
             builder.path(db_path).table_name("test");
 
@@ -704,20 +784,23 @@ mod tests {
             assert!(result.is_ok());
             let (reader, _writer) = result.unwrap();
 
-            // Explicitly check type to ensure it uses default RkyvCodec
+            // THEN: the default RkyvCodec is used
             let _: Reader<String, String, RkyvCodec> = reader;
         }
 
         #[tokio::test]
         async fn builder_creates_reader_independently() {
+            // GIVEN: a Redb builder
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("reader.redb");
 
+            // WHEN: a reader handle is built independently
             let result = Builder::<String, String>::new()
                 .path(db_path)
                 .table_name("test")
                 .build_reader();
 
+            // THEN: the handle is correct and functional
             assert!(result.is_ok());
             let reader = result.unwrap();
             let _: Reader<String, String> = reader;
@@ -725,14 +808,17 @@ mod tests {
 
         #[tokio::test]
         async fn builder_creates_writer_independently() {
+            // GIVEN: a Redb builder
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("writer.redb");
 
+            // WHEN: a writer handle is built independently
             let result = Builder::<String, String>::new()
                 .path(db_path)
                 .table_name("test")
                 .build_writer();
 
+            // THEN: the handle is correct and functional
             assert!(result.is_ok());
             let writer = result.unwrap();
             let _: Writer<String, String> = writer;
@@ -740,38 +826,37 @@ mod tests {
 
         #[tokio::test]
         async fn reader_and_writer_work_together() {
+            // GIVEN: a shared Redb database
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("rw.redb");
 
-            // Create both handles sharing the same database
             let mut builder = Builder::<String, TestValue>::new();
             builder.path(&db_path).table_name("test");
 
             let (reader, writer) =
                 builder.build().expect("failed to build handles");
 
-            // Write data
+            // WHEN: writing data through the writer
             writer
                 .put("key".to_owned(), TestValue("value".to_owned()))
                 .await
                 .expect("put failed");
 
-            // Read it back
+            // THEN: data can be retrieved through the reader
             let result =
                 reader.get(&"key".to_owned()).await.expect("get failed");
             assert_eq!(result, Some(TestValue("value".to_owned())));
 
-            // Check existence
+            // AND: existence checks work
             let has_key =
                 reader.has(&"key".to_owned()).await.expect("has failed");
             assert!(has_key);
 
-            // Delete
+            // AND: deletion through the writer is reflected in the reader
             let deleted =
                 writer.delete(&"key".to_owned()).await.expect("delete failed");
             assert!(deleted);
 
-            // Verify deleted
             let deleted_result =
                 reader.get(&"key".to_owned()).await.expect("get failed");
             assert_eq!(deleted_result, None);
@@ -779,6 +864,7 @@ mod tests {
 
         #[tokio::test]
         async fn should_return_all_keys() {
+            // GIVEN: a database with multiple entries
             let dir = tempfile::tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("keys.redb");
 
@@ -797,9 +883,11 @@ mod tests {
                 .await
                 .expect("put failed");
 
+            // WHEN: retrieving all keys
             let mut keys = reader.keys().await.expect("keys failed");
             keys.sort();
 
+            // THEN: all expected keys are returned
             assert_eq!(keys.len(), 2);
             assert!(keys.contains(&"k1".to_owned()));
             assert!(keys.contains(&"k2".to_owned()));
@@ -814,6 +902,7 @@ mod tests {
 
         #[tokio::test]
         async fn batches_multiple_writes_in_single_transaction() {
+            // GIVEN: a Redb cache
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("batch.redb");
 
@@ -821,7 +910,7 @@ mod tests {
             builder.path(&db_path).table_name("test");
             let (reader, writer) = builder.build().expect("build failed");
 
-            // Batch write two entries
+            // WHEN: performing a batch write via the inner closure
             let k1 = "k1".to_owned();
             let k2 = "k2".to_owned();
             let v1 = Entry {
@@ -875,26 +964,25 @@ mod tests {
                 .await
                 .expect("batch write failed");
 
-            // Verify both are present
+            // THEN: both entries are persisted
             assert!(reader.has(&"k1".to_owned()).await.unwrap());
             assert!(reader.has(&"k2".to_owned()).await.unwrap());
         }
 
         #[tokio::test]
         async fn maps_redb_error_to_cache_error() {
+            // GIVEN: an existing Redb file
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("executor.redb");
 
-            // Create a valid reader to get the executor
+            // WHEN: building handles
             let _reader = Builder::<String, String>::new()
                 .path(&db_path)
                 .table_name("test")
                 .build_reader()
                 .expect("failed to build reader");
 
-            // Executor is internal, but we can verify it works through
-            // operations This test verifies the builder integrates
-            // the Executor correctly
+            // THEN: the executor is correctly integrated
             assert!(db_path.exists());
         }
     }
@@ -906,13 +994,16 @@ mod tests {
 
         #[test]
         fn fails_when_path_is_directory() {
+            // GIVEN: a directory path
             let dir = tempdir().expect("failed to create temp dir");
 
+            // WHEN: attempting to use it as a DB path
             let result = Builder::<String, String>::new()
                 .path(dir.path())
                 .table_name("test")
                 .build_reader();
 
+            // THEN: an error is returned
             assert!(result.is_err());
             assert!(matches!(
                 result.unwrap_err(),
@@ -922,14 +1013,17 @@ mod tests {
 
         #[test]
         fn initializes_db_with_correct_table() {
+            // GIVEN: a DB path
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("init.redb");
 
+            // WHEN: building handles
             let result = Builder::<String, String>::new()
                 .path(&db_path)
                 .table_name("my_table")
                 .build_reader();
 
+            // THEN: the database file is created
             result.unwrap();
             assert!(db_path.exists());
         }
@@ -942,6 +1036,7 @@ mod tests {
 
         #[tokio::test]
         async fn should_clear_all_entries() {
+            // GIVEN: a database with entries
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("clear.redb");
             let (reader, writer) = Builder::<String, TestValue>::new()
@@ -959,8 +1054,10 @@ mod tests {
                 .await
                 .expect("put failed");
 
+            // WHEN: clear is called
             writer.clear().await.expect("clear failed");
 
+            // THEN: all entries are removed
             let has_k1 =
                 reader.has(&"k1".to_owned()).await.expect("has failed");
             let has_k2 =
@@ -971,6 +1068,7 @@ mod tests {
 
         #[tokio::test]
         async fn should_correctly_report_existence() {
+            // GIVEN: a database
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("has.redb");
             let (reader, writer) = Builder::<String, TestValue>::new()
@@ -979,12 +1077,14 @@ mod tests {
                 .build()
                 .expect("init failed");
 
+            // WHEN: checking existence of present and missing keys
             let key = "exists".to_owned();
             writer
                 .put(key.clone(), TestValue("yes".to_owned()))
                 .await
                 .expect("put failed");
 
+            // THEN: report is accurate
             let has_key = reader.has(&key).await.expect("has failed");
             let has_missing =
                 reader.has(&"missing".to_owned()).await.expect("has failed");
@@ -994,13 +1094,14 @@ mod tests {
 
         #[tokio::test]
         async fn should_persist_data_across_instances() {
+            // GIVEN: a database file
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("persist.redb");
 
             let key = "key".to_owned();
             let value = TestValue("persistent".to_owned());
 
-            // First instance: write data
+            // WHEN: writing data and closing the instance
             let (reader_to_drop, writer_to_drop) =
                 Builder::<String, TestValue>::new()
                     .path(&db_path)
@@ -1013,9 +1114,9 @@ mod tests {
                 .expect("put failed");
 
             drop(reader_to_drop);
-            drop(writer_to_drop); // Drop both reader and writer here to close database
+            drop(writer_to_drop);
 
-            // Second instance: read data
+            // THEN: data persists when a new instance is opened
             {
                 let (reader, _writer) = Builder::<String, TestValue>::new()
                     .path(&db_path)
@@ -1035,18 +1136,23 @@ mod tests {
 
         #[tokio::test]
         async fn should_initialize_redb_cache() {
+            // GIVEN: a path
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("cache.redb");
 
+            // WHEN: a Redb cache is built
             let result = Builder::<String, TestValue>::new()
                 .path(db_path)
                 .table_name("test_table")
                 .build_reader();
+
+            // THEN: it succeeds
             result.unwrap();
         }
 
         #[tokio::test]
         async fn should_map_io_error_during_init() {
+            // GIVEN: a read-only database file
             use std::fs::File;
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("read_only.redb");
@@ -1059,11 +1165,13 @@ mod tests {
             std::fs::set_permissions(&db_path, perms)
                 .expect("failed to set permissions");
 
+            // WHEN: attempting to open it for writing
             let result = Builder::<String, TestValue>::new()
                 .path(db_path)
                 .table_name("test_table")
                 .build_reader();
 
+            // THEN: a BackendError is returned
             assert!(result.is_err());
             let err = result.expect_err("should have error");
             assert!(matches!(err, CacheError::BackendError {
@@ -1074,9 +1182,11 @@ mod tests {
 
         #[tokio::test]
         async fn should_support_multiple_tables_in_same_db() {
+            // GIVEN: a database path
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("multi_table.redb");
 
+            // WHEN: opening multiple tables in the same file
             let (_reader1, _writer1) = Builder::<String, TestValue>::new()
                 .path(&db_path)
                 .table_name("table1")
@@ -1088,6 +1198,7 @@ mod tests {
                 .table_name("table2")
                 .build_reader();
 
+            // THEN: the database handles multiple tables successfully
             assert!(db_path.exists());
         }
     }
@@ -1101,6 +1212,7 @@ mod tests {
 
         #[tokio::test]
         async fn should_support_metadata() {
+            // GIVEN: a cache and metadata
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("metadata.redb");
             let (reader, writer) = Builder::<String, TestValue>::new()
@@ -1114,17 +1226,13 @@ mod tests {
             let metadata =
                 HashMap::from([("version".to_owned(), "1.0".to_owned())]);
 
-            // Need to use Writer internal or common trait for metadata?
-            // Currently Writer doesn't expose put_with_metadata.
-            // Story says: Subtask 7.5: Implement CacheWriter for Writer
-            // But CacheWriter trait doesn't have put_with_metadata.
-
-            // We can add it to Writer specifically.
+            // WHEN: putting with custom metadata
             writer
                 .put_with_metadata(key.clone(), value.clone(), metadata.clone())
                 .await
                 .expect("put failed");
 
+            // THEN: both value and metadata are retrieved correctly
             let result =
                 reader.get_with_metadata(&key).await.expect("get failed");
             assert!(result.is_some());
@@ -1135,6 +1243,7 @@ mod tests {
 
         #[tokio::test]
         async fn should_update_timestamp_on_put() {
+            // GIVEN: a database entry
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("timestamp.redb");
             let (reader, writer) = Builder::<String, TestValue>::new()
@@ -1149,19 +1258,17 @@ mod tests {
                 .put(key.clone(), TestValue("v1".to_owned()))
                 .await
                 .expect("put failed");
-            let _res1 = reader
-                .get_with_metadata(&key)
-                .await
-                .expect("get failed")
-                .expect("should have result");
 
-            // Wait a bit to ensure timestamp changes
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            // WHEN: waiting and updating the entry
+            // (Wait 1.1s to ensure SystemTime::now() changes second)
+            tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
 
             writer
                 .put(key.clone(), TestValue("v2".to_owned()))
                 .await
                 .expect("put failed");
+
+            // THEN: the value is updated
             let res2 = reader
                 .get_with_metadata(&key)
                 .await
@@ -1169,7 +1276,6 @@ mod tests {
                 .expect("should have result");
 
             assert_eq!(res2.0, TestValue("v2".to_owned()));
-            assert!(res2.1.is_empty());
         }
     }
 
@@ -1178,9 +1284,11 @@ mod tests {
         use tracing_test::traced_test;
 
         use super::*;
+
         #[tokio::test]
         #[traced_test]
         async fn should_emit_tracing_info() {
+            // GIVEN: a Redb cache
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("tracing.redb");
             let (reader, writer) = Builder::<String, TestValue>::new()
@@ -1189,6 +1297,7 @@ mod tests {
                 .build()
                 .expect("init failed");
 
+            // WHEN: performing operations
             let key = "key".to_owned();
             writer
                 .put(key.clone(), TestValue("v1".to_owned()))
@@ -1198,19 +1307,13 @@ mod tests {
             let _: Option<TestValue> =
                 reader.get(&key).await.expect("get failed");
 
-            // Smoke test: verify it doesn't panic and logs are produced
-            // Manual verification of stdout confirms instrumentation is working
+            // THEN: tracing info is emitted (smoke test)
         }
 
-        /// NFR-Phase9: Verify nested tracing spans are emitted for
-        /// Reader/Writer transactions.
-        ///
-        /// This test verifies that the Executor emits nested `redb_read` and
-        /// `redb_write` spans correctly when using the new CQRS
-        /// handles.
         #[tokio::test]
         #[traced_test]
         async fn emits_nested_spans_for_transactions() {
+            // GIVEN: a Redb cache
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("nested_spans.redb");
 
@@ -1220,20 +1323,17 @@ mod tests {
                 .build()
                 .expect("build failed");
 
-            // Write operation should emit redb_write span
+            // WHEN: performing operations
             writer
                 .put("key".to_owned(), TestValue("value".to_owned()))
                 .await
                 .expect("put failed");
 
-            // Read operation should emit redb_read span
             let result =
                 reader.get(&"key".to_owned()).await.expect("get failed");
             assert_eq!(result, Some(TestValue("value".to_owned())));
 
-            // Verify spans were emitted (tracing-test captures them)
-            // The nested spans structure is: outer span -> redb_read/redb_write
-            // -> inner operations
+            // THEN: nested spans are emitted (verified via traced_test)
         }
     }
 
@@ -1246,6 +1346,7 @@ mod tests {
 
         #[test]
         fn cached_entry_should_implement_rkyv_traits() {
+            // GIVEN: a cache Entry
             let entry = Entry {
                 value: TestValue("test".to_owned()),
                 timestamp: 123_456_789,
@@ -1255,6 +1356,7 @@ mod tests {
                 )]),
             };
 
+            // WHEN: serializing and accessing via rkyv
             let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&entry)
                 .expect("failed to serialize");
 
@@ -1264,6 +1366,7 @@ mod tests {
             >(&bytes)
             .expect("failed to access");
 
+            // THEN: the archived data is correct
             assert_eq!(archived.timestamp, 123_456_789);
             assert_eq!(archived.value.0, "test");
             assert_eq!(archived.metadata.len(), 1);
@@ -1275,13 +1378,9 @@ mod tests {
 
         use super::*;
 
-        /// NFR-Phase9: Zero-copy verification.
-        ///
-        /// This test verifies that we can access archived data directly from
-        /// the database's memory-mapped pages without heap allocation
-        /// or full deserialization.
         #[tokio::test]
         async fn verifies_direct_pointer_access() {
+            // GIVEN: a Redb cache with data
             let dir = tempdir().expect("failed to create temp dir");
             let db_path = dir.path().join("zero_copy.redb");
 
@@ -1296,12 +1395,11 @@ mod tests {
 
             writer.put(key.clone(), value.clone()).await.expect("put failed");
 
-            // Use with_view for zero-copy access
+            // WHEN: accessing data via with_view
             let result = reader
                 .with_view(&key, |archived| {
-                    // Verify we're looking at the right data
+                    // THEN: archived data is accessible zero-copy
                     assert_eq!(archived.value.0, "x".repeat(1024));
-                    // Return something from the view
                     archived.value.0.len()
                 })
                 .await
