@@ -417,6 +417,13 @@ macro_rules! time_test {
     };
 }
 
+/// Advance the virtual clock by the given duration.
+///
+/// This is a convenience wrapper around `tokio::time::advance`.
+pub async fn advance(duration: Duration) {
+    tokio::time::advance(duration).await;
+}
+
 #[cfg(test)]
 // # LINT_DISABLE_REASON: Assertion macros in tests trigger disallowed-method
 // linting. # LINT_DISABLE_REASON: Options tried: explicit matches/guarded
