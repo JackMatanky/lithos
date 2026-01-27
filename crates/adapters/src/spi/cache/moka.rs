@@ -24,6 +24,19 @@ use crate::spi::{
 pub type ReaderWriterPair<K, V> = (Reader<K, V>, Writer<K, V>);
 
 /// Builder for Moka cache.
+///
+/// # Examples
+///
+/// ```rust
+/// use std::time::Duration;
+///
+/// use lithos_adapters::spi::cache::MokaBuilder;
+///
+/// let mut builder = MokaBuilder::<String, String>::new();
+/// builder.max_capacity(100).time_to_live(Duration::from_secs(60));
+///
+/// let (reader, writer) = builder.build().unwrap();
+/// ```
 #[derive(Debug, Clone)]
 pub struct Builder<K, V>
 where
@@ -195,6 +208,17 @@ where
 ///
 /// This handle provides read-only access to the cache following CQRS
 /// principles.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lithos_adapters::spi::cache::{MokaBuilder, CacheReader};
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let reader = MokaBuilder::<String, String>::new().build_reader().unwrap();
+/// let value = reader.get(&"key".to_string()).await.unwrap();
+/// assert!(value.is_none());
+/// # });
+/// ```
 #[derive(Debug, Clone)]
 pub struct Reader<K, V>
 where
@@ -255,6 +279,16 @@ where
 ///
 /// This handle provides write-only access to the cache following CQRS
 /// principles.
+///
+/// # Examples
+///
+/// ```rust
+/// # use lithos_adapters::spi::cache::{MokaBuilder, CacheWriter};
+/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
+/// let writer = MokaBuilder::<String, String>::new().build_writer().unwrap();
+/// writer.put("key".to_string(), "value".to_string()).await.unwrap();
+/// # });
+/// ```
 #[derive(Debug, Clone)]
 pub struct Writer<K, V>
 where
@@ -346,39 +380,45 @@ mod tests {
 
         #[test]
         fn builds_reader_independently() {
+            // GIVEN: a Moka builder with custom capacity
             let result = Builder::<String, String>::default()
                 .max_capacity(50)
                 .build_reader();
 
+            // WHEN: the reader is built
             assert!(result.is_ok());
             let reader = result.unwrap();
 
-            // Verify handle is correct type
+            // THEN: the handle is correct and independent
             let _: Reader<String, String> = reader;
         }
 
         #[test]
         fn builds_writer_independently() {
+            // GIVEN: a Moka builder with custom capacity
             let result = Builder::<String, String>::default()
                 .max_capacity(50)
                 .build_writer();
 
+            // WHEN: the writer is built
             assert!(result.is_ok());
             let writer = result.unwrap();
 
-            // Verify handle is correct type
+            // THEN: the handle is correct and independent
             let _: Writer<String, String> = writer;
         }
 
         #[test]
         fn builds_split_handles_with_custom_capacity() {
+            // GIVEN: a Moka builder
             let result =
                 Builder::<String, String>::default().max_capacity(50).build();
 
+            // WHEN: both handles are built together
             assert!(result.is_ok());
             let (reader, writer) = result.unwrap();
 
-            // Verify handles are distinct types
+            // THEN: two distinct handles are produced
             let _: Reader<String, String> = reader;
             let _: Writer<String, String> = writer;
         }
@@ -389,43 +429,61 @@ mod tests {
 
         #[test]
         fn should_return_builder_instance() {
+            // GIVEN: nothing
+            // WHEN: default is called
             let _builder: Builder<String, String> =
                 Builder::<String, String>::default();
+            // THEN: it succeeds
         }
 
         #[test]
         fn should_allow_configuring_max_capacity() {
+            // GIVEN: a builder
             let mut builder = Builder::<String, String>::default();
+            // WHEN: capacity is set
             let _: &mut Builder<String, String> =
                 builder.max_capacity(100usize);
+            // THEN: it succeeds
         }
 
         #[test]
         fn should_allow_configuring_ttl() {
+            // GIVEN: a builder
             let mut builder = Builder::<String, String>::default();
+            // WHEN: ttl is set
             let _: &mut Builder<String, String> =
                 builder.time_to_live(Duration::from_secs(10u64));
+            // THEN: it succeeds
         }
 
         #[test]
         fn should_allow_configuring_tti() {
+            // GIVEN: a builder
             let mut builder = Builder::<String, String>::default();
+            // WHEN: tti is set
             let _: &mut Builder<String, String> =
                 builder.time_to_idle(Duration::from_secs(10u64));
+            // THEN: it succeeds
         }
 
         #[test]
         fn should_build_cache_instance() {
+            // GIVEN: a builder
+            // WHEN: build is called
             let result = Builder::<String, String>::default().build();
+            // THEN: it produces handles
             let (_reader, _writer) = result.expect("Failed to build cache");
         }
 
         #[test]
         fn should_return_error_for_zero_capacity() {
+            // GIVEN: a builder with zero capacity
             let result = Builder::<String, String>::default()
                 .max_capacity(0usize)
                 .build();
 
+            // WHEN: building is attempted
+            // THEN: a BackendError is returned
             assert!(result.is_err());
             let err = result.unwrap_err();
             assert!(matches!(err, CacheError::BackendError {
@@ -447,27 +505,37 @@ mod tests {
 
         #[tokio::test]
         async fn should_get_none_from_empty_cache() {
+            // GIVEN: an empty cache
             let (reader, _writer) =
                 Builder::<String, String>::default().build().unwrap();
+            // WHEN: retrieving a missing key
             let result = reader.get(&"key".to_owned()).await.unwrap();
+            // THEN: None is returned
             assert!(result.is_none());
         }
 
         #[tokio::test]
         async fn should_put_and_get_value() {
+            // GIVEN: a cache and a value
             let (reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
+            // WHEN: putting and then getting the value
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             let result = reader.get(&"key".to_owned()).await.unwrap();
+            // THEN: the retrieved value matches
             assert_eq!(result, Some("value".to_owned()));
         }
 
         #[tokio::test]
         async fn should_delete_value() {
+            // GIVEN: a cache with a value
             let (reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
+
+            // WHEN: deleting the value
             let existed = writer.delete(&"key".to_owned()).await.unwrap();
+            // THEN: delete reports success and the value is gone
             assert!(existed);
             let result = reader.get(&"key".to_owned()).await.unwrap();
             assert!(result.is_none());
@@ -478,11 +546,14 @@ mod tests {
 
         #[tokio::test]
         async fn should_check_has() {
+            // GIVEN: a cache
             let (reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
             assert!(!reader.has(&"key".to_owned()).await.unwrap());
 
+            // WHEN: putting a value
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
+            // THEN: has reports existence
             assert!(reader.has(&"key".to_owned()).await.unwrap());
 
             writer.delete(&"key".to_owned()).await.unwrap();
@@ -491,27 +562,33 @@ mod tests {
 
         #[tokio::test]
         async fn should_clear_all_entries() {
+            // GIVEN: a cache with multiple values
             let (reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
             writer.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
             writer.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
 
+            // WHEN: clear is called
             writer.clear().await.unwrap();
 
+            // THEN: all entries are gone
             assert!(!reader.has(&"k1".to_owned()).await.unwrap());
             assert!(!reader.has(&"k2".to_owned()).await.unwrap());
         }
 
         #[tokio::test]
         async fn should_return_all_keys() {
+            // GIVEN: a cache with values
             let (reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
             writer.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
             writer.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
 
+            // WHEN: keys are retrieved
             let mut keys = reader.keys().await.unwrap();
             keys.sort();
 
+            // THEN: all expected keys are present
             assert_eq!(keys.len(), 2);
             assert!(keys.contains(&"k1".to_owned()));
             assert!(keys.contains(&"k2".to_owned()));
@@ -526,11 +603,14 @@ mod tests {
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_get() {
+            // GIVEN: a cache
             let (reader, _writer) =
                 Builder::<String, String>::default().build().unwrap();
+            // WHEN: get is called
             let _: Option<String> =
                 reader.get(&"key".to_owned()).await.unwrap();
 
+            // THEN: tracing events are emitted
             assert!(logs_contain("operation=\"get\""));
             assert!(logs_contain("hit=false"));
         }
@@ -538,21 +618,27 @@ mod tests {
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_put() {
+            // GIVEN: a cache
             let (_reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
+            // WHEN: put is called
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
+            // THEN: tracing event is emitted
             assert!(logs_contain("operation=\"put\""));
         }
 
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_delete() {
+            // GIVEN: a cache with a value
             let (_reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
+            // WHEN: delete is called
             let _: bool = writer.delete(&"key".to_owned()).await.unwrap();
 
+            // THEN: tracing event is emitted
             assert!(logs_contain("operation=\"delete\""));
             assert!(logs_contain("existed=true"));
         }
@@ -560,12 +646,15 @@ mod tests {
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_invalidate() {
+            // GIVEN: a cache with a value
             let (reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
+            // WHEN: invalidate is called
             let existed = writer.invalidate(&"key".to_owned()).await.unwrap();
 
+            // THEN: tracing event is emitted and value is gone
             assert!(existed);
             assert!(!reader.has(&"key".to_owned()).await.unwrap());
             assert!(logs_contain("operation=\"invalidate\""));
@@ -578,61 +667,71 @@ mod tests {
 
         #[tokio::test]
         async fn should_respect_ttl() {
+            // GIVEN: a cache with a short TTL
             let (reader, writer) = Builder::<String, String>::default()
-                .time_to_live(Duration::from_millis(50u64))
+                .time_to_live(Duration::from_millis(50))
                 .build()
                 .unwrap();
 
+            // WHEN: a value is put
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             assert_eq!(
                 reader.get(&"key".to_owned()).await.unwrap(),
                 Some("value".to_owned())
             );
 
-            tokio::time::sleep(Duration::from_millis(100u64)).await;
+            // AND: time passes past TTL
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            // Trigger maintenance
+            let _: bool = reader.has(&"nonexistent".to_owned()).await.unwrap();
+
+            // THEN: the value is gone
             assert_eq!(reader.get(&"key".to_owned()).await.unwrap(), None);
         }
 
         #[tokio::test]
         async fn should_respect_tti() {
+            // GIVEN: a cache with short TTI
             let (reader, writer) = Builder::<String, String>::default()
-                .time_to_idle(Duration::from_millis(100u64))
+                .time_to_idle(Duration::from_millis(100))
                 .build()
                 .unwrap();
 
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
-            tokio::time::sleep(Duration::from_millis(60u64)).await;
+            // WHEN: time passes but we access before TTI expires
+            tokio::time::sleep(Duration::from_millis(60)).await;
             // Access it to reset TTI
             assert_eq!(
                 reader.get(&"key".to_owned()).await.unwrap(),
                 Some("value".to_owned())
             );
 
-            tokio::time::sleep(Duration::from_millis(60u64)).await;
-            // Should still be there because TTI was reset at 60ms
+            tokio::time::sleep(Duration::from_millis(60)).await;
+            // THEN: it should still be there because access reset TTI
             assert_eq!(
                 reader.get(&"key".to_owned()).await.unwrap(),
                 Some("value".to_owned())
             );
 
-            tokio::time::sleep(Duration::from_millis(150u64)).await;
-            // Now it should be gone
+            // WHEN: time passes past TTI without access
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            // Trigger maintenance
+            let _: bool = reader.has(&"nonexistent".to_owned()).await.unwrap();
+
+            // THEN: it is evicted
             assert_eq!(reader.get(&"key".to_owned()).await.unwrap(), None);
         }
 
         #[tokio::test]
-        #[expect(
-            clippy::excessive_nesting,
-            reason = "Test logic requires multiple loops and async blocks \
-                      which trigger this lint in the test suite."
-        )]
         async fn should_respect_max_capacity() {
+            // GIVEN: a cache with small capacity
             let (reader, writer) = Builder::<String, String>::default()
                 .max_capacity(10usize)
                 .build()
                 .unwrap();
 
+            // WHEN: filling past capacity
             for i in 0i32..100i32 {
                 writer
                     .put(format!("key{i}"), format!("value{i}"))
@@ -640,38 +739,45 @@ mod tests {
                     .unwrap();
             }
 
-            // Moka's eviction is eventual, but after some time/ops it should
-            // stay within limits We can't strictly check exact size
-            // without an entry count method which isn't in our trait but
-            // we can check that NOT all 100 are there.
-            tokio::time::sleep(Duration::from_millis(100u64)).await;
+            // AND: time passes to allow eventual eviction
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            // Trigger maintenance
+            let _: bool = reader.has(&"nonexistent".to_owned()).await.unwrap();
 
-            let mut found = 0i32;
-            for i in 0i32..100i32 {
+            // THEN: found count is near capacity
+            let found = count_entries(&reader, 0i32..100i32).await;
+            assert!(found <= 10i32 + 5i32, "Found too many items: {found}");
+        }
+
+        async fn count_entries(
+            reader: &Reader<String, String>,
+            range: std::ops::Range<i32>,
+        ) -> i32 {
+            let mut count: i32 = 0;
+            for i in range {
                 if reader.get(&format!("key{i}")).await.unwrap().is_some() {
-                    found += 1i32;
+                    count = count.saturating_add(1);
                 }
             }
-
-            // Allow some slack for eventual eviction
-            assert!(found <= 10i32 + 5i32, "Found too many items: {found}");
+            count
         }
 
         #[tokio::test]
         async fn tinylfu_should_protect_hot_key() {
+            // GIVEN: a cache with small capacity
             let (reader, writer) = Builder::<String, String>::default()
                 .max_capacity(10usize)
                 .build()
                 .unwrap();
 
-            // Access a "hot" key many times
+            // WHEN: a key is accessed frequently
             for _ in 0i32..20i32 {
                 writer.put("hot".to_owned(), "value".to_owned()).await.unwrap();
                 let _: Option<String> =
                     reader.get(&"hot".to_owned()).await.unwrap();
             }
 
-            // Perform a "scan" that exceeds capacity
+            // AND: a large scan exceeds capacity
             for i in 0i32..100i32 {
                 writer
                     .put(format!("scan-{i}"), "val".to_owned())
@@ -679,9 +785,9 @@ mod tests {
                     .unwrap();
             }
 
-            // The "hot" key should still be present because of TinyLFU
-            // (Moka's eviction is eventual, so we wait a bit)
-            tokio::time::sleep(Duration::from_millis(100u64)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
+
+            // THEN: the "hot" key survives eviction due to TinyLFU
             assert!(
                 reader.get(&"hot".to_owned()).await.unwrap().is_some(),
                 "Hot key was evicted by scan pollution!"
