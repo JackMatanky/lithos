@@ -58,27 +58,32 @@ so that I can understand configuration options and customize settings confidentl
 
 ## Dev Notes
 
-### Domain Model Analysis
+### Domain Model Mapping
 
-**Config Aggregate Structure** (from Epic 3 domain models):
-- **GlobalConfig**: filesystem (SchemaConfig, TemplateConfig), frontmatter (FrontmatterConfig), logging (LoggingConfig), trusted_vaults
-- **VaultConfig**: filesystem (SchemaConfig, TemplateConfig, cache_dir), frontmatter (Option<FrontmatterConfig>), logging (Option<LoggingConfig>)
-- **Config**: Merged result with vault_metadata, logging, global_filesystem, vault_filesystem, frontmatter, pending_events
+**Config Aggregate** (Epic 3): GlobalConfig + VaultConfig → Config merge
+- GlobalConfig: filesystem + frontmatter + logging + trusted_vaults
+- VaultConfig: filesystem + cache_dir + optional(frontmatter + logging)
+- Result: vault_metadata + logging + global_filesystem + vault_filesystem + frontmatter
 
-**Key Configuration Fields**:
-- `schemas_dir`: Directory for schema definitions (default: "schemas")
-- `templates_dir`: Directory for template definitions (default: "templates")
-- `property_bank_filename`: JSON file for property definitions (default: "property_bank.json")
-- `cache_dir`: Cache directory for vault operations (default: ".cache")
-- `log_level`: Logging level (default: "info")
-- Frontmatter keys: `alias_key`, `date_created_key`, `date_modified_key`, `file_class_key`, `title_key`
-- Vault metadata: `schema_version`, `name`, `vault_path`
+**Key Fields**: schemas_dir, templates_dir, property_bank_filename, cache_dir, log_level, frontmatter keys (alias_key, date_created_key, date_modified_key, file_class_key, title_key), vault metadata (schema_version, name, vault_path)
+
+**File Locations**: `crates/domain/src/config/{aggregate,global,vault}.rs` - verify ALL fields in schema, especially nested structures
 
 ### Architecture Compliance
 
 **Hexagonal Architecture**: Follow established patterns - domain models exist in `crates/domain/src/config/`, adapters will be created in `crates/adapters/src/spi/config/`
 **CQRS Pattern**: Separate Command/Query ports already defined in `crates/domain/src/ports/config.rs`
 **Figment Integration**: Per ADR 0005 for hierarchical configuration (not yet created, but referenced in epic)
+
+### Epic Integration Dependencies
+
+**Critical Dependencies for Subsequent Stories**:
+- **Epic 4 FormatDispatcher**: Multi-format support (TOML/JSON/YAML) - needed for Story 6.2-6.6
+- **Epic 5 CacheCoordinator**: Configuration integration via CacheCoordinatorBuilder - needed for Story 6.4-6.6
+- **Epic 4 PathValidator**: Security validation before file operations - needed for all subsequent stories
+- **ADR 0005 Implementation**: Hierarchical configuration loading strategy - needed for Story 6.2 Figment integration
+
+**Implementation Impact**: Stories 6.2-6.6 cannot be implemented without these dependencies being addressed
 
 ### Naming Conventions
 
@@ -119,12 +124,20 @@ so that I can understand configuration options and customize settings confidentl
 **Directory Structure**: Follows established `docs/` conventions for user-facing documentation
 **No Code Changes**: This story creates documentation and schema files only - no Rust code modifications required
 
-### Validation Strategy
+### JSON Schema Generation Strategy
 
+**Library Approach**: Use `schemars` crate (if available) or manual JSON schema generation to ensure consistency with Rust serde models
+**Snake_case Enforcement**: Implement schema-level pattern validation using JSON Schema `pattern` properties with `^[a-z][a-z0-9_]*$` regex
 **Schema Self-Validation**: Use external JSON schema validator or serde_json to validate schema correctness
 **Domain Mapping Verification**: Manual verification that all domain fields are represented in schema
 **Default File Validation**: Implement validation script to prove defaults conform to schema
 **Cross-Format Consistency**: Ensure TOML, JSON, YAML versions produce identical configuration structures
+
+### Validation Strategy
+
+**Cross-Format Consistency Validation**: Automated testing approach to ensure TOML/JSON/YAML equivalence using structural comparison
+**Performance Validation Framework**: Benchmark schema validation performance using criterion to measure <100ms target
+**Integration Test Examples**: Test with Epic 4 FormatDispatcher and PathValidator components when available
 
 ### Dependencies and Integration Points
 
@@ -168,18 +181,23 @@ big-pickle (opencode/big-pickle)
 
 ### File List
 
-**Files to Create:**
-1. `docs/schemas/config.schema.json` - Authoritative JSON schema with snake_case enforcement
-2. `docs/defaults/global.toml` - Global defaults with comprehensive inline documentation
-3. `docs/defaults/vault.toml` - Vault defaults with vault-specific overrides
-4. `docs/defaults/global.json` - JSON format equivalent
-5. `docs/defaults/vault.json` - JSON format equivalent
-6. `docs/defaults/global.yaml` - YAML format equivalent
-7. `docs/defaults/vault.yaml` - YAML format equivalent
-8. `docs/configuration.md` - User guide for configuration options (optional, for Story 6.10)
+### Target Files
 
-**Files to Reference:**
-- `crates/domain/src/config/aggregate.rs` - For domain model mapping verification
-- `crates/domain/src/config/global.rs` - For GlobalConfig field extraction
-- `crates/domain/src/config/vault.rs` - For VaultConfig field extraction
-- `crates/domain/src/ports/config.rs` - For Command/Query port understanding
+```
+docs/schemas/
+├── config.schema.json                    # Authoritative JSON schema with snake_case enforcement
+
+docs/defaults/
+├── global.toml                         # Global defaults with comprehensive inline documentation
+├── vault.toml                          # Vault defaults with vault-specific overrides
+├── global.json                          # JSON format equivalent
+├── vault.json                           # JSON format equivalent
+├── global.yaml                          # YAML format equivalent
+└── vault.yaml                           # YAML format equivalent
+```
+
+**Domain Model References for Verification**:
+- `crates/domain/src/config/aggregate.rs` - Config aggregate with business rules and merge logic
+- `crates/domain/src/config/global.rs` - GlobalConfig with filesystem/frontmatter/logging/trusted_vaults
+- `crates/domain/src/config/vault.rs` - VaultConfig with filesystem/frontmatter/logging and metadata validation
+- `crates/domain/src/ports/config.rs` - Command/Query port definitions for future adapter implementation
