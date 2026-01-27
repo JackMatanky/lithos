@@ -34,7 +34,8 @@ Users can perform fast lookups by filename, path, or schema keys, resolve wiki-l
   - Cache hit rate target: >90% for repeated queries
 - **Result Formatting**: Query results formatted as lists, tables, or structured data for CLI/template use
 - **Query Mocks**: Test doubles in `crates/domain/src/ports/query/mocks.rs` for isolated testing
-- **Observability**: Query performance metrics tracked (latency, cache hit rate, error rate)
+- **Observability**: Query performance metrics tracked (latency, cache hit rate, error rate) with `#[tracing::instrument]` per architecture.md FR40
+- **Tracing Levels**: `debug` for query operations/cache hits/misses, `warn` for slow queries (>500ms), `error` for query failures
 - **Location**: `crates/app/src/services/query_service.rs`, `crates/domain/src/ports/query.rs`
 - **Error Handling**: QueryError enum with variants for NotFound, InvalidFilter, StorageError, TimeoutExceeded
 
@@ -423,11 +424,19 @@ So that queries complete in <500ms meeting NFR1 requirements.
 **And** cache hit rate exceeds 90% for typical workloads
 
 **Given** performance is validated
-**When** I implement observability metrics
+**When** I implement observability metrics per architecture.md FR40
 **Then** query latency is tracked: p50, p95, p99 percentiles
 **And** cache metrics are tracked: hit_rate, miss_rate, evictions, size
 **And** metrics are exposed via Epic 8 event bus for monitoring
-**And** slow queries (>500ms) are logged with diagnostic details
+**And** slow queries (>500ms) are logged via `tracing::warn!(?query, duration_ms, "Slow query detected")`
+
+**Given** query operations require instrumentation
+**When** I add tracing to QueryService methods
+**Then** all query methods use `#[tracing::instrument(skip(self, params), fields(operation, query_type), level = "debug")]`
+**And** log cache hits: `tracing::debug!(query_type, cache_key, "Query cache hit")`
+**And** log cache misses: `tracing::debug!(query_type, cache_key, "Query cache miss - executing query")`
+**And** log query completion: `tracing::debug!(query_type, result_count, duration_ms, cache_hit, "Query completed")`
+**And** span attributes include: query_type, result_count, duration_ms, cache_hit (bool), storage_accessed (bool)
 
 **Given** Epic 9 storage provides fast access
 **When** I avoid redundant caching

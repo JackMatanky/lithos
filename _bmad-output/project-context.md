@@ -98,6 +98,25 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Main Loop Resilience:** Implement a `catch_unwind` or a top-level `Result` handler in the CLI main loop to prevent a single bad template or file from crashing the entire process.
 - **No-Panic Policy:** NEVER use `unwrap()`, `expect()`, `todo()`, or `unimplemented()` in production code.
 
+#### Observability & Tracing Standards
+- **Mandatory Instrumentation:** ALL public methods in `app` and `adapters` layers MUST use `#[tracing::instrument]` per architecture.md FR40 (audit logging).
+- **Skip Large Parameters:** Always skip `self`, large values, and sensitive data: `#[tracing::instrument(skip(self, config, value))]`
+- **Operation Fields:** Add semantic fields to spans: `fields(operation = "get_schema", schema_name)`
+- **Appropriate Levels:**
+  - `level = "info"` for commands (load_all, commit, backup, refresh)
+  - `level = "debug"` for queries, cache operations, individual steps
+  - `level = "warn"` for errors, fallbacks, rollbacks, slow operations
+  - `level = "error"` for corruption, critical failures
+- **Structured Logging Patterns:**
+  - Cache hits: `tracing::debug!(key, cache_layer = "memory", "Cache hit")`
+  - Cache misses: `tracing::debug!(key, cache_layer = "disk", "Cache miss")`
+  - Errors: `tracing::error!(?error, context, "Operation failed")`
+  - Warnings: `tracing::warn!(?error, fallback, "Degraded mode activated")`
+  - Info events: `tracing::info!(count, duration_ms, "Operation completed")`
+- **Span Attributes:** Include contextual data: operation, entity_name, count, duration_ms, success (bool), cache_hit (bool)
+- **Slow Operation Detection:** Log warnings for operations exceeding NFR targets (e.g., queries >500ms, cache operations >100ms)
+- **Testing Instrumentation:** Use `tracing-test` crate to verify spans are emitted in integration tests
+
 ### Framework-Specific Rules
 
 #### Tokio (Async Runtime & Safety)

@@ -17,6 +17,8 @@ Users can define metadata schemas with field types, inheritance, and validation 
 - **Caching Strategy**: Epic 5 `CacheCoordinator` with multi-layer (Moka + Redb) read-through/write-through for schema resolution performance
 - **CQRS Separation**: SchemaQueryAdapter (reads) and SchemaCommandAdapter (writes) enforce architectural boundaries per architecture.md
 - **Adapter Structure**: `crates/adapters/src/spi/schema/` contains query.rs, command.rs, loader.rs, decoder.rs, validator.rs, cache.rs (with SchemaQueryAdapter and SchemaCommandAdapter), registry.rs
+- **Observability**: All adapters use `#[tracing::instrument]` on public methods per architecture.md FR40 (audit logging)
+- **Tracing Levels**: `info` for commands (load_all, refresh), `debug` for cache operations, `warn` for errors/fallbacks
 - **Note:** Frontmatter validation moved to Epic 10.6 (application layer)
 - **Note:** Schema-template integration moved to Epic 12.4 (template system)
 
@@ -416,7 +418,16 @@ So that schema resolution is fast, survives restarts, and supports high-frequenc
 
 **Given** cache errors are non-fatal
 **When** cache operations fail
-**Then** log warning and fall back to full load pipeline (graceful degradation)
+**Then** log warning via `tracing::warn!(?error, schema_name, "Schema cache operation failed")` and fall back to full load pipeline (graceful degradation)
+
+**Given** observability is required per architecture.md
+**When** I instrument cache operations
+**Then** SchemaQueryAdapter methods use `#[tracing::instrument(skip(self), fields(operation = "get_schema"), level = "debug")]`
+**And** SchemaCommandAdapter methods use `#[tracing::instrument(skip(self, schema), fields(operation = "cache_schema"), level = "debug")]`
+**And** cache hits log debug event: `tracing::debug!(schema_name, cache_layer = "memory", "Schema cache hit")`
+**And** cache misses log debug event: `tracing::debug!(schema_name, cache_layer = "disk", "Schema cache miss")`
+**And** hash invalidations log info event: `tracing::info!(schema_name, old_hash, new_hash, "Schema invalidated due to file change")`
+**And** all spans include attributes: schema_name, operation, cache_hit (query adapter only)
 
 **Given** testing is needed
 **When** I write unit tests
@@ -425,6 +436,7 @@ So that schema resolution is fast, survives restarts, and supports high-frequenc
 **And** test hash invalidation (file changed → SchemaCommandAdapter.invalidate_schema())
 **And** test persistence (restart → SchemaQueryAdapter.get_schema() succeeds)
 **And** test CQRS separation (query adapter cannot write, command adapter cannot read)
+**And** test tracing spans are emitted for all operations (use tracing-test crate)
 
 ---
 
@@ -502,10 +514,20 @@ So that schema loading, caching, and querying work together seamlessly.
 **When** individual schemas fail
 **Then** continue processing other schemas (collect errors)
 **And** return aggregated error summary at end
+**And** log each error via `tracing::warn!(?error, schema_name, "Schema loading failed")`
+
+**Given** SchemaCommand.load_all() requires observability
+**When** I instrument the loading pipeline
+**Then** use `#[tracing::instrument(skip(self), fields(operation = "load_all"), level = "info")]`
+**And** log phase transitions: `tracing::debug!(phase = "property_bank", "Loading PropertyBank")`
+**And** log completion: `tracing::info!(total_schemas, from_cache, newly_resolved, "Schema loading complete")`
+**And** span includes attributes: total_schemas, from_cache, newly_resolved, duration_ms
 
 **Given** SchemaCommand.refresh(name) reloads single schema
 **When** I implement refresh
 **Then** invalidate cache → load file → validate → decode → resolve → update cache
+**And** use `#[tracing::instrument(skip(self), fields(operation = "refresh", schema_name), level = "info")]`
+**And** log cache invalidation: `tracing::debug!(schema_name, "Cache invalidated for refresh")`
 
 **Given** I need Query adapter for read operations
 **When** I create SchemaQuery in `crates/adapters/src/spi/schema/query.rs`
