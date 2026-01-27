@@ -16,7 +16,7 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 use async_trait::async_trait;
 
 use crate::spi::{
-    cache::{CacheReader, CacheWriter, deserializer::IdentityCodec},
+    cache::{CacheReader, CacheWriter, encoder::IdentityCodec},
     errors::CacheError,
 };
 

@@ -22,7 +22,7 @@ use rkyv::{Archive, Archived, Deserialize, Serialize, bytecheck::CheckBytes};
 use tracing::{error, info_span};
 
 use crate::spi::{
-    cache::{CacheReader, CacheWriter, deserializer::RkyvCodec},
+    cache::{CacheReader, CacheWriter, encoder::RkyvCodec},
     errors::CacheError,
 };
 
@@ -254,10 +254,7 @@ impl<K, V, C> Reader<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
-        + Send
-        + Sync
-        + 'static,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>> + Send + Sync + 'static,
 {
     /// Retrieve value and metadata by key.
     ///
@@ -341,10 +338,7 @@ impl<K, V, C> CacheReader<K, V> for Reader<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
-        + Send
-        + Sync
-        + 'static,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>> + Send + Sync + 'static,
 {
     #[inline]
     async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
@@ -383,10 +377,7 @@ impl<K, V, C> Writer<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
-        + Send
-        + Sync
-        + 'static,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>> + Send + Sync + 'static,
 {
     /// Store value with custom metadata.
     ///
@@ -431,10 +422,7 @@ impl<K, V, C> CacheWriter<K, V> for Writer<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
-        + Send
-        + Sync
-        + 'static,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>> + Send + Sync + 'static,
 {
     #[inline]
     async fn clear(&self) -> Result<(), CacheError> {
@@ -703,7 +691,7 @@ mod tests {
         use tempfile::tempdir;
 
         use super::*;
-        use crate::spi::cache::deserializer::Codec;
+        use crate::spi::cache::encoder::Codec;
 
         #[tokio::test]
         async fn batches_multiple_writes_in_single_transaction() {
