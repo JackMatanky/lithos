@@ -99,7 +99,7 @@ So that data is stored efficiently with zero-copy deserialization and controlled
 
 **Acceptance Criteria:**
 
-**Given** Epic 5 provides RedbCache infrastructure
+**Given** Epic 5 provides RedbBuilder/RedbReader/RedbWriter infrastructure
 **When** I extend Epic 5 cache module with storage tables
 **Then** new table-specific builders are added to `crates/adapters/src/spi/cache/` (e.g., `notes.rs`, `indexes.rs`)
 **Then** it reuses same Redb database instance from Epic 5 with separate table namespaces
@@ -569,7 +569,7 @@ So that storage interactions can be tested without creating duplicate test infra
 
 **Given** integration tests need realistic storage
 **When** I implement test fixtures
-**Then** fixtures use Epic 5's `MokaCache` for fast in-memory testing (no Redb file creation)
+**Then** fixtures use Epic 5's `MokaBuilder`/`MokaReader`/`MokaWriter` for fast in-memory testing (no Redb file creation)
 **And** fixtures preload sample notes with/without schemas, duplicate aliases, complex metadata
 **And** fixtures enable comprehensive integration testing without database setup
 
