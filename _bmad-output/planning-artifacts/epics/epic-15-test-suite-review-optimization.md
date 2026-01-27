@@ -1,15 +1,50 @@
 # Epic 15: Test Suite Review & Optimization
 
-Development team has a validated, efficient test suite with no redundancy, full coverage of critical paths, and effective system validation.
-**FRs covered:** NFR16 (comprehensive test coverage), NFR25 (zero crashes)
-**Implementation Notes:**
+## Overview
 
-- Final holistic review after all epic-level tests complete
-- Identify overlapping/redundant tests across Epics 4-14
-- Validate test suite efficiency and execution time
-- Ensure 80%+ coverage without bloat
-- Architectural boundary validation (hexagonal, CQRS, event-driven)
-- Note: Each epic 4-14 has its own test validation story; this is final optimization
+Development team has a validated, efficient test suite with no redundancy, full coverage of critical paths, and effective system validation.
+
+**FRs covered:** NFR16 (comprehensive test coverage), NFR25 (zero crashes), NFR4 (fast feedback)
+
+## Implementation Notes
+
+- **Purpose**: Final holistic review after all epic-level test stories complete (Epics 4-14 each have Story N.X test review)
+- **Scope**: Cross-epic optimization, redundancy elimination, architectural validation
+- **Coverage Tools**: 
+  - `cargo tarpaulin` for code coverage analysis
+  - `cargo nextest` for parallel test execution
+  - `cargo criterion` for performance benchmarks
+- **Coverage Targets**:
+  - Domain layer: 100% coverage (business logic is critical)
+  - Application layer: 90%+ coverage (use case orchestration)
+  - Adapters layer: 80%+ coverage (integration points)
+  - Overall: 80%+ coverage without bloat
+- **Test Hierarchy** (per test-design-system.md):
+  - Unit tests: Isolated component validation
+  - Integration tests: Cross-component workflows
+  - E2E tests: Full system flows via CLI
+  - Architectural tests: Purity checks (Epic 2 purity binary)
+  - Performance benchmarks: NFR validation
+- **Integration Points**:
+  - Epic 2: Test utilities, fixtures, async helpers, event test framework
+  - All Epics 4-14: Individual epic test suites to optimize
+- **Performance Targets**:
+  - Full test suite: <5 minutes on CI (NFR4 fast feedback)
+  - Unit tests: <30 seconds
+  - Integration tests: <2 minutes
+  - E2E tests: <2 minutes
+  - Parallel execution via nextest: 4x speedup typical
+- **Architectural Validation**:
+  - Hexagonal architecture: Domain has zero infrastructure dependencies (purity tests)
+  - CQRS: Read/Write operations properly separated
+  - Event-driven: Event contracts validated, no tight coupling
+  - Epic boundaries: No cross-epic implementation dependencies
+- **Redundancy Elimination**: Identify and consolidate overlapping tests across:
+  - Epic 5 cache tests + Epic 6 config cache tests
+  - Epic 7 schema validation + Epic 10 note validation
+  - Epic 11 query tests + Epic 12 template query tests
+- **Test Quality**: All tests have BDD-style GIVEN-WHEN-THEN comments (mandatory per test-design-system.md)
+- **Location**: Tests distributed across crates, this epic audits and optimizes holistically
 
 ### Story 15.1: [Test] Comprehensive Test Coverage Analysis
 
