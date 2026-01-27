@@ -20,203 +20,8 @@ use crate::spi::{
     errors::CacheError,
 };
 
-/// Inner state for Moka cache.
-///
-/// This struct holds the actual Moka cache and is wrapped by Reader/Writer
-/// handles. It's not directly clonable to enforce the use of Arc for sharing.
-#[derive(Debug)]
-pub(crate) struct Inner<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    cache: moka::future::Cache<K, V>,
-    #[expect(
-        dead_code,
-        reason = "Codec field reserved for future use in generic Handle/Inner \
-                  pattern"
-    )]
-    codec: IdentityCodec,
-}
-
-/// Read-only handle for Moka cache.
-///
-/// This handle provides read-only access to the cache following CQRS
-/// principles.
-#[derive(Debug, Clone)]
-pub struct Reader<K, V, C = IdentityCodec>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    inner: Arc<Inner<K, V>>,
-    _codec: PhantomData<C>,
-}
-
-/// Write-only handle for Moka cache.
-///
-/// This handle provides write-only access to the cache following CQRS
-/// principles.
-#[derive(Debug, Clone)]
-pub struct Writer<K, V, C = IdentityCodec>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    inner: Arc<Inner<K, V>>,
-    _codec: PhantomData<C>,
-}
-
-// Implement CacheReader for Reader
-#[async_trait]
-impl<K, V> CacheReader<K, V> for Reader<K, V, IdentityCodec>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    #[tracing::instrument(skip(self, key), level = "debug")]
-    #[inline]
-    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
-        let hit = self.inner.cache.get(key).await;
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "get",
-            hit = hit.is_some()
-        );
-        Ok(hit)
-    }
-
-    #[tracing::instrument(skip(self, key), level = "debug")]
-    #[inline]
-    async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        let exists = self.inner.cache.contains_key(key);
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "has",
-            exists = exists
-        );
-        Ok(exists)
-    }
-}
-
-// Implement CacheWriter for Writer
-#[async_trait]
-impl<K, V> CacheWriter<K, V> for Writer<K, V, IdentityCodec>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    #[tracing::instrument(skip(self), level = "debug")]
-    #[inline]
-    async fn clear(&self) -> Result<(), CacheError> {
-        self.inner.cache.invalidate_all();
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "clear"
-        );
-        Ok(())
-    }
-
-    #[tracing::instrument(skip(self, key), level = "debug")]
-    #[inline]
-    async fn delete(&self, key: &K) -> Result<bool, CacheError> {
-        let existed = self.inner.cache.remove(key).await.is_some();
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "delete",
-            existed = existed
-        );
-        Ok(existed)
-    }
-
-    #[tracing::instrument(skip(self, key), level = "debug")]
-    #[inline]
-    async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
-        let existed = self.delete(key).await?;
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "invalidate",
-            existed = existed
-        );
-        Ok(existed)
-    }
-
-    #[tracing::instrument(skip(self, key, value), level = "debug")]
-    #[inline]
-    async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
-        self.inner.cache.insert(key, value).await;
-        tracing::event!(
-            tracing::Level::DEBUG,
-            cache_layer = "memory",
-            operation = "put"
-        );
-        Ok(())
-    }
-}
-
-/// Deprecated unified cache struct.
-///
-/// **DEPRECATED**: Use `Reader` and `Writer` handles instead.
-/// This struct is kept temporarily for backwards compatibility.
-///
-/// # Migration Guide
-///
-/// Old code:
-/// ```ignore
-/// let cache = Cache::builder().build()?;
-/// cache.put(key, value).await?;
-/// let val = cache.get(&key).await?;
-/// ```
-///
-/// New code:
-/// ```rust
-/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, MokaBuilder};
-/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let (reader, writer) =
-///     MokaBuilder::<String, String>::default().build().unwrap();
-/// writer.put("key".to_string(), "value".to_string()).await.unwrap();
-/// let val = reader.get(&"key".to_string()).await.unwrap();
-/// assert_eq!(val, Some("value".to_string()));
-/// # });
-/// ```
-///
-/// # `TinyLFU` and Scan Pollution
-///
-/// `TinyLFU` is used to protect frequently accessed entries from being evicted
-/// by sequential scans (e.g., during vault indexing).
-///
-/// ```rust
-/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, MokaBuilder};
-/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let (reader, writer) = MokaBuilder::<String, String>::default()
-///     .max_capacity(10)
-///     .build()
-///     .unwrap();
-///
-/// // Access a "hot" key many times
-/// for _ in 0..20 {
-///     writer.put("hot".to_string(), "value".to_string()).await.unwrap();
-///     let _ = reader.get(&"hot".to_string()).await.unwrap();
-/// }
-///
-/// // Perform a "scan" that exceeds capacity
-/// for i in 0..100 {
-///     writer.put(format!("scan-{}", i), "val".to_string()).await.unwrap();
-/// }
-///
-/// // The "hot" key should still be present because of TinyLFU
-/// tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-/// assert!(reader.get(&"hot".to_string()).await.unwrap().is_some());
-/// # });
-/// ```
-///
-/// Type alias for the tuple returned by Moka builder.
-pub type BuildResult<K, V> = Result<(Reader<K, V>, Writer<K, V>), CacheError>;
+/// Type alias for a Reader/Writer pair returned by `Builder::build()`.
+pub type ReaderWriterPair<K, V> = (Reader<K, V>, Writer<K, V>);
 
 /// Builder for Moka cache.
 #[derive(Debug, Clone)]
@@ -226,8 +31,8 @@ where
     V: Clone + Send + Sync + 'static,
 {
     max_capacity: usize,
-    time_to_live: Option<Duration>,
     time_to_idle: Option<Duration>,
+    time_to_live: Option<Duration>,
     _k: PhantomData<K>,
     _v: PhantomData<V>,
 }
@@ -241,8 +46,8 @@ where
     fn default() -> Self {
         Self {
             max_capacity: 10_000,
-            time_to_live: None,
             time_to_idle: None,
+            time_to_live: None,
             _k: PhantomData,
             _v: PhantomData,
         }
@@ -264,7 +69,7 @@ where
     /// Returns `CacheError::BackendError` if the configuration is invalid
     /// (e.g., `max_capacity` is 0).
     #[inline]
-    pub fn build(&self) -> BuildResult<K, V> {
+    pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
         let inner = self.build_inner()?;
 
         let reader = Reader {
@@ -282,7 +87,7 @@ where
 
     /// Internal helper to build the Inner state.
     #[inline]
-    fn build_inner(&self) -> Result<Arc<Inner<K, V>>, CacheError> {
+    fn build_inner(&self) -> Result<MokaInner<K, V>, CacheError> {
         if self.max_capacity == 0 {
             return Err(CacheError::BackendError {
                 backend: "moka",
@@ -370,6 +175,146 @@ where
         self.time_to_live = Some(duration);
         self
     }
+}
+
+/// Read-only handle for Moka cache.
+///
+/// This handle provides read-only access to the cache following CQRS
+/// principles.
+#[derive(Debug, Clone)]
+pub struct Reader<K, V, C = IdentityCodec>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    inner: Arc<Inner<K, V>>,
+    _codec: PhantomData<C>,
+}
+
+#[async_trait]
+impl<K, V> CacheReader<K, V> for Reader<K, V, IdentityCodec>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[inline]
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
+        let hit = self.inner.cache.get(key).await;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "get",
+            hit = hit.is_some()
+        );
+        Ok(hit)
+    }
+
+    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[inline]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        let exists = self.inner.cache.contains_key(key);
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "has",
+            exists = exists
+        );
+        Ok(exists)
+    }
+}
+
+/// Write-only handle for Moka cache.
+///
+/// This handle provides write-only access to the cache following CQRS
+/// principles.
+#[derive(Debug, Clone)]
+pub struct Writer<K, V, C = IdentityCodec>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    inner: Arc<Inner<K, V>>,
+    _codec: PhantomData<C>,
+}
+
+#[async_trait]
+impl<K, V> CacheWriter<K, V> for Writer<K, V, IdentityCodec>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    #[tracing::instrument(skip(self), level = "debug")]
+    #[inline]
+    async fn clear(&self) -> Result<(), CacheError> {
+        self.inner.cache.invalidate_all();
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "clear"
+        );
+        Ok(())
+    }
+
+    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[inline]
+    async fn delete(&self, key: &K) -> Result<bool, CacheError> {
+        let existed = self.inner.cache.remove(key).await.is_some();
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "delete",
+            existed = existed
+        );
+        Ok(existed)
+    }
+
+    #[tracing::instrument(skip(self, key), level = "debug")]
+    #[inline]
+    async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
+        let existed = self.delete(key).await?;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "invalidate",
+            existed = existed
+        );
+        Ok(existed)
+    }
+
+    #[tracing::instrument(skip(self, key, value), level = "debug")]
+    #[inline]
+    async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
+        self.inner.cache.insert(key, value).await;
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "put"
+        );
+        Ok(())
+    }
+}
+
+/// Type alias for the Inner state of Moka cache.
+pub(crate) type MokaInner<K, V> = Arc<Inner<K, V>>;
+
+/// Inner state for Moka cache.
+///
+/// This struct holds the actual Moka cache and is wrapped by Reader/Writer
+/// handles. It's not directly clonable to enforce the use of Arc for sharing.
+#[derive(Debug)]
+pub(crate) struct Inner<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    cache: moka::future::Cache<K, V>,
+    #[expect(
+        dead_code,
+        reason = "Codec field reserved for future use in generic Handle/Inner \
+                  pattern"
+    )]
+    codec: IdentityCodec,
 }
 
 #[cfg(test)]
