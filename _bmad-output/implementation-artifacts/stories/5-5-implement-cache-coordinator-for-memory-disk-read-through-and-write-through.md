@@ -24,10 +24,11 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 **Then** it returns a deduplicated union of keys from both memory and disk layers
 
 **Given** the need for CQRS consistency
-**When** I implement `ReaderCoordinator` and `WriterCoordinator`
+**When** I implement `Reader` and `Writer` coordinators in `coordinator.rs`
 **Then** they share the `Inner` state via `Arc`
-**And** the `Reader` handle only implements `CacheReader`
-**And** the `Writer` handle only implements `CacheWriter`
+**And** they are re-exported as `ReaderCoordinator` and `WriterCoordinator`
+**And** the `ReaderCoordinator` handle only implements `CacheReader`
+**And** the `WriterCoordinator` handle only implements `CacheWriter`
 
 **Given** read-through caching must be high-performance
 **When** a "Memory Miss / Disk Hit" occurs in `Reader::get()`
@@ -83,7 +84,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [ ] Subtask 1.1: Create empty file at `crates/adapters/src/spi/cache/coordinator.rs`
   - [ ] Subtask 1.2: Add `pub(crate) mod coordinator;` to `crates/adapters/src/spi/cache/mod.rs`
   - [ ] Subtask 1.3: [TDD] Write `coordinator_init::fails_to_link` (verify failing to import components)
-  - [ ] Subtask 1.4: Re-export as `CacheReaderCoordinator` and `CacheWriterCoordinator` in `crates/adapters/src/spi/cache/mod.rs`
+  - [ ] Subtask 1.4: Re-export as `ReaderCoordinator` and `WriterCoordinator` in `crates/adapters/src/spi/cache/mod.rs`
   - [ ] Subtask 1.5: Run `mise run test:unit:adapters coordinator` and verify failure (RED)
   - [ ] Subtask 1.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -195,7 +196,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 
 ### Implementation Flows
 
-#### Read-Through Flow (CoordinatorReader::get)
+#### Read-Through Flow (ReaderCoordinator::get)
 1.  Check memory cache via `memory_reader`.
 2.  **Memory Hit**: Return value immediately; emit `tracing::event!` at `Level::DEBUG`.
 3.  **Memory Miss**: Check disk cache via `disk_reader`.
@@ -205,13 +206,13 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     *   Return value immediately to caller.
 5.  **Disk Miss**: Emit `tracing::event!` at `Level::INFO` with "Disk Miss"; return `None`.
 
-#### Key Listing Flow (CoordinatorReader::keys)
+#### Key Listing Flow (ReaderCoordinator::keys)
 1.  Fetch `memory_keys` from `memory_reader`.
 2.  Fetch `disk_keys` from `disk_reader`.
 3.  Merge into a `HashSet<K>` to handle overlapping keys.
 4.  Return `Vec<K>`.
 
-#### Write-Through Flow (CoordinatorWriter::put)
+#### Write-Through Flow (WriterCoordinator::put)
 1.  Attempt write to disk via `disk_writer` (ensures persistence first).
 2.  **Disk Success**: Attempt write to memory via `memory_writer`.
 3.  **Disk Failure**: Return error immediately; **DO NOT** write to memory (prevents cache inconsistency).
