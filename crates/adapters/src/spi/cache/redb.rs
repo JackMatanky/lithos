@@ -18,7 +18,7 @@ use std::{
 
 use async_trait::async_trait;
 use redb::{ReadableDatabase as _, TableDefinition};
-use rkyv::{Archive, Archived, Deserialize, Serialize, bytecheck::CheckBytes};
+use rkyv::{Archive, Deserialize, Serialize, bytecheck::CheckBytes};
 use tracing::{error, info_span};
 
 use crate::spi::{
@@ -50,43 +50,38 @@ pub struct Entry<V> {
 }
 
 /// A view into a cached entry, providing zero-copy access to archived data.
-pub struct EntryView<'guard, V> {
+pub struct EntryView<'guard, V, C>
+where
+    C: crate::spi::cache::encoder::Codec<(), Entry<V>>,
+{
     guard: redb::AccessGuard<'guard, &'static [u8]>,
+    codec: C,
     _marker: std::marker::PhantomData<V>,
 }
 
-impl<'guard, V> EntryView<'guard, V> {
+impl<'guard, V, C> EntryView<'guard, V, C>
+where
+    C: crate::spi::cache::encoder::Codec<(), Entry<V>>,
+{
     /// Access the archived value without full deserialization.
     ///
     /// # Errors
     /// Returns `CacheError::SerializationError` if access fails.
     #[inline]
-    pub fn as_archived(&self) -> Result<&Archived<Entry<V>>, CacheError>
-    where
-        V: Archive,
-        Archived<V>: Deserialize<
-                V,
-                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
-            >,
-        for<'validation> Archived<Entry<V>>: CheckBytes<
-            rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
-        >,
-    {
-        rkyv::access::<Archived<Entry<V>>, rkyv::rancor::Error>(
-            self.guard.value(),
-        )
-        .map_err(|e| CacheError::SerializationError {
-            type_name: std::any::type_name::<Entry<V>>(),
-            message: format!("Failed to access archived entry: {e}").into(),
-        })
+    pub fn as_archived(&self) -> Result<&C::Archived, CacheError> {
+        self.codec.access_view(self.guard.value())
     }
 
     /// Create a new `EntryView`.
     #[inline]
     #[must_use]
-    pub fn new(guard: redb::AccessGuard<'guard, &'static [u8]>) -> Self {
+    pub fn new(
+        guard: redb::AccessGuard<'guard, &'static [u8]>,
+        codec: C,
+    ) -> Self {
         Self {
             guard,
+            codec,
             _marker: std::marker::PhantomData,
         }
     }
@@ -298,9 +293,17 @@ impl<K, V, C> Reader<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::encoder::Codec<K, Entry<V>> + Send + Sync + 'static,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     /// Retrieve value and metadata by key.
+    ///
+    /// # Note
+    /// This method performs full deserialization and heap allocation. For
+    /// zero-copy access, use [`with_view`](Self::with_view).
     ///
     /// # Errors
     /// Returns `CacheError` if retrieval or deserialization fails.
@@ -343,31 +346,31 @@ where
         f: F,
     ) -> Result<Option<R>, CacheError>
     where
-        V: Archive,
-        for<'validation> Archived<Entry<V>>: CheckBytes<
-            rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
-        >,
-        F: FnOnce(&Archived<Entry<V>>) -> R + Send + 'static,
+        F: FnOnce(&C::Archived) -> R + Send + 'static,
         R: Send + 'static,
     {
         let key_bytes = self.inner.codec.encode_key(key)?;
 
+        let db = Arc::clone(&self.inner.db);
+        let table_name = Arc::clone(&self.inner.table_name);
+        let codec = self.inner.codec.clone();
+        let span = info_span!("redb_read", table = %table_name);
+
         self.inner
-            .read(move |txn, table_name| {
+            .executor
+            .spawn(span, move || {
+                let txn = db.begin_read()?;
                 let table_def =
-                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                    TableDefinition::<&[u8], &[u8]>::new(&table_name);
                 let table = txn.open_table(table_def)?;
 
                 if let Some(guard) = table.get(key_bytes.as_slice())? {
-                    let archived = rkyv::access::<
-                        Archived<Entry<V>>,
-                        rkyv::rancor::Error,
-                    >(guard.value())
-                    .map_err(|e| {
-                        redb::Error::Io(std::io::Error::other(format!(
-                            "Zero-copy access failed: {e}"
-                        )))
-                    })?;
+                    let archived =
+                        codec.access_view(guard.value()).map_err(|e| {
+                            redb::Error::Io(std::io::Error::other(format!(
+                                "Zero-copy access failed: {e}"
+                            )))
+                        })?;
                     Ok(Some(f(archived)))
                 } else {
                     Ok(None)
@@ -382,7 +385,11 @@ impl<K, V, C> CacheReader<K, V> for Reader<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::encoder::Codec<K, Entry<V>> + Send + Sync + 'static,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     #[inline]
     async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
@@ -421,7 +428,11 @@ impl<K, V, C> Writer<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::encoder::Codec<K, Entry<V>> + Send + Sync + 'static,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     /// Store value with custom metadata.
     ///
@@ -466,7 +477,11 @@ impl<K, V, C> CacheWriter<K, V> for Writer<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::encoder::Codec<K, Entry<V>> + Send + Sync + 'static,
+    C: crate::spi::cache::encoder::Codec<K, Entry<V>>
+        + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     #[inline]
     async fn clear(&self) -> Result<(), CacheError> {
@@ -496,10 +511,8 @@ where
     }
 
     #[inline]
-    async fn invalidate(&self, _key: &K) -> Result<bool, CacheError> {
-        // Redb doesn't support invalidation without deletion
-        // This is a no-op for persistent storage, always returns false
-        Ok(false)
+    async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
+        self.delete(key).await
     }
 
     #[inline]

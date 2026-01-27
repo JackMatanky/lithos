@@ -1,6 +1,6 @@
 # Story 5.4: Refactor Cache for Modularity and CQRS
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -321,3 +321,19 @@ None
 - Implemented CacheCodec for abstraction.
 - Implemented Handle/Inner pattern.
 - Maintained zero-copy requirements.
+
+### File List
+- crates/adapters/src/spi/cache/mod.rs
+- crates/adapters/src/spi/cache/encoder.rs (renamed from deserializer.rs)
+- crates/adapters/src/spi/cache/moka.rs
+- crates/adapters/src/spi/cache/redb.rs
+
+### Change Log
+- Defined `CacheReader` and `CacheWriter` traits for CQRS.
+- Implemented `Codec` trait for serialization abstraction.
+- Refactored Moka and Redb backends to use `Handle/Inner` pattern.
+- Separated `Reader` and `Writer` handles for both backends.
+- Implemented `EntryView` for zero-copy access in Redb.
+- Added comprehensive unit and doc tests for all new components.
+- Fixed `RedbWriter::invalidate` to correctly delegate to `delete`.
+- Improved Moka test assertions for invalidation.

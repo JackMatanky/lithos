@@ -16,7 +16,7 @@ use std::{marker::PhantomData, sync::Arc, time::Duration};
 use async_trait::async_trait;
 
 use crate::spi::{
-    cache::{CacheReader, CacheWriter, encoder::IdentityCodec},
+    cache::{CacheReader, CacheWriter},
     errors::CacheError,
 };
 
@@ -127,12 +127,10 @@ where
 
         let reader = Reader {
             inner: Arc::clone(&inner),
-            _codec: PhantomData,
         };
 
         let writer = Writer {
             inner,
-            _codec: PhantomData,
         };
 
         Ok((reader, writer))
@@ -151,7 +149,6 @@ where
         let inner = self.inner_builder()?;
         Ok(Reader {
             inner,
-            _codec: PhantomData,
         })
     }
 
@@ -168,7 +165,6 @@ where
         let inner = self.inner_builder()?;
         Ok(Writer {
             inner,
-            _codec: PhantomData,
         })
     }
 
@@ -191,7 +187,6 @@ where
 
         Ok(Arc::new(Inner {
             cache,
-            codec: IdentityCodec,
         }))
     }
 }
@@ -201,17 +196,16 @@ where
 /// This handle provides read-only access to the cache following CQRS
 /// principles.
 #[derive(Debug, Clone)]
-pub struct Reader<K, V, C = IdentityCodec>
+pub struct Reader<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
     inner: Arc<Inner<K, V>>,
-    _codec: PhantomData<C>,
 }
 
 #[async_trait]
-impl<K, V> CacheReader<K, V> for Reader<K, V, IdentityCodec>
+impl<K, V> CacheReader<K, V> for Reader<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
@@ -248,17 +242,16 @@ where
 /// This handle provides write-only access to the cache following CQRS
 /// principles.
 #[derive(Debug, Clone)]
-pub struct Writer<K, V, C = IdentityCodec>
+pub struct Writer<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
     inner: Arc<Inner<K, V>>,
-    _codec: PhantomData<C>,
 }
 
 #[async_trait]
-impl<K, V> CacheWriter<K, V> for Writer<K, V, IdentityCodec>
+impl<K, V> CacheWriter<K, V> for Writer<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
@@ -328,12 +321,6 @@ where
     V: Clone + Send + Sync + 'static,
 {
     cache: moka::future::Cache<K, V>,
-    #[expect(
-        dead_code,
-        reason = "Codec field reserved for future use in generic Handle/Inner \
-                  pattern"
-    )]
-    codec: IdentityCodec,
 }
 
 #[cfg(test)]
@@ -544,11 +531,14 @@ mod tests {
         #[tokio::test]
         #[traced_test]
         async fn should_emit_events_on_invalidate() {
-            let (_reader, writer) =
+            let (reader, writer) =
                 Builder::<String, String>::default().build().unwrap();
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
-            let _: bool = writer.invalidate(&"key".to_owned()).await.unwrap();
 
+            let existed = writer.invalidate(&"key".to_owned()).await.unwrap();
+
+            assert!(existed);
+            assert!(!reader.has(&"key".to_owned()).await.unwrap());
             assert!(logs_contain("operation=\"invalidate\""));
             assert!(logs_contain("existed=true"));
         }
