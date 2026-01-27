@@ -1,6 +1,6 @@
 # Story 5.5: Implement Cache Coordinator for Memory/Disk Read-Through and Write-Through
 
-Status: in_progress
+Status: review
 
 ## Story
 
@@ -167,39 +167,39 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 7.7: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 8: Scaffolding decoupled backfill
-- [ ] Task 8: Initialize `backfiller.rs` and verify connectivity
-  - [ ] Subtask 8.1: Create `crates/adapters/src/spi/cache/backfiller.rs`
-  - [ ] Subtask 8.2: Register module in `crates/adapters/src/spi/cache/mod.rs`
-  - [ ] Subtask 8.3: [TDD] Write `backfiller::verifies_compilation` (empty test)
-  - [ ] Subtask 8.4: Run `mise run test:unit:adapters coordinator` (verify no regressions)
+- [x] Task 8: Initialize `backfiller.rs` and verify connectivity
+  - [x] Subtask 8.1: Create `crates/adapters/src/spi/cache/backfiller.rs`
+  - [x] Subtask 8.2: Register module in `crates/adapters/src/spi/cache/mod.rs`
+  - [x] Subtask 8.3: [TDD] Write `backfiller::verifies_compilation` (empty test)
+  - [x] Subtask 8.4: Run `mise run test:unit:adapters coordinator` (verify no regressions)
 
 ### Phase 9: Implement Submission Handle Pattern (backfiller.rs)
-- [ ] Task 9: Implement `Handle` and `Worker`
-  - [ ] Subtask 9.1: [TDD] Write `backfiller::triggers_request_to_channel` (verify handle sends to mpsc)
-  - [ ] Subtask 9.2: Implement `Request<K, V>` and `Handle<K, V>` with `trigger()`
-  - [ ] Subtask 9.3: [TDD] Write `backfiller::worker_processes_requests` (verify worker calls mock writer)
-  - [ ] Subtask 9.4: Implement `Worker<K, V>` and `start()` method
-  - [ ] Subtask 9.5: [TDD] Write `backfiller::drops_requests_on_full_channel` (verify non-blocking try_send)
-  - [ ] Subtask 9.6: Implement factory `new(capacity)` returning `(Handle, Worker)`
-  - [ ] Subtask 9.7: Implement `Clone` and `clone_from` for `Handle`
-  - [ ] Subtask 9.8: Run `mise run verify` and fix all lint issues
+- [x] Task 9: Implement `Handle` and `Worker`
+  - [x] Subtask 9.1: [TDD] Write `backfiller::triggers_request_to_channel` (verify handle sends to mpsc)
+  - [x] Subtask 9.2: Implement `Request<K, V>` and `Handle<K, V>` with `trigger()`
+  - [x] Subtask 9.3: [TDD] Write `backfiller::worker_processes_requests` (verify worker calls mock writer)
+  - [x] Subtask 9.4: Implement `Worker<K, V>` and `start()` method
+  - [x] Subtask 9.5: [TDD] Write `backfiller::drops_requests_on_full_channel` (verify non-blocking try_send)
+  - [x] Subtask 9.6: Implement factory `new(capacity)` returning `(Handle, Worker)`
+  - [x] Subtask 9.7: Implement `Clone` and `clone_from` for `Handle`
+  - [x] Subtask 9.8: Run `mise run verify` and fix all lint issues
 
 ### Phase 10: Refactor Coordinator for Strict CQRS
-- [ ] Task 10: Integrate `Backfiller` into `Coordinator` and remove `memory_writer` from `Reader`
-  - [ ] Subtask 10.1: [TDD] Update `coordinator_init` tests to verify `Reader` can be built without a `memory_writer`
-  - [ ] Subtask 10.2: Update `Reader` struct to hold `BackfillHandle` (re-exported `Handle`) instead of `BackfillQueue`
-  - [ ] Subtask 10.3: Update `Builder` to use `backfiller::new()` and manage the `Worker` lifecycle
-  - [ ] Subtask 10.4: Update `Builder::build()` to start the `Worker` only when all ports are present
-  - [ ] Subtask 10.5: Remove any direct `memory_writer` dependency from the `Reader` impl block
-  - [ ] Subtask 10.6: Run all coordinator tests and verify performance characteristics (non-blocking)
+- [x] Task 10: Integrate `Backfiller` into `Coordinator` and remove `memory_writer` from `Reader`
+  - [x] Subtask 10.1: [TDD] Update `coordinator_init` tests to verify `Reader` can be built without a `memory_writer`
+  - [x] Subtask 10.2: Update `Reader` struct to hold `BackfillHandle` (re-exported `Handle`) instead of `BackfillQueue`
+  - [x] Subtask 10.3: Update `Builder` to use `backfiller::new()` and manage the `Worker` lifecycle
+  - [x] Subtask 10.4: Update `Builder::build()` to start the `Worker` only when all ports are present
+  - [x] Subtask 10.5: Remove any direct `memory_writer` dependency from the `Reader` impl block
+  - [x] Subtask 10.6: Run all coordinator tests and verify performance characteristics (non-blocking)
 
 ### Phase 11: Final Quality Gate
-- [ ] Task 11: Comprehensive project verification
-  - [ ] Subtask 11.1: Run `mise run test:coverage` and verify `Backfiller` and `Coordinator` are fully exercised
-  - [ ] Subtask 11.2: Run `mise run fmt` and verify formatting compliance
-  - [ ] Subtask 11.3: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 11.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 11.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 11: Comprehensive project verification
+  - [x] Subtask 11.1: Run `mise run test:coverage` and verify `Backfiller` and `Coordinator` are fully exercised
+  - [x] Subtask 11.2: Run `mise run fmt` and verify formatting compliance
+  - [x] Subtask 11.3: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 11.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 11.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ## Dev Notes
 
@@ -277,9 +277,9 @@ None - Refactored during implementation to align with project builder patterns a
 1.  **Lean Composition (Removed `Inner` Struct)**:
     *   **Change**: Eliminated the `Inner<K, V>` struct. The `Reader` and `Writer` handles now hold their respective SPI ports (`Arc<dyn CacheReader/Writer>`) directly.
     *   **Rationale**: The `Inner` pattern added a redundant layer of indirection (double `Arc` dereferencing). Since the ports are already `Arc` pointers, wrapping them in another `Arc<Inner>` provided no benefit for sharing state and increased complexity.
-2.  **Encapsulated Backfill (`BackfillQueue`)**:
-    *   **Change**: Introduced a specialized `BackfillQueue` component to encapsulate `tokio::mpsc` channel management, background worker spawning, and non-blocking `trigger` logic.
-    *   **Rationale**: This separates the "how" of asynchronous backfilling from the "when" of the coordination logic. It keeps the `Reader` handle focused purely on the Read-Through strategy.
+2.  **Decoupled Submission Handle Pattern**:
+    *   **Change**: Introduced a `BackfillHandle` (submission sink) and `BackfillWorker` (execution engine) in a dedicated `backfiller.rs` file.
+    *   **Rationale**: This achieves strict CQRS by removing the `memory_writer` requirement from the `Reader` handle. The `Reader` now only knows how to submit data to an opaque handle, ensuring the query side has no capability to invoke writer commands. This also separates the "how" of asynchronous backfilling from the coordination logic.
 3.  **Decomposed Builder Construction**:
     *   **Change**: Refactored the `Builder` to support independent `build_reader` and `build_writer` methods in addition to the joint `build()`.
     *   **Rationale**: Supports systems that only require one side of the CQRS split (e.g., a read-only query service), preventing the need to mock or provide unnecessary ports.
@@ -366,14 +366,18 @@ pub fn new<K, V>(capacity: usize) -> (BackfillHandle<K, V>, BackfillWorker<K, V>
 
 ### Completion Notes List
 - Implemented `CacheCoordinator` with full CQRS support (split Reader/Writer handles).
-- Implemented Read-Through logic with decoupled asynchronous backfill to memory via `BackfillQueue`.
+- Implemented Read-Through logic with decoupled asynchronous backfill to memory.
 - Implemented Write-Through logic (Disk then Memory) to ensure persistence consistency.
 - Implemented Parallel Invalidation for both layers using `tokio::join!`.
 - Refactored `Builder` to support independent `build_reader` and `build_writer` methods, aligning with Moka and Redb adapters.
+- **Implemented Submission Handle Pattern**: Decoupled the `Reader` from the `CacheWriter` trait by introducing a `BackfillHandle` submission sink and a background `BackfillWorker`.
+- **Created Dedicated `backfiller.rs`**: Encapsulated all asynchronous backfill plumbing (channels, task management, drop-policies) in a reusable internal component.
+- **Achieved Strict CQRS**: Removed the `memory_writer` dependency from the `Reader` handle, ensuring query-side purity.
 - Implemented `clone_from` for all clonable structs to satisfy Lithos quality gates (`missing_trait_methods`).
 - Sorted all implementation blocks alphabetically for maintainability.
 - Verified 100% logic coverage and passing quality gates via `mise run verify`.
 
 ### File List
-- `crates/adapters/src/spi/cache/coordinator.rs` - Primary implementation.
-- `crates/adapters/src/spi/cache/mod.rs` - Re-exports for public API.
+- `crates/adapters/src/spi/cache/backfiller.rs` - Decoupled backfill engine.
+- `crates/adapters/src/spi/cache/coordinator.rs` - Multi-layer coordination strategy.
+- `crates/adapters/src/spi/cache/mod.rs` - Re-exports and traits.
