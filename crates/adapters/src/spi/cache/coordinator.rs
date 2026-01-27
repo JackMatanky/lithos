@@ -70,8 +70,10 @@
 //! # fn example() -> Result<(), CacheError> {
 //! # let db_path = std::path::PathBuf::from("test.redb");
 //! // Build memory and disk layers
+//! let mut moka_builder = MokaBuilder::<String, String>::new();
+//! moka_builder.max_capacity(100);
 //! let (mem_reader, mem_writer) =
-//!     MokaBuilder::<String, String>::new().max_capacity(100).build()?;
+//!     (moka_builder.reader()?, moka_builder.writer()?);
 //!
 //! let (disk_reader, disk_writer) = RedbBuilder::<String, String>::new()
 //!     .path(&db_path)

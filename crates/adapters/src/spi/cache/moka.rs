@@ -11,7 +11,11 @@
 //! asynchronous runtimes like Tokio. It performs non-blocking operations and
 //! handles internal coordination efficiently.
 
-use std::{marker::PhantomData, sync::Arc, time::Duration};
+use std::{
+    marker::PhantomData,
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
 
 use async_trait::async_trait;
 
@@ -19,9 +23,6 @@ use crate::spi::{
     cache::{CacheReader, CacheWriter},
     errors::CacheError,
 };
-
-/// Type alias for a Reader/Writer pair returned by `Builder::build()`.
-pub type ReaderWriterPair<K, V> = (Reader<K, V>, Writer<K, V>);
 
 /// Builder for Moka cache.
 ///
@@ -35,7 +36,8 @@ pub type ReaderWriterPair<K, V> = (Reader<K, V>, Writer<K, V>);
 /// let mut builder = MokaBuilder::<String, String>::new();
 /// builder.max_capacity(100).time_to_live(Duration::from_secs(60));
 ///
-/// let (reader, writer) = builder.build().unwrap();
+/// let reader = builder.reader().unwrap();
+/// let writer = builder.writer().unwrap();
 /// ```
 #[derive(Debug, Clone)]
 pub struct Builder<K, V>
@@ -46,6 +48,7 @@ where
     max_capacity: usize,
     time_to_idle: Option<Duration>,
     time_to_live: Option<Duration>,
+    shared_inner: Arc<OnceLock<MokaInner<K, V>>>,
     _k: PhantomData<K>,
     _v: PhantomData<V>,
 }
@@ -61,6 +64,7 @@ where
             max_capacity: 10_000,
             time_to_idle: None,
             time_to_live: None,
+            shared_inner: Arc::new(OnceLock::new()),
             _k: PhantomData,
             _v: PhantomData,
         }
@@ -81,6 +85,7 @@ where
             tracing::warn!(?e, "Invalid capacity provided to max_capacity");
         }
         self.max_capacity = capacity;
+        self.reset_state();
         self
     }
 
@@ -91,10 +96,18 @@ where
         Self::default()
     }
 
+    /// Reset the internal state, forcing a fresh cache to be created on next
+    /// access.
+    #[inline]
+    fn reset_state(&mut self) {
+        self.shared_inner = Arc::new(OnceLock::new());
+    }
+
     /// Set time to idle.
     #[inline]
     pub fn time_to_idle(&mut self, duration: Duration) -> &mut Self {
         self.time_to_idle = Some(duration);
+        self.reset_state();
         self
     }
 
@@ -102,6 +115,7 @@ where
     #[inline]
     pub fn time_to_live(&mut self, duration: Duration) -> &mut Self {
         self.time_to_live = Some(duration);
+        self.reset_state();
         self
     }
 
@@ -126,59 +140,17 @@ where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    /// Build split Reader/Writer handles for the Moka cache.
-    ///
-    /// Returns a tuple of (Reader, Writer) handles that share the same
-    /// underlying cache. Use this when both read and write access is needed.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError::BackendError` if the configuration is invalid.
-    #[inline]
-    pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
+    /// Internal helper to obtain the shared inner state.
+    fn get_or_init_inner(&self) -> Result<MokaInner<K, V>, CacheError> {
+        if let Some(inner) = self.shared_inner.get() {
+            return Ok(Arc::clone(inner));
+        }
+
         let inner = self.inner_builder()?;
-
-        let reader = Reader {
-            inner: Arc::clone(&inner),
-        };
-
-        let writer = Writer {
-            inner,
-        };
-
-        Ok((reader, writer))
-    }
-
-    /// Build a Reader handle independently.
-    ///
-    /// Creates a new cache and returns only a Reader handle. This is
-    /// efficient when only read access is needed.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError::BackendError` if the configuration is invalid.
-    #[inline]
-    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
-        let inner = self.inner_builder()?;
-        Ok(Reader {
-            inner,
-        })
-    }
-
-    /// Build a Writer handle independently.
-    ///
-    /// Creates a new cache and returns only a Writer handle. This is
-    /// efficient when only write access is needed.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError::BackendError` if the configuration is invalid.
-    #[inline]
-    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
-        let inner = self.inner_builder()?;
-        Ok(Writer {
-            inner,
-        })
+        // Try to set it. If someone else set it first, that's fine, we'll
+        // return whatever is there.
+        _ = self.shared_inner.set(Arc::clone(&inner));
+        Ok(inner)
     }
 
     /// Internal helper to build the Inner state.
@@ -202,6 +174,38 @@ where
             cache,
         }))
     }
+
+    /// Build a Reader handle.
+    ///
+    /// Creates a new cache (if not already initialized by this builder) and
+    /// returns only a Reader handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::BackendError` if the configuration is invalid.
+    #[inline]
+    pub fn reader(&self) -> Result<Reader<K, V>, CacheError> {
+        let inner = self.get_or_init_inner()?;
+        Ok(Reader {
+            inner,
+        })
+    }
+
+    /// Build a Writer handle.
+    ///
+    /// Creates a new cache (if not already initialized by this builder) and
+    /// returns only a Writer handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError::BackendError` if the configuration is invalid.
+    #[inline]
+    pub fn writer(&self) -> Result<Writer<K, V>, CacheError> {
+        let inner = self.get_or_init_inner()?;
+        Ok(Writer {
+            inner,
+        })
+    }
 }
 
 /// Read-only handle for Moka cache.
@@ -214,7 +218,7 @@ where
 /// ```rust
 /// # use lithos_adapters::spi::cache::{MokaBuilder, CacheReader};
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let reader = MokaBuilder::<String, String>::new().build_reader().unwrap();
+/// let reader = MokaBuilder::<String, String>::new().reader().unwrap();
 /// let value = reader.get(&"key".to_string()).await.unwrap();
 /// assert!(value.is_none());
 /// # });
@@ -285,7 +289,7 @@ where
 /// ```rust
 /// # use lithos_adapters::spi::cache::{MokaBuilder, CacheWriter};
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let writer = MokaBuilder::<String, String>::new().build_writer().unwrap();
+/// let writer = MokaBuilder::<String, String>::new().writer().unwrap();
 /// writer.put("key".to_string(), "value".to_string()).await.unwrap();
 /// # });
 /// ```
@@ -377,14 +381,17 @@ mod tests {
 
     mod fixtures {
         use super::*;
-        pub type Handles = (Reader<String, String>, Writer<String, String>);
 
         pub fn builder() -> Builder<String, String> {
             Builder::default()
         }
 
-        pub fn handles(capacity: usize) -> Handles {
-            Builder::default().max_capacity(capacity).build().unwrap()
+        pub fn reader(capacity: usize) -> Reader<String, String> {
+            Builder::default().max_capacity(capacity).reader().unwrap()
+        }
+
+        pub fn writer(capacity: usize) -> Writer<String, String> {
+            Builder::default().max_capacity(capacity).writer().unwrap()
         }
     }
 
@@ -398,7 +405,7 @@ mod tests {
             let mut builder = builder();
 
             // WHEN: the reader is built independently
-            let result = builder.max_capacity(50).build_reader();
+            let result = builder.max_capacity(50).reader();
 
             // THEN: the handle is correct and independent
             assert!(result.is_ok());
@@ -413,27 +420,11 @@ mod tests {
             let mut builder = builder();
 
             // WHEN: the writer is built independently
-            let result = builder.max_capacity(50).build_writer();
+            let result = builder.max_capacity(50).writer();
 
             // THEN: the handle is correct and independent
             assert!(result.is_ok());
             let writer = result.unwrap();
-            let _: Writer<String, String> = writer;
-        }
-
-        /// [5.4-U-03] P1: Test combined handle creation.
-        #[test]
-        fn builds_split_handles_with_custom_capacity() {
-            // GIVEN: a Moka builder
-            let mut builder = builder();
-
-            // WHEN: both handles are built together
-            let result = builder.max_capacity(50).build();
-
-            // THEN: two distinct handles are produced
-            assert!(result.is_ok());
-            let (reader, writer) = result.unwrap();
-            let _: Reader<String, String> = reader;
             let _: Writer<String, String> = writer;
         }
     }
@@ -488,10 +479,10 @@ mod tests {
         fn should_build_cache_instance() {
             // GIVEN: a builder
             let builder = builder();
-            // WHEN: build is called
-            let result = builder.build();
-            // THEN: it produces handles
-            let (_reader, _writer) = result.expect("Failed to build cache");
+            // WHEN: reader is called
+            let result = builder.reader();
+            // THEN: it produces handle
+            let _reader = result.expect("Failed to build cache");
         }
 
         /// [5.4-U-03] P1: Edge Case - zero capacity.
@@ -499,7 +490,7 @@ mod tests {
         fn should_return_error_for_zero_capacity() {
             // GIVEN: a builder with zero capacity
             let mut builder = builder();
-            let result = builder.max_capacity(0usize).build();
+            let result = builder.max_capacity(0usize).reader();
 
             // WHEN: building is attempted
             // THEN: a BackendError is returned
@@ -526,7 +517,7 @@ mod tests {
         #[tokio::test]
         async fn should_get_none_from_empty_cache() {
             // GIVEN: an empty cache
-            let (reader, _writer) = handles(50);
+            let reader = reader(50);
             // WHEN: retrieving a missing key
             let result = reader.get(&"key".to_owned()).await.unwrap();
             // THEN: None is returned
@@ -537,7 +528,11 @@ mod tests {
         #[tokio::test]
         async fn should_put_and_get_value() {
             // GIVEN: a cache and a value
-            let (reader, writer) = handles(50);
+            let mut builder = builder();
+            builder.max_capacity(50);
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
+
             // WHEN: putting and then getting the value
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             let result = reader.get(&"key".to_owned()).await.unwrap();
@@ -549,7 +544,11 @@ mod tests {
         #[tokio::test]
         async fn should_delete_value() {
             // GIVEN: a cache with a value
-            let (reader, writer) = handles(50);
+            let mut builder = builder();
+            builder.max_capacity(50);
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
+
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
             // WHEN: deleting the value
@@ -567,7 +566,11 @@ mod tests {
         #[tokio::test]
         async fn should_check_has() {
             // GIVEN: a cache
-            let (reader, writer) = handles(50);
+            let mut builder = builder();
+            builder.max_capacity(50);
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
+
             assert!(!reader.has(&"key".to_owned()).await.unwrap());
 
             // WHEN: putting a value
@@ -583,7 +586,11 @@ mod tests {
         #[tokio::test]
         async fn should_clear_all_entries() {
             // GIVEN: a cache with multiple values
-            let (reader, writer) = handles(50);
+            let mut builder = builder();
+            builder.max_capacity(50);
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
+
             writer.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
             writer.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
 
@@ -599,7 +606,11 @@ mod tests {
         #[tokio::test]
         async fn should_return_all_keys() {
             // GIVEN: a cache with values
-            let (reader, writer) = handles(50);
+            let mut builder = builder();
+            builder.max_capacity(50);
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
+
             writer.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
             writer.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
 
@@ -624,7 +635,7 @@ mod tests {
         #[traced_test]
         async fn should_emit_events_on_get() {
             // GIVEN: a cache
-            let (reader, _writer) = handles(50);
+            let reader = reader(50);
             // WHEN: get is called
             let _: Option<String> =
                 reader.get(&"key".to_owned()).await.unwrap();
@@ -639,7 +650,7 @@ mod tests {
         #[traced_test]
         async fn should_emit_events_on_put() {
             // GIVEN: a cache
-            let (_reader, writer) = handles(50);
+            let writer = writer(50);
             // WHEN: put is called
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
@@ -652,7 +663,11 @@ mod tests {
         #[traced_test]
         async fn should_emit_events_on_delete() {
             // GIVEN: a cache with a value
-            let (_reader, writer) = handles(50);
+            let mut builder = builder();
+            builder.max_capacity(50);
+            let _reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
+
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
             // WHEN: delete is called
             let _: bool = writer.delete(&"key".to_owned()).await.unwrap();
@@ -667,7 +682,11 @@ mod tests {
         #[traced_test]
         async fn should_emit_events_on_invalidate() {
             // GIVEN: a cache with a value
-            let (reader, writer) = handles(50);
+            let mut builder = builder();
+            builder.max_capacity(50);
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
+
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
             // WHEN: invalidate is called
@@ -688,10 +707,10 @@ mod tests {
         #[tokio::test]
         async fn should_respect_ttl() {
             // GIVEN: a cache with a short TTL
-            let (reader, writer) = Builder::<String, String>::default()
-                .time_to_live(Duration::from_millis(50))
-                .build()
-                .unwrap();
+            let mut builder = Builder::<String, String>::default();
+            builder.time_to_live(Duration::from_millis(50));
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
 
             // WHEN: a value is put
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
@@ -713,10 +732,10 @@ mod tests {
         #[tokio::test]
         async fn should_respect_tti() {
             // GIVEN: a cache with short TTI
-            let (reader, writer) = Builder::<String, String>::default()
-                .time_to_idle(Duration::from_millis(100))
-                .build()
-                .unwrap();
+            let mut builder = Builder::<String, String>::default();
+            builder.time_to_idle(Duration::from_millis(100));
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
 
             writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
 
@@ -748,7 +767,10 @@ mod tests {
         #[tokio::test]
         async fn should_respect_max_capacity() {
             // GIVEN: a cache with small capacity
-            let (reader, writer) = handles(10);
+            let mut builder = builder();
+            builder.max_capacity(10);
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
 
             // WHEN: filling past capacity
             for i in 0i32..100i32 {
@@ -785,7 +807,10 @@ mod tests {
         #[tokio::test]
         async fn tinylfu_should_protect_hot_key() {
             // GIVEN: a cache with small capacity
-            let (reader, writer) = handles(10);
+            let mut builder = builder();
+            builder.max_capacity(10);
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
 
             // WHEN: a key is accessed frequently
             for _ in 0i32..20i32 {
