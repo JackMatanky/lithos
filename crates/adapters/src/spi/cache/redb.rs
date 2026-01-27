@@ -135,10 +135,7 @@ where
     #[inline]
     pub fn path<P: AsRef<std::path::Path>>(&mut self, path: P) -> &mut Self {
         let p = path.as_ref();
-        if let Err(e) = Self::validate_nonempty_path(p) {
-            tracing::warn!(?e, "Invalid path provided to Redb cache builder");
-        }
-        if let Err(e) = Self::validate_file_path(p) {
+        if let Err(e) = Self::validate_path(Some(p)) {
             tracing::warn!(?e, "Invalid path provided to Redb cache builder");
         }
         self.path = Some(p.to_path_buf());
@@ -177,6 +174,20 @@ where
             });
         }
         Ok(())
+    }
+
+    /// Validate the database path.
+    #[inline]
+    fn validate_path(
+        path: Option<&std::path::Path>,
+    ) -> Result<&std::path::Path, CacheError> {
+        let path = path.ok_or_else(|| CacheError::BackendError {
+            backend: "redb",
+            message: "Database path is required".into(),
+        })?;
+        Self::validate_nonempty_path(path)?;
+        Self::validate_file_path(path)?;
+        Ok(path)
     }
 }
 
@@ -247,24 +258,10 @@ where
     /// Validate the builder state and return the validated path and table name.
     #[inline]
     fn validate(&self) -> Result<(&std::path::Path, &String), CacheError> {
-        let path =
-            self.path.as_deref().ok_or_else(|| CacheError::BackendError {
-                backend: "redb",
-                message: "Database path is required".into(),
-            })?;
-        Self::validate_path(path)?;
-
+        let path = Self::validate_path(self.path.as_deref())?;
         let table_name = self.validate_table_name()?;
 
         Ok((path, table_name))
-    }
-
-    /// Validate the database path.
-    #[inline]
-    fn validate_path(path: &std::path::Path) -> Result<(), CacheError> {
-        Self::validate_nonempty_path(path)?;
-        Self::validate_file_path(path)?;
-        Ok(())
     }
 
     /// Validate the table name.
