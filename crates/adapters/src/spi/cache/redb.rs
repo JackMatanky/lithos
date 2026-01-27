@@ -145,6 +145,12 @@ where
     /// Set the table name.
     #[inline]
     pub fn table_name(&mut self, name: &str) -> &mut Self {
+        if let Err(e) = Self::validate_table_name(Some(name)) {
+            tracing::warn!(
+                ?e,
+                "Invalid table name provided to Redb cache builder"
+            );
+        }
         self.table_name = Some(name.to_owned());
         self
     }
@@ -188,6 +194,22 @@ where
         Self::validate_nonempty_path(path)?;
         Self::validate_file_path(path)?;
         Ok(path)
+    }
+
+    /// Validate the table name.
+    #[inline]
+    fn validate_table_name(name: Option<&str>) -> Result<&str, CacheError> {
+        let name = name.ok_or_else(|| CacheError::BackendError {
+            backend: "redb",
+            message: "Table name is required".into(),
+        })?;
+        if name.is_empty() {
+            return Err(CacheError::BackendError {
+                backend: "redb",
+                message: "Table name cannot be empty".into(),
+            });
+        }
+        Ok(name)
     }
 }
 
@@ -257,20 +279,11 @@ where
 
     /// Validate the builder state and return the validated path and table name.
     #[inline]
-    fn validate(&self) -> Result<(&std::path::Path, &String), CacheError> {
+    fn validate(&self) -> Result<(&std::path::Path, &str), CacheError> {
         let path = Self::validate_path(self.path.as_deref())?;
-        let table_name = self.validate_table_name()?;
+        let table_name = Self::validate_table_name(self.table_name.as_deref())?;
 
         Ok((path, table_name))
-    }
-
-    /// Validate the table name.
-    #[inline]
-    fn validate_table_name(&self) -> Result<&String, CacheError> {
-        self.table_name.as_ref().ok_or_else(|| CacheError::BackendError {
-            backend: "redb",
-            message: "Table name is required".into(),
-        })
     }
 }
 
