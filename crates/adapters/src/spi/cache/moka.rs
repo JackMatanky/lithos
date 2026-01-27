@@ -235,6 +235,20 @@ where
         );
         Ok(exists)
     }
+
+    #[tracing::instrument(skip(self), level = "debug")]
+    #[inline]
+    async fn keys(&self) -> Result<Vec<K>, CacheError> {
+        let keys: Vec<K> =
+            self.inner.cache.iter().map(|(key, _)| (*key).clone()).collect();
+        tracing::event!(
+            tracing::Level::DEBUG,
+            cache_layer = "memory",
+            operation = "keys",
+            count = keys.len()
+        );
+        Ok(keys)
+    }
 }
 
 /// Write-only handle for Moka cache.
@@ -486,6 +500,21 @@ mod tests {
 
             assert!(!reader.has(&"k1".to_owned()).await.unwrap());
             assert!(!reader.has(&"k2".to_owned()).await.unwrap());
+        }
+
+        #[tokio::test]
+        async fn should_return_all_keys() {
+            let (reader, writer) =
+                Builder::<String, String>::default().build().unwrap();
+            writer.put("k1".to_owned(), "v1".to_owned()).await.unwrap();
+            writer.put("k2".to_owned(), "v2".to_owned()).await.unwrap();
+
+            let mut keys = reader.keys().await.unwrap();
+            keys.sort();
+
+            assert_eq!(keys.len(), 2);
+            assert!(keys.contains(&"k1".to_owned()));
+            assert!(keys.contains(&"k2".to_owned()));
         }
     }
 

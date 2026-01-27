@@ -14,16 +14,16 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 **When** I implement `CoordinatorInner<K, V>` in `spi/cache/coordinator.rs`
 **Then** it leverages the modular `Reader` and `Writer` handles from Story 5.4
 **And** it encapsulates:
-- `memory_reader: Arc<dyn CacheReaderPort<K, V>>`
-- `memory_writer: Arc<dyn CacheWriterPort<K, V>>`
-- `disk_reader: Arc<dyn CacheReaderPort<K, V>>`
-- `disk_writer: Arc<dyn CacheWriterPort<K, V>>`
+- `memory_reader: Arc<dyn CacheReader<K, V>>`
+- `memory_writer: Arc<dyn CacheWriter<K, V>>`
+- `disk_reader: Arc<dyn CacheReader<K, V>>`
+- `disk_writer: Arc<dyn CacheWriter<K, V>>`
 
 **Given** the need for CQRS consistency
-**When** I implement `CacheCoordinatorReader` and `CacheCoordinatorWriter`
+**When** I implement `ReaderCoordinator` and `WriterCoordinator`
 **Then** they share the `CoordinatorInner` state via `Arc`
-**And** the `Reader` handle only implements `CacheReaderPort`
-**And** the `Writer` handle only implements `CacheWriterPort`
+**And** the `Reader` handle only implements `CacheReader`
+**And** the `Writer` handle only implements `CacheWriter`
 
 **Given** read-through caching must be high-performance
 **When** a "Memory Miss / Disk Hit" occurs in `Reader::get()`
@@ -78,7 +78,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [ ] Subtask 1.1: Create empty file at `crates/adapters/src/spi/cache/coordinator.rs`
   - [ ] Subtask 1.2: Add `pub(crate) mod coordinator;` to `crates/adapters/src/spi/cache/mod.rs`
   - [ ] Subtask 1.3: [TDD] Write `coordinator_init::fails_to_link` (verify failing to import components)
-  - [ ] Subtask 1.4: Re-export as `CacheCoordinatorReader` and `CacheCoordinatorWriter` in `crates/adapters/src/spi/cache/mod.rs`
+  - [ ] Subtask 1.4: Re-export as `CacheReaderCoordinator` and `CacheWriterCoordinator` in `crates/adapters/src/spi/cache/mod.rs`
   - [ ] Subtask 1.5: Run `mise run test:unit:adapters coordinator` and verify failure (RED)
   - [ ] Subtask 1.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality

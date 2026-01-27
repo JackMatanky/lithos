@@ -17,7 +17,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use redb::{ReadableDatabase as _, TableDefinition};
+use redb::{ReadableDatabase as _, ReadableTable as _, TableDefinition};
 use rkyv::{Archive, Deserialize, Serialize, bytecheck::CheckBytes};
 use tracing::{error, info_span};
 
@@ -325,7 +325,8 @@ where
             })
             .await?
             .map(|encoded| {
-                let entry: Entry<V> = self.inner.codec.decode(&encoded)?;
+                let entry: Entry<V> =
+                    self.inner.codec.decode_value(&encoded)?;
                 Ok((entry.value, entry.metadata))
             })
             .transpose()
@@ -350,18 +351,12 @@ where
         R: Send + 'static,
     {
         let key_bytes = self.inner.codec.encode_key(key)?;
-
-        let db = Arc::clone(&self.inner.db);
-        let table_name = Arc::clone(&self.inner.table_name);
         let codec = self.inner.codec.clone();
-        let span = info_span!("redb_read", table = %table_name);
 
         self.inner
-            .executor
-            .spawn(span, move || {
-                let txn = db.begin_read()?;
+            .read(move |txn, table_name| {
                 let table_def =
-                    TableDefinition::<&[u8], &[u8]>::new(&table_name);
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
                 let table = txn.open_table(table_def)?;
 
                 if let Some(guard) = table.get(key_bytes.as_slice())? {
@@ -406,6 +401,33 @@ where
                     TableDefinition::<&[u8], &[u8]>::new(table_name);
                 let table = txn.open_table(table_def)?;
                 Ok(table.get(key_bytes.as_slice())?.is_some())
+            })
+            .await
+    }
+
+    #[inline]
+    async fn keys(&self) -> Result<Vec<K>, CacheError> {
+        let codec = self.inner.codec.clone();
+
+        self.inner
+            .read(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                let table = txn.open_table(table_def)?;
+
+                let mut keys = Vec::new();
+                for result in table.iter()? {
+                    let (key_handle, _): (redb::AccessGuard<'_, &[u8]>, _) =
+                        result?;
+                    let key =
+                        codec.decode_key(key_handle.value()).map_err(|e| {
+                            redb::Error::Io(std::io::Error::other(format!(
+                                "Key decoding failed: {e}"
+                            )))
+                        })?;
+                    keys.push(key);
+                }
+                Ok(keys)
             })
             .await
     }
@@ -753,6 +775,34 @@ mod tests {
             let deleted_result =
                 reader.get(&"key".to_owned()).await.expect("get failed");
             assert_eq!(deleted_result, None);
+        }
+
+        #[tokio::test]
+        async fn should_return_all_keys() {
+            let dir = tempfile::tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("keys.redb");
+
+            let (reader, writer) = Builder::<String, TestValue>::new()
+                .path(db_path)
+                .table_name("test")
+                .build()
+                .expect("failed to build handles");
+
+            writer
+                .put("k1".to_owned(), TestValue("v1".to_owned()))
+                .await
+                .expect("put failed");
+            writer
+                .put("k2".to_owned(), TestValue("v2".to_owned()))
+                .await
+                .expect("put failed");
+
+            let mut keys = reader.keys().await.expect("keys failed");
+            keys.sort();
+
+            assert_eq!(keys.len(), 2);
+            assert!(keys.contains(&"k1".to_owned()));
+            assert!(keys.contains(&"k2".to_owned()));
         }
     }
 
