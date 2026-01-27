@@ -1,15 +1,50 @@
 # Epic 16: User Documentation & Onboarding
 
-Users have comprehensive documentation, starter templates, sample schemas, and migration guides that enable successful adoption.
-**FRs covered:** NFR13 (clear help), NFR20 (migration paths), NFR28 (installation success)
-**Implementation Notes:**
+## Overview
 
-- Consolidates documentation from Epics 4-13
-- Starter kit from converted docs/refs/obsidian/ samples (sanitized)
-- Installation guide, quickstart, migration guides
-- API documentation for power users
-- Progressive complexity documentation (basic → advanced)
-- Note: Documentation created at story-level in epics; this consolidates and polishes
+Users have comprehensive documentation, starter templates, sample schemas, and migration guides that enable successful adoption.
+
+**FRs covered:** NFR13 (clear help), NFR15 (progressive complexity), NFR20 (migration paths), NFR28 (installation success)
+
+## Implementation Notes
+
+- **Documentation Strategy**: Consolidates epic-level documentation from Epics 4-15 into cohesive user guides
+- **Integration Points**:
+  - All Epics 4-15: Aggregates documentation created at story level
+  - Epic 6: Documents configuration hierarchy and settings
+  - Epic 7: Documents schema system and validation
+  - Epic 10: Documents vault indexing and file management
+  - Epic 11: Documents query syntax and search operations
+  - Epic 12/13: Documents template creation and advanced features
+  - Epic 14: Documents CLI commands and error recovery
+- **Starter Kit**: Based on converted docs/refs/obsidian/ samples (sanitized, tested)
+- **Documentation Formats**:
+  - Markdown for human-readable docs
+  - mdBook for website generation
+  - man pages for CLI reference (generated from Clap)
+  - API docs via rustdoc for developers
+- **Target Audiences**:
+  - **Beginners**: Installation, quickstart, basic templates
+  - **Intermediate**: Schema creation, advanced templates, vault organization
+  - **Advanced**: Plugin development, API reference, architecture
+  - **Migrators**: Obsidian/Templater conversion guides
+- **Documentation Locations**:
+  - `docs/` - user-facing documentation (mdBook source)
+  - `docs/api/` - API reference (rustdoc output)
+  - `docs/examples/` - working code examples
+  - `docs/starter-kit/` - templates and schemas for new users
+  - `docs/migration/` - migration guides from other tools
+- **Validation Strategy**:
+  - All code examples are executable tests (doc tests)
+  - All CLI commands tested in integration tests
+  - All configuration examples validated against schema
+  - Documentation built and deployed in CI/CD
+- **Progressive Complexity**: Clear learning paths with prerequisites stated
+- **Cross-References**: Extensive linking between related topics
+- **Search**: Full-text search via mdBook built-in search
+- **Performance**: Documentation site loads in <1s, search <100ms
+- **Accessibility**: WCAG 2.1 AA compliance for documentation website
+- **Localization**: English primary, structure supports future i18n
 
 ### Story 16.1: [Docs] Installation and Setup Guide
 
