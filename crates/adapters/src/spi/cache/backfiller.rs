@@ -218,80 +218,110 @@ where
 mod tests {
     use super::*;
 
-    #[test]
-    fn verifies_compilation() {
-        // Empty test to verify module linkage and compilation
-    }
-
-    #[tokio::test]
-    async fn triggers_request_to_channel() {
-        let (tx, mut rx) = mpsc::channel(1);
-        let handle = Handle {
-            tx,
-        };
-
-        handle.trigger("key".to_owned(), "value".to_owned());
-
-        let req = rx.recv().await.expect("Should receive request");
-        assert_eq!(req.key, "key");
-        assert_eq!(req.value, "value");
-    }
-
-    #[tokio::test]
-    async fn worker_processes_requests() {
+    mod execution {
+        use super::*;
         use crate::spi::cache::MockCacheWriter;
 
-        let (tx, rx) = mpsc::channel(1);
-        let worker = Worker {
-            rx,
-        };
-        let mut mock_writer = MockCacheWriter::<String, String>::new();
+        #[tokio::test]
+        async fn worker_processes_requests() {
+            // GIVEN: a worker and a mock writer
+            let (tx, rx) = mpsc::channel(1);
+            let worker = Worker {
+                rx,
+            };
+            let mut mock_writer = MockCacheWriter::<String, String>::new();
 
-        mock_writer
-            .expect_put()
-            .with(
-                mockall::predicate::eq("key".to_owned()),
-                mockall::predicate::eq("value".to_owned()),
-            )
-            .returning(|_, _| Box::pin(async { Ok(()) }))
-            .times(1);
+            mock_writer
+                .expect_put()
+                .with(
+                    mockall::predicate::eq("key".to_owned()),
+                    mockall::predicate::eq("value".to_owned()),
+                )
+                .returning(|_, _| Box::pin(async { Ok(()) }))
+                .times(1);
 
-        let writer = Arc::new(mock_writer);
-        worker.start(writer);
+            let writer = Arc::new(mock_writer);
 
-        tx.send(Request {
-            key: "key".to_owned(),
-            value: "value".to_owned(),
-        })
-        .await
-        .unwrap();
+            // WHEN: the worker is started and a request is sent
+            worker.start(writer);
 
-        // Wait for worker to process
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            tx.send(Request {
+                key: "key".to_owned(),
+                value: "value".to_owned(),
+            })
+            .await
+            .unwrap();
+
+            // THEN: the writer should receive the put command
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
     }
 
-    #[tokio::test]
-    async fn drops_requests_on_full_channel() {
-        let (tx, _rx) = mpsc::channel(1);
-        let handle = Handle {
-            tx,
-        };
+    mod initialization {
+        use super::*;
 
-        // Fill channel
-        handle.trigger("key1".to_owned(), "value1".to_owned());
+        #[test]
+        fn factory_creates_handle_worker_pair() {
+            // GIVEN: a desired channel capacity
+            let capacity = 10;
 
-        // This should not block and should drop key2
-        handle.trigger("key2".to_owned(), "value2".to_owned());
+            // WHEN: the factory is called
+            let (_handle, _worker) = new::<String, String>(capacity);
+
+            // THEN: it should return a valid handle/worker pair
+        }
+
+        #[test]
+        fn verifies_compilation() {
+            // GIVEN: the module is correctly linked
+            // WHEN: the test runs
+            // THEN: it should compile and pass
+        }
     }
 
-    #[test]
-    fn factory_creates_handle_worker_pair() {
-        let (_handle, _worker) = new::<String, String>(10);
-    }
+    mod submission {
+        use super::*;
 
-    #[test]
-    fn handle_is_cloneable() {
-        let (handle, _worker) = new::<String, String>(10);
-        let _clone = handle.clone();
+        #[tokio::test]
+        async fn drops_requests_on_full_channel() {
+            // GIVEN: a handle with a full channel
+            let (tx, _rx) = mpsc::channel(1);
+            let handle = Handle {
+                tx,
+            };
+            handle.trigger("key1".to_owned(), "value1".to_owned());
+
+            // WHEN: another backfill is triggered
+            // THEN: it should not block and should drop the request
+            handle.trigger("key2".to_owned(), "value2".to_owned());
+        }
+
+        #[test]
+        fn handle_is_cloneable() {
+            // GIVEN: a backfill handle
+            let (handle, _worker) = new::<String, String>(10);
+
+            // WHEN: the handle is cloned
+            let _clone = handle.clone();
+
+            // THEN: it should succeed
+        }
+
+        #[tokio::test]
+        async fn triggers_request_to_channel() {
+            // GIVEN: a handle and its receiving end
+            let (tx, mut rx) = mpsc::channel(1);
+            let handle = Handle {
+                tx,
+            };
+
+            // WHEN: a backfill is triggered
+            handle.trigger("key".to_owned(), "value".to_owned());
+
+            // THEN: the request should be received on the channel
+            let req = rx.recv().await.expect("Should receive request");
+            assert_eq!(req.key, "key");
+            assert_eq!(req.value, "value");
+        }
     }
 }
