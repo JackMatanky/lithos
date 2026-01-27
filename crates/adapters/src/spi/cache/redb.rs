@@ -227,13 +227,7 @@ where
             }
         })?;
 
-        Ok(Arc::new(Inner {
-            db: Arc::new(db),
-            executor: Executor,
-            table_name: Arc::from(table_name.as_str()),
-            codec: RkyvCodec,
-            _marker: std::marker::PhantomData,
-        }))
+        Ok(Arc::new(Inner::new(db, table_name, RkyvCodec)))
     }
 }
 
@@ -490,6 +484,18 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
+    /// Create a new Inner state.
+    #[inline]
+    fn new(db: redb::Database, table_name: &str, codec: C) -> Self {
+        Self {
+            db: Arc::new(db),
+            executor: Executor,
+            table_name: Arc::from(table_name),
+            codec,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
     /// Execute a read operation.
     #[inline]
     async fn read<F, R>(&self, f: F) -> Result<R, CacheError>
