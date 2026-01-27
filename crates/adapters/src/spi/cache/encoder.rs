@@ -11,6 +11,17 @@ use crate::spi::errors::CacheError;
 /// serialization strategies without leaking implementation details into
 /// the public API.
 pub trait Codec<K, V>: Send + Sync {
+    /// The archived representation of the value for zero-copy access.
+    type Archived: ?Sized;
+    /// Provide zero-copy access to the archived value.
+    ///
+    /// # Errors
+    /// Returns `CacheError::SerializationError` if access or validation fails.
+    fn access_view<'view>(
+        &self,
+        bytes: &'view [u8],
+    ) -> Result<&'view Self::Archived, CacheError>;
+
     /// Decode a value from bytes retrieved from storage.
     ///
     /// # Errors
@@ -64,20 +75,25 @@ where
             rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
         >,
 {
+    type Archived = rkyv::Archived<V>;
+
+    #[inline]
+    fn access_view<'view>(
+        &self,
+        bytes: &'view [u8],
+    ) -> Result<&'view Self::Archived, CacheError> {
+        // Validation with bytecheck
+        rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(bytes).map_err(
+            |e| CacheError::SerializationError {
+                type_name: std::any::type_name::<V>(),
+                message: format!("Failed to access archived value: {e}").into(),
+            },
+        )
+    }
+
     #[inline]
     fn decode_value(&self, bytes: &[u8]) -> Result<V, CacheError> {
-        use rkyv::util::AlignedVec;
-
-        let mut aligned = AlignedVec::<16>::new();
-        aligned.extend_from_slice(bytes);
-
-        let archived =
-            rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(&aligned)
-                .map_err(|e| CacheError::SerializationError {
-                    type_name: std::any::type_name::<V>(),
-                    message: format!("Failed to access archived value: {e}")
-                        .into(),
-                })?;
+        let archived = <Self as Codec<K, V>>::access_view(self, bytes)?;
 
         rkyv::deserialize::<V, rkyv::rancor::Error>(archived).map_err(|e| {
             CacheError::SerializationError {
@@ -105,47 +121,6 @@ where
                 type_name: std::any::type_name::<V>(),
                 message: format!("Failed to serialize value: {e}").into(),
             })
-    }
-}
-
-/// No-op codec for in-memory caches.
-///
-/// This codec is used for caches like Moka where values are stored in memory
-/// and don't require serialization.
-#[derive(Debug, Clone, Copy, Default)]
-#[non_exhaustive]
-pub struct IdentityCodec;
-
-impl<K, V> Codec<K, V> for IdentityCodec
-where
-    K: Clone,
-    V: Clone,
-{
-    #[inline]
-    fn decode_value(&self, _bytes: &[u8]) -> Result<V, CacheError> {
-        // Identity codec doesn't deserialize - this should never be called
-        Err(CacheError::BackendError {
-            backend: "identity_codec",
-            message: "IdentityCodec does not support value decoding".into(),
-        })
-    }
-
-    #[inline]
-    fn encode_key(&self, _key: &K) -> Result<Vec<u8>, CacheError> {
-        // Identity codec doesn't serialize - this should never be called
-        Err(CacheError::BackendError {
-            backend: "identity_codec",
-            message: "IdentityCodec does not support key encoding".into(),
-        })
-    }
-
-    #[inline]
-    fn encode_value(&self, _value: &V) -> Result<Vec<u8>, CacheError> {
-        // Identity codec doesn't serialize - this should never be called
-        Err(CacheError::BackendError {
-            backend: "identity_codec",
-            message: "IdentityCodec does not support value encoding".into(),
-        })
     }
 }
 
@@ -208,6 +183,24 @@ mod tests {
 
     mod rkyv_codec {
         use super::*;
+
+        #[test]
+        fn provides_zero_copy_access() {
+            let codec: RkyvCodec = RkyvCodec;
+            let original = "zero-copy data".to_owned();
+
+            let bytes = <RkyvCodec as Codec<String, String>>::encode_value(
+                &codec, &original,
+            )
+            .unwrap();
+
+            let archived = <RkyvCodec as Codec<String, String>>::access_view(
+                &codec, &bytes,
+            )
+            .expect("access_view failed");
+
+            assert_eq!(archived.as_str(), original.as_str());
+        }
 
         #[test]
         fn returns_error_on_corrupted_bytes() {
