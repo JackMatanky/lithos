@@ -337,31 +337,32 @@ Complexity management in the `Builder` is significantly simplified using a **Fac
 | **Middleware Wrapper** | Decorator pattern | Architecturally pure, reusable. | High pointer chasing, complex composition. |
 | **System Event Bus** | Global Broadcast | Maximum isolation, observability. | Higher latency, risk of circularity. |
 
-#### **5. Proposed Signatures for `backfiller.rs`**
+#### **5. Implemented Signatures (`backfiller.rs`)**
+
+The internal implementation drops the `Backfill` prefix for module-local brevity but re-exports with the prefix at the `cache` level for API clarity.
 
 ```rust
-/// Submission handle for triggering background backfills.
-pub struct BackfillHandle<K, V> {
-    tx: mpsc::Sender<BackfillRequest<K, V>>,
-}
+/// Type alias for the decoupled handle/worker pair.
+pub type HandleWorkerPair<K, V> = (Handle<K, V>, Worker<K, V>);
 
-impl<K, V> BackfillHandle<K, V> {
+/// Submission handle for triggering background backfills.
+pub struct Handle<K, V> { ... }
+
+impl<K, V> Handle<K, V> {
     /// Non-blocking submission of a backfill request.
-    pub fn trigger(&self, key: K, value: V) { ... }
+    pub fn trigger(&self, key: K, value: V);
 }
 
 /// Lifecycle-managed worker that processes requests.
-pub struct BackfillWorker<K, V> {
-    rx: mpsc::Receiver<BackfillRequest<K, V>>,
-}
+pub struct Worker<K, V> { ... }
 
-impl<K, V> BackfillWorker<K, V> {
+impl<K, V> Worker<K, V> {
     /// Starts the background task with the provided writer.
-    pub fn start(self, writer: Arc<dyn CacheWriter<K, V>>) { ... }
+    pub fn start(self, writer: Arc<dyn CacheWriter<K, V>>);
 }
 
 /// Factory to create the handle/worker pair.
-pub fn new<K, V>(capacity: usize) -> (BackfillHandle<K, V>, BackfillWorker<K, V>);
+pub fn new<K, V>(capacity: usize) -> HandleWorkerPair<K, V>;
 ```
 
 ### Completion Notes List
@@ -370,12 +371,12 @@ pub fn new<K, V>(capacity: usize) -> (BackfillHandle<K, V>, BackfillWorker<K, V>
 - Implemented Write-Through logic (Disk then Memory) to ensure persistence consistency.
 - Implemented Parallel Invalidation for both layers using `tokio::join!`.
 - Refactored `Builder` to support independent `build_reader` and `build_writer` methods, aligning with Moka and Redb adapters.
-- **Implemented Submission Handle Pattern**: Decoupled the `Reader` from the `CacheWriter` trait by introducing a `BackfillHandle` submission sink and a background `BackfillWorker`.
-- **Created Dedicated `backfiller.rs`**: Encapsulated all asynchronous backfill plumbing (channels, task management, drop-policies) in a reusable internal component.
-- **Achieved Strict CQRS**: Removed the `memory_writer` dependency from the `Reader` handle, ensuring query-side purity.
+- **Implemented Submission Handle Pattern**: Decoupled the `Reader` from the `CacheWriter` trait by introducing a `Handle` submission sink and a background `Worker` in `backfiller.rs`.
+- **Enforced CQRS Discipline**: Added comprehensive documentation to `coordinator.rs` explaining the architectural necessity of `build_reader()` vs `build_writer()` for Hexagonal/CQRS boundary enforcement.
+- **Improved Observability**: Integrated structured tracing events for backfill lifecycle (triggered, started, success, error, dropped, stopped).
+- **Quality Verified**: Resolved all complex linting issues (ordering, type complexity, naming) and achieved 100% logic coverage verified via `mise run verify` and doc tests.
 - Implemented `clone_from` for all clonable structs to satisfy Lithos quality gates (`missing_trait_methods`).
 - Sorted all implementation blocks alphabetically for maintainability.
-- Verified 100% logic coverage and passing quality gates via `mise run verify`.
 
 ### File List
 - `crates/adapters/src/spi/cache/backfiller.rs` - Decoupled backfill engine.
