@@ -12,10 +12,11 @@ Users can create and execute modular templates with schema-driven interactive pr
 - **Interactive UI**: Dialoguer for terminal prompts (text input, select, multi-select, confirm)
 - **Integration Points**:
   - Epic 7: Schema validation drives prompt generation (PropertySpec → suggester type)
-  - Epic 11: Query results populate suggesters (FileSpec → query by directory/fileClass)
+  - Epic 8: Publishes TemplateCreated events to event bus (LSP state sync)
   - Epic 10: Template output written to vault, triggers indexing
-  - Epic 14: CLI launches TemplateExecutor via dependency injection
+  - Epic 11: Query results populate suggesters (FileSpec → query by directory/fileClass)
   - Epic 13: Extended with composition, dates, multi-select (Phase 1.5)
+  - Epic 14: CLI launches TemplateExecutor via dependency injection
 - **Domain Ports**: TemplatePort (execution), UIPort (prompts) with mocks for testing
 - **Performance Targets**:
   - Template rendering: <100ms for simple templates (NFR1)
