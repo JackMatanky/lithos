@@ -1,6 +1,6 @@
 # Story 5.5: Implement Cache Coordinator for Memory/Disk Read-Through and Write-Through
 
-Status: review
+Status: in_progress
 
 ## Story
 
@@ -166,13 +166,40 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 7.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 7.7: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
-### Phase 8: Final Quality Gate
-- [x] Task 8: Comprehensive project verification
-  - [x] Subtask 8.1: Run `mise run test:coverage` and verify Coordinator logic is fully exercised
-  - [x] Subtask 8.2: Run `mise run fmt` and verify formatting compliance
-  - [x] Subtask 8.3: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [x] Subtask 8.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [x] Subtask 8.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+### Phase 8: Scaffolding decoupled backfill
+- [ ] Task 8: Initialize `backfiller.rs` and verify connectivity
+  - [ ] Subtask 8.1: Create `crates/adapters/src/spi/cache/backfiller.rs`
+  - [ ] Subtask 8.2: Register module in `crates/adapters/src/spi/cache/mod.rs`
+  - [ ] Subtask 8.3: [TDD] Write `backfiller::verifies_compilation` (empty test)
+  - [ ] Subtask 8.4: Run `mise run test:unit:adapters coordinator` (verify no regressions)
+
+### Phase 9: Implement Submission Handle Pattern (backfiller.rs)
+- [ ] Task 9: Implement `BackfillHandle` and `BackfillWorker`
+  - [ ] Subtask 9.1: [TDD] Write `backfiller::triggers_request_to_channel` (verify handle sends to mpsc)
+  - [ ] Subtask 9.2: Implement `BackfillRequest<K, V>` and `BackfillHandle<K, V>` with `trigger()`
+  - [ ] Subtask 9.3: [TDD] Write `backfiller::worker_processes_requests` (verify worker calls mock writer)
+  - [ ] Subtask 9.4: Implement `BackfillWorker<K, V>` and `start()` method
+  - [ ] Subtask 9.5: [TDD] Write `backfiller::drops_requests_on_full_channel` (verify non-blocking try_send)
+  - [ ] Subtask 9.6: Implement factory `new(capacity)` returning `(Handle, Worker)`
+  - [ ] Subtask 9.7: Implement `Clone` and `clone_from` for `BackfillHandle`
+  - [ ] Subtask 9.8: Run `mise run verify` and fix all lint issues
+
+### Phase 10: Refactor Coordinator for Strict CQRS
+- [ ] Task 10: Integrate `Backfiller` into `Coordinator` and remove `memory_writer` from `Reader`
+  - [ ] Subtask 10.1: [TDD] Update `coordinator_init` tests to verify `Reader` can be built without a `memory_writer`
+  - [ ] Subtask 10.2: Update `Reader` struct to hold `BackfillHandle` instead of `BackfillQueue`
+  - [ ] Subtask 10.3: Update `Builder` to use `backfiller::new()` and manage the `Worker` lifecycle
+  - [ ] Subtask 10.4: Update `Builder::build()` to start the `Worker` only when all ports are present
+  - [ ] Subtask 10.5: Remove any direct `memory_writer` dependency from the `Reader` impl block
+  - [ ] Subtask 10.6: Run all coordinator tests and verify performance characteristics (non-blocking)
+
+### Phase 11: Final Quality Gate
+- [ ] Task 11: Comprehensive project verification
+  - [ ] Subtask 11.1: Run `mise run test:coverage` and verify `Backfiller` and `Coordinator` are fully exercised
+  - [ ] Subtask 11.2: Run `mise run fmt` and verify formatting compliance
+  - [ ] Subtask 11.3: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [ ] Subtask 11.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [ ] Subtask 11.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ## Dev Notes
 
