@@ -157,19 +157,14 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 6.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 7: Documentation & Doc Testing
-- [ ] Task 7: Implement module documentation and executable examples
-  - [ ] Subtask 7.1: [TDD] Write failing doc test showing composition of split handles into a Coordinator
-  - [ ] Subtask 7.2: Implement doc comments in `coordinator.rs` to make the doc test pass
-  - [ ] Subtask 7.3: Add module-level docs explaining Async Backfill and CQRS benefits
-  - [ ] Subtask 7.4: Run `mise run test:unit:adapters --doc` and verify all pass (GREEN)
-  - [ ] Subtask 7.5: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 7.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 7.7: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 7: Implement module documentation and executable examples
+  - [x] Subtask 7.1: [TDD] Write failing doc test showing composition of split handles into a Coordinator
+  - [x] Subtask 7.2: Implement doc comments in `coordinator.rs` to make the doc test pass
+  - [x] Subtask 7.3: Add module-level docs explaining Async Backfill and CQRS benefits
+  - [x] Subtask 7.4: Run `mise run test:unit:adapters --doc` and verify all pass (GREEN)
+  - [x] Subtask 7.5: Run `mise run lint` and fix all warnings/errors
+  - [x] Subtask 7.6: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 7.7: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 8: Final Quality Gate
 - [ ] Task 8: Comprehensive project verification
