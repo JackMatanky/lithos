@@ -146,20 +146,15 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 5.11: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 6: Observability & NFR Verification
-- [ ] Task 6: Finalize nested tracing and performance verification
-  - [ ] Subtask 6.1: [TDD] Write `observability::emits_nested_spans_for_coordinator_flow` (failing)
-  - [ ] Subtask 6.2: Add `#[tracing::instrument]` to all handle methods and the backfill task
-  - [ ] Subtask 6.3: [TDD] Write `performance::get_latency_is_independent_of_backfill_speed` (failing)
-  - [ ] Subtask 6.4: Verify that `get()` returns sub-millisecond even if the backfill channel is throttled
-  - [ ] Subtask 6.5: Run `mise run test:unit:adapters coordinator_tracing` and verify pass (GREEN)
-  - [ ] Subtask 6.6: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 6.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 6.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 6: Finalize nested tracing and performance verification
+  - [x] Subtask 6.1: [TDD] Write `observability::emits_nested_spans_for_coordinator_flow` (failing)
+  - [x] Subtask 6.2: Add `#[tracing::instrument]` to all handle methods and the backfill task
+  - [x] Subtask 6.3: [TDD] Write `performance::get_latency_is_independent_of_backfill_speed` (failing)
+  - [x] Subtask 6.4: Verify that `get()` returns sub-millisecond even if the backfill channel is throttled
+  - [x] Subtask 6.5: Run `mise run test:unit:adapters coordinator_tracing` and verify pass (GREEN)
+  - [x] Subtask 6.6: Run `mise run lint` and fix all warnings/errors
+  - [x] Subtask 6.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 6.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 7: Documentation & Doc Testing
 - [ ] Task 7: Implement module documentation and executable examples
