@@ -15,6 +15,7 @@
     )
 )]
 
+pub(crate) mod backfiller;
 pub(crate) mod coordinator;
 pub mod encoder;
 pub mod moka;
@@ -25,6 +26,7 @@ use async_trait::async_trait;
     clippy::module_name_repetitions,
     reason = "Re-exporting with Cache prefix for clarity at crate level"
 )]
+pub use encoder::Codec as CacheCodec;
 pub use encoder::Codec as CacheCodec;
 
 #[expect(
@@ -41,6 +43,11 @@ pub use self::coordinator::{
 )]
 pub use self::redb::Entry as CacheEntry;
 pub use self::{
+    backfiller::{Handle as BackfillHandle, Worker as BackfillWorker},
+    coordinator::{
+        Builder as CacheCoordinatorBuilder, Reader as ReaderCoordinator,
+        ReaderWriterPair, Writer as WriterCoordinator,
+    },
     moka::{
         Builder as MokaBuilder, Reader as MokaReader, Writer as MokaWriter,
     },

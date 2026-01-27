@@ -54,6 +54,54 @@
 //!     .unwrap();
 //! # });
 //! ```
+//!
+//! # CQRS Usage
+//!
+//! For proper CQRS separation following hexagonal architecture, use
+//! `build_reader()` and `build_writer()` independently rather than `build()`:
+//!
+//! ```rust
+//! # use std::sync::Arc;
+//! # use lithos_adapters::spi::cache::{
+//! #     CacheCoordinatorBuilder, MokaBuilder, RedbBuilder,
+//! # };
+//! # use lithos_adapters::spi::errors::CacheError;
+//! #
+//! # fn example() -> Result<(), CacheError> {
+//! # let db_path = std::path::PathBuf::from("test.redb");
+//! // Build memory and disk layers
+//! let (mem_reader, mem_writer) =
+//!     MokaBuilder::<String, String>::new().max_capacity(100).build()?;
+//!
+//! let (disk_reader, disk_writer) = RedbBuilder::<String, String>::new()
+//!     .path(&db_path)
+//!     .table_name("cache")
+//!     .build()?;
+//!
+//! // ✅ CQRS Query Side (reads only):
+//! // Note: memory_writer is still needed for backfill functionality
+//! let query_cache = CacheCoordinatorBuilder::new()
+//!     .memory_reader(Arc::new(mem_reader))
+//!     .memory_writer(Arc::new(mem_writer.clone())) // Needed for backfill
+//!     .disk_reader(Arc::new(disk_reader))
+//!     .build_reader()?; // Returns Reader only
+//!
+//! // ✅ CQRS Command Side (writes only):
+//! let command_cache = CacheCoordinatorBuilder::new()
+//!     .memory_writer(Arc::new(mem_writer))
+//!     .disk_writer(Arc::new(disk_writer))
+//!     .build_writer()?; // Returns Writer only
+//!
+//! // Now inject into separate Query and Command adapters:
+//! // - QueryAdapter owns query_cache (read-only operations)
+//! // - CommandAdapter owns command_cache (write-only operations)
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! This pattern enforces architectural boundaries and prevents mixing
+//! read/write concerns in a single adapter, as required by the hexagonal CQRS
+//! architecture.
 
 use std::sync::Arc;
 

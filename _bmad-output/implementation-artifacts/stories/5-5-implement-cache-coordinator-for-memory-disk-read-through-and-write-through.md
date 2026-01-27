@@ -174,20 +174,20 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [ ] Subtask 8.4: Run `mise run test:unit:adapters coordinator` (verify no regressions)
 
 ### Phase 9: Implement Submission Handle Pattern (backfiller.rs)
-- [ ] Task 9: Implement `BackfillHandle` and `BackfillWorker`
+- [ ] Task 9: Implement `Handle` and `Worker`
   - [ ] Subtask 9.1: [TDD] Write `backfiller::triggers_request_to_channel` (verify handle sends to mpsc)
-  - [ ] Subtask 9.2: Implement `BackfillRequest<K, V>` and `BackfillHandle<K, V>` with `trigger()`
+  - [ ] Subtask 9.2: Implement `Request<K, V>` and `Handle<K, V>` with `trigger()`
   - [ ] Subtask 9.3: [TDD] Write `backfiller::worker_processes_requests` (verify worker calls mock writer)
-  - [ ] Subtask 9.4: Implement `BackfillWorker<K, V>` and `start()` method
+  - [ ] Subtask 9.4: Implement `Worker<K, V>` and `start()` method
   - [ ] Subtask 9.5: [TDD] Write `backfiller::drops_requests_on_full_channel` (verify non-blocking try_send)
   - [ ] Subtask 9.6: Implement factory `new(capacity)` returning `(Handle, Worker)`
-  - [ ] Subtask 9.7: Implement `Clone` and `clone_from` for `BackfillHandle`
+  - [ ] Subtask 9.7: Implement `Clone` and `clone_from` for `Handle`
   - [ ] Subtask 9.8: Run `mise run verify` and fix all lint issues
 
 ### Phase 10: Refactor Coordinator for Strict CQRS
 - [ ] Task 10: Integrate `Backfiller` into `Coordinator` and remove `memory_writer` from `Reader`
   - [ ] Subtask 10.1: [TDD] Update `coordinator_init` tests to verify `Reader` can be built without a `memory_writer`
-  - [ ] Subtask 10.2: Update `Reader` struct to hold `BackfillHandle` instead of `BackfillQueue`
+  - [ ] Subtask 10.2: Update `Reader` struct to hold `BackfillHandle` (re-exported `Handle`) instead of `BackfillQueue`
   - [ ] Subtask 10.3: Update `Builder` to use `backfiller::new()` and manage the `Worker` lifecycle
   - [ ] Subtask 10.4: Update `Builder::build()` to start the `Worker` only when all ports are present
   - [ ] Subtask 10.5: Remove any direct `memory_writer` dependency from the `Reader` impl block
