@@ -80,20 +80,15 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 ## TDD Tasks / Subtasks
 
 ### Phase 1: Test Infrastructure and Scaffolding
-- [ ] Task 1: Initialize implementation file and verify module linkage
-  - [ ] Subtask 1.1: Create empty file at `crates/adapters/src/spi/cache/coordinator.rs`
-  - [ ] Subtask 1.2: Add `pub(crate) mod coordinator;` to `crates/adapters/src/spi/cache/mod.rs`
-  - [ ] Subtask 1.3: [TDD] Write `coordinator_init::fails_to_link` (verify failing to import components)
-  - [ ] Subtask 1.4: Re-export as `ReaderCoordinator` and `WriterCoordinator` in `crates/adapters/src/spi/cache/mod.rs`
-  - [ ] Subtask 1.5: Run `mise run test:unit:adapters coordinator` and verify failure (RED)
-  - [ ] Subtask 1.6: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 1.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 1.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 1: Initialize implementation file and verify module linkage
+  - [x] Subtask 1.1: Create empty file at `crates/adapters/src/spi/cache/coordinator.rs`
+  - [x] Subtask 1.2: Add `pub(crate) mod coordinator;` to `crates/adapters/src/spi/cache/mod.rs`
+  - [x] Subtask 1.3: [TDD] Write `coordinator_init::fails_to_link` (verify failing to import components)
+  - [x] Subtask 1.4: Re-export as `ReaderCoordinator` and `WriterCoordinator` in `crates/adapters/src/spi/cache/mod.rs`
+  - [x] Subtask 1.5: Run `mise run test:unit:adapters coordinator` and verify failure (RED)
+  - [x] Subtask 1.6: Run `mise run lint` and fix all warnings/errors
+  - [x] Subtask 1.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 1.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 2: Struct Definition & Shared State (CQRS Handles)
 - [ ] Task 2: Implement `Inner`, handles, and Builder

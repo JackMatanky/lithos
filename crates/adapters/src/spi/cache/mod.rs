@@ -29,11 +29,18 @@ pub use encoder::Codec as CacheCodec;
 
 #[expect(
     clippy::module_name_repetitions,
+    reason = "Coordinator components are re-exported with descriptive names"
+)]
+pub use self::coordinator::{
+    Builder as CacheCoordinatorBuilder, CoordinatorPair,
+    Reader as ReaderCoordinator, Writer as WriterCoordinator,
+};
+#[expect(
+    clippy::module_name_repetitions,
     reason = "CacheEntry is the standard name for cache metadata wrapper"
 )]
 pub use self::redb::Entry as CacheEntry;
 pub use self::{
-    coordinator::{Reader as ReaderCoordinator, Writer as WriterCoordinator},
     moka::{
         Builder as MokaBuilder, Reader as MokaReader, Writer as MokaWriter,
     },
