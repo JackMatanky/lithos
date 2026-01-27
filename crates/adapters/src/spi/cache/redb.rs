@@ -69,7 +69,7 @@ where
     /// Returns `CacheError::SerializationError` if access fails.
     #[inline]
     pub fn as_archived(&self) -> Result<&C::Archived, CacheError> {
-        self.codec.access_view(self.guard.value())
+        self.codec.access(self.guard.value())
     }
 
     /// Create a new `EntryView`.
@@ -324,8 +324,8 @@ where
                 }
             })
             .await?
-            .map(|bytes| {
-                let entry: Entry<V> = self.inner.codec.decode_value(&bytes)?;
+            .map(|encoded| {
+                let entry: Entry<V> = self.inner.codec.decode(&encoded)?;
                 Ok((entry.value, entry.metadata))
             })
             .transpose()
@@ -365,12 +365,12 @@ where
                 let table = txn.open_table(table_def)?;
 
                 if let Some(guard) = table.get(key_bytes.as_slice())? {
-                    let archived =
-                        codec.access_view(guard.value()).map_err(|e| {
-                            redb::Error::Io(std::io::Error::other(format!(
-                                "Zero-copy access failed: {e}"
-                            )))
-                        })?;
+                    let encoded = guard.value();
+                    let archived = codec.access(encoded).map_err(|e| {
+                        redb::Error::Io(std::io::Error::other(format!(
+                            "Zero-copy access failed: {e}"
+                        )))
+                    })?;
                     Ok(Some(f(archived)))
                 } else {
                     Ok(None)
