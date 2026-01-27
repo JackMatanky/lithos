@@ -91,24 +91,19 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 1.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 2: Struct Definition & Shared State (CQRS Handles)
-- [ ] Task 2: Implement `Inner`, handles, and Builder
-  - [ ] Subtask 2.1: [TDD] Write `coordinator::shares_inner_state_between_handles` (failing test)
-  - [ ] Subtask 2.2: Define `struct Inner<K, V>` holding the four split ports from Story 5.4
-  - [ ] Subtask 2.3: [TDD] Verify `Reader` and `Writer` handles carry correct `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` bounds
-  - [ ] Subtask 2.4: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` as `Arc<Inner>` wrappers
-  - [ ] Subtask 2.5: Define `pub struct Builder<K, V>` for fluent coordinator construction
-  - [ ] Subtask 2.6: Implement `Builder::new()` and methods to set the four cache ports
-  - [ ] Subtask 2.7: Implement `Builder::build()` that returns `(ReaderCoordinator, WriterCoordinator)`
-  - [ ] Subtask 2.8: Ensure `Inner` is non-clonable and private to the module
-  - [ ] Subtask 2.9: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
-  - [ ] Subtask 2.10: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 2.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 2.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 2: Implement `Inner`, handles, and Builder
+  - [x] Subtask 2.1: [TDD] Write `coordinator::shares_inner_state_between_handles` (failing test)
+  - [x] Subtask 2.2: Define `struct Inner<K, V>` holding the four split ports from Story 5.4
+  - [x] Subtask 2.3: [TDD] Verify `Reader` and `Writer` handles carry correct `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` bounds
+  - [x] Subtask 2.4: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` as `Arc<Inner>` wrappers
+  - [x] Subtask 2.5: Define `pub struct Builder<K, V>` for fluent coordinator construction
+  - [x] Subtask 2.6: Implement `Builder::new()` and methods to set the four cache ports
+  - [x] Subtask 2.7: Implement `Builder::build()` that returns `(ReaderCoordinator, WriterCoordinator)`
+  - [x] Subtask 2.8: Ensure `Inner` is non-clonable and private to the module
+  - [x] Subtask 2.9: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
+  - [x] Subtask 2.10: Run `mise run lint` and fix all warnings/errors
+  - [x] Subtask 2.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 2.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 3: Event-Driven Backfill Infrastructure
 - [ ] Task 3: Implement internal backfill communication
