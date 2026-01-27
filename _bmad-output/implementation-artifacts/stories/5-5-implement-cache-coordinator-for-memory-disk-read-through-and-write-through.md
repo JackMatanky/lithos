@@ -1,6 +1,6 @@
 # Story 5.5: Implement Cache Coordinator for Memory/Disk Read-Through and Write-Through
 
-Status: review
+Status: done
 
 ## Story
 
@@ -201,6 +201,14 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 11.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
   - [x] Subtask 11.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
+### Phase 12: Code Review Follow-ups
+- [x] Task 12: Address code review findings
+  - [x] Subtask 12.1: Fix critical backfill lifecycle in independent readers
+  - [x] Subtask 12.2: Remove unnecessary Debug bounds on cacheable types
+  - [x] Subtask 12.3: Stabilize performance tests with virtual time
+  - [x] Subtask 12.4: Reduce logging noise for cache misses
+  - [x] Subtask 12.5: Standardize mock naming in test suite
+
 ## Dev Notes
 
 ### Implementation Flows
@@ -213,7 +221,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     *   Trigger **Asynchronous Backfill** (send `(K, V)` to internal `mpsc` channel).
     *   Emit `tracing::event!` at `Level::INFO` with "Memory Miss / Disk Hit".
     *   Return value immediately to caller.
-5.  **Disk Miss**: Emit `tracing::event!` at `Level::INFO` with "Disk Miss"; return `None`.
+5.  **Disk Miss**: Emit `tracing::event!` at `Level::DEBUG` with "Disk Miss"; return `None`.
 
 #### Key Listing Flow (ReaderCoordinator::keys)
 1.  Fetch `memory_keys` from `memory_reader`.
@@ -378,6 +386,11 @@ pub fn new<K, V>(capacity: usize) -> HandleWorkerPair<K, V>;
 - **Quality Verified**: Resolved all complex linting issues (ordering, type complexity, naming) and achieved 100% logic coverage verified via `mise run verify` and doc tests.
 - Implemented `clone_from` for all clonable structs to satisfy Lithos quality gates (`missing_trait_methods`).
 - Sorted all implementation blocks alphabetically for maintainability.
+- **Post-Review Improvements**:
+    - Fixed Critical lifecycle bug where backfill worker was dropped in independent readers.
+    - Removed unnecessary `Debug` bounds on generic parameters `K` and `V`.
+    - Stabilized performance tests using Tokio virtual time.
+    - Refined logging levels for cache misses to reduce production noise.
 
 ### File List
 - `crates/adapters/src/spi/cache/backfiller.rs` - Decoupled backfill engine.
