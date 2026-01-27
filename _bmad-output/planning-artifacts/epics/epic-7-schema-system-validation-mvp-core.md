@@ -349,11 +349,11 @@ So that schema resolution is fast and survives restarts.
 **And** it is Send + Sync for thread-safe usage
 
 **Given** RedbSchemaCache provides persistence
-**When** I implement Redb-backed cache
-**Then** it uses Epic 5 Redb with table name "schemas"
-**And** keys are schema names (String)
-**And** values are rkyv-serialized Schema aggregates (zero-copy deserialization per ADR 0002)
-**And** cache stores metadata: timestamp, source_hash (SHA256 of file content)
+**When** I implement Redb-backed cache using Epic 5 `RedbBuilder`
+**Then** it uses `RedbBuilder::new().path(db_path).table_name("schemas").build()` to create reader/writer pair
+**And** keys are schema names (String), values are Schema aggregates
+**And** values use rkyv serialization via Epic 5 `Entry<Schema>` wrapper (zero-copy deserialization per ADR 0002)
+**And** metadata stored via `RedbWriter::put_with_metadata()`: timestamp, source_hash (SHA256 of file content)
 
 **Given** cache invalidation is needed
 **When** source files change
