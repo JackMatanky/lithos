@@ -1435,40 +1435,6 @@ mod tests {
             // Smoke test: verify it doesn't panic and logs are produced
             // Manual verification of stdout confirms instrumentation is working
         }
-
-        /// NFR-Phase9: Verify nested tracing spans are emitted for
-        /// Reader/Writer transactions.
-        ///
-        /// This test verifies that the Executor emits nested `redb_read` and
-        /// `redb_write` spans correctly when using the new CQRS
-        /// handles.
-        #[tokio::test]
-        #[traced_test]
-        async fn emits_nested_spans_for_transactions() {
-            let dir = tempdir().expect("failed to create temp dir");
-            let db_path = dir.path().join("nested_spans.redb");
-
-            let (reader, writer) = Builder::<String, TestValue>::new()
-                .path(db_path)
-                .table_name("spans_test")
-                .build()
-                .expect("build failed");
-
-            // Write operation should emit redb_write span
-            writer
-                .put("key".to_owned(), TestValue("value".to_owned()))
-                .await
-                .expect("put failed");
-
-            // Read operation should emit redb_read span
-            let result =
-                reader.get(&"key".to_owned()).await.expect("get failed");
-            assert_eq!(result, Some(TestValue("value".to_owned())));
-
-            // Verify spans were emitted (tracing-test captures them)
-            // The nested spans structure is: outer span -> redb_read/redb_write
-            // -> inner operations
-        }
     }
 
     mod serialization {
@@ -1501,49 +1467,6 @@ mod tests {
             assert_eq!(archived.timestamp, 123_456_789);
             assert_eq!(archived.value.0, "test");
             assert_eq!(archived.metadata.len(), 1);
-        }
-    }
-
-    mod nfr {
-        /// NFR-Phase9: Zero-copy probe (aspirational).
-        ///
-        /// This test documents the current implementation and future zero-copy
-        /// goals. **Current**: The read path performs `to_vec()` on
-        /// `AccessGuard`, resulting in heap allocation. **Future**:
-        /// Return `EntryView` holding `AccessGuard` lifetime to enable direct
-        /// pointer access.
-        ///
-        /// Zero-copy requires:
-        /// 1. `EntryView<'guard>` struct holding database guard lifetime
-        /// 2. `rkyv::access` returning `&Archived<Entry<V>>` without clone
-        /// 3. Application code working with archived references directly
-        ///
-        /// Trade-offs:
-        /// - Zero-copy requires lifetime-bound return types (complex API)
-        /// - Current approach (clone on read) simplifies API and works for most
-        ///   use cases
-        /// - Future: Add `get_view()` method for advanced users needing
-        ///   zero-copy
-        #[test]
-        fn verifies_direct_pointer_access_is_aspirational() {
-            // This test serves as documentation only.
-            // The current implementation uses to_vec() which copies data.
-            // To achieve true zero-copy:
-            //
-            // 1. Reader::get() would return EntryView<'guard, V>
-            // 2. EntryView would hold AccessGuard<'static, &[u8]>
-            // 3. Deserialize using rkyv::access (no clone)
-            //
-            // Example future API:
-            // ```
-            // let view = reader.get_view(&key).await?;
-            // let archived: &Archived<Entry<V>> = view.as_archived();
-            // // Use archived.value directly without heap allocation
-            // ```
-            //
-            // This is aspirational and not implemented in Phase 9.
-            // Current implementation favors API simplicity over maximum
-            // performance.
         }
     }
 
