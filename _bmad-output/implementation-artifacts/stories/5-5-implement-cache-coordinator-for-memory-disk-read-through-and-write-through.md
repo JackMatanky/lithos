@@ -262,9 +262,45 @@ None - Refactored during implementation to align with project builder patterns a
 
 ### Event-Driven Backfill Research & Architectural Analysis
 
-To achieve strict CQRS and decouple the `Reader` from the `CacheWriter` trait, extensive research was conducted on event-driven backfill strategies. The goal was to find a solution that aligns with Lithos' principles of lean, performant, and idiomatic Rust.
+To achieve strict CQRS and decouple the `Reader` from the `CacheWriter` trait, extensive research was conducted on event-driven backfill strategies. The **Submission Handle** pattern was identified as the most idiomatic Rust approach, transforming a "side-effect requirement" (backfilling) into a "data-submission requirement." This effectively decouples the **intent** from the **execution**.
 
-#### **1. Alternatives Evaluated**
+#### **1. Deep Dive: The Submission Handle Architecture**
+
+In this model, the "Backfiller" is not just a function, but a decoupled system component comprised of three distinct parts:
+
+*   **A. The `BackfillHandle<K, V>` (Submission)**: A lean, cheaply cloneable struct that the `Reader` owns.
+    *   **Role**: Provides a high-level, domain-specific API (e.g., `handle.trigger(key, value)`).
+    *   **Implementation**: Wraps a `tokio::sync::mpsc::Sender<BackfillRequest<K, V>>`.
+    *   **Performance**: Uses `try_send`. If the buffer is full, it drops the request and logs a "dropped" event. This ensures the `Reader::get` path is **O(1) complexity**—it never waits for a lock or a slow disk write.
+    *   **CQRS Benefit**: The `Reader` only depends on `BackfillHandle`. It has zero visibility into the `CacheWriter` trait or the memory cache's existence.
+*   **B. The `BackfillRequest<K, V>` (The Message)**: A simple, private data structure carrying the `K` and `V`. This serves as the "Wire Format" between the Reader and the Worker.
+*   **C. The `BackfillWorker<K, V>` (Execution)**: The "Brain" of the backfill process.
+    *   **Role**: Holds the `mpsc::Receiver` and the `Arc<dyn CacheWriter<K, V>>` (the memory writer).
+    *   **Lifecycle**: Spawned as a `tokio::task` by the `Builder`.
+    *   **Logic**: Runs a simple `while let Some(req) = rx.recv().await` loop. It handles errors from the `memory_writer` without bubbling them back to the `Reader`.
+
+#### **2. Evaluation: The Case for `backfiller.rs`**
+
+Creating a dedicated `crates/adapters/src/spi/cache/backfiller.rs` is the superior architectural choice for the following reasons:
+
+1.  **Encapsulation of Plumbing**: `coordinator.rs` is currently cluttered with channel logic and background task management. Moving this to `backfiller.rs` leaves the coordinator focused strictly on the **Fallback Strategy** (Memory -> Disk).
+2.  **Component Isolation**: The `Backfiller` becomes a generic utility that can be reused for other tiered cache strategies (e.g., Tiered Disk) in the future.
+3.  **Testability**: Unit tests in `backfiller.rs` can verify channel saturation, worker restarts, or error logging without involving the `CacheCoordinator` or the `Reader` handle.
+4.  **Leaner Imports**: `coordinator.rs` no longer needs to import `tokio::sync::mpsc` or define internal worker tasks. It simply imports the concrete `BackfillHandle`.
+
+#### **3. The Refined "Submission" Workflow**
+
+Complexity management in the `Builder` is significantly simplified using a **Factory Pattern** within `backfiller.rs`:
+
+1.  **Initialization**: The `Builder` calls `backfiller::new(capacity)`.
+2.  **Output**: Returns a `(BackfillHandle, BackfillWorker)` pair.
+3.  **Handle Assignment**: The `BackfillHandle` is immediately placed into the `Reader`.
+4.  **Worker Management**:
+    *   The `BackfillWorker` is held by the `Builder` in an `Option`.
+    *   When `Builder::build()` is called (where the `memory_writer` is finally provided), the `Worker` is consumed and started: `worker.start(memory_writer)`.
+5.  **Graceful Degradation**: If `build_reader()` is called independently, the `Worker` is simply dropped. The `BackfillHandle` will find the channel closed and do nothing (no-op), which is the correct behavior for a reader without a writer.
+
+#### **4. Alternatives Evaluated**
 
 | Strategy | Mechanism | Pros | Cons |
 | :--- | :--- | :--- | :--- |
@@ -274,30 +310,16 @@ To achieve strict CQRS and decouple the `Reader` from the `CacheWriter` trait, e
 | **Middleware Wrapper** | Decorator pattern | Architecturally pure, reusable. | High pointer chasing, complex composition. |
 | **System Event Bus** | Global Broadcast | Maximum isolation, observability. | Higher latency, risk of circularity. |
 
-#### **2. Selected Solution: Submission Handle Pattern**
-
-Inspired by high-performance submission/execution splits (like the `redb` adapter's `Executor`), this pattern transforms the "side-effect" of backfilling into a "data submission" requirement.
-
-**Architectural Rationale:**
-- **CQRS Integrity**: The `Reader` becomes a "pure" component that only interacts with data sinks. It possesses no capability to invoke commands on the memory cache.
-- **Latency Guarantee**: Using `mpsc::Sender::try_send` ensures that `Reader::get` latency remains constant even if the background backfill is under heavy backpressure or the memory writer is slow.
-- **Complexity Management**: By using a **Deferred Registry** pattern in the `Builder`, we can initialize the channel pair early but only spawn the background task once the `memory_writer` is provided during the final `build()` call.
-
-#### **3. Proposed Refactor: `backfiller.rs`**
-
-The complexity of channel management and worker lifecycles warrants a dedicated component to keep `coordinator.rs` focused on Fallback Strategy logic.
-
-**Proposed Signatures:**
+#### **5. Proposed Signatures for `backfiller.rs`**
 
 ```rust
 /// Submission handle for triggering background backfills.
-/// Agnostic of the writer implementation.
 pub struct BackfillHandle<K, V> {
     tx: mpsc::Sender<BackfillRequest<K, V>>,
 }
 
 impl<K, V> BackfillHandle<K, V> {
-    /// Non-blocking submission of a backfill request using try_send.
+    /// Non-blocking submission of a backfill request.
     pub fn trigger(&self, key: K, value: V) { ... }
 }
 
@@ -307,18 +329,13 @@ pub struct BackfillWorker<K, V> {
 }
 
 impl<K, V> BackfillWorker<K, V> {
-    /// Starts the background task. Consumes the worker to ensure single-start.
+    /// Starts the background task with the provided writer.
     pub fn start(self, writer: Arc<dyn CacheWriter<K, V>>) { ... }
 }
 
 /// Factory to create the handle/worker pair.
 pub fn new<K, V>(capacity: usize) -> (BackfillHandle<K, V>, BackfillWorker<K, V>);
 ```
-
-**Refactor Benefits:**
-1.  **Cleaner Coordinator**: `Reader` struct simplifies to: `pub struct Reader { memory: Arc, disk: Arc, backfill: BackfillHandle }`.
-2.  **Resource Safety**: The `Worker` is consumed upon starting, preventing double-spawn bugs and ensuring clean task termination.
-3.  **Independence**: `build_reader()` can hand out a `BackfillHandle` even if a writer is never built; the handle simply becomes a no-op once the dropped worker's channel closes.
 
 ### Completion Notes List
 - Implemented `CacheCoordinator` with full CQRS support (split Reader/Writer handles).
