@@ -324,21 +324,14 @@ where
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// # let dir = tempfile::tempdir().unwrap();
 /// # let db_path = dir.path().join("test.redb");
-/// // Initialize with writer and perform a dummy operation to create table
-/// {
-///     let (_, writer) = RedbBuilder::<String, String>::new()
-///         .path(&db_path)
-///         .table_name("test")
-///         .build()
-///         .unwrap();
-///     writer.clear().await.unwrap();
-/// }
-///
-/// let reader = RedbBuilder::<String, String>::new()
+/// let (reader, writer) = RedbBuilder::<String, String>::new()
 ///     .path(db_path)
 ///     .table_name("test")
-///     .build_reader()
+///     .build()
 ///     .unwrap();
+///
+/// // Ensure table is created
+/// writer.clear().await.unwrap();
 ///
 /// let value = reader.get(&"key".to_string()).await.unwrap();
 /// assert!(value.is_none());
@@ -772,6 +765,7 @@ mod tests {
 
         use super::*;
 
+        /// [5.4-U-10] P2: Test builder defaults and codec selection.
         #[test]
         fn allows_usage_without_specifying_codec() {
             // GIVEN: a Redb builder
@@ -790,6 +784,7 @@ mod tests {
             let _: Reader<String, String, RkyvCodec> = reader;
         }
 
+        /// [5.4-U-04] P0: Test independent handle creation.
         #[tokio::test]
         async fn builder_creates_reader_independently() {
             // GIVEN: a Redb builder
@@ -808,6 +803,7 @@ mod tests {
             let _: Reader<String, String> = reader;
         }
 
+        /// [5.4-U-04] P0: Test independent handle creation.
         #[tokio::test]
         async fn builder_creates_writer_independently() {
             // GIVEN: a Redb builder
@@ -826,6 +822,7 @@ mod tests {
             let _: Writer<String, String> = writer;
         }
 
+        /// [5.4-U-08] P0: Test CQRS coordination.
         #[tokio::test]
         async fn reader_and_writer_work_together() {
             // GIVEN: a shared Redb database
@@ -864,6 +861,7 @@ mod tests {
             assert_eq!(deleted_result, None);
         }
 
+        /// [5.4-U-08] P1: Test key discovery.
         #[tokio::test]
         async fn should_return_all_keys() {
             // GIVEN: a database with multiple entries
@@ -902,6 +900,7 @@ mod tests {
         use super::*;
         use crate::spi::cache::encoder::Codec;
 
+        /// [5.4-U-07] P1: Test transactional batching.
         #[tokio::test]
         async fn batches_multiple_writes_in_single_transaction() {
             // GIVEN: a Redb cache
@@ -971,6 +970,7 @@ mod tests {
             assert!(reader.has(&"k2".to_owned()).await.unwrap());
         }
 
+        /// [5.4-U-06] P1: Test error conversion.
         #[tokio::test]
         async fn maps_redb_error_to_cache_error() {
             // GIVEN: an existing Redb file
@@ -994,6 +994,7 @@ mod tests {
 
         use super::*;
 
+        /// [5.4-U-04] P1: Edge Case - invalid path.
         #[test]
         fn fails_when_path_is_directory() {
             // GIVEN: a directory path
@@ -1013,6 +1014,7 @@ mod tests {
             ));
         }
 
+        /// [5.4-U-04] P1: Test database initialization.
         #[test]
         fn initializes_db_with_correct_table() {
             // GIVEN: a DB path
@@ -1036,6 +1038,7 @@ mod tests {
 
         use super::*;
 
+        /// [5.4-U-08] P1: Test cache clearing.
         #[tokio::test]
         async fn should_clear_all_entries() {
             // GIVEN: a database with entries
@@ -1068,6 +1071,7 @@ mod tests {
             assert!(!has_k2);
         }
 
+        /// [5.4-U-08] P1: Test existence reporting.
         #[tokio::test]
         async fn should_correctly_report_existence() {
             // GIVEN: a database
@@ -1094,6 +1098,7 @@ mod tests {
             assert!(!has_missing);
         }
 
+        /// [5.4-U-05] P0: Test data persistence.
         #[tokio::test]
         async fn should_persist_data_across_instances() {
             // GIVEN: a database file
@@ -1136,6 +1141,7 @@ mod tests {
 
         use super::*;
 
+        /// [5.4-U-04] P1: Test cache initialization.
         #[tokio::test]
         async fn should_initialize_redb_cache() {
             // GIVEN: a path
@@ -1152,6 +1158,7 @@ mod tests {
             result.unwrap();
         }
 
+        /// [5.4-U-06] P1: Test IO error mapping.
         #[tokio::test]
         async fn should_map_io_error_during_init() {
             // GIVEN: a read-only database file
@@ -1182,6 +1189,7 @@ mod tests {
             }));
         }
 
+        /// [5.4-U-04] P2: Test multi-table support in one file.
         #[tokio::test]
         async fn should_support_multiple_tables_in_same_db() {
             // GIVEN: a database path
@@ -1208,10 +1216,12 @@ mod tests {
     mod metadata {
         use std::collections::HashMap;
 
+        use lithos_test_utils::time_test;
         use tempfile::tempdir;
 
         use super::*;
 
+        /// [5.4-U-08] P1: Test metadata support.
         #[tokio::test]
         async fn should_support_metadata() {
             // GIVEN: a cache and metadata
@@ -1243,42 +1253,45 @@ mod tests {
             assert_eq!(m, metadata);
         }
 
-        #[tokio::test]
-        async fn should_update_timestamp_on_put() {
-            // GIVEN: a database entry
-            let dir = tempdir().expect("failed to create temp dir");
-            let db_path = dir.path().join("timestamp.redb");
-            let (reader, writer) = Builder::<String, TestValue>::new()
-                .path(db_path)
-                .table_name("table")
-                .build()
-                .expect("init failed");
+        // [5.4-U-08] P1: Test timestamp updating using virtual time.
+        time_test!(
+            async fn should_update_timestamp_on_put() {
+                // GIVEN: a database entry
+                let dir = tempdir().expect("failed to create temp dir");
+                let db_path = dir.path().join("timestamp.redb");
+                let (reader, writer) = Builder::<String, TestValue>::new()
+                    .path(db_path)
+                    .table_name("table")
+                    .build()
+                    .expect("init failed");
 
-            let key = "key".to_owned();
+                let key = "key".to_owned();
 
-            writer
-                .put(key.clone(), TestValue("v1".to_owned()))
-                .await
-                .expect("put failed");
+                writer
+                    .put(key.clone(), TestValue("v1".to_owned()))
+                    .await
+                    .expect("put failed");
 
-            // WHEN: waiting and updating the entry
-            // (Wait 1.1s to ensure SystemTime::now() changes second)
-            tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+                // WHEN: waiting and updating the entry
+                // (Wait 1.1s to ensure SystemTime::now() changes second)
+                tokio::time::advance(std::time::Duration::from_millis(1100))
+                    .await;
 
-            writer
-                .put(key.clone(), TestValue("v2".to_owned()))
-                .await
-                .expect("put failed");
+                writer
+                    .put(key.clone(), TestValue("v2".to_owned()))
+                    .await
+                    .expect("put failed");
 
-            // THEN: the value is updated
-            let res2 = reader
-                .get_with_metadata(&key)
-                .await
-                .expect("get failed")
-                .expect("should have result");
+                // THEN: the value is updated
+                let res2 = reader
+                    .get_with_metadata(&key)
+                    .await
+                    .expect("get failed")
+                    .expect("should have result");
 
-            assert_eq!(res2.0, TestValue("v2".to_owned()));
-        }
+                assert_eq!(res2.0, TestValue("v2".to_owned()));
+            }
+        );
     }
 
     mod observability {
@@ -1287,6 +1300,7 @@ mod tests {
 
         use super::*;
 
+        /// [5.4-U-11] P1: Test tracing emission.
         #[tokio::test]
         #[traced_test]
         async fn should_emit_tracing_info() {
@@ -1312,6 +1326,7 @@ mod tests {
             // THEN: tracing info is emitted (smoke test)
         }
 
+        /// [5.4-U-11] P0: Verify nested tracing spans.
         #[tokio::test]
         #[traced_test]
         async fn emits_nested_spans_for_transactions() {
@@ -1346,6 +1361,7 @@ mod tests {
 
         use super::*;
 
+        /// [5.4-U-01] P1: Test basic rkyv trait implementation.
         #[test]
         fn cached_entry_should_implement_rkyv_traits() {
             // GIVEN: a cache Entry
@@ -1380,6 +1396,7 @@ mod tests {
 
         use super::*;
 
+        /// [5.4-U-09/12] P0: Verify direct pointer access.
         #[tokio::test]
         async fn verifies_direct_pointer_access() {
             // GIVEN: a Redb cache with data
