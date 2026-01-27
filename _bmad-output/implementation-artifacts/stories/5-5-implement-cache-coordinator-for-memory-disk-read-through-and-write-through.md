@@ -106,20 +106,15 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 2.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 3: Event-Driven Backfill Infrastructure
-- [ ] Task 3: Implement internal backfill communication
-  - [ ] Subtask 3.1: [TDD] Write `backfill::triggers_asynchronous_memory_put_on_disk_hit` (failing)
-  - [ ] Subtask 3.2: Add bounded `tokio::sync::mpsc` channel (default capacity 1024) to `Inner` for backfill requests
-  - [ ] Subtask 3.3: Implement `spawn_backfill_task` called during `Builder::build()` that consumes the receiver
-  - [ ] Subtask 3.4: Implement backfill logic: task calls `memory_writer.put()` and logs results; gracefully handles channel closure
-  - [ ] Subtask 3.5: Run `mise run test:unit:adapters` and verify async trigger (GREEN)
-  - [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 3.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 3.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 3: Implement internal backfill communication
+  - [x] Subtask 3.1: [TDD] Write `backfill::triggers_asynchronous_memory_put_on_disk_hit` (failing)
+  - [x] Subtask 3.2: Add bounded `tokio::sync::mpsc` channel (default capacity 1024) to `Inner` for backfill requests
+  - [x] Subtask 3.3: Implement `spawn_backfill_task` called during `Builder::build()` that consumes the receiver
+  - [x] Subtask 3.4: Implement backfill logic: task calls `memory_writer.put()` and logs results; gracefully handles channel closure
+  - [x] Subtask 3.5: Run `mise run test:unit:adapters` and verify async trigger (GREEN)
+  - [x] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
+  - [x] Subtask 3.7: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 3.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 4: Read-Through Logic (CQRS Reader)
 - [ ] Task 4: Implement read-through `get` with decoupled async backfill

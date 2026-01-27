@@ -375,8 +375,29 @@ fn spawn_backfill_task<K, V>(
 mod tests {
     use super::*;
 
-    mod coordinator_init {
+    mod fixtures {
         use super::*;
+        use crate::spi::cache::{MockCacheReader, MockCacheWriter};
+
+        /// Helper to build handles with provided mocks.
+        pub fn build_with_mocks(
+            mem_reader: MockCacheReader<String, String>,
+            mem_writer: MockCacheWriter<String, String>,
+            disk_reader: MockCacheReader<String, String>,
+            disk_writer: MockCacheWriter<String, String>,
+        ) -> CoordinatorPair<String, String> {
+            let mut builder = Builder::new();
+            builder
+                .memory_reader(Arc::new(mem_reader))
+                .memory_writer(Arc::new(mem_writer))
+                .disk_reader(Arc::new(disk_reader))
+                .disk_writer(Arc::new(disk_writer));
+            builder.build().expect("Failed to build coordinator")
+        }
+    }
+
+    mod coordinator_init {
+        use super::{fixtures::*, *};
         use crate::spi::cache::{MockCacheReader, MockCacheWriter};
 
         #[test]
@@ -387,40 +408,41 @@ mod tests {
 
         #[tokio::test]
         async fn shares_inner_state_between_handles() {
-            let (reader, writer) = Builder::<String, String>::new()
-                .memory_reader(Arc::new(MockCacheReader::new()))
-                .memory_writer(Arc::new(MockCacheWriter::new()))
-                .disk_reader(Arc::new(MockCacheReader::new()))
-                .disk_writer(Arc::new(MockCacheWriter::new()))
-                .build()
-                .expect("Failed to build coordinator");
+            let (reader, writer) = build_with_mocks(
+                MockCacheReader::new(),
+                MockCacheWriter::new(),
+                MockCacheReader::new(),
+                MockCacheWriter::new(),
+            );
 
             assert!(Arc::ptr_eq(&reader.inner, &writer.inner));
         }
 
         #[tokio::test]
         async fn builds_reader_independently() {
-            let reader = Builder::<String, String>::new()
+            let mut builder = Builder::<String, String>::new();
+            builder
                 .memory_reader(Arc::new(MockCacheReader::new()))
                 .memory_writer(Arc::new(MockCacheWriter::new()))
                 .disk_reader(Arc::new(MockCacheReader::new()))
-                .disk_writer(Arc::new(MockCacheWriter::new()))
-                .build_reader()
-                .expect("Failed to build reader");
+                .disk_writer(Arc::new(MockCacheWriter::new()));
 
+            let reader =
+                builder.build_reader().expect("Failed to build reader");
             let _: Reader<String, String> = reader;
         }
 
         #[tokio::test]
         async fn builds_writer_independently() {
-            let writer = Builder::<String, String>::new()
+            let mut builder = Builder::<String, String>::new();
+            builder
                 .memory_reader(Arc::new(MockCacheReader::new()))
                 .memory_writer(Arc::new(MockCacheWriter::new()))
                 .disk_reader(Arc::new(MockCacheReader::new()))
-                .disk_writer(Arc::new(MockCacheWriter::new()))
-                .build_writer()
-                .expect("Failed to build writer");
+                .disk_writer(Arc::new(MockCacheWriter::new()));
 
+            let writer =
+                builder.build_writer().expect("Failed to build writer");
             let _: Writer<String, String> = writer;
         }
     }
@@ -428,7 +450,7 @@ mod tests {
     mod backfill {
         use std::time::Duration;
 
-        use super::*;
+        use super::{fixtures::*, *};
         use crate::spi::cache::{MockCacheReader, MockCacheWriter};
 
         #[tokio::test]
@@ -466,13 +488,12 @@ mod tests {
                 .returning(|_, _| Box::pin(async { Ok(()) }))
                 .times(1);
 
-            let (reader, _writer) = Builder::<String, String>::new()
-                .memory_reader(Arc::new(mem_reader))
-                .memory_writer(Arc::new(mem_writer))
-                .disk_reader(Arc::new(disk_reader))
-                .disk_writer(Arc::new(disk_writer))
-                .build()
-                .expect("Failed to build coordinator");
+            let (reader, _writer) = build_with_mocks(
+                mem_reader,
+                mem_writer,
+                disk_reader,
+                disk_writer,
+            );
 
             // Trigger get
             let result =
@@ -481,6 +502,232 @@ mod tests {
 
             // Wait for async backfill
             tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    mod get {
+        use super::{fixtures::*, *};
+        use crate::spi::cache::{MockCacheReader, MockCacheWriter};
+
+        #[tokio::test]
+        async fn returns_memory_hit_immediately() {
+            let mut mem_reader = MockCacheReader::new();
+
+            mem_reader
+                .expect_get()
+                .with(mockall::predicate::eq("key".to_owned()))
+                .returning(|_| {
+                    #[expect(
+                        clippy::excessive_nesting,
+                        reason = "Mockall async trait expectations require \
+                                  nested Box::pin(async { ... }) blocks."
+                    )]
+                    Box::pin(async { Ok(Some("mem_val".to_owned())) })
+                })
+                .times(1);
+
+            let (reader, _writer) = build_with_mocks(
+                mem_reader,
+                MockCacheWriter::new(),
+                MockCacheReader::new(),
+                MockCacheWriter::new(),
+            );
+
+            let result =
+                reader.get(&"key".to_owned()).await.expect("get failed");
+            assert_eq!(result, Some("mem_val".to_owned()));
+        }
+
+        #[tokio::test]
+        async fn returns_none_on_total_miss() {
+            let mut mem_reader = MockCacheReader::new();
+            let mut disk_reader = MockCacheReader::new();
+
+            mem_reader
+                .expect_get()
+                .with(mockall::predicate::eq("key".to_owned()))
+                .returning(|_| Box::pin(async { Ok(None) }))
+                .times(1);
+
+            disk_reader
+                .expect_get()
+                .with(mockall::predicate::eq("key".to_owned()))
+                .returning(|_| Box::pin(async { Ok(None) }))
+                .times(1);
+
+            let (reader, _writer) = build_with_mocks(
+                mem_reader,
+                MockCacheWriter::new(),
+                disk_reader,
+                MockCacheWriter::new(),
+            );
+
+            let result =
+                reader.get(&"key".to_owned()).await.expect("get failed");
+            assert!(result.is_none());
+        }
+    }
+
+    mod keys {
+        use super::{fixtures::*, *};
+        use crate::spi::cache::{MockCacheReader, MockCacheWriter};
+
+        #[tokio::test]
+        async fn returns_union_of_both_layers() {
+            let mut mem_reader = MockCacheReader::new();
+            let mut disk_reader = MockCacheReader::new();
+
+            mem_reader.expect_keys().returning(|| {
+                #[expect(
+                    clippy::excessive_nesting,
+                    reason = "Mockall async trait expectations require nested \
+                              Box::pin(async { ... }) blocks."
+                )]
+                Box::pin(async {
+                    Ok(vec!["k1".to_owned(), "shared".to_owned()])
+                })
+            });
+
+            disk_reader.expect_keys().returning(|| {
+                #[expect(
+                    clippy::excessive_nesting,
+                    reason = "Mockall async trait expectations require nested \
+                              Box::pin(async { ... }) blocks."
+                )]
+                Box::pin(async {
+                    Ok(vec!["k2".to_owned(), "shared".to_owned()])
+                })
+            });
+
+            let (reader, _writer) = build_with_mocks(
+                mem_reader,
+                MockCacheWriter::new(),
+                disk_reader,
+                MockCacheWriter::new(),
+            );
+
+            let mut keys = reader.keys().await.expect("keys failed");
+            keys.sort();
+
+            assert_eq!(keys, vec![
+                "k1".to_owned(),
+                "k2".to_owned(),
+                "shared".to_owned()
+            ]);
+        }
+    }
+
+    mod put {
+        use super::{fixtures::*, *};
+        use crate::spi::cache::{MockCacheReader, MockCacheWriter};
+
+        #[tokio::test]
+        async fn writes_to_disk_before_memory() {
+            let mut mem_writer = MockCacheWriter::new();
+            let mut disk_writer = MockCacheWriter::new();
+
+            let mut seq = mockall::Sequence::new();
+
+            disk_writer
+                .expect_put()
+                .with(
+                    mockall::predicate::eq("key".to_owned()),
+                    mockall::predicate::eq("val".to_owned()),
+                )
+                .returning(|_, _| Box::pin(async { Ok(()) }))
+                .times(1)
+                .in_sequence(&mut seq);
+
+            mem_writer
+                .expect_put()
+                .with(
+                    mockall::predicate::eq("key".to_owned()),
+                    mockall::predicate::eq("val".to_owned()),
+                )
+                .returning(|_, _| Box::pin(async { Ok(()) }))
+                .times(1)
+                .in_sequence(&mut seq);
+
+            let (_reader, writer) = build_with_mocks(
+                MockCacheReader::new(),
+                mem_writer,
+                MockCacheReader::new(),
+                disk_writer,
+            );
+
+            writer
+                .put("key".to_owned(), "val".to_owned())
+                .await
+                .expect("put failed");
+        }
+
+        #[tokio::test]
+        async fn aborts_memory_write_on_disk_failure() {
+            let mut mem_writer = MockCacheWriter::new();
+            let mut disk_writer = MockCacheWriter::new();
+
+            disk_writer
+                .expect_put()
+                .returning(|_, _| {
+                    #[expect(
+                        clippy::excessive_nesting,
+                        reason = "Mockall async trait expectations require \
+                                  nested Box::pin(async { ... }) blocks."
+                    )]
+                    Box::pin(async {
+                        Err(CacheError::BackendError {
+                            backend: "disk",
+                            message: "fail".into(),
+                        })
+                    })
+                })
+                .times(1);
+
+            mem_writer.expect_put().times(0);
+
+            let (_reader, writer) = build_with_mocks(
+                MockCacheReader::new(),
+                mem_writer,
+                MockCacheReader::new(),
+                disk_writer,
+            );
+
+            let result = writer.put("key".to_owned(), "val".to_owned()).await;
+            assert!(result.is_err());
+        }
+    }
+
+    mod delete {
+        use super::{fixtures::*, *};
+        use crate::spi::cache::{MockCacheReader, MockCacheWriter};
+
+        #[tokio::test]
+        async fn invalidates_both_layers_in_parallel() {
+            let mut mem_writer = MockCacheWriter::new();
+            let mut disk_writer = MockCacheWriter::new();
+
+            mem_writer
+                .expect_delete()
+                .with(mockall::predicate::eq("key".to_owned()))
+                .returning(|_| Box::pin(async { Ok(true) }))
+                .times(1);
+
+            disk_writer
+                .expect_delete()
+                .with(mockall::predicate::eq("key".to_owned()))
+                .returning(|_| Box::pin(async { Ok(false) }))
+                .times(1);
+
+            let (_reader, writer) = build_with_mocks(
+                MockCacheReader::new(),
+                mem_writer,
+                MockCacheReader::new(),
+                disk_writer,
+            );
+
+            let deleted =
+                writer.delete(&"key".to_owned()).await.expect("delete failed");
+            assert!(deleted);
         }
     }
 }
