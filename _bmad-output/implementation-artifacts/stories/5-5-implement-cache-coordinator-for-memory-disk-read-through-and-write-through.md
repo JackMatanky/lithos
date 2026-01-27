@@ -33,7 +33,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 **Given** read-through caching must be high-performance
 **When** a "Memory Miss / Disk Hit" occurs in `Reader::get()`
 **Then** the coordinator triggers an **asynchronous backfill** to memory
-**And** the backfill is decoupled from the return path using an internal channel
+**And** the backfill uses a bounded internal channel (dropping requests if full) to ensure read latency is NEVER affected by backfill pressure
 **And** `get()` returns the value to the caller immediately without waiting for the memory write
 
 **Given** write-through caching must ensure consistency
@@ -94,13 +94,16 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 2: Struct Definition & Shared State (CQRS Handles)
-- [ ] Task 2: Implement `Inner` and handles
+- [ ] Task 2: Implement `Inner`, handles, and Builder
   - [ ] Subtask 2.1: [TDD] Write `coordinator::shares_inner_state_between_handles` (failing test)
   - [ ] Subtask 2.2: Define `struct Inner<K, V>` holding the four split ports from Story 5.4
-  - [ ] Subtask 2.3: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` as `Arc<Inner>` wrappers
-  - [ ] Subtask 2.4: Implement `new` constructor that returns `(Reader, Writer)`
-  - [ ] Subtask 2.5: Ensure `Inner` is non-clonable and private to the module
-  - [ ] Subtask 2.6: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
+  - [ ] Subtask 2.3: [TDD] Verify `Reader` and `Writer` handles carry correct `K: Clone + Eq + Hash + Send + Sync + 'static` and `V: Clone + Send + Sync + 'static` bounds
+  - [ ] Subtask 2.4: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` as `Arc<Inner>` wrappers
+  - [ ] Subtask 2.4: Define `pub struct Builder<K, V>` for fluent coordinator construction
+  - [ ] Subtask 2.5: Implement `Builder::new()` and methods to set the four cache ports
+  - [ ] Subtask 2.6: Implement `Builder::build()` that returns `(ReaderCoordinator, WriterCoordinator)`
+  - [ ] Subtask 2.7: Ensure `Inner` is non-clonable and private to the module
+  - [ ] Subtask 2.8: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
   - [ ] Subtask 2.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -111,9 +114,9 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 ### Phase 3: Event-Driven Backfill Infrastructure
 - [ ] Task 3: Implement internal backfill communication
   - [ ] Subtask 3.1: [TDD] Write `backfill::triggers_asynchronous_memory_put_on_disk_hit` (failing)
-  - [ ] Subtask 3.2: Add `tokio::sync::mpsc` channel to `Inner` for backfill requests
-  - [ ] Subtask 3.3: Implement a private `spawn_backfill_task` helper that listens to the channel
-  - [ ] Subtask 3.4: Implement the backfill logic: task calls `memory_writer.put()` and logs results
+  - [ ] Subtask 3.2: Add bounded `tokio::sync::mpsc` channel (default capacity 1024) to `Inner` for backfill requests
+  - [ ] Subtask 3.3: Implement `spawn_backfill_task` called during `Builder::build()` that consumes the receiver
+  - [ ] Subtask 3.4: Implement backfill logic: task calls `memory_writer.put()` and logs results; gracefully handles channel closure
   - [ ] Subtask 3.5: Run `mise run test:unit:adapters` and verify async trigger (GREEN)
   - [ ] Subtask 3.6: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -133,7 +136,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [ ] Subtask 4.7: [TDD] Write `keys::returns_union_of_both_layers` (failing)
   - [ ] Subtask 4.8: Implement `keys` orchestration: fetch from both, merge into a `HashSet`, and return as `Vec<K>`
   - [ ] Subtask 4.9: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
-  - [ ] Subtask 4.8: Run `mise run lint` and fix all warnings/errors
+  - [ ] Subtask 4.10: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
     - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
@@ -219,9 +222,10 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 4.  Emit `tracing::event!` at `Level::DEBUG` with "Cache Write".
 
 ### Architecture Compliance
-- **CQRS Enforcement**: The coordinator is fully split into Reader and Writer components.
-- **Event-Driven Backfill**: Prevents memory-write latency from affecting read performance.
-- **Hexagonal Architecture**: `Coordinator` handles act as Decorators for the underlying SPI Ports.
+- **CQRS Enforcement**: The coordinator is fully split into `Reader` and `Writer` components, re-exported as `ReaderCoordinator` and `WriterCoordinator`.
+- **Handle/Inner Pattern**: Follows standard Lithos patterns for thread-safe, cheaply cloneable handles.
+- **Event-Driven Backfill**: Prevents memory-write latency from affecting read performance; uses non-blocking `try_send` to ensure backfill pressure never stalls the caller.
+- **Hexagonal Architecture**: `Coordinator` handles act as Decorators for the underlying SPI Ports (`Arc<dyn CacheReader/Writer>`).
 - **Async Resource Safety**: Uses `mpsc` channels rather than spawning raw tasks to prevent resource leakage.
 
 ### Technical Requirements
