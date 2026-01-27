@@ -10,6 +10,26 @@ use crate::spi::errors::CacheError;
 /// This abstraction allows different cache backends to use different
 /// serialization strategies without leaking implementation details into
 /// the public API.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_adapters::spi::cache::encoder::{Codec, RkyvCodec};
+///
+/// let codec = RkyvCodec::default();
+/// let key = "my_key".to_string();
+///
+/// // Encode key
+/// let encoded_key =
+///     <RkyvCodec as Codec<String, String>>::encode_key(&codec, &key).unwrap();
+/// assert!(!encoded_key.is_empty());
+///
+/// // Decode key
+/// let decoded_key: String =
+///     <RkyvCodec as Codec<String, String>>::decode_key(&codec, &encoded_key)
+///         .unwrap();
+/// assert_eq!(key, decoded_key);
+/// ```
 pub trait Codec<K, V>: Send + Sync {
     /// The archived representation of the value for zero-copy access.
     type Archived: ?Sized;
@@ -18,6 +38,23 @@ pub trait Codec<K, V>: Send + Sync {
     ///
     /// # Errors
     /// Returns `CacheError::SerializationError` if access or validation fails.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use lithos_adapters::spi::cache::encoder::{Codec, RkyvCodec};
+    ///
+    /// let codec = RkyvCodec::default();
+    /// let value = "zero-copy".to_string();
+    /// let encoded =
+    ///     <RkyvCodec as Codec<String, String>>::encode_value(&codec, &value)
+    ///         .unwrap();
+    ///
+    /// // Access archived representation
+    /// let archived =
+    ///     <RkyvCodec as Codec<String, String>>::access(&codec, &encoded).unwrap();
+    /// assert_eq!(archived.as_str(), "zero-copy");
+    /// ```
     fn access<'view>(
         &self,
         encoded: &'view [u8],
@@ -189,13 +226,15 @@ mod tests {
 
         #[test]
         fn preserves_metadata_and_value() {
+            // GIVEN: an RkyvCodec and a complex metadata structure
             let codec: RkyvCodec = RkyvCodec;
             let original = TestMetadata {
                 version: "1.0".to_owned(),
                 count: 42,
             };
-
             let key = "test_key".to_owned();
+
+            // WHEN: the key and value are encoded and then decoded
             let key_bytes =
                 <RkyvCodec as Codec<String, TestMetadata>>::encode_key(
                     &codec, &key,
@@ -220,6 +259,7 @@ mod tests {
                 )
                 .expect("decode_key failed");
 
+            // THEN: the decoded objects match the originals
             assert_eq!(decoded, original);
             assert_eq!(decoded_key, key);
             assert!(!key_bytes.is_empty());
@@ -231,6 +271,7 @@ mod tests {
 
         #[test]
         fn provides_zero_copy_access() {
+            // GIVEN: an encoded string value
             let codec: RkyvCodec = RkyvCodec;
             let original = "zero-copy data".to_owned();
 
@@ -239,23 +280,29 @@ mod tests {
             )
             .unwrap();
 
+            // WHEN: the archived representation is accessed
             let archived =
                 <RkyvCodec as Codec<String, String>>::access(&codec, &encoded)
                     .expect("access failed");
 
+            // THEN: the archived data matches the original without full
+            // deserialization
             assert_eq!(archived.as_str(), original.as_str());
         }
 
         #[test]
         fn returns_error_on_corrupted_bytes() {
+            // GIVEN: a set of corrupted bytes that are not valid rkyv data
             let codec: RkyvCodec = RkyvCodec;
             let corrupted = vec![0xFF, 0xFF, 0xFF, 0xFF];
 
+            // WHEN: attempting to decode the corrupted bytes
             let result: Result<String, CacheError> =
                 <RkyvCodec as Codec<String, String>>::decode_value(
                     &codec, &corrupted,
                 );
 
+            // THEN: a SerializationError is returned
             assert!(result.is_err());
 
             assert!(matches!(
