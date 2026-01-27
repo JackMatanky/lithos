@@ -1,5 +1,9 @@
 use std::sync::Arc;
 
+use async_trait::async_trait;
+use tokio::sync::mpsc;
+use tracing::{debug, info, instrument};
+
 use crate::spi::{
     cache::{CacheReader, CacheWriter},
     errors::CacheError,
@@ -8,54 +12,181 @@ use crate::spi::{
 /// Type alias for the coordinator handle pair.
 pub type CoordinatorPair<K, V> = (Reader<K, V>, Writer<K, V>);
 
+/// Request to backfill a value from disk to memory.
+struct BackfillRequest<K, V> {
+    key: K,
+    value: V,
+}
+
 /// Internal state shared between Reader and Writer handles.
 struct Inner<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
-    #[expect(dead_code, reason = "Will be used in Phase 4")]
-    memory_reader: Arc<dyn CacheReader<K, V>>,
-    #[expect(dead_code, reason = "Will be used in Phase 5")]
-    memory_writer: Arc<dyn CacheWriter<K, V>>,
-    #[expect(dead_code, reason = "Will be used in Phase 4")]
+    backfill_tx: mpsc::Sender<BackfillRequest<K, V>>,
     disk_reader: Arc<dyn CacheReader<K, V>>,
-    #[expect(dead_code, reason = "Will be used in Phase 5")]
     disk_writer: Arc<dyn CacheWriter<K, V>>,
+    memory_reader: Arc<dyn CacheReader<K, V>>,
+    memory_writer: Arc<dyn CacheWriter<K, V>>,
 }
 
 /// Cache reader coordinator for multi-layer caching.
+#[derive(Clone)]
 pub struct Reader<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Will be used in Phase 4")
-    )]
     inner: Arc<Inner<K, V>>,
 }
 
+#[async_trait]
+impl<K, V> CacheReader<K, V> for Reader<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+{
+    #[instrument(skip(self), fields(operation = "get"))]
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
+        // 1. Check memory cache
+        if let Some(value) = self.inner.memory_reader.get(key).await? {
+            debug!(?key, "Memory Hit");
+            return Ok(Some(value));
+        }
+
+        // 2. Memory Miss -> Check disk cache
+        if let Some(value) = self.inner.disk_reader.get(key).await? {
+            info!(?key, "Memory Miss / Disk Hit");
+
+            // Trigger Asynchronous Backfill
+            let request = BackfillRequest {
+                key: key.clone(),
+                value: value.clone(),
+            };
+
+            // Non-blocking send: drop if channel is full to ensure latency is
+            // never affected
+            match self.inner.backfill_tx.try_send(request) {
+                Ok(()) => {
+                    debug!(?key, operation = "backfill", status = "triggered");
+                }
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    info!(
+                        ?key,
+                        operation = "backfill",
+                        status = "dropped",
+                        reason = "channel full"
+                    );
+                }
+                Err(mpsc::error::TrySendError::Closed(_)) => {
+                    info!(
+                        ?key,
+                        operation = "backfill",
+                        status = "dropped",
+                        reason = "channel closed"
+                    );
+                }
+            }
+
+            return Ok(Some(value));
+        }
+
+        info!(?key, "Disk Miss");
+        Ok(None)
+    }
+
+    #[instrument(skip(self), fields(operation = "has"))]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        // Check memory then disk
+        if self.inner.memory_reader.has(key).await? {
+            return Ok(true);
+        }
+        self.inner.disk_reader.has(key).await
+    }
+
+    #[instrument(skip(self), fields(operation = "keys"))]
+    async fn keys(&self) -> Result<Vec<K>, CacheError> {
+        use std::collections::HashSet;
+
+        let mem_keys = self.inner.memory_reader.keys().await?;
+        let disk_keys = self.inner.disk_reader.keys().await?;
+
+        let mut unique_keys: HashSet<K> = mem_keys.into_iter().collect();
+        unique_keys.extend(disk_keys);
+
+        Ok(unique_keys.into_iter().collect())
+    }
+}
+
 /// Cache writer coordinator for multi-layer caching.
+#[derive(Clone)]
 pub struct Writer<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "Will be used in Phase 5")
-    )]
     inner: Arc<Inner<K, V>>,
+}
+
+#[async_trait]
+impl<K, V> CacheWriter<K, V> for Writer<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+{
+    #[instrument(skip(self), fields(operation = "clear"))]
+    async fn clear(&self) -> Result<(), CacheError> {
+        // Parallel invalidation
+        let (mem_res, disk_res) = tokio::join!(
+            self.inner.memory_writer.clear(),
+            self.inner.disk_writer.clear()
+        );
+
+        mem_res?;
+        disk_res?;
+        Ok(())
+    }
+
+    #[instrument(skip(self), fields(operation = "delete"))]
+    async fn delete(&self, key: &K) -> Result<bool, CacheError> {
+        // Parallel invalidation
+        let (mem_res, disk_res) = tokio::join!(
+            self.inner.memory_writer.delete(key),
+            self.inner.disk_writer.delete(key)
+        );
+
+        let mem_deleted = mem_res?;
+        let disk_deleted = disk_res?;
+
+        Ok(mem_deleted || disk_deleted)
+    }
+
+    #[instrument(skip(self), fields(operation = "invalidate"))]
+    async fn invalidate(&self, key: &K) -> Result<bool, CacheError> {
+        self.delete(key).await
+    }
+
+    #[instrument(skip(self, value), fields(operation = "put"))]
+    async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
+        // 1. Write to disk first to ensure persistence
+        self.inner.disk_writer.put(key.clone(), value.clone()).await?;
+
+        // 2. Only write to memory if disk write succeeds
+        self.inner.memory_writer.put(key, value).await?;
+
+        debug!("Cache Write success (Disk then Memory)");
+        Ok(())
+    }
 }
 
 /// Builder for constructing a `CacheCoordinator` pair.
 pub struct Builder<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
+    backfill_capacity: usize,
     disk_reader: Option<Arc<dyn CacheReader<K, V>>>,
     disk_writer: Option<Arc<dyn CacheWriter<K, V>>>,
     memory_reader: Option<Arc<dyn CacheReader<K, V>>>,
@@ -64,42 +195,24 @@ where
 
 impl<K, V> Builder<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
+    /// Set the backfill channel capacity.
+    #[inline]
+    pub fn backfill_capacity(&mut self, capacity: usize) -> &mut Self {
+        self.backfill_capacity = capacity;
+        self
+    }
+
     /// Build the coordinator handles.
     ///
     /// # Errors
     /// Returns `CacheError::BackendError` if any of the required cache ports
     /// are not set.
     #[inline]
-    pub fn build(self) -> Result<CoordinatorPair<K, V>, CacheError> {
-        let inner = Arc::new(Inner {
-            memory_reader: self.memory_reader.ok_or_else(|| {
-                CacheError::BackendError {
-                    backend: "coordinator",
-                    message: "memory_reader is required".into(),
-                }
-            })?,
-            memory_writer: self.memory_writer.ok_or_else(|| {
-                CacheError::BackendError {
-                    backend: "coordinator",
-                    message: "memory_writer is required".into(),
-                }
-            })?,
-            disk_reader: self.disk_reader.ok_or_else(|| {
-                CacheError::BackendError {
-                    backend: "coordinator",
-                    message: "disk_reader is required".into(),
-                }
-            })?,
-            disk_writer: self.disk_writer.ok_or_else(|| {
-                CacheError::BackendError {
-                    backend: "coordinator",
-                    message: "disk_writer is required".into(),
-                }
-            })?,
-        });
+    pub fn build(&self) -> Result<CoordinatorPair<K, V>, CacheError> {
+        let inner = self.build_inner()?;
 
         Ok((
             Reader {
@@ -111,34 +224,106 @@ where
         ))
     }
 
+    /// Internal helper to build the shared state and spawn the backfill task.
+    #[inline]
+    fn build_inner(&self) -> Result<Arc<Inner<K, V>>, CacheError> {
+        let memory_writer = self.memory_writer.clone().ok_or_else(|| {
+            CacheError::BackendError {
+                backend: "coordinator",
+                message: "memory_writer is required".into(),
+            }
+        })?;
+
+        let (backfill_tx, backfill_rx) = mpsc::channel(self.backfill_capacity);
+
+        spawn_backfill_task(Arc::clone(&memory_writer), backfill_rx);
+
+        Ok(Arc::new(Inner {
+            backfill_tx,
+            memory_reader: self.memory_reader.clone().ok_or_else(|| {
+                CacheError::BackendError {
+                    backend: "coordinator",
+                    message: "memory_reader is required".into(),
+                }
+            })?,
+            memory_writer,
+            disk_reader: self.disk_reader.clone().ok_or_else(|| {
+                CacheError::BackendError {
+                    backend: "coordinator",
+                    message: "disk_reader is required".into(),
+                }
+            })?,
+            disk_writer: self.disk_writer.clone().ok_or_else(|| {
+                CacheError::BackendError {
+                    backend: "coordinator",
+                    message: "disk_writer is required".into(),
+                }
+            })?,
+        }))
+    }
+
+    /// Build a Reader handle independently.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if any of the required cache ports
+    /// are not set.
+    #[inline]
+    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
+        let inner = self.build_inner()?;
+        Ok(Reader {
+            inner,
+        })
+    }
+
+    /// Build a Writer handle independently.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if any of the required cache ports
+    /// are not set.
+    #[inline]
+    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
+        let inner = self.build_inner()?;
+        Ok(Writer {
+            inner,
+        })
+    }
+
     /// Set the disk reader.
     #[inline]
-    #[must_use]
-    pub fn disk_reader(mut self, reader: Arc<dyn CacheReader<K, V>>) -> Self {
+    pub fn disk_reader(
+        &mut self,
+        reader: Arc<dyn CacheReader<K, V>>,
+    ) -> &mut Self {
         self.disk_reader = Some(reader);
         self
     }
 
     /// Set the disk writer.
     #[inline]
-    #[must_use]
-    pub fn disk_writer(mut self, writer: Arc<dyn CacheWriter<K, V>>) -> Self {
+    pub fn disk_writer(
+        &mut self,
+        writer: Arc<dyn CacheWriter<K, V>>,
+    ) -> &mut Self {
         self.disk_writer = Some(writer);
         self
     }
 
     /// Set the memory reader.
     #[inline]
-    #[must_use]
-    pub fn memory_reader(mut self, reader: Arc<dyn CacheReader<K, V>>) -> Self {
+    pub fn memory_reader(
+        &mut self,
+        reader: Arc<dyn CacheReader<K, V>>,
+    ) -> &mut Self {
         self.memory_reader = Some(reader);
         self
     }
 
     /// Set the memory writer.
     #[inline]
-    #[must_use]
-    pub fn memory_writer(mut self, writer: Arc<dyn CacheWriter<K, V>>) -> Self {
+    pub fn memory_writer(
+        &mut self,
+        writer: Arc<dyn CacheWriter<K, V>>,
+    ) -> &mut Self {
         self.memory_writer = Some(writer);
         self
     }
@@ -148,6 +333,7 @@ where
     #[must_use]
     pub fn new() -> Self {
         Self {
+            backfill_capacity: 1024,
             disk_reader: None,
             disk_writer: None,
             memory_reader: None,
@@ -158,13 +344,31 @@ where
 
 impl<K, V> Default for Builder<K, V>
 where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
     #[inline]
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Spawn a background task to process backfill requests.
+fn spawn_backfill_task<K, V>(
+    memory_writer: Arc<dyn CacheWriter<K, V>>,
+    mut backfill_rx: mpsc::Receiver<BackfillRequest<K, V>>,
+) where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+{
+    tokio::spawn(async move {
+        while let Some(request) = backfill_rx.recv().await {
+            let result = memory_writer.put(request.key, request.value).await;
+            if let Err(e) = result {
+                info!(error = ?e, "Async backfill failed");
+            }
+        }
+    });
 }
 
 #[cfg(test)]
@@ -181,8 +385,8 @@ mod tests {
             let _writer: crate::spi::cache::WriterCoordinator<String, String>;
         }
 
-        #[test]
-        fn shares_inner_state_between_handles() {
+        #[tokio::test]
+        async fn shares_inner_state_between_handles() {
             let (reader, writer) = Builder::<String, String>::new()
                 .memory_reader(Arc::new(MockCacheReader::new()))
                 .memory_writer(Arc::new(MockCacheWriter::new()))
@@ -192,6 +396,91 @@ mod tests {
                 .expect("Failed to build coordinator");
 
             assert!(Arc::ptr_eq(&reader.inner, &writer.inner));
+        }
+
+        #[tokio::test]
+        async fn builds_reader_independently() {
+            let reader = Builder::<String, String>::new()
+                .memory_reader(Arc::new(MockCacheReader::new()))
+                .memory_writer(Arc::new(MockCacheWriter::new()))
+                .disk_reader(Arc::new(MockCacheReader::new()))
+                .disk_writer(Arc::new(MockCacheWriter::new()))
+                .build_reader()
+                .expect("Failed to build reader");
+
+            let _: Reader<String, String> = reader;
+        }
+
+        #[tokio::test]
+        async fn builds_writer_independently() {
+            let writer = Builder::<String, String>::new()
+                .memory_reader(Arc::new(MockCacheReader::new()))
+                .memory_writer(Arc::new(MockCacheWriter::new()))
+                .disk_reader(Arc::new(MockCacheReader::new()))
+                .disk_writer(Arc::new(MockCacheWriter::new()))
+                .build_writer()
+                .expect("Failed to build writer");
+
+            let _: Writer<String, String> = writer;
+        }
+    }
+
+    mod backfill {
+        use std::time::Duration;
+
+        use super::*;
+        use crate::spi::cache::{MockCacheReader, MockCacheWriter};
+
+        #[tokio::test]
+        async fn triggers_asynchronous_memory_put_on_disk_hit() {
+            let mut mem_reader = MockCacheReader::new();
+            let mut mem_writer = MockCacheWriter::new();
+            let mut disk_reader = MockCacheReader::new();
+            let disk_writer = MockCacheWriter::new();
+
+            // Setup: Memory miss, Disk hit
+            mem_reader
+                .expect_get()
+                .with(mockall::predicate::eq("key".to_owned()))
+                .returning(|_| Box::pin(async { Ok(None) }));
+
+            disk_reader
+                .expect_get()
+                .with(mockall::predicate::eq("key".to_owned()))
+                .returning(|_| {
+                    #[expect(
+                        clippy::excessive_nesting,
+                        reason = "Mockall async trait expectations require \
+                                  nested Box::pin(async { ... }) blocks."
+                    )]
+                    Box::pin(async { Ok(Some("value".to_owned())) })
+                });
+
+            // Expect: Backfill to memory
+            mem_writer
+                .expect_put()
+                .with(
+                    mockall::predicate::eq("key".to_owned()),
+                    mockall::predicate::eq("value".to_owned()),
+                )
+                .returning(|_, _| Box::pin(async { Ok(()) }))
+                .times(1);
+
+            let (reader, _writer) = Builder::<String, String>::new()
+                .memory_reader(Arc::new(mem_reader))
+                .memory_writer(Arc::new(mem_writer))
+                .disk_reader(Arc::new(disk_reader))
+                .disk_writer(Arc::new(disk_writer))
+                .build()
+                .expect("Failed to build coordinator");
+
+            // Trigger get
+            let result =
+                reader.get(&"key".to_owned()).await.expect("get failed");
+            assert_eq!(result, Some("value".to_owned()));
+
+            // Wait for async backfill
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
     }
 }
