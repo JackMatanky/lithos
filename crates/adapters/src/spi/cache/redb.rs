@@ -119,11 +119,6 @@ where
     db: Arc<redb::Database>,
     executor: Executor,
     table_name: Arc<str>,
-    #[expect(
-        dead_code,
-        reason = "Codec will be used in future for custom serialization \
-                  strategies"
-    )]
     codec: C,
     _marker: std::marker::PhantomData<(K, V)>,
 }
@@ -135,10 +130,6 @@ where
 {
     /// Execute a read operation.
     #[inline]
-    #[expect(
-        dead_code,
-        reason = "Used in Phase 7 for CacheReader trait implementation"
-    )]
     async fn read<F, R>(&self, f: F) -> Result<R, CacheError>
     where
         F: FnOnce(&redb::ReadTransaction, &str) -> Result<R, redb::Error>
@@ -160,10 +151,6 @@ where
 
     /// Execute a write operation.
     #[inline]
-    #[expect(
-        dead_code,
-        reason = "Used in Phase 7 for CacheWriter trait implementation"
-    )]
     async fn write<F, R>(&self, f: F) -> Result<R, CacheError>
     where
         F: FnOnce(&redb::WriteTransaction, &str) -> Result<R, redb::Error>
@@ -196,10 +183,6 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    #[expect(
-        dead_code,
-        reason = "Used in Phase 7 for CacheReader implementation"
-    )]
     inner: Arc<Inner<K, V, C>>,
 }
 
@@ -213,10 +196,6 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    #[expect(
-        dead_code,
-        reason = "Used in Phase 7 for CacheWriter implementation"
-    )]
     inner: Arc<Inner<K, V, C>>,
 }
 
@@ -235,11 +214,62 @@ where
 /// Type alias for the Inner state with default codec.
 type RedbInner<K, V> = Arc<Inner<K, V, RkyvCodec>>;
 
+/// Type alias for a Reader/Writer pair returned by `Builder::build()`.
+type ReaderWriterPair<K, V> = (Reader<K, V>, Writer<K, V>);
+
 impl<K, V> Builder<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
+    /// Create a new builder.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            path: None,
+            table_name: None,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Set the database path.
+    #[inline]
+    pub fn path<P: AsRef<std::path::Path>>(&mut self, path: P) -> &mut Self {
+        self.path = Some(path.as_ref().to_path_buf());
+        self
+    }
+
+    /// Set the table name.
+    #[inline]
+    pub fn table_name(&mut self, name: &str) -> &mut Self {
+        self.table_name = Some(name.to_owned());
+        self
+    }
+}
+
+impl<K, V> Builder<K, V>
+where
+    K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    /// Build both Reader and Writer handles sharing the same database.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError` if the database cannot be initialized.
+    #[inline]
+    pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
+        let inner = self.build_inner()?;
+        let reader = Reader {
+            inner: Arc::clone(&inner),
+        };
+        let writer = Writer {
+            inner,
+        };
+        Ok((reader, writer))
+    }
+
     /// Internal helper to build the Inner state.
     #[inline]
     fn build_inner(&self) -> Result<RedbInner<K, V>, CacheError> {
@@ -307,31 +337,6 @@ where
             inner,
         })
     }
-
-    /// Create a new builder.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            path: None,
-            table_name: None,
-            _marker: std::marker::PhantomData,
-        }
-    }
-
-    /// Set the database path.
-    #[inline]
-    pub fn path<P: AsRef<std::path::Path>>(&mut self, path: P) -> &mut Self {
-        self.path = Some(path.as_ref().to_path_buf());
-        self
-    }
-
-    /// Set the table name.
-    #[inline]
-    pub fn table_name(&mut self, name: &str) -> &mut Self {
-        self.table_name = Some(name.to_owned());
-        self
-    }
 }
 
 impl<K, V> Default for Builder<K, V>
@@ -342,6 +347,130 @@ where
     #[inline]
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// Implement CacheReader for Reader
+#[async_trait]
+impl<K, V, C> CacheReader<K, V> for Reader<K, V, C>
+where
+    K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
+        + Send
+        + Sync
+        + 'static,
+{
+    #[inline]
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
+        let key_bytes = self.inner.codec.encode_key(key)?;
+
+        self.inner
+            .read(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                let table = txn.open_table(table_def)?;
+
+                if let Some(guard) = table.get(key_bytes.as_slice())? {
+                    Ok(Some(guard.value().to_vec()))
+                } else {
+                    Ok(None)
+                }
+            })
+            .await?
+            .map(|bytes| {
+                let entry: Entry<V> = self.inner.codec.decode_value(&bytes)?;
+                Ok(entry.value)
+            })
+            .transpose()
+    }
+
+    #[inline]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        let key_bytes = self.inner.codec.encode_key(key)?;
+
+        self.inner
+            .read(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                let table = txn.open_table(table_def)?;
+                Ok(table.get(key_bytes.as_slice())?.is_some())
+            })
+            .await
+    }
+}
+
+// Implement CacheWriter for Writer
+#[async_trait]
+impl<K, V, C> CacheWriter<K, V> for Writer<K, V, C>
+where
+    K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
+        + Send
+        + Sync
+        + 'static,
+{
+    #[inline]
+    async fn clear(&self) -> Result<(), CacheError> {
+        self.inner
+            .write(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                _ = txn.delete_table(table_def)?;
+                _ = txn.open_table(table_def)?;
+                Ok(())
+            })
+            .await
+    }
+
+    #[inline]
+    async fn delete(&self, key: &K) -> Result<bool, CacheError> {
+        let key_bytes = self.inner.codec.encode_key(key)?;
+
+        self.inner
+            .write(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                let mut table = txn.open_table(table_def)?;
+                Ok(table.remove(key_bytes.as_slice())?.is_some())
+            })
+            .await
+    }
+
+    #[inline]
+    async fn invalidate(&self, _key: &K) -> Result<bool, CacheError> {
+        // Redb doesn't support invalidation without deletion
+        // This is a no-op for persistent storage, always returns false
+        Ok(false)
+    }
+
+    #[inline]
+    async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
+        let entry = Entry {
+            value,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map_err(|e| CacheError::BackendError {
+                    backend: "system",
+                    message: format!("System time error: {e}").into(),
+                })?
+                .as_secs(),
+            metadata: HashMap::new(),
+        };
+
+        let key_bytes = self.inner.codec.encode_key(&key)?;
+        let value_bytes = self.inner.codec.encode_value(&entry)?;
+
+        self.inner
+            .write(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                let mut table = txn.open_table(table_def)?;
+                table.insert(key_bytes.as_slice(), value_bytes.as_slice())?;
+                Ok(())
+            })
+            .await
     }
 }
 
@@ -971,6 +1100,45 @@ mod tests {
             assert!(result.is_ok());
             let writer = result.unwrap();
             let _: Writer<String, String> = writer;
+        }
+
+        #[tokio::test]
+        async fn reader_and_writer_work_together() {
+            let dir = tempdir().expect("failed to create temp dir");
+            let db_path = dir.path().join("rw.redb");
+
+            // Create both handles sharing the same database
+            let mut builder = Builder::<String, TestValue>::new();
+            builder.path(&db_path).table_name("test");
+
+            let (reader, writer) =
+                builder.build().expect("failed to build handles");
+
+            // Write data
+            writer
+                .put("key".to_owned(), TestValue("value".to_owned()))
+                .await
+                .expect("put failed");
+
+            // Read it back
+            let result =
+                reader.get(&"key".to_owned()).await.expect("get failed");
+            assert_eq!(result, Some(TestValue("value".to_owned())));
+
+            // Check existence
+            let has_key =
+                reader.has(&"key".to_owned()).await.expect("has failed");
+            assert!(has_key);
+
+            // Delete
+            let deleted =
+                writer.delete(&"key".to_owned()).await.expect("delete failed");
+            assert!(deleted);
+
+            // Verify deleted
+            let deleted_result =
+                reader.get(&"key".to_owned()).await.expect("get failed");
+            assert_eq!(deleted_result, None);
         }
     }
 
