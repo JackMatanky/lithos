@@ -12,12 +12,13 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
 - **Zero-Copy Deserialization**: rkyv enables direct memory mapping without deserialization overhead via `Codec::access()`
 - **ACID Transactions**: Redb provides MVCC concurrency and transaction isolation
 - **CQRS Pattern**: Storage uses Epic 5 `CacheReader`/`CacheWriter` traits for read/write separation
-- **Unit of Work Pattern**: TransactionContext manages atomic multi-table operations with rollback
+- **Unit of Work Pattern**: Public `UnitOfWork` API built on Epic 5's internal `Inner::write()` foundation (Story 9.3)
 - **Clean Slate Protocol**: Storage corruption triggers full rebuild from vault markdown files
 - **Integration Points**:
   - Epic 5: Uses existing `RedbBuilder`, `RedbReader`, `RedbWriter` infrastructure from `crates/adapters/src/spi/cache/`
   - Epic 5: Leverages `RkyvCodec` for serialization with `Entry<V>` wrapper (value + timestamp + metadata)
   - Epic 5: Shares same Redb database file, different table names for isolation
+  - Epic 5: Builds public `UnitOfWork` API on top of internal `Inner::write()` transaction foundation (currently `pub(crate)`)
   - Epic 8: Listens to NoteIndexed events for storage updates
   - Epic 10: Receives indexed note data to persist
   - Epic 11: Provides query read path via `CacheReader` trait
@@ -146,71 +147,76 @@ So that data is stored efficiently with zero-copy deserialization and controlled
 **And** Redb transaction log detects incomplete writes
 **And** StorageError::Corruption is raised with clear diagnostic messages
 
-## Story 9.3: Leverage Epic 5 Unit of Work Pattern for Multi-Table Transactions
+## Story 9.3: Build Public Unit of Work Pattern Based on Epic 5 Inner Foundation
 
 As a developer ensuring data consistency,
-I want to leverage Epic 5's existing transaction support,
-So that multiple storage operations are committed together or rolled back as a unit.
+I want a public Unit of Work API built on Epic 5's internal transaction foundation,
+So that multi-table storage operations can be composed atomically with a clean public interface.
 
 **Acceptance Criteria:**
 
-**Given** Epic 5 `Inner::write()` already provides Unit of Work pattern (lines 681-700 in redb.rs)
-**When** I need transactional consistency for multi-table writes
-**Then** I use existing `writer.inner.write(|txn, table_name| { ... })` closure API
-**And** closure receives `&redb::WriteTransaction` for atomic multi-table operations
-**And** Epic 5's `Executor` handles automatic commit on success, rollback on error
+**Given** Epic 5 `Inner::write()` provides foundational transaction pattern (lines 681-700 in redb.rs)
+**When** I create public Unit of Work API in `crates/adapters/src/spi/cache/transaction.rs`
+**Then** `UnitOfWork` struct wraps Epic 5's internal `Inner` with public interface
+**And** `UnitOfWork` is constructed from multiple table `Writer` handles (notes, schema_index, alias_index, metadata_index)
+**And** implementation reuses Epic 5's `Inner::write()`, `Executor`, and error handling
 
 **Given** Epic 10 indexing requires atomic multi-entity updates across 4 tables
-**When** I implement batch indexing operations
-**Then** I use single `writer.inner.write()` call opening multiple tables:
+**When** I design UnitOfWork public API
+**Then** API provides builder pattern for composing operations:
+```rust
+let uow = UnitOfWork::new(db_ref);
+uow.insert_note(path, note)
+   .update_schema_index(schema, path)
+   .update_alias_index(alias, path)
+   .update_metadata_index(field, value, path)
+   .commit().await?;
 ```
-writer.inner.write(|txn, _| {
-    let notes_table = txn.open_table(notes_def)?;
-    let schema_table = txn.open_table(schema_def)?;
-    let alias_table = txn.open_table(alias_def)?;
-    let metadata_table = txn.open_table(metadata_def)?;
-    // All inserts happen here
-    Ok(())
-})
-```
-**And** all table updates occur in single WriteTransaction
-**And** automatic commit happens when closure returns `Ok(())`
+**And** operations are staged until `commit()` is called
+**And** `commit()` executes all operations in single Redb `WriteTransaction`
+
+**Given** UnitOfWork must leverage Epic 5's transaction foundation
+**When** I implement `commit()` method
+**Then** it calls `inner.write()` with closure that opens all required tables
+**And** staged operations are executed within the closure
+**And** Epic 5's automatic commit/rollback behavior is preserved (commit on `Ok()`, rollback on `Err()`)
+**And** reuses Epic 5's `Executor::spawn()` for async/sync bridging
 
 **Given** Unit of Work must prevent partial writes
-**When** batch operations execute via `Inner::write()`
+**When** batch operations execute via `UnitOfWork::commit()`
 **Then** all writes succeed together or none persist (all-or-nothing semantics)
-**And** transaction isolation level is READ_COMMITTED per Redb defaults
+**And** transaction isolation level is READ_COMMITTED per Redb defaults (from Epic 5)
 **And** concurrent readers see consistent snapshot during write transaction via MVCC
 
 **Given** CQRS pattern separates reads from writes
-**When** I handle concurrent operations
-**Then** `Inner::write()` acquires exclusive write lock (Redb single-writer constraint)
-**And** `Inner::read()` operations use MVCC snapshots without blocking writers
-**And** no deadlocks occur between Reader and Writer due to MVCC architecture
+**When** I implement UnitOfWork
+**Then** only write operations are supported (no reads in UnitOfWork - use CacheReader for reads)
+**And** leverages Epic 5's single-writer constraint (Redb `WriteTransaction`)
+**And** no deadlocks occur with CacheReader due to MVCC architecture
 
 **Given** transactions may fail mid-operation
 **When** errors occur (e.g., out of disk space, serialization failure)
-**Then** returning `Err()` from closure triggers automatic rollback
-**And** Epic 5's `Executor::map_redb_error()` converts to `CacheError`
+**Then** Epic 5's error handling propagates: `Err()` from inner closure triggers rollback
+**And** `Executor::map_redb_error()` converts Redb errors to `CacheError`
 **And** database remains in valid state after error (no partial writes)
 
 **Given** Epic 8 event bus triggers storage updates asynchronously
-**When** I integrate transactions with async context
-**Then** `Inner::write()` already uses `Executor::spawn()` with `tokio::spawn_blocking`
+**When** I integrate UnitOfWork with async context
+**Then** `commit()` method is async (delegates to `Inner::write()` which uses `spawn_blocking`)
 **And** transaction executes on dedicated blocking thread pool (doesn't block event bus)
-**And** transaction lifetime is scoped to single async task
+**And** UnitOfWork lifetime is scoped to single async task (not `Send` across awaits)
 
 **Given** transactions must have bounded duration
 **When** I implement timeout protection
-**Then** wrap `writer.inner.write()` call with `tokio::time::timeout(Duration::from_secs(30), ...)`
+**Then** `commit()` wraps `inner.write()` call with `tokio::time::timeout(Duration::from_secs(30), ...)`
 **And** timeout errors are logged with transaction details for debugging
 **And** timeout threshold is configurable via Epic 6 configuration system
 
 **Given** Epic 5 test demonstrates batch operations (lines 903-967 in redb.rs)
-**When** I validate existing Unit of Work support
-**Then** test shows: multiple `table.insert()` calls in single `inner.write()` closure
-**And** test confirms: batch writes are atomic (all-or-nothing)
-**And** no new transaction abstraction needed - Epic 5 already provides it
+**When** I design UnitOfWork implementation
+**Then** UnitOfWork replicates this pattern with public API wrapper
+**And** test pattern: multiple `table.insert()` calls in single `inner.write()` closure
+**And** UnitOfWork provides ergonomic builder API while preserving Epic 5's transactional guarantees
 
 ## Story 9.4: Implement Storage Schema Design with Query Requirements
 
