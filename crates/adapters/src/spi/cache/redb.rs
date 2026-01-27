@@ -32,6 +32,10 @@ pub type MetadataMap = HashMap<String, String>;
 /// Type alias for cache retrieval results with metadata.
 pub type Outcome<V> = Result<Option<(V, MetadataMap)>, CacheError>;
 
+/// Type alias for a Reader/Writer pair returned by `Builder::build()`.
+pub type ReaderWriterPair<K, V, C = RkyvCodec> =
+    (Reader<K, V, C>, Writer<K, V, C>);
+
 /// A wrapper for cached values with persistence metadata.
 #[derive(Archive, Serialize, Deserialize, CheckBytes)]
 #[bytecheck(crate = rkyv::bytecheck)]
@@ -45,154 +49,47 @@ pub struct Entry<V> {
     pub metadata: MetadataMap,
 }
 
-/// Executor for bridging async/sync operations.
-///
-/// Wraps `tokio::spawn_blocking` with tracing instrumentation and error
-/// mapping.
-#[derive(Debug, Clone)]
-pub(crate) struct Executor;
+/// A view into a cached entry, providing zero-copy access to archived data.
+pub struct EntryView<'guard, V> {
+    guard: redb::AccessGuard<'guard, &'static [u8]>,
+    _marker: std::marker::PhantomData<V>,
+}
 
-impl Executor {
-    /// Map redb error to `CacheError`.
-    #[inline]
-    #[expect(
-        clippy::wildcard_enum_match_arm,
-        reason = "redb::Error variants are unstable; wildcard catches all \
-                  non-IO errors as backend errors which is correct behavior"
-    )]
-    fn map_redb_error(e: redb::Error) -> CacheError {
-        match e {
-            redb::Error::Io(io_err) => CacheError::IoError(io_err),
-            other => CacheError::BackendError {
-                backend: "redb",
-                message: format!("{other}").into(),
-            },
-        }
-    }
-
-    /// Execute a blocking operation in a separate thread pool.
+impl<'guard, V> EntryView<'guard, V> {
+    /// Access the archived value without full deserialization.
     ///
     /// # Errors
-    ///
-    /// Returns `CacheError` if the task panics or the operation fails.
+    /// Returns `CacheError::SerializationError` if access fails.
     #[inline]
-    async fn spawn<F, R>(
-        &self,
-        span: tracing::Span,
-        f: F,
-    ) -> Result<R, CacheError>
+    pub fn as_archived(&self) -> Result<&Archived<Entry<V>>, CacheError>
     where
-        F: FnOnce() -> Result<R, redb::Error> + Send + 'static,
-        R: Send + 'static,
+        V: Archive,
+        Archived<V>: Deserialize<
+                V,
+                rkyv::api::high::HighDeserializer<rkyv::rancor::Error>,
+            >,
+        for<'validation> Archived<Entry<V>>: CheckBytes<
+            rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
+        >,
     {
-        tokio::task::spawn_blocking(move || {
-            let _enter = span.enter();
-            f()
+        rkyv::access::<Archived<Entry<V>>, rkyv::rancor::Error>(
+            self.guard.value(),
+        )
+        .map_err(|e| CacheError::SerializationError {
+            type_name: std::any::type_name::<Entry<V>>(),
+            message: format!("Failed to access archived entry: {e}").into(),
         })
-        .await
-        .map_err(|e| {
-            error!(?e, "Blocking task failed");
-            CacheError::BackendError {
-                backend: "tokio",
-                message: format!("Blocking task failed: {e}").into(),
-            }
-        })?
-        .map_err(Self::map_redb_error)
     }
-}
 
-/// Inner state for Redb cache.
-///
-/// This struct holds the database connection and codec, wrapped by
-/// Reader/Writer handles. It's not directly clonable to enforce the use of Arc
-/// for sharing.
-#[derive(Debug)]
-pub(crate) struct Inner<K, V, C>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    db: Arc<redb::Database>,
-    executor: Executor,
-    table_name: Arc<str>,
-    codec: C,
-    _marker: std::marker::PhantomData<(K, V)>,
-}
-
-impl<K, V, C> Inner<K, V, C>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    /// Execute a read operation.
+    /// Create a new `EntryView`.
     #[inline]
-    async fn read<F, R>(&self, f: F) -> Result<R, CacheError>
-    where
-        F: FnOnce(&redb::ReadTransaction, &str) -> Result<R, redb::Error>
-            + Send
-            + 'static,
-        R: Send + 'static,
-    {
-        let db = Arc::clone(&self.db);
-        let table_name = Arc::clone(&self.table_name);
-        let span = info_span!("redb_read", table = %table_name);
-
-        self.executor
-            .spawn(span, move || {
-                let txn = db.begin_read()?;
-                f(&txn, &table_name)
-            })
-            .await
+    #[must_use]
+    pub fn new(guard: redb::AccessGuard<'guard, &'static [u8]>) -> Self {
+        Self {
+            guard,
+            _marker: std::marker::PhantomData,
+        }
     }
-
-    /// Execute a write operation.
-    #[inline]
-    async fn write<F, R>(&self, f: F) -> Result<R, CacheError>
-    where
-        F: FnOnce(&redb::WriteTransaction, &str) -> Result<R, redb::Error>
-            + Send
-            + 'static,
-        R: Send + 'static,
-    {
-        let db = Arc::clone(&self.db);
-        let table_name = Arc::clone(&self.table_name);
-        let span = info_span!("redb_write", table = %table_name);
-
-        self.executor
-            .spawn(span, move || {
-                let txn = db.begin_write()?;
-                let result = f(&txn, &table_name)?;
-                txn.commit()?;
-                Ok(result)
-            })
-            .await
-    }
-}
-
-/// Read-only handle for Redb cache.
-///
-/// This handle provides read-only access to the cache following CQRS
-/// principles.
-#[derive(Debug, Clone)]
-pub struct Reader<K, V, C = RkyvCodec>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    inner: Arc<Inner<K, V, C>>,
-}
-
-/// Write-only handle for Redb cache.
-///
-/// This handle provides write-only access to the cache following CQRS
-/// principles.
-#[derive(Debug, Clone)]
-pub struct Writer<K, V, C = RkyvCodec>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-{
-    inner: Arc<Inner<K, V, C>>,
 }
 
 /// Builder for Redb cache.
@@ -207,11 +104,16 @@ where
     _marker: std::marker::PhantomData<(K, V)>,
 }
 
-/// Type alias for the Inner state with default codec.
-type RedbInner<K, V> = Arc<Inner<K, V, RkyvCodec>>;
-
-/// Type alias for a Reader/Writer pair returned by `Builder::build()`.
-type ReaderWriterPair<K, V> = (Reader<K, V>, Writer<K, V>);
+impl<K, V> Default for Builder<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    #[inline]
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl<K, V> Builder<K, V>
 where
@@ -335,167 +237,19 @@ where
     }
 }
 
-impl<K, V> Default for Builder<K, V>
+/// Read-only handle for Redb cache.
+///
+/// This handle provides read-only access to the cache following CQRS
+/// principles.
+#[derive(Debug, Clone)]
+pub struct Reader<K, V, C = RkyvCodec>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
+    inner: Arc<Inner<K, V, C>>,
 }
 
-// Implement CacheReader for Reader
-#[async_trait]
-impl<K, V, C> CacheReader<K, V> for Reader<K, V, C>
-where
-    K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
-        + Send
-        + Sync
-        + 'static,
-{
-    #[inline]
-    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
-        let key_bytes = self.inner.codec.encode_key(key)?;
-
-        self.inner
-            .read(move |txn, table_name| {
-                let table_def =
-                    TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let table = txn.open_table(table_def)?;
-
-                if let Some(guard) = table.get(key_bytes.as_slice())? {
-                    Ok(Some(guard.value().to_vec()))
-                } else {
-                    Ok(None)
-                }
-            })
-            .await?
-            .map(|bytes| {
-                let entry: Entry<V> = self.inner.codec.decode_value(&bytes)?;
-                Ok(entry.value)
-            })
-            .transpose()
-    }
-
-    #[inline]
-    async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        let key_bytes = self.inner.codec.encode_key(key)?;
-
-        self.inner
-            .read(move |txn, table_name| {
-                let table_def =
-                    TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let table = txn.open_table(table_def)?;
-                Ok(table.get(key_bytes.as_slice())?.is_some())
-            })
-            .await
-    }
-}
-
-// Implement CacheWriter for Writer
-#[async_trait]
-impl<K, V, C> CacheWriter<K, V> for Writer<K, V, C>
-where
-    K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Clone + Send + Sync + 'static,
-    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
-        + Send
-        + Sync
-        + 'static,
-{
-    #[inline]
-    async fn clear(&self) -> Result<(), CacheError> {
-        self.inner
-            .write(move |txn, table_name| {
-                let table_def =
-                    TableDefinition::<&[u8], &[u8]>::new(table_name);
-                _ = txn.delete_table(table_def)?;
-                _ = txn.open_table(table_def)?;
-                Ok(())
-            })
-            .await
-    }
-
-    #[inline]
-    async fn delete(&self, key: &K) -> Result<bool, CacheError> {
-        let key_bytes = self.inner.codec.encode_key(key)?;
-
-        self.inner
-            .write(move |txn, table_name| {
-                let table_def =
-                    TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let mut table = txn.open_table(table_def)?;
-                Ok(table.remove(key_bytes.as_slice())?.is_some())
-            })
-            .await
-    }
-
-    #[inline]
-    async fn invalidate(&self, _key: &K) -> Result<bool, CacheError> {
-        // Redb doesn't support invalidation without deletion
-        // This is a no-op for persistent storage, always returns false
-        Ok(false)
-    }
-
-    #[inline]
-    async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
-        let entry = Entry {
-            value,
-            timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|e| CacheError::BackendError {
-                    backend: "system",
-                    message: format!("System time error: {e}").into(),
-                })?
-                .as_secs(),
-            metadata: HashMap::new(),
-        };
-
-        let key_bytes = self.inner.codec.encode_key(&key)?;
-        let value_bytes = self.inner.codec.encode_value(&entry)?;
-
-        self.inner
-            .write(move |txn, table_name| {
-                let table_def =
-                    TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let mut table = txn.open_table(table_def)?;
-                table.insert(key_bytes.as_slice(), value_bytes.as_slice())?;
-                Ok(())
-            })
-            .await
-    }
-}
-
-/// A persistent cache implementation using Redb.
-///
-/// **DEPRECATED**: Use `Builder` to create `Reader` and `Writer` handles
-/// instead.
-///
-/// # Example
-///
-/// ```rust
-/// use lithos_adapters::spi::cache::{CacheReader, CacheWriter, RedbBuilder};
-/// use tempfile::tempdir;
-///
-/// # tokio::runtime::Runtime::new().unwrap().block_on(async {
-/// let dir = tempdir().unwrap();
-/// let db_path = dir.path().join("cache.redb");
-///
-/// let (reader, writer) = RedbBuilder::new()
-///     .path(&db_path)
-///     .table_name("my_table")
-///     .build()
-///     .unwrap();
-/// writer.put("key".to_owned(), "value".to_owned()).await.unwrap();
-///
-/// let result: Option<String> = reader.get(&"key".to_owned()).await.unwrap();
-/// assert_eq!(result, Some("value".to_owned()));
-/// # });
-/// ```
 impl<K, V, C> Reader<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
@@ -582,6 +336,49 @@ where
     }
 }
 
+#[async_trait]
+impl<K, V, C> CacheReader<K, V> for Reader<K, V, C>
+where
+    K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
+        + Send
+        + Sync
+        + 'static,
+{
+    #[inline]
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError> {
+        Ok(self.get_with_metadata(key).await?.map(|(v, _)| v))
+    }
+
+    #[inline]
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        let key_bytes = self.inner.codec.encode_key(key)?;
+
+        self.inner
+            .read(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                let table = txn.open_table(table_def)?;
+                Ok(table.get(key_bytes.as_slice())?.is_some())
+            })
+            .await
+    }
+}
+
+/// Write-only handle for Redb cache.
+///
+/// This handle provides write-only access to the cache following CQRS
+/// principles.
+#[derive(Debug, Clone)]
+pub struct Writer<K, V, C = RkyvCodec>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    inner: Arc<Inner<K, V, C>>,
+}
+
 impl<K, V, C> Writer<K, V, C>
 where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
@@ -629,46 +426,180 @@ where
     }
 }
 
-/// A view into a cached entry, providing zero-copy access to archived data.
-pub struct EntryView<'guard, V> {
-    guard: redb::AccessGuard<'guard, &'static [u8]>,
-    _marker: std::marker::PhantomData<V>,
-}
-
-impl<'guard, V> EntryView<'guard, V> {
-    /// Create a new `EntryView`.
+#[async_trait]
+impl<K, V, C> CacheWriter<K, V> for Writer<K, V, C>
+where
+    K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+    C: crate::spi::cache::deserializer::Codec<K, Entry<V>>
+        + Send
+        + Sync
+        + 'static,
+{
     #[inline]
-    #[must_use]
-    pub fn new(guard: redb::AccessGuard<'guard, &'static [u8]>) -> Self {
-        Self {
-            guard,
-            _marker: std::marker::PhantomData,
-        }
+    async fn clear(&self) -> Result<(), CacheError> {
+        self.inner
+            .write(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                _ = txn.delete_table(table_def)?;
+                _ = txn.open_table(table_def)?;
+                Ok(())
+            })
+            .await
+    }
+
+    #[inline]
+    async fn delete(&self, key: &K) -> Result<bool, CacheError> {
+        let key_bytes = self.inner.codec.encode_key(key)?;
+
+        self.inner
+            .write(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                let mut table = txn.open_table(table_def)?;
+                Ok(table.remove(key_bytes.as_slice())?.is_some())
+            })
+            .await
+    }
+
+    #[inline]
+    async fn invalidate(&self, _key: &K) -> Result<bool, CacheError> {
+        // Redb doesn't support invalidation without deletion
+        // This is a no-op for persistent storage, always returns false
+        Ok(false)
+    }
+
+    #[inline]
+    async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
+        self.put_with_metadata(key, value, HashMap::new()).await
     }
 }
 
-impl<V> EntryView<'_, V>
+/// Type alias for the Inner state with default codec.
+pub(crate) type RedbInner<K, V> = Arc<Inner<K, V, RkyvCodec>>;
+
+/// Inner state for Redb cache.
+///
+/// This struct holds the database connection and codec, wrapped by
+/// Reader/Writer handles. It's not directly clonable to enforce the use of Arc
+/// for sharing.
+#[derive(Debug)]
+pub(crate) struct Inner<K, V, C>
 where
-    V: Archive,
-    Archived<V>:
-        Deserialize<V, rkyv::api::high::HighDeserializer<rkyv::rancor::Error>>,
-    for<'validation> Archived<Entry<V>>: CheckBytes<
-        rkyv::api::high::HighValidator<'validation, rkyv::rancor::Error>,
-    >,
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
 {
-    /// Access the archived value without full deserialization.
+    db: Arc<redb::Database>,
+    executor: Executor,
+    table_name: Arc<str>,
+    codec: C,
+    _marker: std::marker::PhantomData<(K, V)>,
+}
+
+impl<K, V, C> Inner<K, V, C>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Clone + Send + Sync + 'static,
+{
+    /// Execute a read operation.
+    #[inline]
+    async fn read<F, R>(&self, f: F) -> Result<R, CacheError>
+    where
+        F: FnOnce(&redb::ReadTransaction, &str) -> Result<R, redb::Error>
+            + Send
+            + 'static,
+        R: Send + 'static,
+    {
+        let db = Arc::clone(&self.db);
+        let table_name = Arc::clone(&self.table_name);
+        let span = info_span!("redb_read", table = %table_name);
+
+        self.executor
+            .spawn(span, move || {
+                let txn = db.begin_read()?;
+                f(&txn, &table_name)
+            })
+            .await
+    }
+
+    /// Execute a write operation.
+    #[inline]
+    async fn write<F, R>(&self, f: F) -> Result<R, CacheError>
+    where
+        F: FnOnce(&redb::WriteTransaction, &str) -> Result<R, redb::Error>
+            + Send
+            + 'static,
+        R: Send + 'static,
+    {
+        let db = Arc::clone(&self.db);
+        let table_name = Arc::clone(&self.table_name);
+        let span = info_span!("redb_write", table = %table_name);
+
+        self.executor
+            .spawn(span, move || {
+                let txn = db.begin_write()?;
+                let result = f(&txn, &table_name)?;
+                txn.commit()?;
+                Ok(result)
+            })
+            .await
+    }
+}
+
+/// Executor for bridging async/sync operations.
+///
+/// Wraps `tokio::spawn_blocking` with tracing instrumentation and error
+/// mapping.
+#[derive(Debug, Clone)]
+pub(crate) struct Executor;
+
+impl Executor {
+    /// Map redb error to `CacheError`.
+    #[inline]
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "redb::Error variants are unstable; wildcard catches all \
+                  non-IO errors as backend errors which is correct behavior"
+    )]
+    fn map_redb_error(e: redb::Error) -> CacheError {
+        match e {
+            redb::Error::Io(io_err) => CacheError::IoError(io_err),
+            other => CacheError::BackendError {
+                backend: "redb",
+                message: format!("{other}").into(),
+            },
+        }
+    }
+
+    /// Execute a blocking operation in a separate thread pool.
     ///
     /// # Errors
-    /// Returns `CacheError::SerializationError` if access fails.
+    ///
+    /// Returns `CacheError` if the task panics or the operation fails.
     #[inline]
-    pub fn as_archived(&self) -> Result<&Archived<Entry<V>>, CacheError> {
-        rkyv::access::<Archived<Entry<V>>, rkyv::rancor::Error>(
-            self.guard.value(),
-        )
-        .map_err(|e| CacheError::SerializationError {
-            type_name: std::any::type_name::<Entry<V>>(),
-            message: format!("Failed to access archived entry: {e}").into(),
+    async fn spawn<F, R>(
+        &self,
+        span: tracing::Span,
+        f: F,
+    ) -> Result<R, CacheError>
+    where
+        F: FnOnce() -> Result<R, redb::Error> + Send + 'static,
+        R: Send + 'static,
+    {
+        tokio::task::spawn_blocking(move || {
+            let _enter = span.enter();
+            f()
         })
+        .await
+        .map_err(|e| {
+            error!(?e, "Blocking task failed");
+            CacheError::BackendError {
+                backend: "tokio",
+                message: format!("Blocking task failed: {e}").into(),
+            }
+        })?
+        .map_err(Self::map_redb_error)
     }
 }
 
