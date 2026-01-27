@@ -15,6 +15,7 @@
     )
 )]
 
+pub(crate) mod coordinator;
 pub mod encoder;
 pub mod moka;
 pub mod redb;
@@ -32,6 +33,7 @@ pub use encoder::Codec as CacheCodec;
 )]
 pub use self::redb::Entry as CacheEntry;
 pub use self::{
+    coordinator::{Reader as ReaderCoordinator, Writer as WriterCoordinator},
     moka::{
         Builder as MokaBuilder, Reader as MokaReader, Writer as MokaWriter,
     },
