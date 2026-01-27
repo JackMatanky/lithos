@@ -117,43 +117,33 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 3.8: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 4: Read-Through Logic (CQRS Reader)
-- [ ] Task 4: Implement read-through `get` with decoupled async backfill
-  - [ ] Subtask 4.1: [TDD] Write `get::returns_memory_hit_immediately` (failing)
-  - [ ] Subtask 4.2: Implement `get` logic to return immediately on memory hit (avoiding disk call)
-  - [ ] Subtask 4.3: [TDD] Write `get::returns_disk_hit_and_triggers_backfill` (failing)
-  - [ ] Subtask 4.4: Implement logic to check disk on memory miss and send (K, V) to the `mpsc` channel on disk hit for background memory update
-  - [ ] Subtask 4.5: [TDD] Write `get::returns_none_on_total_miss` (failing)
-  - [ ] Subtask 4.6: Implement `has` orchestration checking memory then disk
-  - [ ] Subtask 4.7: [TDD] Write `keys::returns_union_of_both_layers` (failing)
-  - [ ] Subtask 4.8: Implement `keys` orchestration: fetch from both, merge into a `HashSet`, and return as `Vec<K>`
-  - [ ] Subtask 4.9: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
-  - [ ] Subtask 4.10: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 4.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 4.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 4: Implement read-through `get` with decoupled async backfill
+  - [x] Subtask 4.1: [TDD] Write `get::returns_memory_hit_immediately` (failing)
+  - [x] Subtask 4.2: Implement `get` logic to return immediately on memory hit (avoiding disk call)
+  - [x] Subtask 4.3: [TDD] Write `get::returns_disk_hit_and_triggers_backfill` (failing)
+  - [x] Subtask 4.4: Implement logic to check disk on memory miss and send (K, V) to the `mpsc` channel on disk hit for background memory update
+  - [x] Subtask 4.5: [TDD] Write `get::returns_none_on_total_miss` (failing)
+  - [x] Subtask 4.6: Implement `has` orchestration checking memory then disk
+  - [x] Subtask 4.7: [TDD] Write `keys::returns_union_of_both_layers` (failing)
+  - [x] Subtask 4.8: Implement `keys` orchestration: fetch from both, merge into a `HashSet`, and return as `Vec<K>`
+  - [x] Subtask 4.9: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
+  - [x] Subtask 4.10: Run `mise run lint` and fix all warnings/errors
+  - [x] Subtask 4.11: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 4.12: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 5: Write-Through Logic (CQRS Writer)
-- [ ] Task 5: Implement write-through `put` and parallel invalidation
-  - [ ] Subtask 5.1: [TDD] Write `put::writes_to_disk_before_memory` (failing)
-  - [ ] Subtask 5.2: Implement sequential write logic ensuring Disk layer is persisted before updating Memory
-  - [ ] Subtask 5.3: [TDD] Write `put::aborts_memory_write_on_disk_failure` (failing)
-  - [ ] Subtask 5.4: Ensure `put` returns an error immediately and skips memory write if disk fails (maintaining consistency)
-  - [ ] Subtask 5.5: [TDD] Write `delete::invalidates_both_layers_in_parallel` (failing)
-  - [ ] Subtask 5.6: Implement `delete` and `clear` using `tokio::join!` to minimize invalidation latency
-  - [ ] Subtask 5.7: [TDD] Write `invalidate::delegates_to_delete` (failing)
-  - [ ] Subtask 5.8: Run `mise run test:unit:adapters coordinator_put` and verify pass (GREEN)
-  - [ ] Subtask 5.9: Run `mise run lint` and fix all warnings/errors
-    - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
-    - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
-    - **WORKFLOW**: `mise run lint` → Read diagnostic → Apply suggestions → Refactor for complexity → Verify with `mise run verify`
-    - **ALLOWED USES**: `#[expect(...)]` only for intentional violations necessary for tests; `#[allow(...)]` primarily for generated code like `automock`
-    - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
-  - [ ] Subtask 5.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 5.11: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 5: Implement write-through `put` and parallel invalidation
+  - [x] Subtask 5.1: [TDD] Write `put::writes_to_disk_before_memory` (failing)
+  - [x] Subtask 5.2: Implement sequential write logic ensuring Disk layer is persisted before updating Memory
+  - [x] Subtask 5.3: [TDD] Write `put::aborts_memory_write_on_disk_failure` (failing)
+  - [x] Subtask 5.4: Ensure `put` returns an error immediately and skips memory write if disk fails (maintaining consistency)
+  - [x] Subtask 5.5: [TDD] Write `delete::invalidates_both_layers_in_parallel` (failing)
+  - [x] Subtask 5.6: Implement `delete` and `clear` using `tokio::join!` to minimize invalidation latency
+  - [x] Subtask 5.7: [TDD] Write `invalidate::delegates_to_delete` (failing)
+  - [x] Subtask 5.8: Run `mise run test:unit:adapters coordinator_put` and verify pass (GREEN)
+  - [x] Subtask 5.9: Run `mise run lint` and fix all warnings/errors
+  - [x] Subtask 5.10: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 5.11: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 6: Observability & NFR Verification
 - [ ] Task 6: Finalize nested tracing and performance verification

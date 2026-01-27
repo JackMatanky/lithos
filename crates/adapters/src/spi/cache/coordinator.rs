@@ -372,6 +372,11 @@ fn spawn_backfill_task<K, V>(
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::excessive_nesting,
+    reason = "Mockall async trait expectations require nested Box::pin(async \
+              { ... }) blocks."
+)]
 mod tests {
     use super::*;
 
@@ -470,11 +475,6 @@ mod tests {
                 .expect_get()
                 .with(mockall::predicate::eq("key".to_owned()))
                 .returning(|_| {
-                    #[expect(
-                        clippy::excessive_nesting,
-                        reason = "Mockall async trait expectations require \
-                                  nested Box::pin(async { ... }) blocks."
-                    )]
                     Box::pin(async { Ok(Some("value".to_owned())) })
                 });
 
@@ -517,11 +517,6 @@ mod tests {
                 .expect_get()
                 .with(mockall::predicate::eq("key".to_owned()))
                 .returning(|_| {
-                    #[expect(
-                        clippy::excessive_nesting,
-                        reason = "Mockall async trait expectations require \
-                                  nested Box::pin(async { ... }) blocks."
-                    )]
                     Box::pin(async { Ok(Some("mem_val".to_owned())) })
                 })
                 .times(1);
@@ -578,22 +573,12 @@ mod tests {
             let mut disk_reader = MockCacheReader::new();
 
             mem_reader.expect_keys().returning(|| {
-                #[expect(
-                    clippy::excessive_nesting,
-                    reason = "Mockall async trait expectations require nested \
-                              Box::pin(async { ... }) blocks."
-                )]
                 Box::pin(async {
                     Ok(vec!["k1".to_owned(), "shared".to_owned()])
                 })
             });
 
             disk_reader.expect_keys().returning(|| {
-                #[expect(
-                    clippy::excessive_nesting,
-                    reason = "Mockall async trait expectations require nested \
-                              Box::pin(async { ... }) blocks."
-                )]
                 Box::pin(async {
                     Ok(vec!["k2".to_owned(), "shared".to_owned()])
                 })
@@ -669,11 +654,6 @@ mod tests {
             disk_writer
                 .expect_put()
                 .returning(|_, _| {
-                    #[expect(
-                        clippy::excessive_nesting,
-                        reason = "Mockall async trait expectations require \
-                                  nested Box::pin(async { ... }) blocks."
-                    )]
                     Box::pin(async {
                         Err(CacheError::BackendError {
                             backend: "disk",
@@ -728,6 +708,81 @@ mod tests {
             let deleted =
                 writer.delete(&"key".to_owned()).await.expect("delete failed");
             assert!(deleted);
+        }
+    }
+
+    mod observability {
+        use tracing_test::traced_test;
+
+        use super::{fixtures::*, *};
+        use crate::spi::cache::{MockCacheReader, MockCacheWriter};
+
+        #[tokio::test]
+        #[traced_test]
+        async fn emits_nested_spans_for_coordinator_flow() {
+            let mut mem_reader = MockCacheReader::new();
+            let disk_reader = MockCacheReader::new();
+
+            mem_reader
+                .expect_get()
+                .returning(|_| Box::pin(async { Ok(Some("val".to_owned())) }))
+                .times(1);
+
+            let (reader, _writer) = build_with_mocks(
+                mem_reader,
+                MockCacheWriter::new(),
+                disk_reader,
+                MockCacheWriter::new(),
+            );
+
+            let _val = reader.get(&"key".to_owned()).await;
+
+            assert!(logs_contain("operation=\"get\""));
+        }
+    }
+
+    mod performance {
+        use std::time::Instant;
+
+        use super::*;
+        use crate::spi::cache::{MockCacheReader, MockCacheWriter};
+
+        #[tokio::test]
+        async fn get_latency_is_independent_of_backfill_speed() {
+            let mut mem_reader = MockCacheReader::new();
+            let mut mem_writer = MockCacheWriter::new();
+            let mut dr = MockCacheReader::new();
+
+            mem_reader.expect_get().returning(|_| Box::pin(async { Ok(None) }));
+            dr.expect_get()
+                .returning(|_| Box::pin(async { Ok(Some("val".to_owned())) }));
+
+            // SLOW memory write
+            mem_writer.expect_put().returning(|_, _| {
+                Box::pin(async {
+                    tokio::time::sleep(std::time::Duration::from_millis(500))
+                        .await;
+                    Ok(())
+                })
+            });
+
+            // Small capacity to test backfill pressure if needed
+            let mut builder = Builder::new();
+            builder
+                .memory_reader(Arc::new(mem_reader))
+                .memory_writer(Arc::new(mem_writer))
+                .disk_reader(Arc::new(dr))
+                .disk_writer(Arc::new(MockCacheWriter::new()));
+            builder.backfill_capacity(1);
+
+            let (reader, _writer) = builder.build().expect("build failed");
+
+            let start = Instant::now();
+            let _val = reader.get(&"key".to_owned()).await;
+            let duration = start.elapsed();
+
+            // Should be much faster than the 500ms sleep
+            assert!(duration < std::time::Duration::from_millis(50));
         }
     }
 }
