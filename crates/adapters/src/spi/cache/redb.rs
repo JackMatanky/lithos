@@ -134,7 +134,14 @@ where
     /// Set the database path.
     #[inline]
     pub fn path<P: AsRef<std::path::Path>>(&mut self, path: P) -> &mut Self {
-        self.path = Some(path.as_ref().to_path_buf());
+        let p = path.as_ref();
+        if let Err(e) = Self::validate_nonempty_path(p) {
+            tracing::warn!(?e, "Invalid path provided to Redb cache builder");
+        }
+        if let Err(e) = Self::validate_file_path(p) {
+            tracing::warn!(?e, "Invalid path provided to Redb cache builder");
+        }
+        self.path = Some(p.to_path_buf());
         self
     }
 
@@ -143,6 +150,33 @@ where
     pub fn table_name(&mut self, name: &str) -> &mut Self {
         self.table_name = Some(name.to_owned());
         self
+    }
+
+    /// Check if the path is a file (not a directory).
+    #[inline]
+    fn validate_file_path(path: &std::path::Path) -> Result<(), CacheError> {
+        if path.is_dir() {
+            return Err(CacheError::BackendError {
+                backend: "redb",
+                message: format!("Path is a directory: {}", path.display())
+                    .into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Check if the path is not empty.
+    #[inline]
+    fn validate_nonempty_path(
+        path: &std::path::Path,
+    ) -> Result<(), CacheError> {
+        if path.as_os_str().is_empty() {
+            return Err(CacheError::BackendError {
+                backend: "redb",
+                message: "Database path cannot be empty".into(),
+            });
+        }
+        Ok(())
     }
 }
 
@@ -197,27 +231,7 @@ where
     /// Internal helper to build the Inner state.
     #[inline]
     fn inner_builder(&self) -> Result<RedbInner<K, V>, CacheError> {
-        let path =
-            self.path.as_ref().ok_or_else(|| CacheError::BackendError {
-                backend: "redb",
-                message: "Database path is required".into(),
-            })?;
-
-        let table_name = self.table_name.as_ref().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "redb",
-                message: "Table name is required".into(),
-            }
-        })?;
-
-        // Validate path is not a directory
-        if path.is_dir() {
-            return Err(CacheError::BackendError {
-                backend: "redb",
-                message: format!("Path is a directory: {}", path.display())
-                    .into(),
-            });
-        }
+        let (path, table_name) = self.validate()?;
 
         let db = redb::Database::create(path).map_err(|e| {
             error!(backend = "redb", ?e, "Failed to open database");
@@ -228,6 +242,38 @@ where
         })?;
 
         Ok(Arc::new(Inner::new(db, table_name, RkyvCodec)))
+    }
+
+    /// Validate the builder state and return the validated path and table name.
+    #[inline]
+    fn validate(&self) -> Result<(&std::path::Path, &String), CacheError> {
+        let path =
+            self.path.as_deref().ok_or_else(|| CacheError::BackendError {
+                backend: "redb",
+                message: "Database path is required".into(),
+            })?;
+        Self::validate_path(path)?;
+
+        let table_name = self.validate_table_name()?;
+
+        Ok((path, table_name))
+    }
+
+    /// Validate the database path.
+    #[inline]
+    fn validate_path(path: &std::path::Path) -> Result<(), CacheError> {
+        Self::validate_nonempty_path(path)?;
+        Self::validate_file_path(path)?;
+        Ok(())
+    }
+
+    /// Validate the table name.
+    #[inline]
+    fn validate_table_name(&self) -> Result<&String, CacheError> {
+        self.table_name.as_ref().ok_or_else(|| CacheError::BackendError {
+            backend: "redb",
+            message: "Table name is required".into(),
+        })
     }
 }
 
