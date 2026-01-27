@@ -30,6 +30,8 @@ System has zero-copy persistent storage with ACID transactions using Redb + rkyv
   - Read operations: <1ms cache hit (via `with_view` zero-copy), <10ms cache miss
 - **Location**: Continue building in existing `crates/adapters/src/spi/cache/` directory (no new `storage/` directory needed)
 - **Implementation Approach**: Extend Epic 5 cache module with storage-specific table builders, not a separate storage layer
+- **Observability**: All storage operations use `#[tracing::instrument]` per architecture.md FR40 (audit logging)
+- **Tracing Levels**: `info` for transactions/backups/recovery, `debug` for individual operations, `error` for corruption/failures, `warn` for rollbacks/clean slate
 - **Storage Tables** (all share same `.lithos/storage.redb` database file):
   - `notes` table: PathBuf → `Entry<Note>` (main entity storage) - **Direct Redb only** (random access pattern, no benefit from memory cache)
   - `schema_index` table: SchemaName → `Entry<Vec<PathBuf>>` (fileClass queries) - **Use CacheCoordinator** (frequent reads during queries)
@@ -214,8 +216,16 @@ uow.insert_note(path, note)
 **Given** transactions must have bounded duration
 **When** I implement timeout protection
 **Then** `commit()` wraps `inner.write()` call with `tokio::time::timeout(Duration::from_secs(30), ...)`
-**And** timeout errors are logged with transaction details for debugging
+**And** timeout errors are logged via `tracing::error!(?error, operations_count, "UnitOfWork commit timeout")`
 **And** timeout threshold is configurable via Epic 6 configuration system
+
+**Given** observability is required for storage transactions per architecture.md FR40
+**When** I instrument UnitOfWork operations
+**Then** `commit()` method uses `#[tracing::instrument(skip(self), fields(operation = "commit", operations_count), level = "info")]`
+**And** log transaction start: `tracing::debug!(operations_count, tables, "Starting storage transaction")`
+**And** log successful commit: `tracing::info!(operations_count, duration_ms, "Storage transaction committed")`
+**And** log rollback: `tracing::warn!(?error, operations_count, "Storage transaction rolled back")`
+**And** span includes attributes: operations_count, tables (comma-separated), duration_ms, success (bool)
 
 **Given** Epic 5 test demonstrates batch operations (lines 903-967 in redb.rs)
 **When** I design UnitOfWork implementation
@@ -397,7 +407,19 @@ So that storage corruption can be recovered without losing vault data.
 **Then** corrupted database is moved to `.lithos/corrupted/{timestamp}/` for forensics
 **And** new empty database is created at `.lithos/storage.redb`
 **And** Epic 10 indexing scans entire vault and rebuilds all indexes
-**And** rebuild progress is logged with file count and percentage completion
+**And** rebuild progress is logged via `tracing::info!(files_processed, total_files, percent_complete, "Storage rebuild progress")`
+
+**Given** backup and recovery operations are critical per architecture.md FR40
+**When** I instrument backup/recovery operations
+**Then** backup creation uses `#[tracing::instrument(skip(self), fields(operation = "create_backup"), level = "info")]`
+**And** log backup start: `tracing::info!(transaction_count, "Creating storage backup snapshot")`
+**And** log backup success: `tracing::info!(backup_path, size_mb, duration_ms, "Backup created successfully")`
+**And** log retention pruning: `tracing::info!(pruned_count, retained_count, "Backup retention policy applied")`
+**And** log corruption detection: `tracing::error!(?error, "Storage corruption detected")`
+**And** log recovery start: `tracing::warn!(backup_path, "Attempting recovery from backup")`
+**And** log recovery success: `tracing::info!(restored_from, duration_ms, "Storage recovered from backup")`
+**And** log clean slate trigger: `tracing::warn!("Clean slate recovery initiated - rebuilding from vault files")`
+**And** span attributes include: backup_path, size_mb, duration_ms, success (bool)
 
 **Given** backup/recovery is implemented
 **When** I test disaster scenarios with integration tests
