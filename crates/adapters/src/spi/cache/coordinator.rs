@@ -75,10 +75,10 @@
 //! let (mem_reader, mem_writer) =
 //!     (moka_builder.reader()?, moka_builder.writer()?);
 //!
-//! let (disk_reader, disk_writer) = RedbBuilder::<String, String>::new()
-//!     .path(&db_path)
-//!     .table_name("cache")
-//!     .build()?;
+//! let mut redb_builder = RedbBuilder::<String, String>::new();
+//! redb_builder.path(&db_path).table_name("cache");
+//! let (disk_reader, disk_writer) =
+//!     (redb_builder.reader()?, redb_builder.writer()?);
 //!
 //! // ✅ CQRS Query Side (reads only):
 //! // Note: memory_writer is no longer needed for backfill functionality

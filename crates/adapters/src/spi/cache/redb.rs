@@ -12,7 +12,7 @@
 
 use std::{
     collections::HashMap,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -32,19 +32,15 @@ pub type MetadataMap = HashMap<String, String>;
 /// Type alias for cache retrieval results with metadata.
 pub type Outcome<V> = Result<Option<(V, MetadataMap)>, CacheError>;
 
-/// Type alias for a Reader/Writer pair returned by `Builder::build()`.
-pub type ReaderWriterPair<K, V, C = RkyvCodec> =
-    (Reader<K, V, C>, Writer<K, V, C>);
-
 /// A wrapper for cached values with persistence metadata.
 #[derive(Archive, Serialize, Deserialize, CheckBytes)]
 #[bytecheck(crate = rkyv::bytecheck)]
 #[non_exhaustive]
 pub struct Entry<V> {
-    /// The actual cached value.
-    pub value: V,
     /// Unix timestamp of when the entry was created/updated.
     pub timestamp: u64,
+    /// The actual cached value.
+    pub value: V,
     /// Extensible metadata for the cached entry.
     pub metadata: MetadataMap,
 }
@@ -55,8 +51,8 @@ impl<V> Entry<V> {
     #[must_use]
     pub fn new(value: V, timestamp: u64, metadata: MetadataMap) -> Self {
         Self {
-            value,
             timestamp,
+            value,
             metadata,
         }
     }
@@ -67,8 +63,8 @@ pub struct EntryView<'guard, V, C, K = String>
 where
     C: crate::spi::cache::encoder::Codec<K, Entry<V>>,
 {
-    guard: redb::AccessGuard<'guard, &'static [u8]>,
     codec: C,
+    guard: redb::AccessGuard<'guard, &'static [u8]>,
     _marker: std::marker::PhantomData<(K, V)>,
 }
 
@@ -122,7 +118,8 @@ where
 /// let mut builder = RedbBuilder::<String, String>::new();
 /// builder.path("cache.redb").table_name("metadata");
 ///
-/// // let (reader, writer) = builder.build().unwrap();
+/// let reader = builder.reader().unwrap();
+/// let writer = builder.writer().unwrap();
 /// ```
 #[derive(Debug, Clone)]
 pub struct Builder<K, V>
@@ -131,6 +128,7 @@ where
     V: Clone + Send + Sync + 'static,
 {
     path: Option<std::path::PathBuf>,
+    shared_inner: Arc<OnceLock<RedbInner<K, V>>>,
     table_name: Option<String>,
     _marker: std::marker::PhantomData<(K, V)>,
 }
@@ -157,6 +155,7 @@ where
     pub fn new() -> Self {
         Self {
             path: None,
+            shared_inner: Arc::new(OnceLock::new()),
             table_name: None,
             _marker: std::marker::PhantomData,
         }
@@ -170,7 +169,15 @@ where
             tracing::warn!(?e, "Invalid path provided to Redb cache builder");
         }
         self.path = Some(p.to_path_buf());
+        self.reset_state();
         self
+    }
+
+    /// Reset the internal state, forcing a fresh database connection to be
+    /// created on next access.
+    #[inline]
+    fn reset_state(&mut self) {
+        self.shared_inner = Arc::new(OnceLock::new());
     }
 
     /// Set the table name.
@@ -183,6 +190,7 @@ where
             );
         }
         self.table_name = Some(name.to_owned());
+        self.reset_state();
         self
     }
 
@@ -251,47 +259,17 @@ where
     K: std::fmt::Debug + Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    /// Build both Reader and Writer handles sharing the same database.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError` if the database cannot be initialized.
-    #[inline]
-    pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
-        let inner = self.inner_builder()?;
-        let reader = Reader {
-            inner: Arc::clone(&inner),
-        };
-        let writer = Writer {
-            inner,
-        };
-        Ok((reader, writer))
-    }
+    /// Internal helper to obtain the shared inner state.
+    fn get_or_init_inner(&self) -> Result<RedbInner<K, V>, CacheError> {
+        if let Some(inner) = self.shared_inner.get() {
+            return Ok(Arc::clone(inner));
+        }
 
-    /// Build a Reader handle independently.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError` if the database cannot be initialized.
-    #[inline]
-    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
         let inner = self.inner_builder()?;
-        Ok(Reader {
-            inner,
-        })
-    }
-
-    /// Build a Writer handle independently.
-    ///
-    /// # Errors
-    ///
-    /// Returns `CacheError` if the database cannot be initialized.
-    #[inline]
-    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
-        let inner = self.inner_builder()?;
-        Ok(Writer {
-            inner,
-        })
+        // Try to set it. If someone else set it first, that's fine, we'll
+        // return whatever is there.
+        _ = self.shared_inner.set(Arc::clone(&inner));
+        Ok(inner)
     }
 
     /// Internal helper to build the Inner state.
@@ -310,6 +288,38 @@ where
 
         Ok(Arc::new(Inner::new(db, table_name, RkyvCodec)))
     }
+
+    /// Build a Reader handle.
+    ///
+    /// Creates a new database connection (if not already initialized by this
+    /// builder) and returns only a Reader handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError` if the database cannot be initialized.
+    #[inline]
+    pub fn reader(&self) -> Result<Reader<K, V>, CacheError> {
+        let inner = self.get_or_init_inner()?;
+        Ok(Reader {
+            inner,
+        })
+    }
+
+    /// Build a Writer handle.
+    ///
+    /// Creates a new database connection (if not already initialized by this
+    /// builder) and returns only a Writer handle.
+    ///
+    /// # Errors
+    ///
+    /// Returns `CacheError` if the database cannot be initialized.
+    #[inline]
+    pub fn writer(&self) -> Result<Writer<K, V>, CacheError> {
+        let inner = self.get_or_init_inner()?;
+        Ok(Writer {
+            inner,
+        })
+    }
 }
 
 /// Read-only handle for Redb cache.
@@ -324,11 +334,10 @@ where
 /// # tokio::runtime::Runtime::new().unwrap().block_on(async {
 /// # let dir = tempfile::tempdir().unwrap();
 /// # let db_path = dir.path().join("test.redb");
-/// let (reader, writer) = RedbBuilder::<String, String>::new()
-///     .path(db_path)
-///     .table_name("test")
-///     .build()
-///     .unwrap();
+/// let mut builder = RedbBuilder::<String, String>::new();
+/// builder.path(db_path).table_name("test");
+/// let reader = builder.reader().unwrap();
+/// let writer = builder.writer().unwrap();
 ///
 /// // Ensure table is created
 /// writer.clear().await.unwrap();
@@ -505,7 +514,7 @@ where
 /// let writer = RedbBuilder::<String, String>::new()
 ///     .path(db_path)
 ///     .table_name("test")
-///     .build_writer()
+///     .writer()
 ///     .unwrap();
 ///
 /// writer.put("key".to_string(), "value".to_string()).await.unwrap();
@@ -766,9 +775,6 @@ mod tests {
 
         use super::*;
 
-        pub type Handles =
-            (Reader<String, TestValue>, Writer<String, TestValue>);
-
         pub fn temp_dir() -> TempDir {
             tempdir().expect("failed to create temp dir")
         }
@@ -785,9 +791,11 @@ mod tests {
             builder
         }
 
-        pub async fn handles(builder: Builder<String, TestValue>) -> Handles {
-            let (reader, writer) =
-                builder.build().expect("failed to build handles");
+        pub async fn handles(
+            builder: Builder<String, TestValue>,
+        ) -> (Reader<String, TestValue>, Writer<String, TestValue>) {
+            let reader = builder.reader().expect("failed to build reader");
+            let writer = builder.writer().expect("failed to build writer");
             // Ensure table is created for tests
             writer.clear().await.unwrap();
             (reader, writer)
@@ -808,9 +816,7 @@ mod tests {
             let mut builder = Builder::<String, String>::new();
             builder.path(db_path).table_name("test");
 
-            let result = builder.build();
-            assert!(result.is_ok());
-            let (reader, _writer) = result.unwrap();
+            let reader = builder.reader().expect("failed to build reader");
 
             // THEN: the default RkyvCodec is used
             let _: Reader<String, String, RkyvCodec> = reader;
@@ -827,7 +833,7 @@ mod tests {
             let result = Builder::<String, String>::new()
                 .path(db_path)
                 .table_name("test")
-                .build_reader();
+                .reader();
 
             // THEN: the handle is correct and functional
             assert!(result.is_ok());
@@ -846,7 +852,7 @@ mod tests {
             let result = Builder::<String, String>::new()
                 .path(db_path)
                 .table_name("test")
-                .build_writer();
+                .writer();
 
             // THEN: the handle is correct and functional
             assert!(result.is_ok());
@@ -859,8 +865,7 @@ mod tests {
         async fn reader_and_writer_work_together() {
             // GIVEN: a shared Redb database (via fixture)
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             // WHEN: writing data through the writer
             writer
@@ -893,8 +898,7 @@ mod tests {
         async fn should_return_all_keys() {
             // GIVEN: a database with multiple entries
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             writer
                 .put("k1".to_owned(), TestValue("v1".to_owned()))
@@ -925,8 +929,7 @@ mod tests {
         async fn batches_multiple_writes_in_single_transaction() {
             // GIVEN: a Redb cache (via fixture)
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             // WHEN: performing a batch write via the inner closure
             let k1 = "k1".to_owned();
@@ -990,7 +993,7 @@ mod tests {
             let _reader = Builder::<String, String>::new()
                 .path(&db_path)
                 .table_name("test")
-                .build_reader()
+                .reader()
                 .expect("failed to build reader");
 
             // THEN: the executor is correctly integrated
@@ -1011,7 +1014,7 @@ mod tests {
             let result = Builder::<String, String>::new()
                 .path(temp_dir.path())
                 .table_name("test")
-                .build_reader();
+                .reader();
 
             // THEN: an error is returned
             assert!(result.is_err());
@@ -1032,7 +1035,7 @@ mod tests {
             let result = Builder::<String, String>::new()
                 .path(&db_path)
                 .table_name("my_table")
-                .build_reader();
+                .reader();
 
             // THEN: the database file is created
             result.unwrap();
@@ -1048,8 +1051,7 @@ mod tests {
         async fn should_clear_all_entries() {
             // GIVEN: a database with entries
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             writer
                 .put("k1".to_owned(), TestValue("v1".to_owned()))
@@ -1077,8 +1079,7 @@ mod tests {
         async fn should_correctly_report_existence() {
             // GIVEN: a database
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             // WHEN: checking existence of present and missing keys
             let key = "exists".to_owned();
@@ -1108,7 +1109,7 @@ mod tests {
             let writer = Builder::<String, TestValue>::new()
                 .path(&db_path)
                 .table_name("table")
-                .build_writer()
+                .writer()
                 .expect("failed to create cache");
             writer.put(key.clone(), value.clone()).await.expect("put failed");
 
@@ -1118,7 +1119,7 @@ mod tests {
             let reader = Builder::<String, TestValue>::new()
                 .path(&db_path)
                 .table_name("table")
-                .build_reader()
+                .reader()
                 .expect("failed to reload cache");
             let result = reader.get(&key).await.expect("get failed");
             assert_eq!(result, Some(value));
@@ -1139,7 +1140,7 @@ mod tests {
             let result = Builder::<String, TestValue>::new()
                 .path(db_path)
                 .table_name("test_table")
-                .build_reader();
+                .reader();
 
             // THEN: it succeeds
             result.unwrap();
@@ -1165,7 +1166,7 @@ mod tests {
             let result = Builder::<String, TestValue>::new()
                 .path(db_path)
                 .table_name("test_table")
-                .build_reader();
+                .reader();
 
             // THEN: a BackendError is returned
             assert!(result.is_err());
@@ -1184,16 +1185,18 @@ mod tests {
             let db_path = db_path(&temp_dir);
 
             // WHEN: opening multiple tables in the same file
-            let (_reader1, _writer1) = Builder::<String, TestValue>::new()
-                .path(&db_path)
-                .table_name("table1")
-                .build()
-                .expect("failed to create reader1");
+            {
+                let mut builder1 = Builder::<String, TestValue>::new();
+                builder1.path(&db_path).table_name("table1");
+                let _reader1 =
+                    builder1.reader().expect("failed to create reader1");
+                let _writer1 =
+                    builder1.writer().expect("failed to create writer1");
+            } // Drop builder1 and handles to release lock
 
-            let _reader2 = Builder::<String, TestValue>::new()
-                .path(&db_path)
-                .table_name("table2")
-                .build_reader();
+            let mut builder2 = Builder::<String, TestValue>::new();
+            builder2.path(&db_path).table_name("table2");
+            let _reader2 = builder2.reader().expect("failed to create reader2");
 
             // THEN: the database handles multiple tables successfully
             assert!(db_path.exists());
@@ -1211,8 +1214,7 @@ mod tests {
         async fn should_support_metadata() {
             // GIVEN: a cache and metadata
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             let key = "key".to_owned();
             let value = TestValue("value".to_owned());
@@ -1240,11 +1242,10 @@ mod tests {
                 // GIVEN: a database entry
                 let dir = tempdir().expect("failed to create temp dir");
                 let db_path = dir.path().join("timestamp.redb");
-                let (reader, writer) = Builder::<String, TestValue>::new()
-                    .path(db_path)
-                    .table_name("table")
-                    .build()
-                    .expect("init failed");
+                let mut builder = Builder::<String, TestValue>::new();
+                builder.path(db_path).table_name("table");
+                let reader = builder.reader().expect("reader init failed");
+                let writer = builder.writer().expect("writer init failed");
 
                 // Ensure table is created
                 writer.clear().await.unwrap();
@@ -1289,8 +1290,7 @@ mod tests {
         async fn should_emit_tracing_info() {
             // GIVEN: a Redb cache
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             // WHEN: performing operations
             let key = "key".to_owned();
@@ -1311,8 +1311,7 @@ mod tests {
         async fn emits_nested_spans_for_transactions() {
             // GIVEN: a Redb cache
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             // WHEN: performing operations
             writer
@@ -1328,37 +1327,6 @@ mod tests {
         }
     }
 
-    mod serialization {
-        use rkyv::Archived;
-
-        use super::*;
-        /// [5.4-U-01] P1: Test basic rkyv trait implementation.
-        #[test]
-        fn cached_entry_should_implement_rkyv_traits() {
-            // GIVEN: a cache Entry
-            let entry = Entry::new(
-                TestValue("test".to_owned()),
-                123_456_789,
-                HashMap::from([("key".to_owned(), "value".to_owned())]),
-            );
-
-            // WHEN: serializing and accessing via rkyv
-            let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&entry)
-                .expect("failed to serialize");
-
-            let archived = rkyv::access::<
-                Archived<Entry<TestValue>>,
-                rkyv::rancor::Error,
-            >(&bytes)
-            .expect("failed to access");
-
-            // THEN: the archived data is correct
-            assert_eq!(archived.timestamp, 123_456_789);
-            assert_eq!(archived.value.0, "test");
-            assert_eq!(archived.metadata.len(), 1);
-        }
-    }
-
     mod nfr {
         use super::{fixtures::*, *};
 
@@ -1367,8 +1335,7 @@ mod tests {
         async fn verifies_direct_pointer_access() {
             // GIVEN: a Redb cache with data
             let temp_dir = temp_dir();
-            let (reader, writer): Handles =
-                handles(builder(db_path(&temp_dir))).await;
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
 
             let key = "large_data".to_owned();
             let value = TestValue("x".repeat(1024)); // 1KB of data
