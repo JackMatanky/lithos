@@ -32,8 +32,8 @@ pub use encoder::Codec as CacheCodec;
     reason = "Coordinator components are re-exported with descriptive names"
 )]
 pub use self::coordinator::{
-    Builder as CacheCoordinatorBuilder, CoordinatorPair,
-    Reader as ReaderCoordinator, Writer as WriterCoordinator,
+    Builder as CacheCoordinatorBuilder, Reader as ReaderCoordinator,
+    ReaderWriterPair, Writer as WriterCoordinator,
 };
 #[expect(
     clippy::module_name_repetitions,

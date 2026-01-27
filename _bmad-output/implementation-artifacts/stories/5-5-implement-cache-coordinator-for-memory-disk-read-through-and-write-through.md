@@ -1,6 +1,6 @@
 # Story 5.5: Implement Cache Coordinator for Memory/Disk Read-Through and Write-Through
 
-Status: in-progress
+Status: review
 
 ## Story
 
@@ -167,12 +167,12 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [x] Subtask 7.7: Stage and commit all files with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ### Phase 8: Final Quality Gate
-- [ ] Task 8: Comprehensive project verification
-  - [ ] Subtask 8.1: Run `mise run test:coverage` and verify Coordinator logic is fully exercised
-  - [ ] Subtask 8.2: Run `mise run fmt` and verify formatting compliance
-  - [ ] Subtask 8.3: Run `mise run verify` to ensure all Lithos quality gates are satisfied
-  - [ ] Subtask 8.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
-  - [ ] Subtask 8.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
+- [x] Task 8: Comprehensive project verification
+  - [x] Subtask 8.1: Run `mise run test:coverage` and verify Coordinator logic is fully exercised
+  - [x] Subtask 8.2: Run `mise run fmt` and verify formatting compliance
+  - [x] Subtask 8.3: Run `mise run verify` to ensure all Lithos quality gates are satisfied
+  - [x] Subtask 8.4: Run `pre-commit run --all-files` and verify all hooks pass (NEVER use `--no-verify`)
+  - [x] Subtask 8.5: Stage and commit all changes with a fully descriptive conventional commit style message (NEVER use `--no-verify`)
 
 ## Dev Notes
 
@@ -243,14 +243,17 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 Gemini 3 Flash Preview
 
 ### Debug Log References
-None - Story created through systematic analysis of artifacts and project context.
+None - Refactored during implementation to align with project builder patterns and address clippy feedback.
 
 ### Completion Notes List
-- Applied TDD-optimized methodology with atomic RED-GREEN subtasks.
-- Preserved original Epic ACs while aligning with the new CQRS/Modular architecture.
-- Integrated mandatory linting workflows and mise orchestration with explicit fix requirements.
-- Ensured co-located tests per Rust project standards.
-- Detailed Read-Through/Write-Through orchestration logic with decoupled async backfill.
+- Implemented `CacheCoordinator` with full CQRS support (split Reader/Writer handles).
+- Implemented Read-Through logic with decoupled asynchronous backfill to memory.
+- Implemented Write-Through logic (Disk then Memory) to ensure persistence consistency.
+- Implemented Parallel Invalidation for both layers using `tokio::join!`.
+- Refactored `Builder` to support independent `build_reader` and `build_writer` methods, aligning with Moka and Redb adapters.
+- Consolidated test fixtures into a reusable module.
+- Addressed all clippy warnings, including excessive nesting and non-binding `let` issues.
+- Verified 100% logic coverage and passing quality gates via `mise run verify`.
 
 ### File List
 - `crates/adapters/src/spi/cache/coordinator.rs` - Implementation file.

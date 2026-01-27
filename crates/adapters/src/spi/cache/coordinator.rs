@@ -66,31 +66,183 @@ use crate::spi::{
     errors::CacheError,
 };
 
-/// Type alias for the coordinator handle pair.
-pub type CoordinatorPair<K, V> = (Reader<K, V>, Writer<K, V>);
+/// Type alias for a Reader/Writer pair returned by `Builder::build()`.
+pub type ReaderWriterPair<K, V> = (Reader<K, V>, Writer<K, V>);
 
-/// Request to backfill a value from disk to memory.
-struct BackfillRequest<K, V> {
-    key: K,
-    value: V,
-}
-
-/// Internal state shared between Reader and Writer handles.
-struct Inner<K, V>
+/// Builder for constructing a `CacheCoordinator` pair.
+pub struct Builder<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
     V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
-    backfill_tx: mpsc::Sender<BackfillRequest<K, V>>,
-    disk_reader: Arc<dyn CacheReader<K, V>>,
-    disk_writer: Arc<dyn CacheWriter<K, V>>,
-    memory_reader: Arc<dyn CacheReader<K, V>>,
-    memory_writer: Arc<dyn CacheWriter<K, V>>,
+    backfill_capacity: usize,
+    disk_reader: Option<Arc<dyn CacheReader<K, V>>>,
+    disk_writer: Option<Arc<dyn CacheWriter<K, V>>>,
+    memory_reader: Option<Arc<dyn CacheReader<K, V>>>,
+    memory_writer: Option<Arc<dyn CacheWriter<K, V>>>,
 }
 
-/// Cache reader coordinator for multi-layer caching.
-///
-/// Provides read-through caching logic with background backfill.
+impl<K, V> Default for Builder<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+{
+    #[inline]
+    fn default() -> Self {
+        Self {
+            backfill_capacity: 1024,
+            disk_reader: None,
+            disk_writer: None,
+            memory_reader: None,
+            memory_writer: None,
+        }
+    }
+}
+
+impl<K, V> Builder<K, V>
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
+    V: Clone + Send + Sync + std::fmt::Debug + 'static,
+{
+    /// Set the backfill channel capacity.
+    #[inline]
+    pub fn backfill_capacity(&mut self, capacity: usize) -> &mut Self {
+        self.backfill_capacity = capacity;
+        self
+    }
+
+    /// Build the coordinator handles.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if any of the required cache ports
+    /// are not set.
+    #[inline]
+    pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
+        let inner = self.inner_builder()?;
+
+        Ok((
+            Reader {
+                inner: Arc::clone(&inner),
+            },
+            Writer {
+                inner,
+            },
+        ))
+    }
+
+    /// Build a Reader handle independently.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if any of the required cache ports
+    /// are not set.
+    #[inline]
+    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
+        let inner = self.inner_builder()?;
+        Ok(Reader {
+            inner,
+        })
+    }
+
+    /// Build a Writer handle independently.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if any of the required cache ports
+    /// are not set.
+    #[inline]
+    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
+        let inner = self.inner_builder()?;
+        Ok(Writer {
+            inner,
+        })
+    }
+
+    /// Set the disk reader.
+    #[inline]
+    pub fn disk_reader(
+        &mut self,
+        reader: Arc<dyn CacheReader<K, V>>,
+    ) -> &mut Self {
+        self.disk_reader = Some(reader);
+        self
+    }
+
+    /// Set the disk writer.
+    #[inline]
+    pub fn disk_writer(
+        &mut self,
+        writer: Arc<dyn CacheWriter<K, V>>,
+    ) -> &mut Self {
+        self.disk_writer = Some(writer);
+        self
+    }
+
+    /// Internal helper to build the shared state and spawn the backfill task.
+    #[inline]
+    fn inner_builder(&self) -> Result<Arc<Inner<K, V>>, CacheError> {
+        let memory_writer = self.memory_writer.clone().ok_or_else(|| {
+            CacheError::BackendError {
+                backend: "coordinator",
+                message: "memory_writer is required".into(),
+            }
+        })?;
+
+        let (backfill_tx, backfill_rx) = mpsc::channel(self.backfill_capacity);
+
+        spawn_backfill_task(Arc::clone(&memory_writer), backfill_rx);
+
+        Ok(Arc::new(Inner {
+            backfill_tx,
+            memory_reader: self.memory_reader.clone().ok_or_else(|| {
+                CacheError::BackendError {
+                    backend: "coordinator",
+                    message: "memory_reader is required".into(),
+                }
+            })?,
+            memory_writer,
+            disk_reader: self.disk_reader.clone().ok_or_else(|| {
+                CacheError::BackendError {
+                    backend: "coordinator",
+                    message: "disk_reader is required".into(),
+                }
+            })?,
+            disk_writer: self.disk_writer.clone().ok_or_else(|| {
+                CacheError::BackendError {
+                    backend: "coordinator",
+                    message: "disk_writer is required".into(),
+                }
+            })?,
+        }))
+    }
+
+    /// Set the memory reader.
+    #[inline]
+    pub fn memory_reader(
+        &mut self,
+        reader: Arc<dyn CacheReader<K, V>>,
+    ) -> &mut Self {
+        self.memory_reader = Some(reader);
+        self
+    }
+
+    /// Set the memory writer.
+    #[inline]
+    pub fn memory_writer(
+        &mut self,
+        writer: Arc<dyn CacheWriter<K, V>>,
+    ) -> &mut Self {
+        self.memory_writer = Some(writer);
+        self
+    }
+
+    /// Create a new builder.
+    #[inline]
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Cache reader coordinator handle.
 #[derive(Clone)]
 pub struct Reader<K, V>
 where
@@ -178,9 +330,7 @@ where
     }
 }
 
-/// Cache writer coordinator for multi-layer caching.
-///
-/// Provides write-through caching logic and parallel invalidation.
+/// Cache writer coordinator handle.
 #[derive(Clone)]
 pub struct Writer<K, V>
 where
@@ -241,177 +391,23 @@ where
     }
 }
 
-/// Builder for constructing a `CacheCoordinator` pair.
-pub struct Builder<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
-{
-    backfill_capacity: usize,
-    disk_reader: Option<Arc<dyn CacheReader<K, V>>>,
-    disk_writer: Option<Arc<dyn CacheWriter<K, V>>>,
-    memory_reader: Option<Arc<dyn CacheReader<K, V>>>,
-    memory_writer: Option<Arc<dyn CacheWriter<K, V>>>,
+/// Request to backfill a value from disk to memory.
+struct BackfillRequest<K, V> {
+    key: K,
+    value: V,
 }
 
-impl<K, V> Builder<K, V>
+/// Internal state shared between Reader and Writer handles.
+pub(crate) struct Inner<K, V>
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
     V: Clone + Send + Sync + std::fmt::Debug + 'static,
 {
-    /// Set the backfill channel capacity.
-    #[inline]
-    pub fn backfill_capacity(&mut self, capacity: usize) -> &mut Self {
-        self.backfill_capacity = capacity;
-        self
-    }
-
-    /// Build the coordinator handles.
-    ///
-    /// # Errors
-    /// Returns `CacheError::BackendError` if any of the required cache ports
-    /// are not set.
-    #[inline]
-    pub fn build(&self) -> Result<CoordinatorPair<K, V>, CacheError> {
-        let inner = self.build_inner()?;
-
-        Ok((
-            Reader {
-                inner: Arc::clone(&inner),
-            },
-            Writer {
-                inner,
-            },
-        ))
-    }
-
-    /// Internal helper to build the shared state and spawn the backfill task.
-    #[inline]
-    fn build_inner(&self) -> Result<Arc<Inner<K, V>>, CacheError> {
-        let memory_writer = self.memory_writer.clone().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "coordinator",
-                message: "memory_writer is required".into(),
-            }
-        })?;
-
-        let (backfill_tx, backfill_rx) = mpsc::channel(self.backfill_capacity);
-
-        spawn_backfill_task(Arc::clone(&memory_writer), backfill_rx);
-
-        Ok(Arc::new(Inner {
-            backfill_tx,
-            memory_reader: self.memory_reader.clone().ok_or_else(|| {
-                CacheError::BackendError {
-                    backend: "coordinator",
-                    message: "memory_reader is required".into(),
-                }
-            })?,
-            memory_writer,
-            disk_reader: self.disk_reader.clone().ok_or_else(|| {
-                CacheError::BackendError {
-                    backend: "coordinator",
-                    message: "disk_reader is required".into(),
-                }
-            })?,
-            disk_writer: self.disk_writer.clone().ok_or_else(|| {
-                CacheError::BackendError {
-                    backend: "coordinator",
-                    message: "disk_writer is required".into(),
-                }
-            })?,
-        }))
-    }
-
-    /// Build a Reader handle independently.
-    ///
-    /// # Errors
-    /// Returns `CacheError::BackendError` if any of the required cache ports
-    /// are not set.
-    #[inline]
-    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
-        let inner = self.build_inner()?;
-        Ok(Reader {
-            inner,
-        })
-    }
-
-    /// Build a Writer handle independently.
-    ///
-    /// # Errors
-    /// Returns `CacheError::BackendError` if any of the required cache ports
-    /// are not set.
-    #[inline]
-    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
-        let inner = self.build_inner()?;
-        Ok(Writer {
-            inner,
-        })
-    }
-
-    /// Set the disk reader.
-    #[inline]
-    pub fn disk_reader(
-        &mut self,
-        reader: Arc<dyn CacheReader<K, V>>,
-    ) -> &mut Self {
-        self.disk_reader = Some(reader);
-        self
-    }
-
-    /// Set the disk writer.
-    #[inline]
-    pub fn disk_writer(
-        &mut self,
-        writer: Arc<dyn CacheWriter<K, V>>,
-    ) -> &mut Self {
-        self.disk_writer = Some(writer);
-        self
-    }
-
-    /// Set the memory reader.
-    #[inline]
-    pub fn memory_reader(
-        &mut self,
-        reader: Arc<dyn CacheReader<K, V>>,
-    ) -> &mut Self {
-        self.memory_reader = Some(reader);
-        self
-    }
-
-    /// Set the memory writer.
-    #[inline]
-    pub fn memory_writer(
-        &mut self,
-        writer: Arc<dyn CacheWriter<K, V>>,
-    ) -> &mut Self {
-        self.memory_writer = Some(writer);
-        self
-    }
-
-    /// Create a new builder.
-    #[inline]
-    #[must_use]
-    pub fn new() -> Self {
-        Self {
-            backfill_capacity: 1024,
-            disk_reader: None,
-            disk_writer: None,
-            memory_reader: None,
-            memory_writer: None,
-        }
-    }
-}
-
-impl<K, V> Default for Builder<K, V>
-where
-    K: Clone + Eq + std::hash::Hash + Send + Sync + std::fmt::Debug + 'static,
-    V: Clone + Send + Sync + std::fmt::Debug + 'static,
-{
-    #[inline]
-    fn default() -> Self {
-        Self::new()
-    }
+    backfill_tx: mpsc::Sender<BackfillRequest<K, V>>,
+    disk_reader: Arc<dyn CacheReader<K, V>>,
+    disk_writer: Arc<dyn CacheWriter<K, V>>,
+    memory_reader: Arc<dyn CacheReader<K, V>>,
+    memory_writer: Arc<dyn CacheWriter<K, V>>,
 }
 
 /// Spawn a background task to process backfill requests.
@@ -451,7 +447,7 @@ mod tests {
             mem_writer: MockCacheWriter<String, String>,
             disk_reader: MockCacheReader<String, String>,
             disk_writer: MockCacheWriter<String, String>,
-        ) -> CoordinatorPair<String, String> {
+        ) -> ReaderWriterPair<String, String> {
             let mut builder = Builder::new();
             builder
                 .memory_reader(Arc::new(mem_reader))
@@ -828,8 +824,7 @@ mod tests {
                 MockCacheWriter::new(),
             );
 
-            let result = reader.get(&"key".to_owned()).await;
-            result.unwrap();
+            let _result = reader.get(&"key".to_owned()).await;
 
             assert!(logs_contain("operation=\"get\""));
         }
@@ -878,8 +873,7 @@ mod tests {
             let (reader, _writer) = builder.build().expect("build failed");
 
             let start = Instant::now();
-            let result = reader.get(&"key".to_owned()).await;
-            result.unwrap();
+            let _result = reader.get(&"key".to_owned()).await;
             let duration = start.elapsed();
 
             // Should be much faster than the 500ms sleep
