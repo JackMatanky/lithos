@@ -1,16 +1,39 @@
 # Epic 12: Basic Interactive Template System **[MVP CORE]**
 
-Users can create and execute modular templates with schema-driven interactive prompts that generate validated notes with essential template functions.
-**FRs covered:** FR1, FR2, FR9, FR15, FR16
-**Implementation Notes:**
+## Overview
 
-- TemplatePort, UIPort and mocks created in this epic
-- MiniJinja integration per ADR 0003
-- Sample templates from docs/refs/obsidian/ converted as test fixtures
-- Schema-driven inputs (enums → suggesters)
-- User documentation for basic template creation
-- Performance benchmarking for NFR1 validation (<500ms execution)
-- May create ADR for interactive UI patterns
+Users can create and execute modular templates with schema-driven interactive prompts that generate validated notes with essential template functions.
+
+**FRs covered:** FR1 (template creation), FR2 (interactive prompts), FR9 (schema-driven), FR15 (validation), FR16 (suggesters)
+
+## Implementation Notes
+
+- **Template Engine**: MiniJinja per ADR 0003 (Rust-native Jinja2, sandboxed execution)
+- **Interactive UI**: Dialoguer for terminal prompts (text input, select, multi-select, confirm)
+- **Integration Points**:
+  - Epic 7: Schema validation drives prompt generation (PropertySpec → suggester type)
+  - Epic 11: Query results populate suggesters (FileSpec → query by directory/fileClass)
+  - Epic 10: Template output written to vault, triggers indexing
+  - Epic 14: CLI launches TemplateExecutor via dependency injection
+  - Epic 13: Extended with composition, dates, multi-select (Phase 1.5)
+- **Domain Ports**: TemplatePort (execution), UIPort (prompts) with mocks for testing
+- **Performance Targets**:
+  - Template rendering: <100ms for simple templates (NFR1)
+  - Complex templates with queries: <500ms total (NFR1)
+  - Interactive prompts: <50ms UI responsiveness
+- **Template Functions**: Date/time, string manipulation (slug, case conversion), random values, UUID, Base64
+- **Schema-Driven Prompts**: Epic 7 PropertySpec constraints auto-generate:
+  - StringSpec with enum → select suggester
+  - NumberSpec with min/max → validated number input
+  - FileSpec with directory → file picker from Epic 11 query
+  - DateSpec → date input with format validation
+- **Location**: 
+  - `crates/domain/src/template/` - domain models (Template aggregate, Suggestion, ElicitationSource)
+  - `crates/app/src/services/template/` - TemplateExecutor, BindingService, PromptSession
+  - `crates/adapters/src/api/ui/` - Dialoguer implementation of UIPort
+- **Sample Templates**: docs/refs/obsidian/ converted to MiniJinja, used as test fixtures
+- **Validation**: Templates validated on load (syntax check), on render (variable resolution)
+- **May Create**: ADR for interactive UI patterns if complex state management emerges
 
 ### Story 12.1: [Domain] Unified Prompt, Suggestion, and Source Models
 
