@@ -11,7 +11,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 ## Original Epic Acceptance Criteria
 
 **Given** coordinated caching requires both layers
-**When** I implement `CoordinatorInner<K, V>` in `spi/cache/coordinator.rs`
+**When** I implement `Inner<K, V>` in `spi/cache/coordinator.rs`
 **Then** it leverages the modular `Reader` and `Writer` handles from Story 5.4
 **And** it encapsulates:
 - `memory_reader: Arc<dyn CacheReader<K, V>>`
@@ -19,9 +19,13 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 - `disk_reader: Arc<dyn CacheReader<K, V>>`
 - `disk_writer: Arc<dyn CacheWriter<K, V>>`
 
+**Given** the new key listing capability from Story 5.4
+**When** I call `keys()` on the coordinator
+**Then** it returns a deduplicated union of keys from both memory and disk layers
+
 **Given** the need for CQRS consistency
 **When** I implement `ReaderCoordinator` and `WriterCoordinator`
-**Then** they share the `CoordinatorInner` state via `Arc`
+**Then** they share the `Inner` state via `Arc`
 **And** the `Reader` handle only implements `CacheReader`
 **And** the `Writer` handle only implements `CacheWriter`
 
@@ -51,9 +55,10 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 
 **Given** I need a multi-layer cache coordinator
 **When** I run `mise run test:unit:adapters coordinator`
-**Then** all tests pass using `MockCacheReaderPort` and `MockCacheWriterPort` to verify orchestration logic
+**Then** all tests pass using `MockCacheReader` and `MockCacheWriter` to verify orchestration logic
 **And** `Reader` handle has NO access to `put` or `clear` methods
 **And** `Writer` handle has NO access to `get` or `has` methods
+**And** `keys()` returns a correct merged list of keys from both layers
 
 **Given** a "Memory Miss / Disk Hit" scenario
 **When** I call `get()` on the coordinator reader
@@ -88,12 +93,12 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     - **COMMON FIXES**: Extract helper functions, use builder patterns, remove unnecessary collect(), avoid shadowing, document errors, use proper assertions
 
 ### Phase 2: Struct Definition & Shared State (CQRS Handles)
-- [ ] Task 2: Implement `CoordinatorInner` and handles
+- [ ] Task 2: Implement `Inner` and handles
   - [ ] Subtask 2.1: [TDD] Write `coordinator::shares_inner_state_between_handles` (failing test)
-  - [ ] Subtask 2.2: Define `struct CoordinatorInner<K, V>` holding the four split ports from Story 5.4
-  - [ ] Subtask 2.3: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` as `Arc<CoordinatorInner>` wrappers
+  - [ ] Subtask 2.2: Define `struct Inner<K, V>` holding the four split ports from Story 5.4
+  - [ ] Subtask 2.3: Define `pub struct Reader<K, V>` and `pub struct Writer<K, V>` as `Arc<Inner>` wrappers
   - [ ] Subtask 2.4: Implement `new` constructor that returns `(Reader, Writer)`
-  - [ ] Subtask 2.5: Ensure `CoordinatorInner` is non-clonable and private to the module
+  - [ ] Subtask 2.5: Ensure `Inner` is non-clonable and private to the module
   - [ ] Subtask 2.6: Run `mise run test:unit:adapters coordinator_init` and verify pass (GREEN)
   - [ ] Subtask 2.7: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
@@ -105,7 +110,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 ### Phase 3: Event-Driven Backfill Infrastructure
 - [ ] Task 3: Implement internal backfill communication
   - [ ] Subtask 3.1: [TDD] Write `backfill::triggers_asynchronous_memory_put_on_disk_hit` (failing)
-  - [ ] Subtask 3.2: Add `tokio::sync::mpsc` channel to `CoordinatorInner` for backfill requests
+  - [ ] Subtask 3.2: Add `tokio::sync::mpsc` channel to `Inner` for backfill requests
   - [ ] Subtask 3.3: Implement a private `spawn_backfill_task` helper that listens to the channel
   - [ ] Subtask 3.4: Implement the backfill logic: task calls `memory_writer.put()` and logs results
   - [ ] Subtask 3.5: Run `mise run test:unit:adapters` and verify async trigger (GREEN)
@@ -124,7 +129,9 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
   - [ ] Subtask 4.4: Implement logic to check disk on memory miss and send (K, V) to the `mpsc` channel on disk hit for background memory update
   - [ ] Subtask 4.5: [TDD] Write `get::returns_none_on_total_miss` (failing)
   - [ ] Subtask 4.6: Implement `has` orchestration checking memory then disk
-  - [ ] Subtask 4.7: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
+  - [ ] Subtask 4.7: [TDD] Write `keys::returns_union_of_both_layers` (failing)
+  - [ ] Subtask 4.8: Implement `keys` orchestration: fetch from both, merge into a `HashSet`, and return as `Vec<K>`
+  - [ ] Subtask 4.9: Run `mise run test:unit:adapters coordinator_get` and verify pass (GREEN)
   - [ ] Subtask 4.8: Run `mise run lint` and fix all warnings/errors
     - **NOTE**: Review test-developer-guide.md Section 8 for comprehensive guidance on linting and code quality
     - **RULE**: Fix clippy issues properly rather than suppressing with `#[expect(...)]` attributes
@@ -198,6 +205,12 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
     *   Return value immediately to caller.
 5.  **Disk Miss**: Emit `tracing::event!` at `Level::INFO` with "Disk Miss"; return `None`.
 
+#### Key Listing Flow (CoordinatorReader::keys)
+1.  Fetch `memory_keys` from `memory_reader`.
+2.  Fetch `disk_keys` from `disk_reader`.
+3.  Merge into a `HashSet<K>` to handle overlapping keys.
+4.  Return `Vec<K>`.
+
 #### Write-Through Flow (CoordinatorWriter::put)
 1.  Attempt write to disk via `disk_writer` (ensures persistence first).
 2.  **Disk Success**: Attempt write to memory via `memory_writer`.
@@ -211,7 +224,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 - **Async Resource Safety**: Uses `mpsc` channels rather than spawning raw tasks to prevent resource leakage.
 
 ### Technical Requirements
-- **Mock-Driven Testing**: Orchestration logic MUST be verified using `MockCacheReaderPort` and `MockCacheWriterPort`.
+- **Mock-Driven Testing**: Orchestration logic MUST be verified using `MockCacheReader` and `MockCacheWriter`.
 - **Zero-Blocking**: Ensure the backfill task does not block the return path of the Reader.
 - **Error Handling**: Must distinguish between transient memory errors and persistent disk errors when possible.
 
@@ -243,7 +256,7 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 ## Dev Agent Record
 
 ### Agent Model Used
-Claude-3.5-Sonnet (2024-10-22)
+Gemini 3 Flash Preview
 
 ### Debug Log References
 None - Story created through systematic analysis of artifacts and project context.
