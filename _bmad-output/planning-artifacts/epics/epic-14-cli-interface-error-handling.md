@@ -1,51 +1,216 @@
 # Epic 14: CLI Interface & Error Handling
 
+## Overview
+
 Users can execute lithos commands with intuitive CLI, comprehensive help, single-word shortcuts, and actionable error diagnostics.
-**FRs covered:** FR41, FR42, FR43, FR44, FR45, FR46, FR47, FR48, FR49, FR50, FR30, FR31
-**Implementation Notes:**
 
-- Clap for CLI, miette for diagnostics per ADR 0006
-- CommandPort, AuditPort created if needed
-- Dependency injection wiring for all ports
-- Cross-platform support (macOS primary, Linux)
-- Observability/audit logging for FR40 (basic version)
-- User CLI documentation
+**FRs covered:** FR41 (command structure), FR42 (help), FR43-47 (subcommands), FR48 (diagnostics), FR49-50 (interactive), FR30-31 (cross-platform), FR40 (audit)
 
-### Story 14.1: [Adapters/API] Clap-based CLI Command Structure
+## Implementation Notes
 
-As a user, I want a well-structured CLI with subcommands for all major lithos operations, so that I can navigate and execute commands intuitively.
+- **CLI Framework**: Clap v4 per ADR 0006 (declarative derive macros, performance <50μs parsing)
+- **Error Diagnostics**: Miette per ADR 0006 (structured error reporting with source spans)
+- **Terminal UI**: Dialoguer for interactive prompts, console for cross-platform detection
+- **Integration Points**:
+  - Epic 6: ConfigCommand/ConfigQuery for configuration management
+  - Epic 7: SchemaCommand/SchemaQuery for schema operations
+  - Epic 10: IndexerService for vault indexing
+  - Epic 11: QueryService for vault searching
+  - Epic 12: TemplateExecutor for template execution
+  - Epic 8: EventBus integration for async operations and progress tracking
+- **Dependency Injection**: All services injected via constructor pattern (no global singletons in CLI layer)
+- **Cross-Platform**: Primary target macOS, tested on Linux, terminal capability detection via `console` crate
+- **Performance Targets**:
+  - CLI parsing: <50μs per ADR 0006
+  - Help display: <100ms for instant feedback (NFR4)
+  - Command startup: <500ms for basic operations
+  - Progress indicators for operations >2s (NFR2)
+- **Audit Logging**: Tracing-based audit events to file (`tracing-appender` with rotation)
+- **Location**: `crates/cli/src/` contains commands/, error.rs, main.rs, app.rs
+- **Error Handling Strategy**:
+  - Domain errors → Miette diagnostics with context
+  - Validation errors → Highlighted fields with suggestions
+  - File errors → Clickable paths in supported terminals
+  - Network errors → Retry suggestions with exponential backoff guidance
+- **Command Structure**:
+  - `lithos template` - Template management (new, list, execute)
+  - `lithos schema` - Schema operations (list, validate, create)
+  - `lithos vault` - Vault operations (index, search, validate)
+  - `lithos config` - Configuration management (show, set, reset)
+  - Single-word shortcuts: `lithos new`, `lithos search`
+- **May Create**: ADR for CLI error recovery patterns if complex coordination emerges
+
+## Story 14.1: Implement Clap-based CLI Command Structure
+
+As a user, I want a well-structured CLI with subcommands for all major lithos operations,
+So that I can navigate and execute commands intuitively.
+
 **Acceptance Criteria:**
 
-- **Given** the clap crate for CLI parsing
-- **When** I define the CLI structure
-- **Then** it includes subcommands for `template`, `schema`, `vault`, and `config`.
-- **And** each subcommand has appropriate sub-subcommands (e.g., `template new`, `template list`).
-- **And** global options like `--help`, `--version`, and `--verbose` are supported.
-  **References:** FR41, FR42
+**Given** Clap v4 provides derive macros per ADR 0006
+**When** I implement CLI structure in `crates/cli/src/app.rs`
+**Then** `LithosApp` struct uses `#[derive(Parser)]` with subcommands:
+- `Template(TemplateCommands)` - template operations
+- `Schema(SchemaCommands)` - schema operations
+- `Vault(VaultCommands)` - vault operations
+- `Config(ConfigCommands)` - configuration operations
 
-### Story 14.2: [Adapters/API] Template Execution CLI Commands
+**Given** each subcommand has nested operations
+**When** I define `TemplateCommands` enum
+**Then** it includes variants:
+- `New { template: String, output: Option<PathBuf> }` - execute template
+- `List { format: Option<OutputFormat> }` - list available templates
+- `Validate { template: PathBuf }` - validate template syntax
 
-As a user, I want CLI commands to execute templates with various output options, so that I can create notes from the command line.
+**Given** global options must be available to all subcommands
+**When** I define `LithosApp` struct
+**Then** global fields include:
+- `#[arg(short, long)]` verbose: bool - enable verbose output
+- `#[arg(long)]` vault_path: Option<PathBuf> - override vault location
+- `#[arg(long)]` config: Option<PathBuf> - custom config file
+- `#[arg(short, long)]` version: bool - display version info
+
+**Given** Clap performance must meet ADR 0006 baseline
+**When** I benchmark CLI parsing
+**Then** `LithosApp::parse()` completes in <50μs for simple commands
+**And** complex nested commands parse in <200μs
+**And** parsing benchmarks are tracked in CI/CD
+
+**Given** help generation must be instant per NFR4
+**When** user runs `lithos --help` or `lithos template --help`
+**Then** help text displays in <100ms
+**And** help includes command examples and common use cases
+**And** Clap's built-in help formatting is customized for consistency
+
+**Given** cross-platform support is required
+**When** CLI runs on macOS and Linux
+**Then** path arguments use `PathBuf` for platform-agnostic handling
+**And** terminal capability detection adapts output formatting
+**And** color output is disabled on non-TTY environments
+
+**References:** FR41, FR42, NFR4, ADR 0006
+
+## Story 14.2: Implement Template Execution CLI Commands
+
+As a user, I want CLI commands to execute templates with various output options,
+So that I can create notes from the command line.
+
 **Acceptance Criteria:**
 
-- **Given** the `lithos template` subcommand
-- **When** I run `lithos template new <template-name>`
-- **Then** it launches the interactive template execution for the specified template.
-- **And** `lithos template list` shows available templates.
-- **And** output options like `--output <file>` and `--format <markdown|json>` are supported.
-  **References:** FR45, FR47
+**Given** Epic 12 provides TemplateExecutor service
+**When** I implement `lithos template new <name>` command
+**Then** it injects TemplateExecutor via dependency injection
+**And** executes template interactively using Dialoguer prompts
+**And** saves output to vault with schema validation
 
-### Story 14.3: [Adapters/API] Vault Management CLI Commands
+**Given** template execution is interactive (FR49, FR50)
+**When** user runs `lithos template new contact`
+**Then** CLI prompts for template variables using Dialoguer:
+- Text input for string variables
+- Select for enum variables (from schema or template-defined)
+- Confirm for boolean variables
+- Date input with validation
 
-As a user, I want CLI commands to manage vault operations like indexing and searching, so that I can perform vault maintenance from the command line.
+**Given** output location must be configurable
+**When** user specifies `--output <path>` flag
+**Then** template writes to specified path instead of default vault location
+**And** path validation ensures file doesn't exist or `--force` flag is used
+**And** parent directories are created if needed
+
+**Given** output format must support multiple targets
+**When** user specifies `--format <format>` flag
+**Then** supported formats include:
+- `markdown` (default) - Obsidian-compatible markdown
+- `json` - structured JSON for programmatic use
+- `yaml` - YAML frontmatter + content
+
+**Given** template listing must be fast and informative
+**When** user runs `lithos template list`
+**Then** output includes columns: Name, Description, Schema, Last Modified
+**And** list is sorted alphabetically by default
+**And** `--format json` outputs machine-readable template metadata
+**And** list command completes in <500ms for typical template directories
+
+**Given** Epic 12 template validation is available
+**When** user runs `lithos template validate <path>`
+**Then** validation checks:
+- MiniJinja syntax correctness
+- Variable definitions match schema
+- Required variables are defined
+- File paths resolve correctly
+**And** validation errors use Miette diagnostics with source spans
+
+**Given** template execution may fail
+**When** errors occur during execution
+**Then** partial execution is rolled back (no incomplete notes written)
+**And** error diagnostics include: failed variable, template location, validation context
+**And** user can retry with `--resume` flag (if supported in future)
+
+**References:** FR45, FR47, FR49, FR50
+
+## Story 14.3: Implement Vault Management CLI Commands
+
+As a user, I want CLI commands to manage vault operations like indexing and searching,
+So that I can perform vault maintenance from the command line.
+
 **Acceptance Criteria:**
 
-- **Given** the `lithos vault` subcommand
-- **When** I run `lithos vault index`
-- **Then** it indexes the current vault and updates the search index.
-- **And** `lithos vault search <query>` performs searches across indexed notes.
-- **And** `lithos vault validate` checks schema compliance across the vault.
-  **References:** FR44
+**Given** Epic 10 provides IndexerService
+**When** I implement `lithos vault index` command
+**Then** it injects IndexerService and triggers full vault re-index
+**And** displays progress indicator for vaults >100 files (NFR2: complete in <2s for 1000 notes)
+**And** progress shows: "Indexed 573/1000 notes (57%)..."
+
+**Given** indexing is long-running (potentially >2s for large vaults)
+**When** indexing executes
+**Then** Epic 8 EventBus provides progress events
+**And** CLI subscribes to IndexProgress events on ControlPlane broadcast
+**And** progress bar updates in real-time using `indicatif` crate
+**And** final summary shows: "Indexed 1000 notes in 1.8s (556 notes/sec)"
+
+**Given** indexing may encounter errors
+**When** individual files fail validation/parsing
+**Then** indexing continues with warnings: "Warning: Skipped invalid file at path/to/note.md"
+**And** final summary reports: "Successfully indexed 995/1000 notes (5 errors)"
+**And** `--strict` flag fails indexing on first error
+
+**Given** Epic 11 provides QueryService
+**When** I implement `lithos vault search <query>` command
+**Then** it injects QueryService and executes search against Epic 9 storage indexes
+**And** search supports query syntax:
+- Simple text: `lithos vault search "project management"`
+- Schema filter: `lithos vault search --schema contact "John"`
+- Metadata filter: `lithos vault search --tag rust --status active`
+
+**Given** search results must be user-friendly
+**When** search returns results
+**Then** output format includes:
+- Path (clickable in supported terminals)
+- Title (extracted from frontmatter or first heading)
+- Excerpt (surrounding matched text with highlighting)
+- Score (relevance ranking)
+**And** `--format json` outputs machine-readable results
+**And** results are paginated for large result sets (default 20 per page)
+
+**Given** vault validation checks schema compliance
+**When** user runs `lithos vault validate`
+**Then** validation checks all notes against their declared schemas (Epic 7)
+**And** reports validation errors grouped by schema
+**And** output includes:
+- Total notes validated
+- Validation errors by severity (error, warning)
+- Notes without schemas (info-level)
+
+**Given** vault statistics are useful for maintenance
+**When** user runs `lithos vault stats`
+**Then** output includes:
+- Total note count
+- Notes by schema (breakdown)
+- Index size on disk
+- Last indexed timestamp
+- Vault size on disk
+
+**References:** FR44, NFR2
 
 ### Story 14.4: [Adapters/API] Schema Management CLI Commands
 
@@ -71,17 +236,72 @@ As a user, I want CLI commands to manage application configuration, so that I ca
 - **And** `lithos config reset` restores default configuration.
   **References:** FR46
 
-### Story 14.6: [Adapters/API] Miette-based Error Diagnostics
+## Story 14.6: Implement Miette-based Error Diagnostics
 
-As a user, I want clear, actionable error messages when operations fail, so that I can understand and resolve issues quickly.
+As a user, I want clear, actionable error messages when operations fail,
+So that I can understand and resolve issues quickly.
+
 **Acceptance Criteria:**
 
-- **Given** the miette crate for diagnostics
-- **When** a command fails
-- **Then** it displays structured error messages with context and suggestions.
-- **And** file path errors include clickable links in supported terminals.
-- **And** validation errors highlight specific fields and provide correction hints.
-  **References:** FR48
+**Given** Miette provides structured diagnostics per ADR 0006
+**When** I implement error handling in `crates/cli/src/error.rs`
+**Then** `CliError` enum wraps all domain/adapter errors
+**And** `CliError` implements `miette::Diagnostic` trait for rich formatting
+**And** error variants include: `TemplateError`, `SchemaError`, `VaultError`, `ConfigError`, `IoError`
+
+**Given** domain errors must be user-friendly
+**When** I convert domain errors to CLI errors
+**Then** error context includes:
+- Source file path and line number (when applicable)
+- User-actionable suggestions (e.g., "Run `lithos vault index` to rebuild")
+- Related documentation links (e.g., "See: https://lithos.dev/docs/schemas")
+- Severity level (error, warning, info)
+
+**Given** file errors must be clickable in terminals
+**When** I format file path errors
+**Then** Miette source spans point to specific file locations
+**And** paths are absolute for terminal hyperlinks (macOS Terminal, iTerm2 support)
+**And** error output includes: `error: template not found at /path/to/template.md:5:10`
+
+**Given** validation errors need field-level detail
+**When** schema or template validation fails
+**Then** error highlights specific YAML/TOML fields with source spans:
+```
+error: invalid property type
+  ┌─ schemas/contact.yaml:10:5
+  │
+10│     type: strin
+  │           ^^^^^ expected "string", found "strin"
+  │
+  = help: Valid types are: string, number, boolean, date, file
+```
+
+**Given** Epic 6 ConfigError, Epic 7 SchemaError need CLI formatting
+**When** I wrap adapter errors
+**Then** `From<ConfigError> for CliError` preserves error context
+**And** `From<SchemaError> for CliError` adds schema-specific help text
+**And** all conversions use `miette::wrap_err()` to maintain error chain
+
+**Given** multi-error scenarios (e.g., multiple validation failures)
+**When** operations produce multiple errors
+**Then** Miette's `related` feature aggregates errors in single report
+**And** errors are grouped by category (file errors, validation errors, etc.)
+**And** total error count displayed: `error: found 5 validation errors`
+
+**Given** error recovery suggestions must be contextual
+**When** I implement diagnostic suggestions
+**Then** file not found → "Create file or check path"
+**And** permission denied → "Run with elevated permissions or check file ownership"
+**And** invalid schema → "Validate schema with `lithos schema validate <file>`"
+**And** vault not indexed → "Run `lithos vault index` to build search index"
+
+**Given** error output must respect terminal capabilities
+**When** CLI runs in different environments
+**Then** color output disabled on non-TTY (piped output, CI)
+**And** Unicode box-drawing characters fallback to ASCII on unsupported terminals
+**And** `console` crate detects terminal features (color depth, Unicode support)
+
+**References:** FR48, ADR 0006
 
 ### Story 14.7: [Adapters/API] Comprehensive Help System
 
@@ -131,21 +351,82 @@ As a power user, I want single-word shortcuts for common operations, so that I c
 - **And** shortcuts are documented in the help system.
   **References:** FR47
 
-### Story 14.11: [Recovery] System-Wide Error Recovery Coordination
+## Story 14.11: Implement System-Wide Error Recovery Coordination
 
-As a user experiencing system-wide issues, I want coordinated error recovery across all components, so that complex operations can be safely rolled back and system state remains consistent.
+As a user experiencing system-wide issues, I want coordinated error recovery across all components,
+So that complex operations can be safely rolled back and system state remains consistent.
+
 **Acceptance Criteria:**
-**Given** multi-epic operations fail
-**When** the CLI detects cascading failures
-**Then** it coordinates rollback across storage, indexing, and templates
-**And** it provides clear status on what operations were reverted
-**And** it offers recovery options (retry, partial recovery, full reset)
 
-**Given** system corruption is detected
+**Given** complex operations span multiple epics (template execution → indexing → storage)
+**When** operation fails mid-execution
+**Then** CLI coordinates rollback via Epic 9 UnitOfWork pattern
+**And** rollback order is reverse of execution order (LIFO)
+**And** each epic's rollback is atomic (all-or-nothing per component)
+
+**Given** template execution creates note → triggers indexing → updates storage
+**When** storage write fails after indexing succeeds
+**Then** CLI rollback sequence:
+1. Abort storage transaction (Epic 9 UnitOfWork rollback)
+2. Remove from search index (Epic 11 cache invalidation)
+3. Delete partially-written note file (Epic 10 file cleanup)
+**And** user sees: "Rolling back: storage → index → file (3/3 complete)"
+
+**Given** rollback operations may partially fail
+**When** individual rollback steps fail
+**Then** CLI continues best-effort rollback for remaining steps
+**And** logs all rollback failures: "Warning: Failed to remove index entry (cache error)"
+**And** final summary reports: "Rollback completed with 1 warning (system may be inconsistent)"
+
+**Given** system corruption detected (Epic 9 storage, Epic 11 cache, or Epic 7 schema)
+**When** user runs `lithos vault repair`
+**Then** repair sequence:
+1. Validate Epic 9 storage integrity (rkyv checksums)
+2. Rebuild Epic 11 cache from Epic 9 storage (clean slate protocol)
+3. Re-index all notes (Epic 10 full scan)
+4. Validate schema consistency (Epic 7)
+**And** each step shows progress: "Validating storage: 573/1000 entries (57%)..."
+
+**Given** repair operations are long-running
+**When** repair executes
+**Then** Epic 8 EventBus provides progress events across all components
+**And** CLI aggregates progress from multiple event sources
+**And** estimated completion time shown: "Estimated 45s remaining..."
+**And** repair can be cancelled with Ctrl+C (graceful shutdown)
+
+**Given** system integrity validation is needed
+**When** repair completes
+**Then** validation checks:
+- Epic 9 storage: all tables have valid rkyv checksums
+- Epic 11 cache: indexes match storage contents
+- Epic 10: all files referenced in storage exist on disk
+- Epic 7: all schemas are valid and loaded
+**And** validation report shows: "✓ Storage integrity OK, ✓ Cache consistency OK, ✗ 3 orphaned files found"
+
+**Given** recovery options must be flexible
+**When** user encounters errors
+**Then** CLI suggests context-specific recovery:
+- Single note validation error → "Fix schema or skip with --force"
+- Index corruption → "Run `lithos vault repair --index-only`"
+- Storage corruption → "Run `lithos vault repair --full` (WARNING: rebuilds from files)"
+- Config errors → "Run `lithos config reset` to restore defaults"
+
+**Given** detailed logging is required for troubleshooting
 **When** recovery operations run
-**Then** the CLI provides progress indicators and estimated completion times
-**And** it validates system integrity after recovery
-**And** it logs detailed recovery actions for troubleshooting
+**Then** audit log records:
+- Timestamp of failure and recovery attempt
+- Component-by-component rollback steps
+- Errors encountered during rollback
+- Final system state (consistent/inconsistent)
+**And** logs written to `.lithos/logs/recovery-{timestamp}.log`
+
+**Given** Epic 6 ConfigCache supports rollback
+**When** config update fails
+**Then** `lithos config rollback` restores previous valid snapshot
+**And** rollback uses Epic 6 ConfigCache snapshot history (last 10 versions)
+**And** user confirms rollback: "Restore config from 2025-01-27 14:32:15? [y/N]"
+
+**References:** FR48, NFR2
 
 ### Story 14.12: [Test] CLI Performance Benchmarking (NFR4 Validation)
 
