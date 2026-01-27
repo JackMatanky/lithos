@@ -31,7 +31,7 @@ pub use backfiller::{
 )]
 pub use coordinator::{
     Builder as CacheCoordinatorBuilder, Reader as ReaderCoordinator,
-    ReaderWriterPair, Writer as WriterCoordinator,
+    Writer as WriterCoordinator,
 };
 #[expect(
     clippy::module_name_repetitions,

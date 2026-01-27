@@ -45,20 +45,22 @@
 //! # }
 //! #
 //! # tokio::runtime::Runtime::new().unwrap().block_on(async {
-//! let (reader, writer) = CacheCoordinatorBuilder::<String, String>::new()
+//! let mut builder = CacheCoordinatorBuilder::<String, String>::new();
+//! builder
 //!     .memory_reader(Arc::new(DummyReader))
 //!     .memory_writer(Arc::new(DummyWriter))
 //!     .disk_reader(Arc::new(DummyReader))
-//!     .disk_writer(Arc::new(DummyWriter))
-//!     .build()
-//!     .unwrap();
+//!     .disk_writer(Arc::new(DummyWriter));
+//!
+//! let reader = builder.reader().unwrap();
+//! let writer = builder.writer().unwrap();
 //! # });
 //! ```
 //!
 //! # CQRS Usage
 //!
 //! For proper CQRS separation following hexagonal architecture, use
-//! `build_reader()` and `build_writer()` independently rather than `build()`:
+//! `reader()` and `writer()` independently:
 //!
 //! ```rust
 //! # use std::sync::Arc;
@@ -85,13 +87,13 @@
 //! let query_cache = CacheCoordinatorBuilder::new()
 //!     .memory_reader(Arc::new(mem_reader))
 //!     .disk_reader(Arc::new(disk_reader))
-//!     .build_reader()?; // Returns Reader only
+//!     .reader()?; // Returns Reader only
 //!
 //! // ✅ CQRS Command Side (writes only):
 //! let command_cache = CacheCoordinatorBuilder::new()
 //!     .memory_writer(Arc::new(mem_writer))
 //!     .disk_writer(Arc::new(disk_writer))
-//!     .build_writer()?; // Returns Writer only
+//!     .writer()?; // Returns Writer only
 //!
 //! // Now inject into separate Query and Command adapters:
 //! // - QueryAdapter owns query_cache (read-only operations)
@@ -113,9 +115,6 @@ use crate::spi::{
     cache::{BackfillHandle, CacheReader, CacheWriter, backfiller},
     errors::CacheError,
 };
-
-/// Type alias for a Reader/Writer pair returned by `Builder::build()`.
-pub type ReaderWriterPair<K, V> = (Reader<K, V>, Writer<K, V>);
 
 /// Builder for constructing a `CacheCoordinator` pair.
 pub struct Builder<K, V>
@@ -159,58 +158,6 @@ where
         self
     }
 
-    /// Build both Reader and Writer handles.
-    ///
-    /// # Errors
-    /// Returns `CacheError::BackendError` if any required cache port is
-    /// missing.
-    #[inline]
-    pub fn build(&self) -> Result<ReaderWriterPair<K, V>, CacheError> {
-        let memory_writer = self.memory_writer.clone().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "coordinator",
-                message: "memory_writer is required".into(),
-            }
-        })?;
-
-        let disk_writer = self.disk_writer.clone().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "coordinator",
-                message: "disk_writer is required".into(),
-            }
-        })?;
-
-        let (handle, worker) = backfiller::new(self.backfill_capacity);
-        worker.start(Arc::clone(&memory_writer));
-
-        let reader = self.build_reader_with_handle(handle)?;
-
-        let writer = Writer {
-            memory: memory_writer,
-            disk: disk_writer,
-        };
-
-        Ok((reader, writer))
-    }
-
-    /// Build a Reader handle independently.
-    ///
-    /// # Errors
-    /// Returns `CacheError::BackendError` if `memory_reader` or `disk_reader`
-    /// is missing.
-    #[inline]
-    pub fn build_reader(&self) -> Result<Reader<K, V>, CacheError> {
-        let (handle, worker) = backfiller::new(self.backfill_capacity);
-
-        // ✅ CRITICAL FIX: If memory_writer is present, start the worker so
-        // backfill works!
-        if let Some(mw) = self.memory_writer.as_ref() {
-            worker.start(Arc::clone(mw));
-        }
-
-        self.build_reader_with_handle(handle)
-    }
-
     /// Helper to build a Reader handle with a specific backfill handle.
     fn build_reader_with_handle(
         &self,
@@ -234,33 +181,6 @@ where
             memory,
             disk,
             backfill,
-        })
-    }
-
-    /// Build a Writer handle independently.
-    ///
-    /// # Errors
-    /// Returns `CacheError::BackendError` if `memory_writer` or `disk_writer`
-    /// is missing.
-    #[inline]
-    pub fn build_writer(&self) -> Result<Writer<K, V>, CacheError> {
-        let memory_writer = self.memory_writer.clone().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "coordinator",
-                message: "memory_writer is required for Writer".into(),
-            }
-        })?;
-
-        let disk_writer = self.disk_writer.clone().ok_or_else(|| {
-            CacheError::BackendError {
-                backend: "coordinator",
-                message: "disk_writer is required for Writer".into(),
-            }
-        })?;
-
-        Ok(Writer {
-            memory: memory_writer,
-            disk: disk_writer,
         })
     }
 
@@ -309,6 +229,53 @@ where
     #[must_use]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Build a Reader handle.
+    ///
+    /// Creates a new cache coordinator reader.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if `memory_reader` or `disk_reader`
+    /// is missing.
+    #[inline]
+    pub fn reader(&self) -> Result<Reader<K, V>, CacheError> {
+        let (handle, worker) = backfiller::new(self.backfill_capacity);
+
+        // ✅ CRITICAL FIX: If memory_writer is present, start the worker so
+        // backfill works!
+        if let Some(mw) = self.memory_writer.as_ref() {
+            worker.start(Arc::clone(mw));
+        }
+
+        self.build_reader_with_handle(handle)
+    }
+
+    /// Build a Writer handle.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if `memory_writer` or `disk_writer`
+    /// is missing.
+    #[inline]
+    pub fn writer(&self) -> Result<Writer<K, V>, CacheError> {
+        let memory_writer = self.memory_writer.clone().ok_or_else(|| {
+            CacheError::BackendError {
+                backend: "coordinator",
+                message: "memory_writer is required for Writer".into(),
+            }
+        })?;
+
+        let disk_writer = self.disk_writer.clone().ok_or_else(|| {
+            CacheError::BackendError {
+                backend: "coordinator",
+                message: "disk_writer is required for Writer".into(),
+            }
+        })?;
+
+        Ok(Writer {
+            memory: memory_writer,
+            disk: disk_writer,
+        })
     }
 }
 
@@ -492,20 +459,26 @@ mod tests {
         use super::*;
         use crate::spi::cache::{MockCacheReader, MockCacheWriter};
 
+        /// Result type for mock-built handles.
+        pub type ReaderWriterMocks =
+            (Reader<String, String>, Writer<String, String>);
+
         /// Helper to build handles with provided mocks.
         pub fn build_with_mocks(
             mem_reader: MockCacheReader<String, String>,
             mem_writer: MockCacheWriter<String, String>,
             disk_reader: MockCacheReader<String, String>,
             disk_writer: MockCacheWriter<String, String>,
-        ) -> ReaderWriterPair<String, String> {
+        ) -> ReaderWriterMocks {
             let mut builder = Builder::new();
             builder
                 .memory_reader(Arc::new(mem_reader))
                 .memory_writer(Arc::new(mem_writer))
                 .disk_reader(Arc::new(disk_reader))
                 .disk_writer(Arc::new(disk_writer));
-            builder.build().expect("Failed to build coordinator")
+            let reader = builder.reader().expect("Failed to build reader");
+            let writer = builder.writer().expect("Failed to build writer");
+            (reader, writer)
         }
     }
 
@@ -537,7 +510,8 @@ mod tests {
                 .disk_reader(Arc::clone(&disk_reader))
                 .disk_writer(Arc::clone(&disk_writer));
 
-            let (reader, writer) = builder.build().unwrap();
+            let reader = builder.reader().unwrap();
+            let writer = builder.writer().unwrap();
 
             assert!(Arc::ptr_eq(&reader.memory, &mem_reader));
             assert!(Arc::ptr_eq(&writer.memory, &mem_writer));
@@ -552,8 +526,7 @@ mod tests {
                 .disk_reader(Arc::new(MockCacheReader::new()))
                 .disk_writer(Arc::new(MockCacheWriter::new()));
 
-            let reader =
-                builder.build_reader().expect("Failed to build reader");
+            let reader = builder.reader().expect("Failed to build reader");
             let _: Reader<String, String> = reader;
         }
 
@@ -564,8 +537,7 @@ mod tests {
                 .memory_reader(Arc::new(MockCacheReader::new()))
                 .disk_reader(Arc::new(MockCacheReader::new()));
 
-            let reader =
-                builder.build_reader().expect("Failed to build reader");
+            let reader = builder.reader().expect("Failed to build reader");
             let _: Reader<String, String> = reader;
         }
 
@@ -578,8 +550,7 @@ mod tests {
                 .disk_reader(Arc::new(MockCacheReader::new()))
                 .disk_writer(Arc::new(MockCacheWriter::new()));
 
-            let writer =
-                builder.build_writer().expect("Failed to build writer");
+            let writer = builder.writer().expect("Failed to build writer");
             let _: Writer<String, String> = writer;
         }
     }
@@ -662,7 +633,7 @@ mod tests {
                 .memory_reader(Arc::new(mem_reader))
                 .memory_writer(Arc::new(mem_writer)) // Provided for backfill
                 .disk_reader(Arc::new(disk_reader))
-                .build_reader()
+                .reader()
                 .expect("Failed to build reader");
 
             // Trigger get
@@ -948,7 +919,7 @@ mod tests {
                 .disk_writer(Arc::new(MockCacheWriter::new()));
             builder.backfill_capacity(1);
 
-            let (reader, _writer) = builder.build().expect("build failed");
+            let reader = builder.reader().expect("build reader failed");
 
             let start = Instant::now();
             let _result = reader.get(&"key".to_owned()).await;
