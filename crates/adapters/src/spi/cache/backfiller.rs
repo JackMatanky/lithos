@@ -11,7 +11,7 @@
 use std::sync::Arc;
 
 use tokio::sync::mpsc;
-use tracing::{debug, error, info};
+use tracing::{debug, error};
 
 use crate::spi::cache::CacheWriter;
 
@@ -52,6 +52,14 @@ where
     /// Constant time O(1) complexity.
     #[inline]
     pub fn trigger(&self, key: K, value: V) {
+        _ = self.try_trigger(key, value);
+    }
+
+    /// Attempt to submit a backfill request, returning whether it was queued.
+    ///
+    /// This is useful for metrics or backpressure visibility.
+    #[inline]
+    pub fn try_trigger(&self, key: K, value: V) -> bool {
         let request = Request {
             key,
             value,
@@ -60,20 +68,23 @@ where
         match self.tx.try_send(request) {
             Ok(()) => {
                 debug!(operation = "backfill", status = "triggered");
+                true
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
-                info!(
+                debug!(
                     operation = "backfill",
                     status = "dropped",
                     reason = "channel full"
                 );
+                false
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
-                info!(
+                debug!(
                     operation = "backfill",
                     status = "dropped",
                     reason = "channel closed"
                 );
+                false
             }
         }
     }

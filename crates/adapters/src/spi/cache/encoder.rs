@@ -176,7 +176,11 @@ where
 
     #[inline]
     fn decode_value(&self, encoded: &[u8]) -> Result<V, CacheError> {
-        let archived = <Self as Codec<K, V>>::access(self, encoded)?;
+        use rkyv::util::AlignedVec;
+
+        let mut aligned = AlignedVec::<16>::new();
+        aligned.extend_from_slice(encoded);
+        let archived = <Self as Codec<K, V>>::access(self, &aligned)?;
 
         rkyv::deserialize::<V, rkyv::rancor::Error>(archived).map_err(|e| {
             CacheError::SerializationError {

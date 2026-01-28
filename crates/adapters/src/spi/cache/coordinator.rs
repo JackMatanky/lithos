@@ -347,7 +347,9 @@ where
         let mem_keys = self.memory.keys().await?;
         let disk_keys = self.disk.keys().await?;
 
-        let mut unique_keys: HashSet<K> = mem_keys.into_iter().collect();
+        let capacity = mem_keys.len().saturating_add(disk_keys.len());
+        let mut unique_keys: HashSet<K> = HashSet::with_capacity(capacity);
+        unique_keys.extend(mem_keys);
         unique_keys.extend(disk_keys);
 
         Ok(unique_keys.into_iter().collect())
@@ -429,7 +431,12 @@ where
         self.disk.put(key.clone(), value.clone()).await?;
 
         // 2. Only write to memory if disk write succeeds
-        self.memory.put(key, value).await?;
+        if let Err(e) = self.memory.put(key, value).await {
+            return Err(CacheError::PartialWrite {
+                backend: "coordinator",
+                message: format!("disk committed, memory failed: {e}").into(),
+            });
+        }
 
         debug!("Cache Write success (Disk then Memory)");
         Ok(())
@@ -835,6 +842,40 @@ mod tests {
 
             let result = writer.put("key".to_owned(), "val".to_owned()).await;
             assert!(result.is_err());
+        }
+
+        #[tokio::test]
+        async fn returns_partial_write_on_memory_failure() {
+            let mut mem_writer = MockCacheWriter::new();
+            let mut disk_writer = MockCacheWriter::new();
+
+            disk_writer
+                .expect_put()
+                .returning(|_k, _v| Box::pin(async { Ok(()) }))
+                .times(1);
+
+            mem_writer
+                .expect_put()
+                .returning(|_k, _v| {
+                    Box::pin(async {
+                        Err(CacheError::BackendError {
+                            backend: "memory",
+                            message: "fail".into(),
+                        })
+                    })
+                })
+                .times(1);
+
+            let (_reader, writer) = build_with_mocks(
+                MockCacheReader::new(),
+                mem_writer,
+                MockCacheReader::new(),
+                disk_writer,
+            )
+            .await;
+
+            let result = writer.put("key".to_owned(), "val".to_owned()).await;
+            assert!(matches!(result, Err(CacheError::PartialWrite { .. })));
         }
     }
 

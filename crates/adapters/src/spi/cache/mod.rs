@@ -100,6 +100,10 @@ where
     /// This is a performance optimization to avoid cloning the value when only
     /// existence needs to be verified.
     ///
+    /// The default implementation calls `get` and checks for `Some`, which may
+    /// still clone values. Implementers should override this when the backend
+    /// can check existence without materializing the value.
+    ///
     /// # Errors
     /// Returns `CacheError` if the underlying storage fails.
     #[inline]
