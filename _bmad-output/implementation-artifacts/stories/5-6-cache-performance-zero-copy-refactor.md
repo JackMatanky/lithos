@@ -65,11 +65,18 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 
 ## TDD Tasks / Subtasks
 
-### Phase 1: Trait Definition Updates
-- [ ] Task 1: Add `CacheGuard` trait and `CacheReader::Guard` associated type in `mod.rs`
-  - [ ] Subtask 1.1: Define `pub trait CacheGuard<V> { fn deref(&self) -> &V; }` or similar generic usage
-  - [ ] Subtask 1.2: Update `CacheReader` trait to include `type Guard: CacheGuard<V>`
-  - [ ] Subtask 1.3: Update `CacheReader::get` signature to return `Result<Option<Self::Guard>, ...>`
+### Phase 1: Trait Definition Updates (Zero-Copy First)
+- [ ] Task 1: Define `CacheGuard` and update `CacheReader` in `mod.rs`
+  - [ ] Subtask 1.1: Define `pub trait CacheGuard<V>: Send + Sync`:
+    - [ ] 1.1.1: Add `fn as_bytes(&self) -> &[u8]` to allow raw access.
+    - [ ] 1.1.2: Add `fn deserialize(&self) -> Result<V, CacheError>` for backward compatibility.
+  - [ ] Subtask 1.2: Update `CacheReader` trait:
+    - [ ] 1.2.1: Add `type Guard: CacheGuard<V>` associated type.
+    - [ ] 1.2.2: Change `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>`.
+    - [ ] 1.2.3: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError>` with a default implementation calling `get` and `deserialize`.
+  - [ ] Subtask 1.3: Update `CacheWriter` trait:
+    - [ ] 1.3.1: Change `put` signature to `async fn put(&self, key: K, value: &V) -> Result<(), CacheError>` to avoid unnecessary cloning of `V` before serialization.
+  - [ ] Subtask 1.4: Update `mockall` configuration and fix all compilation errors in `mod.rs` tests caused by the trait signature changes.
 
 ### Phase 2: Codec Zero-Copy Refactor
 - [ ] Task 2: Refactor `Codec` trait for Zero-Copy purity in `encoder.rs`
@@ -133,6 +140,31 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 - **Two-Pass Write**: `redb` requires knowing the size before granting a buffer (`insert_reserve`). The codec now provides `serialized_size()` followed by `serialize_into(&mut [u8])`.
 - **Pure Views**: The codec only provides `access_*` methods. If an owned value is needed, the caller must explicitly call `.deserialize()` on the archived view, making the performance penalty visible.
 - **Rkyv 0.8 Strategy**: Use `rkyv::api::high::to_bytes_in` for zero-copy writes into pre-allocated memory via `rkyv::ser::writer::Buffer`. Leverage `rkyv::collections::ArchivedHashMap` for $O(1)$ zero-copy metadata lookups.
+
+#### Planned `CacheReader` and `CacheGuard` Trait Definition
+```rust
+#[async_trait]
+pub trait CacheReader<K, V>: Send + Sync {
+    type Guard: CacheGuard<V>;
+
+    /// Retrieve a guard providing zero-copy access to the value.
+    async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
+
+    /// Deprecated: Forces deserialization. Use `get` instead.
+    #[deprecated(note = "Use get() and access the archived view via the guard")]
+    async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> {
+        self.get(key).await?.map(|g| g.deserialize()).transpose()
+    }
+}
+
+pub trait CacheGuard<V>: Send + Sync {
+    /// Access raw bytes of the cached entry.
+    fn as_bytes(&self) -> &[u8];
+
+    /// Deserialize the entry into an owned value (Copy).
+    fn deserialize(&self) -> Result<V, CacheError>;
+}
+```
 
 #### Planned `Codec` Trait Definition
 ```rust
