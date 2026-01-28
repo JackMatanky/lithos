@@ -884,7 +884,7 @@ impl Executor {
             redb::Error::Io(io_err) => CacheError::IoError(io_err),
             other => CacheError::BackendError {
                 backend: "redb",
-                message: format!("{other}").into(),
+                message: format!("{other} (kind: {other:?})").into(),
             },
         }
     }
