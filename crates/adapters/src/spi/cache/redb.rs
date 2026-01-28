@@ -25,59 +25,53 @@ use crate::spi::{
     errors::CacheError,
 };
 
-/// Lean metadata storage using a vector of key-value pairs.
+/// Efficient metadata storage using `HashMap` for O(1) operations at scale.
 ///
-/// This provides deterministic serialization (unlike `HashMap`) and lower
-/// memory overhead for typical small metadata sets.
-pub type MetadataMap = Vec<(String, String)>;
+/// `HashMap` provides:
+/// - **O(1)** average-case lookups, insertions, and deletions (vs O(n) for Vec)
+/// - **Zero allocation overhead** (standard library, no extra dependencies)
+/// - **Direct rkyv serialization** (no wrapper type needed)
+///
+/// This is critical when metadata entries scale with data entries (thousands).
+pub type MetadataMap = std::collections::HashMap<String, String>;
 
 /// Helper methods for working with `MetadataMap`.
+///
+/// These methods provide ergonomic wrappers around `HashMap` operations
+/// while maintaining consistency with the original Vec-based API.
 pub trait MetadataMapExt {
-    /// Get a value by key.
+    /// Get a value by key (O(1) average case).
     fn get(&self, key: &str) -> Option<&str>;
 
-    /// Check if a key exists.
+    /// Check if a key exists (O(1) average case).
     fn has(&self, key: &str) -> bool;
 
-    /// Insert or update a key-value pair.
+    /// Insert or update a key-value pair (O(1) average case).
     fn insert(&mut self, key: String, value: String);
 
-    /// Remove a key-value pair.
+    /// Remove a key-value pair (O(1) average case).
     fn remove(&mut self, key: &str) -> Option<String>;
 }
 
-#[expect(
-    clippy::pattern_type_mismatch,
-    reason = "Vec<(String, String)> iter yields &(String, String), tuple \
-              destructuring is most ergonomic"
-)]
 impl MetadataMapExt for MetadataMap {
     #[inline]
     fn get(&self, key: &str) -> Option<&str> {
-        self.iter().find(|(k, _)| k.as_str() == key).map(|(_, v)| v.as_str())
+        self.get(key).map(String::as_str)
     }
 
     #[inline]
     fn has(&self, key: &str) -> bool {
-        self.iter().any(|(k, _)| k.as_str() == key)
+        self.contains_key(key)
     }
 
     #[inline]
     fn insert(&mut self, key: String, value: String) {
-        if let Some(pos) = self.iter().position(|(k, _)| k.as_str() == key) {
-            if let Some(entry) = self.get_mut(pos) {
-                *entry = (key, value);
-            }
-        } else {
-            self.push((key, value));
-        }
+        self.insert(key, value);
     }
 
     #[inline]
     fn remove(&mut self, key: &str) -> Option<String> {
-        self.iter()
-            .position(|(k, _)| k.as_str() == key)
-            .map(|pos| self.swap_remove(pos).1)
+        self.remove(key)
     }
 }
 
@@ -85,6 +79,9 @@ impl MetadataMapExt for MetadataMap {
 pub type Outcome<V> = Result<Option<(V, MetadataMap)>, CacheError>;
 
 /// A wrapper for cached values with persistence metadata.
+///
+/// **Serialization Note**: Uses `HashMap<String, String>` which is directly
+/// supported by rkyv for zero-copy deserialization.
 #[derive(Archive, Serialize, Deserialize, CheckBytes)]
 #[bytecheck(crate = rkyv::bytecheck)]
 #[non_exhaustive]
@@ -93,12 +90,12 @@ pub struct Entry<V> {
     pub timestamp: u64,
     /// The actual cached value.
     pub value: V,
-    /// Extensible metadata for the cached entry.
+    /// Extensible metadata for the cached entry (O(1) operations).
     pub metadata: MetadataMap,
 }
 
 impl<V> Entry<V> {
-    /// Create a new entry.
+    /// Create a new entry with metadata.
     #[inline]
     #[must_use]
     pub fn new(value: V, timestamp: u64, metadata: MetadataMap) -> Self {
@@ -106,6 +103,17 @@ impl<V> Entry<V> {
             timestamp,
             value,
             metadata,
+        }
+    }
+
+    /// Create a new entry without metadata.
+    #[inline]
+    #[must_use]
+    pub fn new_without_metadata(value: V, timestamp: u64) -> Self {
+        Self {
+            timestamp,
+            value,
+            metadata: MetadataMap::new(),
         }
     }
 }
@@ -140,7 +148,7 @@ where
     /// # use lithos_adapters::spi::cache::redb::{EntryView, Entry, MetadataMap};
     /// # use lithos_adapters::spi::cache::encoder::{Codec, RkyvCodec};
     /// # let codec = RkyvCodec::default();
-    /// # let entry = Entry::new("test".to_string(), 0, Vec::new());
+    /// # let entry = Entry::new("test".to_string(), 0, MetadataMap::new());
     /// # let bytes = <RkyvCodec as Codec<String, Entry<String>>>::encode_value(&codec, &entry).unwrap();
     /// # // In real usage, the guard comes from redb
     /// ```
@@ -828,7 +836,7 @@ where
 
     #[inline]
     async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
-        self.put_with_metadata(key, value, Vec::new()).await
+        self.put_with_metadata(key, value, MetadataMap::new()).await
     }
 }
 
@@ -1171,8 +1179,10 @@ mod tests {
             // WHEN: performing a batch write via the inner closure
             let k1 = "k1".to_owned();
             let k2 = "k2".to_owned();
-            let v1 = Entry::new(TestValue("v1".to_owned()), 0, Vec::new());
-            let v2 = Entry::new(TestValue("v2".to_owned()), 0, Vec::new());
+            let v1 =
+                Entry::new(TestValue("v1".to_owned()), 0, MetadataMap::new());
+            let v2 =
+                Entry::new(TestValue("v2".to_owned()), 0, MetadataMap::new());
 
             let k1_bytes =
                 <RkyvCodec as Codec<String, Entry<TestValue>>>::encode_key(
@@ -1461,7 +1471,10 @@ mod tests {
 
             let key = "key".to_owned();
             let value = TestValue("value".to_owned());
-            let metadata = vec![("version".to_owned(), "1.0".to_owned())];
+            let metadata: MetadataMap =
+                vec![("version".to_owned(), "1.0".to_owned())]
+                    .into_iter()
+                    .collect();
 
             // WHEN: putting with custom metadata
             writer
@@ -1530,7 +1543,9 @@ mod tests {
             let metadata: MetadataMap = vec![
                 ("version".to_owned(), "1.0".to_owned()),
                 ("hash".to_owned(), "abc123".to_owned()),
-            ];
+            ]
+            .into_iter()
+            .collect();
 
             // WHEN: getting an existing key
             let value = MetadataMapExt::get(&metadata, "version");
@@ -1541,9 +1556,11 @@ mod tests {
 
         #[test]
         fn get_returns_none_for_missing_key() {
-            // GIVEN: metadata with entries
+            // GIVEN: metadata with an entry
             let metadata: MetadataMap =
-                vec![("version".to_owned(), "1.0".to_owned())];
+                vec![("version".to_owned(), "1.0".to_owned())]
+                    .into_iter()
+                    .collect();
 
             // WHEN: getting a missing key
             let value = MetadataMapExt::get(&metadata, "missing");
@@ -1555,7 +1572,7 @@ mod tests {
         #[test]
         fn insert_adds_new_key() {
             // GIVEN: empty metadata
-            let mut metadata: MetadataMap = Vec::new();
+            let mut metadata: MetadataMap = MetadataMap::new();
 
             // WHEN: inserting a new key
             MetadataMapExt::insert(
@@ -1573,7 +1590,9 @@ mod tests {
         fn insert_updates_existing_key() {
             // GIVEN: metadata with an entry
             let mut metadata: MetadataMap =
-                vec![("version".to_owned(), "1.0".to_owned())];
+                vec![("version".to_owned(), "1.0".to_owned())]
+                    .into_iter()
+                    .collect();
 
             // WHEN: inserting the same key with new value
             MetadataMapExt::insert(
@@ -1591,7 +1610,9 @@ mod tests {
         fn has_detects_presence() {
             // GIVEN: metadata with entries
             let metadata: MetadataMap =
-                vec![("version".to_owned(), "1.0".to_owned())];
+                vec![("version".to_owned(), "1.0".to_owned())]
+                    .into_iter()
+                    .collect();
 
             // WHEN: checking for existing and missing keys
             let has_version = MetadataMapExt::has(&metadata, "version");
@@ -1608,7 +1629,9 @@ mod tests {
             let mut metadata: MetadataMap = vec![
                 ("version".to_owned(), "1.0".to_owned()),
                 ("hash".to_owned(), "abc123".to_owned()),
-            ];
+            ]
+            .into_iter()
+            .collect();
 
             // WHEN: removing an existing key
             let removed = MetadataMapExt::remove(&mut metadata, "version");
@@ -1623,7 +1646,9 @@ mod tests {
         fn remove_returns_none_for_missing_key() {
             // GIVEN: metadata with entries
             let mut metadata: MetadataMap =
-                vec![("version".to_owned(), "1.0".to_owned())];
+                vec![("version".to_owned(), "1.0".to_owned())]
+                    .into_iter()
+                    .collect();
 
             // WHEN: removing a missing key
             let removed = MetadataMapExt::remove(&mut metadata, "missing");

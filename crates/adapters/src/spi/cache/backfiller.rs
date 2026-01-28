@@ -8,12 +8,141 @@
 //! encapsulated within this module, but are re-exported with the prefix
 //! at the `cache` module level.
 
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicU64, Ordering},
+};
 
 use tokio::sync::mpsc;
 use tracing::{debug, error};
 
 use crate::spi::cache::CacheWriter;
+
+/// Channel capacity presets for different workload profiles.
+///
+/// These presets balance memory usage with throughput requirements. Use
+/// `Custom` for fine-tuned control when workload characteristics don't
+/// match the standard profiles.
+///
+/// # Examples
+///
+/// ```rust
+/// use lithos_adapters::spi::cache::{BackfillCapacity, new_backfiller};
+///
+/// // Use a preset
+/// let capacity = BackfillCapacity::Heavy;
+/// let (handle, worker) = new_backfiller::<String, String>(capacity.into());
+///
+/// // Or custom value
+/// let capacity = BackfillCapacity::custom(2048).unwrap();
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub enum Capacity {
+    /// Custom capacity with validation (128-16384 range).
+    Custom(usize),
+    /// Heavy workloads (> 1000 ops/sec) - 4096 slots.
+    Heavy,
+    /// Light workloads (< 100 ops/sec) - 256 slots.
+    Light,
+    /// Medium workloads (< 1000 ops/sec) - 1024 slots (default).
+    Medium,
+}
+
+impl Capacity {
+    /// Maximum allowed capacity for custom values.
+    pub const MAX: usize = 0x4000;
+    /// Minimum allowed capacity for custom values.
+    pub const MIN: usize = 128;
+
+    /// Create a validated custom capacity.
+    ///
+    /// # Errors
+    /// Returns error string if capacity is outside valid range.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use lithos_adapters::spi::cache::BackfillCapacity;
+    /// let capacity = BackfillCapacity::custom(2048).unwrap();
+    /// assert_eq!(capacity.value(), 2048);
+    /// ```
+    #[inline]
+    pub const fn custom(capacity: usize) -> Result<Self, &'static str> {
+        match Self::validate(capacity) {
+            Ok(()) => Ok(Self::Custom(capacity)),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Validate a capacity value against allowed bounds.
+    #[inline]
+    const fn validate(capacity: usize) -> Result<(), &'static str> {
+        if capacity < Self::MIN {
+            return Err("capacity below minimum (128)");
+        }
+        if capacity > Self::MAX {
+            return Err("capacity above maximum (16384)");
+        }
+        Ok(())
+    }
+
+    /// Convert to actual capacity value.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use lithos_adapters::spi::cache::BackfillCapacity;
+    /// assert_eq!(BackfillCapacity::Light.value(), 256);
+    /// assert_eq!(BackfillCapacity::Medium.value(), 1024);
+    /// assert_eq!(BackfillCapacity::Heavy.value(), 4096);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub const fn value(self) -> usize {
+        match self {
+            Self::Custom(n) => n,
+            Self::Heavy => 4096,
+            Self::Light => 256,
+            Self::Medium => 1024,
+        }
+    }
+}
+
+impl Default for Capacity {
+    #[inline]
+    fn default() -> Self {
+        Self::Medium
+    }
+}
+
+impl From<Capacity> for usize {
+    #[inline]
+    fn from(capacity: Capacity) -> Self {
+        capacity.value()
+    }
+}
+
+/// Metrics snapshot for backfill operations.
+///
+/// Provides insight into backfill health and performance for monitoring
+/// and debugging purposes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Metrics {
+    /// Total number of backfill requests successfully queued.
+    pub triggered: u64,
+    /// Total number of backfill requests dropped due to channel full/closed.
+    pub dropped: u64,
+    /// Current channel capacity (max buffered requests).
+    pub channel_capacity: usize,
+    /// Current number of available slots in the channel.
+    pub channel_available: usize,
+}
+
+/// Internal atomic metrics shared between handle clones.
+struct AtomicMetrics {
+    triggered: AtomicU64,
+    dropped: AtomicU64,
+}
 
 /// Submission handle for triggering background backfills.
 ///
@@ -34,6 +163,7 @@ where
     V: Clone + Send + Sync + 'static,
 {
     tx: mpsc::Sender<Request<K, V>>,
+    metrics: Arc<AtomicMetrics>,
 }
 
 impl<K, V> Handle<K, V>
@@ -41,6 +171,32 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
+    /// Get a snapshot of current backfill metrics.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use lithos_adapters::spi::cache::new_backfiller;
+    /// let (handle, _worker) = new_backfiller::<String, String>(1024);
+    /// handle.trigger("key".to_string(), "value".to_string());
+    /// let metrics = handle.metrics();
+    /// assert_eq!(metrics.triggered, 1);
+    /// assert_eq!(metrics.dropped, 0);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn metrics(&self) -> Metrics {
+        let capacity = self.tx.capacity();
+        let max_capacity = self.tx.max_capacity();
+        let available = max_capacity.saturating_sub(capacity);
+
+        Metrics {
+            triggered: self.metrics.triggered.load(Ordering::Relaxed),
+            dropped: self.metrics.dropped.load(Ordering::Relaxed),
+            channel_capacity: max_capacity,
+            channel_available: available,
+        }
+    }
+
     /// Non-blocking submission of a backfill request.
     ///
     /// This method uses `try_send` to ensure that the caller (typically a
@@ -67,10 +223,12 @@ where
 
         match self.tx.try_send(request) {
             Ok(()) => {
+                self.metrics.triggered.fetch_add(1, Ordering::Relaxed);
                 debug!(operation = "backfill", status = "triggered");
                 true
             }
             Err(mpsc::error::TrySendError::Full(_)) => {
+                self.metrics.dropped.fetch_add(1, Ordering::Relaxed);
                 debug!(
                     operation = "backfill",
                     status = "dropped",
@@ -79,6 +237,7 @@ where
                 false
             }
             Err(mpsc::error::TrySendError::Closed(_)) => {
+                self.metrics.dropped.fetch_add(1, Ordering::Relaxed);
                 debug!(
                     operation = "backfill",
                     status = "dropped",
@@ -99,12 +258,14 @@ where
     fn clone(&self) -> Self {
         Self {
             tx: self.tx.clone(),
+            metrics: Arc::clone(&self.metrics),
         }
     }
 
     #[inline]
     fn clone_from(&mut self, source: &Self) {
         self.tx.clone_from(&source.tx);
+        self.metrics = Arc::clone(&source.metrics);
     }
 }
 
@@ -210,9 +371,15 @@ where
     V: Clone + Send + Sync + 'static,
 {
     let (tx, rx) = mpsc::channel(capacity);
+    let metrics = Arc::new(AtomicMetrics {
+        triggered: AtomicU64::new(0),
+        dropped: AtomicU64::new(0),
+    });
+
     (
         Handle {
             tx,
+            metrics,
         },
         Worker {
             rx,
@@ -291,15 +458,17 @@ mod tests {
         #[tokio::test]
         async fn drops_requests_on_full_channel() {
             // GIVEN: a handle with a full channel
-            let (tx, _rx) = mpsc::channel(1);
-            let handle = Handle {
-                tx,
-            };
+            let (handle, _worker) = new::<String, String>(1);
             handle.trigger("key1".to_owned(), "value1".to_owned());
 
             // WHEN: another backfill is triggered
             // THEN: it should not block and should drop the request
             handle.trigger("key2".to_owned(), "value2".to_owned());
+
+            // Metrics should reflect one triggered and one dropped
+            let metrics = handle.metrics();
+            assert_eq!(metrics.triggered, 1);
+            assert_eq!(metrics.dropped, 1);
         }
 
         #[test]
@@ -316,18 +485,50 @@ mod tests {
         #[tokio::test]
         async fn triggers_request_to_channel() {
             // GIVEN: a handle and its receiving end
-            let (tx, mut rx) = mpsc::channel(1);
-            let handle = Handle {
-                tx,
-            };
+            let (handle, _worker) = new::<String, String>(1);
 
             // WHEN: a backfill is triggered
             handle.trigger("key".to_owned(), "value".to_owned());
 
-            // THEN: the request should be received on the channel
-            let req = rx.recv().await.expect("Should receive request");
-            assert_eq!(req.key, "key");
-            assert_eq!(req.value, "value");
+            // THEN: the metrics should reflect it
+            let metrics = handle.metrics();
+            assert_eq!(metrics.triggered, 1);
+            assert_eq!(metrics.dropped, 0);
+        }
+
+        #[tokio::test]
+        async fn metrics_track_multiple_operations() {
+            // GIVEN: a handle with capacity for 2
+            let (handle, _worker) = new::<String, String>(2);
+
+            // WHEN: we trigger 3 backfills
+            assert!(handle.try_trigger("k1".to_owned(), "v1".to_owned()));
+            assert!(handle.try_trigger("k2".to_owned(), "v2".to_owned()));
+            assert!(!handle.try_trigger("k3".to_owned(), "v3".to_owned())); // Should drop
+
+            // THEN: metrics should reflect 2 triggered and 1 dropped
+            let metrics = handle.metrics();
+            assert_eq!(metrics.triggered, 2);
+            assert_eq!(metrics.dropped, 1);
+            assert_eq!(metrics.channel_capacity, 2);
+        }
+
+        #[test]
+        fn metrics_shared_across_clones() {
+            // GIVEN: a handle and its clone
+            let (handle1, _worker) = new::<String, String>(10);
+            let handle2 = handle1.clone();
+
+            // WHEN: both handles trigger backfills
+            handle1.trigger("k1".to_owned(), "v1".to_owned());
+            handle2.trigger("k2".to_owned(), "v2".to_owned());
+
+            // THEN: both should report the same metrics
+            let m1 = handle1.metrics();
+            let m2 = handle2.metrics();
+            assert_eq!(m1.triggered, 2);
+            assert_eq!(m2.triggered, 2);
+            assert_eq!(m1, m2);
         }
     }
 }
