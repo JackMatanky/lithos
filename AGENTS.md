@@ -6,7 +6,7 @@ The following critical files are essential and **MUST** be reviewed before start
 
 - Project Context: _bmad-output/project-context.md
 - Workflow Status: _bmad-output/planning-artifacts/bmm-workflow-status.yaml
-- Architecture: _bmad-output/planning-artifacts/architecture.md
+- Architecture: _bmad-output/planning-artifacts/architecture/
 - Product Requirements: _bmad-output/planning-artifacts/prd.md
 
 ## Quick Start Guide
@@ -373,15 +373,6 @@ tasks:
 
 | Command                      | Action                                                                            |
 | :--------------------------- | :-------------------------------------------------------------------------------- |
-| `mise run test`              | Run all unit and integration tests (alias: `t`).                                  |
-| `mise run test:unit`         | Run all unit tests across the workspace using `nextest`.                          |
-| `mise run test:unit:<crate>` | Run unit tests for a specific crate (e.g., `test:unit:app`).                      |
-| `mise run test:integration`  | Run all integration tests across the workspace.                                   |
-| `mise run test:e2e`          | Run end-to-end tests using `cli_smoke` binary.                                    |
-| `mise run test:arch`         | Run architectural enforcement tests using `purity` binary.                        |
-| `mise run test:coverage`     | Generate code coverage reports using `tarpaulin`.                                 |
-| `mise run test:bench`        | Run all performance benchmarks using `criterion`.                                 |
-| `mise run test:watch`        | Watch mode: automatically run tests on file changes.                              |
 | `mise run verify`            | Full quality gate orchestration (fmt + lint + tests + adr:validate) (alias: `v`). |
 | `mise run quality`           | Run all quality gates (fmt, lint, adr:validate) (alias: `q`).                     |
 | `mise run lint`              | Run linting checks using clippy.                                                  |
@@ -398,14 +389,23 @@ tasks:
 | `mise run adr:metrics`       | Generate metrics for ADR management.                                              |
 | `mise run ci`                | Simulate CI/CD pipeline.                                                          |
 | `mise run timing`            | Run verify with detailed timing information.                                      |
+| `mise run test`              | Run all unit and integration tests (alias: `t`).                                  |
+| `mise run test:unit`         | Run all unit tests across the workspace using `nextest`.                          |
+| `mise run test:unit:<crate>` | Run unit tests for a specific crate (e.g., `test:unit:app`).                      |
 | `mise run test:unit:domain`  | Run domain crate unit tests (alias: `tud`).                                       |
 | `mise run test:unit:app`     | Run app crate unit tests (alias: `tuap`).                                         |
 | `mise run test:unit:adapters`| Run adapters crate unit tests (alias: `tuad`).                                    |
 | `mise run test:unit:cli`     | Run CLI crate unit tests (alias: `tuc`).                                          |
+| `mise run test:bench`        | Run all performance benchmarks using `criterion`.                                 |
 | `mise run test:bench:domain` | Run domain crate benchmarks (alias: `tbd`).                                       |
 | `mise run test:bench:app`    | Run app crate benchmarks (alias: `tbap`).                                         |
 | `mise run test:bench:adapters`| Run adapters crate benchmarks (alias: `tbad`).                                   |
 | `mise run test:bench:cli`    | Run CLI crate benchmarks (alias: `tbc`).                                          |
+| `mise run test:integration`  | Run all integration tests across the workspace.                                   |
+| `mise run test:e2e`          | Run end-to-end tests using `cli_smoke` binary.                                    |
+| `mise run test:arch`         | Run architectural enforcement tests using `purity` binary.                        |
+| `mise run test:coverage`     | Generate code coverage reports using `tarpaulin`.                                 |
+| `mise run test:watch`        | Watch mode: automatically run tests on file changes.                              |
 
 ## Troubleshooting and FAQ
 
