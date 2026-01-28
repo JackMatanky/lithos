@@ -1,8 +1,13 @@
-# ADR 0001: ADR Review Process and Validation Tooling
+---
+name: adr-review-process-and-validation-tooling
+status: accepted
+stakeholders: [Jack (Developer), Architects]
+date_proposed: 2026-01-11
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer), Architects
+# ADR 0001: ADR Review Process and Validation Tooling
 
 ## Context
 
@@ -67,9 +72,3 @@ Every ADR must be evaluated against:
 
 - **Positive**: Improved architectural integrity, automated enforcement of documentation standards.
 - **Negative**: Slight overhead in creating and reviewing ADRs.
-
-## Status Tracking
-
-- **Proposed**: 2026-01-11
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11

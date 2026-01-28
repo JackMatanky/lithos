@@ -1,8 +1,13 @@
-# ADR 0004: High-Performance Markdown Parsing with pulldown-cmark
+---
+name: high-performance-markdown-parsing-with-pulldown-cmark
+status: accepted
+stakeholders: [Jack (Developer), Architects]
+date_proposed: 2026-01-08
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer), Architects
+# ADR 0004: High-Performance Markdown Parsing with pulldown-cmark
 
 ## Context
 
@@ -32,16 +37,16 @@ In alignment with **ADR 0002 (Redb/rkyv)** and **ADR 0003 (MiniJinja)**, `pulldo
 
 Lithos leverages `pulldown-cmark`'s native extension support while implementing custom handlers for Obsidian-specific syntax:
 
-- **Native Extensions:**
+- **Native Extensions**:
   - `ENABLE_WIKILINKS`: Direct support for `[[target|alias]]` resolution.
   - `ENABLE_METADATA_BLOCKS`: Native support for YAML/TOML frontmatter blocks.
   - `ENABLE_TASKLISTS`: For checklist tracking in the graph.
   - `ENABLE_STRIKETHROUGH`, `ENABLE_TABLES`, `ENABLE_HEADING_ATTRIBUTES`.
 
-- **Custom Implementations:**
-  - **Tags:** Handled via a custom scanner or regex-based event filter.
-  - **Callouts:** Transformed from BlockQuotes based on the `[!type]` prefix.
-  - **Backlinks:** Populated by querying the `links_back` table in Redb.
+- **Custom Implementations**:
+  - **Tags**: Handled via a custom scanner or regex-based event filter.
+  - **Callouts**: Transformed from BlockQuotes based on the `[!type]` prefix.
+  - **Backlinks**: Populated by querying the `links_back` table in Redb.
 
 ## Alternatives Considered
 
@@ -76,9 +81,3 @@ While `comrak` provides a rich AST that makes deep document manipulation easier,
 
 - **Positive**: Ultra-fast indexing, zero-copy possible, small memory footprint, formatting preservation.
 - **Negative**: Surgical refactoring requires byte-offset math instead of simple AST node updates.
-
-## Status Tracking
-
-- **Proposed**: 2026-01-08
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11

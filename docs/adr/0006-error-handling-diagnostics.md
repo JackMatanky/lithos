@@ -1,8 +1,13 @@
-# ADR 0006: Error Handling and Diagnostics Framework
+---
+name: error-handling-and-diagnostics-framework
+status: accepted
+stakeholders: [Jack (Developer), Architects]
+date_proposed: 2026-01-08
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer), Architects
+# ADR 0006: Error Handling and Diagnostics Framework
 
 ## Context
 
@@ -14,9 +19,9 @@ The project will adopt **miette** as the primary diagnostic framework, layered o
 
 ### Tiered Error Model
 
-- **thiserror (v2.0):** Used to define the underlying error types (Domain, Infrastructure) and ensure they are programmatically matchable.
-- **miette (v7.6):** Adds diagnostic metadata (codes, help, `SourceSpan` labels) for User Diagnostics.
-- **anyhow:** Explicitly avoided in core library to maintain type safety; used sparingly in the CLI main loop for global panic catching.
+- **thiserror (v2.0)**: Used to define the underlying error types (Domain, Infrastructure) and ensure they are programmatically matchable.
+- **miette (v7.6)**: Adds diagnostic metadata (codes, help, `SourceSpan` labels) for User Diagnostics.
+- **anyhow**: Explicitly avoided in core library to maintain type safety; used sparingly in the CLI main loop for global panic catching.
 
 ## Alternatives Considered
 
@@ -46,9 +51,3 @@ The project will adopt **miette** as the primary diagnostic framework, layered o
 
 - **Positive**: High-fidelity terminal output, seamless LSP integration, consistent error feedback, actionable help for users.
 - **Negative**: Requires developers to track `SourceSpan` offsets during parsing (e.g., using `pulldown-cmark` byte-offsets).
-
-## Status Tracking
-
-- **Proposed**: 2026-01-08
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11

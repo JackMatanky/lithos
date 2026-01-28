@@ -1,8 +1,13 @@
-# ADR 0013: Domain Serialization Strategy
+---
+name: domain-serialization-strategy
+status: proposed
+stakeholders: [Development Team, Architects]
+date_proposed: 2026-01-14
+date_decided: TBD
+date_implemented: TBD
+---
 
-- **Status**: Proposed
-- **Date**: 2026-01-14
-- **Stakeholders**: Development Team, Architects
+# ADR 0013: Domain Serialization Strategy
 
 ## Context
 
@@ -33,14 +38,14 @@ Domain models must remain pure and focused on business logic. However, serializa
 
 #### Why Allow Serde in Domain (Controlled)
 
-**Architectural Benefits:**
+**Architectural Benefits**:
 
 - **API Simplicity**: Direct domain model serialization reduces DTO mapping complexity
 - **Type Safety**: Compile-time guarantees that API contracts match domain models
 - **Developer Experience**: Less boilerplate for simple CRUD APIs
 - **Evolutionary Safety**: Domain changes automatically reflected in APIs (with proper versioning)
 
-**Technical Benefits:**
+**Technical Benefits**:
 
 - **Performance**: Zero-copy for JSON serialization in many cases
 - **Ecosystem Maturity**: Serde is the de facto standard for Rust serialization
@@ -49,13 +54,13 @@ Domain models must remain pure and focused on business logic. However, serializa
 
 #### Why Prohibit rkyv in Domain
 
-**Storage Separation:**
+**Storage Separation**:
 
 - **Performance Optimization Conflict**: rkyv's zero-copy requirements may constrain domain model design
 - **Storage Evolution**: Storage format changes shouldn't require domain model changes
 - **Adapter Encapsulation**: rkyv boilerplate belongs in SPI storage adapters only
 
-**From ADR 0002 (Storage - Redb + rkyv):**
+**From ADR 0002 (Storage - Redb + rkyv)**:
 
 > "rkyv boilerplate must be encapsulated in the adapters/spi/storage layer to protect domain ergonomics"
 
@@ -101,110 +106,15 @@ Domain models must remain pure and focused on business logic. However, serializa
 
 ## Consequences
 
-### rkyv Capabilities (Storage-Focused)
-
-- **Zero-copy deserialization** from any byte source
-- **Archive trait** for in-memory representations
-- **Validation** during deserialization
-- **Versioning support** for schema evolution
-- **Streaming** for large datasets
-- **Custom serializers** for complex types
-
-### Serde Capabilities (API-Focused)
-
-- **Human-readable formats**: JSON, YAML, TOML, XML
-- **Binary formats**: Bincode, MessagePack, CBOR
-- **Streaming** for large datasets
-- **Custom serializers** via traits
-- **Schema validation** via external crates
-- **Interoperability** with web standards
-
-### Comparative Analysis
-
-| Aspect                | rkyv                        | serde              |
-| --------------------- | --------------------------- | ------------------ |
-| **Primary Use Case**  | Storage persistence         | API communication  |
-| **Performance**       | Zero-copy optimal           | Format-dependent   |
-| **Ecosystem**         | Storage-focused             | Universal          |
-| **Domain Coupling**   | High (affects model design) | Low (just derives) |
-| **Human Readability** | No (binary)                 | Yes (JSON/YAML)    |
-| **Versioning**        | Built-in                    | External crates    |
-| **Validation**        | Built-in                    | External crates    |
-
-### Decision Factors
-
-1. **Architectural Purity**: rkyv creates stronger coupling than serde derives
-2. **Use Case Separation**: rkyv = storage, serde = APIs (different concerns)
-3. **Practicality**: JSON APIs are common, DTO mapping creates maintenance burden
-4. **Evolution**: Storage changes more frequent than API changes
-5. **Ecosystem**: Serde is ubiquitous, rkyv is specialized
-
-## Implementation Requirements
-
-### Domain Layer
-
-- **Optional Serde**: `serde = { version = "1.0", features = ["derive"], optional = true }`
-- **No rkyv**: Explicitly prohibited in domain Cargo.toml
-- **Conditional Compilation**: `#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]`
-
-### Application Layer
-
-- **API DTOs**: Use domain models directly where possible, DTOs where transformation needed
-- **Versioning**: Semantic versioning for API changes
-- **Documentation**: OpenAPI/Swagger generation from serde schemas
-
-### Adapter Layer
-
-- **Storage DTOs**: Separate structs with rkyv derives
-- **Conversion**: `From/Into` traits between domain models and storage DTOs
-- **Zero-Copy**: Leverage rkyv's performance advantages
-
-### Testing
-
-- **Domain Purity**: Tests verify zero required dependencies
-- **Serialization Tests**: Optional serde features tested separately
-- **Integration Tests**: Full serialization round-trips validated
-
-## Consequences
-
-### Positive
-
-- **Balanced Architecture**: Practical API development without sacrificing purity
-- **Performance**: Appropriate tools for each context (zero-copy storage, flexible APIs)
-- **Date Format Flexibility**: Supports multiple date formats (ISO 8601, Moment.js, custom) in domain
-- **Intelligent Parsing**: Best-effort typing provides type hints while allowing schema flexibility
-- **Developer Experience**: Reduced DTO mapping for simple CRUD APIs with type safety
-- **Ecosystem Integration**: Works with standard Rust web frameworks
-
-### Negative
-
-- **Parsing Complexity**: Multiple date format support increases domain logic
-- **Type Uncertainty**: Best-effort typing may not match schema expectations
-- **Validation Duplication**: Domain and application layer both validate types
-- **Dependency Management**: Required serde and chrono dependencies increase domain crate size
-
-### Risks
-
-- **Scope Creep**: "Optional" serde could become required over time
-- **Misuse**: Developers might use serde for storage concerns
-- **Dependency Updates**: Serde ecosystem changes could affect domain
-
-## Mitigation Strategies
-
-1. **Strict Code Reviews**: Ensure serde use is justified and API-focused
-2. **Feature Flags**: Make serde truly optional with clear feature documentation
-3. **Domain Purity Guardian**: Automated enforcement of architectural rules
-4. **Documentation**: Clear guidelines on when/where to use each serialization approach
-
-## Status Tracking
-
-- **Proposed**: 2026-01-14
-
-## References
-
-- [Hexagonal Architecture](https://alistair.cockburn.us/hexagonal-architecture/)
-- [Domain-Driven Design](https://domainlanguage.com/ddd/)
-- [Serde Documentation](https://serde.rs/)
-- [rkyv Documentation](https://docs.rs/rkyv/)
-- ADR 0002: Storage - Redb + rkyv
-- ADR 0005: Configuration Management (Figment)
+- **Positive**:
+  - **Balanced Architecture**: Practical API development without sacrificing purity
+  - **Performance**: Appropriate tools for each context (zero-copy storage, flexible APIs)
+  - **Date Format Flexibility**: Supports multiple date formats (ISO 8601, Moment.js, custom) in domain
+  - **Intelligent Parsing**: Best-effort typing provides type hints while allowing schema flexibility
+  - **Developer Experience**: Reduced DTO mapping for simple CRUD APIs with type safety
+  - **Ecosystem Integration**: Works with standard Rust web frameworks
+- **Negative**:
+  - **Parsing Complexity**: Multiple date format support increases domain logic
+  - **Type Uncertainty**: Best-effort typing may not match schema expectations
+  - **Validation Duplication**: Domain and application layer both validate types
+  - **Dependency Management**: Required serde and chrono dependencies increase domain crate size

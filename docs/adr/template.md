@@ -1,8 +1,13 @@
-# ADR NNNN: [Title]
+---
+name: kebab-case-title
+status: proposed/accepted/rejected
+stakeholders: [List Stakeholders]
+date_proposed: YYYY-MM-DD
+date_decided: YYYY-MM-DD
+date_implemented: YYYY-MM-DD
+---
 
-*   **Status**: Proposed
-*   **Date**: YYYY-MM-DD
-*   **Stakeholders**: [List Stakeholders]
+# ADR NNNN: [Title]
 
 ## Context
 
@@ -36,11 +41,5 @@
 
 [The results of the decision, both positive and negative.]
 
-*   **Positive**: ...
-*   **Negative**: ...
-
-## Status Tracking
-
-*   **Proposed**: YYYY-MM-DD
-*   **Accepted/Rejected**: YYYY-MM-DD
-*   **Implemented**: YYYY-MM-DD
+- **Positive**: ...
+- **Negative**: ...

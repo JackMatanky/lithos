@@ -1,8 +1,13 @@
-# ADR 0016: Caching Strategy & Implementation Patterns
+---
+name: caching-strategy-and-implementation-patterns
+status: proposed
+stakeholders: [Architecture Team, Core Developers]
+date_proposed: 2026-01-25
+date_decided: TBD
+date_implemented: TBD
+---
 
-- **Status**: Proposed
-- **Date**: 2026-01-25
-- **Stakeholders**: Architecture Team, Core Developers
+# ADR 0016: Caching Strategy & Implementation Patterns
 
 ## Context
 
@@ -57,7 +62,6 @@ A high-performance, concurrent caching library inspired by Java's Caffeine.
   - **Rich Features**: TTL (Time-to-Live), TTI (Time-to-Idle), eviction listeners, weight-based eviction.
   - **Async Support**: First-class `future` support for async runtimes (Tokio).
   - **Production Proven**: Used by high-traffic Rust services (e.g., crates.io).
-
 - **Cons**:
   - **Weight**: Larger binary size and compile time compared to simpler hashmaps.
   - **Complexity**: API is more complex than a simple key-value map.
@@ -72,7 +76,6 @@ A lightweight edition of Moka, focusing on the core feature set.
   - **Performance**: Retains high-performance concurrency primitives and TinyLFU/LRU policies.
   - **Feature Parity (Core)**: Still supports TTL, TTI, and weighted eviction.
   - **Simple API**: Easier to integrate for standard use cases.
-
 - **Cons**:
   - **Sync Focus**: Primarily synchronous (though can be used in async with `Arc<Mutex>` or careful usage).
   - **Less "Magic"**: Fewer high-level async helpers than full Moka.
@@ -85,7 +88,6 @@ Using the standard `lru` crate wrapped in `Arc<RwLock<...>>`.
   - **Minimalist**: Zero extra dependencies beyond `lru`.
   - **Control**: Full control over locking strategy.
   - **Tiny Footprint**: Ideal for strictly constrained environments.
-
 - **Cons**:
   - **Concurrency Bottleneck**: `RwLock` creates contention on the hot path (all reads fight for the lock). Moka uses stripe locking/lock-free reads to avoid this.
   - **Poor Hit Rate**: Standard LRU is inferior to TinyLFU for scan-resistant workloads (common in indexing).
@@ -98,7 +100,6 @@ The `cached` crate provides macros for memoization.
 - **Pros**:
   - **Developer Experience**: extremely easy `#[cached]` macro usage.
   - **Pluggable Backends**: Can use Sled, Redis, or memory maps.
-
 - **Cons**:
   - **Inflexible**: "Magic" macros obscure the architectural boundary. Hard to fit cleanly into Hexagonal Architecture/Ports.
   - **Global State**: often relies on static globals, violating our singleton registry pattern.
@@ -107,18 +108,18 @@ The `cached` crate provides macros for memoization.
 
 ### Research Findings
 
-**Concurrency & Contention:**
+**Concurrency & Contention**:
 For the LSP (Language Server Protocol) use case, we expect highly concurrent read operations (completion items, hover text) while background indexing threads perform writes.
 
 - **RwLock**: Under high read pressure, writer starvation or reader contention can occur.
 - **Moka**: Uses internal striping and batching of updates to minimize contention. Benchmarks (from Moka docs) show significantly higher throughput under mixed read/write loads compared to `RwLock<HashMap>`.
 
-**Eviction Policies:**
+**Eviction Policies**:
 
 - **LRU (Least Recently Used)**: Good general purpose, but susceptible to "scans" (one-time reads flushing useful data).
 - **TinyLFU (Moka)**: Uses a frequency sketch to admit only "worthy" items. This protects the cache from scan pollution—critical for Vault Indexing where we might scan thousands of files once but only need to cache the "hot" schemas/templates.
 
-**Persistence Integration (L2):**
+**Persistence Integration (L2)**:
 None of the in-memory libraries handle disk persistence natively in a way that fits our Redb architecture.
 
 - **Strategy**: We need a "Two-Level Cache" wrapper struct.
@@ -145,13 +146,6 @@ None of the in-memory libraries handle disk persistence natively in a way that f
   - **Concurrency Safe**: Eliminates race conditions and deadlock risks associated with manual locking.
   - **Scan Resistance**: TinyLFU protects hot data during full vault scans.
   - **Tuning**: TTL/TTI allows automatic cleanup of stale data (critical for long-running LSP).
-
 - **Negative**:
   - **Dependency Cost**: Adding Moka/Mini-Moka adds to the dependency tree.
   - **Complexity**: Two-level caching (Mem+Disk) introduces synchronization challenges (cache coherence).
-
-## Status Tracking
-
-- **Proposed**: 2026-01-25
-- **Accepted**: 2026-01-25
-- **Implemented**: [Pending Epic 5 completion]

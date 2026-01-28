@@ -1,8 +1,13 @@
-# ADR 0010: Centralized Test Utilities and Infrastructure
+---
+name: centralized-test-utilities-and-infrastructure
+status: accepted
+stakeholders: [Jack (Developer)]
+date_proposed: 2026-01-11
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer)
+# ADR 0010: Centralized Test Utilities and Infrastructure
 
 ## Context
 
@@ -156,161 +161,6 @@ Extend utilities for complex testing scenarios in large-scale applications:
 - **Pros**: Reusable across different languages, standardized approaches
 - **Cons**: May not leverage Rust-specific strengths, potential performance overhead
 
-## Consequences
-
-- **Positive**:
-
-* Eliminates test code duplication across the codebase
-* Ensures consistent testing patterns and practices
-* Improves test reliability and maintainability through centralized output management
-* Accelerates test development with reusable utilities
-* Supports complex testing scenarios (async, CQRS, isolation)
-* Provides clean test environments with automatic artifact cleanup
-* Enables reliable parallel test execution without file conflicts
-
-- **Negative**:
-
-* Additional dependency management for utility crates
-* Learning curve for new team members
-* Maintenance overhead for utility evolution
-* Potential performance impact if utilities are not optimized
-
-- **Risks**:
-
-* Utility bloat if not carefully scoped
-* Breaking changes during utility evolution
-* Performance bottlenecks in shared utilities
-* Over-reliance on utilities masking test design issues
-
-- **Mitigation**:
-
-* Clear utility scope and extension guidelines
-* Comprehensive testing of utilities themselves
-* Gradual adoption with backward compatibility
-* Performance monitoring and optimization
-* Regular utility audits and refactoring
-
-## Implementation Examples
-
-### Temporary Directory Management
-
-```rust
-#[test]
-fn test_file_processing_with_temp_dir() {
-    let temp_dir = TempDir::new().unwrap();
-    let input_path = temp_dir.path().join("input.txt");
-
-    // Write test data
-    std::fs::write(&input_path, "test content").unwrap();
-
-    // Process file
-    let result = process_file(&input_path);
-
-    // Automatic cleanup on test exit
-    assert!(result.is_ok());
-}
-```
-
-### Test Output Directory Management
-
-```rust
-#[test]
-fn test_with_centralized_output() {
-    let test_output = TestOutput::new("file_processing_test");
-
-    // All test artifacts go to centralized location
-    let output_path = test_output.path().join("result.json");
-    let log_path = test_output.path().join("debug.log");
-
-    // Write test outputs
-    std::fs::write(&output_path, r#"{"status": "success"}"#).unwrap();
-    std::fs::write(&log_path, "Test execution log").unwrap();
-
-    // Process outputs
-    let result = validate_output(&output_path);
-
-    // Automatic cleanup, but failed tests preserve artifacts
-    assert!(result.is_ok());
-}
-```
-
-### Test Fixtures with rstest
-
-```rust
-#[fixture]
-fn test_user() -> User {
-    User::builder()
-        .id(Uuid::new_v4())
-        .email("test@example.com")
-        .name("Test User")
-        .build()
-}
-
-#[rstest]
-fn create_user_with_valid_data(#[from(test_user)] user: User) {
-    // Test with pre-configured fixture
-    let result = user_service.create(user).await;
-    assert!(result.is_ok());
-}
-```
-
-### Custom Assertion Helpers
-
-```rust
-#[derive(TestAssertions)]
-struct Order {
-    id: Uuid,
-    status: OrderStatus,
-    items: Vec<OrderItem>,
-}
-
-#[test]
-fn order_status_transition_is_valid() {
-    let order = create_pending_order();
-
-    // Custom domain assertion
-    assert_that!(order).has_valid_status_transition(Pending, Confirmed);
-
-    // Structural comparison with detailed diffs
-    assert_struct_eq!(order, expected_order);
-}
-```
-
-### Database Transaction Isolation
-
-```rust
-#[test]
-async fn test_user_creation_with_transaction() {
-    let transaction = TestTransaction::begin().await;
-
-    // Create user within transaction
-    let user_id = user_service.create(create_user_command()).await.unwrap();
-
-    // Verify user exists in transaction
-    let user = user_repository.find_by_id(&user_id).await.unwrap();
-    assert_eq!(user.email, "test@example.com");
-
-    // Transaction automatically rolls back, no cleanup needed
-}
-```
-
-## Case Studies and Validation
-
-### Real-World Implementation Success
-
-- **E-commerce Platform**: Centralized fixtures reduced test setup time by 60%, improved reliability
-- **Financial Services**: Custom assertions caught 80% of business logic regressions before production
-- **Social Media API**: Temporary directory utilities enabled reliable file upload testing across platforms
-
-### Lithos-Specific Validation
-
-- **Hexagonal Architecture**: Utilities seamlessly support port/adapter testing patterns
-- **CQRS Integration**: Specialized utilities complement ADR 0009 testing framework
-- **Async Performance**: Tokio-compatible utilities maintain test execution speed
-- **Cross-Platform**: Temp directory utilities work consistently across development environments
-
-This comprehensive framework provides everything needed for robust, maintainable testing infrastructure that scales with Lithos' complexity while maintaining developer productivity and test reliability.
-
 ## Technical Validation
 
 ### Research Alignment
@@ -340,8 +190,18 @@ Utilities engineered for production testing:
 **Memory Conscious**: Controlled resource usage in test environments
 **CI/CD Optimized**: Fast execution with parallel test support
 
-## Status Tracking
+## Consequences
 
-- **Proposed**: 2026-01-11
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11
+- **Positive**:
+  - Eliminates test code duplication across the codebase
+  - Ensures consistent testing patterns and practices
+  - Improves test reliability and maintainability through centralized output management
+  - Accelerates test development with reusable utilities
+  - Supports complex testing scenarios (async, CQRS, isolation)
+  - Provides clean test environments with automatic artifact cleanup
+  - Enables reliable parallel test execution without file conflicts
+- **Negative**:
+  - Additional dependency management for utility crates
+  - Learning curve for new team members
+  - Maintenance overhead for utility evolution
+  - Potential performance impact if utilities are not optimized
