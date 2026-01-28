@@ -78,11 +78,53 @@ pub trait Codec<K, V>: Send + Sync {
     /// Returns `CacheError::SerializationError` if encoding fails.
     fn encode_key(&self, key: &K) -> Result<Vec<u8>, CacheError>;
 
+    /// Encode a key into a reusable buffer for storage.
+    ///
+    /// This method allows callers to reuse buffers across multiple encode
+    /// operations, eliminating per-call allocations in hot paths.
+    ///
+    /// The buffer is cleared before encoding.
+    ///
+    /// # Errors
+    /// Returns `CacheError::SerializationError` if encoding fails.
+    #[inline]
+    fn encode_key_into(
+        &self,
+        key: &K,
+        buf: &mut Vec<u8>,
+    ) -> Result<(), CacheError> {
+        buf.clear();
+        let encoded = self.encode_key(key)?;
+        buf.extend_from_slice(&encoded);
+        Ok(())
+    }
+
     /// Encode a value into bytes for storage.
     ///
     /// # Errors
     /// Returns `CacheError::SerializationError` if encoding fails.
     fn encode_value(&self, value: &V) -> Result<Vec<u8>, CacheError>;
+
+    /// Encode a value into a reusable buffer for storage.
+    ///
+    /// This method allows callers to reuse buffers across multiple encode
+    /// operations, eliminating per-call allocations in hot paths.
+    ///
+    /// The buffer is cleared before encoding.
+    ///
+    /// # Errors
+    /// Returns `CacheError::SerializationError` if encoding fails.
+    #[inline]
+    fn encode_value_into(
+        &self,
+        value: &V,
+        buf: &mut Vec<u8>,
+    ) -> Result<(), CacheError> {
+        buf.clear();
+        let encoded = self.encode_value(value)?;
+        buf.extend_from_slice(&encoded);
+        Ok(())
+    }
 }
 
 /// Zero-copy codec using `rkyv` for persistent storage.
@@ -201,6 +243,22 @@ where
     }
 
     #[inline]
+    fn encode_key_into(
+        &self,
+        key: &K,
+        buf: &mut Vec<u8>,
+    ) -> Result<(), CacheError> {
+        buf.clear();
+        let aligned_bytes = rkyv::to_bytes::<rkyv::rancor::Error>(key)
+            .map_err(|e| CacheError::SerializationError {
+                type_name: std::any::type_name::<K>(),
+                message: format!("Failed to serialize key: {e}").into(),
+            })?;
+        buf.extend_from_slice(&aligned_bytes);
+        Ok(())
+    }
+
+    #[inline]
     fn encode_value(&self, value: &V) -> Result<Vec<u8>, CacheError> {
         rkyv::to_bytes::<rkyv::rancor::Error>(value)
             .map(|bytes| bytes.to_vec())
@@ -208,6 +266,22 @@ where
                 type_name: std::any::type_name::<V>(),
                 message: format!("Failed to serialize value: {e}").into(),
             })
+    }
+
+    #[inline]
+    fn encode_value_into(
+        &self,
+        value: &V,
+        buf: &mut Vec<u8>,
+    ) -> Result<(), CacheError> {
+        buf.clear();
+        let aligned_bytes = rkyv::to_bytes::<rkyv::rancor::Error>(value)
+            .map_err(|e| CacheError::SerializationError {
+                type_name: std::any::type_name::<V>(),
+                message: format!("Failed to serialize value: {e}").into(),
+            })?;
+        buf.extend_from_slice(&aligned_bytes);
+        Ok(())
     }
 }
 
@@ -321,6 +395,78 @@ mod tests {
                 result.unwrap_err(),
                 CacheError::SerializationError { .. }
             ));
+        }
+
+        #[test]
+        fn encode_into_reuses_buffer() {
+            // GIVEN: an RkyvCodec and a reusable buffer
+            let codec: RkyvCodec = RkyvCodec;
+            let key = "first_key".to_owned();
+            let value = "first_value".to_owned();
+            let mut key_buf = Vec::new();
+            let mut value_buf = Vec::new();
+
+            // WHEN: encoding multiple times into the same buffers
+            <RkyvCodec as Codec<String, String>>::encode_key_into(
+                &codec,
+                &key,
+                &mut key_buf,
+            )
+            .unwrap();
+            <RkyvCodec as Codec<String, String>>::encode_value_into(
+                &codec,
+                &value,
+                &mut value_buf,
+            )
+            .unwrap();
+
+            let first_key_bytes = key_buf.clone();
+            let first_value_bytes = value_buf.clone();
+
+            let key2 = "second_key".to_owned();
+            let value2 = "second_value".to_owned();
+
+            <RkyvCodec as Codec<String, String>>::encode_key_into(
+                &codec,
+                &key2,
+                &mut key_buf,
+            )
+            .unwrap();
+            <RkyvCodec as Codec<String, String>>::encode_value_into(
+                &codec,
+                &value2,
+                &mut value_buf,
+            )
+            .unwrap();
+
+            // THEN: both encodings produce valid results
+            let decoded_key1: String =
+                <RkyvCodec as Codec<String, String>>::decode_key(
+                    &codec,
+                    &first_key_bytes,
+                )
+                .unwrap();
+            let decoded_value1: String =
+                <RkyvCodec as Codec<String, String>>::decode_value(
+                    &codec,
+                    &first_value_bytes,
+                )
+                .unwrap();
+            let decoded_key2: String =
+                <RkyvCodec as Codec<String, String>>::decode_key(
+                    &codec, &key_buf,
+                )
+                .unwrap();
+            let decoded_value2: String =
+                <RkyvCodec as Codec<String, String>>::decode_value(
+                    &codec, &value_buf,
+                )
+                .unwrap();
+
+            assert_eq!(decoded_key1, key);
+            assert_eq!(decoded_value1, value);
+            assert_eq!(decoded_key2, key2);
+            assert_eq!(decoded_value2, value2);
         }
     }
 }
