@@ -239,6 +239,18 @@ mod tests {
         assert!(display.contains("moka"));
     }
 
+    // [5.1-U-06] CacheError::RuntimeError
+    #[test]
+    fn should_create_runtime_error() {
+        let error = CacheError::RuntimeError {
+            runtime: "tokio",
+            message: "missing runtime".into(),
+        };
+        let display = error.to_string();
+        assert!(display.contains("missing runtime"));
+        assert!(display.contains("tokio"));
+    }
+
     // [5.1-U-07] CacheError Thread Safety
     #[test]
     fn cache_error_should_be_send_and_sync() {
@@ -305,6 +317,15 @@ pub enum CacheError {
     /// I/O error during cache access.
     #[error("Cache I/O error: {0}")]
     IoError(#[from] std::io::Error),
+
+    /// Runtime configuration error.
+    #[error("Cache runtime ({runtime}) error: {message}")]
+    RuntimeError {
+        /// The runtime name (e.g., "tokio").
+        runtime: &'static str,
+        /// Descriptive error message.
+        message: Box<str>,
+    },
 
     /// Serialization/deserialization failed.
     #[error("Cache serialization error for type {type_name}: {message}")]
