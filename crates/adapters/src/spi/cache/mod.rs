@@ -23,7 +23,9 @@ pub mod redb;
 
 use async_trait::async_trait;
 pub use backfiller::{
-    Handle as BackfillHandle, Worker as BackfillWorker, new as new_backfiller,
+    Capacity as BackfillCapacity, Handle as BackfillHandle,
+    Metrics as BackfillMetrics, Worker as BackfillWorker,
+    new as new_backfiller,
 };
 #[expect(
     clippy::module_name_repetitions,

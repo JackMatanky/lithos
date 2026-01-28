@@ -115,7 +115,9 @@ use async_trait::async_trait;
 use tracing::{debug, info, instrument};
 
 use crate::spi::{
-    cache::{BackfillHandle, CacheReader, CacheWriter, backfiller},
+    cache::{
+        BackfillCapacity, BackfillHandle, CacheReader, CacheWriter, backfiller,
+    },
     errors::CacheError,
 };
 
@@ -140,7 +142,7 @@ where
     #[inline]
     fn default() -> Self {
         Self {
-            backfill_capacity: 1024,
+            backfill_capacity: BackfillCapacity::default().value(),
             disk_reader: None,
             disk_writer: None,
             memory_reader: None,
@@ -154,10 +156,24 @@ where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
     V: Clone + Send + Sync + 'static,
 {
-    /// Set the backfill channel capacity.
+    /// Set the backfill channel capacity using a preset or custom value.
+    ///
+    /// Presets (`Light`, `Medium`, `Heavy`) are always valid. Custom values
+    /// that were created without validation will log a warning if outside
+    /// the recommended range.
+    ///
+    /// # Example
+    /// ```rust
+    /// # use lithos_adapters::spi::cache::{BackfillCapacity, CacheCoordinatorBuilder};
+    /// let mut builder = CacheCoordinatorBuilder::<String, String>::new();
+    /// builder.backfill_capacity(BackfillCapacity::Heavy);
+    /// ```
     #[inline]
-    pub fn backfill_capacity(&mut self, capacity: usize) -> &mut Self {
-        self.backfill_capacity = capacity;
+    pub fn backfill_capacity(
+        &mut self,
+        capacity: BackfillCapacity,
+    ) -> &mut Self {
+        self.backfill_capacity = capacity.value();
         self
     }
 
@@ -245,8 +261,7 @@ where
     pub async fn reader(&self) -> Result<Reader<K, V>, CacheError> {
         let (handle, worker) = backfiller::new(self.backfill_capacity);
 
-        // ✅ CRITICAL FIX: If memory_writer is present, start the worker so
-        // backfill works!
+        // If memory_writer is present, start the worker for backfill to work
         if let Some(mw) = self.memory_writer.as_ref() {
             if tokio::runtime::Handle::try_current().is_err() {
                 return Err(CacheError::RuntimeError {
@@ -510,6 +525,35 @@ mod tests {
         fn verify_linkage() {
             let _reader: crate::spi::cache::ReaderCoordinator<String, String>;
             let _writer: crate::spi::cache::WriterCoordinator<String, String>;
+        }
+
+        #[test]
+        fn validates_backfill_capacity_min() {
+            use crate::spi::cache::BackfillCapacity;
+            let result = BackfillCapacity::custom(BackfillCapacity::MIN - 1);
+            result.unwrap_err();
+        }
+
+        #[test]
+        fn validates_backfill_capacity_max() {
+            use crate::spi::cache::BackfillCapacity;
+            let result = BackfillCapacity::custom(BackfillCapacity::MAX + 1);
+            result.unwrap_err();
+        }
+
+        #[test]
+        fn accepts_valid_backfill_capacity() {
+            use crate::spi::cache::BackfillCapacity;
+            let mut builder = Builder::<String, String>::new();
+            builder.backfill_capacity(BackfillCapacity::Light);
+            builder.backfill_capacity(BackfillCapacity::Medium);
+            builder.backfill_capacity(BackfillCapacity::Heavy);
+            builder.backfill_capacity(
+                BackfillCapacity::custom(BackfillCapacity::MIN).unwrap(),
+            );
+            builder.backfill_capacity(
+                BackfillCapacity::custom(BackfillCapacity::MAX).unwrap(),
+            );
         }
 
         #[tokio::test]
@@ -982,7 +1026,10 @@ mod tests {
                 .memory_writer(Arc::new(mem_writer))
                 .disk_reader(Arc::new(disk_reader))
                 .disk_writer(Arc::new(MockCacheWriter::new()));
-            builder.backfill_capacity(1);
+            // Use smallest possible capacity to test backfill pressure
+            builder.backfill_capacity(
+                crate::spi::cache::BackfillCapacity::custom(128).unwrap(),
+            );
 
             let reader = builder.reader().await.expect("build reader failed");
 
