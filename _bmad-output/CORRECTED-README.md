@@ -84,6 +84,7 @@ impl<K, V, C> Reader<K, V, C> {
 ```
 
 **Why this works:**
+
 - ✅ No trait changes (backward compatible)
 - ✅ Uses existing `with_view()` infrastructure
 - ✅ Actually achieves 3-4x speedup for metadata operations
@@ -112,6 +113,7 @@ impl<K, V, C> Reader<K, V, C> {
 ## Document Structure (Read in Order)
 
 ### 1. Start Here
+
 **📄 [cache-refactoring-corrections.md](./cache-refactoring-corrections.md)** (MUST READ)
 
 - Executive summary of corrections
@@ -125,18 +127,21 @@ impl<K, V, C> Reader<K, V, C> {
 **📄 [rkyv-usage-analysis.md](./rkyv-usage-analysis.md)** (PARTIALLY CORRECT)
 
 Sections that are still correct:
+
 - ✅ "How rkyv Zero-Copy Works" (lines 120-250)
 - ✅ "What You Did Right" (lines 226-310)
 - ✅ "What You Did Wrong" (lines 312-420)
 - ✅ "Correct rkyv Usage Patterns" (lines 600-750)
 
 Sections to IGNORE:
+
 - ❌ "Recommendations" (guard-based trait changes won't work)
 - ❌ Performance numbers (overstated)
 
 **📄 [cache-architecture-performance-analysis.md](./cache-architecture-performance-analysis.md)** (MOSTLY INCORRECT)
 
 Use for reference only:
+
 - ✅ Section 2: Research Context (Moka/Redb best practices)
 - ✅ Section 3: Current implementation review
 - ❌ Section 5: Coupling Spectrum (guard approach won't work)
@@ -160,6 +165,7 @@ Use for reference only:
 **Answer:** YES - Your codec implementation is textbook perfect.
 
 **Evidence:**
+
 - ✅ Correct alignment checks
 - ✅ Proper use of `rkyv::access()`
 - ✅ Zero-copy infrastructure (`EntryView`, `with_view()`)
@@ -170,6 +176,7 @@ Use for reference only:
 ### On Performance
 
 **Realistic speedup:**
+
 - ✅ Metadata-only operations: 3-4x faster
 - ✅ Timestamp checks: 3.5x faster
 - ✅ Field access: 10-50x faster
@@ -180,6 +187,7 @@ Use for reference only:
 ### On Architecture
 
 **Your architecture constraints:**
+
 - Coordinator uses `Arc<dyn CacheReader<K, V>>` (trait objects)
 - Trait objects require object-safety (no GATs with lifetimes)
 - Async methods can't return borrowed data (lifetime hell)
@@ -263,6 +271,7 @@ vault_scan_10k_optimized time: [38 ms 40 ms 42 ms]
 ## Questions?
 
 If you have questions about:
+
 - **Why guards won't work:** See corrections doc, "Why Guards Won't Work" section
 - **Trait object limitations:** See corrections doc, "Architectural Realities" section
 - **What to implement:** See corrections doc, "What Can Be Implemented Immediately" section

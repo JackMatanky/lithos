@@ -266,7 +266,52 @@ So that cache hits are served fast, consistency is guaranteed, and the system fo
 **Then** spans nest correctly: `coordinator` → `memory operation` → `disk operation`
 **And** backfill events are emitted with `operation = "backfill"` and `status = "triggered"`
 
-## Story 5.6: Implement Performance Benchmarking Suite
+## Story 5.6: Cache Performance & Zero-Copy Refactor
+
+As a performance engineer optimizing the storage layer,
+I want to implement a "Guard-Based Trait" design and leverage advanced crate features,
+So that we achieve zero-copy reads/writes and significant performance improvements.
+
+**Context:**
+We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified significant performance gaps in the current implementation. We need a dedicated story to execute the "Guard-Based Trait" design (Level 2 architecture) and leverage advanced crate features.
+
+**Acceptance Criteria:**
+
+**Given** the need for zero-copy reads
+**When** I implement the `CacheReader` trait
+**Then** it returns `Result<Option<Self::Guard>>`
+**And** `redb` returns `AccessGuard` wrappers (zero-copy aligned or single-copy unaligned)
+**And** `moka` returns `Arc` wrappers without allocation
+
+**Given** the need for zero-copy writes
+**When** I update the `Codec`
+**Then** it supports `serialize_into` and `serialized_size`
+**And** `redb` writes use `insert_reserve` to write directly to the memory-mapped file
+
+**Given** the need for efficient batch processing
+**When** I implement operations on `redb`
+**Then** it supports single-transaction `get_many` and `put_many`
+**And** benchmarks show ~10x speedup for batch scans
+
+**Given** alignment requirements in `redb`
+**When** I access data
+**Then** the implementation handles alignment correctly (fallback to copy for unaligned reads)
+
+**Given** Moka optimization goals
+**When** I update the `moka` implementation
+**Then** it stores `Entry<V>` instead of `V` to enable zero-copy timestamp checks
+**And** it exposes `metrics()` and explicit maintenance hooks
+**And** benchmarks show ~47x speedup for timestamp checks
+
+**Given** architectural requirements for the Guard pattern
+**When** I refactor `coordinator.rs`
+**Then** it uses monomorphic generics instead of trait objects
+
+**Given** existing functionality
+**When** I run the test suite
+**Then** all existing tests pass
+
+## Story 5.7: Implement Performance Benchmarking Suite
 
 As a performance engineer validating cache performance,
 I want comprehensive benchmarks using `criterion`,
@@ -327,7 +372,7 @@ So that I can verify throughput, latency, and memory usage meet requirements.
 **Then** criterion generates statistical reports comparing against baseline
 **And** reports are saved to `target/criterion/` for CI integration
 
-## Story 5.7: Review Epic 5 Test Suite
+## Story 5.8: Review Epic 5 Test Suite
 
 As a senior developer conducting adversarial code review,
 I want to brutally critique and improve the Epic 5 test suite to its foundation,
@@ -421,7 +466,7 @@ So that tests are comprehensive, maintainable, and catch real-world issues befor
 **And** any developer can understand test purpose without reading implementation
 **And** BDD comments explain business context, not just technical steps
 
-## Story 5.8: Document Cache System Foundation
+## Story 5.9: Document Cache System Foundation
 
 As a developer integrating caching in adapter implementations,
 I want clear documentation for the Cache SPI with concrete examples and comprehensive doc comments,

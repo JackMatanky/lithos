@@ -9,6 +9,7 @@
 ## File 1: mod.rs (Public API)
 
 ### Current State
+
 - 544 lines
 - Object-safe traits returning `Option<V>`
 - Forces deserialization for all operations
@@ -34,6 +35,7 @@ pub trait CacheWriter<K, V>: Send + Sync {
 ```
 
 **Why remove?**
+
 - These traits force owned `Option<V>` returns
 - Incompatible with Redb's `AccessGuard` (lifetime-bound)
 - Incompatible with zero-copy rkyv access
@@ -42,7 +44,7 @@ pub trait CacheWriter<K, V>: Send + Sync {
 
 **2. Replace with direct re-exports**
 
-```rust
+````rust
 //! High-performance cache implementations for Lithos.
 //!
 //! This module provides two cache backends optimized for different use cases:
@@ -121,7 +123,7 @@ pub use crate::spi::errors::CacheError;
 
 // Entry type (used by Redb)
 pub use self::redb::Entry;
-```
+````
 
 **Lines:** ~100 (down from 544)
 **Breaking Changes:** YES - complete API redesign
@@ -132,6 +134,7 @@ pub use self::redb::Entry;
 ## File 2: encoder.rs (Zero-Copy Codec)
 
 ### Current State
+
 - 473 lines
 - Already correct! Uses rkyv properly
 - `Codec::access()` provides zero-copy
@@ -140,7 +143,7 @@ pub use self::redb::Entry;
 
 #### Update Documentation Only
 
-```rust
+````rust
 //! Zero-copy serialization codec for Redb.
 //!
 //! This module implements rkyv-based encoding that enables zero-copy reads
@@ -226,7 +229,7 @@ pub trait Codec<K, V>: Send + Sync {
 }
 
 // ... rest of implementation unchanged
-```
+````
 
 **Lines Changed:** ~30 (documentation only)
 **Breaking Changes:** None
@@ -237,12 +240,14 @@ pub trait Codec<K, V>: Send + Sync {
 ## File 3: backfiller.rs (Async Backfill Worker)
 
 ### Current State
+
 - 421 lines
 - Already correct! Generic, no trait dependencies
 
 ### Changes: None
 
 **Why no changes:**
+
 - Already uses concrete types (`K`, `V`)
 - No dependency on removed traits
 - Works with any backend that can `put(K, V)`
@@ -254,6 +259,7 @@ pub trait Codec<K, V>: Send + Sync {
 ## File 4: redb.rs (Persistent Cache)
 
 ### Current State
+
 - 1572 lines
 - Has `with_view()` but not primary API
 - Has `Entry<V>` wrapper (good!)
@@ -265,6 +271,7 @@ pub trait Codec<K, V>: Send + Sync {
 #### Remove Trait Implementations
 
 **DELETE:**
+
 ```rust
 #[async_trait]
 impl<K, V, C> CacheReader<K, V> for Reader<K, V, C> {
@@ -397,7 +404,7 @@ impl<K, V> Builder<K, V> {
 
 **3. Unified Database type (not Reader/Writer split)**
 
-```rust
+````rust
 /// Redb persistent cache database.
 ///
 /// Provides both read and write operations using MVCC transactions.
@@ -778,10 +785,11 @@ where
         }).await
     }
 }
-```
+````
 
 **Lines:** ~600 (down from 1572, removing unused abstractions)
 **Key Changes:**
+
 - Single `Database` type (not Reader/Writer split)
 - `with_view()` is primary API
 - Direct use of `AccessGuard`
@@ -794,6 +802,7 @@ where
 ## File 5: moka.rs (In-Memory Cache)
 
 ### Current State
+
 - 842 lines
 - Basic trait implementation
 - Missing: `run_pending_tasks()`, metrics, weigher
@@ -803,6 +812,7 @@ where
 #### Remove Trait Implementations
 
 **DELETE:**
+
 ```rust
 #[async_trait]
 impl<K, V> CacheReader<K, V> for Reader<K, V> {
@@ -817,7 +827,7 @@ impl<K, V> CacheWriter<K, V> for Writer<K, V> {
 
 #### Simplify to Single Cache Type
 
-```rust
+````rust
 /// High-performance in-memory cache using Moka.
 ///
 /// Features:
@@ -1003,10 +1013,11 @@ pub struct CacheStats {
     pub entry_count: u64,
     pub weighted_size: u64,
 }
-```
+````
 
 **Lines:** ~300 (down from 842)
 **Key Changes:**
+
 - Single `Cache` type (not Reader/Writer)
 - Direct Moka API exposure
 - `sync()` method for deterministic tests
@@ -1018,6 +1029,7 @@ pub struct CacheStats {
 ## File 6: coordinator.rs (Multi-Layer Cache)
 
 ### Current State
+
 - 789 lines
 - Uses trait objects (`Arc<dyn CacheReader>`)
 - Prevents zero-copy access
@@ -1025,7 +1037,7 @@ pub struct CacheStats {
 
 ### New Approach: Concrete Types, Zero-Copy Support
 
-```rust
+````rust
 //! Multi-layer cache coordinator.
 //!
 //! Combines Moka (L1) and Redb (L2) with automatic backfill.
@@ -1242,10 +1254,11 @@ where
         self.backfill.metrics()
     }
 }
-```
+````
 
 **Lines:** ~300 (down from 789)
 **Key Changes:**
+
 - Concrete types (not trait objects)
 - Direct backend access via `memory()` and `disk()`
 - Zero-copy methods (`disk_view()`, `disk_timestamp()`, `find_stale()`)
@@ -1257,24 +1270,24 @@ where
 
 ### Total Changes
 
-| File | Current | New | Change | Breaking |
-|------|---------|-----|--------|----------|
-| `mod.rs` | 544 | 100 | -444 | ✅ YES |
-| `encoder.rs` | 473 | 473 | 0 | ❌ No |
-| `backfiller.rs` | 421 | 421 | 0 | ❌ No |
-| `redb.rs` | 1572 | 600 | -972 | ✅ YES |
-| `moka.rs` | 842 | 300 | -542 | ✅ YES |
-| `coordinator.rs` | 789 | 300 | -489 | ✅ YES |
-| **TOTAL** | **4,641** | **2,194** | **-2,447** | **COMPLETE REDESIGN** |
+| File             | Current   | New       | Change     | Breaking              |
+| ---------------- | --------- | --------- | ---------- | --------------------- |
+| `mod.rs`         | 544       | 100       | -444       | ✅ YES                |
+| `encoder.rs`     | 473       | 473       | 0          | ❌ No                 |
+| `backfiller.rs`  | 421       | 421       | 0          | ❌ No                 |
+| `redb.rs`        | 1572      | 600       | -972       | ✅ YES                |
+| `moka.rs`        | 842       | 300       | -542       | ✅ YES                |
+| `coordinator.rs` | 789       | 300       | -489       | ✅ YES                |
+| **TOTAL**        | **4,641** | **2,194** | **-2,447** | **COMPLETE REDESIGN** |
 
 ### Performance Gains
 
-| Operation | Before | After | Improvement |
-|-----------|--------|-------|-------------|
-| Timestamp check | 14μs | 0.3μs | **47x faster** |
-| Batch scan (10k) | 140ms | 3ms | **47x faster** |
-| Vault index | 800ms | 50ms | **16x faster** |
-| Memory/read | 10.5KB | 0B | **0 allocation** |
+| Operation        | Before | After | Improvement      |
+| ---------------- | ------ | ----- | ---------------- |
+| Timestamp check  | 14μs   | 0.3μs | **47x faster**   |
+| Batch scan (10k) | 140ms  | 3ms   | **47x faster**   |
+| Vault index      | 800ms  | 50ms  | **16x faster**   |
+| Memory/read      | 10.5KB | 0B    | **0 allocation** |
 
 ### Philosophy
 

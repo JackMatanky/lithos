@@ -12,10 +12,12 @@
 ### The Core Problem
 
 **Your ADR 0002 states:**
+
 > "Zero-Copy: Maps bytes directly from the database disk/cache into Rust structs **without allocation or parsing**."
 > "Performance: Achieves CPU-cache speeds for hot path lookups."
 
 **Your current coordinator:**
+
 ```rust
 // coordinator.rs, line 316-318
 pub struct Reader<K, V> {
@@ -26,6 +28,7 @@ pub struct Reader<K, V> {
 ```
 
 **Why this is the bottleneck:**
+
 1. Trait objects force `get() -> Option<V>` (owned value)
 2. Cannot return references with lifetimes through `dyn` trait
 3. Every read requires full deserialization (defeats rkyv's purpose)
@@ -70,12 +73,14 @@ where
 ```
 
 **Benefits:**
+
 - ✅ Zero vtable overhead (monomorphization)
 - ✅ Can add zero-copy methods for specific backends
 - ✅ Compiler can inline everything (10-20% faster)
 - ✅ Access to backend-specific optimizations (Redb's `with_view()`)
 
 **Tradeoff:**
+
 - ❌ Lose runtime polymorphism
 - ✅ **Gain compile-time optimization** (what we need for sub-50ms LSP)
 
@@ -97,6 +102,7 @@ where
 ### Principle 1: Eliminate All Unnecessary Indirection
 
 **Current architecture:**
+
 ```
 User Code
   ↓ (async call)
@@ -110,12 +116,14 @@ User receives owned V
 ```
 
 **Cost:**
+
 - Heap allocation: ~50ns
 - Vtable lookup: ~10ns
 - Deserialization: ~8000ns
 - **Total: ~8060ns per read**
 
 **Performance-first architecture:**
+
 ```
 User Code
   ↓ (inline call)
@@ -129,6 +137,7 @@ User accesses timestamp directly
 ```
 
 **Cost:**
+
 - Inline call: 0ns
 - Zero-copy access: ~300ns (validation)
 - Field access: ~2ns (pointer offset)
@@ -139,6 +148,7 @@ User accesses timestamp directly
 ### Principle 2: Expose Backend-Specific Capabilities
 
 **Current approach (lowest common denominator):**
+
 ```rust
 trait CacheReader<K, V> {
     async fn get(&self, key: &K) -> Result<Option<V>, CacheError>;
@@ -147,6 +157,7 @@ trait CacheReader<K, V> {
 ```
 
 **Performance-first approach (leverage strengths):**
+
 ```rust
 // Redb-specific reader with zero-copy methods
 impl RedbReader<K, V> {
@@ -168,6 +179,7 @@ impl MokaReader<K, V> {
 ### Principle 3: Compile-Time Dispatch
 
 **Current (runtime polymorphism):**
+
 ```rust
 let reader: Arc<dyn CacheReader<K, V>> = if use_redb {
     Arc::new(redb_reader)
@@ -178,6 +190,7 @@ let reader: Arc<dyn CacheReader<K, V>> = if use_redb {
 ```
 
 **Performance-first (compile-time monomorphization):**
+
 ```rust
 // At compile time, coordinator is specialized for exact types
 let coordinator = Reader::<MokaReader<K, V>, RedbReader<K, V>, K, V>::new(
@@ -188,6 +201,7 @@ let coordinator = Reader::<MokaReader<K, V>, RedbReader<K, V>, K, V>::new(
 ```
 
 **Why faster:**
+
 - No vtable lookup (direct function calls)
 - Inlining across abstraction boundaries
 - Dead code elimination (only used methods compiled)
@@ -606,12 +620,14 @@ where
 ### Philosophy: Layered Access
 
 **Level 1: Baseline (trait object compatible)**
+
 ```rust
 // Slowest, but works everywhere
 cache.get(&key).await?  // Returns Option<V>, full deser
 ```
 
 **Level 2: Concrete Type (monomorphic dispatch)**
+
 ```rust
 // Faster, requires concrete type
 let cache: Reader<Moka, Redb, K, V> = ...;
@@ -619,6 +635,7 @@ cache.get(&key).await?  // Inlined, optimized
 ```
 
 **Level 3: Zero-Copy Methods (backend-specific)**
+
 ```rust
 // Fastest, requires zero-copy backend
 cache.get_timestamp(&key).await?  // Zero-copy field access
@@ -626,6 +643,7 @@ cache.is_stale(&key, cutoff).await?  // Zero-copy predicate
 ```
 
 **Level 4: Direct Backend Access (maximum performance)**
+
 ```rust
 // Ultimate control, bypass coordinator
 cache.disk.with_view(&key, |archived| {
@@ -711,12 +729,14 @@ async fn find_stale_entries(
 ### Phase 1: Add Traits (Week 1)
 
 **Deliverables:**
+
 1. Add `ZeroCopyReader` trait
 2. Add `CacheControl` trait
 3. Implement for Redb and Moka
 4. No breaking changes (additive only)
 
 **Files changed:**
+
 - `crates/adapters/src/spi/cache/mod.rs` (new traits)
 - `crates/adapters/src/spi/cache/redb.rs` (impl ZeroCopyReader)
 - `crates/adapters/src/spi/cache/moka.rs` (impl CacheControl)
@@ -724,12 +744,14 @@ async fn find_stale_entries(
 ### Phase 2: Monomorphic Coordinator (Week 2)
 
 **Deliverables:**
+
 1. Create new `coordinator_v2.rs` module
 2. Implement monomorphic `Builder`, `Reader`, `Writer`
 3. Add zero-copy methods
 4. Keep old coordinator for compatibility
 
 **Migration path:**
+
 ```rust
 // Old (still works)
 use lithos_adapters::spi::cache::coordinator;
@@ -743,12 +765,15 @@ use lithos_adapters::spi::cache::coordinator_v2;
 ### Phase 3: Migrate Consumers (Week 3)
 
 **Process:**
+
 1. Find all coordinator usage:
+
    ```bash
    rg "CacheCoordinatorBuilder" crates/ --type rust
    ```
 
 2. Update to monomorphic version:
+
    ```rust
    // Before
    let mut builder = CacheCoordinatorBuilder::<String, Note>::new();
@@ -769,6 +794,7 @@ use lithos_adapters::spi::cache::coordinator_v2;
 ### Phase 4: Deprecate Old Coordinator (Week 4)
 
 **Once validated:**
+
 1. Mark old coordinator as `#[deprecated]`
 2. Add migration guide in docs
 3. Plan removal in next major version
@@ -840,20 +866,20 @@ criterion_main!(benches);
 
 **Target (10,000 entry vault scan):**
 
-| Operation | Old (trait objects) | New (monomorphic) | Speedup | Target |
-|-----------|-------------------|------------------|---------|--------|
-| Full get() | 140ms | 120ms | 1.2x | ✅ Baseline |
-| get_timestamp() | N/A | 40ms | 3.5x | ✅ Zero-copy |
-| is_stale() | N/A | 40ms | 3.5x | ✅ Zero-copy |
-| with_view() custom | N/A | 23ms | 6x | ✅ Zero-copy |
+| Operation          | Old (trait objects) | New (monomorphic) | Speedup | Target       |
+| ------------------ | ------------------- | ----------------- | ------- | ------------ |
+| Full get()         | 140ms               | 120ms             | 1.2x    | ✅ Baseline  |
+| get_timestamp()    | N/A                 | 40ms              | 3.5x    | ✅ Zero-copy |
+| is_stale()         | N/A                 | 40ms              | 3.5x    | ✅ Zero-copy |
+| with_view() custom | N/A                 | 23ms              | 6x      | ✅ Zero-copy |
 
 **Memory allocations (per operation):**
 
-| Operation | Old | New | Reduction |
-|-----------|-----|-----|-----------|
-| get() | 10.5KB | 10.5KB | 0% (same) |
-| get_timestamp() | N/A | 0 bytes | 100% |
-| with_view() | N/A | 0 bytes | 100% |
+| Operation       | Old    | New     | Reduction |
+| --------------- | ------ | ------- | --------- |
+| get()           | 10.5KB | 10.5KB  | 0% (same) |
+| get_timestamp() | N/A    | 0 bytes | 100%      |
+| with_view()     | N/A    | 0 bytes | 100%      |
 
 ---
 
@@ -862,11 +888,13 @@ criterion_main!(benches);
 ### What We're Doing
 
 **Removing:**
+
 - ❌ Trait object overhead (`Arc<dyn CacheReader>`)
 - ❌ Vtable indirection (5-10ns per call)
 - ❌ Forced deserialization for all reads
 
 **Adding:**
+
 - ✅ Monomorphic coordinator (compile-time dispatch)
 - ✅ Zero-copy methods (`get_timestamp()`, `with_view()`)
 - ✅ Backend-specific optimizations (Redb's zero-copy, Moka's metrics)
@@ -875,10 +903,12 @@ criterion_main!(benches);
 ### Performance vs Portability
 
 **Portability sacrificed:**
+
 - Runtime polymorphism (can't swap backends at runtime)
 - Trait objects (can't use `Arc<dyn CacheReader>`)
 
 **Performance gained:**
+
 - 3.5x faster for metadata operations
 - 6x faster for custom zero-copy queries
 - 0% memory allocation for read-only ops
@@ -887,12 +917,14 @@ criterion_main!(benches);
 ### Success Criteria
 
 **Must achieve (from ADR 0002):**
+
 - ✅ Sub-50ms LSP latency for link suggestions
 - ✅ Zero-copy data access (true rkyv usage)
 - ✅ Scale to 100,000+ notes
 - ✅ Sub-millisecond hot path reads
 
 **Implementation timeline:**
+
 - Week 1: Traits
 - Week 2: Monomorphic coordinator
 - Week 3: Migrate consumers

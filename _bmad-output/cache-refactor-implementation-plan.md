@@ -54,14 +54,14 @@ This is the PERFECT time to refactor with zero technical debt.
 
 ### What Changes
 
-| File | Current Approach | New Approach |
-|------|-----------------|--------------|
-| **mod.rs** | Object-safe traits | Trait + zero-copy extension traits |
-| **encoder.rs** | ✅ Already perfect | Keep as-is, minor docs |
-| **redb.rs** | `get()` primary, `with_view()` hidden | `with_view()` primary, add helpers |
-| **moka.rs** | Basic trait impl | Add cache control methods |
-| **coordinator.rs** | Trait objects | Generic types (monomorphic) |
-| **backfiller.rs** | ✅ Already good | Keep as-is |
+| File               | Current Approach                      | New Approach                       |
+| ------------------ | ------------------------------------- | ---------------------------------- |
+| **mod.rs**         | Object-safe traits                    | Trait + zero-copy extension traits |
+| **encoder.rs**     | ✅ Already perfect                    | Keep as-is, minor docs             |
+| **redb.rs**        | `get()` primary, `with_view()` hidden | `with_view()` primary, add helpers |
+| **moka.rs**        | Basic trait impl                      | Add cache control methods          |
+| **coordinator.rs** | Trait objects                         | Generic types (monomorphic)        |
+| **backfiller.rs**  | ✅ Already good                       | Keep as-is                         |
 
 ### What Stays
 
@@ -107,7 +107,7 @@ pub trait CacheWriter<K, V>: Send + Sync {
 
 #### 1.2. Add Zero-Copy Extension Traits (NEW)
 
-```rust
+````rust
 /// Zero-copy read operations for high-performance backends.
 ///
 /// This trait is NOT object-safe. Use with concrete types for maximum performance.
@@ -192,7 +192,7 @@ pub trait CacheControl: Send + Sync {
     /// Get weighted size (if using weigher).
     fn weighted_size(&self) -> u64;
 }
-```
+````
 
 #### 1.3. Update Re-exports
 
@@ -242,7 +242,7 @@ pub trait Codec<K, V>: Send + Sync {
 
 #### 2.2. Add Performance Guidance
 
-```rust
+````rust
 /// Zero-copy codec using `rkyv` for persistent storage.
 ///
 /// This codec serializes values using `rkyv` and validates them on
@@ -268,7 +268,7 @@ pub trait Codec<K, V>: Send + Sync {
 #[derive(Debug, Clone, Copy, Default)]
 #[non_exhaustive]
 pub struct RkyvCodec;
-```
+````
 
 **Lines Added:** ~20 (docs only)
 **Lines Removed:** 0
@@ -295,7 +295,7 @@ pub struct RkyvCodec;
 
 #### 3.2. Update Reader Documentation
 
-```rust
+````rust
 /// Read-only handle for Redb cache.
 ///
 /// This handle provides both traditional and zero-copy access to the cache.
@@ -325,7 +325,7 @@ pub struct RkyvCodec;
 /// process(entry);
 /// ```
 pub struct Reader<K, V, C = RkyvCodec> { /* ... */ }
-```
+````
 
 #### 3.3. Implement ZeroCopyReader Trait
 
@@ -548,6 +548,7 @@ async fn should_evict_when_capacity_exceeded() {
 #### 5.1. Replace Trait Objects with Generics
 
 **OLD:**
+
 ```rust
 pub struct Builder<K, V> {
     disk_reader: Option<Arc<dyn CacheReader<K, V>>>,
@@ -564,7 +565,8 @@ pub struct Reader<K, V> {
 ```
 
 **NEW:**
-```rust
+
+````rust
 /// Builder for constructing a performance-optimized coordinator.
 ///
 /// Uses concrete types instead of trait objects for:
@@ -655,7 +657,7 @@ where
     disk: DW,
     _phantom: PhantomData<(K, V)>,
 }
-```
+````
 
 #### 5.2. Implement Builder Methods
 
@@ -1042,6 +1044,7 @@ mod tests {
 **Changes:** ✅ **NONE - Perfect as-is**
 
 **Reasoning:**
+
 - Already uses generics (`Worker<K, V>`)
 - No trait objects
 - No zero-copy needed (just moves owned values)
@@ -1058,85 +1061,75 @@ mod tests {
 ### Day 1: Foundation (Traits & Encoder)
 
 **Morning (2-3 hours):**
+
 1. ✅ Update `mod.rs` - Add `ZeroCopyReader` and `CacheControl` traits
 2. ✅ Update `encoder.rs` - Improve documentation
 
-**Afternoon (2-3 hours):**
-3. ✅ Run `cargo check` - Ensure no compilation errors
-4. ✅ Run existing tests - Ensure no breakage
-5. ✅ Commit: "refactor(cache): add zero-copy extension traits"
+**Afternoon (2-3 hours):** 3. ✅ Run `cargo check` - Ensure no compilation errors 4. ✅ Run existing tests - Ensure no breakage 5. ✅ Commit: "refactor(cache): add zero-copy extension traits"
 
 ### Day 2: Backend Implementations
 
 **Morning (3-4 hours):**
+
 1. ✅ Update `redb.rs`:
    - Implement `ZeroCopyReader` trait
    - Add convenience methods (`is_stale`, `get_metadata`, `find_stale`)
    - Update documentation
 
-**Afternoon (2-3 hours):**
-2. ✅ Update `moka.rs`:
-   - Implement `CacheControl` trait
-   - Add metrics methods
-   - Fix test timing issues (replace `sleep()` with `sync()`)
+**Afternoon (2-3 hours):** 2. ✅ Update `moka.rs`:
 
-**Evening (1 hour):**
-3. ✅ Run full test suite
-4. ✅ Commit: "refactor(cache): implement extension traits for redb and moka"
+- Implement `CacheControl` trait
+- Add metrics methods
+- Fix test timing issues (replace `sleep()` with `sync()`)
+
+**Evening (1 hour):** 3. ✅ Run full test suite 4. ✅ Commit: "refactor(cache): implement extension traits for redb and moka"
 
 ### Day 3: Coordinator Refactor
 
 **Morning (4-5 hours):**
+
 1. ✅ Rewrite `coordinator.rs`:
    - Replace trait objects with generics
    - Implement new `Builder`
    - Implement monomorphic `Reader` and `Writer`
 
-**Afternoon (3-4 hours):**
-2. ✅ Add zero-copy extensions to coordinator
-3. ✅ Add cache control extensions to coordinator
-4. ✅ Update coordinator tests
+**Afternoon (3-4 hours):** 2. ✅ Add zero-copy extensions to coordinator 3. ✅ Add cache control extensions to coordinator 4. ✅ Update coordinator tests
 
-**Evening (1 hour):**
-5. ✅ Run full test suite
-6. ✅ Commit: "refactor(cache): monomorphic coordinator with zero-copy support"
+**Evening (1 hour):** 5. ✅ Run full test suite 6. ✅ Commit: "refactor(cache): monomorphic coordinator with zero-copy support"
 
 ### Day 4: Integration & Testing
 
 **Morning (2-3 hours):**
+
 1. ✅ Write integration tests:
    - Full coordinator + redb + moka
    - Zero-copy operations
    - Performance benchmarks
 
-**Afternoon (2-3 hours):**
-2. ✅ Write benchmark suite (criterion):
-   - `get()` vs `get_timestamp()` vs `with_view()`
-   - Coordinator overhead measurement
-   - Memory allocation tracking
+**Afternoon (2-3 hours):** 2. ✅ Write benchmark suite (criterion):
 
-**Evening (1-2 hours):**
-3. ✅ Update module documentation
-4. ✅ Run all tests and benchmarks
-5. ✅ Commit: "test(cache): add integration tests and benchmarks"
+- `get()` vs `get_timestamp()` vs `with_view()`
+- Coordinator overhead measurement
+- Memory allocation tracking
+
+**Evening (1-2 hours):** 3. ✅ Update module documentation 4. ✅ Run all tests and benchmarks 5. ✅ Commit: "test(cache): add integration tests and benchmarks"
 
 ### Day 5: Validation & Docs
 
 **Morning (2-3 hours):**
+
 1. ✅ Run benchmarks, validate performance claims:
    - Confirm 3.5x speedup for `get_timestamp()`
    - Confirm 6x speedup for `with_view()`
    - Confirm 10-20% speedup from monomorphization
 
-**Afternoon (2-3 hours):**
-2. ✅ Write usage guide (in module docs):
-   - When to use each API tier
-   - Performance characteristics
-   - Migration examples
+**Afternoon (2-3 hours):** 2. ✅ Write usage guide (in module docs):
 
-**Evening (1 hour):**
-3. ✅ Final review and cleanup
-4. ✅ Commit: "docs(cache): add performance guide and usage examples"
+- When to use each API tier
+- Performance characteristics
+- Migration examples
+
+**Evening (1 hour):** 3. ✅ Final review and cleanup 4. ✅ Commit: "docs(cache): add performance guide and usage examples"
 
 ---
 
@@ -1145,6 +1138,7 @@ mod tests {
 ### Unit Tests (Preserve Existing)
 
 **Files:**
+
 - ✅ `mod.rs` - Trait contract tests (lines 195-543)
 - ✅ `encoder.rs` - Codec round-trip tests (lines 289-472)
 - ✅ `redb.rs` - Redb backend tests (lines 1100+)
@@ -1401,18 +1395,18 @@ criterion_main!(benches);
 
 ### Total Effort
 
-| File | Lines Changed | Effort | Risk |
-|------|--------------|--------|------|
-| `mod.rs` | +150 / -0 | 2h | Low |
-| `encoder.rs` | +20 / -0 | 1h | Very Low |
-| `redb.rs` | +100 / -0 | 3h | Low |
-| `moka.rs` | +80 / -20 | 2h | Low |
-| `coordinator.rs` | +600 / -300 | 8h | Medium |
-| `backfiller.rs` | 0 / 0 | 0h | None |
-| **Integration tests** | +300 | 3h | Low |
-| **Benchmarks** | +200 | 2h | Low |
-| **Documentation** | +100 | 2h | Low |
-| **TOTAL** | **~1550 lines** | **~25 hours** | **Low** |
+| File                  | Lines Changed   | Effort        | Risk     |
+| --------------------- | --------------- | ------------- | -------- |
+| `mod.rs`              | +150 / -0       | 2h            | Low      |
+| `encoder.rs`          | +20 / -0        | 1h            | Very Low |
+| `redb.rs`             | +100 / -0       | 3h            | Low      |
+| `moka.rs`             | +80 / -20       | 2h            | Low      |
+| `coordinator.rs`      | +600 / -300     | 8h            | Medium   |
+| `backfiller.rs`       | 0 / 0           | 0h            | None     |
+| **Integration tests** | +300            | 3h            | Low      |
+| **Benchmarks**        | +200            | 2h            | Low      |
+| **Documentation**     | +100            | 2h            | Low      |
+| **TOTAL**             | **~1550 lines** | **~25 hours** | **Low**  |
 
 ### Timeline
 
@@ -1427,6 +1421,7 @@ criterion_main!(benches);
 ### Success Metrics
 
 **Must achieve:**
+
 - ✅ Zero compilation errors
 - ✅ 100% test pass rate
 - ✅ 3.5x speedup for `get_timestamp()` vs `get()`
@@ -1434,6 +1429,7 @@ criterion_main!(benches);
 - ✅ Zero allocations for zero-copy operations
 
 **Bonus:**
+
 - ✅ 10-20% speedup from monomorphic coordinator
 - ✅ Better documentation with usage guide
 - ✅ Comprehensive benchmark suite
