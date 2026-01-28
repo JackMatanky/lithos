@@ -278,13 +278,23 @@ where
         let path = Self::validate_path(self.path.as_deref())?;
         let table_name = Self::validate_table_name(self.table_name.as_deref())?;
 
-        let db = redb::Database::create(path).map_err(|e| {
-            error!(backend = "redb", ?e, "Failed to open database");
-            CacheError::BackendError {
-                backend: "redb",
-                message: format!("Failed to open database: {e}").into(),
-            }
-        })?;
+        let db = if path.exists() {
+            redb::Database::open(path).map_err(|e| {
+                error!(backend = "redb", ?e, "Failed to open database");
+                CacheError::BackendError {
+                    backend: "redb",
+                    message: format!("Failed to open database: {e}").into(),
+                }
+            })?
+        } else {
+            redb::Database::create(path).map_err(|e| {
+                error!(backend = "redb", ?e, "Failed to create database");
+                CacheError::BackendError {
+                    backend: "redb",
+                    message: format!("Failed to create database: {e}").into(),
+                }
+            })?
+        };
 
         Ok(Arc::new(Inner::new(db, table_name, RkyvCodec)))
     }
