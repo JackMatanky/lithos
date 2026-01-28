@@ -74,6 +74,11 @@ where
 {
     /// Access the archived value without full deserialization.
     ///
+    /// # Note
+    /// This is a zero-copy view and requires aligned archived bytes. If the
+    /// underlying storage does not guarantee alignment, this returns a
+    /// `CacheError::SerializationError`.
+    ///
     /// # Errors
     /// Returns `CacheError::SerializationError` if access fails.
     ///
@@ -517,6 +522,11 @@ where
     /// This method enables high-performance access to cached data without
     /// heap allocation or full deserialization by operating directly on the
     /// memory-mapped database pages.
+    ///
+    /// # Note
+    /// This is a zero-copy view and requires aligned archived bytes. If the
+    /// underlying storage does not guarantee alignment, this returns a
+    /// `CacheError::SerializationError`.
     ///
     /// # Errors
     /// Returns `CacheError` if retrieval or validation fails.

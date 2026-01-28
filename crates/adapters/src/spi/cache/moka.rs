@@ -265,6 +265,8 @@ where
     #[tracing::instrument(skip(self, key), level = "debug")]
     #[inline]
     async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        // `contains_key` is synchronous and may be approximate under eviction
+        // pressure; use `get` if you need a definitive value check.
         let exists = self.cache.contains_key(key);
         tracing::event!(
             tracing::Level::DEBUG,
@@ -278,6 +280,8 @@ where
     #[tracing::instrument(skip(self), level = "debug")]
     #[inline]
     async fn keys(&self) -> Result<Vec<K>, CacheError> {
+        // This may hold internal locks and clone all keys; prefer targeted
+        // lookups for large caches.
         let keys: Vec<K> =
             self.cache.iter().map(|(key, _)| (*key).clone()).collect();
         tracing::event!(
