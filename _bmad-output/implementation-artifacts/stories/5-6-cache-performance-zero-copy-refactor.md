@@ -67,16 +67,16 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 
 ### Phase 1: Trait Definition Updates (Zero-Copy First)
 - [ ] Task 1: Define `CacheGuard` and update `CacheReader` in `mod.rs`
-  - [ ] Subtask 1.1: Define `pub trait CacheGuard<V>: Send + Sync`:
-    - [ ] 1.1.1: Add `fn as_bytes(&self) -> &[u8]` to allow raw access.
-    - [ ] 1.1.2: Add `fn deserialize(&self) -> Result<V, CacheError>` for backward compatibility.
+  - [ ] Subtask 1.1: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static`:
+    - [ ] 1.1.1: Add a blanket implementation: `impl<T, V> CacheGuard<V> for T where T: Deref<Target = V> + Send + 'static {}`.
+    - [ ] 1.1.2: Add `fn as_bytes(&self) -> &[u8]` to the trait (or a sub-trait if needed for the blanket impl) to enable zero-copy views.
   - [ ] Subtask 1.2: Update `CacheReader` trait:
-    - [ ] 1.2.1: Add `type Guard: CacheGuard<V>` associated type.
-    - [ ] 1.2.2: Change `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>`.
-    - [ ] 1.2.3: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError>` with a default implementation calling `get` and `deserialize`.
-  - [ ] Subtask 1.3: Update `CacheWriter` trait:
-    - [ ] 1.3.1: Change `put` signature to `async fn put(&self, key: K, value: &V) -> Result<(), CacheError>` to avoid unnecessary cloning of `V` before serialization.
-  - [ ] Subtask 1.4: Update `mockall` configuration and fix all compilation errors in `mod.rs` tests caused by the trait signature changes.
+    - [ ] 1.2.1: Remove `V: Clone` requirement from the trait bounds.
+    - [ ] 1.2.2: Add `type Guard: CacheGuard<V>` associated type.
+    - [ ] 1.2.3: Change `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>`.
+    - [ ] 1.2.4: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
+  - [ ] Subtask 1.3: Update `CacheWriter` trait to use reference-based `put(&self, key: K, value: &V)`.
+  - [ ] Subtask 1.4: Fix `mockall` and tests to accommodate the `Deref`-based Guard return type.
 
 ### Phase 2: Codec Zero-Copy Refactor
 - [ ] Task 2: Refactor `Codec` trait for Zero-Copy purity in `encoder.rs`
@@ -144,26 +144,37 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 #### Planned `CacheReader` and `CacheGuard` Trait Definition
 ```rust
 #[async_trait]
-pub trait CacheReader<K, V>: Send + Sync {
+pub trait CacheReader<K, V>: Send + Sync
+where
+    K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
+    V: Send + Sync + 'static, // Note: Clone no longer required!
+{
     type Guard: CacheGuard<V>;
 
     /// Retrieve a guard providing zero-copy access to the value.
     async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
 
-    /// Deprecated: Forces deserialization. Use `get` instead.
-    #[deprecated(note = "Use get() and access the archived view via the guard")]
-    async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> {
-        self.get(key).await?.map(|g| g.deserialize()).transpose()
+    /// Deprecated: Forces cloning/deserialization. Use `get` instead.
+    #[deprecated(note = "Use get() and access the view via the guard")]
+    async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError>
+    where V: Clone
+    {
+        self.get(key).await?.map(|g| g.clone()) // Error: requires Deref + Clone
     }
 }
 
-pub trait CacheGuard<V>: Send + Sync {
-    /// Access raw bytes of the cached entry.
+/// Guard type that provides deref access to cached values.
+pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static {
+    /// Access raw bytes of the cached entry (for Codec::access).
     fn as_bytes(&self) -> &[u8];
-
-    /// Deserialize the entry into an owned value (Copy).
-    fn deserialize(&self) -> Result<V, CacheError>;
 }
+
+// Blanket implementation for types like Arc<V>
+impl<T, V> CacheGuard<V> for T
+where
+    T: Deref<Target = V> + Send + 'static,
+    T: AsRef<[u8]> // Potential requirement for as_bytes()
+{}
 ```
 
 #### Planned `Codec` Trait Definition
