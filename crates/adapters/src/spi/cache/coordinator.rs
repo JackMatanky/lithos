@@ -52,7 +52,7 @@
 //!     .disk_reader(Arc::new(DummyReader))
 //!     .disk_writer(Arc::new(DummyWriter));
 //!
-//! let reader = builder.reader().unwrap();
+//! let reader = builder.reader().await.unwrap();
 //! let writer = builder.writer().unwrap();
 //! # });
 //! ```
@@ -70,6 +70,7 @@
 //! # use lithos_adapters::spi::errors::CacheError;
 //! #
 //! # fn example() -> Result<(), CacheError> {
+//! # tokio::runtime::Runtime::new().unwrap().block_on(async {
 //! # let db_path = std::path::PathBuf::from("test.redb");
 //! // Build memory and disk layers
 //! let mut moka_builder = MokaBuilder::<String, String>::new();
@@ -87,7 +88,8 @@
 //! let query_cache = CacheCoordinatorBuilder::new()
 //!     .memory_reader(Arc::new(mem_reader))
 //!     .disk_reader(Arc::new(disk_reader))
-//!     .reader()?; // Returns Reader only
+//!     .reader()
+//!     .await?; // Returns Reader only
 //!
 //! // ✅ CQRS Command Side (writes only):
 //! let command_cache = CacheCoordinatorBuilder::new()
@@ -99,6 +101,7 @@
 //! // - QueryAdapter owns query_cache (read-only operations)
 //! // - CommandAdapter owns command_cache (write-only operations)
 //! # Ok(())
+//! # })
 //! # }
 //! ```
 //!
@@ -239,13 +242,20 @@ where
     /// Returns `CacheError::BackendError` if `memory_reader` or `disk_reader`
     /// is missing.
     #[inline]
-    pub fn reader(&self) -> Result<Reader<K, V>, CacheError> {
+    pub async fn reader(&self) -> Result<Reader<K, V>, CacheError> {
         let (handle, worker) = backfiller::new(self.backfill_capacity);
 
         // ✅ CRITICAL FIX: If memory_writer is present, start the worker so
         // backfill works!
         if let Some(mw) = self.memory_writer.as_ref() {
+            if tokio::runtime::Handle::try_current().is_err() {
+                return Err(CacheError::BackendError {
+                    backend: "tokio",
+                    message: "Tokio runtime is required for backfill".into(),
+                });
+            }
             worker.start(Arc::clone(mw));
+            tokio::task::yield_now().await;
         }
 
         self.build_reader_with_handle(handle)
@@ -464,7 +474,7 @@ mod tests {
             (Reader<String, String>, Writer<String, String>);
 
         /// Helper to build handles with provided mocks.
-        pub fn build_with_mocks(
+        pub async fn build_with_mocks(
             mem_reader: MockCacheReader<String, String>,
             mem_writer: MockCacheWriter<String, String>,
             disk_reader: MockCacheReader<String, String>,
@@ -476,7 +486,8 @@ mod tests {
                 .memory_writer(Arc::new(mem_writer))
                 .disk_reader(Arc::new(disk_reader))
                 .disk_writer(Arc::new(disk_writer));
-            let reader = builder.reader().expect("Failed to build reader");
+            let reader =
+                builder.reader().await.expect("Failed to build reader");
             let writer = builder.writer().expect("Failed to build writer");
             (reader, writer)
         }
@@ -510,7 +521,7 @@ mod tests {
                 .disk_reader(Arc::clone(&disk_reader))
                 .disk_writer(Arc::clone(&disk_writer));
 
-            let reader = builder.reader().unwrap();
+            let reader = builder.reader().await.unwrap();
             let writer = builder.writer().unwrap();
 
             assert!(Arc::ptr_eq(&reader.memory, &mem_reader));
@@ -526,7 +537,8 @@ mod tests {
                 .disk_reader(Arc::new(MockCacheReader::new()))
                 .disk_writer(Arc::new(MockCacheWriter::new()));
 
-            let reader = builder.reader().expect("Failed to build reader");
+            let reader =
+                builder.reader().await.expect("Failed to build reader");
             let _: Reader<String, String> = reader;
         }
 
@@ -537,7 +549,8 @@ mod tests {
                 .memory_reader(Arc::new(MockCacheReader::new()))
                 .disk_reader(Arc::new(MockCacheReader::new()));
 
-            let reader = builder.reader().expect("Failed to build reader");
+            let reader =
+                builder.reader().await.expect("Failed to build reader");
             let _: Reader<String, String> = reader;
         }
 
@@ -596,7 +609,8 @@ mod tests {
                 mem_writer,
                 disk_reader,
                 disk_writer,
-            );
+            )
+            .await;
 
             // Trigger get
             let result =
@@ -634,6 +648,7 @@ mod tests {
                 .memory_writer(Arc::new(mem_writer)) // Provided for backfill
                 .disk_reader(Arc::new(disk_reader))
                 .reader()
+                .await
                 .expect("Failed to build reader");
 
             // Trigger get
@@ -667,7 +682,8 @@ mod tests {
                 MockCacheWriter::new(),
                 MockCacheReader::new(),
                 MockCacheWriter::new(),
-            );
+            )
+            .await;
 
             let result =
                 reader.get(&"key".to_owned()).await.expect("get failed");
@@ -696,7 +712,8 @@ mod tests {
                 MockCacheWriter::new(),
                 disk_reader,
                 MockCacheWriter::new(),
-            );
+            )
+            .await;
 
             let result =
                 reader.get(&"key".to_owned()).await.expect("get failed");
@@ -730,7 +747,8 @@ mod tests {
                 MockCacheWriter::new(),
                 disk_reader,
                 MockCacheWriter::new(),
-            );
+            )
+            .await;
 
             let mut keys = reader.keys().await.expect("keys failed");
             keys.sort();
@@ -779,7 +797,8 @@ mod tests {
                 mem_writer,
                 MockCacheReader::new(),
                 disk_writer,
-            );
+            )
+            .await;
 
             writer
                 .put("key".to_owned(), "val".to_owned())
@@ -811,7 +830,8 @@ mod tests {
                 mem_writer,
                 MockCacheReader::new(),
                 disk_writer,
-            );
+            )
+            .await;
 
             let result = writer.put("key".to_owned(), "val".to_owned()).await;
             assert!(result.is_err());
@@ -844,7 +864,8 @@ mod tests {
                 mem_writer,
                 MockCacheReader::new(),
                 disk_writer,
-            );
+            )
+            .await;
 
             let deleted =
                 writer.delete(&"key".to_owned()).await.expect("delete failed");
@@ -874,7 +895,8 @@ mod tests {
                 MockCacheWriter::new(),
                 disk_reader,
                 MockCacheWriter::new(),
-            );
+            )
+            .await;
 
             let _result = reader.get(&"key".to_owned()).await;
 
@@ -919,7 +941,7 @@ mod tests {
                 .disk_writer(Arc::new(MockCacheWriter::new()));
             builder.backfill_capacity(1);
 
-            let reader = builder.reader().expect("build reader failed");
+            let reader = builder.reader().await.expect("build reader failed");
 
             let start = Instant::now();
             let _result = reader.get(&"key".to_owned()).await;
