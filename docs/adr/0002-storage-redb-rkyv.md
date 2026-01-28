@@ -161,3 +161,46 @@ When traversing backlinks or tags, do not deserialize into owned types.
 For high-frequency counters (e.g., note view counts or link weights), avoid the full "read-modify-write" cycle.
 - **Mechanism**: Use `MutInPlaceValue` where applicable.
 - **Implementation**: Combine with Redb's `AccessGuardMutInPlace` to modify bytes directly within the database page without re-serializing the entire record.
+
+## Appendix: Advanced rkyv Under-the-Hood Optimizations
+
+For the "Ultimate Performance" tier of the knowledge graph (scaling beyond 100k notes), the following advanced rkyv 0.8 internals MUST be understood and selectively applied.
+
+### 1. Zero-Allocation Serialization (Scratch Space Management)
+Serialization typically requires temporary memory for resolvers and metadata.
+- **Mechanism**: Implement the `rkyv::ser::allocator::Allocator` trait.
+- **Pattern**: Use a stack-allocated buffer or a pre-allocated "arena" as the scratch space for the `Serializer`.
+- **Benefit**: Eliminates all heap allocations during the serialization of note metadata, reducing pressure on the global allocator and improving cache locality.
+
+### 2. Copy Optimization (`COPY_OPTIMIZATION`)
+Some types have the exact same representation in memory as they do in their archived form (e.g., `u64`, `[u8; 32]`).
+- **Mechanism**: The `Archive` trait has a `COPY_OPTIMIZATION` associated constant.
+- **Implementation**: For types where this is `true`, rkyv uses `std::ptr::copy_nonoverlapping` (essentially `memcpy`) instead of field-by-field resolution.
+- **Constraint**: This is only possible for types that are `Portable` and have no relative pointers.
+
+### 3. Shared Pointer Deduplication (`Sharing` Trait)
+The knowledge graph often contains shared entities (e.g., the same `Tag` metadata referenced by 1,000 notes).
+- **Mechanism**: Use the `Sharing` serialization strategy and `SharedPointer` trait.
+- **Benefit**: rkyv detects if a pointer (like `Arc<T>`) has already been serialized and writes a relative pointer to the existing data instead of duplicating it.
+- **Impact**: Dramatically reduces the database file size and memory footprint for highly interconnected vaults.
+
+### 4. Unsized Type Mastery (`RelPtr<str>` & `RelPtr<[T]>`)
+rkyv handles unsized types using **Relative Pointers**.
+- **The Mechanic**: A `RelPtr` stores a signed offset to its data. This makes the entire buffer position-independent and "movable" without updating pointers.
+- **Performance Hack**: For fixed-length strings or small arrays, consider using `rkyv::string::ArchivedString` or `rkyv::collections::ArchivedVec`. These are optimized for zero-copy access and provide a `Deref` to the native unsized type.
+
+### 5. Custom Trait Object Archiving
+If the knowledge graph requires dynamic dispatch (e.g., different types of "Nodes"), standard trait objects cannot be archived directly.
+- **Pattern**: Use the `ArchiveUnsized` trait for trait objects.
+- **Implementation**: This involves serializing the vtable alongside the data.
+- **Optimization**: Use `rkyv`'s support for `dyn Trait` to allow zero-copy dynamic dispatch, enabling the knowledge graph to handle polymorphic node types without deserialization.
+
+### 6. The `munge!` Macro for Field Access
+When dealing with deeply nested archived structures, standard field access can sometimes be clunky or inefficient.
+- **Pattern**: Use `rkyv::munge::munge!`.
+- **Benefit**: Provides a safe way to perform pattern matching and field extraction on archived types, ensuring that you only touch the specific bytes needed for a query.
+
+### 7. Endianness & Portability
+rkyv data is little-endian by default.
+- **Optimization**: On x86_64 and most ARM systems (which are little-endian), this means **no byte-swapping** occurs during reads.
+- **Constraint**: If Lithos is deployed on a big-endian system, rkyv will perform transparent byte-swapping, which has a negligible but non-zero performance cost.
