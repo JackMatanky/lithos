@@ -1,8 +1,13 @@
-# ADR 0007: Hybrid Event Orchestration Strategy
+---
+name: hybrid-event-orchestration-strategy
+status: accepted
+stakeholders: [Jack (Developer), Architects]
+date_proposed: 2026-01-08
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer), Architects
+# ADR 0007: Hybrid Event Orchestration Strategy
 
 ## Context
 
@@ -12,9 +17,9 @@ Lithos Rust must coordinate a write-heavy Redb indexer, a read-heavy LSP, and a 
 
 We will implement a **Hybrid Orchestration** model:
 
-1. **The Data Plane: Indexer Actor (MPSC):** Uses `tokio::sync::mpsc`. Ensures every "File Change" is processed exactly once in order. Backpressure naturally slows the producer to match disk I/O speeds.
-2. **The Control Plane: System Broadcast (Broadcast):** General events (e.g., `Shutdown`, `IndexingComplete`) via `tokio::sync::broadcast`. Payloads wrapped in `Arc<T>` to avoid memory duplication.
-3. **The State Plane: Diagnostics Path (Watch):** Uses `tokio::sync::watch` to hold the latest "Knowledge Graph Version." LSP pulls data only when idle, preventing "event storms" during rapid typing.
+1. **The Data Plane: Indexer Actor (MPSC)**: Uses `tokio::sync::mpsc`. Ensures every "File Change" is processed exactly once in order. Backpressure naturally slows the producer to match disk I/O speeds.
+2. **The Control Plane: System Broadcast (Broadcast)**: General events (e.g., `Shutdown`, `IndexingComplete`) via `tokio::sync::broadcast`. Payloads wrapped in `Arc<T>` to avoid memory duplication.
+3. **The State Plane: Diagnostics Path (Watch)**: Uses `tokio::sync::watch` to hold the latest "Knowledge Graph Version." LSP pulls data only when idle, preventing "event storms" during rapid typing.
 
 ## Alternatives Considered
 
@@ -44,9 +49,3 @@ We will implement a **Hybrid Orchestration** model:
 
 - **Positive**: Decoupled components, reliable indexing, responsive UI/LSP, zero-copy data flow.
 - **Negative**: Increased complexity (three channel types); requires clear guidelines for developers on which "wire" to use for each event.
-
-## Status Tracking
-
-- **Proposed**: 2026-01-08
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11

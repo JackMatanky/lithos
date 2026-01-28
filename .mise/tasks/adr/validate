@@ -23,12 +23,18 @@ validate_adr_metadata() {
         filename=$(basename "$adr")
         echo "  📄 Checking metadata in $filename..."
 
-        for meta in "Status" "Date" "Stakeholders"; do
-            # Pattern: start-of-line, bullet (* or -), optional space, **Meta**:
-            pattern="^\s*[*-]\s*\*\*${meta}\*\*:"
+        # Check for YAML frontmatter delimiters
+        if ! head -n 1 "$adr" | grep -q "^---$"; then
+            echo "    ❌ Missing YAML frontmatter start (---)"
+            EXIT_CODE=1
+        fi
+
+        for meta in "name" "status" "stakeholders" "date_proposed" "date_decided" "date_implemented"; do
+            # Pattern: start-of-line, key: value
+            pattern="^${meta}:"
 
             if ! grep -Eq "$pattern" "$adr"; then
-                echo "    ❌ Missing metadata: $meta"
+                echo "    ❌ Missing metadata in frontmatter: $meta"
                 EXIT_CODE=1
             fi
         done
@@ -54,7 +60,7 @@ validate_adr_sections() {
         echo "  📄 Checking sections in $filename..."
 
         # Check for required sections (must be ## headers)
-        for section in "Context" "Decision" "Alternatives Considered" "Technical Validation" "Consequences" "Status Tracking"; do
+        for section in "Context" "Decision" "Alternatives Considered" "Technical Validation" "Consequences"; do
             if ! grep -q "^## $section" "$adr"; then
                 echo "    ❌ Missing section: ## $section"
                 EXIT_CODE=1

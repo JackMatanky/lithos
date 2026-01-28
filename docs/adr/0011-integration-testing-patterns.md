@@ -1,8 +1,13 @@
-# ADR 0011: Integration Testing Patterns and Infrastructure
+---
+name: integration-testing-patterns-and-infrastructure
+status: accepted
+stakeholders: [Development Team, QA, Product Manager]
+date_proposed: 2026-01-12
+date_decided: 2026-01-12
+date_implemented: 2026-01-12
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-12
-- **Stakeholders**: Development Team, QA, Product Manager
+# ADR 0011: Integration Testing Patterns and Infrastructure
 
 ## Context
 
@@ -83,7 +88,6 @@ Implement integration testing patterns using Rust's standard `tests/` directory 
   - Provides confidence in complex interactions across bounded contexts
   - Reusable patterns reduce future testing effort by 40%
   - Early feedback loop improves development velocity
-
 - **Negative**:
   - Slower test suite execution (2-3x unit test speed)
   - Additional complexity in test setup and CI configuration
@@ -107,9 +111,3 @@ Implement integration testing patterns using Rust's standard `tests/` directory 
    - Implement integration tests for existing bounded contexts
    - Validate CI execution and parallelization
    - Establish performance baselines for integration tests
-
-## Status Tracking
-
-- **Proposed**: 2026-01-12
-- **Accepted**: 2026-01-12
-- **Implemented**: 2026-01-12 (Phase 1: Infrastructure and patterns established. **CRITICAL: Testcontainers usage is currently deferred due to RUSTSEC-2025-0134. Use `mockall` for trait-based mocking until dependencies are updated.**)

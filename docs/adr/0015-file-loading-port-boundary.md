@@ -1,8 +1,13 @@
-# ADR 0015: File Loading Port Boundary and Text-Only Domain Contract
+---
+name: file-loading-port-boundary-and-text-only-domain-contract
+status: accepted
+stakeholders: [Jack (Developer), Architecture]
+date_proposed: 2026-01-21
+date_decided: 2026-01-21
+date_implemented: 2026-01-21
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-21
-- **Stakeholders**: Jack (Developer), Architecture
+# ADR 0015: File Loading Port Boundary and Text-Only Domain Contract
 
 ## Context
 
@@ -28,13 +33,6 @@ Adopt a text-only domain contract using `String` and keep all format detection, 
 - Errors describe path/context but do not implement parsing.
 
 ### Adapter Responsibilities
-
-- Detect format by extension and content (TOML/JSON/YAML).
-- Validate security constraints (path traversal, binary content, size limits).
-- Perform async I/O via `tokio::fs` in `spawn_blocking`.
-- Parse and map errors into domain error types.
-
-### Adapter Responsibilities (common to all options)
 
 - Detect format by extension and content (TOML/JSON/YAML).
 - Validate security constraints (path traversal, binary content, size limits).
@@ -82,8 +80,6 @@ Adopt a text-only domain contract using `String` and keep all format detection, 
 - **Positive**: Domain remains format-agnostic and IO-free; adapters fully own security and parsing policy; minimal dependencies in core.
 - **Negative**: Format detection logic is not shareable by domain tests; callers rely on adapter correctness for detection; port choice may require revisiting if non-text formats are introduced.
 
-## Implementation Notes
-
 ### Symlink Handling Strategy
 
 The implementation intentionally **allows symlinks** for configuration files, as they are a legitimate and common pattern for:
@@ -92,7 +88,7 @@ The implementation intentionally **allows symlinks** for configuration files, as
 - Shared configuration across environments
 - Version-controlled configuration repositories
 
-**Security Approach:**
+**Security Approach**:
 
 - Symlinks are followed transparently by `std::fs::read()` within `spawn_blocking`
 - Path traversal protection via `..` component detection prevents escape attacks
@@ -100,9 +96,3 @@ The implementation intentionally **allows symlinks** for configuration files, as
 - Binary content rejection prevents reading non-text files regardless of symlink target
 
 This design prioritizes developer flexibility (supporting common dotfile patterns) while maintaining security through content validation rather than path restrictions.
-
-## Status Tracking
-
-- **Proposed**: 2026-01-21
-- **Accepted**: 2026-01-21
-- **Implemented**: 2026-01-21 (commit b3795cc4)

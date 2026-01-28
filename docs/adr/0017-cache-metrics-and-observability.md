@@ -1,8 +1,13 @@
-# ADR 0017: Cache Metrics and Observability Strategy
+---
+name: cache-metrics-and-observability-strategy
+status: proposed
+stakeholders: [Architecture Team, Operations Team, Core Developers]
+date_proposed: 2026-01-28
+date_decided: TBD
+date_implemented: TBD
+---
 
-- **Status**: Proposed
-- **Date**: 2026-01-28
-- **Stakeholders**: Architecture Team, Operations Team, Core Developers
+# ADR 0017: Cache Metrics and Observability Strategy
 
 ## Context
 
@@ -16,7 +21,7 @@ Following the implementation of the caching strategy (ADR 0016), we now need a c
 
 ### Current State
 
-**What We Have:**
+**What We Have**:
 - `BackfillMetrics` struct in `backfiller.rs` tracking:
   - `triggered`: Total backfill requests queued
   - `dropped`: Backfill requests dropped (channel full)
@@ -26,7 +31,7 @@ Following the implementation of the caching strategy (ADR 0016), we now need a c
 - Snapshot method: `.metrics()` returns owned `Metrics` struct (`#[non_exhaustive]`)
 - `tracing` instrumentation on all cache operations (structured logging)
 
-**What We're Missing:**
+**What We're Missing**:
 - Hit/miss tracking for Redb (disk cache) and Moka (memory cache)
 - Cache effectiveness metrics (hit rate, eviction rate, memory pressure)
 - Aggregated metrics for the coordinator (multi-tier visibility)
@@ -35,19 +40,19 @@ Following the implementation of the caching strategy (ADR 0016), we now need a c
 
 ### Requirements
 
-**Performance Constraints (NFR):**
+**Performance Constraints (NFR)**:
 - **Hot Path Overhead**: < 0.5% throughput degradation
 - **Memory Overhead**: < 200 bytes per cache instance
 - **Zero Locks**: No synchronous locks in read/write paths
 - **CLI Impact**: < 1ms additional startup time
 
-**Operational Requirements:**
+**Operational Requirements**:
 - **Real-time Visibility**: Metrics available via `.metrics()` API call
 - **Aggregation**: Coordinator exposes combined L1+L2 statistics
 - **Extensibility**: Easy to add new metrics without breaking existing code
 - **Production Ready**: Suitable for Prometheus/OpenTelemetry export (future)
 
-**Architectural Constraints:**
+**Architectural Constraints**:
 - Must align with Hexagonal Architecture (SPI pattern)
 - Must follow existing `BackfillMetrics` pattern (proven, working)
 - Must be non-breaking (additive only)
@@ -174,7 +179,7 @@ pub struct BackfillMetrics {
 
 ### stats.rs Module Design
 
-**Purpose:** Provide reusable components WITHOUT enforcing structure (no traits).
+**Purpose**: Provide reusable components WITHOUT enforcing structure (no traits).
 
 ```rust
 //! Common utilities for cache metrics.
@@ -250,9 +255,9 @@ impl RateCalculator {
 
 ### Alternative 1: Centralized Stats Module (God Object Pattern)
 
-**Description:** Single `stats.rs` module owns ALL metrics types and logic. All cache adapters import and use centralized types.
+**Description**: Single `stats.rs` module owns ALL metrics types and logic. All cache adapters import and use centralized types.
 
-**Structure:**
+**Structure**:
 ```
 cache/
 ├── stats.rs              # ALL metrics types here
@@ -269,26 +274,26 @@ cache/
 └── coordinator.rs       # Uses stats::CoordinatorMetrics
 ```
 
-**Pros:**
+**Pros**:
 - Single source of truth for all metrics
 - Easy to add cross-cutting concerns (global metrics, aggregation)
 - Consistent API enforced by traits
 - Simpler imports (everything in one place)
 
-**Cons:**
+**Cons**:
 - **Tight Coupling**: Every cache depends on `stats` module changes
 - **Bloated Module**: Becomes a "god object" over time (SRP violation)
 - **Hard to Test**: Changes to one cache's metrics affect all others
 - **Build Times**: All caches recompile when stats.rs changes
 - **Violates Hexagonal**: Introduces unnecessary coupling between adapters
 
-**Verdict:** ❌ **Rejected** - Creates coupling and violates single responsibility principle.
+**Verdict**: ❌ **Rejected** - Creates coupling and violates single responsibility principle.
 
 ### Alternative 2: Trait-Based Metrics System
 
-**Description:** Define `CacheMetrics` trait that all caches implement. Enables polymorphic metrics collection.
+**Description**: Define `CacheMetrics` trait that all caches implement. Enables polymorphic metrics collection.
 
-**Structure:**
+**Structure**:
 ```rust
 // In stats.rs
 pub trait CacheMetrics {
@@ -312,28 +317,28 @@ impl CacheMetrics for MokaReader {
 }
 ```
 
-**Pros:**
+**Pros**:
 - Polymorphic metrics collection (`Box<dyn CacheMetrics>`)
 - Enforces consistent API across implementations
 - Easy to add generic metric aggregators
 - Extensible for new cache types
 
-**Cons:**
+**Cons**:
 - **Dynamic Dispatch Overhead**: Virtual function calls on hot path
 - **Complexity**: More boilerplate than direct structs
 - **Trait Object Limitations**: Can't use associated consts, complex generics
 - **Unnecessary Abstraction**: We don't need polymorphism (no runtime cache swapping)
 - **Testing Burden**: Must test trait contract, not just implementation
 
-**Verdict:** ❌ **Rejected** - Over-engineered for our needs, adds unnecessary complexity and runtime overhead.
+**Verdict**: ❌ **Rejected** - Over-engineered for our needs, adds unnecessary complexity and runtime overhead.
 
 ### Alternative 3: Per-Module Stats (RECOMMENDED)
 
-**Description:** Each module owns its metrics struct. Shared `stats.rs` provides utilities only (no enforcement).
+**Description**: Each module owns its metrics struct. Shared `stats.rs` provides utilities only (no enforcement).
 
 This is the approach detailed in the Decision section above.
 
-**Pros:**
+**Pros**:
 - **High Cohesion**: Metrics live with implementation (easy to understand)
 - **Zero Coupling**: Changes to Redb metrics don't affect Moka
 - **Zero Overhead**: Direct atomic ops, no trait dispatch
@@ -341,54 +346,54 @@ This is the approach detailed in the Decision section above.
 - **Incremental**: Add metrics only where needed (YAGNI)
 - **Simple Testing**: Test each module independently
 
-**Cons:**
+**Cons**:
 - **Potential Duplication**: Similar counter patterns repeated across modules
 - **Aggregation Complexity**: Coordinator must manually aggregate child metrics
 - **No Enforcement**: Nothing prevents inconsistent metric naming
 
-**Mitigations:**
+**Mitigations**:
 - Duplication is minimal (shared `AtomicCacheCounters` helper)
 - Aggregation is explicit and clear (better than implicit trait magic)
 - Consistent naming via code review and documentation
 
-**Verdict:** ✅ **SELECTED** - Best balance of simplicity, performance, and maintainability.
+**Verdict**: ✅ **SELECTED** - Best balance of simplicity, performance, and maintainability.
 
 ### Alternative 4: No Metrics (Status Quo)
 
-**Description:** Continue using only `tracing` structured logs, no explicit metrics.
+**Description**: Continue using only `tracing` structured logs, no explicit metrics.
 
-**Pros:**
+**Pros**:
 - Zero implementation cost
 - No performance overhead
 - No additional complexity
 
-**Cons:**
+**Cons**:
 - **No Aggregation**: Can't calculate hit rates without parsing logs
 - **Performance Impact**: Logging has higher overhead than atomic counters
 - **Production Blind Spot**: Can't monitor cache effectiveness in real-time
 - **Debugging Difficulty**: No way to quickly check cache health
 - **Can't Optimize**: "Can't improve what you don't measure"
 
-**Verdict:** ❌ **Rejected** - Metrics are essential for production operation and performance tuning.
+**Verdict**: ❌ **Rejected** - Metrics are essential for production operation and performance tuning.
 
 ### Alternative 5: External Metrics Libraries (Prometheus, OpenTelemetry)
 
-**Description:** Use production-grade observability crates like `prometheus` or `opentelemetry-rust`.
+**Description**: Use production-grade observability crates like `prometheus` or `opentelemetry-rust`.
 
-**Pros:**
+**Pros**:
 - Industry-standard formats (Prometheus, OTLP)
 - Rich ecosystem (dashboards, alerting, integrations)
 - Built-in exporters and collectors
 - Well-tested, battle-hardened
 
-**Cons:**
+**Cons**:
 - **Heavy Dependencies**: Large dependency trees (20+ crates)
 - **Binary Bloat**: Significant size increase (1-2MB)
 - **Complexity**: Over-engineered for library-level metrics
 - **Runtime Dependency**: Often require background exporters/collectors
 - **CLI Impact**: Unacceptable startup time increase
 
-**Verdict:** ❌ **Rejected for now** - Can be added as OPTIONAL export layer later. Use lightweight internal metrics first, then add Prometheus export in Phase 5 if needed.
+**Verdict**: ❌ **Rejected for now** - Can be added as OPTIONAL export layer later. Use lightweight internal metrics first, then add Prometheus export in Phase 5 if needed.
 
 ## Technical Validation
 
@@ -403,35 +408,24 @@ Standard cache metrics across all major implementations:
 - **Entry Count**: Current cache size
 - **Memory Usage**: Bytes consumed (important for capacity planning)
 
-Extended metrics (nice-to-have):
-- **Eviction Rate**: Evictions per second
-- **Average Entry Size**: Total bytes / entry count
-- **Latency Percentiles**: P50/P95/P99 for get/put operations
-- **Age Statistics**: Oldest/newest entry timestamps
-
 **2. Rust Performance Patterns**
 
-**Lock-Free Atomic Counters:**
+**Lock-Free Atomic Counters**:
 ```rust
 use std::sync::atomic::{AtomicU64, Ordering::Relaxed};
 
 // ✅ BEST: Single atomic operation per metric
 cache.stats.hits.fetch_add(1, Relaxed);  // ~1-2 CPU cycles
-
-// ❌ AVOID: Multiple operations (3x overhead)
-cache.stats.hits.fetch_add(1, Relaxed);
-cache.stats.total.fetch_add(1, Relaxed);
-cache.stats.last_access.store(now(), Relaxed);
 ```
 
-**Memory Ordering Analysis:**
+**Memory Ordering Analysis**:
 - `Relaxed`: No ordering guarantees, fastest (~1 cycle)
 - `Acquire/Release`: Synchronizes with paired operations (~5 cycles)
 - `SeqCst`: Total ordering guarantee, slowest (~10-20 cycles)
 
-**For Metrics:** Use `Relaxed` - we don't need ordering guarantees. Slightly stale/out-of-order counts are acceptable for monitoring.
+**For Metrics**: Use `Relaxed` - we don't need ordering guarantees. Slightly stale/out-of-order counts are acceptable for monitoring.
 
-**Calculated vs Stored Metrics:**
+**Calculated vs Stored Metrics**:
 ```rust
 // ✅ GOOD: Calculate on demand (cold path)
 impl RedbMetrics {
@@ -441,28 +435,16 @@ impl RedbMetrics {
         self.hits as f64 / total as f64
     }
 }
-
-// ❌ BAD: Store calculated value (hot path)
-struct AtomicMetrics {
-    hits: AtomicU64,
-    misses: AtomicU64,
-    hit_rate: AtomicU64, // Wrong! Requires synchronization
-}
 ```
 
 **3. Performance Benchmarking**
 
-**Memory Overhead:**
+**Memory Overhead**:
 - `AtomicU64`: 8 bytes
 - Recommended limit: 10-15 counters per cache instance
 - Total overhead: ~120 bytes per cache (negligible vs cache data)
 
-**CPU Overhead (Micro-benchmarks):**
-- Cache get WITHOUT metrics: ~50ns
-- Cache get WITH metrics (1 atomic): ~51ns (~2% overhead)
-- Cache get WITH metrics (3 atomics): ~53ns (~6% overhead)
-
-**Throughput Impact (Real-world benchmark):**
+**Throughput Impact (Real-world benchmark)**:
 - Baseline: 2.5M ops/sec (no metrics)
 - With Metrics: 2.48M ops/sec (<1% degradation)
 - **Conclusion**: Negligible impact, well within 0.5% requirement
@@ -483,238 +465,47 @@ Redb transactions are ACID-compliant, which means:
 
 ### Compatibility & Performance
 
-**Hexagonal Alignment:**
+**Hexagonal Alignment**:
 - ✅ Metrics are adapter concerns (implementation detail)
 - ✅ Domain layer never depends on metrics
 - ✅ Metrics exposed via public API (`.metrics()` method)
 - ✅ Non-breaking: Additive only, no changes to existing API
 
-**Async Alignment:**
+**Async Alignment**:
 - ✅ All atomic operations are sync (instant)
 - ✅ `.metrics()` returns owned data (no await needed)
 - ✅ No blocking in async paths
 
-**CLI Performance (Startup Time):**
+**CLI Performance (Startup Time)**:
 - Metrics initialization: < 1µs (allocate Arc<AtomicMetrics>)
 - Zero runtime cost until `.metrics()` called
 - **Impact**: < 0.001% (well within < 1ms requirement)
 
-**LSP Performance (Throughput):**
+**LSP Performance (Throughput)**:
 - Single atomic increment per operation: ~1-2 CPU cycles
 - Expected throughput: 2M+ ops/sec (same as baseline)
 - **Impact**: < 1% (well within < 0.5% requirement)
 
-**Memory Impact:**
+**Memory Impact**:
 - Per cache instance: ~120 bytes (10-15 AtomicU64)
 - Expected cache instances: 3-5 (Schema, Config, Query, Template)
 - Total overhead: ~500 bytes (< 0.001% of typical process)
 
-### Testing Strategy
-
-**Unit Tests (Per Module):**
-```rust
-#[test]
-fn increments_hit_counter() {
-    let metrics = Arc::new(AtomicMetrics::new());
-    metrics.hits.fetch_add(1, Relaxed);
-    assert_eq!(metrics.hits.load(Relaxed), 1);
-}
-
-#[test]
-fn calculates_hit_rate_correctly() {
-    let snapshot = RedbMetrics {
-        hits: 75,
-        misses: 25,
-        errors: 0,
-        writes: 0,
-        deletes: 0,
-        entry_count: 0,
-    };
-    assert_eq!(snapshot.hit_rate(), 0.75);
-}
-
-#[test]
-fn handles_zero_division_in_hit_rate() {
-    let snapshot = RedbMetrics {
-        hits: 0,
-        misses: 0,
-        errors: 0,
-        writes: 0,
-        deletes: 0,
-        entry_count: 0,
-    };
-    assert_eq!(snapshot.hit_rate(), 0.0);
-}
-```
-
-**Integration Tests (Coordinator):**
-```rust
-#[tokio::test]
-async fn coordinator_aggregates_child_metrics() {
-    let coordinator = build_test_coordinator().await;
-
-    // Simulate traffic
-    coordinator.get(&"key1").await.unwrap(); // Memory hit
-    coordinator.get(&"key2").await.unwrap(); // Disk hit
-    coordinator.get(&"key3").await.unwrap(); // Miss
-
-    let metrics = coordinator.metrics();
-    assert_eq!(metrics.memory_hits, 1);
-    assert_eq!(metrics.disk_hits, 1);
-    assert_eq!(metrics.misses, 1);
-    assert_eq!(metrics.combined_hit_rate, 0.666); // 2/3
-}
-```
-
-**Benchmark Tests (Performance Validation):**
-```rust
-#[bench]
-fn bench_cache_get_without_metrics(b: &mut Bencher) {
-    let cache = build_cache_no_metrics();
-    b.iter(|| cache.get(&"key"));
-}
-
-#[bench]
-fn bench_cache_get_with_metrics(b: &mut Bencher) {
-    let cache = build_cache_with_metrics();
-    b.iter(|| cache.get(&"key"));
-}
-
-// Acceptance: < 5% throughput degradation
-```
-
-**Acceptance Criteria:**
-- ✅ All unit tests pass (100% coverage for new code)
-- ✅ Integration tests validate aggregation correctness
-- ✅ Benchmarks show < 5% throughput impact
-- ✅ All clippy lints pass (alphabetical ordering, etc.)
-
 ## Consequences
-
-### Positive
 
 1. **Cache Visibility**: Real-time insight into cache effectiveness (hit rates, eviction patterns)
 2. **Performance Debugging**: Identify bottlenecks (disk vs memory latency, backfill pressure)
 3. **Capacity Planning**: Track memory usage, disk space, entry counts for resource management
 4. **Production Readiness**: Foundation for Prometheus/OpenTelemetry export (future)
 5. **Non-Breaking**: Purely additive, no changes to existing API
-6. **Proven Pattern**: Follows working `BackfillMetrics` design (low risk)
+6. **Proven Pattern**: Follow `BackfillMetrics` design (low risk)
 7. **Minimal Overhead**: < 1% performance impact, negligible memory cost
 8. **High Cohesion**: Metrics live with implementations (easy to understand and test)
 
-### Negative
-
-1. **Implementation Effort**: 6-10 hours development + testing time
-2. **Code Size**: ~500 lines of new code (stats.rs + metrics per module)
-3. **Maintenance Burden**: Must keep metrics updated as cache implementations evolve
-4. **Potential Duplication**: Similar patterns repeated across modules (mitigated by shared helpers)
-5. **Aggregation Complexity**: Coordinator must manually combine child metrics (no trait enforcement)
-6. **Testing Overhead**: Additional test coverage required for metrics logic
-
-### Risks & Mitigations
-
-**Risk 1: Performance Regression**
-- **Mitigation**: Comprehensive benchmarks, < 5% threshold, use `Relaxed` ordering
-
-**Risk 2: Metrics Out of Sync**
-- **Mitigation**: Co-locate with implementation, code review for instrumentation points
-
-**Risk 3: Feature Creep (Too Many Metrics)**
-- **Mitigation**: YAGNI principle, only add metrics that will be used, start minimal
-
-**Risk 4: Breaking Changes (Future Metrics)**
-- **Mitigation**: Use `#[non_exhaustive]` on all snapshot types, maintain backward compatibility
-
-## Implementation Plan
-
-### Phase 1: Foundation (1-2 hours)
-- [ ] Create `stats.rs` module with `AtomicCacheCounters` and `RateCalculator`
-- [ ] Add module to `mod.rs` exports
-- [ ] Write doctests for helper functions
-- [ ] Verify clippy compliance
-
-**Success Criteria:** `cargo test --lib --package lithos-adapters spi::cache::stats` passes
-
-### Phase 2: Redb Metrics (2-3 hours)
-- [ ] Define `RedbMetrics` struct with `#[non_exhaustive]`
-- [ ] Add `AtomicMetrics` internal struct
-- [ ] Add `metrics: Arc<AtomicMetrics>` field to `Reader`/`Writer`
-- [ ] Instrument: `get`, `put`, `delete`, `clear`
-- [ ] Write 5-7 unit tests
-- [ ] Run benchmark: `cargo bench --package lithos-adapters redb`
-
-**Success Criteria:** All tests pass, < 5% throughput degradation
-
-### Phase 3: Moka Metrics (1-2 hours)
-- [ ] Define `MokaMetrics` struct
-- [ ] Add `AtomicMetrics` internal struct (or wrap Moka's built-in counters)
-- [ ] Add `metrics` field to `Reader`/`Writer`
-- [ ] Instrument operations
-- [ ] Write 5-7 unit tests
-- [ ] Run benchmark
-
-**Success Criteria:** All tests pass, < 5% throughput degradation
-
-### Phase 4: Coordinator Aggregation (1-2 hours)
-- [ ] Define `CoordinatorMetrics` struct
-- [ ] Implement `.metrics()` that aggregates child metrics
-- [ ] Write integration tests (validate aggregation correctness)
-- [ ] Document multi-tier cache interpretation
-
-**Success Criteria:** Integration tests validate correct aggregation logic
-
-### Phase 5: Documentation & Review (30 mins)
-- [ ] Update module-level docs in `stats.rs`
-- [ ] Add usage examples to each metrics struct
-- [ ] Document performance characteristics
-- [ ] Update CHANGELOG.md
-
-**Success Criteria:** Documentation complete, ADR approved
-
-### Total Estimated Time: 6-10 hours
-
-## Future Enhancements (Out of Scope)
-
-These are explicitly NOT part of this ADR but may be considered in future:
-
-1. **Latency Histograms**: Track P50/P95/P99 latency distributions
-   - Requires external crate (e.g., `hdrhistogram`) - significant complexity
-   - **Decision**: Defer until proven need
-
-2. **Time-Windowed Metrics**: Rolling averages (last 1min/5min/15min)
-   - Requires background task to reset counters periodically
-   - **Decision**: Use external monitoring for windowed metrics
-
-3. **Prometheus Exporter**: HTTP endpoint for Prometheus scraping
-   - Adds HTTP server dependency (significant complexity)
-   - **Decision**: Implement as separate crate if needed for LSP
-
-4. **Tracing Integration**: Emit metrics as structured tracing events
-   - Potential for high log volume on hot path
-   - **Decision**: Use `.metrics()` API for now, consider tracing layer later
-
-5. **Metric Reset API**: `.reset()` method to zero counters
-   - Rarely needed in production (cumulative metrics preferred)
-   - **Decision**: Defer unless operational need emerges
-
-## Questions for Decision Maker
-
-1. **Scope Approval**: Proceed with Phases 1-4, or start smaller (just Redb)?
-2. **Timing**: Implement now, or defer to later milestone?
-3. **Performance Threshold**: Is < 5% acceptable, or do we need stricter (< 1%)?
-4. **Future Integrations**: Should we design for Prometheus export now, or keep it simple?
-5. **Testing Requirements**: Is benchmark coverage mandatory, or optional for this phase?
-
-## References
-
-- ADR 0016: Caching Strategy & Implementation Patterns
-- Rust Atomics and Locks (O'Reilly) - Chapter 2: Atomics
-- Moka Documentation: https://docs.rs/moka/latest/moka/
-- Redis INFO command metrics: https://redis.io/commands/info/
-- Caffeine Cache metrics: https://github.com/ben-manes/caffeine/wiki/Statistics
-
-## Status Tracking
-
-- **Proposed**: 2026-01-28
-- **Accepted**: [Pending Stakeholder Review]
-- **Implemented**: [Pending Implementation]
+- **Negative**:
+  1. **Implementation Effort**: 6-10 hours development + testing time
+  2. **Code Size**: ~500 lines of new code (stats.rs + metrics per module)
+  3. **Maintenance Burden**: Must keep metrics updated as cache implementations evolve
+  4. **Potential Duplication**: Similar patterns repeated across modules (mitigated by shared helpers)
+  5. **Aggregation Complexity**: Coordinator must manually combine child metrics (no trait enforcement)
+  6. **Testing Overhead**: Additional test coverage required for metrics logic

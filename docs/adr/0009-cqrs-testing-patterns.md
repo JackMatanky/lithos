@@ -1,8 +1,13 @@
-# ADR 0009: CQRS Testing Patterns and Best Practices
+---
+name: cqrs-testing-patterns-and-best-practices
+status: accepted
+stakeholders: [Jack (Developer)]
+date_proposed: 2026-01-11
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer)
+# ADR 0009: CQRS Testing Patterns and Best Practices
 
 ## Context
 
@@ -153,149 +158,6 @@ Test logging, metrics, and tracing in CQRS operations:
 - **Pros**: Validates API contracts between commands/queries and external systems
 - **Cons**: Additional tooling overhead, requires consumer-driven contract definition
 
-## Consequences
-
-- **Positive**:
-
-* Ensures CQRS command/query separation works correctly in isolation and integration
-* Provides confidence in event sourcing aggregate behavior and state reconstruction
-* Validates eventual consistency between write and read models
-* Enables fast feedback during development with isolated unit tests
-* Supports hexagonal architecture with mockable ports and adapters
-
-- **Negative**:
-
-* Additional complexity in setting up mock repositories and stubbed data stores
-* Potential for mock implementations to drift from real interfaces
-* Learning curve for Given-When-Then testing patterns
-* Maintenance overhead for keeping test data in sync with domain changes
-
-- **Risks**:
-
-* Over-mocking could lead to tests that pass but fail in integration
-* Eventual consistency testing might be flaky if timing isn't controlled properly
-* Complex test setup could discourage comprehensive testing
-
-- **Mitigation**:
-
-* Regular integration testing alongside unit tests
-* Standardized mock creation utilities
-* Controlled timing in eventual consistency tests
-* Clear guidelines for when to use mocks vs stubs
-* Automated test data generation to reduce maintenance overhead
-
-## Implementation Examples
-
-### Command Handler Testing
-
-```rust
-#[tokio::test]
-async fn create_user_command_publishes_user_created_event() {
-    // Arrange
-    let mock_repo = Arc::new(MockUserRepository::new());
-    let mock_bus = Arc::new(MockEventBus::new());
-    let handler = CreateUserHandler::new(mock_repo, mock_bus.clone());
-
-    // Act
-    let command = CreateUserCommand { /* ... */ };
-    handler.handle(command).await.unwrap();
-
-    // Assert
-    let published_events = mock_bus.published_events().await;
-    assert_eq!(published_events.len(), 1);
-    assert!(matches!(published_events[0], DomainEvent::UserCreated { .. }));
-}
-```
-
-### Query Handler Testing
-
-```rust
-#[tokio::test]
-async fn get_user_query_returns_correct_user() {
-    // Arrange
-    let stub_store = Arc::new(StubUserStore::with_users(vec![test_user()]));
-    let handler = GetUserHandler::new(stub_store);
-
-    // Act
-    let query = GetUserQuery { user_id: test_user_id() };
-    let result = handler.handle(query).await.unwrap();
-
-    // Assert
-    assert_eq!(result.user.id, test_user_id());
-}
-```
-
-### Event Sourcing Testing
-
-```rust
-#[tokio::test]
-fn account_deposit_increases_balance() {
-    TestFramework::default()
-        .given(vec![AccountEvent::Opened { /* ... */ }])
-        .when(DepositMoney { amount: 100.0 })
-        .then_expect_events(vec![AccountEvent::Deposited { amount: 100.0, balance: 100.0 }]);
-}
-```
-
-## CI/CD Integration
-
-### Automated Test Execution
-
-- **Unit Tests**: Run on every PR with fast feedback (< 5 minutes)
-- **Integration Tests**: Run nightly or on release branches with real infrastructure
-- **Performance Tests**: Run weekly with benchmarking against historical baselines
-- **Security Tests**: Run on security-related changes with vulnerability scanning
-
-### Test Environments
-
-- **Development**: In-memory stubs and mocks for fastest iteration
-- **Staging**: Real databases with test data for integration validation
-- **Production**: Synthetic load testing with production-like data volumes
-
-### Quality Gates
-
-- Unit test coverage > 90% for command/query handlers
-- Integration tests pass for all critical user journeys
-- Performance regression detection with automated alerting
-- Security scan clean for all CQRS components
-
-## Evolution and Maintenance
-
-### Test Data Management
-
-- **Factories**: Standardized test data factories for consistent, maintainable test setup
-- **Fixtures**: Version-controlled test data sets for complex scenarios
-- **Generation**: Property-based testing for edge case discovery and coverage
-
-### Pattern Evolution
-
-- **Framework Updates**: Regular evaluation of testing frameworks for improvements
-- **Community Best Practices**: Incorporation of new CQRS testing patterns as they emerge
-- **Performance Optimization**: Continuous improvement of test execution speed and reliability
-
-### Team Learning
-
-- **Documentation**: Comprehensive testing guides with examples and anti-patterns
-- **Training**: Regular knowledge sharing sessions on CQRS testing techniques
-- **Code Reviews**: Automated checks for testing best practice compliance
-
-## Case Studies and Validation
-
-### Real-World CQRS Testing Success
-
-- **E-commerce Platform**: Command testing caught 80% of business logic bugs before production
-- **Banking System**: Event sourcing testing validated complex transaction workflows
-- **Social Media**: Query performance testing prevented scaling bottlenecks
-
-### Lithos-Specific Validation
-
-- **Hexagonal Architecture**: Mock ports enable 95% unit test coverage
-- **Async Operations**: Tokio integration provides reliable concurrent testing
-- **Hybrid Event Bus**: Testing patterns support all three ADR 0007 planes
-- **Performance Requirements**: Testing framework enables sub-50ms validation cycles
-
-This expanded ADR provides comprehensive guidance for implementing world-class CQRS testing patterns that will scale with Lithos' growth and ensure system reliability.
-
 ## Technical Validation
 
 ### Research Alignment
@@ -325,8 +187,16 @@ Testing patterns designed for efficiency:
 - Selective integration testing for critical paths
 - Async testing leverages tokio for performance
 
-## Status Tracking
+## Consequences
 
-- **Proposed**: 2026-01-11
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11
+- **Positive**:
+  - Ensures CQRS command/query separation works correctly in isolation and integration
+  - Provides confidence in event sourcing aggregate behavior and state reconstruction
+  - Validates eventual consistency between write and read models
+  - Enables fast feedback during development with isolated unit tests
+  - Supports hexagonal architecture with mockable ports and adapters
+- **Negative**:
+  - Additional complexity in setting up mock repositories and stubbed data stores
+  - Potential for mock implementations to drift from real interfaces
+  - Learning curve for Given-When-Then testing patterns
+  - Maintenance overhead for keeping test data in sync with domain changes

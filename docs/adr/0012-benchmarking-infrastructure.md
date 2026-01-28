@@ -1,8 +1,13 @@
-# ADR 0012: Benchmarking Infrastructure and Performance Testing Patterns
+---
+name: benchmarking-infrastructure-and-performance-testing-patterns
+status: proposed
+stakeholders: [Development Team, Performance Team, Product Manager]
+date_proposed: 2026-01-12
+date_decided: TBD
+date_implemented: TBD
+---
 
-- **Status**: Proposed
-- **Date**: 2026-01-12
-- **Stakeholders**: Development Team, Performance Team, Product Manager
+# ADR 0012: Benchmarking Infrastructure and Performance Testing Patterns
 
 ## Context
 
@@ -84,7 +89,6 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
   - Confidence in meeting NFR2 performance requirements through measurable validation
   - Reusable patterns reduce future benchmarking setup by 50%
   - HTML reports provide visual trend analysis for stakeholders
-
 - **Negative**:
   - Additional complexity in CI pipeline configuration
   - Benchmark execution time overhead (minutes vs seconds for unit tests)
@@ -108,9 +112,3 @@ Implement benchmarking infrastructure using Criterion.rs with the following comp
    - Integrate benchmarks into mise `test:bench` task
    - Implement performance gates in CI pipeline
    - Set up alerting for regression thresholds (>5% degradation)
-
-## Status Tracking
-
-- **Proposed**: 2026-01-12
-- **Accepted/Rejected**:
-- **Implemented**:

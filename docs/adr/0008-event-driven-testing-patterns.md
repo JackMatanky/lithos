@@ -1,8 +1,13 @@
-# ADR 0008: Event-Driven Testing Patterns for Domain Events and Event Bus
+---
+name: event-driven-testing-patterns-for-domain-events-and-event-bus
+status: accepted
+stakeholders: [Jack (Developer)]
+date_proposed: 2026-01-11
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer)
+# ADR 0008: Event-Driven Testing Patterns for Domain Events and Event Bus
 
 ## Context
 
@@ -114,35 +119,6 @@ Complement unit tests with integration patterns for event flows:
 - **Pros**: Comprehensive coverage of edge cases, automatic test case generation, mathematical verification of event properties
 - **Cons**: Complex setup for domain-specific constraints, hard to debug failing cases, doesn't test specific business scenarios, requires deep understanding of property testing
 
-## Consequences
-
-- **Positive**:
-
-* Comprehensive event testing ensures reliability of CQRS patterns and prevents regressions in critical event-driven features
-* Enables confident refactoring of event handling code with solid test coverage
-* Standardizes testing approaches across the hexagonal architecture layers
-* Supports the hybrid event bus design (ADR 0007) with appropriate testing for both MPSC and broadcast patterns
-* Improves developer productivity by providing reusable testing utilities and patterns
-
-- **Negative**:
-
-* Increased test setup complexity compared to simple unit tests
-* Additional development time for creating mock implementations and testing utilities
-* Potential for over-testing if not balanced with integration tests
-* Learning curve for developers new to event-driven testing patterns
-
-- **Risks**:
-
-* Mock implementations may drift from real event bus behavior if not maintained
-* Async testing complexity could introduce flaky tests if timeouts aren't handled properly
-* Performance impact of comprehensive event testing in CI/CD pipelines
-
-- **Mitigation**:
-
-* Regular review of mock implementations against real interfaces
-* Standardized timeout values and retry logic for async tests
-* Selective application of comprehensive testing to critical event paths
-
 ## Technical Validation
 
 ### Research Findings Validation
@@ -175,8 +151,16 @@ The testing patterns are designed for performance:
 - Selective comprehensive testing focuses on critical paths
 - CI/CD optimization through parallel test execution
 
-## Status Tracking
+## Consequences
 
-- **Proposed**: 2026-01-11
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11
+- **Positive**:
+  - Comprehensive event testing ensures reliability of CQRS patterns and prevents regressions in critical event-driven features
+  - Enables confident refactoring of event handling code with solid test coverage
+  - Standardizes testing approaches across the hexagonal architecture layers
+  - Supports the hybrid event bus design (ADR 0007) with appropriate testing for both MPSC and broadcast patterns
+  - Improves developer productivity by providing reusable testing utilities and patterns
+- **Negative**:
+  - Increased test setup complexity compared to simple unit tests
+  - Additional development time for creating mock implementations and testing utilities
+  - Potential for over-testing if not balanced with integration tests
+  - Learning curve for developers new to event-driven testing patterns

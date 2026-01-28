@@ -1,8 +1,13 @@
-# ADR 0003: Selection of Template Engine for Markdown-based Templates
+---
+name: selection-of-template-engine-for-markdown-based-templates
+status: accepted
+stakeholders: [Jack (Developer), Architects]
+date_proposed: 2026-01-08
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer), Architects
+# ADR 0003: Selection of Template Engine for Markdown-based Templates
 
 ## Context
 
@@ -60,9 +65,3 @@ Handlebars' "logic-less" philosophy requires excessive custom helpers for common
 
 - **Positive**: High performance, small binary size, intuitive Jinja2 syntax, excellent whitespace control for YAML/Markdown.
 - **Negative**: Requires custom `Environment` management to handle extension-based escaping rules.
-
-## Status Tracking
-
-- **Proposed**: 2026-01-08
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11

@@ -1,8 +1,13 @@
-# ADR 0005: Hierarchical Configuration Management with Figment
+---
+name: hierarchical-configuration-management-with-figment
+status: accepted
+stakeholders: [Jack (Developer), Architects]
+date_proposed: 2026-01-08
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer), Architects
+# ADR 0005: Hierarchical Configuration Management with Figment
 
 ## Context
 
@@ -57,9 +62,3 @@ Requires significant boilerplate for every new field and is prone to errors in n
 
 - **Positive**: Robust hierarchical merging, excellent error messages, easy "Vault Discovery" implementation, boilerplate reduction.
 - **Negative**: Requires a custom provider bridge for `Clap` flags.
-
-## Status Tracking
-
-- **Proposed**: 2026-01-08
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11

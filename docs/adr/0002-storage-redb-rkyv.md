@@ -1,8 +1,13 @@
-# ADR 0002: High-Performance Metadata Storage with Redb and rkyv
+---
+name: high-performance-metadata-storage-with-redb-and-rkyv
+status: accepted
+stakeholders: [Jack (Developer), Architects]
+date_proposed: 2026-01-08
+date_decided: 2026-01-11
+date_implemented: 2026-01-11
+---
 
-- **Status**: Accepted
-- **Date**: 2026-01-11
-- **Stakeholders**: Jack (Developer), Architects
+# ADR 0002: High-Performance Metadata Storage with Redb and rkyv
 
 ## Context
 
@@ -71,12 +76,6 @@ We will use **Redb** as the primary storage engine, with values serialized using
   - **Schema Evolution**: Using `rkyv` requires careful management of byte-layouts and a robust versioning strategy.
   - **Relational Complexity**: We must manually implement graph traversals (backlinks) using bidirectional adjacency lists.
   - **Ecosystem**: Higher initial implementation complexity compared to SQL.
-
-## Status Tracking
-
-- **Proposed**: 2026-01-08
-- **Accepted**: 2026-01-11
-- **Implemented**: 2026-01-11
 
 ## Appendix: High-Performance Redb Utilities & Design Patterns
 
