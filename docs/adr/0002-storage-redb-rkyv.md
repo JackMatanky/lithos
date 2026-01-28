@@ -128,3 +128,36 @@ Tuning the `DatabaseBuilder` is critical for scaling to 100,000+ notes:
 - **`db.compact()`**: Perform this during the "Clean Up" phase. It relocates active pages to the start of the file and truncates the remainder. Requires NO active read transactions to be effective.
 - **`db.check_integrity()`**: A deep-scan utility that re-calculates all B-Tree checksums. Should be exposed as a `lithos diagnostic` command to help users recover from suspected hardware failure or disk corruption.
 - **Migration Strategy**: Since Redb doesn't store schemas, use a `VersionTable` (Key: "schema_version", Value: u32) to manage backward-compatible changes to `rkyv` structs.
+
+## Appendix: High-Performance rkyv Patterns
+
+To achieve "Mechanical Sympathy" and maximum throughput with rkyv 0.8, the following patterns MUST be used in the Lithos implementation.
+
+### 1. Niche Optimization for Optional Metadata
+Default `Option<T>` in rkyv adds a tag byte. For high-frequency metadata, use niching to reduce storage footprint and CPU branch pressure.
+- **Mechanism**: Use `#[rkyv(niche)]` or `#[rkyv(with = NicheInto<NaN>)]`.
+- **Implementation**: For `Option<NonZeroU32>`, niching uses the zero value as `None`. For `Option<bool>`, it uses invalid bit patterns.
+- **Benefit**: Reduces the archived size of `NoteMetadata` and increases CPU cache density.
+
+### 2. Validated Access Strategy (bytecheck)
+As per **Rule 26**, all storage types MUST use validation. However, validation has a cost.
+- **Pattern**: Use `rkyv::access::<T, _>(bytes)` for safe entry points.
+- **Optimization**: For large read-heavy operations (e.g., building the knowledge graph), validate once and then use `access_unchecked::<T>` for subsequent field lookups within the same scope.
+- **Security**: Never use `access_unchecked` on data provided directly by the user or from an untrusted source without a prior `check_bytes` pass.
+
+### 3. Memory Alignment & AlignedVec
+rkyv requires data to be aligned in memory according to the type's `align_of`.
+- **Issue**: Standard `Vec<u8>` or memory-mapped slices from Redb may not be 8-byte or 16-byte aligned.
+- **Pattern**: When serializing to an intermediate buffer, use `rkyv::util::AlignedVec`.
+- **Redb Alignment**: Redb pages are naturally page-aligned (4KB), which satisfies most Rust types. However, always verify alignment if using `AccessGuard` with types requiring high alignment (e.g., SIMD types).
+
+### 4. Zero-Copy Traversal (Knowledge Graph)
+When traversing backlinks or tags, do not deserialize into owned types.
+- **Mechanism**: Perform all logic on the `ArchivedNote` type.
+- **Pattern**: `let archived = rkyv::access::<ArchivedNote>(bytes)?; if archived.tags.contains("#rust") { ... }`.
+- **Benefit**: Bypasses the allocator entirely. The CPU performs direct memory reads from the memory-mapped Redb page.
+
+### 5. Inline Value Updates
+For high-frequency counters (e.g., note view counts or link weights), avoid the full "read-modify-write" cycle.
+- **Mechanism**: Use `MutInPlaceValue` where applicable.
+- **Implementation**: Combine with Redb's `AccessGuardMutInPlace` to modify bytes directly within the database page without re-serializing the entire record.
