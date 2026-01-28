@@ -71,59 +71,54 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
   - [ ] Subtask 1.2: Add `type ArchivedKey` and `type ArchivedValue` associated types to the `Codec` trait.
   - [ ] Subtask 1.3: Define new zero-copy handshake methods (`serialized_key_size`, `serialize_key_into`, `serialized_value_size`, `serialize_value_into`).
   - [ ] Subtask 1.4: Define new pure read views (`access_key`, `access_value`).
-  - [ ] Subtask 1.5: Implement `RkyvCodec` extensions for `rkyv 0.8`:
-    - [ ] 1.5.1: Implement `serialized_value_size` by using a `SizeSerializer` or `to_bytes` length.
-    - [ ] 1.5.2: Implement `serialize_value_into` using `rkyv::api::high::to_bytes_in` with `rkyv::ser::writer::Buffer`.
-    - [ ] 1.5.3: Implement `access_value` with explicit `std::mem::align_of` check and `rkyv::access`.
-    - [ ] 1.5.4: Repeat implementation for Key methods (`serialized_key_size`, `serialize_key_into`, `access_key`).
-    - [ ] 1.5.5: Ensure `MetadataMap` archives into `rkyv::collections::ArchivedHashMap` for $O(1)$ zero-copy lookups.
-    - [ ] 1.5.6: Update trait bounds to ensure compatibility with `rkyv::rancor::Error` and `CheckBytes`.
+  - [ ] Subtask 1.5: Implement `RkyvCodec` extensions for `rkyv 0.8`.
   - [ ] Subtask 1.6: Update `encoder.rs` unit tests to use the new zero-copy handshake.
 
-### Phase 2: Trait Definition Updates (Zero-Copy First)
-- [ ] Task 2: Define `CacheGuard` and update `CacheReader` in `mod.rs`
-  - [ ] Subtask 2.1: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static`:
-    - [ ] 2.1.1: Add a blanket implementation: `impl<T, V> CacheGuard<V> for T where T: Deref<Target = V> + Send + 'static {}`.
-    - [ ] 2.1.2: Add `fn as_bytes(&self) -> &[u8]` to the trait (or a sub-trait if needed for the blanket impl) to enable zero-copy views.
-  - [ ] Subtask 2.2: Update `CacheReader` trait:
-    - [ ] 2.2.1: Remove `V: Clone` requirement from the trait bounds.
-    - [ ] 2.2.2: Add `type Guard: CacheGuard<V>` associated type.
-    - [ ] 2.2.3: Change `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>`.
-    - [ ] 2.2.4: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
-  - [ ] Subtask 2.3: Update `CacheWriter` trait to use reference-based `put(&self, key: K, value: &V)`.
-  - [ ] Subtask 2.4: Fix `mockall` and tests to accommodate the `Deref`-based Guard return type.
+### Phase 2: Guard Pattern & Base Implementation
+- [ ] Task 2: Define `CacheGuard` and introduce it to all backends
+  - [ ] Subtask 2.1: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static` in `mod.rs`.
+  - [ ] Subtask 2.2: Add `type Guard: CacheGuard<V>` to `CacheReader`.
+  - [ ] Subtask 2.3: Update `MokaReader`, `RedbReader`, and `ReaderCoordinator` to return basic Guards (e.g. `Arc<V>` for Moka, simple wrapper for Redb).
 
-### Phase 3: Redb Implementation Refactor
-- [ ] Task 3: Implement `insert_reserve` and `AccessGuard` handling in `redb.rs`
-  - [ ] Subtask 3.1: Refactor `RedbCache` to use `serialized_value_size` + `insert_reserve` + `serialize_value_into` (Removing legacy `encode` usage).
-  - [ ] Subtask 3.2: Implement `RedbCache::get` to return a Guard wrapping `redb::AccessGuard` and providing `access_value`.
-  - [ ] Subtask 3.3: Handle memory alignment checks (zero-copy if aligned, copy fallback if not).
-  - [ ] Subtask 3.4: Implement `get_many` and `put_many` using single transaction.
+### Phase 3: Single Read Method Refactor
+- [ ] Task 3: Implement new high-performance single-read APIs
+  - [ ] Subtask 3.1: Add `async fn get_ref(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>` to `CacheReader`.
+  - [ ] Subtask 3.2: Add `async fn timestamp(&self, key: &K) -> Result<Option<u64>, CacheError>` to `CacheReader`.
+  - [ ] Subtask 3.3: Refactor `get` and `has` to be default methods based on `get_ref`.
+  - [ ] Subtask 3.4: Implement `get_ref` and `timestamp` in `MokaReader` and `RedbReader` (leveraging zero-copy entry access).
 
-### Phase 4: Moka Implementation Refactor
-- [ ] Task 4: Change Moka storage to `Entry<V>` and add metrics
-  - [ ] Subtask 4.1: Update `MokaCache` to store `Entry<V>` (wrapping value + timestamp).
-  - [ ] Subtask 4.2: Implement zero-copy timestamp and metadata checks by accessing `Entry` metadata via `ArchivedHashMap`.
-  - [ ] Subtask 4.3: Expose `metrics()` and `run_pending_tasks()`.
-  - [ ] Subtask 4.4: Update `MokaCache::get` to use `access_value` (Removing legacy `decode` usage).
+### Phase 4: Single Write Method Refactor
+- [ ] Task 4: Update `CacheWriter` for reference-based writes
+  - [ ] Subtask 4.1: Update `CacheWriter::put` to take `value: &V` instead of `value: V`.
+  - [ ] Subtask 4.2: Implement `put` in `MokaWriter` and `RedbWriter` using the new `Codec` handshake.
 
-### Phase 5: Coordinator Refactor
-- [ ] Task 5: Refactor `coordinator.rs` to use monomorphic generics
-  - [ ] Subtask 5.1: Remove `Box<dyn ...>` or `&dyn ...` dispatch where possible.
-  - [ ] Subtask 5.2: Use generics for `Reader` and `Writer` implementations.
-  - [ ] Subtask 5.3: Ensure `Coordinator` correctly composes new Guard-based readers.
-  - [ ] Subtask 5.4: Migrate all remaining logic from `encode/decode` to `access/serialize` (Manual `.deserialize()` where owned types are required).
+### Phase 5: Batch Operations Refactor
+- [ ] Task 5: Implement efficient batch processing
+  - [ ] Subtask 5.1: Add `get_many` and `get_many_timestamps` to `CacheReader` (with default loop implementations).
+  - [ ] Subtask 5.2: Override `get_many` in `RedbReader` to use a single transaction.
+  - [ ] Subtask 5.3: Add `put_many` to `CacheWriter` and implement specialized version for `RedbWriter`.
 
-### Phase 6: Validation & Benchmarking
-- [ ] Task 6: Verify performance and correctness
-  - [ ] Subtask 6.1: Run existing tests to ensure no regressions.
-  - [ ] Subtask 6.2: Create/Run benchmarks to verify performance gains (47x timestamp, 10x batch).
+### Phase 6: Moka-Specific Enhancements
+- [ ] Task 6: Add Moka metrics and maintenance APIs
+  - [ ] Subtask 6.1: Add `metrics()` API to `MokaReader`.
+  - [ ] Subtask 6.2: Add `run_pending_tasks()` to `MokaWriter` and update `clear()` to use it.
+  - [ ] Subtask 6.3: Add optional `weigher` support to `MokaBuilder`.
+  - [ ] Subtask 6.4: Update Moka tests to remove `sleep` workarounds in favor of `run_pending_tasks()`.
 
-### Phase 7: Deprecation Cleanup
-- [ ] Task 7: Remove legacy Codec support
-  - [ ] Subtask 7.1: Remove all methods marked as `#[deprecated]` from `Codec` trait.
-  - [ ] Subtask 7.2: Remove corresponding implementations from `RkyvCodec`.
-  - [ ] Subtask 7.3: Verify the codebase contains zero references to `encode_key`, `decode_key`, etc.
+### Phase 7: Redb-Specific Enhancements
+- [ ] Task 7: Finalize Redb performance optimizations
+  - [ ] Subtask 7.1: Verify `insert_reserve` usage in `RedbWriter`.
+  - [ ] Subtask 7.2: Ensure alignment fallback logic is robust in `RedbReader`.
+
+### Phase 8: Coordinator & Monomorphism Refactor
+- [ ] Task 8: Refactor `coordinator.rs` for performance
+  - [ ] Subtask 8.1: Remove trait objects (`Box<dyn ...>`) in favor of monomorphic generics.
+  - [ ] Subtask 8.2: Ensure `Coordinator` correctly routes all new batch and single methods.
+
+### Phase 9: Deprecation Cleanup & Validation
+- [ ] Task 9: Final cleanup and performance verification
+  - [ ] Subtask 9.1: Remove all methods marked as `#[deprecated]` from `Codec` and traits.
+  - [ ] Subtask 9.2: Run full benchmark suite to verify 47x/10x performance targets.
 
 ## Dev Notes
 
@@ -147,35 +142,50 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 pub trait CacheReader<K, V>: Send + Sync
 where
     K: Clone + Eq + std::hash::Hash + Send + Sync + 'static,
-    V: Send + Sync + 'static, // Note: Clone no longer required!
+    V: Send + Sync + 'static,
 {
     type Guard: CacheGuard<V>;
 
     /// Retrieve a guard providing zero-copy access to the value.
-    async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
+    async fn get_ref(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
 
-    /// Deprecated: Forces cloning/deserialization. Use `get` instead.
-    #[deprecated(note = "Use get() and access the view via the guard")]
-    async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError>
+    /// Retrieve only the timestamp for a key (Zero-copy optimization).
+    async fn timestamp(&self, key: &K) -> Result<Option<u64>, CacheError>;
+
+    /// Batch retrieval of values.
+    async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<V>>, CacheError> {
+        let mut results = Vec::with_capacity(keys.len());
+        for key in keys {
+            results.push(self.get(key).await?);
+        }
+        Ok(results)
+    }
+
+    /// Batch retrieval of timestamps.
+    async fn get_many_timestamps(&self, keys: &[K]) -> Result<Vec<Option<u64>>, CacheError> {
+        let mut results = Vec::with_capacity(keys.len());
+        for key in keys {
+            results.push(self.timestamp(key).await?);
+        }
+        Ok(results)
+    }
+
+    /// Existing: Backward compatibility (Forces cloning).
+    async fn get(&self, key: &K) -> Result<Option<V>, CacheError>
     where V: Clone
     {
-        self.get(key).await?.map(|g| g.clone()) // Error: requires Deref + Clone
+        Ok(self.get_ref(key).await?.map(|g| (*g).clone()))
     }
-}
 
-/// Guard type that provides deref access to cached values.
-pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static {
-    /// Access raw bytes of the cached entry (for Codec::access).
-    fn as_bytes(&self) -> &[u8];
-}
+    /// Existing: Performance optimization (Uses get_ref internally).
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        Ok(self.get_ref(key).await?.is_some())
+    }
 
-// Blanket implementation for types like Arc<V>
-impl<T, V> CacheGuard<V> for T
-where
-    T: Deref<Target = V> + Send + 'static,
-    T: AsRef<[u8]> // Potential requirement for as_bytes()
-{}
+    async fn keys(&self) -> Result<Vec<K>, CacheError>;
+}
 ```
+
 
 #### Planned `Codec` Trait Definition
 ```rust
