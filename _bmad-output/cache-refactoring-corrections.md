@@ -34,12 +34,14 @@ The previous analysis documents (`cache-architecture-performance-analysis.md` an
 ### The Truth
 
 **What's Correct:**
+
 - ✅ You ARE using rkyv correctly at the codec level
 - ✅ `with_view()` IS the right zero-copy pattern
 - ✅ Returning `Option<V>` DOES force deserialization
 - ✅ There IS a performance opportunity
 
 **What's Wrong:**
+
 - ❌ Guard-based traits as proposed **cannot be trait objects** (breaks coordinator)
 - ❌ The examples shown won't compile due to lifetime issues
 - ❌ The coordinator uses `Arc<dyn CacheReader<K, V>>` which is incompatible with guards
@@ -61,6 +63,7 @@ pub struct Reader<K, V> {
 **Trait objects cannot return associated types with lifetimes tied to `self`.**
 
 This means:
+
 - ❌ Cannot add `type Guard<'a>: CacheGuard` to trait
 - ❌ Cannot return `Self::Guard<'a>` from trait method
 - ✅ CAN keep `with_view()` as a concrete method
@@ -73,6 +76,7 @@ This means:
 ### Inaccuracy 1: Guard Trait Compatibility
 
 **Claim (from previous docs):**
+
 ```rust
 #[async_trait]
 pub trait CacheReader<K, V>: Send + Sync {
@@ -84,11 +88,13 @@ pub trait CacheReader<K, V>: Send + Sync {
 
 **Reality:**
 This **cannot be made into a trait object** because:
+
 1. GATs (Generic Associated Types) with lifetimes are not object-safe
 2. The coordinator requires `Arc<dyn CacheReader<K, V>>`
 3. Rust error: `the trait CacheReader cannot be made into an object`
 
 **Proof:**
+
 ```rust
 // This is your actual code (coordinator.rs, line 239-242)
 pub struct Reader<K, V> {
@@ -101,6 +107,7 @@ pub struct Reader<K, V> {
 ### Inaccuracy 2: Async Return Lifetimes
 
 **Claim (from previous docs):**
+
 ```rust
 async fn get_ref(&self, key: &K) -> Result<Option<RedbGuard<'_>>, CacheError>;
 //                                                           ^^^ tied to self
@@ -108,12 +115,14 @@ async fn get_ref(&self, key: &K) -> Result<Option<RedbGuard<'_>>, CacheError>;
 
 **Reality:**
 `async_trait` desugars to:
+
 ```rust
 fn get_ref<'async_trait>(&'async_trait self, key: &K)
     -> Pin<Box<dyn Future<Output = Result<...>> + Send + 'async_trait>>;
 ```
 
 The guard with lifetime `'async_trait` **cannot escape the Future** because:
+
 - The guard must live as long as the database transaction
 - The transaction is inside the Future
 - When the Future completes, the transaction drops
@@ -139,6 +148,7 @@ pub struct Entry<V> {
 ```
 
 **To return `V` from trait, you MUST:**
+
 1. Deserialize `Entry<V>` (includes metadata HashMap)
 2. Extract `.value` field
 3. Drop the metadata
@@ -168,6 +178,7 @@ impl<K, V> CacheReader<K, V> for Reader<K, V> {
 ```
 
 **The coordinator MUST return `V` because:**
+
 1. It implements `CacheReader<K, V>` trait
 2. That trait requires `async fn get() -> Option<V>`
 3. Cannot change trait without breaking all existing code
@@ -180,11 +191,13 @@ impl<K, V> CacheReader<K, V> for Reader<K, V> {
 
 **Reality:**
 The numbers assume:
+
 1. You only access one field (timestamp)
 2. You never need the value `V`
 3. You can use concrete `Reader<K, V>` type directly
 
 **But in practice:**
+
 1. Most operations need the value `V`, not just metadata
 2. Code uses `Arc<dyn CacheReader<K, V>>` (trait object)
 3. The `Entry<V>` wrapper adds overhead even with zero-copy
@@ -210,11 +223,13 @@ pub struct Builder<K, V> {
 ```
 
 **Why?** To allow runtime polymorphism:
+
 - Memory layer: Moka
 - Disk layer: Redb
 - Coordinator: Combines both behind same interface
 
 **Constraint:** Trait objects require object-safety:
+
 - ✅ No generic type parameters in methods
 - ✅ No associated types with lifetimes
 - ✅ No `Self: Sized` bounds
@@ -234,6 +249,7 @@ pub struct Entry<V> {
 ```
 
 **Why?**
+
 - Track when cache entry was created
 - Store arbitrary metadata per entry
 - Enable cache invalidation strategies
@@ -252,6 +268,7 @@ impl<K, V> Codec<K, V> for RkyvCodec
 ```
 
 **In redb.rs:**
+
 ```rust
 // Line 469-473
 C: crate::spi::cache::encoder::Codec<K, Entry<V>>
@@ -259,6 +276,7 @@ C: crate::spi::cache::encoder::Codec<K, Entry<V>>
 ```
 
 **This means:**
+
 - Redb stores `Entry<V>`, not `V`
 - Deserialization always produces `Entry<V>`
 - Zero-copy access gives you `&Archived<Entry<V>>`
@@ -282,6 +300,7 @@ self.inner.read(move |txn, table_name| {
 ```
 
 **The guard cannot escape the transaction:**
+
 - `redb::AccessGuard<'txn>` lifetime tied to transaction
 - Transaction ends when closure returns
 - Guard is invalidated before Future resolves
@@ -301,16 +320,16 @@ let value = cache.get(&key).await?;
 
 **Cost breakdown:**
 
-| Step | Current (with Entry) | With Zero-Copy (theoretical) | Actual Bottleneck |
-|------|---------------------|------------------------------|-------------------|
-| 1. Encode key | 2μs | 2μs | Unavoidable |
-| 2. Async transaction | 1μs | 1μs | Unavoidable |
-| 3. Redb lookup | 0.5μs | 0.5μs | Unavoidable |
-| 4. Validate bytes | 0.3μs | 0.3μs | Unavoidable |
-| 5. Deserialize Entry | **8μs** | **0μs** | ← Savings here |
-| 6. Extract `.value` | **2μs** | **2μs** | ← Still needed! |
-| 7. Drop metadata | 0.2μs | 0μs | Minor |
-| **Total** | **14μs** | **5.8μs** | **2.4x faster** |
+| Step                 | Current (with Entry) | With Zero-Copy (theoretical) | Actual Bottleneck |
+| -------------------- | -------------------- | ---------------------------- | ----------------- |
+| 1. Encode key        | 2μs                  | 2μs                          | Unavoidable       |
+| 2. Async transaction | 1μs                  | 1μs                          | Unavoidable       |
+| 3. Redb lookup       | 0.5μs                | 0.5μs                        | Unavoidable       |
+| 4. Validate bytes    | 0.3μs                | 0.3μs                        | Unavoidable       |
+| 5. Deserialize Entry | **8μs**              | **0μs**                      | ← Savings here    |
+| 6. Extract `.value`  | **2μs**              | **2μs**                      | ← Still needed!   |
+| 7. Drop metadata     | 0.2μs                | 0μs                          | Minor             |
+| **Total**            | **14μs**             | **5.8μs**                    | **2.4x faster**   |
 
 **Key insight:** Even with zero-copy, extracting `V` from `Entry<V>` costs 2μs (partial deser).
 
@@ -324,12 +343,12 @@ let ts = cache.with_view(&key, |archived| archived.timestamp).await?;
 
 **Cost breakdown:**
 
-| Step | Current | With with_view() | Speedup |
-|------|---------|-----------------|---------|
-| 1-4. (same) | 3.8μs | 3.8μs | - |
-| 5. Deserialize Entry | 8μs | 0μs | ✅ Saved |
-| 6. Access timestamp | 0μs | 0.2μs | ✅ Zero-copy |
-| **Total** | **11.8μs** | **4μs** | **3x faster** |
+| Step                 | Current    | With with_view() | Speedup       |
+| -------------------- | ---------- | ---------------- | ------------- |
+| 1-4. (same)          | 3.8μs      | 3.8μs            | -             |
+| 5. Deserialize Entry | 8μs        | 0μs              | ✅ Saved      |
+| 6. Access timestamp  | 0μs        | 0.2μs            | ✅ Zero-copy  |
+| **Total**            | **11.8μs** | **4μs**          | **3x faster** |
 
 **This is where rkyv shines:** Field-only access without full deserialization.
 
@@ -448,6 +467,7 @@ impl<K, V> CacheReader<K, V> for Reader<K, V> {
 ```
 
 **Why guards don't work here:**
+
 1. Backfill needs owned `V` to write to L1
 2. Guard from L2 (disk) can't stay alive after method returns
 3. Coordinator's `get()` returns `V`, not guard
@@ -468,6 +488,7 @@ The real problem is **WHERE** you use `get()` and what you do with the result.
 Let's examine where caching is actually used in Lithos:
 
 **Scenario 1: Vault Freshness Check**
+
 ```rust
 // Pseudo-code (hypothetical usage)
 for file in vault.files() {
@@ -484,6 +505,7 @@ for file in vault.files() {
 **Solution:** Use `with_view()` for timestamp check, only `get()` when re-indexing needed.
 
 **Scenario 2: LSP Link Suggestions**
+
 ```rust
 // Pseudo-code
 for key in cache.keys().await? {
@@ -500,6 +522,7 @@ for key in cache.keys().await? {
 **Solution:** Store titles in metadata, use `with_view()` to filter.
 
 **Scenario 3: Loading Note for Display**
+
 ```rust
 let note = cache.get(&note_id).await?.ok_or(NotFound)?;
 render(note);
@@ -553,6 +576,7 @@ impl<K, V, C> Reader<K, V, C> {
 ```
 
 **Advantages:**
+
 - ✅ No trait changes required
 - ✅ Works with existing trait objects
 - ✅ Backward compatible
@@ -587,12 +611,14 @@ pub trait CacheReader<K, V>: Send + Sync {
 ```
 
 **Advantages:**
+
 - ✅ Object-safe (returns concrete types)
 - ✅ Available via trait objects
 - ✅ Can use zero-copy internally
 - ✅ Backward compatible (new methods)
 
 **Disadvantages:**
+
 - ⚠️ Expands trait surface area
 - ⚠️ All implementations must provide these
 - ⚠️ Moka implementation can't optimize (no Entry wrapper)
@@ -607,6 +633,7 @@ pub trait CacheReader<K, V>: Send + Sync {
 4. **Optimize serialization** (smaller Entry format)
 
 **When this makes sense:**
+
 - CLI commands are already "fast enough" (<100ms)
 - LSP latency dominated by other factors (file I/O, parsing)
 - Premature optimization warning
@@ -620,6 +647,7 @@ pub trait CacheReader<K, V>: Send + Sync {
 **Goal:** Provide zero-copy metadata access without trait changes.
 
 **Changes:**
+
 1. Add methods to `redb::Reader<K, V>`:
    - `get_timestamp(key) -> Option<u64>`
    - `get_metadata(key) -> Option<MetadataMap>`
@@ -627,6 +655,7 @@ pub trait CacheReader<K, V>: Send + Sync {
    - `is_stale(key, cutoff) -> Option<bool>`
 
 2. Implement using existing `with_view()`:
+
    ```rust
    pub async fn get_timestamp(&self, key: &K) -> Result<Option<u64>, CacheError> {
        self.with_view(key, |archived| archived.timestamp).await
@@ -645,7 +674,9 @@ pub trait CacheReader<K, V>: Send + Sync {
 **Goal:** Replace `get()` calls with metadata methods where appropriate.
 
 **Process:**
+
 1. Identify hot paths:
+
    ```bash
    rg "cache\.get\(" crates/ --type rust
    ```
@@ -656,6 +687,7 @@ pub trait CacheReader<K, V>: Send + Sync {
    - Do we need the value? → Keep `get()`
 
 3. Refactor incrementally:
+
    ```rust
    // Before
    if let Some(entry) = cache.get(&key).await? {
@@ -682,7 +714,9 @@ pub trait CacheReader<K, V>: Send + Sync {
 **Decision point:** Only if coordinator needs it.
 
 **Changes:**
+
 1. Add to `CacheReader` trait:
+
    ```rust
    async fn get_timestamp(&self, key: &K) -> Result<Option<u64>, CacheError> {
        // Default impl calls get() and extracts timestamp
@@ -705,8 +739,10 @@ The `Entry<V>` wrapper is Redb-specific.
 **Goal:** Guide users to zero-copy patterns.
 
 **Deliverables:**
+
 1. Update module docs with performance guide:
-   ```rust
+
+   ````rust
    //! ## Performance Best Practices
    //!
    //! ### Use Concrete Types for Zero-Copy
@@ -720,7 +756,7 @@ The `Entry<V>` wrapper is Redb-specific.
    //! let reader: RedbReader<K, V> = ...;
    //! let ts = reader.get_timestamp(&key).await?;
    //! ```
-   ```
+   ````
 
 2. Add examples for common patterns
 
@@ -734,7 +770,7 @@ The `Entry<V>` wrapper is Redb-specific.
 
 **1. Add `get_timestamp()` to Redb Reader**
 
-```rust
+````rust
 // File: crates/adapters/src/spi/cache/redb.rs
 // Add after line 630 (after with_view method)
 
@@ -776,7 +812,7 @@ where
         self.with_view(key, |archived| archived.timestamp).await
     }
 }
-```
+````
 
 **2. Add benchmark to prove speedup**
 
@@ -840,15 +876,18 @@ Add to `redb.rs` module docs:
 ### Next Week (After Validation)
 
 **1. Add more convenience methods**
+
 - `get_metadata()`
 - `get_metadata_field()`
 - `is_stale()`
 
 **2. Find and optimize hot paths**
+
 - Grep for `cache.get()` usage
 - Replace with metadata methods where appropriate
 
 **3. Measure real-world impact**
+
 - Benchmark actual CLI commands
 - Profile LSP operations
 - Validate 2-3x speedup claims
@@ -882,11 +921,13 @@ Add to `redb.rs` module docs:
 ### Success Metrics
 
 **Realistic targets:**
+
 - Vault freshness check: 140ms → 40ms (3.5x faster) ✅
 - Metadata filtering: 10-100x faster (zero-copy iteration) ✅
 - Full value loading: No change (0x speedup) ✅ Expected
 
 **DO NOT expect:**
+
 - 6x speedup across the board ❌
 - Zero-copy for operations that need `V` ❌
 - Guard-based APIs ❌

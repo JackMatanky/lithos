@@ -83,9 +83,10 @@ development_status:
     5-3-implement-redb-persistent-cache-adapter-with-isolation: "done"
     5-4-refactor-cache-for-modularity-and-cqrs: "done"
     5-5-implement-cache-coordinator-for-memory-disk-read-through-and-write-through: "review"
-    5-6-implement-performance-benchmarking-suite: "ready-for-dev"
-    5-7-review-epic-5-test-suite: "ready-for-dev"
-    5-8-document-cache-system-foundation: "ready-for-dev"
+    5-6-cache-performance-zero-copy-refactor: "ready-for-dev"
+    5-7-implement-performance-benchmarking-suite: "ready-for-dev"
+    5-8-review-epic-5-test-suite: "ready-for-dev"
+    5-9-document-cache-system-foundation: "ready-for-dev"
     epic-5-retrospective: "optional"
 
     epic-6: "in-progress"
