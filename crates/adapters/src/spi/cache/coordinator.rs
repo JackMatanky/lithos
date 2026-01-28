@@ -344,8 +344,10 @@ where
     async fn keys(&self) -> Result<Vec<K>, CacheError> {
         use std::collections::HashSet;
 
-        let mem_keys = self.memory.keys().await?;
-        let disk_keys = self.disk.keys().await?;
+        let (mem_res, disk_res) =
+            tokio::join!(self.memory.keys(), self.disk.keys());
+        let mem_keys = mem_res?;
+        let disk_keys = disk_res?;
 
         let capacity = mem_keys.len().saturating_add(disk_keys.len());
         let mut unique_keys: HashSet<K> = HashSet::with_capacity(capacity);
