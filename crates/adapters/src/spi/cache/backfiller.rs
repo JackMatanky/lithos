@@ -430,6 +430,110 @@ mod tests {
         }
     }
 
+    mod capacity {
+        use super::*;
+
+        #[test]
+        fn rejects_capacity_below_minimum() {
+            // GIVEN: a capacity below MIN
+            let capacity = Capacity::MIN - 1;
+
+            // WHEN: attempting to create custom capacity
+            let result = Capacity::custom(capacity);
+
+            // THEN: it should return an error
+            let err =
+                result.expect_err("Expected error for capacity below minimum");
+            assert!(
+                err.contains("below minimum"),
+                "Error message should mention 'below minimum', got: {err}"
+            );
+        }
+
+        #[test]
+        fn rejects_capacity_above_maximum() {
+            // GIVEN: a capacity above MAX
+            let capacity = Capacity::MAX + 1;
+
+            // WHEN: attempting to create custom capacity
+            let result = Capacity::custom(capacity);
+
+            // THEN: it should return an error
+            let err =
+                result.expect_err("Expected error for capacity above maximum");
+            assert!(
+                err.contains("above maximum"),
+                "Error message should mention 'above maximum', got: {err}"
+            );
+        }
+
+        #[test]
+        fn accepts_capacity_at_boundaries() {
+            // GIVEN: capacities at MIN and MAX boundaries
+            // WHEN: creating custom capacities
+            let min_capacity = Capacity::custom(Capacity::MIN)
+                .expect("MIN boundary should be valid");
+            let max_capacity = Capacity::custom(Capacity::MAX)
+                .expect("MAX boundary should be valid");
+
+            // THEN: both should have correct values
+            assert_eq!(min_capacity.value(), Capacity::MIN);
+            assert_eq!(max_capacity.value(), Capacity::MAX);
+        }
+
+        #[test]
+        fn accepts_capacity_within_range() {
+            // GIVEN: a capacity within valid range
+            let capacity = 2048;
+
+            // WHEN: creating custom capacity
+            let result = Capacity::custom(capacity)
+                .expect("Valid capacity should succeed");
+
+            // THEN: it should return correct value
+            assert_eq!(result.value(), capacity);
+        }
+
+        #[test]
+        fn presets_have_correct_values() {
+            // GIVEN: preset capacities
+            // WHEN: getting their values
+            // THEN: they should match expected values
+            assert_eq!(Capacity::Light.value(), 256);
+            assert_eq!(Capacity::Medium.value(), 1024);
+            assert_eq!(Capacity::Heavy.value(), 4096);
+        }
+
+        #[test]
+        fn default_is_medium() {
+            // GIVEN: default capacity
+            let capacity = Capacity::default();
+
+            // WHEN: checking its value
+            // THEN: it should be Medium (1024)
+            assert_eq!(capacity, Capacity::Medium);
+            assert_eq!(capacity.value(), 1024);
+        }
+
+        #[test]
+        fn converts_to_usize() {
+            // GIVEN: various capacities
+            let capacities = [
+                Capacity::Light,
+                Capacity::Medium,
+                Capacity::Heavy,
+                Capacity::custom(2048).unwrap(),
+            ];
+
+            // WHEN: converting to usize
+            // THEN: it should use the From trait
+            for capacity in capacities {
+                let value: usize = capacity.into();
+                assert_eq!(value, capacity.value());
+            }
+        }
+    }
+
     mod initialization {
         use super::*;
 

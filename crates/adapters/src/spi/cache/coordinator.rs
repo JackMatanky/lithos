@@ -522,38 +522,30 @@ mod tests {
         use crate::spi::cache::{MockCacheReader, MockCacheWriter};
 
         #[test]
-        fn verify_linkage() {
-            let _reader: crate::spi::cache::ReaderCoordinator<String, String>;
-            let _writer: crate::spi::cache::WriterCoordinator<String, String>;
-        }
-
-        #[test]
-        fn validates_backfill_capacity_min() {
-            use crate::spi::cache::BackfillCapacity;
-            let result = BackfillCapacity::custom(BackfillCapacity::MIN - 1);
-            result.unwrap_err();
-        }
-
-        #[test]
-        fn validates_backfill_capacity_max() {
-            use crate::spi::cache::BackfillCapacity;
-            let result = BackfillCapacity::custom(BackfillCapacity::MAX + 1);
-            result.unwrap_err();
-        }
-
-        #[test]
         fn accepts_valid_backfill_capacity() {
             use crate::spi::cache::BackfillCapacity;
             let mut builder = Builder::<String, String>::new();
+
+            // Test all preset capacities
             builder.backfill_capacity(BackfillCapacity::Light);
             builder.backfill_capacity(BackfillCapacity::Medium);
             builder.backfill_capacity(BackfillCapacity::Heavy);
+
+            // Test custom capacities at boundaries
             builder.backfill_capacity(
-                BackfillCapacity::custom(BackfillCapacity::MIN).unwrap(),
+                BackfillCapacity::custom(BackfillCapacity::MIN)
+                    .expect("MIN should be valid"),
             );
             builder.backfill_capacity(
-                BackfillCapacity::custom(BackfillCapacity::MAX).unwrap(),
+                BackfillCapacity::custom(BackfillCapacity::MAX)
+                    .expect("MAX should be valid"),
             );
+        }
+
+        #[test]
+        fn verify_linkage() {
+            let _reader: crate::spi::cache::ReaderCoordinator<String, String>;
+            let _writer: crate::spi::cache::WriterCoordinator<String, String>;
         }
 
         #[tokio::test]
