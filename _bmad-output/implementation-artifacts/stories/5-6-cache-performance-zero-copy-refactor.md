@@ -65,33 +65,33 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 
 ## TDD Tasks / Subtasks
 
-### Phase 1: Trait Definition Updates (Zero-Copy First)
-- [ ] Task 1: Define `CacheGuard` and update `CacheReader` in `mod.rs`
-  - [ ] Subtask 1.1: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static`:
-    - [ ] 1.1.1: Add a blanket implementation: `impl<T, V> CacheGuard<V> for T where T: Deref<Target = V> + Send + 'static {}`.
-    - [ ] 1.1.2: Add `fn as_bytes(&self) -> &[u8]` to the trait (or a sub-trait if needed for the blanket impl) to enable zero-copy views.
-  - [ ] Subtask 1.2: Update `CacheReader` trait:
-    - [ ] 1.2.1: Remove `V: Clone` requirement from the trait bounds.
-    - [ ] 1.2.2: Add `type Guard: CacheGuard<V>` associated type.
-    - [ ] 1.2.3: Change `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>`.
-    - [ ] 1.2.4: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
-  - [ ] Subtask 1.3: Update `CacheWriter` trait to use reference-based `put(&self, key: K, value: &V)`.
-  - [ ] Subtask 1.4: Fix `mockall` and tests to accommodate the `Deref`-based Guard return type.
+### Phase 1: Codec Zero-Copy Refactor
+- [ ] Task 1: Refactor `Codec` trait for Zero-Copy purity in `encoder.rs`
+  - [ ] Subtask 1.1: Mark legacy methods as `#[deprecated]` (`encode_key`, `encode_value`, `decode_key`, `decode_value`, `encode_key_into`, `encode_value_into`).
+  - [ ] Subtask 1.2: Add `type ArchivedKey` and `type ArchivedValue` associated types to the `Codec` trait.
+  - [ ] Subtask 1.3: Define new zero-copy handshake methods (`serialized_key_size`, `serialize_key_into`, `serialized_value_size`, `serialize_value_into`).
+  - [ ] Subtask 1.4: Define new pure read views (`access_key`, `access_value`).
+  - [ ] Subtask 1.5: Implement `RkyvCodec` extensions for `rkyv 0.8`:
+    - [ ] 1.5.1: Implement `serialized_value_size` by using a `SizeSerializer` or `to_bytes` length.
+    - [ ] 1.5.2: Implement `serialize_value_into` using `rkyv::api::high::to_bytes_in` with `rkyv::ser::writer::Buffer`.
+    - [ ] 1.5.3: Implement `access_value` with explicit `std::mem::align_of` check and `rkyv::access`.
+    - [ ] 1.5.4: Repeat implementation for Key methods (`serialized_key_size`, `serialize_key_into`, `access_key`).
+    - [ ] 1.5.5: Ensure `MetadataMap` archives into `rkyv::collections::ArchivedHashMap` for $O(1)$ zero-copy lookups.
+    - [ ] 1.5.6: Update trait bounds to ensure compatibility with `rkyv::rancor::Error` and `CheckBytes`.
+  - [ ] Subtask 1.6: Update `encoder.rs` unit tests to use the new zero-copy handshake.
 
-### Phase 2: Codec Zero-Copy Refactor
-- [ ] Task 2: Refactor `Codec` trait for Zero-Copy purity in `encoder.rs`
-  - [ ] Subtask 2.1: Mark legacy methods as `#[deprecated]` (`encode_key`, `encode_value`, `decode_key`, `decode_value`, `encode_key_into`, `encode_value_into`).
-  - [ ] Subtask 2.2: Add `type ArchivedKey` and `type ArchivedValue` associated types to the `Codec` trait.
-  - [ ] Subtask 2.3: Define new zero-copy handshake methods (`serialized_key_size`, `serialize_key_into`, `serialized_value_size`, `serialize_value_into`).
-  - [ ] Subtask 2.4: Define new pure read views (`access_key`, `access_value`).
-  - [ ] Subtask 2.5: Implement `RkyvCodec` extensions for `rkyv 0.8`:
-    - [ ] 2.5.1: Implement `serialized_value_size` by using a `SizeSerializer` or `to_bytes` length.
-    - [ ] 2.5.2: Implement `serialize_value_into` using `rkyv::api::high::to_bytes_in` with `rkyv::ser::writer::Buffer`.
-    - [ ] 2.5.3: Implement `access_value` with explicit `std::mem::align_of` check and `rkyv::access`.
-    - [ ] 2.5.4: Repeat implementation for Key methods (`serialized_key_size`, `serialize_key_into`, `access_key`).
-    - [ ] 2.5.5: Ensure `MetadataMap` archives into `rkyv::collections::ArchivedHashMap` for $O(1)$ zero-copy lookups.
-    - [ ] 2.5.6: Update trait bounds to ensure compatibility with `rkyv::rancor::Error` and `CheckBytes`.
-  - [ ] Subtask 2.6: Update `encoder.rs` unit tests to use the new zero-copy handshake.
+### Phase 2: Trait Definition Updates (Zero-Copy First)
+- [ ] Task 2: Define `CacheGuard` and update `CacheReader` in `mod.rs`
+  - [ ] Subtask 2.1: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static`:
+    - [ ] 2.1.1: Add a blanket implementation: `impl<T, V> CacheGuard<V> for T where T: Deref<Target = V> + Send + 'static {}`.
+    - [ ] 2.1.2: Add `fn as_bytes(&self) -> &[u8]` to the trait (or a sub-trait if needed for the blanket impl) to enable zero-copy views.
+  - [ ] Subtask 2.2: Update `CacheReader` trait:
+    - [ ] 2.2.1: Remove `V: Clone` requirement from the trait bounds.
+    - [ ] 2.2.2: Add `type Guard: CacheGuard<V>` associated type.
+    - [ ] 2.2.3: Change `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>`.
+    - [ ] 2.2.4: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
+  - [ ] Subtask 2.3: Update `CacheWriter` trait to use reference-based `put(&self, key: K, value: &V)`.
+  - [ ] Subtask 2.4: Fix `mockall` and tests to accommodate the `Deref`-based Guard return type.
 
 ### Phase 3: Redb Implementation Refactor
 - [ ] Task 3: Implement `insert_reserve` and `AccessGuard` handling in `redb.rs`
