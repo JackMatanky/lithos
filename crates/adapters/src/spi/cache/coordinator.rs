@@ -249,8 +249,8 @@ where
         // backfill works!
         if let Some(mw) = self.memory_writer.as_ref() {
             if tokio::runtime::Handle::try_current().is_err() {
-                return Err(CacheError::BackendError {
-                    backend: "tokio",
+                return Err(CacheError::RuntimeError {
+                    runtime: "tokio",
                     message: "Tokio runtime is required for backfill".into(),
                 });
             }
