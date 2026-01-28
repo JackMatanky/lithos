@@ -11,7 +11,6 @@
 )]
 
 use std::{
-    collections::HashMap,
     sync::{Arc, OnceLock},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -26,8 +25,11 @@ use crate::spi::{
     errors::CacheError,
 };
 
-/// Type alias for the metadata map.
-pub type MetadataMap = HashMap<String, String>;
+/// Lean metadata storage using a vector of key-value pairs.
+///
+/// This provides deterministic serialization (unlike `HashMap`) and lower
+/// memory overhead for typical small metadata sets.
+pub type MetadataMap = Vec<(String, String)>;
 
 /// Type alias for cache retrieval results with metadata.
 pub type Outcome<V> = Result<Option<(V, MetadataMap)>, CacheError>;
@@ -87,9 +89,8 @@ where
     /// ```rust
     /// # use lithos_adapters::spi::cache::redb::{EntryView, Entry, MetadataMap};
     /// # use lithos_adapters::spi::cache::encoder::{Codec, RkyvCodec};
-    /// # use std::collections::HashMap;
     /// # let codec = RkyvCodec::default();
-    /// # let entry = Entry::new("test".to_string(), 0, HashMap::new());
+    /// # let entry = Entry::new("test".to_string(), 0, Vec::new());
     /// # let bytes = <RkyvCodec as Codec<String, Entry<String>>>::encode_value(&codec, &entry).unwrap();
     /// # // In real usage, the guard comes from redb
     /// ```
@@ -773,7 +774,7 @@ where
 
     #[inline]
     async fn put(&self, key: K, value: V) -> Result<(), CacheError> {
-        self.put_with_metadata(key, value, HashMap::new()).await
+        self.put_with_metadata(key, value, Vec::new()).await
     }
 }
 
@@ -1116,8 +1117,8 @@ mod tests {
             // WHEN: performing a batch write via the inner closure
             let k1 = "k1".to_owned();
             let k2 = "k2".to_owned();
-            let v1 = Entry::new(TestValue("v1".to_owned()), 0, HashMap::new());
-            let v2 = Entry::new(TestValue("v2".to_owned()), 0, HashMap::new());
+            let v1 = Entry::new(TestValue("v1".to_owned()), 0, Vec::new());
+            let v2 = Entry::new(TestValue("v2".to_owned()), 0, Vec::new());
 
             let k1_bytes =
                 <RkyvCodec as Codec<String, Entry<TestValue>>>::encode_key(
@@ -1406,8 +1407,7 @@ mod tests {
 
             let key = "key".to_owned();
             let value = TestValue("value".to_owned());
-            let metadata =
-                HashMap::from([("version".to_owned(), "1.0".to_owned())]);
+            let metadata = vec![("version".to_owned(), "1.0".to_owned())];
 
             // WHEN: putting with custom metadata
             writer
