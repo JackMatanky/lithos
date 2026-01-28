@@ -71,35 +71,52 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
   - [ ] Subtask 1.2: Update `CacheReader` trait to include `type Guard: CacheGuard<V>`
   - [ ] Subtask 1.3: Update `CacheReader::get` signature to return `Result<Option<Self::Guard>, ...>`
 
-### Phase 2: Codec Enhancements
-- [ ] Task 2: Add `serialized_size` and `serialize_into` to `Codec` trait
-  - [ ] Subtask 2.1: Update `Codec` trait in `encoder.rs`
-  - [ ] Subtask 2.2: Implement methods for `RkyvCodec` to support zero-copy sizing and writing
+### Phase 2: Codec Zero-Copy Refactor
+- [ ] Task 2: Refactor `Codec` trait for Zero-Copy purity in `encoder.rs`
+  - [ ] Subtask 2.1: Mark legacy methods as `#[deprecated]` (`encode_key`, `encode_value`, `decode_key`, `decode_value`, `encode_key_into`, `encode_value_into`).
+  - [ ] Subtask 2.2: Add `type ArchivedKey` and `type ArchivedValue` associated types to the `Codec` trait.
+  - [ ] Subtask 2.3: Define new zero-copy handshake methods (`serialized_key_size`, `serialize_key_into`, `serialized_value_size`, `serialize_value_into`).
+  - [ ] Subtask 2.4: Define new pure read views (`access_key`, `access_value`).
+  - [ ] Subtask 2.5: Implement `RkyvCodec` extensions for `rkyv 0.8`:
+    - [ ] 2.5.1: Implement `serialized_value_size` by using a `SizeSerializer` or `to_bytes` length.
+    - [ ] 2.5.2: Implement `serialize_value_into` using `rkyv::api::high::to_bytes_in` with `rkyv::ser::writer::Buffer`.
+    - [ ] 2.5.3: Implement `access_value` with explicit `std::mem::align_of` check and `rkyv::access`.
+    - [ ] 2.5.4: Repeat implementation for Key methods (`serialized_key_size`, `serialize_key_into`, `access_key`).
+    - [ ] 2.5.5: Ensure `MetadataMap` archives into `rkyv::collections::ArchivedHashMap` for $O(1)$ zero-copy lookups.
+    - [ ] 2.5.6: Update trait bounds to ensure compatibility with `rkyv::rancor::Error` and `CheckBytes`.
+  - [ ] Subtask 2.6: Update `encoder.rs` unit tests to use the new zero-copy handshake.
 
 ### Phase 3: Redb Implementation Refactor
 - [ ] Task 3: Implement `insert_reserve` and `AccessGuard` handling in `redb.rs`
-  - [ ] Subtask 3.1: Refactor `RedbCache` to use `insert_reserve` for zero-copy writes
-  - [ ] Subtask 3.2: Implement `RedbCache::get` to return a Guard wrapping `redb::AccessGuard`
-  - [ ] Subtask 3.3: Handle memory alignment checks (zero-copy if aligned, copy fallback if not)
-  - [ ] Subtask 3.4: Implement `get_many` and `put_many` using single transaction
+  - [ ] Subtask 3.1: Refactor `RedbCache` to use `serialized_value_size` + `insert_reserve` + `serialize_value_into` (Removing legacy `encode` usage).
+  - [ ] Subtask 3.2: Implement `RedbCache::get` to return a Guard wrapping `redb::AccessGuard` and providing `access_value`.
+  - [ ] Subtask 3.3: Handle memory alignment checks (zero-copy if aligned, copy fallback if not).
+  - [ ] Subtask 3.4: Implement `get_many` and `put_many` using single transaction.
 
 ### Phase 4: Moka Implementation Refactor
 - [ ] Task 4: Change Moka storage to `Entry<V>` and add metrics
-  - [ ] Subtask 4.1: Update `MokaCache` to store `Entry<V>` (wrapping value + timestamp)
-  - [ ] Subtask 4.2: Implement zero-copy timestamp checks by accessing `Entry` metadata
-  - [ ] Subtask 4.3: Expose `metrics()` and `run_pending_tasks()`
-  - [ ] Subtask 4.4: Update `MokaCache::get` to return `Arc` wrapper as Guard
+  - [ ] Subtask 4.1: Update `MokaCache` to store `Entry<V>` (wrapping value + timestamp).
+  - [ ] Subtask 4.2: Implement zero-copy timestamp and metadata checks by accessing `Entry` metadata via `ArchivedHashMap`.
+  - [ ] Subtask 4.3: Expose `metrics()` and `run_pending_tasks()`.
+  - [ ] Subtask 4.4: Update `MokaCache::get` to use `access_value` (Removing legacy `decode` usage).
 
 ### Phase 5: Coordinator Refactor
 - [ ] Task 5: Refactor `coordinator.rs` to use monomorphic generics
-  - [ ] Subtask 5.1: Remove `Box<dyn ...>` or `&dyn ...` dispatch where possible
-  - [ ] Subtask 5.2: Use generics for `Reader` and `Writer` implementations
-  - [ ] Subtask 5.3: Ensure `Coordinator` correctly composes new Guard-based readers
+  - [ ] Subtask 5.1: Remove `Box<dyn ...>` or `&dyn ...` dispatch where possible.
+  - [ ] Subtask 5.2: Use generics for `Reader` and `Writer` implementations.
+  - [ ] Subtask 5.3: Ensure `Coordinator` correctly composes new Guard-based readers.
+  - [ ] Subtask 5.4: Migrate all remaining logic from `encode/decode` to `access/serialize` (Manual `.deserialize()` where owned types are required).
 
 ### Phase 6: Validation & Benchmarking
 - [ ] Task 6: Verify performance and correctness
-  - [ ] Subtask 6.1: Run existing tests to ensure no regressions
-  - [ ] Subtask 6.2: Create/Run benchmarks to verify performance gains (47x timestamp, 10x batch)
+  - [ ] Subtask 6.1: Run existing tests to ensure no regressions.
+  - [ ] Subtask 6.2: Create/Run benchmarks to verify performance gains (47x timestamp, 10x batch).
+
+### Phase 7: Deprecation Cleanup
+- [ ] Task 7: Remove legacy Codec support
+  - [ ] Subtask 7.1: Remove all methods marked as `#[deprecated]` from `Codec` trait.
+  - [ ] Subtask 7.2: Remove corresponding implementations from `RkyvCodec`.
+  - [ ] Subtask 7.3: Verify the codebase contains zero references to `encode_key`, `decode_key`, etc.
 
 ## Dev Notes
 
@@ -110,6 +127,48 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 ### Technical Requirements
 - **Redb Alignment**: `rkyv` requires aligned memory. `redb` buffers might not be aligned. Check `bytecheck` or alignment before casting.
 - **Moka Entry**: Storing `Entry` allows checking metadata without cloning the value or deserializing if it was lazy.
+
+### Zero-Copy Codec Refactor Plan
+- **Phased Migration**: Legacy methods are marked as `#[deprecated]` in Phase 2 to allow incremental migration of backends and the coordinator. Phase 7 removes them entirely once the migration is complete.
+- **Two-Pass Write**: `redb` requires knowing the size before granting a buffer (`insert_reserve`). The codec now provides `serialized_size()` followed by `serialize_into(&mut [u8])`.
+- **Pure Views**: The codec only provides `access_*` methods. If an owned value is needed, the caller must explicitly call `.deserialize()` on the archived view, making the performance penalty visible.
+- **Rkyv 0.8 Strategy**: Use `rkyv::api::high::to_bytes_in` for zero-copy writes into pre-allocated memory via `rkyv::ser::writer::Buffer`. Leverage `rkyv::collections::ArchivedHashMap` for $O(1)$ zero-copy metadata lookups.
+
+#### Planned `Codec` Trait Definition
+```rust
+pub trait Codec<K, V>: Send + Sync {
+    /// The archived representation for zero-copy access.
+    type ArchivedKey: ?Sized;
+    type ArchivedValue: ?Sized;
+
+    // --- READ PATH: Zero-Copy Views ---
+
+    /// Provide zero-copy access to the archived key.
+    fn access_key<'a>(&self, bytes: &'a [u8]) -> Result<&'a Self::ArchivedKey, CacheError>;
+
+    /// Provide zero-copy access to the archived value.
+    fn access_value<'a>(&self, bytes: &'a [u8]) -> Result<&'a Self::ArchivedValue, CacheError>;
+
+    // --- WRITE PATH: The Handshake ---
+
+    /// Pass 1: How much space do we need for the key?
+    fn serialized_key_size(&self, key: &K) -> Result<usize, CacheError>;
+
+    /// Pass 2: Write key directly into storage-provided memory.
+    fn serialize_key_into(&self, key: &K, target: &mut [u8]) -> Result<usize, CacheError>;
+
+    /// Pass 1: How much space do we need for the value?
+    fn serialized_value_size(&self, value: &V) -> Result<usize, CacheError>;
+
+    /// Pass 2: Write value directly into storage-provided memory.
+    fn serialize_value_into(&self, value: &V, target: &mut [u8]) -> Result<usize, CacheError>;
+
+    // --- DEPRECATED METHODS (To be removed in Phase 7) ---
+    #[deprecated(note = "Use access_key instead")]
+    fn decode_key(&self, encoded: &[u8]) -> Result<K, CacheError>;
+    // ... others ...
+}
+```
 
 ### References
 - [Source: Epic 5 Story 5.6]
