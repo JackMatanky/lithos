@@ -31,6 +31,56 @@ use crate::spi::{
 /// memory overhead for typical small metadata sets.
 pub type MetadataMap = Vec<(String, String)>;
 
+/// Helper methods for working with `MetadataMap`.
+pub trait MetadataMapExt {
+    /// Get a value by key.
+    fn get(&self, key: &str) -> Option<&str>;
+
+    /// Check if a key exists.
+    fn has(&self, key: &str) -> bool;
+
+    /// Insert or update a key-value pair.
+    fn insert(&mut self, key: String, value: String);
+
+    /// Remove a key-value pair.
+    fn remove(&mut self, key: &str) -> Option<String>;
+}
+
+#[expect(
+    clippy::pattern_type_mismatch,
+    reason = "Vec<(String, String)> iter yields &(String, String), tuple \
+              destructuring is most ergonomic"
+)]
+impl MetadataMapExt for MetadataMap {
+    #[inline]
+    fn get(&self, key: &str) -> Option<&str> {
+        self.iter().find(|(k, _)| k.as_str() == key).map(|(_, v)| v.as_str())
+    }
+
+    #[inline]
+    fn has(&self, key: &str) -> bool {
+        self.iter().any(|(k, _)| k.as_str() == key)
+    }
+
+    #[inline]
+    fn insert(&mut self, key: String, value: String) {
+        if let Some(pos) = self.iter().position(|(k, _)| k.as_str() == key) {
+            if let Some(entry) = self.get_mut(pos) {
+                *entry = (key, value);
+            }
+        } else {
+            self.push((key, value));
+        }
+    }
+
+    #[inline]
+    fn remove(&mut self, key: &str) -> Option<String> {
+        self.iter()
+            .position(|(k, _)| k.as_str() == key)
+            .map(|pos| self.swap_remove(pos).1)
+    }
+}
+
 /// Type alias for cache retrieval results with metadata.
 pub type Outcome<V> = Result<Option<(V, MetadataMap)>, CacheError>;
 
@@ -120,9 +170,13 @@ where
 ///
 /// ```rust
 /// use lithos_adapters::spi::cache::RedbBuilder;
+/// use tempfile::tempdir;
+///
+/// let temp_dir = tempdir().unwrap();
+/// let db_path = temp_dir.path().join("cache.redb");
 ///
 /// let mut builder = RedbBuilder::<String, String>::new();
-/// builder.path("cache.redb").table_name("metadata");
+/// builder.path(db_path).table_name("metadata");
 ///
 /// let reader = builder.reader().unwrap();
 /// let writer = builder.writer().unwrap();
@@ -1465,6 +1519,119 @@ mod tests {
                 assert_eq!(res2.0, TestValue("v2".to_owned()));
             }
         );
+    }
+
+    mod metadata_ext {
+        use super::*;
+
+        #[test]
+        fn get_retrieves_value_by_key() {
+            // GIVEN: metadata with entries
+            let metadata: MetadataMap = vec![
+                ("version".to_owned(), "1.0".to_owned()),
+                ("hash".to_owned(), "abc123".to_owned()),
+            ];
+
+            // WHEN: getting an existing key
+            let value = MetadataMapExt::get(&metadata, "version");
+
+            // THEN: the value is returned
+            assert_eq!(value, Some("1.0"));
+        }
+
+        #[test]
+        fn get_returns_none_for_missing_key() {
+            // GIVEN: metadata with entries
+            let metadata: MetadataMap =
+                vec![("version".to_owned(), "1.0".to_owned())];
+
+            // WHEN: getting a missing key
+            let value = MetadataMapExt::get(&metadata, "missing");
+
+            // THEN: None is returned
+            assert_eq!(value, None);
+        }
+
+        #[test]
+        fn insert_adds_new_key() {
+            // GIVEN: empty metadata
+            let mut metadata: MetadataMap = Vec::new();
+
+            // WHEN: inserting a new key
+            MetadataMapExt::insert(
+                &mut metadata,
+                "version".to_owned(),
+                "1.0".to_owned(),
+            );
+
+            // THEN: the key is present
+            assert_eq!(metadata.len(), 1);
+            assert_eq!(MetadataMapExt::get(&metadata, "version"), Some("1.0"));
+        }
+
+        #[test]
+        fn insert_updates_existing_key() {
+            // GIVEN: metadata with an entry
+            let mut metadata: MetadataMap =
+                vec![("version".to_owned(), "1.0".to_owned())];
+
+            // WHEN: inserting the same key with new value
+            MetadataMapExt::insert(
+                &mut metadata,
+                "version".to_owned(),
+                "2.0".to_owned(),
+            );
+
+            // THEN: the value is updated and length unchanged
+            assert_eq!(metadata.len(), 1);
+            assert_eq!(MetadataMapExt::get(&metadata, "version"), Some("2.0"));
+        }
+
+        #[test]
+        fn has_detects_presence() {
+            // GIVEN: metadata with entries
+            let metadata: MetadataMap =
+                vec![("version".to_owned(), "1.0".to_owned())];
+
+            // WHEN: checking for existing and missing keys
+            let has_version = MetadataMapExt::has(&metadata, "version");
+            let has_missing = MetadataMapExt::has(&metadata, "missing");
+
+            // THEN: results match expectations
+            assert!(has_version);
+            assert!(!has_missing);
+        }
+
+        #[test]
+        fn remove_deletes_key_and_returns_value() {
+            // GIVEN: metadata with entries
+            let mut metadata: MetadataMap = vec![
+                ("version".to_owned(), "1.0".to_owned()),
+                ("hash".to_owned(), "abc123".to_owned()),
+            ];
+
+            // WHEN: removing an existing key
+            let removed = MetadataMapExt::remove(&mut metadata, "version");
+
+            // THEN: the value is returned and key is gone
+            assert_eq!(removed, Some("1.0".to_owned()));
+            assert_eq!(metadata.len(), 1);
+            assert!(!MetadataMapExt::has(&metadata, "version"));
+        }
+
+        #[test]
+        fn remove_returns_none_for_missing_key() {
+            // GIVEN: metadata with entries
+            let mut metadata: MetadataMap =
+                vec![("version".to_owned(), "1.0".to_owned())];
+
+            // WHEN: removing a missing key
+            let removed = MetadataMapExt::remove(&mut metadata, "missing");
+
+            // THEN: None is returned and metadata unchanged
+            assert_eq!(removed, None);
+            assert_eq!(metadata.len(), 1);
+        }
     }
 
     mod observability {
