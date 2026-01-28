@@ -27,7 +27,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-01-08
-updated: 2026-01-28
+updated: 2026-01-28T02:00:00Z
 project: lithos
 project_key: lithos
 tracking_system: file-system
@@ -90,7 +90,7 @@ development_status:
 
     epic-6: "in-progress"
     6-1-create-default-configuration-files-and-schema: "ready-for-dev"
-    6-2-implement-hierarchical-configuration-loading-with-figment: "backlog"
+    6-2-implement-hierarchical-configuration-loading-with-figment: "ready-for-dev"
     6-3-implement-structural-configuration-validation: "backlog"
     6-4-implement-configcache-using-epic-5-multi-layer-coordinator: "backlog"
     6-5-implement-config-singleton-registry: "backlog"
