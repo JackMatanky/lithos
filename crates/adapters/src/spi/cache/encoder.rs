@@ -134,7 +134,15 @@ where
         &self,
         encoded: &'view [u8],
     ) -> Result<&'view Self::Archived, CacheError> {
-        // Validation with bytecheck
+        // Validation with bytecheck. Zero-copy is only safe for aligned data.
+        let alignment = std::mem::align_of::<rkyv::Archived<V>>();
+        if encoded.as_ptr().align_offset(alignment) != 0 {
+            return Err(CacheError::SerializationError {
+                type_name: std::any::type_name::<V>(),
+                message: "Archived value is not properly aligned".into(),
+            });
+        }
+
         rkyv::access::<rkyv::Archived<V>, rkyv::rancor::Error>(encoded).map_err(
             |e| CacheError::SerializationError {
                 type_name: std::any::type_name::<V>(),
