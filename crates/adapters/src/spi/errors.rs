@@ -239,6 +239,18 @@ mod tests {
         assert!(display.contains("moka"));
     }
 
+    // [5.1-U-08] CacheError::PartialWrite
+    #[test]
+    fn should_create_partial_write_error() {
+        let error = CacheError::PartialWrite {
+            backend: "coordinator",
+            message: "disk committed, memory failed".into(),
+        };
+        let display = error.to_string();
+        assert!(display.contains("partial write"));
+        assert!(display.contains("coordinator"));
+    }
+
     // [5.1-U-06] CacheError::RuntimeError
     #[test]
     fn should_create_runtime_error() {
@@ -317,6 +329,15 @@ pub enum CacheError {
     /// I/O error during cache access.
     #[error("Cache I/O error: {0}")]
     IoError(#[from] std::io::Error),
+
+    /// Partial write succeeded in one layer but failed in another.
+    #[error("Cache partial write ({backend}): {message}")]
+    PartialWrite {
+        /// The name of the backend (e.g., "coordinator").
+        backend: &'static str,
+        /// Descriptive error message.
+        message: Box<str>,
+    },
 
     /// Runtime configuration error.
     #[error("Cache runtime ({runtime}) error: {message}")]

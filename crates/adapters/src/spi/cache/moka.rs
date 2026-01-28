@@ -39,6 +39,8 @@ use crate::spi::{
 /// let reader = builder.reader().unwrap();
 /// let writer = builder.writer().unwrap();
 /// ```
+///
+/// For fail-fast validation, use [`Builder::try_max_capacity`].
 #[derive(Debug, Clone)]
 pub struct Builder<K, V>
 where
@@ -79,8 +81,6 @@ where
     /// Set maximum capacity.
     #[inline]
     pub fn max_capacity(&mut self, capacity: usize) -> &mut Self {
-        // Validate capacity early to act as the owner of this constraint.
-        // The definitive validation still happens in inner_builder.
         if let Err(e) = Self::validate_capacity(capacity) {
             tracing::warn!(?e, "Invalid capacity provided to max_capacity");
         }
@@ -117,6 +117,21 @@ where
         self.time_to_live = Some(duration);
         self.reset_state();
         self
+    }
+
+    /// Set maximum capacity with fail-fast validation.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if the capacity is invalid.
+    #[inline]
+    pub fn try_max_capacity(
+        &mut self,
+        capacity: usize,
+    ) -> Result<&mut Self, CacheError> {
+        Self::validate_capacity(capacity)?;
+        self.max_capacity = capacity;
+        self.reset_state();
+        Ok(self)
     }
 
     /// Validate the given capacity and return the converted value.

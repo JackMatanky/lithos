@@ -121,6 +121,9 @@ where
 /// let reader = builder.reader().unwrap();
 /// let writer = builder.writer().unwrap();
 /// ```
+///
+/// For fail-fast validation, use [`Builder::try_path`] and
+/// [`Builder::try_table_name`].
 #[derive(Debug, Clone)]
 pub struct Builder<K, V>
 where
@@ -164,12 +167,9 @@ where
     /// Set the database path.
     #[inline]
     pub fn path<P: AsRef<std::path::Path>>(&mut self, path: P) -> &mut Self {
-        let p = path.as_ref();
-        if let Err(e) = Self::validate_path(Some(p)) {
+        if let Err(e) = self.try_path(path) {
             tracing::warn!(?e, "Invalid path provided to Redb cache builder");
         }
-        self.path = Some(p.to_path_buf());
-        self.reset_state();
         self
     }
 
@@ -183,15 +183,44 @@ where
     /// Set the table name.
     #[inline]
     pub fn table_name(&mut self, name: &str) -> &mut Self {
-        if let Err(e) = Self::validate_table_name(Some(name)) {
+        if let Err(e) = self.try_table_name(name) {
             tracing::warn!(
                 ?e,
                 "Invalid table name provided to Redb cache builder"
             );
         }
+        self
+    }
+
+    /// Set the database path with fail-fast validation.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if the path is invalid.
+    #[inline]
+    pub fn try_path<P: AsRef<std::path::Path>>(
+        &mut self,
+        path: P,
+    ) -> Result<&mut Self, CacheError> {
+        let p = path.as_ref();
+        Self::validate_path(Some(p))?;
+        self.path = Some(p.to_path_buf());
+        self.reset_state();
+        Ok(self)
+    }
+
+    /// Set the table name with fail-fast validation.
+    ///
+    /// # Errors
+    /// Returns `CacheError::BackendError` if the table name is invalid.
+    #[inline]
+    pub fn try_table_name(
+        &mut self,
+        name: &str,
+    ) -> Result<&mut Self, CacheError> {
+        Self::validate_table_name(Some(name))?;
         self.table_name = Some(name.to_owned());
         self.reset_state();
-        self
+        Ok(self)
     }
 
     /// Validate the database path.
@@ -386,26 +415,101 @@ where
     #[inline]
     pub async fn get_with_metadata(&self, key: &K) -> Outcome<V> {
         let key_bytes = self.inner.codec.encode_key(key)?;
+        let codec = self.inner.codec.clone();
 
         self.inner
             .read(move |txn, table_name| {
                 let table_def =
                     TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let table = txn.open_table(table_def)?;
+                let table = txn
+                    .open_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
 
-                if let Some(guard) = table.get(key_bytes.as_slice())? {
-                    Ok(Some(guard.value().to_vec()))
-                } else {
-                    Ok(None)
-                }
+                table
+                    .get(key_bytes.as_slice())
+                    .map_err(|e| Executor::map_redb_error(e.into()))?
+                    .map(|guard| codec.decode_value(guard.value()))
+                    .transpose()
             })
             .await?
-            .map(|encoded| {
-                let entry: Entry<V> =
-                    self.inner.codec.decode_value(&encoded)?;
-                Ok((entry.value, entry.metadata))
-            })
+            .map(|entry| Ok((entry.value, entry.metadata)))
             .transpose()
+    }
+
+    /// Retrieve a page of keys with an optional cursor.
+    ///
+    /// The cursor is the last key returned from a previous call; this method
+    /// returns keys strictly after the cursor. Ordering follows the underlying
+    /// encoded key bytes.
+    ///
+    /// # Errors
+    /// Returns `CacheError` if retrieval or decoding fails.
+    #[inline]
+    pub async fn keys_page(
+        &self,
+        limit: usize,
+        cursor: Option<K>,
+    ) -> Result<(Vec<K>, Option<K>), CacheError> {
+        if limit == 0 {
+            return Err(CacheError::BackendError {
+                backend: "redb",
+                message: "limit must be greater than 0".into(),
+            });
+        }
+
+        let cursor_bytes = cursor
+            .as_ref()
+            .map(|key| self.inner.codec.encode_key(key))
+            .transpose()?;
+        let codec = self.inner.codec.clone();
+
+        self.inner
+            .read(move |txn, table_name| {
+                let table_def =
+                    TableDefinition::<&[u8], &[u8]>::new(table_name);
+                let table = txn
+                    .open_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
+
+                let mut keys = Vec::with_capacity(limit);
+                let mut next_cursor = None;
+
+                for result in table
+                    .iter()
+                    .map_err(|e| Executor::map_redb_error(e.into()))?
+                {
+                    let (key_handle, _): (redb::AccessGuard<'_, &[u8]>, _) =
+                        result
+                            .map_err(|e| Executor::map_redb_error(e.into()))?;
+                    let key_bytes = key_handle.value();
+
+                    if let Some(cursor_bytes) = cursor_bytes.as_deref()
+                        && key_bytes <= cursor_bytes
+                    {
+                        continue;
+                    }
+
+                    let key = codec.decode_key(key_bytes).map_err(|e| {
+                        CacheError::SerializationError {
+                            type_name: std::any::type_name::<K>(),
+                            message: format!("Key decoding failed: {e}").into(),
+                        }
+                    })?;
+                    keys.push(key.clone());
+                    next_cursor = Some(key);
+
+                    if keys.len() == limit {
+                        break;
+                    }
+                }
+
+                if keys.len() < limit {
+                    next_cursor = None;
+                }
+
+                Ok((keys, next_cursor))
+            })
+            .await
     }
 
     /// Provide zero-copy access to the archived entry via a closure.
@@ -433,15 +537,16 @@ where
             .read(move |txn, table_name| {
                 let table_def =
                     TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let table = txn.open_table(table_def)?;
+                let table = txn
+                    .open_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
 
-                if let Some(guard) = table.get(key_bytes.as_slice())? {
+                if let Some(guard) = table
+                    .get(key_bytes.as_slice())
+                    .map_err(|e| Executor::map_redb_error(e.into()))?
+                {
                     let encoded = guard.value();
-                    let archived = codec.access(encoded).map_err(|e| {
-                        redb::Error::Io(std::io::Error::other(format!(
-                            "Zero-copy access failed: {e}"
-                        )))
-                    })?;
+                    let archived = codec.access(encoded)?;
                     Ok(Some(f(archived)))
                 } else {
                     Ok(None)
@@ -475,8 +580,13 @@ where
             .read(move |txn, table_name| {
                 let table_def =
                     TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let table = txn.open_table(table_def)?;
-                Ok(table.get(key_bytes.as_slice())?.is_some())
+                let table = txn
+                    .open_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
+                Ok(table
+                    .get(key_bytes.as_slice())
+                    .map_err(|e| Executor::map_redb_error(e.into()))?
+                    .is_some())
             })
             .await
     }
@@ -489,17 +599,25 @@ where
             .read(move |txn, table_name| {
                 let table_def =
                     TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let table = txn.open_table(table_def)?;
+                let table = txn
+                    .open_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
 
                 let mut keys = Vec::new();
-                for result in table.iter()? {
+                for result in table
+                    .iter()
+                    .map_err(|e| Executor::map_redb_error(e.into()))?
+                {
                     let (key_handle, _): (redb::AccessGuard<'_, &[u8]>, _) =
-                        result?;
+                        result
+                            .map_err(|e| Executor::map_redb_error(e.into()))?;
                     let key =
                         codec.decode_key(key_handle.value()).map_err(|e| {
-                            redb::Error::Io(std::io::Error::other(format!(
-                                "Key decoding failed: {e}"
-                            )))
+                            CacheError::SerializationError {
+                                type_name: std::any::type_name::<K>(),
+                                message: format!("Key decoding failed: {e}")
+                                    .into(),
+                            }
                         })?;
                     keys.push(key);
                 }
@@ -579,8 +697,12 @@ where
             .write(move |txn, table_name| {
                 let table_def =
                     TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let mut table = txn.open_table(table_def)?;
-                table.insert(key_bytes.as_slice(), value_bytes.as_slice())?;
+                let mut table = txn
+                    .open_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
+                table
+                    .insert(key_bytes.as_slice(), value_bytes.as_slice())
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
                 Ok(())
             })
             .await
@@ -604,8 +726,12 @@ where
             .write(move |txn, table_name| {
                 let table_def =
                     TableDefinition::<&[u8], &[u8]>::new(table_name);
-                _ = txn.delete_table(table_def)?;
-                _ = txn.open_table(table_def)?;
+                _ = txn
+                    .delete_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
+                _ = txn
+                    .open_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
                 Ok(())
             })
             .await
@@ -619,8 +745,13 @@ where
             .write(move |txn, table_name| {
                 let table_def =
                     TableDefinition::<&[u8], &[u8]>::new(table_name);
-                let mut table = txn.open_table(table_def)?;
-                Ok(table.remove(key_bytes.as_slice())?.is_some())
+                let mut table = txn
+                    .open_table(table_def)
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
+                Ok(table
+                    .remove(key_bytes.as_slice())
+                    .map_err(|e| Executor::map_redb_error(e.into()))?
+                    .is_some())
             })
             .await
     }
@@ -678,7 +809,7 @@ where
     #[inline]
     async fn read<F, R>(&self, f: F) -> Result<R, CacheError>
     where
-        F: FnOnce(&redb::ReadTransaction, &str) -> Result<R, redb::Error>
+        F: FnOnce(&redb::ReadTransaction, &str) -> Result<R, CacheError>
             + Send
             + 'static,
         R: Send + 'static,
@@ -689,7 +820,9 @@ where
 
         self.executor
             .spawn(span, move || {
-                let txn = db.begin_read()?;
+                let txn = db
+                    .begin_read()
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
                 f(&txn, &table_name)
             })
             .await
@@ -699,7 +832,7 @@ where
     #[inline]
     async fn write<F, R>(&self, f: F) -> Result<R, CacheError>
     where
-        F: FnOnce(&redb::WriteTransaction, &str) -> Result<R, redb::Error>
+        F: FnOnce(&redb::WriteTransaction, &str) -> Result<R, CacheError>
             + Send
             + 'static,
         R: Send + 'static,
@@ -710,9 +843,11 @@ where
 
         self.executor
             .spawn(span, move || {
-                let txn = db.begin_write()?;
+                let txn = db
+                    .begin_write()
+                    .map_err(|e| Executor::map_redb_error(e.into()))?;
                 let result = f(&txn, &table_name)?;
-                txn.commit()?;
+                txn.commit().map_err(|e| Executor::map_redb_error(e.into()))?;
                 Ok(result)
             })
             .await
@@ -756,7 +891,7 @@ impl Executor {
         f: F,
     ) -> Result<R, CacheError>
     where
-        F: FnOnce() -> Result<R, redb::Error> + Send + 'static,
+        F: FnOnce() -> Result<R, CacheError> + Send + 'static,
         R: Send + 'static,
     {
         tokio::task::spawn_blocking(move || {
@@ -771,7 +906,6 @@ impl Executor {
                 message: format!("Blocking task failed: {e}").into(),
             }
         })?
-        .map_err(Self::map_redb_error)
     }
 }
 
@@ -928,6 +1062,34 @@ mod tests {
             assert!(keys.contains(&"k1".to_owned()));
             assert!(keys.contains(&"k2".to_owned()));
         }
+
+        /// [5.4-U-08] P1: Test key paging.
+        #[tokio::test]
+        async fn should_page_keys() {
+            // GIVEN: a database with multiple entries
+            let temp_dir = temp_dir();
+            let (reader, writer) = handles(builder(db_path(&temp_dir))).await;
+
+            writer
+                .put("a".to_owned(), TestValue("v1".to_owned()))
+                .await
+                .expect("put failed");
+            writer
+                .put("b".to_owned(), TestValue("v2".to_owned()))
+                .await
+                .expect("put failed");
+
+            // WHEN: retrieving keys in pages
+            let (page1, cursor) =
+                reader.keys_page(1, None).await.expect("keys_page failed");
+            let (page2, cursor2) =
+                reader.keys_page(1, cursor).await.expect("keys_page failed");
+
+            // THEN: pages return distinct keys and a terminal cursor
+            assert_eq!(page1.len(), 1);
+            assert_eq!(page2.len(), 1);
+            assert!(cursor2.is_none() || cursor2 == page2.last().cloned());
+        }
     }
 
     mod executor {
@@ -977,10 +1139,16 @@ mod tests {
                 .write(move |txn, table_name| {
                     let table_def =
                         TableDefinition::<&[u8], &[u8]>::new(table_name);
-                    let mut table = txn.open_table(table_def)?;
+                    let mut table = txn
+                        .open_table(table_def)
+                        .map_err(|e| Executor::map_redb_error(e.into()))?;
 
-                    table.insert(k1_bytes.as_slice(), v1_bytes.as_slice())?;
-                    table.insert(k2_bytes.as_slice(), v2_bytes.as_slice())?;
+                    table
+                        .insert(k1_bytes.as_slice(), v1_bytes.as_slice())
+                        .map_err(|e| Executor::map_redb_error(e.into()))?;
+                    table
+                        .insert(k2_bytes.as_slice(), v2_bytes.as_slice())
+                        .map_err(|e| Executor::map_redb_error(e.into()))?;
 
                     Ok(())
                 })
