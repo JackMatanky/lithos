@@ -2,6 +2,7 @@
 
 **Version:** 3.1.0
 **Official Docs:** https://docs.rs/redb/latest/redb/
+**Design Doc:** https://github.com/cberner/redb/blob/master/docs/design.md
 **Repository:** https://github.com/cberner/redb
 **License:** MIT OR Apache-2.0
 
@@ -10,12 +11,13 @@
 redb (Rust Embedded DataBase) is a simple, portable, high-performance, ACID, embedded key-value store written in pure Rust. It provides zero-copy, thread-safe, BTreeMap-based API with full ACID compliance.
 
 redb access is transaction-scoped. Tables are opened within a read or write transaction, and guards returned by `get()` are tied to that transaction's lifetime.
+See https://docs.rs/redb/latest/redb/trait.ReadableDatabase.html#tymethod.begin_read and https://docs.rs/redb/latest/redb/struct.ReadTransaction.html#method.open_table.
 
 ## Core Features for Zero-Copy & High Performance
 
 ### 1. Zero-Copy Architecture
 
-#### Value Trait - Direct Memory Access
+#### [Value](https://docs.rs/redb/latest/redb/trait.Value.html) Trait - Direct Memory Access
 
 ```rust
 pub trait Value: Debug {
@@ -36,7 +38,7 @@ pub trait Value: Debug {
 - Direct byte slice interpretation for primitives
 - No serialization overhead for reads
 
-**Coherence Note:** You cannot implement `redb::Value` for standard library types like `String` or `Path` in a downstream crate due to Rust's orphan rules. Use a local newtype wrapper if you need a custom `Value` implementation.
+**Coherence Note:** You cannot implement `redb::Value` for standard library types like `String` or `Path` in a downstream crate due to Rust's [orphan rules](https://doc.rust-lang.org/reference/items/implementations.html#orphan-rules). Use a local newtype wrapper if you need a custom `Value` implementation.
 
 **Supported Types (Fixed Width - Optimal Performance):**
 
@@ -54,7 +56,7 @@ pub trait Value: Debug {
 
 ### 2. Performance-Critical Features
 
-#### AccessGuard - Zero-Copy Value Access
+#### [`AccessGuard`](https://docs.rs/redb/latest/redb/struct.AccessGuard.html) - Zero-Copy Value Access
 
 ```rust
 pub struct AccessGuard<'a, V: Value + 'static> {
@@ -75,8 +77,9 @@ impl<'a, V: Value> AccessGuard<'a, V> {
 - Lock-free reads via MVCC
 
 **Lifetime Note:** `AccessGuard` borrows from the transaction. Guards must not outlive the transaction or the table they were created from.
+See https://docs.rs/redb/latest/redb/struct.AccessGuard.html and https://docs.rs/redb/latest/redb/trait.ReadableTable.html#tymethod.get.
 
-#### MutInPlaceValue Trait - In-Place Mutations
+#### [`MutInPlaceValue`](https://docs.rs/redb/latest/redb/trait.MutInPlaceValue.html) Trait - In-Place Mutations
 
 ```rust
 pub trait MutInPlaceValue: Value {
@@ -101,6 +104,7 @@ pub trait MutInPlaceValue: Value {
 - Single writer can proceed without blocking readers
 - Readers see consistent snapshot
 - No lock contention for read operations
+See https://github.com/cberner/redb/blob/master/docs/design.md for MVCC design details.
 
 **Performance Implications:**
 
@@ -145,7 +149,7 @@ pub trait StorageBackend: Send + Sync {
 
 ### 6. Table Operations - Performance APIs
 
-#### ReadableTable Trait
+#### [`ReadableTable`](https://docs.rs/redb/latest/redb/trait.ReadableTable.html) Trait
 
 ```rust
 pub trait ReadableTable<K: Key + 'static, V: Value + 'static> {
@@ -172,6 +176,7 @@ for entry in table.range("start".."end")? {
     // Both key and value are zero-copy views
 }
 ```
+See https://docs.rs/redb/latest/redb/trait.ReadableTable.html#tymethod.range for range iteration details.
 
 #### Table Modifications
 
@@ -187,6 +192,7 @@ pub struct Table<'db, K: Key + 'static, V: Value + 'static> {
         -> Result<Option<AccessGuard<V>>>;
 }
 ```
+See https://docs.rs/redb/latest/redb/struct.Table.html#method.insert, https://docs.rs/redb/latest/redb/struct.Table.html#method.remove, and https://docs.rs/redb/latest/redb/struct.Table.html#method.insert_reserve.
 
 **`insert_reserve` for Zero-Allocation Writes:**
 
@@ -199,7 +205,7 @@ guard.as_mut().copy_from_slice(data);
 
 **Size Note:** `insert_reserve` takes a `u32` size. Callers should validate that serialized values fit within this limit before casting.
 
-### 7. Multimap Tables
+### 7. [Multimap Tables](https://docs.rs/redb/latest/redb/struct.MultimapTable.html)
 
 **High-Performance Duplicate Keys:**
 
@@ -256,6 +262,7 @@ pub struct Builder {
         -> Result<Database, DatabaseError>;
 }
 ```
+See https://docs.rs/redb/latest/redb/struct.Builder.html for builder configuration options.
 
 **Cache Size:**
 
@@ -286,6 +293,7 @@ impl WriteTransaction {
         -> Result<(), SetDurabilityError>;
 }
 ```
+See https://docs.rs/redb/latest/redb/enum.Durability.html for durability definitions.
 
 **Performance Trade-offs:**
 
@@ -357,7 +365,8 @@ impl WriteTransaction {
 - No compression (pure zero-copy)
 - File size growth (vacuuming needed)
 
-**Compaction Note:** `Database::compact()` performs a full rewrite and is typically a blocking operation. Plan for maintenance windows if using it on large datasets.
+**Compaction Note:** [`Database::compact()`](https://docs.rs/redb/latest/redb/struct.Database.html#method.compact) performs a full rewrite and is typically a blocking operation. Plan for maintenance windows if using it on large datasets.
+See https://github.com/cberner/redb/blob/master/docs/design.md for implementation details.
 
 ## Code Examples
 
