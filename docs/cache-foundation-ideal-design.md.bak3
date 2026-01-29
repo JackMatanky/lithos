@@ -1645,62 +1645,35 @@ impl<V> Codec<K, V> for RkyvCodec {
 
 ### 5.1 Method Signature Evolution
 
-**The Evolution Path (What We Learned):**
-
-#### Step 1: Owned Values (Original Mistake) ❌
-
-```rust
-fn get(&self, key: &K) -> Result<Option<V>, CacheError>;
-```
-
-**Problems:**
-- Forces `V: Clone` on entire API
-- Every read allocates and copies
-- Defeats zero-copy backends (redb, rkyv)
-
-#### Step 2: Add Async (Second Mistake) ❌
+**Current (Broken):**
 
 ```rust
 async fn get(&self, key: &K) -> Result<Option<V>, CacheError>;
 ```
 
-**Problems:**
-- Still forces cloning
-- Adds 5-10ns async state machine overhead
-- Requires `spawn_blocking` for sync backends (10-50µs overhead)
-- Both moka and redb are fundamentally sync
-
-#### Step 3: Guards + Async (Still Wrong) ❌
+**Better (Guard-Based):**
 
 ```rust
-async fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
+async fn get<'a>(&'a self, key: &K) -> Result<Option<Self::Guard<'a>>, CacheError>;
 ```
 
-**Problems:**
-- Guards are good (zero-copy) ✅
-- But async is still unnecessary overhead ❌
-- Why add async state machine when operations are sync?
-
-#### Step 4: Pure Sync Guards (CORRECT) ✅
+**Best (With GAT):**
 
 ```rust
 trait CacheReader {
     type Guard<'a>: CacheGuard where Self: 'a;
 
-    fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
+    async fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
 }
 ```
 
-**Why This Wins:**
-- Zero-copy via guards ✅
-- No async overhead ✅
-- Works with all sync backends (moka::sync, redb, sled) ✅
-- 1.7-5x faster than async version ✅
-
-**Complete Trait Definition (Final, Correct):**
+**Complete Trait Definition:**
 
 ```rust
-pub trait CacheReader<K>: Send + Sync + 'static
+use futures::stream::BoxStream;
+
+#[async_trait]
+pub trait CacheReader<K>: Send + Sync
 where
     K: Clone + Eq + Hash + Send + Sync + 'static,
 {
@@ -1708,44 +1681,47 @@ where
     type Value: Send + Sync + 'static;
 
     /// Guard providing borrowed access to cached values
-    type Guard<'a>: CacheGuard where Self: 'a;
+    type Guard<'a>: CacheGuard<Self::Value> where Self: 'a;
 
     /// Retrieve guard for key (zero-copy when possible)
-    fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
+    async fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
+
+    /// Batch get (default impl loops, backends can override for transactions)
+    async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<Self::Guard<'_>>>, CacheError> {
+        let mut results = Vec::with_capacity(keys.len());
+        for key in keys {
+            results.push(self.get(key).await?);
+        }
+        Ok(results)
+    }
 
     /// Check existence without materializing value
-    fn has(&self, key: &K) -> Result<bool, CacheError> {
-        Ok(self.get(key)?.is_some())
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        Ok(self.get(key).await?.is_some())
     }
 
-    /// Get timestamp only (staleness check optimization)
-    /// Stored in separate table as native u64 (see Section 5.5)
-    fn timestamp(&self, key: &K) -> Result<Option<Timestamp>, CacheError>;
+    /// Stream all keys (lazy, doesn't load values)
+    fn keys(&self) -> BoxStream<'_, Result<K, CacheError>>;
 
-    /// Count entries
-    fn len(&self) -> Result<usize, CacheError>;
+    /// Stream keys with prefix (directory-style access)
+    fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>;
 
-    /// Check if empty
-    fn is_empty(&self) -> Result<bool, CacheError> {
-        Ok(self.len()? == 0)
-    }
+    /// Get timestamp without reading value (staleness check optimization)
+    async fn timestamp(&self, key: &K) -> Result<Option<Timestamp>, CacheError>;
 }
 ```
 
-**Key Differences from "Wrong" Versions:**
+**Why BoxStream?**
 
-| Aspect | Wrong (Async) | Right (Sync) |
-|--------|---------------|--------------|
-| Method | `async fn get()` | `fn get()` |
-| Return | `V` (owned) | `Guard<'_>` (borrowed) |
-| Trait bound | `V: Clone` | No clone required |
-| Performance | +5-10ns overhead | Zero overhead |
-| Backend fit | Needs wrappers | Direct implementation |
+```rust
+// ❌ Memory explosion:
+async fn keys(&self) -> Result<Vec<K>, CacheError>;
+// For 1M keys × 256 bytes each = 256MB allocation
 
-**Note on Streaming:**
-- `keys()` and `scan_prefix()` removed from default trait
-- Backend-specific: Moka has no streaming, Redb does
-- Use extension traits if needed
+// ✅ Constant memory:
+fn keys(&self) -> BoxStream<'_, Result<K, CacheError>>;
+// Yields keys one at a time, consumer controls memory
+```
 
 ---
 
@@ -2441,63 +2417,28 @@ System is **eventually consistent** even after partial writes.
 
 ---
 
-### 6.5 Async is NOT Needed
+### 6.5 Async Necessity
 
-**Previous Misconception:** "We need async because moka has an async API"
-
-**Reality Check:**
-
-**Moka has TWO APIs:**
+**Moka:**
 
 ```rust
-// moka::future::Cache (async - DO NOT USE)
-pub async fn insert(&self, key: K, value: V)  // Just tokio::Mutex wrapper
-
-// moka::sync::Cache (sync - USE THIS)
-pub fn insert(&self, key: K, value: V)  // Direct implementation
+// moka API is async
+pub async fn insert(&self, key: K, value: V)
 ```
 
-Both use the same underlying concurrent hash table. The async version adds zero value.
-
-**Redb is pure sync:**
+**Redb:**
 
 ```rust
-// redb is mmap-based, inherently synchronous:
+// redb API is sync
 pub fn insert(&mut self, key: &[u8], value: &[u8]) -> Result<()>
 ```
 
 **Coordinator:**
 
-```rust
-// Pure sync coordinator (CORRECT):
-impl CacheWriter for Coordinator {
-    fn put(&self, key: &K, value: &V, timestamp: Timestamp) -> Result<()> {
-        // Write to both backends synchronously
-        self.memory.put(key, value, timestamp)?;
-        self.disk.put(key, value, timestamp)?;
-        Ok(())
-    }
+- Needs async to call both backends
+- Needs async for parallel delete/clear
 
-    fn delete(&self, key: &K) -> Result<bool> {
-        // Parallel delete via rayon (CPU parallelism, not async)
-        let mem_deleted = self.memory.delete(key)?;
-        let disk_deleted = self.disk.delete(key)?;
-        Ok(mem_deleted || disk_deleted)
-    }
-}
-```
-
-**If You Need Async (rare):**
-
-Use AsyncAdapter with spawn_blocking (Section 5.2.1):
-
-```rust
-let cache = AsyncCacheWriter::new(coordinator);
-cache.put(&key, &value, Timestamp::now()).await?;
-// Properly offloads to blocking thread pool
-```
-
-**Verdict:** Async is **not needed** for cache traits. Use pure sync. Only opt-in to async via adapter when truly required.
+**Verdict:** Keep async for API consistency and coordinator needs.
 
 ---
 
@@ -2575,19 +2516,19 @@ Total: 16 + 32 = 48 bytes (+ string data)
 **Moka is Eventually Consistent:**
 
 ```rust
-cache.insert(key, value);  // moka::sync::Cache
+cache.insert(key, value).await;
 let count = cache.entry_count();  // May be stale!
 ```
 
 **Why?**
-Moka batches operations in internal channels (60 ops or 300ms timeout) for performance.
+Moka batches operations in internal channels (60 ops or 300ms timeout).
 
 **Problem in Tests:**
 
 ```rust
-#[test]
-fn test_cache_insert() {
-    cache.put("key", "value").unwrap();
+#[tokio::test]
+async fn test_cache_insert() {
+    cache.put("key", "value").await.unwrap();
     assert_eq!(cache.entry_count(), 1);  // ❌ FLAKY: Might be 0!
 }
 ```
@@ -2595,15 +2536,13 @@ fn test_cache_insert() {
 **Solution:**
 
 ```rust
-#[test]
-fn test_cache_insert() {
-    cache.put("key", "value").unwrap();
-    cache.run_pending_tasks();  // Force synchronization (sync version)
+#[tokio::test]
+async fn test_cache_insert() {
+    cache.put("key", "value").await.unwrap();
+    cache.run_pending_tasks().await;  // Force synchronization
     assert_eq!(cache.entry_count(), 1);  // ✅ Deterministic
 }
 ```
-
-**Note:** Use `moka::sync::Cache` - its `run_pending_tasks()` is synchronous. The async version (`moka::future::Cache`) has an async method, but we don't use that API.
 
 **In Production:**
 
