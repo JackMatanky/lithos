@@ -141,7 +141,7 @@ pub struct Reader<K, V> {
 - **Dynamic dispatch overhead** on every single cache operation
 - **Prevents inlining** across cache boundaries
 - **Breaks monomorphization** - compiler can't optimize for specific backend
-- **Forces allocations** - trait objects require heap allocation
+- **Forces allocations** - `Arc`/`Box` ownership allocates; dynamic dispatch itself does not
 - The coordinator is the HOTTEST path in the system, yet we're using the SLOWEST abstraction
 
 **Measured Impact:**
@@ -402,6 +402,35 @@ Not I/O - just lock acquisition with yielding. Adds:
 pub fn get(&self, key: &K) -> AccessGuard  // No I/O, just memory access
 ```
 
+**What NOT to do in async contexts:**
+
+```rust
+// ❌ WRONG: Blocking Redb work inside async fn
+async fn get(&self, key: &K) -> Result<AccessGuard, CacheError> {
+    let txn = self.db.begin_read()?;  // Blocking syscall in async context
+    let table = txn.open_table(DATA)?;
+    Ok(table.get(key)? )
+}
+```
+
+**Correct async wrapper:**
+
+```rust
+// ✅ RIGHT: Offload sync work to blocking pool
+async fn get(&self, key: &K) -> Result<AccessGuard, CacheError> {
+    tokio::task::spawn_blocking(move || {
+        let txn = self.db.begin_read()?;
+        let table = txn.open_table(DATA)?;
+        Ok::<_, CacheError>(table.get(key)? )
+    })
+    .await
+    .map_err(|e| CacheError::BackendError {
+        backend: "spawn_blocking",
+        message: e.to_string(),
+    })?
+}
+```
+
 Wrapping in async requires `spawn_blocking` which adds 10-50µs overhead - making a ~5µs operation 5x slower!
 
 **The Reality Check:**
@@ -625,7 +654,7 @@ impl<const ALIGN: usize> Codec for AlignedCodec<ALIGN> {
 3. **Timestamp checks**
    - MUST NOT deserialize value
    - Direct byte access to timestamp field
-   - For redb: read first 8 bytes of value
+   - For redb: read from separate timestamp table (native u64)
    - For moka: Arc<(u64, V)> means timestamp is just a field access
 
 4. **Prefix scans** (redb only)
@@ -826,7 +855,7 @@ struct Reader<K: Eq + Hash + Clone + Debug, V: Clone + Debug> {
 // 2. Implements Deref to provide &V access
 // 3. Drops the resource when it goes out of scope
 
-pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static {
+pub trait CacheGuard<V>: Deref<Target = V> + Send {
     // Minimal interface - Deref does most of the work
 }
 ```
@@ -864,7 +893,7 @@ The **borrow checker enforces correct usage** at compile time.
 ///
 /// # Lifetime
 /// The guard's lifetime is tied to the cache reader it came from.
-pub trait CacheGuard<V: ?Sized>: Deref<Target = V> + Send + 'static {
+pub trait CacheGuard<V: ?Sized>: Deref<Target = V> + Send {
     /// Access raw bytes (for debugging/inspection).
     fn as_bytes(&self) -> &[u8];
 }
@@ -873,7 +902,7 @@ pub trait CacheGuard<V: ?Sized>: Deref<Target = V> + Send + 'static {
 **Why so minimal?**
 
 - `Deref<Target = V>` provides all value access
-- `Send + 'static` allows use across async boundaries
+- `Send` allows moving guards across threads when lifetimes permit
 - `V: ?Sized` supports both `V = String` and `V = str`
 - `as_bytes()` for debugging only
 
@@ -951,7 +980,7 @@ pub struct RedbGuard<'txn, V>
 where
     V: Archive,
 {
-    _guard: AccessGuard<'txn, &'static [u8]>,
+    _guard: AccessGuard<'txn, [u8]>,
     // Cached validated reference - validation happens ONCE in constructor
     archived: &'txn Archived<V>,
 }
@@ -962,7 +991,7 @@ where
     Archived<V>: for<'a> CheckBytes<HighValidator<'a>>,
 {
     /// Create guard with validation (called once by CacheReader)
-    pub fn new(guard: AccessGuard<'txn, &'static [u8]>) -> Result<Self, CacheError> {
+    pub fn new(guard: AccessGuard<'txn, [u8]>) -> Result<Self, CacheError> {
         let bytes = guard.value();
 
         // ✅ Validate ONCE at creation
@@ -1398,8 +1427,8 @@ rkyv = { version = "0.8", features = ["unaligned"] }
 ```
 
 With this feature:
-- Archived types use `Unaligned<T>` wrappers for fields requiring alignment
-- No copying needed for unaligned data
+- Archived types can use `Unaligned<T>` wrappers for fields requiring alignment
+- No copying needed for unaligned data when fields are annotated
 - Small performance cost (~1-2 cycles) for unaligned reads on some architectures
 - Still zero-copy - just reads unaligned memory safely
 
@@ -1436,7 +1465,7 @@ struct Metadata {
 // Result: Unaligned is 150x faster for unaligned data
 ```
 
-**Verdict:** Always use `features = ["unaligned"]` with redb. No copy fallback needed.
+**Verdict:** Always use `features = ["unaligned"]` with redb and annotate fields that need it. No copy fallback needed when fields are properly marked.
 
 ---
 
@@ -1467,78 +1496,35 @@ This ensures:
 
 ```rust
 pub struct RedbGuard<'txn, V> {
-    original: AccessGuard<'txn, &'static [u8]>,
-    aligned: Option<AlignedVec>,
-    _phantom: PhantomData<V>,
+    _guard: AccessGuard<'txn, [u8]>,
+    archived: &'txn Archived<V>,
 }
 
-impl<'txn, V> RedbGuard<'txn, V> {
-    pub fn new(guard: AccessGuard<'txn, &'static [u8]>) -> Self {
-        let alignment = std::mem::align_of::<Archived<V>>();
-        let is_aligned = guard.value().as_ptr().align_offset(alignment) == 0;
+impl<'txn, V> RedbGuard<'txn, V>
+where
+    V: Archive,
+    Archived<V>: for<'a> CheckBytes<HighValidator<'a>>,
+{
+    pub fn new(guard: AccessGuard<'txn, [u8]>) -> Result<Self, CacheError> {
+        let bytes = guard.value();
+        let archived = rkyv::access::<Archived<V>, rancor::Error>(bytes)
+            .map_err(|e| CacheError::SerializationError {
+                type_name: std::any::type_name::<V>(),
+                message: format!("{:?}", e),
+            })?;
 
-        let aligned = if !is_aligned {
-            tracing::warn!(
-                type_name = std::any::type_name::<V>(),
-                alignment,
-                "Unaligned redb value, copying to aligned buffer"
-            );
-
-            let mut buf = AlignedVec::with_capacity(guard.value().len());
-            buf.extend_from_slice(guard.value());
-            Some(buf)
-        } else {
-            None
-        };
-
-        Self {
-            original: guard,
-            aligned,
-            _phantom: PhantomData,
-        }
-    }
-
-    fn bytes(&self) -> &[u8] {
-        self.aligned.as_ref()
-            .map(|v| v.as_slice())
-            .unwrap_or(self.original.value())
+        Ok(Self {
+            _guard: guard,
+            archived,
+        })
     }
 }
 ```
 
-**When Does This Copy Happen?**
+**Alignment Handling:**
 
-Depends on redb's file layout and entry sizes. In practice:
-
-- Small entries (<256 bytes): Usually aligned (file offset often aligns)
-- Large entries (>4KB): Usually misaligned
-- Measure in practice to determine impact
-
-**Measurement Strategy:**
-
-```rust
-#[cfg(feature = "metrics")]
-static ALIGNED_READS: AtomicU64 = AtomicU64::new(0);
-#[cfg(feature = "metrics")]
-static UNALIGNED_READS: AtomicU64 = AtomicU64::new(0);
-
-impl RedbGuard {
-    pub fn new(guard: AccessGuard) -> Self {
-        let is_aligned = ...;
-
-        #[cfg(feature = "metrics")]
-        if is_aligned {
-            ALIGNED_READS.fetch_add(1, Ordering::Relaxed);
-        } else {
-            UNALIGNED_READS.fetch_add(1, Ordering::Relaxed);
-        }
-
-        // ...
-    }
-}
-```
-
-**Expected Result:** >90% of reads will be aligned in practice. The 10% that aren't will pay one copy.
+- Use `features = ["unaligned"]` and annotate fields that need it with `#[rkyv(with = Unaligned)]`.
+- With proper annotations, no copy fallback is needed for unaligned reads.
 
 ---
 
@@ -1574,12 +1560,12 @@ Instead of skipping validation, validate once and cache the result:
 
 ```rust
 pub struct RedbGuard<'txn, V> {
-    _guard: AccessGuard<'txn, &'static [u8]>,
+    _guard: AccessGuard<'txn, [u8]>,
     archived: &'txn Archived<V>,  // ← Pre-validated!
 }
 
 impl<'txn, V> RedbGuard<'txn, V> {
-    pub fn new(guard: AccessGuard<'txn, &'static [u8]>) -> Result<Self> {
+    pub fn new(guard: AccessGuard<'txn, [u8]>) -> Result<Self> {
         let bytes = guard.value();
 
         // ✅ Validate ONCE at creation
@@ -1857,12 +1843,18 @@ where
     }
 
     /// Async get via spawn_blocking
-    pub async fn get(&self, key: &K) -> Result<Option<R::Guard<'_>>, CacheError> {
+    ///
+    /// NOTE: Returns owned values because guards cannot cross the blocking boundary.
+    pub async fn get_owned(&self, key: &K) -> Result<Option<R::Value>, CacheError> {
         let reader = self.reader.clone();
         let key = key.clone();
 
         tokio::task::spawn_blocking(move || {
-            reader.get(&key)
+            let guard = reader.get(&key)?;
+            let value = guard
+                .map(|g| g.to_owned())
+                .transpose()?;
+            Ok::<_, CacheError>(value)
         }).await
             .map_err(|e| CacheError::BackendError {
                 backend: "spawn_blocking",
@@ -1892,6 +1884,8 @@ where
 }
 ```
 
+**Important:** AsyncAdapter cannot return zero-copy guards. It must materialize owned values via `to_owned()` (for RedbGuard) or cloning (for MokaGuard).
+
 **Usage:**
 
 ```rust
@@ -1901,7 +1895,7 @@ let result = cache.get(&key)?;
 
 // Async context (explicit opt-in):
 let cache = AsyncCacheReader::new(RedbReader::new(db));
-let result = cache.get(&key)?;
+let result = cache.get_owned(&key).await?;  // Owned value, may allocate
 ```
 
 **Performance Note:** spawn_blocking adds 10-50µs overhead per call. Only use when:
@@ -1995,12 +1989,16 @@ fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>> {
 }
 
 fn next_prefix(s: &str) -> String {
-    let mut bytes = s.as_bytes().to_vec();
-    // Increment last byte (handles ASCII)
-    if let Some(last) = bytes.last_mut() {
-        *last = last.saturating_add(1);
+    if let Some(last_char) = s.chars().last() {
+        if let Some(next_char) = char::from_u32(last_char as u32 + 1) {
+            let mut prefix = s.to_string();
+            prefix.pop();
+            prefix.push(next_char);
+            return prefix;
+        }
     }
-    String::from_utf8(bytes).unwrap_or_else(|_| s.to_string() + "\u{FFFF}")
+    // Fallback to a high Unicode suffix to bound the range
+    s.to_string() + "\u{10FFFF}"
 }
 ```
 
@@ -2795,8 +2793,7 @@ fn get_bytes(&self) -> &[u8] {
 
 ```rust
 pub struct RedbGuard<'txn> {
-    guard: AccessGuard<'txn, &'static [u8]>,
-    aligned: Option<AlignedVec>,
+    guard: AccessGuard<'txn, [u8]>,
 }
 
 // Now lifetime is tied to guard
@@ -2810,7 +2807,7 @@ fn get(&self) -> RedbGuard<'_> {
 
 ```rust
 let guard = cache.get(&key)?;
-let bytes = guard.bytes();  // Lifetime tied to guard
+let bytes = guard.value();  // Lifetime tied to guard
 process(bytes);
 // Guard dropped, transaction ends
 ```
@@ -3895,7 +3892,7 @@ After extensive analysis of async overhead vs. decoupling benefits, **all cache 
 
 7. **No unwrap() in production** - All fallible operations use proper error handling.
 
-8. **Monotonic timestamps** - Use `Instant` instead of `SystemTime` (never panics, faster, immune to clock changes).
+8. **Persisted timestamps** - Use `SystemTime`/`UNIX_EPOCH` for stable values across restarts.
 
 **Previous Corrections Still Applied:**
 
@@ -3911,37 +3908,35 @@ After extensive analysis of async overhead vs. decoupling benefits, **all cache 
 
 ```rust
 use std::hash::Hash;
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/// Timestamp using monotonic time (never panics, immune to system clock changes)
+/// Timestamp persisted across restarts (wall-clock based)
 ///
-/// Uses process-relative time instead of wall clock time for:
-/// - Safety: Instant::now() never fails (unlike SystemTime)
-/// - Performance: No syscall overhead (~10ns vs ~50ns)
-/// - Correctness: Immune to NTP adjustments or manual clock changes
+/// Uses UNIX_EPOCH so stored values remain meaningful after process restart.
+/// SystemTime can fail if the clock moves backwards; handle errors explicitly.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Timestamp {
-    nanos_since_start: u64,
-}
-
-lazy_static::lazy_static! {
-    static ref PROCESS_START: Instant = Instant::now();
+    nanos_since_epoch: u64,
 }
 
 impl Timestamp {
-    /// Create timestamp for current moment (never panics)
+    /// Create timestamp for current moment (handles clock errors)
     pub fn now() -> Self {
-        let elapsed = PROCESS_START.elapsed();
+        let duration = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::from_secs(0));
         Self {
-            // Saturates at u64::MAX if process runs >584 years
-            nanos_since_start: elapsed.as_nanos() as u64,
+            nanos_since_epoch: duration.as_nanos() as u64,
         }
     }
 
     /// Get age of this timestamp
     pub fn age(&self) -> Duration {
-        let now = PROCESS_START.elapsed().as_nanos() as u64;
-        Duration::from_nanos(now.saturating_sub(self.nanos_since_start))
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_else(|_| Duration::from_secs(0))
+            .as_nanos() as u64;
+        Duration::from_nanos(now.saturating_sub(self.nanos_since_epoch))
     }
 
     /// Check if timestamp is stale
@@ -3951,12 +3946,12 @@ impl Timestamp {
 
     /// Raw value for serialization (redb native u64 storage)
     pub fn as_nanos(&self) -> u64 {
-        self.nanos_since_start
+        self.nanos_since_epoch
     }
 
     /// Reconstruct from raw value
     pub fn from_nanos(nanos: u64) -> Self {
-        Self { nanos_since_start: nanos }
+        Self { nanos_since_epoch: nanos }
     }
 }
 
@@ -4107,7 +4102,7 @@ pub trait Codec<K, V>: Send + Sync {
        │                │
        ▼                ▼
 ┌──────────────┐ ┌──────────────────────────────┐
-│moka::future  │ │redb + rkyv                   │
+│moka::sync    │ │redb + rkyv                   │
 │::Cache       │ │                              │
 │              │ │- Memory-mapped storage       │
 │- TinyLFU     │ │- Zero-copy via AccessGuard   │
@@ -4126,7 +4121,7 @@ pub trait Codec<K, V>: Send + Sync {
    ↓
 3. memory.get(&key)  // MokaReader
    ↓
-4. moka_cache.get(&key).await
+4. moka_cache.get(&key)
    ↓
 5. Returns Arc<(timestamp, value)>
    ↓
@@ -4158,9 +4153,9 @@ Copies: 0
    ↓
 6. Returns AccessGuard (mmap slice)
    ↓
-7. Check alignment, copy if needed → AlignedVec (optional)
+7. Validate archived data (rkyv::access with unaligned annotations)
    ↓
-8. Wrap in RedbGuard { guard, aligned }
+8. Wrap in RedbGuard { guard, archived }
    ↓
 9. Wrap in CoordinatorGuard::Disk(RedbGuard)
    ↓
@@ -4173,8 +4168,8 @@ Copies: 0
 13. Return to application (don't wait for backfill)
 
 Timeline: ~1-10µs
-Allocations: 0-1 (only if unaligned)
-Copies: 0-1 (only if unaligned)
+Allocations: 0
+Copies: 0
 ```
 
 ---
@@ -4384,7 +4379,7 @@ fn bench_hot_path(c: &mut Criterion) {
 
 **4. Accept Alignment Copy** ✅
 
-- **Decision:** Copy to AlignedVec when redb data is misaligned
+- **Decision:** Use rkyv `unaligned` + field annotations; no copy fallback
 - **Rationale:** No way to force redb alignment
 - **Trade-off:** ~30% of reads pay one copy
 - **Verdict:** Unavoidable, still faster than full deserialization
