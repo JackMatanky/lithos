@@ -1233,7 +1233,12 @@ impl<K, V> Codec<K, V> for RkyvCodec {
 ```rust
 // In RedbWriter::put():
 let size = self.codec.serialized_size(&value)?;
-let mut guard = table.insert_reserve(&key, size as u32)?;
+let size_u32 = u32::try_from(size)
+    .map_err(|_| CacheError::SerializationError {
+        type_name: std::any::type_name::<V>(),
+        message: format!("Value too large: {} bytes", size),
+    })?;
+let mut guard = table.insert_reserve(&key, size_u32)?;
 self.codec.serialize_into(&value, guard.as_mut())?;
 // Zero intermediate allocations!
 ```
@@ -1308,14 +1313,7 @@ impl Deserialize<String> for ArchivedString {
 
 **The Problem:**
 
-rkyv requires 16-byte alignment for `Archived<T>`:
-
-```rust
-#[repr(C, align(16))]
-struct Archived<T> { ... }
-```
-
-redb's `AccessGuard` provides `&[u8]` from mmap, which is only **1-byte aligned**.
+rkyv's archived types may require specific alignment (often 16-byte) depending on the types they contain. redb's `AccessGuard` provides `&[u8]` from mmap, which has no alignment guarantees.
 
 **Measurement:**
 
@@ -1326,75 +1324,83 @@ let alignment = bytes.as_ptr().align_offset(16);
 // alignment will almost never be 0
 ```
 
-**Three Solutions:**
+**The Correct Solution: Use rkyv's `unaligned` Feature**
 
-**Solution 1: Copy to Aligned Buffer (Current Plan)**
+rkyv provides an `unaligned` feature that eliminates alignment requirements entirely:
+
+```toml
+# Cargo.toml
+[dependencies]
+rkyv = { version = "0.8", features = ["unaligned"] }
+```
+
+With this feature:
+- Archived types use `Unaligned<T>` wrappers for fields requiring alignment
+- No copying needed for unaligned data
+- Small performance cost (~1-2 cycles) for unaligned reads on some architectures
+- Still zero-copy - just reads unaligned memory safely
 
 ```rust
-fn access<'a>(&self, bytes: &'a [u8]) -> Result<&'a Archived<V>> {
-    let alignment = std::mem::align_of::<Archived<V>>();
-    if bytes.as_ptr().align_offset(alignment) != 0 {
-        // ❌ Copy to aligned buffer
-        let mut aligned = AlignedVec::<16>::new();
-        aligned.extend_from_slice(bytes);
-        // ⚠️ Problem: aligned buffer is owned, can't return reference with lifetime 'a
-    }
-    // ...
+use rkyv::with::Unaligned;
+
+#[derive(Archive, Serialize)]
+struct Metadata {
+    #[rkyv(with = Unaligned)]
+    timestamp: u64,
+    name: String,
 }
 ```
 
-**This doesn't work!** We can't return a reference to a local allocation.
-
-**Solution 2: Store Aligned Buffer in Guard**
+**Why This is Better Than Copying:**
 
 ```rust
-pub struct RedbGuard<'txn, V> {
-    guard: AccessGuard<'txn, &'static [u8]>,
-    aligned: Option<AlignedVec>,  // Stored here if needed
-    _phantom: PhantomData<V>,
-}
+// With copy fallback (WRONG):
+// - 70% of reads: zero-copy (aligned)
+// - 30% of reads: one full copy (unaligned)
 
-impl<'txn, V> RedbGuard<'txn, V> {
-    fn new(guard: AccessGuard<'txn, &'static [u8]>) -> Self {
-        let bytes = guard.value();
-        let alignment = std::mem::align_of::<Archived<V>>();
-
-        let aligned = if bytes.as_ptr().align_offset(alignment) != 0 {
-            let mut buf = AlignedVec::<16>::new();
-            buf.extend_from_slice(bytes);
-            Some(buf)
-        } else {
-            None
-        };
-
-        Self { guard, aligned, _phantom: PhantomData }
-    }
-
-    fn bytes(&self) -> &[u8] {
-        self.aligned.as_ref()
-            .map(|a| a.as_slice())
-            .unwrap_or(self.guard.value())
-    }
-}
+// With unaligned feature (RIGHT):
+// - 100% of reads: zero-copy
+// - Slight CPU overhead on unaligned access (1-2 cycles)
+// - No allocations ever
 ```
 
-**Cost:**
+**Performance Comparison:**
 
-- Aligned case: ~0 cost (no copy)
-- Unaligned case: One copy (unavoidable), but stored in guard
-- Subsequent accesses: Zero cost (use aligned buffer)
+```rust
+// Copy approach: 30% of 1KB reads = ~300ns copy time
+// Unaligned approach: 100% of reads = ~2ns extra per access
 
-**Solution 3: Configure redb for Aligned Writes**
+// Result: Unaligned is 150x faster for unaligned data
+```
 
-redb doesn't support this. It's a memory-mapped file - alignment is determined by the OS and file position.
-
-**Verdict:** Solution 2 is the only viable approach. Accept the copy on unaligned data.
+**Verdict:** Always use `features = ["unaligned"]` with redb. No copy fallback needed.
 
 ---
 
-### 4.5 The Copy Fallback
+### 4.5 Endianness Considerations
 
-**Accepting Reality:**
+**Cross-Platform Compatibility:**
+
+When using rkyv with persistent storage, lock down endianness to avoid cross-platform issues:
+
+```toml
+# Cargo.toml
+[dependencies]
+rkyv = { version = "0.8", features = ["unaligned", "little_endian"] }
+```
+
+This ensures:
+- Consistent serialization format across architectures
+- No runtime endianness conversion
+- Safe to copy database files between x86/ARM/etc.
+
+**For Lithos:** Always use `little_endian` feature. Modern systems are predominantly little-endian.
+
+---
+
+### 4.6 Complete Codec Implementation
+
+**Putting it all together:**
 
 ```rust
 pub struct RedbGuard<'txn, V> {
@@ -1810,7 +1816,15 @@ impl CacheReader for RedbReader {
             return Ok(None);
         };
 
-        // Read only first 8 bytes (timestamp is first field)
+        // WARNING: Reading raw bytes without rkyv validation
+        // This assumes:
+        // 1. Timestamp is first field in serialized format
+        // 2. Little-endian encoding (lock with features = ["little_endian"])
+        // 3. No corruption (or accept risk of wrong timestamp, not UB)
+        //
+        // TRADE-OFF: 125x faster, but bypasses validation
+        // If data corruption is likely, use full deserialization instead
+
         let bytes = guard.value();
         if bytes.len() < 8 {
             return Err(CacheError::CorruptedData);
@@ -1824,7 +1838,9 @@ impl CacheReader for RedbReader {
 }
 ```
 
-**Cost:** ~100-500ns (B-tree lookup + 8-byte read). **No rkyv validation or deserialization.**
+**Cost:** ~100ns (B-tree lookup + 8-byte read). **No rkyv validation or deserialization.**
+
+**CRITICAL NOTE:** This optimization bypasses rkyv validation. It's safe from UB (just reading a u64), but may return garbage on corruption. For safety-critical applications, validate first or store timestamps separately.
 
 **Why This Matters:**
 
@@ -2466,7 +2482,13 @@ One allocation per lookup.
 **Alternative:**
 
 ```rust
-impl redb::Value for String {
+// WARNING: Cannot implement redb::Value for String directly due to orphan rules
+// (foreign trait on foreign type). Instead, use newtype wrapper:
+
+#[repr(transparent)]
+pub struct CacheKey(String);
+
+impl redb::Value for CacheKey {
     type SelfType<'a> = &'a str;
     type AsBytes<'a> = &'a [u8];
 
@@ -2481,15 +2503,16 @@ impl redb::Value for String {
     }
 
     fn type_name() -> TypeName {
-        TypeName::new("String")
+        TypeName::new("CacheKey")
     }
 }
 
 // Now:
-table.get(key.as_str())?;  // No allocation!
+let key = CacheKey(key_string);
+table.get(key.0.as_str())?;  // No allocation!
 ```
 
-**Verdict:** Implement `Value` for `String` and `Path`. Eliminates key encoding allocations.
+**Verdict:** Use newtype wrapper to avoid orphan rule. Eliminates key encoding allocations.
 
 #### Transaction Batching
 
@@ -2603,11 +2626,18 @@ db.compact()?;  // Rewrites file, reclaims space
 
 **Cost:** Full database copy (~seconds for GB-sized DBs).
 
+**⚠️ WARNING: Compaction is Disruptive**
+- Blocks all read and write operations during compaction
+- Creates a temporary copy (requires 2x disk space temporarily)
+- Can take seconds to minutes for large databases
+- Not safe to run during normal operations
+
 **When to Compact:**
 
 - After large deletions (>50% of data)
-- During maintenance windows
+- During maintenance windows or application downtime
 - When file size is excessive
+- **Never** during normal operation with active queries
 
 **Auto-Compaction:**
 Redb doesn't have it. We'd need to implement:
@@ -3126,12 +3156,20 @@ impl Reader {
 
 ```rust
 /// Events emitted by cache operations
-pub enum CacheEvent<K, V> {
+///
+/// NOTE: Requires Clone for event notification to multiple observers
+#[derive(Clone)]
+pub enum CacheEvent<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
     Hit { key: K, source: CacheLayer },
     Miss { key: K },
     Write { key: K, value: V },
 }
 
+#[derive(Clone, Copy, Debug)]
 pub enum CacheLayer {
     Memory,
     Disk,
@@ -3441,6 +3479,32 @@ async fn test_backfill_triggered() {
 
 ### 10.1 Complete Trait Definitions
 
+**TECHNICAL NOTE: Corrections Applied**
+
+This section has been corrected based on detailed technical review. Key corrections:
+
+1. **Guard trait does NOT use `Deref<Target=V>`** - rkyv's `Archived<T>` is a different type than `T`, making `Deref<Target=V>` impossible. Use `as_ref()` pattern instead.
+
+2. **Guard trait does NOT require `'static`** - conflicts with redb's `AccessGuard<'a>` lifetime. Guards must have flexible lifetimes.
+
+3. **Native async traits (RPITIT)** - not `#[async_trait]` which adds `Pin<Box<dyn Future>>` allocation overhead.
+
+4. **`get_many` has lifetime issues** - documented as problematic. Default impl may not work correctly. Consider removing or using callbacks/owned values.
+
+5. **Clone bounds explicit** - `CacheWriter::put_many` default impl requires `V: Clone`, declared in where clause.
+
+6. **No `From<rkyv::rancor::Error>`** - rancor::Error is a trait, not a concrete type. Handle errors explicitly at call sites.
+
+7. **Alignment handled by rkyv's `unaligned` feature** - no copy fallback needed. See Section 4.4.
+
+8. **Timestamp query bypasses validation** - trades safety for 125x performance. See Section 5.5 for caveats.
+
+9. **Events require Clone** - `CacheEvent<K, V>` needs `K: Clone, V: Clone` for multi-observer notification.
+
+10. **Use `try_into()` not `as`** - for usize→u32 conversions that may overflow.
+
+---
+
 ```rust
 use std::hash::Hash;
 use futures::stream::BoxStream;
@@ -3466,24 +3530,36 @@ impl Timestamp {
 }
 
 /// Guard trait providing borrowed access to cached values
-pub trait CacheGuard<V: ?Sized>: Deref<Target = V> + Send + 'static {
+///
+/// NOTE: This trait does NOT use `Deref<Target = V>` because:
+/// 1. Archived types (rkyv::Archived<T>) are different types than T
+/// 2. We cannot have `'static` requirement - guards must have flexible lifetimes
+/// 3. The `as_ref()` pattern is more explicit and works with generic associated types
+pub trait CacheGuard: Send {
+    type Target: ?Sized;
+
+    /// Access the cached value
+    fn as_ref(&self) -> &Self::Target;
+
     /// Access raw bytes (for debugging)
     fn as_bytes(&self) -> &[u8];
 }
 
 /// Extended guard trait for timestamp access
-pub trait TimestampedGuard<V: ?Sized>: CacheGuard<V> {
+pub trait TimestampedGuard: CacheGuard {
     fn timestamp(&self) -> Timestamp;
 }
 
 /// Cache reader trait (query side)
-#[async_trait]
+///
+/// NOTE: Uses native async traits (RPITIT), not #[async_trait].
+/// This avoids allocations from Pin<Box<dyn Future>>.
 pub trait CacheReader<K>: Send + Sync + 'static
 where
     K: Clone + Eq + Hash + Send + Sync + 'static,
 {
     type Value: Send + Sync + 'static;
-    type Guard<'a>: CacheGuard<Self::Value> where Self: 'a;
+    type Guard<'a>: CacheGuard where Self: 'a;
 
     /// Get value guard (zero-copy when possible)
     async fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
@@ -3503,7 +3579,18 @@ where
     fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>;
 
     /// Batch get (default: sequential)
+    ///
+    /// NOTE: This default implementation has lifetime issues - the returned guards
+    /// are tied to `self`, but we're creating them in a loop. Implementations should
+    /// either:
+    /// 1. Not provide batch operations (remove this method)
+    /// 2. Use a different approach (e.g., callbacks, or return owned values)
+    /// 3. Use unsafe to extend lifetimes (NOT recommended)
+    ///
+    /// This is kept as documentation of the problem, but shouldn't be used as-is.
     async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<Self::Guard<'_>>>, CacheError> {
+        // FIXME: This compiles but has subtle lifetime issues
+        // The guards reference a transaction that may be dropped
         let mut results = Vec::with_capacity(keys.len());
         for key in keys {
             results.push(self.get(key).await?);
@@ -3513,7 +3600,9 @@ where
 }
 
 /// Cache writer trait (command side)
-#[async_trait]
+///
+/// NOTE: Uses native async traits (RPITIT), not #[async_trait].
+/// Implementations that need `V: Clone` must add that bound explicitly.
 pub trait CacheWriter<K, V>: Send + Sync + 'static
 where
     K: Clone + Eq + Hash + Send + Sync + 'static,
@@ -3529,7 +3618,10 @@ where
     async fn clear(&self) -> Result<(), CacheError>;
 
     /// Batch insert (default: sequential)
-    async fn put_many(&self, entries: &[(&K, &V)]) -> Result<(), CacheError> {
+    async fn put_many(&self, entries: &[(&K, &V)]) -> Result<(), CacheError>
+    where
+        V: Clone,  // NOTE: Trait doesn't require Clone, but default impl does
+    {
         for (k, v) in entries {
             self.put(k, v).await?;
         }
@@ -3705,14 +3797,19 @@ impl From<redb::Error> for CacheError {
     }
 }
 
-impl From<rkyv::rancor::Error> for CacheError {
-    fn from(e: rkyv::rancor::Error) -> Self {
-        CacheError::SerializationError {
-            type_name: "unknown",
-            message: e.to_string(),
-        }
-    }
-}
+// NOTE: Cannot implement From<rkyv::rancor::Error> because:
+// 1. rkyv::rancor::Error is not a concrete type - it's a trait
+// 2. rkyv 0.8+ uses a different error handling approach
+//
+// Instead, handle rkyv errors explicitly at call sites:
+//
+// match rkyv::to_bytes::<MyType>(&value) {
+//     Ok(bytes) => ...,
+//     Err(e) => return Err(CacheError::SerializationError {
+//         type_name: std::any::type_name::<MyType>(),
+//         message: format!("{:?}", e),
+//     }),
+// }
 ```
 
 **Error Recovery:**
@@ -3761,8 +3858,10 @@ use proptest::prelude::*;
 proptest! {
     #[test]
     fn codec_roundtrip_property(value: Metadata) {
-        let bytes = codec.to_bytes(&value)?;
-        let decoded = codec.from_bytes(&bytes)?;
+        // NOTE: Using rkyv directly, not through codec trait
+        let bytes = rkyv::to_bytes::<Metadata>(&value).unwrap();
+        let archived = rkyv::access::<ArchivedMetadata, rkyv::rancor::Error>(&bytes).unwrap();
+        let decoded: Metadata = archived.deserialize(&mut rkyv::Infallible).unwrap();
         assert_eq!(value, decoded);
     }
 }
@@ -3867,10 +3966,11 @@ fn bench_hot_path(c: &mut Criterion) {
 
 **8. Arc<(Timestamp, V)> in Moka** ✅
 
-- **Decision:** Tuple instead of Entry struct
+- **Decision:** Tuple instead of Entry struct for moka cache storage
 - **Rationale:** Minimal overhead, direct field access
-- **Trade-off:** No metadata support in memory
-- **Verdict:** Metadata belongs on disk, not memory
+- **Trade-off:** Less flexible than a struct
+- **Verdict:** Simple and efficient
+- **NOTE:** The `V` here is the full Lithos metadata value (e.g., `NoteMetadata` struct with all fields like file_class, path, tags, etc.). The tuple is just `(timestamp, full_metadata)`, not a stripped-down version. All metadata is stored in both memory and disk for consistency.
 
 ---
 
@@ -3960,12 +4060,11 @@ fn bench_hot_path(c: &mut Criterion) {
 
 ### 11.4 Technical Debt Accepted
 
-**1. Alignment Copy for Unaligned Redb Data** (Acceptable)
+**1. ~~Alignment Copy for Unaligned Redb Data~~** (RESOLVED ✅)
 
-- **Debt:** Copy to AlignedVec for ~30% of reads
-- **Why:** No way to force redb alignment
-- **Impact:** One copy, but still faster than full deserialization
-- **Repayment:** Would need redb to support aligned writes (unlikely)
+- **Previous Debt:** Copy to AlignedVec for ~30% of reads
+- **Resolution:** Use rkyv's `unaligned` feature instead (see Section 4.4)
+- **Status:** No longer tech debt - fixed with proper feature flags
 
 **2. Serialize Twice in Two-Phase Codec** (Acceptable)
 
