@@ -428,6 +428,21 @@ tasks:
 - [Core Resources](../_bmad/core/) - Additional tools and configurations.
 - [Project Context](../_bmad-output/project-context.md) - Comprehensive rules for AI agents.
 
+## Technical Reference Documentation
+
+Performance-critical library references for zero-copy and high-performance systems:
+
+- [redb Reference](./docs/refs/redb-reference.md) - Zero-copy embedded database with MVCC and ACID transactions
+- [moka Reference](./docs/refs/moka-reference.md) - High-performance concurrent cache with TinyLFU eviction
+- [rkyv Reference](./docs/refs/rkyv-reference.md) - Zero-copy serialization framework with validation
+- [Lithos Integration Guide](./docs/refs/lithos-integration-guide.md) - Integration patterns combining all three libraries
+
+**Quick Reference:**
+- Zero-copy persistent storage → redb
+- In-memory concurrent caching → moka
+- Zero-copy serialization format → rkyv
+- Combined architecture patterns → Integration Guide
+
 ## MCP Servers
 
 When you need to search docs, use `context7` tools.
