@@ -13,25 +13,25 @@ We write specs to:
 
 ## How to use the Template
 
-The `template.md` is comprehensive, but **not every feature needs every section**. Use this "T-Shirt Sizing" guide to right-size your doc.
+The `template.md` is comprehensive, but **not every feature needs every section**. Use this "Right-Sizing" guide to adjust your doc.
 
-### 👕 Small Feature (The "One-Pager")
+### Small Feature (The "One-Pager")
 *Use for: Internal refactors, minor API additions.*
 *   **Keep**: 1. Problem Space, 2. Guide-Level Explanation (API), 3. Detailed Design.
 *   **Delete**: Alternatives, Pre-Mortem, Operational Readiness.
 
-### 👚 Medium Feature (The Standard)
+### Medium Feature (The Standard)
 *Use for: New Modules, Database Schema changes, Performance work.*
 *   **Keep**: All sections.
 *   **Merge**: You can merge "Operational Readiness" into "Detailed Design" if simple.
 
-### 🧥 Large Feature (The System)
+### Large Feature (The System)
 *Use for: Distributed Systems, Critical Path changes, Public APIs.*
 *   **Keep**: Everything. **Crucial**: Do not skip "Pre-Mortem" or "Alternatives".
 
 ---
 
-## 🤖 AI-Assisted Workflow (The "Easy Mode")
+## AI-Assisted Workflow (The "Easy Mode")
 
 The template is designed to be filled by an AI agent acting as a Principal Engineer. Don't stare at a blank page.
 

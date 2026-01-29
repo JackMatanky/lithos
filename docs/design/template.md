@@ -9,6 +9,8 @@ tags: [cache, refactor, performance]
 
 # Tech Spec: [Feature Name]
 
+> **Note**: See `docs/design/README.md` for usage instructions and T-Shirt sizing.
+
 ## 1. Problem Space (The "Why")
 <!--
 THE PLANNING PHASE
