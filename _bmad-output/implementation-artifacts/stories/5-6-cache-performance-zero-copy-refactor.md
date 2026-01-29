@@ -77,20 +77,21 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
     - [ ] 1.5.3: Ensure `MetadataMap` archives into `rkyv::collections::ArchivedHashMap`.
   - [ ] Subtask 1.6: Update `encoder.rs` unit tests to use the new zero-copy handshake.
 
-### Phase 2: Guard Pattern & Base Implementation
-- [ ] Task 2: Define `CacheGuard` and introduce it to all backends
-  - [ ] Subtask 2.1: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static` in `mod.rs`.
-  - [ ] Subtask 2.2: Add `type Guard: CacheGuard<V>` to `CacheReader`.
-  - [ ] Subtask 2.3: Update `MokaReader`, `RedbReader`, and `ReaderCoordinator` to return basic Guards (e.g. `Arc<V>` for Moka).
+### Phase 2: Metadata & Guard Foundation
+- [ ] Task 2: Define unified metadata and guard structures
+  - [ ] Subtask 2.1: Define `pub struct CacheMetadata` in `mod.rs` containing `timestamp: u64` and `MetadataMap`.
+  - [ ] Subtask 2.2: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static`.
+  - [ ] Subtask 2.3: Add `fn metadata(&self) -> &CacheMetadata` to `CacheGuard`.
+  - [ ] Subtask 2.4: Update `MokaReader` to store `Arc<(V, CacheMetadata)>` to enable nanosecond staleness checks without disk access.
+  - [ ] Subtask 2.5: Update `RedbReader` to return a Guard that provides zero-copy access to the embedded `CacheMetadata` within the archived `Entry<V>`.
 
 ### Phase 3: Read API Evolution (Stream & Prefix)
 - [ ] Task 3: Implement new high-performance read APIs
   - [ ] Subtask 3.1: Add `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>` to `CacheReader`.
-  - [ ] Subtask 3.2: Add `async fn timestamp(&self, key: &K) -> Result<Option<u64>, CacheError>` to `CacheReader`.
-  - [ ] Subtask 3.3: Refactor `keys()` to return a `BoxStream<'_, Result<K, CacheError>>`.
-  - [ ] Subtask 3.4: Add `fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>`.
+  - [ ] Subtask 3.2: Add `async fn metadata(&self, key: &K) -> Result<Option<CacheMetadata>, CacheError>` to `CacheReader`.
+  - [ ] Subtask 3.3: Refactor `timestamp(&self, key: &K)` to be a default method based on `metadata`.
+  - [ ] Subtask 3.4: Refactor `keys()` and `scan_prefix()` to return `BoxStream`.
   - [ ] Subtask 3.5: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
-  - [ ] Subtask 3.6: Implement `scan_prefix` in `RedbReader` using `table.range(prefix..)` for $O(\log N)$ directory listing.
 
 ### Phase 4: Single Write Method Refactor
 - [ ] Task 4: Update `CacheWriter` for reference-based writes
@@ -155,51 +156,19 @@ where
 {
     type Guard: CacheGuard<V>;
 
-    /// Retrieve a guard providing zero-copy access to the value.
+    /// Retrieve a guard providing zero-copy access to the value and metadata.
     async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
 
-    /// Retrieve only the timestamp for a key (Zero-copy optimization).
-    async fn timestamp(&self, key: &K) -> Result<Option<u64>, CacheError>;
+    /// Retrieve only the metadata for a key (Zero-copy optimization).
+    async fn metadata(&self, key: &K) -> Result<Option<CacheMetadata>, CacheError>;
 
-    /// Retrieve all keys currently present in the cache as a stream.
-    fn keys(&self) -> BoxStream<'_, Result<K, CacheError>>;
-
-    /// Scan keys starting with a specific prefix (Directory traversal optimization).
-    fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>;
-
-    /// Batch retrieval of values.
-    async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<V>>, CacheError> {
-        let mut results = Vec::with_capacity(keys.len());
-        for key in keys {
-            results.push(self.get_owned(key).await?);
-        }
-        Ok(results)
+    /// Retrieve only the timestamp (default implementation).
+    async fn timestamp(&self, key: &K) -> Result<Option<u64>, CacheError> {
+        Ok(self.metadata(key).await?.map(|m| m.timestamp))
     }
-
-    /// Batch retrieval of timestamps.
-    async fn get_many_timestamps(&self, keys: &[K]) -> Result<Vec<Option<u64>>, CacheError> {
-        let mut results = Vec::with_capacity(keys.len());
-        for key in keys {
-            results.push(self.timestamp(key).await?);
-        }
-        Ok(results)
-    }
-
-    /// Existing: Backward compatibility (Forces cloning).
-    async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError>
-    where V: Clone
-    {
-        Ok(self.get(key).await?.map(|g| (*g).clone()))
-    }
-
-    /// Existing: Performance optimization (Uses get internally).
-    async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        Ok(self.get(key).await?.is_some())
-    }
-
-    async fn keys(&self) -> Result<Vec<K>, CacheError>;
-}
+...
 ```
+
 
 
 #### Planned `Codec` Trait Definition
