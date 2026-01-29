@@ -93,33 +93,51 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
   - [ ] Subtask 3.4: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
   - [ ] Subtask 3.5: Implement `scan_prefix` in `RedbReader` using `table.range(prefix..)` for $O(log N)$ directory listing.
 
-### Phase 4: Single Write Method Refactor
-- [ ] Task 4: Update `CacheWriter` for reference-based writes
-  - [ ] Subtask 4.1: Update `CacheWriter::put` to take `value: &V` instead of `value: V`.
-  - [ ] Subtask 4.2: Implement `put` in `MokaWriter` and `RedbWriter` using the new `Codec` handshake.
+### Phase 4: Single Write API Evolution
+- [ ] Task 4: Refactor `CacheWriter` for zero-copy and reference-based writes
+  - [ ] Subtask 4.1: Update `CacheWriter::put` signature: `async fn put(&self, key: K, value: &V, timestamp: CacheTimestamp)`.
+  - [ ] Subtask 4.2: Implement reference-based `put` in `MokaWriter`.
+  - [ ] Subtask 4.3: Implement zero-copy `put` in `RedbWriter` using `codec.serialized_size` + `insert_reserve` + `codec.serialize_into`.
 
-### Phase 5: Batch Operations Refactor
-- [ ] Task 5: Implement efficient batch processing
-  - [ ] Subtask 5.1: Add `get_many` and `get_many_timestamps` to `CacheReader` (with default loop implementations).
-  - [ ] Subtask 5.2: Override `get_many` in `RedbReader` to use a single transaction.
-  - [ ] Subtask 5.3: Add `put_many` to `CacheWriter` and implement specialized version for `RedbWriter`.
+### Phase 5: Batch Operations & Directory Performance
+- [ ] Task 5: Implement high-performance batch and scanning APIs
+  - [ ] Subtask 5.1: Add `get_many` and `get_many_timestamps` to `CacheReader` (providing default loop implementations).
+  - [ ] Subtask 5.2: Add `put_many` to `CacheWriter`.
+  - [ ] Subtask 5.3: Override batch methods in `RedbReader/Writer` to use single transactions.
+  - [ ] Subtask 5.4: Implement `scan_prefix` in `RedbReader` using `table.range(prefix..)` for $O(log N)$ directory-style listing.
+  - [ ] Subtask 5.5: Implement `scan_prefix` in `MokaReader` (filtering keys).
 
 ### Phase 6: Moka-Specific Enhancements
-- [ ] Task 6: Add Moka metrics and maintenance APIs
-  - [ ] Subtask 6.1: Add `metrics()` API to `MokaReader`.
-  - [ ] Subtask 6.2: Add `run_pending_tasks()` to `MokaWriter` and update `clear()` to use it.
-  - [ ] Subtask 6.3: Add optional `weigher` support to `MokaBuilder`.
-  - [ ] Subtask 6.4: Update Moka tests to remove `sleep` workarounds in favor of `run_pending_tasks()`.
+- [ ] Task 6: Add Moka metrics, maintenance, and weigher APIs
+  - [ ] Subtask 6.1: Add `metrics()` API returning `MokaMetrics` (entry_count, weighted_size, max_capacity).
+  - [ ] Subtask 6.2: Add `run_pending_tasks()` to `MokaWriter`.
+  - [ ] Subtask 6.3: Integrate `run_pending_tasks()` into `clear()` to ensure deterministic test cleanup.
+  - [ ] Subtask 6.4: Add `weigher` support to `MokaBuilder` for size-based eviction policies.
+  - [ ] Subtask 6.5: Refactor existing Moka unit tests to remove `sleep` workarounds in favor of explicit maintenance calls.
 
 ### Phase 7: Redb-Specific Enhancements
 - [ ] Task 7: Finalize Redb performance optimizations
-  - [ ] Subtask 7.1: Verify `insert_reserve` usage in `RedbWriter`.
-  - [ ] Subtask 7.2: Ensure alignment fallback logic is robust in `RedbReader`.
+  - [ ] Subtask 7.1: Implement specialized `timestamp(key)` in `RedbReader` that reads only the `CacheMetadata` prefix from the memory-mapped bytes.
+  - [ ] Subtask 7.2: Verify zero-copy `insert_reserve` performance in `RedbWriter`.
+  - [ ] Subtask 7.3: Implement `compact()` or analyze `redb` auto-compaction settings for long-term database health.
+  - [ ] Subtask 7.4: Ensure alignment fallback logic is robust and logs performance warnings when triggered.
 
 ### Phase 8: Coordinator & Monomorphism Refactor
-- [ ] Task 8: Refactor `coordinator.rs` for performance
-  - [ ] Subtask 8.1: Remove trait objects (`Box<dyn ...>`) in favor of monomorphic generics.
-  - [ ] Subtask 8.2: Ensure `Coordinator` correctly routes all new batch and single methods.
+- [ ] Task 8: Refactor `coordinator.rs` for performance and zero-copy routing
+  - [ ] Subtask 8.1: Eliminate `Box<dyn ...>` trait objects. Refactor `Reader<K, V, RM, RD>` and `Writer<K, V, WM, WD>` to use monomorphic generics for memory (M) and disk (D) backends.
+  - [ ] Subtask 8.2: Implement `CacheReader::get` for the Coordinator:
+    - [ ] 8.2.1: Define `CoordinatorGuard` enum that can wrap either a memory-cache Guard or a disk-cache Guard.
+    - [ ] 8.2.2: Implement `get` logic: Check memory, return `CoordinatorGuard::Memory`. If miss, check disk, return `CoordinatorGuard::Disk`, and trigger background backfill.
+  - [ ] Subtask 8.3: Implement optimized `timestamp()` routing:
+    - [ ] 8.3.1: Check memory cache first (using the lightweight `CacheTimestamp`).
+    - [ ] 8.3.2: Fall back to disk if memory miss.
+  - [ ] Subtask 8.4: Implement `scan_prefix` and `keys()` routing:
+    - [ ] 8.4.1: Stream results primarily from disk.
+    - [ ] 8.4.2: For `keys()`, merge and deduplicate streams from memory and disk using `StreamExt::merge` or similar.
+  - [ ] Subtask 8.5: Refactor `put` for reference-based zero-copy writes:
+    - [ ] 8.5.1: Write to Disk first using the 2-pass `Codec` handshake.
+    - [ ] 8.5.2: Write to Memory using the owned `(V, CacheTimestamp)` tuple.
+  - [ ] Subtask 8.6: Update `BackfillWorker` to handle the new `Entry<V>` to `(V, CacheTimestamp)` conversion.
 
 ### Phase 9: Deprecation Cleanup & Validation
 - [ ] Task 9: Final cleanup and performance verification
@@ -161,7 +179,52 @@ where
 
     /// Retrieve only the timestamp for a key (Zero-copy optimization).
     async fn timestamp(&self, key: &K) -> Result<Option<CacheTimestamp>, CacheError>;
-...
+
+    /// Retrieve all keys currently present in the cache as a stream.
+    fn keys(&self) -> BoxStream<'_, Result<K, CacheError>>;
+
+    /// Scan keys starting with a specific prefix (Directory traversal optimization).
+    fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>;
+
+    /// Batch retrieval of values.
+    async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<V>>, CacheError> {
+        let mut results = Vec::with_capacity(keys.len());
+        for key in keys {
+            results.push(self.get_owned(key).await?);
+        }
+        Ok(results)
+    }
+
+    /// Batch retrieval of timestamps.
+    async fn get_many_timestamps(&self, keys: &[K]) -> Result<Vec<Option<u64>>, CacheError> {
+        let mut results = Vec::with_capacity(keys.len());
+        for key in keys {
+            results.push(self.timestamp(key).await?.map(|t| t.0));
+        }
+        Ok(results)
+    }
+
+    /// Existing: Backward compatibility (Forces cloning).
+    async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError>
+    where V: Clone
+    {
+        Ok(self.get(key).await?.map(|g| (*g).clone()))
+    }
+
+    /// Existing: Performance optimization (Uses get internally).
+    async fn has(&self, key: &K) -> Result<bool, CacheError> {
+        Ok(self.get(key).await?.is_some())
+    }
+}
+
+/// Guard type that provides deref access to cached values.
+pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static {
+    /// Access raw bytes of the cached entry (for Codec::access).
+    fn as_bytes(&self) -> &[u8];
+
+    /// Access the lightweight timestamp.
+    fn timestamp(&self) -> CacheTimestamp;
+}
 ```
 
 
