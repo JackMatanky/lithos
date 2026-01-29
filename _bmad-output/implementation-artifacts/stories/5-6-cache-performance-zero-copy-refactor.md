@@ -141,6 +141,9 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 - **Streaming Keys**: `keys()` and `scan_prefix()` now return `BoxStream` to prevent memory spikes during large cache enumerations.
 - **Entry in Moka**: Storing `Entry<V>` in Moka enables $O(1)$ nanosecond timestamp checks by treating `timestamp` as a field access rather than a property of a deserialized object.
 - **Phased Migration**: Legacy methods are marked as `#[deprecated]` in Phase 2 to allow incremental migration of backends and the coordinator. Phase 9 removes them entirely once the migration is complete.
+- **Two-Pass Write**: `redb` requires knowing the size before granting a buffer (`insert_reserve`). The codec now provides `serialized_size()` followed by `serialize_into(&mut [u8])`.
+- **Pure Views**: The codec only provides `access_*` methods. If an owned value is needed, the caller must explicitly call `.deserialize()` on the archived view, making the performance penalty visible.
+- **Rkyv 0.8 Strategy**: Use `rkyv::api::high::to_bytes_in` for zero-copy writes into pre-allocated memory via `rkyv::ser::writer::Buffer`. Leverage `rkyv::collections::ArchivedHashMap` for $O(1)$ zero-copy metadata lookups.
 
 #### Planned `CacheReader` and `CacheGuard` Trait Definition
 ```rust
