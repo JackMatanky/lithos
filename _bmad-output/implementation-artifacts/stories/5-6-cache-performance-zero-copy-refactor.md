@@ -71,21 +71,26 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
   - [ ] Subtask 1.2: Add `type ArchivedKey` and `type ArchivedValue` associated types to the `Codec` trait.
   - [ ] Subtask 1.3: Define new zero-copy handshake methods (`serialized_key_size`, `serialize_key_into`, `serialized_value_size`, `serialize_value_into`).
   - [ ] Subtask 1.4: Define new pure read views (`access_key`, `access_value`).
-  - [ ] Subtask 1.5: Implement `RkyvCodec` extensions for `rkyv 0.8`.
+  - [ ] Subtask 1.5: Implement `RkyvCodec` extensions for `rkyv 0.8`:
+    - [ ] 1.5.1: Implement "Aligned-or-Copy" strategy: check alignment of input slices and copy to an `AlignedVec` only if the 16-byte requirement is not met.
+    - [ ] 1.5.2: Implement `serialized_value_size` and `serialize_value_into` using `rkyv` 0.8 handshake.
+    - [ ] 1.5.3: Ensure `MetadataMap` archives into `rkyv::collections::ArchivedHashMap`.
   - [ ] Subtask 1.6: Update `encoder.rs` unit tests to use the new zero-copy handshake.
 
 ### Phase 2: Guard Pattern & Base Implementation
 - [ ] Task 2: Define `CacheGuard` and introduce it to all backends
   - [ ] Subtask 2.1: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static` in `mod.rs`.
   - [ ] Subtask 2.2: Add `type Guard: CacheGuard<V>` to `CacheReader`.
-  - [ ] Subtask 2.3: Update `MokaReader`, `RedbReader`, and `ReaderCoordinator` to return basic Guards (e.g. `Arc<V>` for Moka, simple wrapper for Redb).
+  - [ ] Subtask 2.3: Update `MokaReader`, `RedbReader`, and `ReaderCoordinator` to return basic Guards (e.g. `Arc<V>` for Moka).
 
-### Phase 3: Single Read Method Refactor
-- [ ] Task 3: Implement new high-performance single-read APIs
-  - [ ] Subtask 3.1: Add `async fn get_ref(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>` to `CacheReader`.
+### Phase 3: Read API Evolution (Stream & Prefix)
+- [ ] Task 3: Implement new high-performance read APIs
+  - [ ] Subtask 3.1: Add `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>` to `CacheReader`.
   - [ ] Subtask 3.2: Add `async fn timestamp(&self, key: &K) -> Result<Option<u64>, CacheError>` to `CacheReader`.
-  - [ ] Subtask 3.3: Refactor `get` and `has` to be default methods based on `get_ref`.
-  - [ ] Subtask 3.4: Implement `get_ref` and `timestamp` in `MokaReader` and `RedbReader` (leveraging zero-copy entry access).
+  - [ ] Subtask 3.3: Refactor `keys()` to return a `BoxStream<'_, Result<K, CacheError>>`.
+  - [ ] Subtask 3.4: Add `fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>`.
+  - [ ] Subtask 3.5: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
+  - [ ] Subtask 3.6: Implement `scan_prefix` in `RedbReader` using `table.range(prefix..)` for $O(\log N)$ directory listing.
 
 ### Phase 4: Single Write Method Refactor
 - [ ] Task 4: Update `CacheWriter` for reference-based writes
@@ -131,10 +136,11 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
 - **Moka Entry**: Storing `Entry` allows checking metadata without cloning the value or deserializing if it was lazy.
 
 ### Zero-Copy Codec Refactor Plan
-- **Phased Migration**: Legacy methods are marked as `#[deprecated]` in Phase 2 to allow incremental migration of backends and the coordinator. Phase 7 removes them entirely once the migration is complete.
-- **Two-Pass Write**: `redb` requires knowing the size before granting a buffer (`insert_reserve`). The codec now provides `serialized_size()` followed by `serialize_into(&mut [u8])`.
-- **Pure Views**: The codec only provides `access_*` methods. If an owned value is needed, the caller must explicitly call `.deserialize()` on the archived view, making the performance penalty visible.
-- **Rkyv 0.8 Strategy**: Use `rkyv::api::high::to_bytes_in` for zero-copy writes into pre-allocated memory via `rkyv::ser::writer::Buffer`. Leverage `rkyv::collections::ArchivedHashMap` for $O(1)$ zero-copy metadata lookups.
+- **Aligned-or-Copy Strategy**: `redb` values are memory-mapped but not guaranteed to be 16-byte aligned. The `RkyvCodec` will now check alignment and perform a single copy into an `AlignedVec` only if necessary, ensuring `rkyv` compatibility without forcing disk-level alignment.
+- **Directory Traversal**: Added `scan_prefix` to the `CacheReader` to support $O(\log N)$ directory listing in the Directory module.
+- **Streaming Keys**: `keys()` and `scan_prefix()` now return `BoxStream` to prevent memory spikes during large cache enumerations.
+- **Entry in Moka**: Storing `Entry<V>` in Moka enables $O(1)$ nanosecond timestamp checks by treating `timestamp` as a field access rather than a property of a deserialized object.
+- **Phased Migration**: Legacy methods are marked as `#[deprecated]` in Phase 2 to allow incremental migration of backends and the coordinator. Phase 9 removes them entirely once the migration is complete.
 
 #### Planned `CacheReader` and `CacheGuard` Trait Definition
 ```rust
@@ -147,16 +153,22 @@ where
     type Guard: CacheGuard<V>;
 
     /// Retrieve a guard providing zero-copy access to the value.
-    async fn get_ref(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
+    async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
 
     /// Retrieve only the timestamp for a key (Zero-copy optimization).
     async fn timestamp(&self, key: &K) -> Result<Option<u64>, CacheError>;
+
+    /// Retrieve all keys currently present in the cache as a stream.
+    fn keys(&self) -> BoxStream<'_, Result<K, CacheError>>;
+
+    /// Scan keys starting with a specific prefix (Directory traversal optimization).
+    fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>;
 
     /// Batch retrieval of values.
     async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<V>>, CacheError> {
         let mut results = Vec::with_capacity(keys.len());
         for key in keys {
-            results.push(self.get(key).await?);
+            results.push(self.get_owned(key).await?);
         }
         Ok(results)
     }
@@ -171,15 +183,15 @@ where
     }
 
     /// Existing: Backward compatibility (Forces cloning).
-    async fn get(&self, key: &K) -> Result<Option<V>, CacheError>
+    async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError>
     where V: Clone
     {
-        Ok(self.get_ref(key).await?.map(|g| (*g).clone()))
+        Ok(self.get(key).await?.map(|g| (*g).clone()))
     }
 
-    /// Existing: Performance optimization (Uses get_ref internally).
+    /// Existing: Performance optimization (Uses get internally).
     async fn has(&self, key: &K) -> Result<bool, CacheError> {
-        Ok(self.get_ref(key).await?.is_some())
+        Ok(self.get(key).await?.is_some())
     }
 
     async fn keys(&self) -> Result<Vec<K>, CacheError>;
