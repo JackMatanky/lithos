@@ -47,6 +47,72 @@ To activate specialized agents, use: `"As [agent-name], ..."` (e.g., `"As dev, i
 
 For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-context.md)
 
+## Key Architectural Constraints
+
+⚠️ **NON-NEGOTIABLE RULES**:
+1. **Domain purity**: `crates/domain/` MUST have zero external dependencies
+2. **Zero-copy patterns**: Use rkyv for serialization, avoid cloning in hot paths
+3. **Test-first**: Red-green-refactor cycle required - tests before implementation
+4. **ADRs required**: Document all architectural decisions in [docs/adr/](docs/adr/)
+5. **Hexagonal architecture**: Domain → App → Adapters (dependencies flow inward only)
+
+## Where Does This Code Go?
+
+**Pure business logic (no I/O)?** → `crates/domain/src/`
+**Application orchestration?** → `crates/app/src/`
+**Database/cache/file operations?** → `crates/adapters/src/spi/`
+**API/CLI interface?** → `crates/adapters/src/api/` or `crates/cli/src/`
+**Tests for domain logic?** → Same file as impl with `#[cfg(test)]`
+**Integration tests?** → `tests/suite/integration/`
+**Benchmarks?** → `benches/`
+
+## Critical Rust Patterns & Anti-Patterns
+
+### ✅ Always Do
+- **Error handling**: Use `Result<T, E>` with `?` operator, never `unwrap()`/`expect()` in production
+- **Paths**: Use `PathBuf` (owned) or `&Path` (borrowed), NEVER `String` for file paths
+- **String efficiency**: Use `&str` for borrows, `Box<str>` for immutable data, `String` only when mutable
+- **Async blocking**: Use `tokio::task::spawn_blocking` for any `std::fs` or CPU-intensive work
+- **Collections**: Use `.get()` instead of `[index]`, `entry()` API for HashMap updates
+- **Conversion traits**: Implement `From/Into` for infallible conversions, `TryFrom/TryInto` for fallible ones
+- **Lifetimes as documentation**: `fn get<'a>(&'a self) -> Guard<'a>` shows zero-copy, `fn get(&self) -> T` hides allocation
+
+### ❌ Never Do
+- **String cloning for paths**: Path operations must use `Path`/`PathBuf` APIs
+- **Clone in traits**: `trait Cache<V: Clone>` forces all implementations to allocate
+- **Unwrap/panic**: Use `?`, `ok_or()`, `context()` - panics crash the process
+- **Async mutex across await**: NEVER hold `std::sync::MutexGuard` across `.await` (deadlock risk)
+- **Numeric casting with 'as'**: Use `.try_into()?` to catch overflow/truncation errors
+- **Generic `String` errors**: Use `thiserror` for structured errors with context
+- **Ad-hoc conversions**: Don't write `to_x()` methods - use `From/Into` traits instead
+
+### 🎯 Performance Patterns
+- **Zero-copy reads**: Return guards (`Deref<Target=V>`) not owned values
+- **Batch transactions**: One redb write transaction for bulk operations, not one per item
+- **Arc for shared state**: `Arc<T>` is cheap to clone (atomic refcount), clone the Arc not T
+- **Avoid premature async**: moka and redb are sync - adding async adds 50ns overhead
+
+## Definition of Done
+
+Before marking any task complete:
+- [ ] All tests pass (`mise run test`)
+- [ ] Code formatted (`mise run fmt`)
+- [ ] No clippy warnings (`mise run lint`)
+- [ ] All public APIs have tests (functions, methods, traits)
+- [ ] Tests cover critical paths and business logic (not chasing % targets)
+- [ ] No `unwrap()`/`panic!` in production code
+- [ ] Hexagonal boundaries respected (domain has zero external deps)
+- [ ] Documentation updated (doc comments for public APIs)
+- [ ] ADR created if architectural decision made
+
+## Before Submitting Work
+
+1. **Run full verification**: `mise run verify` must be 100% green
+2. **Check architecture compliance**: `mise run test:arch` passes
+3. **Review test quality**: Critical paths tested, edge cases covered
+4. **Code hygiene check**: No debug prints, commented code, or TODOs
+5. **Documentation**: If architectural change, ADR created in `docs/adr/`
+
 ## Common Commands (mise tasks)
 
 | Command                      | Action                                                                            |
@@ -84,53 +150,3 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 | `mise run test:arch`         | Run architectural enforcement tests using `purity` binary.                        |
 | `mise run test:coverage`     | Generate code coverage reports using `tarpaulin`.                                 |
 | `mise run test:watch`        | Watch mode: automatically run tests on file changes.                              |
-
-## Glossary of Terms
-
-- **BMAD Method**: A structured approach to software development using specialized AI agents and workflows for efficient task execution.
-- **Hexagonal Architecture**: A design pattern separating core business logic from external interfaces, ensuring testability and flexibility.
-- **Session ID**: A unique identifier used to maintain state across multiple agent invocations.
-- **Trimodal Workflows**: Workflows that handle creation, editing, and validation in a single framework.
-- **Task Orchestration**: The process of coordinating multiple agents and tools to complete complex tasks.
-- **Agent Persona**: The defined role, communication style, and capabilities of a BMAD agent.
-
-## Troubleshooting and FAQ
-
-### Common Issues
-- **Agent Activation Fails**: Ensure the agent name matches exactly (case-sensitive). Check for typos in "As [agent-name]".
-- **Workflow Times Out**: Provide more specific prompts or break tasks into smaller steps. Use session_ids for stateful workflows.
-- **Mise Command Errors**: Verify mise.toml for correct tool versions. Run `mise run dev-setup` to install dependencies.
-- **Session Continuity Lost**: Always pass session_id in chained calls. Agents are stateless by default.
-
-### Frequently Asked Questions
-- **Q: Which agent should I use for code review?** A: Use `tea` for test architecture or `dev` for general coding tasks.
-- **Q: How do I add a new workflow?** A: Use `workflow-builder` agent to create and validate it.
-- **Q: What if no agent matches my task?** A: Start with `bmad-master` for orchestration guidance.
-- **Q: How to handle agent errors?** A: Check prompts for clarity; retry with more context or switch agents.
-
-## Technical Reference Documentation
-
-Performance-critical library references for zero-copy and high-performance systems:
-
-- [redb Reference](./docs/refs/redb-reference.md) - Zero-copy embedded database with MVCC and ACID transactions
-- [moka Reference](./docs/refs/moka-reference.md) - High-performance concurrent cache with TinyLFU eviction
-- [rkyv Reference](./docs/refs/rkyv-reference.md) - Zero-copy serialization framework with validation
-- [Lithos Integration Guide](./docs/refs/lithos-integration-guide.md) - Integration patterns combining all three libraries
-
-**Quick Reference:**
-- Zero-copy persistent storage → redb
-- In-memory concurrent caching → moka
-- Zero-copy serialization format → rkyv
-- Combined architecture patterns → Integration Guide
-
-## MCP Servers
-
-When you need to search docs, use `context7` tools.
-Key Architectural Constraints
-
-⚠️ **NON-NEGOTIABLE RULES**:
-1. **Domain purity**: `crates/domain/` MUST have zero external dependencies
-2. **Zero-copy patterns**: Use rkyv for serialization, avoid cloning in hot paths
-3. **Test-first**: Red-green-refactor cycle required - tests before implementation
-4. **ADRs required**: Document all architectural decisions in [docs/adr/](docs/adr/)
-5. **Hexagonal architecture**: Domain → App → Adapters (dependencies flow inward only)
