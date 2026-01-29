@@ -177,15 +177,6 @@ where
     /// Retrieve a guard providing zero-copy access to the value and timestamp.
     async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
 
-    /// Retrieve only the timestamp for a key (Zero-copy optimization).
-    async fn timestamp(&self, key: &K) -> Result<Option<CacheTimestamp>, CacheError>;
-
-    /// Retrieve all keys currently present in the cache as a stream.
-    fn keys(&self) -> BoxStream<'_, Result<K, CacheError>>;
-
-    /// Scan keys starting with a specific prefix (Directory traversal optimization).
-    fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>;
-
     /// Batch retrieval of values.
     async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<V>>, CacheError> {
         let mut results = Vec::with_capacity(keys.len());
@@ -194,6 +185,15 @@ where
         }
         Ok(results)
     }
+
+    /// Retrieve only the timestamp for a key (Zero-copy optimization).
+    async fn timestamp(&self, key: &K) -> Result<Option<CacheTimestamp>, CacheError>;
+
+    /// Retrieve all keys currently present in the cache as a stream.
+    fn keys(&self) -> BoxStream<'_, Result<K, CacheError>>;
+
+    /// Scan keys starting with a specific prefix (Directory traversal optimization).
+    fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>>;
 
     /// Batch retrieval of timestamps.
     async fn get_many_timestamps(&self, keys: &[K]) -> Result<Vec<Option<u64>>, CacheError> {
