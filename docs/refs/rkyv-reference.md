@@ -9,6 +9,8 @@
 
 rkyv (archive) is a zero-copy deserialization framework for Rust. It enables accessing serialized data directly without deserialization, making it one of the fastest serialization frameworks available. rkyv scales from no-std to highly-capable environments and provides optional validation for safety.
 
+Format-control features (endianness, alignment, pointer width) define compatibility boundaries for serialized data. Changing these after data is written can make it unreadable.
+
 ## Core Zero-Copy Principles
 
 ### 1. Direct Memory Access
@@ -25,6 +27,7 @@ archived[0].field  // Direct access
 ```
 
 **Performance Benefits:**
+
 - Zero memory allocations for access
 - Constant-time "deserialization"
 - No parsing overhead
@@ -46,18 +49,23 @@ pub trait Archive {
 **Components:**
 
 **Archived Type:**
+
 - Zero-copy representation
 - Can be used directly from bytes
 - Must impl `Portable` (stable layout)
 - Often similar to original type
 
+**Important:** `Archived<T>` is a distinct type from `T`. Zero-copy access works with `Archived<T>`; deserialization is required to get `T`.
+
 **Resolver:**
+
 - Contains offset information
 - Needed to create archived form
 - Computed during serialization
 - Not stored in final output
 
 **resolve() Method:**
+
 - Creates archived value from resolver
 - Writes to provided memory location
 - Called during serialization
@@ -72,12 +80,16 @@ pub trait Portable {
 ```
 
 **Guarantees:**
+
 - Consistent byte representation
 - No padding variations
 - Cross-platform compatibility
 - Version stability
 
+**Guidance:** Use `Portable` when archived values must be stable across targets or persisted formats.
+
 **Derive Support:**
+
 ```rust
 #[derive(Archive, Portable)]
 #[repr(C)]  // Often needed for Portable
@@ -91,6 +103,7 @@ struct MyStruct {
 #### High-Level API (Recommended)
 
 **to_bytes - Simple Serialization:**
+
 ```rust
 use rkyv::{to_bytes, Archive, Serialize};
 
@@ -105,6 +118,7 @@ let bytes = to_bytes::<rkyv::rancor::Error>(&value)?;
 ```
 
 **access - Safe Zero-Copy Access:**
+
 ```rust
 use rkyv::access;
 
@@ -113,6 +127,7 @@ println!("{}", archived.value);  // Direct access, no copy
 ```
 
 **access_unchecked - Unsafe Zero-Copy Access:**
+
 ```rust
 use rkyv::access_unchecked;
 
@@ -122,12 +137,15 @@ println!("{}", archived.value);  // Fastest possible access
 ```
 
 **deserialize - Back to Original:**
+
 ```rust
 use rkyv::deserialize;
 
 let original: Data = deserialize::<Data, rkyv::rancor::Error>(archived)?;
 // Now we have native type (with allocation)
 ```
+
+**Note:** `deserialize` allocates and should be treated as an escape hatch for cold paths or interoperability.
 
 #### Low-Level API (Advanced)
 
@@ -145,6 +163,7 @@ let bytes = to_bytes_with_alloc::<_, Error>(&value, arena.acquire())?;
 ### 5. Format Control Features
 
 #### Endianness
+
 ```toml
 # Cargo.toml
 [dependencies]
@@ -156,12 +175,16 @@ rkyv = { version = "0.8", features = ["big_endian"] }
 **Default:** Little-endian
 
 **Impact:**
+
 - Controls byte order of primitives
 - Affects cross-platform compatibility
 - Must match on serialize and deserialize
 - Choose based on target platform
 
+**Compatibility Note:** Changing endianness features after data is written is a breaking change for on-disk formats.
+
 #### Alignment
+
 ```toml
 [dependencies]
 rkyv = { version = "0.8", features = ["aligned"] }
@@ -172,17 +195,22 @@ rkyv = { version = "0.8", features = ["unaligned"] }
 **Default:** Aligned
 
 **Aligned:**
+
 - Faster access on most platforms
 - Requires aligned memory
 - Can't work with unaligned buffers
 
 **Unaligned:**
+
 - Works with any byte buffer
 - Slight performance penalty
 - Needed for memory-mapped files
 - Better for network protocols
 
+**Guidance:** Use `unaligned` for memory-mapped or unaligned buffers (e.g., mmap-backed stores). Use `aligned` for in-memory buffers where alignment can be guaranteed.
+
 #### Pointer Width
+
 ```toml
 [dependencies]
 rkyv = { version = "0.8", features = ["pointer_width_32"] }
@@ -192,13 +220,17 @@ rkyv = { version = "0.8", features = ["pointer_width_32"] }
 **Default:** 32-bit
 
 **Trade-offs:**
+
 - 16-bit: Smallest, limited to small data
 - 32-bit: Good balance, handles most data
 - 64-bit: Largest, for huge datasets
 
+**Compatibility Note:** Pointer width impacts both serialized size and the maximum addressable data size.
+
 ### 6. Zero-Copy Collections
 
 #### ArchivedVec
+
 ```rust
 use rkyv::vec::{ArchivedVec, ArchivedVecResolver};
 
@@ -224,12 +256,14 @@ let len = archived.len();
 ```
 
 **Performance Characteristics:**
+
 - O(1) indexing
 - O(1) length
 - Iterator is zero-copy
 - No heap allocation for access
 
 #### ArchivedString
+
 ```rust
 use rkyv::string::{ArchivedString, ArchivedStringResolver};
 
@@ -246,12 +280,14 @@ let upper = s.to_uppercase();  // Now allocated
 ```
 
 **Features:**
+
 - Stored as UTF-8 bytes
 - Direct conversion to `&str`
 - No validation needed (validated once)
 - All `str` methods work
 
 #### ArchivedHashMap
+
 ```rust
 use rkyv::collections::swiss_table::map::ArchivedHashMap;
 use std::collections::HashMap;
@@ -273,13 +309,17 @@ for (key, value) in archived.iter() {
 ```
 
 **Implementation:**
+
 - Based on Swiss Tables
 - FxHash for deterministic hashing
 - Same O(1) lookup as native HashMap
 - Zero allocation for access
 - Target-independent hash function
 
+**Note:** Archived collections use rkyv's hashing/ordering semantics, which may differ from the default `std` hasher.
+
 #### ArchivedBTreeMap
+
 ```rust
 use rkyv::collections::btree_map::ArchivedBTreeMap;
 use std::collections::BTreeMap;
@@ -301,6 +341,7 @@ for (key, value) in archived.range("a".."c") {
 ```
 
 **Advantages:**
+
 - Compact representation
 - Good locality of reference
 - Efficient range queries
@@ -332,12 +373,16 @@ let archived: &ArchivedVec<Node> = access(&bytes)?;
 ```
 
 **Features:**
+
 - Deduplication during serialization
 - Shared data stored once
 - Archived pointers maintain sharing
 - Supports non-cyclic structures
 
+**Guidance:** Use shared pointers to deduplicate repeated large values (e.g., repeated strings in metadata).
+
 **Limitations:**
+
 - Cyclic structures need special support
 - Use serializer/deserializer bounds for cycles
 
@@ -349,6 +394,7 @@ rkyv = { version = "0.8", features = ["bytecheck"] }
 ```
 
 **Safe Access:**
+
 ```rust
 use rkyv::access;
 
@@ -357,6 +403,7 @@ let archived = access::<ArchivedData, Error>(&bytes)?;
 ```
 
 **What Gets Validated:**
+
 - Pointer alignment
 - Pointer bounds
 - UTF-8 validity (strings)
@@ -364,18 +411,23 @@ let archived = access::<ArchivedData, Error>(&bytes)?;
 - Structure invariants
 
 **Performance:**
+
 - Overhead on first access
 - Amortized over data lifetime
 - Much cheaper than deserialization
 - Can be skipped with `access_unchecked`
 
+**Cost Note:** Validation cost scales with structure size. Validate at boundaries and cache validated references when possible.
+
 **When to Use:**
+
 - Untrusted data sources
 - Network protocols
 - File formats
 - User-provided data
 
 **When to Skip:**
+
 - Trusted internal data
 - Performance-critical paths
 - Pre-validated data
@@ -393,12 +445,16 @@ pub struct ArchivedString {
 ```
 
 **Benefits:**
+
 - Position-independent
 - Can relocate archived data
 - No address fixup needed
 - Supports memory mapping
 
+**Use Case:** Relative pointers enable mmap and shared-memory use without pointer fixups.
+
 **Types:**
+
 - `RelPtr<T>`: Relative pointer to T
 - `RawRelPtr`: Raw relative pointer
 - `RelPtrMetadata`: Metadata for unsized types
@@ -415,6 +471,7 @@ impl Archive for MyType {
 ```
 
 **When Safe:**
+
 - Type is `Copy`
 - Type is `Portable`
 - Archived form == Native form
@@ -422,12 +479,16 @@ impl Archive for MyType {
 - No padding variations
 
 **Benefits:**
+
 - Direct memory copy
 - Skip serialize() call
 - Maximum performance
 - Minimal code
 
+**Safety Note:** Only enable `CopyOptimization` when the archived and native layouts are guaranteed identical.
+
 **Examples:**
+
 - Primitives (u8, i32, etc.)
 - `#[repr(C)]` structs of primitives
 - Arrays of copy-optimized types
@@ -453,24 +514,30 @@ struct Data {
 **Common Wrappers:**
 
 **Inline:**
+
 - Store data inline instead of via pointer
 - Reduces indirection
 - Better cache locality
 - Larger serialized size
 
+**Guidance:** `Inline` is best for small, frequently accessed fields; keep large fields pointer-based to avoid bloat.
+
 **Skip:**
+
 - Don't serialize this field
 - Use `Default::default()` on deserialize
 - Useful for computed fields
 - Reduces serialized size
 
 **Raw:**
+
 - Raw byte storage
 - No length prefix
 - Fixed-size or externally sized
 - Maximum compactness
 
 **Custom:**
+
 - Implement `ArchiveWith` trait
 - Full control over serialization
 - Reusable transformation logic
@@ -504,23 +571,27 @@ struct MyStruct {
 **Derive Options:**
 
 **compare:**
+
 - Generate comparison impls
 - Between `T` and `Archived<T>`
 - Useful for testing
 - Available: `PartialEq`, `PartialOrd`
 
 **derive:**
+
 - Derive traits on archived type
 - Available: `Debug`, `Clone`, `Copy`, etc.
 - Passes through to generated type
 
 **attr:**
+
 - Apply attributes to archived type
 - Common: `repr(C)`, `derive(Copy)`
 
 ### 13. Advanced Serialization
 
 #### Custom Allocators
+
 ```rust
 use rkyv::ser::allocator::{Arena, ArenaHandle};
 
@@ -546,12 +617,14 @@ impl MySerializer {
 ```
 
 **Benefits:**
+
 - Reuse allocations
 - Reduce allocation overhead
 - Better memory locality
 - Custom allocation strategies
 
 #### Streaming Serialization
+
 ```rust
 use rkyv::ser::Writer;
 
@@ -568,6 +641,7 @@ impl Writer for FileWriter {
 ```
 
 **Use Cases:**
+
 - Large data sets
 - Network streaming
 - File I/O
@@ -588,6 +662,7 @@ fn resolve(&self, resolver: Self::Resolver, out: Place<Self::Archived>) {
 ```
 
 **Safety:**
+
 - Prevents uninitialized memory reads
 - Enforces field-by-field initialization
 - Uses `munge` crate for safety
@@ -655,12 +730,14 @@ fn resolve(&self, resolver: Self::Resolver, out: Place<Self::Archived>) {
 ### Benchmarking Notes
 
 **Strengths:**
+
 - Fastest "deserialization" (zero-copy)
 - Excellent read performance
 - Low memory overhead
 - Good compression potential
 
 **Considerations:**
+
 - Serialization overhead
 - Larger than some formats (depends)
 - Validation cost (if used)
@@ -669,6 +746,7 @@ fn resolve(&self, resolver: Self::Resolver, out: Place<Self::Archived>) {
 ## Code Examples
 
 ### Basic Zero-Copy Example
+
 ```rust
 use rkyv::{
     access_unchecked, to_bytes, Archive, Deserialize, Serialize,
@@ -707,6 +785,7 @@ assert_eq!(deserialized, tx);
 ```
 
 ### Safe Access with Validation
+
 ```rust
 use rkyv::{access, rancor::Error};
 
@@ -721,6 +800,7 @@ println!("{}", archived.description.as_str());
 ```
 
 ### Memory-Mapped File
+
 ```rust
 use memmap2::MmapOptions;
 use std::fs::File;
@@ -746,6 +826,7 @@ for item in archived.items.iter() {
 ```
 
 ### Custom With Wrapper
+
 ```rust
 use rkyv::{with::ArchiveWith, Archive, Fallible, Serialize};
 use std::collections::HashMap;
@@ -780,6 +861,7 @@ struct Data {
 ## Summary for Lithos
 
 rkyv provides unmatched zero-copy performance through:
+
 - Direct memory access to archived data
 - No deserialization overhead
 - Memory-mapping support
@@ -792,7 +874,10 @@ rkyv provides unmatched zero-copy performance through:
 **Best suited for:** Scenarios requiring fastest possible read access, memory-mapped data, IPC, or where deserialization overhead is unacceptable.
 
 **Key Decision Factors:**
+
 - **Use rkyv when:** Read performance is critical, data is accessed frequently without modification, or zero-copy is essential
 - **Consider alternatives when:** Data changes frequently, human-readability matters, or schema evolution is complex
 - **Combine with redb:** Use rkyv for serialization format in redb for zero-copy database
 - **Combine with moka:** Use rkyv to serialize cache entries for persistent caching
+
+**Compatibility Reminder:** Explicitly choose format-control features early and treat changes as breaking for persisted data.

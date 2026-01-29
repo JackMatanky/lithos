@@ -9,17 +9,21 @@
 
 Moka is a fast, concurrent cache library for Rust inspired by Java's Caffeine. It provides thread-safe, highly concurrent in-memory cache implementations with near-optimal hit ratios using advanced eviction algorithms.
 
+Moka exposes both synchronous caches (`moka::sync::Cache`) and asynchronous caches (`moka::future::Cache`). The API shape and execution model differ between them, so examples should specify which one is used when discussing async behavior or `.await`.
+
 ## Core Features for High Performance
 
 ### 1. Concurrency Architecture
 
 #### Lock-Free Concurrent Hash Table
+
 - **Central Storage:** Lock-free concurrent hash map
 - **Strong Consistency:** Immediate visibility of insertions
 - **Eventually Consistent Policy:** Cache policy structures updated in batches
 - **No Lock Contention:** Lock-free reads and lock-protected batch updates
 
 **Threading Model:**
+
 ```rust
 use moka::sync::Cache;
 
@@ -35,20 +39,26 @@ std::thread::spawn(move || {
 ```
 
 **Performance Characteristics:**
+
 - Full concurrency for retrievals
 - High expected concurrency for updates
 - No dedicated maintenance thread
 - User threads perform maintenance
 
+**Consistency Note:** The concurrent hash table is strongly consistent, but policy structures are eventually consistent and updated in batches. This means stats and eviction-related data can lag behind recent operations.
+
 ### 2. Advanced Eviction Policies
 
 #### TinyLFU (Default - Recommended)
+
 **Algorithm Components:**
+
 1. **LFU Admission Policy:** Tracks frequency of all keys (hit + missed)
 2. **LRU Eviction Policy:** Evicts least recently used entries
 3. **Count-Min Sketch:** Efficient frequency estimation with minimal memory
 
 **Flow:**
+
 ```
 New Entry → LFU Filter Check → Popular? → Admit to Cache → LRU Eviction
                               ↓
@@ -56,28 +66,34 @@ New Entry → LFU Filter Check → Popular? → Admit to Cache → LRU Eviction
 ```
 
 **Advantages:**
+
 - Excellent for mixed workloads (database, search, analytics)
 - Protects against one-time bulk scans
 - Very low memory overhead for frequency tracking
 - Near-optimal hit ratios
 
 **When to Use:**
+
 - General-purpose caching
 - Database query caches
 - Search result caching
 - Analytics data caching
 
 #### LRU (Alternative Policy)
+
 **Algorithm:**
+
 - Simple Least Recently Used eviction
 - No admission policy
 
 **Advantages:**
+
 - Simpler algorithm
 - Better for recency-biased workloads
 - Slightly lower overhead
 
 **When to Use:**
+
 - Job queues
 - Event streams
 - Strictly recency-based access patterns
@@ -85,6 +101,7 @@ New Entry → LFU Filter Check → Popular? → Admit to Cache → LRU Eviction
 ### 3. Size-Based Eviction
 
 #### Entry Count Based
+
 ```rust
 let cache = Cache::builder()
     .max_capacity(10_000)  // Maximum 10k entries
@@ -94,6 +111,7 @@ let cache = Cache::builder()
 **Use Case:** Simple entry-count limits
 
 #### Weighted Size Based
+
 ```rust
 use moka::sync::Cache;
 
@@ -106,21 +124,26 @@ let cache = Cache::builder()
 ```
 
 **Features:**
+
 - Custom size calculation per entry
 - Total weighted size limit
 - Useful for memory-bound caches
 - Per-entry variable sizing
 
 **Performance Notes:**
+
 - Weigher called on insert
 - Size used for eviction decisions
 - Not used for admission policy
+
+**Guidance:** The weigher should be fast. Expensive per-entry size calculations can turn inserts into hot-path bottlenecks.
 
 ### 4. Time-Based Expiration
 
 #### Cache-Level Policies
 
 **Time to Live (TTL):**
+
 ```rust
 use std::time::Duration;
 
@@ -130,6 +153,7 @@ let cache = Cache::builder()
 ```
 
 **Time to Idle (TTI):**
+
 ```rust
 let cache = Cache::builder()
     .time_to_idle(Duration::from_secs(5 * 60))   // 5 minutes
@@ -137,6 +161,7 @@ let cache = Cache::builder()
 ```
 
 **Combined:**
+
 ```rust
 let cache = Cache::builder()
     .time_to_live(Duration::from_secs(30 * 60))  // Max 30 min
@@ -145,10 +170,13 @@ let cache = Cache::builder()
 ```
 
 **Expiration Semantics:**
+
 - TTL: Expires after duration from `insert`
 - TTI: Expires after duration from last `get` or `insert`
 - Combined: Whichever comes first
 - Extensions: `get` resets TTI but not TTL
+
+**Practical Example:** With TTL=30m and TTI=5m, a hot entry can live up to 30m total, but will be evicted if it goes idle for 5m.
 
 #### Per-Entry Expiration Policy
 
@@ -204,6 +232,7 @@ let cache = Cache::builder()
 ```
 
 **Advanced Use Cases:**
+
 - Variable TTL based on value properties
 - Dynamic expiration adjustment
 - Access-pattern-based expiration
@@ -212,6 +241,7 @@ let cache = Cache::builder()
 ### 5. High-Performance Operations
 
 #### Entry API - Atomic Operations
+
 ```rust
 use moka::sync::Cache;
 
@@ -230,12 +260,16 @@ let entry = cache.entry("key".to_string())
 ```
 
 **Benefits:**
+
 - Reduces race conditions
 - Atomic read-modify-write
 - Avoids redundant computations
 - Better API ergonomics
 
+**Guidance:** Use `entry()` when you need atomic insert-or-update behavior under concurrency.
+
 #### get_with - Coalesced Computation
+
 ```rust
 use std::sync::Arc;
 
@@ -249,17 +283,22 @@ let value = cache.get_with("key1", || {
 ```
 
 **Coalescing Guarantees:**
+
 - Only one init closure runs per key
 - Other threads wait for result
 - Prevents thundering herd
 - Reduces duplicate work
 
+**Guidance:** Prefer `get_with`/`try_get_with` for expensive computations to avoid duplicate work under concurrent misses.
+
 **Variants:**
+
 - `get_with`: Infallible init
 - `try_get_with`: Fallible init (returns `Result`)
 - `optionally_get_with`: Optional init (returns `Option`)
 
 **Performance Impact:**
+
 - Massive savings for expensive computations
 - Database connection pooling
 - API rate limiting
@@ -270,19 +309,25 @@ let value = cache.get_with("key1", || {
 #### Architecture
 
 **Two Bounded Channels:**
+
 1. **Read Channel:** Records cache reads
 2. **Write Channel:** Records cache writes
 
 **Channel Draining:**
+
 - Triggered when capacity reached (64 recordings)
 - Or after timeout (300ms)
 - Performed by user threads, not dedicated thread
 
 **When Channels Are Full:**
+
 - Read channel: Recordings dropped (may impact hit rate)
 - Write channel: Operations block until drained
 
+**Implication:** Heavy write bursts can block user threads. Read-heavy workloads may see hit-rate estimation drift if read recordings are dropped.
+
 **Maintenance Tasks:**
+
 1. Admission decision (TinyLFU check)
 2. Update LFU filter and LRU queues
 3. Evict entries exceeding capacity
@@ -291,6 +336,7 @@ let value = cache.get_with("key1", || {
 6. Call eviction listener
 
 #### run_pending_tasks
+
 ```rust
 cache.insert("key", "value");
 
@@ -305,9 +351,12 @@ println!("Count: {}", cache.entry_count());  // Shows 1
 ```
 
 **Use Cases:**
+
 - Accurate stats retrieval
 - Test assertions
 - Forced cleanup before shutdown
+
+**Note:** `run_pending_tasks()` is the primary tool to make stats deterministic in tests.
 
 ### 7. Eviction Listener
 
@@ -326,15 +375,19 @@ let cache = Cache::builder()
 ```
 
 **Removal Causes:**
+
 - `Size`: Evicted due to size constraints
 - `Expired`: TTL/TTI expiration
 - `Explicit`: Manual `invalidate` call
 - `Replaced`: Value replaced by new insert
 
 **Critical Requirements:**
+
 - **Must not panic:** Panic disables listener permanently
 - **Should be fast:** Runs in user thread
 - **Use for cleanup:** File handles, connections, metrics
+
+**Guidance:** Keep listener logic minimal to avoid blocking cache operations.
 
 **Logging Panics:**
 Enable `logging` feature and check error-level logs.
@@ -353,6 +406,7 @@ println!("Max capacity: {:?}", policy.max_capacity());
 ```
 
 **Read-Only Access:**
+
 - Inspection of current settings
 - Cannot modify after creation
 - Use for monitoring/debugging
@@ -360,16 +414,19 @@ println!("Max capacity: {:?}", policy.max_capacity());
 ### 9. Invalidation Operations
 
 #### Single Key Invalidation
+
 ```rust
 cache.invalidate(&key);
 ```
 
 #### Bulk Invalidation
+
 ```rust
 cache.invalidate_all();
 ```
 
 #### Conditional Invalidation
+
 ```rust
 use moka::PredicateError;
 
@@ -380,10 +437,13 @@ cache.invalidate_entries_if(|key, value| {
 ```
 
 **Performance Notes:**
+
 - Async invalidation (processed in batches)
 - Doesn't block immediately
 - Call `run_pending_tasks()` to force
 - Predicate errors stop iteration
+
+**Guidance:** Use `run_pending_tasks()` after bulk invalidation in tests or when you need accurate metrics immediately.
 
 ### 10. Cache Stats & Monitoring
 
@@ -402,19 +462,24 @@ let accurate_count = cache.entry_count();
 ```
 
 **Monitoring Integration:**
+
 - Named caches for log correlation
 - Entry count tracking
 - Weighted size tracking
 - Eviction listener for metrics
 
+**Note:** Stats are eventually consistent; use `run_pending_tasks()` for accurate readings when needed.
+
 ### 11. Hashing Algorithm
 
 **Default: SipHash 1-3**
+
 - HashDoS resistant
 - Same as `std::HashMap`
 - Good for medium-sized keys
 
 **Custom Hasher:**
+
 ```rust
 use ahash::RandomState;
 
@@ -424,9 +489,12 @@ let cache = Cache::builder()
 ```
 
 **Performance Considerations:**
+
 - AHash: Faster for integers and small keys
 - SipHash: Better security, slight overhead
 - FxHash: Fastest, no HashDoS protection
+
+**Guidance:** Choose a hasher based on threat model and key characteristics.
 
 ## Integration with Lithos System
 
@@ -484,12 +552,14 @@ let cache = Cache::builder()
 ### Benchmarking Notes
 
 **Strengths:**
+
 - Excellent concurrent read performance
 - Near-optimal hit ratios (TinyLFU)
 - Low overhead per entry
 - Scalable to many cores
 
 **Considerations:**
+
 - Eventually consistent stats
 - Maintenance in user threads
 - Memory overhead for policy structures
@@ -498,6 +568,7 @@ let cache = Cache::builder()
 ## Code Examples
 
 ### Basic Usage
+
 ```rust
 use moka::sync::Cache;
 
@@ -516,6 +587,7 @@ let value = cache.get_with("key".to_string(), || {
 ```
 
 ### Advanced Configuration
+
 ```rust
 use moka::sync::Cache;
 use std::time::Duration;
@@ -535,6 +607,7 @@ let cache = Cache::builder()
 ```
 
 ### Per-Entry Expiration
+
 ```rust
 use moka::{sync::Cache, Expiry};
 use std::time::{Duration, Instant};
@@ -562,6 +635,7 @@ let cache = Cache::builder()
 ```
 
 ### High-Performance Pattern
+
 ```rust
 use std::sync::Arc;
 
@@ -579,6 +653,7 @@ let value: Arc<Vec<u8>> = cache.get(&"key".to_string()).unwrap();
 ## Summary for Lithos
 
 Moka provides exceptional performance through:
+
 - Lock-free concurrent hash table
 - Advanced eviction policies (TinyLFU)
 - Coalesced computations via `get_with`
