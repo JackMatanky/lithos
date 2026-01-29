@@ -2,6 +2,7 @@
 
 **Version:** 0.8.14
 **Official Docs:** https://docs.rs/rkyv/0.8.14/rkyv/
+**Guide:** https://rkyv.org/
 **Repository:** https://github.com/rkyv/rkyv
 **License:** MIT
 
@@ -10,6 +11,7 @@
 rkyv (archive) is a zero-copy deserialization framework for Rust. It enables accessing serialized data directly without deserialization, making it one of the fastest serialization frameworks available. rkyv scales from no-std to highly-capable environments and provides optional validation for safety.
 
 Format-control features (endianness, alignment, pointer width) define compatibility boundaries for serialized data. Changing these after data is written can make it unreadable.
+See https://rkyv.org/ for guide-level discussion of format control and compatibility.
 
 ## Core Zero-Copy Principles
 
@@ -33,7 +35,7 @@ archived[0].field  // Direct access
 - No parsing overhead
 - Direct memory mapping possible
 
-### 2. Archive Trait - Core Abstraction
+### 2. [Archive](https://docs.rs/rkyv/0.8.14/rkyv/trait.Archive.html) Trait - Core Abstraction
 
 ```rust
 pub trait Archive {
@@ -56,6 +58,7 @@ pub trait Archive {
 - Often similar to original type
 
 **Important:** `Archived<T>` is a distinct type from `T`. Zero-copy access works with `Archived<T>`; deserialization is required to get `T`.
+See https://rkyv.org/ for conceptual guidance on working with archived types.
 
 **Resolver:**
 
@@ -70,7 +73,7 @@ pub trait Archive {
 - Writes to provided memory location
 - Called during serialization
 
-### 3. Portable Trait - Layout Stability
+### 3. [Portable](https://docs.rs/rkyv/0.8.14/rkyv/trait.Portable.html) Trait - Layout Stability
 
 ```rust
 pub trait Portable {
@@ -160,7 +163,8 @@ let mut arena = Arena::new();
 let bytes = to_bytes_with_alloc::<_, Error>(&value, arena.acquire())?;
 ```
 
-### 5. Format Control Features
+### 5. [Format Control](https://docs.rs/rkyv/0.8.14/rkyv/#format-control) Features
+See https://rkyv.org/ for guide-level guidance on compatibility boundaries.
 
 #### Endianness
 
@@ -278,6 +282,7 @@ let s: &str = archived.as_str();
 // All str methods available
 let upper = s.to_uppercase();  // Now allocated
 ```
+See https://docs.rs/rkyv/0.8.14/rkyv/string/struct.ArchivedString.html for ArchivedString APIs.
 
 **Features:**
 
@@ -380,6 +385,7 @@ let archived: &ArchivedVec<Node> = access(&bytes)?;
 - Supports non-cyclic structures
 
 **Guidance:** Use shared pointers to deduplicate repeated large values (e.g., repeated strings in metadata).
+See https://docs.rs/rkyv/0.8.14/rkyv/rc/index.html for shared pointer support.
 
 **Limitations:**
 
@@ -401,6 +407,7 @@ use rkyv::access;
 // Validates before returning reference
 let archived = access::<ArchivedData, Error>(&bytes)?;
 ```
+See https://docs.rs/rkyv/0.8.14/rkyv/fn.access.html and https://docs.rs/rkyv/0.8.14/rkyv/fn.access_unchecked.html.
 
 **What Gets Validated:**
 
@@ -452,6 +459,7 @@ pub struct ArchivedString {
 - Supports memory mapping
 
 **Use Case:** Relative pointers enable mmap and shared-memory use without pointer fixups.
+See https://docs.rs/rkyv/0.8.14/rkyv/rel_ptr/index.html for relative pointer types.
 
 **Types:**
 

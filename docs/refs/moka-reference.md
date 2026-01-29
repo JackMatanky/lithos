@@ -2,6 +2,7 @@
 
 **Version:** 0.12.13
 **Official Docs:** https://docs.rs/moka/0.12.13/moka/
+**Guide:** https://deepwiki.com/moka-rs/moka
 **Repository:** https://github.com/moka-rs/moka
 **License:** MIT OR Apache-2.0 AND Apache-2.0
 
@@ -10,6 +11,7 @@
 Moka is a fast, concurrent cache library for Rust inspired by Java's Caffeine. It provides thread-safe, highly concurrent in-memory cache implementations with near-optimal hit ratios using advanced eviction algorithms.
 
 Moka exposes both synchronous caches (`moka::sync::Cache`) and asynchronous caches (`moka::future::Cache`). The API shape and execution model differ between them, so examples should specify which one is used when discussing async behavior or `.await`.
+See https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html and https://docs.rs/moka/0.12.13/moka/future/struct.Cache.html.
 
 ## Core Features for High Performance
 
@@ -46,6 +48,7 @@ std::thread::spawn(move || {
 - User threads perform maintenance
 
 **Consistency Note:** The concurrent hash table is strongly consistent, but policy structures are eventually consistent and updated in batches. This means stats and eviction-related data can lag behind recent operations.
+See https://docs.rs/moka/0.12.13/moka/#concurrency for details on the concurrency model.
 
 ### 2. Advanced Eviction Policies
 
@@ -230,6 +233,7 @@ let cache = Cache::builder()
     .expire_after(MyExpiry)
     .build();
 ```
+See https://docs.rs/moka/0.12.13/moka/policy/trait.Expiry.html for the Expiry trait details.
 
 **Advanced Use Cases:**
 
@@ -258,6 +262,7 @@ let entry = cache.entry("key".to_string())
         |&old_value| old_value < threshold  // Replace condition
     );
 ```
+See https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.entry for the Entry API.
 
 **Benefits:**
 
@@ -268,7 +273,7 @@ let entry = cache.entry("key".to_string())
 
 **Guidance:** Use `entry()` when you need atomic insert-or-update behavior under concurrency.
 
-#### get_with - Coalesced Computation
+#### `get_with` - Coalesced Computation
 
 ```rust
 use std::sync::Arc;
@@ -290,12 +295,13 @@ let value = cache.get_with("key1", || {
 - Reduces duplicate work
 
 **Guidance:** Prefer `get_with`/`try_get_with` for expensive computations to avoid duplicate work under concurrent misses.
+See https://deepwiki.com/moka-rs/moka for guide-level discussion of coalescing behavior.
 
 **Variants:**
 
-- `get_with`: Infallible init
-- `try_get_with`: Fallible init (returns `Result`)
-- `optionally_get_with`: Optional init (returns `Option`)
+- [`get_with`](https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.get_with): Infallible init
+- [`try_get_with`](https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.try_get_with): Fallible init (returns `Result`)
+- [`optionally_get_with`](https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.optionally_get_with): Optional init (returns `Option`)
 
 **Performance Impact:**
 
@@ -308,7 +314,7 @@ let value = cache.get_with("key1", || {
 
 #### Architecture
 
-**Two Bounded Channels:**
+[**Two Bounded Channels:**](https://docs.rs/moka/0.12.13/moka/#bounded-channels)
 
 1. **Read Channel:** Records cache reads
 2. **Write Channel:** Records cache writes
@@ -325,8 +331,9 @@ let value = cache.get_with("key1", || {
 - Write channel: Operations block until drained
 
 **Implication:** Heavy write bursts can block user threads. Read-heavy workloads may see hit-rate estimation drift if read recordings are dropped.
+See https://deepwiki.com/moka-rs/moka for additional maintenance and backpressure guidance.
 
-**Maintenance Tasks:**
+[**Maintenance Tasks:**](https://docs.rs/moka/0.12.13/moka/#maintenance-tasks)
 
 1. Admission decision (TinyLFU check)
 2. Update LFU filter and LRU queues
@@ -335,7 +342,7 @@ let value = cache.get_with("key1", || {
 5. Process invalidations
 6. Call eviction listener
 
-#### run_pending_tasks
+#### `run_pending_tasks`
 
 ```rust
 cache.insert("key", "value");
@@ -357,8 +364,9 @@ println!("Count: {}", cache.entry_count());  // Shows 1
 - Forced cleanup before shutdown
 
 **Note:** `run_pending_tasks()` is the primary tool to make stats deterministic in tests.
+See https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.run_pending_tasks for API details.
 
-### 7. Eviction Listener
+### 7. [Eviction Listener](https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.eviction_listener)
 
 ```rust
 let eviction_listener = |key, value, cause| {
@@ -404,12 +412,14 @@ pub struct Policy {
 let policy = cache.policy();
 println!("Max capacity: {:?}", policy.max_capacity());
 ```
+See https://docs.rs/moka/0.12.13/moka/policy/struct.Policy.html for policy fields.
 
 **Read-Only Access:**
 
 - Inspection of current settings
 - Cannot modify after creation
 - Use for monitoring/debugging
+See https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.policy for API details.
 
 ### 9. Invalidation Operations
 
@@ -418,12 +428,14 @@ println!("Max capacity: {:?}", policy.max_capacity());
 ```rust
 cache.invalidate(&key);
 ```
+See https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.invalidate.
 
 #### Bulk Invalidation
 
 ```rust
 cache.invalidate_all();
 ```
+See https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.invalidate_all.
 
 #### Conditional Invalidation
 
@@ -435,6 +447,7 @@ cache.invalidate_entries_if(|key, value| {
     value.expiry_time < Instant::now()
 })?;
 ```
+See https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.invalidate_entries_if.
 
 **Performance Notes:**
 
@@ -460,6 +473,7 @@ let size = cache.weighted_size();      // May be stale
 cache.run_pending_tasks();             // Update stats
 let accurate_count = cache.entry_count();
 ```
+See https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.entry_count and https://docs.rs/moka/0.12.13/moka/sync/struct.Cache.html#method.weighted_size.
 
 **Monitoring Integration:**
 
@@ -487,6 +501,7 @@ let cache = Cache::builder()
     .max_capacity(10_000)
     .build_with_hasher(RandomState::new());
 ```
+See https://docs.rs/moka/0.12.13/moka/sync/struct.CacheBuilder.html#method.build_with_hasher for hasher configuration.
 
 **Performance Considerations:**
 
