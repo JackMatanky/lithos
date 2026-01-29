@@ -77,21 +77,21 @@ We have completed a deep analysis of `redb`, `moka`, and `rkyv` and identified s
     - [ ] 1.5.3: Ensure `MetadataMap` archives into `rkyv::collections::ArchivedHashMap`.
   - [ ] Subtask 1.6: Update `encoder.rs` unit tests to use the new zero-copy handshake.
 
-### Phase 2: Metadata & Guard Foundation
-- [ ] Task 2: Define unified metadata and guard structures
-  - [ ] Subtask 2.1: Define `pub struct CacheMetadata` in `mod.rs` containing `timestamp: u64` and `MetadataMap`.
+### Phase 2: Timestamp & Guard Foundation
+- [ ] Task 2: Define unified timestamp and guard structures
+  - [ ] Subtask 2.1: Define `pub struct CacheTimestamp(u64)` in `mod.rs`.
   - [ ] Subtask 2.2: Define `pub trait CacheGuard<V>: Deref<Target = V> + Send + 'static`.
-  - [ ] Subtask 2.3: Add `fn metadata(&self) -> &CacheMetadata` to `CacheGuard`.
-  - [ ] Subtask 2.4: Update `MokaReader` to store `Arc<(V, CacheMetadata)>` to enable nanosecond staleness checks without disk access.
-  - [ ] Subtask 2.5: Update `RedbReader` to return a Guard that provides zero-copy access to the embedded `CacheMetadata` within the archived `Entry<V>`.
+  - [ ] Subtask 2.3: Add `fn timestamp(&self) -> CacheTimestamp` to `CacheGuard`.
+  - [ ] Subtask 2.4: Update `MokaReader` to store `Arc<(V, CacheTimestamp)>` to enable nanosecond staleness checks without disk access.
+  - [ ] Subtask 2.5: Update `RedbReader` to return a Guard that provides zero-copy access to the `timestamp` within the archived `Entry<V>`.
 
 ### Phase 3: Read API Evolution (Stream & Prefix)
 - [ ] Task 3: Implement new high-performance read APIs
   - [ ] Subtask 3.1: Add `async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>` to `CacheReader`.
-  - [ ] Subtask 3.2: Add `async fn metadata(&self, key: &K) -> Result<Option<CacheMetadata>, CacheError>` to `CacheReader`.
-  - [ ] Subtask 3.3: Refactor `timestamp(&self, key: &K)` to be a default method based on `metadata`.
-  - [ ] Subtask 3.4: Refactor `keys()` and `scan_prefix()` to return `BoxStream`.
-  - [ ] Subtask 3.5: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
+  - [ ] Subtask 3.2: Add `async fn timestamp(&self, key: &K) -> Result<Option<CacheTimestamp>, CacheError>` to `CacheReader`.
+  - [ ] Subtask 3.3: Refactor `keys()` and `scan_prefix()` to return `BoxStream`.
+  - [ ] Subtask 3.4: Add `#[deprecated] async fn get_owned(&self, key: &K) -> Result<Option<V>, CacheError> where V: Clone`.
+  - [ ] Subtask 3.5: Implement `scan_prefix` in `RedbReader` using `table.range(prefix..)` for $O(log N)$ directory listing.
 
 ### Phase 4: Single Write Method Refactor
 - [ ] Task 4: Update `CacheWriter` for reference-based writes
@@ -156,16 +156,11 @@ where
 {
     type Guard: CacheGuard<V>;
 
-    /// Retrieve a guard providing zero-copy access to the value and metadata.
+    /// Retrieve a guard providing zero-copy access to the value and timestamp.
     async fn get(&self, key: &K) -> Result<Option<Self::Guard>, CacheError>;
 
-    /// Retrieve only the metadata for a key (Zero-copy optimization).
-    async fn metadata(&self, key: &K) -> Result<Option<CacheMetadata>, CacheError>;
-
-    /// Retrieve only the timestamp (default implementation).
-    async fn timestamp(&self, key: &K) -> Result<Option<u64>, CacheError> {
-        Ok(self.metadata(key).await?.map(|m| m.timestamp))
-    }
+    /// Retrieve only the timestamp for a key (Zero-copy optimization).
+    async fn timestamp(&self, key: &K) -> Result<Option<CacheTimestamp>, CacheError>;
 ...
 ```
 
