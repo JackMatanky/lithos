@@ -2160,26 +2160,26 @@ for key in keys {
 **Default Implementation (Sequential):**
 
 ```rust
-async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<Self::Guard<'_>>>, CacheError> {
+fn get_many(&self, keys: &[K]) -> Result<Vec<Option<Self::Guard<'_>>>, CacheError> {
     let mut results = Vec::with_capacity(keys.len());
     for key in keys {
-        results.push(self.get(key).await?);
+        results.push(self.get(key)?);
     }
     Ok(results)
 }
 ```
 
-**Moka Override (Parallel):**
+**Moka Override (Same as Default):**
 
 ```rust
 impl CacheReader for MokaReader {
-    async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<Self::Guard<'_>>>> {
-        // Moka get is cheap, but we can parallelize
-        let futures: Vec<_> = keys.iter()
-            .map(|k| self.get(k))
-            .collect();
-
-        futures::future::try_join_all(futures).await
+    fn get_many(&self, keys: &[K]) -> Result<Vec<Option<Self::Guard<'_>>>> {
+        // Moka get is cheap, just iterate
+        let mut results = Vec::with_capacity(keys.len());
+        for key in keys {
+            results.push(self.get(key)?);
+        }
+        Ok(results)
     }
 }
 ```
@@ -2188,7 +2188,7 @@ impl CacheReader for MokaReader {
 
 ```rust
 impl CacheReader for RedbReader {
-    async fn get_many(&self, keys: &[K]) -> Result<Vec<Option<Self::Guard<'_>>>> {
+    fn get_many(&self, keys: &[K]) -> Result<Vec<Option<Self::Guard<'_>>>> {
         // Single read transaction for all keys
         let txn = self.db.begin_read()?;
         let table = txn.open_table(self.table_def)?;
@@ -2196,7 +2196,7 @@ impl CacheReader for RedbReader {
         let mut results = Vec::with_capacity(keys.len());
         for key in keys {
             let guard = table.get(key)?;
-            results.push(guard.map(RedbGuard::new));
+            results.push(guard.map(|g| RedbGuard::new(g)).transpose()?);
         }
 
         Ok(results)
@@ -2206,7 +2206,7 @@ impl CacheReader for RedbReader {
 
 **Performance:**
 
-- Moka: ~10% faster (parallel async)
+- Moka: Same as sequential (sync operations don't benefit from async parallelization)
 - Redb: ~10x faster (single transaction vs N transactions)
 
 ---
@@ -2219,13 +2219,13 @@ impl CacheReader for RedbReader {
 
 ```rust
 // ❌ Current: Owned values
-async fn put(&self, key: K, value: V) -> Result<(), CacheError>;
+fn put(&self, key: K, value: V) -> Result<(), CacheError>;
 
 // ⚠️ Better: Owned key, borrowed value
-async fn put(&self, key: K, value: &V) -> Result<(), CacheError>;
+fn put(&self, key: K, value: &V) -> Result<(), CacheError>;
 
 // ✅ Best: Borrowed everything
-async fn put(&self, key: &K, value: &V) -> Result<(), CacheError>;
+fn put(&self, key: &K, value: &V) -> Result<(), CacheError>;
 ```
 
 **Analysis:**
@@ -2249,13 +2249,12 @@ redb_table.insert(&key_bytes, &value_bytes)?;  // Borrows, copies internally
 **Verdict:** Use `(&K, &V)` signature. Let backends clone as needed.
 
 ```rust
-#[async_trait]
 pub trait CacheWriter<K, V>: Send + Sync {
-    async fn put(&self, key: &K, value: &V) -> Result<(), CacheError>;
+    fn put(&self, key: &K, value: &V, timestamp: Timestamp) -> Result<(), CacheError>;
 
-    async fn delete(&self, key: &K) -> Result<bool, CacheError>;
+    fn delete(&self, key: &K) -> Result<bool, CacheError>;
 
-    async fn clear(&self) -> Result<(), CacheError>;
+    fn clear(&self) -> Result<(), CacheError>;
 }
 ```
 
@@ -2267,9 +2266,10 @@ pub trait CacheWriter<K, V>: Send + Sync {
 
 ```rust
 impl CacheWriter for MokaWriter {
-    async fn put(&self, key: &K, value: &V) -> Result<()> {
+    fn put(&self, key: &K, value: &V, timestamp: Timestamp) -> Result<()> {
         // Moka takes ownership, so we must clone
-        self.cache.insert(key.clone(), value.clone()).await;
+        // Store as Arc<(Timestamp, V)> for efficient timestamp access
+        self.cache.insert(key.clone(), Arc::new((timestamp, value.clone())));
         Ok(())
     }
 }
@@ -2281,12 +2281,22 @@ impl CacheWriter for MokaWriter {
 
 ```rust
 impl CacheWriter for RedbWriter {
-    async fn put(&self, key: &K, value: &V) -> Result<()> {
+    fn put(&self, key: &K, value: &V, timestamp: Timestamp) -> Result<()> {
         let key_bytes = self.codec.encode_key(key)?;
         let value_size = self.codec.serialized_size(value)?;
 
-        let mut guard = self.table.insert_reserve(&key_bytes, value_size)?;
-        self.codec.serialize_into(value, guard.as_mut())?;
+        let txn = self.db.begin_write()?;
+        {
+            // Write value
+            let mut table = txn.open_table(self.table_def)?;
+            let mut guard = table.insert_reserve(&key_bytes, value_size)?;
+            self.codec.serialize_into(value, guard.as_mut())?;
+
+            // Write timestamp to separate table
+            let mut ts_table = txn.open_table(self.timestamp_table)?;
+            ts_table.insert(&key_bytes, timestamp.as_nanos())?;
+        }
+        txn.commit()?;
 
         Ok(())
     }
@@ -2299,12 +2309,12 @@ impl CacheWriter for RedbWriter {
 
 ```rust
 impl CacheWriter for CoordinatorWriter {
-    async fn put(&self, key: &K, value: &V) -> Result<()> {
+    fn put(&self, key: &K, value: &V, timestamp: Timestamp) -> Result<()> {
         // Write to disk first (persistence)
-        self.disk.put(key, value).await?;
+        self.disk.put(key, value, timestamp)?;
 
         // Then to memory (performance)
-        self.memory.put(key, value).await?;
+        self.memory.put(key, value, timestamp)?;
 
         Ok(())
     }
@@ -2320,7 +2330,7 @@ Both backends clone as needed. No redundant clones.
 **Redb with Two-Phase Codec:**
 
 ```rust
-async fn put(&self, key: &K, value: &V) -> Result<()> {
+fn put(&self, key: &K, value: &V, timestamp: Timestamp) -> Result<()> {
     // Encode key
     let key_bytes = self.codec.encode_key(key)?;
 
@@ -2328,14 +2338,23 @@ async fn put(&self, key: &K, value: &V) -> Result<()> {
     let value_size = self.codec.serialized_size(value)?;
 
     // Phase 2: Reserve space and write directly
-    let mut guard = self.table.insert_reserve(
-        &key_bytes,
-        value_size.try_into()?,
-    )?;
+    let txn = self.db.begin_write()?;
+    {
+        let mut table = txn.open_table(self.table_def)?;
+        let mut guard = table.insert_reserve(
+            &key_bytes,
+            value_size.try_into()?,
+        )?;
 
-    self.codec.serialize_into(value, guard.as_mut())?;
+        self.codec.serialize_into(value, guard.as_mut())?;
 
-    // Guard dropped, data committed
+        // Write timestamp
+        let mut ts_table = txn.open_table(self.timestamp_table)?;
+        ts_table.insert(&key_bytes, timestamp.as_nanos())?;
+    }
+    txn.commit()?;
+
+    // Transaction committed
     Ok(())
 }
 ```
@@ -2357,14 +2376,22 @@ struct RedbWriter {
 }
 
 impl CacheWriter for RedbWriter {
-    async fn put(&self, key: &K, value: &V) -> Result<()> {
+    fn put(&self, key: &K, value: &V, timestamp: Timestamp) -> Result<()> {
         self.key_buffer.with(|buf| {
             let mut buf = buf.borrow_mut();
             self.codec.encode_key_into(key, &mut buf)?;
 
-            let value_size = self.codec.serialized_size(value)?;
-            let mut guard = self.table.insert_reserve(&buf, value_size)?;
-            self.codec.serialize_into(value, guard.as_mut())?;
+            let txn = self.db.begin_write()?;
+            {
+                let value_size = self.codec.serialized_size(value)?;
+                let mut table = txn.open_table(self.table_def)?;
+                let mut guard = table.insert_reserve(&buf, value_size)?;
+                self.codec.serialize_into(value, guard.as_mut())?;
+
+                let mut ts_table = txn.open_table(self.timestamp_table)?;
+                ts_table.insert(&buf, timestamp.as_nanos())?;
+            }
+            txn.commit()?;
 
             Ok(())
         })
@@ -2388,13 +2415,13 @@ impl CacheWriter for RedbWriter {
 
 ```rust
 impl CacheWriter for CoordinatorWriter {
-    async fn put(&self, key: &K, value: &V) -> Result<()> {
+    fn put(&self, key: &K, value: &V, timestamp: Timestamp) -> Result<()> {
         // Disk write first (persistence)
-        self.disk.put(key, value).await
+        self.disk.put(key, value, timestamp)
             .map_err(|e| CacheError::DiskWriteFailed { key: format!("{:?}", key), source: Box::new(e) })?;
 
         // Memory write second (best-effort)
-        if let Err(e) = self.memory.put(key, value).await {
+        if let Err(e) = self.memory.put(key, value, timestamp) {
             // Disk committed but memory failed
             tracing::warn!(
                 ?key,
@@ -2418,14 +2445,14 @@ impl CacheWriter for CoordinatorWriter {
 ```rust
 // On next read:
 impl CacheReader for CoordinatorReader {
-    async fn get(&self, key: &K) -> Result<Option<Guard>> {
-        // Check memory
-        if let Some(guard) = self.memory.get(key).await? {
+    fn get(&self, key: &K) -> Result<Option<Guard>> {
+        // Check memory first
+        if let Some(guard) = self.memory.get(key)? {
             return Ok(Some(CoordinatorGuard::Memory(guard)));
         }
 
         // Check disk
-        if let Some(guard) = self.disk.get(key).await? {
+        if let Some(guard) = self.disk.get(key)? {
             // Found in disk but not memory - backfill
             // (This repairs the partial write)
             self.backfill.trigger(key, &guard);
@@ -2872,15 +2899,18 @@ txn.commit()?;  // One fsync
 
 ```rust
 impl CacheWriter for RedbWriter {
-    async fn put_many(&self, entries: &[(&K, &V)]) -> Result<()> {
+    fn put_many(&self, entries: &[(&K, &V, Timestamp)]) -> Result<()> {
         let txn = self.db.begin_write()?;
         {
             let mut table = txn.open_table(self.table_def)?;
-            for (key, value) in entries {
+            let mut ts_table = txn.open_table(self.timestamp_table)?;
+
+            for (key, value, timestamp) in entries {
                 let key_bytes = self.codec.encode_key(key)?;
                 let value_size = self.codec.serialized_size(value)?;
                 let mut guard = table.insert_reserve(&key_bytes, value_size)?;
                 self.codec.serialize_into(value, guard.as_mut())?;
+                ts_table.insert(&key_bytes, timestamp.as_nanos())?;
             }
         }
         txn.commit()?;
@@ -2966,7 +2996,7 @@ Redb doesn't have it. We'd need to implement:
 
 ```rust
 impl RedbWriter {
-    async fn compact_if_needed(&self) -> Result<()> {
+    fn compact_if_needed(&self) -> Result<()> {
         let stats = self.db.stats()?;
         let usage = stats.stored_bytes() as f64 / stats.total_bytes() as f64;
 
@@ -3287,11 +3317,16 @@ type CoordinatorReader = Reader<MokaReader<K, V>, RedbReader<K, V>>;
 // Specialized implementation for this exact combination:
 impl Reader<MokaReader<String, Metadata>, RedbReader<String, Metadata>> {
     // All calls monomorphized and inlined
-    async fn get(&self, key: &String) -> ... {
+    fn get(&self, key: &String) -> Result<Option<CoordinatorGuard>, CacheError> {
         // Direct call to MokaReader::get (no vtable)
-        if let Some(guard) = self.memory.get(key).await? { ... }
+        if let Some(guard) = self.memory.get(key)? {
+            return Ok(Some(CoordinatorGuard::Memory(guard)));
+        }
         // Direct call to RedbReader::get (no vtable)
-        if let Some(guard) = self.disk.get(key).await? { ... }
+        if let Some(guard) = self.disk.get(key)? {
+            return Ok(Some(CoordinatorGuard::Disk(guard)));
+        }
+        Ok(None)
     }
 }
 ```
@@ -3310,11 +3345,11 @@ where
     MR: CacheReader<K, V>,
     DR: CacheReader<K, V>,
 {
-    async fn get(&self, key: &K) -> Result<Option<???>> {
-        if let Some(memory_guard) = self.memory.get(key).await? {
+    fn get(&self, key: &K) -> Result<Option<???>> {
+        if let Some(memory_guard) = self.memory.get(key)? {
             return Ok(Some(memory_guard));  // Type: MR::Guard
         }
-        if let Some(disk_guard) = self.disk.get(key).await? {
+        if let Some(disk_guard) = self.disk.get(key)? {
             return Ok(Some(disk_guard));  // Type: DR::Guard
         }
         Ok(None)
@@ -3335,11 +3370,11 @@ pub enum CoordinatorGuard<MG, DG> {
 impl<MR, DR> CacheReader for Reader<MR, DR> {
     type Guard<'a> = CoordinatorGuard<MR::Guard<'a>, DR::Guard<'a>>;
 
-    async fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>> {
-        if let Some(g) = self.memory.get(key).await? {
+    fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>> {
+        if let Some(g) = self.memory.get(key)? {
             return Ok(Some(CoordinatorGuard::Memory(g)));
         }
-        if let Some(g) = self.disk.get(key).await? {
+        if let Some(g) = self.disk.get(key)? {
             return Ok(Some(CoordinatorGuard::Disk(g)));
         }
         Ok(None)
@@ -3353,11 +3388,11 @@ impl<MR, DR> CacheReader for Reader<MR, DR> {
 
 ```rust
 impl<MR, DR> Reader<MR, DR> {
-    async fn get(&self, key: &K) -> Result<Option<Box<dyn CacheGuard<V>>>> {
-        if let Some(g) = self.memory.get(key).await? {
+    fn get(&self, key: &K) -> Result<Option<Box<dyn CacheGuard<V>>>> {
+        if let Some(g) = self.memory.get(key)? {
             return Ok(Some(Box::new(g)));  // Box allocation!
         }
-        if let Some(g) = self.disk.get(key).await? {
+        if let Some(g) = self.disk.get(key)? {
             return Ok(Some(Box::new(g)));  // Box allocation!
         }
         Ok(None)
@@ -3483,9 +3518,9 @@ pub struct Reader<K, V> {
 }
 
 impl Reader {
-    async fn get(&self, key: &K) -> Result<Option<V>> {
+    fn get(&self, key: &K) -> Result<Option<V>> {
         // ...
-        if let Some(v) = self.disk.get(key).await? {
+        if let Some(v) = self.disk.get(key)? {
             self.backfill.trigger(key.clone(), v.clone());  // ❌ Side effect in query
             return Ok(Some(v));
         }
@@ -3540,9 +3575,9 @@ pub struct Reader<MR, DR> {
 }
 
 impl<MR, DR> Reader<MR, DR> {
-    async fn get(&self, key: &K) -> Result<Option<Guard>> {
+    fn get(&self, key: &K) -> Result<Option<Guard>> {
         // Check memory
-        if let Some(guard) = self.memory.get(key).await? {
+        if let Some(guard) = self.memory.get(key)? {
             self.notify(CacheEvent::Hit {
                 key: key.clone(),
                 source: CacheLayer::Memory
@@ -3551,7 +3586,7 @@ impl<MR, DR> Reader<MR, DR> {
         }
 
         // Check disk
-        if let Some(guard) = self.disk.get(key).await? {
+        if let Some(guard) = self.disk.get(key)? {
             self.notify(CacheEvent::Hit {
                 key: key.clone(),
                 source: CacheLayer::Disk
@@ -3599,16 +3634,25 @@ impl<K, V> BackfillObserver<K, V> {
         let disk = self.disk_reader.clone();
         let memory = self.memory_writer.clone();
 
+        // Spawn async task for backfill (off critical path)
         tokio::spawn(async move {
-            // Read from disk
-            if let Ok(Some(guard)) = disk.get(&key).await {
-                // Need to clone for backfill (guard lifetime tied to disk reader)
-                let value = guard.to_owned();
+            // Offload sync cache operations to blocking pool
+            let result = tokio::task::spawn_blocking(move || {
+                // Read from disk (sync operation)
+                let guard = disk.get(&key)?;
+                if let Some(guard) = guard {
+                    // Need to clone for backfill (guard lifetime tied to disk reader)
+                    let value = guard.to_owned()?;
+                    let timestamp = Timestamp::now();
 
-                // Write to memory
-                if let Err(e) = memory.put(&key, &value).await {
-                    tracing::warn!(?e, ?key, "Backfill failed");
+                    // Write to memory (sync operation)
+                    memory.put(&key, &value, timestamp)?;
                 }
+                Ok::<(), CacheError>(())
+            }).await;
+
+            if let Err(e) = result {
+                tracing::warn!(?e, ?key, "Backfill failed");
             }
         });
     }
@@ -3785,8 +3829,8 @@ if metrics.dropped as f64 / metrics.triggered as f64 > 0.1 {
 **Pure Reader Test:**
 
 ```rust
-#[tokio::test]
-async fn test_coordinator_read_path() {
+#[test]
+fn test_coordinator_read_path() {
     let memory = MockCacheReader::new();
     let disk = MockCacheReader::new();
 
@@ -3794,7 +3838,7 @@ async fn test_coordinator_read_path() {
     let reader = Reader::new(memory, disk, vec![]);
 
     // Test pure read logic
-    let result = reader.get(&key).await?;
+    let result = reader.get(&key)?;
     assert!(result.is_some());
 }
 ```
@@ -3802,8 +3846,8 @@ async fn test_coordinator_read_path() {
 **With Backfill Test:**
 
 ```rust
-#[tokio::test]
-async fn test_backfill_triggered() {
+#[test]
+fn test_backfill_triggered() {
     let memory = MockCacheReader::new();
     let disk = MockCacheReader::new();
 
@@ -3813,10 +3857,10 @@ async fn test_backfill_triggered() {
     // Disk hit should trigger backfill
     disk.expect_get().returning(|_| Ok(Some(value)));
 
-    reader.get(&key).await?;
+    reader.get(&key)?;
 
-    // Wait for backfill
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // Wait for backfill task to complete
+    std::thread::sleep(Duration::from_millis(50));
 
     // Verify memory was updated
     assert!(backfill.was_triggered(&key));
@@ -4208,12 +4252,22 @@ impl From<redb::Error> for CacheError {
 
 ```rust
 // Moka backend
-#[tokio::test]
-async fn moka_stores_and_retrieves_values() { ... }
+#[test]
+fn moka_stores_and_retrieves_values() {
+    let cache = MokaCache::new();
+    cache.put(&key, &value, Timestamp::now()).unwrap();
+    let guard = cache.get(&key).unwrap().unwrap();
+    assert_eq!(&*guard, &expected_value);
+}
 
 // Redb backend
-#[tokio::test]
-async fn redb_stores_and_retrieves_values() { ... }
+#[test]
+fn redb_stores_and_retrieves_values() {
+    let cache = RedbCache::new(temp_dir);
+    cache.put(&key, &value, Timestamp::now()).unwrap();
+    let guard = cache.get(&key).unwrap().unwrap();
+    assert_eq!(&*guard, &expected_value);
+}
 
 // Codec
 #[test]
@@ -4224,11 +4278,22 @@ fn rkyv_roundtrip() { ... }
 
 ```rust
 // Coordinator with real backends
-#[tokio::test]
-async fn coordinator_memory_hit() { ... }
+#[test]
+fn coordinator_memory_hit() {
+    let coordinator = Coordinator::new(moka, redb);
+    coordinator.memory.put(&key, &value, Timestamp::now()).unwrap();
+    let guard = coordinator.get(&key).unwrap().unwrap();
+    assert!(matches!(guard, CoordinatorGuard::Memory(_)));
+}
 
-#[tokio::test]
-async fn coordinator_disk_hit_triggers_backfill() { ... }
+#[test]
+fn coordinator_disk_hit_triggers_backfill() {
+    let coordinator = Coordinator::new(moka, redb);
+    coordinator.disk.put(&key, &value, Timestamp::now()).unwrap();
+    let guard = coordinator.get(&key).unwrap().unwrap();
+    assert!(matches!(guard, CoordinatorGuard::Disk(_)));
+    // Backfill happens asynchronously in background
+}
 ```
 
 **Property Tests:**
