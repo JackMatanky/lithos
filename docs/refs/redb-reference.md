@@ -9,11 +9,14 @@
 
 redb (Rust Embedded DataBase) is a simple, portable, high-performance, ACID, embedded key-value store written in pure Rust. It provides zero-copy, thread-safe, BTreeMap-based API with full ACID compliance.
 
+redb access is transaction-scoped. Tables are opened within a read or write transaction, and guards returned by `get()` are tied to that transaction's lifetime.
+
 ## Core Features for Zero-Copy & High Performance
 
 ### 1. Zero-Copy Architecture
 
 #### Value Trait - Direct Memory Access
+
 ```rust
 pub trait Value: Debug {
     type SelfType<'a>: Debug + 'a where Self: 'a;
@@ -27,12 +30,16 @@ pub trait Value: Debug {
 ```
 
 **Zero-Copy Benefits:**
+
 - `from_bytes` returns views over data without copying
 - Lifetime-based API ensures memory safety
 - Direct byte slice interpretation for primitives
 - No serialization overhead for reads
 
+**Coherence Note:** You cannot implement `redb::Value` for standard library types like `String` or `Path` in a downstream crate due to Rust's orphan rules. Use a local newtype wrapper if you need a custom `Value` implementation.
+
 **Supported Types (Fixed Width - Optimal Performance):**
+
 - All primitive integers: `u8`, `u16`, `u32`, `u64`, `u128`, `i8`, `i16`, `i32`, `i64`, `i128`
 - Floating point: `f32`, `f64`
 - `bool`, `char`
@@ -40,6 +47,7 @@ pub trait Value: Debug {
 - Tuples up to 12 elements (if all fixed width)
 
 **Variable Width Types:**
+
 - `&[u8]` - byte slices (zero-copy view)
 - `&str` - string slices (zero-copy view)
 - `String`, `Vec<T>`, `Option<T>`
@@ -47,6 +55,7 @@ pub trait Value: Debug {
 ### 2. Performance-Critical Features
 
 #### AccessGuard - Zero-Copy Value Access
+
 ```rust
 pub struct AccessGuard<'a, V: Value + 'static> {
     // Provides zero-copy access to values
@@ -59,12 +68,16 @@ impl<'a, V: Value> AccessGuard<'a, V> {
 ```
 
 **Performance Characteristics:**
+
 - Direct memory mapping to database pages
 - No deserialization required for reads
 - Lifetime-bound safety without runtime overhead
 - Lock-free reads via MVCC
 
+**Lifetime Note:** `AccessGuard` borrows from the transaction. Guards must not outlive the transaction or the table they were created from.
+
 #### MutInPlaceValue Trait - In-Place Mutations
+
 ```rust
 pub trait MutInPlaceValue: Value {
     // Enables zero-allocation updates
@@ -73,19 +86,24 @@ pub trait MutInPlaceValue: Value {
 ```
 
 **Use Cases:**
+
 - Updating counters without read-modify-write cycle
 - Modifying fixed-size records in place
 - Avoiding allocation during updates
 
+**Safety Note:** Only fixed-width, in-place-safe types should implement `MutInPlaceValue`.
+
 ### 3. MVCC (Multi-Version Concurrency Control)
 
 **Concurrency Model:**
+
 - Multiple concurrent readers without blocking
 - Single writer can proceed without blocking readers
 - Readers see consistent snapshot
 - No lock contention for read operations
 
 **Performance Implications:**
+
 - Read throughput scales with CPU cores
 - Writers don't block readers
 - Readers don't block writers
@@ -94,12 +112,14 @@ pub trait MutInPlaceValue: Value {
 ### 4. Copy-on-Write B-Trees
 
 **Architecture:**
+
 - Persistent B-tree structure
 - Pages shared between transactions
 - Only modified pages are copied
 - Efficient bulk operations
 
 **Performance Benefits:**
+
 - Excellent cache locality
 - Sequential disk I/O patterns
 - Minimal write amplification
@@ -108,6 +128,7 @@ pub trait MutInPlaceValue: Value {
 ### 5. Memory-Mapped I/O
 
 **Database Backend:**
+
 ```rust
 pub trait StorageBackend: Send + Sync {
     // redb uses memory mapping by default
@@ -116,6 +137,7 @@ pub trait StorageBackend: Send + Sync {
 ```
 
 **Advantages:**
+
 - OS manages page cache automatically
 - No explicit buffer management needed
 - Direct memory access to database pages
@@ -124,6 +146,7 @@ pub trait StorageBackend: Send + Sync {
 ### 6. Table Operations - Performance APIs
 
 #### ReadableTable Trait
+
 ```rust
 pub trait ReadableTable<K: Key + 'static, V: Value + 'static> {
     fn get<'a>(&self, key: &'a K::SelfType<'a>)
@@ -138,6 +161,7 @@ pub trait ReadableTable<K: Key + 'static, V: Value + 'static> {
 ```
 
 **Zero-Copy Read Patterns:**
+
 ```rust
 // Direct access without copying
 let value = table.get("key")?.unwrap().value();
@@ -150,6 +174,7 @@ for entry in table.range("start".."end")? {
 ```
 
 #### Table Modifications
+
 ```rust
 pub struct Table<'db, K: Key + 'static, V: Value + 'static> {
     fn insert<'a>(&mut self, key: &K::SelfType<'a>, value: &V::SelfType<'a>)
@@ -164,6 +189,7 @@ pub struct Table<'db, K: Key + 'static, V: Value + 'static> {
 ```
 
 **`insert_reserve` for Zero-Allocation Writes:**
+
 ```rust
 // Reserve space and write directly to it
 let mut guard = table.insert_reserve("key", data.len() as u32)?;
@@ -171,9 +197,12 @@ guard.as_mut().copy_from_slice(data);
 // No intermediate allocation needed
 ```
 
+**Size Note:** `insert_reserve` takes a `u32` size. Callers should validate that serialized values fit within this limit before casting.
+
 ### 7. Multimap Tables
 
 **High-Performance Duplicate Keys:**
+
 ```rust
 pub struct MultimapTable<'db, K: Key + 'static, V: Key + 'static> {
     fn insert<'a>(&mut self, key: &K::SelfType<'a>, value: &V::SelfType<'a>)
@@ -185,13 +214,17 @@ pub struct MultimapTable<'db, K: Key + 'static, V: Key + 'static> {
 ```
 
 **Use Cases:**
+
 - Secondary indexes
 - Many-to-many relationships
 - Event logs with duplicate timestamps
 
+**Cache Use Case:** Multimap tables can model reverse indexes (e.g., tag -> file list) without full scans.
+
 ### 8. Savepoints and Rollbacks
 
 **Transaction Management:**
+
 ```rust
 pub struct WriteTransaction {
     fn set_savepoint(&mut self) -> Result<Savepoint>;
@@ -201,14 +234,18 @@ pub struct WriteTransaction {
 ```
 
 **Performance Considerations:**
+
 - Savepoints are lightweight
 - Rollback is O(1) in most cases
 - Enable atomic multi-step operations
 - No performance penalty if not used
 
+**Use Case:** Savepoints are helpful when batching writes and retrying partial failures without restarting the whole transaction.
+
 ### 9. Database Configuration
 
 #### Builder Pattern - Performance Tuning
+
 ```rust
 pub struct Builder {
     fn set_cache_size(&mut self, bytes: usize) -> &mut Self;
@@ -221,15 +258,19 @@ pub struct Builder {
 ```
 
 **Cache Size:**
+
 - Default: OS manages via mmap
 - Explicit cache: Faster repeated access
 - Trade-off: Memory usage vs. speed
 
 **Page Size:**
+
 - Default: 4KB (OS page size)
 - Larger pages: Better for large values
 - Smaller pages: Better for small values
 - Must match OS page size for optimal mmap
+
+**Guidance:** Align page size to the OS page size to maximize mmap efficiency.
 
 ### 10. Durability Modes
 
@@ -247,9 +288,12 @@ impl WriteTransaction {
 ```
 
 **Performance Trade-offs:**
+
 - `None`: Maximum write throughput, data may be lost on crash
 - `Eventual`: Good throughput, minimal data loss window
 - `Immediate`: ACID guarantees, lower write throughput
+
+**Cache Guidance:** For cache data that can be rebuilt, `None` or `Eventual` are usually appropriate.
 
 ## Integration with Lithos System
 
@@ -300,20 +344,25 @@ impl WriteTransaction {
 ### Benchmarking Notes
 
 **Strengths:**
+
 - Excellent read performance (zero-copy)
 - Very fast range scans (B-tree locality)
 - Good write performance with batching
 - Low memory overhead
 
 **Considerations:**
+
 - Single writer limitation
 - Mmap overhead on small databases
 - No compression (pure zero-copy)
 - File size growth (vacuuming needed)
 
+**Compaction Note:** `Database::compact()` performs a full rewrite and is typically a blocking operation. Plan for maintenance windows if using it on large datasets.
+
 ## Code Examples
 
 ### Basic Zero-Copy Usage
+
 ```rust
 use redb::{Database, ReadableDatabase, TableDefinition};
 
@@ -338,6 +387,7 @@ let bytes: &[u8] = value.value(); // No copy!
 ```
 
 ### High-Performance Batch Insert
+
 ```rust
 let write_txn = db.begin_write()?;
 {
@@ -353,6 +403,7 @@ write_txn.commit()?; // Single fsync
 ```
 
 ### In-Place Update Example
+
 ```rust
 // Define custom type supporting in-place mutation
 #[derive(Debug)]
@@ -386,6 +437,7 @@ bytes.copy_from_slice(&(current + 1).to_le_bytes());
 ## Summary for Lithos
 
 redb provides exceptional zero-copy performance through:
+
 - Direct memory mapping and value access
 - MVCC for lock-free concurrent reads
 - Copy-on-write B-trees with excellent locality
