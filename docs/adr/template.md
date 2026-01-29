@@ -1,45 +1,69 @@
 ---
 name: kebab-case-title
-status: proposed/accepted/rejected
-stakeholders: [List Stakeholders]
+status: proposed | accepted | rejected | superseded | deprecated
+supersedes: [ADR-0000] # Optional: ID of the ADR this replaces
 date_proposed: YYYY-MM-DD
 date_decided: YYYY-MM-DD
-date_implemented: YYYY-MM-DD
+stakeholders: [List Stakeholders]
 ---
 
 # ADR NNNN: [Title]
 
 ## Context
-
-[The problem statement and the context in which the decision is being made. What are the constraints, assumptions, and requirements?]
+<!--
+What is the issue that we're seeing that motivates this decision?
+Describe the technical, business, and political forces at play.
+Avoid describing the solution here.
+-->
 
 ## Decision
-
-[The chosen solution. Explain the "why" and "how".]
+<!--
+What is the change that we're proposing and/or doing?
+Phrased as "We will..."
+Focus on the architectural boundary or rule, not the code implementation.
+-->
 
 ## Alternatives Considered
-
-[List other options considered and why they were not chosen.]
+<!--
+List other options considered.
+CRITICAL: Explain WHY these were not chosen.
+"We considered X, but it failed to meet requirement Y."
+-->
 
 ### Alternative 1: [Name]
 - **Pros**: ...
 - **Cons**: ...
 
 ## Technical Validation
-
-[Detailed research and analysis of options. Why are these the right choices for Lithos?]
+<!--
+Evidence that supports the decision.
+Benchmarks, prototypes, or documentation references.
+-->
 
 ### Research Findings
-- [Point 1]: ...
-- [Point 2]: ...
+- ...
 
-### Compatibility & Performance
-- **Hexagonal Alignment**: ...
-- **Performance Impact**: ...
+### Benchmarks & Prototypes
+<!-- Link to POC code, benchmark logs, or experimental branches -->
 
 ## Consequences
+<!--
+What becomes easier? What becomes harder?
+Every architecture decision has a trade-off. If there are no negatives, you haven't looked hard enough.
+-->
 
-[The results of the decision, both positive and negative.]
+- **Positive**:
+- **Negative**:
+- **Risks**:
 
-- **Positive**: ...
-- **Negative**: ...
+## References
+<!--
+Links to external resources, papers, library documentation, or internal docs
+that influenced this decision.
+-->
+- [Title](URL) - Description
+
+## Appendix (Optional)
+<!--
+Place for large data dumps, diagrams, or detailed logs that would clutter the main text.
+-->

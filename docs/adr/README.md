@@ -2,40 +2,64 @@
 
 This guide documents the process for proposing, reviewing, and maintaining architectural decisions in the Lithos project.
 
-## Why ADRs?
+## Two-Tier Documentation Strategy
 
-We use ADRs to capture the "why" behind significant architectural choices. This prevents "architectural drift" and helps new team members understand the constraints and trade-offs that shaped the system.
+We use two types of documents to separate **Strategic Constraints** from **Tactical Implementation**.
+
+| Feature | **ADR** (Architectural Decision Record) | **Tech Spec** (Design Document) |
+| :--- | :--- | :--- |
+| **Scope** | Cross-cutting, System-wide | Feature-scoped, Component-specific |
+| **Why write it?** | To record a **significant design choice** that is hard to reverse. | To plan **how to build** a specific feature or module. |
+| **Lifecycle** | **Immutable**. Status changes (Proposed -> Accepted -> Superseded). | **Living** during dev. Matches code. Archived after shipping. |
+| **Template** | `docs/adr/template.md` | `docs/design/template.md` |
+
+### Decision Matrix: Which one do I write?
+
+| Question | If YES, write an **ADR** | If YES, write a **Tech Spec** |
+| :--- | :--- | :--- |
+| **Reversibility** | Is this decision **expensive** to reverse later? | Can we easily refactor this later? |
+| **Impact** | Does this affect **multiple components** or layers? | Is this isolated to a **single component**? |
+| **Constraint** | Does this establish a **rule** other devs must follow? | Is this just describing **logic flow**? |
+| **Content** | Are we choosing a **technology or pattern**? | Are we defining **structs or functions**? |
 
 ## When to Create an ADR
 
-Create an ADR for any decision that:
-- Affects multiple crates or hexagonal layers.
-- Introduces a new major dependency.
-- Changes a core implementation pattern (e.g., switching from `async` to threads).
-- Defines a significant data format or communication protocol.
+Create an ADR only for **Architecturally Significant Decisions** (ASDs). An ASD typically:
+- **Has a high cost of reversal** (e.g., choosing a primary database, defining a wire protocol).
+- **Involves a significant trade-off** (e.g., prioritizing write-throughput over read-consistency).
+- **Deviates from established patterns** (e.g., "We are using a synchronous call here despite our async-first policy because...").
+
+### When NOT to Create an ADR
+- **Routine Implementation**: Adding a new feature that follows existing patterns (Use a **Tech Spec**).
+- **Bug Fixes**: Unless the fix requires a fundamental architectural shift.
+- **Refactoring**: Cleaning up code without changing system boundaries or behaviors.
 
 ## The ADR Lifecycle
 
-1. **Drafting**: Use `docs/adr/template.md` to create a new ADR. Number it sequentially (`NNNN-name.md`).
+ADRs are **immutable documents**. Once accepted, they are not updated. If a decision changes, a new ADR is created to **supersede** the old one.
+
+1. **Drafting**: Use `docs/adr/template.md`. Number sequentially (`NNNN-name.md`).
 2. **Review**: Submit a PR. The team reviews for:
-    - **Completeness**: All template sections filled.
-    - **Technical Validation**: Strong research and analysis of alternatives.
-    - **Consequences**: Realistic assessment of both pros and cons.
-3. **Approval**: Once consensus is reached, update status to `Accepted`.
-4. **Implementation**: The decision is executed in code. Update `Status Tracking` once implemented.
+    - **Context**: Is the problem clearly stated?
+    - **Honesty**: Are the negative consequences listed?
+    - **Evidence**: Is the decision backed by research, benchmarks, or citations?
+    - **Alternatives**: Did we steelman the options we rejected?
+3. **Status Transitions**:
+    - `Proposed`: Under review.
+    - `Accepted`: Approved and active.
+    - `Rejected`: Reviewed but not adopted (valuable history).
+    - `Superseded`: Replaced by a newer ADR (e.g., "Superseded by 0012").
+    - `Deprecated`: The decision no longer applies due to system evolution.
 
 ## Validation Tooling
 
-- **Validate Format**: Run `mise run adr:validate` to ensure template compliance.
-- **Check Metrics**: Run `mise run adr:metrics` to see the current state of the architecture library.
+- **Validate Format**: `mise run adr:validate`
+- **Check Metrics**: `mise run adr:metrics`
 
 ## Template Standards
 
-Every ADR MUST include:
-- **Metadata**: Status, Date, Stakeholders.
-- **Context**: The "Problem" and constraints.
-- **Decision**: The "Solution" and how it works.
-- **Alternatives Considered**: At least one other option and why it wasn't chosen.
-- **Technical Validation**: Research findings and performance/compatibility analysis.
-- **Consequences**: Both Positive and Negative (be honest!).
-- **Status Tracking**: Timeline of the decision.
+Every ADR MUST focus on **Strategic Intent** over implementation details.
+- **Context**: The forces at play (business goals, technical constraints).
+- **Decision**: The specific path chosen.
+- **Technical Validation**: Proof that this works (benchmarks, prototypes, citations).
+- **Consequences**: The resulting context (good, bad, and neutral).
