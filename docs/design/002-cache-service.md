@@ -15,7 +15,7 @@ tags: [cache, performance, refactor, redb, moka, rkyv]
 
 ### 1.1 Context & Background
 
-The current cache foundation uses owned-value reads and async traits. This forces cloning, hides allocations, and blocks zero-copy optimizations available in redb/rkyv. Performance measurements and API analysis show async traits add overhead without real I/O benefits for memory-mapped storage or in-memory caches. We need a sync, guard-based design that is fast, safe, and explicit about allocations.
+The current cache foundation uses owned-value reads and async traits. This forces cloning, hides allocations, and blocks zero-copy optimizations available in redb/rkyv. For the concrete backends we use today (moka sync + redb), the core API can be synchronous and then wrapped for async callers via an explicit adapter that offloads blocking work.
 
 Related design work lives in `docs/cache-foundation-design.md` (analysis and rationale). This tech spec extracts the implementable core into a coherent, minimal plan.
 
@@ -32,7 +32,7 @@ Related design work lives in `docs/cache-foundation-design.md` (analysis and rat
 **Non-Goals**
 - Redis/network cache support in the core traits.
 - Async streaming APIs in core traits.
-- Hot-path allocation elimination for write paths.
+- Guaranteeing a fully zero-allocation write path in all cases (write-path optimizations are allowed but not required for the initial refactor).
 - Rewriting the entire cache subsystem beyond interfaces and guard design.
 
 ### 1.3 Constraints (The Hard Limits)
@@ -53,8 +53,20 @@ Read path (sync, zero-copy):
 ```rust
 let guard = reader.get(&key)?;
 if let Some(guard) = guard {
-    let view = &*guard; // View = V for moka, Archived<V> for redb
-    use_view(view);
+    // The view type is backend-specific:
+    // - memory guard derefs to `V`
+    // - disk guard derefs to `Archived<V>`
+    use_view(&*guard);
+}
+```
+
+Coordinator usage must branch by variant because memory and disk guards deref to different types:
+
+```rust
+match coordinator.get(&key)? {
+    None => {}
+    Some(CoordinatorGuard::Memory(g)) => use_value(&*g),
+    Some(CoordinatorGuard::Disk(g)) => use_archived(&*g),
 }
 ```
 
@@ -128,10 +140,19 @@ where
     type Guard<'a>: CacheGuard<Target = Self::View> where Self: 'a;
 
     fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
-    fn has(&self, key: &K) -> Result<bool, CacheError> {
-        Ok(self.get(key)?.is_some())
-    }
+
+    /// Returns whether the key exists.
+    ///
+    /// Note: this is intentionally *not* specified as a cache-read. For moka, use `contains_key`-
+    /// style semantics so `has()` does not reset idle timers or update read popularity.
+    fn has(&self, key: &K) -> Result<bool, CacheError>;
+
     fn timestamp(&self, key: &K) -> Result<Option<Timestamp>, CacheError>;
+
+    /// Returns the number of entries.
+    ///
+    /// This may be an estimate for some backends (e.g., moka reports an approximate count that can
+    /// be made more accurate by running pending maintenance tasks).
     fn len(&self) -> Result<usize, CacheError>;
     fn is_empty(&self) -> Result<bool, CacheError> {
         Ok(self.len()? == 0)
@@ -249,6 +270,10 @@ where
     Memory(MokaGuard<V>),
     Disk(RedbGuard<'a, V>),
 }
+
+// NOTE: `CoordinatorGuard` is a tagged union. It intentionally does NOT implement `Deref` or
+// `CacheGuard` because `MokaGuard<V>` derefs to `V` while `RedbGuard<'a, V>` derefs to
+// `Archived<V>`.
 ```
 
 Async adapter + owned conversion:
@@ -382,9 +407,11 @@ pub struct BackfillObserver<K, V> {
 
 - **Redb read**: begin read txn, lookup key, validate rkyv archived data once, wrap in guard.
 - **Redb write**: begin write txn, encode key, reserve space, serialize into buffer, write timestamp in same txn, commit.
-- **Moka read**: `moka::sync::Cache::get` returns `Arc<(Timestamp, V)>`; guard derefs to `V`.
+- **Moka read**: store `Arc<(Timestamp, V)>` as the cache value so `moka::sync::Cache::get` returns
+    a cheap clone of that `Arc` (moka `get` always returns an owned clone of the stored value).
 - **Moka write**: clone key/value into `Arc<(Timestamp, V)>` and insert into sync cache.
-- **keys()**: redb iterator owns read txn; moka collects keys to Vec and returns iterator.
+- **keys()**: redb iterator owns read txn; moka iterates entries and collects/clones keys into a
+    `Vec<K>` before returning an iterator.
 - **keys_where(prefix)**: redb uses range bounds `[prefix, next_prefix)`; moka filters in-memory keys.
 
 ## 4. Alternatives & Decisions (The "Divergence")
@@ -394,7 +421,8 @@ pub struct BackfillObserver<K, V> {
 #### Decision: Sync traits only
 - **Context**: backends are sync (moka::sync, redb) and async adds overhead.
 - **Choice**: pure sync traits.
-- **Alternatives**: async traits with spawn_blocking wrappers (rejected: 1.7–5x slower).
+- **Alternatives**: async traits with spawn_blocking wrappers (rejected: adds scheduling overhead;
+    keep async at the boundary via an explicit adapter).
 
 #### Decision: Guard-based reads
 - **Context**: zero-copy is required for redb + rkyv.
@@ -441,4 +469,4 @@ pub struct BackfillObserver<K, V> {
 | :--------- | :------------------------------------------- | :------------------------------------------------------ |
 | 2026-01-30 | Async traits add overhead, block hot path     | Switched to pure sync traits                            |
 | 2026-01-30 | Redb streaming invalid without owning txn    | Iterator-based API owns read transaction                |
-| 2026-01-30 | Guard types mismatch between backends        | CacheGuard uses Deref<Target = View> with View type     |
+| 2026-01-30 | Guard types mismatch between backends        | Coordinator returns a tagged union; callers branch by layer |
