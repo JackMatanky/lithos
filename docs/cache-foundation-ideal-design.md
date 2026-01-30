@@ -36,8 +36,9 @@
    - 4.2 Two-Phase Contract
    - 4.3 Archived Types First
    - 4.4 Alignment Reality Check
-   - 4.5 The Copy Fallback
-   - 4.6 Validation Cost
+   - 4.5 Endianness Considerations
+   - 4.6 Complete Codec Implementation
+   - 4.7 Validation Cost
 
 5. [Reader Trait: Borrow, Don't Own](#5-reader-trait-borrow-dont-own)
    - 5.1 Method Signature Evolution
@@ -186,7 +187,7 @@ let value: String = cache.get(&key)?.unwrap();
 
 // What should happen:
 let guard = cache.get(&key)?.unwrap();
-let value: &str = guard.as_str();  // Zero-copy, no allocation
+let value: &str = (&*guard).as_str();  // Zero-copy, no allocation
 // Use value...
 // Guard dropped when done
 ```
@@ -352,7 +353,7 @@ pub trait CacheEventSink {
 // Backfiller subscribes to events
 pub struct Backfiller<K, V> {
     memory_writer: Arc<dyn CacheWriter<K, V>>,
-    disk_reader: Arc<dyn CacheReader<K, V>>,
+    disk_reader: Arc<dyn CacheReader<K>>,
 }
 
 impl CacheEventSink for Backfiller {
@@ -449,6 +450,9 @@ Only Redis needs async (network I/O), and it needs wrappers anyway (connection p
 ```rust
 // NO async, NO await, just pure sync:
 pub trait CacheReader<K>: Send + Sync {
+    type View: ?Sized;
+    type Guard<'a>: CacheGuard<Target = Self::View> where Self: 'a;
+
     fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>>;
     fn timestamp(&self, key: &K) -> Result<Option<Timestamp>>;
 }
@@ -488,7 +492,7 @@ Use explicit AsyncAdapter with spawn_blocking:
 
 ```rust
 let cache = AsyncCacheReader::new(RedbReader::new(db));
-let result = cache.get(&key)?;  // Properly offloads blocking work
+let result = cache.get_owned(&key).await?;  // Owned value, properly offloads blocking work
 ```
 
 **Verdict:** Async was a mistake. Sync traits are 1.7-5x faster, work with all backends, and are simpler. See Section 5.2 for full analysis.
@@ -506,7 +510,7 @@ Let's define the actual operations our cache needs to support:
 | **get(key)**            | ~10-50ns              | ~1-10µs              | ~10-100µs        | 99%       |
 | **timestamp(key)**      | ~10ns                 | ~100ns               | -                | 80%       |
 | **put(key, value)**     | ~50-100ns             | ~10-50µs             | -                | 1%        |
-| **scan_prefix(prefix)** | O(n) filter           | O(log n) seek        | -                | <0.1%     |
+| **keys_where(prefix)** | O(n) filter           | O(log n) seek        | -                | <0.1%     |
 | **keys()**              | O(n) collect          | O(n) scan            | -                | <0.01%    |
 | **delete(key)**         | ~50ns                 | ~10µs                | -                | <0.1%     |
 
@@ -603,7 +607,7 @@ fn get(&self, key: &K) -> Option<V>
 // Where does V come from? Must be cloned somewhere.
 
 // ✅ Explicit borrowing
-fn get<'a>(&'a self, key: &K) -> Option<Guard<'a, V>>
+fn get<'a>(&'a self, key: &K) -> Option<Guard<'a>>
 // Lifetime 'a says: "Guard borrows from self, no allocation"
 ```
 
@@ -611,7 +615,8 @@ fn get<'a>(&'a self, key: &K) -> Option<Guard<'a, V>>
 
 ```rust
 trait CacheReader {
-    type Guard<'a>: CacheGuard where Self: 'a;
+     type View: ?Sized;
+     type Guard<'a>: CacheGuard<Target = Self::View> where Self: 'a;
 
     fn get<'a>(&'a self, key: &K) -> Result<Option<Self::Guard<'a>>>;
 }
@@ -653,7 +658,7 @@ impl<const ALIGN: usize> Codec for AlignedCodec<ALIGN> {
 
 3. **Timestamp checks**
    - MUST NOT deserialize value
-   - Direct byte access to timestamp field
+   - Direct access to timestamp table (native u64)
    - For redb: read from separate timestamp table (native u64)
    - For moka: Arc<(u64, V)> means timestamp is just a field access
 
@@ -852,11 +857,13 @@ struct Reader<K: Eq + Hash + Clone + Debug, V: Clone + Debug> {
 ```rust
 // Guard is a smart pointer that:
 // 1. Holds the underlying resource (AccessGuard, Arc, etc.)
-// 2. Implements Deref to provide &V access
+// 2. Derefs to a view type (V or Archived<V>)
 // 3. Drops the resource when it goes out of scope
 
-pub trait CacheGuard<V>: Deref<Target = V> + Send {
-    // Minimal interface - Deref does most of the work
+pub trait CacheGuard: Deref<Target = Self::Target> + Send {
+    type Target: ?Sized;
+
+    fn as_bytes(&self) -> &[u8];
 }
 ```
 
@@ -865,7 +872,7 @@ pub trait CacheGuard<V>: Deref<Target = V> + Send {
 ```rust
 // With Guard:
 let guard = cache.get(&key)?.unwrap();
-let value: &str = &*guard;  // Deref coercion
+let value: &str = &*guard;
 process(value);
 // Guard dropped, resources released
 
@@ -889,11 +896,13 @@ The **borrow checker enforces correct usage** at compile time.
 /// Guard providing borrowed access to cached values.
 ///
 /// Guards are RAII types that hold references to underlying storage.
-/// They implement Deref<Target = V> to provide transparent access.
+/// They deref to a view type (V or Archived<V>).
 ///
 /// # Lifetime
 /// The guard's lifetime is tied to the cache reader it came from.
-pub trait CacheGuard<V: ?Sized>: Deref<Target = V> + Send {
+pub trait CacheGuard: Deref<Target = Self::Target> + Send {
+    type Target: ?Sized;
+
     /// Access raw bytes (for debugging/inspection).
     fn as_bytes(&self) -> &[u8];
 }
@@ -901,9 +910,9 @@ pub trait CacheGuard<V: ?Sized>: Deref<Target = V> + Send {
 
 **Why so minimal?**
 
-- `Deref<Target = V>` provides all value access
+- `Deref<Target = View>` provides smart-pointer ergonomics
 - `Send` allows moving guards across threads when lifetimes permit
-- `V: ?Sized` supports both `V = String` and `V = str`
+- `Target: ?Sized` supports both `Target = String` and `Target = str`
 - `as_bytes()` for debugging only
 
 **What's NOT in the trait:**
@@ -916,12 +925,12 @@ pub trait CacheGuard<V: ?Sized>: Deref<Target = V> + Send {
 
 ```rust
 /// Guard that provides timestamp access (for staleness checks)
-pub trait TimestampedGuard<V: ?Sized>: CacheGuard<V> {
+pub trait TimestampedGuard: CacheGuard {
     fn timestamp(&self) -> Timestamp;
 }
 
 /// Guard that provides metadata access (for redb entries)
-pub trait MetadataGuard<V: ?Sized>: CacheGuard<V> {
+pub trait MetadataGuard: CacheGuard {
     fn metadata(&self) -> &HashMap<String, String>;
 }
 ```
@@ -942,12 +951,12 @@ pub struct MokaGuard<V> {
 impl<V> Deref for MokaGuard<V> {
     type Target = V;
 
-    fn deref(&self) -> &V {
+    fn deref(&self) -> &Self::Target {
         &self.inner.1
     }
 }
 
-impl<V> CacheGuard<V> for MokaGuard<V>
+impl<V> CacheGuard for MokaGuard<V>
 where
     V: Send + 'static
 {
@@ -957,7 +966,7 @@ where
     }
 }
 
-impl<V> TimestampedGuard<V> for MokaGuard<V>
+impl<V> TimestampedGuard for MokaGuard<V>
 where
     V: Send + 'static
 {
@@ -1026,7 +1035,7 @@ where
 {
     type Target = Archived<V>;
 
-    fn deref(&self) -> &Archived<V> {
+    fn deref(&self) -> &Self::Target {
         // ✅ Zero cost! Already validated in constructor
         self.archived
     }
@@ -1038,10 +1047,6 @@ where
     Archived<V>: Send,
 {
     type Target = Archived<V>;
-
-    fn as_ref(&self) -> &Self::Target {
-        self.archived
-    }
 
     fn as_bytes(&self) -> &[u8] {
         self._guard.value()
@@ -1096,7 +1101,7 @@ let owned: String = guard.to_owned()?;  // ← Explicit allocation
 
    ```rust
    let guard = cache.get(&key)?;
-   let archived = guard.archived()?;  // Zero-copy
+   let archived = &*guard;  // Zero-copy
    let value: String = guard.to_owned()?;  // Allocation
    ```
 
@@ -1106,7 +1111,7 @@ let owned: String = guard.to_owned()?;  // ← Explicit allocation
 impl<'txn> RedbGuard<'txn, String> {
     /// Zero-copy access to str
     pub fn as_str(&self) -> Result<&str, CacheError> {
-        Ok(self.archived()?.as_str())
+        Ok((&*self).as_str())
     }
 }
 ```
@@ -1174,7 +1179,8 @@ let s = guard.as_str()?;       // Match on enum (~1ns), rkyv access (~100ns)
 
 ```rust
 // Explicit lifetimes (verbose but clear):
-impl<'a, K, V> CacheReader<K, V> for Reader {
+impl<'a, K, V> CacheReader<K> for Reader {
+    // type View / Guard elided for brevity
     fn get<'b>(&'b self, key: &'a K) -> Result<Option<Self::Guard<'b>>>
     where
         'a: 'b,  // Key must outlive the call
@@ -1184,7 +1190,7 @@ impl<'a, K, V> CacheReader<K, V> for Reader {
 }
 
 // Elided lifetimes (what we actually write):
-impl<K, V> CacheReader<K, V> for Reader {
+impl<K, V> CacheReader<K> for Reader {
     fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>> {
         ...
     }
@@ -1371,7 +1377,7 @@ let value: String = cache.get(&key)?;
 
 // New way (explicit allocation):
 let guard = cache.get(&key)?;
-let archived: &ArchivedString = guard.archived()?;  // Zero-copy
+let archived: &ArchivedString = &*guard;  // Zero-copy
 let value: &str = archived.as_str();                // Zero-copy
 
 // Only if we need owned String:
@@ -1528,7 +1534,7 @@ where
 
 ---
 
-### 4.6 Validation Cost and Strategy
+### 4.7 Validation Cost and Strategy
 
 **rkyv Validation Performance:**
 
@@ -1671,7 +1677,8 @@ async fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
 
 ```rust
 trait CacheReader {
-    type Guard<'a>: CacheGuard where Self: 'a;
+     type View: ?Sized;
+     type Guard<'a>: CacheGuard<Target = Self::View> where Self: 'a;
 
     fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
 }
@@ -1694,7 +1701,8 @@ where
     type Value: Send + Sync + 'static;
 
     /// Guard providing borrowed access to cached values
-    type Guard<'a>: CacheGuard where Self: 'a;
+    type View: ?Sized;
+    type Guard<'a>: CacheGuard<Target = Self::View> where Self: 'a;
 
     /// Retrieve guard for key (zero-copy when possible)
     fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
@@ -1729,9 +1737,9 @@ where
 | Backend fit | Needs wrappers | Direct implementation |
 
 **Note on Streaming:**
-- `keys()` and `scan_prefix()` removed from default trait
+- `keys()` and `keys_where()` removed from default trait
 - Backend-specific: Moka has no streaming, Redb does
-- Use extension traits if needed
+- Use extension traits with transaction-owned iterators for redb
 
 ---
 
@@ -1794,6 +1802,9 @@ Only Redis needs async, and it needs wrappers either way (connection pooling, se
 ```rust
 // Core traits: Pure sync
 pub trait CacheReader<K>: Send + Sync {
+    type View: ?Sized;
+    type Guard<'a>: CacheGuard<Target = Self::View> where Self: 'a;
+
     fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>>;
 }
 
@@ -1828,6 +1839,36 @@ impl CacheReader for RedbReader {
 If you absolutely need async (e.g., using cache in async context), use adapter:
 
 ```rust
+/// Convert a guard into an owned value (explicit allocation)
+pub trait GuardToOwned {
+    type Owned;
+
+    fn to_owned(&self) -> Result<Self::Owned, CacheError>;
+}
+
+impl<V> GuardToOwned for MokaGuard<V>
+where
+    V: Clone,
+{
+    type Owned = V;
+
+    fn to_owned(&self) -> Result<Self::Owned, CacheError> {
+        Ok(self.inner.1.clone())
+    }
+}
+
+impl<'txn, V> GuardToOwned for RedbGuard<'txn, V>
+where
+    V: Archive,
+    Archived<V>: Deserialize<V, HighDeserializer>,
+{
+    type Owned = V;
+
+    fn to_owned(&self) -> Result<Self::Owned, CacheError> {
+        RedbGuard::to_owned(self)
+    }
+}
+
 /// Adapter for using sync cache in async context
 pub struct AsyncCacheReader<R> {
     reader: R,
@@ -1845,7 +1886,10 @@ where
     /// Async get via spawn_blocking
     ///
     /// NOTE: Returns owned values because guards cannot cross the blocking boundary.
-    pub async fn get_owned(&self, key: &K) -> Result<Option<R::Value>, CacheError> {
+    pub async fn get_owned(&self, key: &K) -> Result<Option<R::Value>, CacheError>
+    where
+        for<'a> R::Guard<'a>: GuardToOwned<Owned = R::Value>,
+    {
         let reader = self.reader.clone();
         let key = key.clone();
 
@@ -1912,36 +1956,77 @@ For most use cases, **just use sync traits directly**.
 **Implementation:**
 
 ```rust
-use futures::stream::{self, BoxStream, StreamExt};
+pub trait CacheKeysExt<K> {
+    type KeysIter<'a>: Iterator<Item = Result<K, CacheError>>
+    where
+        Self: 'a;
 
-impl CacheReader for MokaReader {
-    fn keys(&self) -> BoxStream<'_, Result<K, CacheError>> {
+    fn keys(&self) -> Result<Self::KeysIter<'_>, CacheError>;
+}
+
+pub trait KeyCodec<K> {
+    fn decode_key(&self, bytes: &[u8]) -> Result<K, CacheError>;
+}
+
+impl CacheKeysExt<K> for MokaReader {
+    type KeysIter<'a> = std::vec::IntoIter<Result<K, CacheError>> where Self: 'a;
+
+    fn keys(&self) -> Result<Self::KeysIter<'_>, CacheError> {
         // Collect all keys (moka has no streaming API)
-        let keys: Vec<K> = self.cache.iter().map(|(k, _)| k.clone()).collect();
-        stream::iter(keys.into_iter().map(Ok)).boxed()
+        let keys: Vec<Result<K, CacheError>> = self
+            .cache
+            .iter()
+            .map(|(k, _)| Ok(k.clone()))
+            .collect();
+        Ok(keys.into_iter())
     }
 }
 
-impl CacheReader for RedbReader {
-    fn keys(&self) -> BoxStream<'_, Result<K, CacheError>> {
-        // True streaming from B-tree iterator
-        let iter = self.table.iter().map(|result| {
+pub struct RedbKeysIter<'a, K, I> {
+    _txn: redb::ReadTransaction,
+    iter: I, // iterator returned by table.iter()
+    codec: &'a dyn KeyCodec<K>,
+}
+
+impl<'a, K, I> Iterator for RedbKeysIter<'a, K, I>
+where
+    I: Iterator,
+    I::Item: Into<Result<(&'a [u8], &'a [u8]), redb::Error>>,
+{
+    type Item = Result<K, CacheError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|result| {
             result
+                .into()
                 .map(|(k, _v)| self.codec.decode_key(k))
                 .and_then(|r| r)
                 .map_err(CacheError::from)
-        });
+        })
+    }
+}
 
-        stream::iter(iter).boxed()
+impl CacheKeysExt<K> for RedbReader {
+    // Iterator type is the concrete type returned by table.iter()
+    type KeysIter<'a> = RedbKeysIter<'a, K, /* table.iter() iterator */> where Self: 'a;
+
+    fn keys(&self) -> Result<Self::KeysIter<'_>, CacheError> {
+        let txn = self.db.begin_read()?;
+        let table = txn.open_table(self.table_def)?;
+        Ok(RedbKeysIter {
+            _txn: txn,
+            iter: table.iter(),
+            codec: &self.codec,
+        })
     }
 }
 ```
 
-**Why BoxStream:**
+**Why iterator-based:**
 
-- `impl Stream` in trait is not stable yet
-- `BoxStream` provides stable API
-- Small allocation (~32 bytes) acceptable for non-hot path
+- Redb iterators are tied to a read transaction; returning an iterator that owns the txn is the only safe streaming option
+- Zero allocations on the redb path
+- Pure sync API consistent with the rest of the design
 
 ---
 
@@ -1950,20 +2035,32 @@ impl CacheReader for RedbReader {
 **Moka (Filter-Based):**
 
 ```rust
-fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>> {
-    let prefix = prefix.to_string();
-    let keys: Vec<K> = self.cache.iter()
-        .filter_map(|(k, _)| {
-            let k_str = k.as_ref();  // Assuming K: AsRef<str>
-            if k_str.starts_with(&prefix) {
-                Some(k.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
+pub trait CachePrefixExt<K> {
+    type KeysWhereIter<'a>: Iterator<Item = Result<K, CacheError>>
+    where
+        Self: 'a;
 
-    stream::iter(keys.into_iter().map(Ok)).boxed()
+    fn keys_where(&self, prefix: &str) -> Result<Self::KeysWhereIter<'_>, CacheError>;
+}
+
+impl CachePrefixExt<K> for MokaReader {
+    type KeysWhereIter<'a> = std::vec::IntoIter<Result<K, CacheError>> where Self: 'a;
+
+    fn keys_where(&self, prefix: &str) -> Result<Self::KeysWhereIter<'_>, CacheError> {
+        let prefix = prefix.to_string();
+        let keys: Vec<Result<K, CacheError>> = self.cache.iter()
+            .filter_map(|(k, _)| {
+                let k_str = k.as_ref();  // Assuming K: AsRef<str>
+                if k_str.starts_with(&prefix) {
+                    Some(Ok(k.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(keys.into_iter())
+    }
 }
 ```
 
@@ -1972,20 +2069,51 @@ fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>> {
 **Redb (Range-Based):**
 
 ```rust
-fn scan_prefix(&self, prefix: &str) -> BoxStream<'_, Result<K, CacheError>> {
-    // B-tree range: all keys >= prefix and < next prefix
-    let start = prefix.to_string();
-    let end = next_prefix(&start);  // "abc" -> "abd"
+pub struct RedbPrefixIter<'a, K, I> {
+    _txn: redb::ReadTransaction,
+    iter: I, // iterator returned by table.range()
+    codec: &'a dyn KeyCodec<K>,
+}
 
-    let iter = self.table.range(start..end)
-        .map(|result| {
+impl<'a, K, I> Iterator for RedbPrefixIter<'a, K, I>
+where
+    I: Iterator,
+    I::Item: Into<Result<(&'a [u8], &'a [u8]), redb::Error>>,
+{
+    type Item = Result<K, CacheError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.iter.next().map(|result| {
             result
+                .into()
                 .map(|(k, _v)| self.codec.decode_key(k))
                 .and_then(|r| r)
                 .map_err(CacheError::from)
-        });
+        })
+    }
+}
 
-    stream::iter(iter).boxed()
+impl CachePrefixExt<K> for RedbReader {
+    // Iterator type is the concrete type returned by table.range(..)
+    type KeysWhereIter<'a> = RedbPrefixIter<'a, K, /* table.range() iterator */> where Self: 'a;
+
+    fn keys_where(&self, prefix: &str) -> Result<Self::KeysWhereIter<'_>, CacheError> {
+    // B-tree range: all keys >= prefix and < next prefix
+    // Requires key encoding that preserves lexicographic order.
+    let start = prefix.to_string();
+    let end = next_prefix(&start);  // "abc" -> "abd"
+
+    let start_bytes = self.codec.encode_key(&start)?;
+    let end_bytes = self.codec.encode_key(&end)?;
+
+    let txn = self.db.begin_read()?;
+    let table = txn.open_table(self.table_def)?;
+    Ok(RedbPrefixIter {
+        _txn: txn,
+        iter: table.range(start_bytes..end_bytes),
+        codec: &self.codec,
+    })
+}
 }
 
 fn next_prefix(s: &str) -> String {
@@ -2003,6 +2131,8 @@ fn next_prefix(s: &str) -> String {
 ```
 
 **Cost:** O(log n + m) where m = matching keys. Much better for large caches.
+
+**Note:** Prefix scans assume key encoding preserves lexicographic order. For non-string keys, define an explicit prefix encoding strategy in the codec.
 
 ---
 
@@ -2792,12 +2922,16 @@ fn get_bytes(&self) -> &[u8] {
 **Solution: Return the Guard**
 
 ```rust
-pub struct RedbGuard<'txn> {
+pub struct RedbGuard<'txn, V>
+where
+    V: Archive,
+{
     guard: AccessGuard<'txn, [u8]>,
+    archived: &'txn Archived<V>,
 }
 
 // Now lifetime is tied to guard
-fn get(&self) -> RedbGuard<'_> {
+fn get(&self) -> RedbGuard<'_, V> {
     let guard = self.table.get(&key)?;
     RedbGuard::new(guard)
 }
@@ -2807,8 +2941,8 @@ fn get(&self) -> RedbGuard<'_> {
 
 ```rust
 let guard = cache.get(&key)?;
-let bytes = guard.value();  // Lifetime tied to guard
-process(bytes);
+let archived = &*guard;  // Lifetime tied to guard
+process(archived);
 // Guard dropped, transaction ends
 ```
 
@@ -3262,8 +3396,8 @@ for (key, value) in metadata.iter() {
 
 ```rust
 pub struct Reader<K, V> {
-    memory: Arc<dyn CacheReader<K, V>>,
-    disk: Arc<dyn CacheReader<K, V>>,
+    memory: Arc<dyn CacheReader<K>>,
+    disk: Arc<dyn CacheReader<K>>,
 }
 ```
 
@@ -3293,8 +3427,8 @@ dyn_reader.get(&key)  // ~12-15ns
 ```rust
 pub struct Reader<MR, DR>
 where
-    MR: CacheReader<K, V>,
-    DR: CacheReader<K, V>,
+    MR: CacheReader<K>,
+    DR: CacheReader<K>,
 {
     memory: MR,
     disk: DR,
@@ -3339,8 +3473,8 @@ impl Reader<MokaReader<String, Metadata>, RedbReader<String, Metadata>> {
 ```rust
 impl<MR, DR> Reader<MR, DR>
 where
-    MR: CacheReader<K, V>,
-    DR: CacheReader<K, V>,
+    MR: CacheReader<K>,
+    DR: CacheReader<K>,
 {
     fn get(&self, key: &K) -> Result<Option<???>> {
         if let Some(memory_guard) = self.memory.get(key)? {
@@ -3364,10 +3498,12 @@ pub enum CoordinatorGuard<MG, DG> {
     Disk(DG),
 }
 
-impl<MR, DR> CacheReader for Reader<MR, DR> {
-    type Guard<'a> = CoordinatorGuard<MR::Guard<'a>, DR::Guard<'a>>;
-
-    fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>> {
+impl<MR, DR> Reader<MR, DR>
+where
+    MR: CacheReader<K>,
+    DR: CacheReader<K>,
+{
+    fn get(&self, key: &K) -> Result<Option<CoordinatorGuard<MR::Guard<'_>, DR::Guard<'_>>>> {
         if let Some(g) = self.memory.get(key)? {
             return Ok(Some(CoordinatorGuard::Memory(g)));
         }
@@ -3381,11 +3517,13 @@ impl<MR, DR> CacheReader for Reader<MR, DR> {
 
 **Cost:** One enum match per access (~1ns).
 
+**Note:** Coordinator does not implement `CacheReader<K>` because its view type differs between backends.
+
 **Solution 2: Type Erasure (Trait Object)**
 
 ```rust
 impl<MR, DR> Reader<MR, DR> {
-    fn get(&self, key: &K) -> Result<Option<Box<dyn CacheGuard<V>>>> {
+    fn get(&self, key: &K) -> Result<Option<Box<dyn CacheGuard<Target = V>>>> {
         if let Some(g) = self.memory.get(key)? {
             return Ok(Some(Box::new(g)));  // Box allocation!
         }
@@ -3396,6 +3534,8 @@ impl<MR, DR> Reader<MR, DR> {
     }
 }
 ```
+
+**Note:** This only works if both backends share the same view type `V`.
 
 **Cost:** Heap allocation per get (~20ns).
 
@@ -3488,8 +3628,8 @@ ls -lh target/release/lithos
 ```rust
 pub struct Reader<MR, DR>
 where
-    MR: CacheReader<K, V>,
-    DR: CacheReader<K, V>,
+    MR: CacheReader<K>,
+    DR: CacheReader<K>,
 {
     memory: MR,
     disk: DR,
@@ -3509,8 +3649,8 @@ pub type LithosReader = Reader<MokaReader<String, Metadata>, RedbReader<String, 
 
 ```rust
 pub struct Reader<K, V> {
-    memory: Arc<dyn CacheReader<K, V>>,
-    disk: Arc<dyn CacheReader<K, V>>,
+    memory: Arc<dyn CacheReader<K>>,
+    disk: Arc<dyn CacheReader<K>>,
     backfill: BackfillHandle<K, V>,  // ❌ Reader shouldn't know about this
 }
 
@@ -3608,7 +3748,7 @@ impl<MR, DR> Reader<MR, DR> {
 ```rust
 pub struct BackfillObserver<K, V> {
     memory_writer: Arc<dyn CacheWriter<K, V>>,
-    disk_reader: Arc<dyn CacheReader<K, V>>,
+    disk_reader: Arc<dyn CacheReader<K>>,
     handle: BackfillHandle<K, V>,
 }
 
@@ -3884,7 +4024,7 @@ After extensive analysis of async overhead vs. decoupling benefits, **all cache 
 
 3. **Better decoupling** - 90% of cache implementations are sync (moka::sync, redb, sled, mini-moka). Async trait forces spawn_blocking wrappers. Sync trait works with all backends directly.
 
-4. **Async when needed** - Optional AsyncAdapter for truly async contexts (see Section 5.2.2).
+4. **Async when needed** - Optional AsyncAdapter for truly async contexts (see Section 5.2.1).
 
 5. **Validate-once guards** - All validation happens in guard constructor, then zero-cost Deref access.
 
@@ -3896,7 +4036,7 @@ After extensive analysis of async overhead vs. decoupling benefits, **all cache 
 
 **Previous Corrections Still Applied:**
 
-- Guard trait uses `as_ref()` not `Deref<Target=V>` (rkyv types)
+- Guard trait uses `Deref<Target=View>` (rkyv archived types for redb)
 - No `'static` requirement on guards (redb lifetimes)
 - Clone bounds explicit where needed
 - No `From<rkyv::rancor::Error>` (it's a trait)
@@ -3957,15 +4097,12 @@ impl Timestamp {
 
 /// Guard trait providing borrowed access to cached values
 ///
-/// NOTE: This trait does NOT use `Deref<Target = V>` because:
+/// NOTE: This trait uses `Deref<Target = View>` because:
 /// 1. Archived types (rkyv::Archived<T>) are different types than T
-/// 2. We cannot have `'static` requirement - guards must have flexible lifetimes
-/// 3. The `as_ref()` pattern is more explicit and works with generic associated types
-pub trait CacheGuard: Send {
+/// 2. Guards are smart pointers; deref coercion is idiomatic and cheap
+/// 3. View type is explicit via the associated `Target`
+pub trait CacheGuard: Deref<Target = Self::Target> + Send {
     type Target: ?Sized;
-
-    /// Access the cached value
-    fn as_ref(&self) -> &Self::Target;
 
     /// Access raw bytes (for debugging)
     fn as_bytes(&self) -> &[u8];
@@ -3982,13 +4119,14 @@ pub trait TimestampedGuard: CacheGuard {
 /// - No async state machine overhead (~5-10ns per call)
 /// - No spawn_blocking overhead (~10-50µs per call)
 /// - Both moka and redb are fundamentally synchronous
-/// - Use AsyncAdapter (Section 5.2.2) if needed in async context
+/// - Use AsyncAdapter (Section 5.2.1) if needed in async context
 pub trait CacheReader<K>: Send + Sync + 'static
 where
     K: Clone + Eq + Hash + Send + Sync + 'static,
 {
     type Value: Send + Sync + 'static;
-    type Guard<'a>: CacheGuard where Self: 'a;
+    type View: ?Sized;
+    type Guard<'a>: CacheGuard<Target = Self::View> where Self: 'a;
 
     /// Get value guard (zero-copy when possible)
     fn get(&self, key: &K) -> Result<Option<Self::Guard<'_>>, CacheError>;
@@ -4064,6 +4202,12 @@ pub trait Codec<K, V>: Send + Sync {
     // Value decoding - zero-copy primary
     fn access<'a>(&self, bytes: &'a [u8]) -> Result<&'a Self::ArchivedValue, CacheError>;
     fn deserialize(&self, archived: &Self::ArchivedValue) -> Result<V, CacheError>;
+}
+
+/// Key codec subset used by iterators (encode/decode only)
+pub trait KeyCodec<K>: Send + Sync {
+    fn encode_key(&self, key: &K) -> Result<Vec<u8>, CacheError>;
+    fn decode_key(&self, bytes: &[u8]) -> Result<K, CacheError>;
 }
 ```
 
@@ -4335,7 +4479,7 @@ fn bench_hot_path(c: &mut Criterion) {
 | **delete**      | 50ns    | 10µs         | Parallel invalidation    |
 | **clear**       | 1ms     | 100ms        | Bulk operation           |
 | **keys**        | O(n)    | O(n)         | Streaming                |
-| **scan_prefix** | O(n)    | O(log n + m) | B-tree range             |
+| **keys_where** | O(n)    | O(log n + m) | B-tree range             |
 | **put_many**    | O(n)    | O(n)         | Single transaction       |
 
 **Scalability:**
@@ -4380,9 +4524,9 @@ fn bench_hot_path(c: &mut Criterion) {
 **4. Accept Alignment Copy** ✅
 
 - **Decision:** Use rkyv `unaligned` + field annotations; no copy fallback
-- **Rationale:** No way to force redb alignment
-- **Trade-off:** ~30% of reads pay one copy
-- **Verdict:** Unavoidable, still faster than full deserialization
+- **Rationale:** No way to force redb alignment, unaligned reads are safe
+- **Trade-off:** Small per-access cost for unaligned primitives
+- **Verdict:** Acceptable overhead, preserves zero-copy
 
 **5. Observer Pattern for Backfill** ✅
 
@@ -4398,12 +4542,12 @@ fn bench_hot_path(c: &mut Criterion) {
 - **Trade-off:** One more method in trait
 - **Verdict:** 125x faster staleness checks justify it
 
-**7. BoxStream for Keys** ✅
+**7. Iterator-Based Keys** ✅
 
-- **Decision:** `keys() -> BoxStream` instead of `-> Vec<K>`
-- **Rationale:** Constant memory for large caches
-- **Trade-off:** Slightly more complex usage
-- **Verdict:** Prevents OOM on large caches
+- **Decision:** `keys() -> Iterator` with transaction-owned iterators for redb
+- **Rationale:** Safe streaming without async or extra allocations
+- **Trade-off:** Slightly more complex implementation
+- **Verdict:** Best performance + correctness for redb
 
 **8. Arc<(Timestamp, V)> in Moka** ✅
 
