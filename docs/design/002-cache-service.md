@@ -17,7 +17,7 @@ tags: [cache, performance, refactor, redb, moka, rkyv]
 
 The current cache foundation uses owned-value reads and async traits. This forces cloning, hides allocations, and blocks zero-copy optimizations available in redb/rkyv. Performance measurements and API analysis show async traits add overhead without real I/O benefits for memory-mapped storage or in-memory caches. We need a sync, guard-based design that is fast, safe, and explicit about allocations.
 
-Related design work lives in `docs/cache-foundation-ideal-design.md` (analysis and rationale). This tech spec extracts the implementable core into a coherent, minimal plan.
+Related design work lives in `docs/cache-foundation-design.md` (analysis and rationale). This tech spec extracts the implementable core into a coherent, minimal plan.
 
 ### 1.2 Goals & Non-Goals
 
