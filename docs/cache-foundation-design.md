@@ -4,6 +4,8 @@
 
 **Approach:** Clean slate thinking - we can delete all existing cache files and start fresh. This document focuses on building a strong, lean, and performant system that maximizes the usage of redb, moka, and rkyv while ensuring idiomatic Rust for maintainability.
 
+**Evidence & Benchmarking Policy:** Any quantitative performance numbers in this document are **targets or hypotheses**, not measurements, unless they are explicitly linked to benchmark output in this repo. Use `criterion` benchmarks to validate (or falsify) these claims before treating them as facts.
+
 ---
 
 ## Table of Contents
@@ -145,8 +147,8 @@ pub struct Reader<K, V> {
 - **Forces allocations** - `Arc`/`Box` ownership allocates; dynamic dispatch itself does not
 - The coordinator is the HOTTEST path in the system, yet we're using the SLOWEST abstraction
 
-**Measured Impact:**
-Dynamic dispatch adds ~2-5ns per call. For a cache hit that should be 10-20ns, this is 10-25% overhead.
+**Impact (Hypothesis):**
+Dynamic dispatch inhibits inlining/monomorphization and can add overhead in hot paths. The magnitude is workload- and compiler-dependent and must be validated with a micro-benchmark in this repository.
 
 **Why This Happened:**
 "Flexibility" - the ability to swap backends at runtime. But we NEVER do this. Backends are chosen at build time (memory = moka, disk = redb). There's no runtime polymorphism need.
@@ -230,7 +232,16 @@ pub trait Codec<K, V>: Send + Sync {
 - We're halfway to zero-copy but not committed
 
 **The Fix:**
-Two-phase write protocol that redb and rkyv both support:
+Two-phase write protocol enabled by redb's reserved writes plus rkyv's serializer backends:
+
+- redb supports reserving in-place space via `insert_reserve`.
+- rkyv supports serializing into a byte writer/buffer (rather than only allocating a `Vec<u8>` via a convenience API).
+
+References:
+- redb `WritableTable::insert_reserve`: https://docs.rs/redb/latest/redb/trait.WritableTable.html
+- rkyv serializer writers (e.g., `rkyv::ser::writer::Buffer`): https://docs.rs/rkyv/latest/rkyv/ser/writer/index.html
+
+The exact zero-intermediate-allocation path requires a concrete serializer+writer implementation and should be validated with a benchmark.
 
 ```rust
 // Phase 1: How much space?
@@ -432,7 +443,7 @@ async fn get(&self, key: &K) -> Result<AccessGuard, CacheError> {
 }
 ```
 
-Wrapping in async requires `spawn_blocking` which adds 10-50µs overhead - making a ~5µs operation 5x slower!
+Wrapping synchronous backends in async requires `spawn_blocking` to keep the Tokio executor healthy. `spawn_blocking` itself introduces scheduling and context-switch overhead; quantify this with benchmarks rather than assuming a fixed cost.
 
 **The Reality Check:**
 
@@ -478,13 +489,13 @@ impl CacheReader for RedbReader {
 }
 ```
 
-**Measured Performance Impact:**
+**Performance Impact (Targets; benchmark required):**
 
-| Operation | Async | Sync | Improvement |
-|-----------|-------|------|-------------|
-| Memory hit | ~25ns | ~15ns | **1.7x** |
-| Disk hit | ~25µs | ~5µs | **5x** |
-| Timestamp | ~5µs | ~100ns | **50x** |
+| Operation | Async wrapper (spawn_blocking) | Pure sync | Expectation |
+|-----------|-------------------------------|-----------|-------------|
+| Memory hit | avoid (should stay sync) | best | sync is simplest and fastest |
+| Disk hit | acceptable when needed | best | async wrapper adds overhead |
+| Timestamp | avoid value materialization | best | keep timestamp reads cheap |
 
 **When You Need Async:**
 
@@ -507,12 +518,12 @@ Let's define the actual operations our cache needs to support:
 
 | Operation               | Hot Path (Memory Hit) | Warm Path (Disk Hit) | Cold Path (Miss) | Frequency |
 | ----------------------- | --------------------- | -------------------- | ---------------- | --------- |
-| **get(key)**            | ~10-50ns              | ~1-10µs              | ~10-100µs        | 99%       |
-| **timestamp(key)**      | ~10ns                 | ~100ns               | -                | 80%       |
-| **put(key, value)**     | ~50-100ns             | ~10-50µs             | -                | 1%        |
+| **get(key)**            | target: very low overhead | target: low overhead | target: bounded | 99%       |
+| **timestamp(key)**      | target: very low overhead | target: very low overhead | -            | 80%       |
+| **put(key, value)**     | target: low overhead | target: bounded | -                 | 1%        |
 | **keys_where(prefix)** | O(n) filter           | O(log n) seek        | -                | <0.1%     |
 | **keys()**              | O(n) collect          | O(n) scan            | -                | <0.01%    |
-| **delete(key)**         | ~50ns                 | ~10µs                | -                | <0.1%     |
+| **delete(key)**         | target: low overhead | target: bounded | -                 | <0.1%     |
 
 **Key Insights:**
 
@@ -1157,19 +1168,7 @@ impl<'a> CoordinatorGuard<'a, String> {
 
 **Cost Analysis:**
 
-```rust
-// Hot path (memory hit):
-let guard = cache.get(&key)?;  // Returns CoordinatorGuard::Memory(...)
-let s = guard.as_str()?;       // Match on enum (~1ns), deref Arc (~0ns)
-// Total overhead: ~1ns
-
-// Warm path (disk hit):
-let guard = cache.get(&key)?;  // Returns CoordinatorGuard::Disk(...)
-let s = guard.as_str()?;       // Match on enum (~1ns), rkyv access (~100ns)
-// Total overhead: ~1ns (rkyv access would happen anyway)
-```
-
-**Verdict:** Enum overhead is negligible (<5% even on hot path).
+Matching on the coordinator enum adds a small, constant amount of work to select the correct view path. Treat this overhead as a hypothesis and validate it with a criterion benchmark alongside the real key/value types used in Lithos.
 
 ---
 
