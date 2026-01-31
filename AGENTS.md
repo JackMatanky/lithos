@@ -68,6 +68,53 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 
 ## Critical Rust Patterns & Anti-Patterns
 
+## Rust Idioms (Rules)
+
+These rules operationalize common Rust idioms for day-to-day Lithos development.
+For deeper rationale and examples, see [docs/refs/rust-idioms-reference.md](docs/refs/rust-idioms-reference.md).
+
+### API & Ownership
+- Prefer borrowed arguments in APIs: take `&str`, `&Path`, slices, and `&T` (or `impl AsRef<Path>` / `impl Borrow<T>`) instead of `String`/`PathBuf`/owned types unless ownership is required.
+- Use `impl Trait`/generics for “accept anything that can be viewed as X” APIs; reserve `&dyn Trait` for intentional runtime polymorphism.
+- When ownership is required, make it explicit: take `T`/`Box<T>`/`Arc<T>` by value and document the transfer.
+
+### Construction & Defaults
+- Use conventional constructors: `new()` for infallible, `try_new()` / `new_checked()` for fallible, and `from_*`/`try_from_*` conversions via `From`/`TryFrom`.
+- Prefer builders when there are many optional parameters or invariants to enforce; keep `new()` small and unsurprising.
+- Implement or derive `Default` when a sensible default exists; prefer struct update syntax (`..Default::default()`) for ergonomic initialization.
+
+### Strings & Formatting
+- Use `format!`/`write!`/`writeln!` for structured string construction; avoid repeated `+` concatenation in loops.
+- Accept string inputs as `&str` (or `impl AsRef<str>` when appropriate); store immutable string data as `Box<str>` when ownership is needed and mutability isn’t.
+
+### Mutation, Moves, and Invariants
+- Keep `mut` scopes tight: prefer temporary mutability (shadowing) to long-lived `mut` bindings.
+- When you need to move out of a field or replace a value, prefer `std::mem::take` / `std::mem::replace` over cloning.
+- Prefer iterators over indexing; when indexing is unavoidable, use `.get()` and handle `None`.
+- Treat `Option` as an iterable for control flow: use `if let`, `while let`, `.into_iter()`, and combinators (`map`, `and_then`, `ok_or`) instead of sentinel values.
+
+### Resource Management
+- Use RAII: acquire resources in constructors and release in `Drop`; avoid “manual close” APIs unless required for performance or correctness.
+- Never panic across FFI boundaries; Rust must not unwind into C.
+
+### Closures & Captures
+- Be explicit about closure capture semantics: use `move` when the closure must own captured values.
+- When a closure needs owned data but the surrounding scope still needs it, explicitly rebind (e.g., clone an `Arc`/`String` into a new binding) rather than fighting the borrow checker.
+
+### Extensibility & Public API Evolution
+- For public enums/structs intended to evolve, use `#[non_exhaustive]` (or private fields) to prevent downstream exhaustive construction/matching.
+- When matching on non-exhaustive enums, always include a wildcard arm to preserve forward compatibility.
+
+### Documentation & Doctests
+- Write rustdoc examples as compilable code; hide setup noise in doctests using `#` lines to keep examples readable.
+
+### Error Handling & FFI Interop
+- Prefer `Result<T, E>` with structured errors (`thiserror` in non-domain crates); avoid `unwrap()`/`expect()` in production.
+- For fallible operations that consume an input, prefer returning the consumed value on failure (e.g., `Result<T, (E, Input)>` or an error type that carries the input) when it materially improves recovery.
+- In FFI:
+	- Accept strings as `*const c_char` + `CStr`; pass strings as `CString`/`*const c_char` with clear ownership rules.
+	- Return errors as status codes and/or out-parameters; ensure all FFI-exposed functions are `extern "C"` and panic-free.
+
 ### ✅ Always Do
 - **Error handling**: Use `Result<T, E>` with `?` operator, never `unwrap()`/`expect()` in production
 - **Paths**: Use `PathBuf` (owned) or `&Path` (borrowed), NEVER `String` for file paths
