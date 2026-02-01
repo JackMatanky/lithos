@@ -57,18 +57,24 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ## Critical Implementation Rules
 
 ### Architectural Integrity
-- **Hexagonal Boundary Enforcement:**
-    - `crates/domain` must have NO external dependencies and NO I/O.
-    - All **Ports** MUST be defined as traits. Use #[async_trait] ONLY for traits containing async methods. Example: For a synchronous repository port, define trait methods without async_trait; for an async file system port, apply async_trait.
-    - Use `pub(crate)` by default; reserve `pub` strictly for the crate's public interface.
-- **CQRS & Event Discipline:**
-    - Separate **Command** (Write) and **Query** (Read) models. Query models must be optimized for read performance (e.g., via zero-copy deserialization) and structured as simple Data Transfer Objects (DTOs) with no business logic—only fields and basic getters. Example: A NoteQueryDto has fields like id: Uuid and title: String, but no methods like validate() or calculate().
-    - Use the **Hybrid Event Bus**: `mpsc` for Indexing (Reliable), `broadcast` for Signals (Control), and `watch` for snapshots (State/LSP).
+- **Dependency Flow Architecture:**
+    - **Single Core Crate:** `crates/lithos-core` contains all business logic and infrastructure. Dependencies flow INWARD from generic infrastructure (`db.rs`, `fs/`) to domain contexts (`note/`, `schema/`).
+    - **Context Isolation:** Domain contexts must depend ONLY on `db.rs` and shared utilities. They must NOT depend on other contexts directly unless via public API.
+    - **Boundaries:** Use `pub(crate)` to enforce internal boundaries. `pub` is reserved for the crate's external API (used by `lithos-cli`).
+- **CQRS & Naming Convention:**
+    - **Static Methods:** Prefer static methods on aggregates over traits for commands/queries (e.g., `Note::find_by_id(&db, id)`).
+    - **Naming:**
+        - Queries: `find_*`, `get_*`, `list_*`, `count_*`
+        - Commands: `save`, `delete`, `update`, `create`
+    - **Traits:** Use traits ONLY when polymorphism is required for testing or LSP backends.
+- **Sync-First Execution Model:**
+    - **Default to Sync:** Core domain logic and file I/O must be synchronous.
+    - **Async at Edges:** Use `async` ONLY for LSP server, network I/O, or explicit concurrency (e.g., parallel indexing).
+    - **Bridge:** Use `tokio::task::spawn_blocking` to bridge sync core logic into async contexts (CLI/LSP).
 - **Unit of Work (Transactional Context):**
-    - **Atomic Commands:** Every Command Handler MUST use a `UnitOfWork` to wrap persistence logic.
-    - **Repository Access:** Repositories must be accessed via the `TransactionContext` to ensure they share the same Redb `WriteTransaction`.
-    - **Deferred Dispatch:** Domain events must be staged within the context and dispatched ONLY after a successful commit(). This prevents "phantom events" from failed transactions. Staging means collecting events in a Vec or similar structure within the UnitOfWork. Dispatch occurs via the event bus only if commit() succeeds (no exceptions thrown). Example: In a NoteCreateCommand, stage a NoteCreated event in the context; dispatch it post-commit to avoid notifying subscribers of uncommitted changes.
-- **Dependency Injection:** Use constructor injection with `Arc<dyn Trait>` for app-level Port injection. Favor **Generics (`impl Trait`)** for internal adapter-level utility functions to maximize static dispatch performance.
+    - **Batch Operations:** For bulk updates (indexing), use `db.batch_write()` which handles transaction lifecycle and durability settings.
+    - **Deferred Dispatch:** Domain events must be staged and dispatched only after successful transaction commit.
+- **Dependency Injection:** Favor **Generics (`impl Trait` or `&ConcreteType`)** for internal adapter-level utility functions to maximize static dispatch performance. Explicit constructor injection is optional for core types.
 
 ### Language-Specific Rules (Rust)
 
