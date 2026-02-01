@@ -167,8 +167,8 @@ lithos/
 │   │       │   └── events.rs   # TemplateCreated (co-located)
 │   │       │
 │   │       ├── fs/             # File system utilities (parsers, validation, vault)
-│   │       ├── cache/          # Generic cache infrastructure (redb, moka, coordinator)
-│   │       └── <context>/      # Context IO implementations live with contexts (see Proposal 3)
+│   │       ├── db.rs           # Zero-copy database layer (see Proposals 4 & 5)
+│   │       └── <context>/      # Domain contexts with static methods
 │   │
 │   ├── lithos-cli/
 │   │   ├── Cargo.toml (separate binary)
@@ -183,11 +183,12 @@ lithos/
 
 ```
 Dependency Flow:
-fs/ and cache/ are generic infrastructure with no domain knowledge
-<context>/storage.rs depends on domain types and uses fs/ + cache/
-cli depends on context storage and/or domain traits
+fs/ is generic infrastructure with no domain knowledge
+db.rs provides zero-copy primitives with no domain knowledge
+<context>/ contains domain types with static methods that use Database
+lithos-cli orchestrates db + contexts
 
-Domain contexts (note/, schema/, etc.) depend on NOTHING internal
+Domain contexts (note/, schema/, etc.) depend on NOTHING internal except db.rs
 ```
 
 **Rationale**:
@@ -280,7 +281,7 @@ OPTIONAL (Top-level composition)
 lithos-core/src/lib.rs (LithosError via #[from])
 ```
 
-**Note**: Later proposals refine portions of this structure (e.g., IO/CQRS placement and commands folder usage). See Proposal 3 for the finalized IO/CQRS structure.
+**Note**: Later proposals refine portions of this structure. See Proposals 4 & 5 for database layer and CQRS pattern decisions.
 
 | Feature        | Current (Multi-Crate)   | Proposed (Single-Core)                     |
 | :------------- | :---------------------- | :----------------------------------------- |
@@ -589,147 +590,536 @@ Q: Where is ConfigRepository trait?
 A: lithos-core/src/config/ports.rs (co-located with Config context)
 ```
 
-**Note**: Later proposals refine portions of this structure (e.g., IO/CQRS placement and commands folder usage). See Proposal 3 for the finalized IO/CQRS structure.
+**Note**: Later proposals refine portions of this structure. See Proposals 4 & 5 for database layer and CQRS pattern decisions.
 
-### 4. IO and CQRS Integration in a Flat Architecture
+### 4. Database Layer: Zero-Copy Infrastructure (CLI MVP)
 
 **Target**: `project-structure-boundaries.md`, `implementation-patterns-consistency-rules.md`, Epics 4, 5, 9, 10
+**Epic Affected**: Epic 5 (Cache), Epic 9 (Storage), Epic 10 (Indexing)
+**Priority**: P0 - Critical (Foundation for all IO operations)
 
-**Problem**: Removing the adapters layer makes IO placement and CQRS boundaries ambiguous. We need a Rust-idiomatic pattern that:
+**Problem**: The current multi-crate architecture prevents zero-copy optimization and creates unnecessary abstraction layers. We need a Rust-idiomatic database layer that:
 
-- Maintains dependency flow inward
-- Avoids duplicating persistence logic per context
-- Keeps IO implementations discoverable
-- Avoids reintroducing an adapter layer under a new name
+- Exposes ALL redb/rkyv zero-copy primitives (AccessGuard lifetimes, insert_reserve, MultimapTable)
+- Avoids duplicating serialization logic across contexts
+- Uses concrete types (not traits) matching `std::fs::File` pattern
+- Defers LSP-specific features (Moka, Coordinator) to Phase 2
 
-**Idiomatic Rust Evidence (co-located impls with type)**:
+**Idiomatic Rust Evidence**:
 
-- `std::fs::File` defines the type and implements `Read` in the same module (`std/src/fs.rs`).
+**Pattern 1: Concrete Types Over Traits (stdlib pattern)**
+- `std::fs::File` provides concrete methods (`open`, `read`, `write`), NOT a `FileSystem` trait
   - Source: https://raw.githubusercontent.com/rust-lang/rust/master/library/std/src/fs.rs
-- `serde_json::Value` defines the type in `value/mod.rs` and implements `Serialize`/`Deserialize` in `value/ser.rs` and `value/de.rs` (same module folder).
-  - Source: https://github.com/serde-rs/json/tree/master/src/value
+- `std::collections::HashMap` provides concrete methods, NOT a `Map<K,V>` trait
+- **Lesson**: Generic methods on concrete types are MORE idiomatic than trait hierarchies
 
-**Evaluated Options**:
+**Pattern 2: Generic Methods (not macros)**
+- Rust API Guidelines C-GENERIC: "Use generics to enable callers to reuse code"
+- stdlib uses generic functions (`fs::read<P: AsRef<Path>>`) NOT macros
+- **Lesson**: Generics provide better IDE support and error messages than macros
 
-**Option A: Fully co-located IO per context (no shared infra)**
+**Decision**: **Concrete `Database` type with generic zero-copy methods**
 
-- Each context (`note/`, `schema/`, `config/`) contains full persistence logic.
-- **Pros**: Maximum locality, easy discovery
-- **Cons**: Duplicated persistence logic, inconsistent error handling, hard to share transactions/metrics
-
-**Option B: Co-located thin adapters + shared cache infrastructure (RECOMMENDED)**
-
-- Contexts define CQRS traits and implement them in `context/storage.rs`, delegating to generic cache primitives.
-- Cache provides generic persistence building blocks (redb/moka/coordinator), with no domain knowledge.
-- **Pros**: Idiomatic co-location + shared infra, minimal duplication, consistent IO behavior
-- **Cons**: Thin glue files per context
-
-**Option C: Centralized implementations in `cache/` (adapter-like)**
-
-- Cache implements all domain traits (e.g., `cache/redb/note.rs`).
-- **Pros**: Consolidated by backend
-- **Cons**: Recreates adapter layer, harms discoverability, cache folder balloons
-
-**Option D: Replace traits with functions (`ops.rs`)**
-
-- Use concrete functions instead of CQRS traits.
-- **Pros**: Minimal abstraction
-- **Cons**: Harder testing/mocking, weaker CQRS boundaries, less flexible for multiple backends
-
-**Option E: Generic Repository Trait (`Repository<T>`)**
-
-- Define a unified `trait Repository<T> { fn get(&self, id: K) -> Option<T>; fn save(&self, entity: T); }`.
-- **Pros**: Uniform API, "Don't Repeat Yourself" (DRY) for basic CRUD.
-- **Cons**:
-  - **The Index Problem**: `save(Note)` isn't just a Key-Value put; it requires updating secondary indexes (backlinks, tags). A generic `Repository<T>` hides this transactional complexity or requires complex `Indexable` traits.
-  - **Query Anemia**: Generic repos provide `get(id)` but not `find_by_path(path)`. We would immediately need `trait NoteRepository: Repository<Note> { ... }`, creating "Trait Soup" (inheritance hierarchy).
-  - **Type Erasure**: Obscures the specific capabilities of a context (e.g., `Config` is read-heavy/cached, `Note` is write-heavy/indexed).
-
-**Decision**: **Option B** (Co-located Specific Traits + Generic Adapter Implementation)
-
-**Key Distinction**:
-- **The Port (Interface)** is *Specific* (`NoteQueries`) to clearly define Domain capabilities.
-- **The Adapter (Implementation)** is *Generic* (`RedbCache<K,V>`) to reuse infrastructure code.
-
-**Key Rules**:
-
-1. **CQRS traits live with the context**
-   - `note/commands.rs`, `note/queries.rs` (or `note/ports.rs` for small contexts)
-2. **Context IO implementations live with the context**
-   - `note/storage.rs` implements `NoteCommands` and `NoteQueries`
-3. **Cache is generic infrastructure only**
-   - `cache/` provides generic `RedbCache<K,V>`, `MokaCache<K,V>` with `put/get/delete/scan`
-   - Cache has **no domain types** and **no domain trait impls**
-4. **IO shared utilities live in `fs/`**
-   - Config parsing + path validation in `fs/`
-   - Vault directory utilities in `fs/vault.rs` and `fs/walker.rs`
-5. **Vault indexing is cache orchestration**
-   - `cache/indexer.rs` uses `fs/` + domain logic + cache primitives to populate storage
-
-**Proposed Structure**:
+**Architecture**:
 
 ```
-crates/lithos-core/src/
-├── note/
-│   ├── aggregate.rs
-│   ├── frontmatter.rs
-│   ├── link.rs
-│   ├── commands.rs        # CQRS traits (write)
-│   ├── queries.rs         # CQRS traits (read)
-│   ├── storage.rs         # IO impls (thin, delegate to cache)
-│   ├── error.rs
-│   └── events.rs
+lithos-core/src/
+├── db.rs                       # Zero-copy database layer (NO traits)
+│   ├── pub struct Database     # Concrete type (not trait)
+│   ├── pub struct ArchivedGuard<'txn, V>  # Zero-copy Deref wrapper
+│   ├── get_archived<K,V>()     # Hot path: returns ArchivedGuard
+│   ├── get<K,V>()              # Cold path: full deserialization
+│   ├── put_reserve<K,V,F>()    # Zero-copy write (insert_reserve)
+│   ├── put<K,V>()              # Convenience wrapper
+│   ├── multimap_insert<K,V>()  # 1:N indexes (tags, backlinks)
+│   ├── multimap_get<K,V>()     # Returns iterator of ArchivedGuard
+│   └── batch_write<F>()        # Durability::None for bulk ops
 │
-├── schema/
-│   ├── aggregate.rs
-│   ├── property.rs
-│   ├── commands.rs
-│   ├── queries.rs
-│   ├── storage.rs
-│   └── error.rs
-│
-├── config/
-│   ├── aggregate.rs
-│   ├── ports.rs           # CQRS traits (combined, small context)
-│   ├── storage.rs
-│   └── error.rs
-│
-├── fs/
-│   ├── mod.rs
+├── fs/                         # File system utilities (NO db dependency)
 │   ├── parsers/
-│   │   ├── mod.rs
-│   │   ├── config.rs      # TOML/JSON/YAML parsing (Epic 4)
-│   │   └── markdown.rs    # Markdown parsing (Epic 10, when needed)
-│   ├── validator.rs       # Path validation (Epic 4)
-│   ├── vault.rs           # Vault directory utilities
-│   └── walker.rs          # Vault traversal
+│   │   ├── config.rs           # TOML/JSON/YAML parsing
+│   │   └── markdown.rs         # Markdown parsing (deferred to Epic 10)
+│   ├── validator.rs            # Path validation
+│   ├── vault.rs                # Vault directory utilities
+│   └── walker.rs               # Vault traversal
 │
-└── cache/
-    ├── mod.rs
-    ├── reader.rs          # CacheReader trait (generic)
-    ├── writer.rs          # CacheWriter trait (generic)
-    ├── redb.rs            # RedbCache<K,V> generic persistence
-    ├── moka.rs            # MokaCache<K,V> generic cache
-    ├── coordinator.rs     # Coordinator<K,V> generic orchestration
-    ├── codec.rs           # rkyv/serde helpers
-    └── indexer.rs         # Vault indexing (cache population)
+└── note/
+    ├── aggregate.rs            # Pure domain (NO db import)
+    ├── indexing.rs             # Tag/backlink index logic
+    └── ...
 ```
 
-**Tradeoffs (Explicit)**:
+**Key Implementation: Zero-Copy Primitives**
 
-- **Pros**: Co-location preserved, IO logic shared, no cache bloat, strong CQRS boundary
-- **Cons**: Thin storage glue files per context, requires discipline to keep cache generic
+```rust
+// db.rs
 
-**Dependency Flow Enforcement (Required)**:
+pub struct Database {
+    inner: redb::Database,
+}
 
-- Domain modules (`note/aggregate.rs`, `schema/aggregate.rs`, etc.) must not import `cache/` or `fs/`
-- Context IO lives in `context/storage.rs` and is the only place where domain types touch infrastructure
-- Cache must remain generic (no domain types, no domain trait impls)
-- Add architecture tests to fail if domain modules reference `crate::cache` or `crate::fs`
+/// Zero-copy guard that provides Deref access to archived data
+pub struct ArchivedGuard<'txn, V> {
+    guard: redb::AccessGuard<'txn, &'static [u8]>,
+    _phantom: PhantomData<V>,
+}
+
+impl<'txn, V> Deref for ArchivedGuard<'txn, V>
+where
+    V: rkyv::Archive,
+    rkyv::Archived<V>: for<'a> rkyv::bytecheck::CheckBytes<...>,
+{
+    type Target = rkyv::Archived<V>;
+
+    fn deref(&self) -> &Self::Target {
+        // Validation happens once in get_archived()
+        unsafe { rkyv::access_unchecked(self.guard.value()) }
+    }
+}
+
+impl Database {
+    /// Zero-copy read (HOT PATH for LSP)
+    /// Returns guard with lifetime tied to transaction
+    pub fn get_archived<K, V>(
+        &self,
+        table: &str,
+        key: &K,
+    ) -> Result<ArchivedGuard<'_, V>, DbError>
+    where
+        K: rkyv::Serialize,
+        V: rkyv::Archive,
+        rkyv::Archived<V>: for<'a> rkyv::bytecheck::CheckBytes<...>,
+    {
+        let txn = self.inner.begin_read()?;
+        let table = txn.open_table(TableDefinition::new(table))?;
+        let key_bytes = rkyv::to_bytes(key)?;
+        let guard = table.get(key_bytes.as_ref())?.ok_or(DbError::NotFound)?;
+
+        // Validate alignment ONCE
+        let alignment = std::mem::align_of::<rkyv::Archived<V>>();
+        if guard.value().as_ptr().align_offset(alignment) != 0 {
+            return Err(DbError::Misaligned);
+        }
+
+        // Validate bytes ONCE (per ADR 0002 requirement)
+        rkyv::check_archived_root::<V>(guard.value())?;
+
+        Ok(ArchivedGuard { guard, _phantom: PhantomData })
+    }
+
+    /// Full deserialization (COLD PATH for mutations)
+    pub fn get<K, V>(&self, table: &str, key: &K) -> Result<Option<V>, DbError>
+    where
+        K: rkyv::Serialize,
+        V: rkyv::Archive + rkyv::Deserialize,
+    {
+        match self.get_archived::<K, V>(table, key) {
+            Ok(archived) => Ok(Some(archived.deserialize()?)),
+            Err(DbError::NotFound) => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Zero-copy write using insert_reserve (per ADR 0002)
+    pub fn put_reserve<K, V, F>(
+        &self,
+        table: &str,
+        key: &K,
+        value_size: usize,
+        write_fn: F,
+    ) -> Result<(), DbError>
+    where
+        K: rkyv::Serialize,
+        F: FnOnce(&mut [u8]) -> Result<(), DbError>,
+    {
+        let mut txn = self.inner.begin_write()?;
+        let mut table = txn.open_table(TableDefinition::new(table))?;
+        let key_bytes = rkyv::to_bytes(key)?;
+
+        // Zero-copy: get mutable slice directly to DB page
+        let mut reserved = table.insert_reserve(key_bytes.as_ref(), value_size)?;
+        write_fn(reserved.as_mut())?;
+
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Convenience wrapper (allocates temp buffer)
+    pub fn put<K, V>(&self, table: &str, key: &K, value: &V) -> Result<(), DbError>
+    where
+        K: rkyv::Serialize,
+        V: rkyv::Serialize,
+    {
+        let value_bytes = rkyv::to_bytes::<_, 256>(value)?;
+        let value_size = value_bytes.len();
+
+        self.put_reserve(table, key, value_size, |buf| {
+            rkyv::to_bytes_in(value, buf)?;
+            Ok(())
+        })
+    }
+
+    /// MultimapTable for 1:N relations (per ADR 0002)
+    pub fn multimap_insert<K, V>(
+        &self,
+        table: &str,
+        key: &K,
+        value: &V,
+    ) -> Result<(), DbError>
+    where
+        K: rkyv::Serialize,
+        V: rkyv::Serialize,
+    {
+        let mut txn = self.inner.begin_write()?;
+        let mut table = txn.open_multimap_table(
+            MultimapTableDefinition::new(table)
+        )?;
+
+        let key_bytes = rkyv::to_bytes(key)?;
+        let value_bytes = rkyv::to_bytes(value)?;
+
+        table.insert(key_bytes.as_ref(), value_bytes.as_ref())?;
+        txn.commit()?;
+        Ok(())
+    }
+
+    /// Bulk write with Durability::None (per ADR 0002)
+    pub fn batch_write<F>(&self, batch_fn: F) -> Result<(), DbError>
+    where
+        F: FnOnce(&mut WriteTransaction) -> Result<(), DbError>,
+    {
+        let mut txn = self.inner.begin_write()?;
+        txn.set_durability(Durability::None);  // Defer fsync
+
+        batch_fn(&mut txn)?;
+
+        txn.commit()?;
+
+        // Final fsync for entire batch
+        let mut final_txn = self.inner.begin_write()?;
+        final_txn.set_durability(Durability::Immediate);
+        final_txn.commit()?;
+
+        Ok(())
+    }
+}
+```
+
+**Usage Patterns (Context-Specific)**:
+
+```rust
+// note.rs (static methods, NOT traits)
+impl Note {
+    /// Zero-copy read for LSP hot paths
+    pub fn find_by_id_archived(
+        db: &Database,
+        id: Uuid,
+    ) -> Result<impl Deref<Target = rkyv::Archived<Note>> + '_, NoteError> {
+        db.get_archived("notes", &id).map_err(Into::into)
+    }
+
+    /// Full load for mutations
+    pub fn find_by_id(db: &Database, id: Uuid) -> Result<Option<Self>, NoteError> {
+        db.get("notes", &id).map_err(Into::into)
+    }
+
+    /// Save with index updates
+    pub fn save(&self, db: &Database) -> Result<(), NoteError> {
+        db.put("notes", &self.id, self)?;
+
+        // Update secondary indexes using MultimapTable
+        for tag in &self.tags {
+            db.multimap_insert("tags_to_notes", tag, &self.id)?;
+        }
+
+        for link in &self.outbound_links {
+            db.multimap_insert("backlinks", &link.target, &self.id)?;
+        }
+
+        Ok(())
+    }
+
+    /// Find by tag (using multimap index)
+    pub fn find_by_tag(db: &Database, tag: &str) -> Result<Vec<Uuid>, NoteError> {
+        db.multimap_get("tags_to_notes", &tag)?
+            .map(|guard| *guard.deref())  // Zero-copy read Uuid
+            .collect()
+    }
+}
+
+// schema.rs (same pattern, different types)
+impl Schema {
+    pub fn find_by_name(db: &Database, name: &str) -> Result<Option<Self>, SchemaError> {
+        db.get("schemas", &name).map_err(Into::into)
+    }
+
+    pub fn save(&self, db: &Database) -> Result<(), SchemaError> {
+        db.put("schemas", &self.name, self).map_err(Into::into)
+    }
+}
+```
+
+**Rules for Database Layer**:
+
+1. **NO cache/ folder with traits** - Use concrete `Database` type
+2. **NO macros** - Use generic methods on `Database`
+3. **Pass `&Database` as parameter** - Match `std::fs::File` pattern
+4. **Expose zero-copy primitives**:
+   - `get_archived()` returns `ArchivedGuard` (hot path)
+   - `put_reserve()` uses `insert_reserve` (zero-copy write)
+   - `multimap_insert/get()` for 1:N indexes
+   - `batch_write()` for bulk operations
+5. **Validation once at boundary** - `bytecheck` in `get_archived()`, then unsafe access
+6. **Defer LSP features to Phase 2**:
+   - NO Moka (in-memory L1 cache)
+   - NO Coordinator (L1/L2 orchestration)
+   - NO backfiller (async background population)
+
+**Deferred Components (Phase 2 - LSP)**:
+
+When LSP is implemented, `Database` gains:
+```rust
+pub struct Database {
+    inner: redb::Database,
+    l1_cache: Option<moka::Cache<Vec<u8>, Vec<u8>>>,  // Added in Phase 2
+}
+```
+
+The API remains the same; caching becomes transparent internal optimization.
+
+**Tradeoffs**:
+
+- **Pros**:
+  - ✅ Zero abstraction overhead (concrete type)
+  - ✅ Full zero-copy support (AccessGuard, insert_reserve, MultimapTable)
+  - ✅ Idiomatic Rust (matches std::fs pattern)
+  - ✅ Simple for CLI (no trait soup)
+  - ✅ Future-ready for LSP (add cache field internally)
+
+- **Cons**:
+  - ❌ Less polymorphic (but we only have one backend: redb per ADR 0002)
+  - ❌ Harder to mock in tests (but can use in-memory redb or wrap in trait for tests)
+
+**Why NOT traits?**
+
+| Aspect           | Trait Approach                       | Concrete Type Approach               | Winner   |
+| ---------------- | ------------------------------------ | ------------------------------------ | -------- |
+| **stdlib pattern**   | Not used (std::fs::File is concrete) | Matches std::fs::File                | Concrete |
+| **Zero-copy**        | Requires GATs and complex lifetimes  | Natural with ArchivedGuard           | Concrete |
+| **IDE support**      | Trait objects hide implementations   | F12 goes directly to impl            | Concrete |
+| **Error messages**   | "trait bound not satisfied"          | Clear concrete type errors           | Concrete |
+| **Mocking**          | Easy with trait objects              | Wrap in trait or use in-memory redb  | Trait    |
+| **Future backends**  | Easy to swap                         | Locked to redb (but ADR 0002 decided) | Trait    |
+
+**Decision**: Concrete type wins 5/6 criteria, and the "locked to redb" is already decided in ADR 0002.
+
+**Dependency Flow**:
+
+```
+fs/ (NO dependencies, pure utilities)
+  ↑
+db.rs (uses redb + rkyv, NO domain knowledge)
+  ↑
+note/aggregate.rs (pure domain, NO db import)
+note/indexing.rs (uses Database, implements save/find methods)
+  ↑
+lithos-cli (orchestrates db + contexts)
+```
 
 ---
 
-### 5. Async vs. Sync Model: Sync‑First Execution Model (Async Only at Edges)
+### 5. CQRS Pattern: Optional Trait Boundaries
+
+**Target**: `implementation-patterns-consistency-rules.md`, Epics 3, 4, 5, 9
+**Epic Affected**: Epic 3 (Domain), Epic 9 (Storage), Epic 14 (CLI)
+**Priority**: P2 - Medium (Design pattern, not blocking)
+
+**Problem**: CQRS (Command-Query Responsibility Segregation) is mentioned in the architecture, but the single-crate refactor removes the natural boundary enforcement of separate crates. Do we need explicit CQRS traits, or can we rely on naming conventions?
+
+**Context**: CQRS separates:
+- **Commands** (writes): `save()`, `delete()`, `update()`
+- **Queries** (reads): `find_by_id()`, `find_by_tag()`, `list_all()`
+
+**Evaluated Options**:
+
+**Option A: Explicit CQRS Traits (Strong Boundaries)**
+
+```rust
+// note/commands.rs
+pub trait NoteCommands {
+    fn save(&self, note: &Note) -> Result<(), NoteError>;
+    fn delete(&self, id: Uuid) -> Result<(), NoteError>;
+}
+
+// note/queries.rs
+pub trait NoteQueries {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError>;
+    fn find_by_tag(&self, tag: &str) -> Result<Vec<Note>, NoteError>;
+}
+
+// note/storage.rs
+pub struct NoteStorage {
+    db: Database,
+}
+
+impl NoteCommands for NoteStorage { ... }
+impl NoteQueries for NoteStorage { ... }
+```
+
+**Pros**:
+- ✅ Explicit architectural boundary (can't accidentally mix read/write)
+- ✅ Easy to mock for testing
+- ✅ Clear documentation of capabilities
+
+**Cons**:
+- ❌ Extra abstraction layer
+- ❌ Trait object overhead if using `&dyn NoteCommands`
+- ❌ Not idiomatic Rust (std doesn't use CQRS traits)
+
+**Option B: Static Methods with Naming Convention (Lightweight)**
+
+```rust
+// note.rs
+impl Note {
+    // Queries (by convention)
+    pub fn find_by_id(db: &Database, id: Uuid) -> Result<Option<Self>, NoteError> { ... }
+    pub fn find_by_tag(db: &Database, tag: &str) -> Result<Vec<Self>, NoteError> { ... }
+
+    // Commands (by convention)
+    pub fn save(&self, db: &Database) -> Result<(), NoteError> { ... }
+    pub fn delete(db: &Database, id: Uuid) -> Result<(), NoteError> { ... }
+}
+```
+
+**Pros**:
+- ✅ Idiomatic Rust (matches std::fs pattern)
+- ✅ Zero abstraction overhead
+- ✅ Simple and direct
+
+**Cons**:
+- ❌ No compiler-enforced CQRS boundary
+- ❌ Harder to mock (need to pass real Database or trait-wrap it)
+
+**Option C: Hybrid (Traits Only Where Needed)**
+
+```rust
+// note.rs - Default: static methods
+impl Note {
+    pub fn find_by_id(db: &Database, id: Uuid) -> Result<Option<Self>, NoteError> { ... }
+    pub fn save(&self, db: &Database) -> Result<(), NoteError> { ... }
+}
+
+// note/ports.rs - OPTIONAL: Define traits for testing/mocking
+pub trait NoteRepository {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError>;
+    fn save(&self, note: &Note) -> Result<(), NoteError>;
+}
+
+// Blanket impl for Database
+impl NoteRepository for Database {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
+        Note::find_by_id(self, id)
+    }
+    fn save(&self, note: &Note) -> Result<(), NoteError> {
+        note.save(self)
+    }
+}
+```
+
+**Pros**:
+- ✅ Idiomatic by default (static methods)
+- ✅ Traits available when needed (testing)
+- ✅ Best of both worlds
+
+**Cons**:
+- ❌ Duplication between static methods and trait impls
+
+**Decision**: **Option B (Static Methods)** for CLI MVP, with Option C available if testing demands it.
+
+**Rationale**:
+1. **YAGNI**: CLI doesn't need polymorphism (single Database implementation)
+2. **Idiomatic**: Matches Rust stdlib patterns
+3. **Simple**: Fewer files, less cognitive load
+4. **Testable**: Can use in-memory redb for tests without traits
+
+**Rules**:
+
+1. **Default: Static methods on domain types**
+   ```rust
+   impl Note {
+       pub fn find_by_id(db: &Database, id: Uuid) -> Result<Option<Self>, NoteError>;
+       pub fn save(&self, db: &Database) -> Result<(), NoteError>;
+   }
+   ```
+
+2. **Naming Convention (CQRS by name)**:
+   - **Queries**: `find_*`, `get_*`, `list_*`, `count_*`
+   - **Commands**: `save`, `delete`, `update`, `create`
+
+3. **OPTIONAL: Add traits later if needed**:
+   - When testing requires mocking
+   - When LSP requires different storage backend
+   - Define in `note/ports.rs` (deferred)
+
+4. **NO separate commands.rs/queries.rs files for MVP**
+   - Keep methods in main module (`note.rs` or `note/aggregate.rs`)
+   - Split only if file exceeds 500 lines
+
+**File Structure**:
+
+```
+note/
+├── aggregate.rs         # Note struct + all methods (find_*, save, etc.)
+├── frontmatter.rs
+├── indexing.rs          # Helper: update_tag_index(), update_backlink_index()
+├── error.rs
+└── events.rs
+
+# NO commands.rs or queries.rs for MVP
+# NO ports.rs unless testing requires it
+```
+
+**Migration Path (Phase 2 - LSP)**:
+
+If LSP requires trait-based polymorphism (e.g., mock storage for tests):
+
+```rust
+// note/ports.rs (added in Phase 2)
+pub trait NoteRepository {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError>;
+    fn save(&self, note: &Note) -> Result<(), NoteError>;
+}
+
+// Static methods remain primary API
+impl Note {
+    pub fn find_by_id(db: &Database, id: Uuid) -> Result<Option<Self>, NoteError> {
+        db.get("notes", &id).map_err(Into::into)
+    }
+}
+
+// Trait impl delegates to static methods
+impl NoteRepository for Database {
+    fn find_by_id(&self, id: Uuid) -> Result<Option<Note>, NoteError> {
+        Note::find_by_id(self, id)
+    }
+}
+```
+
+**Tradeoffs**:
+
+- **Pros**:
+  - ✅ Simpler for CLI (no trait soup)
+  - ✅ Idiomatic Rust (matches std pattern)
+  - ✅ Zero overhead (no trait objects)
+  - ✅ Future-ready (can add traits later)
+
+- **Cons**:
+  - ❌ Harder to mock (but in-memory redb works)
+  - ❌ No compiler-enforced CQRS boundary (rely on naming)
+
+---
+
+### 6. Async vs. Sync Model: Sync‑First Execution Model (Async Only at Edges)
 
 **Principle**: Synchronous by Default.
 **Constraint**: Async requires explicit justification.
@@ -801,7 +1191,7 @@ let note = tokio::task::spawn_blocking(move || repo.find_by_id(id)).await??;
 - Better performance for local IO + CPU-bound flows
 - Matches your "sync-first" architecture intent
 
-### 6. ADR Audit & Cleanup
+### 7. ADR Audit & Cleanup
 
 **Epic Affected**: Epic 16 (Documentation), all epics referencing ADRs
 **Priority**: P2 – Medium
@@ -828,7 +1218,7 @@ let note = tokio::task::spawn_blocking(move || repo.find_by_id(id)).await??;
 - Keeps ADR list clean and authoritative
 - Avoids confusion in planning artifacts
 
-### 7. Error Handling Standardization
+### 8. Error Handling Standardization
 
 **Epic Affected**: Epic 3 (Domain), Epic 5 (Cache), Epic 14 (CLI), Epic 15 (Tests)
 **Priority**: P1 – High
@@ -851,7 +1241,7 @@ Error handling is inconsistent (mix of anyhow, color-eyre, and planned miette). 
 - Avoids type erasure in library APIs
 - Aligns with Rust ecosystem best practices
 
-### 8. Naming & Style Cleanup
+### 9. Naming & Style Cleanup
 
 **Epic Affected**: Epic 3 (Domain), Epic 5 (Cache), Epic 9 (Storage), Epic 14 (CLI)
 **Priority**: P2 – Medium
@@ -876,7 +1266,7 @@ Current naming uses suffixes like Port, Dto, WriterPort, which is a Hungarian‑
 - Improves readability and API clarity
 - Reduces cognitive load
 
-### 9. Domain Serialization Strategy (Idiomatic Rust Default)
+### 10. Domain Serialization Strategy (Idiomatic Rust Default)
 
 **Epic Affected**: Epic 3 (Domain), Epic 5 (Cache), Epic 7 (Schema), Epic 9 (Storage)
 **Priority**: P0 - Critical (API design + dependency choice)
