@@ -23,10 +23,13 @@ regex.workspace = true
 thiserror.workspace = true
 anyhow.workspace = true
 tracing.workspace = true
+miette.workspace = true
 
 # Serialization (feature-gated per Proposal 10)
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+serde_json.workspace = true
+toml.workspace = true
+serde_yaml.workspace = true
 
 # Template & Parsing (domain logic, sync)
 minijinja.workspace = true
@@ -38,6 +41,7 @@ figment.workspace = true
 rstest = { workspace = true }
 proptest = { workspace = true }
 lithos-test-utils = { workspace = true }
+tempfile.workspace = true
 
 [features]
 default = []

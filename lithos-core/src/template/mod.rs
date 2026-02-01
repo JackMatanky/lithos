@@ -1,6 +1,5 @@
 //! Template bounded context models.
 
-#![allow(clippy::pub_use, reason = "Re-exports provide clean public API")]
 #![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
 
 pub(crate) mod aggregate;
@@ -14,10 +13,20 @@ pub(crate) mod variable;
 
 // --- Public API & Re-exports ---
 
-pub use aggregate::{Metadata, Template};
-pub use composition::{Composition, InsertionPosition, Section};
-pub use error::TemplateError;
-pub use events::{Events, TemplateCreated};
-pub use ports::{Command, Query};
-pub use syntax::PlaceholderSyntax;
-pub use variable::VariableDefinition;
+pub type Metadata = aggregate::Metadata;
+pub type Template = aggregate::Template;
+pub type Composition = composition::Composition;
+pub type InsertionPosition = composition::InsertionPosition;
+pub type Section = composition::Section;
+pub type TemplateError = error::TemplateError;
+pub type Events = events::Events;
+pub type TemplateCreated = events::TemplateCreated;
+
+pub trait Command: ports::Command {}
+impl<T> Command for T where T: ports::Command + ?Sized {}
+
+pub trait Query: ports::Query {}
+impl<T> Query for T where T: ports::Query + ?Sized {}
+
+pub type PlaceholderSyntax = syntax::PlaceholderSyntax;
+pub type VariableDefinition = variable::VariableDefinition;

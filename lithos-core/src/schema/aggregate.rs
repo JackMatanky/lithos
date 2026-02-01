@@ -39,13 +39,13 @@ use crate::patterns;
 /// use lithos_core::schema::SchemaName;
 ///
 /// let name = SchemaName::new("project-note".to_string()).unwrap();
-/// assert_eq!(name.as_str(), "project-note");
+/// assert_eq!(&name.0, "project-note");
 ///
 /// let name2 = SchemaName::new("daily_note".to_string()).unwrap();
-/// assert_eq!(name2.as_str(), "daily_note");
+/// assert_eq!(&name2.0, "daily_note");
 ///
 /// let name3 = SchemaName::new("MySchema".to_string()).unwrap();
-/// assert_eq!(name3.as_str(), "MySchema");
+/// assert_eq!(&name3.0, "MySchema");
 ///
 /// let invalid = SchemaName::new("".to_string());
 /// assert!(invalid.is_err());
@@ -54,22 +54,26 @@ use crate::patterns;
     Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 #[serde(try_from = "String", into = "String")]
-pub struct SchemaName(String);
+#[non_exhaustive]
+pub struct SchemaName(pub String);
 
 impl SchemaName {
-    /// Get string reference.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
     /// Create a new `SchemaName` with validation.
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
     pub fn new(name: String) -> Result<Self, SchemaError> {
+        Self::validate(&name)?;
+        Ok(Self(name))
+    }
+
+    /// Validates a schema name string.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Regex> = LazyLock::new(|| {
             #[expect(
                 clippy::expect_used,
@@ -87,10 +91,19 @@ impl SchemaName {
             return Err(SchemaError::SchemaNameTooLong(name.len()));
         }
 
-        if !RE.is_match(&name) {
-            return Err(SchemaError::InvalidSchemaName(name));
+        if !RE.is_match(name) {
+            return Err(SchemaError::InvalidSchemaName(name.to_owned()));
         }
-        Ok(Self(name))
+        Ok(())
+    }
+}
+
+impl std::ops::Deref for SchemaName {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -188,14 +201,14 @@ impl Schema {
     #[inline]
     #[must_use]
     pub fn get(&self, name: &str) -> Option<&Property> {
-        self.properties.iter().find(|p| p.name().as_str() == name)
+        self.properties.iter().find(|p| p.name().0 == name)
     }
 
     /// Checks if a property exists by name.
     #[inline]
     #[must_use]
     pub fn has(&self, name: &str) -> bool {
-        self.properties.iter().any(|p| p.name().as_str() == name)
+        self.properties.iter().any(|p| p.name().0 == name)
     }
 
     /// Returns the schema's unique identifier.
@@ -222,7 +235,7 @@ impl Schema {
     ///
     /// let name = SchemaName::new("project-note".to_string()).unwrap();
     /// let schema = Schema::new(Uuid::now_v7(), name, vec![]).unwrap();
-    /// assert_eq!(schema.name().as_str(), "project-note");
+    /// assert_eq!(&schema.name().0, "project-note");
     /// ```
     ///
     /// # Errors
@@ -460,10 +473,10 @@ impl PropertyBank {
         }
 
         // Prevent duplicate names
-        self.validate_name_unique(property.name().as_str())?;
+        self.validate_name_unique(&property.name().0)?;
 
         let id = property.id();
-        let name = property.name().to_string();
+        let name = property.name().0.clone();
         let idx = self.properties.len();
 
         self.id_index.insert(id, idx);
@@ -616,7 +629,7 @@ mod tests {
         let schema = Schema::new(Uuid::now_v7(), name, vec![property]).unwrap();
 
         // THEN: accessor methods return expected values
-        assert_eq!(schema.name().as_str(), "status");
+        assert_eq!(&schema.name().0, "status");
         assert_eq!(schema.name().as_ref(), "status");
         assert_eq!(schema.name().to_string(), "status");
         assert!(schema.has("flag"));

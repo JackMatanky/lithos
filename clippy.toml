@@ -29,8 +29,47 @@ doc-valid-idents = ["Lithos", "Obsidian", "Redb", "rkyv", "CLI", "JSON", "TOML",
 disallowed-names = ["foo", "bar", "baz", "quux", "tmp"]
 
 # Source Ordering
-source-item-ordering = ["enum", "impl", "module", "trait"]
-# module-items-ordered-within-groupings = "all"
+# Enforce coarse source structure (module/import/type/impl/function ordering)
+# without alphabetizing APIs inside `impl` blocks.
+#
+# NOTE:
+# - Avoid `impl` here: Clippy would alphabetize methods, which fights “tour of the API” ordering.
+# - Avoid `enum` here: alphabetizing variants can harm layout/perf and is rarely what we want.
+# - Avoid `struct` here: Clippy would alphabetize fields; Canonical recommends visibility-based ordering.
+source-item-ordering = ["module", "trait"]
+
+# Match rust-analyzer’s “modules first, then imports, then items” at a coarse level.
+# (Clippy can’t enforce blank-line grouping or std/external/crate import buckets.)
+module-item-order-groupings = [
+    ["modules", ["extern_crate", "mod", "foreign_mod"]],
+    ["use", ["use"]],
+    [
+        "items",
+        [
+            "macro",
+            "global_asm",
+            "static",
+            "const",
+            "ty_alias",
+            "enum",
+            "struct",
+            "union",
+            "trait",
+            "trait_alias",
+            "impl",
+            "fn",
+        ],
+    ],
+]
+
+# Enforce grouping order only (keeps “reader-first” ordering within each group).
+module-items-ordered-within-groupings = "none"
+
+# Make trait contents predictable and easy to scan.
+trait-assoc-item-kinds-order = ["const", "type", "fn"]
+
+# Canonical prefers inherent impls colocated; this makes split impls noisier.
+inherent-impl-lint-scope = "file"
 
 # Test Restrictions (unwrap/expect allowed in tests for simplicity)
 allow-unwrap-in-tests = true

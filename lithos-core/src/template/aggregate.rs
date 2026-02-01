@@ -43,29 +43,33 @@ const RESERVED_WORDS: &[&str] = &[
 
 /// Aggregate root representing a reusable template.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "Aggregate root requires mixed visibility for domain events and \
+              composition"
+)]
 #[non_exhaustive]
 pub struct Template {
     /// UUID v7 identity.
-    id: Uuid,
+    pub id: Uuid,
     /// Unique template name.
-    name: String,
+    pub name: String,
     /// Template content.
-    content: String,
+    pub content: String,
     /// Syntax used for placeholders.
-    syntax: PlaceholderSyntax,
+    pub syntax: PlaceholderSyntax,
     /// Variable definitions with types and constraints.
-    variables: HashMap<String, VariableDefinition>,
+    pub variables: HashMap<String, VariableDefinition>,
     /// Optional parent template for composition.
     extends: Option<String>,
     /// Metadata for template management.
-    metadata: Metadata,
+    pub metadata: Metadata,
     /// Domain events pending emission.
     #[serde(skip)]
     pending_events: Vec<Events>,
 }
 
 #[expect(
-    clippy::arbitrary_source_item_ordering,
     clippy::pattern_type_mismatch,
     reason = "Function ordering optimized for logical flow; matching on \
               reference to enum avoids borrow checker friction"
@@ -107,12 +111,12 @@ impl Template {
     ///         content: "--".to_string(),
     ///         position: InsertionPosition::End,
     ///     }],
-    ///     base_template: base.name().to_string(),
+    ///     base_template: base.name.to_string(),
     ///     includes: Vec::new(),
     ///     variable_overrides: HashMap::new(),
     /// };
     /// let mut templates = HashMap::new();
-    /// templates.insert(base.name().to_string(), base.clone());
+    /// templates.insert(base.name.to_string(), base.clone());
     /// let composed = Template::compose(&base, &composition, &templates)?;
     /// assert!(composed.extends().is_some());
     /// # Ok(())
@@ -226,7 +230,7 @@ impl Template {
     ///     Metadata::default(),
     /// )
     /// .unwrap();
-    /// assert_eq!(template.name(), "daily");
+    /// assert_eq!(template.name, "daily");
     /// ```
     #[inline]
     pub fn new(
@@ -282,13 +286,6 @@ impl Template {
     #[must_use]
     pub fn take_events(&mut self) -> Vec<Events> {
         std::mem::take(&mut self.pending_events)
-    }
-
-    /// Returns the template's variable definitions.
-    #[inline]
-    #[must_use]
-    pub const fn variables(&self) -> &HashMap<String, VariableDefinition> {
-        &self.variables
     }
 
     /// Applies additional sections to content.
@@ -393,7 +390,13 @@ impl Template {
         Ok(())
     }
 
-    fn validate_name(name: &str) -> Result<(), TemplateError> {
+    /// Validates a template name according to business rules.
+    ///
+    /// # Errors
+    /// Returns `TemplateError` if the name is empty, too long, or contains
+    /// invalid characters.
+    #[inline]
+    pub fn validate_name(name: &str) -> Result<(), TemplateError> {
         static RE: LazyLock<Regex> = LazyLock::new(|| {
             #[expect(
                 clippy::expect_used,
@@ -434,7 +437,13 @@ impl Template {
         Ok(())
     }
 
-    fn validate_variable_name(name: &str) -> Result<(), TemplateError> {
+    /// Validates a variable name according to business rules.
+    ///
+    /// # Errors
+    /// Returns `TemplateError` if the name is empty, too long, contains
+    /// invalid characters, or is a reserved word.
+    #[inline]
+    pub fn validate_variable_name(name: &str) -> Result<(), TemplateError> {
         static RE: LazyLock<Regex> = LazyLock::new(|| {
             #[expect(
                 clippy::expect_used,
@@ -547,8 +556,8 @@ mod tests {
             let event_count = template.pending_events().len();
 
             // THEN: accessors expose expected data
-            assert_eq!(template.name(), "base");
-            assert_eq!(template.content(), "Hello");
+            assert_eq!(template.name, "base");
+            assert_eq!(template.content, "Hello");
             assert!(template.extends().is_none());
             assert!(!template.has_variables());
             assert_eq!(event_count, 1);
@@ -676,9 +685,9 @@ mod tests {
             Template::compose(&base, &composition, &templates).unwrap();
 
         // THEN: content is correctly assembled
-        assert!(composed.content().starts_with("Header\n"));
-        assert!(composed.content().ends_with("\nFooter"));
-        assert!(composed.content().contains("Base: {{v}}\nInside"));
+        assert!(composed.content.starts_with("Header\n"));
+        assert!(composed.content.ends_with("\nFooter"));
+        assert!(composed.content.contains("Base: {{v}}\nInside"));
         assert_eq!(composed.extends(), Some("base"));
     }
 

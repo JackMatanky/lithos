@@ -28,29 +28,33 @@ use crate::patterns;
 /// ```
 /// # use lithos_core::schema::PropertyName;
 /// let name = PropertyName::new("status".to_string()).unwrap();
-/// assert_eq!(name.as_str(), "status");
+/// assert_eq!(&name.0, "status");
 /// assert!(PropertyName::new("".to_string()).is_err());
 /// ```
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 #[serde(try_from = "String", into = "String")]
-pub struct PropertyName(String);
+#[non_exhaustive]
+pub struct PropertyName(pub String);
 
 impl PropertyName {
-    /// Get string reference.
-    #[inline]
-    #[must_use]
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
     /// Create a new `PropertyName` with validation.
     ///
     /// # Errors
     /// Returns `SchemaError` if validation fails.
     #[inline]
     pub fn new(name: String) -> Result<Self, SchemaError> {
+        Self::validate(&name)?;
+        Ok(Self(name))
+    }
+
+    /// Validates a property name string.
+    ///
+    /// # Errors
+    /// Returns `SchemaError` if validation fails.
+    #[inline]
+    pub fn validate(name: &str) -> Result<(), SchemaError> {
         static RE: LazyLock<Regex> = LazyLock::new(|| {
             #[expect(
                 clippy::expect_used,
@@ -68,10 +72,19 @@ impl PropertyName {
             return Err(SchemaError::PropertyNameTooLong(name.len()));
         }
 
-        if !RE.is_match(&name) {
-            return Err(SchemaError::InvalidPropertyName(name));
+        if !RE.is_match(name) {
+            return Err(SchemaError::InvalidPropertyName(name.to_owned()));
         }
-        Ok(Self(name))
+        Ok(())
+    }
+}
+
+impl std::ops::Deref for PropertyName {
+    type Target = str;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -367,7 +380,7 @@ pub mod fixtures {
                 .spec(PropertySpec::String(StringSpec::default()))
                 .build();
 
-            assert_eq!(property.name().as_str(), "priority");
+            assert_eq!(&property.name().0, "priority");
             assert!(property.required());
             assert!(property.array());
         }
@@ -401,7 +414,7 @@ mod tests {
             assert!(property.required());
             assert!(property.is_required_scalar());
             assert!(!property.array());
-            assert_eq!(property.name().as_str(), "status");
+            assert_eq!(&property.name().0, "status");
         }
 
         /// 3.3-UNIT-006: `returns_error_when_property_name_format_is_invalid`.

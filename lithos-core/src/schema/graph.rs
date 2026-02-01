@@ -66,7 +66,7 @@ impl Graph {
 
         // Sort keys for deterministic output
         let mut keys: Vec<_> = self.nodes.keys().cloned().collect();
-        keys.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        keys.sort_by(|a, b| a.0.cmp(&b.0));
 
         for name in keys {
             if !visited.contains(&name) {

@@ -29,19 +29,6 @@ pub struct SchemaCreated {
     pub timestamp: i64,
 }
 
-impl SchemaCreated {
-    /// Creates a new schema created event.
-    #[inline]
-    #[must_use]
-    pub fn new(id: Uuid, name: String, timestamp: i64) -> Self {
-        Self {
-            id,
-            name,
-            timestamp,
-        }
-    }
-}
-
 /// Property bank updated domain event.
 ///
 /// Published when the property bank is updated, allowing other systems
@@ -63,6 +50,29 @@ pub struct PropertyBankUpdated {
     pub timestamp: i64,
 }
 
+/// Domain events for the Schema context.
+#[derive(Debug, Clone, PartialEq)]
+#[non_exhaustive]
+pub enum Events {
+    /// Property bank was updated.
+    PropertyBankUpdated(PropertyBankUpdated),
+    /// Schema was created.
+    SchemaCreated(SchemaCreated),
+}
+
+impl SchemaCreated {
+    /// Creates a new schema created event.
+    #[inline]
+    #[must_use]
+    pub fn new(id: Uuid, name: String, timestamp: i64) -> Self {
+        Self {
+            id,
+            name,
+            timestamp,
+        }
+    }
+}
+
 impl PropertyBankUpdated {
     /// Creates a new property bank updated event.
     #[inline]
@@ -73,16 +83,6 @@ impl PropertyBankUpdated {
             timestamp,
         }
     }
-}
-
-/// Domain events for the Schema context.
-#[derive(Debug, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum Events {
-    /// Property bank was updated.
-    PropertyBankUpdated(PropertyBankUpdated),
-    /// Schema was created.
-    SchemaCreated(SchemaCreated),
 }
 
 #[cfg(test)]

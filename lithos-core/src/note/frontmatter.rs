@@ -421,8 +421,7 @@ impl Frontmatter {
     #[inline]
     #[must_use]
     pub fn aliases(&self, config: &crate::config::Config) -> Vec<String> {
-        self.get_string_array(&config.frontmatter().alias_key)
-            .unwrap_or_default()
+        self.get_string_array(&config.frontmatter.alias_key).unwrap_or_default()
     }
 
     /// Extracts the `file_class` field from frontmatter using the configured
@@ -445,7 +444,7 @@ impl Frontmatter {
     #[inline]
     #[must_use]
     pub fn file_class(&self, config: &crate::config::Config) -> String {
-        self.get_str(&config.frontmatter().file_class_key)
+        self.get_str(&config.frontmatter.file_class_key)
             .map(ToOwned::to_owned)
             .unwrap_or_default()
     }
@@ -696,7 +695,7 @@ impl Frontmatter {
     #[inline]
     #[must_use]
     pub fn title(&self, config: &crate::config::Config) -> String {
-        self.get_str(&config.frontmatter().title_key)
+        self.get_str(&config.frontmatter.title_key)
             .map(ToOwned::to_owned)
             .unwrap_or_default()
     }

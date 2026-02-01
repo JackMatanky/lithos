@@ -1,21 +1,39 @@
-//! File system utilities for parsing and validation.
+//! Filesystem-related utilities and infrastructure.
 //!
-//! This module provides generic file system operations with no domain
-//! knowledge. Dependencies flow inward: domain contexts may use fs utilities,
-//! but fs has no dependencies on domain logic.
+//! This module contains file system infrastructure for security validation,
+//! path manipulation, and structured data parsing.
+//!
+//! ## Security-Critical Modules
+//!
+//! - **validator**: Path traversal protection and security validation.
+//!   - Prevents path traversal attacks, symlink escapes, and arbitrary file
+//!     access.
+//!   - Re-exported as `PathValidator` for ergonomic imports.
+//!
+//! ## Data Processing Modules
+//!
+//! - **parsers**: TOML/JSON/YAML parsing strategies with auto-detection.
+//!   - Strategy pattern implementation for structured data formats.
+//!   - Re-exported as `FormatDispatcher` for clarity in calling code.
 
-/// File system error types.
-#[expect(
-    clippy::module_name_repetitions,
-    reason = "Context-specific error name is intentional"
-)]
-#[non_exhaustive]
-#[derive(Debug, thiserror::Error)]
-pub enum FsError {
-    /// IO operation failed.
-    #[error("io error: {0}")]
-    Io(#[from] std::io::Error),
-}
+#![allow(clippy::module_name_repetitions, reason = "Namespaced types")]
+#![allow(missing_docs, reason = "Transitional state of documentation")]
+
+pub mod error;
+pub mod parsers;
+pub mod validator;
+
+// Ergonomic aliases with domain-clarifying names (avoid `pub use` re-exports).
+/// Filesystem error type alias.
+pub type FsError = error::FsError;
+/// Parse error type alias.
+pub type ParseError = error::ParseError;
+/// Path validation error type alias.
+pub type PathValidationError = error::PathValidationError;
+/// Format dispatcher type alias.
+pub type FormatDispatcher = parsers::Dispatcher;
+/// Path validator type alias.
+pub type PathValidator = validator::Validator;
 
 /// Checks if a path is a Windows-style absolute path (e.g., C:/, D:/).
 #[inline]

@@ -29,18 +29,22 @@ use super::{
 /// is immutable once created and represents the complete runtime configuration
 /// for a vault operation.
 #[derive(Debug, Clone, PartialEq)]
+#[expect(
+    clippy::partial_pub_fields,
+    reason = "Aggregate root requires mixed visibility for domain events"
+)]
 #[non_exhaustive]
 pub struct Config {
     /// Vault metadata with versioning and naming.
-    vault_metadata: Metadata,
+    pub vault_metadata: Metadata,
     /// Merged logging configuration.
-    logging: Logging,
+    pub logging: Logging,
     /// Global filesystem configuration.
-    global_filesystem: GlobalPaths,
+    pub global_filesystem: GlobalPaths,
     /// Vault filesystem configuration.
-    vault_filesystem: VaultPaths,
+    pub vault_filesystem: VaultPaths,
     /// Merged frontmatter configuration.
-    frontmatter: Frontmatter,
+    pub frontmatter: Frontmatter,
     /// Domain events pending emission.
     pending_events: Vec<Events>,
 }
@@ -65,7 +69,7 @@ impl Config {
     /// let global = Global::default();
     /// let vault = Vault::default();
     /// let config = Config::build(Some(&global), "/vault", vault).unwrap();
-    /// assert_eq!(config.vault_metadata().vault_path, "/vault");
+    /// assert_eq!(config.vault_metadata.path, "/vault");
     /// ```
     #[inline]
     pub fn build(
@@ -73,11 +77,8 @@ impl Config {
         vault_path: &str,
         vault: Vault,
     ) -> Result<Self, ConfigError> {
-        // Pre-validate required Vault Path
-        Metadata::validate_vault_path(vault_path)?;
-
-        // Step 2: Set vault metadata defaults
-        let vault_metadata = Metadata::new(vault_path.to_owned());
+        // Step 2: Set vault metadata defaults (includes path validation)
+        let vault_metadata = Metadata::new(vault_path.to_owned(), None, None)?;
 
         // Step 3: Set filesystem configurations with defaults applied
         let global_filesystem = global
@@ -183,27 +184,6 @@ impl Config {
         Ok(config)
     }
 
-    /// Returns the merged frontmatter configuration.
-    #[inline]
-    #[must_use]
-    pub const fn frontmatter(&self) -> &Frontmatter {
-        &self.frontmatter
-    }
-
-    /// Returns the global filesystem configuration.
-    #[inline]
-    #[must_use]
-    pub const fn global_filesystem(&self) -> &GlobalPaths {
-        &self.global_filesystem
-    }
-
-    /// Returns the merged logging configuration.
-    #[inline]
-    #[must_use]
-    pub const fn logging(&self) -> &Logging {
-        &self.logging
-    }
-
     /// Merge frontmatter configurations applying defaults where needed.
     pub(crate) fn merge_frontmatter(
         global: Option<&Frontmatter>,
@@ -294,20 +274,6 @@ impl Config {
 
         Ok(())
     }
-
-    /// Returns the vault filesystem configuration.
-    #[inline]
-    #[must_use]
-    pub const fn vault_filesystem(&self) -> &VaultPaths {
-        &self.vault_filesystem
-    }
-
-    /// Returns the vault metadata.
-    #[inline]
-    #[must_use]
-    pub const fn vault_metadata(&self) -> &Metadata {
-        &self.vault_metadata
-    }
 }
 
 impl Default for Config {
@@ -341,7 +307,7 @@ fn choose_value(vault: &str, global: &str, default: &str) -> String {
 #[expect(
     clippy::panic,
     reason = "Test safety boundary - panic is acceptable in test code for \
-              exhaustive match failures"
+              exhaustive match failures."
 )]
 #[expect(
     clippy::arbitrary_source_item_ordering,
@@ -379,11 +345,8 @@ mod tests {
 
             // THEN: it succeeds and applies defaults
             let config = result.unwrap();
-            assert_eq!(config.vault_metadata().vault_path, "/vault");
-            assert_eq!(
-                config.global_filesystem().schema.schemas_dir,
-                "schemas"
-            );
+            assert_eq!(config.vault_metadata.path, "/vault");
+            assert_eq!(config.global_filesystem.schema.schemas_dir, "schemas");
         }
 
         /// 3.3-UNIT-021: `config_manages_domain_events`.
@@ -545,46 +508,42 @@ mod tests {
             if let Ok(config) = result {
                 // Verify defaults were applied to vault filesystem
                 assert_eq!(
-                    config.vault_filesystem().cache_dir,
-                    ".cache",
+                    config.vault_filesystem.cache_dir, ".cache",
                     "Should fall back to default cache_dir"
                 );
                 let default_filesystem = VaultPaths::default();
                 let default_frontmatter = Frontmatter::default();
                 let default_logging = Logging::default();
                 assert_eq!(
-                    config.vault_filesystem().template.templates_dir,
+                    config.vault_filesystem.template.templates_dir,
                     default_filesystem.template.templates_dir,
                     "Should fall back to default templates_dir"
                 );
                 assert_eq!(
-                    config.vault_filesystem().schema.schemas_dir,
+                    config.vault_filesystem.schema.schemas_dir,
                     default_filesystem.schema.schemas_dir,
                     "Should fall back to default schemas_dir"
                 );
                 assert_eq!(
-                    config.vault_filesystem().schema.property_bank_filename,
+                    config.vault_filesystem.schema.property_bank_filename,
                     default_filesystem.schema.property_bank_filename,
                     "Should fall back to default property_bank_filename"
                 );
                 assert_eq!(
-                    config.logging().log_level,
-                    default_logging.log_level,
+                    config.logging.log_level, default_logging.log_level,
                     "Should fall back to default log_level"
                 );
                 assert_eq!(
-                    config.frontmatter().file_class_key,
+                    config.frontmatter.file_class_key,
                     default_frontmatter.file_class_key,
                     "Should fall back to default file_class_key"
                 );
                 assert_eq!(
-                    config.frontmatter().title_key,
-                    default_frontmatter.title_key,
+                    config.frontmatter.title_key, default_frontmatter.title_key,
                     "Should fall back to default title_key"
                 );
                 assert_eq!(
-                    config.frontmatter().alias_key,
-                    default_frontmatter.alias_key,
+                    config.frontmatter.alias_key, default_frontmatter.alias_key,
                     "Should fall back to default alias_key"
                 );
             }
@@ -637,23 +596,20 @@ mod tests {
 
             // THEN: vault values override global defaults
             assert_eq!(
-                merged.vault_filesystem().template.templates_dir,
+                merged.vault_filesystem.template.templates_dir,
                 "custom_templates",
                 "Vault filesystem should have custom templates"
             );
             assert_eq!(
-                merged.logging().log_level,
-                "debug",
+                merged.logging.log_level, "debug",
                 "Log level should override global"
             );
             assert_eq!(
-                merged.frontmatter().file_class_key,
-                "type",
+                merged.frontmatter.file_class_key, "type",
                 "File class key should override global"
             );
             assert_eq!(
-                merged.frontmatter().date_created_key,
-                "created",
+                merged.frontmatter.date_created_key, "created",
                 "Date created key should override global"
             );
         }
@@ -695,7 +651,7 @@ mod tests {
                 } else {
                     prop_assert!(result.is_ok(), "Valid paths should merge successfully");
                     if let Ok(config) = result {
-                        prop_assert_eq!(config.vault_metadata().vault_path.as_str(), vault_path);
+                        prop_assert_eq!(config.vault_metadata.path.as_str(), vault_path);
                     }
                 }
             }

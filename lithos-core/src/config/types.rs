@@ -252,10 +252,10 @@ impl Logging {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub struct Schema {
-    /// Property bank filename (stored in `schemas_dir`).
-    pub property_bank_filename: String,
     /// Directory containing schema files.
     pub schemas_dir: String,
+    /// Property bank filename (stored in `schemas_dir`).
+    pub property_bank_filename: String,
 }
 
 impl Default for Schema {
