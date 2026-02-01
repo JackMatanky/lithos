@@ -15,42 +15,42 @@ section: "Validation & Quality"
 The stack is highly synergistic. `Redb` and `rkyv` provide the zero-copy foundation, `pulldown-cmark` provides the streaming event data, and `miette` consumes the resulting byte-offsets for high-fidelity diagnostics. All versions are verified for Jan 2026 compatibility.
 
 **Pattern Consistency:**
-The Hexagonal API/SPI split is strictly applied. The **Hybrid Bus** (ADR 0007) resolves the conflict between reliable indexing and reactive LSP performance.
+The Hexagonal Ports & Adapters pattern is maintained logically via module visibility (`pub(crate)` vs `pub`). The **Minimal Event Foundation** replaces the complex Actor pattern to simplify the initial implementation.
 
 **Structure Alignment:**
-The 4-crate workspace enforces physical boundaries that prevent architectural drift.
+The **Single-Crate Architecture** aligns perfectly with the requirement for zero-copy performance, eliminating the friction of cross-crate serialization.
 
 ## Requirements Coverage Validation ✅
 
 **Epic/Feature Coverage:**
-All 50 requirements are mapped to specific structural components. **FR9 (Schema-Driven Design)** is explicitly supported via the `app/template` orchestration layer.
+All 50 requirements are mapped to specific structural components in `lithos-core` and `lithos-cli`.
 
 **Functional Requirements Coverage:**
 100% of FRs are mapped to specific modules.
 
 **Non-Functional Requirements Coverage:**
-Performance targets (<500ms for individual ops, <2s for indexing) are architecturally enforced by the zero-copy data path and time-ordered UUID v7 identity.
+Performance targets (<500ms for individual ops) are architecturally enforced by the **zero-copy data path** (inlining `rkyv` reads).
 
 ## Implementation Readiness Validation ✅
 
 **Decision Completeness:**
-Critical decisions are documented in ADRs 0001-0007. The project tree is specific, avoiding generic placeholders and using short, parent-agnostic filenames.
+Critical decisions are documented in ADRs 0001-0017 (including the Single-Crate Pivot).
 
 **Structure Completeness:**
 The project structure is complete and specific, with all files and directories defined.
 
 **Pattern Completeness:**
-All potential conflict points are addressed, and naming conventions are comprehensive.
+Conflict points (async vs sync, error handling) are addressed in `implementation-patterns-consistency-rules.md`.
 
 ## Gap Analysis Results
 
 **Important Gaps:**
-`rkyv` boilerplate must be encapsulated in the `adapters/spi/storage` layer to protect domain ergonomics and prevent anemic model issues.
+`rkyv` boilerplate must be encapsulated in `db.rs` to protect domain ergonomics.
 
 ## Validation Issues Addressed
 
 **Audit and Encryption:**
-Added explicit `AuditSubscriber` and `EncryptionPort` to ensure FR39 and FR40 are not afterthoughts.
+Added explicit audit logging points in `lithos-core` events.
 
 ## Architecture Completeness Checklist
 
@@ -63,22 +63,22 @@ Added explicit `AuditSubscriber` and `EncryptionPort` to ensure FR39 and FR40 ar
 
 **✅ Architectural Decisions**
 
-- [x] Critical decisions documented with versions (ADRs 0001-0007)
+- [x] Critical decisions documented with versions (ADRs 0001-0017)
 - [x] Technology stack fully specified (Rust 1.92+)
-- [x] Integration patterns defined (Hybrid Bus)
+- [x] Integration patterns defined (Direct DB Access)
 - [x] Performance considerations addressed (Zero-copy)
 
 **✅ Implementation Patterns**
 
 - [x] Naming conventions established (Short, parent-agnostic)
-- [x] Structure patterns defined (Crate-per-layer)
-- [x] Communication patterns specified (Tiered Bus)
+- [x] Structure patterns defined (Single-Crate Core)
+- [x] Communication patterns specified (Direct calls + Events)
 - [x] Process patterns documented (miette diagnostics)
 
 **✅ Project Structure**
 
 - [x] Complete directory structure defined
-- [x] Component boundaries established (API/SPI)
+- [x] Component boundaries established (Logical Modules)
 - [x] Integration points mapped
 - [x] Requirements to structure mapping complete
 
@@ -86,26 +86,26 @@ Added explicit `AuditSubscriber` and `EncryptionPort` to ensure FR39 and FR40 ar
 
 **Overall Status:** READY FOR IMPLEMENTATION
 
-**Confidence Level:** High based on validation results
+**Confidence Level:** High
 
 **Key Strengths:**
 
-1.  **Mechanical Sympathy:** Absolute optimization for the Rust memory model.
+1.  **Performance:** Zero-copy optimization via Single-Crate Architecture.
 2.  **Visual Fidelity:** `miette` provides a world-class user experience.
-3.  **Boundary Rigor:** Hexagonal isolation ensures the project remains maintainable as it scales.
+3.  **Simplicity:** Reduced boilerplate compared to multi-crate setup.
 
 **Areas for Future Enhancement:**
-Detailed plugin architecture and LSP-specific suggestion algorithms are prioritized for post-MVP.
+LSP-specific suggestion algorithms are prioritized for post-MVP.
 
 ## Implementation Handoff
 
 **AI Agent Guidelines:**
 
-- Follow all architectural decisions exactly as documented in ADRs 0001-0007
+- Follow all architectural decisions exactly as documented in ADRs
 - Use implementation patterns consistently across all components
-- Respect project structure and boundaries (API/SPI split)
+- Respect logical boundaries (Module visibility)
 - **PRIORITIZE** running all tasks and commands through **`mise`**
 - Refer to this document for all architectural questions
 
 **First Implementation Priority:**
-Initialize the Cargo workspace and implement the **Indexer Actor** mailbox to establish the Data Plane.
+Initialize the Workspace (`lithos-core`, `lithos-cli`) and implement `db.rs`.
