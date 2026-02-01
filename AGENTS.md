@@ -71,7 +71,7 @@ For complete rules, see [_bmad-output/project-context.md](_bmad-output/project-c
 ## Rust Idioms (Rules)
 
 These rules operationalize common Rust idioms for day-to-day Lithos development.
-For deeper rationale and examples, see [docs/refs/rust-idioms-reference.md](docs/refs/rust-idioms-reference.md).
+For deeper rationale and examples, see [docs/refs/rust/idioms.md](docs/refs/rust/idioms.md).
 
 ### API & Ownership
 - Prefer borrowed arguments in APIs: take `&str`, `&Path`, slices, and `&T` (or `impl AsRef<Path>` / `impl Borrow<T>`) instead of `String`/`PathBuf`/owned types unless ownership is required.

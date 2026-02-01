@@ -1,7 +1,9 @@
 # Sprint Change Proposal: Rust Idiomatic Architecture Refactor
 
-**Status:** Draft
+**Status:** Approved
 **Date:** 2026-01-30
+**Approved:** 2026-02-01
+**Approver:** Jack (Product Owner)
 **Trigger:** Language-Agnostic Anti-Pattern Realization
 **Scope:** MAJOR / STOP-THE-WORLD
 **Author:** BMad Master (Architect Agent)
